@@ -1,3 +1,3 @@
-coef.mfpa <- function(x){
+coef.mfpa <- function(x) {
   x$coefficients
 }

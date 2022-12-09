@@ -9,19 +9,19 @@
 #' @param offset a numeric vector of of a priori known component to be included
 #' in the linear predictor during fitting. This should be of length equal to the number of cases
 #' @return The log likelihood of the fitted model, regression coefficients and the number of parameters
-#'@import stats
+#' @import stats
 #' @export
-glmfit <- function(x,y,family,weights,offset){
+glmfit <- function(x, y, family, weights, offset) {
   # x should include 1s for the intercept, family should be a function, weights and
   # offset should be specified
   fit <- stats::glm.fit(x = x, y = y, family = family, weights = weights, offset = offset)
   # number of parameters- we can as well use fit$coefficients
   p <- fit$rank
   # allow for estimated scale parameter for Gaussian family
-  fam = fit$family$family
-  if(fam=="gaussian") p <- p + 1
+  fam <- fit$family$family
+  if (fam == "gaussian") p <- p + 1
   # loglikelihood of the glm model fitted idea borrowed from logLik.glm in github
-  loglk <- p - fit$aic/2
+  loglk <- p - fit$aic / 2
   # add residual sum of squares for calculating F statistic in Gaussian models
   SSE <- sum(fit$residuals^2, na.rm = T)
   # we are returning loglikelihood so that we can calculate AIC and BIC of

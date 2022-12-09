@@ -1,3 +1,3 @@
-summary.mfpa <- function(x,...){
-  summary(x,...)
+summary.mfpa <- function(x, ...) {
+  summary(x, ...)
 }

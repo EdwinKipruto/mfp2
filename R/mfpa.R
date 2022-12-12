@@ -267,14 +267,14 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   
   # assert length of alpha 
   if (length(alpha) == 1) {
-      alpha.list <- rep(alpha, nvars)
+      alpha_list <- rep(alpha, nvars)
   } else {
       if (length(alpha) != nvars) {
           stop("! alpha must be a single number, or the number of observations (rows in x) and weights must alpha.\n", 
                sprintf("i The number of rows in x is %d, but the number of elements in alpha is %d.", 
                        nobs, length(alpha)))
       }
-      alpha.list <- alpha
+      alpha_list <- alpha
   }
   
   # assert select between 0 and 1
@@ -283,14 +283,14 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   # assert length of select 
   if (length(select) == 1) {
-      select.list <- rep(select, nvars)
+      select_list <- rep(select, nvars)
   } else {
       if (length(select) != nvars) {
           stop("! select must be a single number, or the number of observations (rows in x) and weights must select.\n", 
                sprintf("i The number of rows in x is %d, but the number of elements in select is %d.", 
                        nobs, length(select)))
       }
-      select.list <- select
+      select_list <- select
   }
   
   # assert keep is a subset of x
@@ -444,7 +444,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       scale = scale.list, shift = shift, df = df.list, keep,
       center = center.list, criterion = criterion, xorder = xorder,
       powers = powers, family = "cox", method = ties,
-      select = select.list, alpha = alpha.list, strata = istrata,
+      select = select_list, alpha = alpha_list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
     )
@@ -468,7 +468,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       scale = scale.list, shift = shift, df = df.list, keep,
       center = center.list, criterion = criterion, xorder = xorder,
       powers = powers, family = family, method = ties,
-      select = select.list, alpha = alpha.list, strata = istrata,
+      select = select_list, alpha = alpha_list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
     )

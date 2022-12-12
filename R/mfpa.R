@@ -207,88 +207,109 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                  ftest = F,
                  verbose = T) {
   cl <- match.call()
-  # match arguments
+  
+  # match and check arguments and set defaults for simple parameters
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
   family <- match.arg(family)
-  method <- match.arg(ties)
-  # capture extra arguments
-  # see survival for extra arguments
-  # extraArgs <- list(...)
-  # if (length(extraArgs)) {
-  #   controlargs <- names(formals(coxph.control)) #legal arg names
-  #   indx <- pmatch(names(extraArgs), controlargs, nomatch=0L)
-  #   if (any(indx==0L))
-  #     stop(gettextf("Argument %s not matched",
-  #                   names(extraArgs)[indx==0L]), domain = NA)
-  # }
-  ### Need to do this first so defaults in call can be satisfied
+  ties <- match.arg(ties)
   # set default FP powers proposed by Royston and Sauerbrei (2008)
-  if (is.null(powers)) powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  # check dimension of x
+  if (is.null(powers)) {
+      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  }
+  
+  # assertions and setting values for more complicated parameters
+  # assert dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])
   nvars <- as.integer(np[2])
-  # Assert that x must be a matrix
-  if (is.null(np)) stop("x must be a matrix with 1 or more columns")
-  # Assert that x must have column names
+  # assert that x is a matrix
+  if (is.null(np)) {
+      stop("! The dimensions of x must not be Null.\n",
+           "i Please make sure that x is a matrix or data.frame with at least one row and column.")
+  }
+  # assert that x has column names
   vnames <- colnames(x)
-  if (is.null(vnames)) stop("The column names of x is null")
+  if (is.null(vnames)) stop("! The column names of x must not be Null.\n",
+                            "i Please set column names for x.")
   # Transform factor variables to dummies if any using model.matrix
-  # Convert factors to dummy variables if it exists...take it to the main function
-  # x = model.matrix(as.formula(paste("~", paste(colnames(x), collapse="+"))),
-  #                  data = as.data.frame(x))
-  x <- model.matrix(~ . - 1, data.frame(x)) # entered df, alpha, select, etc will not be equal to ncol(x) if factor variables exist if f
-  # we can compare ncol of x original and from model.matrix if different then some variables where
-  # converted to dummies so we need to replicate the df, scale, alpha etc for those variables
-  # Check for missing data in x
-  if (anyNA(x)) stop("Missing data detected in x.You must eliminate")
-  # check weights
+  x <- model.matrix(~ . - 1, data.frame(x)) 
+  
+  # assert that x has no missing data
+  if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
+                     "i Please remove any missing data before passing x to this function.")
+  
+  # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
-    if (any(weights < 0)) stop("negative weights not allowed")
+    if (any(weights < 0)) {
+        stop("! Weights must not be negative.")
+    }
     if (length(weights) != nobs) {
-      stop(paste("number of elements in weights (", length(weights), ") not equal
-                 to the number of rows of x (", nobs, ")", sep = ""))
+      stop("! The number of observations (rows in x) and weights must match.\n", 
+           sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
+                   nobs, length(weights)))
     }
   }
-  # Check offset-offset is also required in cox see coxph.fit() github
-  if (!is.null(offset) && length(offset) != nobs) {
-    stop(gettextf("number of offsets is %d should equal %d (number of observations)", length(offset), nobs), domain = NA)
+  
+  # assert dimensions of offset
+  if (!is.null(offset)) {
+      if (length(offset) != nobs) {
+          stop("! The number of observations (rows in x) and offset must match.\n", 
+               sprintf("i The number of rows in x is %d, but the number of elements in offset is %d.", 
+                       nobs, length(offset)))
+      }
   }
-  ## define weights and offset when NULL...confirm if default weights are also equal to 1 in cox
-  if (is.null(weights)) weights <- rep.int(1, nobs)
-  if (is.null(offset)) offset <- rep.int(0, nobs)
-  # alpha: p-values for testing between FP models; must lie between 0 and 1
-  if (any(alpha > 1) || any(alpha < 0)) stop("Any alpha must not be  > 1 or < 0 ")
-  # If length (alpha) = 1 then we replicate supplied alpha otherwise we check
-  # whether the length of alpha is equal to ncol(x)
+  
+  # assert alpha between 0 and 1
+  if (any(alpha > 1) || any(alpha < 0)) {
+      stop("! alpha must not be < 0 or > 1.")
+  }
+  
+  # assert length of alpha 
   if (length(alpha) == 1) {
-    alpha.list <- rep(alpha, nvars)
+      alpha.list <- rep(alpha, nvars)
   } else {
-    if (length(alpha) != nvars) stop(gettextf("number of alpha is %d should equal to 1 or %d (number of variables)", length(alpha), nvars), domain = NA)
-    alpha.list <- alpha
+      if (length(alpha) != nvars) {
+          stop("! alpha must be a single number, or the number of observations (rows in x) and weights must alpha.\n", 
+               sprintf("i The number of rows in x is %d, but the number of elements in alpha is %d.", 
+                       nobs, length(alpha)))
+      }
+      alpha.list <- alpha
   }
-  # Order variables based on likelihood ratio test
-
-  # select: the nominal p-values (significance levels) for variable selection by
-  # backward elimination; must lie between 0 and 1
-  if (any(select > 1) || any(select < 0)) stop("Any select must not be  > 1 or < 0")
+  
+  # assert select between 0 and 1
+  if (any(select > 1) || any(select < 0)) {
+      stop("! select must not be < 0 or > 1.")
+  }
+  # assert length of select 
   if (length(select) == 1) {
-    select.list <- rep(select, nvars)
+      select.list <- rep(select, nvars)
   } else {
-    if (length(select) != nvars) {
-      stop(gettextf("number of select is %d should equal to 1 or %d (number of variables)", length(select), nvars), domain = NA)
-    }
-    select.list <- select
+      if (length(select) != nvars) {
+          stop("! select must be a single number, or the number of observations (rows in x) and weights must select.\n", 
+               sprintf("i The number of rows in x is %d, but the number of elements in select is %d.", 
+                       nobs, length(select)))
+      }
+      select.list <- select
   }
-  # =============================================================================
-  # keep option...finish this part
-  # =============================================================================
+  
+  # assert keep is a subset of x
   if (!is.null(keep)) {
-    if (!all(keep %in% colnames(x))) {
-      stop("The names of variables to force into the model is not a subset of columns of x")
-    }
+      if (!all(keep %in% colnames(x))) {
+          warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
+                  "i mfpa() continues with the intersection of keep and colnames(x).")
+      }
+      keep <- intersect(keep, colnames(x))
   }
+  
+  # set further defaults
+  if (is.null(weights)) {
+      weights <- rep.int(1, nobs)
+  }
+  if (is.null(offset)) {
+      offset <- rep.int(0, nobs)
+  }
+
   # df: sets the df for each predictor. df=4: FP model with maximum permitted
   # degree m=2 (default), df=2: FP model with maximum permitted degree m=1:
   # df=1: Linear FP model
@@ -422,7 +443,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale.list, shift = shift, df = df.list, keep,
       center = center.list, criterion = criterion, xorder = xorder,
-      powers = powers, family = "cox", method = method,
+      powers = powers, family = "cox", method = ties,
       select = select.list, alpha = alpha.list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
@@ -446,7 +467,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale.list, shift = shift, df = df.list, keep,
       center = center.list, criterion = criterion, xorder = xorder,
-      powers = powers, family = family, method = method,
+      powers = powers, family = family, method = ties,
       select = select.list, alpha = alpha.list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx

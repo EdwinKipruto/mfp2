@@ -13,12 +13,12 @@ shift.scale(x, scale, shift)
 \item{x}{A vector of predictor variable}
 
 \item{scale}{scaling factors for x of interest. Must be positive integers.
-Default is NULL and  scaling factors are automatically estimated using 
-scalefn() function else it uses user suppled scaling factors. If no scaling 
+Default is NULL and  scaling factors are automatically estimated using
+scalefn() function else it uses user suppled scaling factors. If no scaling
 is needed just use scale = 1 because x/1 = x}
 
-\item{shift}{adjustment factors required for shifting x to positive 
-values. Default is NULL and adjustment factors are estimated automatically 
+\item{shift}{adjustment factors required for shifting x to positive
+values. Default is NULL and adjustment factors are estimated automatically
 using Royston and Sauerbrei formula.}
 }
 \description{

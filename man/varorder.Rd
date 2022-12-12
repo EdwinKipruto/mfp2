@@ -36,8 +36,8 @@ Surv object from the survival package, generated using Surv() function}
 \item{xorder}{Determines the order of entry of the covariates into the
 model-selection algorithm. The default is "ascending", which enters them in
 decreasing order of significance in a multiple linear
- regression (most significant first). "descending" places them in reverse
- significance order, whereas "original" respects the original order in x}
+regression (most significant first). "descending" places them in reverse
+significance order, whereas "original" respects the original order in x}
 }
 \value{
 p-values for each predictor variable

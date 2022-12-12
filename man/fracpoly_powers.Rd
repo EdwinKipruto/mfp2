@@ -9,7 +9,7 @@ fracpoly_powers(degree = NULL, powers = NULL)
 \arguments{
 \item{degree}{The degree of fractional polynomial; degree = 1 is FP1 and
 returns 8 powers; degree 2 is FP2 and returns 36 pairs of powers; degree 3 is
- FP3 and returns 120 triple of powers etc.}
+FP3 and returns 120 triple of powers etc.}
 
 \item{powers}{the set of fractional polynomial. Default is NULL in which the set
 s = {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used}

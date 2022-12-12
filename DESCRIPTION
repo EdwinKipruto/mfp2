@@ -16,3 +16,4 @@ Packaged: 2022-04-01 17:16:44 UTC; Edwin
 Author: Kipruto Edwin [aut, cre], Willi Sauerbrei [aut], Michael Kammer [aut]
 Maintainer: kipruto Edwin <Edwin.Kipruto@imbi.uni-freiburg.de>
 RoxygenNote: 7.2.0
+Roxygen: list(markdown = TRUE)

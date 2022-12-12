@@ -289,7 +289,6 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
                   "i mfpa() continues with the intersection of keep and colnames(x).")
       }
-      keep <- intersect(keep, colnames(x))
   }
   
   # assert shift vector is of correct dimension
@@ -318,6 +317,14 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                        nvars, length(center)))
       }
   }
+  
+  # assert acdx is a aubset of x
+  if (!is.null(acdx)) {
+      if (!all(acdx %in% colnames(x))) {
+          warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
+                  "i mfpa() continues with the intersection of acdx and colnames(x).")
+      }
+  }
 
   # set further defaults
   if (is.null(weights)) {
@@ -344,6 +351,19 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   if (length(center) == 1) {
       center <- rep(center, nvars)    
+  }
+  
+  keep <- intersect(keep, colnames(x))
+  # convert acdx to logical vector
+  if (is.null(acdx)) {
+      acdx <- rep(F, nvars)
+  } else {
+      # Get rid of duplicates names
+      acdx <- unique(acdx)
+      acdx <- intersect(acdx, colnames(x))
+      # the variables that undergo acd transformation have acdx = TRUE
+      acdx <- replace(rep(FALSE, nvars), 
+                      which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
 
   # df: sets the df for each predictor. df=4: FP model with maximum permitted
@@ -381,17 +401,6 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   
-  # logical indicator specifying whether a variable has acd or not. Default is false
-  if (is.null(acdx)) {
-    acdx <- rep(F, nvars)
-  } else {
-    # Get rid of duplicates names
-    acdx <- unique(acdx)
-    if (any(!(acdx %in% vnames))) stop("The variable ", paste0(setdiff(acdx, vnames), sep = ","), " in acdx is not in x")
-    # The variables that undergo acd transformation have acdx = T
-    acdx <- replace(rep(F, nvars), which(vnames %in% acdx), rep(T, length(acdx)))
-    # Reset acdx to false for acd variables with unique values <5
-  }
   #-----------------------------------------------------------------------------
   # Cox specific setup
   #-----------------------------------------------------------------------------

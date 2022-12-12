@@ -302,12 +302,52 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       keep <- intersect(keep, colnames(x))
   }
   
+  # assert shift vector is of correct dimension
+  if (!is.null(shift)) {
+      if (length(shift) != 1 && length(shift) != nvars) {
+          stop("! shift must either be NULL, a single number, or the number of variables (columns in x) and shift must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
+                       nvars, length(shift)))
+      }
+  }
+  
+  # assert scale vector is of correct dimension
+  if (!is.null(scale)) {
+      if (length(scale) != 1 && length(scale) != nvars) {
+          stop("! scale must either be NULL, a single number, or the number of variables (columns in x) and scale must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
+                       nvars, length(scale)))
+      }
+  }
+  
+  # assert center vector is of correct dimension
+  if (length(center) != 1) {
+      if (length(center) != nvars) {
+          stop("! center must either be of length 1, or the number of variables (columns in x) and center must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in center is %d.", 
+                       nvars, length(center)))
+      }
+  }
+
   # set further defaults
   if (is.null(weights)) {
       weights <- rep.int(1, nobs)
   }
   if (is.null(offset)) {
       offset <- rep.int(0, nobs)
+  }
+  if (is.null(shift)) {
+      shift <- apply(x, 2, shift.factor)
+  } else if (length(shift == 1)) {
+      shift <- rep(shift, nvars)
+  }
+  if (is.null(scale)) {
+      scale <- apply(x, 2, scalefn)
+  } else if (length(scale == 1)) {
+      scale <- rep(scale, nvars)
+  }
+  if (length(center) == 1) {
+      center <- rep(center, nvars)    
   }
 
   # df: sets the df for each predictor. df=4: FP model with maximum permitted
@@ -340,34 +380,11 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
     if (any(df[indexx] != 1)) stop("The df of variable ", paste0(vnames[indexx][df[indexx] != 1], sep = " "), " must be 1 because it has fewer than 3 unique values")
     df.list <- df
   }
-  # ===============================================================================
-  # adjustment factors for shifting x to positive values
-  if (is.null(shift)) {
-    shift <- apply(x, 2, function(x) shift.factor(x))
-    x <- sweep(x, 2, shift, "+") # shift to positive
-  } else {
-    if (length(shift) != nvars) {
-      stop(gettextf("number of shift is %d should equal to %d (number of variables)", length(shift), nvars), domain = NA)
-    }
-    x <- sweep(x, 2, shift, "+")
-  }
-  # scale: specifies the predictors to be scaled see scalefn() for details
-  if (is.null(scale)) {
-    scale.list <- apply(x, 2, scalefn)
-    x <- sweep(x, 2, scale.list, "/")
-  } else {
-    if (length(scale) != nvars) stop(gettextf("number of scale is %d should equal to NULL or %d (number of variables)", length(scale), nvars), domain = NA)
-    scale.list <- scale
-    x <- sweep(x, 2, scale.list, "/")
-  }
-  # center variables
-  if (length(center) == 1) {
-    center.list <- rep(center, nvars)
-  } else {
-    if (length(center) != nvars) {
-      stop(gettextf("number of center is %d should equal to 1 or %d (number of variables)", length(center), nvars), domain = NA)
-    }
-  }
+
+  # data preparation: shift, scale
+  x <- sweep(x, 2, shift, "+")
+  x <- sweep(x, 2, scale, "/")
+  
   # logical indicator specifying whether a variable has acd or not. Default is false
   if (is.null(acdx)) {
     acdx <- rep(F, nvars)
@@ -442,7 +459,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
     fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale.list, shift = shift, df = df.list, keep,
-      center = center.list, criterion = criterion, xorder = xorder,
+      center = center, criterion = criterion, xorder = xorder,
       powers = powers, family = "cox", method = ties,
       select = select_list, alpha = alpha_list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
@@ -466,7 +483,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
     fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale.list, shift = shift, df = df.list, keep,
-      center = center.list, criterion = criterion, xorder = xorder,
+      center = center, criterion = criterion, xorder = xorder,
       powers = powers, family = family, method = ties,
       select = select_list, alpha = alpha_list, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,

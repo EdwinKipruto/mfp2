@@ -1,180 +1,196 @@
-#' Multivariable fractional polynomial models with extensions of sigmoid functions
+#' Multivariable fractional polynomial models with extensions of sigmoid 
+#' functions
 #'
-#' selects the multivariable fractional polynomial model that best predicts
+#' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
-#' between x and an outcome variable using the approximate cumulative distribution
-#' (ACD) transformation proposed by Royston (2016).
+#' between x and an outcome variable using the approximate cumulative 
+#' distribution (ACD) transformation proposed by Royston (2016).
 #'
-#' ## Details on `family` option
+#' @section Details on `family` option:
 #'
-#' mfpa supports the family object as used by stats:glm(). The built in
-#' families are specifed via a character string. \code{mfpa(...,
-#' family="binomial")} fits a logistic regression model, while \code{mfpa(...,
-#' family="gaussian")} fits OLS regression model.
+#' `mfpa()` supports the family object as used by [stats:glm()]. The built in
+#' families are specifed via a character string. `mfpa(..., family="binomial")` 
+#' fits a logistic regression model, while `mfpa(..., family="gaussian")`
+#' fits a linear regression (ordinary least squares) model.
 #'
-#' For Cox models, the response should preferably be a \code{Surv} object,
-#' created by the \code{Surv()} function in \pkg{survival} package and the \code{family = cox}. Only
-#' right-censored data are currently supported. To fit stratified Cox
-#' models, strata option can be used.
+#' For Cox models, the response should preferably be a `Surv` object,
+#' created by the [survival::Surv()] function, and the `family = "cox"`. 
+#' Only right-censored data are currently supported. To fit stratified Cox
+#' models, the strata option can be used.
 #'
-#' ## Details on scaling and centering
+#' @section Details on scaling and centering:
 #'
 #' After adjusting the location of \eqn{x} so that its minimum value is positive,
-#' creating \eqn{x^*}, automatic scaling will divide each value of \eqn{x^*} by \eqn{10^p} where the exponent \eqn{p} is given by
-#' \deqn{ p = sign(k)\times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x^*)- min(x^*))}
+#' creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by 
+#' \eqn{10^p} where the exponent \eqn{p} is given by 
+#' \deqn{p = sign(k) \times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x')- min(x'))}
 #'
-#' The FP transformation of \eqn{x^*} is centered on the mean of the observed values of \eqn{x^*}. For example,
-#' for the FP1 model \eqn{\beta_0 + \beta_1x^p}, the actual model fitted by the software would
-#' be \eqn{\beta^*_0 + \beta^*_1(x^{*p}-mean(x^{*p}))}. This approach ensures that
-#' the revised constant \eqn{\beta^*_0} equals the fitted value of the FP function at the mean of \eqn{x^*}.
+#' The FP transformation of \eqn{x'} is centered on the mean of the observed 
+#' values of \eqn{x'}. For example, for the FP1 model \eqn{\beta_0 + \beta_1x^p},
+#' the actual model fitted by the software would be 
+#' \eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
+#' the revised constant \eqn{\beta'_0} equals the fitted value of the FP
+#' function at the mean of \eqn{x'}.
 #'
-#' ## Details on  approximate cumulative distribution (ACD) transformation `acdx`
-#'
-#' The ACD transformation (Royston 2014a) converts each predictor, x, smoothly
-#' to an approximation, acd(x), of its empirical cumulative distribution
-#' function. This is done by smoothing a probit transformation of the scaled
-#' ranks of x on x. acd(x) could be used instead of x as a covariate. This
-#' has the advantage of providing sigmoid curves in x, something that regular FP
-#' functions cannot achieve. Details of the precise definition and some possible
-#' uses of the ACD transformation in a univariate context are given by Royston
-#'  (2014a). Royston (2014b) describes how one could go further and replace FP2
-#'  functions with a pair of FP1 functions, one in x and the other in ACD(x).
-#'  This alternative class of four-parameter functions seems to provide about
-#'  the same flexibility as the standard FP2 family. The ACD component offers
-#'  the additional possibility of sigmoid functions, as just described.
-#'  Royston (2014b) discusses how the extended class of functions known as
-#'  FP1(p1, p2), namely
-#'  \deqn{FP1(p1, p2) = \beta_1 * x^{p1} + \beta_2 * ACD(x)^{p2}}
+#' @section Details on  approximate cumulative distribution transformation:
+#' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 
+#' converts each predictor, \eqn{x}, smoothly to an approximation, \eqn{acd(x)}, 
+#' of its empirical cumulative distribution function. 
+#' This is done by smoothing a probit transformation of 
+#' the scaled ranks of \eqn{x}. \eqn{acd(x)} could be used instead of \eqn{x} 
+#' as a covariate. This has the advantage of providing sigmoid curves, something
+#' that regular FP functions cannot achieve. 
+#' Details of the precise definition and some possible uses of the ACD 
+#' transformation in a univariate context are given by Royston (2014a). 
+#' Royston (2014b) describes how one could go further and replace FP2
+#' functions with a pair of FP1 functions, one in \eqn{x} and the other in 
+#' \eqn{acd(x)}.
+#' 
+#' This alternative class of four-parameter functions seems to provide about
+#' the same flexibility as the standard FP2 family, but the ACD component offers
+#' the additional possibility of sigmoid functions.
+#' Royston (2014b) discusses how the extended class of functions known as
+#' \eqn{FP1(p1, p2)}, namely
+#' \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
 #' can be fitted optimally by seeking the best combination of all 64 pairs of
-#' powers (p1, p2). The optimisation is invoked by use of the \code{acd()} option.
+#' powers (p1, p2). The optimisation is invoked by use of the `acdx` parameter.
 #' Royston (2014b) also described simplification of the chosen function through
 #' model reduction by applying significance testing to six sub-families of
-#'  functions,M1-M6, giving models M1 (most complex) through M6 (null, x omitted):
+#' functions,M1-M6, giving models M1 (most complex) through M6 (null):
 #' \itemize{
 #' \item{M1.}{FP1(p1, p2) (no simplification)}
-#' \item{M2.} {FP1(p1, .) (regular FP1 function of x)}
-#' \item{M3.} {FP1(., p2) (regular FP1 function of ACD(x))}
-#' \item{M4.} {FP1(1, .) (linear function of x)}
-#' \item{M5.} {FP1(., 1) (linear function of ACD(x))}
-#' \item{M6.} {Null (x omitted entirely)}
+#' \item{M2.}{FP1(p1, .) (regular FP1 function of \eqn{x})}
+#' \item{M3.}{FP1(., p2) (regular FP1 function of \eqn{acd(x)})}
+#' \item{M4.}{FP1(1, .) (linear function of \eqn{x})}
+#' \item{M5.}{FP1(., 1) (linear function of \eqn{acd(x)})}
+#' \item{M6.}{Null (\eqn{x} omitted entirely)}
 #' }
-#' Selection among these six sub-functions is performed by a closed test procedure
-#' known as the FSPA. It maintains the familywise type 1 error probability for
-#' selecting x at the value determined by the \code{select} option. To obtain a
-#' 'final' model, a structured sequence of up to five tests is carried out, the
-#' first at the \code{select} significance level and the remainder at the
-#' significance level provided by the \code{alpha} option.
-#'  The sequence of tests is as follows:
+#' Selection among these six sub-functions is performed by a closed test 
+#' procedure known as the FSPA. It maintains the familywise type 1 error 
+#' probability for selecting \eqn{x} at the value determined by the 
+#' `select` parameter. To obtain a 'final' model, a structured sequence of up 
+#' to five tests is carried out, the first at the significance level specified 
+#' by the `select` parameter, and the remainder at the significance level 
+#' provided by the `alpha` option. 
+#' The sequence of tests is as follows:
 #' \itemize{
-#'  \item{Test 1.}{Compare the deviances of models 6 and 1 on 4 d.f. If
-#'   non-significant then stop and omit x, otherwise continue to step 2.}
-#'  \item{Test 2.}{Compare the deviances of models 4 and 1 on 3 d.f. If
-#'  non-significant then accept model 4 and stop. Otherwise, continue to step 3.}
-#' \item{Test 3.}{Compare the deviance of models 2 and 1 on 2 d.f. If non-significant then accept
-#' model 2 and stop. Otherwise continue to step 4.}
-#' \item{Test 4.}{Compare the deviance of models 3 and 1 on 2 d.f. If significant then model 1 cannot
-#' be simplified; accept model 1 and stop.  Otherwise continue to step 5}
-#' \item{Test 5.}{Compare the deviances of models 5 and 3 on 1 d.f. If significant then model 3 cannot
-#' be simplified; accept model 3. Otherwise, accept model 5.  End of procedure}
+#' \item{Test 1.}{Compare the deviances of models 6 and 1 on 4 d.f. 
+#'   If not significant then stop and omit \eqn{x}, otherwise continue to step 2.}
+#' \item{Test 2.}{Compare the deviances of models 4 and 1 on 3 d.f. 
+#'   If not significant then accept model 4 and stop. Otherwise, continue to step 3.}
+#' \item{Test 3.}{Compare the deviance of models 2 and 1 on 2 d.f. 
+#'   If not significant then accept model 2 and stop. Otherwise continue to step 4.}
+#' \item{Test 4.}{Compare the deviance of models 3 and 1 on 2 d.f. 
+#'   If significant then model 1 cannot be simplified; accept model 1 and stop.  
+#'   Otherwise continue to step 5.}
+#' \item{Test 5.}{Compare the deviances of models 5 and 3 on 1 d.f. 
+#'   If significant then model 3 cannot be simplified; accept model 3. 
+#'   Otherwise, accept model 5. End of procedure.}
 #' }
-#' The result is selection of one of the six models. The FSPA procedure is
-#' automatically invoked by the acd(varlist) option for each member of varlist
-#'  in the iterative fitting algorithm.
-
+#' The result is the selection of one of the six models. 
 #'
-#' @param x input matrix, of dimension nobs x nvars; each row is an observation vector.
-#' @param y response variable. Quantitative for family="gaussian", or
-#' family="poisson" (non-negative counts). For family="binomial" should be  a
-#' variable with two levels (see glm). For family "cox" it must be a Surv object
-#' containing  2 columns.
-#' @param weights observation weights. Default is NULL which assigns a weight of 1 to each observation
-#' @param offset a vector of length \code{nobs} that is included in the linear
-#' predictor. Useful for the \code{"poisson"} family (e.g. log of exposure time).
-#' Default is \code{NULL} which assigns an offset  of 0 to each observation.
-#' If supplied, then values must also be supplied to the \code{predict} function.
-#' @param cycles maximum number of iteration cycles. Default is 5
+#' @param x input matrix, of dimension nobs x nvars; each row is an observation 
+#'   vector.
+#' @param y response variable. For `family="binomial"` should be  a
+#'   variable with two levels (see [stats::glm()]). 
+#'   For `family="cox"` it must be a `Surv` object containing  2 columns.
+#' @param weights observation weights. Default is `NULL` which assigns a weight 
+#'   of 1 to each observation
+#' @param offset a vector of length nobs that is included in the linear
+#'   predictor. Useful for the poisson family (e.g. log of exposure time).
+#'   Default is `NULL` which assigns an offset  of 0 to each observation.
+#'   If supplied, then values must also be supplied to the `predict()` function.
+#' @param cycles maximum number of iteration cycles. Default is 5.
 #' @param scale If the values of the variable are too large or too small,
-#' the reported results of fractional polynomial (fp) may be difficult to
+#' the reported results of fractional polynomials may be difficult to
 #' interpret. Scaling can be done automatically or by directly specifying the
-#' scaling values so that the magnitude of the x values are not too large.
-#' By default scaling factors are estimated by the program (see Details section below).
-#' Rather than letting the mfpa automatically choose the scaling factors,
-#' you may specify scale factors for each variable.If scaling is not required
-#' set \code{scale = 1}.
-#' @param shift fractional polynomials are only defined for positive term
-#' variables. By default, fp will assume that the variable x is positive and
-#' attempt to compute fractional powers of x. If the positive value assumption is
-#' incorrect, user-supplied shifting factors will be used to make x positive,
-#' otherwise, estimation of shifting factors will be performed. if shifting is
-#' not required, set \code{shift = 0}.
+#' scaling values so that the magnitude of the `x` values are not too large.
+#' By default scaling factors are estimated by the program (see Details section
+#' below). Rather than letting `mfpa()` automatically choose the scaling 
+#' factors, you may specify scale factors for each variable manually. 
+#' If scaling is not required set `scale = 1` to disable it.
+#' @param shift Fractional polynomials are only defined for positive term
+#' variables. By default, `mfpa()` will assume that all variable values are 
+#' positive and attempt to compute fractional powers of the input variables. 
+#' By default, estimation of shifting factors will be performed.
+#' If the positive value assumption is incorrect, user-supplied shifting factors
+#' may also be used to make all variables positive. 
+#' If shifting is not required, set `shift = 0` to disable it.
 #' @param df a vector of values (or single value) that sets the degrees of
-#' freedom for each predictor. The df (not counting the intercept) is twice the
-#' degree of the FP. For example, an FP2 has 4 df, while FP3 has 6 df. A single
-#' value can be specified and the df for all predictors is taken to be that
-#' specific value. The program can overrides default df based on the number of
-#' distinct (unique) values as follows: 2-3 distinct values are assigned df = 1 (linear),
-#' 4-5 distinct values are assigned df = min(2, default) and >=6 distinct values
-#' are assigned default df.
-#' @param center logical; defines the centering of the covariates. The default is mean
-#' centering, except for binary covariates, where the covariate is centered using the lower
-#' of the two distinct values of the covariate. see Details section below.
-#' @param family A character string representing a `glm()` family object as well as Cox models. For more
-#' information, see Details section below.
+#' freedom (df) for each predictor. The df (not counting the intercept) are
+#' twice the degree of a fractional polynomial (FP). For example, an FP2 has 
+#' 4 df, while FP3 has 6 df. A single value `default` can be specified and the
+#' df for all predictors is taken to be that specific value. 
+#' The program overrides default df based on the number of distinct (unique) 
+#' values for a variable as follows: 
+#' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
+#' assigned `df = min(2, default)` and >=6 distinct values are assigned  
+#' `df = default`.
+#' @param center logical; defines the centering of the variables The default is
+#' mean centering, except for binary covariates, where the covariate is centered
+#' using the lower of the two distinct values of the covariate. 
+#' See Details section below.
+#' @param family A character string representing a `glm()` family object as well
+#' as Cox models. For more information, see Details section below.
 #' @param criterion a criterion used to select variables and FP models of
-#' different degrees. Default is p-values in which the user can specify
-#' the significance level (or use default) for variable and function selection
-#' (see select and alpha options below). If the user select the BIC or AIC
-#' criterion then the program would ignore the nominal significance levels and
-#' select variable and functions using BIC or AIC.
-#' @param select sets the nominal significance levels for variable selection by backward
-#' elimination. A variable is dropped if its removal causes a non-significant increase in
-#' deviance. The rules for select are the same as those for df (see above). The
-#' default nominal significance level is 0.05 for all variable. Setting the
-#' nominal significance level to be 1 for a given variable forces it into the
-#' model, leaving others to be selected or not. Using the default selection level
-#'  of 1 for all variables forces them all into the model.
-#' @param alpha sets the significance levels for testing between FP models of different degrees.
-#' The rules for alpha are the same as those for df option (see above). The
-#' default nominal significance level is 0.05 for all variables.Example:
-#' alpha =0.01 specifies that all variables have an FP selection level of 0.01.
-#' @param keep keep one or more variables in the model. The selection level for
-#' these variables will be set to 1 when the criterion is pvalue.Important for
-#' BIC or AIC criterion since it is possible to set nominal significance level
-#' of 1 in pvalue criterion.
+#' different degrees. Default is to use p-values in which the user can specify
+#' the significance level (or use default level of 0.05) for variable and
+#' functional form selection (see `select` and `alpha` parameters below).
+#' If the user select the BIC or AIC criterion then the program would ignore 
+#' the nominal significance levels and select variables and functional forms
+#' using the chosen information criterion.
+#' @param select sets the nominal significance levels for variable selection by
+#' backward elimination. A variable is dropped if its removal causes a 
+#' non-significant increase in deviance. The rules for `select` are the same as
+#' those for `df` (see above). The default nominal significance level is 0.05 
+#' for all variables. Setting the nominal significance level to be 1 for a 
+#' given variable forces it into the model, leaving others to be selected. 
+#' Using the default selection level of 1 for all variables forces them all 
+#' into the model.
+#' @param alpha sets the significance levels for testing between FP models of 
+#' different degrees. The rules for `alpha` are the same as those for `df` 
+#' (see above). The default nominal significance level is 0.05 for all 
+#' variables. Example: `alpha = 0.05` specifies that all variables have an FP 
+#' selection level of 0.05. 
+#' @param keep keep one or more variables in the model. In case that 
+#' `criterion = "pvalue"`, this is equivalent to setting the selection level for
+#' the variables to keep to 1. However, this option also keeps the specified
+#' variables in the model when when using the BIC or AIC criteria. 
 #' @param xorder determines the order of entry of the covariates into
-#' the model-selection algorithm. The default is \code{ascending}, which enters them in
-#' decreasing order of significance in a multiple linear regression
-#' (most significant first). \code{Descending} places them in reverse significance order,
-#' whereas \code{original} respects the original order of the covariates.
-#' @param powers sets the permitted FP powers for all covariates.Default is
-#' powers = (-2, -1, -0.5, 0, 0.5, 1, 2, 3), where 0 means natural logarithm.
-#' @param ties a character string specifying the method for tie handling. If
-#' there are no tied death times all the methods are equivalent. Default is
-#' Breslow method. This argument is used for Cox models only and has no
-#' effect for other model families. See 'coxph' for details.
-#' @param strata variables to be used for stratification. A new factor,
-#' whose levels are all possible combinations of the variables supplied as
-#' arguments will be created. Default is NULL and Cox model without stratification would be fitted.
-#' See \code{"coxph"} from the \code{"survival"} package
-#' @param nocenter an optional list of values. See \code{"coxph"} from the \code{"survival"} package
-#' @param acdx a vector of names of continuous variables that undergo
+#' the model-selection algorithm. The default is `ascending`, which uses them
+#' in decreasing order of significance in a multiple linear regression
+#' (most significant first). `descending` places them in reverse significance 
+#' order, whereas `original` respects the original order of the covariates. 
+#' @param powers sets the permitted FP powers for all covariates. Default is
+#' `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 means natural logarithm.
+#' @param ties a character string specifying the method for tie handling in 
+#' Cox regression. If there are no tied death times all the methods are 
+#' equivalent. Default is the Breslow method. This argument is used for Cox 
+#' models only and has no effect for other model families. 
+#' See [survival::coxph()] for details.
+#' @param strata variables to be used for stratification in a Cox model. 
+#' A new factor, whose levels are all possible combinations of the variables 
+#' supplied as arguments will be created. Default is `NULL` and a Cox model 
+#' without stratification would be fitted. See [survival::coxph()] for details.
+#' @param nocenter an optional list of values for fitting Cox models.
+#' See [survival::coxph()] for details.
+#' @param acdx a vector of names of continuous variables that undergo the
 #' approximate cumulative distribution (ACD) transformation.
-#' Creates the ACD transformation of each variable of \code{acdx}. It also invokes the FSPA
-#' to determine the best-fitting FP1(p1, p2) model (see details section). For a
-#' given continuous predictor \code{x}, depending on the values of \code{select}
-#'  and \code{alpha}, mfpa simplifies the FP1(p1, p2) model to select one of
-#'  the six sub-models described in details section below. The variable
-#'  representing the ACD transformation of \code{x} is named \code{A(x)}.
-#' @param ftest logical;for normal error models with small samples, critical points
-#' from the \code{F distribution} can be used instead of \code{Chi-Square distribution}. Default uses
-#' the later. This argument is used for Gaussian models only and has no effect for
-#'  other model families.
-#' @param verbose logical; run in verbose mode (default FALSE)
+#' It also invokes `FSPA` to determine the best-fitting FP1(p1, p2) model 
+#' (see details section). The variable representing the ACD transformation of 
+#' `x` is named `A(x)`.
+#' @param ftest logical; for normal error models with small samples, critical 
+#' points from the F-distribution can be used instead of Chi-Square 
+#' distribution. Default uses the later. This argument is used for Gaussian 
+#' models only and has no effect for other model families.
+#' @param verbose logical; run in verbose mode.
 #' @references
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
-#' regression models with asigmoid dose-response function.  Stata Journal 14(2): 329-341.}\cr
+#' regression models with asigmoid dose-response function. 
+#' Stata Journal 14(2): 329-341.}\cr
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), pp.72-87.}
+#' ACD covariate transformation for enhanced parametric multivariable modeling. 
+#' The Stata Journal, 16(1), pp.72-87.}
 #' @export
 mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                  scale = NULL, shift = NULL, df = 4, center = T,

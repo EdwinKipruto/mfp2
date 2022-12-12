@@ -325,6 +325,12 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                   "i mfpa() continues with the intersection of acdx and colnames(x).")
       }
   }
+  
+  # assert ftest and family are compatible
+  if (ftest && family != "gaussian") {
+      warning(sprintf("i F-test not suitable for family = %s.\n", family),
+              "i mfpa() reverts to use Chi-square instead.")
+  }
 
   # set further defaults
   if (is.null(weights)) {
@@ -351,6 +357,9 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   if (length(center) == 1) {
       center <- rep(center, nvars)    
+  }
+  if (ftest && family != "gaussian") {
+      ftest = FALSE
   }
   
   keep <- intersect(keep, colnames(x))
@@ -450,42 +459,9 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       stop(paste("number of observations in y (", nrowy, ") not equal to the number of rows of x (", nobs, ")", sep = ""))
     }
   }
-  # Restrict F test to Gaussian response
-  if (ftest && family != "gaussian") {
-    stop(paste("F test not suitable for \"", family, "\" family. Set ftest = F to use Chi-square instead.", sep = ""))
-  }
 
-
-  # AIC or BIC
-  # if(criterion=="AIC"||criterion=="BIC")
-
-  # run mfp
-  if (family == "cox") {
-    fit <- mfp.fit(
-      x = x, y = y, weights = weights, offset = offset, cycles = cycles,
-      scale = scale, shift = shift, df = df.list, keep,
-      center = center, criterion = criterion, xorder = xorder,
-      powers = powers, family = "cox", method = ties,
-      select = select, alpha = alpha, strata = istrata,
-      ftest = ftest, verbose = verbose, control = control,
-      nocenter = nocenter, rownames = rownames, acdx = acdx
-    )
-    # if (is.character(fit$fit)){
-    #   fit <- list(fail = fit)
-    #   class(fit)<- c("mfpa", "coxph")
-    # }else{
-    class(fit) <- c("mfpa", "coxph")
-    # }
-    # add wald test in order to use summary.coxph(). this calculation is
-    # obtained from coxph() source code
-    nabeta <- !is.na(fit$coefficients)
-    temp <- fit$coefficients[nabeta]
-    fit$wald.test <- coxph.wtest(
-      fit$var[nabeta, nabeta], temp,
-      control$toler.chol
-    )$test
-  } else {
-    fit <- mfp.fit(
+  # fit mfp
+  fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, keep,
       center = center, criterion = criterion, xorder = xorder,
@@ -493,9 +469,21 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       select = select, alpha = alpha, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
-    )
+  )
+  
+  if (family == "cox") {
+    class(fit) <- c("mfpa", "coxph")
+    # add wald test in order to use summary.coxph()
+    # this calculation follows coxph() source code
+    nabeta <- !is.na(fit$coefficients)
+    fit$wald.test <- survival::coxph.wtest(
+      fit$var[nabeta, nabeta], fit$coefficients[nabeta],
+      control$toler.chol
+    )$test
+  } else {
     class(fit) <- c("mfpa", "glm", "lm")
   }
+  
   fit$call <- cl
   fit
 }

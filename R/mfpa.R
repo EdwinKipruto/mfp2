@@ -218,7 +218,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   
-  # assertions and setting values for more complicated parameters
+  # assertions 
   # assert dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])
@@ -266,15 +266,10 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   
   # assert length of alpha 
-  if (length(alpha) == 1) {
-      alpha_list <- rep(alpha, nvars)
-  } else {
-      if (length(alpha) != nvars) {
-          stop("! alpha must be a single number, or the number of observations (rows in x) and weights must alpha.\n", 
-               sprintf("i The number of rows in x is %d, but the number of elements in alpha is %d.", 
-                       nobs, length(alpha)))
-      }
-      alpha_list <- alpha
+  if (length(alpha) != 1 && length(alpha) != nvars) {
+      stop("! alpha must be a single number, or the number of variables (columns in x) and alpha must match.\n", 
+           sprintf("i The number of variables in x is %d, but the number of elements in alpha is %d.", 
+                   nvars, length(alpha)))
   }
   
   # assert select between 0 and 1
@@ -282,15 +277,10 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       stop("! select must not be < 0 or > 1.")
   }
   # assert length of select 
-  if (length(select) == 1) {
-      select_list <- rep(select, nvars)
-  } else {
-      if (length(select) != nvars) {
-          stop("! select must be a single number, or the number of observations (rows in x) and weights must select.\n", 
-               sprintf("i The number of rows in x is %d, but the number of elements in select is %d.", 
-                       nobs, length(select)))
-      }
-      select_list <- select
+  if (length(select) != 1 && length(select) != nvars) {
+      stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
+           sprintf("i The number of variables in x is %d, but the number of elements in select is %d.", 
+                   nvars, length(select)))
   }
   
   # assert keep is a subset of x
@@ -336,6 +326,12 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   if (is.null(offset)) {
       offset <- rep.int(0, nobs)
   }
+  if (length(select) == 1) {
+      select <- rep(select, nvars)
+  } 
+  if (length(alpha) == 1) {
+      alpha <- rep(alpha, nvars)
+  } 
   if (is.null(shift)) {
       shift <- apply(x, 2, shift.factor)
   } else if (length(shift == 1)) {
@@ -458,10 +454,10 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   if (family == "cox") {
     fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
-      scale = scale.list, shift = shift, df = df.list, keep,
+      scale = scale, shift = shift, df = df.list, keep,
       center = center, criterion = criterion, xorder = xorder,
       powers = powers, family = "cox", method = ties,
-      select = select_list, alpha = alpha_list, strata = istrata,
+      select = select, alpha = alpha, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
     )
@@ -482,10 +478,10 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   } else {
     fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
-      scale = scale.list, shift = shift, df = df.list, keep,
+      scale = scale, shift = shift, df = df.list, keep,
       center = center, criterion = criterion, xorder = xorder,
       powers = powers, family = family, method = ties,
-      select = select_list, alpha = alpha_list, strata = istrata,
+      select = select, alpha = alpha, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
       nocenter = nocenter, rownames = rownames, acdx = acdx
     )

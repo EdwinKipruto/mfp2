@@ -157,7 +157,7 @@ distribution (ACD) transformation proposed by Royston (2016).
 \section{Details on \code{family} option}{
 
 
-\code{mfpa()} supports the family object as used by \code{\link[=stats:glm]{stats:glm()}}. The built in
+\code{mfpa()} supports the family object as used by \code{\link[stats:glm]{stats::glm()}}. The built in
 families are specifed via a character string. \code{mfpa(..., family="binomial")}
 fits a logistic regression model, while \code{mfpa(..., family="gaussian")}
 fits a linear regression (ordinary least squares) model.

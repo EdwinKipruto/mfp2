@@ -8,7 +8,7 @@
 #'
 #' @section Details on `family` option:
 #'
-#' `mfpa()` supports the family object as used by [stats:glm()]. The built in
+#' `mfpa()` supports the family object as used by [stats::glm()]. The built in
 #' families are specifed via a character string. `mfpa(..., family="binomial")` 
 #' fits a logistic regression model, while `mfpa(..., family="gaussian")`
 #' fits a linear regression (ordinary least squares) model.

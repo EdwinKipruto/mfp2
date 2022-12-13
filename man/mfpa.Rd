@@ -34,7 +34,7 @@ mfpa(
 \item{x}{input matrix, of dimension nobs x nvars; each row is an observation
 vector.}
 
-\item{y}{response variable. For \code{family="binomial"} should be  a
+\item{y}{vector for response variable. For \code{family="binomial"} should be  a
 variable with two levels (see \code{\link[stats:glm]{stats::glm()}}).
 For \code{family="cox"} it must be a \code{Surv} object containing  2 columns.}
 
@@ -165,7 +165,8 @@ fits a linear regression (ordinary least squares) model.
 For Cox models, the response should preferably be a \code{Surv} object,
 created by the \code{\link[survival:Surv]{survival::Surv()}} function, and the \code{family = "cox"}.
 Only right-censored data are currently supported. To fit stratified Cox
-models, the strata option can be used.
+models, the strata option can be used. Currently \code{mfpa()} only supports
+a single factor as strata.
 }
 
 \section{Details on scaling and centering}{

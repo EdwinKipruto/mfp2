@@ -1,7 +1,7 @@
 Package: mfpa
 Type: Package
 Title: Multivariable Fractional Polynomial models
-Version: 0.1.0.9001
+Version: 0.1.0.9002
 Date: 2022-12-13
 Authors@R: c(person("Kipruto", "Edwin", role = c("aut", "cre"), email = "Edwin.Kipruto@imbi.uni-freiburg.de"),
             person("Sauerbrei", "Willi", role = c("aut"), email = "wfs@imbi.uni-freiburg.de"), 

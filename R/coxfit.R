@@ -13,7 +13,7 @@
 # import survival
 # export
 #' @import survival
-coxfit <- function(x, y, strata, weights, offset, control, method, rownames, nocenter) {
+fit_cox <- function(x, y, strata, weights, offset, control, method, rownames, nocenter) {
   # Set default for control
   if (is.null(control)) control <- survival::coxph.control()
   # Fit cox model

@@ -20,7 +20,7 @@
 # powers = The set of FP powers
 # return a list containing the following elements: FP powers ("powers"),
 # FP data ("fpdata"), adjustment data ("adjdata"), and adjustment FP powers (adjustpowers)
-adjustment.data <- function(x, xi, allpowers, df, powers, acdx) {
+extract_adjustment_data <- function(x, xi, allpowers, df, powers, acdx) {
   # number of observations
   N <- dim(x)[1L]
   # Sort x based on the names of the powers
@@ -43,12 +43,12 @@ adjustment.data <- function(x, xi, allpowers, df, powers, acdx) {
       # variables as FP2 variables. we use a special function for acd
       if (acdxa[i]) {
         # scale = 1 and shift = 0 means no scaling and shifting
-        xadjust.T[[i]] <- afracgen(
+        xadjust.T[[i]] <- generate_acd_fp(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0, s = powers
         )
       } else {
-        xadjust.T[[i]] <- fracgen(
+        xadjust.T[[i]] <- generate_fp(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0
         )
@@ -79,12 +79,12 @@ adjustment.data <- function(x, xi, allpowers, df, powers, acdx) {
       # Generate fpdata if the variable has more than two levels or df>1
       # If a variable is acd we generate 64 pairs of variables
       if (acdx[xi]) {
-        fpd <- fpadata(xinterest, powers = powers)
+        fpd <- generate_acd_fp_data(xinterest, powers = powers)
         fpdata <- fpd$data
         powers <- fpd$powers
       } else {
         # Generate 8 variables if degree = 1, 36 if degree = 2 and so on
-        fpd <- fpdata(xinterest, degree = df / 2, powers = powers)
+        fpd <- generate_fp_data(xinterest, degree = df / 2, powers = powers)
         fpdata <- fpd$data
         powers <- fpd$powers
       }

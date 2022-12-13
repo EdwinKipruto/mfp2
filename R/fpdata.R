@@ -3,14 +3,14 @@
 # shifted and scaled
 # powers = set of FP powers
 # degree = degree of FP. 1 = FP1, 2 = FP2 and so on
-fpdata <- function(x, degree, powers) {
+generate_fp_data <- function(x, degree, powers) {
   # Possible combination of powers given degree
-  combs <- fracpoly_powers(degree = degree, powers = powers)
+  combs <- generate_fp_powers(degree = degree, powers = powers)
   nfp <- dim(combs)[1]
   # Save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in 1:nfp) {
-    fpdt[[i]] <- fracgen(
+    fpdt[[i]] <- generate_fp(
       x = x, power = combs[i, ], scale = 1,
       shift = 0, center = F
     )

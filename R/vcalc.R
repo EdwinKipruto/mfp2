@@ -3,7 +3,7 @@
 # xnames are the names of transformed variables of x of interest
 # family error distribution
 # X = subsetted Xtransformed for variable of interest
-vcalc <- function(model, X) { # Add complete = F, maybe
+calculate_standard_error <- function(model, X) { # Add complete = F, maybe
   # The first column is the intercept in glm
   vcovx <- vcov(object = model)
   # Get rid of variance and covariance of intercept if any

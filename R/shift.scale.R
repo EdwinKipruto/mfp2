@@ -7,14 +7,14 @@
 #' @param x A vector of predictor variable
 #' @param scale scaling factors for x of interest. Must be positive integers.
 #' Default is NULL and  scaling factors are automatically estimated using
-#' scalefn() function else it uses user suppled scaling factors. If no scaling
+#' find_scale_factor() function else it uses user suppled scaling factors. If no scaling
 #' is needed just use scale = 1 because x/1 = x
 #' @param shift adjustment factors required for shifting x to positive
 #' values. Default is NULL and adjustment factors are estimated automatically
 #' using Royston and Sauerbrei formula.
 #' @export
 # ===============================================================================
-shift.scale <- function(x, scale, shift) {
+apply_shift_scale <- function(x, scale, shift) {
   # restrict x to be a vector not matrix
   if (is.matrix(x)) stop("x must be a vector not a matrix")
   N <- length(x)
@@ -25,7 +25,7 @@ shift.scale <- function(x, scale, shift) {
       x <- x
     } else {
       # estimate adjustment factors
-      shift <- shift.factor(x)
+      shift <- find_shift_factor(x)
       # Shift x to positive
       x <- x + shift
     }
@@ -38,7 +38,7 @@ shift.scale <- function(x, scale, shift) {
   }
   # if scale is NULL then scale x for computational stability using R&S formula
   if (is.null(scale)) { # No scaling
-    x <- x / scalefn(x)
+    x <- x / find_scale_factor(x)
   } else {
     x <- x / scale
   }

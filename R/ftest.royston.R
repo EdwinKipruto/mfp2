@@ -4,7 +4,7 @@
 # resid.df = a vector of residual degrees of freedom for models i.e Null, linear, FP1,...FPm
 # n = sample size/number of observations
 # acd = TRUE/FALSE
-ftest.royston <- function(dev, resid.df, n, acd) {
+calculate_f_test_royston <- function(dev, resid.df, n, acd) {
   if (acd) {
     df <- c(4, 3, 2, 2, 1)
     # CHECK ON THIS SECTION, THE OTHER SECTION HAS BEEN CORRECTED
@@ -15,7 +15,7 @@ ftest.royston <- function(dev, resid.df, n, acd) {
     pwrs <- c(0, 0, 1, 1, 2, 0)
     pvalues <- dev.diff <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      stats <- fstats.stata(
+      stats <- calculcate_f_statistic_stata(
         dev.reduced = dev[i], dev.full = dev[5], d1 = df[i],
         d2 = resid.df[5], n = n
       )
@@ -24,7 +24,7 @@ ftest.royston <- function(dev, resid.df, n, acd) {
       dev.diff[i] <- stats$dev.diff
     }
     # e). M3 vs M5
-    stats2 <- fstats.stata(
+    stats2 <- calculcate_f_statistic_stata(
       dev.reduced = dev[6], dev.full = dev[4], d1 = df[5],
       d2 = resid.df[4], n = n
     )
@@ -49,7 +49,7 @@ ftest.royston <- function(dev, resid.df, n, acd) {
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
     pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      stats <- fstats.stata(
+      stats <- calculcate_f_statistic_stata(
         dev.reduced = dev[i], dev.full = dev[nn], d1 = df[i],
         d2 = resid.df[nn], n = n
       )
@@ -60,5 +60,3 @@ ftest.royston <- function(dev, resid.df, n, acd) {
   }
   return(list(pvalues = pvalues, dev.diff = dev.diff, fstatistic = fstatistic))
 }
-
-# model.pvalues.chi(dev = c(240.057,214.267,199.664,204.756,195.548,214.267), acd = T)

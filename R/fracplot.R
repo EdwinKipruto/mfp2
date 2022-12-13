@@ -99,7 +99,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
     partial <- cbind(1, X) %*% x.coefs
   }
   # standard error of the partial predictors
-  stder <- vcalc(model = model, X = X)
+  stder <- calculate_standard_error(model = model, X = X)
   # lower and upper interval for partial
   pp <- qnorm(0.975)
   lowerci <- partial - pp * stder
@@ -173,4 +173,9 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
     if (is.null(title)) gp <- gp + ggtitle(tt)
     gp
   }
+}
+
+# alias to keep things from breaking
+plot_mfp <- function(...) {
+    fracplot(...)
 }

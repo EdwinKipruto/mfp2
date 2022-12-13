@@ -1,5 +1,5 @@
 # converts a nested list with same or different length into a matrix
-powermat <- function(power.list) {
+convert_powers_list_to_matrix <- function(power.list) {
   # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
   psize <- sapply(power.list, length)
   maxp <- max(psize)

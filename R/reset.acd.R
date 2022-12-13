@@ -1,5 +1,5 @@
 # Function that reset acdx of variable with less than 5 unique values to false
-reset.acd <- function(x, acdx) {
+reset_acd <- function(x, acdx) {
   # calculate the length of unique values of each column of x
   nu.acdx <- apply(x, 2, function(x) length(unique(x)))
   nu.acdx <- nu.acdx[names(acdx)]

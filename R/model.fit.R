@@ -8,11 +8,11 @@
 #' @param strata,control,weights,offset,rownames,nocenter parameters for cox model. see coxph()
 #' @importFrom stats  family
 # @export
-model.fit <- function(x, y, family, weights, offset, method, strata, control, rownames,
+fit_model <- function(x, y, family, weights, offset, method, strata, control, rownames,
                       nocenter) {
   if (family == "cox") {
     # cox needs more work especially on how to handle strata
-    fit <- coxfit(
+    fit <- fit_cox(
       x = x, y = y, strata = strata, weights = weights, offset = offset,
       control = control, method = method, rownames = rownames,
       nocenter = nocenter
@@ -32,7 +32,7 @@ model.fit <- function(x, y, family, weights, offset, method, strata, control, ro
     } else {
       c("Intercept", colnames(x))
     }
-    fit <- glmfit(y = y, x = xx, family = family, weights = weights, offset = offset)
+    fit <- fit_glm(y = y, x = xx, family = family, weights = weights, offset = offset)
   }
   return(fit)
 }

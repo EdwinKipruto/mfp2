@@ -2,13 +2,13 @@
 # function selection procedure (FSP) is used if the p-value criterion is chosen,
 # whereas the criteria AIC and BIC select the model with the smallest AIC and BIC,
 # respectively.
-overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
+find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
                             criterion, select, init, alpha, keep, powers, method, strata,
                             ftest, control, rownames, nocenter, verbose, acdx) {
   N <- dim(x)[1L]
   # If df = 1 then we just fit usual linear models and test: NULL vs Linear
   if (df == 1) {
-    fits <- overall.best.linear(
+    fits <- find_best_model_fp1(
       x = x, y = y, xi = xi, allpowers = allpowers,
       weights = weights, offset = offset, family = family,
       criterion = criterion, select = select, alpha = alpha,
@@ -36,7 +36,7 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
   } else {
     if (acdx[xi]) {
       # compute deviances, aic, bic and sse for model M1-M6
-      bfpa <- bestfpa(
+      bfpa <- find_best_model_fp1_acd(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
@@ -71,18 +71,20 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
         # Calculate p-values for 1). M1 vs Null  2). M1 vs M4  3). M1 vs M2
         # 4) M1 vs M3 and 5). M3 vs M5
         if (ftest) {
-          mstats <- ftest.royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = T)
+          mstats <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = T)
           pvalue <- mstats$pvalues
           dev.diff <- mstats$dev.diff
           fstatistic <- mstats$fstatistic
         } else {
-          mstats <- model.pvalues.chi(dev = dev.all, acd = T) # can we use dev.all or dev.roy.all? for gaussian
+          mstats <- calculate_chisquare_test(dev = dev.all, acd = T) # can we use dev.all or dev.roy.all? for gaussian
           pvalue <- mstats$pvalues
           dev.diff <- mstats$dev.diff
         }
         # Functions are ordered like: 1 = null, 2 = Lin(xi), 3 = FP1(xi),
         # 4 = FP1(axi), 5 = FP1(xi, axi) and 6 = lin(axi)
-        index.bestmodel <- best.model.index.acd(pvalue = pvalue, select = select, alpha = alpha)
+        index.bestmodel <- find_index_best_model_acd(pvalue = pvalue, 
+                                                     select = select, 
+                                                     alpha = alpha)
       }
       # all best functions are ordered in list. Each element of a list contains:
       # c(NULL, lin(xi),fp1(xi), fp1(acd(xi)), fp1(xi,acd(xi)), lin(acd(xi)))
@@ -104,13 +106,13 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
       if (verbose) {
         if (criterion == "pvalue") {
           if (ftest) {
-            fprint2(
+              print_mfp_summary_2(
               namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
               df.den = df.all, pvalues = pvalue, best.function = bestfuns[[5]],
               index.bestmodel = index.bestmodel, acd = T
             )
           } else {
-            fprint1(
+              print_mfp_summary_1(
               namex = xi,
               dev.all = dev.all,
               dev.diff = dev.diff,
@@ -121,15 +123,15 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
           }
         } else {
           switch(criterion,
-            "AIC" = fprint3(xi, gic = aic.all, keep = keep, best.function = bestfuns[[2]], acd = T),
-            "BIC" = fprint3(xi, gic = bic.all, keep = keep, best.function = bestfuns[[3]], acd = T)
+            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = bestfuns[[2]], acd = T),
+            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = bestfuns[[3]], acd = T)
           )
         }
       }
       #----------------------------usual mfp procedure------------------------
     } else {
       # this part is needed for FPm if degree>2
-      bfp1 <- bestfp1(
+      bfp1 <- find_best_model_fp1(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
@@ -167,10 +169,10 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
           }
         } else { # p-values
           if (ftest) {
-            modelparms <- ftest.royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
+            modelparms <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
             fstatistic <- modelparms$fstatistic
           } else {
-            modelparms <- model.pvalues.chi(dev.all, acd = F)
+            modelparms <- calculate_chisquare_test(dev.all, acd = F)
           }
           # P-values for each test-we assign names
           pvalue <- modelparms$pvalues
@@ -184,7 +186,7 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
         }
       } else {
         # Here we fit other fpm models where m can be 2, 3, and so on
-        fpx <- bestfpm.all(
+        fpx <- calculate_metrics_fpm(
           y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
           method = method, weights = weights, offset = offset,
           strata = strata, control = control, rownames = rownames,
@@ -217,10 +219,10 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
           }
         } else { # p-values
           if (ftest) {
-            modelparms <- ftest.royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
+            modelparms <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
             fstatistic <- modelparms$fstatistic
           } else {
-            modelparms <- model.pvalues.chi(dev.all, acd = F)
+            modelparms <- calculate_chisquare_test(dev.all, acd = F)
           }
           pvalue <- modelparms$pvalues
           dev.diff <- modelparms$dev.diff
@@ -283,13 +285,13 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
             }, list(1), 0)
           }
           if (ftest) {
-            fprint2(
+              print_mfp_summary_2(
               namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
               df.den = df.all, pvalues = pvalue, best.function = best.function1,
               index.bestmodel = index.bestmodel, acd = F
             )
           } else {
-            fprint1(
+              print_mfp_summary_1(
               namex = xi, dev.all = dev.all, dev.diff = dev.diff,
               pvalues = pvalue, index.bestmodel = index.bestmodel,
               best.function = best.function1, acd = F
@@ -308,8 +310,8 @@ overall.best.fp <- function(x, y, xi, allpowers, df, weights, offset, family,
             append(bestfp.bic, list(1), 0)
           }
           switch(criterion,
-            "AIC" = fprint3(xi, gic = aic.all, keep = keep, best.function = best.function.aic, acd = F),
-            "BIC" = fprint3(xi, gic = bic.all, keep = keep, best.function = best.function.bic, acd = F)
+            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = best.function.aic, acd = F),
+            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = best.function.bic, acd = F)
           )
         }
       }

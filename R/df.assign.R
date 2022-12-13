@@ -4,7 +4,7 @@
 # df = 4 will be assigned to variables with unique values greater than or equal to 6.
 # x = matrix of predictors
 # df.default = default df which is 4
-df.assign <- function(x, df.default) {
+assign_df <- function(x, df.default) {
   # Set default degrees of freedom for each variable
   df <- rep(df.default, ncol(x))
   # calculate the length of unique values of each column of x

@@ -15,7 +15,11 @@
 #' @return Returns a matrix of transformed variable(s).The number of column
 #' depends on the number of powers provided.
 #' @export
-fracgen <- function(x, power = 1, scale = NULL, center = F, shift = NULL) {
+generate_fp <- function(x, 
+                                           power = 1,
+                                           scale = NULL, 
+                                           center = F, 
+                                           shift = NULL) {
   # number of observations
   N <- length(x)
   if (all(is.na(power))) { # important because omitted variables have power of NA
@@ -36,12 +40,12 @@ fracgen <- function(x, power = 1, scale = NULL, center = F, shift = NULL) {
     } else {
       # shift x
       if (is.null(shift)) {
-        shift <- shift.factor(x)
+        shift <- find_shift_factor(x)
       }
       x <- x + shift
       # scale x
       if (is.null(scale)) {
-        scale <- scalefn(x)
+        scale <- find_scale_factor(x)
       }
       x <- x / scale
       # sort the powers such that 1,0,1 is equal to 0,1,1. p1<p2<....<pm. see

@@ -1,36 +1,34 @@
 # A function for printing deviance, deviance difference etc for degree 1 and 2
 # dev.all, dev.diff, pvalues and best.function must be a list.
 
-fpgen <- function(criterion, ftest) {
+print_mfp_summary <- function(criterion, ftest) {
   # the header for criterion = p value
   if (criterion == "pvalue") {
     if (ftest) {
       cat("\n", rep("-", 174), sep = "")
       pos <- c(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21)
-      fp.out("Variable", "Model", "(vs.)", "Deviance", "df.resid", "Dev.diff", "F", "df.num", "df.den", "P value", "Powers", pos = pos)
+      print_structured("Variable", "Model", "(vs.)", "Deviance", "df.resid", "Dev.diff", "F", "df.num", "df.den", "P value", "Powers", pos = pos)
       cat("\n", rep("-", 174), sep = "")
     } else {
       cat("\n", rep("-", 126), sep = "")
       pos <- c(1, 3, 5, 7, 9, 11, 13, 15)
-      fp.out("Variable", "Model", "(vs.)", "Deviance", "Dev diff.", "DF", "P value", "Powers", pos = pos)
+      print_structured("Variable", "Model", "(vs.)", "Deviance", "Dev diff.", "DF", "P value", "Powers", pos = pos)
       cat("\n", rep("-", 126), sep = "")
     }
     # the header for criterion = aic/bic
   } else {
     cat("\n", rep("-", 76), sep = "")
     pos <- c(1, 3, 5, 7) # output formatting
-    fp.out("Variable", "Model", ifelse(criterion == "AIC", "AIC", "BIC"), "Powers", pos = pos)
+    print_structured("Variable", "Model", ifelse(criterion == "AIC", "AIC", "BIC"), "Powers", pos = pos)
     cat("\n", rep("-", 76), sep = "")
   }
 }
 
-# fpgen("pvalue", ftest = F)
-
 # for printing when criterion is pvalue and test is chi-square
-fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.bestmodel, acd) {
+print_mfp_summary_1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.bestmodel, acd) {
   if (acd) {
     pos <- c(1, 3, 5, 7, 9, 11, 13, 15)
-    fp.out(paste0("(A)", namex), " ", " ", pos = pos)
+    print_structured(paste0("(A)", namex), " ", " ", pos = pos)
     mnames <- c(
       "NULL", paste0("Lin(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), ")"),
       paste0("FP1(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), ")"),
@@ -41,7 +39,7 @@ fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.best
     # degrees of freedom
     df <- c(4, 3, 2, 2, 1)
     for (i in seq_along(dev.all)) {
-      fp.out("        ", mnames[i],
+      print_structured("        ", mnames[i],
         if (i == 1) {
           paste0(mnames[5])
         } else {
@@ -87,14 +85,14 @@ fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.best
         pos = pos
       )
     }
-    fp.out(" ", paste0("Final:", mnames[index.bestmodel]), "", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", if (index.bestmodel == 1) {
+    print_structured(" ", paste0("Final:", mnames[index.bestmodel]), "", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", if (index.bestmodel == 1) {
       "."
     } else {
       best.function[[index.bestmodel]]
     }, pos = pos)
   } else {
     pos <- c(1, 3, 5, 7, 9, 11, 13, 15)
-    fp.out(namex, " ", " ", pos = pos)
+    print_structured(namex, " ", " ", pos = pos)
     kk <- length(dev.all)
     m <- kk - 2 # remove null and lin to get the max permitted degree of FP
     mnames <- c("NULL", "Lin.", if (m != 0) {
@@ -110,7 +108,7 @@ fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.best
       df <- c(1) # df of NULL vs linear
     }
     for (i in seq_along(dev.all)) {
-      fp.out("        ", mnames[i],
+      print_structured("        ", mnames[i],
         if (i == 1) {
           paste0(mnames[kk])
         } else {
@@ -140,7 +138,7 @@ fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.best
         pos = pos
       )
     }
-    fp.out("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", if (index.bestmodel == 1) {
+    print_structured("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", if (index.bestmodel == 1) {
       "."
     } else {
       best.function[[index.bestmodel - 1]]
@@ -149,9 +147,9 @@ fprint1 <- function(namex, dev.all, dev.diff, pvalues, best.function, index.best
   cat("\n")
 }
 # for printing when criterion is pvalue and test is f test. best.function is only a list while others are vectors
-fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.function, index.bestmodel, pos = c(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21), acd) {
+print_mfp_summary_2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.function, index.bestmodel, pos = c(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21), acd) {
   if (acd) {
-    fp.out(paste0("(A)", namex), " ", " ", pos = pos)
+    print_structured(paste0("(A)", namex), " ", " ", pos = pos)
     mnames <- c(
       "NULL", paste0("Lin(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), ")"),
       paste0("FP1(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), ")"),
@@ -162,7 +160,7 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
     # degrees of freedom
     df <- c(4, 3, 2, 2, 1)
     for (i in seq_along(dev.all)) {
-      fp.out("        ", mnames[i],
+      print_structured("        ", mnames[i],
         if (i == 1) {
           paste0(mnames[5])
         } else {
@@ -227,7 +225,7 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
         pos = pos
       )
     }
-    fp.out("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", ".", ".", ".",
+    print_structured("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", ".", ".", ".",
       if (index.bestmodel == 1) {
         "."
       } else {
@@ -236,7 +234,7 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
       pos = pos
     )
   } else {
-    fp.out(namex, " ", " ", pos = pos)
+    print_structured(namex, " ", " ", pos = pos)
     kk <- length(dev.all)
     m <- kk - 2 # remove null and lin to get the max permitted degree of FP
     mnames <- c("NULL", "Lin.", if (m != 0) {
@@ -253,7 +251,7 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
     }
 
     for (i in seq_along(dev.all)) {
-      fp.out("        ", mnames[i],
+      print_structured("        ", mnames[i],
         if (i == 1) {
           paste0(mnames[kk])
         } else {
@@ -293,7 +291,7 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
         pos = pos
       )
     }
-    fp.out("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", ".", ".", ".",
+    print_structured("        ", paste0("Final:", mnames[index.bestmodel]), " ", format(round(dev.all[index.bestmodel], 3), nsmall = 3), ".", ".", ".", ".", ".", ".",
       if (index.bestmodel == 1) {
         "."
       } else {
@@ -306,13 +304,13 @@ fprint2 <- function(namex, dev.all, df.res, dev.diff, f, df.den, pvalues, best.f
 }
 
 # for printing aic and bic
-fprint3 <- function(namex, gic, best.function, keep, pos = c(1, 3, 5, 7), acd) {
+print_mfp_summary_3 <- function(namex, gic, best.function, keep, pos = c(1, 3, 5, 7), acd) {
   min.index <- which.min(unlist(gic))
   if (namex %in% keep) {
     min.index <- which.min(unlist(gic)[-1]) + 1
   }
   if (acd) {
-    fp.out(paste0("(A)", namex), " ", " ", pos = pos)
+    print_structured(paste0("(A)", namex), " ", " ", pos = pos)
 
     mnames <- c(
       "NULL", paste0("Lin(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), ")"),
@@ -322,31 +320,31 @@ fprint3 <- function(namex, gic, best.function, keep, pos = c(1, 3, 5, 7), acd) {
       paste0("Lin(a(", ifelse(nchar(namex) > 3, paste0(substring(namex, 1, 3)), namex), "))"), "Final"
     )
     for (i in seq_along(gic)) {
-      fp.out("        ", mnames[i], format(round(gic[i], 3)), if (i == 1) {
+      print_structured("        ", mnames[i], format(round(gic[i], 3)), if (i == 1) {
         "."
       } else {
         best.function[[i]]
       }, pos = pos)
     }
-    fp.out("        ", paste0("Final:", mnames[min.index]), format(round(gic[min.index], 3)), if (min.index == 1) {
+    print_structured("        ", paste0("Final:", mnames[min.index]), format(round(gic[min.index], 3)), if (min.index == 1) {
       "."
     } else {
       best.function[[min.index]]
     }, pos = pos)
   } else {
-    fp.out(namex, " ", " ", pos = pos)
+    print_structured(namex, " ", " ", pos = pos)
     nn <- length(gic) - 2 # remove null and lin
     mnames <- c("NULL", "Lin.", if (nn != 0) {
       paste0("FP", seq_len(nn))
     }, "Final")
     for (i in seq_along(gic)) {
-      fp.out("        ", mnames[i], format(round(gic[i], 3), nsmall = 3), if (i == 1) {
+      print_structured("        ", mnames[i], format(round(gic[i], 3), nsmall = 3), if (i == 1) {
         "."
       } else {
         best.function[[i - 1]]
       }, pos = pos)
     }
-    fp.out("        ", paste0("Final:", mnames[min.index]), format(round(gic[min.index], 3), nsmall = 3), if (min.index == 1) {
+    print_structured("        ", paste0("Final:", mnames[min.index]), format(round(gic[min.index], 3), nsmall = 3), if (min.index == 1) {
       "."
     } else {
       best.function[[min.index - 1]]
@@ -354,4 +352,3 @@ fprint3 <- function(namex, gic, best.function, keep, pos = c(1, 3, 5, 7), acd) {
   }
   cat("\n")
 }
-# fprint3("x1", gic = c(5,10,14,1),best.function =list(a =1, b =2, c = c(0,3)))

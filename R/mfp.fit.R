@@ -1,12 +1,12 @@
 # fits an MFP model
 #' @import utils
-mfp.fit <- function(x, y, weights, offset, cycles, scale, shift, df, center, criterion,
+fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, criterion,
                     xorder, powers, family, method, select, alpha, keep, strata, ftest,
                     control, rownames, nocenter, acdx, verbose) {
   #-----------------------------------------------------------------------------
   # STEP 1: Order variable based on xorder
   #-----------------------------------------------------------------------------
-  varnames <- names(varorder(
+  varnames <- names(order_variables(
     x = x, y = y, weights = weights, offset = offset,
     xorder = xorder, family = family, method = method,
     strata = strata, control = control, rownames = rownames,
@@ -44,7 +44,7 @@ mfp.fit <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   #-----------------------------------------------------------------------------
   if (any(acdx)) {
     # reset acdx of variables with less than 5 level to false
-    acdx <- reset.acd(x, acdx)
+    acdx <- reset_acd(x, acdx)
     # assign two powers to acd variables (1,NA). The first is for xi, and the
     # second is for acd(xi). NA has been assigned to acd(xi), which will be
     # updated in the MFP cycles.
@@ -71,7 +71,7 @@ mfp.fit <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
       cat("\nCycle", j)
     }
     # Each cycle employs pwrs, which are updated after each cycle is completed.
-    run.each.cycle <- eachcycle(
+    run.each.cycle <- iterate_find_best_model_fp(
       x = x, y = y,
       allpowers = pwrs, # acd variables, like FP2, have two powers.
       df = df,
@@ -125,11 +125,11 @@ mfp.fit <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   # status: 1 = in the model while 0 = out/removed
   status <- sapply(pwrs, function(x) ifelse(all(is.na(x)), 0, 1))
   # Final degrees of freedom
-  dfx <- sapply(pwrs, df.final)
+  dfx <- sapply(pwrs, calculate_df)
   # Add "A" to names of acd variables
   xnam <- sapply(names(pwrs), function(x) ifelse(acdx[x], paste0("(A)", x), x))
   # Matrix of FP powers
-  mfp.powers <- powermat(pwrs)
+  mfp.powers <- convert_powers_list_to_matrix(pwrs)
   if (criterion == "pvalue") {
     # combine select and alpha vectors into a matrix and cbind with FP powers
     matsel <- do.call(cbind, list(df, select, alpha, status, dfx))
@@ -159,13 +159,13 @@ mfp.fit <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   # Fit the final model with transformed x if nonlinear functions were selected--TO MOVE TO mfpa()
   # =============================================================================
   # Transform x using the final FP powers selected. x has already been shifted and scaled
-  X <- xtransform(x = x, power.list = pwrs, center = center, acdx = acdx)
+  X <- transform_x_fp(x = x, power.list = pwrs, center = center, acdx = acdx)
 
   # Use the transformed x and fit the final model
-  # modelfit <- model.fit(x = X, y = y,family = family,weights = weights, offset = offset,
+  # modelfit <- fit_model(x = X, y = y,family = family,weights = weights, offset = offset,
   #                  method = method, strata = strata,control = control,
   #                  rownames = rownames,resid = resid,nocenter = nocenter)$fit
-  modelfit <- model.fit(
+  modelfit <- fit_model(
     x = X, y = y, family = family, weights = weights, offset = offset,
     method = method, strata = strata, control = control,
     rownames = rownames, nocenter = nocenter

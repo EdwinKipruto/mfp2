@@ -415,12 +415,12 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       alpha <- rep(alpha, nvars)
   } 
   if (is.null(shift)) {
-      shift <- apply(x, 2, shift.factor)
+      shift <- apply(x, 2, find_shift_factor)
   } else if (length(shift == 1)) {
       shift <- rep(shift, nvars)
   }
   if (is.null(scale)) {
-      scale <- apply(x, 2, scalefn)
+      scale <- apply(x, 2, find_scale_factor)
   } else if (length(scale == 1)) {
       scale <- rep(scale, nvars)
   }
@@ -454,7 +454,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   if (length(df) == 1) {
     if (df != 1) {
       # we assign variables different df based on number of unique values
-      df.list <- df.assign(x = x, df.default = df)
+      df.list <- assign_df(x = x, df.default = df)
     } else {
       df.list <- rep(df, nvars)
     }
@@ -484,7 +484,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   
   # fit model and make model specific adaptions --------------------------------
-  fit <- mfp.fit(
+  fit <- fit_mfp(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, keep,
       center = center, criterion = criterion, xorder = xorder,

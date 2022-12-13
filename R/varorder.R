@@ -19,7 +19,7 @@
 #' @return p-values for each predictor variable
 #' @export
 #'
-varorder <- function(x, y, weights, offset, family, method, strata, control,
+order_variables <- function(x, y, weights, offset, family, method, strata, control,
                      rownames, nocenter, xorder) {
   # Convert factors to dummy variables if it exists...take it to the main function
   # x = model.matrix(as.formula(paste("~", paste(colnames(x), collapse="+"))),
@@ -72,7 +72,7 @@ varorder <- function(x, y, weights, offset, family, method, strata, control,
       p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
     }
   } else { # cox model
-    fit.full <- coxfit(
+    fit.full <- fit_cox(
       x = x, y = y, strata = strata, weights = weights,
       offset = offset, control = control, method = method,
       rownames = rownames, nocenter = nocenter
@@ -90,7 +90,7 @@ varorder <- function(x, y, weights, offset, family, method, strata, control,
     names(p.value) <- names(dev) <- names(df.reduced) <- varnames
     for (i in 1:ns) {
       # remove one variable at a time and fit the reduced model
-      fit.reduced <- coxfit(
+      fit.reduced <- fit_cox(
         x = x[, -i, drop = FALSE], y = y, strata = strata,
         weights = weights, offset = offset, control = control,
         method = method, rownames = rownames,

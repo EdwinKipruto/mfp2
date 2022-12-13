@@ -1,4 +1,4 @@
-fp.out <- function(..., pos) {
+print_structured <- function(..., pos) {
   #
   # Version 1:  09.03.2022
   #

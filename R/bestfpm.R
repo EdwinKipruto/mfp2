@@ -1,13 +1,13 @@
-# similar with bestfp1() but for degree>1
+# similar with find_best_model_fp1() but for degree>1
 # degree =  degree of fp. m = 2 is fp2, m = 3 is fp3 etc
-bestfpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
+find_best_model_fpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
                     control, method, rownames, nocenter, degree, acdx) {
   #
   if (degree < 2) stop("Degree must be >= 2. Here we are interest on best FPm where
-                    m>=2. For m = 1 see bestfp1()")
+                    m>=2. For m = 1 see find_best_model_fp1()")
   # Generate FP data for x of interest (xi) and adjustment variables
   m <- degree
-  df1 <- adjustment.data(
+  df1 <- extract_adjustment_data(
     x = x, xi = xi, allpowers = allpowers,
     df = 2 * m, powers = powers, acdx = acdx
   )
@@ -16,11 +16,11 @@ bestfpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata
   # List of FP data for xi (continuous) of interest.
   fpdata <- df1$fpdata
   # Total FP powers different from 1 estimated in adjustment model
-  # tFP <- numberfpadj(df1$adjustpowers)
+  # tFP <- calculate_number_fp_powers(df1$adjustpowers)
   # The length of generated FP variables for x of interest.
   nv <- length(fpdata)
   # Generate all possible FPm powers
-  fpmpowers <- fracpoly_powers(degree = m, powers = powers)
+  fpmpowers <- generate_fp_powers(degree = m, powers = powers)
   # log(n) for bic calculation
   n <- nrow(x)
   logn <- log(n)
@@ -30,7 +30,7 @@ bestfpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata
     # combine FP variables for x of interest with adjustment variables
     xout <- cbind(fpdata[[i]], adjdata)
     colnames(xout)[1:m] <- xnames
-    fit1 <- model.fit(
+    fit1 <- fit_model(
       x = xout, y = y, family = family, method = method,
       weights = weights, offset = offset, strata = strata,
       control = control, rownames = rownames,
@@ -52,7 +52,7 @@ bestfpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata
     bic[i] <- devs[i] + logn * (fit1$df + m)
     # sse and deviance for gaussian family.
     sse[i] <- fit1$SSE
-    devs.royston[i] <- dev.gaussian(RSS = sse[i], weights = weights, n = dim(x)[1L])
+    devs.royston[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = dim(x)[1L])
   }
   # Best FPm function based on dev (calculated using loglik), aic, bic, sse and dev(calculated using SSE)
   fn.bestfpm <- list(

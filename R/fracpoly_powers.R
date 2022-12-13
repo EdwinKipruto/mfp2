@@ -8,7 +8,7 @@
 #' @return A matrix of powers depending on the degree
 #' @importFrom arrangements  combinations
 #' @export
-fracpoly_powers <- function(degree = NULL, powers = NULL) {
+generate_fp_powers <- function(degree = NULL, powers = NULL) {
   # set FP2 as the default maximum degree permitted
   if (is.null(degree)) {
     degree <- 2

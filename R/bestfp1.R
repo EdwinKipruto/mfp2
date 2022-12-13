@@ -14,11 +14,23 @@
 # @param offset see glm or coxph for explanation
 # @param family A character name specifying the family name i,e "gaussian",
 # "binomial", "poisson" or "cox"
-bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
-                    offset, strata, control, rownames, nocenter, acdx) {
+find_best_model_fp1 <- function(y, 
+                          x, 
+                          xi, 
+                          allpowers, 
+                          powers,
+                          family, 
+                          method,
+                          weights,
+                          offset, 
+                          strata, 
+                          control,
+                          rownames,
+                          nocenter,
+                          acdx) {
   # Generate FP1 data for x of interest (xi). A list with 8 new variables are
   # generated if default FP set is used
-  df1 <- adjustment.data(
+  df1 <- extract_adjustment_data(
     x = x, xi = xi, allpowers = allpowers, df = 2, acdx = acdx,
     powers = powers
   )
@@ -32,13 +44,13 @@ bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
   # =============================================================================
   # Fit a null model-model without x of interest
   # =============================================================================
-  fitnull <- model.fit(
+  fitnull <- fit_model(
     x = adjdata, y = y, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames, nocenter = nocenter
   )
   # Total number of FP powers in the adjustment model
-  # tFP <- numberfpadj(df1$adjustpowers)
+  # tFP <- calculate_number_fp_powers(df1$adjustpowers)
   # Total number of parameters including estimated FP powers in the null model
   # dfnull <- fitnull$df + tFP
   dfnull <- fitnull$df
@@ -57,7 +69,7 @@ bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
   bic.null <- devnull + logn * dfnull
   # Sum of squares errors relevant for Gaussian model- for F test
   sse.null <- fitnull$SSE
-  dev.roy.null <- dev.gaussian(RSS = sse.null, weights = weights, n = N)
+  dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
   df.sse.null <- N - (dfnull - 1) # subtract scale parameter
   # df.sse.null2 <- N-fitnull$df
   # =============================================================================
@@ -70,7 +82,7 @@ bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
     # combine each FP1 variable for x of interest with adjustment variables
     xout <- cbind(fpdata[[i]], adjdata)
     colnames(xout) <- c("newx", colnames(adjdata))
-    fit1 <- model.fit(
+    fit1 <- fit_model(
       x = xout, y = y, family = family, method = method,
       weights = weights, offset = offset, strata = strata,
       control = control, rownames = rownames, nocenter = nocenter
@@ -90,7 +102,7 @@ bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
     bic[i] <- devs[i] + logn * (dfp1[i])
     # SSE relevant for a Gaussian model
     sse[i] <- fit1$SSE
-    dev.roy[i] <- dev.gaussian(RSS = sse[i], weights = weights, n = N)
+    dev.roy[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = N)
   }
   # position of a linear function in set s: Fails when powers does not include 1
   lin.pos <- match(1, powers)
@@ -118,7 +130,7 @@ bestfp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
   bic.all <- setNames(c(bic.null, bic.linear, bic[which.min(bic)]), c("Null", "Linear", "FP1"))
   sse.all <- setNames(c(sse.null, sse.linear, sse[which.min(devs)]), c("Null", "Linear", "FP1"))
   # # deviance of gaussian calculated using royston formula instead of loglikelihood for gaussian
-  # dev.gaus.royston <- unlist(lapply(sse.all, function(x) dev.gaussian(RSS = x, weights = weights, n = N)))
+  # dev.gaus.royston <- unlist(lapply(sse.all, function(x) deviance_gaussian(RSS = x, weights = weights, n = N)))
   # names(dev.gaus.royston) <- c("Null","Linear","FP1")
   # combine degrees of freedom for null, linear and best fp1
   df.all <- setNames(c(df.sse.null, df.sse.linear, df.sse.bestfp1), c("Null", "Linear", "FP1"))

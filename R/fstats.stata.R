@@ -1,4 +1,4 @@
-fstats.stata <- function(dev.reduced, dev.full, d1, d2, n) {
+calculcate_f_statistic_stata <- function(dev.reduced, dev.full, d1, d2, n) {
   # Find deviance difference
   devdiff <- dev.reduced - dev.full
   # use formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf
@@ -12,8 +12,3 @@ fstats.stata <- function(dev.reduced, dev.full, d1, d2, n) {
   }
   return(list(fstatistic = fstatx, pval = pval, dev.diff = devdiff))
 }
-# s1 = 199.664
-# s2 = 240.057-43.782
-# d1 = 2
-# d2 = 86
-# fstats.stata(dev.reduced = s1, dev.full = s2, d1, d2, nobs = 97)

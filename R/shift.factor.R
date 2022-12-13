@@ -1,7 +1,7 @@
 # estimates factors for shifting continuous variables to positive values. If x
 # is a two level variable or all values are positive then a factor of 0 is return
 # hence no shifting will be conducted
-shift.factor <- function(x) {
+find_shift_factor <- function(x) {
   nxx <- length(unique(x))
   if (all(x > 0) || nxx <= 2) {
     adj.factors <- 0

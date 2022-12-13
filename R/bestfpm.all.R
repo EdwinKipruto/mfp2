@@ -1,15 +1,15 @@
 # If the maximum allowed degree is 5, this function will calculate metrics for
 # FP2 through FP5, which will then be combined with metrics for FP1 estimated by
-# the bestfp1() function. We should have started with FP1 and worked our way up
+# the find_best_model_fp1() function. We should have started with FP1 and worked our way up
 # to FPm, but the linear function makes the formula more complicated, so there
 # are separate functions for FP1 and FPm.
-bestfpm.all <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
+calculate_metrics_fpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
                         control, method, rownames, nocenter, degree, acdx) {
   # we output best fpm parameters from degree 2 to m for degree 1 see bestfp1
   mm <- seq(2, degree)
   out <- vector(mode = "list", length = length(mm))
   for (k in seq_along(mm)) {
-    out[[k]] <- bestfpm(
+    out[[k]] <- find_best_model_fpm(
       y = y, x = x, xi = xi, allpowers = allpowers,
       powers = powers, family = family, weights = weights,
       offset = offset, strata = strata, control = control,

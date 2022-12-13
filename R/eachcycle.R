@@ -1,22 +1,22 @@
 # A function that estimates the best FP functions for all predictors (x) in the
 # ith cycle.
-eachcycle <- function(x, y, allpowers, df, weights, offset, family, criterion,
+iterate_find_best_model_fp <- function(x, y, allpowers, df, weights, offset, family, criterion,
                       select, alpha, keep, powers, method, strata, verbose, ftest, control,
                       rownames, nocenter, acdx) {
   # FP powers have the same names as variables in design matrix x, but the former is ordered.
   varnames <- names(allpowers)
   # For printing on the screen: fpgen distinguishes between p-value and AIC/BIC output
   if (verbose) {
-    fpgen(criterion, ftest = ftest)
+      print_mfp_summary(criterion, ftest = ftest)
   }
   # Initialization, starting from the first variable
   i <- 1
-  # Evaluate the variables according to how varorder() ordered them. If they are
+  # Evaluate the variables according to how order_variables() ordered them. If they are
   # ascending, they are evaluated from most to least significant.
   while (i <= ncol(x)) {
     # Estimate xi's best FP power. It can also be NA (variable not significant),
     # linear, FP1, FP2, and so on.
-    fitx <- overall.best.fp(
+    fitx <- find_best_model_fp(
       x = x, y = y,
       xi = varnames[i],
       allpowers = allpowers,

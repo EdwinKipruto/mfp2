@@ -6,7 +6,7 @@
 #' @param x a vector of predictor variable where x is already shifted to positive values.
 #' @return An integer
 #' @export
-scalefn <- function(x) {
+find_scale_factor <- function(x) {
   # see https://www.stata.com/manuals/rfp.pdf
   mx <- unique(x)
   if (length(mx) == 1) stop("all values of x are identical hence log(max(x)-min(x)) = log(0) not allowed")

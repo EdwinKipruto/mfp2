@@ -1,7 +1,9 @@
 # calculates index of the best model when acd transformation is desired
 # pvalue-pvalues of: Null vs M1, lin(xi) vs M1, fp1(xi) vs M1, FP1(acd(xi)) vs M1
 # and lin(acd(xi)) vs FP1(acd(xi)) in that order. Note M1 = FP1(xi, acd(xi))
-best.model.index.acd <- function(pvalue, select, alpha) {
+find_index_best_model_acd <- function(pvalue, 
+                                      select, 
+                                      alpha) {
   if (pvalue[1] > select) {
     index.bestmodel <- 1 # Null vs M1: if not sig then NULL model is chosen
   } else {

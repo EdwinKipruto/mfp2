@@ -1,19 +1,19 @@
 # calculates p-values for f distribution
 # sse = a vector of residual sum of squares for null, linear, fp1, fp2,...fpm
 # df  = a vector of degrees of freedom for each sse
-model.pvalues.ftest <- function(sse, df, acd) {
+calculate_f_test <- function(sse, df, acd) {
   if (acd) {
     # we have sse = (NULL, M4, M2, M3, M1, M5)
     # calculate p-values for the functions selection procedure:
     # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
     pvalues <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      fsttas <- fstats(sse.reduced = sse[i], sse.full = sse[5], df.reduced = df[i], df.full = df[5])
+      fsttas <- calculcate_f_statistic(sse.reduced = sse[i], sse.full = sse[5], df.reduced = df[i], df.full = df[5])
       fstatistic[i] <- fsttas$fstatistic
       pvalues[i] <- fsttas$pval
     }
     # e). M3 vs M5
-    fsttas <- fstats(sse.reduced = sse[6], sse.full = sse[4], df.reduced = df[6], df.full = df[4])
+    fsttas <- calculcate_f_statistic(sse.reduced = sse[6], sse.full = sse[4], df.reduced = df[6], df.full = df[4])
     fstatistic[5] <- fsttas$fstatistic
     pvalues[5] <- fsttas$pval
   } else {
@@ -25,7 +25,7 @@ model.pvalues.ftest <- function(sse, df, acd) {
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2...FPm vs FPm-1 etc.
     pvalues <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      fsttas <- fstats(sse.reduced = sse[i], sse.full = sse[nn], df.reduced = df[i], df.full = df[nn])
+      fsttas <- calculcate_f_statistic(sse.reduced = sse[i], sse.full = sse[nn], df.reduced = df[i], df.full = df[nn])
       fstatistic[i] <- fsttas$fstatistic
       pvalues[i] <- fsttas$pval
     }

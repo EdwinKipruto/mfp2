@@ -19,11 +19,11 @@
 # @param family A character name specifying the family name i,e "gaussian",
 # "binomial", "poisson" or "cox"
 # acdx = an indicator of acd variables. Either TRUE or FALSE
-bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
+find_best_model_fp1_acd <- function(y, x, xi, allpowers, powers, family, method, weights,
                     offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
-  df1 <- adjustment.data(
+  df1 <- extract_adjustment_data(
     x = x, xi = xi, allpowers = allpowers, df = 4,
     powers = powers, acdx = acdx
   )
@@ -39,7 +39,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   # =============================================================================
   # Fit a model without xi and axi--the null model. Model M6 in R&S 2016
   # =============================================================================
-  fitnull <- model.fit(
+  fitnull <- fit_model(
     x = adjdata, y = y, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames, nocenter = nocenter
@@ -51,7 +51,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   aic.null <- devnull + 2 * dfnull
   bic.null <- devnull + logn * dfnull
   sse.null <- fitnull$SSE
-  dev.roy.null <- dev.gaussian(RSS = sse.null, weights = weights, n = N)
+  dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
   df.null <- N - (dfnull - 1)
 
   # =============================================================================
@@ -59,7 +59,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   # =============================================================================
   xk <- cbind(x[, xi], adjdata)
   colnames(xk) <- c(xi, colnames(adjdata))
-  fit.lin.xi <- model.fit(
+  fit.lin.xi <- fit_model(
     x = xk, y = y, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -72,7 +72,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   aic.linxi <- devlinxi + 2 * dflinxi
   bic.linxi <- devlinxi + logn * dflinxi
   sse.linxi <- fit.lin.xi$SSE
-  dev.roy.linxi <- dev.gaussian(RSS = sse.linxi, weights = weights, n = N)
+  dev.roy.linxi <- deviance_gaussian(RSS = sse.linxi, weights = weights, n = N)
   df.linxi <- N - (dflinxi - 1)
   # =============================================================================
   # Fit a model with linear in axi = acd(xi)--Model M5 in R&S 2016
@@ -80,7 +80,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   axi <- acd(x = x[, xi], s = powers, shift = 0, scale = 1)$acd
   xkk <- cbind(axi, adjdata)
   colnames(xkk) <- c(xi, colnames(adjdata))
-  fit.lin.axi <- model.fit(
+  fit.lin.axi <- fit_model(
     x = xkk, y = y, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -93,7 +93,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   aic.linaxi <- devlinaxi + 2 * dflinaxi
   bic.linaxi <- devlinaxi + logn * dflinaxi
   sse.linaxi <- fit.lin.axi$SSE
-  dev.roy.linaxi <- dev.gaussian(RSS = sse.linaxi, weights = weights, n = N)
+  dev.roy.linaxi <- deviance_gaussian(RSS = sse.linaxi, weights = weights, n = N)
   # subtract 1 = scale parameter and 1 = FP used for acd calculation
   df.linaxi <- N - (dflinaxi - 1)
   # =============================================================================
@@ -102,7 +102,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   # change acdx for xi to temporarily false so that we  fit bestFP1 for xi
   # while adjusting other variables
   acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
-  fit.fp1.xi <- bestfp1(
+  fit.fp1.xi <- find_best_model_fp1(
     y = y, x = x, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
@@ -125,7 +125,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
   # set acdx = F so that 8 fp variables will be generated for the new xi
   xx <- x
   xx[, which(colnames(x) == xi)] <- axi
-  fit.fp1.axi <- bestfp1(
+  fit.fp1.axi <- find_best_model_fp1(
     y = y, x = xx, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
@@ -153,7 +153,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
     xout <- cbind(fpdata[[i]], adjdata)
     colnames(xout) <- c("newx1", "newx2", colnames(adjdata))
     # Fit the  model which can be a glm or cox depending on the family chosen
-    fit1 <- model.fit(
+    fit1 <- fit_model(
       x = xout, y = y, family = family, method = method,
       weights = weights, offset = offset, strata = strata,
       control = control, rownames = rownames,
@@ -167,7 +167,7 @@ bestfpa <- function(y, x, xi, allpowers, powers, family, method, weights,
     aic[i] <- devs[i] + 2 * (dfp1[i])
     bic[i] <- devs[i] + logn * (dfp1[i])
     sse[i] <- fit1$SSE
-    dev.roy[i] <- dev.gaussian(RSS = sse[i], weights = weights, n = N)
+    dev.roy[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = N)
   }
   # Best FP1(p1,p2) function based on dev, aic, bic and sse
   s <- df1$powers

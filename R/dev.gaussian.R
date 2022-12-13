@@ -1,4 +1,4 @@
-dev.gaussian <- function(RSS, weights, n) {
+deviance_gaussian <- function(RSS, weights, n) {
   # calculate lognormalized weights
   if (length(unique(weights)) == 1) {
     meanwts <- 0

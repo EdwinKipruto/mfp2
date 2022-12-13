@@ -1,6 +1,6 @@
 # calculates the final degrees of freedom for the selected model
 # x is the power(s) so if x = c(1,2) then df = 4 but if x = NA then df = 0
-df.final <- function(x) {
+calculate_df <- function(x) {
   if (all(is.na(x))) {
     # df for unselected variable
     df <- 0
@@ -18,5 +18,3 @@ df.final <- function(x) {
   }
   return(df)
 }
-# pw = list(a = c(2,NA), b = 1, c = c(NA,1), d = 0, e = c(1,2))
-# sapply(pw,df.final)

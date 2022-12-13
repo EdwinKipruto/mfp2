@@ -23,7 +23,7 @@ acd <- function(x, power = NULL, shift = NULL, s = NULL, scale = NULL) {
     x <- x + shift
     # Estimate shift from the data when not provided
   } else {
-    shift <- shift.factor(x)
+    shift <- find_shift_factor(x)
     x <- x + shift
   }
   # check whether x > 0 after shifting.
@@ -33,7 +33,7 @@ acd <- function(x, power = NULL, shift = NULL, s = NULL, scale = NULL) {
     x <- x / scale
     # Estimate scale from the data when not provided. Uses R&S 2008 formula. see the book
   } else {
-    scale <- scalefn(x)
+    scale <- find_scale_factor(x)
     x <- x / scale
   }
   # Compute the rank of x. Ties are handled by finding the average value
@@ -42,7 +42,7 @@ acd <- function(x, power = NULL, shift = NULL, s = NULL, scale = NULL) {
   # Estimate power from the data when not given
   if (is.null(power)) {
     # Estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-    fit <- fracpoly(
+    fit <- fit_fp(
       y = z, x = x, family = "gaussian", method = NULL, shift = shift, scalex = NULL,
       weights = rep(1, n), offset = rep(0, n), strata = NULL, degree = 1,
       powers = s, control = NULL, rownames = NULL, nocenter = NULL

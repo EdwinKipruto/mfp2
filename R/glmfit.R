@@ -11,7 +11,7 @@
 #' @return The log likelihood of the fitted model, regression coefficients and the number of parameters
 #' @import stats
 #' @export
-glmfit <- function(x, y, family, weights, offset) {
+fit_glm <- function(x, y, family, weights, offset) {
   # x should include 1s for the intercept, family should be a function, weights and
   # offset should be specified
   fit <- stats::glm.fit(x = x, y = y, family = family, weights = weights, offset = offset)

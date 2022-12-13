@@ -16,7 +16,8 @@
 #' For Cox models, the response should preferably be a `Surv` object,
 #' created by the [survival::Surv()] function, and the `family = "cox"`. 
 #' Only right-censored data are currently supported. To fit stratified Cox
-#' models, the strata option can be used.
+#' models, the strata option can be used. Currently `mfpa()` only supports
+#' a single factor as strata.
 #'
 #' @section Details on scaling and centering:
 #'
@@ -91,7 +92,7 @@
 #'
 #' @param x input matrix, of dimension nobs x nvars; each row is an observation 
 #'   vector.
-#' @param y response variable. For `family="binomial"` should be  a
+#' @param y vector for response variable. For `family="binomial"` should be  a
 #'   variable with two levels (see [stats::glm()]). 
 #'   For `family="cox"` it must be a `Surv` object containing  2 columns.
 #' @param weights observation weights. Default is `NULL` which assigns a weight 
@@ -331,6 +332,46 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       warning(sprintf("i F-test not suitable for family = %s.\n", family),
               "i mfpa() reverts to use Chi-square instead.")
   }
+  
+  if (family == "cox") {
+      # assert y is a Surv object
+      if (!survival::is.Surv(y)) {
+          stop("! Response y must be a survival::Surv object.")
+      }
+      
+      # assert dimensions of y 
+      if (nrow(y) != nobs) {
+          stop("! Number of observations in y and x must match.", 
+               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
+                       nrow(y), nobs))
+      }
+      
+      # assert right censoring (other censoring types are not implemented yet)
+      type <- attr(y, "type")
+      if (type != "right") {
+          stop(sprintf("! Type of censoring must not be %s.", type), 
+               "i Currently only right censoring is supported by mfpa().")
+      }
+      
+      if (!is.null(strata)) {
+          # assert stratification factors are in x
+          if (!all(strata %in% colnames(x))) {
+              warning("i The set of variables named in strata is not a subset of the variables in x.\n", 
+                      "i mfpa() continues with the intersection of strata and colnames(x).")
+          }
+      }
+  } else {
+      # assert type of y
+      if (!is.vector(y)) {
+          stop(sprintf("! Outcome y must not be of class %s.", class(y)), 
+               "i Please convert y to a vector.")
+      }
+      if (length(y) != nobs) {
+          stop("! Number of observations in y and x must match.", 
+               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
+                       length(y), nobs))
+      }
+  }
 
   # set further defaults
   if (is.null(weights)) {
@@ -363,6 +404,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   
   keep <- intersect(keep, colnames(x))
+  
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(F, nvars)
@@ -374,6 +416,10 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       acdx <- replace(rep(FALSE, nvars), 
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
+  # control is specific to coxph models, plays no role for other models
+  control <- coxph.control() 
+  rownames <- row.names(x)
+  istrata <- strata
 
   # df: sets the df for each predictor. df=4: FP model with maximum permitted
   # degree m=2 (default), df=2: FP model with maximum permitted degree m=1:
@@ -410,56 +456,13 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   
-  #-----------------------------------------------------------------------------
-  # Cox specific setup
-  #-----------------------------------------------------------------------------
-  if (family == "cox") {
-    # Make sure y is a survival object
-    if (!is.Surv(y)) stop("Response must be a survival object")
-    # y is a matrix and its rows must be equal to number of observations
-    n <- nrow(y)
-    if (n != nobs) stop(paste("number of observations in y (", n, ") not equal to the number of rows of x (", nobs, ")", sep = ""))
-    # We consider only right censoring. Other options like left, interval, counting,
-    # interval2 and mstate implemented in survival package will be considered in the future
-    type <- attr(y, "type")
-    if (type != "right") stop(paste("Cox FP model doesn't support \"", type, "\" survival data", sep = ""))
-    # set defaults for coxph.fit: 1-control, 2-rownames, 3- init, 4-strata
-    control <- coxph.control() # coxph.control(...)
-    rownames <- row.names(x)
-    # ===============================================================================
-    # stratification
-    # one strata works well but more than one strata fails. check the code in coxph()
-    # ===============================================================================
-    istrata <- strata
-    if (!is.null(strata)) {
-      # check whether variables considered for stratification are in x
-      if (!all(strata %in% colnames(x))) {
-        stop("The names of variables for stratifications is not a subset of columns of x")
-      }
-      # More checks needed if this strata is working correctly
-      istrata <- survival::strata(x[, strata], shortlabel = T)
-      # Drop the variable(s) in x used for stratification
-      x <- x[, -c(which(colnames(x) %in% strata)), drop = F]
-    }
-    # strata(GBSG$htreat,GBSG$menostat)
-    # Glm specific setup
-  } else {
-    # Treat one-column matrix of response as vector...combine glm and surv y
-    if (is.matrix(y)) {
-      dimy <- ncol(y)
-      if (dimy == 1) {
-        y <- drop(y)
-        # Assert that y is a vector not a matrix with two or more columns.
-      } else {
-        stop(paste0("y must be a vector or a matrix with one column not ", dimy, "columns", sep = ""))
-      }
-    }
-    nrowy <- length(y)
-    if (nrowy != nobs) {
-      stop(paste("number of observations in y (", nrowy, ") not equal to the number of rows of x (", nobs, ")", sep = ""))
-    }
+  # data preparation: stratification
+  if (family == "cox" && !is.null(strata)) {
+      istrata <- survival::strata(x[, strata], shortlabel = TRUE)
+      # drop the variable(s) in x used for stratification
+      x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
   }
-
+  
   # fit mfp
   fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
@@ -472,16 +475,16 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   )
   
   if (family == "cox") {
-    class(fit) <- c("mfpa", "coxph")
-    # add wald test in order to use summary.coxph()
-    # this calculation follows coxph() source code
-    nabeta <- !is.na(fit$coefficients)
-    fit$wald.test <- survival::coxph.wtest(
-      fit$var[nabeta, nabeta], fit$coefficients[nabeta],
-      control$toler.chol
-    )$test
+      class(fit) <- c("mfpa", "coxph")
+      # add wald test in order to use summary.coxph()
+      # this calculation follows coxph() source code
+      nabeta <- !is.na(fit$coefficients)
+      fit$wald.test <- survival::coxph.wtest(
+          fit$var[nabeta, nabeta], fit$coefficients[nabeta],
+          control$toler.chol
+      )$test
   } else {
-    class(fit) <- c("mfpa", "glm", "lm")
+      class(fit) <- c("mfpa", "glm", "lm")
   }
   
   fit$call <- cl

@@ -209,15 +209,11 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                  verbose = T) {
   cl <- match.call()
   
-  # match and check arguments and set defaults for simple parameters
+  # match arguments 
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
   family <- match.arg(family)
   ties <- match.arg(ties)
-  # set default FP powers proposed by Royston and Sauerbrei (2008)
-  if (is.null(powers)) {
-      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  }
   
   # assertions 
   # assert dimension of x
@@ -373,7 +369,11 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       }
   }
 
-  # set further defaults
+  # set defaults
+  if (is.null(powers)) {
+      # default FP powers proposed by Royston and Sauerbrei (2008)
+      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  }
   if (is.null(weights)) {
       weights <- rep.int(1, nobs)
   }
@@ -416,10 +416,11 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       acdx <- replace(rep(FALSE, nvars), 
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
-  # control is specific to coxph models, plays no role for other models
-  control <- coxph.control() 
-  rownames <- row.names(x)
+  
+  # further variables
   istrata <- strata
+  # control is specific to coxph models, plays no role for other models
+  control <- survival::coxph.control() 
 
   # df: sets the df for each predictor. df=4: FP model with maximum permitted
   # degree m=2 (default), df=2: FP model with maximum permitted degree m=1:
@@ -463,7 +464,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
   }
   
-  # fit mfp
+  # fit model and make model specific adaptions
   fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, keep,
@@ -471,8 +472,9 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       powers = powers, family = family, method = ties,
       select = select, alpha = alpha, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
-      nocenter = nocenter, rownames = rownames, acdx = acdx
+      nocenter = nocenter, rownames = row.names(x), acdx = acdx
   )
+  fit$call <- cl
   
   if (family == "cox") {
       class(fit) <- c("mfpa", "coxph")
@@ -487,6 +489,5 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       class(fit) <- c("mfpa", "glm", "lm")
   }
   
-  fit$call <- cl
   fit
 }

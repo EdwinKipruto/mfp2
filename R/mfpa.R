@@ -209,13 +209,13 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                  verbose = T) {
   cl <- match.call()
   
-  # match arguments 
+  # match arguments ------------------------------------------------------------
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
   family <- match.arg(family)
   ties <- match.arg(ties)
   
-  # assertions 
+  # assertions -----------------------------------------------------------------
   # assert dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])
@@ -397,7 +397,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       }
   }
 
-  # set defaults
+  # set defaults ---------------------------------------------------------------
   if (is.null(powers)) {
       # default FP powers proposed by Royston and Sauerbrei (2008)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -445,12 +445,12 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
   
-  # further variables
+  # further variables ----------------------------------------------------------
   istrata <- strata
   # control is specific to coxph models, plays no role for other models
   control <- survival::coxph.control() 
 
-  # set df 
+  # set df ---------------------------------------------------------------------
   if (length(df) == 1) {
     if (df != 1) {
       # we assign variables different df based on number of unique values
@@ -471,18 +471,19 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
     df.list <- df
   }
 
-  # data preparation: shift, scale
+  # data preparation -----------------------------------------------------------
+  # shift, scale 
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   
-  # data preparation: stratification
+  # stratification
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(x[, strata], shortlabel = TRUE)
       # drop the variable(s) in x used for stratification
       x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
   }
   
-  # fit model and make model specific adaptions
+  # fit model and make model specific adaptions --------------------------------
   fit <- mfp.fit(
       x = x, y = y, weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, keep,

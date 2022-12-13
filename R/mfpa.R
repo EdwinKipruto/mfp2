@@ -404,7 +404,7 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   }
   
   keep <- intersect(keep, colnames(x))
-  
+  strata <- intersect(strata, colnames(x))
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(F, nvars)

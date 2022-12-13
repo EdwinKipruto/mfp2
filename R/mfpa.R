@@ -315,11 +315,39 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
       }
   }
   
-  # assert acdx is a aubset of x
+  # assert acdx is a subset of x
   if (!is.null(acdx)) {
       if (!all(acdx %in% colnames(x))) {
           warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
                   "i mfpa() continues with the intersection of acdx and colnames(x).")
+      }
+  }
+  
+  # assert df is positive
+  if (any(df) <= 0) {
+      stop("! df must not be 0 or negative.\n", 
+           sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP."))
+  }
+  
+  if (length(df) == 1) {
+      # assert df is 1 or even 
+      if (df != 1 && df %% 2 != 0) {
+          stop("! Any df > 1 must not be odd.\n", 
+               sprintf("i df = %d was passed, but df must be either 1 (linear) or 2m, where m is the degree of FP.", 
+                       df))
+      } 
+  } else {
+      # assert length of df
+      if (length(df) != nvars) {
+          stop("! df must be a single number, or the number of variables (columns in x) and df must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in df is %d.", 
+                       nvars, length(df)))
+      }
+      # assert all df are 1 or even 
+      if (any(df != 1 & df %% 2 != 0)) {
+          stop("! Any df > 1 must not be odd.\n", 
+               sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP.", 
+                       df))
       }
   }
   
@@ -422,34 +450,24 @@ mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
   # control is specific to coxph models, plays no role for other models
   control <- survival::coxph.control() 
 
-  # df: sets the df for each predictor. df=4: FP model with maximum permitted
-  # degree m=2 (default), df=2: FP model with maximum permitted degree m=1:
-  # df=1: Linear FP model
-  # =============================================================================
-  # df section: write a function that summarizes this part
-  # =============================================================================
+  # set df 
   if (length(df) == 1) {
-    # check whether df = 1, 2, 4, 6,... even numbers after 1
     if (df != 1) {
-      # apply modulus e.g 2, 4, 6, etc (even numbers) has modulus of 0 i.e no remainder when divided by 2
-      if (df %% 2 != 0) stop("The df is ", df, " must be either 1 = linear or  2m = FPm where m is the degree of FP")
       # we assign variables different df based on number of unique values
       df.list <- df.assign(x = x, df.default = df)
     } else {
       df.list <- rep(df, nvars)
     }
   } else {
-    # the length of df must be equal to the number of predictors including dummy variables
-    if (length(df) != nvars) stop(gettextf("The length of df is %d should equal be to 1 or %d (number of variables)", length(df), nvars), domain = NA)
-    # check whether the supplied df are correct
-    if (any(df != 1)) {
-      index1 <- which(df != 1)
-      if (any(df[index1] %% 2 != 0)) stop("The df of ", paste0(df[index1][which(df[index1] %% 2 != 0)], sep = " "), " is incorrect. Must be either 1 = linear or  2m = FPm where m is the degree of FP")
+    # ensure that variables with <= 3 unique values have df = 1
+    nux <- apply(x, 2, function(v) length(unique(v)))
+    index <- nux <= 3
+    if (any(df[index] != 1)) {
+        warning("i For any variable with fewer than 4 unique valies the df are set to 1 (linear) by mfpa().\n", 
+                sprintf("i This applies to variables %s.", 
+                        colnames(x)[index & df != 1]))
+        df[index] = 1
     }
-    # Assert that variables with <=3 unique values must have df = 1
-    nux <- apply(x, 2, function(x) length(unique(x)))
-    indexx <- which(nux <= 3)
-    if (any(df[indexx] != 1)) stop("The df of variable ", paste0(vnames[indexx][df[indexx] != 1], sep = " "), " must be 1 because it has fewer than 3 unique values")
     df.list <- df
   }
 

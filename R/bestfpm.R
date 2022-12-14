@@ -1,10 +1,10 @@
-# similar with find_best_model_fp1() but for degree>1
+# similar with find_best_fp1() but for degree>1
 # degree =  degree of fp. m = 2 is fp2, m = 3 is fp3 etc
-find_best_model_fpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
+find_best_fpm <- function(y, x, xi, allpowers, powers, family, weights, offset, strata,
                     control, method, rownames, nocenter, degree, acdx) {
   #
   if (degree < 2) stop("Degree must be >= 2. Here we are interest on best FPm where
-                    m>=2. For m = 1 see find_best_model_fp1()")
+                    m>=2. For m = 1 see find_best_fp1()")
   # Generate FP data for x of interest (xi) and adjustment variables
   m <- degree
   df1 <- extract_adjustment_data(

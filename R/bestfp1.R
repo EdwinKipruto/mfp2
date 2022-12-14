@@ -14,7 +14,7 @@
 # @param offset see glm or coxph for explanation
 # @param family A character name specifying the family name i,e "gaussian",
 # "binomial", "poisson" or "cox"
-find_best_model_fp1 <- function(y, 
+find_best_fp1 <- function(y, 
                           x, 
                           xi, 
                           allpowers, 

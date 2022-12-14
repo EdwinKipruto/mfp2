@@ -19,7 +19,7 @@
 # @param family A character name specifying the family name i,e "gaussian",
 # "binomial", "poisson" or "cox"
 # acdx = an indicator of acd variables. Either TRUE or FALSE
-find_best_model_fp1_acd <- function(y, x, xi, allpowers, powers, family, method, weights,
+find_best_model_acd_fp1 <- function(y, x, xi, allpowers, powers, family, method, weights,
                     offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
@@ -102,7 +102,7 @@ find_best_model_fp1_acd <- function(y, x, xi, allpowers, powers, family, method,
   # change acdx for xi to temporarily false so that we  fit bestFP1 for xi
   # while adjusting other variables
   acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
-  fit.fp1.xi <- find_best_model_fp1(
+  fit.fp1.xi <- find_best_fp1(
     y = y, x = x, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
@@ -125,7 +125,7 @@ find_best_model_fp1_acd <- function(y, x, xi, allpowers, powers, family, method,
   # set acdx = F so that 8 fp variables will be generated for the new xi
   xx <- x
   xx[, which(colnames(x) == xi)] <- axi
-  fit.fp1.axi <- find_best_model_fp1(
+  fit.fp1.axi <- find_best_fp1(
     y = y, x = xx, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,

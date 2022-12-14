@@ -36,7 +36,7 @@ find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
   } else {
     if (acdx[xi]) {
       # compute deviances, aic, bic and sse for model M1-M6
-      bfpa <- find_best_model_fp1_acd(
+      bfpa <- find_best_model_acd_fp1(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
@@ -131,7 +131,7 @@ find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
       #----------------------------usual mfp procedure------------------------
     } else {
       # this part is needed for FPm if degree>2
-      bfp1 <- find_best_model_fp1(
+      bfp1 <- find_best_fp1(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,

@@ -36,7 +36,7 @@ find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
   } else {
     if (acdx[xi]) {
       # compute deviances, aic, bic and sse for model M1-M6
-      bfpa <- find_best_model_acd_fp1(
+      bfpa <- find_best_acd_fp1(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,

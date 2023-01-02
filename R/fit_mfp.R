@@ -44,8 +44,8 @@ fit_mfp <- function(x,
   # step 1: order variables ----------------------------------------------------
   variables_ordered = order_variables(
     xorder = xorder, 
-    x = x, y = y, weights = weights, offset = offset, family = family, 
-    method = method, strata = strata, control = control, nocenter = nocenter
+    x = x, y = y, family = family,  weights = weights, offset = offset, 
+    strata = strata, method = method, control = control, nocenter = nocenter
   ) 
 
   #-----------------------------------------------------------------------------

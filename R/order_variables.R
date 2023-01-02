@@ -30,11 +30,7 @@ order_variables <- function(xorder = "ascending",
   names_ordered = colnames(x)
   
   if (xorder != "original") {
-    names_ordered = order_variables_by_significance(
-      xorder = xorder, x = x, y = y, family = family, 
-      weights = weights, offset = offset, 
-      method = method, strata = strata, control = control, nocenter = nocenter
-    )
+    names_ordered = order_variables_by_significance(xorder = xorder, x = x, ...)
   }
   
   names_ordered

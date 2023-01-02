@@ -55,7 +55,7 @@ fit_mfp <- function(x,
   # the aforementioned vectors should be ordered to match the variables as well.
   #-----------------------------------------------------------------------------
   pp <- setNames(rep(1, ncol(x)), variables_x)
-  powers <- lapply(split(pp, names(pp)), unname)[variables_ordered]
+  fp_powers <- lapply(split(pp, names(pp)), unname)[variables_ordered]
   # Named alpha vector
   alpha <- setNames(alpha, variables_x)[variables_ordered]
   # Named select vector
@@ -84,10 +84,10 @@ fit_mfp <- function(x,
     # second is for acd(xi). NA has been assigned to acd(xi), which will be
     # updated in the MFP cycles.
     acd.variables <- variables_x[match(names(which(acdx)), variables_x)]
-    powers.acd <- lapply(1:length(acd.variables), function(x) c(1, NA))
-    names(powers.acd) <- acd.variables
+    fp_powers.acd <- lapply(1:length(acd.variables), function(x) c(1, NA))
+    names(fp_powers.acd) <- acd.variables
     # New initial powers with acd having two powers
-    powers <- modifyList(x = powers, val = powers.acd)
+    fp_powers <- modifyList(x = fp_powers, val = fp_powers.acd)
     # Override df of acd variables by setting them to 4
     df <- replace(df, which(variables_ordered %in% acd.variables), rep(4, length(acd.variables)))
   }
@@ -108,7 +108,7 @@ fit_mfp <- function(x,
     # Each cycle employs powers, which are updated after each cycle is completed.
     run.each.cycle <- iterate_find_best_model_fp(
       x = x, y = y,
-      allpowers = powers, # acd variables, like FP2, have two powers.
+      allpowers = fp_powers, # acd variables, like FP2, have two powers.
       df = df,
       weights = weights,
       offset = offset,
@@ -129,18 +129,18 @@ fit_mfp <- function(x,
     )
 
     # Estimated powers for the ith cycle
-    powers.updated <- run.each.cycle
+    fp_powers.updated <- run.each.cycle
     # Check for convergence
-    if (identical(powers, powers.updated)) {
+    if (identical(fp_powers, fp_powers.updated)) {
       converged <- TRUE
-      powers <- powers.updated
+      fp_powers <- fp_powers.updated
       stop.at <- j + 1
       cat("\nFractional polynomial fitting algorithm converged after ", j, " cycles.", "\n") # , "\n\n")
       if (j <= cycles) break
     } else {
       if (j <= cycles) {
         # update the powers of the variables at the end of each cycle
-        powers <- powers.updated
+        fp_powers <- fp_powers.updated
         stop.at <- j
         # increment j
         j <- j + 1
@@ -158,13 +158,13 @@ fit_mfp <- function(x,
   # Table showing FP Power for each variable---TO MOVE TO mfpa()
   # =============================================================================
   # status: 1 = in the model while 0 = out/removed
-  status <- sapply(powers, function(x) ifelse(all(is.na(x)), 0, 1))
+  status <- sapply(fp_powers, function(x) ifelse(all(is.na(x)), 0, 1))
   # Final degrees of freedom
-  dfx <- sapply(powers, calculate_df)
+  dfx <- sapply(fp_powers, calculate_df)
   # Add "A" to names of acd variables
-  xnam <- sapply(names(powers), function(x) ifelse(acdx[x], paste0("(A)", x), x))
+  xnam <- sapply(names(fp_powers), function(x) ifelse(acdx[x], paste0("(A)", x), x))
   # Matrix of FP powers
-  mfp.powers <- convert_powers_list_to_matrix(powers)
+  mfp.powers <- convert_powers_list_to_matrix(fp_powers)
   if (criterion == "pvalue") {
     # combine select and alpha vectors into a matrix and cbind with FP powers
     matsel <- do.call(cbind, list(df, select, alpha, status, dfx))
@@ -174,13 +174,13 @@ fit_mfp <- function(x,
   } else {
     if (criterion == "AIC") {
       fp_terms <- data.frame(
-        df.initial = df, AIC = rep("AIC", length(powers)),
+        df.initial = df, AIC = rep("AIC", length(fp_powers)),
         status = status, df.final = dfx, mfp.powers
       )
       rownames(fp_terms) <- xnam
     } else {
       fp_terms <- data.frame(
-        df.initial = df, AIC = rep("BIC", length(powers)),
+        df.initial = df, AIC = rep("BIC", length(fp_powers)),
         status = status, df.final = dfx, mfp.powers
       )
       rownames(fp_terms) <- xnam
@@ -194,7 +194,7 @@ fit_mfp <- function(x,
   # Fit the final model with transformed x if nonlinear functions were selected--TO MOVE TO mfpa()
   # =============================================================================
   # Transform x using the final FP powers selected. x has already been shifted and scaled
-  X <- transform_x_fp(x = x, power.list = powers, center = center, acdx = acdx)
+  X <- transform_x_fp(x = x, power.list = fp_powers, center = center, acdx = acdx)
 
   # Use the transformed x and fit the final model
   # modelfit <- fit_model(x = X, y = y,family = family,weights = weights, offset = offset,
@@ -206,7 +206,7 @@ fit_mfp <- function(x,
     rownames = rownames, nocenter = nocenter
   )
   # untransformed and scaled x
-  x <- x[, names(powers[!sapply(powers, function(x) all(is.na(x)))]), drop = F]
+  x <- x[, names(fp_powers[!sapply(fp_powers, function(x) all(is.na(x)))]), drop = F]
   # variance-covariance matrix
   # if(family!="cox")
   # summary.glm(modelfit)$cov.scaled
@@ -223,7 +223,7 @@ fit_mfp <- function(x,
       null.deviance = modelfit$fit$null.deviance, weights = modelfit$fit$weights,
       prior.weights = modelfit$fit$prior.weights, df.residual = modelfit$fit$df.residual,
       df.null = modelfit$fit$df.null, y = y, fp_terms = fp_terms,
-      transformations = matssc, powers = powers, acd = acdx, X = X, x = x
+      transformations = matssc, fp_powers = fp_powers, acd = acdx, X = X, x = x
     )
   } else {
     fit <- list(
@@ -240,7 +240,7 @@ fit_mfp <- function(x,
         "fail"
       }, # to work on this later-might not be correct
       fp_terms = fp_terms, transformations = matssc,
-      powers = powers
+      fp_powers = fp_powers
     )
   }
   # incase cox fails

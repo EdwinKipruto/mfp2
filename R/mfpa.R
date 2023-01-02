@@ -213,7 +213,7 @@
 #' terms.}
 #' \item{transformations}{a data.frame with information on shifting, scaling
 #' and centering for all variables.}   
-#' \item{powers}{a list with all powers of fractional polynomial terms.}
+#' \item{fp_powers}{a list with all powers of fractional polynomial terms.}
 #' \item{acd}{a vector with information for which variables the acd 
 #' transformation was applied.}
 #' }

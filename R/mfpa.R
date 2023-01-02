@@ -76,17 +76,17 @@
 #' The sequence of tests is as follows:
 #' \itemize{
 #' \item{Test 1.}{Compare the deviances of models 6 and 1 on 4 d.f. 
-#'   If not significant then stop and omit \eqn{x}, otherwise continue to step 2.}
+#' If not significant then stop and omit \eqn{x}, otherwise continue to step 2.}
 #' \item{Test 2.}{Compare the deviances of models 4 and 1 on 3 d.f. 
-#'   If not significant then accept model 4 and stop. Otherwise, continue to step 3.}
+#' If not significant then accept model 4 and stop. Otherwise, continue to step 3.}
 #' \item{Test 3.}{Compare the deviance of models 2 and 1 on 2 d.f. 
-#'   If not significant then accept model 2 and stop. Otherwise continue to step 4.}
+#' If not significant then accept model 2 and stop. Otherwise continue to step 4.}
 #' \item{Test 4.}{Compare the deviance of models 3 and 1 on 2 d.f. 
-#'   If significant then model 1 cannot be simplified; accept model 1 and stop.  
-#'   Otherwise continue to step 5.}
+#' If significant then model 1 cannot be simplified; accept model 1 and stop.  
+#' Otherwise continue to step 5.}
 #' \item{Test 5.}{Compare the deviances of models 5 and 3 on 1 d.f. 
-#'   If significant then model 3 cannot be simplified; accept model 3. 
-#'   Otherwise, accept model 5. End of procedure.}
+#' If significant then model 3 cannot be simplified; accept model 3. 
+#' Otherwise, accept model 5. End of procedure.}
 #' }
 #' The result is the selection of one of the six models. 
 #'
@@ -96,13 +96,13 @@
 #'   variable with two levels (see [stats::glm()]). 
 #'   For `family="cox"` it must be a `Surv` object containing  2 columns.
 #' @param weights observation weights. Default is `NULL` which assigns a weight 
-#'   of 1 to each observation
+#'   of 1 to each observation.
 #' @param offset a vector of length nobs that is included in the linear
 #'   predictor. Useful for the poisson family (e.g. log of exposure time).
 #'   Default is `NULL` which assigns an offset  of 0 to each observation.
 #'   If supplied, then values must also be supplied to the `predict()` function.
 #' @param cycles maximum number of iteration cycles. Default is 5.
-#' @param scale If the values of the variable are too large or too small,
+#' @param scale if the values of the variable are too large or too small,
 #' the reported results of fractional polynomials may be difficult to
 #' interpret. Scaling can be done automatically or by directly specifying the
 #' scaling values so that the magnitude of the `x` values are not too large.
@@ -110,7 +110,7 @@
 #' below). Rather than letting `mfpa()` automatically choose the scaling 
 #' factors, you may specify scale factors for each variable manually. 
 #' If scaling is not required set `scale = 1` to disable it.
-#' @param shift Fractional polynomials are only defined for positive term
+#' @param shift fractional polynomials are only defined for positive term
 #' variables. By default, `mfpa()` will assume that all variable values are 
 #' positive and attempt to compute fractional powers of the input variables. 
 #' By default, estimation of shifting factors will be performed.
@@ -131,7 +131,7 @@
 #' mean centering, except for binary covariates, where the covariate is centered
 #' using the lower of the two distinct values of the covariate. 
 #' See Details section below.
-#' @param family A character string representing a `glm()` family object as well
+#' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a criterion used to select variables and FP models of
 #' different degrees. Default is to use p-values in which the user can specify
@@ -185,6 +185,39 @@
 #' distribution. Default uses the later. This argument is used for Gaussian 
 #' models only and has no effect for other model families.
 #' @param verbose logical; run in verbose mode.
+#' 
+#' @return 
+#' `mfpa()` returns an object of class inheriting from `glm` or `copxh`, 
+#' depending on the `family` parameter. 
+#' 
+#' The function `summary()` (i.e. [summary.mfpa()]) can be used to obtain or
+#' print a summary of the results. 
+#' 
+#' The generic accessor function `coef()` can be used to extract the vector of 
+#' coefficients from the fitted model object.
+#' 
+#' An object of class `mfpa` is a list containing at least the following 
+#' components: #' 
+#' \itemize{
+#' \item{coefficients}{a named vector of coefficients.}
+#' \item{residuals}{working residuals as returned by [stats::glm()] or 
+#' martingale residuals as returned by [survival::coxph()], depending on 
+#' `family`.}
+#' \item{family}{either the [stats::family()] object used for families supported
+#' by [stats::glm()] or "cox" for Cox proportional hazards models.}
+#' \item{linear.predictors}{the vector of linear predictors, i.e. the linear fit
+#' on link scale. For `family = "cox"` this vector has been centered, see
+#' [survival::predict.coxph()] for more details.}
+#' \item{fp_terms}{a data.frame with information on fractional polynomial 
+#' terms.}
+#' \item{transformations}{a data.frame with information on shifting, scaling
+#' and centering for all variables.}   
+#' \item{powers}{a list with all powers of fractional polynomial terms.}
+#' \item{acd}{a vector with information for which variables the acd 
+#' transformation was applied.}
+#' }
+#' The `mfpa` object may contain further information depending on family.
+#' 
 #' @references
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 #' regression models with asigmoid dose-response function. 
@@ -193,11 +226,19 @@
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 #' @export
-mfpa <- function(x, y, weights = NULL, offset = NULL, cycles = 5,
-                 scale = NULL, shift = NULL, df = 4, center = T,
+mfpa <- function(x, 
+                 y, 
+                 weights = NULL, 
+                 offset = NULL, 
+                 cycles = 5,
+                 scale = NULL, 
+                 shift = NULL, 
+                 df = 4, 
+                 center = T,
                  family = c("gaussian", "poisson", "binomial", "cox"),
                  criterion = c("pvalue", "BIC", "AIC"),
-                 select = 0.05, alpha = 0.05,
+                 select = 0.05, 
+                 alpha = 0.05,
                  keep = NULL,
                  xorder = c("ascending", "descending", "original"),
                  powers = NULL,

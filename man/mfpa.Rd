@@ -39,7 +39,7 @@ variable with two levels (see \code{\link[stats:glm]{stats::glm()}}).
 For \code{family="cox"} it must be a \code{Surv} object containing  2 columns.}
 
 \item{weights}{observation weights. Default is \code{NULL} which assigns a weight
-of 1 to each observation}
+of 1 to each observation.}
 
 \item{offset}{a vector of length nobs that is included in the linear
 predictor. Useful for the poisson family (e.g. log of exposure time).
@@ -48,7 +48,7 @@ If supplied, then values must also be supplied to the \code{predict()} function.
 
 \item{cycles}{maximum number of iteration cycles. Default is 5.}
 
-\item{scale}{If the values of the variable are too large or too small,
+\item{scale}{if the values of the variable are too large or too small,
 the reported results of fractional polynomials may be difficult to
 interpret. Scaling can be done automatically or by directly specifying the
 scaling values so that the magnitude of the \code{x} values are not too large.
@@ -57,7 +57,7 @@ below). Rather than letting \code{mfpa()} automatically choose the scaling
 factors, you may specify scale factors for each variable manually.
 If scaling is not required set \code{scale = 1} to disable it.}
 
-\item{shift}{Fractional polynomials are only defined for positive term
+\item{shift}{fractional polynomials are only defined for positive term
 variables. By default, \code{mfpa()} will assume that all variable values are
 positive and attempt to compute fractional powers of the input variables.
 By default, estimation of shifting factors will be performed.
@@ -81,7 +81,7 @@ mean centering, except for binary covariates, where the covariate is centered
 using the lower of the two distinct values of the covariate.
 See Details section below.}
 
-\item{family}{A character string representing a \code{glm()} family object as well
+\item{family}{a character string representing a \code{glm()} family object as well
 as Cox models. For more information, see Details section below.}
 
 \item{criterion}{a criterion used to select variables and FP models of
@@ -147,6 +147,38 @@ distribution. Default uses the later. This argument is used for Gaussian
 models only and has no effect for other model families.}
 
 \item{verbose}{logical; run in verbose mode.}
+}
+\value{
+\code{mfpa()} returns an object of class inheriting from \code{glm} or \code{copxh},
+depending on the \code{family} parameter.
+
+The function \code{summary()} (i.e. \code{\link[=summary.mfpa]{summary.mfpa()}}) can be used to obtain or
+print a summary of the results.
+
+The generic accessor function \code{coef()} can be used to extract the vector of
+coefficients from the fitted model object.
+
+An object of class \code{mfpa} is a list containing at least the following
+components: #'
+\itemize{
+\item{coefficients}{a named vector of coefficients.}
+\item{residuals}{working residuals as returned by \code{\link[stats:glm]{stats::glm()}} or
+martingale residuals as returned by \code{\link[survival:coxph]{survival::coxph()}}, depending on
+\code{family}.}
+\item{family}{either the \code{\link[stats:family]{stats::family()}} object used for families supported
+by \code{\link[stats:glm]{stats::glm()}} or "cox" for Cox proportional hazards models.}
+\item{linear.predictors}{the vector of linear predictors, i.e. the linear fit
+on link scale. For \code{family = "cox"} this vector has been centered, see
+\code{\link[survival:predict.coxph]{survival::predict.coxph()}} for more details.}
+\item{fp_terms}{a data.frame with information on fractional polynomial
+terms.}
+\item{transformations}{a data.frame with information on shifting, scaling
+and centering for all variables.}
+\item{powers}{a list with all powers of fractional polynomial terms.}
+\item{acd}{a vector with information for which variables the acd
+transformation was applied.}
+}
+The \code{mfpa} object may contain further information depending on family.
 }
 \description{
 Selects the multivariable fractional polynomial (FP) model that best predicts

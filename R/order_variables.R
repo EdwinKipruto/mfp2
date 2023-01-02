@@ -1,26 +1,57 @@
+#' Functions to order variables for mfpa algorithm.
+#' 
+#' To be used in [fit_mfp()].
+#' 
+#' @param xorder a string determining the order of entry of the covariates
+#' into the model-selection algorithm. The default is `ascending`, which enters
+#' them by ascending p-values, or decreasing order of significance in a
+#' multiple regression (i.e. most significant first).
+#' `descending` places them in reverse significance order, whereas 
+#' `original` respects the original order in `x`.
+#' @param x a design matrix of dimension n * p where n is the number of
+#' observations and p the number of predictors including intercept for glms,
+#' or excluding intercept for Cox models. 
+#' @param y  a vector of responses for glms, or a `Surv` object generated using
+#' the [survival::Surv()] function for Cox models. 
+#' @param family a character string naming a family function supported by
+#' `glm()` or "cox" for Cox models.
+#' @param weights,offset parameters for both glm and Cox models, see either
+#' [stats::glm()] or [survival::coxph()] depending on family. 
+#' @param strata,method,control,nocenter Cox model specific parameters, see
+#' [survival::coxph()].
+#' 
+#' @return 
+#' A vector of the variable names in `x`, ordered according to `xorder`.
+#' 
+#' @import utils
+order_variables <- function(xorder = "ascending",
+                            x = NULL, 
+                            ...) {
+  names_ordered = colnames(x)
+  
+  if (xorder != "original") {
+    names_ordered = order_variables_by_significance(
+      xorder = xorder, x = x, y = y, family = family, 
+      weights = weights, offset = offset, 
+      method = method, strata = strata, control = control, nocenter = nocenter
+    )
+  }
+  
+  names_ordered
+}
 
-#' Fits glm and Cox proportional hazards regression models and returns the
-#' p-values of variables ordered or not ordered as defined in option xorder.
-#'
-#' @param x A design matrix of dimension n * p+1 where n is the number of
-#' observations and p the number of predictors including intercept for glm but
-#' n*p for cox
-#' @param y  A vector of response variable. For family = "cox", y is a
-#' Surv object from the survival package, generated using Surv() function
-#' @param family A character string naming a family function
-#' @param xorder Determines the order of entry of the covariates into the
-#' model-selection algorithm. The default is "ascending", which enters them in
-#' decreasing order of significance in a multiple linear
-#'  regression (most significant first). "descending" places them in reverse
-#'  significance order, whereas "original" respects the original order in x
-#' @param method A character string specifying the method for tie handling in cox
-#' @param strata,weights,offset,control,rownames,nocenter parameters for glm or cox model. see glm() or coxph()
-
-#' @return p-values for each predictor variable
-#' @export
-#'
-order_variables <- function(x, y, weights, offset, family, method, strata, control,
-                     rownames, nocenter, xorder) {
+#' @describeIn order_variables Order by significance in regression model.
+order_variables_by_significance <- function(xorder, 
+                                            x, 
+                                            y,
+                                            family,
+                                            weights, 
+                                            offset, 
+                                            strata, 
+                                            method, 
+                                            control,
+                                            nocenter) {
+  
   # Convert factors to dummy variables if it exists...take it to the main function
   # x = model.matrix(as.formula(paste("~", paste(colnames(x), collapse="+"))),
   #                  data = as.data.frame(x))
@@ -36,7 +67,10 @@ order_variables <- function(x, y, weights, offset, family, method, strata, contr
     }
     if (is.function(family)) family <- family()
     # family <- family()
-    fit.full <- glm.fit(x = cbind(rep(1, n), x), y = y, weights = weights, offset = offset, family = family) # full model
+    fit.full <- glm.fit(
+      x = cbind(rep(1, n), x), y = y, weights = weights, offset = offset,
+      family = family
+    ) # full model
     # Rank of the glm full model
     p1 <- fit.full$rank
     # There is an additional scale parameter to estimate in OLS regression. The
@@ -75,7 +109,7 @@ order_variables <- function(x, y, weights, offset, family, method, strata, contr
     fit.full <- fit_cox(
       x = x, y = y, strata = strata, weights = weights,
       offset = offset, control = control, method = method,
-      rownames = rownames, nocenter = nocenter
+      rownames = rownames(x), nocenter = nocenter
     ) # full model
     # Deviance of the full cox model
     p1 <- fit.full$df
@@ -93,7 +127,7 @@ order_variables <- function(x, y, weights, offset, family, method, strata, contr
       fit.reduced <- fit_cox(
         x = x[, -i, drop = FALSE], y = y, strata = strata,
         weights = weights, offset = offset, control = control,
-        method = method, rownames = rownames,
+        method = method, rownames = rownames(x),
         nocenter = nocenter
       )
       # calculate the deviance of the reduced model
@@ -110,11 +144,12 @@ order_variables <- function(x, y, weights, offset, family, method, strata, contr
       p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
     }
   }
+  
   # Order the p-values based on xorder
   pvalues <- switch(xorder,
-    "ascending" = sort(p.value, decreasing = F),
-    "descending" = sort(p.value, decreasing = F),
-    "original" = p.value
+    "descending" = sort(p.value, decreasing = TRUE), 
+    sort(p.value, decreasing = FALSE) # default ascending
   )
-  return(list(pvalues = pvalues, dev = dev, df.reduced = df.reduced))
+  
+  names(pvalues)
 }

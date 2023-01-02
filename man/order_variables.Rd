@@ -2,47 +2,56 @@
 % Please edit documentation in R/order_variables.R
 \name{order_variables}
 \alias{order_variables}
-\title{Fits glm and Cox proportional hazards regression models and returns the
-p-values of variables ordered or not ordered as defined in option xorder.}
+\alias{order_variables_by_significance}
+\title{Functions to order variables for mfpa algorithm.}
 \usage{
-order_variables(
+order_variables(xorder = "ascending", x = NULL, ...)
+
+order_variables_by_significance(
+  xorder,
   x,
   y,
+  family,
   weights,
   offset,
-  family,
-  method,
   strata,
+  method,
   control,
-  rownames,
-  nocenter,
-  xorder
+  nocenter
 )
 }
 \arguments{
-\item{x}{A design matrix of dimension n * p+1 where n is the number of
-observations and p the number of predictors including intercept for glm but
-n*p for cox}
+\item{xorder}{a string determining the order of entry of the covariates
+into the model-selection algorithm. The default is \code{ascending}, which enters
+them by ascending p-values, or decreasing order of significance in a
+multiple regression (i.e. most significant first).
+\code{descending} places them in reverse significance order, whereas
+\code{original} respects the original order in \code{x}.}
 
-\item{y}{A vector of response variable. For family = "cox", y is a
-Surv object from the survival package, generated using Surv() function}
+\item{x}{a design matrix of dimension n * p where n is the number of
+observations and p the number of predictors including intercept for glms,
+or excluding intercept for Cox models.}
 
-\item{family}{A character string naming a family function}
+\item{y}{a vector of responses for glms, or a \code{Surv} object generated using
+the \code{\link[survival:Surv]{survival::Surv()}} function for Cox models.}
 
-\item{method}{A character string specifying the method for tie handling in cox}
+\item{family}{a character string naming a family function supported by
+\code{glm()} or "cox" for Cox models.}
 
-\item{strata, weights, offset, control, rownames, nocenter}{parameters for glm or cox model. see glm() or coxph()}
+\item{weights, offset}{parameters for both glm and Cox models, see either
+\code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{survival::coxph()}} depending on family.}
 
-\item{xorder}{Determines the order of entry of the covariates into the
-model-selection algorithm. The default is "ascending", which enters them in
-decreasing order of significance in a multiple linear
-regression (most significant first). "descending" places them in reverse
-significance order, whereas "original" respects the original order in x}
+\item{strata, method, control, nocenter}{Cox model specific parameters, see
+\code{\link[survival:coxph]{survival::coxph()}}.}
 }
 \value{
-p-values for each predictor variable
+A vector of the variable names in \code{x}, ordered according to \code{xorder}.
 }
 \description{
-Fits glm and Cox proportional hazards regression models and returns the
-p-values of variables ordered or not ordered as defined in option xorder.
+To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 }
+\section{Functions}{
+\itemize{
+\item \code{order_variables_by_significance}: Order by significance in regression model.
+}}
+

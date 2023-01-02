@@ -533,7 +533,7 @@ mfpa <- function(x,
       powers = powers, family = family, method = ties,
       select = select, alpha = alpha, strata = istrata,
       ftest = ftest, verbose = verbose, control = control,
-      nocenter = nocenter, rownames = row.names(x), acdx = acdx
+      nocenter = nocenter, acdx = acdx
   )
   fit$call <- cl
   

@@ -4,13 +4,13 @@
 print.mfpa <- function(x, digits = max(3L, getOption("digits") - 3L), signif.stars = FALSE, ...) {
   # shift and scaling factors with centering values
   cat("Shifting, Scaling and Centering of covariates", "\n")
-  ss <- as.data.frame(x$shiftscalecenter)
+  ss <- as.data.frame(x$transformations)
   ss[is.na(ss)] <- "."
   print.data.frame(ss)
   cat("\n")
   # Final MFP Powers
   cat("Final Multivariable Fractional Polynomial for y", "\n")
-  dd <- as.data.frame(x$fp.table)
+  dd <- as.data.frame(x$fp_terms)
   dd[is.na(dd)] <- "."
   print.data.frame(dd)
   cat("\n")

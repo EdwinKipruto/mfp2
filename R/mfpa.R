@@ -157,11 +157,12 @@
 #' `criterion = "pvalue"`, this is equivalent to setting the selection level for
 #' the variables to keep to 1. However, this option also keeps the specified
 #' variables in the model when when using the BIC or AIC criteria. 
-#' @param xorder determines the order of entry of the covariates into
-#' the model-selection algorithm. The default is `ascending`, which uses them
-#' in decreasing order of significance in a multiple linear regression
-#' (most significant first). `descending` places them in reverse significance 
-#' order, whereas `original` respects the original order of the covariates. 
+#' @param xorder a string determining the order of entry of the covariates
+#' into the model-selection algorithm. The default is `ascending`, which enters
+#' them by ascending p-values, or decreasing order of significance in a
+#' multiple regression (i.e. most significant first).
+#' `descending` places them in reverse significance order, whereas 
+#' `original` respects the original order in `x`.
 #' @param powers sets the permitted FP powers for all covariates. Default is
 #' `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 means natural logarithm.
 #' @param ties a character string specifying the method for tie handling in 

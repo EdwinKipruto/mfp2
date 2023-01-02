@@ -112,11 +112,12 @@ selection level of 0.05.}
 the variables to keep to 1. However, this option also keeps the specified
 variables in the model when when using the BIC or AIC criteria.}
 
-\item{xorder}{determines the order of entry of the covariates into
-the model-selection algorithm. The default is \code{ascending}, which uses them
-in decreasing order of significance in a multiple linear regression
-(most significant first). \code{descending} places them in reverse significance
-order, whereas \code{original} respects the original order of the covariates.}
+\item{xorder}{a string determining the order of entry of the covariates
+into the model-selection algorithm. The default is \code{ascending}, which enters
+them by ascending p-values, or decreasing order of significance in a
+multiple regression (i.e. most significant first).
+\code{descending} places them in reverse significance order, whereas
+\code{original} respects the original order in \code{x}.}
 
 \item{powers}{sets the permitted FP powers for all covariates. Default is
 \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 means natural logarithm.}

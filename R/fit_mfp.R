@@ -1,44 +1,79 @@
-# fits an MFP model
-#' @import utils
-fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, criterion,
-                    xorder, powers, family, method, select, alpha, keep, strata, ftest,
-                    control, rownames, nocenter, acdx, verbose) {
-  #-----------------------------------------------------------------------------
-  # STEP 1: Order variable based on xorder
-  #-----------------------------------------------------------------------------
-  varnames <- names(order_variables(
-    x = x, y = y, weights = weights, offset = offset,
-    xorder = xorder, family = family, method = method,
-    strata = strata, control = control, rownames = rownames,
-    nocenter = nocenter
-  )$pvalues)
-  xnames <- colnames(x)
+#' @title Function to fit a model using the mfpa algorithm
+#' 
+#' @details 
+#' Not exported. To be called from the `mfpa()` function. Most parameters
+#' are explained in the documentation of [mfpa()].  
+#' This function does not check its arguments. 
+#' 
+#' @section Algorithm: 
+#' 
+#' * Step 1: order variables according to `xorder`. This step may involve 
+#' fitting a regression model to determine order of significance. 
+#' * Step 2: data pre-processing. Setting initial powers for fractional 
+#' polynomial terms, checking if acd transformation is required and allowed.
+#' * Step 3: run mfp algorithm cycles. 
+#' 
+#' @return 
+#' See [mfpa()] for details on the returned object.
+fit_mfp <- function(x, 
+                    y, 
+                    weights,
+                    offset,
+                    cycles, 
+                    scale, 
+                    shift,
+                    df, 
+                    center, 
+                    criterion,
+                    xorder,
+                    powers, 
+                    family, 
+                    method, 
+                    select, 
+                    alpha, 
+                    keep, 
+                    strata, 
+                    ftest,
+                    control,
+                    nocenter,
+                    acdx, 
+                    verbose) {
+  
+  variables_x <- colnames(x) 
+
+  # step 1: order variables ----------------------------------------------------
+  variables_ordered = order_variables(
+    xorder = xorder, 
+    x = x, y = y, weights = weights, offset = offset, family = family, 
+    method = method, strata = strata, control = control, nocenter = nocenter
+  ) 
+
   #-----------------------------------------------------------------------------
   #                              STEP 2
   # Make a list of all the initial FP powers that are equal to one. Assign names
-  # to scale,alpha, select, and df. Because FP powers are ordered by varnames,
+  # to scale,alpha, select, and df. Because FP powers are ordered by variables_ordered,
   # the aforementioned vectors should be ordered to match the variables as well.
   #-----------------------------------------------------------------------------
-  pp <- setNames(rep(1, ncol(x)), xnames)
-  pwrs <- lapply(split(pp, names(pp)), unname)[varnames]
+  pp <- setNames(rep(1, ncol(x)), variables_x)
+  powers <- lapply(split(pp, names(pp)), unname)[variables_ordered]
   # Named alpha vector
-  alpha <- setNames(alpha, xnames)[varnames]
+  alpha <- setNames(alpha, variables_x)[variables_ordered]
   # Named select vector
-  select <- setNames(select, xnames)[varnames]
+  select <- setNames(select, variables_x)[variables_ordered]
   # Force some variables into the model when pvalue criterion is used
   if (!is.null(keep)) {
     index <- which(names(select) %in% keep)
     select <- replace(select, list = index, values = rep(1, length(index)))
   }
   # Named df vector
-  df <- setNames(df, xnames)[varnames]
+  df <- setNames(df, variables_x)[variables_ordered]
   # Named center vector
-  center <- setNames(center, xnames)[varnames]
+  center <- setNames(center, variables_x)[variables_ordered]
   # adjustment and scaling factors
-  shift <- setNames(shift, xnames)[varnames]
-  scale <- setNames(scale, xnames)[varnames]
+  shift <- setNames(shift, variables_x)[variables_ordered]
+  scale <- setNames(scale, variables_x)[variables_ordered]
   # logical indicator indicating whether or not a variable has acd
-  acdx <- setNames(acdx, xnames)[varnames]
+  acdx <- setNames(acdx, variables_x)[variables_ordered]
   #-----------------------------------------------------------------------------
   # Check whether acd transformation is required
   #-----------------------------------------------------------------------------
@@ -48,13 +83,13 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
     # assign two powers to acd variables (1,NA). The first is for xi, and the
     # second is for acd(xi). NA has been assigned to acd(xi), which will be
     # updated in the MFP cycles.
-    acd.variables <- xnames[match(names(which(acdx)), xnames)]
-    pwrs.acd <- lapply(1:length(acd.variables), function(x) c(1, NA))
-    names(pwrs.acd) <- acd.variables
+    acd.variables <- variables_x[match(names(which(acdx)), variables_x)]
+    powers.acd <- lapply(1:length(acd.variables), function(x) c(1, NA))
+    names(powers.acd) <- acd.variables
     # New initial powers with acd having two powers
-    pwrs <- modifyList(x = pwrs, val = pwrs.acd)
+    powers <- modifyList(x = powers, val = powers.acd)
     # Override df of acd variables by setting them to 4
-    df <- replace(df, which(varnames %in% acd.variables), rep(4, length(acd.variables)))
+    df <- replace(df, which(variables_ordered %in% acd.variables), rep(4, length(acd.variables)))
   }
 
   #-----------------------------------------------------------------------------
@@ -65,15 +100,15 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   stop.at <- j
   # Set a counter for convergence
   converged <- FALSE
-  # Run each cycles and update the initial powers denoted by pwrs
+  # Run each cycles and update the initial powers denoted by powers
   while (j <= cycles) {
     if (verbose) {
       cat("\nCycle", j)
     }
-    # Each cycle employs pwrs, which are updated after each cycle is completed.
+    # Each cycle employs powers, which are updated after each cycle is completed.
     run.each.cycle <- iterate_find_best_model_fp(
       x = x, y = y,
-      allpowers = pwrs, # acd variables, like FP2, have two powers.
+      allpowers = powers, # acd variables, like FP2, have two powers.
       df = df,
       weights = weights,
       offset = offset,
@@ -94,18 +129,18 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
     )
 
     # Estimated powers for the ith cycle
-    pwrs.updated <- run.each.cycle
+    powers.updated <- run.each.cycle
     # Check for convergence
-    if (identical(pwrs, pwrs.updated)) {
+    if (identical(powers, powers.updated)) {
       converged <- TRUE
-      pwrs <- pwrs.updated
+      powers <- powers.updated
       stop.at <- j + 1
       cat("\nFractional polynomial fitting algorithm converged after ", j, " cycles.", "\n") # , "\n\n")
       if (j <= cycles) break
     } else {
       if (j <= cycles) {
         # update the powers of the variables at the end of each cycle
-        pwrs <- pwrs.updated
+        powers <- powers.updated
         stop.at <- j
         # increment j
         j <- j + 1
@@ -123,32 +158,32 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   # Table showing FP Power for each variable---TO MOVE TO mfpa()
   # =============================================================================
   # status: 1 = in the model while 0 = out/removed
-  status <- sapply(pwrs, function(x) ifelse(all(is.na(x)), 0, 1))
+  status <- sapply(powers, function(x) ifelse(all(is.na(x)), 0, 1))
   # Final degrees of freedom
-  dfx <- sapply(pwrs, calculate_df)
+  dfx <- sapply(powers, calculate_df)
   # Add "A" to names of acd variables
-  xnam <- sapply(names(pwrs), function(x) ifelse(acdx[x], paste0("(A)", x), x))
+  xnam <- sapply(names(powers), function(x) ifelse(acdx[x], paste0("(A)", x), x))
   # Matrix of FP powers
-  mfp.powers <- convert_powers_list_to_matrix(pwrs)
+  mfp.powers <- convert_powers_list_to_matrix(powers)
   if (criterion == "pvalue") {
     # combine select and alpha vectors into a matrix and cbind with FP powers
     matsel <- do.call(cbind, list(df, select, alpha, status, dfx))
     colnames(matsel) <- c("df.initial", "select", "alpha", "status", "df.final")
     rownames(matsel) <- xnam
-    fp.table <- cbind(matsel, mfp.powers)
+    fp_terms <- cbind(matsel, mfp.powers)
   } else {
     if (criterion == "AIC") {
-      fp.table <- data.frame(
-        df.initial = df, AIC = rep("AIC", length(pwrs)),
+      fp_terms <- data.frame(
+        df.initial = df, AIC = rep("AIC", length(powers)),
         status = status, df.final = dfx, mfp.powers
       )
-      rownames(fp.table) <- xnam
+      rownames(fp_terms) <- xnam
     } else {
-      fp.table <- data.frame(
-        df.initial = df, AIC = rep("BIC", length(pwrs)),
+      fp_terms <- data.frame(
+        df.initial = df, AIC = rep("BIC", length(powers)),
         status = status, df.final = dfx, mfp.powers
       )
-      rownames(fp.table) <- xnam
+      rownames(fp_terms) <- xnam
     }
   }
 
@@ -159,7 +194,7 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
   # Fit the final model with transformed x if nonlinear functions were selected--TO MOVE TO mfpa()
   # =============================================================================
   # Transform x using the final FP powers selected. x has already been shifted and scaled
-  X <- transform_x_fp(x = x, power.list = pwrs, center = center, acdx = acdx)
+  X <- transform_x_fp(x = x, power.list = powers, center = center, acdx = acdx)
 
   # Use the transformed x and fit the final model
   # modelfit <- fit_model(x = X, y = y,family = family,weights = weights, offset = offset,
@@ -171,7 +206,7 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
     rownames = rownames, nocenter = nocenter
   )
   # untransformed and scaled x
-  x <- x[, names(pwrs[!sapply(pwrs, function(x) all(is.na(x)))]), drop = F]
+  x <- x[, names(powers[!sapply(powers, function(x) all(is.na(x)))]), drop = F]
   # variance-covariance matrix
   # if(family!="cox")
   # summary.glm(modelfit)$cov.scaled
@@ -187,8 +222,8 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
       deviance = modelfit$fit$deviance, aic = modelfit$fit$aic,
       null.deviance = modelfit$fit$null.deviance, weights = modelfit$fit$weights,
       prior.weights = modelfit$fit$prior.weights, df.residual = modelfit$fit$df.residual,
-      df.null = modelfit$fit$df.null, y = y, fp.table = fp.table,
-      shiftscalecenter = matssc, pwrs = pwrs, acd = acdx, X = X, x = x
+      df.null = modelfit$fit$df.null, y = y, fp_terms = fp_terms,
+      transformations = matssc, powers = powers, acd = acdx, X = X, x = x
     )
   } else {
     fit <- list(
@@ -204,8 +239,8 @@ fit_mfp <- function(x, y, weights, offset, cycles, scale, shift, df, center, cri
       fail = if (is.character(modelfit$fit)) {
         "fail"
       }, # to work on this later-might not be correct
-      fp.table = fp.table, shiftscalecenter = matssc,
-      pwrs = pwrs
+      fp_terms = fp_terms, transformations = matssc,
+      powers = powers
     )
   }
   # incase cox fails

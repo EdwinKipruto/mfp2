@@ -50,6 +50,7 @@
 #' * Step 2: input data pre-processing. Setting initial powers for fractional 
 #' polynomial terms, checking if acd transformation is required and allowed.
 #' * Step 3: run mfp algorithm cycles. 
+#' * Step 4: fit final model using estimated powers.
 #' 
 #' @return 
 #' See [mfpa()] for details on the returned object.
@@ -212,33 +213,21 @@ fit_mfp <- function(x,
     }
   }
 
-  # Table of scaling and shifting factors
-  matssc <- data.frame(shift, scale, center)
-  colnames(matssc) <- c("shift", "scale", "center")
-  # =============================================================================
-  # Fit the final model with transformed x if nonlinear functions were selected--TO MOVE TO mfpa()
-  # =============================================================================
-  # Transform x using the final FP powers selected. x has already been shifted and scaled
-  X <- transform_x_fp(x = x, power.list = fp_powers, center = center, acdx = acdx)
+  # step 4: fit final model with estimated functional forms --------------------
+  # transform x using the final FP powers selected. 
+  # x has already been shifted and scaled.
+  X <- transform_x_fp(x = x, power.list = fp_powers, 
+                      center = center, acdx = acdx)
 
-  # Use the transformed x and fit the final model
-  # modelfit <- fit_model(x = X, y = y,family = family,weights = weights, offset = offset,
-  #                  method = method, strata = strata,control = control,
-  #                  rownames = rownames,resid = resid,nocenter = nocenter)$fit
   modelfit <- fit_model(
     x = X, y = y, family = family, weights = weights, offset = offset,
     method = method, strata = strata, control = control,
     rownames = rownames, nocenter = nocenter
   )
-  # untransformed and scaled x
-  x <- x[, names(fp_powers[!sapply(fp_powers, function(x) all(is.na(x)))]), drop = F]
-  # variance-covariance matrix
-  # if(family!="cox")
-  # summary.glm(modelfit)$cov.scaled
   
   # create mfpa object ---------------------------------------------------------
   
-  # common elements for glms and cox
+  # common components for glms and cox
   fit <- list(
     coefficients = modelfit$fit$coefficients,
     residuals = modelfit$fit$residuals,
@@ -248,19 +237,21 @@ fit_mfp <- function(x,
     df.residual = modelfit$fit$df.residual,
     df.null = modelfit$fit$df.null,
     X = X, 
-    x = x,
+    # untransformed and scaled x for selected variables
+    # selected means that not all powers are NA
+    x = x[, names(fp_powers[!sapply(fp_powers, function(x) all(is.na(x)))]), 
+          drop = F],
     y = y, 
     fp_terms = fp_terms,
-    transformations = matssc,
+    transformations = data.frame(shift = shift, 
+                                 scale = scale, 
+                                 center = center),
     fp_powers = fp_powers,
     acd = acdx
   )
   
   # expand list to conform to glm or coxph objects
   if (family != "cox") {
-    family <- get(family, mode = "function", envir = parent.frame())
-    if (is.function(family)) family <- family()
-    
     fit <- c(
       fit, 
       list(
@@ -269,7 +260,7 @@ fit_mfp <- function(x,
         R = modelfit$fit$R, 
         rank = modelfit$fit$rank,
         qr = modelfit$fit$qr, 
-        family = family,
+        family = modelfit$fit$family,
         na.action = NULL,
         deviance = modelfit$fit$deviance,
         aic = modelfit$fit$aic,

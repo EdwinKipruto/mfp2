@@ -229,6 +229,9 @@
 #' \item{fp_powers}{a list with all powers of fractional polynomial terms.}
 #' \item{acd}{a vector with information for which variables the acd 
 #' transformation was applied.}
+#' \item{x}{the scaled and shifted input matrix but without transformations.}
+#' \item{y}{the original outcome variable.}
+#' \item{X}{the final transformed input matrix used to fit the final model.}
 #' }
 #' The `mfpa` object may contain further information depending on family.
 #' 

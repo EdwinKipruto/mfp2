@@ -458,12 +458,12 @@ mfpa <- function(x,
   } 
   if (is.null(shift)) {
       shift <- apply(x, 2, find_shift_factor)
-  } else if (length(shift == 1)) {
+  } else if (length(shift) == 1) {
       shift <- rep(shift, nvars)
   }
   if (is.null(scale)) {
       scale <- apply(x, 2, find_scale_factor)
-  } else if (length(scale == 1)) {
+  } else if (length(scale) == 1) {
       scale <- rep(scale, nvars)
   }
   if (length(center) == 1) {

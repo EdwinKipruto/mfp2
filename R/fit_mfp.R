@@ -9,7 +9,7 @@
 #' 
 #' * Step 1: order variables according to `xorder`. This step may involve 
 #' fitting a regression model to determine order of significance. 
-#' * Step 2: data pre-processing. Setting initial powers for fractional 
+#' * Step 2: input data pre-processing. Setting initial powers for fractional 
 #' polynomial terms, checking if acd transformation is required and allowed.
 #' * Step 3: run mfp algorithm cycles. 
 #' 
@@ -48,32 +48,24 @@ fit_mfp <- function(x,
     strata = strata, method = method, control = control, nocenter = nocenter
   ) 
 
-  #-----------------------------------------------------------------------------
-  #                              STEP 2
-  # Make a list of all the initial FP powers that are equal to one. Assign names
-  # to scale,alpha, select, and df. Because FP powers are ordered by variables_ordered,
-  # the aforementioned vectors should be ordered to match the variables as well.
-  #-----------------------------------------------------------------------------
-  pp <- setNames(rep(1, ncol(x)), variables_x)
-  fp_powers <- lapply(split(pp, names(pp)), unname)[variables_ordered]
-  # Named alpha vector
+  # step 2: pre-process input --------------------------------------------------
+  # named list of initial fp powers set to 1 ordered by xorder
+  fp_powers <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
+  
+  # name and reorder input vectors by xorder
   alpha <- setNames(alpha, variables_x)[variables_ordered]
-  # Named select vector
   select <- setNames(select, variables_x)[variables_ordered]
-  # Force some variables into the model when pvalue criterion is used
-  if (!is.null(keep)) {
-    index <- which(names(select) %in% keep)
-    select <- replace(select, list = index, values = rep(1, length(index)))
-  }
-  # Named df vector
   df <- setNames(df, variables_x)[variables_ordered]
-  # Named center vector
   center <- setNames(center, variables_x)[variables_ordered]
-  # adjustment and scaling factors
   shift <- setNames(shift, variables_x)[variables_ordered]
   scale <- setNames(scale, variables_x)[variables_ordered]
-  # logical indicator indicating whether or not a variable has acd
   acdx <- setNames(acdx, variables_x)[variables_ordered]
+  
+  # force variables into the model by setting p-value to 1
+  if (!is.null(keep)) {
+    select[which(names(select) %in% keep)] = 1
+  }
+
   #-----------------------------------------------------------------------------
   # Check whether acd transformation is required
   #-----------------------------------------------------------------------------
@@ -210,40 +202,65 @@ fit_mfp <- function(x,
   # variance-covariance matrix
   # if(family!="cox")
   # summary.glm(modelfit)$cov.scaled
+  
+  # create mfpa list object ----------------------------------------------------
   if (family != "cox") {
     family <- get(family, mode = "function", envir = parent.frame())
     if (is.function(family)) family <- family()
     fit <- list(
       coefficients = modelfit$fit$coefficients,
-      residuals = modelfit$fit$residuals, fitted.values = modelfit$fit$fitted.values,
-      effects = modelfit$fit$effects, R = modelfit$fit$R, rank = modelfit$fit$rank,
-      qr = modelfit$fit$qr, family = family, na.action = NULL,
+      residuals = modelfit$fit$residuals,
+      fitted.values = modelfit$fit$fitted.values,
+      effects = modelfit$fit$effects,
+      R = modelfit$fit$R, 
+      rank = modelfit$fit$rank,
+      qr = modelfit$fit$qr, 
+      family = family,
+      na.action = NULL,
       linear.predictors = modelfit$fit$linear.predictors,
-      deviance = modelfit$fit$deviance, aic = modelfit$fit$aic,
-      null.deviance = modelfit$fit$null.deviance, weights = modelfit$fit$weights,
-      prior.weights = modelfit$fit$prior.weights, df.residual = modelfit$fit$df.residual,
-      df.null = modelfit$fit$df.null, y = y, fp_terms = fp_terms,
-      transformations = matssc, fp_powers = fp_powers, acd = acdx, X = X, x = x
+      deviance = modelfit$fit$deviance,
+      aic = modelfit$fit$aic,
+      null.deviance = modelfit$fit$null.deviance, 
+      weights = modelfit$fit$weights,
+      prior.weights = modelfit$fit$prior.weights, 
+      df.residual = modelfit$fit$df.residual,
+      df.null = modelfit$fit$df.null,
+      y = y, 
+      fp_terms = fp_terms,
+      transformations = matssc,
+      fp_powers = fp_powers,
+      acd = acdx, 
+      X = X, 
+      x = x
     )
   } else {
     fit <- list(
       coefficients = modelfit$fit$coefficients,
-      residuals = modelfit$fit$residuals, family = "cox",
+      residuals = modelfit$fit$residuals, 
+      family = "cox",
       linear.predictors = modelfit$fit$linear.predictors,
-      var = modelfit$fit$var, loglik = modelfit$fit$loglik,
-      score = modelfit$fit$score, means = modelfit$fit$means,
-      method <- modelfit$fit$method, class = modelfit$fit$class,
-      acd = acdx, y = y, X = X, x = x, n = nrow(y),
+      var = modelfit$fit$var, 
+      loglik = modelfit$fit$loglik,
+      score = modelfit$fit$score,
+      means = modelfit$fit$means,
+      method = modelfit$fit$method, 
+      class = modelfit$fit$class,
+      acd = acdx, 
+      y = y, 
+      X = X,
+      x = x, 
+      n = nrow(y),
       nevent = sum(y[, ncol(y)]),
       # na.action = options()$na.action, # default in coxph. set. not in use anywhere because the user must take care of missing data
       fail = if (is.character(modelfit$fit)) {
         "fail"
       }, # to work on this later-might not be correct
-      fp_terms = fp_terms, transformations = matssc,
+      fp_terms = fp_terms, 
+      transformations = matssc,
       fp_powers = fp_powers
     )
   }
   # incase cox fails
 
-  return(fit)
+  fit
 }

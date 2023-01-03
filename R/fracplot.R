@@ -60,9 +60,9 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   # Assert that x must be a character
   if (!is.character(x)) stop("x must be a character", call. = F)
   # Get rid of irrelevant variables denoted by NA in the FP powers
-  px <- sapply(model$powers, function(x) all(is.na(x)))
+  px <- sapply(model$fp_powers, function(x) all(is.na(x)))
   # In acd we can have one FP power being NA and the other is not
-  pwrs <- model$powers[!px]
+  pwrs <- model$fp_powers[!px]
   #  Check whether x is in the final model.
   if (!(x %in% names(pwrs))) stop("The variable ", x, " not in model", call. = F)
   # strip the names of the variables by getting rid of dot extension
@@ -118,7 +118,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   # order xx
   xx <- xx[order(xx[, x]), ]
   # for title
-  xpower <- unlist(model$powers[x], use.names = F)
+  xpower <- unlist(model$fp_powers[x], use.names = F)
 
   # Add title
   # x label

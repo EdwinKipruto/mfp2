@@ -1,21 +1,32 @@
-# Function that reset acdx of variable with less than 5 unique values to false
+#' Function to reset acd transformation for variables with few values
+#' 
+#' To be used in [fit_mfp()].
+#' This function resets the `acdx` parameter (logical vector) of variables with
+#' less than 5 distinct values to `FALSE`.
+#' 
+#' @param x a design matrix of dimension nobs x nvars where nvars is the number 
+#' of predictors excluding an intercept.  
+#' @param acdx a named logical vector of length nvars indicating continuous
+#' variables to undergo the approximate cumulative distribution (ACD) 
+#' transformation. May be ordered differently than the columns of `x`.
+#' 
+#' @return 
+#' Logical vector of same length as `acdx`.
 reset_acd <- function(x, acdx) {
-  # calculate the length of unique values of each column of x
-  nu.acdx <- apply(x, 2, function(x) length(unique(x)))
-  nu.acdx <- nu.acdx[names(acdx)]
-  # check variables with unique length<5
-  index <- which(nu.acdx <= 4)
-  if (length(index) == 0) {
-    acdx <- acdx
-  } else { # reset acdx of variables with less than 5 unique values to FALSE
-    # check whether the acdx for variables less than 5 unique values are all false
-    dd <- which(acdx[index])
-    if (length(dd) == 0) { # meaning that all acdx for this specific variables are all false. no need of replacement
-      acdx <- acdx
-    } else {
-      warning(paste0(c("Variable", names(acdx[index])[dd], " has fewer than 5 unique values, cannot perform acd transformation"), collapse = " "), call. = F)
-      acdx <- replace(acdx, index, rep(F, length(index)))
-    }
+  
+  names_acd <- names(acdx)[which(acdx == TRUE)]
+  
+  # number of unique values of each column in acdx
+  n_unique <- apply(x[, names_acd, drop = FALSE], 2, 
+                    function(col) length(unique(col)))
+  ind_reset <- which(n_unique < 5)
+  
+  if (length(ind_reset) > 0) {
+    acdx[names_acd][ind_reset] <- FALSE
+    warning("i For any variable with fewer than 5 unique values no acd transformation can be performed.\n", 
+            sprintf("i The requested acd transform has been reset to FALSE for the following variables: %s.", 
+                    paste0(names_acd[ind_reset], collapse = ", ")))
   }
-  return(acdx)
+  
+  acdx
 }

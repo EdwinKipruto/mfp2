@@ -110,6 +110,7 @@ fitting a regression model to determine order of significance.
 \item Step 2: input data pre-processing. Setting initial powers for fractional
 polynomial terms, checking if acd transformation is required and allowed.
 \item Step 3: run mfp algorithm cycles.
+\item Step 4: fit final model using estimated powers.
 }
 }
 

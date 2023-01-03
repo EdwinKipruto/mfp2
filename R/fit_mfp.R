@@ -180,44 +180,12 @@ fit_mfp <- function(x,
             "i Results of the last iteration reported.")
   }
   
-  # =============================================================================
-  # Table showing FP Power for each variable---TO MOVE TO mfpa()
-  # =============================================================================
-  # status: 1 = in the model while 0 = out/removed
-  status <- sapply(fp_powers, function(x) ifelse(all(is.na(x)), 0, 1))
-  # Final degrees of freedom
-  dfx <- sapply(fp_powers, calculate_df)
-  # Add "A" to names of acd variables
-  xnam <- sapply(names(fp_powers), function(x) ifelse(acdx[x], paste0("(A)", x), x))
-  # Matrix of FP powers
-  mfp.powers <- convert_powers_list_to_matrix(fp_powers)
-  if (criterion == "pvalue") {
-    # combine select and alpha vectors into a matrix and cbind with FP powers
-    matsel <- do.call(cbind, list(df, select, alpha, status, dfx))
-    colnames(matsel) <- c("df.initial", "select", "alpha", "status", "df.final")
-    rownames(matsel) <- xnam
-    fp_terms <- cbind(matsel, mfp.powers)
-  } else {
-    if (criterion == "AIC") {
-      fp_terms <- data.frame(
-        df.initial = df, AIC = rep("AIC", length(fp_powers)),
-        status = status, df.final = dfx, mfp.powers
-      )
-      rownames(fp_terms) <- xnam
-    } else {
-      fp_terms <- data.frame(
-        df.initial = df, AIC = rep("BIC", length(fp_powers)),
-        status = status, df.final = dfx, mfp.powers
-      )
-      rownames(fp_terms) <- xnam
-    }
-  }
-
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
-  X <- transform_x_fp(x = x, power.list = fp_powers, 
-                      center = center, acdx = acdx)
+  X <- transform_x_fp(
+    x = x, power.list = fp_powers, center = center, acdx = acdx
+  )
 
   modelfit <- fit_model(
     x = X, y = y, family = family, weights = weights, offset = offset,
@@ -242,7 +210,8 @@ fit_mfp <- function(x,
     x = x[, names(fp_powers[!sapply(fp_powers, function(x) all(is.na(x)))]), 
           drop = F],
     y = y, 
-    fp_terms = fp_terms,
+    fp_terms = create_fp_terms(fp_powers, acdx,
+                               df, select, alpha, criterion),
     transformations = data.frame(shift = shift, 
                                  scale = scale, 
                                  center = center),
@@ -283,7 +252,7 @@ fit_mfp <- function(x,
         method = modelfit$fit$method,
         n = nrow(y),
         nevent = sum(y[, ncol(y)]),
-        # na.action = options()$na.action, # default in coxph. set. not in use anywhere because the user must take care of missing data
+        # na.action = options()$na.action, # default in coxph. 
         fail = if (is.character(modelfit$fit)) {
           "fail"
         } # to work on this later-might not be correct
@@ -300,4 +269,49 @@ fit_mfp <- function(x,
   }
 
   fit
+}
+
+#' Function to create overview table of fp terms
+#' 
+#' To be used in [fit_mfp()].
+#' 
+#' @return 
+#' Data.frame with overview of all fp terms. Each row represents a variable, 
+#' with rownames giving the name of the variable. Variables with acd 
+#' transformation are denoted by (A). The data.frame comprises the following 
+#' columns: 
+#' 
+#' * `df_initial`: initial degrees of freedom. 
+#' * `select`: significance level for backward elimination.
+#' * `alpha`: significance level for fractional polyomial terms.
+#' * `status`: encodes presence in the model as 1, and absence as 0.
+#' * `df_final`: final estimated degrees of freedom.
+#' * `powerN`: one or more columns with the final estimated fp powers (numbered
+#' 1 to N).
+create_fp_terms <- function(fp_powers, 
+                            acdx, 
+                            df,
+                            select, 
+                            alpha, 
+                            criterion) {
+  
+  fp_terms <- data.frame(
+    # initial degrees of freedom
+    df_initial = df, 
+    select = select, 
+    alpha = alpha, 
+    # presence / absence in final model encoded by NAs in fp_powers
+    status = sapply(fp_powers, function(p) ifelse(all(is.na(p)), 0, 1)),
+    # final degrees of freedom
+    df_final = sapply(fp_powers, calculate_df), 
+    convert_powers_list_to_matrix(fp_powers)
+  )
+  rownames(fp_terms) <- sapply(names(fp_powers), 
+                               function(n) ifelse(acdx[n], paste0("(A)", n), n)) 
+  
+  if (criterion != "pvalue") {
+    fp_terms$select <- criterion
+  }
+  
+  fp_terms
 }

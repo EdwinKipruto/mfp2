@@ -196,6 +196,9 @@
 #' points from the F-distribution can be used instead of Chi-Square 
 #' distribution. Default `FALSE` uses the latter. This argument is used for 
 #' Gaussian models only and has no effect for other model families.
+#' @param control a list object with parameters controlling model fit details. 
+#' Returned by either [stats::glm.control()] or [survival::coxph.control()]. 
+#' Default is `NULL` to use default parameters for the given model class. 
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @return 
@@ -259,6 +262,7 @@ mfpa <- function(x,
                  nocenter = NULL,
                  acdx = NULL,
                  ftest = FALSE,
+                 control = NULL, 
                  verbose = TRUE) {
   cl <- match.call()
   
@@ -481,7 +485,14 @@ mfpa <- function(x,
       center <- rep(center, nvars)    
   }
   if (ftest && family != "gaussian") {
-      ftest = FALSE
+      ftest <- FALSE
+  }
+  if (is.null(control)) {
+    if (family == "cox") {
+      control = survival::coxph.control()
+    } else {
+      control = stats::glm.control()
+    }
   }
   
   keep <- intersect(keep, colnames(x))
@@ -498,11 +509,6 @@ mfpa <- function(x,
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
   
-  # further variables ----------------------------------------------------------
-  istrata <- strata
-  # control is specific to coxph models, plays no role for other models
-  control <- survival::coxph.control() 
-
   # set df ---------------------------------------------------------------------
   if (length(df) == 1) {
     if (df != 1) {
@@ -530,6 +536,7 @@ mfpa <- function(x,
   x <- sweep(x, 2, scale, "/")
   
   # stratification
+  istrata <- strata
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(x[, strata], shortlabel = TRUE)
       # drop the variable(s) in x used for stratification
@@ -538,13 +545,15 @@ mfpa <- function(x,
   
   # fit model and make model specific adaptions --------------------------------
   fit <- fit_mfp(
-      x = x, y = y, weights = weights, offset = offset, cycles = cycles,
-      scale = scale, shift = shift, df = df.list, keep,
-      center = center, criterion = criterion, xorder = xorder,
-      powers = powers, family = family, method = ties,
-      select = select, alpha = alpha, strata = istrata,
-      ftest = ftest, verbose = verbose, control = control,
-      nocenter = nocenter, acdx = acdx
+      x = x, y = y, 
+      weights = weights, offset = offset, cycles = cycles,
+      scale = scale, shift = shift, df = df.list, center = center, 
+      family = family, criterion = criterion, select = select, alpha = alpha, 
+      keep = keep, xorder = xorder, powers = powers, 
+      method = ties, strata = istrata, nocenter = nocenter,
+      acdx = acdx, ftest = ftest, 
+      control = control, 
+      verbose = verbose
   )
   fit$call <- cl
   

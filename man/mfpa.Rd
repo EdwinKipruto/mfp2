@@ -27,6 +27,7 @@ mfpa(
   nocenter = NULL,
   acdx = NULL,
   ftest = FALSE,
+  control = NULL,
   verbose = TRUE
 )
 }
@@ -146,6 +147,10 @@ It also invokes \code{FSPA} to determine the best-fitting FP1(p1, p2) model
 points from the F-distribution can be used instead of Chi-Square
 distribution. Default \code{FALSE} uses the latter. This argument is used for
 Gaussian models only and has no effect for other model families.}
+
+\item{control}{a list object with parameters controlling model fit details.
+Returned by either \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}.
+Default is \code{NULL} to use default parameters for the given model class.}
 
 \item{verbose}{a logical; run in verbose mode.}
 }

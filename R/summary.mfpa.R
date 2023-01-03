@@ -19,5 +19,5 @@
 #' 
 #' @export
 summary.mfpa <- function(object, ...) {
-  summary(object, ...)
+  NextMethod("summary", object)
 }

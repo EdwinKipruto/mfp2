@@ -366,7 +366,7 @@ mfpa <- function(x,
   }
   
   # assert df is positive
-  if (any(df) <= 0) {
+  if (any(df <= 0)) {
       stop("! df must not be 0 or negative.\n", 
            sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP."))
   }

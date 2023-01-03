@@ -95,8 +95,7 @@ backward elimination. If a single numeric, then the value will be replicated
 as necessary. The default nominal significance level is 0.05
 for all variables. Setting the nominal significance level to be 1 for
 certain variables forces them into the model, leaving all other variables
-to be selected. The default selection level of 1 for all variables fits a
-full model and disables variable selection.}
+to be selected.}
 
 \item{alpha}{a numeric vector of length nvars or a single numeric that
 sets the significance levels for testing between FP models of

@@ -441,7 +441,8 @@ mfpa <- function(x,
   } else {
       # assert type of y
       if (!is.vector(y)) {
-          stop(sprintf("! Outcome y must not be of class %s.", class(y)), 
+          stop(sprintf("! Outcome y must not be of class %s.", 
+                       paste0(class(y), collapse = ", ")), 
                "i Please convert y to a vector.")
       }
       if (length(y) != nobs) {
@@ -519,10 +520,10 @@ mfpa <- function(x,
     nux <- apply(x, 2, function(v) length(unique(v)))
     index <- nux <= 3
     if (any(df[index] != 1)) {
-        warning("i For any variable with fewer than 4 unique valies the df are set to 1 (linear) by mfpa().\n", 
-                sprintf("i This applies to variables %s.", 
-                        colnames(x)[index & df != 1]))
-        df[index] = 1
+        warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfpa().\n", 
+                sprintf("i This applies to the following variables: %s.", 
+                        paste0(colnames(x)[index & df != 1], collapse = ", ")))
+        df[index] <- 1
     }
     df.list <- df
   }

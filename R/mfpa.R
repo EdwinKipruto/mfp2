@@ -555,18 +555,5 @@ mfpa <- function(x,
   )
   fit$call <- cl
   
-  if (family == "cox") {
-      class(fit) <- c("mfpa", "coxph")
-      # add wald test in order to use summary.coxph()
-      # this calculation follows coxph() source code
-      nabeta <- !is.na(fit$coefficients)
-      fit$wald.test <- survival::coxph.wtest(
-          fit$var[nabeta, nabeta], fit$coefficients[nabeta],
-          control$toler.chol
-      )$test
-  } else {
-      class(fit) <- c("mfpa", "glm", "lm")
-  }
-  
   fit
 }

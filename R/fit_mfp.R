@@ -234,64 +234,77 @@ fit_mfp <- function(x,
   # if(family!="cox")
   # summary.glm(modelfit)$cov.scaled
   
-  # create mfpa list object ----------------------------------------------------
+  # create mfpa object ---------------------------------------------------------
+  
+  # common elements for glms and cox
+  fit <- list(
+    coefficients = modelfit$fit$coefficients,
+    residuals = modelfit$fit$residuals,
+    linear.predictors = modelfit$fit$linear.predictors,
+    weights = modelfit$fit$weights,
+    prior.weights = modelfit$fit$prior.weights, 
+    df.residual = modelfit$fit$df.residual,
+    df.null = modelfit$fit$df.null,
+    X = X, 
+    x = x,
+    y = y, 
+    fp_terms = fp_terms,
+    transformations = matssc,
+    fp_powers = fp_powers,
+    acd = acdx
+  )
+  
+  # expand list to conform to glm or coxph objects
   if (family != "cox") {
     family <- get(family, mode = "function", envir = parent.frame())
     if (is.function(family)) family <- family()
-    fit <- list(
-      coefficients = modelfit$fit$coefficients,
-      residuals = modelfit$fit$residuals,
-      fitted.values = modelfit$fit$fitted.values,
-      effects = modelfit$fit$effects,
-      R = modelfit$fit$R, 
-      rank = modelfit$fit$rank,
-      qr = modelfit$fit$qr, 
-      family = family,
-      na.action = NULL,
-      linear.predictors = modelfit$fit$linear.predictors,
-      deviance = modelfit$fit$deviance,
-      aic = modelfit$fit$aic,
-      null.deviance = modelfit$fit$null.deviance, 
-      weights = modelfit$fit$weights,
-      prior.weights = modelfit$fit$prior.weights, 
-      df.residual = modelfit$fit$df.residual,
-      df.null = modelfit$fit$df.null,
-      y = y, 
-      fp_terms = fp_terms,
-      transformations = matssc,
-      fp_powers = fp_powers,
-      acd = acdx, 
-      X = X, 
-      x = x
+    
+    fit <- c(
+      fit, 
+      list(
+        fitted.values = modelfit$fit$fitted.values,
+        effects = modelfit$fit$effects,
+        R = modelfit$fit$R, 
+        rank = modelfit$fit$rank,
+        qr = modelfit$fit$qr, 
+        family = family,
+        na.action = NULL,
+        deviance = modelfit$fit$deviance,
+        aic = modelfit$fit$aic,
+        null.deviance = modelfit$fit$null.deviance, 
+        prior.weights = modelfit$fit$prior.weights, 
+        df.residual = modelfit$fit$df.residual,
+        df.null = modelfit$fit$df.null
+      )
     )
+    class(fit) <- c("mfpa", "glm", "lm")
   } else {
-    fit <- list(
-      coefficients = modelfit$fit$coefficients,
-      residuals = modelfit$fit$residuals, 
-      family = "cox",
-      linear.predictors = modelfit$fit$linear.predictors,
-      var = modelfit$fit$var, 
-      loglik = modelfit$fit$loglik,
-      score = modelfit$fit$score,
-      means = modelfit$fit$means,
-      method = modelfit$fit$method, 
-      class = modelfit$fit$class,
-      acd = acdx, 
-      y = y, 
-      X = X,
-      x = x, 
-      n = nrow(y),
-      nevent = sum(y[, ncol(y)]),
-      # na.action = options()$na.action, # default in coxph. set. not in use anywhere because the user must take care of missing data
-      fail = if (is.character(modelfit$fit)) {
-        "fail"
-      }, # to work on this later-might not be correct
-      fp_terms = fp_terms, 
-      transformations = matssc,
-      fp_powers = fp_powers
+    fit <- c(
+      fit, 
+      list( 
+        family = "cox",
+        var = modelfit$fit$var, 
+        loglik = modelfit$fit$loglik,
+        score = modelfit$fit$score,
+        means = modelfit$fit$means,
+        method = modelfit$fit$method,
+        n = nrow(y),
+        nevent = sum(y[, ncol(y)]),
+        # na.action = options()$na.action, # default in coxph. set. not in use anywhere because the user must take care of missing data
+        fail = if (is.character(modelfit$fit)) {
+          "fail"
+        } # to work on this later-might not be correct
+      )
     )
+    # add wald test in order to use summary.coxph()
+    # this calculation follows coxph() source code
+    nabeta <- !is.na(fit$coefficients)
+    fit$wald.test <- survival::coxph.wtest(
+      fit$var[nabeta, nabeta], fit$coefficients[nabeta],
+      control$toler.chol
+    )$test
+    class(fit) <- c("mfpa", "coxph")
   }
-  # incase cox fails
 
   fit
 }

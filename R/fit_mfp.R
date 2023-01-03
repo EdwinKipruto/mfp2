@@ -122,23 +122,21 @@ fit_mfp <- function(x,
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
 
-  #-----------------------------------------------------------------------------
-  #     STEP 3:  Run the mfp cycles
-  #-----------------------------------------------------------------------------
-  # Initialize the cycle and a counter that record the stopping point if converged
+  # step 3: mfp cycles ---------------------------------------------------------
+  # initialize cycle counter 
   j <- 1
-  stop.at <- j
-  # Set a counter for convergence
   converged <- FALSE
-  # Run each cycles and update the initial powers denoted by powers
+  
+  # run cycles and update the powers in each step
   while (j <= cycles) {
     if (verbose) {
-      cat("\nCycle", j)
+      print(sprintf("\ni Running MFP Cycle %d", j))
     }
-    # Each cycle employs powers, which are updated after each cycle is completed.
-    run.each.cycle <- iterate_find_best_model_fp(
+    
+    # estimated powers for the j-th cycle
+    fp_powers_updated <- iterate_find_best_model_fp(
       x = x, y = y,
-      allpowers = fp_powers, # acd variables, like FP2, have two powers.
+      allpowers = fp_powers,
       df = df,
       weights = weights,
       offset = offset,
@@ -154,36 +152,31 @@ fit_mfp <- function(x,
       strata = strata,
       nocenter = nocenter,
       method = method,
-      acdx = acdx, # same length with x
+      acdx = acdx, 
       verbose = verbose
     )
 
-    # Estimated powers for the ith cycle
-    fp_powers.updated <- run.each.cycle
-    # Check for convergence
-    if (identical(fp_powers, fp_powers.updated)) {
+    # check for convergence
+    if (identical(fp_powers, fp_powers_updated)) {
       converged <- TRUE
-      fp_powers <- fp_powers.updated
-      stop.at <- j + 1
-      cat("\nFractional polynomial fitting algorithm converged after ", j, " cycles.", "\n") # , "\n\n")
-      if (j <= cycles) break
+      print(
+        sprintf(
+          "\ni Fractional polynomial fitting algorithm converged after %d cycles.\n", 
+          j)
+      )   
+      break
     } else {
-      if (j <= cycles) {
-        # update the powers of the variables at the end of each cycle
-        fp_powers <- fp_powers.updated
-        stop.at <- j
-        # increment j
-        j <- j + 1
-      }
+      # update the powers of the variables at the end of each cycle
+      fp_powers <- fp_powers_updated
+      j <- j + 1
     }
   }
 
-  # Return warning message if the algorithm failed to converge
   if (!converged) {
-    stop.at <- stop.at
-    warning("No convergence after ", stop.at, " cycles. Results of the last iteration reported", call. = F)
-    # Return the mfp model for the last iteration even if not converged
+    warning(sprintf("i No convergence after %d cycles.", cycles), 
+            "i Results of the last iteration reported.")
   }
+  
   # =============================================================================
   # Table showing FP Power for each variable---TO MOVE TO mfpa()
   # =============================================================================

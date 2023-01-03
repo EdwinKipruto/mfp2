@@ -285,9 +285,7 @@ mfpa <- function(x,
   vnames <- colnames(x)
   if (is.null(vnames)) stop("! The column names of x must not be Null.\n",
                             "i Please set column names for x.")
-  # Transform factor variables to dummies if any using model.matrix
-  x <- model.matrix(~ . - 1, data.frame(x)) 
-  
+
   # assert that x has no missing data
   if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
                      "i Please remove any missing data before passing x to this function.")

@@ -3,7 +3,7 @@
 \name{order_variables}
 \alias{order_variables}
 \alias{order_variables_by_significance}
-\title{Functions to order variables for mfpa algorithm.}
+\title{Functions to order variables for mfpa algorithm}
 \usage{
 order_variables(xorder = "ascending", x = NULL, ...)
 

@@ -1,4 +1,4 @@
-#' Functions to order variables for mfpa algorithm.
+#' Functions to order variables for mfpa algorithm
 #' 
 #' To be used in [fit_mfp()].
 #' 

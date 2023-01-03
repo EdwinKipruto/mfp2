@@ -14,21 +14,79 @@ fit_mfp(
   shift,
   df,
   center,
-  criterion,
-  xorder,
-  powers,
   family,
-  method,
+  criterion,
   select,
   alpha,
   keep,
+  xorder,
+  powers,
+  method,
   strata,
-  ftest,
-  control,
   nocenter,
   acdx,
+  ftest,
+  control,
   verbose
 )
+}
+\arguments{
+\item{x}{an input matrix.}
+
+\item{y}{a vector for the response variable or a \code{Surv} object.}
+
+\item{weights}{a vector of observation weights of length nobs.}
+
+\item{offset}{a vector of length nobs of offsets.}
+
+\item{cycles}{an integer, maximum number of iteration cycles.}
+
+\item{scale}{a numeric vector of length nvars of scaling factors.}
+
+\item{shift}{a numeric vector of length nvars of shifts.}
+
+\item{df}{a numeric vector of length nvars of degrees of freedom.}
+
+\item{center}{a logical vector of length nvars indicating if variables are
+to be centered.}
+
+\item{family}{a character string representing a family object.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+
+\item{select}{a numeric vector of length nvars indicating significance levels
+for backward elimination.}
+
+\item{alpha}{a numeric vector of length nvars indicating significance levels
+for tests between FP models of different degrees.}
+
+\item{keep}{a character vector that with names of variables to be kept
+in the model.}
+
+\item{xorder}{a string determining the order of entry of the covariates
+into the model-selection algorithm.}
+
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates.}
+
+\item{method}{a character string specifying the method for tie handling in
+Cox regression.}
+
+\item{strata}{a factor of all possible combinations of stratification
+variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
+
+\item{nocenter}{a numeric vector with a list of values for fitting Cox
+models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+
+\item{control}{a list with parameters for model fit.}
+
+\item{verbose}{a logical; run in verbose mode.}
 }
 \value{
 See \code{\link[=mfpa]{mfpa()}} for details on the returned object.
@@ -37,18 +95,22 @@ See \code{\link[=mfpa]{mfpa()}} for details on the returned object.
 Function to fit a model using the mfpa algorithm
 }
 \details{
-Not exported. To be called from the \code{mfpa()} function. Most parameters
-are explained in the documentation of \code{\link[=mfpa]{mfpa()}}.
-This function does not check its arguments.
+Not exported. To be called from the \code{\link[=mfpa]{mfpa()}} function. Most parameters
+are explained in the documentation of \code{mfpa()}, but their form may differ
+in this version. This function does not check its arguments and expects that
+its input is prepared in \code{mfpa()}.
 }
 \section{Algorithm}{
 
 \itemize{
 \item Step 1: order variables according to \code{xorder}. This step may involve
 fitting a regression model to determine order of significance.
-\item Step 2: data pre-processing. Setting initial powers for fractional
+\item Step 2: input data pre-processing. Setting initial powers for fractional
 polynomial terms, checking if acd transformation is required and allowed.
 \item Step 3: run mfp algorithm cycles.
 }
 }
 
+\seealso{
+\code{\link[=mfpa]{mfpa()}}
+}

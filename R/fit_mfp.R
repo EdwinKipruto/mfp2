@@ -1,9 +1,45 @@
 #' @title Function to fit a model using the mfpa algorithm
 #' 
 #' @details 
-#' Not exported. To be called from the `mfpa()` function. Most parameters
-#' are explained in the documentation of [mfpa()].  
-#' This function does not check its arguments. 
+#' Not exported. To be called from the [`mfpa()`] function. Most parameters
+#' are explained in the documentation of `mfpa()`, but their form may differ
+#' in this version. This function does not check its arguments and expects that 
+#' its input is prepared in `mfpa()`.
+#' 
+#' @param x an input matrix.
+#' @param y a vector for the response variable or a `Surv` object.
+#' @param weights a vector of observation weights of length nobs. 
+#' @param offset a vector of length nobs of offsets.
+#' @param cycles an integer, maximum number of iteration cycles. 
+#' @param scale a numeric vector of length nvars of scaling factors.
+#' @param shift a numeric vector of length nvars of shifts.
+#' @param df a numeric vector of length nvars of degrees of freedom.
+#' @param center a logical vector of length nvars indicating if variables are 
+#' to be centered.
+#' @param family a character string representing a family object.
+#' @param criterion a character string defining the criterion used to select 
+#' variables and FP models of different degrees.
+#' @param select a numeric vector of length nvars indicating significance levels
+#' for backward elimination.
+#' @param alpha a numeric vector of length nvars indicating significance levels 
+#' for tests between FP models of different degrees. 
+#' @param keep a character vector that with names of variables to be kept 
+#' in the model. 
+#' @param xorder a string determining the order of entry of the covariates
+#' into the model-selection algorithm. 
+#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' covariates.
+#' @param method a character string specifying the method for tie handling in 
+#' Cox regression.
+#' @param strata a factor of all possible combinations of stratification 
+#' variables. Returned from [survival::strata()]. 
+#' @param nocenter a numeric vector with a list of values for fitting Cox 
+#' models. See [survival::coxph()] for details.
+#' @param acdx a logical vector of length nvars indicating continuous variables 
+#' to undergo the approximate cumulative distribution (ACD) transformation.
+#' @param ftest a logical indicating the use of the F-test for Gaussian models.
+#' @param control a list with parameters for model fit.
+#' @param verbose a logical; run in verbose mode.
 #' 
 #' @section Algorithm: 
 #' 
@@ -15,6 +51,9 @@
 #' 
 #' @return 
 #' See [mfpa()] for details on the returned object.
+#' 
+#' @seealso 
+#' [mfpa()]
 fit_mfp <- function(x, 
                     y, 
                     weights,
@@ -24,19 +63,19 @@ fit_mfp <- function(x,
                     shift,
                     df, 
                     center, 
-                    criterion,
-                    xorder,
-                    powers, 
                     family, 
-                    method, 
+                    criterion,
                     select, 
                     alpha, 
                     keep, 
+                    xorder,
+                    powers, 
+                    method, 
                     strata, 
-                    ftest,
-                    control,
                     nocenter,
                     acdx, 
+                    ftest,
+                    control,
                     verbose) {
   
   variables_x <- colnames(x) 
@@ -66,12 +105,11 @@ fit_mfp <- function(x,
     select[which(names(select) %in% keep)] = 1
   }
 
-  #-----------------------------------------------------------------------------
-  # Check whether acd transformation is required
-  #-----------------------------------------------------------------------------
+  # acd transformation setup
   if (any(acdx)) {
-    # reset acdx of variables with less than 5 level to false
+    # reset acdx of variables with less than 5 distinct values to False
     acdx <- reset_acd(x, acdx)
+    
     # assign two powers to acd variables (1,NA). The first is for xi, and the
     # second is for acd(xi). NA has been assigned to acd(xi), which will be
     # updated in the MFP cycles.

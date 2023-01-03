@@ -19,7 +19,18 @@
 #' models, the strata option can be used. Currently `mfpa()` only supports
 #' a single factor as strata.
 #'
-#' @section Details on scaling and centering:
+#' @section Details on shifting, scaling and centering:
+#' 
+#' Fractional polynomials are only defined for positive variables. Thus, 
+#' `mfpa()` estimates shifts for each variables to achieve this, or assumes
+#' that this is the case when computing fractional powers of the input variables
+#' in case that shifting is disabled manually. 
+#' 
+#' If the values of the variables are too large or too small, the reported 
+#' results of fractional polynomials may be difficult to interpret. 
+#' Scaling can be done automatically or by directly specifying the
+#' scaling values so that the magnitude of the `x` values are not too large.
+#' By default scaling factors are estimated by the program as follows.
 #'
 #' After adjusting the location of \eqn{x} so that its minimum value is positive,
 #' creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by 
@@ -90,102 +101,102 @@
 #' }
 #' The result is the selection of one of the six models. 
 #'
-#' @param x input matrix, of dimension nobs x nvars; each row is an observation 
-#'   vector.
-#' @param y vector for response variable. For `family="binomial"` should be  a
-#'   variable with two levels (see [stats::glm()]). 
-#'   For `family="cox"` it must be a `Surv` object containing  2 columns.
-#' @param weights observation weights. Default is `NULL` which assigns a weight 
-#'   of 1 to each observation.
+#' @param x an input matrix of dimension nobs x nvars. Each row is an 
+#' observation vector.
+#' @param y a vector for the response variable. For `family="binomial"` it 
+#' should be  a vector with two levels (see [stats::glm()]). 
+#' For `family="cox"` it must be a `Surv` object containing  2 columns.
+#' @param weights a vector of observation weights of length nobs. 
+#' Default is `NULL` which assigns a weight of 1 to each observation.
 #' @param offset a vector of length nobs that is included in the linear
-#'   predictor. Useful for the poisson family (e.g. log of exposure time).
-#'   Default is `NULL` which assigns an offset  of 0 to each observation.
-#'   If supplied, then values must also be supplied to the `predict()` function.
-#' @param cycles maximum number of iteration cycles. Default is 5.
-#' @param scale if the values of the variable are too large or too small,
-#' the reported results of fractional polynomials may be difficult to
-#' interpret. Scaling can be done automatically or by directly specifying the
-#' scaling values so that the magnitude of the `x` values are not too large.
-#' By default scaling factors are estimated by the program (see Details section
-#' below). Rather than letting `mfpa()` automatically choose the scaling 
-#' factors, you may specify scale factors for each variable manually. 
+#' predictor. Useful for the poisson family (e.g. log of exposure time).
+#' Default is `NULL` which assigns an offset  of 0 to each observation.
+#' If supplied, then values must also be supplied to the `predict()` function.
+#' @param cycles an integer, maximum number of iteration cycles. Default is 5.
+#' @param scale a numeric vector of length nvars or single numeric specifying 
+#' scaling factors. If a single numeric, then the value will be replicated as
+#' necessary. Default is `NULL` which lets the program estimate the scaling 
+#' factors (see Details section).
 #' If scaling is not required set `scale = 1` to disable it.
-#' @param shift fractional polynomials are only defined for positive term
-#' variables. By default, `mfpa()` will assume that all variable values are 
-#' positive and attempt to compute fractional powers of the input variables. 
-#' By default, estimation of shifting factors will be performed.
-#' If the positive value assumption is incorrect, user-supplied shifting factors
-#' may also be used to make all variables positive. 
+#' @param shift a numeric vector of length nvars or a single numeric specifying
+#' shift terms. If a single numeric, then the value will be replicated as
+#' necessary. Default is `NULL` which lets the program estimate the shifts
+#' (see Details section).
 #' If shifting is not required, set `shift = 0` to disable it.
-#' @param df a vector of values (or single value) that sets the degrees of
-#' freedom (df) for each predictor. The df (not counting the intercept) are
-#' twice the degree of a fractional polynomial (FP). For example, an FP2 has 
-#' 4 df, while FP3 has 6 df. A single value `default` can be specified and the
-#' df for all predictors is taken to be that specific value. 
+#' @param df a numeric vector of length nvars or a single numeric that sets the 
+#' (default) degrees of freedom (df) for each predictor. If a single numeric, 
+#' then the value will be replicated as necessary. The df (not counting 
+#' the intercept) are twice the degree of a fractional polynomial (FP). 
+#' For example, an FP2 has 4 df, while FP3 has 6 df. 
 #' The program overrides default df based on the number of distinct (unique) 
 #' values for a variable as follows: 
 #' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
-#' assigned `df = min(2, default)` and >=6 distinct values are assigned  
+#' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
 #' `df = default`.
-#' @param center logical; defines the centering of the variables The default is
-#' mean centering, except for binary covariates, where the covariate is centered
-#' using the lower of the two distinct values of the covariate. 
-#' See Details section below.
+#' @param center a logical determining whether variables are centered before 
+#' model fit. The default `TRUE` implies mean centering, except for binary 
+#' covariates, where the covariate is centered using the lower of the two 
+#' distinct values of the covariate. See Details section below.
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
-#' @param criterion a criterion used to select variables and FP models of
-#' different degrees. Default is to use p-values in which the user can specify
+#' @param criterion a character string defining the criterion used to select 
+#' variables and FP models of different degrees. 
+#' Default is to use p-values in which case the user can specify
 #' the significance level (or use default level of 0.05) for variable and
 #' functional form selection (see `select` and `alpha` parameters below).
-#' If the user select the BIC or AIC criterion then the program would ignore 
-#' the nominal significance levels and select variables and functional forms
-#' using the chosen information criterion.
-#' @param select sets the nominal significance levels for variable selection by
-#' backward elimination. A variable is dropped if its removal causes a 
-#' non-significant increase in deviance. The rules for `select` are the same as
-#' those for `df` (see above). The default nominal significance level is 0.05 
-#' for all variables. Setting the nominal significance level to be 1 for a 
-#' given variable forces it into the model, leaving others to be selected. 
-#' Using the default selection level of 1 for all variables forces them all 
-#' into the model.
-#' @param alpha sets the significance levels for testing between FP models of 
-#' different degrees. The rules for `alpha` are the same as those for `df` 
-#' (see above). The default nominal significance level is 0.05 for all 
-#' variables. Example: `alpha = 0.05` specifies that all variables have an FP 
-#' selection level of 0.05. 
-#' @param keep keep one or more variables in the model. In case that 
-#' `criterion = "pvalue"`, this is equivalent to setting the selection level for
-#' the variables to keep to 1. However, this option also keeps the specified
-#' variables in the model when when using the BIC or AIC criteria. 
+#' If the user specifies the `BIC` or `AIC` criterion then the program  
+#' ignores the nominal significance levels and selects variables and functional 
+#' forms using the chosen information criterion.
+#' @param select a numeric vector of length nvars or a single numeric that 
+#' sets the nominal significance levels for variable selection by
+#' backward elimination. If a single numeric, then the value will be replicated
+#' as necessary. The default nominal significance level is 0.05 
+#' for all variables. Setting the nominal significance level to be 1 for  
+#' certain variables forces them into the model, leaving all other variables
+#' to be selected. The default selection level of 1 for all variables fits a 
+#' full model and disables variable selection.
+#' @param alpha a numeric vector of length nvars or a single numeric that 
+#' sets the significance levels for testing between FP models of 
+#' different degrees. If a single numeric, then the value will be replicated
+#' as necessary. The default nominal significance level is 0.05 for all 
+#' variables. 
+#' @param keep a character vector that with names of variables to be kept 
+#' in the model. In case that `criterion = "pvalue"`, this is equivalent to
+#' setting the selection level for the variables in `keep` to 1. 
+#' However, this option also keeps the specified variables in the model when 
+#' using the BIC or AIC criteria. 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. The default is `ascending`, which enters
 #' them by ascending p-values, or decreasing order of significance in a
 #' multiple regression (i.e. most significant first).
 #' `descending` places them in reverse significance order, whereas 
 #' `original` respects the original order in `x`.
-#' @param powers sets the permitted FP powers for all covariates. Default is
-#' `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 means natural logarithm.
+#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' covariates. Default is `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`,
+#' where 0 means natural logarithm.
 #' @param ties a character string specifying the method for tie handling in 
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
 #' models only and has no effect for other model families. 
 #' See [survival::coxph()] for details.
-#' @param strata variables to be used for stratification in a Cox model. 
-#' A new factor, whose levels are all possible combinations of the variables 
-#' supplied as arguments will be created. Default is `NULL` and a Cox model 
-#' without stratification would be fitted. See [survival::coxph()] for details.
-#' @param nocenter an optional list of values for fitting Cox models.
-#' See [survival::coxph()] for details.
-#' @param acdx a vector of names of continuous variables that undergo the
-#' approximate cumulative distribution (ACD) transformation.
+#' @param strata a character vector specifying the variables to be used for 
+#' stratification in a Cox model. A new factor, whose levels are all possible 
+#' combinations of the variables supplied as arguments will be created. 
+#' Default is `NULL` and a Cox model without stratification would be fitted. 
+#' See [survival::coxph()] for details. Currently only a single stratification
+#' factor is supported by `mfpa()`.
+#' @param nocenter a numeric vector with a list of values for fitting Cox 
+#' models. See [survival::coxph()] for details.
+#' @param acdx a character vector of names of continuous variables to undergo 
+#' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes `FSPA` to determine the best-fitting FP1(p1, p2) model 
-#' (see details section). The variable representing the ACD transformation of 
+#' (see Details section). The variable representing the ACD transformation of 
 #' `x` is named `A(x)`.
-#' @param ftest logical; for normal error models with small samples, critical 
+#' @param ftest a logical; for normal error models with small samples, critical 
 #' points from the F-distribution can be used instead of Chi-Square 
-#' distribution. Default uses the later. This argument is used for Gaussian 
-#' models only and has no effect for other model families.
-#' @param verbose logical; run in verbose mode.
+#' distribution. Default `FALSE` uses the latter. This argument is used for 
+#' Gaussian models only and has no effect for other model families.
+#' @param verbose a logical; run in verbose mode.
 #' 
 #' @return 
 #' `mfpa()` returns an object of class inheriting from `glm` or `copxh`, 
@@ -235,7 +246,7 @@ mfpa <- function(x,
                  scale = NULL, 
                  shift = NULL, 
                  df = 4, 
-                 center = T,
+                 center = TRUE,
                  family = c("gaussian", "poisson", "binomial", "cox"),
                  criterion = c("pvalue", "BIC", "AIC"),
                  select = 0.05, 
@@ -247,8 +258,8 @@ mfpa <- function(x,
                  strata = NULL,
                  nocenter = NULL,
                  acdx = NULL,
-                 ftest = F,
-                 verbose = T) {
+                 ftest = FALSE,
+                 verbose = TRUE) {
   cl <- match.call()
   
   # match arguments ------------------------------------------------------------

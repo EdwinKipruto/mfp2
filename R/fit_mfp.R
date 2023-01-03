@@ -102,24 +102,24 @@ fit_mfp <- function(x,
   
   # force variables into the model by setting p-value to 1
   if (!is.null(keep)) {
-    select[which(names(select) %in% keep)] = 1
+    select[which(names(select) %in% keep)] <- 1
   }
 
   # acd transformation setup
-  if (any(acdx)) {
+  if (any(acdx == TRUE)) {
     # reset acdx of variables with less than 5 distinct values to False
     acdx <- reset_acd(x, acdx)
     
-    # assign two powers to acd variables (1,NA). The first is for xi, and the
+    # assign two powers to acd variables (1, NA). The first is for xi, and the
     # second is for acd(xi). NA has been assigned to acd(xi), which will be
     # updated in the MFP cycles.
-    acd.variables <- variables_x[match(names(which(acdx)), variables_x)]
-    fp_powers.acd <- lapply(1:length(acd.variables), function(x) c(1, NA))
-    names(fp_powers.acd) <- acd.variables
-    # New initial powers with acd having two powers
-    fp_powers <- modifyList(x = fp_powers, val = fp_powers.acd)
-    # Override df of acd variables by setting them to 4
-    df <- replace(df, which(variables_ordered %in% acd.variables), rep(4, length(acd.variables)))
+    variables_acd <- names(acdx)[acdx == TRUE]
+    fp_powers_acd <- sapply(variables_acd, function(v) c(1, NA), 
+                            simplify = FALSE, USE.NAMES = TRUE)
+    # update initial powers with acd having two powers
+    fp_powers <- modifyList(x = fp_powers, val = fp_powers_acd)
+    # override df of acd variables by setting them to 4
+    df[which(variables_ordered %in% variables_acd)] <- 4
   }
 
   #-----------------------------------------------------------------------------

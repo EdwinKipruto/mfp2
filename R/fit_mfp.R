@@ -6,7 +6,9 @@
 #' in this version. This function does not check its arguments and expects that 
 #' its input is prepared in `mfpa()`.
 #' 
-#' @param x an input matrix.
+#' @param x an input matrix of dimensions nobs x nvars. Does not contain 
+#' intercept, but columns are already expanded into dummy variables as 
+#' necessary.
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
@@ -130,7 +132,7 @@ fit_mfp <- function(x,
   # run cycles and update the powers in each step
   while (j <= cycles) {
     if (verbose) {
-      print(sprintf("\ni Running MFP Cycle %d", j))
+      cat(sprintf("\ni Running MFP Cycle %d", j))
     }
     
     # estimated powers for the j-th cycle
@@ -159,7 +161,7 @@ fit_mfp <- function(x,
     # check for convergence
     if (identical(fp_powers, fp_powers_updated)) {
       converged <- TRUE
-      print(
+      cat(
         sprintf(
           "\ni Fractional polynomial fitting algorithm converged after %d cycles.\n", 
           j)

@@ -31,7 +31,9 @@ fit_mfp(
 )
 }
 \arguments{
-\item{x}{an input matrix.}
+\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+intercept, but columns are already expanded into dummy variables as
+necessary.}
 
 \item{y}{a vector for the response variable or a \code{Surv} object.}
 

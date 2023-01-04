@@ -9,13 +9,17 @@
 #' @section Brief summary of FPs:
 #' 
 #' In the following we denote fractional polynomials for a variable \eqn{x} by 
-#' \eqn{FP1(p1, p2)}, where 
-#' \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
+#' increasing complexity as either FP1 or FP2. \eqn{FP2(p1, p2)} is the most 
+#' flexible FP tranformation where 
+#' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
 #' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 #' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
 #' 0 indicates the logarithm. The optimal FP is then found by a closed testing
 #' procedure that seeks the best combination from all 64 pairs of
-#' powers \eqn{(p1, p2)}. For details see e.g. Sauerbrei et al (2006). 
+#' powers \eqn{(p1, p2)}. Functions that only involve a single power of
+#' the variable are denoted as FP1, i.e. 
+#' \deqn{FP1(p1) = \beta_1 x^{p1}.}
+#' For details see e.g. Sauerbrei et al (2006). 
 #'
 #' @section Details on `family` option:
 #'

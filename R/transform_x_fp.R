@@ -5,7 +5,10 @@
 # if all elements of power.list are NA then we return NULL otherwise we return
 # a matrix
 # center = a vector of TRUE or FALSE specifying whether x should be centered
-transform_x_fp <- function(x, power.list, center, acdx) {
+transform_x_fp <- function(x,
+                           power.list, 
+                           center, 
+                           acdx) {
   # check whether all power.list are equal to NA-all variables were eliminated
   if (all(is.na(unlist(power.list)))) {
     # return NULL

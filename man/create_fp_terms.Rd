@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{create_fp_terms}
 \alias{create_fp_terms}
-\title{Function to create overview table of fp terms}
+\title{Helper to create overview table of fp terms}
 \usage{
 create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
 }

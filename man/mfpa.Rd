@@ -303,3 +303,6 @@ Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}
 }
+\seealso{
+\code{\link[=summary.mfpa]{summary.mfpa()}}, \code{\link[=coef.mfpa]{coef.mfpa()}}
+}

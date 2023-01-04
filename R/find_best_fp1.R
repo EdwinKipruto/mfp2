@@ -1,19 +1,20 @@
-# A function that returns best FP1 function based on deviance, aic, bic or sse
-
-# @param x The original untransformed matrix of predictors. Each continuous
-# predictor is assumed to have  shifted and scaled.
-# xi = the name of the continuous predictor for which the FP function will be
-# estimated. There are no binary or two-level variables allowed.
-# allpowers = a named list of FP powers of all variables of interest, including
-# xi. Not that these powers are updated during backfitting or MFP cycles.
-# @param powers The set of FP powers.
-# @param y The response variable
-
-# @param method method for handling ties in cox model. see coxph() for explanation
-# @param weights see glm or coxph for explanation
-# @param offset see glm or coxph for explanation
-# @param family A character name specifying the family name i,e "gaussian",
-# "binomial", "poisson" or "cox"
+#' Function to find the best FP1 function based on deviance, aic, bic or sse
+#' 
+#' @param x The original untransformed matrix of predictors. Each continuous
+#' predictor is assumed to have  shifted and scaled.
+#' @param xi the name of the continuous predictor for which the FP function will 
+#' be estimated. There are no binary or two-level variables allowed.
+#' @param allpowers a named list of FP powers of all variables of interest, 
+#' including xi. Not that these powers are updated during backfitting or MFP 
+#' cycles.
+#' @param powers a set of FP powers.
+#' @param y the response variable.
+#' @param method method for handling ties in cox model. see coxph() for 
+#' explanation.
+#' @param weights see glm or coxph for explanation.
+#' @param offset see glm or coxph for explanation.
+#' @param family A character name specifying the family name i,e "gaussian",
+#' "binomial", "poisson" or "cox".
 find_best_fp1 <- function(y, 
                           x, 
                           xi, 

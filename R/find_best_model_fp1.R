@@ -75,7 +75,7 @@ find_best_model_fp1 <- function(x, y, xi, allpowers, df, weights, offset, contro
   } else { # criterion=="pvalue"
     if (ftest) {
       stats <- calculcate_f_statistic_stata(
-        dev.reduced = dev.roy.all[1], dev.full = dev.roy.all[2], d1 = 1,
+        dev_reduced = dev.roy.all[1], dev_full = dev.roy.all[2], d1 = 1,
         d2 = df.all[2], n = N
       )
       pvalue <- stats$pval

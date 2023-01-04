@@ -1,0 +1,193 @@
+#' Function to compute F-statistic and p-value
+#' 
+#' @details 
+#' `mfp` in Stata uses different formula, see
+#'  https://www.stata.com/manuals/rfp.pdf. That formula is implemented in 
+#'  [calculcate_f_statistic_stata()].
+#'  
+#'  This functions uses page 297 or equation next to 7.4 in 
+#'  http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
+#'  
+#'  @seealso 
+#'  [calculcate_f_statistic_stata()]
+calculcate_f_statistic <- function(sse_reduced, 
+                                   sse_full,
+                                   df_reduced, 
+                                   df_full) {
+  
+  # it can happen that the best fp1 is linear
+  # so we are testing between the same models
+  if (df_reduced == df_full) { 
+    fstatistic <- 0
+    pval <- 1
+  } else {
+    num <- (sse_reduced - sse_full) / (df_reduced - df_full)
+    denom <- sse_full / (df_full)
+    fstatistic <- num / denom
+    pval <- stats::pf(fstatistic, df1 = df_reduced - df_full,
+                      df2 = df_full, lower.tail = FALSE)
+  }
+  
+  list(
+    fstatistic = fstatistic,
+    pval = pval
+  )
+}
+
+#' Function to compute F-statistic as defined in `mfp` in Stata 
+#' 
+#' Alternative to [calculcate_f_statistic()].
+#' 
+#' @details 
+#' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf.
+#' 
+#' @seealso 
+#' [calculcate_f_statistic()]
+calculcate_f_statistic_stata <- function(dev_reduced, 
+                                         dev_full,
+                                         d1, 
+                                         d2,
+                                         n) {
+  devdiff <- dev_reduced - dev_full
+  aa <- exp(devdiff / n)
+  fstatx <- (d2 / d1) * (aa - 1)
+  if (devdiff == 0) {
+    pval <- 1
+  } else {
+    pval <- stats::pf(fstatx, df1 = d1, df2 = d2, lower.tail = FALSE)
+  }
+  
+  list(
+    fstatistic = fstatx, 
+    pval = pval, 
+    dev.diff = devdiff
+  )
+}
+
+#' Function to calculates p-values for F-distribution
+#' 
+#' @param sse a vector of residual sum of squares for null, linear, fp1,
+#' fp2 to fpm.
+#' @param df  a vector of degrees of freedom for each sse.
+#' @param acd logical indicating the use of acd transformation.
+calculate_f_test <- function(sse, 
+                             df, 
+                             acd) {
+  if (acd) {
+    # we have sse = (NULL, M4, M2, M3, M1, M5)
+    # calculate p-values for the functions selection procedure:
+    # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
+    pvalues <- fstatistic <- numeric(5)
+    for (i in 1:4) {
+      fsttas <- calculcate_f_statistic(sse_reduced = sse[i], 
+                                       sse_full = sse[5],
+                                       df_reduced = df[i],
+                                       df_full = df[5])
+      fstatistic[i] <- fsttas$fstatistic
+      pvalues[i] <- fsttas$pval
+    }
+    # e). M3 vs M5
+    fsttas <- calculcate_f_statistic(sse_reduced = sse[6],
+                                     sse_full = sse[4], 
+                                     df_reduced = df[6],
+                                     df_full = df[4])
+    fstatistic[5] <- fsttas$fstatistic
+    pvalues[5] <- fsttas$pval
+  } else {
+    # we have sse = c(NULL, Linear, FP1, FP2,....FPm)---usual mfp approach
+    nn <- length(sse)
+    # Maximum permitted degree: nn-2, the first and second position is null and lin
+    m <- nn - 2
+    # calculate p-values for the functions selection procedure:
+    # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2...FPm vs FPm-1 etc.
+    pvalues <- fstatistic <- numeric(nn - 1)
+    for (i in 1:(nn - 1)) {
+      fsttas <- calculcate_f_statistic(sse_reduced = sse[i], 
+                                       sse_full = sse[nn],
+                                       df_reduced = df[i], 
+                                       df_full = df[nn])
+      fstatistic[i] <- fsttas$fstatistic
+      pvalues[i] <- fsttas$pval
+    }
+  }
+  
+  list(
+    pvalues = pvalues,
+    fstatistic = fstatistic
+  )
+}
+
+#' Function to calculate p-values for F-distribution based on Royston formula
+#' 
+#' @details
+#' Uses formula on page 23 of Stata manual at 
+#' https://www.stata.com/manuals/rfp.pdf. 
+#' 
+#' @param dev a vector of deviance for models i.e Null, linear, FP1,...FPm.
+#' @param resid.df a vector of residual degrees of freedom for models.
+#' @param n sample size/number of observations.
+#' @param acd logical indicating use of acd transformation.
+calculate_f_test_royston <- function(dev, 
+                                     resid.df,
+                                     n, 
+                                     acd) {
+  if (acd) {
+    df <- c(4, 3, 2, 2, 1)
+    # CHECK ON THIS SECTION, THE OTHER SECTION HAS BEEN CORRECTED
+    # we have dev = (NULL, M4, M2, M3, M1, M5)
+    # calculate p-values for the functions selection procedure:
+    # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
+    # number of FP powers estimated in NULL = 0, M4 = 0, M2 = 1, M3 = 1, M1 = 2, M5 = 0
+    pwrs <- c(0, 0, 1, 1, 2, 0)
+    pvalues <- dev.diff <- fstatistic <- numeric(5)
+    for (i in 1:4) {
+      stats <- calculcate_f_statistic_stata(
+        dev_reduced = dev[i], dev_full = dev[5], d1 = df[i],
+        d2 = resid.df[5], n = n
+      )
+      fstatistic[i] <- stats$fstatistic
+      pvalues[i] <- stats$pval
+      dev.diff[i] <- stats$dev.diff
+    }
+    # e). M3 vs M5
+    stats2 <- calculcate_f_statistic_stata(
+      dev_reduced = dev[6], dev_full = dev[4], d1 = df[5],
+      d2 = resid.df[4], n = n
+    )
+    fstatistic[5] <- stats2$fstatistic
+    pvalues[5] <- stats2$pval
+    dev.diff[5] <- stats2$dev.diff
+  } else {
+    # we have dev = c(NULL, Linear, FP1, FP2,....FPm)
+    nn <- length(dev)
+    # Maximum permitted degree: nn-2, the first and second position is null and linear
+    m <- nn - 2
+    # calculate degrees of freedom for testing. Note that:
+    # FPm vs Null = 2m; FPm vs linear = 2m-1; FPm vs FP1 = 2m-2; FPm vs FP2 = 2m-4
+    # in general: FPm vs FPk = 2(m-k) for m>k
+    k <- seq(m - 1, 1)
+    df <- c(2 * m, 2 * m - 1, if (m >= 2) {
+      2 * (k)
+    }) # same as 2*(m-k) where k = seq(1,m-1)
+    # number of FP powers estimated in null = 0, linear = 0, fp1 =1, fp2 = 2,...
+    pwrs <- c(0, 0, seq_len(m))
+    # calculate p-values for the functions selection procedure:
+    # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
+    pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
+    for (i in 1:(nn - 1)) {
+      stats <- calculcate_f_statistic_stata(
+        dev_reduced = dev[i], dev_full = dev[nn], d1 = df[i],
+        d2 = resid.df[nn], n = n
+      )
+      pvalues[i] <- stats$pval
+      fstatistic[i] <- stats$fstatistic
+      dev.diff[i] <- stats$dev.diff
+    }
+  }
+  
+  list(
+    pvalues = pvalues, 
+    dev.diff = dev.diff, 
+    fstatistic = fstatistic
+  )
+}

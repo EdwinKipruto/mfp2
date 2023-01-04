@@ -437,7 +437,8 @@ order_variables_by_significance <- function(xorder,
 #' 
 #' @return 
 #' Logical vector of same length as `acdx`.
-reset_acd <- function(x, acdx) {
+reset_acd <- function(x, 
+                      acdx) {
   
   names_acd <- names(acdx)[which(acdx == TRUE)]
   

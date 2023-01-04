@@ -1,6 +1,9 @@
-# calculates p-values for Chi-square distribution
-# dev = a vector of deviance for models i.e Null, linear, FP1,...FPm
-calculate_chisquare_test <- function(dev, acd) {
+#' Function to calculate p-values for Chi-square distribution
+#' 
+#' @param dev a vector of deviance for models i.e Null, linear, FP1,...FPm.
+#' @param acd logical indicating the use of acd transformation.
+calculate_chisquare_test <- function(dev, 
+                                     acd) {
   if (acd) {
     df <- c(4, 3, 2, 2, 1)
     # we have dev = (NULL, M4, M2, M3, M1, M5)
@@ -34,5 +37,9 @@ calculate_chisquare_test <- function(dev, acd) {
       pvalues[i] <- pchisq(dev.diff[i], df = df[i], lower.tail = F)
     }
   }
-  return(list(pvalues = pvalues, dev.diff = dev.diff))
+  
+  list(
+    pvalues = pvalues, 
+    dev.diff = dev.diff
+  )
 }

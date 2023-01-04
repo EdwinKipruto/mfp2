@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{find_best_fp_cycle}
 \alias{find_best_fp_cycle}
-\title{Helper to run cycles of mfp algorithm}
+\title{Helper to run cycles of the mfp algorithm}
 \usage{
 find_best_fp_cycle(
   x,
@@ -35,6 +35,15 @@ current cycle. To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 A cycle is defined as a pass through all of the predictors in the input
 matrix \code{x}. A step is defined as the assessment of a single predictor.
 This algorithm is described in Sauerbrei et al 2006.
+
+Briefly, a cycle works as follows. It has as input the data matrix and a set
+of current fp powers for each variable. Some of the variables may have their
+fp power set to NA, which means they were deselected from the model.
+In each step, the fp powers of a single covariate are assessed.
+To do this, all of the other variables are transformed as defined by the
+current powers (this is done in \code{\link[=extract_adjustment_data]{extract_adjustment_data()}}) and the
+fp powers of the variable of interest are tested using the closed test
+procedure (done in \code{\link[=find_best_fp_step]{find_best_fp_step()}}).
 }
 \references{
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.

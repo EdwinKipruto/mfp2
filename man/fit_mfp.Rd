@@ -110,11 +110,12 @@ its input is prepared in \code{mfpa()}.
 fitting a regression model to determine order of significance.
 \item Step 2: input data pre-processing. Setting initial powers for fractional
 polynomial terms, checking if acd transformation is required and allowed.
-\item Step 3: run mfp algorithm cycles.
+\item Step 3: run mfp algorithm cycles. See \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}} for more
+details.
 \item Step 4: fit final model using estimated powers.
 }
 }
 
 \seealso{
-\code{\link[=mfpa]{mfpa()}}
+\code{\link[=mfpa]{mfpa()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}
 }

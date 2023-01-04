@@ -2,7 +2,7 @@
 % Please edit documentation in R/find_best_fp_step.R
 \name{find_best_fp_step}
 \alias{find_best_fp_step}
-\title{Function to estimate the best FP functions for a variable}
+\title{Function to estimate the best FP functions for a single variable}
 \usage{
 find_best_fp_step(
   x,
@@ -36,4 +36,11 @@ See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here.
 The function selection procedure (FSP) is used if the p-value criterion is
 chosen, whereas the criteria AIC and BIC select the model with the smallest
 AIC and BIC, respectively.
+
+It uses transformations for all other variables to assess the FP form of
+the current variable of interest. This function covers three main use cases:
+the linear case df = 1 to test between NULL and linear models; the case
+that an acd transformation is requested for the variable of interest;
+and the usual case of the normal mfp algorithm to assess non-linear
+functional forms.
 }

@@ -50,14 +50,15 @@
 #' fitting a regression model to determine order of significance. 
 #' * Step 2: input data pre-processing. Setting initial powers for fractional 
 #' polynomial terms, checking if acd transformation is required and allowed.
-#' * Step 3: run mfp algorithm cycles. 
+#' * Step 3: run mfp algorithm cycles. See [find_best_fp_cycle()] for more 
+#' details.
 #' * Step 4: fit final model using estimated powers.
 #' 
 #' @return 
 #' See [mfpa()] for details on the returned object.
 #' 
 #' @seealso 
-#' [mfpa()]
+#' [mfpa()], [find_best_fp_cycle()]
 fit_mfp <- function(x, 
                     y, 
                     weights,
@@ -459,7 +460,7 @@ reset_acd <- function(x,
   acdx
 }
 
-#' Helper to run cycles of mfp algorithm 
+#' Helper to run cycles of the mfp algorithm 
 #' 
 #' This function estimates the best FP functions for all predictors in the 
 #' current cycle. To be used in [fit_mfp()].
@@ -468,6 +469,15 @@ reset_acd <- function(x,
 #' A cycle is defined as a pass through all of the predictors in the input
 #' matrix `x`. A step is defined as the assessment of a single predictor. 
 #' This algorithm is described in Sauerbrei et al 2006.
+#' 
+#' Briefly, a cycle works as follows. It has as input the data matrix and a set 
+#' of current fp powers for each variable. Some of the variables may have their
+#' fp power set to NA, which means they were deselected from the model.
+#' In each step, the fp powers of a single covariate are assessed. 
+#' To do this, all of the other variables are transformed as defined by the 
+#' current powers (this is done in [extract_adjustment_data()]) and the 
+#' fp powers of the variable of interest are tested using the closed test 
+#' procedure (done in [find_best_fp_step()]). 
 #' 
 #' @references 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 

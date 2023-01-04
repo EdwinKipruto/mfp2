@@ -41,7 +41,8 @@ necessary.}
 
 \item{offset}{a vector of length nobs of offsets.}
 
-\item{cycles}{an integer, maximum number of iteration cycles.}
+\item{cycles}{an integer, maximum number of iteration cycles (i.e. update
+powers for all predictors).}
 
 \item{scale}{a numeric vector of length nvars of scaling factors.}
 

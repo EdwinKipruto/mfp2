@@ -12,7 +12,8 @@
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
-#' @param cycles an integer, maximum number of iteration cycles. 
+#' @param cycles an integer, maximum number of iteration cycles (i.e. update
+#' powers for all predictors). 
 #' @param scale a numeric vector of length nvars of scaling factors.
 #' @param shift a numeric vector of length nvars of shifts.
 #' @param df a numeric vector of length nvars of degrees of freedom.
@@ -113,13 +114,13 @@ fit_mfp <- function(x,
     # reset acdx of variables with less than 5 distinct values to False
     acdx <- reset_acd(x, acdx)
     
-    # assign two powers to acd variables (1, NA). The first is for xi, and the
-    # second is for acd(xi). NA has been assigned to acd(xi), which will be
-    # updated in the MFP cycles.
+    # assign two powers to acd variables (1, NA): 
+    # the first is for xi, and the second is for acd(xi). 
+    # Initially NA is assigned to acd(xi), to be updated in step 3.
     variables_acd <- names(acdx)[acdx == TRUE]
     fp_powers_acd <- sapply(variables_acd, function(v) c(1, NA), 
                             simplify = FALSE, USE.NAMES = TRUE)
-    # update initial powers with acd having two powers
+    # update initial powers 
     fp_powers <- modifyList(x = fp_powers, val = fp_powers_acd)
     # override df of acd variables by setting them to 4
     df[which(variables_ordered %in% variables_acd)] <- 4
@@ -137,9 +138,10 @@ fit_mfp <- function(x,
     }
     
     # estimated powers for the j-th cycle
-    fp_powers_updated <- iterate_find_best_model_fp(
-      x = x, y = y,
-      allpowers = fp_powers,
+    fp_powers_updated <- update_fp_powers_cycle(
+      x = x,
+      y = y,
+      fp_powers = fp_powers,
       df = df,
       weights = weights,
       offset = offset,
@@ -159,7 +161,7 @@ fit_mfp <- function(x,
       verbose = verbose
     )
 
-    # check for convergence
+    # check for convergence (i.e. no change in powers in model)
     if (identical(fp_powers, fp_powers_updated)) {
       converged <- TRUE
       cat(
@@ -461,47 +463,57 @@ reset_acd <- function(x,
 #' 
 #' This function estimates the best FP functions for all predictors in the 
 #' current cycle. To be used in [fit_mfp()].
-iterate_find_best_model_fp <- function(x, 
-                                       y, 
-                                       allpowers, 
-                                       df, 
-                                       weights, 
-                                       offset, 
-                                       family, 
-                                       criterion,
-                                       select, 
-                                       alpha, 
-                                       keep, 
-                                       powers, 
-                                       method, 
-                                       strata, 
-                                       verbose, 
-                                       ftest, 
-                                       control,
-                                       rownames,
-                                       nocenter, 
-                                       acdx) {
-  # FP powers have the same names as variables in design matrix x, but the former is ordered.
-  varnames <- names(allpowers)
-  # For printing on the screen: fpgen distinguishes between p-value and AIC/BIC output
+#' 
+#' @details 
+#' A cycle is defined as a pass through all of the predictors in the input
+#' matrix `x`. A step is defined as the assessment of a single predictor. 
+#' This algorithm is described in Sauerbrei et al 2006.
+#' 
+#' @references 
+#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
+#' \emph{Multivariable regression model building by using fractional 
+#' polynomials: Description of SAS, STATA and R programs. 
+#' Comput Stat Data Anal, 50(12): 3464-85.}
+update_fp_powers_cycle <- function(x, 
+                                  y, 
+                                  fp_powers, 
+                                  df, 
+                                  weights, 
+                                  offset, 
+                                  family, 
+                                  criterion,
+                                  select, 
+                                  alpha, 
+                                  keep, 
+                                  powers, 
+                                  method, 
+                                  strata, 
+                                  verbose, 
+                                  ftest, 
+                                  control,
+                                  rownames,
+                                  nocenter, 
+                                  acdx) {
+  
+  # for printing distinguish between p-value and information criteria
   if (verbose) {
     print_mfp_summary(criterion, ftest = ftest)
   }
-  # Initialization, starting from the first variable
-  i <- 1
-  # Evaluate the variables according to how order_variables() ordered them. If they are
-  # ascending, they are evaluated from most to least significant.
-  while (i <= ncol(x)) {
-    # Estimate xi's best FP power. It can also be NA (variable not significant),
-    # linear, FP1, FP2, and so on.
+  
+  names_x <- names(fp_powers)
+  for (i in 1:ncol(x)) {
+    # iterate through all predictors xi and estimate xi's best FP power
+    # in terms of loglikelihood
+    # the result can be NA (variable not significant), linear, FP1, FP2, ...
     fitx <- find_best_model_fp(
-      x = x, y = y,
-      xi = varnames[i],
-      allpowers = allpowers,
+      x = x, 
+      y = y,
+      xi = names_x[i],
+      allpowers = fp_powers,
       weights = weights,
       offset = offset,
-      df = df[i], # df for the ith variable
-      select = select[i], # select for the ith variable
+      df = df[i], 
+      select = select[i], 
       alpha = alpha[i],
       keep = keep,
       family = family,
@@ -516,14 +528,12 @@ iterate_find_best_model_fp <- function(x,
       acdx = acdx,
       verbose = verbose
     )
+    
     # update the FP power of the ith variable
-    allpowers[[i]] <- fitx$overall.best.fn
-    # Move to the next variable
-    i <- i + 1
+    fp_powers[[i]] <- fitx$overall.best.fn
   }
   
-  # we will return the deviances, aic, bic etc. in the future
-  allpowers
+  fp_powers
 }
 
 #' Helper to calculates the final degrees of freedom for the selected model

@@ -25,7 +25,7 @@ fit_fp <- function(y, x, powers = NULL, family, method, weights, shift = NULL,
   }
   nv <- length(powers)
   # Generate FP data
-  dt <- generate_fp_data(x = x[, 1, drop = T], degree = degree, powers = powers)$data
+  dt <- generate_fp_transformations(x = x[, 1, drop = T], degree = degree, powers = powers)$data
   devs <- fits <- vector(mode = "list", length = nv)
   # Fit linear models for each FP1 function
   xnames <- paste0("newx", seq_along(1:degree))

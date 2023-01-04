@@ -1,11 +1,13 @@
-# This function is used to estimate Approximate cumulative distribution (ACD)
-# x = is a vector of predictor of interest
-# shift = is a numeric number that is used to change the values of x to positive
-# values. The default value is NULL, and the program will estimate it automatically.
-# s = is the set of FP power.The default value for s is NULL,
-# and the value s = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3) is used.
-# scale =  is a numeric value used to scale x. Default is null and the program
-# will estimate it from the data
+#' Function to estimate Approximate cumulative distribution (ACD)
+#' 
+#' @param x a numeric vector.
+#' @param shift a numeric that is used to change the values of `x` to positive
+#' values. The default value is `NULL`, and the program will estimate it
+#' automatically.
+#' @param s a vector of allowed FP powers. The default value is `NULL`,
+#' meaning that the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.
+#' @param scale a numeric used to scale `x`. Default is `NULL` and the program
+#' will estimate it automatically. 
 acd <- function(x, power = NULL, shift = NULL, s = NULL, scale = NULL) {
   # # The user must supplier both power and shift or set both to NULL
   # if(is.null(power)){

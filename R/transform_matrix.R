@@ -1,14 +1,18 @@
-# a function that transforms each column of matrix x using final fp powers
-# x  = matrix with all continuous variables shifted and scaled and its column
-# names are equal to the names of power.list.
-# power.list =  is a named list of fp powers e.g list(x1 = c(0,1), x2 = 0, x3 = 1)
-# if all elements of power.list are NA then we return NULL otherwise we return
-# a matrix
-# center = a vector of TRUE or FALSE specifying whether x should be centered
-transform_x_fp <- function(x,
-                           power.list, 
-                           center, 
-                           acdx) {
+#' Function to transform each column of matrix using final FP powers or acd
+#' 
+#' @param x a matrix with all continuous variables shifted and scaled.
+#' @param power.list a named list of FP powers. 
+#' @param center a logical vector specifying whether the columns in `x` should 
+#' be centered.
+#' 
+#' @return 
+#' If all elements of `power.list` are `NA` then this function returns `NULL`.
+#' Otherwise a matrix is returned with transformed data, possibly with more 
+#' columns than the input matrix due to higher order FP transformations.
+transform_matrix <- function(x,
+                             power.list, 
+                             center, 
+                             acdx) {
   # check whether all power.list are equal to NA-all variables were eliminated
   if (all(is.na(unlist(power.list)))) {
     # return NULL
@@ -32,7 +36,7 @@ transform_x_fp <- function(x,
         x.acdx <- x[, xnames1, drop = F]
         xtrans.acd <- vector(mode = "list", length = length(pow.acd))
         for (i in seq_along(xnames1)) {
-          xtrans.acd[[i]] <- generate_acd_fp(
+          xtrans.acd[[i]] <- transform_acd_vector(
             x = x.acdx[, i, drop = T],
             power = pow.acd[[i]], scale = 1, # scale = scale[i],
             center = center[xnames1][i], shift = NULL
@@ -52,15 +56,15 @@ transform_x_fp <- function(x,
         xtr2 <- NULL
       } else {
         # get rid of unselected variables
-        # generate_fp returns NULL when power = NA
+        # transform_fp_vector returns NULL when power = NA
         pow2 <- pow[!is.na(pow)]
         xnames2 <- names(pow2)
         xx <- x[, xnames2, drop = F]
         xtrans <- vector(mode = "list", length = length(pow2))
         for (i in seq_along(xnames2)) {
-          # x is already scaled and shifted so generate_fp
+          # x is already scaled and shifted so transform_fp_vector
           # shifting is irrelevant
-          xtrans[[i]] <- generate_fp(
+          xtrans[[i]] <- transform_fp_vector(
             x = xx[, i, drop = T], power = pow2[[i]], scale = 1, # scale = scale[i],
             center = center[xnames2][i], shift = NULL
           ) # shift = shift[i])
@@ -85,8 +89,8 @@ transform_x_fp <- function(x,
       x <- x[, namxx, drop = F]
       xtransx <- vector(mode = "list", length = length(fpp))
       for (i in seq_along(namxx)) {
-        # x is already scaled and shifted so generate_fp shifting is irrelevant
-        xtransx[[i]] <- generate_fp(
+        # x is already scaled and shifted so transform_fp_vector shifting is irrelevant
+        xtransx[[i]] <- transform_fp_vector(
           x = x[, i, drop = T], power = fpp[[i]], scale = 1, # scale = scale[i],
           center = center[namxx][i], shift = 0
         ) # shift = shift[i])
@@ -97,5 +101,6 @@ transform_x_fp <- function(x,
       ))
     }
   }
-  return(xtr.out)
+  
+  xtr.out
 }

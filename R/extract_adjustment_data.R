@@ -55,12 +55,12 @@ extract_adjustment_data <- function(x,
       # variables as FP2 variables. we use a special function for acd
       if (acdxa[i]) {
         # scale = 1 and shift = 0 means no scaling and shifting
-        xadjust.T[[i]] <- generate_acd_fp(
+        xadjust.T[[i]] <- transform_acd_vector(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0, s = powers
         )
       } else {
-        xadjust.T[[i]] <- generate_fp(
+        xadjust.T[[i]] <- transform_fp_vector(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0
         )
@@ -96,40 +96,11 @@ extract_adjustment_data <- function(x,
         powers <- fpd$powers
       } else {
         # Generate 8 variables if degree = 1, 36 if degree = 2 and so on
-        fpd <- generate_fp_data(xinterest, degree = df / 2, powers = powers)
+        fpd <- generate_fp_transformations(xinterest, degree = df / 2, powers = powers)
         fpdata <- fpd$data
         powers <- fpd$powers
       }
     }
   }
   return(list(powers = powers, fpdata = fpdata, adjdata = xadjust.T, adjustpowers = adjustpowers))
-}
-
-#' Helper to generate FPa data for variable of interest
-#' 
-#' Utilizes acd(x) transformation. To be used in [extract_adjustment_data()].
-#' 
-#' @param x a vector of a predictor for which FPs is required. x is assumed to 
-#' be shifted and scaled appropriately. 
-#' @param powers vector of FP powers.
-generate_acd_fp_data <- function(x, powers) {
-  # Possible combination of powers given degree = 2 i.e p1,p2
-  # we set degree = 2 because we are interested in two powers for x and ax = acd(x)
-  combs <- generate_fp_powers(degree = 2, powers = powers)
-  # interchange the columns of combs, select unrepeated powers and rbind
-  combs1 <- combs[, 2:1]
-  keep <- apply(combs1, 1, function(x) length(unique(x[!is.na(x)])) != 1)
-  # Final pairs of powers.if default FP set is used then its length is 64
-  combs2 <- rbind(combs, combs1[keep, ])
-  nfp <- dim(combs2)[1L]
-  # Save FP transformed data as list
-  fpdt <- vector(mode = "list", length = nfp)
-  for (i in seq_len(nfp)) {
-    fpdt[[i]] <- generate_acd_fp(
-      x = x, power = combs2[i, ], scale = 1,
-      shift = 0, center = F
-    )
-  }
-  
-  list(data = fpdt, powers = combs2)
 }

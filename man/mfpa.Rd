@@ -204,7 +204,7 @@ flexible FP tranformation where
 The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
 0 indicates the logarithm. The optimal FP is then found by a closed testing
-procedure that seeks the best combination from all 64 pairs of
+procedure that seeks the best combination from all 36 pairs of
 powers \eqn{(p1, p2)}. Functions that only involve a single power of
 the variable are denoted as FP1, i.e.
 \deqn{FP1(p1) = \beta_1 x^{p1}.}

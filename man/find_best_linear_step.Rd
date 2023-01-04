@@ -9,7 +9,6 @@ find_best_linear_step(
   y,
   xi,
   allpowers,
-  df,
   weights,
   offset,
   control,

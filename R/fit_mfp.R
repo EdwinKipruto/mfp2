@@ -186,7 +186,7 @@ fit_mfp <- function(x,
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
-  X <- transform_x_fp(
+  X <- transform_matrix(
     x = x, power.list = fp_powers, center = center, acdx = acdx
   )
 

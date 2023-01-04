@@ -9,13 +9,13 @@ generate_fp_powers(degree = NULL, powers = NULL)
 \arguments{
 \item{degree}{The degree of fractional polynomial; degree = 1 is FP1 and
 returns 8 powers; degree 2 is FP2 and returns 36 pairs of powers; degree 3 is
-FP3 and returns 120 triple of powers etc.}
+FP3 and returns 120 triples of powers etc.}
 
-\item{powers}{the set of fractional polynomial. Default is NULL in which the set
-s = {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used}
+\item{powers}{the set of allowed powers for the fractional polynomials.
+Default is \code{NULL} and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
 }
 \value{
-A matrix of powers depending on the degree
+A matrix of powers with degree columns and rows depending on the degree.
 }
 \description{
 Function that generates a matrix of FP powers for any degree

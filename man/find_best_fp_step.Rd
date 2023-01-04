@@ -43,5 +43,5 @@ the linear case df = 1 to test between NULL and linear models (see
 \code{\link[=find_best_linear_step]{find_best_linear_step()}}); the case that an acd transformation is requested
 for the variable of interest (see \code{\link[=find_best_acd_step]{find_best_acd_step()}});
 and the usual case of the normal mfp algorithm to assess non-linear
-functional forms.
+functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}}).
 }

@@ -9,8 +9,9 @@
 #' 
 #' It uses transformations for all other variables to assess the FP form of 
 #' the current variable of interest. This function covers three main use cases: 
-#' the linear case df = 1 to test between NULL and linear models; the case
-#' that an acd transformation is requested for the variable of interest; 
+#' the linear case df = 1 to test between NULL and linear models (see
+#' [find_best_linear_step()]); the case that an acd transformation is requested 
+#' for the variable of interest (see [find_best_acd_step()]); 
 #' and the usual case of the normal mfp algorithm to assess non-linear 
 #' functional forms. 
 find_best_fp_step <- function(x,
@@ -161,7 +162,7 @@ find_best_fp_step <- function(x,
       #----------------------------usual mfp procedure------------------------
     } else {
       # this part is needed for FPm if degree>2
-      bfp1 <- find_best_fp1(
+      bfp1 <- find_best_fp1_step(
         y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
@@ -618,7 +619,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
   # change acdx for xi to temporarily false so that we  fit bestFP1 for xi
   # while adjusting other variables
   acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
-  fit.fp1.xi <- find_best_fp1(
+  fit.fp1.xi <- find_best_fp1_step(
     y = y, x = x, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
@@ -640,7 +641,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
   # set acdx = F so that 8 fp variables will be generated for the new xi
   xx <- x
   xx[, which(colnames(x) == xi)] <- axi
-  fit.fp1.axi <- find_best_fp1(
+  fit.fp1.axi <- find_best_fp1_step(
     y = y, x = xx, xi = xi, allpowers = allpowers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
@@ -766,7 +767,7 @@ find_index_best_model_acd <- function(pvalue,
 #' @details 
 #' If the maximum allowed degree is 5, this function will calculate metrics for
 #' FP2 through FP5, which will then be combined with metrics for FP1 estimated 
-#' by [find_best_fp1()]. The linear function makes the formula more complicated, 
+#' by [find_best_fp1_step()]. The linear function makes the formula more complicated, 
 #' so there are separate functions for FP1 and FPm.
 calculate_metrics_fpm <- function(y, 
                                   x, 
@@ -787,7 +788,7 @@ calculate_metrics_fpm <- function(y,
   mm <- seq(2, degree)
   out <- vector(mode = "list", length = length(mm))
   for (k in seq_along(mm)) {
-    out[[k]] <- find_best_fpm(
+    out[[k]] <- find_best_fpm_step(
       y = y, x = x, xi = xi, allpowers = allpowers,
       powers = powers, family = family, weights = weights,
       offset = offset, strata = strata, control = control,

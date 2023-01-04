@@ -28,6 +28,6 @@ To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}.
 \details{
 If the maximum allowed degree is 5, this function will calculate metrics for
 FP2 through FP5, which will then be combined with metrics for FP1 estimated
-by \code{\link[=find_best_fp1]{find_best_fp1()}}. The linear function makes the formula more complicated,
+by \code{\link[=find_best_fp1_step]{find_best_fp1_step()}}. The linear function makes the formula more complicated,
 so there are separate functions for FP1 and FPm.
 }

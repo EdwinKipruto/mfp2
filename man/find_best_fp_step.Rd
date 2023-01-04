@@ -39,8 +39,9 @@ AIC and BIC, respectively.
 
 It uses transformations for all other variables to assess the FP form of
 the current variable of interest. This function covers three main use cases:
-the linear case df = 1 to test between NULL and linear models; the case
-that an acd transformation is requested for the variable of interest;
+the linear case df = 1 to test between NULL and linear models (see
+\code{\link[=find_best_linear_step]{find_best_linear_step()}}); the case that an acd transformation is requested
+for the variable of interest (see \code{\link[=find_best_acd_step]{find_best_acd_step()}});
 and the usual case of the normal mfp algorithm to assess non-linear
 functional forms.
 }

@@ -1,6 +1,6 @@
 # A function that select the best model between a null and a linear model for
 #  x of interest.Only suitable for variables with df = 1
-find_best_model_fp1 <- function(x, y, xi, allpowers, df, weights, offset, control,
+find_best_fp_step1 <- function(x, y, xi, allpowers, df, weights, offset, control,
                                 family, criterion, select, alpha, keep, powers, method,
                                 strata, ftest, rownames, nocenter, verbose, acdx) {
   #  Set df = 1 in the extract_adjustment_data() because linearity is assumed and fpdata

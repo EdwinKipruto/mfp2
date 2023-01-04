@@ -1,15 +1,18 @@
 #' Function to estimate the best FP functions for a variable
 #' 
-#'  The function selection procedure (FSP) is used if the p-value criterion is 
-#'  chosen, whereas the criteria AIC and BIC select the model with the smallest 
-#'  AIC and BIC, respectively.
-find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
+#' See [mfpa()] for a brief summary on the notation used here. 
+#' 
+#' @details 
+#' The function selection procedure (FSP) is used if the p-value criterion is 
+#' chosen, whereas the criteria AIC and BIC select the model with the smallest 
+#' AIC and BIC, respectively.
+find_best_fp_step <- function(x, y, xi, allpowers, df, weights, offset, family,
                             criterion, select, init, alpha, keep, powers, method, strata,
                             ftest, control, rownames, nocenter, verbose, acdx) {
   N <- dim(x)[1L]
   # If df = 1 then we just fit usual linear models and test: NULL vs Linear
   if (df == 1) {
-    fits <- find_best_model_fp1(
+    fits <- find_best_fp_step1(
       x = x, y = y, xi = xi, allpowers = allpowers,
       weights = weights, offset = offset, family = family,
       criterion = criterion, select = select, alpha = alpha,
@@ -342,7 +345,7 @@ find_best_model_fp <- function(x, y, xi, allpowers, df, weights, offset, family,
 
 #' Helper to find best model when acd transformation is desired
 #' 
-#' To be used in [find_best_model_fp()].
+#' To be used in [find_best_fp_step()].
 #' 
 #' @param pvalue vector of pvalues of: Null vs M1, lin(xi) vs M1, fp1(xi) vs M1, 
 #' FP1(acd(xi)) vs M1 and lin(acd(xi)) vs FP1(acd(xi)) in that order. 
@@ -382,7 +385,7 @@ find_index_best_model_acd <- function(pvalue,
 
 #' Helper to calculate metrics for models
 #' 
-#' To be used in [find_best_model_fp()].
+#' To be used in [find_best_fp_step()].
 #' 
 #' @details 
 #' If the maximum allowed degree is 5, this function will calculate metrics for

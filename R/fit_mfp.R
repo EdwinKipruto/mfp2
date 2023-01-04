@@ -138,7 +138,7 @@ fit_mfp <- function(x,
     }
     
     # estimated powers for the j-th cycle
-    fp_powers_updated <- update_fp_powers_cycle(
+    fp_powers_updated <- find_best_fp_cycle(
       x = x,
       y = y,
       fp_powers = fp_powers,
@@ -474,26 +474,26 @@ reset_acd <- function(x,
 #' \emph{Multivariable regression model building by using fractional 
 #' polynomials: Description of SAS, STATA and R programs. 
 #' Comput Stat Data Anal, 50(12): 3464-85.}
-update_fp_powers_cycle <- function(x, 
-                                  y, 
-                                  fp_powers, 
-                                  df, 
-                                  weights, 
-                                  offset, 
-                                  family, 
-                                  criterion,
-                                  select, 
-                                  alpha, 
-                                  keep, 
-                                  powers, 
-                                  method, 
-                                  strata, 
-                                  verbose, 
-                                  ftest, 
-                                  control,
-                                  rownames,
-                                  nocenter, 
-                                  acdx) {
+find_best_fp_cycle <- function(x, 
+                               y, 
+                               fp_powers, 
+                               df, 
+                               weights, 
+                               offset, 
+                               family, 
+                               criterion,
+                               select, 
+                               alpha, 
+                               keep, 
+                               powers, 
+                               method, 
+                               strata, 
+                               verbose, 
+                               ftest, 
+                               control,
+                               rownames,
+                               nocenter, 
+                               acdx) {
   
   # for printing distinguish between p-value and information criteria
   if (verbose) {
@@ -505,7 +505,7 @@ update_fp_powers_cycle <- function(x,
     # iterate through all predictors xi and estimate xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
-    fitx <- find_best_model_fp(
+    fitx <- find_best_fp_step(
       x = x, 
       y = y,
       xi = names_x[i],

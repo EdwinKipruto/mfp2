@@ -2,8 +2,7 @@
 % Please edit documentation in R/fit_model.R
 \name{fit_model}
 \alias{fit_model}
-\title{A function that fits generalized linear models and cox proportional hazard
-models. It uses glm.fit() and coxph.fit() function in stats and survival package}
+\title{Function that fits models supported by \code{mfpa}}
 \usage{
 fit_model(
   x,
@@ -19,17 +18,34 @@ fit_model(
 )
 }
 \arguments{
-\item{x}{matrix of predictors including column of 1s for intercept except for cox}
+\item{x}{a matrix of predictors including intercept for glms, but not for Cox
+models.}
 
-\item{y}{a vector of outcome variable in glm but a matrix of survival object in cox}
+\item{y}{a vector for the outcome variable for glms, and a \code{Surv} object
+for Cox models.}
 
-\item{family}{a character names specifying glm family in addition to cox as a family}
+\item{family}{a character strong specifying glm family to be used, or "cox"
+for Cox models.}
 
-\item{method}{a character string specifying the method for tie handling. See coxph()}
+\item{method}{a character string specifying the method for tie handling.
+See \code{\link[survival:coxph]{survival::coxph()}}.}
 
-\item{strata, control, weights, offset, rownames, nocenter}{parameters for cox model. see coxph()}
+\item{strata, control, weights, offset, rownames, nocenter}{parameters for Cox
+model. See \code{\link[survival:coxph]{survival::coxph()}} for details.
+
+@return
+A list with the following components:
+\itemize{
+\item \code{logl}: the log likelihood of the fitted model.
+\item \code{coefficients}: regression coefficients.
+\item \code{df}: number of parameters (degrees of freedom).
+\item \code{SSE}: residual sum of squares.
+\item \code{fit}: the object returned by the fitting procedure.
+}}
 }
 \description{
-A function that fits generalized linear models and cox proportional hazard
-models. It uses glm.fit() and coxph.fit() function in stats and survival package
+Fits generalized linear models and cox proportional hazard models.
+}
+\details{
+Computations rely on \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
 }

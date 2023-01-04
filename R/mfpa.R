@@ -5,6 +5,17 @@
 #' the outcome variable. It also has the ability to model a sigmoid relationship
 #' between x and an outcome variable using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2016).
+#' 
+#' @section Brief summary of FPs:
+#' 
+#' In the following we denote fractional polynomials for a variable \eqn{x} by 
+#' \eqn{FP1(p1, p2)}, where 
+#' \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
+#' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
+#' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
+#' 0 indicates the logarithm. The optimal FP is then found by a closed testing
+#' procedure that seeks the best combination from all 64 pairs of
+#' powers \eqn{(p1, p2)}. For details see e.g. Sauerbrei et al (2006). 
 #'
 #' @section Details on `family` option:
 #'
@@ -70,12 +81,12 @@
 #' model reduction by applying significance testing to six sub-families of
 #' functions,M1-M6, giving models M1 (most complex) through M6 (null):
 #' \itemize{
-#' \item{M1.}{FP1(p1, p2) (no simplification)}
-#' \item{M2.}{FP1(p1, .) (regular FP1 function of \eqn{x})}
-#' \item{M3.}{FP1(., p2) (regular FP1 function of \eqn{acd(x)})}
-#' \item{M4.}{FP1(1, .) (linear function of \eqn{x})}
-#' \item{M5.}{FP1(., 1) (linear function of \eqn{acd(x)})}
-#' \item{M6.}{Null (\eqn{x} omitted entirely)}
+#' \item{M1: }{FP1(p1, p2) (no simplification)}
+#' \item{M2: }{FP1(p1, .) (regular FP1 function of \eqn{x})}
+#' \item{M3: }{FP1(., p2) (regular FP1 function of \eqn{acd(x)})}
+#' \item{M4: }{FP1(1, .) (linear function of \eqn{x})}
+#' \item{M5: }{FP1(., 1) (linear function of \eqn{acd(x)})}
+#' \item{M6: }{Null (\eqn{x} omitted entirely)}
 #' }
 #' Selection among these six sub-functions is performed by a closed test 
 #' procedure known as the FSPA. It maintains the familywise type 1 error 
@@ -86,16 +97,16 @@
 #' provided by the `alpha` option. 
 #' The sequence of tests is as follows:
 #' \itemize{
-#' \item{Test 1.}{Compare the deviances of models 6 and 1 on 4 d.f. 
+#' \item{Test 1: }{Compare the deviances of models 6 and 1 on 4 d.f. 
 #' If not significant then stop and omit \eqn{x}, otherwise continue to step 2.}
-#' \item{Test 2.}{Compare the deviances of models 4 and 1 on 3 d.f. 
+#' \item{Test 2: }{Compare the deviances of models 4 and 1 on 3 d.f. 
 #' If not significant then accept model 4 and stop. Otherwise, continue to step 3.}
-#' \item{Test 3.}{Compare the deviance of models 2 and 1 on 2 d.f. 
+#' \item{Test 3: }{Compare the deviance of models 2 and 1 on 2 d.f. 
 #' If not significant then accept model 2 and stop. Otherwise continue to step 4.}
-#' \item{Test 4.}{Compare the deviance of models 3 and 1 on 2 d.f. 
+#' \item{Test 4: }{Compare the deviance of models 3 and 1 on 2 d.f. 
 #' If significant then model 1 cannot be simplified; accept model 1 and stop.  
 #' Otherwise continue to step 5.}
-#' \item{Test 5.}{Compare the deviances of models 5 and 3 on 1 d.f. 
+#' \item{Test 5: }{Compare the deviances of models 5 and 3 on 1 d.f. 
 #' If significant then model 3 cannot be simplified; accept model 3. 
 #' Otherwise, accept model 5. End of procedure.}
 #' }
@@ -211,33 +222,37 @@
 #' coefficients from the fitted model object.
 #' 
 #' An object of class `mfpa` is a list containing at least the following 
-#' components: #' 
+#' components:  
 #' \itemize{
-#' \item{coefficients}{a named vector of coefficients.}
-#' \item{residuals}{working residuals as returned by [stats::glm()] or 
+#' \item{coefficients: }{a named vector of coefficients.}
+#' \item{residuals: }{working residuals as returned by [stats::glm()] or 
 #' martingale residuals as returned by [survival::coxph()], depending on 
 #' `family`.}
-#' \item{family}{either the [stats::family()] object used for families supported
+#' \item{family: }{either the [stats::family()] object used for families supported
 #' by [stats::glm()] or "cox" for Cox proportional hazards models.}
-#' \item{linear.predictors}{the vector of linear predictors, i.e. the linear fit
+#' \item{linear.predictors: }{the vector of linear predictors, i.e. the linear fit
 #' on link scale. For `family = "cox"` this vector has been centered, see
 #' [survival::predict.coxph()] for more details.}
-#' \item{fp_terms}{a data.frame with information on fractional polynomial 
+#' \item{fp_terms: }{a data.frame with information on fractional polynomial 
 #' terms.}
-#' \item{transformations}{a data.frame with information on shifting, scaling
+#' \item{transformations: }{a data.frame with information on shifting, scaling
 #' and centering for all variables.}   
-#' \item{fp_powers}{a list with all powers of fractional polynomial terms.}
-#' \item{acd}{a vector with information for which variables the acd 
+#' \item{fp_powers: }{a list with all powers of fractional polynomial terms.}
+#' \item{acd: }{a vector with information for which variables the acd 
 #' transformation was applied.}
-#' \item{x}{the scaled and shifted input matrix but without transformations.}
-#' \item{y}{the original outcome variable.}
-#' \item{X}{the final transformed input matrix used to fit the final model.}
+#' \item{x: }{the scaled and shifted input matrix but without transformations.}
+#' \item{y: }{the original outcome variable.}
+#' \item{X: }{the final transformed input matrix used to fit the final model.}
 #' }
 #' The `mfpa` object may contain further information depending on family.
 #' 
 #' @references
+#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
+#' \emph{Multivariable regression model building by using fractional 
+#' polynomials: Description of SAS, STATA and R programs. 
+#' Comput Stat Data Anal, 50(12): 3464-85.}\cr
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
-#' regression models with asigmoid dose-response function. 
+#' regression models with a sigmoid dose-response function. 
 #' Stata Journal 14(2): 329-341.}\cr
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 

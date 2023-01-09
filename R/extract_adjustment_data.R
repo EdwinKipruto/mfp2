@@ -91,7 +91,7 @@ extract_adjustment_data <- function(x,
       # Generate fpdata if the variable has more than two levels or df>1
       # If a variable is acd we generate 64 pairs of variables
       if (acdx[xi]) {
-        fpd <- generate_acd_fp_data(xinterest, powers = powers)
+        fpd <- generate_acd_transformations(xinterest, powers = powers)
         fpdata <- fpd$data
         powers <- fpd$powers
       } else {

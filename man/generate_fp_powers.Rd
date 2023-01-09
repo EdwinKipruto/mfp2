@@ -2,21 +2,42 @@
 % Please edit documentation in R/generate_fp_powers.R
 \name{generate_fp_powers}
 \alias{generate_fp_powers}
+\alias{generate_acd_powers}
 \title{Function that generates a matrix of FP powers for any degree}
 \usage{
 generate_fp_powers(degree = NULL, powers = NULL)
+
+generate_acd_powers(powers = NULL)
 }
 \arguments{
 \item{degree}{The degree of fractional polynomial; degree = 1 is FP1 and
 returns 8 powers; degree 2 is FP2 and returns 36 pairs of powers; degree 3 is
-FP3 and returns 120 triples of powers etc.}
+FP3 and returns 120 triples of powers etc. If the ACD transformation is used,
+this degree is assumed to be 2. #'}
 
 \item{powers}{the set of allowed powers for the fractional polynomials.
 Default is \code{NULL} and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
 }
 \value{
-A matrix of powers with degree columns and rows depending on the degree.
+A matrix of powers with degree columns and rows depending on the \code{degree}.
 }
 \description{
 Function that generates a matrix of FP powers for any degree
 }
+\details{
+For FP powers, this function returns all combinations of the powers of
+length \code{degree}, that is all pairs in which each entry is taken from the
+set \code{powers}, but no pair is repeated (i.e. the order of the entries does
+not matter).
+Thus, for the default set of powers and degree 2, this function returns
+36 combinations.
+
+For ACD powers, this function simply returns all possible pairs of
+powers of length 2.
+Thus, for the default set of powers, this function returns 64 pairs.
+}
+\section{Functions}{
+\itemize{
+\item \code{generate_acd_powers}: Function to generate acd powers.
+}}
+

@@ -22,7 +22,7 @@ transformation.}
 A list with two entries:
 \itemize{
 \item \code{data}: a list with length equal to the number of possible FPs for the
-variable of interest. Each entry is a matrix with as degree many columns,
+variable of interest. Each entry is a matrix with degree many columns,
 and nobs observations comprising the FP transformed input variable.
 For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
 \item \code{powers}: the associated FP powers for each entry in data.
@@ -30,6 +30,17 @@ For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
 }
 \description{
 Function to generate all requested FP transformations for a single variable
+}
+\details{
+Any FP transformation is given by a vector of powers, e.g. (p1, p2) for
+degree 2. These correspond to powers x^p1 and x^p2. Thus, we only need to
+consider combinations of all values in \code{powers}, since order of the entries
+does not matter. See \code{\link[=generate_fp_powers]{generate_fp_powers()}}.
+A special case are repeated powers, i.e. p1 = p2. In this case, the repeated
+entries are multiplied by log(x) (see \code{\link[=transform_fp_vector]{transform_fp_vector()}}).
+
+When the ACD transformation is requested, then all pairs of length 2
+are considered, i.e. 64. See \code{\link[=generate_acd_powers]{generate_acd_powers()}}.
 }
 \section{Functions}{
 \itemize{

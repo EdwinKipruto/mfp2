@@ -73,10 +73,10 @@
 #' functions with a pair of FP1 functions, one in \eqn{x} and the other in 
 #' \eqn{acd(x)}.
 #' 
-#' This alternative class of four-parameter functions seems to provide about
+#' This alternative class of four-parameter functions provides about
 #' the same flexibility as the standard FP2 family, but the ACD component offers
 #' the additional possibility of sigmoid functions.
-#' Royston (2014b) discusses how the extended class of functions known as
+#' Royston (2014b) discusses how the extended the class of functions known as
 #' \eqn{FP1(p1, p2)}, namely
 #' \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
 #' can be fitted optimally by seeking the best combination of all 64 pairs of
@@ -93,7 +93,8 @@
 #' \item{M6: }{Null (\eqn{x} omitted entirely)}
 #' }
 #' Selection among these six sub-functions is performed by a closed test 
-#' procedure known as the FSPA. It maintains the familywise type 1 error 
+#' procedure known as the function-selection pocedure FSPA. 
+#' It maintains the familywise type 1 error 
 #' probability for selecting \eqn{x} at the value determined by the 
 #' `select` parameter. To obtain a 'final' model, a structured sequence of up 
 #' to five tests is carried out, the first at the significance level specified 
@@ -203,9 +204,9 @@
 #' models. See [survival::coxph()] for details.
 #' @param acdx a character vector of names of continuous variables to undergo 
 #' the approximate cumulative distribution (ACD) transformation.
-#' It also invokes `FSPA` to determine the best-fitting FP1(p1, p2) model 
-#' (see Details section). The variable representing the ACD transformation of 
-#' `x` is named `A(x)`.
+#' It also invokes the function-selection procedure to determine the 
+#' best-fitting FP1(p1, p2) model (see Details section). 
+#' The variable representing the ACD transformation of `x` is named `A(x)`.
 #' @param ftest a logical; for normal error models with small samples, critical 
 #' points from the F-distribution can be used instead of Chi-Square 
 #' distribution. Default `FALSE` uses the latter. This argument is used for 
@@ -289,6 +290,9 @@ mfpa <- function(x,
                  ftest = FALSE,
                  control = NULL, 
                  verbose = TRUE) {
+  
+  # this function prepares everything for fitting the actual mfpa model
+  
   cl <- match.call()
   
   # match arguments ------------------------------------------------------------
@@ -567,7 +571,7 @@ mfpa <- function(x,
       x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
   }
   
-  # fit model and make model specific adaptions --------------------------------
+  # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 
       weights = weights, offset = offset, cycles = cycles,

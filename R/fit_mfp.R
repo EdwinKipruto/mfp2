@@ -3,7 +3,7 @@
 #' @details 
 #' Not exported. To be called from the [`mfpa()`] function. Most parameters
 #' are explained in the documentation of `mfpa()`, but their form may differ
-#' in this version. This function does not check its arguments and expects that 
+#' in this function. This function does not check its arguments and expects that 
 #' its input is prepared in `mfpa()`.
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
@@ -472,12 +472,13 @@ reset_acd <- function(x,
 #' 
 #' Briefly, a cycle works as follows. It has as input the data matrix and a set 
 #' of current fp powers for each variable. Some of the variables may have their
-#' fp power set to NA, which means they were deselected from the model.
+#' fp power set to `NA`, which means they were deselected from the model.
 #' In each step, the fp powers of a single covariate are assessed. 
 #' To do this, all of the other variables are transformed as defined by the 
 #' current powers (this is done in [extract_adjustment_data()]) and the 
 #' fp powers of the variable of interest are tested using the closed test 
-#' procedure (done in [find_best_fp_step()]). 
+#' procedure (done in [find_best_fp_step()]). The results from each step are
+#' collected and returned, completing a cycle.
 #' 
 #' @references 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 

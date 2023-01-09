@@ -138,9 +138,9 @@ models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
 \item{acdx}{a character vector of names of continuous variables to undergo
 the approximate cumulative distribution (ACD) transformation.
-It also invokes \code{FSPA} to determine the best-fitting FP1(p1, p2) model
-(see Details section). The variable representing the ACD transformation of
-\code{x} is named \code{A(x)}.}
+It also invokes the function-selection procedure to determine the
+best-fitting FP1(p1, p2) model (see Details section).
+The variable representing the ACD transformation of \code{x} is named \code{A(x)}.}
 
 \item{ftest}{a logical; for normal error models with small samples, critical
 points from the F-distribution can be used instead of Chi-Square
@@ -268,10 +268,10 @@ Royston (2014b) describes how one could go further and replace FP2
 functions with a pair of FP1 functions, one in \eqn{x} and the other in
 \eqn{acd(x)}.
 
-This alternative class of four-parameter functions seems to provide about
+This alternative class of four-parameter functions provides about
 the same flexibility as the standard FP2 family, but the ACD component offers
 the additional possibility of sigmoid functions.
-Royston (2014b) discusses how the extended class of functions known as
+Royston (2014b) discusses how the extended the class of functions known as
 \eqn{FP1(p1, p2)}, namely
 \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
 can be fitted optimally by seeking the best combination of all 64 pairs of
@@ -288,7 +288,8 @@ functions,M1-M6, giving models M1 (most complex) through M6 (null):
 \item{M6: }{Null (\eqn{x} omitted entirely)}
 }
 Selection among these six sub-functions is performed by a closed test
-procedure known as the FSPA. It maintains the familywise type 1 error
+procedure known as the function-selection pocedure FSPA.
+It maintains the familywise type 1 error
 probability for selecting \eqn{x} at the value determined by the
 \code{select} parameter. To obtain a 'final' model, a structured sequence of up
 to five tests is carried out, the first at the significance level specified

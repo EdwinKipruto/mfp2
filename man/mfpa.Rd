@@ -256,7 +256,7 @@ So in brief: shifting is required to make input values positive, scaling
 helps to bring the values to a reasonable range. Both operations are
 applied before applying the FP transformation to an input variable.
 Centering, however, is done after applying the FP transformation.
-Also see \code{\link[=transform_fp_vector]{transform_fp_vector()}} for some more details.
+Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
 }
 
 \section{Details on  approximate cumulative distribution transformation}{

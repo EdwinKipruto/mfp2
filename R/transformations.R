@@ -1,7 +1,7 @@
 #' Functions to transform a variable using fractional polynomial powers or acd
 #' 
 #' These functions generate fractional polynomials for a variable similar to
-#' `fracgen` in Stata. `transform_acd_vector` generates the acd transformation
+#' `fracgen` in Stata. `transform_vector_acd` generates the acd transformation
 #' for a variable.
 #' 
 #' @details 
@@ -56,7 +56,7 @@
 #' Comput Stat Data Anal, 50(12): 3464-85.}
 #' 
 #' @export
-transform_fp_vector <- function(x, 
+transform_vector_fp <- function(x, 
                                 power = 1,
                                 scale = NULL, 
                                 center = FALSE, 
@@ -97,7 +97,7 @@ transform_fp_vector <- function(x,
   # transform data
   x_trafo <- matrix(NA, nrow = length(x), ncol = length(power))
   # transform using first power
-  x_trafo[, 1] <- transform_power_vector(x, power[1])
+  x_trafo[, 1] <- transform_vector_power(x, power[1])
   # transform other powers via loop if necessary
   for (j in seq_len(length(power) - 1)) { 
     k <- j + 1
@@ -107,7 +107,7 @@ transform_fp_vector <- function(x,
       x_trafo[, k] <- x_trafo[, j] * log(x)
     } else {
       # the subsequent power is not repeated, e.g. 1, 2, 3
-      x_trafo[, k] <- transform_power_vector(x, power[k])
+      x_trafo[, k] <- transform_vector_power(x, power[k])
     }
   }
 
@@ -118,9 +118,9 @@ transform_fp_vector <- function(x,
   x_trafo
 }
 
-#' @describeIn transform_fp_vector Function to generate acd transformation.
+#' @describeIn transform_vector_fp Function to generate acd transformation.
 #' @export
-transform_acd_vector <- function(x, 
+transform_vector_acd <- function(x, 
                                  power = c(1, 1),
                                  shift = NULL, 
                                  s = NULL, 
@@ -138,10 +138,10 @@ transform_acd_vector <- function(x,
   
   # transform x and acdx using the supplied powers
   x_acd <- acd(x, power = NULL, shift = shift, s = s, scale = scale)$acd
-  x_acd <- transform_fp_vector(x = x_acd, power = power[2],
+  x_acd <- transform_vector_fp(x = x_acd, power = power[2],
                                scale = scale, shift = shift, 
                                center = center)
-  x_fp <- transform_fp_vector(x = x, power = power[1],
+  x_fp <- transform_vector_fp(x = x, power = power[1],
                               scale = scale, shift = shift,
                               center = center)
 
@@ -186,7 +186,7 @@ transform_matrix <- function(x,
         x.acdx <- x[, xnames1, drop = F]
         xtrans.acd <- vector(mode = "list", length = length(pow.acd))
         for (i in seq_along(xnames1)) {
-          xtrans.acd[[i]] <- transform_acd_vector(
+          xtrans.acd[[i]] <- transform_vector_acd(
             x = x.acdx[, i, drop = T],
             power = pow.acd[[i]], scale = 1, # scale = scale[i],
             center = center[xnames1][i], shift = NULL
@@ -206,15 +206,15 @@ transform_matrix <- function(x,
         xtr2 <- NULL
       } else {
         # get rid of unselected variables
-        # transform_fp_vector returns NULL when power = NA
+        # transform_vector_fp returns NULL when power = NA
         pow2 <- pow[!is.na(pow)]
         xnames2 <- names(pow2)
         xx <- x[, xnames2, drop = F]
         xtrans <- vector(mode = "list", length = length(pow2))
         for (i in seq_along(xnames2)) {
-          # x is already scaled and shifted so transform_fp_vector
+          # x is already scaled and shifted so transform_vector_fp
           # shifting is irrelevant
-          xtrans[[i]] <- transform_fp_vector(
+          xtrans[[i]] <- transform_vector_fp(
             x = xx[, i, drop = T], power = pow2[[i]], scale = 1, # scale = scale[i],
             center = center[xnames2][i], shift = NULL
           ) # shift = shift[i])
@@ -239,8 +239,8 @@ transform_matrix <- function(x,
       x <- x[, namxx, drop = F]
       xtransx <- vector(mode = "list", length = length(fpp))
       for (i in seq_along(namxx)) {
-        # x is already scaled and shifted so transform_fp_vector shifting is irrelevant
-        xtransx[[i]] <- transform_fp_vector(
+        # x is already scaled and shifted so transform_vector_fp shifting is irrelevant
+        xtransx[[i]] <- transform_vector_fp(
           x = x[, i, drop = T], power = fpp[[i]], scale = 1, # scale = scale[i],
           center = center[namxx][i], shift = 0
         ) # shift = shift[i])
@@ -259,7 +259,7 @@ transform_matrix <- function(x,
 #' 
 #' @param x a vector of a predictor variable.
 #' @param power single power. 
-transform_power_vector <- function(x,
+transform_vector_power <- function(x,
                                    power = 1) {
   if (power == 0)
     return(log(x))

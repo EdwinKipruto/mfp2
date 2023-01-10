@@ -63,7 +63,7 @@
 #' helps to bring the values to a reasonable range. Both operations are 
 #' applied before applying the FP transformation to an input variable. 
 #' Centering, however, is done after applying the FP transformation.
-#' Also see [transform_fp_vector()] for some more details.
+#' Also see [transform_vector_fp()] for some more details.
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 

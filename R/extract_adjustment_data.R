@@ -55,12 +55,12 @@ extract_adjustment_data <- function(x,
       # variables as FP2 variables. we use a special function for acd
       if (acdxa[i]) {
         # scale = 1 and shift = 0 means no scaling and shifting
-        xadjust.T[[i]] <- transform_acd_vector(
+        xadjust.T[[i]] <- transform_vector_acd(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0, s = powers
         )
       } else {
-        xadjust.T[[i]] <- transform_fp_vector(
+        xadjust.T[[i]] <- transform_vector_fp(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
           scale = 1, shift = 0
         )

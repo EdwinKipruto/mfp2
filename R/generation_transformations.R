@@ -12,7 +12,7 @@
 #' consider combinations of all values in `powers`, since order of the entries
 #' does not matter. See [generate_fp_powers()]. 
 #' A special case are repeated powers, i.e. p1 = p2. In this case, the repeated 
-#' entries are multiplied by log(x) (see [transform_fp_vector()]).
+#' entries are multiplied by log(x) (see [transform_vector_fp()]).
 #' 
 #' When the ACD transformation is requested, then all pairs of length 2
 #' are considered, i.e. 64. See [generate_acd_powers()].
@@ -36,7 +36,7 @@ generate_fp_transformations <- function(x,
   # save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in 1:nfp) {
-    fpdt[[i]] <- transform_fp_vector(
+    fpdt[[i]] <- transform_vector_fp(
       x = x, power = combs[i, ], scale = 1, shift = 0, center = FALSE
     )
   }
@@ -58,7 +58,7 @@ generate_acd_transformations <- function(x,
   # Save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in seq_len(nfp)) {
-    fpdt[[i]] <- transform_acd_vector(
+    fpdt[[i]] <- transform_vector_acd(
       x = x, power = combs[i, ], scale = 1, shift = 0, center = FALSE
     )
   }

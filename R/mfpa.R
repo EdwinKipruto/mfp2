@@ -36,10 +36,10 @@
 #'
 #' @section Details on shifting, scaling and centering:
 #' 
-#' Fractional polynomials are only defined for positive variables. Thus, 
-#' `mfpa()` estimates shifts for each variables to achieve this, or assumes
-#' that this is the case when computing fractional powers of the input variables
-#' in case that shifting is disabled manually. 
+#' Fractional polynomials are only defined for positive variables due to the 
+#' use of logarithms. Thus, `mfpa()` estimates shifts for each variables to 
+#' achieve this, or assumes that this is the case when computing fractional 
+#' powers of the input variables in case that shifting is disabled manually. 
 #' 
 #' If the values of the variables are too large or too small, the reported 
 #' results of fractional polynomials may be difficult to interpret. 
@@ -58,6 +58,12 @@
 #' \eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
 #' the revised constant \eqn{\beta'_0} equals the fitted value of the FP
 #' function at the mean of \eqn{x'}.
+#' 
+#' So in brief: shifting is required to make input values positive, scaling
+#' helps to bring the values to a reasonable range. Both operations are 
+#' applied before applying the FP transformation to an input variable. 
+#' Centering, however, is done after applying the FP transformation.
+#' Also see [transform_fp_vector()] for some more details.
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 

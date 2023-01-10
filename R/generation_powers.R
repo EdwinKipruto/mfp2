@@ -38,6 +38,7 @@ generate_fp_powers <- function(degree = NULL,
 }
 
 #' @describeIn generate_fp_powers Function to generate acd powers.
+#' @export
 generate_acd_powers <- function(powers = NULL) {
   if (is.null(powers)) {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)

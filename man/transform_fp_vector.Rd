@@ -19,8 +19,8 @@ transform_acd_vector(
 \arguments{
 \item{x}{a vector of a predictor variable.}
 
-\item{power}{The user-supplied FP power. Default is 1 (linear). Must be a
-vector of length 2 for acd transformation.}
+\item{power}{a numeric vector indicating the FP power. Default is 1 (linear).
+Must be a vector of length 2 for acd transformation.}
 
 \item{scale}{scaling factors for x of interest. Must be positive integers.
 Default is \code{NULL} and scaling factors are automatically estimated by the
@@ -40,7 +40,7 @@ If no shifts are needed set \code{shift = 0}.}
 \value{
 Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
-length of \code{x}.
+length of \code{x}. If all powers are \code{NA}, then this function returns \code{NULL}.
 }
 \description{
 These functions generate fractional polynomials for a variable similar to
@@ -48,11 +48,37 @@ These functions generate fractional polynomials for a variable similar to
 for a variable.
 }
 \details{
-For example, this function  generates new variables for x given the power(s)
-e.g., xnew = log(x) when power = 0 and scale = F and center = F.
+The fp transformation generally transforms \code{x} as follows. For each pi in
+\code{power} = (p1, p2, ..., pn) it creates a variable x^pi and returns the
+collection of variables as a matrix. It may process the data using
+shifting, scaling and centering as desired.
+
+A special case are repeated powers, i.e. when some pi = pj. In this case,
+the fp transformations are given by x^pi and x^pi * log(x). In case
+more than 2 powers are repeated they are repeatedly multiplied with
+log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and
+x^pi * log(x)^2.
+
+Binary variables are not transformed, but may only be centered.
 }
 \section{Functions}{
 \itemize{
 \item \code{transform_acd_vector}: Function to generate acd transformation.
 }}
 
+\section{Data processing}{
+
+An important note on data processing. Variables are shifted and scaled
+before being transformed by any powers. That is to ensure positive values
+and reasonable scales. However, they are centered after transformation.
+That is to ensure that the correlation between variables stay intact,
+as centering before transformation would affect them. This is described
+in Sauerbrei et al (2006), as well as in the Stata manual of \code{mfp}.
+}
+
+\references{
+Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
+\emph{Multivariable regression model building by using fractional
+polynomials: Description of SAS, STATA and R programs.
+Comput Stat Data Anal, 50(12): 3464-85.}
+}

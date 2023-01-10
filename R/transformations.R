@@ -152,8 +152,9 @@ transform_vector_acd <- function(x,
 #' 
 #' @param x a matrix with all continuous variables shifted and scaled.
 #' @param power_list a named list of FP powers. 
-#' @param center a logical vector specifying whether the columns in `x` should 
-#' be centered.
+#' @param center a named logical vector specifying whether the columns in `x`
+#' should be centered.
+#' @param acdx a named logical vector specifying the use of acd transformation.
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.

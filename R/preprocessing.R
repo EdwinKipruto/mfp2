@@ -41,7 +41,7 @@ find_scale_factor <- function(x) {
   10^(sign(lrange) * floor(abs(lrange)))
 }
 
-#' Function that calculates an integer used to shift predictor
+#' Function that calculates a value used to shift predictor
 #' 
 #' @details
 #' For details on why shifting is necessary see the corresponding section in the
@@ -53,8 +53,8 @@ find_scale_factor <- function(x) {
 #' @param x a numeric vector.
 #' 
 #' @return 
-#' An integer that can be used to shift `x` to positive values. If all values 
-#' are positive, or if `x` is binary then 0 is returned. 
+#' A numeric value that can be used to shift `x` to positive values. 
+#' If all values are positive, or if `x` is binary then 0 is returned. 
 #' 
 #' @references 
 #' Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 

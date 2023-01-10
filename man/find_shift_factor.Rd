@@ -2,7 +2,7 @@
 % Please edit documentation in R/preprocessing.R
 \name{find_shift_factor}
 \alias{find_shift_factor}
-\title{Function that calculates an integer used to shift predictor}
+\title{Function that calculates a value used to shift predictor}
 \usage{
 find_shift_factor(x)
 }
@@ -10,11 +10,11 @@ find_shift_factor(x)
 \item{x}{a numeric vector.}
 }
 \value{
-An integer that can be used to shift \code{x} to positive values. If all values
-are positive, or if \code{x} is binary then 0 is returned.
+A numeric value that can be used to shift \code{x} to positive values.
+If all values are positive, or if \code{x} is binary then 0 is returned.
 }
 \description{
-Function that calculates an integer used to shift predictor
+Function that calculates a value used to shift predictor
 }
 \details{
 For details on why shifting is necessary see the corresponding section in the

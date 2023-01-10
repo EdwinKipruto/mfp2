@@ -11,8 +11,10 @@ transform_matrix(x, power_list, center, acdx)
 
 \item{power_list}{a named list of FP powers.}
 
-\item{center}{a logical vector specifying whether the columns in \code{x} should
-be centered.}
+\item{center}{a named logical vector specifying whether the columns in \code{x}
+should be centered.}
+
+\item{acdx}{a named logical vector specifying the use of acd transformation.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.

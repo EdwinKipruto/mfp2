@@ -95,9 +95,6 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 See \code{\link[=mfpa]{mfpa()}} for details on the returned object.
 }
 \description{
-Function to fit a model using the mfpa algorithm
-}
-\details{
 Not exported. To be called from the \code{\link[=mfpa]{mfpa()}} function. Most parameters
 are explained in the documentation of \code{mfpa()}, but their form may differ
 in this function. This function does not check its arguments and expects that

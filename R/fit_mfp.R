@@ -1,6 +1,5 @@
-#' @title Function to fit a model using the mfpa algorithm
+#' Function to fit a model using the mfpa algorithm
 #' 
-#' @details 
 #' Not exported. To be called from the [`mfpa()`] function. Most parameters
 #' are explained in the documentation of `mfpa()`, but their form may differ
 #' in this function. This function does not check its arguments and expects that 

@@ -21,7 +21,10 @@
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
 #' before being transformed by any powers. That is to ensure positive values
-#' and reasonable scales. However, they are centered after transformation. 
+#' and reasonable scales. Note that scaling does not change the estimated 
+#' powers, see also [find_scale_factor()].
+#' 
+#' However, they are centered after transformation. 
 #' That is to ensure that the correlation between variables stay intact, 
 #' as centering before transformation would affect them. This is described
 #' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.

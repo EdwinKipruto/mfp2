@@ -65,22 +65,15 @@ fit_acd <- function(x,
   z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-  fit <- fit_fp(
-    y = z, x = x, family = "gaussian", 
-    method = NULL, shift = shift, scalex = NULL,
-    weights = rep(1, n), offset = rep(0, n), 
-    strata = NULL, degree = 1,
-    powers = powers, 
-    control = NULL, rownames = NULL, nocenter = NULL
-  )
+  fit <- find_best_fp1_for_acd(x = x, y = z, powers = powers)
   
-  coefx <- fit$bestmodel$coefficients
-  zhat <- fit$bestmodel$fitted.values
+  coefx <- fit$fit$coefficients
+  zhat <- fit$fit$fitted.values
 
   list(acd = stats::pnorm(zhat), 
        beta0 = coefx[1], 
        beta1 = coefx[2], 
-       power = fit$bestpower, 
+       power = fit$power, 
        shift = shift, 
        scale = scale)
 }

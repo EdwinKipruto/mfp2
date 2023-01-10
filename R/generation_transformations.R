@@ -10,12 +10,12 @@
 #' Any FP transformation is given by a vector of powers, e.g. (p1, p2) for 
 #' degree 2. These correspond to powers x^p1 and x^p2. Thus, we only need to 
 #' consider combinations of all values in `powers`, since order of the entries
-#' does not matter. See [generate_fp_powers()]. 
+#' does not matter. See [generate_powers_fp()]. 
 #' A special case are repeated powers, i.e. p1 = p2. In this case, the repeated 
 #' entries are multiplied by log(x) (see [transform_vector_fp()]).
 #' 
 #' When the ACD transformation is requested, then all pairs of length 2
-#' are considered, i.e. 64. See [generate_acd_powers()].
+#' are considered, i.e. 64. See [generate_powers_acd()].
 #' 
 #' @return 
 #' A list with two entries: 
@@ -30,7 +30,7 @@ generate_fp_transformations <- function(x,
                                         powers) {
   
   # all possible combination of powers given degree
-  combs <- generate_fp_powers(degree = degree, powers = powers)
+  combs <- generate_powers_fp(degree = degree, powers = powers)
   nfp <- dim(combs)[1]
   
   # save FP transformed data as list
@@ -52,7 +52,7 @@ generate_acd_transformations <- function(x,
                                          powers) {
 
   # all possible pairs of powers
-  combs <- generate_acd_powers(powers = powers)
+  combs <- generate_powers_acd(powers = powers)
   nfp <- dim(combs)[1L]
   
   # Save FP transformed data as list

@@ -35,12 +35,12 @@ Function to generate all requested FP transformations for a single variable
 Any FP transformation is given by a vector of powers, e.g. (p1, p2) for
 degree 2. These correspond to powers x^p1 and x^p2. Thus, we only need to
 consider combinations of all values in \code{powers}, since order of the entries
-does not matter. See \code{\link[=generate_fp_powers]{generate_fp_powers()}}.
+does not matter. See \code{\link[=generate_powers_fp]{generate_powers_fp()}}.
 A special case are repeated powers, i.e. p1 = p2. In this case, the repeated
 entries are multiplied by log(x) (see \code{\link[=transform_vector_fp]{transform_vector_fp()}}).
 
 When the ACD transformation is requested, then all pairs of length 2
-are considered, i.e. 64. See \code{\link[=generate_acd_powers]{generate_acd_powers()}}.
+are considered, i.e. 64. See \code{\link[=generate_powers_acd]{generate_powers_acd()}}.
 }
 \section{Functions}{
 \itemize{

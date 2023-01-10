@@ -566,7 +566,7 @@ find_best_fpm_step <- function(y,
   # The length of generated FP variables for x of interest.
   nv <- length(fpdata)
   # Generate all possible FPm powers
-  fpmpowers <- generate_fp_powers(degree = m, powers = powers)
+  fpmpowers <- generate_powers_fp(degree = m, powers = powers)
   # log(n) for bic calculation
   n <- nrow(x)
   logn <- log(n)

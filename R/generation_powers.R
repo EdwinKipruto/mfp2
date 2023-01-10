@@ -24,7 +24,7 @@
 #' 
 #' @import arrangements
 #' @export
-generate_fp_powers <- function(degree = NULL, 
+generate_powers_fp <- function(degree = NULL, 
                                powers = NULL) {
   if (is.null(degree)) {
     degree <- 2
@@ -37,9 +37,9 @@ generate_fp_powers <- function(degree = NULL,
   arrangements::combinations(x = powers, k = degree, replace = TRUE)
 }
 
-#' @describeIn generate_fp_powers Function to generate acd powers.
+#' @describeIn generate_powers_fp Function to generate acd powers.
 #' @export
-generate_acd_powers <- function(powers = NULL) {
+generate_powers_acd <- function(powers = NULL) {
   if (is.null(powers)) {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }

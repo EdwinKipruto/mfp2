@@ -40,6 +40,10 @@
 #' meaning no shift is applied. If `NULL` then the shift is estimated 
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
 #' @param powers passed to [fit_acd()].
+#' @param acd_parameter a list usually returned by [fit_acd()]. In particular, 
+#' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
+#' `scale` which are to be applied when using the acd transformation in 
+#' new data.
 #' @param center Specification of centering for variable using
 #' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
 #' `x - min(x)` for binary variables. Default is no centering.
@@ -132,7 +136,8 @@ transform_vector_acd <- function(x,
                                  shift = 0, 
                                  powers = NULL, 
                                  scale = 1, 
-                                 center = FALSE) {
+                                 center = FALSE, 
+                                 acd_parameter = NULL) {
   
   if (length(power) != 2) 
     stop("! power must be of length two.", 
@@ -142,8 +147,12 @@ transform_vector_acd <- function(x,
     return(NULL)
   } 
   
-  # transform x and acdx using the supplied powers
-  x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
+  if (is.null(acd_parameter)) {
+    # estimate acd(x)
+    x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
+  } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
+  
+  # apply fp transform on x and acd(x)
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
                                scale = scale, shift = shift, 
                                center = center)

@@ -3,6 +3,7 @@
 S3method(coef,mfpa)
 S3method(print,mfpa)
 S3method(summary,mfpa)
+export(apply_acd)
 export(find_scale_factor)
 export(find_shift_factor)
 export(fit_acd)

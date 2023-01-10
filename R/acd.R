@@ -84,3 +84,34 @@ fit_acd <- function(x,
        shift = shift, 
        scale = scale)
 }
+
+#' Function to apply Approximate cumulative distribution (ACD)
+#' 
+#' Apply acd transformation as outlined in Royston and Sauerbrei (2016). 
+#' Designed to work with the output of [fit_acd()], see the corresponding
+#' documentation for more details.
+#' 
+#' @param x a numeric vector.
+#' @param beta0,beta1 each a numeric value, representing the coefficients of 
+#' the FP1 model for the ACD transformation.
+#' @param power a numeric value, estimated power to be used in the FP1 model for 
+#' the ACD transformation.
+#' @param shift a numeric value that is used to shift the values of `x` to
+#' positive values. 
+#' @param scale a numeric value used to scale `x`. 
+#' @param ... not used.
+#' 
+#' @return 
+#' The transformed input vector `x`.
+#' 
+#' @export
+apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
+  
+  if (length(power) != 1) 
+    stop("! `power` must be a single numeric value.")
+  
+  x <- (x + shift) / scale
+  zhat <- beta0 + beta1 * transform_vector_power(x, power)
+  
+  stats::pnorm(zhat)
+}

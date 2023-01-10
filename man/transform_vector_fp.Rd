@@ -13,7 +13,8 @@ transform_vector_acd(
   shift = 0,
   powers = NULL,
   scale = 1,
-  center = FALSE
+  center = FALSE,
+  acd_parameter = NULL
 )
 }
 \arguments{
@@ -36,6 +37,11 @@ meaning no shift is applied. If \code{NULL} then the shift is estimated
 automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 
 \item{powers}{passed to \code{\link[=fit_acd]{fit_acd()}}.}
+
+\item{acd_parameter}{a list usually returned by \code{\link[=fit_acd]{fit_acd()}}. In particular,
+it must have components that define \code{beta0}, \code{beta1}, \code{power}, \code{shift} and
+\code{scale} which are to be applied when using the acd transformation in
+new data.}
 }
 \value{
 Returns a matrix of transformed variable(s). The number of columns

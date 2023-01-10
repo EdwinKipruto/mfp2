@@ -44,10 +44,17 @@
 #' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
 #' `x - min(x)` for binary variables. Default is no centering.
 #' 
+#' @details 
+#' This function does not handle column names, as this function may be
+#' called with an unnamed vector as well. Thus, the returned matrix is
+#' always unnamed. 
+#' 
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns
 #' depends on the number of powers provided, the number of rows is equal to the
 #' length of `x`. If all powers are `NA`, then this function returns `NULL`.
+#' In case an acd transformation is applied, the acd term is returned
+#' as the second column of the matrix. 
 #' 
 #' @references 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
@@ -150,109 +157,79 @@ transform_vector_acd <- function(x,
 #' Function to transform each column of matrix using final FP powers or acd
 #' 
 #' @param x a matrix with all continuous variables shifted and scaled.
-#' @param power_list a named list of FP powers. 
+#' @param power_list a named list of FP powers to be applied to the columns of
+#' `x`. Only variables named in this list are transformed.
 #' @param center a named logical vector specifying whether the columns in `x`
 #' should be centered.
 #' @param acdx a named logical vector specifying the use of acd transformation.
+#' @param keep_x_order a logical indicating whether the order of columns
+#' should be kept as in the input matrix `x`, of if the columns should be 
+#' ordered according to `power_list`. The default is `FALSE`, since 
+#' the ordering by `power_list` reflects the `xorder` argument in [mfpa()].
+#' 
+#' @details 
+#' For details on the transformations see [transform_vector_fp()] and
+#' [transform_vector_acd()].
+#' 
+#' @section Column names: 
+#' Generally the original variable names are suffixed with ".i", where
+#' i enumerates the powers for a given variable in `power_list`. If a term
+#' uses an acd transformation, then the variable is prefixed with "(A)".
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.
-#' Otherwise a matrix is returned with transformed data, possibly with more 
-#' columns than the input matrix due to higher order FP transformations.
+#' Otherwise a matrix is returned with transformed variables as named in 
+#' `power_list`. The number of columns may possibly be different to the 
+#' input matrix due to higher order FP transformations.
+#' 
+#' @export
 transform_matrix <- function(x,
                              power_list, 
                              center, 
-                             acdx) {
-  # check whether all power_list are equal to NA-all variables were eliminated
+                             acdx, 
+                             keep_x_order = FALSE) {
+
   if (all(is.na(unlist(power_list)))) {
-    # return NULL
-    xtr.out <- NULL
-  } else {
-    namx <- names(power_list)
-    x <- x[, namx, drop = F]
-    # subset scale, center and shift using names of powers selected-
-    # scale <- scale[namx] # we assume x has been shifted and scaled
-    center <- center[namx]
-    acdx <- acdx[namx]
-    # transform acd variables if any
-    if (any(acdx)) {
-      # select FP powers for acd variables
-      pow.acd <- power_list[acdx]
-      # check whether the acd variables were selected
-      if (all(is.na(unlist(pow.acd)))) {
-        xtr1 <- NULL
-      } else {
-        xnames1 <- names(pow.acd)
-        x.acdx <- x[, xnames1, drop = F]
-        xtrans.acd <- vector(mode = "list", length = length(pow.acd))
-        for (i in seq_along(xnames1)) {
-          xtrans.acd[[i]] <- transform_vector_acd(
-            x = x.acdx[, i, drop = T],
-            power = pow.acd[[i]], scale = 1, # scale = scale[i],
-            center = center[xnames1][i], shift = NULL
-          ) # shift = shift[i])
-        }
-        # cbind acd transformed variables
-        xtr1 <- do.call(cbind, xtrans.acd)
-        # rename acd transformed variables. they start with letter "A"
-        snames <- unlist(sapply(xnames1, function(x) paste0(c(x, paste0("(A)", x)), ".", c(1, 1)),
-                                simplify = F, USE.NAMES = F
-        ))
-        colnames(xtr1) <- snames[which(!is.na(unlist(pow.acd)))]
-      }
-      # Variables without acd transformations
-      pow <- power_list[!acdx]
-      if (all(is.na(unlist(pow)))) {
-        xtr2 <- NULL
-      } else {
-        # get rid of unselected variables
-        # transform_vector_fp returns NULL when power = NA
-        pow2 <- pow[!is.na(pow)]
-        xnames2 <- names(pow2)
-        xx <- x[, xnames2, drop = F]
-        xtrans <- vector(mode = "list", length = length(pow2))
-        for (i in seq_along(xnames2)) {
-          # x is already scaled and shifted so transform_vector_fp
-          # shifting is irrelevant
-          xtrans[[i]] <- transform_vector_fp(
-            x = xx[, i, drop = T], power = pow2[[i]], scale = 1, # scale = scale[i],
-            center = center[xnames2][i], shift = NULL
-          ) # shift = shift[i])
-        }
-        # cbind non-acd transformed variables-
-        xtr2 <- do.call(cbind, xtrans)
-        # rename xtr such that if x1 is fp2 then we have x1.1, x1.2 whereas fp1 is x1.1
-        # we can as well use make.names(rep(names(fpp), lapply(fpp, length)), sep = ".")
-        # but has undesirable names like x1, x1.1 instead of x1.1, x1.2
-        colnames(xtr2) <- unlist(sapply(xnames2, function(x) paste0(x, ".", seq_along(pow2[[x]])),
-                                        simplify = F, USE.NAMES = F
-        ))
-      }
-      # combine xtr1 and xtr2
-      xtr.out <- cbind(xtr1, xtr2)
-      # Usual MFP without acd variables
+    # all variables were eliminated
+    return(NULL)
+  }
+
+  if (keep_x_order)
+    # reorder power_list to be in same order as columns in x
+    power_list <- power_list[order(match(names(power_list), colnames(x)))]
+
+  # only consider variables in power_list
+  names_vars <- names(power_list)
+  x <- x[, names_vars, drop = FALSE]
+  center <- center[names_vars]
+  acdx <- acdx[names_vars]
+
+  x_trafo = list()
+  for (name in names_vars) {
+    if (acdx[name]) {
+      # apply acd transformation
+      x_trafo[[name]] <- transform_vector_acd(
+        x[, name], power = power_list[[name]], center = center[name]
+      )
+      if (!is.null(x_trafo[[name]]))
+        # note that acd components are always in the second column
+        colnames(x_trafo[[name]]) <- c(
+          paste0(name, ".1"), paste0("(A)", name, ".1")
+        )
     } else {
-      # # Get rid of unselected variables denoted by NA in power_list
-      fpp <- power_list[!is.na(power_list)]
-      namxx <- names(fpp)
-      # subset x
-      x <- x[, namxx, drop = F]
-      xtransx <- vector(mode = "list", length = length(fpp))
-      for (i in seq_along(namxx)) {
-        # x is already scaled and shifted so transform_vector_fp shifting is irrelevant
-        xtransx[[i]] <- transform_vector_fp(
-          x = x[, i, drop = T], power = fpp[[i]], scale = 1, # scale = scale[i],
-          center = center[namxx][i], shift = 0
-        ) # shift = shift[i])
-      }
-      xtr.out <- do.call(cbind, xtransx)
-      colnames(xtr.out) <- unlist(sapply(namxx, function(x) paste0(x, ".", seq_along(fpp[[x]])),
-                                         simplify = F, USE.NAMES = F
-      ))
+      # apply fp transform
+      x_trafo[[name]] <- transform_vector_fp(
+        x[, name], power = power_list[[name]], center = center[name]
+      )
+      if (!is.null(x_trafo[[name]]))
+        # note that acd components are always in the second column
+        colnames(x_trafo[[name]]) <- paste0(
+          name, ".", seq_along(power_list[[name]])
+        )
     }
   }
   
-  xtr.out
+  do.call(cbind, x_trafo)
 }
 
 #' Simple function to transform vector by a single power

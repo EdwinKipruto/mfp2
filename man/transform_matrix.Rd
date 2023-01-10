@@ -4,23 +4,41 @@
 \alias{transform_matrix}
 \title{Function to transform each column of matrix using final FP powers or acd}
 \usage{
-transform_matrix(x, power_list, center, acdx)
+transform_matrix(x, power_list, center, acdx, keep_x_order = FALSE)
 }
 \arguments{
 \item{x}{a matrix with all continuous variables shifted and scaled.}
 
-\item{power_list}{a named list of FP powers.}
+\item{power_list}{a named list of FP powers to be applied to the columns of
+\code{x}. Only variables named in this list are transformed.}
 
 \item{center}{a named logical vector specifying whether the columns in \code{x}
 should be centered.}
 
 \item{acdx}{a named logical vector specifying the use of acd transformation.}
+
+\item{keep_x_order}{a logical indicating whether the order of columns
+should be kept as in the input matrix \code{x}, of if the columns should be
+ordered according to \code{power_list}. The default is \code{FALSE}, since
+the ordering by \code{power_list} reflects the \code{xorder} argument in \code{\link[=mfpa]{mfpa()}}.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.
-Otherwise a matrix is returned with transformed data, possibly with more
-columns than the input matrix due to higher order FP transformations.
+Otherwise a matrix is returned with transformed variables as named in
+\code{power_list}. The number of columns may possibly be different to the
+input matrix due to higher order FP transformations.
 }
 \description{
 Function to transform each column of matrix using final FP powers or acd
 }
+\details{
+For details on the transformations see \code{\link[=transform_vector_fp]{transform_vector_fp()}} and
+\code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+}
+\section{Column names}{
+
+Generally the original variable names are suffixed with ".i", where
+i enumerates the powers for a given variable in \code{power_list}. If a term
+uses an acd transformation, then the variable is prefixed with "(A)".
+}
+

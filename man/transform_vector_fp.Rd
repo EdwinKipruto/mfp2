@@ -41,6 +41,8 @@ automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
 length of \code{x}. If all powers are \code{NA}, then this function returns \code{NULL}.
+In case an acd transformation is applied, the acd term is returned
+as the second column of the matrix.
 }
 \description{
 These functions generate fractional polynomials for a variable similar to
@@ -60,6 +62,10 @@ log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and
 x^pi * log(x)^2.
 
 Binary variables are not transformed, but may only be centered.
+
+This function does not handle column names, as this function may be
+called with an unnamed vector as well. Thus, the returned matrix is
+always unnamed.
 }
 \section{Functions}{
 \itemize{

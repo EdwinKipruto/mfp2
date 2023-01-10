@@ -8,7 +8,7 @@ find_scale_factor(x)
 }
 \arguments{
 \item{x}{a numeric vector already shifted to positive values (see
-\code{\link[=find_shift_vector]{find_shift_vector()}}). This function requires at least 2 distinct values to
+\code{\link[=find_shift_factor]{find_shift_factor()}}). This function requires at least 2 distinct values to
 work.}
 }
 \value{

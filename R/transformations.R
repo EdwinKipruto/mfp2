@@ -175,6 +175,11 @@ transform_vector_acd <- function(x,
 #' should be kept as in the input matrix `x`, of if the columns should be 
 #' ordered according to `power_list`. The default is `FALSE`, since 
 #' the ordering by `power_list` reflects the `xorder` argument in [mfpa()].
+#' @param acd_parameter_list a named list. Only required when transformation
+#' are to be applied to new data. Entries must correspond to the entries where
+#' `acdx` is set to `TRUE`. Each components is to be passed to 
+#' [transform_vector_acd()]. The default value `NULL` indicates that the
+#' parameters for the acd transformations are to be estimated.
 #' 
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
@@ -196,7 +201,8 @@ transform_matrix <- function(x,
                              power_list, 
                              center, 
                              acdx, 
-                             keep_x_order = FALSE) {
+                             keep_x_order = FALSE, 
+                             acd_parameter_list = NULL) {
 
   if (all(is.na(unlist(power_list)))) {
     # all variables were eliminated
@@ -218,7 +224,8 @@ transform_matrix <- function(x,
     if (acdx[name]) {
       # apply acd transformation
       x_trafo[[name]] <- transform_vector_acd(
-        x[, name], power = power_list[[name]], center = center[name]
+        x[, name], power = power_list[[name]], center = center[name], 
+        acd_parameter = acd_parameter_list[[name]]
       )
       if (!is.null(x_trafo[[name]]))
         # note that acd components are always in the second column

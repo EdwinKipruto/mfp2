@@ -4,6 +4,10 @@
 #' For details on why scaling is useful see the corresponding section in the
 #' documentation of [mfpa()].
 #' 
+#' The determination of the scaling factor is independent (i.e. not affected 
+#' by) shifts in the input data, as it only depends on the range of the 
+#' input data.
+#' 
 #' Note that the estimation of powers is unaffected by scaling, the same powers 
 #' are found for scaled input data. In extreme cases scaling is necessary to 
 #' preserve accuracy, see Royston and Sauerbrei (2008).

@@ -32,13 +32,13 @@
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
 #' Must be a vector of length 2 for acd transformation.
-#' @param scale scaling factors for x of interest. Must be positive integers.
-#' Default is `NULL` and scaling factors are automatically estimated by the
-#' program. If no scaling is needed set `scale = 1`.
-#' @param shift adjustment factors required for shifting x to positive
-#' values. Default is `NULL` and adjustment factors are estimated automatically
-#' using Royston and Sauerbrei formula iff any `x` <= 0. 
-#' If no shifts are needed set `shift = 0`.
+#' @param scale scaling factor for x of interest. Must be a positive integer
+#' or `NULL`. Default is 1, meaning no scaling is applied. 
+#' If `NULL`, then scaling factors are automatically estimated by the
+#' program. 
+#' @param shift shift required for shifting x to positive values. Default is 0, 
+#' meaning no shift is applied. If `NULL` then the shift is estimated 
+#' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
 #' @param s passed to [acd()].
 #' @param center Specification of centering for variable using
 #' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
@@ -58,9 +58,9 @@
 #' @export
 transform_vector_fp <- function(x, 
                                 power = 1,
-                                scale = NULL, 
+                                scale = 1, 
                                 center = FALSE, 
-                                shift = NULL) {
+                                shift = 0) {
   
   if (all(is.na(power))) { 
     # variable omitted
@@ -122,11 +122,10 @@ transform_vector_fp <- function(x,
 #' @export
 transform_vector_acd <- function(x, 
                                  power = c(1, 1),
-                                 shift = NULL, 
+                                 shift = 0, 
                                  s = NULL, 
-                                 scale = NULL, 
+                                 scale = 1, 
                                  center = FALSE) {
-
   
   if (length(power) != 2) 
     stop("! power must be of length two.", 

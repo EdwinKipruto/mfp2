@@ -24,6 +24,7 @@
 #' variable of interest. Each entry is a matrix with degree many columns, 
 #' and nobs observations comprising the FP transformed input variable. 
 #' For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
+#' Values are not centered.
 #' * `powers`: the associated FP powers for each entry in data. 
 generate_transformations_fp <- function(x, 
                                         degree, 
@@ -36,9 +37,7 @@ generate_transformations_fp <- function(x,
   # save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in 1:nfp) {
-    fpdt[[i]] <- transform_vector_fp(
-      x = x, power = combs[i, ], scale = 1, shift = 0, center = FALSE
-    )
+    fpdt[[i]] <- transform_vector_fp(x = x, power = combs[i, ])
   }
 
   list(
@@ -58,9 +57,7 @@ generate_transformations_acd <- function(x,
   # Save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in seq_len(nfp)) {
-    fpdt[[i]] <- transform_vector_acd(
-      x = x, power = combs[i, ], scale = 1, shift = 0, center = FALSE
-    )
+    fpdt[[i]] <- transform_vector_acd(x = x, power = combs[i, ])
   }
   
   list(

@@ -5,14 +5,14 @@
 \alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
-transform_vector_fp(x, power = 1, scale = NULL, center = FALSE, shift = NULL)
+transform_vector_fp(x, power = 1, scale = 1, center = FALSE, shift = 0)
 
 transform_vector_acd(
   x,
   power = c(1, 1),
-  shift = NULL,
+  shift = 0,
   s = NULL,
-  scale = NULL,
+  scale = 1,
   center = FALSE
 )
 }
@@ -22,18 +22,18 @@ transform_vector_acd(
 \item{power}{a numeric vector indicating the FP power. Default is 1 (linear).
 Must be a vector of length 2 for acd transformation.}
 
-\item{scale}{scaling factors for x of interest. Must be positive integers.
-Default is \code{NULL} and scaling factors are automatically estimated by the
-program. If no scaling is needed set \code{scale = 1}.}
+\item{scale}{scaling factor for x of interest. Must be a positive integer
+or \code{NULL}. Default is 1, meaning no scaling is applied.
+If \code{NULL}, then scaling factors are automatically estimated by the
+program.}
 
 \item{center}{Specification of centering for variable using
 the mean i.e. \code{f(x) - mean(f(x))} for continuous variables and
 \code{x - min(x)} for binary variables. Default is no centering.}
 
-\item{shift}{adjustment factors required for shifting x to positive
-values. Default is \code{NULL} and adjustment factors are estimated automatically
-using Royston and Sauerbrei formula iff any \code{x} <= 0.
-If no shifts are needed set \code{shift = 0}.}
+\item{shift}{shift required for shifting x to positive values. Default is 0,
+meaning no shift is applied. If \code{NULL} then the shift is estimated
+automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 
 \item{s}{passed to \code{\link[=acd]{acd()}}.}
 }

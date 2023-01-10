@@ -25,7 +25,7 @@
 #' and nobs observations comprising the FP transformed input variable. 
 #' For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
 #' * `powers`: the associated FP powers for each entry in data. 
-generate_fp_transformations <- function(x, 
+generate_transformations_fp <- function(x, 
                                         degree, 
                                         powers) {
   
@@ -47,8 +47,8 @@ generate_fp_transformations <- function(x,
   )
 }
 
-#' @describeIn generate_fp_transformations Function to generate acd transformations.
-generate_acd_transformations <- function(x, 
+#' @describeIn generate_transformations_fp Function to generate acd transformations.
+generate_transformations_acd <- function(x, 
                                          powers) {
 
   # all possible pairs of powers

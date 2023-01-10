@@ -850,7 +850,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
   df.linxi <- N - (dflinxi - 1)
 
   # Fit a model with linear in axi = acd(xi)--Model M5 in R&S 2016
-  axi <- acd(x = x[, xi], s = powers, shift = 0, scale = 1)$acd
+  axi <- fit_acd(x = x[, xi], powers = powers)$acd
   xkk <- cbind(axi, adjdata)
   colnames(xkk) <- c(xi, colnames(adjdata))
   fit.lin.axi <- fit_model(

@@ -11,7 +11,7 @@ transform_vector_acd(
   x,
   power = c(1, 1),
   shift = 0,
-  s = NULL,
+  powers = NULL,
   scale = 1,
   center = FALSE
 )
@@ -35,7 +35,7 @@ the mean i.e. \code{f(x) - mean(f(x))} for continuous variables and
 meaning no shift is applied. If \code{NULL} then the shift is estimated
 automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 
-\item{s}{passed to \code{\link[=acd]{acd()}}.}
+\item{powers}{passed to \code{\link[=fit_acd]{fit_acd()}}.}
 }
 \value{
 Returns a matrix of transformed variable(s). The number of columns

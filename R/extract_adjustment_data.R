@@ -57,7 +57,7 @@ extract_adjustment_data <- function(x,
         # scale = 1 and shift = 0 means no scaling and shifting
         xadjust.T[[i]] <- transform_vector_acd(
           x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
-          s = powers
+          powers = powers
         )
       } else {
         xadjust.T[[i]] <- transform_vector_fp(

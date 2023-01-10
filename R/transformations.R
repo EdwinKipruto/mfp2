@@ -39,7 +39,7 @@
 #' @param shift shift required for shifting x to positive values. Default is 0, 
 #' meaning no shift is applied. If `NULL` then the shift is estimated 
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
-#' @param s passed to [acd()].
+#' @param powers passed to [fit_acd()].
 #' @param center Specification of centering for variable using
 #' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
 #' `x - min(x)` for binary variables. Default is no centering.
@@ -130,7 +130,7 @@ transform_vector_fp <- function(x,
 transform_vector_acd <- function(x, 
                                  power = c(1, 1),
                                  shift = 0, 
-                                 s = NULL, 
+                                 powers = NULL, 
                                  scale = 1, 
                                  center = FALSE) {
   
@@ -143,7 +143,7 @@ transform_vector_acd <- function(x,
   } 
   
   # transform x and acdx using the supplied powers
-  x_acd <- acd(x, power = NULL, shift = shift, s = s, scale = scale)$acd
+  x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
                                scale = scale, shift = shift, 
                                center = center)

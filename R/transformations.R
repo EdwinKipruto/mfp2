@@ -151,24 +151,24 @@ transform_vector_acd <- function(x,
 #' Function to transform each column of matrix using final FP powers or acd
 #' 
 #' @param x a matrix with all continuous variables shifted and scaled.
-#' @param power.list a named list of FP powers. 
+#' @param power_list a named list of FP powers. 
 #' @param center a logical vector specifying whether the columns in `x` should 
 #' be centered.
 #' 
 #' @return 
-#' If all elements of `power.list` are `NA` then this function returns `NULL`.
+#' If all elements of `power_list` are `NA` then this function returns `NULL`.
 #' Otherwise a matrix is returned with transformed data, possibly with more 
 #' columns than the input matrix due to higher order FP transformations.
 transform_matrix <- function(x,
-                             power.list, 
+                             power_list, 
                              center, 
                              acdx) {
-  # check whether all power.list are equal to NA-all variables were eliminated
-  if (all(is.na(unlist(power.list)))) {
+  # check whether all power_list are equal to NA-all variables were eliminated
+  if (all(is.na(unlist(power_list)))) {
     # return NULL
     xtr.out <- NULL
   } else {
-    namx <- names(power.list)
+    namx <- names(power_list)
     x <- x[, namx, drop = F]
     # subset scale, center and shift using names of powers selected-
     # scale <- scale[namx] # we assume x has been shifted and scaled
@@ -177,7 +177,7 @@ transform_matrix <- function(x,
     # transform acd variables if any
     if (any(acdx)) {
       # select FP powers for acd variables
-      pow.acd <- power.list[acdx]
+      pow.acd <- power_list[acdx]
       # check whether the acd variables were selected
       if (all(is.na(unlist(pow.acd)))) {
         xtr1 <- NULL
@@ -201,7 +201,7 @@ transform_matrix <- function(x,
         colnames(xtr1) <- snames[which(!is.na(unlist(pow.acd)))]
       }
       # Variables without acd transformations
-      pow <- power.list[!acdx]
+      pow <- power_list[!acdx]
       if (all(is.na(unlist(pow)))) {
         xtr2 <- NULL
       } else {
@@ -232,8 +232,8 @@ transform_matrix <- function(x,
       xtr.out <- cbind(xtr1, xtr2)
       # Usual MFP without acd variables
     } else {
-      # # Get rid of unselected variables denoted by NA in power.list
-      fpp <- power.list[!is.na(power.list)]
+      # # Get rid of unselected variables denoted by NA in power_list
+      fpp <- power_list[!is.na(power_list)]
       namxx <- names(fpp)
       # subset x
       x <- x[, namxx, drop = F]

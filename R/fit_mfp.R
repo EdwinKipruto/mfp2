@@ -186,7 +186,7 @@ fit_mfp <- function(x,
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
   X <- transform_matrix(
-    x = x, power.list = fp_powers, center = center, acdx = acdx
+    x = x, power_list = fp_powers, center = center, acdx = acdx
   )
 
   modelfit <- fit_model(

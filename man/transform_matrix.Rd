@@ -4,18 +4,18 @@
 \alias{transform_matrix}
 \title{Function to transform each column of matrix using final FP powers or acd}
 \usage{
-transform_matrix(x, power.list, center, acdx)
+transform_matrix(x, power_list, center, acdx)
 }
 \arguments{
 \item{x}{a matrix with all continuous variables shifted and scaled.}
 
-\item{power.list}{a named list of FP powers.}
+\item{power_list}{a named list of FP powers.}
 
 \item{center}{a logical vector specifying whether the columns in \code{x} should
 be centered.}
 }
 \value{
-If all elements of \code{power.list} are \code{NA} then this function returns \code{NULL}.
+If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.
 Otherwise a matrix is returned with transformed data, possibly with more
 columns than the input matrix due to higher order FP transformations.
 }

@@ -46,6 +46,11 @@ fit_acd <- function(x,
                     powers = NULL, 
                     shift = 0, 
                     scale = 1) {
+  
+  if (is.null(powers)) {
+    # default FP powers proposed by Royston and Sauerbrei (2008)
+    powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  }
 
   # preprocess data
   if (is.null(shift)) 

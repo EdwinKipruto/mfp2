@@ -7,19 +7,20 @@
 fit_model(
   x,
   y,
-  family,
-  weights,
-  offset,
-  method,
-  strata,
-  control,
-  rownames,
-  nocenter
+  family = "gaussian",
+  weights = NULL,
+  offset = NULL,
+  method = NULL,
+  strata = NULL,
+  control = NULL,
+  rownames = NULL,
+  nocenter = NULL
 )
 }
 \arguments{
-\item{x}{a matrix of predictors including intercept for glms, but not for Cox
-models.}
+\item{x}{a matrix of predictors (excluding intercept) with column names.
+If column names are not provided they are set according to
+\code{colnames(x, do.NULL = FALSE)}.}
 
 \item{y}{a vector for the outcome variable for glms, and a \code{Surv} object
 for Cox models.}

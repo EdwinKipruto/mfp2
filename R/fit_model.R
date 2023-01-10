@@ -5,8 +5,9 @@
 #' @details 
 #' Computations rely on [fit_glm()] and [fit_cox()].
 #'
-#' @param x a matrix of predictors including intercept for glms, but not for Cox
-#' models.
+#' @param x a matrix of predictors (excluding intercept) with column names.
+#' If column names are not provided they are set according to
+#' `colnames(x, do.NULL = FALSE)`.
 #' @param y a vector for the outcome variable for glms, and a `Surv` object 
 #' for Cox models.
 #' @param method a character string specifying the method for tie handling. 
@@ -28,14 +29,17 @@
 #' @importFrom stats family
 fit_model <- function(x,
                       y, 
-                      family, 
-                      weights,
-                      offset, 
-                      method, 
-                      strata, 
-                      control,
-                      rownames,
-                      nocenter) {
+                      family = "gaussian", 
+                      weights = NULL,
+                      offset = NULL, 
+                      method = NULL, 
+                      strata = NULL, 
+                      control = NULL,
+                      rownames = NULL,
+                      nocenter = NULL) {
+  
+  if (is.null(colnames(x)))
+    colnames(x) <- colnames(x, do.NULL = FALSE)
   
   if (family == "cox") {
     # cox needs more work especially on how to handle strata

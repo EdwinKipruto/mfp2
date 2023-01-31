@@ -471,8 +471,8 @@ find_best_fp1_step <- function(y,
   aic.null <- devnull + 2 * dfnull
   bic.null <- devnull + logn * dfnull
   # Sum of squares errors relevant for Gaussian model- for F test
-  sse.null <- fitnull$SSE
-  dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
+  sse.null <- fitnull$sse
+  dev.roy.null <- deviance_stata(rss = sse.null, weights = weights, n = N)
   df.sse.null <- N - (dfnull - 1) # subtract scale parameter
   # df.sse.null2 <- N-fitnull$df
   
@@ -502,13 +502,13 @@ find_best_fp1_step <- function(y,
     dfp1[i] <- (fit1$df + 1) - 1 # we subtract scale parameter
     aic[i] <- devs[i] + 2 * (dfp1[i])
     bic[i] <- devs[i] + logn * (dfp1[i])
-    # SSE relevant for a Gaussian model
-    sse[i] <- fit1$SSE
-    dev.roy[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = N)
+    # sse relevant for a Gaussian model
+    sse[i] <- fit1$sse
+    dev.roy[i] <- deviance_stata(rss = sse[i], weights = weights, n = N)
   }
   # position of a linear function in set s: Fails when powers does not include 1
   lin.pos <- match(1, powers)
-  # Deviance, AIC, BIC and SSE of a linear function
+  # Deviance, AIC, BIC and sse of a linear function
   dev.linear <- devs[lin.pos]
   dev.roy.linear <- dev.roy[lin.pos]
   # aic.linear = dev.linear + 2*(dfx[lin.pos]+tFP)
@@ -532,7 +532,7 @@ find_best_fp1_step <- function(y,
   bic.all <- setNames(c(bic.null, bic.linear, bic[which.min(bic)]), c("Null", "Linear", "FP1"))
   sse.all <- setNames(c(sse.null, sse.linear, sse[which.min(devs)]), c("Null", "Linear", "FP1"))
   # # deviance of gaussian calculated using royston formula instead of loglikelihood for gaussian
-  # dev.gaus.royston <- unlist(lapply(sse.all, function(x) deviance_gaussian(RSS = x, weights = weights, n = N)))
+  # dev.gaus.royston <- unlist(lapply(sse.all, function(x) deviance_stata(rss = x, weights = weights, n = N)))
   # names(dev.gaus.royston) <- c("Null","Linear","FP1")
   # combine degrees of freedom for null, linear and best fp1
   df.all <- setNames(c(df.sse.null, df.sse.linear, df.sse.bestfp1), c("Null", "Linear", "FP1"))
@@ -625,10 +625,10 @@ find_best_fpm_step <- function(y,
     aic[i] <- devs[i] + 2 * (fit1$df + m) #
     bic[i] <- devs[i] + logn * (fit1$df + m)
     # sse and deviance for gaussian family.
-    sse[i] <- fit1$SSE
-    devs.royston[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = dim(x)[1L])
+    sse[i] <- fit1$sse
+    devs.royston[i] <- deviance_stata(rss = sse[i], weights = weights, n = dim(x)[1L])
   }
-  # Best FPm function based on dev (calculated using loglik), aic, bic, sse and dev(calculated using SSE)
+  # Best FPm function based on dev (calculated using loglik), aic, bic, sse and dev(calculated using sse)
   fn.bestfpm <- list(
     dev = fpmpowers[which.min(devs), ],
     aic = fpmpowers[which.min(aic), ],
@@ -849,8 +849,8 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
   devnull <- -2 * fitnull$logl
   aic.null <- devnull + 2 * dfnull
   bic.null <- devnull + logn * dfnull
-  sse.null <- fitnull$SSE
-  dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
+  sse.null <- fitnull$sse
+  dev.roy.null <- deviance_stata(rss = sse.null, weights = weights, n = N)
   df.null <- N - (dfnull - 1)
   
   # Fit a model with linear in xi--Model M4 in R&S 2016
@@ -864,12 +864,12 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
   )
   # Total number of parameters in the fitted model.
   dflinxi <- fit.lin.xi$df
-  # Deviance, AIC, BIC and SSE of the null model
+  # Deviance, AIC, BIC and sse of the null model
   devlinxi <- -2 * fit.lin.xi$logl
   aic.linxi <- devlinxi + 2 * dflinxi
   bic.linxi <- devlinxi + logn * dflinxi
-  sse.linxi <- fit.lin.xi$SSE
-  dev.roy.linxi <- deviance_gaussian(RSS = sse.linxi, weights = weights, n = N)
+  sse.linxi <- fit.lin.xi$sse
+  dev.roy.linxi <- deviance_stata(rss = sse.linxi, weights = weights, n = N)
   df.linxi <- N - (dflinxi - 1)
   
   # Fit a model with linear in axi = acd(xi)--Model M5 in R&S 2016
@@ -884,12 +884,12 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
   )
   # Total number of parameters in the fitted model.
   dflinaxi <- fit.lin.axi$df
-  # Deviance, AIC, BIC and SSE of the null model
+  # Deviance, AIC, BIC and sse of the null model
   devlinaxi <- -2 * fit.lin.axi$logl
   aic.linaxi <- devlinaxi + 2 * dflinaxi
   bic.linaxi <- devlinaxi + logn * dflinaxi
-  sse.linaxi <- fit.lin.axi$SSE
-  dev.roy.linaxi <- deviance_gaussian(RSS = sse.linaxi, weights = weights, n = N)
+  sse.linaxi <- fit.lin.axi$sse
+  dev.roy.linaxi <- deviance_stata(rss = sse.linaxi, weights = weights, n = N)
   # subtract 1 = scale parameter and 1 = FP used for acd calculation
   df.linaxi <- N - (dflinaxi - 1)
   
@@ -904,7 +904,7 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
     control = control, rownames = rownames,
     nocenter = nocenter, acdx = acdxi
   )
-  # Deviance, AIC, BIC and SSE
+  # Deviance, AIC, BIC and sse
   devfp1xi <- fit.fp1.xi$dev.all[3]
   dev.roy.fp1xi <- fit.fp1.xi$dev.roy.all[3]
   aic.fp1xi <- fit.fp1.xi$aic.all[3]
@@ -927,7 +927,7 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
     nocenter = nocenter, acdx = acdxi
   )
   
-  # Deviance, AIC, BIC and SSE of the best FP1 model
+  # Deviance, AIC, BIC and sse of the best FP1 model
   devfp1axi <- fit.fp1.axi$dev.all[3] # best fp1 dev in position 3
   dev.roy.fp1axi <- fit.fp1.axi$dev.roy.all[3]
   aic.fp1axi <- fit.fp1.axi$aic.all[3]
@@ -955,12 +955,12 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
     # save degrees of freedom from a model fit. regression coefficients and
     # total estimated FP powers. 2 is add because of FP power of xi and acd(xi)
     dfp1[i] <- (fit1$df + 2) - 1 # 1 is scaled parameter in df
-    # Deviance, AIC, BIC and SSE.
+    # Deviance, AIC, BIC and sse.
     devs[i] <- -2 * fit1$logl
     aic[i] <- devs[i] + 2 * (dfp1[i])
     bic[i] <- devs[i] + logn * (dfp1[i])
-    sse[i] <- fit1$SSE
-    dev.roy[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = N)
+    sse[i] <- fit1$sse
+    dev.roy[i] <- deviance_stata(rss = sse[i], weights = weights, n = N)
   }
   # Best FP1(p1,p2) function based on dev, aic, bic and sse
   s <- df1$powers_fp
@@ -1074,7 +1074,7 @@ calculate_metrics_fpm <- function(y,
       nocenter = nocenter, degree = mm[k], acdx = acdx
     )
   }
-  # save AIC, BIC, DEV and SSE for m = 2,3,...
+  # save AIC, BIC, DEV and sse for m = 2,3,...
   dev <- unlist(lapply(out, `[[`, 1), use.names = F) # deviances are in position 1 of nested list
   aic <- unlist(lapply(out, `[[`, 2), use.names = F) # aic are in position 2 of nested list
   bic <- unlist(lapply(out, `[[`, 3), use.names = F) # bic are in position 3 of nested list

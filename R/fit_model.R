@@ -23,7 +23,7 @@
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `SSE`: residual sum of squares.
+#' * `sse`: residual sum of squares.
 #' * `fit`: the object returned by the fitting procedure.
 #' 
 #' @importFrom stats family
@@ -90,7 +90,7 @@ fit_model <- function(x,
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `SSE`: residual sum of squares.
+#' * `sse`: residual sum of squares.
 #' * `fit`: the object returned by [stats::glm.fit()].
 #' 
 #' @import stats
@@ -113,7 +113,7 @@ fit_glm <- function(x,
     logl = df - fit$aic / 2,
     coefficients = fit$coefficients,
     df = df,
-    SSE = sum(fit$residuals^2, na.rm = T)
+    sse = sum(fit$residuals^2, na.rm = T)
   )
 }
 
@@ -137,7 +137,7 @@ fit_glm <- function(x,
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `SSE`: residual sum of squares (not used).
+#' * `sse`: residual sum of squares (not used).
 #' * `fit`: the object returned by [survival::coxph.fit()].
 #' 
 #' @import survival
@@ -169,6 +169,6 @@ fit_cox <- function(x,
     # sometimes coefficients can be NA
     # for example when including same variables in the model
     df = length(fit$coefficients[!is.na(fit$coefficients)]), 
-    SSE = sum(fit$residuals^2)
+    sse = sum(fit$residuals^2)
   )
 }

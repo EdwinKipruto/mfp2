@@ -40,7 +40,7 @@ A list with the following components:
 \item \code{logl}: the log likelihood of the fitted model.
 \item \code{coefficients}: regression coefficients.
 \item \code{df}: number of parameters (degrees of freedom).
-\item \code{SSE}: residual sum of squares.
+\item \code{sse}: residual sum of squares.
 \item \code{fit}: the object returned by the fitting procedure.
 }}
 }

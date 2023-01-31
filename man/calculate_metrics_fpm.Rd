@@ -8,7 +8,7 @@ calculate_metrics_fpm(
   y,
   x,
   xi,
-  fp_powers,
+  powers_current,
   powers,
   family,
   weights,

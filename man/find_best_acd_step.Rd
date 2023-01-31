@@ -8,7 +8,7 @@ find_best_acd_step(
   y,
   x,
   xi,
-  fp_powers,
+  powers_current,
   powers,
   family,
   method,

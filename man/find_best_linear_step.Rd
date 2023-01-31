@@ -8,7 +8,7 @@ find_best_linear_step(
   x,
   y,
   xi,
-  fp_powers,
+  powers_current,
   weights,
   offset,
   control,

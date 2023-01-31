@@ -11,7 +11,7 @@ find_best_fp_step(
   weights,
   offset,
   df,
-  fp_powers,
+  powers_current,
   family,
   criterion,
   select,
@@ -46,7 +46,7 @@ to be found in the current step.}
 \item{df}{a numeric vector indicating the maximum degrees of freedom for the
 variable of interest \code{xi}.}
 
-\item{fp_powers}{a list of length equal to the number of variables,
+\item{powers_current}{a list of length equal to the number of variables,
 indicating the fp powers to be used in the current step for all variables
 (except \code{xi}).}
 
@@ -116,9 +116,9 @@ selected, because the evaluation is done for each variable in each cycle.
 A variable which was de-selected in earlier cycles may be added to the
 working model again. Also see \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}.
 
-The adjustment in each step uses the current \code{fp_powers} for all other
-variables to determine the adjustment set and transformations in the
-working model.
+The adjustment in each step uses the current fp powers given in
+\code{powers_current} for all other variables to determine the adjustment set
+and transformations in the  working model.
 
 Note that the algorithm starts by setting all \code{df = 1}, and higher fps
 are evaluated in turn starting from the first step in the first cycle.

@@ -103,7 +103,7 @@ fit_mfp <- function(x,
 
   # step 2: pre-process input --------------------------------------------------
   # named list of initial fp powers set to 1 ordered by xorder
-  fp_powers <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
+  powers_current <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
   
   # name and reorder input vectors by xorder
   alpha <- setNames(alpha, variables_x)[variables_ordered]
@@ -128,10 +128,10 @@ fit_mfp <- function(x,
     # the first is for xi, and the second is for acd(xi). 
     # Initially NA is assigned to acd(xi), to be updated in step 3.
     variables_acd <- names(acdx)[acdx == TRUE]
-    fp_powers_acd <- sapply(variables_acd, function(v) c(1, NA), 
+    powers_current_acd <- sapply(variables_acd, function(v) c(1, NA), 
                             simplify = FALSE, USE.NAMES = TRUE)
     # update initial powers 
-    fp_powers <- modifyList(x = fp_powers, val = fp_powers_acd)
+    powers_current <- modifyList(x = powers_current, val = powers_current_acd)
     # override df of acd variables by setting them to 4
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
@@ -148,10 +148,10 @@ fit_mfp <- function(x,
     }
     
     # estimated powers for the j-th cycle
-    fp_powers_updated <- find_best_fp_cycle(
+    powers_updated <- find_best_fp_cycle(
       x = x,
       y = y,
-      fp_powers = fp_powers,
+      powers_current = powers_current,
       df = df,
       weights = weights,
       offset = offset,
@@ -172,7 +172,7 @@ fit_mfp <- function(x,
     )
 
     # check for convergence (i.e. no change in powers in model)
-    if (identical(fp_powers, fp_powers_updated)) {
+    if (identical(powers_current, powers_updated)) {
       converged <- TRUE
       cat(
         sprintf(
@@ -182,7 +182,7 @@ fit_mfp <- function(x,
       break
     } else {
       # update the powers of the variables at the end of each cycle
-      fp_powers <- fp_powers_updated
+      powers_current <- powers_updated
       j <- j + 1
     }
   }
@@ -196,7 +196,7 @@ fit_mfp <- function(x,
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
   X <- transform_matrix(
-    x = x, power_list = fp_powers, center = center, acdx = acdx
+    x = x, power_list = powers_current, center = center, acdx = acdx
   )
 
   modelfit <- fit_model(
@@ -219,15 +219,15 @@ fit_mfp <- function(x,
     X = X, 
     # untransformed and scaled x for selected variables
     # selected means that not all powers are NA
-    x = x[, names(fp_powers[!sapply(fp_powers, function(x) all(is.na(x)))]), 
+    x = x[, names(powers_current[!sapply(powers_current, function(x) all(is.na(x)))]), 
           drop = F],
     y = y, 
-    fp_terms = create_fp_terms(fp_powers, acdx,
+    fp_terms = create_fp_terms(powers_current, acdx,
                                df, select, alpha, criterion),
     transformations = data.frame(shift = shift, 
                                  scale = scale, 
                                  center = center),
-    fp_powers = fp_powers,
+    fp_powers = powers_current,
     acd = acdx
   )
   
@@ -497,7 +497,7 @@ reset_acd <- function(x,
 #' working model or to be eliminated again. 
 #' 
 #' The current adjustment set is always given through the current fp powers, 
-#' which are updated in each step. 
+#' which are updated in each step (denoted as `powers_current`). 
 #' 
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
@@ -512,7 +512,7 @@ reset_acd <- function(x,
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 find_best_fp_cycle <- function(x, 
                                y, 
-                               fp_powers, 
+                               powers_current, 
                                df, 
                                weights, 
                                offset, 
@@ -536,18 +536,18 @@ find_best_fp_cycle <- function(x,
     print_mfp_summary(criterion, ftest = ftest)
   }
   
-  names_x <- names(fp_powers)
+  names_x <- names(powers_current)
   for (i in 1:ncol(x)) {
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
-    # note that the adjustment set and powers are given by fp_powers
+    # note that the adjustment set and powers are given by powers_current
     # which is updated in each step
-    fp_powers[[i]] <- find_best_fp_step(
+    powers_current[[i]] <- find_best_fp_step(
       x = x, 
       y = y,
       xi = names_x[i],
-      fp_powers = fp_powers,
+      powers_current = powers_current,
       weights = weights,
       offset = offset,
       df = df[i], 
@@ -568,7 +568,7 @@ find_best_fp_cycle <- function(x,
     )
   }
   
-  fp_powers
+  powers_current
 }
 
 #' Helper to calculates the final degrees of freedom for the selected model

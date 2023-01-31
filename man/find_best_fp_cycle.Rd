@@ -7,7 +7,7 @@
 find_best_fp_cycle(
   x,
   y,
-  fp_powers,
+  powers_current,
   df,
   weights,
   offset,
@@ -54,7 +54,7 @@ each new cycle at the beginning to be evaluated to be added to the
 working model or to be eliminated again.
 
 The current adjustment set is always given through the current fp powers,
-which are updated in each step.
+which are updated in each step (denoted as \code{powers_current}).
 }
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:

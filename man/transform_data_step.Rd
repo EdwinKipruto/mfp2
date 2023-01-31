@@ -4,7 +4,7 @@
 \alias{transform_data_step}
 \title{Function to extract and transform adjustment variables}
 \usage{
-transform_data_step(x, xi, fp_powers, df, powers, acdx)
+transform_data_step(x, xi, powers_current, df, powers, acdx)
 }
 \arguments{
 \item{x}{a matrix of predictors that includes the variable of interest \code{xi}.
@@ -14,7 +14,7 @@ It is assumed that continuous variables have already been shifted and scaled.}
 estimated. There are no binary or two-level variables allowed. All variables
 except \code{xi} are referred to as "adjustment variables".}
 
-\item{fp_powers}{a named list of FP powers of all variables of interest,
+\item{powers_current}{a named list of FP powers of all variables of interest,
 including \code{xi}. Note that these powers are updated during backfitting or MFP
 cycles.}
 
@@ -39,7 +39,7 @@ Function to extract and transform adjustment variables
 }
 \details{
 After extracting the adjustment variables this function, using their
-corresponding FP powers stored in \code{fp_powers}, transforms them.
+corresponding FP powers stored in \code{powers_current}, transforms them.
 This is necessary When evaluating x of interest, as we must account for other
 variables, which can be transformed or untransformed, depending on the
 individual powers. It's worth noting that some powers can be NA, indicating

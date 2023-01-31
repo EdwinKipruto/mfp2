@@ -14,7 +14,7 @@
 #' @param offset a vector of length nobs of offsets.
 #' @param df a numeric vector indicating the maximum degrees of freedom for the 
 #' variable of interest `xi`.
-#' @param fp_powers a list of length equal to the number of variables, 
+#' @param powers_current a list of length equal to the number of variables, 
 #' indicating the fp powers to be used in the current step for all variables 
 #' (except `xi`). 
 #' @param family a character string representing a family object.
@@ -61,9 +61,9 @@
 #' A variable which was de-selected in earlier cycles may be added to the 
 #' working model again. Also see [find_best_fp_cycle()].
 #' 
-#' The adjustment in each step uses the current `fp_powers` for all other
-#' variables to determine the adjustment set and transformations in the 
-#' working model.
+#' The adjustment in each step uses the current fp powers given in 
+#' `powers_current` for all other variables to determine the adjustment set 
+#' and transformations in the  working model.
 #' 
 #' Note that the algorithm starts by setting all `df = 1`, and higher fps
 #' are evaluated in turn starting from the first step in the first cycle.
@@ -77,7 +77,7 @@ find_best_fp_step <- function(x,
                               weights, 
                               offset, 
                               df, 
-                              fp_powers, 
+                              powers_current, 
                               family,
                               criterion, 
                               select, 
@@ -97,7 +97,7 @@ find_best_fp_step <- function(x,
   # If df = 1 then we just fit usual linear models and test: NULL vs Linear
   if (df == 1) {
     fits <- find_best_linear_step(
-      x = x, y = y, xi = xi, fp_powers = fp_powers,
+      x = x, y = y, xi = xi, powers_current = powers_current,
       weights = weights, offset = offset, family = family,
       criterion = criterion, select = select, alpha = alpha,
       keep = keep, powers = powers, method = method,
@@ -123,7 +123,7 @@ find_best_fp_step <- function(x,
     if (acdx[xi]) {
       # compute deviances, aic, bic and sse for model M1-M6
       bfpa <- find_best_acd_step(
-        y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
+        y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
         nocenter = nocenter, acdx = acdx
@@ -218,7 +218,7 @@ find_best_fp_step <- function(x,
     } else {
       # this part is needed for FPm if degree>2
       bfp1 <- find_best_fp1_step(
-        y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
+        y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
         nocenter = nocenter, acdx = acdx
@@ -273,7 +273,7 @@ find_best_fp_step <- function(x,
       } else {
         # Here we fit other fpm models where m can be 2, 3, and so on
         fpx <- calculate_metrics_fpm(
-          y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
+          y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
           method = method, weights = weights, offset = offset,
           strata = strata, control = control, rownames = rownames,
           nocenter = nocenter, degree = degree, acdx = acdx
@@ -421,7 +421,7 @@ find_best_fp_step <- function(x,
 find_best_fp1_step <- function(y, 
                                x, 
                                xi, 
-                               fp_powers, 
+                               powers_current, 
                                powers,
                                family, 
                                method,
@@ -435,7 +435,7 @@ find_best_fp1_step <- function(y,
   # Generate FP1 data for x of interest (xi). A list with 8 new variables are
   # generated if default FP set is used
   df1 <- transform_data_step(
-    x = x, xi = xi, fp_powers = fp_powers, df = 2, acdx = acdx,
+    x = x, xi = xi, powers_current = powers_current, df = 2, acdx = acdx,
     powers = powers
   )
   # Matrix of adjustment variables
@@ -564,7 +564,7 @@ find_best_fp1_step <- function(y,
 find_best_fpm_step <- function(y, 
                                x, 
                                xi, 
-                               fp_powers, 
+                               powers_current, 
                                powers, 
                                family, 
                                weights, 
@@ -582,7 +582,7 @@ find_best_fpm_step <- function(y,
   # Generate FP data for x of interest (xi) and adjustment variables
   m <- degree
   df1 <- transform_data_step(
-    x = x, xi = xi, fp_powers = fp_powers,
+    x = x, xi = xi, powers_current = powers_current,
     df = 2 * m, powers = powers, acdx = acdx
   )
   # Matrix of adjustment data
@@ -665,7 +665,7 @@ find_best_fpm_step <- function(y,
 find_best_linear_step <- function(x, 
                                   y, 
                                   xi, 
-                                  fp_powers, 
+                                  powers_current, 
                                   weights, 
                                   offset, 
                                   control,
@@ -685,7 +685,7 @@ find_best_linear_step <- function(x,
   #  Set df = 1 in the transform_data_step() because linearity is assumed and fpdata
   # would be original x of interest (untransformed)
   xadjv <- transform_data_step(
-    x = x, xi = xi, fp_powers = fp_powers, df = 1,
+    x = x, xi = xi, powers_current = powers_current, df = 1,
     powers = powers, acdx = acdx
   ) # degree, s and scale does not play any role here
   # Number of observations and a quantity for BIC calculation
@@ -819,12 +819,12 @@ find_best_linear_step <- function(x,
 #' @return 
 #' A list with several components giving the best power found and 
 #' performance indices.
-find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weights,
+find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method, weights,
                                offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
   df1 <- transform_data_step(
-    x = x, xi = xi, fp_powers = fp_powers, df = 4,
+    x = x, xi = xi, powers_current = powers_current, df = 4,
     powers = powers, acdx = acdx
   )
   # Matrix of adjustment variables
@@ -898,7 +898,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   # while adjusting other variables
   acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
   fit.fp1.xi <- find_best_fp1_step(
-    y = y, x = x, xi = xi, fp_powers = fp_powers,
+    y = y, x = x, xi = xi, powers_current = powers_current,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -920,7 +920,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   xx <- x
   xx[, which(colnames(x) == xi)] <- axi
   fit.fp1.axi <- find_best_fp1_step(
-    y = y, x = xx, xi = xi, fp_powers = fp_powers,
+    y = y, x = xx, xi = xi, powers_current = powers_current,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -1050,7 +1050,7 @@ find_index_best_model_acd <- function(pvalue,
 calculate_metrics_fpm <- function(y, 
                                   x, 
                                   xi, 
-                                  fp_powers, 
+                                  powers_current, 
                                   powers, 
                                   family, 
                                   weights, 
@@ -1067,7 +1067,7 @@ calculate_metrics_fpm <- function(y,
   out <- vector(mode = "list", length = length(mm))
   for (k in seq_along(mm)) {
     out[[k]] <- find_best_fpm_step(
-      y = y, x = x, xi = xi, fp_powers = fp_powers,
+      y = y, x = x, xi = xi, powers_current = powers_current,
       powers = powers, family = family, weights = weights,
       offset = offset, strata = strata, control = control,
       method = method, rownames = rownames,
@@ -1106,7 +1106,7 @@ calculate_metrics_fpm <- function(y,
 #' @param xi name of the continuous predictor for which the FP function will be
 #' estimated. There are no binary or two-level variables allowed. All variables
 #' except `xi` are referred to as "adjustment variables".
-#' @param fp_powers a named list of FP powers of all variables of interest, 
+#' @param powers_current a named list of FP powers of all variables of interest, 
 #' including `xi`. Note that these powers are updated during backfitting or MFP 
 #' cycles.
 #' @param df a numeric vector of degrees of freedom for `xi`.
@@ -1114,7 +1114,7 @@ calculate_metrics_fpm <- function(y,
 #' 
 #' @details
 #' After extracting the adjustment variables this function, using their
-#' corresponding FP powers stored in `fp_powers`, transforms them. 
+#' corresponding FP powers stored in `powers_current`, transforms them. 
 #' This is necessary When evaluating x of interest, as we must account for other
 #' variables, which can be transformed or untransformed, depending on the
 #' individual powers. It's worth noting that some powers can be NA, indicating
@@ -1135,21 +1135,21 @@ calculate_metrics_fpm <- function(y,
 #' variables.
 transform_data_step <- function(x,
                                 xi,
-                                fp_powers,
+                                powers_current,
                                 df, 
                                 powers,
                                 acdx) {
   
   # sort x based on the names of the powers
-  names_fp_powers <- names(fp_powers)
-  x <- x[, names_fp_powers, drop = FALSE]
+  names_powers_current <- names(powers_current)
+  x <- x[, names_powers_current, drop = FALSE]
   
   # extract the matrix of adjustment variables
-  vars_adj <- names_fp_powers[!(names_fp_powers %in% xi)]
+  vars_adj <- names_powers_current[!(names_powers_current %in% xi)]
   x_adj <- x[, vars_adj, drop = FALSE]
   
   # transformations of adjustment variables
-  powers_adj <- fp_powers[vars_adj]
+  powers_adj <- powers_current[vars_adj]
   acdx_adj <- unname(acdx[vars_adj])
   
   # generate adjustment data 

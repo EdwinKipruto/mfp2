@@ -425,7 +425,7 @@ find_best_fp1_step <- function(y,
                                acdx) {
   # Generate FP1 data for x of interest (xi). A list with 8 new variables are
   # generated if default FP set is used
-  df1 <- extract_adjustment_data(
+  df1 <- transform_data_step(
     x = x, xi = xi, fp_powers = fp_powers, df = 2, acdx = acdx,
     powers = powers
   )
@@ -572,7 +572,7 @@ find_best_fpm_step <- function(y,
                     m>=2. For m = 1 see find_best_fp1_step()")
   # Generate FP data for x of interest (xi) and adjustment variables
   m <- degree
-  df1 <- extract_adjustment_data(
+  df1 <- transform_data_step(
     x = x, xi = xi, fp_powers = fp_powers,
     df = 2 * m, powers = powers, acdx = acdx
   )
@@ -673,9 +673,9 @@ find_best_linear_step <- function(x,
                                   nocenter, 
                                   verbose, 
                                   acdx) {
-  #  Set df = 1 in the extract_adjustment_data() because linearity is assumed and fpdata
+  #  Set df = 1 in the transform_data_step() because linearity is assumed and fpdata
   # would be original x of interest (untransformed)
-  xadjv <- extract_adjustment_data(
+  xadjv <- transform_data_step(
     x = x, xi = xi, fp_powers = fp_powers, df = 1,
     powers = powers, acdx = acdx
   ) # degree, s and scale does not play any role here
@@ -814,7 +814,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
                               offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
-  df1 <- extract_adjustment_data(
+  df1 <- transform_data_step(
     x = x, xi = xi, fp_powers = fp_powers, df = 4,
     powers = powers, acdx = acdx
   )

@@ -41,7 +41,7 @@ of current fp powers for each variable. Some of the variables may have their
 fp power set to \code{NA}, which means they were deselected from the model.
 In each step, the fp powers of a single covariate are assessed.
 To do this, all of the other variables are transformed as defined by the
-current powers (this is done in \code{\link[=extract_adjustment_data]{extract_adjustment_data()}}) and the
+current powers (this is done in \code{\link[=transform_data_step]{transform_data_step()}}) and the
 fp powers of the variable of interest are tested using the closed test
 procedure (done in \code{\link[=find_best_fp_step]{find_best_fp_step()}}). The results from each step are
 collected and returned, completing a cycle.

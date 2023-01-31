@@ -32,7 +32,7 @@
 #' * `powers_adj`: fp powers for adjustment variables in `data_adj`.
 #' * `data_adj`: adjustment data, i.e. transformed input data for adjustment
 #' variables.
-extract_adjustment_data <- function(x,
+transform_data_step <- function(x,
                                     xi,
                                     fp_powers,
                                     df, 

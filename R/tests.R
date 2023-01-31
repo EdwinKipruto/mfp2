@@ -49,14 +49,14 @@ calculate_chisquare_test <- function(dev,
 #' @details 
 #' `mfp` in Stata uses different formula, see
 #'  https://www.stata.com/manuals/rfp.pdf. That formula is implemented in 
-#'  [calculcate_f_statistic_stata()].
+#'  [calculate_f_statistic_stata()].
 #'  
 #'  This functions uses page 297 or equation next to 7.4 in 
 #'  http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
 #'  
 #'  @seealso 
-#'  [calculcate_f_statistic_stata()]
-calculcate_f_statistic <- function(sse_reduced, 
+#'  [calculate_f_statistic_stata()]
+calculate_f_statistic <- function(sse_reduced, 
                                    sse_full,
                                    df_reduced, 
                                    df_full) {
@@ -82,14 +82,14 @@ calculcate_f_statistic <- function(sse_reduced,
 
 #' Function to compute F-statistic as defined in `mfp` in Stata 
 #' 
-#' Alternative to [calculcate_f_statistic()].
+#' Alternative to [calculate_f_statistic()].
 #' 
 #' @details 
 #' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf.
 #' 
 #' @seealso 
-#' [calculcate_f_statistic()]
-calculcate_f_statistic_stata <- function(dev_reduced, 
+#' [calculate_f_statistic()]
+calculate_f_statistic_stata <- function(dev_reduced, 
                                          dev_full,
                                          d1, 
                                          d2,
@@ -125,7 +125,7 @@ calculate_f_test <- function(sse,
     # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
     pvalues <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      fsttas <- calculcate_f_statistic(sse_reduced = sse[i], 
+      fsttas <- calculate_f_statistic(sse_reduced = sse[i], 
                                        sse_full = sse[5],
                                        df_reduced = df[i],
                                        df_full = df[5])
@@ -133,7 +133,7 @@ calculate_f_test <- function(sse,
       pvalues[i] <- fsttas$pval
     }
     # e). M3 vs M5
-    fsttas <- calculcate_f_statistic(sse_reduced = sse[6],
+    fsttas <- calculate_f_statistic(sse_reduced = sse[6],
                                      sse_full = sse[4], 
                                      df_reduced = df[6],
                                      df_full = df[4])
@@ -148,7 +148,7 @@ calculate_f_test <- function(sse,
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2...FPm vs FPm-1 etc.
     pvalues <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      fsttas <- calculcate_f_statistic(sse_reduced = sse[i], 
+      fsttas <- calculate_f_statistic(sse_reduced = sse[i], 
                                        sse_full = sse[nn],
                                        df_reduced = df[i], 
                                        df_full = df[nn])
@@ -187,7 +187,7 @@ calculate_f_test_royston <- function(dev,
     pwrs <- c(0, 0, 1, 1, 2, 0)
     pvalues <- dev.diff <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      stats <- calculcate_f_statistic_stata(
+      stats <- calculate_f_statistic_stata(
         dev_reduced = dev[i], dev_full = dev[5], d1 = df[i],
         d2 = resid.df[5], n = n
       )
@@ -196,7 +196,7 @@ calculate_f_test_royston <- function(dev,
       dev.diff[i] <- stats$dev.diff
     }
     # e). M3 vs M5
-    stats2 <- calculcate_f_statistic_stata(
+    stats2 <- calculate_f_statistic_stata(
       dev_reduced = dev[6], dev_full = dev[4], d1 = df[5],
       d2 = resid.df[4], n = n
     )
@@ -221,7 +221,7 @@ calculate_f_test_royston <- function(dev,
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
     pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      stats <- calculcate_f_statistic_stata(
+      stats <- calculate_f_statistic_stata(
         dev_reduced = dev[i], dev_full = dev[nn], d1 = df[i],
         d2 = resid.df[nn], n = n
       )

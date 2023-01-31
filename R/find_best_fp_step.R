@@ -2,6 +2,44 @@
 #' 
 #' See [mfpa()] for a brief summary on the notation used here. 
 #' 
+#' @param x an input matrix of dimensions nobs x nvars. Does not contain 
+#' intercept, but columns are already expanded into dummy variables as 
+#' necessary. Data are assumed to be shifted and scaled. 
+#' @param y a vector for the response variable or a `Surv` object.
+#' @param xi a character string indicating the name of the current variable 
+#' of interest, for which the best fractional polynomial transformation is
+#' to be found in the current step. 
+#' @param weights a vector of observation weights of length nobs. 
+#' @param offset a vector of length nobs of offsets.
+#' @param df a numeric vector indicating the maximum degrees of freedom for the 
+#' variable of interest `xi`.
+#' @param fp_powers a list of length equal to the number of variables, 
+#' indicating the fp powers to be used in the current step for all variables 
+#' (except `xi`). 
+#' @param family a character string representing a family object.
+#' @param criterion a character string defining the criterion used to select 
+#' variables and FP models of different degrees.
+#' @param select a numeric value indicating the significance level
+#' for backward elimination of `xi`.
+#' @param alpha a numeric value indicating the significance level
+#' for tests between FP models of different degrees for `xi`. 
+#' @param keep a character vector that with names of variables to be kept 
+#' in the model. 
+#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' covariates.
+#' @param method a character string specifying the method for tie handling in 
+#' Cox regression.
+#' @param strata a factor of all possible combinations of stratification 
+#' variables. Returned from [survival::strata()]. 
+#' @param nocenter a numeric vector with a list of values for fitting Cox 
+#' models. See [survival::coxph()] for details.
+#' @param acdx a logical vector of length nvars indicating continuous variables 
+#' to undergo the approximate cumulative distribution (ACD) transformation.
+#' @param ftest a logical indicating the use of the F-test for Gaussian models.
+#' @param control a list with parameters for model fit.
+#' @param rownames a parameter for Cox models.
+#' @param verbose a logical; run in verbose mode.
+#' 
 #' @details 
 #' The function selection procedure (FSP) is used if the p-value criterion is 
 #' chosen, whereas the criteria AIC and BIC select the model with the smallest 
@@ -9,38 +47,44 @@
 #' 
 #' It uses transformations for all other variables to assess the FP form of 
 #' the current variable of interest. This function covers three main use cases: 
-#' the linear case df = 1 to test between NULL and linear models (see
-#' [find_best_linear_step()]); the case that an acd transformation is requested 
-#' for the variable of interest (see [find_best_acd_step()]); 
-#' and the usual case of the normal mfp algorithm to assess non-linear 
-#' functional forms (see [find_best_fp1_step()]). 
+#' 
+#' * the linear case (`df = 1`) to test between null and linear models (see
+#' [find_best_linear_step()]).
+#' * the case that an acd transformation is requested (`acdx` is `TRUE` 
+#' for `xi`) for the variable of interest (see [find_best_acd_step()]).
+#' * the (usual) case of the normal mfp algorithm to assess non-linear 
+#' functional forms (see [find_best_fp1_step()] and [find_best_fpm_step()]). 
+#' 
+#' @return 
+#' A numeric vector indicating the best powers for `xi`. Entries can be 
+#' `NA` if variable is not used. 
 find_best_fp_step <- function(x,
                               y, 
                               xi,
-                              allpowers, 
-                              df, 
                               weights, 
                               offset, 
+                              df, 
+                              fp_powers, 
                               family,
                               criterion, 
                               select, 
-                              init, 
-                              alpha, 
-                              keep, 
+                              alpha,
+                              keep,
                               powers, 
                               method, 
                               strata,
-                              ftest, 
-                              control, 
-                              rownames, 
                               nocenter, 
-                              verbose, 
-                              acdx) {
+                              acdx, 
+                              ftest, 
+                              control,
+                              rownames, 
+                              verbose) {
   N <- dim(x)[1L]
+  
   # If df = 1 then we just fit usual linear models and test: NULL vs Linear
   if (df == 1) {
     fits <- find_best_linear_step(
-      x = x, y = y, xi = xi, allpowers = allpowers,
+      x = x, y = y, xi = xi, fp_powers = fp_powers,
       weights = weights, offset = offset, family = family,
       criterion = criterion, select = select, alpha = alpha,
       keep = keep, powers = powers, method = method,
@@ -60,15 +104,13 @@ find_best_fp_step <- function(x,
     # Deviance difference and corresponding pvalue between NULL and linear model
     dev.diff <- fits$dev.diff
     pvalue <- fits$pvalues
-    fit <- list(
-      overall.best.fn = as.numeric(best.fp.power), dev.all = dev.all, aic.all = aic.all,
-      bic.all = bic.all, index.bestmodel = index.bestmodel, dev.diff = dev.diff, pvalues = pvalue
-    )
+
+    overall.best.fn = as.numeric(best.fp.power)
   } else {
     if (acdx[xi]) {
       # compute deviances, aic, bic and sse for model M1-M6
       bfpa <- find_best_acd_step(
-        y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
+        y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
         nocenter = nocenter, acdx = acdx
@@ -163,7 +205,7 @@ find_best_fp_step <- function(x,
     } else {
       # this part is needed for FPm if degree>2
       bfp1 <- find_best_fp1_step(
-        y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
+        y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
         method = method, weights = weights, offset = offset,
         strata = strata, control = control, rownames = rownames,
         nocenter = nocenter, acdx = acdx
@@ -218,7 +260,7 @@ find_best_fp_step <- function(x,
       } else {
         # Here we fit other fpm models where m can be 2, 3, and so on
         fpx <- calculate_metrics_fpm(
-          y = y, x = x, xi = xi, allpowers = allpowers, powers = powers, family = family,
+          y = y, x = x, xi = xi, fp_powers = fp_powers, powers = powers, family = family,
           method = method, weights = weights, offset = offset,
           strata = strata, control = control, rownames = rownames,
           nocenter = nocenter, degree = degree, acdx = acdx
@@ -347,53 +389,26 @@ find_best_fp_step <- function(x,
         }
       }
     }
-    fit <- list(
-      overall.best.fn = as.numeric(best.fp.power), dev.all = if (ftest) {
-        dev.roy.all
-      } else {
-        dev.all
-      },
-      aic.all = aic.all,
-      bic.all = bic.all, index.bestmodel = index.bestmodel,
-      dev.diff = if (criterion == "pvalue") {
-        dev.diff
-      } else {
-        NA
-      },
-      pvalues = if (criterion == "pvalue") {
-        pvalue
-      } else {
-        NA
-      }
-    )
+    
+    overall.best.fn <- as.numeric(best.fp.power)
   }
-  return(fit)
+  
+  overall.best.fn
 }
 
 #' Functions to find the best FP functions for a single variable
 #' 
 #' Handles the FP1 (`find_best_fp1_step`) and the higher order FP 
-#' (`find_best_fpm_step`) cases.
+#' (`find_best_fpm_step`) cases. For parameter definitions, see
+#' [find_best_fp_step()].
 #' 
-#' @param x The original untransformed matrix of predictors. Each continuous
-#' predictor is assumed to have  shifted and scaled.
-#' @param xi the name of the continuous predictor for which the FP function will 
-#' be estimated. There are no binary or two-level variables allowed.
-#' @param allpowers a named list of FP powers of all variables of interest, 
-#' including xi. Not that these powers are updated during backfitting or MFP 
-#' cycles.
-#' @param powers a set of FP powers.
-#' @param y the response variable.
-#' @param method method for handling ties in cox model. see coxph() for 
-#' explanation.
-#' @param weights see glm or coxph for explanation.
-#' @param offset see glm or coxph for explanation.
-#' @param family A character name specifying the family name i,e "gaussian",
-#' "binomial", "poisson" or "cox".
+#' @return 
+#' A list with several components giving the best power found and 
+#' performance indices.
 find_best_fp1_step <- function(y, 
                                x, 
                                xi, 
-                               allpowers, 
+                               fp_powers, 
                                powers,
                                family, 
                                method,
@@ -407,13 +422,13 @@ find_best_fp1_step <- function(y,
   # Generate FP1 data for x of interest (xi). A list with 8 new variables are
   # generated if default FP set is used
   df1 <- extract_adjustment_data(
-    x = x, xi = xi, allpowers = allpowers, df = 2, acdx = acdx,
+    x = x, xi = xi, fp_powers = fp_powers, df = 2, acdx = acdx,
     powers = powers
   )
   # Matrix of adjustment variables
-  adjdata <- df1$adjdata
+  adjdata <- df1$data_adj
   # List of FP1 data.
-  fpdata <- df1$fpdata
+  fpdata <- df1$data_fp
   # N = number of observation and log(n) for bic calculation
   N <- nrow(x)
   logn <- log(N)
@@ -536,7 +551,7 @@ find_best_fp1_step <- function(y,
 find_best_fpm_step <- function(y, 
                                x, 
                                xi, 
-                               allpowers, 
+                               fp_powers, 
                                powers, 
                                family, 
                                weights, 
@@ -554,13 +569,13 @@ find_best_fpm_step <- function(y,
   # Generate FP data for x of interest (xi) and adjustment variables
   m <- degree
   df1 <- extract_adjustment_data(
-    x = x, xi = xi, allpowers = allpowers,
+    x = x, xi = xi, fp_powers = fp_powers,
     df = 2 * m, powers = powers, acdx = acdx
   )
   # Matrix of adjustment data
-  adjdata <- df1$adjdata
+  adjdata <- df1$data_adj
   # List of FP data for xi (continuous) of interest.
-  fpdata <- df1$fpdata
+  fpdata <- df1$data_fp
   # Total FP powers different from 1 estimated in adjustment model
   # tFP <- calculate_number_fp_powers(df1$adjustpowers)
   # The length of generated FP variables for x of interest.
@@ -628,11 +643,16 @@ find_best_fpm_step <- function(y,
 
 #' Helper to select between null and linear model for a single variable
 #' 
-#' To be used in [find_best_fp_step()]. Only used if df = 1 for a variable.
+#' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
+#' For parameter explanations, see [find_best_fp_step()].
+#' 
+#' @return 
+#' A list with several components giving the best power found and 
+#' performance indices.
 find_best_linear_step <- function(x, 
                                   y, 
                                   xi, 
-                                  allpowers, 
+                                  fp_powers, 
                                   weights, 
                                   offset, 
                                   control,
@@ -652,7 +672,7 @@ find_best_linear_step <- function(x,
   #  Set df = 1 in the extract_adjustment_data() because linearity is assumed and fpdata
   # would be original x of interest (untransformed)
   xadjv <- extract_adjustment_data(
-    x = x, xi = xi, allpowers = allpowers, df = 1,
+    x = x, xi = xi, fp_powers = fp_powers, df = 1,
     powers = powers, acdx = acdx
   ) # degree, s and scale does not play any role here
   # Number of observations and a quantity for BIC calculation
@@ -660,7 +680,7 @@ find_best_linear_step <- function(x,
   logn <- log(N)
   # Fit a null model, which is a model that has no x of interest but only adjustment variables.
   modelnull <- fit_model(
-    x = xadjv$adjdata, y = y, family = family, weights = weights,
+    x = xadjv$data_adj, y = y, family = family, weights = weights,
     offset = offset, method = method, strata = strata,
     control = control, rownames = rownames,
     nocenter = nocenter
@@ -678,8 +698,8 @@ find_best_linear_step <- function(x,
   # with stata we get rid of it
   df.null.res <- N - (dfnull - 1)
   # Fit a model based on the assumption that x is linear while accounting for other variables.
-  xx <- cbind(xadjv$fpdata, xadjv$adjdata)
-  colnames(xx) <- c("xnew", colnames(xadjv$adjdata))
+  xx <- cbind(xadjv$data_fp, xadjv$data_adj)
+  colnames(xx) <- c("xnew", colnames(xadjv$data_adj))
   modellinear <- fit_model(
     x = xx, y = y, family = family, weights = weights,
     offset = offset, method = method, strata = strata,
@@ -780,35 +800,25 @@ find_best_linear_step <- function(x,
 #' Helper to find best model involving acd transformation for a variable
 #' 
 #' A function that fits 64 FP1 models for x and acd(x) and returns best
-#' FP1(P1,P2) function and corresponding deviance. 
-#'
-#' @param x a matrix of predictors. Each continuous predictor is assumed to have
-#' been shifted and scaled.
-#' @param y The response variable
-#' @param xi name of the continuous predictor for which the FP function will be
-#' estimated. There are no binary or two-level variables allowed.
-#' @param allpowers a named list of FP powers of all variables, including
-#' xi. Note that these powers are updated during backfitting or MFP cycles.
-#' @param powers The set of allowed FP powers.
-#' @param method method for handling ties in cox model. see coxph() for explanation
-#' @param weights see glm or coxph for explanation
-#' @param offset see glm or coxph for explanation
-#' @param family A character name specifying the family name i.e. "gaussian",
-#' "binomial", "poisson" or "cox"
-#' @param acdx logical vector indicating the use of acd transformation.
-find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weights,
+#' FP1(P1,P2) function and corresponding deviance. For parameter explanations
+#' see [find_best_fp_step()].
+#' 
+#' @return 
+#' A list with several components giving the best power found and 
+#' performance indices.
+find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weights,
                               offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
   df1 <- extract_adjustment_data(
-    x = x, xi = xi, allpowers = allpowers, df = 4,
+    x = x, xi = xi, fp_powers = fp_powers, df = 4,
     powers = powers, acdx = acdx
   )
   # Matrix of adjustment variables
-  adjdata <- df1$adjdata
+  adjdata <- df1$data_adj
   # print(head(adjdata))
   # FPa data for x of interest
-  fpdata <- df1$fpdata
+  fpdata <- df1$data_fp
   nv <- length(fpdata)
   # log(n) for bic calculation
   N <- nrow(x)
@@ -875,7 +885,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
   # while adjusting other variables
   acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
   fit.fp1.xi <- find_best_fp1_step(
-    y = y, x = x, xi = xi, allpowers = allpowers,
+    y = y, x = x, xi = xi, fp_powers = fp_powers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -897,7 +907,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
   xx <- x
   xx[, which(colnames(x) == xi)] <- axi
   fit.fp1.axi <- find_best_fp1_step(
-    y = y, x = xx, xi = xi, allpowers = allpowers,
+    y = y, x = xx, xi = xi, fp_powers = fp_powers,
     powers = powers, family = family, method = method,
     weights = weights, offset = offset, strata = strata,
     control = control, rownames = rownames,
@@ -940,7 +950,7 @@ find_best_acd_step <- function(y, x, xi, allpowers, powers, family, method, weig
     dev.roy[i] <- deviance_gaussian(RSS = sse[i], weights = weights, n = N)
   }
   # Best FP1(p1,p2) function based on dev, aic, bic and sse
-  s <- df1$powers
+  s <- df1$powers_fp
   fn.bestfp1 <- list(
     dev = s[which.min(devs), ], aic = s[which.min(aic), ],
     bic = s[which.min(bic), ], sse = s[which.min(sse), ],
@@ -1027,7 +1037,7 @@ find_index_best_model_acd <- function(pvalue,
 calculate_metrics_fpm <- function(y, 
                                   x, 
                                   xi, 
-                                  allpowers, 
+                                  fp_powers, 
                                   powers, 
                                   family, 
                                   weights, 
@@ -1044,7 +1054,7 @@ calculate_metrics_fpm <- function(y,
   out <- vector(mode = "list", length = length(mm))
   for (k in seq_along(mm)) {
     out[[k]] <- find_best_fpm_step(
-      y = y, x = x, xi = xi, allpowers = allpowers,
+      y = y, x = x, xi = xi, fp_powers = fp_powers,
       powers = powers, family = family, weights = weights,
       offset = offset, strata = strata, control = control,
       method = method, rownames = rownames,

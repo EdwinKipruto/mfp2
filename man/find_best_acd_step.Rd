@@ -8,7 +8,7 @@ find_best_acd_step(
   y,
   x,
   xi,
-  allpowers,
+  fp_powers,
   powers,
   family,
   method,
@@ -21,32 +21,12 @@ find_best_acd_step(
   acdx
 )
 }
-\arguments{
-\item{y}{The response variable}
-
-\item{x}{a matrix of predictors. Each continuous predictor is assumed to have
-been shifted and scaled.}
-
-\item{xi}{name of the continuous predictor for which the FP function will be
-estimated. There are no binary or two-level variables allowed.}
-
-\item{allpowers}{a named list of FP powers of all variables, including
-xi. Note that these powers are updated during backfitting or MFP cycles.}
-
-\item{powers}{The set of allowed FP powers.}
-
-\item{family}{A character name specifying the family name i.e. "gaussian",
-"binomial", "poisson" or "cox"}
-
-\item{method}{method for handling ties in cox model. see coxph() for explanation}
-
-\item{weights}{see glm or coxph for explanation}
-
-\item{offset}{see glm or coxph for explanation}
-
-\item{acdx}{logical vector indicating the use of acd transformation.}
+\value{
+A list with several components giving the best power found and
+performance indices.
 }
 \description{
 A function that fits 64 FP1 models for x and acd(x) and returns best
-FP1(P1,P2) function and corresponding deviance.
+FP1(P1,P2) function and corresponding deviance. For parameter explanations
+see \code{\link[=find_best_fp_step]{find_best_fp_step()}}.
 }

@@ -8,26 +8,88 @@ find_best_fp_step(
   x,
   y,
   xi,
-  allpowers,
-  df,
   weights,
   offset,
+  df,
+  fp_powers,
   family,
   criterion,
   select,
-  init,
   alpha,
   keep,
   powers,
   method,
   strata,
+  nocenter,
+  acdx,
   ftest,
   control,
   rownames,
-  nocenter,
-  verbose,
-  acdx
+  verbose
 )
+}
+\arguments{
+\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+intercept, but columns are already expanded into dummy variables as
+necessary. Data are assumed to be shifted and scaled.}
+
+\item{y}{a vector for the response variable or a \code{Surv} object.}
+
+\item{xi}{a character string indicating the name of the current variable
+of interest, for which the best fractional polynomial transformation is
+to be found in the current step.}
+
+\item{weights}{a vector of observation weights of length nobs.}
+
+\item{offset}{a vector of length nobs of offsets.}
+
+\item{df}{a numeric vector indicating the maximum degrees of freedom for the
+variable of interest \code{xi}.}
+
+\item{fp_powers}{a list of length equal to the number of variables,
+indicating the fp powers to be used in the current step for all variables
+(except \code{xi}).}
+
+\item{family}{a character string representing a family object.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+
+\item{select}{a numeric value indicating the significance level
+for backward elimination of \code{xi}.}
+
+\item{alpha}{a numeric value indicating the significance level
+for tests between FP models of different degrees for \code{xi}.}
+
+\item{keep}{a character vector that with names of variables to be kept
+in the model.}
+
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates.}
+
+\item{method}{a character string specifying the method for tie handling in
+Cox regression.}
+
+\item{strata}{a factor of all possible combinations of stratification
+variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
+
+\item{nocenter}{a numeric vector with a list of values for fitting Cox
+models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+
+\item{control}{a list with parameters for model fit.}
+
+\item{rownames}{a parameter for Cox models.}
+
+\item{verbose}{a logical; run in verbose mode.}
+}
+\value{
+A numeric vector indicating the best powers for \code{xi}. Entries can be
+\code{NA} if variable is not used.
 }
 \description{
 See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here.
@@ -39,9 +101,12 @@ AIC and BIC, respectively.
 
 It uses transformations for all other variables to assess the FP form of
 the current variable of interest. This function covers three main use cases:
-the linear case df = 1 to test between NULL and linear models (see
-\code{\link[=find_best_linear_step]{find_best_linear_step()}}); the case that an acd transformation is requested
-for the variable of interest (see \code{\link[=find_best_acd_step]{find_best_acd_step()}});
-and the usual case of the normal mfp algorithm to assess non-linear
-functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}}).
+\itemize{
+\item the linear case (\code{df = 1}) to test between null and linear models (see
+\code{\link[=find_best_linear_step]{find_best_linear_step()}}).
+\item the case that an acd transformation is requested (\code{acdx} is \code{TRUE}
+for \code{xi}) for the variable of interest (see \code{\link[=find_best_acd_step]{find_best_acd_step()}}).
+\item the (usual) case of the normal mfp algorithm to assess non-linear
+functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}} and \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
+}
 }

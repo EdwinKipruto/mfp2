@@ -33,7 +33,7 @@ fit_mfp(
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
 intercept, but columns are already expanded into dummy variables as
-necessary.}
+necessary. Data are assumed to be shifted and scaled.}
 
 \item{y}{a vector for the response variable or a \code{Surv} object.}
 
@@ -44,9 +44,11 @@ necessary.}
 \item{cycles}{an integer, maximum number of iteration cycles (i.e. update
 powers for all predictors).}
 
-\item{scale}{a numeric vector of length nvars of scaling factors.}
+\item{scale}{a numeric vector of length nvars of scaling factors. Not applied,
+but re-ordered to conform to \code{xorder}.}
 
-\item{shift}{a numeric vector of length nvars of shifts.}
+\item{shift}{a numeric vector of length nvars of shifts. Not applied,
+but re-ordered to conform to \code{xorder}.}
 
 \item{df}{a numeric vector of length nvars of degrees of freedom.}
 

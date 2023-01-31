@@ -7,14 +7,16 @@
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
-#' necessary.
+#' necessary. Data are assumed to be shifted and scaled. 
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
 #' @param cycles an integer, maximum number of iteration cycles (i.e. update
 #' powers for all predictors). 
-#' @param scale a numeric vector of length nvars of scaling factors.
-#' @param shift a numeric vector of length nvars of shifts.
+#' @param scale a numeric vector of length nvars of scaling factors. Not applied,
+#' but re-ordered to conform to `xorder`.
+#' @param shift a numeric vector of length nvars of shifts. Not applied, 
+#' but re-ordered to conform to `xorder`.
 #' @param df a numeric vector of length nvars of degrees of freedom.
 #' @param center a logical vector of length nvars indicating if variables are 
 #' to be centered.
@@ -512,14 +514,14 @@ find_best_fp_cycle <- function(x,
   
   names_x <- names(fp_powers)
   for (i in 1:ncol(x)) {
-    # iterate through all predictors xi and estimate xi's best FP power
+    # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
-    fitx <- find_best_fp_step(
+    fp_powers[[i]] <- find_best_fp_step(
       x = x, 
       y = y,
       xi = names_x[i],
-      allpowers = fp_powers,
+      fp_powers = fp_powers,
       weights = weights,
       offset = offset,
       df = df[i], 
@@ -538,9 +540,6 @@ find_best_fp_cycle <- function(x,
       acdx = acdx,
       verbose = verbose
     )
-    
-    # update the FP power of the ith variable
-    fp_powers[[i]] <- fitx$overall.best.fn
   }
   
   fp_powers

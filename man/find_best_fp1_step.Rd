@@ -9,7 +9,7 @@ find_best_fp1_step(
   y,
   x,
   xi,
-  allpowers,
+  fp_powers,
   powers,
   family,
   method,
@@ -26,7 +26,7 @@ find_best_fpm_step(
   y,
   x,
   xi,
-  allpowers,
+  fp_powers,
   powers,
   family,
   weights,
@@ -40,34 +40,14 @@ find_best_fpm_step(
   acdx
 )
 }
-\arguments{
-\item{y}{the response variable.}
-
-\item{x}{The original untransformed matrix of predictors. Each continuous
-predictor is assumed to have  shifted and scaled.}
-
-\item{xi}{the name of the continuous predictor for which the FP function will
-be estimated. There are no binary or two-level variables allowed.}
-
-\item{allpowers}{a named list of FP powers of all variables of interest,
-including xi. Not that these powers are updated during backfitting or MFP
-cycles.}
-
-\item{powers}{a set of FP powers.}
-
-\item{family}{A character name specifying the family name i,e "gaussian",
-"binomial", "poisson" or "cox".}
-
-\item{method}{method for handling ties in cox model. see coxph() for
-explanation.}
-
-\item{weights}{see glm or coxph for explanation.}
-
-\item{offset}{see glm or coxph for explanation.}
+\value{
+A list with several components giving the best power found and
+performance indices.
 }
 \description{
 Handles the FP1 (\code{find_best_fp1_step}) and the higher order FP
-(\code{find_best_fpm_step}) cases.
+(\code{find_best_fpm_step}) cases. For parameter definitions, see
+\code{\link[=find_best_fp_step]{find_best_fp_step()}}.
 }
 \section{Functions}{
 \itemize{

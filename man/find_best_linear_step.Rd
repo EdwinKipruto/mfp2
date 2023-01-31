@@ -8,7 +8,7 @@ find_best_linear_step(
   x,
   y,
   xi,
-  allpowers,
+  fp_powers,
   weights,
   offset,
   control,
@@ -27,6 +27,11 @@ find_best_linear_step(
   acdx
 )
 }
+\value{
+A list with several components giving the best power found and
+performance indices.
+}
 \description{
-To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if df = 1 for a variable.
+To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.
+For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}.
 }

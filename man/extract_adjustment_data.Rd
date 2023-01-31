@@ -4,41 +4,47 @@
 \alias{extract_adjustment_data}
 \title{Function to extract and transform adjustment variables}
 \usage{
-extract_adjustment_data(x, xi, allpowers, df, powers, acdx)
+extract_adjustment_data(x, xi, fp_powers, df, powers, acdx)
 }
 \arguments{
-\item{x}{a matrix of predictors that includes the xi variable of interest.
+\item{x}{a matrix of predictors that includes the variable of interest \code{xi}.
 It is assumed that continuous variables have already been shifted and scaled.}
 
 \item{xi}{name of the continuous predictor for which the FP function will be
-estimated. There are no binary or two-level variables allowed.}
+estimated. There are no binary or two-level variables allowed. All variables
+except \code{xi} are referred to as "adjustment variables".}
 
-\item{allpowers}{a named list of FP powers of all variables of interest,
-including xi. Note that these powers are updated during backfitting or MFP
+\item{fp_powers}{a named list of FP powers of all variables of interest,
+including \code{xi}. Note that these powers are updated during backfitting or MFP
 cycles.}
 
-\item{df}{vector of degrees of freedom in which 1 indicates linear,
-2 indicates FP1, 4 indicates FP2, and so on.}
+\item{df}{a numeric vector of degrees of freedom for \code{xi}.}
 
-\item{powers}{a set of FP powers.}
+\item{powers}{a set of allowed FP powers.}
 }
 \value{
-A list containing the following elements: FP powers ("powers"),
-FP data ("fpdata"), adjustment data ("adjdata"), and adjustment FP powers
-(adjustpowers).
+A list containing the following elements:
+\itemize{
+\item \code{powers_fp}: fp powers used for \code{data_fp}.
+\item \code{data_fp}: all possible fp transformations for \code{xi}, see the \code{data}
+component of the output of \code{\link[=generate_transformations_fp]{generate_transformations_fp()}} and
+\code{\link[=generate_transformations_acd]{generate_transformations_acd()}}.
+\item \code{powers_adj}: fp powers for adjustment variables in \code{data_adj}.
+\item \code{data_adj}: adjustment data, i.e. transformed input data for adjustment
+variables.
+}
 }
 \description{
 Function to extract and transform adjustment variables
 }
 \details{
 After extracting the adjustment variables this function, using their
-corresponding FP powers stored in allpowers, transforms them. This function is
-critical because, when evaluating x of interest, we must account for other
+corresponding FP powers stored in \code{fp_powers}, transforms them.
+This is necessary When evaluating x of interest, as we must account for other
 variables, which can be transformed or untransformed, depending on the
 individual powers. It's worth noting that some powers can be NA, indicating
 that the variable has been left out of the adjustment variables. It also
 returns the FP data, which is dependent on the degrees of freedom. For example,
-df = 2 is equivalent to FP degree one, resulting in the generation of 8
-variables. If acdx is set to TRUE, however, 64 variables are generated.
-For more information, see Royston (2016).
+\code{df = 2} is equivalent to FP degree one, resulting in the generation of 8
+variables. If \code{acdx} is set to \code{TRUE}, however, 64 variables are generated.
 }

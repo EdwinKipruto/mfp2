@@ -1,105 +1,111 @@
 #' Function to extract and transform adjustment variables
 #' 
+#' @param x a matrix of predictors that includes the variable of interest `xi`. 
+#' It is assumed that continuous variables have already been shifted and scaled.
+#' @param xi name of the continuous predictor for which the FP function will be
+#' estimated. There are no binary or two-level variables allowed. All variables
+#' except `xi` are referred to as "adjustment variables".
+#' @param fp_powers a named list of FP powers of all variables of interest, 
+#' including `xi`. Note that these powers are updated during backfitting or MFP 
+#' cycles.
+#' @param df a numeric vector of degrees of freedom for `xi`.
+#' @param powers a set of allowed FP powers.
+#' 
 #' @details
 #' After extracting the adjustment variables this function, using their
-#' corresponding FP powers stored in allpowers, transforms them. This function is
-#' critical because, when evaluating x of interest, we must account for other
+#' corresponding FP powers stored in `fp_powers`, transforms them. 
+#' This is necessary When evaluating x of interest, as we must account for other
 #' variables, which can be transformed or untransformed, depending on the
 #' individual powers. It's worth noting that some powers can be NA, indicating
 #' that the variable has been left out of the adjustment variables. It also
 #' returns the FP data, which is dependent on the degrees of freedom. For example,
-#' df = 2 is equivalent to FP degree one, resulting in the generation of 8 
-#' variables. If acdx is set to TRUE, however, 64 variables are generated.
-#' For more information, see Royston (2016).
-#' 
-#' @param x a matrix of predictors that includes the xi variable of interest. 
-#' It is assumed that continuous variables have already been shifted and scaled.
-#' @param xi name of the continuous predictor for which the FP function will be
-#' estimated. There are no binary or two-level variables allowed.
-#' @param allpowers a named list of FP powers of all variables of interest, 
-#' including xi. Note that these powers are updated during backfitting or MFP 
-#' cycles.
-#' @param df vector of degrees of freedom in which 1 indicates linear, 
-#' 2 indicates FP1, 4 indicates FP2, and so on.
-#' @param powers a set of FP powers.
+#' `df = 2` is equivalent to FP degree one, resulting in the generation of 8 
+#' variables. If `acdx` is set to `TRUE`, however, 64 variables are generated.
 #' 
 #' @return 
-#' A list containing the following elements: FP powers ("powers"), 
-#' FP data ("fpdata"), adjustment data ("adjdata"), and adjustment FP powers 
-#' (adjustpowers).
+#' A list containing the following elements: 
+#' 
+#' * `powers_fp`: fp powers used for `data_fp`.
+#' * `data_fp`: all possible fp transformations for `xi`, see the `data` 
+#' component of the output of [generate_transformations_fp()] and 
+#' [generate_transformations_acd()]. 
+#' * `powers_adj`: fp powers for adjustment variables in `data_adj`.
+#' * `data_adj`: adjustment data, i.e. transformed input data for adjustment
+#' variables.
 extract_adjustment_data <- function(x,
                                     xi,
-                                    allpowers,
+                                    fp_powers,
                                     df, 
                                     powers,
                                     acdx) {
-  # number of observations
-  N <- dim(x)[1L]
-  # Sort x based on the names of the powers
-  pwrs.namex <- names(allpowers)
-  x <- x[, pwrs.namex, drop = F]
-  # Extract the matrix of adjustment variables
-  adjvars <- pwrs.namex[!(pwrs.namex %in% xi)]
-  xadjust <- x[, adjvars, drop = F]
-  # FP Powers of adjustment variables
-  adjustpowers <- allpowers[adjvars]
-  # acd of adjustment variables. acdx is a named vector of TRUE or FALSE
-  acdxa <- unname(acdx[adjvars])
-  # check whether all adjustment powers = NA. Meaning all adjustment variables
-  # were eliminated in MFP backfitting process
-  if (!all(is.na(unlist(adjustpowers, use.names = F)))) {
-    nv <- ncol(xadjust)
-    xadjust.T <- vector(mode = "list", length = nv)
-    for (i in 1:nv) {
-      # we distinguish between acd and non-acd variables. To avoid treating acd
-      # variables as FP2 variables. we use a special function for acd
-      if (acdxa[i]) {
-        # scale = 1 and shift = 0 means no scaling and shifting
-        xadjust.T[[i]] <- transform_vector_acd(
-          x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]],
+
+  # sort x based on the names of the powers
+  names_fp_powers <- names(fp_powers)
+  x <- x[, names_fp_powers, drop = FALSE]
+  
+  # extract the matrix of adjustment variables
+  vars_adj <- names_fp_powers[!(names_fp_powers %in% xi)]
+  x_adj <- x[, vars_adj, drop = FALSE]
+  
+  # transformations of adjustment variables
+  powers_adj <- fp_powers[vars_adj]
+  acdx_adj <- unname(acdx[vars_adj])
+  
+  # generate adjustment data 
+  # check whether all adjustment powers = NA
+  if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
+    # all adjustment variables were eliminated in MFP backfitting process
+    data_adj <- NULL
+    powers_adj <- NULL
+  } else {
+    data_adj <- vector(mode = "list", length = ncol(x_adj))
+    
+    for (i in 1:ncol(x_adj)) {
+      if (acdx_adj[i]) {
+        data_adj[[i]] <- transform_vector_acd(
+          x = x_adj[, i, drop = TRUE], power = powers_adj[[i]],
           powers = powers
         )
       } else {
-        xadjust.T[[i]] <- transform_vector_fp(
-          x = xadjust[, i, drop = TRUE], power = adjustpowers[[i]]
+        data_adj[[i]] <- transform_vector_fp(
+          x = x_adj[, i, drop = TRUE], power = powers_adj[[i]]
         )
       }
     }
-    # combine the transformed adjustment varaibles
-    xadjust.T <- do.call(cbind, xadjust.T)
-    # assign arbitrary names to adjustment matrix. After all we are not interested
-    # with the names of adjustment variables at this stage
-    colnames(xadjust.T) <- paste0("adjvar", 1:ncol(xadjust.T))
-  } else {
-    xadjust.T <- NULL
-    adjustpowers <- NULL
+    
+    # combine into data.frame
+    # note some variables may have been extended to more than one column
+    # in the loop above due to transformation
+    data_adj <- do.call(cbind, data_adj)
+    
+    # assign arbitrary names to adjustment matrix 
+    # the names of adjustment variables at this stage are not relevant
+    colnames(data_adj) <- paste0("var_adj", 1:ncol(data_adj))
   }
-  # =============================================================================
-  # Generate FP data:
-  # =============================================================================
-  xinterest <- x[, xi, drop = T]
-  nxx <- length(unique(xinterest))
-  # if a variable is binary or has less than 4 levels we do not generate FP data.
-  # Similarly when df = 1 we do not generate FP data because we assume linearity
-  if (nxx <= 3) {
-    fpdata <- xinterest
+  
+  # generate fp data
+  data_xi <- x[, xi, drop = TRUE]
+  
+  if (length(unique(data_xi)) <= 3 || df == 1) {
+    # if a variable has less than 4 levels we do not generate FP data
+    # when df = 1 we do not generate FP data because we assume linearity
+    data_fp <- data_xi
+    powers_fp <- 1
   } else {
-    if (df == 1) {
-      fpdata <- xinterest
+    if (acdx[xi]) {
+      fpd <- generate_transformations_acd(data_xi, powers = powers)
     } else {
-      # Generate fpdata if the variable has more than two levels or df>1
-      # If a variable is acd we generate 64 pairs of variables
-      if (acdx[xi]) {
-        fpd <- generate_transformations_acd(xinterest, powers = powers)
-        fpdata <- fpd$data
-        powers <- fpd$powers
-      } else {
-        # Generate 8 variables if degree = 1, 36 if degree = 2 and so on
-        fpd <- generate_transformations_fp(xinterest, degree = df / 2, powers = powers)
-        fpdata <- fpd$data
-        powers <- fpd$powers
-      }
+      # note that degree is df / 2
+      fpd <- generate_transformations_fp(data_xi, degree = df / 2, powers = powers)
     }
+    data_fp <- fpd$data
+    powers_fp <- fpd$powers
   }
-  return(list(powers = powers, fpdata = fpdata, adjdata = xadjust.T, adjustpowers = adjustpowers))
+  
+  list(
+    powers_fp = powers_fp, 
+    data_fp = data_fp, 
+    powers_adj = powers_adj,
+    data_adj = data_adj
+  )
 }

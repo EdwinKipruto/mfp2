@@ -107,15 +107,15 @@ find_best_fp_step <- function(x,
       acdx = acdx
     )
     # The best power estimated. Is NA if Null model was selected and 1 if linear
-    best.fp.power <- fits$overall.best.fn
+    best.fp.power <- fits$power_best
     # Deviance, aic and bic for null and linear model
-    dev.all <- fits$dev.all
-    aic.all <- fits$aic.all
-    bic.all <- fits$bic.all
+    dev.all <- fits$dev
+    aic.all <- fits$aic
+    bic.all <- fits$bic
     # index of the best model. 1 = Null model while 2 = linear model
-    index.bestmodel <- fits$index.bestmodel
+    index.bestmodel <- fits$index_model_best
     # Deviance difference and corresponding pvalue between NULL and linear model
-    dev.diff <- fits$dev.diff
+    dev.diff <- fits$dev_diff
     pvalue <- fits$pvalues
     
     overall.best.fn = as.numeric(best.fp.power)
@@ -654,160 +654,144 @@ find_best_fpm_step <- function(y,
   mt
 }
 
-#' Helper to select between null and linear model for a single variable
+#' Helper to select between null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
-#' For parameter explanations, see [find_best_fp_step()].
+#' For parameter explanations, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @details 
+#' This function assesses a single variable of interest `xi` regarding its
+#' functional form in the current working model as indicated by
+#' `powers_current`, with the choice between a excluding `xi` ("null model") and
+#' including a linear term ("linear fp") for `xi`.
 #' 
 #' @return 
-#' A list with several components giving the best power found and 
-#' performance indices.
+#' A list with several components giving the best power found (`power_best`) and 
+#' performance indices. The returned best power may be `NA`, indicating the
+#' variable has been removed from the model.
 find_best_linear_step <- function(x, 
-                                  y, 
                                   xi, 
+                                  y, 
                                   powers_current, 
-                                  weights, 
-                                  offset, 
-                                  control,
-                                  family, 
                                   criterion, 
                                   select, 
                                   alpha, 
                                   keep, 
                                   powers, 
-                                  method,
-                                  strata, 
                                   ftest, 
-                                  rownames, 
-                                  nocenter, 
                                   verbose, 
-                                  acdx) {
-  #  Set df = 1 in the transform_data_step() because linearity is assumed and fpdata
-  # would be original x of interest (untransformed)
-  xadjv <- transform_data_step(
-    x = x, xi = xi, powers_current = powers_current, df = 1,
-    powers = powers, acdx = acdx
-  ) # degree, s and scale does not play any role here
-  # Number of observations and a quantity for BIC calculation
-  N <- dim(x)[1L]
-  logn <- log(N)
-  # Fit a null model, which is a model that has no x of interest but only adjustment variables.
-  modelnull <- fit_model(
-    x = xadjv$data_adj, y = y, family = family, weights = weights,
-    offset = offset, method = method, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter
+                                  acdx, 
+                                  ...) {
+  
+  n_obs <- dim(x)[1L]
+
+  # transform all data as given by current working model
+  # set variable of interest to linear term only
+  x_transformed <- transform_data_step(
+    x = x, xi = xi, df = 1,
+    powers_current = powers_current, acdx = acdx, powers = powers
+  ) 
+  
+  # fit null model
+  # i.e. a model that does not contain xi but only adjustment variables
+  model_null <- fit_model(x = x_transformed$data_adj, y = y, ...)
+  
+  # fit a model based on the assumption that xi is linear 
+  model_linear <- fit_model(
+    x = cbind(x_transformed$data_fp, x_transformed$data_adj), y = y, ...
   )
-  # The total number of parameters in the model. The scale parameter is included
-  # in Gaussian. FP powers in the models is not considered since its not estimated
-  dfnull <- modelnull$df
-  # Deviance, AIC, BIC and SSE for a null model
-  devnull <- -2 * modelnull$logl
-  aic.null <- devnull + 2 * dfnull
-  bic.null <- devnull + logn * dfnull
-  sse.null <- modelnull$SSE
-  dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
-  # Residual degrees of freedom. It includes scale parameter. for consistency
-  # with stata we get rid of it
-  df.null.res <- N - (dfnull - 1)
-  # Fit a model based on the assumption that x is linear while accounting for other variables.
-  xx <- cbind(xadjv$data_fp, xadjv$data_adj)
-  colnames(xx) <- c("xnew", colnames(xadjv$data_adj))
-  modellinear <- fit_model(
-    x = xx, y = y, family = family, weights = weights,
-    offset = offset, method = method, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter
-  )
-  # Deviance, AIC, BIC and SSE for a linear model
-  devlin <- -2 * modellinear$logl
-  dflin <- modellinear$df # includes scale parameter, which is fine since glm uses it in aic or bic calculation
-  aic.lin <- devlin + 2 * dflin
-  bic.lin <- devlin + logn * dflin
-  sse.linear <- modellinear$SSE
-  dev.roy.lin <- deviance_gaussian(RSS = sse.linear, weights = weights, n = N)
-  # Residual degrees of freedom. It includes scale parameter. for consistency
-  # with stata mfpa results we get rid of it
-  df.linear.res <- N - (dflin - 1)
-  # Combine the deviance, AIC,BIC and SSE for a null and linear model
-  dev.all <- c(devnull, devlin)
-  dev.roy.all <- c(dev.roy.null, dev.roy.lin)
-  aic.all <- c(aic.null, aic.lin)
-  bic.all <- c(bic.null, bic.lin)
-  sse.all <- c(sse.null, sse.linear)
-  df.all <- c(df.null.res, df.linear.res)
-  names(dev.all) <- names(dev.roy.all) <- names(aic.all) <- names(bic.all) <- names(sse.all) <- names(df.all) <- c("null", "linear")
-  # Deviance difference
-  dev.diff <- as.numeric(devnull - devlin)
-  # Model selection based on AIC, BIC or P-values
-  if (criterion == "AIC") {
-    index.bestmodel <- which.min(aic.all) # 1 = variable removed, 2 = linear
-    # keep xi in the model
-    if (xi %in% keep) {
-      index.bestmodel <- which.min(aic.all[-1]) + 1
-    }
-  } else if (criterion == "BIC") {
-    index.bestmodel <- which.min(bic.all)
-    if (xi %in% keep) {
-      index.bestmodel <- which.min(bic.all[-1]) + 1
-    }
-  } else { # criterion=="pvalue"
+  
+  # model metrics
+  metrics <- rbind(
+    null = calculate_model_metrics(model_null, n_obs), 
+    linear = calculate_model_metrics(model_linear, n_obs)
+  )  
+  dev_diff <- metrics["null", "deviance_rs"] - metrics["linear", "deviance_rs"]
+  
+  # model selection based on AIC, BIC or P-values, or keep xi if indicated
+  # 1 = variable removed, 2 = linear
+  criterion = tolower(criterion)
+  if (xi %in% keep) {
+    model_best = 2
+  } else if (grepl("aic|bic", criterion)) {
+    model_best <- which.min(metrics[, criterion, drop = TRUE])
+  } else { 
+    # criterion == "pvalue"
+     
     if (ftest) {
-      stats <- calculcate_f_statistic_stata(
-        dev_reduced = dev.roy.all[1], dev_full = dev.roy.all[2], d1 = 1,
-        d2 = df.all[2], n = N
+      stats <- calculate_f_statistic_stata(
+        dev_reduced = metrics["null", "deviance_stata"], 
+        dev_full = metrics["linear", "deviance_stata"], 
+        d1 = 1, d2 = metrics["linear", "df_resid"], 
+        n = n_obs
       )
       pvalue <- stats$pval
       fstatistic <- stats$fstatistic
-      dev.diff <- stats$dev.diff
+      dev_diff <- stats$dev.diff
     } else {
-      pvalue <- pchisq(q = dev.diff, df = dflin - dfnull, lower.tail = F)
+      pvalue <- pchisq(
+        q = dev_diff, 
+        df = metrics["linear", "df"] - metrics["null", "df"], 
+        lower.tail = FALSE
+      )
     }
-    names(pvalue) <- names(dev.diff) <- c("Null vs Linear")
-    index.bestmodel <- ifelse(pvalue > select, 1, 2)
+    
+    names(pvalue) <- c("Null vs Linear")
+    names(dev_diff) <- names(pvalue)
+    model_best <- ifelse(pvalue > select, 1, 2)
   }
+  
   if (verbose) {
     if (criterion == "pvalue") {
       if (ftest) {
         print_mfp_summary_2(
-          namex = xi, dev.all = dev.roy.all, df.res = df.all, df.den = df.all, dev.diff = dev.diff, f = fstatistic,
-          pvalues = pvalue, best.function = list(1), index.bestmodel = index.bestmodel, acd = acdx[xi]
-        ) # acdx[xi]
+          namex = xi, 
+          dev.all = metrics[, "deviance_stata"], 
+          df.res = metrics[, "df_resid"], 
+          df.den = metrics[, "df_resid"], 
+          dev.diff = dev_diff,
+          f = fstatistic,
+          pvalues = pvalue,
+          best.function = list(1), 
+          index.bestmodel = model_best, 
+          acd = acdx[xi]
+        ) 
       } else {
         print_mfp_summary_1(
-          namex = xi, dev.all = dev.all, dev.diff = dev.diff,
+          namex = xi, 
+          dev.all = metrics[, "deviance_rs"], 
+          dev.diff = dev_diff,
           pvalues = pvalue,
-          index.bestmodel = index.bestmodel,
-          best.function = list(1), acd = acdx[xi]
-        ) # acdx[xi]
+          index.bestmodel = model_best,
+          best.function = list(1), 
+          acd = acdx[xi]
+        ) 
       }
     } else {
-      switch(criterion,
-             "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = list(1), acd = F),
-             "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = list(1), acd = F)
+      print_mfp_summary_3(
+        xi, 
+        gic = metrics[, criterion], 
+        keep = keep, 
+        best.function = list(1),
+        acd = FALSE
       )
     }
   }
   
-  fit <- list(
-    overall.best.fn = as.numeric(ifelse(index.bestmodel == 1, NA, 1)),
-    dev.all = if (ftest) {
-      dev.roy.all
-    } else {
-      dev.all
-    }, aic.all = aic.all,
-    bic.all = bic.all, sse.all = sse.all,
-    index.bestmodel = as.numeric(index.bestmodel),
-    dev.diff = dev.diff,
-    pvalues = if (criterion == "pvalue") {
-      pvalue
-    } else {
-      NA
-    },
+  list(
+    power_best = as.numeric(ifelse(model_best == 1, NA, 1)),
+    dev = ifelse(ftest, metrics[, "deviance_stata"], 
+                      metrics[, "deviance_rs"]), 
+    aic = metrics[, "aic"],
+    bic = metrics[, "bic"], 
+    sse = metrics[, "sse"],
+    df_resid = metrics[, "df_resid"],
+    dev_diff = dev_diff,
+    pvalues = ifelse(criterion == "pvalue", pvalue, NA),
     fstatistic = ifelse(ftest && criterion == "pvalue", fstatistic, NA),
-    df.all = df.all
+    index_model_best = as.numeric(model_best)
   )
-  return(fit)
 }
 
 #' Helper to find best model involving acd transformation for a variable

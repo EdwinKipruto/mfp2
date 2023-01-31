@@ -2,36 +2,37 @@
 % Please edit documentation in R/mfp_step.R
 \name{find_best_linear_step}
 \alias{find_best_linear_step}
-\title{Helper to select between null and linear model for a single variable}
+\title{Helper to select between null and linear term for a single variable}
 \usage{
 find_best_linear_step(
   x,
-  y,
   xi,
+  y,
   powers_current,
-  weights,
-  offset,
-  control,
-  family,
   criterion,
   select,
   alpha,
   keep,
   powers,
-  method,
-  strata,
   ftest,
-  rownames,
-  nocenter,
   verbose,
-  acdx
+  acdx,
+  ...
 )
 }
 \value{
-A list with several components giving the best power found and
-performance indices.
+A list with several components giving the best power found (\code{power_best}) and
+performance indices. The returned best power may be \code{NA}, indicating the
+variable has been removed from the model.
 }
 \description{
 To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.
-For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}.
+For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
+captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+}
+\details{
+This function assesses a single variable of interest \code{xi} regarding its
+functional form in the current working model as indicated by
+\code{powers_current}, with the choice between a excluding \code{xi} ("null model") and
+including a linear term ("linear fp") for \code{xi}.
 }

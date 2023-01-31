@@ -89,7 +89,7 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 }
 \value{
 A numeric vector indicating the best powers for \code{xi}. Entries can be
-\code{NA} if variable is not used.
+\code{NA} if variable is not to be used in the remaining steps of a cycle.
 }
 \description{
 See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here and
@@ -110,6 +110,12 @@ for \code{xi}) for the variable of interest (see \code{\link[=find_best_acd_step
 \item the (usual) case of the normal mfp algorithm to assess non-linear
 functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}} and \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
 }
+
+Note that these cases do not encompass the setting that a variable is not
+selected, because the evaluation is done for each variable in each cycle.
+Only once evaluation in this function happened a variable may be removed
+from all further evaluations in the current cycle. It will re-enter the
+next cycle again, however. Also see \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}.
 
 Note that the algorithm starts by setting all \code{df = 1}, and higher fps
 are evaluated in turn starting from the first step in the first cycle.

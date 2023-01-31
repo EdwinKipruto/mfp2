@@ -56,12 +56,18 @@
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
 #' functional forms (see [find_best_fp1_step()] and [find_best_fpm_step()]). 
 #' 
+#' Note that these cases do not encompass the setting that a variable is not
+#' selected, because the evaluation is done for each variable in each cycle.
+#' Only once evaluation in this function happened a variable may be removed
+#' from all further evaluations in the current cycle. It will re-enter the 
+#' next cycle again, however. Also see [find_best_fp_cycle()].
+#' 
 #' Note that the algorithm starts by setting all `df = 1`, and higher fps
 #' are evaluated in turn starting from the first step in the first cycle.
 #' 
 #' @return 
 #' A numeric vector indicating the best powers for `xi`. Entries can be 
-#' `NA` if variable is not used. 
+#' `NA` if variable is not to be used in the remaining steps of a cycle. 
 find_best_fp_step <- function(x,
                               y, 
                               xi,
@@ -108,7 +114,7 @@ find_best_fp_step <- function(x,
     # Deviance difference and corresponding pvalue between NULL and linear model
     dev.diff <- fits$dev.diff
     pvalue <- fits$pvalues
-
+    
     overall.best.fn = as.numeric(best.fp.power)
   } else {
     if (acdx[xi]) {
@@ -436,7 +442,7 @@ find_best_fp1_step <- function(y,
   # N = number of observation and log(n) for bic calculation
   N <- nrow(x)
   logn <- log(N)
-
+  
   # Fit a null model-model without x of interest
   fitnull <- fit_model(
     x = adjdata, y = y, family = family, method = method,
@@ -466,7 +472,7 @@ find_best_fp1_step <- function(y,
   dev.roy.null <- deviance_gaussian(RSS = sse.null, weights = weights, n = N)
   df.sse.null <- N - (dfnull - 1) # subtract scale parameter
   # df.sse.null2 <- N-fitnull$df
-
+  
   # Fit 8 linear models for x of interest while adjusting for other variables.
   nv <- length(fpdata)
   devs <- dev.roy <- sse <- aic <- bic <- dfx <- dfp1 <- numeric(nv)
@@ -811,7 +817,7 @@ find_best_linear_step <- function(x,
 #' A list with several components giving the best power found and 
 #' performance indices.
 find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weights,
-                              offset, strata, control, rownames, nocenter, acdx) {
+                               offset, strata, control, rownames, nocenter, acdx) {
   # Generate FPa data for x of interest (xi). If the default FP power set is
   # used, 64 pairs of new variables are created.
   df1 <- transform_data_step(
@@ -827,7 +833,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   # log(n) for bic calculation
   N <- nrow(x)
   logn <- log(N)
-
+  
   # Fit a model without xi and axi--the null model. Model M6 in R&S 2016
   fitnull <- fit_model(
     x = adjdata, y = y, family = family, method = method,
@@ -862,7 +868,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   sse.linxi <- fit.lin.xi$SSE
   dev.roy.linxi <- deviance_gaussian(RSS = sse.linxi, weights = weights, n = N)
   df.linxi <- N - (dflinxi - 1)
-
+  
   # Fit a model with linear in axi = acd(xi)--Model M5 in R&S 2016
   axi <- fit_acd(x = x[, xi], powers = powers)$acd
   xkk <- cbind(axi, adjdata)
@@ -883,7 +889,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   dev.roy.linaxi <- deviance_gaussian(RSS = sse.linaxi, weights = weights, n = N)
   # subtract 1 = scale parameter and 1 = FP used for acd calculation
   df.linaxi <- N - (dflinaxi - 1)
-
+  
   # Fit best FP1 model to xi--Model M2 in R&S 2016
   # change acdx for xi to temporarily false so that we  fit bestFP1 for xi
   # while adjusting other variables
@@ -904,7 +910,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   df.fp1xi <- fit.fp1.xi$df.all[3]
   # best FP1 function (dev,aic, bic, sse)
   bestfpxi <- fit.fp1.xi$fn.bestfp1
-
+  
   # Fit best FP1 model to axi = acd(xi)--Model M3 in R&S 2016
   # replace the column of xi with acd(xi) and estimate the best fp for new xi
   # set acdx = F so that 8 fp variables will be generated for the new xi
@@ -928,7 +934,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
   df.fp1axi <- fit.fp1.axi$df.all[3]
   # best FP1 function (dev,aic, bic, sse)
   bestfpaxi <- fit.fp1.axi$fn.bestfp1
-
+  
   # Fit 64 linear models for xi and axi of interest while adjusting for other
   # variables. Model M1 in R&S 2016
   devs <- dev.roy <- sse <- aic <- bic <- dfp1 <- numeric(nv)
@@ -960,7 +966,7 @@ find_best_acd_step <- function(y, x, xi, fp_powers, powers, family, method, weig
     bic = s[which.min(bic), ], sse = s[which.min(sse), ],
     dev.roy = s[which.min(dev.roy), ]
   )
-
+  
   # combine deviances, aic, bic, sse etc
   # order: M6=NULL, M4=linear(xi), M2=FP1(xi), M3=FP1(xia), M1=FP1(xi, xia),
   #        M5=linear(xia)

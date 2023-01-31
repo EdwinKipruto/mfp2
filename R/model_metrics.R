@@ -31,7 +31,7 @@ deviance_stata <- function(rss, weights, n) {
 #' data used to fit `obj`.
 #' 
 #' @return 
-#' A list with the following entries:
+#' A numeric vector with the following entries:
 #' 
 #' * `df`: number of degrees of freedom of model (i.e. coefficients).
 #' * `deviance_rs`: "deviance", i.e. minus twice the log likelihood. This is not
@@ -54,18 +54,18 @@ deviance_stata <- function(rss, weights, n) {
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 calculate_model_metrics <- function(obj, n_obs) {
 
-  res <- list(
+  res <- c(
     df = obj$df, 
     deviance_rs = -2 * obj$logl, 
     sse = obj$sse
   )
   
-  res$deviance_stata <- deviance_stata(
-    rss = res$sse, weights = obj$weights, n = n_obs
+  c(res, 
+    deviance_stata = deviance_stata(
+      rss = res[["sse"]], weights = obj$fit$weights, n = n_obs
+    ), 
+    aic = res[["deviance_rs"]] + 2 * res[["df"]], 
+    bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]], 
+    df_resid = n_obs - (res[["df"]] - 1)
   )
-  res$aic <- res$deviance_rs + 2 * res$df
-  res$bic <- res$deviance_rs + log(n_obs) * res$df
-  res$df_resid <- n_obs - (res$df - 1)
-  
-  res
 }

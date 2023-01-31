@@ -14,7 +14,7 @@ fit.}
 data used to fit \code{obj}.}
 }
 \value{
-A list with the following entries:
+A numeric vector with the following entries:
 \itemize{
 \item \code{df}: number of degrees of freedom of model (i.e. coefficients).
 \item \code{deviance_rs}: "deviance", i.e. minus twice the log likelihood. This is not

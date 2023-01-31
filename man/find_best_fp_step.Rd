@@ -92,7 +92,8 @@ A numeric vector indicating the best powers for \code{xi}. Entries can be
 \code{NA} if variable is not used.
 }
 \description{
-See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here.
+See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here and
+\code{\link[=fit_mfp]{fit_mfp()}} for an overview of the fitting procedure.
 }
 \details{
 The function selection procedure (FSP) is used if the p-value criterion is
@@ -109,4 +110,7 @@ for \code{xi}) for the variable of interest (see \code{\link[=find_best_acd_step
 \item the (usual) case of the normal mfp algorithm to assess non-linear
 functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}} and \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
 }
+
+Note that the algorithm starts by setting all \code{df = 1}, and higher fps
+are evaluated in turn starting from the first step in the first cycle.
 }

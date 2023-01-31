@@ -267,7 +267,10 @@
 #' Stata Journal 14(2): 329-341.}\cr
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
-#' The Stata Journal, 16(1), pp.72-87.}
+#' The Stata Journal, 16(1), pp.72-87.}\cr
+#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
+#' and diagnostic models: transformation of the predictors by using fractional 
+#' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
 #' [summary.mfpa()], [coef.mfpa()]

@@ -51,12 +51,20 @@
 #' fitting a regression model to determine order of significance. 
 #' * Step 2: input data pre-processing. Setting initial powers for fractional 
 #' polynomial terms, checking if acd transformation is required and allowed.
+#' Note that the initial powers of all variables are always set to 1, and higher
+#' fps are only evaluated in turn for each variables in the first cycle of the 
+#' algorithm. See e.g. Sauerbrei and Royston (1999).
 #' * Step 3: run mfp algorithm cycles. See [find_best_fp_cycle()] for more 
 #' details.
 #' * Step 4: fit final model using estimated powers.
 #' 
 #' @return 
 #' See [mfpa()] for details on the returned object.
+#' 
+#' @references 
+#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
+#' and diagnostic models: transformation of the predictors by using fractional 
+#' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
 #' [mfpa()], [find_best_fp_cycle()]

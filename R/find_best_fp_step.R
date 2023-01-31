@@ -1,6 +1,7 @@
 #' Function to estimate the best FP functions for a single variable
 #' 
-#' See [mfpa()] for a brief summary on the notation used here. 
+#' See [mfpa()] for a brief summary on the notation used here and 
+#' [fit_mfp()] for an overview of the fitting procedure.  
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
@@ -54,6 +55,9 @@
 #' for `xi`) for the variable of interest (see [find_best_acd_step()]).
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
 #' functional forms (see [find_best_fp1_step()] and [find_best_fpm_step()]). 
+#' 
+#' Note that the algorithm starts by setting all `df = 1`, and higher fps
+#' are evaluated in turn starting from the first step in the first cycle.
 #' 
 #' @return 
 #' A numeric vector indicating the best powers for `xi`. Entries can be 

@@ -89,7 +89,7 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 }
 \value{
 A numeric vector indicating the best powers for \code{xi}. Entries can be
-\code{NA} if variable is not to be used in the remaining steps of a cycle.
+\code{NA} if variable is to be removed from the working model.
 }
 \description{
 See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here and
@@ -113,9 +113,12 @@ functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}} an
 
 Note that these cases do not encompass the setting that a variable is not
 selected, because the evaluation is done for each variable in each cycle.
-Only once evaluation in this function happened a variable may be removed
-from all further evaluations in the current cycle. It will re-enter the
-next cycle again, however. Also see \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}.
+A variable which was de-selected in earlier cycles may be added to the
+working model again. Also see \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}.
+
+The adjustment in each step uses the current \code{fp_powers} for all other
+variables to determine the adjustment set and transformations in the
+working model.
 
 Note that the algorithm starts by setting all \code{df = 1}, and higher fps
 are evaluated in turn starting from the first step in the first cycle.

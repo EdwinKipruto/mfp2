@@ -320,6 +320,9 @@ The result is the selection of one of the six models.
 }
 
 \references{
+Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
+for Modelling Continuous Variables. John Wiley & Sons.}\cr
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 \emph{Multivariable regression model building by using fractional
 polynomials: Description of SAS, STATA and R programs.

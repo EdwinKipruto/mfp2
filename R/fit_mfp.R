@@ -477,28 +477,32 @@ reset_acd <- function(x,
 #' @details 
 #' A cycle is defined as a pass through all of the predictors in the input
 #' matrix `x`. A step is defined as the assessment of a single predictor. 
-#' This algorithm is described in Sauerbrei et al 2006.
+#' This algorithm is described in Sauerbrei et al (2006) and given in detail
+#' in Royston and Sauerbrei (2008), in particular chapter 6.
 #' 
 #' Briefly, a cycle works as follows. It has as input the data matrix and a set 
-#' of current fp powers for each variable. In each step, the fp powers of a 
+#' of current best fp powers for each variable. In each step, the fp powers of a 
 #' single covariate are assessed. 
 #' To do this, all of the other variables are transformed as defined by the 
 #' current powers (this is done in [transform_data_step()]) and the 
 #' fp powers of the variable of interest are tested using the closed test 
-#' procedure (done in [find_best_fp_step()]). Some of the variables may have 
-#' their fp power set to `NA`, which means they were deselected from the model 
-#' and are not used in that step as adjustment variables.
-#' The results from each step are collected and returned, completing a cycle.
+#' procedure (done in [find_best_fp_step()]). Some of the adjustment variables 
+#' may have their fp power set to `NA`, which means they were deselected from 
+#' the working model and are not used in that step.
+#' The results from all steps are collected and returned, completing a cycle.
 #' 
 #' Note that each cycle goes through all variables. In particular that means
 #' even if a variable was eliminated in an earlier cycle, it will re-enter
-#' each new cycle at the beginning to be kept or eliminated again. Elimination
-#' only affects the current cycle, that is once a variable is eliminated it 
-#' will not be used as adjustment variable (see [transform_data_step()]) 
-#' for the remaining variables of the cycle. All other transformations are kept
-#' as in earlier cycles. See e.g. Sauerbrei and Royston (1999) for details.
+#' each new cycle at the beginning to be evaluated to be added to the 
+#' working model or to be eliminated again. 
+#' 
+#' The current adjustment set is always given through the current fp powers, 
+#' which are updated in each step. 
 #' 
 #' @references 
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
+#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
 #' \emph{Multivariable regression model building by using fractional 
 #' polynomials: Description of SAS, STATA and R programs. 
@@ -537,6 +541,8 @@ find_best_fp_cycle <- function(x,
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
+    # note that the adjustment set and powers are given by fp_powers
+    # which is updated in each step
     fp_powers[[i]] <- find_best_fp_step(
       x = x, 
       y = y,

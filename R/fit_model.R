@@ -105,15 +105,16 @@ fit_glm <- function(x,
   )
 
   # account for estimation of variance parameter in gaussian models
+  # computation as in logLik.glm using rank
   df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
   
   list(
     fit = fit,
-    # loglikelihood computed as in logLik.glm in github
+    # loglikelihood computed as in stats::logLik.glm
     logl = df - fit$aic / 2,
     coefficients = fit$coefficients,
     df = df,
-    sse = sum(fit$residuals^2, na.rm = T)
+    sse = sum(fit$residuals^2, na.rm = TRUE)
   )
 }
 

@@ -1,3 +1,31 @@
+#' Function to calculate p-values for likelihood-ratio test
+#' 
+#' @param logl a numeric vector of length 2 with log-likelihoods. Typically 
+#' ordered in increasing order (i.e. null model first, then full model) and 
+#' used to test the ratio `logl[1] / logl[2]`.
+#' @param dfs a numeric vector with degrees of freedom.
+#'  
+#' @details 
+#' Uses Wilk's theorem that -2log(LR) (LR = likelihood ratio) asymptotically
+#' approaches a Chi-square distribution under the null hypothesis that both 
+#' likelihoods are equal. 
+#' 
+#' Model likelihoods can then be compared by computing 
+#' D = -2 log(likelihood reduced model / likelihood full model), and then 
+#' use a Chi-square distribution with df_full - df_reduced many degrees
+#' of freedom to derive a p-value.
+#' 
+#' This is basically the same way as [stats::anova()] implements the 
+#' likelihood ratio test.
+#' 
+#' @return
+#' The p-value for the likelihood ratio test for the ratio `logl[1] / logl[2]`.
+calculate_lr_test <- function(logl, dfs) {
+  pchisq(2 * (logl[2] - logl[1]) , 
+         df = dfs[2] - dfs[1], 
+         lower.tail = FALSE)
+}
+
 #' Function to calculate p-values for Chi-square distribution
 #' 
 #' @param dev a vector of deviance for models i.e Null, linear, FP1,...FPm.

@@ -55,6 +55,7 @@ deviance_stata <- function(rss, weights, n) {
 calculate_model_metrics <- function(obj, n_obs) {
 
   res <- c(
+    logl = obj$logl,
     df = obj$df, 
     deviance_rs = -2 * obj$logl, 
     sse = obj$sse

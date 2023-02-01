@@ -695,7 +695,7 @@ find_best_linear_step <- function(x,
     x = cbind(x_transformed$data_fp, x_transformed$data_adj), y = y, ...
   )
   
-  # model metrics
+  # model metrics as matrix
   metrics <- rbind(
     null = calculate_model_metrics(model_null, n_obs), 
     linear = calculate_model_metrics(model_linear, n_obs)
@@ -723,11 +723,7 @@ find_best_linear_step <- function(x,
       fstatistic <- stats$fstatistic
       dev_diff <- stats$dev.diff
     } else {
-      pvalue <- pchisq(
-        q = dev_diff, 
-        df = metrics["linear", "df"] - metrics["null", "df"], 
-        lower.tail = FALSE
-      )
+      pvalue <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
     }
     
     names(pvalue) <- c("Null vs Linear")

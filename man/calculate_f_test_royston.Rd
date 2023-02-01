@@ -16,9 +16,12 @@ calculate_f_test_royston(dev, resid.df, n, acd)
 \item{acd}{logical indicating use of acd transformation.}
 }
 \description{
-Function to calculate p-values for F-distribution based on Royston formula
+Alternative to \code{\link[=calculate_f_test]{calculate_f_test()}}.
 }
 \details{
 Uses formula on page 23 of Stata manual at
 https://www.stata.com/manuals/rfp.pdf.
+}
+\seealso{
+\code{\link[=calculate_f_test]{calculate_f_test()}}, \code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}
 }

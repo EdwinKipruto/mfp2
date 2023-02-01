@@ -2,18 +2,21 @@
 % Please edit documentation in R/tests.R
 \name{calculate_f_test}
 \alias{calculate_f_test}
-\title{Function to calculates p-values for F-distribution}
+\title{Function to calculate p-values for F-distribution}
 \usage{
-calculate_f_test(sse, df, acd)
-}
-\arguments{
-\item{sse}{a vector of residual sum of squares for null, linear, fp1,
-fp2 to fpm.}
-
-\item{df}{a vector of degrees of freedom for each sse.}
-
-\item{acd}{logical indicating the use of acd transformation.}
+calculate_f_test(sse_reduced, sse_full, df_reduced, df_full)
 }
 \description{
-Function to calculates p-values for F-distribution
+Alternative to likelihood ratio tests in normal / Gaussian error models.
+}
+\details{
+\code{mfp} in Stata uses different formula, see
+https://www.stata.com/manuals/rfp.pdf. That formula is implemented in
+\code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}.
+
+This functions uses page 297 or equation next to 7.4 in
+http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
+
+@seealso
+\code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}, \code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
 }

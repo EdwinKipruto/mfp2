@@ -21,9 +21,12 @@
 #' @return
 #' The p-value for the likelihood ratio test for the ratio `logl[1] / logl[2]`.
 calculate_lr_test <- function(logl, dfs) {
-  pchisq(2 * (logl[2] - logl[1]) , 
-         df = dfs[2] - dfs[1], 
-         lower.tail = FALSE)
+  list(
+    statistic = 2 * (logl[2] - logl[1]), 
+    pvalue = pchisq(2 * (logl[2] - logl[1]), 
+                    df = dfs[2] - dfs[1], 
+                    lower.tail = FALSE)
+  )
 }
 
 #' Function to calculate p-values for Chi-square distribution
@@ -72,22 +75,24 @@ calculate_chisquare_test <- function(dev,
   )
 }
 
-#' Function to compute F-statistic and p-value
+#' Function to calculate p-values for F-distribution
+#' 
+#' Alternative to likelihood ratio tests in normal / Gaussian error models. 
 #' 
 #' @details 
 #' `mfp` in Stata uses different formula, see
 #'  https://www.stata.com/manuals/rfp.pdf. That formula is implemented in 
-#'  [calculate_f_statistic_stata()].
+#'  [calculate_f_test_stata()].
 #'  
 #'  This functions uses page 297 or equation next to 7.4 in 
 #'  http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
 #'  
 #'  @seealso 
-#'  [calculate_f_statistic_stata()]
-calculate_f_statistic <- function(sse_reduced, 
-                                   sse_full,
-                                   df_reduced, 
-                                   df_full) {
+#'  [calculate_f_test_stata()], [calculate_f_test_royston()]
+calculate_f_test <- function(sse_reduced, 
+                             sse_full,
+                             df_reduced, 
+                             df_full) {
   
   # it can happen that the best fp1 is linear
   # so we are testing between the same models
@@ -110,18 +115,18 @@ calculate_f_statistic <- function(sse_reduced,
 
 #' Function to compute F-statistic as defined in `mfp` in Stata 
 #' 
-#' Alternative to [calculate_f_statistic()].
+#' Alternative to [calculate_f_test()].
 #' 
 #' @details 
 #' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf.
 #' 
 #' @seealso 
-#' [calculate_f_statistic()]
-calculate_f_statistic_stata <- function(dev_reduced, 
-                                         dev_full,
-                                         d1, 
-                                         d2,
-                                         n) {
+#' [calculate_f_test()], [calculate_f_test_royston()]
+calculate_f_test_stata <- function(dev_reduced, 
+                                   dev_full,
+                                   d1, 
+                                   d2,
+                                   n) {
   devdiff <- dev_reduced - dev_full
   aa <- exp(devdiff / n)
   fstatx <- (d2 / d1) * (aa - 1)
@@ -140,7 +145,7 @@ calculate_f_statistic_stata <- function(dev_reduced,
 
 #' Function to calculate p-values for F-distribution based on Royston formula
 #' 
-#' Alternative to [calculate_f_statistic()].
+#' Alternative to [calculate_f_test()].
 #' 
 #' @details
 #' Uses formula on page 23 of Stata manual at 
@@ -150,6 +155,9 @@ calculate_f_statistic_stata <- function(dev_reduced,
 #' @param resid.df a vector of residual degrees of freedom for models.
 #' @param n sample size/number of observations.
 #' @param acd logical indicating use of acd transformation.
+#' 
+#' @seealso 
+#' [calculate_f_test()], [calculate_f_test_stata()]
 calculate_f_test_royston <- function(dev, 
                                      resid.df,
                                      n, 
@@ -164,7 +172,7 @@ calculate_f_test_royston <- function(dev,
     pwrs <- c(0, 0, 1, 1, 2, 0)
     pvalues <- dev.diff <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      stats <- calculate_f_statistic_stata(
+      stats <- calculate_f_test_stata(
         dev_reduced = dev[i], dev_full = dev[5], d1 = df[i],
         d2 = resid.df[5], n = n
       )
@@ -173,7 +181,7 @@ calculate_f_test_royston <- function(dev,
       dev.diff[i] <- stats$dev.diff
     }
     # e). M3 vs M5
-    stats2 <- calculate_f_statistic_stata(
+    stats2 <- calculate_f_test_stata(
       dev_reduced = dev[6], dev_full = dev[4], d1 = df[5],
       d2 = resid.df[4], n = n
     )
@@ -198,7 +206,7 @@ calculate_f_test_royston <- function(dev,
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
     pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      stats <- calculate_f_statistic_stata(
+      stats <- calculate_f_test_stata(
         dev_reduced = dev[i], dev_full = dev[nn], d1 = df[i],
         d2 = resid.df[nn], n = n
       )

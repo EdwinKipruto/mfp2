@@ -138,60 +138,9 @@ calculate_f_statistic_stata <- function(dev_reduced,
   )
 }
 
-#' Function to calculates p-values for F-distribution
-#' 
-#' @param sse a vector of residual sum of squares for null, linear, fp1,
-#' fp2 to fpm.
-#' @param df  a vector of degrees of freedom for each sse.
-#' @param acd logical indicating the use of acd transformation.
-calculate_f_test <- function(sse, 
-                             df, 
-                             acd) {
-  if (acd) {
-    # we have sse = (NULL, M4, M2, M3, M1, M5)
-    # calculate p-values for the functions selection procedure:
-    # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
-    pvalues <- fstatistic <- numeric(5)
-    for (i in 1:4) {
-      fsttas <- calculate_f_statistic(sse_reduced = sse[i], 
-                                       sse_full = sse[5],
-                                       df_reduced = df[i],
-                                       df_full = df[5])
-      fstatistic[i] <- fsttas$fstatistic
-      pvalues[i] <- fsttas$pval
-    }
-    # e). M3 vs M5
-    fsttas <- calculate_f_statistic(sse_reduced = sse[6],
-                                     sse_full = sse[4], 
-                                     df_reduced = df[6],
-                                     df_full = df[4])
-    fstatistic[5] <- fsttas$fstatistic
-    pvalues[5] <- fsttas$pval
-  } else {
-    # we have sse = c(NULL, Linear, FP1, FP2,....FPm)---usual mfp approach
-    nn <- length(sse)
-    # Maximum permitted degree: nn-2, the first and second position is null and lin
-    m <- nn - 2
-    # calculate p-values for the functions selection procedure:
-    # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2...FPm vs FPm-1 etc.
-    pvalues <- fstatistic <- numeric(nn - 1)
-    for (i in 1:(nn - 1)) {
-      fsttas <- calculate_f_statistic(sse_reduced = sse[i], 
-                                       sse_full = sse[nn],
-                                       df_reduced = df[i], 
-                                       df_full = df[nn])
-      fstatistic[i] <- fsttas$fstatistic
-      pvalues[i] <- fsttas$pval
-    }
-  }
-  
-  list(
-    pvalues = pvalues,
-    fstatistic = fstatistic
-  )
-}
-
 #' Function to calculate p-values for F-distribution based on Royston formula
+#' 
+#' Alternative to [calculate_f_statistic()].
 #' 
 #' @details
 #' Uses formula on page 23 of Stata manual at 

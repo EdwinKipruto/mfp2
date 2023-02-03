@@ -29,34 +29,43 @@ deviance_stata <- function(rss, weights, n) {
 #' fit.
 #' @param n_obs a numeric value indicating the number of observations for the
 #' data used to fit `obj`.
+#' @param df_additional a numeric value indicating the number of additional
+#' degrees of freedom to be accounted for in the computations of AIC and BIC. 
+#' These may be necessary when a model uses FP terms, as these add another
+#' degree of freedom per estimated power. 
 #' 
 #' @return 
 #' A numeric vector with the following entries:
 #' 
-#' * `df`: number of degrees of freedom of model (i.e. coefficients).
-#' * `deviance_rs`: "deviance", i.e. minus twice the log likelihood. This is not
-#' usual definition of deviance used by R, which is defined as twice the 
-#' difference between the log likelihoods of the saturated model (one parameter 
-#' per observation) and the null (or reduced) model. It is, however, the 
-#' definition used in Royston and Sauerbrei (2008) and in `mfp`. For selection
-#' of fps this does not really play a role, as the common factor would be 
-#' cancelled anyway when comparing models based on deviances. 
+#' * `df`: number of degrees of freedom of model (i.e. coefficients plus 
+#' `df_additional`).
+#' * `deviance_rs`: "deviance", i.e. minus twice the log likelihood. 
+#' This is not the usual definition of deviance used by R, which is defined as 
+#' twice the difference between the log likelihoods of the saturated model
+#' (one parameter per observation) and the null (or reduced) model. 
+#' It is, however, the definition used in Royston and Sauerbrei (2008) and in 
+#' `mfp`. For selection of fps this does not really play a role, as the common 
+#' factor would be cancelled anyway when comparing models based on deviances. 
 #' * `sse`: sum of squared residuals as returned by [fit_model()].
 #' * `deviance_stata`: deviance computed by [deviance_stata()].
-#' * `aic`: Akaike information criterion, defined as `-2logL + 2df`.
-#' * `bic`: Bayesian information criterion, defined as `-2logL + log(n_obs)df`.
-#' * `df_resid`: residual degrees of freedom. For consistency with stata we 
-#' subtract the scale parameter. 
+#' * `aic`: Akaike information criterion, defined as
+#' `-2logL + 2(df + df_additional)`.
+#' * `bic`: Bayesian information criterion, defined as 
+#' `-2logL + log(n_obs)(df + df_additional)`.
+#' * `df_resid`: residual degrees of freedom, defined as `n_obs - df`. 
+#' For consistency with stata we subtract the scale parameter from `df`. 
 #' 
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
-calculate_model_metrics <- function(obj, n_obs) {
+calculate_model_metrics <- function(obj, 
+                                    n_obs, 
+                                    df_additional = 0) {
 
   res <- c(
     logl = obj$logl,
-    df = obj$df, 
+    df = obj$df + df_additional, 
     deviance_rs = -2 * obj$logl, 
     sse = obj$sse
   )
@@ -65,7 +74,7 @@ calculate_model_metrics <- function(obj, n_obs) {
     deviance_stata = deviance_stata(
       rss = res[["sse"]], weights = obj$fit$weights, n = n_obs
     ), 
-    aic = res[["deviance_rs"]] + 2 * res[["df"]], 
+    aic = res[["deviance_rs"]] + 2 * res[["df"]],
     bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]], 
     df_resid = n_obs - (res[["df"]] - 1)
   )

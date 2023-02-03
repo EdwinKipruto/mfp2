@@ -4,7 +4,7 @@
 \alias{calculate_model_metrics}
 \title{Function to compute model metrics to be used within \code{mfpa}}
 \usage{
-calculate_model_metrics(obj, n_obs)
+calculate_model_metrics(obj, n_obs, df_additional = 0)
 }
 \arguments{
 \item{obj}{a list returned by \code{\link[=fit_model]{fit_model()}} representing a glm or Cox model
@@ -12,24 +12,32 @@ fit.}
 
 \item{n_obs}{a numeric value indicating the number of observations for the
 data used to fit \code{obj}.}
+
+\item{df_additional}{a numeric value indicating the number of additional
+degrees of freedom to be accounted for in the computations of AIC and BIC.
+These may be necessary when a model uses FP terms, as these add another
+degree of freedom per estimated power.}
 }
 \value{
 A numeric vector with the following entries:
 \itemize{
-\item \code{df}: number of degrees of freedom of model (i.e. coefficients).
-\item \code{deviance_rs}: "deviance", i.e. minus twice the log likelihood. This is not
-usual definition of deviance used by R, which is defined as twice the
-difference between the log likelihoods of the saturated model (one parameter
-per observation) and the null (or reduced) model. It is, however, the
-definition used in Royston and Sauerbrei (2008) and in \code{mfp}. For selection
-of fps this does not really play a role, as the common factor would be
-cancelled anyway when comparing models based on deviances.
+\item \code{df}: number of degrees of freedom of model (i.e. coefficients plus
+\code{df_additional}).
+\item \code{deviance_rs}: "deviance", i.e. minus twice the log likelihood.
+This is not the usual definition of deviance used by R, which is defined as
+twice the difference between the log likelihoods of the saturated model
+(one parameter per observation) and the null (or reduced) model.
+It is, however, the definition used in Royston and Sauerbrei (2008) and in
+\code{mfp}. For selection of fps this does not really play a role, as the common
+factor would be cancelled anyway when comparing models based on deviances.
 \item \code{sse}: sum of squared residuals as returned by \code{\link[=fit_model]{fit_model()}}.
 \item \code{deviance_stata}: deviance computed by \code{\link[=deviance_stata]{deviance_stata()}}.
-\item \code{aic}: Akaike information criterion, defined as \verb{-2logL + 2df}.
-\item \code{bic}: Bayesian information criterion, defined as \verb{-2logL + log(n_obs)df}.
-\item \code{df_resid}: residual degrees of freedom. For consistency with stata we
-subtract the scale parameter.
+\item \code{aic}: Akaike information criterion, defined as
+\verb{-2logL + 2(df + df_additional)}.
+\item \code{bic}: Bayesian information criterion, defined as
+\verb{-2logL + log(n_obs)(df + df_additional)}.
+\item \code{df_resid}: residual degrees of freedom, defined as \code{n_obs - df}.
+For consistency with stata we subtract the scale parameter from \code{df}.
 }
 }
 \description{

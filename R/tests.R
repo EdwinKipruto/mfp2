@@ -85,6 +85,11 @@ calculate_chisquare_test <- function(dev,
 #' used to test the difference `deviances[1] - deviances[2]`.
 #' @param dfs_resid a numeric vector with residual degrees of freedom.
 #' @param n_obs a numeric value with the number of observations.
+#' @param d1 a numeriv value giving `d1` in the formula below directly as 
+#' the number of additional degrees of freedom in model 2 compared to model 1.
+#' In this case `dfs_resid` must be a single numeric value giving the residual
+#' df for model 2. This interface is sometimes more convenient than to specify
+#' both residual dfs. 
 #' 
 #' @details 
 #' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf:
@@ -116,23 +121,30 @@ calculate_chisquare_test <- function(dev,
 #' [calculate_f_test_royston()]
 calculate_f_test <- function(deviances,
                              dfs_resid,
-                             n_obs) {
+                             n_obs, 
+                             d1 = NULL) {
+  
   dev_diff <- deviances[1] - deviances[2]
+  
   # number of additional parameters in model 2 compared to model 1
-  # since we use residual dfs, we subtract in changed order
-  d1 <- dfs_resid[1] - dfs_resid[2]
-  d2 <- dfs_resid[2]
+  if (is.null(d1)) {
+    # since we use residual dfs, we subtract in changed order
+    d1 <- dfs_resid[1] - dfs_resid[2]
+    d2 <- dfs_resid[2]
+  } else {
+    d2 <- dfs_resid
+  }
+  
   statistic <- (d2 / d1) * (exp(dev_diff / n_obs) - 1)
   
-  if (dev_diff == 0) {
-    pval <- 1
-  } else {
-    pval <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
+  p_value <- 1
+  if (dev_diff != 0) {
+    p_value <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
   }
   
   list(
     statistic = statistic, 
-    pval = pval, 
+    p_value = p_value, 
     dev_diff = dev_diff
   )
 }
@@ -167,21 +179,21 @@ calculate_f_test_royston <- function(dev,
     pvalues <- dev.diff <- fstatistic <- numeric(5)
     for (i in 1:4) {
       stats <- calculate_f_test(
-        deviances = c(dev[i], dev[5]), d1 = df[i],
-        d2 = resid.df[5], n = n
+        deviances = c(dev[i], dev[5]), 
+        d1 = df[i], dfs_resid = resid.df[5], n_obs = n
       )
-      fstatistic[i] <- stats$fstatistic
-      pvalues[i] <- stats$pval
-      dev.diff[i] <- stats$dev.diff
+      fstatistic[i] <- stats$statistic
+      pvalues[i] <- stats$p_value
+      dev.diff[i] <- stats$dev_diff
     }
     # e). M3 vs M5
     stats2 <- calculate_f_test(
-      dev_reduced = dev[6], dev_full = dev[4], d1 = df[5],
-      d2 = resid.df[4], n = n
+      deviances = c(dev[6], dev[4]),
+      d1 = df[5], dfs_resid = resid.df[4], n_obs = n
     )
-    fstatistic[5] <- stats2$fstatistic
-    pvalues[5] <- stats2$pval
-    dev.diff[5] <- stats2$dev.diff
+    fstatistic[5] <- stats2$statistic
+    pvalues[5] <- stats2$p_value
+    dev.diff[5] <- stats2$dev_diff
   } else {
     # we have dev = c(NULL, Linear, FP1, FP2,....FPm)
     nn <- length(dev)
@@ -200,13 +212,13 @@ calculate_f_test_royston <- function(dev,
     # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
     pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
     for (i in 1:(nn - 1)) {
-      stats <- calculate_f_test_stata(
-        dev_reduced = dev[i], dev_full = dev[nn], d1 = df[i],
-        d2 = resid.df[nn], n = n
+      stats <- calculate_f_test(
+        deviances = c(dev[i], dev[nn]), 
+        d1 = df[i], dfs_resid = resid.df[nn], n_obs = n
       )
-      pvalues[i] <- stats$pval
-      fstatistic[i] <- stats$fstatistic
-      dev.diff[i] <- stats$dev.diff
+      pvalues[i] <- stats$p_value
+      fstatistic[i] <- stats$statistic
+      dev.diff[i] <- stats$dev_diff
     }
   }
   

@@ -4,7 +4,7 @@
 \alias{calculate_f_test}
 \title{Function to compute F-statistic and p-value from deviances}
 \usage{
-calculate_f_test(deviances, dfs_resid, n_obs)
+calculate_f_test(deviances, dfs_resid, n_obs, d1 = NULL)
 }
 \arguments{
 \item{deviances}{a numeric vector of length 2 with deviances. Typically
@@ -14,6 +14,12 @@ used to test the difference \code{deviances[1] - deviances[2]}.}
 \item{dfs_resid}{a numeric vector with residual degrees of freedom.}
 
 \item{n_obs}{a numeric value with the number of observations.}
+
+\item{d1}{a numeriv value giving \code{d1} in the formula below directly as
+the number of additional degrees of freedom in model 2 compared to model 1.
+In this case \code{dfs_resid} must be a single numeric value giving the residual
+df for model 2. This interface is sometimes more convenient than to specify
+both residual dfs.}
 }
 \value{
 The p-value for the F-test for the comparison of \code{deviance[1]} to

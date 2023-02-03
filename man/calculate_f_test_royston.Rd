@@ -23,5 +23,5 @@ Uses formula on page 23 of Stata manual at
 https://www.stata.com/manuals/rfp.pdf.
 }
 \seealso{
-\code{\link[=calculate_f_test]{calculate_f_test()}}, \code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}
+\code{\link[=calculate_f_test]{calculate_f_test()}}
 }

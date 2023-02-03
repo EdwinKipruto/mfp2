@@ -4,14 +4,14 @@
 \alias{calculate_f_test}
 \title{Function to compute F-statistic and p-value from deviances}
 \usage{
-calculate_f_test(deviances, dfs, n_obs)
+calculate_f_test(deviances, dfs_resid, n_obs)
 }
 \arguments{
 \item{deviances}{a numeric vector of length 2 with deviances. Typically
 ordered in increasing order (i.e. null model first, then full model) and
 used to test the difference \code{deviances[1] - deviances[2]}.}
 
-\item{dfs}{a numeric vector with degrees of freedom.}
+\item{dfs_resid}{a numeric vector with residual degrees of freedom.}
 
 \item{n_obs}{a numeric value with the number of observations.}
 }
@@ -27,11 +27,11 @@ Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf:
 \deqn{F = \frac{d_2}{d_1} (exp(\frac{D_2 - D_1}{n}) - 1),}
 where \eqn{D} refers to deviances of two models 1 and 2.
 \eqn{d1} is the number of additional parameters used in in model 2 as
-compared to model 1.
+compared to model 1, i.e. \code{dfs_resid[1] - dfs_resid[2]}.
 \eqn{d2} is the number of residual degrees of freedom minus the number of
-estimated powers, i.e. \code{dfs[2]}.
+estimated powers for model 2, i.e. \code{dfs_resid[2]}.
 #' The p-value then results from the use of a F-distribution with
-(\code{dfs[1]}, \code{dfs[2]}) degrees of freedom.
+(d1, d2) degrees of freedom.
 
 Note that this computation is completely equivalent to the computation
 of a F-test using sum of squared errors as in e.g. Kutner at al. (2004),
@@ -45,5 +45,5 @@ Kutner, M.H., et al., 2004. \emph{Applied linear statistical models.
 McGraw-Hill Irwin.}
 }
 \seealso{
-\code{\link[=calculate_f_test]{calculate_f_test()}}, \code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
+\code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
 }

@@ -713,15 +713,14 @@ find_best_linear_step <- function(x,
     # criterion == "pvalue"
      
     if (ftest) {
-      stats <- calculate_f_test_stata(
-        dev_reduced = metrics["null", "deviance_stata"], 
-        dev_full = metrics["linear", "deviance_stata"], 
-        d1 = 1, d2 = metrics["linear", "df_resid"], 
-        n = n_obs
+      stats <- calculate_f_test(
+        deviances = metrics[, "deviance_stata"], 
+        dfs_resid = metrics[, "df_resid"],
+        n_obs = n_obs
       )
       pvalue <- stats$pval
       fstatistic <- stats$fstatistic
-      dev_diff <- stats$dev.diff
+      dev_diff <- stats$dev_diff
     } else {
       pvalue <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])$pvalue
     }

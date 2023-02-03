@@ -20,7 +20,8 @@
 #' 
 #' @return
 #' The p-value for the likelihood ratio test for the ratio `logl[1] / logl[2]`.
-calculate_lr_test <- function(logl, dfs) {
+calculate_lr_test <- function(logl, 
+                              dfs) {
   list(
     statistic = 2 * (logl[2] - logl[1]), 
     pvalue = pchisq(2 * (logl[2] - logl[1]), 
@@ -82,7 +83,7 @@ calculate_chisquare_test <- function(dev,
 #' @param deviances a numeric vector of length 2 with deviances. Typically 
 #' ordered in increasing order (i.e. null model first, then full model) and 
 #' used to test the difference `deviances[1] - deviances[2]`.
-#' @param dfs a numeric vector with degrees of freedom.
+#' @param dfs_resid a numeric vector with residual degrees of freedom.
 #' @param n_obs a numeric value with the number of observations.
 #' 
 #' @details 
@@ -90,11 +91,11 @@ calculate_chisquare_test <- function(dev,
 #' \deqn{F = \frac{d_2}{d_1} (exp(\frac{D_2 - D_1}{n}) - 1),}
 #' where \eqn{D} refers to deviances of two models 1 and 2. 
 #' \eqn{d1} is the number of additional parameters used in in model 2 as 
-#' compared to model 1. 
+#' compared to model 1, i.e. `dfs_resid[1] - dfs_resid[2]`. 
 #' \eqn{d2} is the number of residual degrees of freedom minus the number of
-#' estimated powers, i.e. `dfs[2]`.
+#' estimated powers for model 2, i.e. `dfs_resid[2]`.
 #' #' The p-value then results from the use of a F-distribution with 
-#' (`dfs[1]`, `dfs[2]`) degrees of freedom.
+#' (d1, d2) degrees of freedom.
 #' 
 #' Note that this computation is completely equivalent to the computation
 #' of a F-test using sum of squared errors as in e.g. Kutner at al. (2004), 
@@ -112,17 +113,21 @@ calculate_chisquare_test <- function(dev,
 #' McGraw-Hill Irwin.}
 #' 
 #' @seealso 
-#' [calculate_f_test()], [calculate_f_test_royston()]
+#' [calculate_f_test_royston()]
 calculate_f_test <- function(deviances,
-                             dfs,
+                             dfs_resid,
                              n_obs) {
   dev_diff <- deviances[1] - deviances[2]
-  statistic <- (dfs[2] / dfs[1]) * (exp(dev_diff / n_obs) - 1)
+  # number of additional parameters in model 2 compared to model 1
+  # since we use residual dfs, we subtract in changed order
+  d1 <- dfs_resid[1] - dfs_resid[2]
+  d2 <- dfs_resid[2]
+  statistic <- (d2 / d1) * (exp(dev_diff / n_obs) - 1)
   
   if (dev_diff == 0) {
     pval <- 1
   } else {
-    pval <- stats::pf(statistic, df1 = dfs[1], df2 = dfs[2], lower.tail = FALSE)
+    pval <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
   }
   
   list(
@@ -146,7 +151,7 @@ calculate_f_test <- function(deviances,
 #' @param acd logical indicating use of acd transformation.
 #' 
 #' @seealso 
-#' [calculate_f_test()], [calculate_f_test_stata()]
+#' [calculate_f_test()]
 calculate_f_test_royston <- function(dev, 
                                      resid.df,
                                      n, 
@@ -161,8 +166,8 @@ calculate_f_test_royston <- function(dev,
     pwrs <- c(0, 0, 1, 1, 2, 0)
     pvalues <- dev.diff <- fstatistic <- numeric(5)
     for (i in 1:4) {
-      stats <- calculate_f_test_stata(
-        dev_reduced = dev[i], dev_full = dev[5], d1 = df[i],
+      stats <- calculate_f_test(
+        deviances = c(dev[i], dev[5]), d1 = df[i],
         d2 = resid.df[5], n = n
       )
       fstatistic[i] <- stats$fstatistic
@@ -170,7 +175,7 @@ calculate_f_test_royston <- function(dev,
       dev.diff[i] <- stats$dev.diff
     }
     # e). M3 vs M5
-    stats2 <- calculate_f_test_stata(
+    stats2 <- calculate_f_test(
       dev_reduced = dev[6], dev_full = dev[4], d1 = df[5],
       d2 = resid.df[4], n = n
     )

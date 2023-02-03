@@ -1124,7 +1124,7 @@ transform_data_step <- function(x,
   # check whether all adjustment powers = NA
   if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
     # all adjustment variables were eliminated in MFP backfitting process
-    data_adj <- NULL
+    data_adj <- matrix(nrow = 0, ncol = 0)
     powers_adj <- NULL
   } else {
     data_adj <- vector(mode = "list", length = ncol(x_adj))

@@ -783,9 +783,9 @@ find_best_linear_step <- function(x,
     stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
   pvalue <- stats$pvalue
-  names(pvalue) <- c("Null vs Linear")
+  names(pvalue) <- c("null vs linear")
   statistic <- stats$statistic 
-  names(statistic) <- c("Null vs Linear")
+  names(statistic) <- c("null vs linear")
   
   model_best <- c(
     ifelse(pvalue > select, 1, 2),
@@ -796,6 +796,7 @@ find_best_linear_step <- function(x,
   names(model_best) = c("pvalue", "aic", "bic")
   
   list(
+    powers = c(null = NA, linear = 1),
     power_best = ifelse(model_best == 1, NA, 1),
     metrics = metrics,
     model_best = model_best,

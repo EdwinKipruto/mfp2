@@ -123,3 +123,35 @@ and transformations in the  working model.
 Note that the algorithm starts by setting all \code{df = 1}, and higher fps
 are evaluated in turn starting from the first step in the first cycle.
 }
+\section{Functional form selection}{
+
+There are 3 criteria to decide for the current best functional form of a
+continuous variable. These work as follows.
+
+In case \code{criterion = "pvalue"} the function selection procedure as outlined
+in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. Briefly, the
+first step is to test the best FPm function against a null model at level
+\code{select} with 2m df. If not significant, the variable is excluded.
+Otherwise, the fps are tested in order against the highest fp.
+That is, the next step is to test the best FPm versus linear at level \code{alpha}
+with 2m - 1 df. If not significant, use a linear model.
+Otherwise the next step is to test the best FPm versus the best FP1 at
+level \code{alpha} with 2m - 2 df. If not significant, use the best FP1 model.
+And so on, until FPm-1, which is tested at level \code{alpha} with 2 df.
+If the final test is not significant, use a FPm-1 model, otherwise use FPm.
+
+Note that the "best" FPx model used in each step is given by the model using
+a FPx transformation for the variable of interest and having the highest
+likelihood of all such models given the current powers for all other
+variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
+
+For the other criteria \code{aic} and \code{bic} all FP models up to the desired degree
+are fitted and the model with the lowest value for the information criteria
+is chosen as the final one.
+}
+
+\references{
+Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
+for Modelling Continuous Variables. John Wiley & Sons.}\cr
+}

@@ -22,8 +22,13 @@ df for model 2. This interface is sometimes more convenient than to specify
 both residual dfs.}
 }
 \value{
-The p-value for the F-test for the comparison of \code{deviance[1]} to
-\code{deviance[2]}.
+A list with three entries giving the test statistic and p-value for the F-test
+for the comparison of \code{deviance[1]} to \code{deviance[2]}.
+\itemize{
+\item \code{statistic}: test statistic.
+\item \code{pvalue}: p-value.
+\item \code{dev_diff}: difference in deviances tested.
+}
 }
 \description{
 Alternative to likelihood ratio tests in normal / Gaussian error models.

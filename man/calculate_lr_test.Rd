@@ -14,7 +14,12 @@ used to test the ratio \code{logl[1] / logl[2]}.}
 \item{dfs}{a numeric vector with degrees of freedom.}
 }
 \value{
-The p-value for the likelihood ratio test for the ratio \code{logl[1] / logl[2]}.
+A list with two entries for the likelihood ratio test for the ratio
+\code{logl[1] / logl[2]}.
+\itemize{
+\item \code{statistic}: test statistic.
+\item \code{pvalue}: p-value
+}
 }
 \description{
 Function to calculate p-values for likelihood-ratio test

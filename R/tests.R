@@ -19,7 +19,11 @@
 #' likelihood ratio test.
 #' 
 #' @return
-#' The p-value for the likelihood ratio test for the ratio `logl[1] / logl[2]`.
+#' A list with two entries for the likelihood ratio test for the ratio 
+#' `logl[1] / logl[2]`.
+#' 
+#' * `statistic`: test statistic.
+#' * `pvalue`: p-value
 calculate_lr_test <- function(logl, 
                               dfs) {
   list(
@@ -110,8 +114,12 @@ calculate_chisquare_test <- function(dev,
 #' and \eqn{F} to the reduced (model 1) and full model (model 2), respectively.
 #' 
 #' @return
-#' The p-value for the F-test for the comparison of `deviance[1]` to 
-#' `deviance[2]`.
+#' A list with three entries giving the test statistic and p-value for the F-test 
+#' for the comparison of `deviance[1]` to `deviance[2]`.
+#' 
+#' * `statistic`: test statistic.
+#' * `pvalue`: p-value. 
+#' * `dev_diff`: difference in deviances tested.
 #' 
 #' @references 
 #' Kutner, M.H., et al., 2004. \emph{Applied linear statistical models. 
@@ -137,14 +145,14 @@ calculate_f_test <- function(deviances,
   
   statistic <- (d2 / d1) * (exp(dev_diff / n_obs) - 1)
   
-  p_value <- 1
+  pvalue <- 1
   if (dev_diff != 0) {
-    p_value <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
+    pvalue <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
   }
   
   list(
     statistic = statistic, 
-    p_value = p_value, 
+    pvalue = pvalue, 
     dev_diff = dev_diff
   )
 }
@@ -183,7 +191,7 @@ calculate_f_test_royston <- function(dev,
         d1 = df[i], dfs_resid = resid.df[5], n_obs = n
       )
       fstatistic[i] <- stats$statistic
-      pvalues[i] <- stats$p_value
+      pvalues[i] <- stats$pvalue
       dev.diff[i] <- stats$dev_diff
     }
     # e). M3 vs M5
@@ -192,7 +200,7 @@ calculate_f_test_royston <- function(dev,
       d1 = df[5], dfs_resid = resid.df[4], n_obs = n
     )
     fstatistic[5] <- stats2$statistic
-    pvalues[5] <- stats2$p_value
+    pvalues[5] <- stats2$pvalue
     dev.diff[5] <- stats2$dev_diff
   } else {
     # we have dev = c(NULL, Linear, FP1, FP2,....FPm)
@@ -216,7 +224,7 @@ calculate_f_test_royston <- function(dev,
         deviances = c(dev[i], dev[nn]), 
         d1 = df[i], dfs_resid = resid.df[nn], n_obs = n
       )
-      pvalues[i] <- stats$p_value
+      pvalues[i] <- stats$pvalue
       fstatistic[i] <- stats$statistic
       dev.diff[i] <- stats$dev_diff
     }

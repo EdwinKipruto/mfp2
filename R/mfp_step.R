@@ -718,7 +718,7 @@ find_best_linear_step <- function(x,
         dfs_resid = metrics[, "df_resid"],
         n_obs = n_obs
       )
-      pvalue <- stats$p_value
+      pvalue <- stats$pvalue
       fstatistic <- stats$statistic
       dev_diff <- stats$dev_diff
     } else {

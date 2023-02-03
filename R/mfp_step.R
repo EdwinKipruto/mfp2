@@ -111,7 +111,7 @@ find_best_fp_step <- function(x,
 
     power_best = as.numeric(fit$power_best)
   } else if (acdx[xi]) {
-    # acd case ---------------------------------------------------------------
+    # acd case -----------------------------------------------------------------
     # compute deviances, aic, bic and sse for model M1-M6
     bfpa <- find_best_acd_step(
       y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
@@ -209,8 +209,9 @@ find_best_fp_step <- function(x,
     power_best <- as.numeric(best.fp.power)
     
   } else {
-    # usual mfp case ---------------------------------------------------------
-    # this part is needed for FPm if degree>2
+    # usual mfp case -----------------------------------------------------------
+    # in this case, we seek the best fp for a variable which may use more 
+    # than only linear effects and does not use an acd transformation
     bfp1 <- find_best_fp1_step(
       y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
       method = method, weights = weights, offset = offset,
@@ -730,6 +731,7 @@ find_best_linear_step <- function(x,
     model_best <- ifelse(pvalue > select, 1, 2)
   }
   
+  # TODO: simplify this part
   if (verbose) {
     if (criterion == "pvalue") {
       if (ftest) {
@@ -769,13 +771,7 @@ find_best_linear_step <- function(x,
   
   list(
     power_best = as.numeric(ifelse(model_best == 1, NA, 1)),
-    dev = ifelse(ftest, metrics[, "deviance_stata"], 
-                      metrics[, "deviance_rs"]), 
-    aic = metrics[, "aic"],
-    bic = metrics[, "bic"], 
-    sse = metrics[, "sse"],
-    df_resid = metrics[, "df_resid"],
-    dev_diff = dev_diff,
+    metrics = metrics,
     pvalues = ifelse(criterion == "pvalue", pvalue, NA),
     fstatistic = ifelse(ftest && criterion == "pvalue", fstatistic, NA),
     index_model_best = as.numeric(model_best)

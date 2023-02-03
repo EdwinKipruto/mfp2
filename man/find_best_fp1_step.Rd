@@ -23,21 +23,20 @@ find_best_fp1_step(
 )
 
 find_best_fpm_step(
-  y,
   x,
   xi,
-  powers_current,
-  powers,
-  family,
-  weights,
-  offset,
-  strata,
-  control,
-  method,
-  rownames,
-  nocenter,
   degree,
-  acdx
+  y,
+  powers_current,
+  criterion,
+  select,
+  alpha,
+  keep,
+  powers,
+  ftest,
+  verbose,
+  acdx,
+  ...
 )
 }
 \value{

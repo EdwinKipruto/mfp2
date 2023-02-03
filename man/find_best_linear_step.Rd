@@ -2,28 +2,26 @@
 % Please edit documentation in R/mfp_step.R
 \name{find_best_linear_step}
 \alias{find_best_linear_step}
-\title{Helper to select between null and linear term for a single variable}
+\title{Helper to assess null and linear term for a single variable}
 \usage{
 find_best_linear_step(
   x,
   xi,
   y,
   powers_current,
-  criterion,
-  select,
-  alpha,
-  keep,
   powers,
   ftest,
-  verbose,
   acdx,
+  select,
   ...
 )
 }
 \value{
-A list with several components giving the best power found (\code{power_best}) and
-performance indices. The returned best power may be \code{NA}, indicating the
-variable has been removed from the model.
+A list with several components giving the best power found (\code{power_best}) as
+a numeric vector according to different criteria ("aic", "bic" or "pvalue"),
+and the associated performance indices.
+The returned best power may be \code{NA}, indicating the variable has been
+removed from the model.
 }
 \description{
 To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.

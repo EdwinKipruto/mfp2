@@ -95,21 +95,63 @@ find_best_fp_step <- function(x,
   N <- dim(x)[1L]
   
   if (df == 1) {
-    
     # linear case --------------------------------------------------------------
-    # if df = 1 then we just fit usual linear models and test: NULL vs Linear
-    fit <- find_best_linear_step(
-      x = x, y = y, xi = xi, powers_current = powers_current,
-      weights = weights, offset = offset, family = family,
-      criterion = criterion, select = select, alpha = alpha,
-      keep = keep, powers = powers, method = method,
-      strata = strata, ftest = ftest, control = control,
-      rownames = rownames, nocenter = nocenter,
-      verbose = verbose,
-      acdx = acdx
-    )
-
-    power_best = as.numeric(fit$power_best)
+    
+    # model selection based on AIC, BIC or P-values, or keep xi if indicated
+    if (xi %in% keep) {
+      power_best = 1
+      print(sprintf("Variable %s kept.", xi))
+    } else {
+      # if df = 1 then we just fit usual linear models and test: NULL vs Linear
+      fit <- find_best_linear_step(
+        x = x, y = y, xi = xi, family = family,
+        powers_current = powers_current, powers = powers, acdx = acdx,
+        select = select, ftest = ftest, 
+        weights = weights, offset = offset, strata = strata, 
+        method = method, control = control, rownames = rownames, 
+        nocenter = nocenter
+      )
+      
+      power_best = fit$power_best[[tolower(criterion)]]
+      
+      # TODO: simplify this part
+      if (verbose) {
+        if (criterion == "pvalue") {
+          if (ftest) {
+            print_mfp_summary_2(
+              namex = xi, 
+              dev.all = fit$metrics[, "deviance_stata"], 
+              df.res = fit$metrics[, "df_resid"], 
+              df.den = fit$metrics[, "df_resid"], 
+              dev.diff = diff(fit$metrics[, "deviance_stata"]),
+              f = ifelse(ftest, fit$statistic, NA),
+              pvalues = fit$pvalue,
+              best.function = list(1), 
+              index.bestmodel = fit$model_best[criterion], 
+              acd = acdx[xi]
+            ) 
+          } else {
+            print_mfp_summary_1(
+              namex = xi, 
+              dev.all = fit$metrics[, "deviance_rs"], 
+              dev.diff = diff(fit$metrics[, "deviance_rs"]),
+              pvalues = fit$pvalue,
+              index.bestmodel = fit$model_best[criterion],
+              best.function = list(1), 
+              acd = acdx[xi]
+            ) 
+          }
+        } else {
+          print_mfp_summary_3(
+            xi, 
+            gic = fit$metrics[, criterion], 
+            keep = keep, 
+            best.function = list(1),
+            acd = FALSE
+          )
+        }
+      }
+    }
   } else if (acdx[xi]) {
     # acd case -----------------------------------------------------------------
     # compute deviances, aic, bic and sse for model M1-M6
@@ -648,7 +690,7 @@ find_best_fpm_step <- function(x,
   mt
 }
 
-#' Helper to select between null and linear term for a single variable
+#' Helper to assess null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
 #' For parameter explanations, see [find_best_fp_step()]. All parameters 
@@ -661,21 +703,19 @@ find_best_fpm_step <- function(x,
 #' including a linear term ("linear fp") for `xi`.
 #' 
 #' @return 
-#' A list with several components giving the best power found (`power_best`) and 
-#' performance indices. The returned best power may be `NA`, indicating the
-#' variable has been removed from the model.
+#' A list with several components giving the best power found (`power_best`) as
+#' a numeric vector according to different criteria ("aic", "bic" or "pvalue"), 
+#' and the associated performance indices. 
+#' The returned best power may be `NA`, indicating the variable has been 
+#' removed from the model.
 find_best_linear_step <- function(x, 
                                   xi, 
                                   y, 
-                                  powers_current, 
-                                  criterion, 
-                                  select, 
-                                  alpha, 
-                                  keep, 
+                                  powers_current,
                                   powers, 
-                                  ftest, 
-                                  verbose, 
+                                  ftest,  
                                   acdx, 
+                                  select,
                                   ...) {
   
   n_obs <- dim(x)[1L]
@@ -701,80 +741,36 @@ find_best_linear_step <- function(x,
     null = calculate_model_metrics(model_null, n_obs), 
     linear = calculate_model_metrics(model_linear, n_obs)
   )  
-  dev_diff <- metrics["null", "deviance_rs"] - metrics["linear", "deviance_rs"]
   
-  # model selection based on AIC, BIC or P-values, or keep xi if indicated
-  # 1 = variable removed, 2 = linear
-  criterion = tolower(criterion)
-  if (xi %in% keep) {
-    model_best = 2
-  } else if (grepl("aic|bic", criterion)) {
-    model_best <- which.min(metrics[, criterion, drop = TRUE])
-  } else { 
-    # criterion == "pvalue"
-     
-    if (ftest) {
-      stats <- calculate_f_test(
-        deviances = metrics[, "deviance_stata"], 
-        dfs_resid = metrics[, "df_resid"],
-        n_obs = n_obs
-      )
-      pvalue <- stats$pvalue
-      fstatistic <- stats$statistic
-      dev_diff <- stats$dev_diff
-    } else {
-      pvalue <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])$pvalue
-    }
-    
-    names(pvalue) <- c("Null vs Linear")
-    names(dev_diff) <- names(pvalue)
-    model_best <- ifelse(pvalue > select, 1, 2)
+  # compute best model according to different criteria
+  if (ftest) {
+    stats <- calculate_f_test(
+      deviances = metrics[, "deviance_stata"], 
+      dfs_resid = metrics[, "df_resid"],
+      n_obs = n_obs
+    )
+  } else {
+    stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
+  pvalue <- stats$pvalue
+  names(pvalue) <- c("Null vs Linear")
+  statistic <- stats$statistic 
+  names(statistic) <- c("Null vs Linear")
   
-  # TODO: simplify this part
-  if (verbose) {
-    if (criterion == "pvalue") {
-      if (ftest) {
-        print_mfp_summary_2(
-          namex = xi, 
-          dev.all = metrics[, "deviance_stata"], 
-          df.res = metrics[, "df_resid"], 
-          df.den = metrics[, "df_resid"], 
-          dev.diff = dev_diff,
-          f = fstatistic,
-          pvalues = pvalue,
-          best.function = list(1), 
-          index.bestmodel = model_best, 
-          acd = acdx[xi]
-        ) 
-      } else {
-        print_mfp_summary_1(
-          namex = xi, 
-          dev.all = metrics[, "deviance_rs"], 
-          dev.diff = dev_diff,
-          pvalues = pvalue,
-          index.bestmodel = model_best,
-          best.function = list(1), 
-          acd = acdx[xi]
-        ) 
-      }
-    } else {
-      print_mfp_summary_3(
-        xi, 
-        gic = metrics[, criterion], 
-        keep = keep, 
-        best.function = list(1),
-        acd = FALSE
-      )
-    }
-  }
+  model_best <- c(
+    ifelse(pvalue > select, 1, 2),
+    which.min(metrics[, "aic", drop = TRUE]), 
+    which.min(metrics[, "bic", drop = TRUE])
+  )
+  # make sure names are correct and do not carry over
+  names(model_best) = c("pvalue", "aic", "bic")
   
   list(
-    power_best = as.numeric(ifelse(model_best == 1, NA, 1)),
+    power_best = ifelse(model_best == 1, NA, 1),
     metrics = metrics,
-    pvalues = ifelse(criterion == "pvalue", pvalue, NA),
-    fstatistic = ifelse(ftest && criterion == "pvalue", fstatistic, NA),
-    index_model_best = as.numeric(model_best)
+    model_best = model_best,
+    pvalue = pvalue,
+    statistic = statistic
   )
 }
 

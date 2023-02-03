@@ -212,6 +212,7 @@ find_best_fp_step <- function(x,
     # usual mfp case -----------------------------------------------------------
     # in this case, we seek the best fp for a variable which may use more 
     # than only linear effects and does not use an acd transformation
+    
     bfp1 <- find_best_fp1_step(
       y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
       method = method, weights = weights, offset = offset,
@@ -555,30 +556,29 @@ find_best_fp1_step <- function(y,
 }
 
 #' @describeIn find_best_fp1_step Find higher order FP functions.
-find_best_fpm_step <- function(y, 
-                               x, 
-                               xi, 
+find_best_fpm_step <- function(x, 
+                               xi,
+                               degree,
+                               y, 
                                powers_current, 
+                               criterion, 
+                               select, 
+                               alpha, 
+                               keep, 
                                powers, 
-                               family, 
-                               weights, 
-                               offset, 
-                               strata,
-                               control, 
-                               method, 
-                               rownames, 
-                               nocenter, 
-                               degree, 
-                               acdx) {
+                               ftest, 
+                               verbose, 
+                               acdx, 
+                               ...) {
   
-  if (degree < 2) stop("Degree must be >= 2. Here we are interest on best FPm where
-                    m>=2. For m = 1 see find_best_fp1_step()")
+  # if (degree < 2) warning("Degree must be >= 2. Here we are interest on best FPm where
+  #                   m>=2. For m = 1 see find_best_fp1_step()")
   # Generate FP data for x of interest (xi) and adjustment variables
-  m <- degree
   df1 <- transform_data_step(
     x = x, xi = xi, powers_current = powers_current,
-    df = 2 * m, powers = powers, acdx = acdx
+    df = 2 * degree, powers = powers, acdx = acdx
   )
+  
   # Matrix of adjustment data
   adjdata <- df1$data_adj
   # List of FP data for xi (continuous) of interest.
@@ -587,22 +587,22 @@ find_best_fpm_step <- function(y,
   # tFP <- calculate_number_fp_powers(df1$adjustpowers)
   # The length of generated FP variables for x of interest.
   nv <- length(fpdata)
-  # Generate all possible FPm powers
-  fpmpowers <- generate_powers_fp(degree = m, powers = powers)
+  # Generate all possible FPm powers - redundante
+  # fpmpowers <- generate_powers_fp(degree = degree, powers = powers)
+  fpmpowers <- df1$powers_fp
+  
   # log(n) for bic calculation
   n <- nrow(x)
   logn <- log(n)
   devs <- devs.royston <- sse <- aic <- bic <- dfpm <- dfx <- numeric(nv)
-  xnames <- paste0("newx", seq_along(1:m))
+  xnames <- paste0("newx", seq_along(1:degree))
+  
   for (i in seq_len(nv)) {
     # combine FP variables for x of interest with adjustment variables
     xout <- cbind(fpdata[[i]], adjdata)
-    colnames(xout)[1:m] <- xnames
+    colnames(xout)[1:degree] <- xnames
     fit1 <- fit_model(
-      x = xout, y = y, family = family, method = method,
-      weights = weights, offset = offset, strata = strata,
-      control = control, rownames = rownames,
-      nocenter = nocenter
+      x = xout, y = y, ...
     )
     # Deviance of the fitted model
     devs[i] <- -2 * fit1$logl
@@ -612,12 +612,12 @@ find_best_fpm_step <- function(y,
     # useful for F test. we add m because of m fp powers and tFP because of
     # estimated FP powers in adjustment model
     # dfpm[i] = n-(fit1$df + m + tFP)
-    dfpm[i] <- n - ((fit1$df - 1) + m) # subtract scale parameter
+    dfpm[i] <- n - ((fit1$df - 1) + degree) # subtract scale parameter
     # AIC and BIC of the fitted model. Add m because of the m FPm powers.
     # aic[i] = devs[i] + 2*(fit1$df + m + tFP) #
     # bic[i] = devs[i] + logn*(fit1$df + m + tFP)
-    aic[i] <- devs[i] + 2 * (fit1$df + m) #
-    bic[i] <- devs[i] + logn * (fit1$df + m)
+    aic[i] <- devs[i] + 2 * (fit1$df + degree) #
+    bic[i] <- devs[i] + logn * (fit1$df + degree)
     # sse and deviance for gaussian family.
     sse[i] <- fit1$sse
     devs.royston[i] <- deviance_stata(rss = sse[i], weights = weights, n = dim(x)[1L])

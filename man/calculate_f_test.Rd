@@ -2,21 +2,48 @@
 % Please edit documentation in R/tests.R
 \name{calculate_f_test}
 \alias{calculate_f_test}
-\title{Function to calculate p-values for F-distribution}
+\title{Function to compute F-statistic and p-value from deviances}
 \usage{
-calculate_f_test(sse_reduced, sse_full, df_reduced, df_full)
+calculate_f_test(deviances, dfs, n_obs)
+}
+\arguments{
+\item{deviances}{a numeric vector of length 2 with deviances. Typically
+ordered in increasing order (i.e. null model first, then full model) and
+used to test the difference \code{deviances[1] - deviances[2]}.}
+
+\item{dfs}{a numeric vector with degrees of freedom.}
+
+\item{n_obs}{a numeric value with the number of observations.}
+}
+\value{
+The p-value for the F-test for the comparison of \code{deviance[1]} to
+\code{deviance[2]}.
 }
 \description{
 Alternative to likelihood ratio tests in normal / Gaussian error models.
 }
 \details{
-\code{mfp} in Stata uses different formula, see
-https://www.stata.com/manuals/rfp.pdf. That formula is implemented in
-\code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}.
+Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf:
+\deqn{F = \frac{d_2}{d_1} (exp(\frac{D_2 - D_1}{n}) - 1),}
+where \eqn{D} refers to deviances of two models 1 and 2.
+\eqn{d1} is the number of additional parameters used in in model 2 as
+compared to model 1.
+\eqn{d2} is the number of residual degrees of freedom minus the number of
+estimated powers, i.e. \code{dfs[2]}.
+#' The p-value then results from the use of a F-distribution with
+(\code{dfs[1]}, \code{dfs[2]}) degrees of freedom.
 
-This functions uses page 297 or equation next to 7.4 in
-http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
-
-@seealso
-\code{\link[=calculate_f_test_stata]{calculate_f_test_stata()}}, \code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
+Note that this computation is completely equivalent to the computation
+of a F-test using sum of squared errors as in e.g. Kutner at al. (2004),
+p 263. The formula there is given as
+\deqn{F = \frac{SSE(R) - SSE(F)}{df_R - df_F} / \frac{SSE(F)}{df_F},}
+where the \eqn{df} terms refer to residual degrees of freedom, and \eqn{R}
+and \eqn{F} to the reduced (model 1) and full model (model 2), respectively.
+}
+\references{
+Kutner, M.H., et al., 2004. \emph{Applied linear statistical models.
+McGraw-Hill Irwin.}
+}
+\seealso{
+\code{\link[=calculate_f_test]{calculate_f_test()}}, \code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
 }

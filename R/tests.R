@@ -75,71 +75,60 @@ calculate_chisquare_test <- function(dev,
   )
 }
 
-#' Function to calculate p-values for F-distribution
+#' Function to compute F-statistic and p-value from deviances
 #' 
 #' Alternative to likelihood ratio tests in normal / Gaussian error models. 
 #' 
-#' @details 
-#' `mfp` in Stata uses different formula, see
-#'  https://www.stata.com/manuals/rfp.pdf. That formula is implemented in 
-#'  [calculate_f_test_stata()].
-#'  
-#'  This functions uses page 297 or equation next to 7.4 in 
-#'  http://users.stat.ufl.edu/~winner/sta4211/ALSM_5Ed_Kutner.pdf.
-#'  
-#'  @seealso 
-#'  [calculate_f_test_stata()], [calculate_f_test_royston()]
-calculate_f_test <- function(sse_reduced, 
-                             sse_full,
-                             df_reduced, 
-                             df_full) {
-  
-  # it can happen that the best fp1 is linear
-  # so we are testing between the same models
-  if (df_reduced == df_full) { 
-    fstatistic <- 0
-    pval <- 1
-  } else {
-    num <- (sse_reduced - sse_full) / (df_reduced - df_full)
-    denom <- sse_full / (df_full)
-    fstatistic <- num / denom
-    pval <- stats::pf(fstatistic, df1 = df_reduced - df_full,
-                      df2 = df_full, lower.tail = FALSE)
-  }
-  
-  list(
-    fstatistic = fstatistic,
-    pval = pval
-  )
-}
-
-#' Function to compute F-statistic as defined in `mfp` in Stata 
-#' 
-#' Alternative to [calculate_f_test()].
+#' @param deviances a numeric vector of length 2 with deviances. Typically 
+#' ordered in increasing order (i.e. null model first, then full model) and 
+#' used to test the difference `deviances[1] - deviances[2]`.
+#' @param dfs a numeric vector with degrees of freedom.
+#' @param n_obs a numeric value with the number of observations.
 #' 
 #' @details 
-#' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf.
+#' Uses formula on page 23 from here: https://www.stata.com/manuals/rfp.pdf:
+#' \deqn{F = \frac{d_2}{d_1} (exp(\frac{D_2 - D_1}{n}) - 1),}
+#' where \eqn{D} refers to deviances of two models 1 and 2. 
+#' \eqn{d1} is the number of additional parameters used in in model 2 as 
+#' compared to model 1. 
+#' \eqn{d2} is the number of residual degrees of freedom minus the number of
+#' estimated powers, i.e. `dfs[2]`.
+#' #' The p-value then results from the use of a F-distribution with 
+#' (`dfs[1]`, `dfs[2]`) degrees of freedom.
+#' 
+#' Note that this computation is completely equivalent to the computation
+#' of a F-test using sum of squared errors as in e.g. Kutner at al. (2004), 
+#' p 263. The formula there is given as 
+#' \deqn{F = \frac{SSE(R) - SSE(F)}{df_R - df_F} / \frac{SSE(F)}{df_F},}
+#' where the \eqn{df} terms refer to residual degrees of freedom, and \eqn{R}
+#' and \eqn{F} to the reduced (model 1) and full model (model 2), respectively.
+#' 
+#' @return
+#' The p-value for the F-test for the comparison of `deviance[1]` to 
+#' `deviance[2]`.
+#' 
+#' @references 
+#' Kutner, M.H., et al., 2004. \emph{Applied linear statistical models. 
+#' McGraw-Hill Irwin.}
 #' 
 #' @seealso 
 #' [calculate_f_test()], [calculate_f_test_royston()]
-calculate_f_test_stata <- function(dev_reduced, 
-                                   dev_full,
-                                   d1, 
-                                   d2,
-                                   n) {
-  devdiff <- dev_reduced - dev_full
-  aa <- exp(devdiff / n)
-  fstatx <- (d2 / d1) * (aa - 1)
-  if (devdiff == 0) {
+calculate_f_test <- function(deviances,
+                             dfs,
+                             n_obs) {
+  dev_diff <- deviances[1] - deviances[2]
+  statistic <- (dfs[2] / dfs[1]) * (exp(dev_diff / n_obs) - 1)
+  
+  if (dev_diff == 0) {
     pval <- 1
   } else {
-    pval <- stats::pf(fstatx, df1 = d1, df2 = d2, lower.tail = FALSE)
+    pval <- stats::pf(statistic, df1 = dfs[1], df2 = dfs[2], lower.tail = FALSE)
   }
   
   list(
-    fstatistic = fstatx, 
+    statistic = statistic, 
     pval = pval, 
-    dev.diff = devdiff
+    dev_diff = dev_diff
   )
 }
 

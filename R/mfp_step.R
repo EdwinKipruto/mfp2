@@ -620,7 +620,7 @@ find_best_fpm_step <- function(x,
     bic[i] <- devs[i] + logn * (fit1$df + degree)
     # sse and deviance for gaussian family.
     sse[i] <- fit1$sse
-    devs.royston[i] <- deviance_stata(rss = sse[i], weights = weights, n = dim(x)[1L])
+    devs.royston[i] <- deviance_stata(rss = sse[i], weights = fit1$fit$weights, n = dim(x)[1L])
   }
   # Best FPm function based on dev (calculated using loglik), aic, bic, sse and dev(calculated using sse)
   fn.bestfpm <- list(

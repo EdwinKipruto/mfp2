@@ -48,10 +48,11 @@ generate_transformations_fp <- function(x,
 
 #' @describeIn generate_transformations_fp Function to generate acd transformations.
 generate_transformations_acd <- function(x, 
+                                         degree, 
                                          powers) {
 
   # all possible pairs of powers
-  combs <- generate_powers_acd(powers = powers)
+  combs <- generate_powers_acd(degree = degree, powers = powers)
   nfp <- dim(combs)[1L]
   
   # Save FP transformed data as list

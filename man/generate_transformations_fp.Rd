@@ -7,7 +7,7 @@
 \usage{
 generate_transformations_fp(x, degree, powers)
 
-generate_transformations_acd(x, powers)
+generate_transformations_acd(x, degree, powers)
 }
 \arguments{
 \item{x}{a numeric vector of length nobs assumed to have been shifted and

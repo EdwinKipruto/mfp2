@@ -58,7 +58,8 @@
 #' depends on the number of powers provided, the number of rows is equal to the
 #' length of `x`. If all powers are `NA`, then this function returns `NULL`.
 #' In case an acd transformation is applied, the acd term is returned
-#' as the second column of the matrix. 
+#' as the last column of the matrix (i.e. in case that the power is a single
+#' numeric, it is the only column in the matrix). 
 #' 
 #' @references 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
@@ -139,8 +140,8 @@ transform_vector_acd <- function(x,
                                  center = FALSE, 
                                  acd_parameter = NULL) {
   
-  if (length(power) != 2) 
-    stop("! power must be of length two.", 
+  if (length(power) > 2) 
+    stop("! power must have length less than three.", 
          sprintf("i The length of powers supplied is %d.", length(power)))
   
   if (all(is.na(power))) {
@@ -152,10 +153,17 @@ transform_vector_acd <- function(x,
     x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
   } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
   
-  # apply fp transform on x and acd(x)
+  # apply fp transform on x (if required) and acd(x)
+  if (length(power) == 1) {
+    return(as.matrix(transform_vector_fp(x = x_acd, power = power,
+                                         scale = scale, shift = shift, 
+                                         center = center), 
+                     ncol = 1))
+  }
+
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
-                               scale = scale, shift = shift, 
-                               center = center)
+                      scale = scale, shift = shift, 
+                      center = center)
   x_fp <- transform_vector_fp(x = x, power = power[1],
                               scale = scale, shift = shift,
                               center = center)

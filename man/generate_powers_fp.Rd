@@ -7,7 +7,7 @@
 \usage{
 generate_powers_fp(degree = NULL, powers = NULL)
 
-generate_powers_acd(powers = NULL)
+generate_powers_acd(degree = NULL, powers = NULL)
 }
 \arguments{
 \item{degree}{The degree of fractional polynomial; degree = 1 is FP1 and
@@ -32,9 +32,11 @@ not matter).
 Thus, for the default set of powers and degree 2, this function returns
 36 combinations.
 
-For ACD powers, this function simply returns all possible pairs of
-powers of length 2.
-Thus, for the default set of powers, this function returns 64 pairs.
+For ACD powers, this function simply returns all possible tuples of
+powers of length n.
+Thus, for the default set of powers, this function returns 8 possible
+powers, and for degree 2 it returns 64 pairs of powers. Higher degrees
+are not supported by the function.
 }
 \section{Functions}{
 \itemize{

@@ -15,9 +15,11 @@
 #' Thus, for the default set of powers and degree 2, this function returns
 #' 36 combinations.
 #' 
-#' For ACD powers, this function simply returns all possible pairs of 
-#' powers of length 2. 
-#' Thus, for the default set of powers, this function returns 64 pairs.
+#' For ACD powers, this function simply returns all possible tuples of 
+#' powers of length n. 
+#' Thus, for the default set of powers, this function returns 8 possible
+#' powers, and for degree 2 it returns 64 pairs of powers. Higher degrees
+#' are not supported by the function. 
 #' 
 #' @return 
 #' A matrix of powers with degree columns and rows depending on the `degree`.
@@ -39,9 +41,17 @@ generate_powers_fp <- function(degree = NULL,
 
 #' @describeIn generate_powers_fp Function to generate acd powers.
 #' @export
-generate_powers_acd <- function(powers = NULL) {
+generate_powers_acd <- function(degree = NULL, 
+                                powers = NULL) {
+  if (is.null(degree)) {
+    degree <- 2
+  }
   if (is.null(powers)) {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  }
+  
+  if (degree == 1) {
+    return(as.matrix(powers, ncol = 1))
   }
   
   matrix(as.matrix(expand.grid(powers, powers)), ncol = 2)

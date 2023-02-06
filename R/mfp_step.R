@@ -288,347 +288,82 @@ find_best_fp_step <- function(x,
     # in this case, we seek the best fp for a variable which may use more 
     # than only linear effects and does not use an acd transformation
     
-    bfp1 <- find_best_fp1_step(
-      y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
-      method = method, weights = weights, offset = offset,
-      strata = strata, control = control, rownames = rownames,
-      nocenter = nocenter, acdx = acdx
-    )
-    # Deviance, aic, bic and sse of a null model, linear and best FP1 function
-    dev.all <- bfp1$dev.all # based on loglikelihood
-    dev.roy.all <- bfp1$dev.roy.all # based on royston formula
-    aic.all <- bfp1$aic.all
-    bic.all <- bfp1$bic.all
-    sse.all <- bfp1$sse.all
-    # degrees of freedom of sse-important for f statistic
-    df.all <- bfp1$df.all
-    # A vector of best FP1 function selected based on deviance, aic, bic, sse and dev.roy
-    # in that order i.e bestfp1 = c(dev.fun =,...,sse.fun=, dev.roy.fun =  )
-    bestfp1x <- bfp1$fn.bestfp1
-    # calculate the maximum permitted degree. we know that df = 2m where m is
-    # the degree e.g df = 2 = 2(1) is fp1,  df = 4 = 2(2) is fp2, df = 6 = 2(3) is fp3 etc.
-    degree <- df / 2
-    # If degree = 1, calculate p-values for null vs. linear and linear vs. FP1
-    if (degree == 1) {
-      # Choose best model between null, linear and best FP1 based on AIC or BIC.
-      if (criterion == "AIC") {
-        # if index.bestmodel = 1 variable was removed, 2 = linear and 3 is best fp1
-        index.bestmodel <- which.min(aic.all)
-        # If the user wants to force some variables into the model then we should
-        # compare only the aic for linear and other fp1 and update index of best model
-        if (xi %in% keep) {
-          index.bestmodel <- which.min(aic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-        }
-      } else if (criterion == "BIC") {
-        index.bestmodel <- which.min(bic.all)
-        if (xi %in% keep) {
-          index.bestmodel <- which.min(bic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-        }
-      } else { # p-values
-        if (ftest) {
-          modelparms <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
-          fstatistic <- modelparms$fstatistic
-        } else {
-          modelparms <- calculate_chisquare_test(dev.all, acd = F)
-        }
-        # P-values for each test-we assign names
-        pvalue <- modelparms$pvalues
-        dev.diff <- modelparms$dev.diff
-        names(pvalue) <- names(dev.diff) <- c("Null", "Linear") # FP1 vs NULL and FP1 vs Linear
-        if (pvalue[1] > select) {
-          index.bestmodel <- 1
-        } else {
-          index.bestmodel <- ifelse(pvalue[2] > alpha, 2, 3)
-        }
-      }
-    } else {
-      # Here we fit other fpm models where m can be 2, 3, and so on
-      fpx <- calculate_metrics_fpm(
-        y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
-        method = method, weights = weights, offset = offset,
-        strata = strata, control = control, rownames = rownames,
-        nocenter = nocenter, degree = degree, acdx = acdx
-      )
-      # best fp functions based on dev, aic, bic, sse and dev.roy. It's a list with the
-      # first element being fp1, then fp2, fp3 and so on.
-      bestfp.dev <- append(fpx$fun$dev, list(bestfp1x[1]), 0) # c(FP1, FP2,...)
-      bestfp.dev.roy <- append(fpx$fun$dev.roy, list(bestfp1x[5]), 0) # c(FP1, FP2,...)
-      bestfp.aic <- append(fpx$fun$aic, list(bestfp1x[2]), 0)
-      bestfp.bic <- append(fpx$fun$bic, list(bestfp1x[3]), 0)
-      bestfp.sse <- append(fpx$fun$sse, list(bestfp1x[4]), 0)
-      # A vector of Deviance, AIC and BIC for all models
-      dev.all <- c(dev.all, fpx$dev) # NULL, linear, FP1,....
-      dev.roy.all <- c(dev.roy.all, fpx$dev.roy) # NULL, linear, FP1,....
-      aic.all <- c(aic.all, fpx$aic)
-      bic.all <- c(bic.all, fpx$bic)
-      df.all <- c(df.all, fpx$df.best.fpm.sse)
-      # select the best model based on AIC or BIC or Chi-square P-values
-      if (criterion == "AIC") {
-        # if index.bestmodel = 1 then the variable was removed, 2 = linear, 3= best fp1 and so on
-        index.bestmodel <- which.min(aic.all)
-        if (xi %in% keep) {
-          index.bestmodel <- which.min(aic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-        }
-      } else if (criterion == "BIC") {
-        index.bestmodel <- which.min(bic.all)
-        if (xi %in% keep) {
-          index.bestmodel <- which.min(bic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-        }
-      } else { # p-values
-        if (ftest) {
-          modelparms <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = F)
-          fstatistic <- modelparms$fstatistic
-        } else {
-          modelparms <- calculate_chisquare_test(dev.all, acd = F)
-        }
-        pvalue <- modelparms$pvalues
-        dev.diff <- modelparms$dev.diff
-        dd <- length(dev.all) - 2 - 1 # subtract Null, linear and max permitted. If 0 then we have pvalues for NULL vs FP1 and Lin vs FP1
-        names(pvalue) <- names(dev.diff) <- c("Null", "Linear", if (dd != 0) {
-          paste0("FP", seq_len(dd))
-        })
-        # Variable selection
-        if (pvalue[1] > select) {
-          index.bestmodel <- 1
-          # function selection
-        } else {
-          # compare pvalues for linear, fp1,...fpm with alpha
-          pos <- which(pvalue[-1] > alpha) # note pvalue[1] belongs to FPM vs NULL
-          # if alpha = 1 then pvalue[-1]>alpha might all be FALSE.
-          index.bestmodel <- ifelse(length(pos) == 0, length(dev.all), pos[1] + 1) # We add 1 because position 1 is null model
-        }
-      }
-    }
-    # Select the best overall FP power
-    if (index.bestmodel == 1) {
-      best.fp.power <- NA # Variable eliminated
-    } else if (index.bestmodel == 2) {
-      best.fp.power <- 1 # Linear function
-    } else if (index.bestmodel == 3) { # best FP1 function
-      best.fp.power <- switch(criterion,
-                              "pvalue" = if (ftest) {
-                                bestfp1x[5]
-                              } else {
-                                bestfp1x[1]
-                              },
-                              "AIC" = bestfp1x[2],
-                              "BIC" = bestfp1x[3]
-      )
-    } else { # best FPm function
-      best.fp.power <- switch(criterion,
-                              "pvalue" = if (ftest) {
-                                bestfp.dev.roy[[index.bestmodel - 2]]
-                              } else {
-                                bestfp.dev[[index.bestmodel - 2]]
-                              }, # bestfp.dev = c(FP1, FP2,...) SO subtract 2 to get correct index in bestfp.dev
-                              "AIC" = bestfp.aic[[index.bestmodel - 2]], # e.g FP2 = index.model = 4 but it is in position 2 in bestfp.dev
-                              "BIC" = bestfp.bic[[index.bestmodel - 2]]
-      )
-    }
-    # Print results if verbose = T
-    if (verbose) {
-      if (criterion == "pvalue") {
-        best.function1 <- if (degree == 1) {
-          list(lin = 1, fpm = if (ftest) {
-            bestfp1x[5]
-          } else {
-            bestfp1x[1]
-          })
-        } else {
-          append(if (ftest) {
-            bestfp.dev.roy
-          } else {
-            bestfp.dev
-          }, list(1), 0)
-        }
-        if (ftest) {
-          print_mfp_summary_2(
-            namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
-            df.den = df.all, pvalues = pvalue, best.function = best.function1,
-            index.bestmodel = index.bestmodel, acd = F
-          )
-        } else {
-          print_mfp_summary_1(
-            namex = xi, dev.all = dev.all, dev.diff = dev.diff,
-            pvalues = pvalue, index.bestmodel = index.bestmodel,
-            best.function = best.function1, acd = F
-          )
-        }
-        # AIC and BIC display
-      } else {
-        best.function.aic <- if (degree == 1) {
-          list(lin = 1, fpm = bestfp1x[2])
-        } else {
-          append(bestfp.aic, list(1), 0)
-        }
-        best.function.bic <- if (degree == 1) {
-          list(lin = 1, fpm = bestfp1x[3])
-        } else {
-          append(bestfp.bic, list(1), 0)
-        }
-        switch(criterion,
-               "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = best.function.aic, acd = F),
-               "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = best.function.bic, acd = F)
-        )
-      }
-    }
+    degree <- as.numeric(df / 2)
     
-    power_best <- as.numeric(best.fp.power)
+    fit <- select_ra2(
+      y = y, x = x, xi = xi, degree = degree, keep = keep, 
+      powers_current = powers_current, acdx = acdx, powers = powers, 
+      select = select, alpha = alpha, ftest = ftest, 
+      family = family, method = method, weights = weights, offset = offset,
+      strata = strata, control = control, rownames = rownames,
+      nocenter = nocenter 
+    ) 
+    
+    # TODO AIC BIC
+    
+    # TODO: printing
+     
+    # if (verbose) {
+    #   if (criterion == "pvalue") {
+    #     best.function1 <- if (degree == 1) {
+    #       list(lin = 1, fpm = fit$power_best)
+    #     } else {
+    #       append(if (ftest) {
+    #         NA
+    #       } else {
+    #         NA
+    #       }, list(1), 0)
+    #     }
+    #     
+    #     if (ftest) {
+    #       print_mfp_summary_2(
+    #         namex = xi, 
+    #         dev.all = fit$metrics[, "deviance_rs"], 
+    #         df.res = fit$metrics[, "df_resid"],
+    #         dev.diff = NA, 
+    #         f = fit$statistic,
+    #         df.den = fit$metrics[, "df_resid"],
+    #         pvalues = fit$pvalue, 
+    #         best.function = best.function1,
+    #         index.bestmodel = fit$model_best, 
+    #         acd = F
+    #       )
+    #     } else {
+    #       print_mfp_summary_1(
+    #         namex = xi, 
+    #         dev.all = fit$metrics[, "deviance_rs"], 
+    #         dev.diff = NA,
+    #         pvalues = fit$pvalue, 
+    #         index.bestmodel = fit$model_best,
+    #         best.function = best.function1, 
+    #         acd = F
+    #       )
+    #     }
+    #     # AIC and BIC display
+    #   } else {
+    #     best.function.aic <- if (degree == 1) {
+    #       list(lin = 1, fpm = bestfp1x[2])
+    #     } else {
+    #       append(bestfp.aic, list(1), 0)
+    #     }
+    #     best.function.bic <- if (degree == 1) {
+    #       list(lin = 1, fpm = bestfp1x[3])
+    #     } else {
+    #       append(bestfp.bic, list(1), 0)
+    #     }
+    #     switch(criterion,
+    #            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = best.function.aic, acd = F),
+    #            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = best.function.bic, acd = F)
+    #     )
+    #   }
+    # }
+    
+    power_best <- as.numeric(fit$power_best)
   }
   
   power_best
 }
 
-#' Functions to find the best FP functions for a single variable
-#' 
-#' Handles the FP1 (`find_best_fp1_step`) and the higher order FP 
-#' (`find_best_fpm_step`) cases. For parameter definitions, see
-#' [find_best_fp_step()].
-#' 
-#' @return 
-#' A list with several components giving the best power found and 
-#' performance indices.
-find_best_fp1_step <- function(y, 
-                               x, 
-                               xi, 
-                               powers_current, 
-                               powers,
-                               family, 
-                               method,
-                               weights,
-                               offset, 
-                               strata, 
-                               control,
-                               rownames,
-                               nocenter,
-                               acdx) {
-  # Generate FP1 data for x of interest (xi). A list with 8 new variables are
-  # generated if default FP set is used
-  df1 <- transform_data_step(
-    x = x, xi = xi, powers_current = powers_current, df = 2, acdx = acdx,
-    powers = powers
-  )
-  # Matrix of adjustment variables
-  adjdata <- df1$data_adj
-  # List of FP1 data.
-  fpdata <- df1$data_fp
-  # N = number of observation and log(n) for bic calculation
-  N <- nrow(x)
-  logn <- log(N)
-  
-  # Fit a null model-model without x of interest
-  fitnull <- fit_model(
-    x = adjdata, y = y, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames, nocenter = nocenter
-  )
-  # Total number of FP powers in the adjustment model
-  # tFP <- calculate_number_fp_powers(df1$adjustpowers)
-  # Total number of parameters including estimated FP powers in the null model
-  # dfnull <- fitnull$df + tFP
-  dfnull <- fitnull$df
-  # Deviance, AIC and BIC of the null model
-  devnull <- -2 * fitnull$logl
-  # NULL model: aic = dev1 + 2(k1 + d) = dev1 + 2k1 + 2d
-  # Lin. model: aic = dev2 + 2(k2 + d) = dev2 + 2k2 + 2d
-  # FP1. model: aic = dev3 + 2(k3 + d) = dev3 + 2k3 + 2d
-  # where k is the total number of parameters in the model (all betas including
-  # the adjustment variables plus the powers of variable of interest and scale
-  # parameter in gaussian). d is the number of powers in the adjustment model.
-  # In each model, this results in a 2d constant quantity. As a result, we will
-  # only use betas in calculating AIC and BIC of models instead of FP powers in
-  # the adjustment model because they have no bearing on model selection.
-  aic.null <- devnull + 2 * dfnull
-  bic.null <- devnull + logn * dfnull
-  # Sum of squares errors relevant for Gaussian model- for F test
-  sse.null <- fitnull$sse
-  dev.roy.null <- deviance_stata(rss = sse.null, weights = weights, n = N)
-  df.sse.null <- N - (dfnull - 1) # subtract scale parameter
-  # df.sse.null2 <- N-fitnull$df
-  
-  # Fit 8 linear models for x of interest while adjusting for other variables.
-  nv <- length(fpdata)
-  devs <- dev.roy <- sse <- aic <- bic <- dfx <- dfp1 <- numeric(nv)
-  # Fit linear models for each FP1
-  for (i in seq_len(nv)) {
-    # combine each FP1 variable for x of interest with adjustment variables
-    xout <- cbind(fpdata[[i]], adjdata)
-    colnames(xout) <- c("newx", colnames(adjdata))
-    fit1 <- fit_model(
-      x = xout, y = y, family = family, method = method,
-      weights = weights, offset = offset, strata = strata,
-      control = control, rownames = rownames, nocenter = nocenter
-    )
-    # Deviance of the fitted model
-    devs[i] <- -2 * fit1$logl
-    # save the number of parameters of the fitted model. This does not take
-    # into account the estimated FP powers.
-    dfx[i] <- fit1$df
-    # Calculate AIC and BIC for the fitted model. 1 is added because of FP1
-    # power term for x of interest.
-    # dfp1[i] = fit1$df + 1 + tFP
-    # aic[i] = devs[i]  + 2*(dfp1[i])
-    # bic[i] = devs[i]  + logn*(dfp1[i])
-    dfp1[i] <- (fit1$df + 1) - 1 # we subtract scale parameter
-    aic[i] <- devs[i] + 2 * (dfp1[i])
-    bic[i] <- devs[i] + logn * (dfp1[i])
-    # sse relevant for a Gaussian model
-    sse[i] <- fit1$sse
-    dev.roy[i] <- deviance_stata(rss = sse[i], weights = weights, n = N)
-  }
-  # position of a linear function in set s: Fails when powers does not include 1
-  lin.pos <- match(1, powers)
-  # Deviance, AIC, BIC and sse of a linear function
-  dev.linear <- devs[lin.pos]
-  dev.roy.linear <- dev.roy[lin.pos]
-  # aic.linear = dev.linear + 2*(dfx[lin.pos]+tFP)
-  # bic.linear = dev.linear + logn*(dfx[lin.pos]+tFP)
-  aic.linear <- dev.linear + 2 * (dfx[lin.pos])
-  bic.linear <- dev.linear + logn * (dfx[lin.pos])
-  sse.linear <- sse[lin.pos]
-  # Degrees of freedom of sse assuming linearity
-  # df.sse.linear <- N-(dfx[lin.pos]+ tFP)
-  df.sse.linear <- N - (dfx[lin.pos] - 1)
-  # df.sse.linear2 <- N-(dfx[lin.pos]-1) # TO REMOVE
-  
-  # Degrees of freedom of sse assuming non-linearity, subtract 1 because dfp1 includes scale parameter
-  df.sse.bestfp1 <- ifelse(which.min(sse) == lin.pos, df.sse.linear, N - (dfp1[which.min(sse)]))
-  # df.sse.bestfp12 <- ifelse(which.min(sse)==lin.pos, df.sse.linear2, N-dfp1[which.min(sse)]) # TO REMOVE
-  # combine deviance/AIC/BIC of null, linear and best FP1
-  dev.all <- setNames(c(devnull, dev.linear, devs[which.min(devs)]), c("Null", "Linear", "FP1"))
-  # deviance of gaussian calculated using royston formula instead of loglikelihood for gaussian
-  dev.roy.all <- setNames(c(dev.roy.null, dev.roy.linear, dev.roy[which.min(dev.roy)]), c("Null", "Linear", "FP1"))
-  aic.all <- setNames(c(aic.null, aic.linear, aic[which.min(aic)]), c("Null", "Linear", "FP1"))
-  bic.all <- setNames(c(bic.null, bic.linear, bic[which.min(bic)]), c("Null", "Linear", "FP1"))
-  sse.all <- setNames(c(sse.null, sse.linear, sse[which.min(devs)]), c("Null", "Linear", "FP1"))
-  # # deviance of gaussian calculated using royston formula instead of loglikelihood for gaussian
-  # dev.gaus.royston <- unlist(lapply(sse.all, function(x) deviance_stata(rss = x, weights = weights, n = N)))
-  # names(dev.gaus.royston) <- c("Null","Linear","FP1")
-  # combine degrees of freedom for null, linear and best fp1
-  df.all <- setNames(c(df.sse.null, df.sse.linear, df.sse.bestfp1), c("Null", "Linear", "FP1"))
-  # The best FP1 power based on deviance, aic, bic, and sse
-  s1 <- powers
-  aic[lin.pos] <- aic.linear # correct aic and bic for the linear position
-  bic[lin.pos] <- bic.linear
-  fn.bestfp1 <- setNames(
-    c(
-      s1[which.min(devs)],
-      s1[which.min(aic)],
-      s1[which.min(bic)],
-      s1[which.min(sse)],
-      s1[which.min(dev.roy)]
-    ),
-    c("dev", "aic", "bic", "sse", "dev.roy")
-  )
-  # return
-  outx <- list(
-    dev.all = dev.all, aic.all = aic.all, bic.all = bic.all,
-    sse.all = sse.all, df.all = df.all, fn.bestfp1 = fn.bestfp1,
-    dev.roy.all = dev.roy.all
-  )
-  
-  outx
-}
 
 #' Function to find the best FP functions of given degree for a single variable
 #' 
@@ -643,7 +378,12 @@ find_best_fp1_step <- function(y,
 #' models and only their likelihoods differ.
 #' 
 #' Note that the estimation of each fp power adds a degree of freedom. Thus, 
-#' all fp1s have 2 df (even the "linear" one), all fp2s have 4 df and so on.
+#' all fp1s have 2 df, all fp2s have 4 df and so on.
+#' 
+#' In the case that `degree = 1`, the linear model (fp power of 1) is NOT 
+#' returned, as it is not considered to be a fractional polynomial in this
+#' algorithm (as a linear model has only one df, whereas the same function 
+#' regarded as fp would have 2 fp).
 #' 
 #' @return 
 #' A list with several components giving the best power found (`power_best`) and 
@@ -652,18 +392,18 @@ find_best_fpm_step <- function(x,
                                xi,
                                degree,
                                y, 
-                               powers_current, 
-                               criterion, 
-                               select, 
-                               alpha, 
-                               keep, 
-                               powers, 
-                               ftest, 
-                               verbose, 
+                               powers_current,
+                               powers,  
                                acdx, 
                                ...) {
   
   n_obs <- dim(x)[1L]
+  
+  if (degree == 1) {
+    # remove linear model
+    powers = setdiff(powers, c(1))
+  }
+    
   
   # generate FP data for x of interest (xi) and adjustment variables
   x_transformed <- transform_data_step(
@@ -702,6 +442,41 @@ find_best_fpm_step <- function(x,
   ) 
 }
 
+fit_null_linear_step <- function(x, 
+                                 xi, 
+                                 y, 
+                                 powers_current,
+                                 powers,
+                                 acdx, 
+                                 ...) {
+  
+  n_obs <- dim(x)[1L]
+  
+  # transform all data as given by current working model
+  # set variable of interest to linear term only
+  x_transformed <- transform_data_step(
+    x = x, xi = xi, df = 1,
+    powers_current = powers_current, acdx = acdx, powers = powers
+  ) 
+  
+  # fit null model
+  # i.e. a model that does not contain xi but only adjustment variables
+  model_null <- fit_model(x = x_transformed$data_adj, y = y, ...)
+  
+  # fit a model based on the assumption that xi is linear 
+  model_linear <- fit_model(
+    x = cbind(x_transformed$data_fp, x_transformed$data_adj), y = y, ...
+  )
+  
+  list(
+    powers = c(NA, 1),
+    metrics = rbind(
+      null = calculate_model_metrics(model_null, n_obs), 
+      linear = calculate_model_metrics(model_linear, n_obs)
+    )  
+  )
+}
+
 #' Helper to assess null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
@@ -732,37 +507,21 @@ find_best_linear_step <- function(x,
   
   n_obs <- dim(x)[1L]
 
-  # transform all data as given by current working model
-  # set variable of interest to linear term only
-  x_transformed <- transform_data_step(
-    x = x, xi = xi, df = 1,
-    powers_current = powers_current, acdx = acdx, powers = powers
-  ) 
-  
-  # fit null model
-  # i.e. a model that does not contain xi but only adjustment variables
-  model_null <- fit_model(x = x_transformed$data_adj, y = y, ...)
-  
-  # fit a model based on the assumption that xi is linear 
-  model_linear <- fit_model(
-    x = cbind(x_transformed$data_fp, x_transformed$data_adj), y = y, ...
+  fit <- fit_null_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, 
+    ...
   )
-  
-  # model metrics as matrix
-  metrics <- rbind(
-    null = calculate_model_metrics(model_null, n_obs), 
-    linear = calculate_model_metrics(model_linear, n_obs)
-  )  
   
   # compute best model according to different criteria
   if (ftest) {
     stats <- calculate_f_test(
-      deviances = metrics[, "deviance_stata"], 
-      dfs_resid = metrics[, "df_resid"],
+      deviances = fit$metrics[, "deviance_stata"], 
+      dfs_resid = fit$metrics[, "df_resid"],
       n_obs = n_obs
     )
   } else {
-    stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
+    stats <- calculate_lr_test(fit$metrics[, "logl"], fit$metrics[, "df"])
   }
   pvalue <- stats$pvalue
   names(pvalue) <- c("null vs linear")
@@ -771,16 +530,16 @@ find_best_linear_step <- function(x,
   
   model_best <- c(
     ifelse(pvalue > select, 1, 2),
-    which.min(metrics[, "aic", drop = TRUE]), 
-    which.min(metrics[, "bic", drop = TRUE])
+    which.min(fit$metrics[, "aic", drop = TRUE]), 
+    which.min(fit$metrics[, "bic", drop = TRUE])
   )
   # make sure names are correct and do not carry over
   names(model_best) = c("pvalue", "aic", "bic")
   
   list(
-    powers = c(null = NA, linear = 1),
+    powers = fit$powers,
     power_best = ifelse(model_best == 1, NA, 1),
-    metrics = metrics,
+    metrics = fit$metrics,
     model_best = model_best,
     pvalue = pvalue,
     statistic = statistic
@@ -975,6 +734,163 @@ find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method,
   outs
 }
 
+#' Function selection procedure 
+select_ra2 <- function(x, 
+                       xi,
+                       degree,
+                       y, 
+                       powers_current, 
+                       select, 
+                       alpha, 
+                       keep, 
+                       powers, 
+                       ftest,  
+                       acdx, 
+                       ...) {
+  
+  
+  # TODO: simplify, using local testing function to prevent if else all the
+  # time
+  
+  if (degree < 1)
+    return(NULL)
+  
+  n_obs = nrow(x)
+  fpmax = paste0("FP", degree)
+  
+  res <- list(
+    power_best = NULL, 
+    metrics = NULL, 
+    model_best = NULL, 
+    statistic = NULL, 
+    pvalue = NULL
+  )
+  
+  # fit highest fp and null / linear model for initial steps
+  fit_fpmax <- find_best_fpm_step(
+    x = x, xi = xi, degree = degree, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  fit_lin <- fit_null_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  res$metrics <- rbind(
+    fit_fpmax$metrics[fit_fpmax$model_best, ],
+    fit_lin$metrics
+  )
+  rownames(res$metrics) <- c(fpmax, "null", "linear")
+  
+  # selection procedure
+  
+  # test for overall significance
+  if (ftest) {
+    stats <- calculate_f_test(
+      deviances = res$metrics[c("null", fpmax), "deviance_rs", drop = TRUE],
+      dfs_resid = res$metrics[c("null", fpmax), "df_resid", drop = TRUE],
+      n_obs = n_obs
+    )
+  } else {
+    stats <- calculate_lr_test(
+      logl = res$metrics[c("null", fpmax), "logl", drop = TRUE], 
+      dfs = res$metrics[c("null", fpmax), "df", drop = TRUE] 
+    )  
+  }
+  res$statistic <- stats$statistic
+  names(res$statistic) <- sprintf("%s vs null", fpmax)
+  res$pvalue <- stats$pvalue
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue >= select && !(xi %in% keep)) {
+    # not selected and not forced into model
+    res$power_best = NA
+    res$model_best = 2
+    return(res)
+  }
+  
+  # test for non-linearity
+  if (ftest) {
+    stats <- calculate_f_test(
+      deviances = res$metrics[c("linear", fpmax), "deviance_rs", drop = TRUE],
+      dfs_resid = res$metrics[c("linear", fpmax), "df_resid", drop = TRUE],
+      n_obs = n_obs
+    )
+  } else {
+    stats <- calculate_lr_test(
+      logl = res$metrics[c("linear", fpmax), "logl", drop = TRUE], 
+      dfs = res$metrics[c("linear", fpmax), "df", drop = TRUE] 
+    )  
+  }
+  old_names <- names(res$statistic)
+  res$statistic <- c(res$statistic, stats$statistic)
+  names(res$statistic) <- c(old_names, sprintf("%s vs linear", fpmax))
+  res$pvalue <- c(res$pvalue, stats$pvalue)
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue >= alpha) {
+    # no non-linearity detected
+    res$power_best = 1
+    res$model_best = 3
+    return(res)
+  }
+  
+  # tests for functional form - do this for all fps with lower degrees
+  if (degree > 1) {
+    
+    for (current_degree in 1:(degree - 1)) {
+      fpm = paste0("FP", current_degree)
+      
+      fit_fpm <- find_best_fpm_step(
+        x = x, xi = xi, degree = current_degree, y = y, 
+        powers_current = powers_current, powers = powers, acdx = acdx, ...
+      )
+      
+      old_names = rownames(res$metrics)
+      res$metrics <- rbind(
+        res$metrics, 
+        fit_fpm$metrics[fit_fpm$model_best, ]
+      )
+      rownames(res$metrics) <- c(old_names, fpm)
+      
+      if (ftest) {
+        stats <- calculate_f_test(
+          deviances = res$metrics[c(fpm, fpmax), "deviance_rs", drop = TRUE],
+          dfs_resid = res$metrics[c(fpm, fpmax), "df_resid", drop = TRUE],
+          n_obs = n_obs
+        )
+      } else {
+        stats <- calculate_lr_test(
+          logl = res$metrics[c(fpm, fpmax), "logl", drop = TRUE], 
+          dfs = res$metrics[c(fpm, fpmax), "df", drop = TRUE] 
+        )  
+      }
+      old_names <- names(res$statistic)
+      res$statistic <- c(res$statistic, stats$statistic)
+      names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, fpm))
+      res$pvalue <- c(res$pvalue, stats$pvalue)
+      names(res$pvalue) <- names(res$statistic)
+      
+      if (stats$pvalue >= alpha) {
+        # non-linearity detected, but lower than maximum degree
+        res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = FALSE]
+        res$model_best = nrow(res$metrics)
+        return(res)
+      }
+    }
+    
+  }
+  
+  # return highest power
+  res$power_best = fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
+  res$model_best = 1
+  
+  res
+}
+
+select_ic <- function() {
+  
+}
+
 #' Helper to find best model when acd transformation is desired
 #' 
 #' To be used in [find_best_fp_step()].
@@ -1013,67 +929,6 @@ find_index_best_model_acd <- function(pvalue,
   }
   
   index.bestmodel
-}
-
-#' Helper to calculate metrics for models
-#' 
-#' To be used in [find_best_fp_step()].
-#' 
-#' @details 
-#' If the maximum allowed degree is 5, this function will calculate metrics for
-#' FP2 through FP5, which will then be combined with metrics for FP1 estimated 
-#' by [find_best_fp1_step()]. The linear function makes the formula more complicated, 
-#' so there are separate functions for FP1 and FPm.
-calculate_metrics_fpm <- function(y, 
-                                  x, 
-                                  xi, 
-                                  powers_current, 
-                                  powers, 
-                                  family, 
-                                  weights, 
-                                  offset, 
-                                  strata,
-                                  control,
-                                  method,
-                                  rownames, 
-                                  nocenter, 
-                                  degree, 
-                                  acdx) {
-  # we output best fpm parameters from degree 2 to m for degree 1 see bestfp1
-  mm <- seq(2, degree)
-  out <- vector(mode = "list", length = length(mm))
-  for (k in seq_along(mm)) {
-    out[[k]] <- find_best_fpm_step(
-      y = y, x = x, xi = xi, powers_current = powers_current,
-      powers = powers, family = family, weights = weights,
-      offset = offset, strata = strata, control = control,
-      method = method, rownames = rownames,
-      nocenter = nocenter, degree = mm[k], acdx = acdx
-    )
-  }
-  # save AIC, BIC, DEV and sse for m = 2,3,...
-  dev <- unlist(lapply(out, `[[`, 1), use.names = F) # deviances are in position 1 of nested list
-  aic <- unlist(lapply(out, `[[`, 2), use.names = F) # aic are in position 2 of nested list
-  bic <- unlist(lapply(out, `[[`, 3), use.names = F) # bic are in position 3 of nested list
-  sse <- unlist(lapply(out, `[[`, 4), use.names = F) # sse are in position 4 of nested list
-  dev.roy <- unlist(lapply(out, `[[`, 11), use.names = F) # royston deviances are in position 11 of nested list
-  
-  # degree of freedom: regression coefficients plus estimated FP powers
-  df.best.fpm.sse <- unlist(lapply(out, `[[`, 9), use.names = F) # df are in position 9 of nested list
-  names(dev) <- names(dev.roy) <- names(aic) <- names(bic) <- names(sse) <- names(df.best.fpm.sse) <- paste0("FP", mm)
-  # save corresponding fp powers
-  fn.bestfpm <- lapply(out, `[[`, 10) # functions are in position 10 of nested list
-  fun.dev <- lapply(fn.bestfpm, `[[`, 1)
-  fun.aic <- lapply(fn.bestfpm, `[[`, 2)
-  fun.bic <- lapply(fn.bestfpm, `[[`, 3)
-  fun.sse <- lapply(fn.bestfpm, `[[`, 4)
-  fun.dev.roy <- lapply(fn.bestfpm, `[[`, 5)
-  
-  list(
-    dev = dev, aic = aic, bic = bic, sse = sse, df.best.fpm.sse = df.best.fpm.sse,
-    fun = list(dev = fun.dev, aic = fun.aic, bic = fun.bic, sse = fun.sse, dev.roy = fun.dev.roy),
-    dev.roy = dev.roy
-  )
 }
 
 #' Function to extract and transform adjustment variables

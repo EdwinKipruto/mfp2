@@ -748,6 +748,144 @@ select_ra2 <- function(x,
                        acdx, 
                        ...) {
   
+  if (degree < 1)
+    return(NULL)
+  
+  # simplify testing by defining test helper function
+  if (ftest) {
+    calculate_test <- function(metrics, n_obs) {
+      calculate_f_test(
+        deviances = metrics[, "deviance_rs", drop = TRUE],
+        dfs_resid = metrics[, "df_resid", drop = TRUE],
+        n_obs = n_obs
+      )
+    }
+  } else {
+    calculate_test <- function(metrics, ...) {
+      calculate_lr_test(
+        logl = metrics[, "logl", drop = TRUE], 
+        dfs = metrics[, "df", drop = TRUE] 
+      )
+    }
+  }
+
+  n_obs = nrow(x)
+  fpmax = paste0("FP", degree)
+  
+  # output list
+  res <- list(
+    power_best = NULL, 
+    metrics = NULL, 
+    model_best = NULL, 
+    statistic = NULL, 
+    pvalue = NULL
+  )
+  
+  # fit highest fp and null / linear model for initial steps
+  fit_fpmax <- find_best_fpm_step(
+    x = x, xi = xi, degree = degree, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  fit_lin <- fit_null_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  res$metrics <- rbind(
+    fit_fpmax$metrics[fit_fpmax$model_best, ],
+    fit_lin$metrics
+  )
+  rownames(res$metrics) <- c(fpmax, "null", "linear")
+  
+  # selection procedure
+  
+  # test for overall significance
+  # df for tests are degree * 2
+  stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
+  res$statistic <- stats$statistic
+  names(res$statistic) <- sprintf("%s vs null", fpmax)
+  res$pvalue <- stats$pvalue
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue >= select && !(xi %in% keep)) {
+    # not selected and not forced into model
+    res$power_best = NA
+    res$model_best = 2
+    return(res)
+  }
+  
+  # test for non-linearity
+  # df for tests are degree * 2 - 1
+  stats <- calculate_test(res$metrics[c("linear", fpmax), ], n_obs)
+  old_names <- names(res$statistic)
+  res$statistic <- c(res$statistic, stats$statistic)
+  names(res$statistic) <- c(old_names, sprintf("%s vs linear", fpmax))
+  res$pvalue <- c(res$pvalue, stats$pvalue)
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue >= alpha) {
+    # no non-linearity detected
+    res$power_best = 1
+    res$model_best = 3
+    return(res)
+  }
+  
+  # tests for functional form - do this for all fps with lower degrees
+  # dfs for tests are decreasing
+  if (degree > 1) {
+    
+    for (current_degree in 1:(degree - 1)) {
+      fpm = paste0("FP", current_degree)
+      
+      fit_fpm <- find_best_fpm_step(
+        x = x, xi = xi, degree = current_degree, y = y, 
+        powers_current = powers_current, powers = powers, acdx = acdx, ...
+      )
+      
+      old_names = rownames(res$metrics)
+      res$metrics <- rbind(
+        res$metrics, 
+        fit_fpm$metrics[fit_fpm$model_best, ]
+      )
+      rownames(res$metrics) <- c(old_names, fpm)
+      
+      stats <- calculate_test(res$metrics[c(fpm, fpmax), ], n_obs)
+      old_names <- names(res$statistic)
+      res$statistic <- c(res$statistic, stats$statistic)
+      names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, fpm))
+      res$pvalue <- c(res$pvalue, stats$pvalue)
+      names(res$pvalue) <- names(res$statistic)
+      
+      if (stats$pvalue >= alpha) {
+        # non-linearity detected, but lower than maximum degree
+        res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = FALSE]
+        res$model_best = nrow(res$metrics)
+        return(res)
+      }
+    }
+    
+  }
+  
+  # return highest power
+  res$power_best = fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
+  res$model_best = 1
+  
+  res
+}
+
+#' Function selection procedure 
+select_ra2_acd <- function(x, 
+                           xi,
+                           degree,
+                           y, 
+                           powers_current, 
+                           select, 
+                           alpha, 
+                           keep, 
+                           powers, 
+                           ftest,  
+                           acdx, 
+                           ...) {
+  
   
   # TODO: simplify, using local testing function to prevent if else all the
   # time

@@ -50,7 +50,9 @@
 #' the current variable of interest. This function covers three main use cases: 
 #' 
 #' * the linear case (`df = 1`) to test between null and linear models (see
-#' [find_best_linear_step()]).
+#' [find_best_linear_step()]). This step differs from the mfp case because
+#' linear models only use 1 df, while estimation of (every) fp power adds 
+#' another df. 
 #' * the case that an acd transformation is requested (`acdx` is `TRUE` 
 #' for `xi`) for the variable of interest (see [find_best_acd_step()]).
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
@@ -88,6 +90,7 @@
 #' a FPx transformation for the variable of interest and having the highest 
 #' likelihood of all such models given the current powers for all other
 #' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
+#' These best FPx models are computed in [find_best_fpm_step()].
 #' 
 #' For the other criteria `aic` and `bic` all FP models up to the desired degree
 #' are fitted and the model with the lowest value for the information criteria 
@@ -627,7 +630,24 @@ find_best_fp1_step <- function(y,
   outx
 }
 
-#' @describeIn find_best_fp1_step Find higher order FP functions.
+#' Function to find the best FP functions of given degree for a single variable
+#' 
+#' Handles the FP1 and the higher order FP cases. For parameter definitions, see
+#' [find_best_fp_step()].
+#' 
+#' @details 
+#' The "best" model is determined by the highest likelihood (or smallest 
+#' deviance by our definition as minus twice the log-likelihood). This is also 
+#' the case for the use of information criteria, as all models investigated in 
+#' this function have the same df, so the penalization term is equal for all
+#' models and only their likelihoods differ.
+#' 
+#' Note that the estimation of each fp power adds a degree of freedom. Thus, 
+#' all fp1s have 2 df (even the "linear" one), all fp2s have 4 df and so on.
+#' 
+#' @return 
+#' A list with several components giving the best power found (`power_best`) and 
+#' performance indices.
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -643,81 +663,43 @@ find_best_fpm_step <- function(x,
                                acdx, 
                                ...) {
   
-  # if (degree < 2) warning("Degree must be >= 2. Here we are interest on best FPm where
-  #                   m>=2. For m = 1 see find_best_fp1_step()")
-  # Generate FP data for x of interest (xi) and adjustment variables
-  df1 <- transform_data_step(
-    x = x, xi = xi, powers_current = powers_current,
-    df = 2 * degree, powers = powers, acdx = acdx
+  n_obs <- dim(x)[1L]
+  
+  # generate FP data for x of interest (xi) and adjustment variables
+  x_transformed <- transform_data_step(
+    x = x, xi = xi, df = 2 * degree,
+    powers_current = powers_current, powers = powers, acdx = acdx
   )
   
-  # Matrix of adjustment data
-  adjdata <- df1$data_adj
-  # List of FP data for xi (continuous) of interest.
-  fpdata <- df1$data_fp
-  # Total FP powers different from 1 estimated in adjustment model
-  # tFP <- calculate_number_fp_powers(df1$adjustpowers)
-  # The length of generated FP variables for x of interest.
-  nv <- length(fpdata)
-  # Generate all possible FPm powers - redundante
-  # fpmpowers <- generate_powers_fp(degree = degree, powers = powers)
-  fpmpowers <- df1$powers_fp
+  metrics = list()
   
-  # log(n) for bic calculation
-  n <- nrow(x)
-  logn <- log(n)
-  devs <- devs.royston <- sse <- aic <- bic <- dfpm <- dfx <- numeric(nv)
-  xnames <- paste0("newx", seq_along(1:degree))
-  
-  for (i in seq_len(nv)) {
+  for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
-    xout <- cbind(fpdata[[i]], adjdata)
-    colnames(xout)[1:degree] <- xnames
-    fit1 <- fit_model(
-      x = xout, y = y, ...
+    fit <- fit_model(
+      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj), y = y, ...
     )
-    # Deviance of the fitted model
-    devs[i] <- -2 * fit1$logl
-    # number of regression coefficients (plus variance if gaussian)
-    dfx[i] <- fit1$df
-    # save degrees of freedom of sse for fpm i.e n-#parameters in fpm model
-    # useful for F test. we add m because of m fp powers and tFP because of
-    # estimated FP powers in adjustment model
-    # dfpm[i] = n-(fit1$df + m + tFP)
-    dfpm[i] <- n - ((fit1$df - 1) + degree) # subtract scale parameter
-    # AIC and BIC of the fitted model. Add m because of the m FPm powers.
-    # aic[i] = devs[i] + 2*(fit1$df + m + tFP) #
-    # bic[i] = devs[i] + logn*(fit1$df + m + tFP)
-    aic[i] <- devs[i] + 2 * (fit1$df + degree) #
-    bic[i] <- devs[i] + logn * (fit1$df + degree)
-    # sse and deviance for gaussian family.
-    sse[i] <- fit1$sse
-    devs.royston[i] <- deviance_stata(rss = sse[i], weights = fit1$fit$weights, n = dim(x)[1L])
+    
+    # use degree many additional degrees of freedom
+    # TODO: here we should likely add additional df for each fp term in the model
+    # using calculate_number_fp_powers
+    # note: this doesn't change WHICH model is the best, since all use the 
+    # same additional df, but it may affect further comparison between 
+    # different fp models
+    p = x_transformed$powers_fp[i, , drop = TRUE]
+    metrics[[paste(p, collapse = " ")]] = calculate_model_metrics(
+      fit, n_obs, degree
+    )
   }
-  # Best FPm function based on dev (calculated using loglik), aic, bic, sse and dev(calculated using sse)
-  fn.bestfpm <- list(
-    dev = fpmpowers[which.min(devs), ],
-    aic = fpmpowers[which.min(aic), ],
-    bic = fpmpowers[which.min(bic), ],
-    sse = fpmpowers[which.min(sse), ],
-    dev.r = fpmpowers[which.min(devs.royston), ]
-  )
   
-  mt <- list(
-    dev.best.fpm = devs[which.min(devs)], # Deviance of the best FPm function
-    aic.best.fpm = aic[which.min(aic)], # aic of the best FPm function
-    bic.best.fpm = bic[which.min(bic)],
-    sse.best.fpm = sse[which.min(sse)],
-    dev.all.FPm = devs,
-    aic.all.FPm = aic,
-    bic.all.FPm = bic,
-    sse.all.FPm = sse,
-    df.best.fpm.sse = dfpm[which.min(sse)],
-    fn.bestfpm = fn.bestfpm,
-    dev.roy.best.fpm = devs.royston[which.min(devs.royston)]
-  ) # Deviance of the best FPm function based on royston formula
-  
-  mt
+  metrics = do.call(rbind, metrics) 
+  model_best = as.numeric(which.max(metrics[, "logl"]))
+   
+  list(
+    powers = x_transformed$powers_fp, 
+    power_best = x_transformed$powers_fp[model_best, , drop = TRUE], 
+    metrics = metrics, 
+    model_best = model_best
+  ) 
 }
 
 #' Helper to assess null and linear term for a single variable

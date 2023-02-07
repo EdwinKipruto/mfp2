@@ -21,7 +21,7 @@ select_linear(
 A list with several components:
 \itemize{
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi}.
-\item \code{powers}: fp powers investigated in step.
+\item \code{powers}: fp powers investigated in step, indexing \code{metrics}.
 \item \code{power_best}: a numeric vector with the best power found. The returned
 best power may be \code{NA}, indicating the variable has been removed from the
 model.

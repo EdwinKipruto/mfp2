@@ -50,7 +50,7 @@
 #' the current variable of interest. This function covers three main use cases: 
 #' 
 #' * the linear case (`df = 1`) to test between null and linear models (see
-#' [find_best_linear_step()]). This step differs from the mfp case because
+#' [select_linear()]). This step differs from the mfp case because
 #' linear models only use 1 df, while estimation of (every) fp power adds 
 #' another df. 
 #' * the case that an acd transformation is requested (`acdx` is `TRUE` 
@@ -504,7 +504,7 @@ fit_linear_step <- function(x,
 #' A list with several components:
 #' 
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
-#' * `powers`: fp powers investigated in step. 
+#' * `powers`: fp powers investigated in step, indexing `metrics`. 
 #' * `power_best`: a numeric vector with the best power found. The returned 
 #' best power may be `NA`, indicating the variable has been removed from the 
 #' model.
@@ -572,18 +572,26 @@ select_linear <- function(x,
   )
 }
 
-#' Function selection procedure 
+#' Function selection procedure based on closed testing procedure
 #' 
-#' #' In case `criterion = "pvalue"` the function selection procedure as outlined 
-#' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. Briefly, the
-#' first step is to test the best FPm function against a null model at level
+#' Used in [find_best_fp_step()] when `criterion = "pvalue"`.
+#' For parameter explanations, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @details  
+#' In case `criterion = "pvalue"` the function selection procedure as outlined 
+#' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. 
+#' 
+#' * \emph{Step 1}: test the best FPm function against a null model at level
 #' `select` with 2m df. If not significant, the variable is excluded. 
-#' Otherwise, the fps are tested in order against the highest fp. 
-#' That is, the next step is to test the best FPm versus linear at level `alpha` 
+#' Otherwise continue with step 2.
+#' * \emph{Step 2}: test the best FPm versus a linear model at level `alpha` 
 #' with 2m - 1 df. If not significant, use a linear model. 
-#' Otherwise the next step is to test the best FPm versus the best FP1 at 
+#' Otherwise continue with step 3.
+#' * \emph{Step 3}: test the best FPm versus the best FP1 at 
 #' level `alpha` with 2m - 2 df. If not significant, use the best FP1 model. 
-#' And so on, until FPm-1, which is tested at level `alpha` with 2 df.
+#' Otherwise, repeat this step for all remaining higher order FPs until 
+#' FPm-1, which is tested at level `alpha` with 2 df against FPm.
 #' If the final test is not significant, use a FPm-1 model, otherwise use FPm. 
 #' 
 #' Note that the "best" FPx model used in each step is given by the model using
@@ -591,6 +599,29 @@ select_linear <- function(x,
 #' likelihood of all such models given the current powers for all other
 #' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
 #' These best FPx models are computed in [find_best_fpm_step()].
+#' 
+#' @return 
+#' A list with several components:
+#' 
+#' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
+#' i.e. `FALSE` in this case.
+#' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' * `power_best`: a numeric vector with the best power found. The returned 
+#' best power may be `NA`, indicating the variable has been removed from the 
+#' model.
+#' * `metrics`: a matrix with performance indices for all models investigated. 
+#' Same number of rows as, and indexed by, `powers`.
+#' * `model_best`: row index of best model in `metrics`.
+#' * `pvalue`: p-value for comparison of linear and null model.
+#' * `statistic`: test statistic used, depends on `ftest`.
+#' 
+#' @references 
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
+#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' for Modelling Continuous Variables. John Wiley & Sons.}
+#' 
+#' @seealso 
+#' [select_ra2_acd()]
 select_ra2 <- function(x, 
                        xi,
                        degree,
@@ -745,7 +776,41 @@ select_ra2 <- function(x,
   res
 }
 
-#' Function selection procedure with acd
+#' Function selection procedure for ACD based on closed testing procedure
+#' 
+#' Used in [find_best_fp_step()] when `criterion = "pvalue"` and an 
+#' ACD transformation is requested for `xi`.
+#' For parameter explanations, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @details  
+#' This function extends the algorithm used in [select_ra2()] to allow the 
+#' usage of ACD transformations. The implementation follows the description 
+#' in Royston and Sauerbrei (2016). The procedure is outlined in detail in 
+#' the corresponding section in the documentation of [mfpa()].
+#' 
+#' @return 
+#' A list with several components:
+#' 
+#' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
+#' i.e. `FALSE` in this case.
+#' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' * `power_best`: a numeric vector with the best power found. The returned 
+#' best power may be `NA`, indicating the variable has been removed from the 
+#' model.
+#' * `metrics`: a matrix with performance indices for all models investigated. 
+#' Same number of rows as, and indexed by, `powers`.
+#' * `model_best`: row index of best model in `metrics`.
+#' * `pvalue`: p-value for comparison of linear and null model.
+#' * `statistic`: test statistic used, depends on `ftest`.
+#' 
+#' @references 
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' ACD covariate transformation for enhanced parametric multivariable modeling. 
+#' The Stata Journal, 16(1), pp.72-87.}
+#' 
+#' @seealso 
+#' [select_ra2()]
 select_ra2_acd <- function(x, 
                            xi,
                            y, 
@@ -1068,6 +1133,9 @@ transform_data_step <- function(x,
   )
 }
 
+#' Helper function to ensure vectors have a specified length
+#' 
+#' Used to make sure dimensions of matrix rows match.
 ensure_length <- function(x, 
                           size, 
                           fill = NA) {
@@ -1078,3 +1146,4 @@ ensure_length <- function(x,
   x_new[1:length(x)] = x
   
   x_new
+}

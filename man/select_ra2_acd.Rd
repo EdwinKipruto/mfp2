@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfp_step.R
 \name{select_ra2_acd}
 \alias{select_ra2_acd}
-\title{Function selection procedure with acd}
+\title{Function selection procedure for ACD based on closed testing procedure}
 \usage{
 select_ra2_acd(
   x,
@@ -18,6 +18,39 @@ select_ra2_acd(
   ...
 )
 }
+\value{
+A list with several components:
+\itemize{
+\item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi},
+i.e. \code{FALSE} in this case.
+\item \code{powers}: (best) fp powers investigated in step, indexing \code{metrics}.
+\item \code{power_best}: a numeric vector with the best power found. The returned
+best power may be \code{NA}, indicating the variable has been removed from the
+model.
+\item \code{metrics}: a matrix with performance indices for all models investigated.
+Same number of rows as, and indexed by, \code{powers}.
+\item \code{model_best}: row index of best model in \code{metrics}.
+\item \code{pvalue}: p-value for comparison of linear and null model.
+\item \code{statistic}: test statistic used, depends on \code{ftest}.
+}
+}
 \description{
-Function selection procedure with acd
+Used in \code{\link[=find_best_fp_step]{find_best_fp_step()}} when \code{criterion = "pvalue"} and an
+ACD transformation is requested for \code{xi}.
+For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
+captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+}
+\details{
+This function extends the algorithm used in \code{\link[=select_ra2]{select_ra2()}} to allow the
+usage of ACD transformations. The implementation follows the description
+in Royston and Sauerbrei (2016). The procedure is outlined in detail in
+the corresponding section in the documentation of \code{\link[=mfpa]{mfpa()}}.
+}
+\references{
+Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+ACD covariate transformation for enhanced parametric multivariable modeling.
+The Stata Journal, 16(1), pp.72-87.}
+}
+\seealso{
+\code{\link[=select_ra2]{select_ra2()}}
 }

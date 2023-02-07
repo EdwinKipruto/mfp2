@@ -104,7 +104,7 @@ It uses transformations for all other variables to assess the FP form of
 the current variable of interest. This function covers three main use cases:
 \itemize{
 \item the linear case (\code{df = 1}) to test between null and linear models (see
-\code{\link[=find_best_linear_step]{find_best_linear_step()}}). This step differs from the mfp case because
+\code{\link[=select_linear]{select_linear()}}). This step differs from the mfp case because
 linear models only use 1 df, while estimation of (every) fp power adds
 another df.
 \item the case that an acd transformation is requested (\code{acdx} is \code{TRUE}

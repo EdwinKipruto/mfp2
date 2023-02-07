@@ -1081,6 +1081,7 @@ find_index_best_model_acd <- function(pvalue,
 #' cycles.
 #' @param df a numeric vector of degrees of freedom for `xi`.
 #' @param powers a set of allowed FP powers.
+#' @param acdx a logical vector indicating the use of acd transformation.
 #' 
 #' @details
 #' After extracting the adjustment variables this function, using their
@@ -1091,7 +1092,12 @@ find_index_best_model_acd <- function(pvalue,
 #' that the variable has been left out of the adjustment variables. It also
 #' returns the FP data, which is dependent on the degrees of freedom. For example,
 #' `df = 2` is equivalent to FP degree one, resulting in the generation of 8 
-#' variables. If `acdx` is set to `TRUE`, however, 64 variables are generated.
+#' variables. If `acdx` for the current variables of interest is set to `TRUE`, 
+#' however, 64 variables are generated.
+#' 
+#' When `df = 1`, this function returns data unchanged, i.e. a "linear" 
+#' transformation with power equal to 1. In case `acdx[xi] = TRUE`, the 
+#' acd transformation is applied. 
 #' 
 #' @return 
 #' A list containing the following elements: 
@@ -1157,17 +1163,20 @@ transform_data_step <- function(x,
   # generate fp data
   data_xi <- x[, xi, drop = TRUE]
   
-  if (length(unique(data_xi)) <= 3 || df == 1) {
+  if (length(unique(data_xi)) <= 3) {
     # if a variable has less than 4 levels we do not generate FP data
-    # when df = 1 we do not generate FP data because we assume linearity
     data_fp <- data_xi
     powers_fp <- 1
   } else {
     if (acdx[xi]) {
-      fpd <- generate_transformations_acd(data_xi, powers = powers)
+      # when df = 1 -> degree = 0
+      # and we return the data unchanged, i.e. with power = 1
+      fpd <- generate_transformations_acd(data_xi, degree = floor(df / 2),
+                                          powers = powers)
     } else {
       # note that degree is df / 2
-      fpd <- generate_transformations_fp(data_xi, degree = df / 2, powers = powers)
+      fpd <- generate_transformations_fp(data_xi, degree = floor(df / 2),
+                                         powers = powers)
     }
     data_fp <- fpd$data
     powers_fp <- fpd$powers

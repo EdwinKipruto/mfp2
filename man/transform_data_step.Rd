@@ -21,6 +21,8 @@ cycles.}
 \item{df}{a numeric vector of degrees of freedom for \code{xi}.}
 
 \item{powers}{a set of allowed FP powers.}
+
+\item{acdx}{a logical vector indicating the use of acd transformation.}
 }
 \value{
 A list containing the following elements:
@@ -46,5 +48,10 @@ individual powers. It's worth noting that some powers can be NA, indicating
 that the variable has been left out of the adjustment variables. It also
 returns the FP data, which is dependent on the degrees of freedom. For example,
 \code{df = 2} is equivalent to FP degree one, resulting in the generation of 8
-variables. If \code{acdx} is set to \code{TRUE}, however, 64 variables are generated.
+variables. If \code{acdx} for the current variables of interest is set to \code{TRUE},
+however, 64 variables are generated.
+
+When \code{df = 1}, this function returns data unchanged, i.e. a "linear"
+transformation with power equal to 1. In case \code{acdx[xi] = TRUE}, the
+acd transformation is applied.
 }

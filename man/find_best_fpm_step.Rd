@@ -4,26 +4,21 @@
 \alias{find_best_fpm_step}
 \title{Function to find the best FP functions of given degree for a single variable}
 \usage{
-find_best_fpm_step(
-  x,
-  xi,
-  degree,
-  y,
-  powers_current,
-  criterion,
-  select,
-  alpha,
-  keep,
-  powers,
-  ftest,
-  verbose,
-  acdx,
-  ...
-)
+find_best_fpm_step(x, xi, degree, y, powers_current, powers, acdx, ...)
 }
 \value{
-A list with several components giving the best power found (\code{power_best}) and
-performance indices.
+A list with several components:
+
+#' * \code{acd}: logical indicating if an ACD transformation was applied for \code{xi}.
+\itemize{
+\item \code{powers}: fp powers investigated in step.
+\item \code{power_best}: the best power found. \code{power_best} will always be a
+two-column matrix when an ACD transformation is used, otherwise the number
+of columns will depend on \code{degree}.
+\item \code{metrics}: a matrix with performance indices for all models investigated.
+Same number of rows as, and indexed by, \code{powers}.
+\item \code{model_best}: row index of best model in \code{metrics}.
+}
 }
 \description{
 Handles the FP1 and the higher order FP cases. For parameter definitions, see
@@ -37,5 +32,21 @@ this function have the same df, so the penalization term is equal for all
 models and only their likelihoods differ.
 
 Note that the estimation of each fp power adds a degree of freedom. Thus,
-all fp1s have 2 df (even the "linear" one), all fp2s have 4 df and so on.
+all fp1s have 2 df, all fp2s have 4 df and so on.
+
+In the case that \code{degree = 1}, the linear model (fp power of 1) is NOT
+returned, as it is not considered to be a fractional polynomial in this
+algorithm.
+A linear model has only one df, whereas the same function regarded as fp
+would have 2 fp.
 }
+\section{ACD transformation}{
+
+This function also handles the case of ACD transformations if \code{acdx} is set
+to \code{TRUE} for \code{xi}. In this case, if \code{degree = 1}, then 7 models are
+assessed (like for the non-acd case it excludes the linear case),
+and if \code{degree = 2}, then 64 models are assessed (unlike the 36 models
+for non-acd transformation). Other settings for \code{degree} are currently not
+supported when used with ACD transformations.
+}
+

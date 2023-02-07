@@ -104,11 +104,13 @@ It uses transformations for all other variables to assess the FP form of
 the current variable of interest. This function covers three main use cases:
 \itemize{
 \item the linear case (\code{df = 1}) to test between null and linear models (see
-\code{\link[=find_best_linear_step]{find_best_linear_step()}}).
+\code{\link[=find_best_linear_step]{find_best_linear_step()}}). This step differs from the mfp case because
+linear models only use 1 df, while estimation of (every) fp power adds
+another df.
 \item the case that an acd transformation is requested (\code{acdx} is \code{TRUE}
-for \code{xi}) for the variable of interest (see \code{\link[=find_best_acd_step]{find_best_acd_step()}}).
+for \code{xi}) for the variable of interest (see \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
 \item the (usual) case of the normal mfp algorithm to assess non-linear
-functional forms (see \code{\link[=find_best_fp1_step]{find_best_fp1_step()}} and \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
+functional forms (see \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
 }
 
 Note that these cases do not encompass the setting that a variable is not
@@ -126,32 +128,25 @@ are evaluated in turn starting from the first step in the first cycle.
 \section{Functional form selection}{
 
 There are 3 criteria to decide for the current best functional form of a
-continuous variable. These work as follows.
+continuous variable.
 
-In case \code{criterion = "pvalue"} the function selection procedure as outlined
-in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. Briefly, the
-first step is to test the best FPm function against a null model at level
-\code{select} with 2m df. If not significant, the variable is excluded.
-Otherwise, the fps are tested in order against the highest fp.
-That is, the next step is to test the best FPm versus linear at level \code{alpha}
-with 2m - 1 df. If not significant, use a linear model.
-Otherwise the next step is to test the best FPm versus the best FP1 at
-level \code{alpha} with 2m - 2 df. If not significant, use the best FP1 model.
-And so on, until FPm-1, which is tested at level \code{alpha} with 2 df.
-If the final test is not significant, use a FPm-1 model, otherwise use FPm.
-
-Note that the "best" FPx model used in each step is given by the model using
-a FPx transformation for the variable of interest and having the highest
-likelihood of all such models given the current powers for all other
-variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
+The first option for \code{criterion = "pvalue"} is the function selection
+procedure as outlined in e.g. Chapters 4 and 6 of Royston and
+Sauerbrei (2008), also abbreviated as "RA2".
+It is a closed testing procedure and is implemented in \code{\link[=select_ra2]{select_ra2()}} and
+extended for ACD transformation in \code{\link[=select_ra2_acd]{select_ra2_acd()}} according to
+Royston and Sauerbrei (2016).
 
 For the other criteria \code{aic} and \code{bic} all FP models up to the desired degree
 are fitted and the model with the lowest value for the information criteria
-is chosen as the final one.
+is chosen as the final one. This is implemented in \code{\link[=select_ic]{select_ic()}}.
 }
 
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}\cr
+Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+ACD covariate transformation for enhanced parametric multivariable modeling.
+The Stata Journal, 16(1), pp.72-87.}
 }

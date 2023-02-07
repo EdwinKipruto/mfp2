@@ -54,9 +54,9 @@
 #' linear models only use 1 df, while estimation of (every) fp power adds 
 #' another df. 
 #' * the case that an acd transformation is requested (`acdx` is `TRUE` 
-#' for `xi`) for the variable of interest (see [find_best_acd_step()]).
+#' for `xi`) for the variable of interest (see [find_best_fpm_step()]).
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
-#' functional forms (see [find_best_fp1_step()] and [find_best_fpm_step()]). 
+#' functional forms (see [find_best_fpm_step()]). 
 #' 
 #' Note that these cases do not encompass the setting that a variable is not
 #' selected, because the evaluation is done for each variable in each cycle.
@@ -72,29 +72,18 @@
 #' 
 #' @section Functional form selection:
 #' There are 3 criteria to decide for the current best functional form of a 
-#' continuous variable. These work as follows. 
+#' continuous variable. 
 #' 
-#' In case `criterion = "pvalue"` the function selection procedure as outlined 
-#' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. Briefly, the
-#' first step is to test the best FPm function against a null model at level
-#' `select` with 2m df. If not significant, the variable is excluded. 
-#' Otherwise, the fps are tested in order against the highest fp. 
-#' That is, the next step is to test the best FPm versus linear at level `alpha` 
-#' with 2m - 1 df. If not significant, use a linear model. 
-#' Otherwise the next step is to test the best FPm versus the best FP1 at 
-#' level `alpha` with 2m - 2 df. If not significant, use the best FP1 model. 
-#' And so on, until FPm-1, which is tested at level `alpha` with 2 df.
-#' If the final test is not significant, use a FPm-1 model, otherwise use FPm. 
-#' 
-#' Note that the "best" FPx model used in each step is given by the model using
-#' a FPx transformation for the variable of interest and having the highest 
-#' likelihood of all such models given the current powers for all other
-#' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-#' These best FPx models are computed in [find_best_fpm_step()].
+#' The first option for `criterion = "pvalue"` is the function selection 
+#' procedure as outlined in e.g. Chapters 4 and 6 of Royston and 
+#' Sauerbrei (2008), also abbreviated as "RA2".
+#' It is a closed testing procedure and is implemented in [select_ra2()] and
+#' extended for ACD transformation in [select_ra2_acd()] according to 
+#' Royston and Sauerbrei (2016). 
 #' 
 #' For the other criteria `aic` and `bic` all FP models up to the desired degree
 #' are fitted and the model with the lowest value for the information criteria 
-#' is chosen as the final one. 
+#' is chosen as the final one. This is implemented in [select_ic()].
 #'  
 #' @return 
 #' A numeric vector indicating the best powers for `xi`. Entries can be 
@@ -104,6 +93,9 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' ACD covariate transformation for enhanced parametric multivariable modeling. 
+#' The Stata Journal, 16(1), pp.72-87.}
 find_best_fp_step <- function(x,
                               y, 
                               xi,
@@ -337,13 +329,19 @@ find_best_fp_step <- function(x,
 #' assessed (like for the non-acd case it excludes the linear case), 
 #' and if `degree = 2`, then 64 models are assessed (unlike the 36 models 
 #' for non-acd transformation). Other settings for `degree` are currently not
-#' supported when used with acd transformations.
+#' supported when used with ACD transformations.
 #' 
 #' @return 
-#' A list with several components giving the best power found (`power_best`) and 
-#' performance indices. `power_best` will always be a two-column matrix
-#' when an ACD transformation is used, otherwise the number of columns
-#' will depend on `degree`. 
+#' A list with several components: 
+#' 
+#' #' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
+#' * `powers`: fp powers investigated in step. 
+#' * `power_best`: the best power found. `power_best` will always be a 
+#' two-column matrix when an ACD transformation is used, otherwise the number 
+#' of columns will depend on `degree`. 
+#' * `metrics`: a matrix with performance indices for all models investigated. 
+#' Same number of rows as, and indexed by, `powers`.
+#' * `model_best`: row index of best model in `metrics`.
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -403,6 +401,18 @@ find_best_fpm_step <- function(x,
   ) 
 }
 
+#' Function to fit null model excluding variable of interest
+#' 
+#' "Null" model here refers to a model which does not include the variable 
+#' of interest `xi`. 
+#' For parameter definitions, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @return 
+#' A list with two entries: 
+#' 
+#' * `powers`: fp power(s) of `xi` in fitted model - in this case `NA`.
+#' * `metrics`: a matrix with performance indices for fitted model.
 fit_null_step <- function(x, 
                           xi, 
                           y, 
@@ -430,6 +440,19 @@ fit_null_step <- function(x,
   )
 }
 
+#' Function to fit linear model for variable of interest
+#' 
+#' "Linear" model here refers to a model which includes the variable 
+#' of interest `xi` with a fp power of 1. Note that `xi` may be ACD transformed
+#' if indicated by `acdx[xi]`.
+#' For parameter definitions, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @return 
+#' A list with two entries: 
+#' 
+#' * `powers`: fp power(s) of `xi` (or its ACD transformation) in fitted model.
+#' * `metrics`: a matrix with performance indices for fitted model.
 fit_linear_step <- function(x, 
                             xi, 
                             y, 
@@ -540,6 +563,24 @@ find_best_linear_step <- function(x,
 }
 
 #' Function selection procedure 
+#' 
+#' #' In case `criterion = "pvalue"` the function selection procedure as outlined 
+#' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. Briefly, the
+#' first step is to test the best FPm function against a null model at level
+#' `select` with 2m df. If not significant, the variable is excluded. 
+#' Otherwise, the fps are tested in order against the highest fp. 
+#' That is, the next step is to test the best FPm versus linear at level `alpha` 
+#' with 2m - 1 df. If not significant, use a linear model. 
+#' Otherwise the next step is to test the best FPm versus the best FP1 at 
+#' level `alpha` with 2m - 2 df. If not significant, use the best FP1 model. 
+#' And so on, until FPm-1, which is tested at level `alpha` with 2 df.
+#' If the final test is not significant, use a FPm-1 model, otherwise use FPm. 
+#' 
+#' Note that the "best" FPx model used in each step is given by the model using
+#' a FPx transformation for the variable of interest and having the highest 
+#' likelihood of all such models given the current powers for all other
+#' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
+#' These best FPx models are computed in [find_best_fpm_step()].
 select_ra2 <- function(x, 
                        xi,
                        degree,

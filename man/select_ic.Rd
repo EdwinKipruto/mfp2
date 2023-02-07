@@ -2,9 +2,23 @@
 % Please edit documentation in R/mfp_step.R
 \name{select_ic}
 \alias{select_ic}
+\alias{select_ic_acd}
 \title{Function selection procedure based on information criteria}
 \usage{
 select_ic(x, xi, degree, y, powers_current, keep, criterion, powers, acdx, ...)
+
+select_ic_acd(
+  x,
+  xi,
+  degree,
+  y,
+  powers_current,
+  keep,
+  criterion,
+  powers,
+  acdx,
+  ...
+)
 }
 \value{
 A list with several components:
@@ -39,6 +53,10 @@ one according to the given criterion.
 variable of interest, the linear model and all best FP models up to the
 specified degree.
 
+In case an ACD transformation is requested, then the models assessed
+are the null model, the linear model in x and A(x), the best FP1 models in
+x and A(x), and the best FP1(x, A(x)) model.
+
 Note that the "best" FPx model used in this function are given by the models
 using a FPx transformation for the variable of interest and having the
 highest likelihood of all such models given the current powers for all other
@@ -53,6 +71,11 @@ When a variable is forced into the model by including it in \code{keep}, then
 this function will not exclude it from the model (by setting its power to
 \code{NA}), but will only choose its functional form.
 }
+\section{Functions}{
+\itemize{
+\item \code{select_ic_acd}: Function to select ACD based transformation.
+}}
+
 \seealso{
 \code{\link[=select_ra2]{select_ra2()}}
 }

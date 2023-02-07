@@ -1045,6 +1045,10 @@ select_ra2_acd <- function(x,
 #' variable of interest, the linear model and all best FP models up to the 
 #' specified degree. 
 #' 
+#' In case an ACD transformation is requested, then the models assessed 
+#' are the null model, the linear model in x and A(x), the best FP1 models in 
+#' x and A(x), and the best FP1(x, A(x)) model.
+#' 
 #' Note that the "best" FPx model used in this function are given by the models
 #' using a FPx transformation for the variable of interest and having the 
 #' highest likelihood of all such models given the current powers for all other
@@ -1144,6 +1148,101 @@ select_ic <- function(x,
   res$metrics <- do.call(
     rbind, 
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
+  )
+  
+  ind_select = 1:nrow(res$metrics)
+  if (xi %in% keep) 
+    # prevent selection of null model
+    ind_select = 2:nrow(res$metrics)
+  
+  res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
+                                         drop = TRUE])
+  res$power_best = res$powers[res$model_best, , drop = FALSE]
+  
+  res
+}
+
+#' @describeIn select_ic Function to select ACD based transformation.
+select_ic_acd <- function(x, 
+                          xi,
+                          degree,
+                          y, 
+                          powers_current,
+                          keep, 
+                          criterion,
+                          powers,   
+                          acdx, 
+                          ...) {
+  
+  acdx_reset_xi = acdx
+  acdx_reset_xi[xi] = FALSE
+  
+  # output list
+  res <- list(
+    keep = xi %in% keep,
+    acd = FALSE, 
+    powers = NULL, 
+    power_best = NULL, 
+    metrics = NULL, 
+    model_best = NULL, 
+    statistic = NA, 
+    pvalue = NA
+  )
+  
+  # fit all relevant models
+  fit_null <- fit_null_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  fit_lin <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+  )
+  fit_lina <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  
+  fits <- list(
+    "FP1(x, .)" = find_best_fpm_step(
+      x = x, xi = xi, degree = 1, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+    ), 
+    "FP1(., A(x))" = find_best_fpm_step(
+      x = x, xi = xi, degree = 1, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
+    ), 
+    "FP1(x, A(x))" = find_best_fpm_step(
+      x = x, xi = xi, degree = 2, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
+    )
+  )
+
+  
+  # output summary - only output best fpm models
+  len_max <- 2
+  
+  res$powers <- lapply(fits, function(x) {
+    ensure_length(x$powers[x$model_best, , drop = FALSE], len_max)
+  })
+  res$powers <- do.call(
+    rbind, 
+    c(list("null" = ensure_length(fit_null$powers, len_max), 
+           "linear" = ensure_length(fit_lin$powers, len_max), 
+           "linear(. A(x))" = ensure_length(fit_lina$powers, len_max)), 
+      res$powers)
+  )
+  
+  res$metrics <- lapply(fits, function(x) {
+    x$metrics[x$model_best, , drop = FALSE] 
+  })
+  res$metrics <- do.call(
+    rbind, 
+    c(list(
+      "null" = fit_null$metrics, 
+      "linear" = fit_lin$metrics, 
+      "linear(., A(x))" = fit_lina$metrics), 
+      res$metrics)
   )
   
   ind_select = 1:nrow(res$metrics)

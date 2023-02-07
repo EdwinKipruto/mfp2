@@ -15,6 +15,8 @@
 #' Thus, for the default set of powers and degree 2, this function returns
 #' 36 combinations.
 #' 
+#' For `degree = 0`, these functions return a matrix with the value 1.
+#' 
 #' For ACD powers, this function simply returns all possible tuples of 
 #' powers of length n. 
 #' Thus, for the default set of powers, this function returns 8 possible
@@ -35,6 +37,9 @@ generate_powers_fp <- function(degree = NULL,
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   
+  if (degree == 0)
+    return(matrix(1, nrow = 1, ncol = 1))
+  
   # using replacement because powers may be repeated e.g. (0,0) or (1,1)
   arrangements::combinations(x = powers, k = degree, replace = TRUE)
 }
@@ -50,9 +55,11 @@ generate_powers_acd <- function(degree = NULL,
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   
-  if (degree == 1) {
+  if (degree == 0)
+    return(matrix(1, nrow = 1, ncol = 1))
+  
+  if (degree == 1) 
     return(as.matrix(powers, ncol = 1))
-  }
   
   matrix(as.matrix(expand.grid(powers, powers)), ncol = 2)
 }

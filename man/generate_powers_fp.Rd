@@ -32,6 +32,8 @@ not matter).
 Thus, for the default set of powers and degree 2, this function returns
 36 combinations.
 
+For \code{degree = 0}, these functions return a matrix with the value 1.
+
 For ACD powers, this function simply returns all possible tuples of
 powers of length n.
 Thus, for the default set of powers, this function returns 8 possible

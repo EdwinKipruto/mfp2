@@ -34,52 +34,6 @@ calculate_lr_test <- function(logl,
   )
 }
 
-#' Function to calculate p-values for Chi-square distribution
-#' 
-#' @param dev a vector of deviance for models i.e Null, linear, FP1,...FPm.
-#' @param acd logical indicating the use of acd transformation.
-calculate_chisquare_test <- function(dev, 
-                                     acd) {
-  if (acd) {
-    df <- c(4, 3, 2, 2, 1)
-    # we have dev = (NULL, M4, M2, M3, M1, M5)
-    # calculate p-values for the functions selection procedure:
-    # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
-    pvalues <- dev.diff <- numeric(5)
-    for (i in 1:4) {
-      dev.diff[i] <- dev[i] - dev[5]
-      pvalues[i] <- pchisq(dev.diff[i], df = df[i], lower.tail = F)
-    }
-    # e). M3 vs M5
-    dev.diff[5] <- dev[6] - dev[4]
-    pvalues[5] <- pchisq(dev.diff[5], df = df[5], lower.tail = F)
-  } else {
-    # we have dev = c(NULL, Linear, FP1, FP2,....FPm)
-    nn <- length(dev)
-    # Maximum permitted degree: nn-2, the first and second position is null and linear
-    m <- nn - 2
-    # calculate degrees of freedom for testing. Note that:
-    # FPm vs Null = 2m; FPm vs linear = 2m-1; FPm vs FP1 = 2m-2; FPm vs FP2 = 2m-4
-    # in general: FPm vs FPk = 2(m-k) for m>k
-    k <- seq(m - 1, 1)
-    df <- c(2 * m, 2 * m - 1, if (m >= 2) {
-      2 * (k)
-    }) # same as 2*(m-k) where k = seq(1,m-1)
-    # calculate p-values for the functions selection procedure:
-    # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
-    pvalues <- dev.diff <- numeric(nn - 1)
-    for (i in 1:(nn - 1)) {
-      dev.diff[i] <- dev[i] - dev[nn]
-      pvalues[i] <- pchisq(dev.diff[i], df = df[i], lower.tail = F)
-    }
-  }
-  
-  list(
-    pvalues = pvalues, 
-    dev.diff = dev.diff
-  )
-}
-
 #' Function to compute F-statistic and p-value from deviances
 #' 
 #' Alternative to likelihood ratio tests in normal / Gaussian error models. 
@@ -124,9 +78,6 @@ calculate_chisquare_test <- function(dev,
 #' @references 
 #' Kutner, M.H., et al., 2004. \emph{Applied linear statistical models. 
 #' McGraw-Hill Irwin.}
-#' 
-#' @seealso 
-#' [calculate_f_test_royston()]
 calculate_f_test <- function(deviances,
                              dfs_resid,
                              n_obs, 
@@ -154,85 +105,5 @@ calculate_f_test <- function(deviances,
     statistic = statistic, 
     pvalue = pvalue, 
     dev_diff = dev_diff
-  )
-}
-
-#' Function to calculate p-values for F-distribution based on Royston formula
-#' 
-#' Alternative to [calculate_f_test()].
-#' 
-#' @details
-#' Uses formula on page 23 of Stata manual at 
-#' https://www.stata.com/manuals/rfp.pdf. 
-#' 
-#' @param dev a vector of deviance for models i.e Null, linear, FP1,...FPm.
-#' @param resid.df a vector of residual degrees of freedom for models.
-#' @param n sample size/number of observations.
-#' @param acd logical indicating use of acd transformation.
-#' 
-#' @seealso 
-#' [calculate_f_test()]
-calculate_f_test_royston <- function(dev, 
-                                     resid.df,
-                                     n, 
-                                     acd) {
-  if (acd) {
-    df <- c(4, 3, 2, 2, 1)
-    # CHECK ON THIS SECTION, THE OTHER SECTION HAS BEEN CORRECTED
-    # we have dev = (NULL, M4, M2, M3, M1, M5)
-    # calculate p-values for the functions selection procedure:
-    # a). M1 vs Null     b). M1 vs M4     c). M1 vs M2    d) M1 vs M3
-    # number of FP powers estimated in NULL = 0, M4 = 0, M2 = 1, M3 = 1, M1 = 2, M5 = 0
-    pwrs <- c(0, 0, 1, 1, 2, 0)
-    pvalues <- dev.diff <- fstatistic <- numeric(5)
-    for (i in 1:4) {
-      stats <- calculate_f_test(
-        deviances = c(dev[i], dev[5]), 
-        d1 = df[i], dfs_resid = resid.df[5], n_obs = n
-      )
-      fstatistic[i] <- stats$statistic
-      pvalues[i] <- stats$pvalue
-      dev.diff[i] <- stats$dev_diff
-    }
-    # e). M3 vs M5
-    stats2 <- calculate_f_test(
-      deviances = c(dev[6], dev[4]),
-      d1 = df[5], dfs_resid = resid.df[4], n_obs = n
-    )
-    fstatistic[5] <- stats2$statistic
-    pvalues[5] <- stats2$pvalue
-    dev.diff[5] <- stats2$dev_diff
-  } else {
-    # we have dev = c(NULL, Linear, FP1, FP2,....FPm)
-    nn <- length(dev)
-    # Maximum permitted degree: nn-2, the first and second position is null and linear
-    m <- nn - 2
-    # calculate degrees of freedom for testing. Note that:
-    # FPm vs Null = 2m; FPm vs linear = 2m-1; FPm vs FP1 = 2m-2; FPm vs FP2 = 2m-4
-    # in general: FPm vs FPk = 2(m-k) for m>k
-    k <- seq(m - 1, 1)
-    df <- c(2 * m, 2 * m - 1, if (m >= 2) {
-      2 * (k)
-    }) # same as 2*(m-k) where k = seq(1,m-1)
-    # number of FP powers estimated in null = 0, linear = 0, fp1 =1, fp2 = 2,...
-    pwrs <- c(0, 0, seq_len(m))
-    # calculate p-values for the functions selection procedure:
-    # FPm vs Null; FPm vs linear; FPm vs FP1; FPm vs FP2 etc.
-    pvalues <- dev.diff <- fstatistic <- numeric(nn - 1)
-    for (i in 1:(nn - 1)) {
-      stats <- calculate_f_test(
-        deviances = c(dev[i], dev[nn]), 
-        d1 = df[i], dfs_resid = resid.df[nn], n_obs = n
-      )
-      pvalues[i] <- stats$pvalue
-      fstatistic[i] <- stats$statistic
-      dev.diff[i] <- stats$dev_diff
-    }
-  }
-  
-  list(
-    pvalues = pvalues, 
-    dev.diff = dev.diff, 
-    fstatistic = fstatistic
   )
 }

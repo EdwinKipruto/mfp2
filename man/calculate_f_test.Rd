@@ -55,6 +55,3 @@ and \eqn{F} to the reduced (model 1) and full model (model 2), respectively.
 Kutner, M.H., et al., 2004. \emph{Applied linear statistical models.
 McGraw-Hill Irwin.}
 }
-\seealso{
-\code{\link[=calculate_f_test_royston]{calculate_f_test_royston()}}
-}

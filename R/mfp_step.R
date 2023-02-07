@@ -630,7 +630,7 @@ select_ra2 <- function(x,
     pvalue = NULL
   )
   
-  # fit highest fp and null / linear model for initial steps
+  # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
@@ -639,18 +639,11 @@ select_ra2 <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
-  fit_lin <- fit_linear_step(
-    x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
-  )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
-    fit_null$metrics,
-    fit_lin$metrics
+    fit_null$metrics
   )
-  rownames(res$metrics) <- c(fpmax, "null", "linear")
-  
-  # selection procedure
+  rownames(res$metrics) <- c(fpmax, "null")
   
   # test for overall significance
   # df for tests are degree * 2
@@ -669,13 +662,25 @@ select_ra2 <- function(x,
   
   # test for non-linearity
   # df for tests are degree * 2 - 1
+  fit_lin <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  
+  old_names = rownames(res$metrics)
+  res$metrics <- rbind(
+    res$metrics, 
+    fit_lin$metrics
+  )
+  rownames(res$metrics) <- c(old_names, "linear")
+  
   stats <- calculate_test(res$metrics[c("linear", fpmax), ], n_obs)
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs linear", fpmax))
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
-  
+
   if (stats$pvalue >= alpha) {
     # no non-linearity detected
     res$power_best = 1

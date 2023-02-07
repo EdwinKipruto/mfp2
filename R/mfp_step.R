@@ -1074,6 +1074,7 @@ select_ic <- function(x,
   
   # output list
   res <- list(
+    keep = xi %in% keep,
     acd = FALSE, 
     powers = NULL, 
     power_best = NULL, 
@@ -1122,7 +1123,13 @@ select_ic <- function(x,
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
   )
   
-  res$model_best = which.min(res$metrics[, tolower(criterion), drop = TRUE])
+  ind_select = 1:nrow(res$metrics)
+  if (xi %in% keep) 
+    # prevent selection of null model
+    ind_select = 2:nrow(res$metrics)
+  
+  res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
+                                         drop = TRUE])
   res$power_best = res$powers[res$model_best, , drop = FALSE]
   
   res

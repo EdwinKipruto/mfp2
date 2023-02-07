@@ -17,6 +17,10 @@
 #' When the ACD transformation is requested, then all pairs of length 2
 #' are considered, i.e. 64. See [generate_powers_acd()].
 #' 
+#' If `degree = 0` then these functions return the data unchanged for fp, 
+#' or simply the acd transformation of the input variable, i.e. in both cases
+#' the power is set to 1 (linear).
+#' 
 #' @return 
 #' A list with two entries: 
 #' 
@@ -24,7 +28,7 @@
 #' variable of interest. Each entry is a matrix with degree many columns, 
 #' and nobs observations comprising the FP transformed input variable. 
 #' For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
-#' Values are not centered.
+#' Values are not centered. If `degree = 0`, each entry has a single column.
 #' * `powers`: the associated FP powers for each entry in data. 
 generate_transformations_fp <- function(x, 
                                         degree, 

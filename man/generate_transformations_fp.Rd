@@ -25,7 +25,7 @@ A list with two entries:
 variable of interest. Each entry is a matrix with degree many columns,
 and nobs observations comprising the FP transformed input variable.
 For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
-Values are not centered.
+Values are not centered. If \code{degree = 0}, each entry has a single column.
 \item \code{powers}: the associated FP powers for each entry in data.
 }
 }
@@ -42,6 +42,10 @@ entries are multiplied by log(x) (see \code{\link[=transform_vector_fp]{transfor
 
 When the ACD transformation is requested, then all pairs of length 2
 are considered, i.e. 64. See \code{\link[=generate_powers_acd]{generate_powers_acd()}}.
+
+If \code{degree = 0} then these functions return the data unchanged for fp,
+or simply the acd transformation of the input variable, i.e. in both cases
+the power is set to 1 (linear).
 }
 \section{Functions}{
 \itemize{

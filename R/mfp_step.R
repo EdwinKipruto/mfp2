@@ -665,6 +665,7 @@ select_ra2 <- function(x,
   
   # output list
   res <- list(
+    keep = xi %in% keep, 
     acd = FALSE, 
     powers = NULL, 
     power_best = NULL, 
@@ -852,6 +853,7 @@ select_ra2_acd <- function(x,
   
   # output list
   res <- list(
+    keep = xi %in% keep,
     acd = TRUE,
     powers = NULL, 
     power_best = NULL, 

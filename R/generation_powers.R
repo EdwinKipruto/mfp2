@@ -15,16 +15,18 @@
 #' Thus, for the default set of powers and degree 2, this function returns
 #' 36 combinations.
 #' 
-#' For `degree = 0`, these functions return a matrix with the value 1.
-#' 
 #' For ACD powers, this function simply returns all possible tuples of 
 #' powers of length n. 
 #' Thus, for the default set of powers, this function returns 8 possible
 #' powers, and for degree 2 it returns 64 pairs of powers. Higher degrees
-#' are not supported by the function. 
+#' are not supported by the function. In case that `degree = 0` or `degree = 1`, 
+#' the first column of the matrix representing untransformed data are set to 
+#' `NA` to indicate that the normal data do not play a role. Higher degrees
+#' than two are not supported. 
 #' 
 #' @return 
 #' A matrix of powers with degree columns and rows depending on the `degree`.
+#' For ACD powers always a matrix with two columns. 
 #' 
 #' @import arrangements
 #' @export
@@ -56,10 +58,10 @@ generate_powers_acd <- function(degree = NULL,
   }
   
   if (degree == 0)
-    return(matrix(1, nrow = 1, ncol = 1))
+    return(matrix(c(NA, 1), ncol = 2))
   
   if (degree == 1) 
-    return(as.matrix(powers, ncol = 1))
+    return(matrix(c(rep(NA, length(powers)), powers), ncol = 2))
   
   matrix(as.matrix(expand.grid(powers, powers)), ncol = 2)
 }

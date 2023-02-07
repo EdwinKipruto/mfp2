@@ -20,6 +20,7 @@ Default is \code{NULL} and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
 }
 \value{
 A matrix of powers with degree columns and rows depending on the \code{degree}.
+For ACD powers always a matrix with two columns.
 }
 \description{
 Function that generates a matrix of FP powers for any degree
@@ -32,13 +33,14 @@ not matter).
 Thus, for the default set of powers and degree 2, this function returns
 36 combinations.
 
-For \code{degree = 0}, these functions return a matrix with the value 1.
-
 For ACD powers, this function simply returns all possible tuples of
 powers of length n.
 Thus, for the default set of powers, this function returns 8 possible
 powers, and for degree 2 it returns 64 pairs of powers. Higher degrees
-are not supported by the function.
+are not supported by the function. In case that \code{degree = 0} or \code{degree = 1},
+the first column of the matrix representing untransformed data are set to
+\code{NA} to indicate that the normal data do not play a role. Higher degrees
+than two are not supported.
 }
 \section{Functions}{
 \itemize{

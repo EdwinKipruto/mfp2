@@ -7,14 +7,16 @@
 select_linear(
   x,
   xi,
+  keep,
+  degree,
+  acdx,
   y,
   powers_current,
   powers,
-  keep,
   criterion,
   ftest,
-  acdx,
   select,
+  alpha,
   ...
 )
 }

@@ -7,14 +7,16 @@
 select_ra2_acd(
   x,
   xi,
+  keep,
+  degree,
+  acdx,
   y,
   powers_current,
+  powers,
+  criterion,
+  ftest,
   select,
   alpha,
-  keep,
-  powers,
-  ftest,
-  acdx,
   ...
 )
 }

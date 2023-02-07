@@ -5,18 +5,35 @@
 \alias{select_ic_acd}
 \title{Function selection procedure based on information criteria}
 \usage{
-select_ic(x, xi, degree, y, powers_current, keep, criterion, powers, acdx, ...)
+select_ic(
+  x,
+  xi,
+  keep,
+  degree,
+  acdx,
+  y,
+  powers_current,
+  powers,
+  criterion,
+  ftest,
+  select,
+  alpha,
+  ...
+)
 
 select_ic_acd(
   x,
   xi,
+  keep,
   degree,
+  acdx,
   y,
   powers_current,
-  keep,
-  criterion,
   powers,
-  acdx,
+  criterion,
+  ftest,
+  select,
+  alpha,
   ...
 )
 }

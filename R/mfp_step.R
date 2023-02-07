@@ -520,15 +520,17 @@ fit_linear_step <- function(x,
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
 select_linear <- function(x, 
-                          xi, 
+                          xi,
+                          keep, 
+                          degree,
+                          acdx, 
                           y, 
                           powers_current,
-                          powers, 
-                          keep, 
+                          powers,  
                           criterion,
-                          ftest,  
-                          acdx, 
-                          select,
+                          ftest, 
+                          select, 
+                          alpha, 
                           ...) {
   
   n_obs <- dim(x)[1L]
@@ -639,15 +641,16 @@ select_linear <- function(x,
 #' [select_ra2_acd()]
 select_ra2 <- function(x, 
                        xi,
+                       keep, 
                        degree,
+                       acdx, 
                        y, 
-                       powers_current, 
+                       powers_current,
+                       powers,  
+                       criterion,
+                       ftest, 
                        select, 
                        alpha, 
-                       keep, 
-                       powers, 
-                       ftest,  
-                       acdx, 
                        ...) {
   
   if (degree < 1)
@@ -834,14 +837,16 @@ select_ra2 <- function(x,
 #' [select_ra2()]
 select_ra2_acd <- function(x, 
                            xi,
+                           keep, 
+                           degree,
+                           acdx, 
                            y, 
-                           powers_current, 
+                           powers_current,
+                           powers,  
+                           criterion,
+                           ftest, 
                            select, 
                            alpha, 
-                           keep, 
-                           powers, 
-                           ftest,  
-                           acdx, 
                            ...) {
   
   # simplify testing by defining test helper function
@@ -1085,13 +1090,16 @@ select_ra2_acd <- function(x,
 #' [select_ra2()]
 select_ic <- function(x, 
                       xi,
+                      keep, 
                       degree,
+                      acdx, 
                       y, 
                       powers_current,
-                      keep, 
+                      powers,  
                       criterion,
-                      powers,   
-                      acdx, 
+                      ftest, 
+                      select, 
+                      alpha, 
                       ...) {
   
   if (degree < 1)
@@ -1165,13 +1173,16 @@ select_ic <- function(x,
 #' @describeIn select_ic Function to select ACD based transformation.
 select_ic_acd <- function(x, 
                           xi,
+                          keep, 
                           degree,
+                          acdx, 
                           y, 
                           powers_current,
-                          keep, 
+                          powers,  
                           criterion,
-                          powers,   
-                          acdx, 
+                          ftest, 
+                          select, 
+                          alpha, 
                           ...) {
   
   acdx_reset_xi = acdx

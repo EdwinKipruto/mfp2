@@ -7,15 +7,16 @@
 select_ra2(
   x,
   xi,
+  keep,
   degree,
+  acdx,
   y,
   powers_current,
+  powers,
+  criterion,
+  ftest,
   select,
   alpha,
-  keep,
-  powers,
-  ftest,
-  acdx,
   ...
 )
 }

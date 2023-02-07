@@ -630,6 +630,8 @@ select_ra2 <- function(x,
   
   # output list
   res <- list(
+    acd = FALSE, 
+    powers = NULL, 
     power_best = NULL, 
     metrics = NULL, 
     model_best = NULL, 
@@ -651,6 +653,7 @@ select_ra2 <- function(x,
     fit_null$metrics
   )
   rownames(res$metrics) <- c(fpmax, "null")
+  res$powers <- rbind(fit_fpmax$power_best, NA)
   
   # test for overall significance
   # df for tests are degree * 2
@@ -680,6 +683,8 @@ select_ra2 <- function(x,
     fit_lin$metrics
   )
   rownames(res$metrics) <- c(old_names, "linear")
+  res$powers = rbind(res$powers, 
+                     ensure_length(fit_lin$powers, ncol(res$powers)))
   
   stats <- calculate_test(res$metrics[c("linear", fpmax), ], n_obs)
   old_names <- names(res$statistic)
@@ -713,6 +718,8 @@ select_ra2 <- function(x,
         fit_fpm$metrics[fit_fpm$model_best, ]
       )
       rownames(res$metrics) <- c(old_names, fpm)
+      res$powers <- rbind(res$powers, 
+                          ensure_length(fit_fpm$power_best, ncol(res$powers)))
       
       stats <- calculate_test(res$metrics[c(fpm, fpmax), ], n_obs)
       old_names <- names(res$statistic)
@@ -776,6 +783,8 @@ select_ra2_acd <- function(x,
   
   # output list
   res <- list(
+    acd = TRUE,
+    powers = NULL, 
     power_best = NULL, 
     metrics = NULL, 
     model_best = NULL, 
@@ -797,6 +806,7 @@ select_ra2_acd <- function(x,
     fit_null$metrics
   )
   rownames(res$metrics) <- c(fpmax, "null")
+  res$powers <- rbind(fit_fpmax$power_best, fit_null$powers)
   
   # test for overall significance
   # df for tests are degree * 2 = 4
@@ -826,6 +836,7 @@ select_ra2_acd <- function(x,
     fit_lin$metrics
   )
   rownames(res$metrics) <- c(old_names, "linear")
+  res$powers <- rbind(res$powers, c(1, NA))
   
   stats <- calculate_test(res$metrics[c("linear", fpmax), ], n_obs)
   old_names <- names(res$statistic)
@@ -853,6 +864,7 @@ select_ra2_acd <- function(x,
     fit$metrics[fit$model_best, ]
   )
   rownames(res$metrics) <- c(old_names, "FP1(x, .)")
+  res$powers <- rbind(res$powers, c(fit$power_best, NA))
   
   stats <- calculate_test(res$metrics[c("FP1(x, .)", fpmax), ], n_obs)
   old_names <- names(res$statistic)
@@ -880,6 +892,7 @@ select_ra2_acd <- function(x,
     fit_fp1a$metrics[fit_fp1a$model_best, ]
   )
   rownames(res$metrics) <- c(old_names, "FP1(., A(x))")
+  res$powers <- rbind(res$powers, fit_fp1a$power_best)
   
   stats <- calculate_test(res$metrics[c("FP1(., A(x))", fpmax), ], n_obs)
   old_names <- names(res$statistic)
@@ -907,6 +920,7 @@ select_ra2_acd <- function(x,
     fit_lineara$metrics
   )
   rownames(res$metrics) <- c(old_names, "linear(., A(x))")
+  res$powers <- rbind(res$powers, fit_lineara$powers)
   
   stats <- calculate_test(res$metrics[c("linear(., A(x))", "FP1(., A(x))"), ], n_obs)
   old_names <- names(res$statistic)
@@ -1053,3 +1067,14 @@ transform_data_step <- function(x,
     data_adj = data_adj
   )
 }
+
+ensure_length <- function(x, 
+                          size, 
+                          fill = NA) {
+  if (length(x) == size)
+    return(x)
+    
+  x_new = rep(NA, size)
+  x_new[1:length(x)] = x
+  
+  x_new

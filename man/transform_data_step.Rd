@@ -28,8 +28,8 @@ cycles.}
 A list containing the following elements:
 \itemize{
 \item \code{powers_fp}: fp powers used for \code{data_fp}.
-\item \code{data_fp}: all possible fp transformations for \code{xi}, see the \code{data}
-component of the output of \code{\link[=generate_transformations_fp]{generate_transformations_fp()}} and
+\item \code{data_fp}: a list with all possible fp transformations for \code{xi}, see the
+\code{data} component of the output of \code{\link[=generate_transformations_fp]{generate_transformations_fp()}} and
 \code{\link[=generate_transformations_acd]{generate_transformations_acd()}}.
 \item \code{powers_adj}: fp powers for adjustment variables in \code{data_adj}.
 \item \code{data_adj}: adjustment data, i.e. transformed input data for adjustment

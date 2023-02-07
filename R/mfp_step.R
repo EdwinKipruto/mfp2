@@ -1103,8 +1103,8 @@ find_index_best_model_acd <- function(pvalue,
 #' A list containing the following elements: 
 #' 
 #' * `powers_fp`: fp powers used for `data_fp`.
-#' * `data_fp`: all possible fp transformations for `xi`, see the `data` 
-#' component of the output of [generate_transformations_fp()] and 
+#' * `data_fp`: a list with all possible fp transformations for `xi`, see the 
+#' `data` component of the output of [generate_transformations_fp()] and 
 #' [generate_transformations_acd()]. 
 #' * `powers_adj`: fp powers for adjustment variables in `data_adj`.
 #' * `data_adj`: adjustment data, i.e. transformed input data for adjustment
@@ -1165,7 +1165,7 @@ transform_data_step <- function(x,
   
   if (length(unique(data_xi)) <= 3) {
     # if a variable has less than 4 levels we do not generate FP data
-    data_fp <- data_xi
+    data_fp <- list(data_xi)
     powers_fp <- 1
   } else {
     if (acdx[xi]) {

@@ -28,7 +28,8 @@
 #' variable of interest. Each entry is a matrix with degree many columns, 
 #' and nobs observations comprising the FP transformed input variable. 
 #' For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
-#' Values are not centered. If `degree = 0`, each entry has a single column.
+#' Values are not centered. If `degree = 0`, the single entry has a single 
+#' column.
 #' * `powers`: the associated FP powers for each entry in data. 
 generate_transformations_fp <- function(x, 
                                         degree, 

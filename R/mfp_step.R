@@ -489,6 +489,7 @@ fit_linear_step <- function(x,
 #' Helper to select between null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
+#' Handles all criteria for selection.
 #' For parameter explanations, see [find_best_fp_step()]. All parameters 
 #' captured by `...` are passed on to [fit_model()].
 #' 
@@ -500,9 +501,14 @@ fit_linear_step <- function(x,
 #' 
 #' Note that this function handles an ACD transformation for `xi` as well. 
 #' 
+#' When a variable is forced into the model by including it in `keep`, then 
+#' this function will not exclude it from the model (by setting its power to 
+#' `NA`), but will only choose the linear model. 
+#' 
 #' @return 
 #' A list with several components:
 #' 
+#' * `keep`: logical indicating if `xi` is forced into model.
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
 #' * `powers`: fp powers investigated in step, indexing `metrics`. 
 #' * `power_best`: a numeric vector with the best power found. The returned 
@@ -604,9 +610,14 @@ select_linear <- function(x,
 #' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
 #' These best FPx models are computed in [find_best_fpm_step()].
 #' 
+#' When a variable is forced into the model by including it in `keep`, then 
+#' this function will not exclude it from the model (by setting its power to 
+#' `NA`), but will only choose its functional form. 
+#' 
 #' @return 
 #' A list with several components:
 #' 
+#' * `keep`: logical indicating if `xi` is forced into model.
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
@@ -794,9 +805,14 @@ select_ra2 <- function(x,
 #' in Royston and Sauerbrei (2016). The procedure is outlined in detail in 
 #' the corresponding section in the documentation of [mfpa()].
 #' 
+#' When a variable is forced into the model by including it in `keep`, then 
+#' this function will not exclude it from the model (by setting its power to 
+#' `NA`), but will only choose its functional form. 
+#' 
 #' @return 
 #' A list with several components:
 #' 
+#' * `keep`: logical indicating if `xi` is forced into model.
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
@@ -1046,6 +1062,7 @@ select_ra2_acd <- function(x,
 #' @return 
 #' A list with several components:
 #' 
+#' * `keep`: logical indicating if `xi` is forced into model.
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 

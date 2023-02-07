@@ -22,6 +22,7 @@ select_ra2(
 \value{
 A list with several components:
 \itemize{
+\item \code{keep}: logical indicating if \code{xi} is forced into model.
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi},
 i.e. \code{FALSE} in this case.
 \item \code{powers}: (best) fp powers investigated in step, indexing \code{metrics}.
@@ -62,6 +63,10 @@ a FPx transformation for the variable of interest and having the highest
 likelihood of all such models given the current powers for all other
 variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
 These best FPx models are computed in \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}.
+
+When a variable is forced into the model by including it in \code{keep}, then
+this function will not exclude it from the model (by setting its power to
+\code{NA}), but will only choose its functional form.
 }
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:

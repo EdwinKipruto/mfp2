@@ -10,6 +10,7 @@ select_linear(
   y,
   powers_current,
   powers,
+  keep,
   criterion,
   ftest,
   acdx,
@@ -20,6 +21,7 @@ select_linear(
 \value{
 A list with several components:
 \itemize{
+\item \code{keep}: logical indicating if \code{xi} is forced into model.
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi}.
 \item \code{powers}: fp powers investigated in step, indexing \code{metrics}.
 \item \code{power_best}: a numeric vector with the best power found. The returned
@@ -34,6 +36,7 @@ Same number of rows as, and indexed by, \code{powers}.
 }
 \description{
 To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.
+Handles all criteria for selection.
 For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
 captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
 }
@@ -44,4 +47,8 @@ functional form in the current working model as indicated by
 including a linear term ("linear fp") for \code{xi}.
 
 Note that this function handles an ACD transformation for \code{xi} as well.
+
+When a variable is forced into the model by including it in \code{keep}, then
+this function will not exclude it from the model (by setting its power to
+\code{NA}), but will only choose the linear model.
 }

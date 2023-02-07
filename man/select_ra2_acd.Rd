@@ -21,6 +21,7 @@ select_ra2_acd(
 \value{
 A list with several components:
 \itemize{
+\item \code{keep}: logical indicating if \code{xi} is forced into model.
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi},
 i.e. \code{FALSE} in this case.
 \item \code{powers}: (best) fp powers investigated in step, indexing \code{metrics}.
@@ -45,6 +46,10 @@ This function extends the algorithm used in \code{\link[=select_ra2]{select_ra2(
 usage of ACD transformations. The implementation follows the description
 in Royston and Sauerbrei (2016). The procedure is outlined in detail in
 the corresponding section in the documentation of \code{\link[=mfpa]{mfpa()}}.
+
+When a variable is forced into the model by including it in \code{keep}, then
+this function will not exclude it from the model (by setting its power to
+\code{NA}), but will only choose its functional form.
 }
 \references{
 Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the

@@ -425,7 +425,11 @@ find_best_fpm_step <- function(x,
     # note: this doesn't change WHICH model is the best, since all use the 
     # same additional df, but it may affect further comparison between 
     # different fp models
-    p = x_transformed$powers_fp[i, , drop = TRUE]
+    p = as.character(x_transformed$powers_fp[i, , drop = TRUE])
+    # respect acd
+    if (acdx[xi])
+      p[length(p)] = sprintf("A(%g)", p[length(p)])
+    
     metrics[[paste(p, collapse = " ")]] = calculate_model_metrics(
       fit, n_obs, degree
     )
@@ -435,6 +439,7 @@ find_best_fpm_step <- function(x,
   model_best = as.numeric(which.max(metrics[, "logl"]))
    
   list(
+    acd = acdx[xi],
     powers = x_transformed$powers_fp, 
     power_best = x_transformed$powers_fp[model_best, , drop = TRUE], 
     metrics = metrics, 
@@ -442,13 +447,13 @@ find_best_fpm_step <- function(x,
   ) 
 }
 
-fit_null_linear_step <- function(x, 
-                                 xi, 
-                                 y, 
-                                 powers_current,
-                                 powers,
-                                 acdx, 
-                                 ...) {
+fit_null_step <- function(x, 
+                          xi, 
+                          y, 
+                          powers_current,
+                          powers,
+                          acdx, 
+                          ...) {
   
   n_obs <- dim(x)[1L]
   
@@ -531,22 +536,29 @@ find_best_linear_step <- function(x,
                                   ...) {
   
   n_obs <- dim(x)[1L]
-
-  fit <- fit_null_linear_step(
+  
+  fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     ...
   )
+  fit_linear <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, 
+    ...
+  )
+  powers = c(fit_null$powers, fit_linear$powers)
+  metrics = rbind(fit_null$metrics, fit_linear$metrics)
   
   # compute best model according to different criteria
   if (ftest) {
     stats <- calculate_f_test(
-      deviances = fit$metrics[, "deviance_stata"], 
-      dfs_resid = fit$metrics[, "df_resid"],
+      deviances = metrics[, "deviance_stata"], 
+      dfs_resid = metrics[, "df_resid"],
       n_obs = n_obs
     )
   } else {
-    stats <- calculate_lr_test(fit$metrics[, "logl"], fit$metrics[, "df"])
+    stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
   pvalue <- stats$pvalue
   names(pvalue) <- c("null vs linear")
@@ -555,208 +567,20 @@ find_best_linear_step <- function(x,
   
   model_best <- c(
     ifelse(pvalue > select, 1, 2),
-    which.min(fit$metrics[, "aic", drop = TRUE]), 
-    which.min(fit$metrics[, "bic", drop = TRUE])
+    which.min(metrics[, "aic", drop = TRUE]), 
+    which.min(metrics[, "bic", drop = TRUE])
   )
   # make sure names are correct and do not carry over
   names(model_best) = c("pvalue", "aic", "bic")
   
   list(
-    powers = fit$powers,
+    powers = powers,
     power_best = ifelse(model_best == 1, NA, 1),
-    metrics = fit$metrics,
+    metrics = metrics,
     model_best = model_best,
     pvalue = pvalue,
     statistic = statistic
   )
-}
-
-#' Helper to find best model involving acd transformation for a variable
-#' 
-#' A function that fits 64 FP1 models for x and acd(x) and returns best
-#' FP1(P1,P2) function and corresponding deviance. For parameter explanations
-#' see [find_best_fp_step()].
-#' 
-#' @return 
-#' A list with several components giving the best power found and 
-#' performance indices.
-find_best_acd_step <- function(y, x, xi, powers_current, powers, family, method, weights,
-                               offset, strata, control, rownames, nocenter, acdx) {
-  # Generate FPa data for x of interest (xi). If the default FP power set is
-  # used, 64 pairs of new variables are created.
-  df1 <- transform_data_step(
-    x = x, xi = xi, powers_current = powers_current, df = 4,
-    powers = powers, acdx = acdx
-  )
-  # Matrix of adjustment variables
-  adjdata <- df1$data_adj
-  # print(head(adjdata))
-  # FPa data for x of interest
-  fpdata <- df1$data_fp
-  nv <- length(fpdata)
-  # log(n) for bic calculation
-  N <- nrow(x)
-  logn <- log(N)
-  
-  # Fit a model without xi and axi--the null model. Model M6 in R&S 2016
-  fitnull <- fit_model(
-    x = adjdata, y = y, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames, nocenter = nocenter
-  )
-  # Total number of parameters including estimated FP powers in the null model
-  dfnull <- fitnull$df
-  # Deviance, AIC and BIC of the null model
-  devnull <- -2 * fitnull$logl
-  aic.null <- devnull + 2 * dfnull
-  bic.null <- devnull + logn * dfnull
-  sse.null <- fitnull$sse
-  dev.roy.null <- deviance_stata(rss = sse.null, weights = weights, n = N)
-  df.null <- N - (dfnull - 1)
-  
-  # Fit a model with linear in xi--Model M4 in R&S 2016
-  xk <- cbind(x[, xi], adjdata)
-  colnames(xk) <- c(xi, colnames(adjdata))
-  fit.lin.xi <- fit_model(
-    x = xk, y = y, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter
-  )
-  # Total number of parameters in the fitted model.
-  dflinxi <- fit.lin.xi$df
-  # Deviance, AIC, BIC and sse of the null model
-  devlinxi <- -2 * fit.lin.xi$logl
-  aic.linxi <- devlinxi + 2 * dflinxi
-  bic.linxi <- devlinxi + logn * dflinxi
-  sse.linxi <- fit.lin.xi$sse
-  dev.roy.linxi <- deviance_stata(rss = sse.linxi, weights = weights, n = N)
-  df.linxi <- N - (dflinxi - 1)
-  
-  # Fit a model with linear in axi = acd(xi)--Model M5 in R&S 2016
-  axi <- fit_acd(x = x[, xi], powers = powers)$acd
-  xkk <- cbind(axi, adjdata)
-  colnames(xkk) <- c(xi, colnames(adjdata))
-  fit.lin.axi <- fit_model(
-    x = xkk, y = y, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter
-  )
-  # Total number of parameters in the fitted model.
-  dflinaxi <- fit.lin.axi$df
-  # Deviance, AIC, BIC and sse of the null model
-  devlinaxi <- -2 * fit.lin.axi$logl
-  aic.linaxi <- devlinaxi + 2 * dflinaxi
-  bic.linaxi <- devlinaxi + logn * dflinaxi
-  sse.linaxi <- fit.lin.axi$sse
-  dev.roy.linaxi <- deviance_stata(rss = sse.linaxi, weights = weights, n = N)
-  # subtract 1 = scale parameter and 1 = FP used for acd calculation
-  df.linaxi <- N - (dflinaxi - 1)
-  
-  # Fit best FP1 model to xi--Model M2 in R&S 2016
-  # change acdx for xi to temporarily false so that we  fit bestFP1 for xi
-  # while adjusting other variables
-  acdxi <- replace(acdx, which(names(acdx) %in% xi), F)
-  fit.fp1.xi <- find_best_fp1_step(
-    y = y, x = x, xi = xi, powers_current = powers_current,
-    powers = powers, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter, acdx = acdxi
-  )
-  # Deviance, AIC, BIC and sse
-  devfp1xi <- fit.fp1.xi$dev.all[3]
-  dev.roy.fp1xi <- fit.fp1.xi$dev.roy.all[3]
-  aic.fp1xi <- fit.fp1.xi$aic.all[3]
-  bic.fp1xi <- fit.fp1.xi$bic.all[3]
-  sse.fp1xi <- fit.fp1.xi$sse.all[3]
-  df.fp1xi <- fit.fp1.xi$df.all[3]
-  # best FP1 function (dev,aic, bic, sse)
-  bestfpxi <- fit.fp1.xi$fn.bestfp1
-  
-  # Fit best FP1 model to axi = acd(xi)--Model M3 in R&S 2016
-  # replace the column of xi with acd(xi) and estimate the best fp for new xi
-  # set acdx = F so that 8 fp variables will be generated for the new xi
-  xx <- x
-  xx[, which(colnames(x) == xi)] <- axi
-  fit.fp1.axi <- find_best_fp1_step(
-    y = y, x = xx, xi = xi, powers_current = powers_current,
-    powers = powers, family = family, method = method,
-    weights = weights, offset = offset, strata = strata,
-    control = control, rownames = rownames,
-    nocenter = nocenter, acdx = acdxi
-  )
-  
-  # Deviance, AIC, BIC and sse of the best FP1 model
-  devfp1axi <- fit.fp1.axi$dev.all[3] # best fp1 dev in position 3
-  dev.roy.fp1axi <- fit.fp1.axi$dev.roy.all[3]
-  aic.fp1axi <- fit.fp1.axi$aic.all[3]
-  bic.fp1axi <- fit.fp1.axi$bic.all[3]
-  sse.fp1axi <- fit.fp1.axi$sse.all[3]
-  
-  df.fp1axi <- fit.fp1.axi$df.all[3]
-  # best FP1 function (dev,aic, bic, sse)
-  bestfpaxi <- fit.fp1.axi$fn.bestfp1
-  
-  # Fit 64 linear models for xi and axi of interest while adjusting for other
-  # variables. Model M1 in R&S 2016
-  devs <- dev.roy <- sse <- aic <- bic <- dfp1 <- numeric(nv)
-  for (i in seq_len(nv)) {
-    # combine each FP1(p1,p2) variable for x of interest with adjustment variables
-    xout <- cbind(fpdata[[i]], adjdata)
-    colnames(xout) <- c("newx1", "newx2", colnames(adjdata))
-    # Fit the  model which can be a glm or cox depending on the family chosen
-    fit1 <- fit_model(
-      x = xout, y = y, family = family, method = method,
-      weights = weights, offset = offset, strata = strata,
-      control = control, rownames = rownames,
-      nocenter = nocenter
-    )
-    # save degrees of freedom from a model fit. regression coefficients and
-    # total estimated FP powers. 2 is add because of FP power of xi and acd(xi)
-    dfp1[i] <- (fit1$df + 2) - 1 # 1 is scaled parameter in df
-    # Deviance, AIC, BIC and sse.
-    devs[i] <- -2 * fit1$logl
-    aic[i] <- devs[i] + 2 * (dfp1[i])
-    bic[i] <- devs[i] + logn * (dfp1[i])
-    sse[i] <- fit1$sse
-    dev.roy[i] <- deviance_stata(rss = sse[i], weights = weights, n = N)
-  }
-  # Best FP1(p1,p2) function based on dev, aic, bic and sse
-  s <- df1$powers_fp
-  fn.bestfp1 <- list(
-    dev = s[which.min(devs), ], aic = s[which.min(aic), ],
-    bic = s[which.min(bic), ], sse = s[which.min(sse), ],
-    dev.roy = s[which.min(dev.roy), ]
-  )
-  
-  # combine deviances, aic, bic, sse etc
-  # order: M6=NULL, M4=linear(xi), M2=FP1(xi), M3=FP1(xia), M1=FP1(xi, xia),
-  #        M5=linear(xia)
-  dev.all <- c(devnull, devlinxi, devfp1xi, devfp1axi, devs[which.min(devs)], devlinaxi)
-  dev.roy.all <- c(dev.roy.null, dev.roy.linxi, dev.roy.fp1xi, dev.roy.fp1axi, dev.roy[which.min(dev.roy)], dev.roy.linaxi)
-  aic.all <- c(aic.null, aic.linxi, aic.fp1xi, aic.fp1axi, aic[which.min(aic)], aic.linaxi)
-  bic.all <- c(bic.null, bic.linxi, bic.fp1xi, bic.fp1axi, bic[which.min(bic)], bic.linaxi)
-  sse.all <- c(sse.null, sse.linxi, sse.fp1xi, sse.fp1axi, sse[which.min(sse)], sse.linaxi)
-  df.all <- c(df.null, df.linxi, df.fp1xi, df.fp1axi, N - dfp1[which.min(sse)], df.linaxi) # subtract scale parameter
-  names(dev.all) <- names(aic.all) <- names(bic.all) <- names(sse.all) <- names(df.all) <- c("NULL", "Linearxi", "FP1xi", "FP1xa", "FP1xixia", "Linearxia")
-  # The functions are in pairs because of (xi,xia). If xi is eliminated and xia is
-  # selected then we have (NA,p2), if both are eliminated we have (NA,NA) etc
-  all.funs <- vector(mode = "list", length = 5)
-  names(all.funs) <- c("dev", "aic", "bic", "sse", "dev.roy")
-  for (i in 1:5) {
-    all.funs[[i]] <- list(
-      null = c(NA, NA), linxi = c(1, NA), FP1xi = c(bestfpxi[i], NA),
-      FP1axi = c(NA, bestfpaxi[1]), FP1xiaxi = fn.bestfp1[[i]], linaxi = c(NA, 1)
-    )
-  }
-  outs <- list(
-    dev.all = dev.all, aic.all = aic.all, bic.all = bic.all,
-    sse.all = sse.all, df.all = df.all, all.funs = all.funs, dev.roy.all = dev.roy.all
-  )
-  
-  outs
 }
 
 #' Function selection procedure 
@@ -811,12 +635,17 @@ select_ra2 <- function(x,
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
-  fit_lin <- fit_null_linear_step(
+  fit_null <- fit_null_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
+    fit_null$metrics,
     fit_lin$metrics
   )
   rownames(res$metrics) <- c(fpmax, "null", "linear")

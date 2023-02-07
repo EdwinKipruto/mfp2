@@ -1008,8 +1008,124 @@ select_ra2_acd <- function(x,
   res
 }
 
-select_ic <- function() {
+#' Function selection procedure based on information criteria
+#' 
+#' Used in [find_best_fp_step()] when `criterion = "aic"` or `"bic"`.
+#' For parameter explanations, see [find_best_fp_step()]. All parameters 
+#' captured by `...` are passed on to [fit_model()].
+#' 
+#' @details  
+#' In case an information criterion is used to select the best model the 
+#' selection procedure simply fits all relevant models and selects the best
+#' one according to the given criterion. 
+#' 
+#' "Relevant" models for a given degree are the null model excluding the 
+#' variable of interest, the linear model and all best FP models up to the 
+#' specified degree. 
+#' 
+#' Note that the "best" FPx model used in this function are given by the models
+#' using a FPx transformation for the variable of interest and having the 
+#' highest likelihood of all such models given the current powers for all other
+#' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
+#' These best FPx models are computed in [find_best_fpm_step()].
+#' Keep in mind that for a fixed number of degrees of freedom (i.e. fixed m),
+#' the model with the highest likelihood is the same as the model with the best
+#' information criterion of any kind since all the models share the same 
+#' penalty term. 
+#' 
+#' When a variable is forced into the model by including it in `keep`, then 
+#' this function will not exclude it from the model (by setting its power to 
+#' `NA`), but will only choose its functional form. 
+#' 
+#' @return 
+#' A list with several components:
+#' 
+#' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
+#' i.e. `FALSE` in this case.
+#' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' * `power_best`: a numeric vector with the best power found. The returned 
+#' best power may be `NA`, indicating the variable has been removed from the 
+#' model.
+#' * `metrics`: a matrix with performance indices for all best models 
+#' investigated. Same number of rows as, and indexed by, `powers`.
+#' * `model_best`: row index of best model in `metrics`.
+#' * `pvalue`: p-value for comparison of linear and null model, `NA` in this
+#' case..
+#' * `statistic`: test statistic used, depends on `ftest`, `NA` in this 
+#' case.
+#' 
+#' @seealso 
+#' [select_ra2()]
+select_ic <- function(x, 
+                      xi,
+                      degree,
+                      y, 
+                      powers_current,
+                      keep, 
+                      criterion,
+                      powers,   
+                      acdx, 
+                      ...) {
   
+  if (degree < 1)
+    return(NULL)
+  
+  fpmax = paste0("FP", degree)
+  
+  # output list
+  res <- list(
+    acd = FALSE, 
+    powers = NULL, 
+    power_best = NULL, 
+    metrics = NULL, 
+    model_best = NULL, 
+    statistic = NA, 
+    pvalue = NA
+  )
+  
+  # fit all relevant models
+  fit_null <- fit_null_step(
+      x = x, xi = xi, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
+    )
+  fit_lin <- fit_linear_step(
+      x = x, xi = xi, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
+    )
+  
+  fits_fpm = list()
+  for (m in 1:degree) {
+    fits_fpm[[sprintf("FP%g", m)]] <- find_best_fpm_step(
+      x = x, xi = xi, degree = m, y = y, 
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
+    )
+  }
+  
+  # output summary - only output best fpm models
+  len_max <- ncol(fits_fpm[[fpmax]]$powers)
+  
+  res$powers <- lapply(fits_fpm, function(x) {
+    ensure_length(x$powers[x$model_best, , drop = FALSE], len_max)
+  })
+  res$powers <- do.call(
+    rbind, 
+    c(list(null = ensure_length(fit_null$powers, len_max), 
+           linear = ensure_length(fit_lin$powers, len_max)), 
+      res$powers)
+  )
+  
+  res$metrics <- lapply(fits_fpm, function(x) {
+    x$metrics[x$model_best, , drop = FALSE] 
+  })
+  res$metrics <- do.call(
+    rbind, 
+    c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
+  )
+  
+  res$model_best = which.min(res$metrics[, tolower(criterion), drop = TRUE])
+  res$power_best = res$powers[res$model_best, , drop = FALSE]
+  
+  res
 }
 
 #' Function to extract and transform adjustment variables

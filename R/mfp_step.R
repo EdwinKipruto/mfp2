@@ -118,187 +118,36 @@ find_best_fp_step <- function(x,
                               rownames, 
                               verbose) {
   N <- dim(x)[1L]
+  degree <- as.numeric(df / 2)
   
+  # choose appropriate selection function
   if (df == 1) {
-    # linear case --------------------------------------------------------------
-    
-    # model selection based on AIC, BIC or P-values, or keep xi if indicated
-    if (xi %in% keep) {
-      power_best = 1
-      print(sprintf("Variable %s kept.", xi))
-    } else {
-      # if df = 1 then we just fit usual linear models and test: NULL vs Linear
-      fit <- select_linear(
-        x = x, y = y, xi = xi, family = family,
-        powers_current = powers_current, powers = powers, acdx = acdx,
-        select = select, ftest = ftest, 
-        weights = weights, offset = offset, strata = strata, 
-        method = method, control = control, rownames = rownames, 
-        nocenter = nocenter, criterion = criterion
-      )
-      
-      power_best = fit$power_best
-      
-      # TODO: simplify this part
-      if (verbose) {
-        if (criterion == "pvalue") {
-          if (ftest) {
-            print_mfp_summary_2(
-              namex = xi, 
-              dev.all = fit$metrics[, "deviance_stata"], 
-              df.res = fit$metrics[, "df_resid"], 
-              df.den = fit$metrics[, "df_resid"], 
-              dev.diff = diff(fit$metrics[, "deviance_stata"]),
-              f = ifelse(ftest, fit$statistic, NA),
-              pvalues = fit$pvalue,
-              best.function = list(1), 
-              index.bestmodel = fit$model_best[criterion], 
-              acd = acdx[xi]
-            ) 
-          } else {
-            print_mfp_summary_1(
-              namex = xi, 
-              dev.all = fit$metrics[, "deviance_rs"], 
-              dev.diff = diff(fit$metrics[, "deviance_rs"]),
-              pvalues = fit$pvalue,
-              index.bestmodel = fit$model_best[criterion],
-              best.function = list(1), 
-              acd = acdx[xi]
-            ) 
-          }
-        } else {
-          print_mfp_summary_3(
-            xi, 
-            gic = fit$metrics[, criterion], 
-            keep = keep, 
-            best.function = list(1),
-            acd = FALSE
-          )
-        }
-      }
-    }
+    # linear case 
+    select_fct <- select_linear
   } else if (acdx[xi]) {
-    # acd case -----------------------------------------------------------------
-
-    fit <- select_ra2_acd(
-      y = y, x = x, xi = xi, keep = keep, 
-      powers_current = powers_current, acdx = acdx, powers = powers, 
-      select = select, alpha = alpha, ftest = ftest, 
-      family = family, method = method, weights = weights, offset = offset,
-      strata = strata, control = control, rownames = rownames,
-      nocenter = nocenter 
-    ) 
-    
-    # TODO: AIC / BIC
-    
-    # TODO: Printing on the screen
-    # if (verbose) {
-    #   if (criterion == "pvalue") {
-    #     if (ftest) {
-    #       print_mfp_summary_2(
-    #         namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
-    #         df.den = df.all, pvalues = pvalue, best.function = bestfuns[[5]],
-    #         index.bestmodel = index.bestmodel, acd = T
-    #       )
-    #     } else {
-    #       print_mfp_summary_1(
-    #         namex = xi,
-    #         dev.all = dev.all,
-    #         dev.diff = dev.diff,
-    #         pvalues = pvalue,
-    #         index.bestmodel = index.bestmodel,
-    #         best.function = bestfuns[[1]], acd = T
-    #       )
-    #     }
-    #   } else {
-    #     switch(criterion,
-    #            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = bestfuns[[2]], acd = T),
-    #            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = bestfuns[[3]], acd = T)
-    #     )
-    #   }
-    # }
-    
-    power_best <- as.numeric(fit$power_best)
-    
+    # acd case 
+    if (tolower(criterion) == "pvalue") {
+      select_fct <- select_ra2_acd
+    } else select_fct <- select_ic_acd
   } else {
-    # usual mfp case -----------------------------------------------------------
-    # in this case, we seek the best fp for a variable which may use more 
-    # than only linear effects and does not use an acd transformation
-    
-    degree <- as.numeric(df / 2)
-    
-    fit <- select_ra2(
-      y = y, x = x, xi = xi, degree = degree, keep = keep, 
-      powers_current = powers_current, acdx = acdx, powers = powers, 
-      select = select, alpha = alpha, ftest = ftest, 
-      family = family, method = method, weights = weights, offset = offset,
-      strata = strata, control = control, rownames = rownames,
-      nocenter = nocenter 
-    ) 
-    
-    # TODO AIC BIC
-    
-    # TODO: printing
-     
-    # if (verbose) {
-    #   if (criterion == "pvalue") {
-    #     best.function1 <- if (degree == 1) {
-    #       list(lin = 1, fpm = fit$power_best)
-    #     } else {
-    #       append(if (ftest) {
-    #         NA
-    #       } else {
-    #         NA
-    #       }, list(1), 0)
-    #     }
-    #     
-    #     if (ftest) {
-    #       print_mfp_summary_2(
-    #         namex = xi, 
-    #         dev.all = fit$metrics[, "deviance_rs"], 
-    #         df.res = fit$metrics[, "df_resid"],
-    #         dev.diff = NA, 
-    #         f = fit$statistic,
-    #         df.den = fit$metrics[, "df_resid"],
-    #         pvalues = fit$pvalue, 
-    #         best.function = best.function1,
-    #         index.bestmodel = fit$model_best, 
-    #         acd = F
-    #       )
-    #     } else {
-    #       print_mfp_summary_1(
-    #         namex = xi, 
-    #         dev.all = fit$metrics[, "deviance_rs"], 
-    #         dev.diff = NA,
-    #         pvalues = fit$pvalue, 
-    #         index.bestmodel = fit$model_best,
-    #         best.function = best.function1, 
-    #         acd = F
-    #       )
-    #     }
-    #     # AIC and BIC display
-    #   } else {
-    #     best.function.aic <- if (degree == 1) {
-    #       list(lin = 1, fpm = bestfp1x[2])
-    #     } else {
-    #       append(bestfp.aic, list(1), 0)
-    #     }
-    #     best.function.bic <- if (degree == 1) {
-    #       list(lin = 1, fpm = bestfp1x[3])
-    #     } else {
-    #       append(bestfp.bic, list(1), 0)
-    #     }
-    #     switch(criterion,
-    #            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = best.function.aic, acd = F),
-    #            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = best.function.bic, acd = F)
-    #     )
-    #   }
-    # }
-    
-    power_best <- as.numeric(fit$power_best)
+    # usual mfp case 
+    if (tolower(criterion) == "pvalue") {
+      select_fct <- select_ra2
+    } else select_fct <- select_ic
   }
   
-  power_best
+  fit <- select_fct(
+    x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
+    y = y, family = family, weights = weights, offset = offset, 
+    powers_current = powers_current, powers = powers,  
+    criterion = criterion, ftest = ftest, select = select, alpha = alpha,
+    method = method, strata = strata, nocenter = nocenter, 
+    control = control, rownames = rownames
+  )
+  
+  # TODO: verbose printing!
+  
+  as.numeric(fit$power_best)
 }
 
 

@@ -518,6 +518,7 @@ select_linear <- function(x,
                           y, 
                           powers_current,
                           powers, 
+                          keep, 
                           criterion,
                           ftest,  
                           acdx, 
@@ -554,14 +555,17 @@ select_linear <- function(x,
   statistic <- stats$statistic 
   names(statistic) <- c("null vs linear")
   
-  model_best <- switch(
+  if (xi %in% keep) {
+    model_best <- 2
+  } else model_best <- switch(
     tolower(criterion), 
     "pvalue" = ifelse(pvalue > select, 1, 2), 
     "aic" = which.min(metrics[, "aic", drop = TRUE]), 
     "bic" = which.min(metrics[, "bic", drop = TRUE])
   ) 
-
+  
   list(
+    keep = xi %in% keep, 
     acd = acdx[xi],
     powers = powers,
     power_best = powers[model_best, ],

@@ -128,16 +128,16 @@ find_best_fp_step <- function(x,
       print(sprintf("Variable %s kept.", xi))
     } else {
       # if df = 1 then we just fit usual linear models and test: NULL vs Linear
-      fit <- find_best_linear_step(
+      fit <- select_linear(
         x = x, y = y, xi = xi, family = family,
         powers_current = powers_current, powers = powers, acdx = acdx,
         select = select, ftest = ftest, 
         weights = weights, offset = offset, strata = strata, 
         method = method, control = control, rownames = rownames, 
-        nocenter = nocenter
+        nocenter = nocenter, criterion = criterion
       )
       
-      power_best = fit$power_best[[tolower(criterion)]]
+      power_best = fit$power_best
       
       # TODO: simplify this part
       if (verbose) {
@@ -498,21 +498,31 @@ fit_linear_step <- function(x,
 #' `powers_current`, with the choice between a excluding `xi` ("null model") and
 #' including a linear term ("linear fp") for `xi`.
 #' 
+#' Note that this function handles an ACD transformation for `xi` as well. 
+#' 
 #' @return 
-#' A list with several components giving the best power found (`power_best`) as
-#' a numeric vector according to different criteria ("aic", "bic" or "pvalue"), 
-#' and the associated performance indices. 
-#' The returned best power may be `NA`, indicating the variable has been 
-#' removed from the model.
-find_best_linear_step <- function(x, 
-                                  xi, 
-                                  y, 
-                                  powers_current,
-                                  powers, 
-                                  ftest,  
-                                  acdx, 
-                                  select,
-                                  ...) {
+#' A list with several components:
+#' 
+#' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
+#' * `powers`: fp powers investigated in step. 
+#' * `power_best`: a numeric vector with the best power found. The returned 
+#' best power may be `NA`, indicating the variable has been removed from the 
+#' model.
+#' * `metrics`: a matrix with performance indices for all models investigated. 
+#' Same number of rows as, and indexed by, `powers`.
+#' * `model_best`: row index of best model in `metrics`.
+#' * `pvalue`: p-value for comparison of linear and null model.
+#' * `statistic`: test statistic used, depends on `ftest`.
+select_linear <- function(x, 
+                          xi, 
+                          y, 
+                          powers_current,
+                          powers, 
+                          criterion,
+                          ftest,  
+                          acdx, 
+                          select,
+                          ...) {
   
   n_obs <- dim(x)[1L]
   
@@ -526,7 +536,7 @@ find_best_linear_step <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     ...
   )
-  powers = c(fit_null$powers, fit_linear$powers)
+  powers = rbind(fit_null$powers, fit_linear$powers)
   metrics = rbind(fit_null$metrics, fit_linear$metrics)
   
   # compute best model according to different criteria
@@ -544,17 +554,17 @@ find_best_linear_step <- function(x,
   statistic <- stats$statistic 
   names(statistic) <- c("null vs linear")
   
-  model_best <- c(
-    ifelse(pvalue > select, 1, 2),
-    which.min(metrics[, "aic", drop = TRUE]), 
-    which.min(metrics[, "bic", drop = TRUE])
-  )
-  # make sure names are correct and do not carry over
-  names(model_best) = c("pvalue", "aic", "bic")
-  
+  model_best <- switch(
+    tolower(criterion), 
+    "pvalue" = ifelse(pvalue > select, 1, 2), 
+    "aic" = which.min(metrics[, "aic", drop = TRUE]), 
+    "bic" = which.min(metrics[, "bic", drop = TRUE])
+  ) 
+
   list(
+    acd = acdx[xi],
     powers = powers,
-    power_best = ifelse(model_best == 1, NA, 1),
+    power_best = powers[model_best, ],
     metrics = metrics,
     model_best = model_best,
     pvalue = pvalue,

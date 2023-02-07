@@ -187,101 +187,46 @@ find_best_fp_step <- function(x,
     }
   } else if (acdx[xi]) {
     # acd case -----------------------------------------------------------------
-    # compute deviances, aic, bic and sse for model M1-M6
-    bfpa <- find_best_acd_step(
-      y = y, x = x, xi = xi, powers_current = powers_current, powers = powers, family = family,
-      method = method, weights = weights, offset = offset,
+
+    fit <- select_ra2_acd(
+      y = y, x = x, xi = xi, keep = keep, 
+      powers_current = powers_current, acdx = acdx, powers = powers, 
+      select = select, alpha = alpha, ftest = ftest, 
+      family = family, method = method, weights = weights, offset = offset,
       strata = strata, control = control, rownames = rownames,
-      nocenter = nocenter, acdx = acdx
-    )
-    # Deviance, aic and bic for c(null, lin(xi), fp1(xi), fp1(acd(xi)), fp1(xi,acd(xi)), lin(acd(xi))) in that order
-    dev.all <- bfpa$dev.all
-    dev.roy.all <- bfpa$dev.roy.all
-    aic.all <- bfpa$aic.all
-    bic.all <- bfpa$bic.all
-    df.all <- bfpa$df.all
-    # choose the best function based on criterion
-    if (criterion == "AIC") {
-      # if index.bestmodel =
-      # 1 then both xi and acd(xi) were removed,
-      # 2 = linear(xi), meaning acd(xi) was removed
-      # 3 = fp1(xi), meaning acd(xi) was removed
-      # 4 = fp1(acd(xi)),meaning xi was removed
-      # 5 = fp1(xi,acd(xi)), both xi and acd(xi) selected
-      # 6 = lin(acd(xi))), meaning xi was removed but acd(xi) is linear
-      index.bestmodel <- which.min(aic.all)
-      # keep xi in the model
-      if (xi %in% keep) {
-        index.bestmodel <- which.min(aic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-      }
-    } else if (criterion == "BIC") {
-      index.bestmodel <- which.min(bic.all)
-      if (xi %in% keep) {
-        index.bestmodel <- which.min(bic.all[-1]) + 1 # we add 1 so that linear  = 2 and best fp1 = 3
-      }
-    } else {
-      # Calculate p-values for 1). M1 vs Null  2). M1 vs M4  3). M1 vs M2
-      # 4) M1 vs M3 and 5). M3 vs M5
-      if (ftest) {
-        mstats <- calculate_f_test_royston(dev = dev.roy.all, resid.df = df.all, n = N, acd = T)
-        pvalue <- mstats$pvalues
-        dev.diff <- mstats$dev.diff
-        fstatistic <- mstats$fstatistic
-      } else {
-        mstats <- calculate_chisquare_test(dev = dev.all, acd = T) # can we use dev.all or dev.roy.all? for gaussian
-        pvalue <- mstats$pvalues
-        dev.diff <- mstats$dev.diff
-      }
-      # Functions are ordered like: 1 = null, 2 = Lin(xi), 3 = FP1(xi),
-      # 4 = FP1(axi), 5 = FP1(xi, axi) and 6 = lin(axi)
-      index.bestmodel <- find_index_best_model_acd(pvalue = pvalue, 
-                                                   select = select, 
-                                                   alpha = alpha)
-    }
-    # all best functions are ordered in list. Each element of a list contains:
-    # c(NULL, lin(xi),fp1(xi), fp1(acd(xi)), fp1(xi,acd(xi)), lin(acd(xi)))
-    # where the element of a nested list is dev, aic, bic and sse in that order
-    bestfuns <- bfpa$all.funs
-    if (criterion == "pvalue") {
-      if (ftest) {
-        best.fp.power <- bestfuns[[5]][[index.bestmodel]]
-      } else {
-        best.fp.power <- bestfuns[[1]][[index.bestmodel]]
-      }
-    } else {
-      best.fp.power <- switch(criterion,
-                              "AIC" = bestfuns[[2]][[index.bestmodel]],
-                              "BIC" = bestfuns[[3]][[index.bestmodel]]
-      )
-    }
-    # Printing on the screen
-    if (verbose) {
-      if (criterion == "pvalue") {
-        if (ftest) {
-          print_mfp_summary_2(
-            namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
-            df.den = df.all, pvalues = pvalue, best.function = bestfuns[[5]],
-            index.bestmodel = index.bestmodel, acd = T
-          )
-        } else {
-          print_mfp_summary_1(
-            namex = xi,
-            dev.all = dev.all,
-            dev.diff = dev.diff,
-            pvalues = pvalue,
-            index.bestmodel = index.bestmodel,
-            best.function = bestfuns[[1]], acd = T
-          )
-        }
-      } else {
-        switch(criterion,
-               "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = bestfuns[[2]], acd = T),
-               "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = bestfuns[[3]], acd = T)
-        )
-      }
-    }
+      nocenter = nocenter 
+    ) 
     
-    power_best <- as.numeric(best.fp.power)
+    # TODO: AIC / BIC
+    
+    # TODO: Printing on the screen
+    # if (verbose) {
+    #   if (criterion == "pvalue") {
+    #     if (ftest) {
+    #       print_mfp_summary_2(
+    #         namex = xi, dev.all = dev.roy.all, df.res = df.all, dev.diff = dev.diff, f = fstatistic,
+    #         df.den = df.all, pvalues = pvalue, best.function = bestfuns[[5]],
+    #         index.bestmodel = index.bestmodel, acd = T
+    #       )
+    #     } else {
+    #       print_mfp_summary_1(
+    #         namex = xi,
+    #         dev.all = dev.all,
+    #         dev.diff = dev.diff,
+    #         pvalues = pvalue,
+    #         index.bestmodel = index.bestmodel,
+    #         best.function = bestfuns[[1]], acd = T
+    #       )
+    #     }
+    #   } else {
+    #     switch(criterion,
+    #            "AIC" = print_mfp_summary_3(xi, gic = aic.all, keep = keep, best.function = bestfuns[[2]], acd = T),
+    #            "BIC" = print_mfp_summary_3(xi, gic = bic.all, keep = keep, best.function = bestfuns[[3]], acd = T)
+    #     )
+    #   }
+    # }
+    
+    power_best <- as.numeric(fit$power_best)
     
   } else {
     # usual mfp case -----------------------------------------------------------
@@ -381,13 +326,24 @@ find_best_fp_step <- function(x,
 #' all fp1s have 2 df, all fp2s have 4 df and so on.
 #' 
 #' In the case that `degree = 1`, the linear model (fp power of 1) is NOT 
-#' returned, as it is not considered to be a fractional polynomial in this
-#' algorithm (as a linear model has only one df, whereas the same function 
-#' regarded as fp would have 2 fp).
+#' returned, as it is not considered to be a fractional polynomial in this 
+#' algorithm. 
+#' A linear model has only one df, whereas the same function regarded as fp 
+#' would have 2 fp.
+#' 
+#' @section ACD transformation:
+#' This function also handles the case of ACD transformations if `acdx` is set
+#' to `TRUE` for `xi`. In this case, if `degree = 1`, then 7 models are
+#' assessed (like for the non-acd case it excludes the linear case), 
+#' and if `degree = 2`, then 64 models are assessed (unlike the 36 models 
+#' for non-acd transformation). Other settings for `degree` are currently not
+#' supported when used with acd transformations.
 #' 
 #' @return 
 #' A list with several components giving the best power found (`power_best`) and 
-#' performance indices.
+#' performance indices. `power_best` will always be a two-column matrix
+#' when an ACD transformation is used, otherwise the number of columns
+#' will depend on `degree`. 
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -400,7 +356,7 @@ find_best_fpm_step <- function(x,
   n_obs <- dim(x)[1L]
   
   if (degree == 1) {
-    # remove linear model
+    # remove linear model for normal data, but keep for acd transformation
     powers = setdiff(powers, c(1))
   }
     
@@ -425,10 +381,10 @@ find_best_fpm_step <- function(x,
     # note: this doesn't change WHICH model is the best, since all use the 
     # same additional df, but it may affect further comparison between 
     # different fp models
-    p = as.character(x_transformed$powers_fp[i, , drop = TRUE])
+    p = sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
     # respect acd
     if (acdx[xi])
-      p[length(p)] = sprintf("A(%g)", p[length(p)])
+      p[length(p)] = sprintf("A(%s)", p[length(p)])
     
     metrics[[paste(p, collapse = " ")]] = calculate_model_metrics(
       fit, n_obs, degree
@@ -499,7 +455,7 @@ fit_linear_step <- function(x,
   # respect acd
   metrics <- rbind(linear = calculate_model_metrics(model_linear, n_obs))  
   if (acdx[xi])
-    rownames(metrics) <- "A(linear)"
+    rownames(metrics) <- "linear(., A(x))"
   
   list(
     powers = x_transformed$powers_fp,
@@ -731,10 +687,9 @@ select_ra2 <- function(x,
   res
 }
 
-#' Function selection procedure 
+#' Function selection procedure with acd
 select_ra2_acd <- function(x, 
                            xi,
-                           degree,
                            y, 
                            powers_current, 
                            select, 
@@ -745,16 +700,30 @@ select_ra2_acd <- function(x,
                            acdx, 
                            ...) {
   
-  
-  # TODO: simplify, using local testing function to prevent if else all the
-  # time
-  
-  if (degree < 1)
-    return(NULL)
+  # simplify testing by defining test helper function
+  if (ftest) {
+    calculate_test <- function(metrics, n_obs) {
+      calculate_f_test(
+        deviances = metrics[, "deviance_rs", drop = TRUE],
+        dfs_resid = metrics[, "df_resid", drop = TRUE],
+        n_obs = n_obs
+      )
+    }
+  } else {
+    calculate_test <- function(metrics, ...) {
+      calculate_lr_test(
+        logl = metrics[, "logl", drop = TRUE], 
+        dfs = metrics[, "df", drop = TRUE] 
+      )
+    }
+  }
   
   n_obs = nrow(x)
-  fpmax = paste0("FP", degree)
+  fpmax = "FP1(x, A(x))"
+  acdx_reset_xi = acdx
+  acdx_reset_xi[xi] = FALSE
   
+  # output list
   res <- list(
     power_best = NULL, 
     metrics = NULL, 
@@ -763,36 +732,24 @@ select_ra2_acd <- function(x,
     pvalue = NULL
   )
   
-  # fit highest fp and null / linear model for initial steps
+  # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
-    x = x, xi = xi, degree = degree, y = y, 
+    x = x, xi = xi, degree = 2, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
-  fit_lin <- fit_null_linear_step(
+  fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
-    fit_lin$metrics
+    fit_null$metrics
   )
-  rownames(res$metrics) <- c(fpmax, "null", "linear")
-  
-  # selection procedure
+  rownames(res$metrics) <- c(fpmax, "null")
   
   # test for overall significance
-  if (ftest) {
-    stats <- calculate_f_test(
-      deviances = res$metrics[c("null", fpmax), "deviance_rs", drop = TRUE],
-      dfs_resid = res$metrics[c("null", fpmax), "df_resid", drop = TRUE],
-      n_obs = n_obs
-    )
-  } else {
-    stats <- calculate_lr_test(
-      logl = res$metrics[c("null", fpmax), "logl", drop = TRUE], 
-      dfs = res$metrics[c("null", fpmax), "df", drop = TRUE] 
-    )  
-  }
+  # df for tests are degree * 2 = 4
+  stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
   res$statistic <- stats$statistic
   names(res$statistic) <- sprintf("%s vs null", fpmax)
   res$pvalue <- stats$pvalue
@@ -800,24 +757,26 @@ select_ra2_acd <- function(x,
   
   if (stats$pvalue >= select && !(xi %in% keep)) {
     # not selected and not forced into model
-    res$power_best = NA
+    res$power_best = matrix(c(NA, NA), ncol = 2)
     res$model_best = 2
     return(res)
   }
   
-  # test for non-linearity
-  if (ftest) {
-    stats <- calculate_f_test(
-      deviances = res$metrics[c("linear", fpmax), "deviance_rs", drop = TRUE],
-      dfs_resid = res$metrics[c("linear", fpmax), "df_resid", drop = TRUE],
-      n_obs = n_obs
-    )
-  } else {
-    stats <- calculate_lr_test(
-      logl = res$metrics[c("linear", fpmax), "logl", drop = TRUE], 
-      dfs = res$metrics[c("linear", fpmax), "df", drop = TRUE] 
-    )  
-  }
+  # test for non-linearity in x
+  # df for tests are degree * 2 - 1 = 3
+  fit_lin <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+  )
+  
+  old_names = rownames(res$metrics)
+  res$metrics <- rbind(
+    res$metrics, 
+    fit_lin$metrics
+  )
+  rownames(res$metrics) <- c(old_names, "linear")
+  
+  stats <- calculate_test(res$metrics[c("linear", fpmax), ], n_obs)
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs linear", fpmax))
@@ -826,106 +785,101 @@ select_ra2_acd <- function(x,
   
   if (stats$pvalue >= alpha) {
     # no non-linearity detected
-    res$power_best = 1
+    res$power_best = matrix(c(1, NA), ncol = 2)
     res$model_best = 3
     return(res)
   }
   
-  # tests for functional form - do this for all fps with lower degrees
-  if (degree > 1) {
-    
-    for (current_degree in 1:(degree - 1)) {
-      fpm = paste0("FP", current_degree)
-      
-      fit_fpm <- find_best_fpm_step(
-        x = x, xi = xi, degree = current_degree, y = y, 
-        powers_current = powers_current, powers = powers, acdx = acdx, ...
-      )
-      
-      old_names = rownames(res$metrics)
-      res$metrics <- rbind(
-        res$metrics, 
-        fit_fpm$metrics[fit_fpm$model_best, ]
-      )
-      rownames(res$metrics) <- c(old_names, fpm)
-      
-      if (ftest) {
-        stats <- calculate_f_test(
-          deviances = res$metrics[c(fpm, fpmax), "deviance_rs", drop = TRUE],
-          dfs_resid = res$metrics[c(fpm, fpmax), "df_resid", drop = TRUE],
-          n_obs = n_obs
-        )
-      } else {
-        stats <- calculate_lr_test(
-          logl = res$metrics[c(fpm, fpmax), "logl", drop = TRUE], 
-          dfs = res$metrics[c(fpm, fpmax), "df", drop = TRUE] 
-        )  
-      }
-      old_names <- names(res$statistic)
-      res$statistic <- c(res$statistic, stats$statistic)
-      names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, fpm))
-      res$pvalue <- c(res$pvalue, stats$pvalue)
-      names(res$pvalue) <- names(res$statistic)
-      
-      if (stats$pvalue >= alpha) {
-        # non-linearity detected, but lower than maximum degree
-        res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = FALSE]
-        res$model_best = nrow(res$metrics)
-        return(res)
-      }
-    }
-    
+  # test for functional form, comparison with FP1(x, .)
+  fit <- find_best_fpm_step(
+    x = x, xi = xi, degree = 1, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+  )
+  
+  old_names = rownames(res$metrics)
+  res$metrics <- rbind(
+    res$metrics, 
+    fit$metrics[fit$model_best, ]
+  )
+  rownames(res$metrics) <- c(old_names, "FP1(x, .)")
+  
+  stats <- calculate_test(res$metrics[c("FP1(x, .)", fpmax), ], n_obs)
+  old_names <- names(res$statistic)
+  res$statistic <- c(res$statistic, stats$statistic)
+  names(res$statistic) <- c(old_names, sprintf("%s vs FP1(x, .)", fpmax))
+  res$pvalue <- c(res$pvalue, stats$pvalue)
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue >= alpha) {
+    # FP1(x, .) is good enough
+    res$power_best = matrix(c(fit$power_best, NA), ncol = 2)
+    res$model_best = 4
+    return(res)
   }
   
-  # return highest power
-  res$power_best = fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
-  res$model_best = 1
+  # test for functional form, comparison with FP1(., A(x))
+  fit_fp1a <- find_best_fpm_step(
+    x = x, xi = xi, degree = 1, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  
+  old_names = rownames(res$metrics)
+  res$metrics <- rbind(
+    res$metrics, 
+    fit_fp1a$metrics[fit_fp1a$model_best, ]
+  )
+  rownames(res$metrics) <- c(old_names, "FP1(., A(x))")
+  
+  stats <- calculate_test(res$metrics[c("FP1(., A(x))", fpmax), ], n_obs)
+  old_names <- names(res$statistic)
+  res$statistic <- c(res$statistic, stats$statistic)
+  names(res$statistic) <- c(old_names, sprintf("%s vs FP1(., A(x))", fpmax))
+  res$pvalue <- c(res$pvalue, stats$pvalue)
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue < alpha) {
+    # FP1(x, A(x)) is the best
+    res$power_best = fit_fpmax$power_best
+    res$model_best = 1
+    return(res)
+  }
+  
+  # return best model between FP1(., A(x)) and linear(., A(x))
+  fit_lineara <- fit_linear_step(
+    x = x, xi = xi, y = y, 
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
+  )
+  
+  old_names = rownames(res$metrics)
+  res$metrics <- rbind(
+    res$metrics, 
+    fit_lineara$metrics
+  )
+  rownames(res$metrics) <- c(old_names, "linear(., A(x))")
+  
+  stats <- calculate_test(res$metrics[c("linear(., A(x))", "FP1(., A(x))"), ], n_obs)
+  old_names <- names(res$statistic)
+  res$statistic <- c(res$statistic, stats$statistic)
+  names(res$statistic) <- c(old_names, sprintf("%s vs linear(., A(x))", "FP1(., A(x))"))
+  res$pvalue <- c(res$pvalue, stats$pvalue)
+  names(res$pvalue) <- names(res$statistic)
+  
+  if (stats$pvalue < alpha) {
+    # use FP1(., A(x))
+    res$power_best = fit_fp1a$power_best
+    res$model_best = 5
+    return(res)
+  }
+  
+  # use linear(., A(x))
+  res$power_best = matrix(c(NA, 1), ncol = 2)
+  res$model_best = 6
   
   res
 }
 
 select_ic <- function() {
   
-}
-
-#' Helper to find best model when acd transformation is desired
-#' 
-#' To be used in [find_best_fp_step()].
-#' 
-#' @param pvalue vector of pvalues of: Null vs M1, lin(xi) vs M1, fp1(xi) vs M1, 
-#' FP1(acd(xi)) vs M1 and lin(acd(xi)) vs FP1(acd(xi)) in that order. 
-#' Note M1 = FP1(xi, acd(xi)).
-find_index_best_model_acd <- function(pvalue, 
-                                      select, 
-                                      alpha) {
-  if (pvalue[1] > select) {
-    index.bestmodel <- 1 # Null vs M1: if not sig then NULL model is chosen
-  } else {
-    # Linear(xi) vs M1: if not sig then choose linear xi is chosen
-    if (pvalue[2] > alpha) {
-      index.bestmodel <- 2
-    } else {
-      # FP1(xi) vs M1: if not sig then choose FP1(xi)
-      if (pvalue[3] > alpha) {
-        index.bestmodel <- 3
-      } else {
-        # FP1(acd(xi)) vs M1: if not sig then choose FP1(acd(xi))
-        if (pvalue[4] > alpha) {
-          # since the FP1(axi) vs M1 is not sig, we can check whether linear(axi)
-          # is better than FP1(axi)
-          if (pvalue[5] > alpha) {
-            index.bestmodel <- 6
-          } else {
-            index.bestmodel <- 4
-          }
-        } else {
-          index.bestmodel <- 5
-        }
-      }
-    }
-  }
-  
-  index.bestmodel
 }
 
 #' Function to extract and transform adjustment variables

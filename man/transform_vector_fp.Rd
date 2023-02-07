@@ -48,8 +48,8 @@ Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
 length of \code{x}. If all powers are \code{NA}, then this function returns \code{NULL}.
 In case an acd transformation is applied, the acd term is returned
-as the last column of the matrix (i.e. in case that the power is a single
-numeric, it is the only column in the matrix).
+as the last column of the matrix (i.e. in case that the power for the
+normal data is \code{NA}, then it is the only column in the matrix).
 }
 \description{
 These functions generate fractional polynomials for a variable similar to

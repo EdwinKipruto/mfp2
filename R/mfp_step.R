@@ -463,17 +463,42 @@ fit_null_linear_step <- function(x,
   # i.e. a model that does not contain xi but only adjustment variables
   model_null <- fit_model(x = x_transformed$data_adj, y = y, ...)
   
+  list(
+    powers = NA,
+    metrics = rbind(null = calculate_model_metrics(model_null, n_obs))  
+  )
+}
+
+fit_linear_step <- function(x, 
+                            xi, 
+                            y, 
+                            powers_current,
+                            powers,
+                            acdx, 
+                            ...) {
+  
+  n_obs <- dim(x)[1L]
+  
+  # transform all data as given by current working model
+  # set variable of interest to linear term only
+  x_transformed <- transform_data_step(
+    x = x, xi = xi, df = 1,
+    powers_current = powers_current, acdx = acdx, powers = powers
+  ) 
+  
   # fit a model based on the assumption that xi is linear 
   model_linear <- fit_model(
-    x = cbind(x_transformed$data_fp, x_transformed$data_adj), y = y, ...
+    x = cbind(x_transformed$data_fp[[1]], x_transformed$data_adj), y = y, ...
   )
   
+  # respect acd
+  metrics <- rbind(linear = calculate_model_metrics(model_linear, n_obs))  
+  if (acdx[xi])
+    rownames(metrics) <- "A(linear)"
+  
   list(
-    powers = c(NA, 1),
-    metrics = rbind(
-      null = calculate_model_metrics(model_null, n_obs), 
-      linear = calculate_model_metrics(model_linear, n_obs)
-    )  
+    powers = x_transformed$powers_fp,
+    metrics = metrics
   )
 }
 

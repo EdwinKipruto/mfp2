@@ -8,9 +8,8 @@ find_best_fpm_step(x, xi, degree, y, powers_current, powers, acdx, ...)
 }
 \value{
 A list with several components:
-
-#' * \code{acd}: logical indicating if an ACD transformation was applied for \code{xi}.
 \itemize{
+\item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi}.
 \item \code{powers}: fp powers investigated in step.
 \item \code{power_best}: the best power found. \code{power_best} will always be a
 two-column matrix when an ACD transformation is used, otherwise the number

@@ -334,7 +334,7 @@ find_best_fp_step <- function(x,
 #' @return 
 #' A list with several components: 
 #' 
-#' #' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
+#' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
 #' * `powers`: fp powers investigated in step. 
 #' * `power_best`: the best power found. `power_best` will always be a 
 #' two-column matrix when an ACD transformation is used, otherwise the number 
@@ -486,7 +486,7 @@ fit_linear_step <- function(x,
   )
 }
 
-#' Helper to assess null and linear term for a single variable
+#' Helper to select between null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
 #' For parameter explanations, see [find_best_fp_step()]. All parameters 

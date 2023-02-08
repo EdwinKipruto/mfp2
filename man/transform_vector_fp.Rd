@@ -5,7 +5,14 @@
 \alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
-transform_vector_fp(x, power = 1, scale = 1, center = FALSE, shift = 0)
+transform_vector_fp(
+  x,
+  power = 1,
+  scale = 1,
+  center = FALSE,
+  shift = 0,
+  name = NULL
+)
 
 transform_vector_acd(
   x,
@@ -14,7 +21,8 @@ transform_vector_acd(
   powers = NULL,
   scale = 1,
   center = FALSE,
-  acd_parameter = NULL
+  acd_parameter = NULL,
+  name = NULL
 )
 }
 \arguments{
@@ -38,6 +46,9 @@ the mean i.e. \code{f(x) - mean(f(x))} for continuous variables and
 \item{shift}{shift required for shifting x to positive values. Default is 0,
 meaning no shift is applied. If \code{NULL} then the shift is estimated
 automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
+
+\item{name}{character used to define names for the output matrix. Default
+is \code{NULL}, meaning the output will have unnamed columns.}
 
 \item{powers}{passed to \code{\link[=fit_acd]{fit_acd()}}.}
 
@@ -85,10 +96,6 @@ returned by this function will always align with the powers used
 throughout this package.
 
 Binary variables are not transformed, but may only be centered.
-
-This function does not handle column names, as this function may be
-called with an unnamed vector as well. Thus, the returned matrix is
-always unnamed.
 }
 \section{Functions}{
 \itemize{

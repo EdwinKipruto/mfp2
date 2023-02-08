@@ -30,10 +30,6 @@
 #' 
 #' Binary variables are not transformed, but may only be centered. 
 #' 
-#' This function does not handle column names, as this function may be
-#' called with an unnamed vector as well. Thus, the returned matrix is
-#' always unnamed. 
-#' 
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
 #' before being transformed by any powers. That is to ensure positive values
@@ -66,6 +62,8 @@
 #' @param center Specification of centering for variable using
 #' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
 #' `x - min(x)` for binary variables. Default is no centering.
+#' @param name character used to define names for the output matrix. Default
+#' is `NULL`, meaning the output will have unnamed columns.
 #' 
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns

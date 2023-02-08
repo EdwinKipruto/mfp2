@@ -1029,6 +1029,7 @@ select_ic <- function(x,
     rbind, 
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
   )
+  rownames(res$metrics) <- c("null", "linear", names(fits_fpm))
   
   ind_select = 1:nrow(res$metrics)
   if (xi %in% keep) 
@@ -1063,7 +1064,7 @@ select_ic_acd <- function(x,
   # output list
   res <- list(
     keep = xi %in% keep,
-    acd = FALSE, 
+    acd = TRUE, 
     powers = NULL, 
     power_best = NULL, 
     metrics = NULL, 
@@ -1127,6 +1128,7 @@ select_ic_acd <- function(x,
       "linear(., A(x))" = fit_lina$metrics), 
       res$metrics)
   )
+  rownames(res$metrics) <- c("null", "linear", "linear(., A(x))", names(fits))
   
   ind_select = 1:nrow(res$metrics)
   if (xi %in% keep) 

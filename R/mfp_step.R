@@ -52,7 +52,8 @@
 #' * the linear case (`df = 1`) to test between null and linear models (see
 #' [select_linear()]). This step differs from the mfp case because
 #' linear models only use 1 df, while estimation of (every) fp power adds 
-#' another df. 
+#' another df. This is also the case applied for categorical variables for 
+#' which `df` are set to 1.
 #' * the case that an acd transformation is requested (`acdx` is `TRUE` 
 #' for `xi`) for the variable of interest (see [find_best_fpm_step()]).
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
@@ -474,6 +475,8 @@ select_linear <- function(x,
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' Always starts with highest power, then null, then linear, then FP in 
+#' increasing degree (e.g. FP2, null, linear, FP1).
 #' * `power_best`: a numeric vector with the best power found. The returned 
 #' best power may be `NA`, indicating the variable has been removed from the 
 #' model.
@@ -670,6 +673,8 @@ select_ra2 <- function(x,
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' Ordering: FP1(x, A(x)), null, linear, FP1(x, .), linear(., A(x)), 
+#' FP1(., A(x)).
 #' * `power_best`: a numeric vector with the best power found. The returned 
 #' best power may be `NA`, indicating the variable has been removed from the 
 #' model.
@@ -926,6 +931,9 @@ select_ra2_acd <- function(x,
 #' * `acd`: logical indicating if an ACD transformation was applied for `xi`, 
 #' i.e. `FALSE` in this case.
 #' * `powers`: (best) fp powers investigated in step, indexing `metrics`. 
+#' Ordered by increasing complexity, i.e. null, linear, FP1, FP2 and so on.
+#' For ACD transformation, it is null, linear, linear(., A(x)), FP1(x, .),
+#' FP1(., A(x)) and FP1(x, A(x)).
 #' * `power_best`: a numeric vector with the best power found. The returned 
 #' best power may be `NA`, indicating the variable has been removed from the 
 #' model.

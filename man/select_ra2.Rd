@@ -27,6 +27,8 @@ A list with several components:
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi},
 i.e. \code{FALSE} in this case.
 \item \code{powers}: (best) fp powers investigated in step, indexing \code{metrics}.
+Always starts with highest power, then null, then linear, then FP in
+increasing degree (e.g. FP2, null, linear, FP1).
 \item \code{power_best}: a numeric vector with the best power found. The returned
 best power may be \code{NA}, indicating the variable has been removed from the
 model.

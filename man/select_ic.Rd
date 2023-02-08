@@ -44,6 +44,9 @@ A list with several components:
 \item \code{acd}: logical indicating if an ACD transformation was applied for \code{xi},
 i.e. \code{FALSE} in this case.
 \item \code{powers}: (best) fp powers investigated in step, indexing \code{metrics}.
+Ordered by increasing complexity, i.e. null, linear, FP1, FP2 and so on.
+For ACD transformation, it is null, linear, linear(., A(x)), FP1(x, .),
+FP1(., A(x)) and FP1(x, A(x)).
 \item \code{power_best}: a numeric vector with the best power found. The returned
 best power may be \code{NA}, indicating the variable has been removed from the
 model.

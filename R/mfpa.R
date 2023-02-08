@@ -166,7 +166,7 @@
 #' Default is to use p-values in which case the user can specify
 #' the significance level (or use default level of 0.05) for variable and
 #' functional form selection (see `select` and `alpha` parameters below).
-#' If the user specifies the `BIC` or `AIC` criterion then the program  
+#' If the user specifies the BIC (`bic`) or AIC (`aic`) criteria the program  
 #' ignores the nominal significance levels and selects variables and functional 
 #' forms using the chosen information criterion.
 #' @param select a numeric vector of length nvars or a single numeric that 

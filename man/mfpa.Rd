@@ -16,7 +16,7 @@ mfpa(
   df = 4,
   center = TRUE,
   family = c("gaussian", "poisson", "binomial", "cox"),
-  criterion = c("pvalue", "BIC", "AIC"),
+  criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
   keep = NULL,
@@ -85,7 +85,7 @@ variables and FP models of different degrees.
 Default is to use p-values in which case the user can specify
 the significance level (or use default level of 0.05) for variable and
 functional form selection (see \code{select} and \code{alpha} parameters below).
-If the user specifies the \code{BIC} or \code{AIC} criterion then the program
+If the user specifies the BIC (\code{bic}) or AIC (\code{aic}) criteria the program
 ignores the nominal significance levels and selects variables and functional
 forms using the chosen information criterion.}
 

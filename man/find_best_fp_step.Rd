@@ -106,7 +106,8 @@ the current variable of interest. This function covers three main use cases:
 \item the linear case (\code{df = 1}) to test between null and linear models (see
 \code{\link[=select_linear]{select_linear()}}). This step differs from the mfp case because
 linear models only use 1 df, while estimation of (every) fp power adds
-another df.
+another df. This is also the case applied for categorical variables for
+which \code{df} are set to 1.
 \item the case that an acd transformation is requested (\code{acdx} is \code{TRUE}
 for \code{xi}) for the variable of interest (see \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
 \item the (usual) case of the normal mfp algorithm to assess non-linear

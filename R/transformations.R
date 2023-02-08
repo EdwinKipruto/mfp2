@@ -87,7 +87,8 @@ transform_vector_fp <- function(x,
                                 power = 1,
                                 scale = 1, 
                                 center = FALSE, 
-                                shift = 0) {
+                                shift = 0, 
+                                name = NULL) {
   
   if (all(is.na(power))) { 
     # variable omitted
@@ -97,8 +98,11 @@ transform_vector_fp <- function(x,
   # do not transform x when it is a two level variable but center if necessary
   if (length(unique(x)) <= 2) {
     x <- as.matrix(x)
+    if (!is.null(name))
+      colnames(x) <- paste0(name, ".1")
+    
     # center using the lower(minimum) of the two distinct values of the covariates
-    # as also done in stata mfp by Patrick Royston
+    # as also done in stata mfp 
     if (center) {
       return(x - min(x))
     } else return(x)
@@ -142,6 +146,10 @@ transform_vector_fp <- function(x,
     x_trafo <- scale(x_trafo, scale = FALSE)
   }
   
+  if (!is.null(name)) {
+    colnames(x_trafo) <- paste0(name, ".", 1:ncol(x_trafo))
+  }
+  
   x_trafo
 }
 
@@ -153,7 +161,8 @@ transform_vector_acd <- function(x,
                                  powers = NULL, 
                                  scale = 1, 
                                  center = FALSE, 
-                                 acd_parameter = NULL) {
+                                 acd_parameter = NULL, 
+                                 name = NULL) {
   
   if (length(power) != 2) 
     stop("! power must have length two.", 
@@ -168,15 +177,20 @@ transform_vector_acd <- function(x,
     x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
   } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
   
+  name_acd <- NULL
+  if (!is.null(name))
+    name_acd <- paste0("(A)", name)
+  
+  
   # apply fp transform on x (if required) and acd(x)
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
   # component is not used in the final result, as desired
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
                       scale = scale, shift = shift, 
-                      center = center)
+                      center = center, name = name_acd)
   x_fp <- transform_vector_fp(x = x, power = power[1],
                               scale = scale, shift = shift,
-                              center = center)
+                              center = center, name = name)
 
   cbind(x_fp, x_acd)
 }
@@ -243,22 +257,14 @@ transform_matrix <- function(x,
       # apply acd transformation
       x_trafo[[name]] <- transform_vector_acd(
         x[, name], power = power_list[[name]], center = center[name], 
-        acd_parameter = acd_parameter_list[[name]]
+        acd_parameter = acd_parameter_list[[name]], name = name
       )
-      if (!is.null(x_trafo[[name]]))
-        # note that acd components are always in the last column
-        colnames(x_trafo[[name]]) <- c(
-          paste0(name, ".1"), paste0("(A)", name, ".1")
-        )
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
-        x[, name], power = power_list[[name]], center = center[name]
+        x[, name], power = power_list[[name]], center = center[name], 
+        name = name
       )
-      if (!is.null(x_trafo[[name]]))
-        colnames(x_trafo[[name]]) <- paste0(
-          name, ".", seq_along(power_list[[name]])
-        )
     }
   }
   

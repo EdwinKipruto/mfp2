@@ -92,14 +92,18 @@ fit_mfp <- function(x,
                     control,
                     verbose) {
   
-  variables_x <- colnames(x) 
-
+  variables_x <- colnames(x)
+  
   # step 1: order variables ----------------------------------------------------
   variables_ordered = order_variables(
     xorder = xorder, 
     x = x, y = y, family = family,  weights = weights, offset = offset, 
     strata = strata, method = method, control = control, nocenter = nocenter
   ) 
+  
+  if (verbose) 
+    cat(sprintf("\ni Visiting order: %s\n", paste0(variables_ordered, 
+                                                   collapse = ", ")))
 
   # step 2: pre-process input --------------------------------------------------
   # named list of initial fp powers set to 1 ordered by xorder
@@ -144,7 +148,9 @@ fit_mfp <- function(x,
   # run cycles and update the powers in each step
   while (j <= cycles) {
     if (verbose) {
-      cat(sprintf("\ni Running MFP Cycle %d", j))
+      cat("\n---------------------")
+      cat(sprintf("\ni Running MFP Cycle %d\n", j))
+      cat("---------------------\n")
     }
     
     # estimated powers for the j-th cycle
@@ -174,11 +180,9 @@ fit_mfp <- function(x,
     # check for convergence (i.e. no change in powers in model)
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
-      cat(
-        sprintf(
+      cat(sprintf(
           "\ni Fractional polynomial fitting algorithm converged after %d cycles.\n", 
-          j)
-      )   
+          j))   
       break
     } else {
       # update the powers of the variables at the end of each cycle
@@ -531,12 +535,8 @@ find_best_fp_cycle <- function(x,
                                nocenter, 
                                acdx) {
   
-  # for printing distinguish between p-value and information criteria
-  if (verbose) {
-    print_mfp_summary(criterion, ftest = ftest)
-  }
-  
   names_x <- names(powers_current)
+  
   for (i in 1:ncol(x)) {
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood

@@ -145,8 +145,10 @@ find_best_fp_step <- function(x,
     control = control, rownames = rownames
   )
   
-  # TODO: verbose printing!
-  
+  if (verbose) {
+    print_mfp_step(xi = xi, criterion = criterion, fit = fit)
+  }
+    
   as.numeric(fit$power_best)
 }
 
@@ -1089,7 +1091,7 @@ select_ic_acd <- function(x,
     rbind, 
     c(list("null" = ensure_length(fit_null$powers, len_max), 
            "linear" = ensure_length(fit_lin$powers, len_max), 
-           "linear(. A(x))" = ensure_length(fit_lina$powers, len_max)), 
+           "linear(., A(x))" = ensure_length(fit_lina$powers, len_max)), 
       res$powers)
   )
   

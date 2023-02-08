@@ -94,6 +94,12 @@ fit_mfp <- function(x,
   
   variables_x <- colnames(x)
   
+  if (verbose) {
+    cat("\ni Initial degrees of freedom:\n")
+    print(matrix(df, nrow = 1, dimnames = list("df", variables_x)), 
+          quote = FALSE)
+  }
+  
   # step 1: order variables ----------------------------------------------------
   variables_ordered = order_variables(
     xorder = xorder, 
@@ -102,8 +108,8 @@ fit_mfp <- function(x,
   ) 
   
   if (verbose) 
-    cat(sprintf("\ni Visiting order: %s\n", paste0(variables_ordered, 
-                                                   collapse = ", ")))
+    cat(sprintf("\ni Visiting order: %s\n", 
+                paste0(variables_ordered, collapse = ", ")))
 
   # step 2: pre-process input --------------------------------------------------
   # named list of initial fp powers set to 1 ordered by xorder

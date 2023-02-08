@@ -150,7 +150,17 @@ find_best_fp_step <- function(x,
     print_mfp_step(xi = xi, criterion = criterion, fit = fit)
   }
     
-  as.numeric(fit$power_best)
+  # prepare power to return
+  # remove trailing NAs, unless ACD is used
+  power_best = as.numeric(fit$power_best)
+  
+  if (!fit$acd) {
+    power_best = na.omit(power_best)
+    if (length(power_best) == 0)
+      power_best = NA 
+  } 
+  
+  power_best
 }
 
 

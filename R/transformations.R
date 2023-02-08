@@ -16,6 +16,16 @@
 #' log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and 
 #' x^pi * log(x)^2. 
 #' 
+#' Note that the powers pi are assumed to be sorted. That is, this function 
+#' sorts them, then proceeds to compute the transformation. For example, 
+#' the output will be the same for `power = c(1, 1, 2)` and
+#' `power = c(1, 2, 1)`. This is done to make sense of repeated powers and 
+#' to uniquely define FPs. In case an ACD transformation is used, there is a 
+#' specific order in which powers are processed, which is always the same (but 
+#' not necessarily sorted). 
+#' Thus, throughout the whole package powers will always be given and processed
+#' in either sorted, or ACD specific order.
+#' 
 #' Binary variables are not transformed, but may only be centered. 
 #' 
 #' @section Data processing: 

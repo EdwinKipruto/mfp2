@@ -219,6 +219,7 @@ fit_mfp <- function(x,
   
   # common components for glms and cox
   fit <- list(
+    convergence_mfp = converged,
     coefficients = modelfit$fit$coefficients,
     residuals = modelfit$fit$residuals,
     linear.predictors = modelfit$fit$linear.predictors,

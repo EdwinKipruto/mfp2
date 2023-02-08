@@ -657,16 +657,17 @@ create_fp_terms <- function(fp_powers,
     select = select, 
     alpha = alpha, 
     # presence / absence in final model encoded by NAs in fp_powers
-    status = sapply(fp_powers, function(p) ifelse(all(is.na(p)), 0, 1)),
+    selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom
     df_final = sapply(fp_powers, calculate_df), 
+    acd = acdx, 
     convert_powers_list_to_matrix(fp_powers)
   )
-  rownames(fp_terms) <- sapply(names(fp_powers), 
-                               function(n) ifelse(acdx[n], paste0("(A)", n), n)) 
+  rownames(fp_terms) <- names(fp_powers)
   
   if (criterion != "pvalue") {
-    fp_terms$select <- criterion
+    fp_terms$select <- toupper(criterion)
+    fp_terms$alpha <- toupper(criterion)
   }
   
   fp_terms

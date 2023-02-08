@@ -31,7 +31,10 @@
 #' 
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
-#' Must be a vector of length 2 for acd transformation.
+#' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
+#' an ACD transformation is applied in which case power must be a numeric 
+#' vector of length 2, and `NA` indicated which parts are used for the final 
+#' FP.
 #' @param scale scaling factor for x of interest. Must be a positive integer
 #' or `NULL`. Default is 1, meaning no scaling is applied. 
 #' If `NULL`, then scaling factors are automatically estimated by the
@@ -56,7 +59,8 @@
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns
 #' depends on the number of powers provided, the number of rows is equal to the
-#' length of `x`. If all powers are `NA`, then this function returns `NULL`.
+#' length of `x`. The columns are sorted by increased power.
+#' If all powers are `NA`, then this function returns `NULL`.
 #' In case an acd transformation is applied, the acd term is returned
 #' as the last column of the matrix (i.e. in case that the power for the 
 #' normal data is `NA`, then it is the only column in the matrix). 
@@ -154,6 +158,8 @@ transform_vector_acd <- function(x,
   } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
   
   # apply fp transform on x (if required) and acd(x)
+  # if any of these is NA, transform_vector_fp returns NULL and thus the 
+  # component is not used in the final result, as desired
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
                       scale = scale, shift = shift, 
                       center = center)
@@ -229,7 +235,7 @@ transform_matrix <- function(x,
         acd_parameter = acd_parameter_list[[name]]
       )
       if (!is.null(x_trafo[[name]]))
-        # note that acd components are always in the second column
+        # note that acd components are always in the last column
         colnames(x_trafo[[name]]) <- c(
           paste0(name, ".1"), paste0("(A)", name, ".1")
         )
@@ -239,7 +245,6 @@ transform_matrix <- function(x,
         x[, name], power = power_list[[name]], center = center[name]
       )
       if (!is.null(x_trafo[[name]]))
-        # note that acd components are always in the second column
         colnames(x_trafo[[name]]) <- paste0(
           name, ".", seq_along(power_list[[name]])
         )

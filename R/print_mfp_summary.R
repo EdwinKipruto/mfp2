@@ -23,9 +23,9 @@ print_mfp_pvalue_step <- function(xi, fit, ...) {
   # use whitespace in column names to try to make printing "fixed width"
   # by making the column names longer than its entries
   mat_print <- cbind(
+    # remove NAs from printed powers
     "Powers   " = apply(fit$powers, 1, 
           function(row) {
-            
             if (!fit$acd) {
               row_prep = na.omit(row)
               if (length(row_prep) == 0)

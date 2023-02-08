@@ -21,7 +21,10 @@ transform_vector_acd(
 \item{x}{a vector of a predictor variable.}
 
 \item{power}{a numeric vector indicating the FP power. Default is 1 (linear).
-Must be a vector of length 2 for acd transformation.}
+Must be a vector of length 2 for acd transformation. Ignores \code{NA}, unless
+an ACD transformation is applied in which case power must be a numeric
+vector of length 2, and \code{NA} indicated which parts are used for the final
+FP.}
 
 \item{scale}{scaling factor for x of interest. Must be a positive integer
 or \code{NULL}. Default is 1, meaning no scaling is applied.
@@ -46,7 +49,8 @@ new data.}
 \value{
 Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
-length of \code{x}. If all powers are \code{NA}, then this function returns \code{NULL}.
+length of \code{x}. The columns are sorted by increased power.
+If all powers are \code{NA}, then this function returns \code{NULL}.
 In case an acd transformation is applied, the acd term is returned
 as the last column of the matrix (i.e. in case that the power for the
 normal data is \code{NA}, then it is the only column in the matrix).

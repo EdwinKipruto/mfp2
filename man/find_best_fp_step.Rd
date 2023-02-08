@@ -89,7 +89,10 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 }
 \value{
 A numeric vector indicating the best powers for \code{xi}. Entries can be
-\code{NA} if variable is to be removed from the working model.
+\code{NA} if variable is to be removed from the working model. Note that this
+vector may include up to two \code{NA} entries when ACD transformation is
+requested, but otherwise is either a vector with all numeric entries, or a
+single \code{NA}.
 }
 \description{
 See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here and

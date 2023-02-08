@@ -88,7 +88,10 @@
 #'  
 #' @return 
 #' A numeric vector indicating the best powers for `xi`. Entries can be 
-#' `NA` if variable is to be removed from the working model. 
+#' `NA` if variable is to be removed from the working model. Note that this 
+#' vector may include up to two `NA` entries when ACD transformation is 
+#' requested, but otherwise is either a vector with all numeric entries, or a 
+#' single `NA`.
 #' 
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 

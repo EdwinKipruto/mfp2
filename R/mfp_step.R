@@ -117,7 +117,7 @@ find_best_fp_step <- function(x,
                               control,
                               rownames, 
                               verbose) {
-  N <- dim(x)[1L]
+
   degree <- as.numeric(df / 2)
   
   # choose appropriate selection function

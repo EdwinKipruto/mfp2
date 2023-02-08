@@ -9,14 +9,15 @@ create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
 \value{
 Data.frame with overview of all fp terms. Each row represents a variable,
 with rownames giving the name of the variable. Variables with acd
-transformation are denoted by (A). The data.frame comprises the following
-columns:
+transformation are denoted by (A) by the \code{print} and \code{summary} methods.
+The data.frame comprises the following columns:
 \itemize{
 \item \code{df_initial}: initial degrees of freedom.
 \item \code{select}: significance level for backward elimination.
 \item \code{alpha}: significance level for fractional polyomial terms.
-\item \code{status}: encodes presence in the model as 1, and absence as 0.
+\item \code{selected}: logical value encoding presence in the model.
 \item \code{df_final}: final estimated degrees of freedom.
+\item \code{acd}: logical value encoding use of ACD transformation.
 \item \code{powerN}: one or more columns with the final estimated fp powers (numbered
 1 to N).
 }

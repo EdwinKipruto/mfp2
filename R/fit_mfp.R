@@ -634,14 +634,15 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' @return 
 #' Data.frame with overview of all fp terms. Each row represents a variable, 
 #' with rownames giving the name of the variable. Variables with acd 
-#' transformation are denoted by (A). The data.frame comprises the following 
-#' columns: 
+#' transformation are denoted by (A) by the `print` and `summary` methods. 
+#' The data.frame comprises the following columns: 
 #' 
 #' * `df_initial`: initial degrees of freedom. 
 #' * `select`: significance level for backward elimination.
 #' * `alpha`: significance level for fractional polyomial terms.
-#' * `status`: encodes presence in the model as 1, and absence as 0.
+#' * `selected`: logical value encoding presence in the model.
 #' * `df_final`: final estimated degrees of freedom.
+#' * `acd`: logical value encoding use of ACD transformation.
 #' * `powerN`: one or more columns with the final estimated fp powers (numbered
 #' 1 to N).
 create_fp_terms <- function(fp_powers, 

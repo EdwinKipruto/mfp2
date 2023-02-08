@@ -166,6 +166,7 @@ coefficients from the fitted model object.
 An object of class \code{mfpa} is a list containing at least the following
 components:
 \itemize{
+\item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
 \item{coefficients: }{a named vector of coefficients.}
 \item{residuals: }{working residuals as returned by \code{\link[stats:glm]{stats::glm()}} or
 martingale residuals as returned by \code{\link[survival:coxph]{survival::coxph()}}, depending on

@@ -118,7 +118,8 @@ multiple regression (i.e. most significant first).
 
 \item{powers}{a numeric vector that sets the permitted FP powers for all
 covariates. Default is \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)},
-where 0 means natural logarithm.}
+where 0 means natural logarithm. Duplicates are removed, and powers are
+sorted before further processing in the program.}
 
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are

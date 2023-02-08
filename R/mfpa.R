@@ -194,7 +194,8 @@
 #' `original` respects the original order in `x`.
 #' @param powers a numeric vector that sets the permitted FP powers for all 
 #' covariates. Default is `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`,
-#' where 0 means natural logarithm.
+#' where 0 means natural logarithm. Duplicates are removed, and powers are 
+#' sorted before further processing in the program. 
 #' @param ties a character string specifying the method for tie handling in 
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
@@ -500,6 +501,7 @@ mfpa <- function(x,
       # default FP powers proposed by Royston and Sauerbrei (2008)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
+  powers <- sort(unique(powers))
   if (is.null(weights)) {
       weights <- rep.int(1, nobs)
   }
@@ -670,6 +672,7 @@ print.mfpa <- function(x,
     # glms
     NextMethod("print", x)
   } else {
+    # TODO: simplify this part, can NextMethod be used?
     # cox model
     if (!is.null(cl <- x$call)) {
       cat("Call:\n")

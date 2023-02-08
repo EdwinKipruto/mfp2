@@ -235,6 +235,7 @@
 #' An object of class `mfpa` is a list containing at least the following 
 #' components:  
 #' \itemize{
+#' \item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
 #' \item{coefficients: }{a named vector of coefficients.}
 #' \item{residuals: }{working residuals as returned by [stats::glm()] or 
 #' martingale residuals as returned by [survival::coxph()], depending on 
@@ -652,51 +653,24 @@ print.mfpa <- function(x,
                        ...) {
   # shift and scaling factors with centering values
   cat("Shifting, Scaling and Centering of covariates", "\n")
-  ss <- as.data.frame(x$transformations)
-  ss[is.na(ss)] <- "."
-  print.data.frame(ss)
+  print.data.frame(x$transformations)
   cat("\n")
+  
   # Final MFP Powers
   cat("Final Multivariable Fractional Polynomial for y", "\n")
-  dd <- as.data.frame(x$fp_terms)
-  dd[is.na(dd)] <- "."
-  print.data.frame(dd)
+  print.data.frame(x$fp_terms)
   cat("\n")
+  
+  cat(sprintf("MFP algorithm convergence: %s\n", x$convergence_mfp))
+  
+  # model
   family <- ifelse(is.character(x$family), x$family, x$family$family)
+  
   if (family != "cox") {
-    cat("\nCall:  ",
-        paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n",
-        sep = ""
-    )
-    if (length(coef(x))) {
-      cat("Coefficients")
-      if (is.character(co <- x$contrasts)) {
-        cat(
-          "  [contrasts: ",
-          apply(cbind(names(co), co), 1L, paste, collapse = "="), "]"
-        )
-      }
-      cat(":\n")
-      print.default(format(x$coefficients, digits = digits),
-                    print.gap = 2, quote = FALSE
-      )
-    } else {
-      cat("No coefficients\n\n")
-    }
-    cat(
-      "\nDegrees of Freedom:", x$df.null, "Total (i.e. Null); ",
-      x$df.residual, "Residual\n"
-    )
-    if (nzchar(mess <- naprint(x$na.action))) cat("  (", mess, ")\n", sep = "")
-    cat(
-      "Null Deviance:	   ", format(signif(x$null.deviance, digits)),
-      "\nResidual Deviance:", format(signif(x$deviance, digits)),
-      "\tAIC:", format(signif(x$aic, digits))
-    )
-    cat("\n")
-    invisible(x)
-    # cox model
+    # glms
+    NextMethod("print", x)
   } else {
+    # cox model
     if (!is.null(cl <- x$call)) {
       cat("Call:\n")
       dput(cl)

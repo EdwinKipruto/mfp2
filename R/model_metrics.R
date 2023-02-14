@@ -1,8 +1,12 @@
 #' Deviance computations as used in mfp in stata
 #' 
+#' @details 
 #' Note that this is not the usual formula of deviance used in R, but
 #' uses the formula found here https://www.stata.com/manuals/rfp.pdf.
-deviance_stata <- function(rss, weights, n) {
+#' 
+#' It can be applied for normal error models, but should not be used for other
+#' kinds of glms.
+deviance_gaussian <- function(rss, weights, n) {
   
   # calculate lognormalized weights
   if (length(unique(weights)) == 1) {
@@ -47,7 +51,8 @@ deviance_stata <- function(rss, weights, n) {
 #' `mfp`. For selection of fps this does not really play a role, as the common 
 #' factor would be cancelled anyway when comparing models based on deviances. 
 #' * `sse`: sum of squared residuals as returned by [fit_model()].
-#' * `deviance_stata`: deviance computed by [deviance_stata()].
+#' * `deviance_gaussian`: deviance computed by [deviance_gaussian()], 
+#' applicable to Gaussian models and used for F-test computations.
 #' * `aic`: Akaike information criterion, defined as
 #' `-2logL + 2(df + df_additional)`.
 #' * `bic`: Bayesian information criterion, defined as 
@@ -71,7 +76,7 @@ calculate_model_metrics <- function(obj,
   )
   
   c(res, 
-    deviance_stata = deviance_stata(
+    deviance_gaussian = deviance_gaussian(
       rss = res[["sse"]], weights = obj$fit$weights, n = n_obs
     ), 
     aic = res[["deviance_rs"]] + 2 * res[["df"]],

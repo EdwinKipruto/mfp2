@@ -31,7 +31,8 @@ It is, however, the definition used in Royston and Sauerbrei (2008) and in
 \code{mfp}. For selection of fps this does not really play a role, as the common
 factor would be cancelled anyway when comparing models based on deviances.
 \item \code{sse}: sum of squared residuals as returned by \code{\link[=fit_model]{fit_model()}}.
-\item \code{deviance_stata}: deviance computed by \code{\link[=deviance_stata]{deviance_stata()}}.
+\item \code{deviance_gaussian}: deviance computed by \code{\link[=deviance_gaussian]{deviance_gaussian()}},
+applicable to Gaussian models and used for F-test computations.
 \item \code{aic}: Akaike information criterion, defined as
 \verb{-2logL + 2(df + df_additional)}.
 \item \code{bic}: Bayesian information criterion, defined as

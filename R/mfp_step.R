@@ -415,8 +415,9 @@ select_linear <- function(x,
   
   # compute best model according to different criteria
   if (ftest) {
+    # note that ftest is only TRUE if model is gaussian
     stats <- calculate_f_test(
-      deviances = metrics[, "deviance_stata"], 
+      deviances = metrics[, "deviance_gaussian"], 
       dfs_resid = metrics[, "df_resid"],
       n_obs = n_obs
     )

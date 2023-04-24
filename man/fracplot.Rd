@@ -51,7 +51,7 @@ when component-plus-residual plot is generated}
 \item{alpha}{refers to the opacity of the confidence interval.
 Values of alpha range from 0 to 1, with lower values corresponding to more
 transparent colors. See ggplot2
-## Details on `plotype` option
+\subsection{Details on \code{plotype} option}{
 
 Selects which graphics engine to use to generate the
 fractional polynomial plot. Either 'ggplot' or 'rplot'. Default is "ggplot"
@@ -59,10 +59,11 @@ fractional polynomial plot. Either 'ggplot' or 'rplot'. Default is "ggplot"
 For Cox models, the response should preferably be a \code{Surv} object,
 created by the \code{Surv()} function in \pkg{survival} package and the \code{family = cox}. Only
 right-censored data are currently supported. To fit stratified Cox
-models, strata option can be used.}
+models, strata option can be used.
+}}
 }
 \description{
-plots the data and fit, with 95% confidence limits, from the fractional
+plots the data and fit, with 95\% confidence limits, from the fractional
 polynomial (FP) model. The data and fit are plotted against the selected covariate of
 interest.
 }

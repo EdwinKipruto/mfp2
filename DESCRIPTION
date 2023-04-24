@@ -1,10 +1,11 @@
 Package: mfpa
 Type: Package
 Title: Multivariable Fractional Polynomial models
-Version:  0.1.0.9000
-Date: 2021-11-01
-Authors@R: c(person("Kipruto", "Edwin", role=c("aut"), email = "Edwin.Kipruto@imbi.uni-freiburg.de"),
-	     person("Sauerbrei", "Willi", role=c("aut", "cre"), email = "wfs@imbi.uni-freiburg.de"))
+Version: 0.1.1.9002
+Date: 2023-01-10
+Authors@R: c(person("Kipruto", "Edwin", role = c("aut", "cre"), email = "Edwin.Kipruto@imbi.uni-freiburg.de"),
+            person("Sauerbrei", "Willi", role = c("aut"), email = "wfs@imbi.uni-freiburg.de"), 
+            person("Kammer", "Michael", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"))
 Depends: R (>= 3.6.0), ggplot2(>= 3.3.3)
 Imports: methods,utils,arrangements,stats,survival
 Description: Fractional polynomials are used to represent curvature in regression models. A key reference is Royston and Altman, 1994.
@@ -12,6 +13,7 @@ License: GPL-3
 Encoding: UTF-8
 NeedsCompilation: yes
 Packaged: 2022-04-01 17:16:44 UTC; Edwin
-Author: Kipruto Edwin [aut, cre],Willi Sauerbrei [aut]
+Author: Kipruto Edwin [aut, cre], Willi Sauerbrei [aut], Michael Kammer [aut]
 Maintainer: kipruto Edwin <Edwin.Kipruto@imbi.uni-freiburg.de>
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.0
+Roxygen: list(markdown = TRUE)

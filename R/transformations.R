@@ -238,6 +238,16 @@ transform_matrix <- function(x,
     # all variables were eliminated
     return(NULL)
   }
+  
+  # power_list, center and acdx must have names
+  if(is.null(names(power_list))) 
+    stop("! List power_list must have names.")
+  
+  if(is.null(names(center))) 
+    stop("! Vector center must have names.")
+  
+  if(is.null(names(acdx)))
+    stop("! Vector acdx must have names.")
 
   if (keep_x_order)
     # reorder power_list to be in same order as columns in x

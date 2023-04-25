@@ -177,7 +177,7 @@ transform_vector_acd <- function(x,
   
   name_acd <- NULL
   if (!is.null(name))
-    name_acd <- paste0("(A)", name)
+    name_acd <- paste0("A_", name)
   
   
   # apply fp transform on x (if required) and acd(x)

@@ -201,15 +201,15 @@
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
 #' models only and has no effect for other model families. 
 #' See [survival::coxph()] for details.
-#' @param strata a character vector specifying the variables to be used for 
-#' stratification in a Cox model. A new factor, whose levels are all possible 
-#' combinations of the variables supplied as arguments will be created. 
+#' @param strata a numeric vector or matrix of variables that define strata
+#' to be used for stratification in a Cox model. A new factor, whose levels are 
+#' all possible combinations of the variables supplied will be created. 
 #' Default is `NULL` and a Cox model without stratification would be fitted. 
 #' See [survival::coxph()] for details. Currently only a single stratification
 #' factor is supported by `mfpa()`.
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a character vector of names of continuous variables to undergo 
+#' @param acdx a numeric vector of names of continuous variables to undergo 
 #' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes the function-selection procedure to determine the 
 #' best-fitting FP1(p1, p2) model (see Details section). 
@@ -468,10 +468,12 @@ mfpa <- function(x,
       }
       
       if (!is.null(strata)) {
-          # assert stratification factors are in x
-          if (!all(strata %in% colnames(x))) {
-              warning("i The set of variables named in strata is not a subset of the variables in x.\n", 
-                      "i mfpa() continues with the intersection of strata and colnames(x).")
+          # assert stratification factors are of correct length
+          if (is.vector(strata)) {
+            strata_len = length(strata)
+          } else strata_len = nrow(strata)
+          if (strata_len != nrow(x)) {
+              stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
           }
       }
   } else {
@@ -531,8 +533,6 @@ mfpa <- function(x,
   }
   
   keep <- intersect(keep, colnames(x))
-  if (!is.null(strata))
-    strata <- intersect(strata, colnames(x))
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(F, nvars)
@@ -574,9 +574,7 @@ mfpa <- function(x,
   # stratification
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
-      istrata <- survival::strata(x[, strata], shortlabel = TRUE)
-      # drop the variable(s) in x used for stratification
-      x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
+      istrata <- survival::strata(strata, shortlabel = TRUE)
   }
   
   # fit model ------------------------------------------------------------------

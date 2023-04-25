@@ -214,7 +214,7 @@ fit_mfp <- function(x,
     x = x_transformed, y = y, 
     family = family, weights = weights, offset = offset,
     method = method, strata = strata, control = control,
-    rownames = rownames, nocenter = nocenter, fast = FALSE
+    rownames = rownames(x_transformed), nocenter = nocenter, fast = FALSE
   )
   
   # create mfpa object ---------------------------------------------------------

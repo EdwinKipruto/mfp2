@@ -209,6 +209,7 @@ fit_mfp <- function(x,
     x = x, power_list = powers_current, center = center, acdx = acdx
   )
 
+  # fit model, and return full glm or coxph object
   modelfit <- fit_model(
     x = x_transformed, y = y, 
     family = family, weights = weights, offset = offset,
@@ -218,7 +219,7 @@ fit_mfp <- function(x,
   
   # create mfpa object ---------------------------------------------------------
   
-  # common components for glms and cox
+  # add components to fitted model object
   fit <- modifyList(
     modelfit$fit,
     list(
@@ -595,7 +596,7 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' @return 
 #' Data.frame with overview of all fp terms. Each row represents a variable, 
 #' with rownames giving the name of the variable. Variables with acd 
-#' transformation are denoted by (A) by the `print` and `summary` methods. 
+#' transformation are prefixed by `A_` by the `print` and `summary` methods. 
 #' The data.frame comprises the following columns: 
 #' 
 #' * `df_initial`: initial degrees of freedom. 

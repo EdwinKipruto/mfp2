@@ -218,7 +218,7 @@ transform_vector_acd <- function(x,
 #' @section Column names: 
 #' Generally the original variable names are suffixed with ".i", where
 #' i enumerates the powers for a given variable in `power_list`. If a term
-#' uses an acd transformation, then the variable is prefixed with "(A)".
+#' uses an acd transformation, then the variable is prefixed with `A_`.
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.

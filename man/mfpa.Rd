@@ -164,19 +164,10 @@ print a summary of the results.
 The generic accessor function \code{coef()} can be used to extract the vector of
 coefficients from the fitted model object.
 
-An object of class \code{mfpa} is a list containing at least the following
-components:
+An object of class \code{mfpa} is a list containing all entries as for \code{glm}
+or \code{coxph}, and in addition the following entries:
 \itemize{
 \item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
-\item{coefficients: }{a named vector of coefficients.}
-\item{residuals: }{working residuals as returned by \code{\link[stats:glm]{stats::glm()}} or
-martingale residuals as returned by \code{\link[survival:coxph]{survival::coxph()}}, depending on
-\code{family}.}
-\item{family: }{either the \code{\link[stats:family]{stats::family()}} object used for families supported
-by \code{\link[stats:glm]{stats::glm()}} or "cox" for Cox proportional hazards models.}
-\item{linear.predictors: }{the vector of linear predictors, i.e. the linear fit
-on link scale. For \code{family = "cox"} this vector has been centered, see
-\code{\link[survival:predict.coxph]{survival::predict.coxph()}} for more details.}
 \item{fp_terms: }{a data.frame with information on fractional polynomial
 terms.}
 \item{transformations: }{a data.frame with information on shifting, scaling
@@ -184,9 +175,10 @@ and centering for all variables.}
 \item{fp_powers: }{a list with all powers of fractional polynomial terms.}
 \item{acd: }{a vector with information for which variables the acd
 transformation was applied.}
-\item{x: }{the scaled and shifted input matrix but without transformations.}
+\item{x_original: }{the scaled and shifted input matrix but without
+transformations.}
 \item{y: }{the original outcome variable.}
-\item{X: }{the final transformed input matrix used to fit the final model.}
+\item{x: }{the final transformed input matrix used to fit the final model.}
 }
 The \code{mfpa} object may contain further information depending on family.
 }

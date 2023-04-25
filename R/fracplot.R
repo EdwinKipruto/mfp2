@@ -81,7 +81,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   }])
   nx <- length(sepcoef[[x]])
   # select transformed x values for x of interest. Note that names of transformed
-  # variables are x.1, x.2 if FP2 and x.1 and (A)x.1 if acd. It can happen that
+  # variables are x.1, x.2 if FP2 and x.1 and A_x.1 if acd. It can happen that
   # in acd one of the variables has FP power NA so its transformed values are missing
   kk <- if (acdx[x]) {
     paste0(c(x, paste0("A_", x)), ".", c(1, 1))

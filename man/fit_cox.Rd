@@ -4,7 +4,18 @@
 \alias{fit_cox}
 \title{Function that fits Cox proportional hazards models}
 \usage{
-fit_cox(x, y, strata, weights, offset, control, method, rownames, nocenter)
+fit_cox(
+  x,
+  y,
+  strata,
+  weights,
+  offset,
+  control,
+  method,
+  rownames,
+  nocenter,
+  fast = TRUE
+)
 }
 \arguments{
 \item{x}{a matrix of predictors excluding intercept with nobs observations.}
@@ -19,6 +30,11 @@ to be included in the linear predictor during fitting.}
 
 \item{method}{a character string specifying the method for tie handling.
 See \code{\link[survival:coxph]{survival::coxph()}}.}
+
+\item{fast}{a logical which determines how the model is fitted. The default
+\code{TRUE} uses fast fitting routines (i.e. \code{\link[survival:agreg.fit]{survival::coxph.fit()}}), while
+\code{FALSE}uses the normal fitting routines (used for the final output of
+\code{mfpa}).}
 }
 \value{
 A list with the following components:
@@ -27,12 +43,9 @@ A list with the following components:
 \item \code{coefficients}: regression coefficients.
 \item \code{df}: number of parameters (degrees of freedom).
 \item \code{sse}: residual sum of squares (not used).
-\item \code{fit}: the object returned by \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.
+\item \code{fit}: the fitted model object.
 }
 }
 \description{
 Function that fits Cox proportional hazards models
-}
-\details{
-Uses \code{\link[survival:agreg.fit]{survival::coxph.fit()}} to fit the model.
 }

@@ -4,7 +4,7 @@
 \alias{fit_glm}
 \title{Function that fits generalized linear models}
 \usage{
-fit_glm(x, y, family, weights, offset)
+fit_glm(x, y, family, weights, offset, fast = TRUE)
 }
 \arguments{
 \item{x}{a matrix of predictors including intercept with nobs observations.}
@@ -18,6 +18,10 @@ in the fitting process.}
 
 \item{offset}{a numeric vector of length nobs of of a priori known component
 to be included in the linear predictor during fitting.}
+
+\item{fast}{a logical which determines how the model is fitted. The default
+\code{TRUE} uses fast fitting routines (i.e. \code{\link[stats:glm]{stats::glm.fit()}}), while \code{FALSE}
+uses the normal fitting routines (used for the final output of \code{mfpa}).}
 }
 \value{
 A list with the following components:
@@ -26,12 +30,9 @@ A list with the following components:
 \item \code{coefficients}: regression coefficients.
 \item \code{df}: number of parameters (degrees of freedom).
 \item \code{sse}: residual sum of squares.
-\item \code{fit}: the object returned by \code{\link[stats:glm]{stats::glm.fit()}}.
+\item \code{fit}: the fitted model object.
 }
 }
 \description{
 Function that fits generalized linear models
-}
-\details{
-Uses \code{\link[stats:glm]{stats::glm.fit()}} to fit the model.
 }

@@ -589,7 +589,7 @@ mfpa <- function(x,
       control = control, 
       verbose = verbose
   )
-  fit$call <- cl
+  fit$call_mfp <- cl
   
   fit
 }

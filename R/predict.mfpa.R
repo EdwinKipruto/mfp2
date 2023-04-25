@@ -3,24 +3,20 @@
 #' Obtains predictions from an `mfpa` object
 #' 
 #'@details 
-#' The fp transformation generally transforms `x` as follows. For each pi in
+#'To prepare the `newdata` for prediction, the first step is to apply any 
+#'necessary shifting and scaling based on the factors obtained from the training data. 
+#'It's important to note that if the shifting factors are not sufficiently large,
+#'variables may end up with negative values, which can cause prediction errors.
+#'The next step involves transforming the data using the selected
+#'fractional polynomial (FP) power. Once the transformation is complete, the 
+#'transformed data is passed to either `predict.glm()` or `predict.coxph()`, 
+#'depending on the chosen family of models.
 #' 
-#'@section Data processing: 
-#' An important note on data processing. Variables are shifted and scaled 
-#' before being transformed by any powers. That is to ensure positive values
-#' and reasonable scales. Note that scaling does not change the estimated 
-#' powers, see also [find_scale_factor()].
-#' 
-#' However, they are centered after transformation. 
-#' That is to ensure that the correlation between variables stay intact, 
-#' as centering before transformation would affect them. This is described
-#' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.
-#' 
-#'@param object a fitted object of class inheriting from \code{"glm", "lm", "coxph"}.
+#'@param object a fitted object of class `mfpa` which inherit from `glm`,`lm` or `coxph`.
 #'@param newdata optionally, a data frame in which to look for variables with
-#' which to predict. See predict.glm() or predict.coxph() for details
+#' which to predict. See `predict.glm()` or `predict.coxph()` for details
 #'@param type the type of prediction required.  The default is on the
-#' scale of the linear predictors. See predict.glm() or predict.coxph() for details 
+#' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for details 
 #'@param se.fit NOT NEEDED, TO DISCUSS WITH MICHAEL
 #'@param dispersion NOT NEEDED 
 #'@param terms to be discussed 
@@ -36,17 +32,19 @@ predict.mfpa = function(object, newdata=NULL, shift = NULL, scale = NULL, type =
                          reference=c("strata", "sample", "zero"),...) {
   print("hello")
   type <- match.arg(type)
-  #fam = object$family$family
-  #terms = object$terms
-  # Names of coefficients in the model used to sort newdata
-  # if(fam=="cox"){
-  #   xnames = names(object$coefficients)
-  # }else{
-  #   # Get rid of intercept
-  #   xnames = names(object$coefficients)[-1]
-  # }
+  reference <- match.arg(reference)
+  
   # Transform newdata using the FP powers from the training model
   if(!is.null(newdata)){
+    ## STEP 1: SHIFT AND SCALE NEW DATA
+    # We use shift and scaling factors from the training data
+    # and scaling factor
+    if(is.null(shift)) shift = object$transformations[,"shift"]
+    if(is.null(scale)) scale = object$transformations[,"scale"]
+    #sort newdata based on the names of shift/scale
+    newdata = newdata[, rownames(object$transformations), drop=FALSE]
+    newdata_shifted_scaled = apply(newdata, 2, function(x) apply_shift_scale(x, shift = shift, scale = scale))
+    ## STEP 2: TRANSFORM THE SHIFTED AND SCALED DATA
     # Extract the FP powers for all variables
     powers_vars= object$fp_terms
     # The first 6 columns are not important, only on power terms are needed
@@ -59,24 +57,21 @@ predict.mfpa = function(object, newdata=NULL, shift = NULL, scale = NULL, type =
     # Set names to center and acd required by transform_matix()
     center_varx = setNames(object$transformations[,"center"], rownames(object$transformations))
     acd_varx = setNames(powers_vars[,"acd"],rownames(powers_vars))
-    # shift and scale newdata. It is recommended that the user shift their data or supply shift
-    # and scaling factor
-    xx = apply(newdata, 2, function(x) apply_shift_scale(x, shift = shift, scale = scale))
     # Apply transformating to the newdata
-    newdata = data.frame(transform_matrix(xx,power_list = powers_list, center= center_varx,
+    newdata_transformed = data.frame(transform_matrix(newdata_shifted_scaled,power_list = powers_list, center= center_varx,
                                keep_x_order = T,acdx = acd_varx))
     #newdata = newdata[, xnames, drop = FALSE]
   }else{
     # Use already transformed data if newdata is not supplied. 
-    newdata = data.frame(object$x)
+    newdata_transformed = data.frame(object$x)
   }
   #newdata
   # Make predictions
   fam = object$family$family
   if(fam=="cox"){
-    predict.coxph(object = object, newdata = newdata, type = type,se.fit = se.fit,terms = terms,collapse = collapse,
+    predict.coxph(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,terms = terms,collapse = collapse,
                   reference = reference,na.action = na.action)
   }else{
-    predict.glm(object = object, newdata = newdata, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
+    predict.glm(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
 }
 }

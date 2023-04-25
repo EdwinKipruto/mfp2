@@ -90,9 +90,9 @@ predict.mfpa <- function(object, newdata=NULL, shift = NULL, scale = NULL, type 
     newdata = newdata[, xnames, drop = FALSE]
   }else{
     # Use already transformed data if newdata is not supplied. 
-    newdata = out$X[,xnames,drop = FALSE]
+    newdata = object$x[,xnames,drop = FALSE]
   }
-  newdata
+  #newdata
   # Make predictions
-  #predict.glm(object = object, newdata = newdata, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
+  predict.glm(object = object, newdata = newdata, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
 }

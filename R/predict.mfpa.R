@@ -63,8 +63,8 @@ predict.mfpa = function(object, newdata=NULL, shift = NULL, scale = NULL, type =
     # and scaling factor
     xx = apply(newdata, 2, function(x) apply_shift_scale(x, shift = shift, scale = scale))
     # Apply transformating to the newdata
-    newdata = transform_matrix(xx,power_list = powers_list, center= center_varx,
-                               keep_x_order = T,acdx = acd_varx)
+    newdata = data.frame(transform_matrix(xx,power_list = powers_list, center= center_varx,
+                               keep_x_order = T,acdx = acd_varx))
     #newdata = newdata[, xnames, drop = FALSE]
   }else{
     # Use already transformed data if newdata is not supplied. 

@@ -29,7 +29,7 @@
 #'@param reference reference for centering predictions, see details below
 #'@param ... further arguments passed to or from other methods.
 #'@method predict mfpa
-#'@export 
+#'@export predict.mfpa
 predict.mfpa = function(object, newdata=NULL, shift = NULL, scale = NULL, type = c("link", "response","terms", "lp", "risk", "expected", "survival"),
                          terms = NULL, se.fit = FALSE, 
                          dispersion = NULL, na.action = na.pass, collapse,

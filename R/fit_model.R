@@ -36,7 +36,8 @@ fit_model <- function(x,
                       strata = NULL, 
                       control = NULL,
                       rownames = NULL,
-                      nocenter = NULL) {
+                      nocenter = NULL, 
+                      fast = TRUE) {
   
   if (is.null(colnames(x)))
     colnames(x) <- colnames(x, do.NULL = FALSE)
@@ -46,25 +47,17 @@ fit_model <- function(x,
     fit <- fit_cox(
       x = x, y = y, strata = strata, weights = weights, offset = offset,
       control = control, method = method, rownames = rownames,
-      nocenter = nocenter
+      nocenter = nocenter, fast = fast
     )
   } else {
     if (is.character(family)) {
       family <- get(family, mode = "function", envir = parent.frame())
     }
     if (is.function(family)) family <- family()
-    # add 1s for intercept
-    xx <- cbind(rep(1, length(y)), x)
-    # Note that x can be NULL when fitting a NULL model
-    # (using only adjustment variable)
-    # when all FP powers estimated are NA-all variables removed
-    colnames(xx) <- if (is.null(ncol(x))) {
-      "Intercept"
-    } else {
-      c("Intercept", colnames(x))
-    }
+  
     fit <- fit_glm(
-      y = y, x = xx, family = family, weights = weights, offset = offset
+      y = y, x = x, family = family, weights = weights, offset = offset, 
+      fast = fast
     )
   }
   
@@ -98,11 +91,28 @@ fit_glm <- function(x,
                     y, 
                     family, 
                     weights, 
-                    offset) {
+                    offset, 
+                    fast = TRUE) {
 
-  fit <- stats::glm.fit(
-    x = x, y = y, family = family, weights = weights, offset = offset
-  )
+  if (fast) {
+    # add 1s for intercept
+    xx <- cbind(rep(1, length(y)), x)
+    # Note that x can be NULL when fitting a NULL model
+    # (using only adjustment variable)
+    # when all FP powers estimated are NA-all variables removed
+    colnames(xx) <- if (is.null(ncol(x))) {
+      "Intercept"
+    } else {
+      c("Intercept", colnames(x))
+    }
+    
+    fit <- stats::glm.fit(
+      x = xx, y = y, family = family, weights = weights, offset = offset
+    )  
+  } else {
+    fit <- glm(y ~ ., data = data.frame(x, y), 
+               family = family, weights = weights, offset = offset)
+  }
 
   # account for estimation of variance parameter in gaussian models
   # computation as in logLik.glm using rank

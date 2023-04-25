@@ -91,7 +91,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
     paste(rep(x, nx), 1:nx, sep = ".")
   }
   k2 <- kk[which(!is.na(pwrs[[x]]))]
-  X <- model$X[, k2, drop = F]
+  X <- model$x[, k2, drop = F]
   # calculate partial predictor: beta0 + beta^T*X or beta^T*X in case of cox
   if (family == "cox") {
     partial <- X %*% x.coefs
@@ -113,7 +113,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   # Component + residual.
   compresid <- residx + partial
   # Combine original x, partial, component, lowerci and upperci
-  xx <- cbind(model$x[, x], partial, compresid, lowerci, upperci)
+  xx <- cbind(model$x_original[, x], partial, compresid, lowerci, upperci)
   colnames(xx) <- c(x, "partial", "component", "lower", "upper")
   # order xx
   xx <- xx[order(xx[, x]), ]

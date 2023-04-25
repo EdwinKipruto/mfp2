@@ -205,12 +205,13 @@ fit_mfp <- function(x,
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
-  X <- transform_matrix(
+  x_transformed <- transform_matrix(
     x = x, power_list = powers_current, center = center, acdx = acdx
   )
 
   modelfit <- fit_model(
-    x = X, y = y, family = family, weights = weights, offset = offset,
+    x = x_transformed, y = y, 
+    family = family, weights = weights, offset = offset,
     method = method, strata = strata, control = control,
     rownames = rownames, nocenter = nocenter, fast = FALSE
   )
@@ -218,78 +219,38 @@ fit_mfp <- function(x,
   # create mfpa object ---------------------------------------------------------
   
   # common components for glms and cox
-  fit <- list(
-    convergence_mfp = converged,
-    coefficients = modelfit$fit$coefficients,
-    residuals = modelfit$fit$residuals,
-    linear.predictors = modelfit$fit$linear.predictors,
-    weights = modelfit$fit$weights,
-    prior.weights = modelfit$fit$prior.weights, 
-    df.residual = modelfit$fit$df.residual,
-    df.null = modelfit$fit$df.null,
-    X = X, 
-    # untransformed and scaled x for selected variables
-    # selected means that not all powers are NA
-    x = x[, names(powers_current[!sapply(powers_current, function(x) all(is.na(x)))]), 
-          drop = F],
-    y = y, 
-    fp_terms = create_fp_terms(powers_current, acdx,
-                               df, select, alpha, criterion),
-    transformations = data.frame(shift = shift, 
-                                 scale = scale, 
-                                 center = center),
-    fp_powers = powers_current,
-    acd = acdx
+  fit <- modifyList(
+    modelfit$fit,
+    list(
+      convergence_mfp = converged,
+      x = x_transformed, 
+      # untransformed and scaled x for selected variables
+      # selected means that not all powers are NA
+      x_original = x[, names(powers_current[!sapply(powers_current, function(x) all(is.na(x)))]), 
+            drop = F],
+      y = y, 
+      fp_terms = create_fp_terms(powers_current, acdx,
+                                 df, select, alpha, criterion),
+      transformations = data.frame(shift = shift, 
+                                   scale = scale, 
+                                   center = center),
+      fp_powers = powers_current,
+      acd = acdx
+    )
   )
   
   # expand list to conform to glm or coxph objects
-  if (family != "cox") {
-    fit <- c(
-      fit, 
-      list(
-        fitted.values = modelfit$fit$fitted.values,
-        effects = modelfit$fit$effects,
-        R = modelfit$fit$R, 
-        rank = modelfit$fit$rank,
-        qr = modelfit$fit$qr, 
-        family = modelfit$fit$family,
-        na.action = NULL,
-        deviance = modelfit$fit$deviance,
-        aic = modelfit$fit$aic,
-        null.deviance = modelfit$fit$null.deviance, 
-        prior.weights = modelfit$fit$prior.weights, 
-        df.residual = modelfit$fit$df.residual,
-        df.null = modelfit$fit$df.null
-      )
-    )
-    class(fit) <- c("mfpa", "glm", "lm")
-  } else {
-    fit <- c(
-      fit, 
-      list( 
-        family = "cox",
-        var = modelfit$fit$var, 
-        loglik = modelfit$fit$loglik,
-        score = modelfit$fit$score,
-        means = modelfit$fit$means,
-        method = modelfit$fit$method,
-        n = nrow(y),
-        nevent = sum(y[, ncol(y)]),
-        # na.action = options()$na.action, # default in coxph. 
-        fail = if (is.character(modelfit$fit)) {
-          "fail"
-        } # to work on this later-might not be correct
-      )
-    )
-    # add wald test in order to use summary.coxph()
-    # this calculation follows coxph() source code
-    nabeta <- !is.na(fit$coefficients)
-    fit$wald.test <- survival::coxph.wtest(
-      fit$var[nabeta, nabeta], fit$coefficients[nabeta],
-      control$toler.chol
-    )$test
-    class(fit) <- c("mfpa", "coxph")
-  }
+  # 
+  # # check if still necessary
+  #   # add wald test in order to use summary.coxph()
+  #   # this calculation follows coxph() source code
+  #   nabeta <- !is.na(fit$coefficients)
+  #   fit$wald.test <- survival::coxph.wtest(
+  #     fit$var[nabeta, nabeta], fit$coefficients[nabeta],
+  #     control$toler.chol
+  #   )$test
+  
+  class(fit) <- c("mfpa", class(fit))
 
   fit
 }

@@ -102,8 +102,12 @@ transform_vector_fp <- function(x,
     # center using the lower(minimum) of the two distinct values of the covariates
     # as also done in stata mfp 
     if (center) {
-      return(x - min(x))
-    } else return(x)
+      x <- x - min(x)
+      # store center as attribute as scale function does it
+      attr(x, "scaled:center") <- min(x)
+    } 
+    
+    return(x)
   } 
   
   # process input data by shifting and scaling
@@ -225,6 +229,10 @@ transform_vector_acd <- function(x,
 #' Otherwise a matrix is returned with transformed variables as named in 
 #' `power_list`. The number of columns may possibly be different to the 
 #' input matrix due to higher order FP transformations.
+#' The output matrix has an attribute "scaled:center" that provides
+#' centering values for the variables if for any variable we have
+#' `center = TRUE` (note that usually all variables are centered, or none of
+#' them).
 #' 
 #' @export
 transform_matrix <- function(x,
@@ -276,7 +284,15 @@ transform_matrix <- function(x,
     }
   }
   
-  do.call(cbind, x_trafo)
+  # create output matrix
+  res <- do.call(cbind, x_trafo)
+  
+  # also store centering values as attribute if required
+  if (any(center))
+    attr(res, "scaled:center") <- sapply(x_trafo,
+                                         function(s) attr(s, "scaled:center"))
+  
+  res
 }
 
 #' Simple function to transform vector by a single power

@@ -40,6 +40,10 @@ If all elements of \code{power_list} are \code{NA} then this function returns \c
 Otherwise a matrix is returned with transformed variables as named in
 \code{power_list}. The number of columns may possibly be different to the
 input matrix due to higher order FP transformations.
+The output matrix has an attribute "scaled:center" that provides
+centering values for the variables if for any variable we have
+\code{center = TRUE} (note that usually all variables are centered, or none of
+them).
 }
 \description{
 Function to transform each column of matrix using final FP powers or acd

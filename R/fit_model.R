@@ -175,9 +175,27 @@ fit_cox <- function(x,
       nocenter = nocenter
     )  
   } else {
+    # construct appropriate formula incorporating offset and strata terms
+    d <- data.frame(x, y)
+    f <- sprintf("y ~ %s", 
+                paste(setdiff(names(d), "y"), collapse = "+ "))
+    
+    if (any(offset != 0)) {
+      f <- paste(f, " + offset(offset_)")
+      d$offset_ <- offset
+    }
+    
+    if (!is.null(strata)) {
+      f <- paste(f, " + strata(strata_)")
+      d$strata_ <- strata
+    }
+    
+    f <- as.formula(f)
+    
     fit <- survival::coxph(
-      x = x, y = y, strata = strata, weights = weights, offset = offset,
-      control = control, method = method, rownames = rownames, resid = TRUE,
+      f, data = d, 
+      weights = weights, 
+      control = control, method = method, 
       nocenter = nocenter
     )
   }

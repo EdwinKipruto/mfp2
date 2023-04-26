@@ -8,6 +8,8 @@
 #' kinds of glms.
 deviance_gaussian <- function(rss, weights, n) {
   
+  if (any(is.null(rss), is.null(weights), is.null(n))) return(NULL)
+  
   # calculate lognormalized weights
   if (length(unique(weights)) == 1) {
     meanwts <- 0

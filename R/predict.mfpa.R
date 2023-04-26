@@ -78,30 +78,3 @@ predict.mfpa <- function(object, newdata=NULL, type = NULL,
     predict.glm(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
 }
 }
-
-##### MICHAEL CHECK THIS
-transform_and_center <- function(x,power_list,acdx, 
-                                 keep_x_order = FALSE, 
-                                 acd_parameter_list = NULL){
-  # set center to FALSE since we are interested with centered values as well
-  center <- setNames(rep(FALSE, ncol(x)), names(power_list))
-  # transform the data 
-  matx <- transform_matrix(x = x,power_list = power_list, 
-                           center = center, 
-                           acdx = acdx, 
-                           keep_x_order = keep_x_order, 
-                           acd_parameter_list = acd_parameter_list)
-  # Identify the column with at most 2 unique values
-  aa = apply(matx, 2, function(x) length(unique(x)))
-  indexx <- which(aa<=2)
-  # If binary variables exist the centered values are the minimum of the two distinct values
-  if(any(indexx)){
-    center_values <- colMeans(matx)
-    min_values <- apply(matx[,indexx,drop = FALSE], 2, min) 
-    # replace with min values
-    center_values[indexx] <- min_values
-  } else{
-    center_values <- colMeans(matx)
-  }
-  list(transformed_matrix = matx, center_values = center_values)
-}

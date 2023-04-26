@@ -179,6 +179,8 @@ transformation was applied.}
 transformations.}
 \item{y: }{the original outcome variable.}
 \item{x: }{the final transformed input matrix used to fit the final model.}
+\item{call_mfp: }{the call to the \code{mfpa()} function.}
+\item{family_string: }{the family stored as character string.}
 }
 The \code{mfpa} object may contain further information depending on family.
 }

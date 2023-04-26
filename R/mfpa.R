@@ -248,6 +248,8 @@
 #' transformations.}
 #' \item{y: }{the original outcome variable.}
 #' \item{x: }{the final transformed input matrix used to fit the final model.}
+#' \item{call_mfp: }{the call to the `mfpa()` function.}
+#' \item{family_string: }{the family stored as character string.}
 #' }
 #' The `mfpa` object may contain further information depending on family.
 #' 
@@ -589,7 +591,11 @@ mfpa <- function(x,
       control = control, 
       verbose = verbose
   )
+  
+  # add additional information to fitted object
+  # original mfpa call
   fit$call_mfp <- cl
+  fit$family_string <- family
   
   fit
 }

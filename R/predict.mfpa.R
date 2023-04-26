@@ -41,9 +41,13 @@ predict.mfpa = function(object, newdata=NULL, shift = NULL, scale = NULL, type =
     # and scaling factor
     if(is.null(shift)) shift = object$transformations[,"shift"]
     if(is.null(scale)) scale = object$transformations[,"scale"]
-    #sort newdata based on the names of shift/scale
+    #subset and sort columns of newdata based on the names of shift/scale
     newdata = newdata[, rownames(object$transformations), drop=FALSE]
-    newdata_shifted_scaled = apply(newdata, 2, function(x) apply_shift_scale(x, shift = shift, scale = scale))
+    # shift
+    newdata_shifted = sweep(newdata, 2, shift, "+")
+    # scale
+    newdata_shifted_scaled = sweep(newdata_shifted, 2, scale, "/")
+    #newdata_shifted_scaled = apply(newdata, 2, function(x) apply_shift_scale(x, shift = shift, scale = scale))
     ## STEP 2: TRANSFORM THE SHIFTED AND SCALED DATA
     # Extract the FP powers for all variables
     powers_vars= object$fp_terms

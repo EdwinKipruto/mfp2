@@ -32,7 +32,7 @@ predict.mfpa <- function(object, newdata=NULL, type = NULL,
                          reference=c("strata", "sample", "zero"),...) {
   print("hello")
   reference <- match.arg(reference)
-  if (is.null(type)) type <- ifelse(object$family_string=="cox", "lp", "link")
+  if (is.null(type)) type <- ifelse(object$family_string == "cox", "lp", "link")
   
   # Transform newdata using the FP powers from the training model
   if(!is.null(newdata)){
@@ -43,6 +43,10 @@ predict.mfpa <- function(object, newdata=NULL, type = NULL,
     newdata <- newdata[, rownames(object$transformations), drop=FALSE]
     # shift and scale
     newdata_shifted <- sweep(newdata, 2, shift, "+")
+    if (!all(newdata_shifted > 0)) 
+      warning("i After shifting using training data some values in newdata remain negative.",
+              "i Predictions for such observations will not be available.")
+    
     newdata_shifted_scaled <- sweep(newdata_shifted, 2, scale, "/")
     
     ## STEP 2: TRANSFORM THE SHIFTED AND SCALED DATA

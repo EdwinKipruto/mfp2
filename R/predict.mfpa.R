@@ -44,34 +44,38 @@ predict.mfpa <- function(object, newdata=NULL, type = NULL,
     # shift and scale
     newdata_shifted <- sweep(newdata, 2, shift, "+")
     newdata_shifted_scaled <- sweep(newdata_shifted, 2, scale, "/")
-    ## STEP 2: TRANSFORM THE SHIFTED AND SCALED DATA
-    # Extract the FP powers for all variables
-    powers_vars <- object$fp_terms
-    # The first 6 columns are not important, only on power terms are needed
-    powers_mat <- powers_vars[,-c(1:6)]
-    # transpose the powers and make a list
-    powers_mat <- t(powers_mat)
-    # Split and assign names to the powers
-    powers_list <- setNames(split(powers_mat, rep(1:ncol(powers_mat),
-                                               each = nrow(powers_mat))),
-                         colnames(powers_mat))
-    # Set names to center and acd required by transform_matix()
-    center_varx <- setNames(object$transformations[,"center"], rownames(object$transformations))
-    acd_varx <- setNames(powers_vars[,"acd"],rownames(powers_vars))
-    # Apply transformating to the newdata
-    newdata_transformed <- data.frame(transform_matrix(newdata_shifted_scaled,power_list = powers_list, center= center_varx,
-                               keep_x_order = T,acdx = acd_varx))
-    ## STEP 3: CENTER THE TRANSFORMED DATA
     
-    #newdata = newdata[, xnames, drop = FALSE]
+    ## STEP 2: TRANSFORM THE SHIFTED AND SCALED DATA
+    # Set names to center and acd required by transform_matix()
+    center_varx <- setNames(rep(FALSE, nrow(object$transformations)), 
+                            rownames(object$transformations))
+    acd_varx <- setNames(object$fp_terms[,"acd"], 
+                         rownames(object$fp_terms))
+    
+    # Apply transformating to the newdata
+    newdata_transformed <- transform_matrix(
+        newdata_shifted_scaled,
+        power_list = object$fp_powers, 
+        center = center_varx,
+        keep_x_order = T,
+        acdx = acd_varx
+    )
+    ## STEP 3: CENTER THE TRANSFORMED DATA
+    center_x <- attr(object$x, "scaled:center")
+    if (!is.null(center_x)) {
+      newdata_transformed <- scale(newdata_transformed, 
+                                   center = center_x, 
+                                   scale = FALSE)
+    }
+    
+    newdata_transformed <- data.frame(newdata_transformed)
   }else{
     # Use already transformed data if newdata is not supplied. 
     newdata_transformed <- data.frame(object$x)
   }
   #newdata
   # Make predictions
-  fam = object$family$family
-  if(fam=="cox"){
+  if(object$family_string == "cox"){
     predict.coxph(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,terms = terms,collapse = collapse,
                   reference = reference,na.action = na.action)
   }else{

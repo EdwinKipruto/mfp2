@@ -188,7 +188,8 @@ transform_vector_acd <- function(x,
 #' @param power_list a named list of FP powers to be applied to the columns of
 #' `x`. Only variables named in this list are transformed.
 #' @param center a named logical vector specifying whether the columns in `x`
-#' should be centered.
+#' should be centered. Centering will occur after transformations and will be
+#' done separately for each individual column of the transformed data matrix. 
 #' @param acdx a named logical vector specifying the use of acd transformation.
 #' @param keep_x_order a logical indicating whether the order of columns
 #' should be kept as in the input matrix `x`, of if the columns should be 
@@ -211,13 +212,13 @@ transform_vector_acd <- function(x,
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.
-#' Otherwise a matrix is returned with transformed variables as named in 
-#' `power_list`. The number of columns may possibly be different to the 
+#' Otherwise a list with two entries: the first is a matrix 
+#' with transformed variables as named in `power_list`. 
+#' The number of columns may possibly be different to the 
 #' input matrix due to higher order FP transformations.
-#' The output matrix has an attribute "scaled:center" that provides
-#' centering values for the variables if for any variable we have
-#' `center = TRUE` (note that usually all variables are centered, or none of
-#' them).
+#' The second entry stores the values used to center the variables if for any
+#' variable we have `center = TRUE` (note that usually all variables are 
+#' centered, or none of them).
 #' 
 #' @export
 transform_matrix <- function(x,
@@ -233,13 +234,13 @@ transform_matrix <- function(x,
   }
   
   # power_list, center and acdx must have names
-  if(is.null(names(power_list))) 
+  if (is.null(names(power_list))) 
     stop("! List power_list must have names.")
   
-  if(is.null(names(center))) 
+  if (is.null(names(center))) 
     stop("! Vector center must have names.")
   
-  if(is.null(names(acdx)))
+  if (is.null(names(acdx)))
     stop("! Vector acdx must have names.")
 
   if (keep_x_order)
@@ -257,27 +258,32 @@ transform_matrix <- function(x,
     if (acdx[name]) {
       # apply acd transformation
       x_trafo[[name]] <- transform_vector_acd(
-        x[, name], power = power_list[[name]], center = center[name], 
+        x[, name], power = power_list[[name]],  
         acd_parameter = acd_parameter_list[[name]], name = name
       )
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
-        x[, name], power = power_list[[name]], center = center[name], 
-        name = name
+        x[, name], power = power_list[[name]], name = name
       )
     }
   }
   
   # create output matrix
-  res <- do.call(cbind, x_trafo)
+  x_transformed <- do.call(cbind, x_trafo)
   
-  # also store centering values as attribute if required
-  if (any(center))
-    attr(res, "scaled:center") <- sapply(x_trafo,
-                                         function(s) attr(s, "scaled:center"))
+  # also center values if required
+  centers = NULL
+  if (any(center)) {
+    x_transformed <- center_matrix(x_transformed)
+    centers <- attr(x_transformed, "scaled:center")
+  }
+    
   
-  res
+  list(
+    x_transformed = x_transformed,
+    centers = centers
+  )
 }
 
 #' Simple function to transform vector by a single power
@@ -290,4 +296,35 @@ transform_vector_power <- function(x,
     return(log(x))
   
   x^power
+}
+
+#' Simple function to center data
+#' 
+#' @param mat a transformed data matrix. 
+#' 
+#' @details 
+#' Centering is done by means for continuous variables (i.e. more than 2
+#' distinct values), and the minimum for binary variables. 
+#' 
+#' It is assumed all categorical variables in the data are represented by 
+#' binary dummy variables. 
+#' 
+#' @return 
+#' Transformed data matrix. Has an attribute `scaled:center` that stores 
+#' values used for centering.
+#' 
+#' @export
+center_matrix <- function(mat) {
+  
+  center_values <- colMeans(mat) 
+  
+  # identify the column with at most 2 unique values
+  index_binary <- which(apply(mat, 2, function(x) length(unique(x))) <= 2)
+  
+  # replace the means of binary variables with the minimum 
+  if (any(index_binary)) {
+    center_values[index_binary] <- apply(mat[,index_binary, drop = FALSE], 2, min)
+  }
+  
+  scale(mat, center = center_values, scale = FALSE)
 }

@@ -205,13 +205,13 @@ fit_mfp <- function(x,
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
-  x_transformed <- transform_matrix(
+  data_transformed <- transform_matrix(
     x = x, power_list = powers_current, center = center, acdx = acdx
   )
 
   # fit model, and return full glm or coxph object
   modelfit <- fit_model(
-    x = x_transformed, y = y, 
+    x =  data_transformed$x_transformed, y = y, 
     family = family, weights = weights, offset = offset,
     method = method, strata = strata, control = control,
     rownames = rownames(x_transformed), nocenter = nocenter, fast = FALSE
@@ -223,8 +223,8 @@ fit_mfp <- function(x,
   fit <- modifyList(
     modelfit$fit,
     list(
+      centers = data_transformed$centers,
       convergence_mfp = converged,
-      x = x_transformed, 
       # untransformed and scaled x for selected variables
       # selected means that not all powers are NA
       x_original = x[, names(powers_current[!sapply(powers_current, function(x) all(is.na(x)))]), 

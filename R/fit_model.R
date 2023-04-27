@@ -112,7 +112,8 @@ fit_glm <- function(x,
     )  
   } else {
     fit <- glm(y ~ ., data = data.frame(x, y), 
-               family = family, weights = weights, offset = offset)
+               family = family, weights = weights, offset = offset, 
+               x = TRUE, y = TRUE)
   }
 
   # account for estimation of variance parameter in gaussian models
@@ -196,7 +197,8 @@ fit_cox <- function(x,
       f, data = d, 
       weights = weights, 
       control = control, method = method, 
-      nocenter = nocenter
+      nocenter = nocenter, 
+      x = TRUE, y = TRUE
     )
   }
   

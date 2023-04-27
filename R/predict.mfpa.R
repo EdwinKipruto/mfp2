@@ -26,26 +26,30 @@
 #'@param ... further arguments passed to or from other methods.
 #'@method predict mfpa
 #'@export 
-predict.mfpa <- function(object, newdata=NULL, type = NULL,
-                         terms = NULL, se.fit = FALSE, 
-                         dispersion = NULL, na.action = na.pass, collapse,
-                         reference=c("strata", "sample", "zero"),...) {
+predict.mfpa <- function(object, 
+                         newdata=NULL, 
+                         type = NULL,
+                         terms = NULL, 
+                         strata = NULL, 
+                         offset = NULL, 
+                         ...) {
   print("hello")
-  reference <- match.arg(reference)
   if (is.null(type)) type <- ifelse(object$family_string == "cox", "lp", "link")
   
+  # TODO: add checks for missing strata and offset in case they were used in fit
+  
   # Transform newdata using the FP powers from the training model
-  if(!is.null(newdata)){
+  if (!is.null(newdata)) {
     ## STEP 1: shift and scale data using using shifting and scaling factors from the training data
      shift <- object$transformations[,"shift"]
      scale <- object$transformations[,"scale"]
     #subset and sort columns of newdata based on the names of shift/scale
-    newdata <- newdata[, rownames(object$transformations), drop=FALSE]
+    newdata <- newdata[, rownames(object$transformations), drop = FALSE]
     # shift and scale
     newdata_shifted <- sweep(newdata, 2, shift, "+")
     if (!all(newdata_shifted > 0)) 
       warning("i After shifting using training data some values in newdata remain negative.",
-              "i Predictions for such observations will not be available.")
+              "i Predictions for such observations may not be available in case of non-linear transformations.")
     
     newdata_shifted_scaled <- sweep(newdata_shifted, 2, scale, "/")
     
@@ -64,25 +68,38 @@ predict.mfpa <- function(object, newdata=NULL, type = NULL,
         keep_x_order = T,
         acdx = acd_varx
     )
+    
     ## STEP 3: CENTER THE TRANSFORMED DATA
-    center_x <- attr(object$x, "scaled:center")
-    if (!is.null(center_x)) {
-      newdata_transformed <- scale(newdata_transformed, 
-                                   center = center_x, 
-                                   scale = FALSE)
+    if (!is.null(object$centers)) {
+      newdata_transformed <- center_matrix(
+        newdata_transformed$x_transformed,
+        object$centers
+      )
     }
     
     newdata_transformed <- data.frame(newdata_transformed)
-  }else{
-    # Use already transformed data if newdata is not supplied. 
-    newdata_transformed <- data.frame(object$x)
+    
+    if (object$family_string == "cox") {
+      # use of NextMethod here does not work as expected
+      
+      # add strata and offset as required
+      if (!is.null(strata))
+        newdata_transformed$strata_ = survival::strata(strata, shortlabel = TRUE)
+      
+      if (!is.null(offset))
+        newdata_transformed$offset_ = offset
+      
+      return(getFromNamespace("predict.coxph", "survival")(object = object, newdata = newdata_transformed, type = type, ...))
+    } else {
+      # TODO: offsets for glm?
+      return(stats::predict.glm(object = object, newdata = newdata_transformed, type = type, ...))
+    } 
   }
-  #newdata
-  # Make predictions
-  if(object$family_string == "cox"){
-    predict.coxph(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,terms = terms,collapse = collapse,
-                  reference = reference,na.action = na.action)
-  }else{
-    predict.glm(object = object, newdata = newdata_transformed, type = type,se.fit = se.fit,dispersion = dispersion, terms = terms, na.action = na.action)
-}
+  
+  # no newdata supplied
+  if (object$family_string == "cox") {
+    getFromNamespace("predict.coxph", "survival")(object = object, type = type, ...)
+  } else {
+    stats::predict.glm(object = object, type = type, ...)
+  }
 }

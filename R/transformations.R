@@ -8,7 +8,8 @@
 #' The fp transformation generally transforms `x` as follows. For each pi in
 #' `power` = (p1, p2, ..., pn) it creates a variable x^pi and returns the
 #' collection of variables as a matrix. It may process the data using 
-#' shifting, scaling and centering as desired. 
+#' shifting and scaling as desired. Centering has to be done after the 
+#' data is transformed using these functions, if desired. 
 #' 
 #' A special case are repeated powers, i.e. when some pi = pj. In this case, 
 #' the fp transformations are given by x^pi and x^pi * log(x). In case
@@ -28,7 +29,7 @@
 #' returned by this function will always align with the powers used
 #' throughout this package.
 #' 
-#' Binary variables are not transformed, but may only be centered. 
+#' Binary variables are not transformed. 
 #' 
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
@@ -36,10 +37,13 @@
 #' and reasonable scales. Note that scaling does not change the estimated 
 #' powers, see also [find_scale_factor()].
 #' 
-#' However, they are centered after transformation. 
+#' However, they may be centered after transformation. This is not done by
+#' these functions.
 #' That is to ensure that the correlation between variables stay intact, 
 #' as centering before transformation would affect them. This is described
 #' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.
+#' Also, centering is not recommended, and should only be done for the final
+#' model if desired.
 #' 
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
@@ -59,9 +63,6 @@
 #' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
 #' `scale` which are to be applied when using the acd transformation in 
 #' new data.
-#' @param center Specification of centering for variable using
-#' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
-#' `x - min(x)` for binary variables. Default is no centering.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
 #' 
@@ -84,7 +85,6 @@
 transform_vector_fp <- function(x, 
                                 power = 1,
                                 scale = 1, 
-                                center = FALSE, 
                                 shift = 0, 
                                 name = NULL) {
   
@@ -93,19 +93,11 @@ transform_vector_fp <- function(x,
     return(NULL)
   }
   
-  # do not transform x when it is a two level variable but center if necessary
+  # do not transform x when it is a two level variable 
   if (length(unique(x)) <= 2) {
     x <- as.matrix(x)
     if (!is.null(name))
       colnames(x) <- paste0(name, ".1")
-    
-    # center using the lower(minimum) of the two distinct values of the covariates
-    # as also done in stata mfp 
-    if (center) {
-      x <- x - min(x)
-      # store center as attribute as scale function does it
-      attr(x, "scaled:center") <- min(x)
-    } 
     
     return(x)
   } 
@@ -143,10 +135,6 @@ transform_vector_fp <- function(x,
       x_trafo[, k] <- transform_vector_power(x, power[k])
     }
   }
-
-  if (center) {
-    x_trafo <- scale(x_trafo, scale = FALSE)
-  }
   
   if (!is.null(name)) {
     colnames(x_trafo) <- paste0(name, ".", 1:ncol(x_trafo))
@@ -162,7 +150,6 @@ transform_vector_acd <- function(x,
                                  shift = 0, 
                                  powers = NULL, 
                                  scale = 1, 
-                                 center = FALSE, 
                                  acd_parameter = NULL, 
                                  name = NULL) {
   
@@ -188,11 +175,9 @@ transform_vector_acd <- function(x,
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
   # component is not used in the final result, as desired
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
-                      scale = scale, shift = shift, 
-                      center = center, name = name_acd)
+                      scale = scale, shift = shift, name = name_acd)
   x_fp <- transform_vector_fp(x = x, power = power[1],
-                              scale = scale, shift = shift,
-                              center = center, name = name)
+                              scale = scale, shift = shift, name = name)
 
   cbind(x_fp, x_acd)
 }

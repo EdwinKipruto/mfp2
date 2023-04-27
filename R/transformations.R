@@ -301,6 +301,9 @@ transform_vector_power <- function(x,
 #' Simple function to center data
 #' 
 #' @param mat a transformed data matrix. 
+#' @param centers a vector of centering values. Length must be equal to the 
+#' number of columns in `mat`. If `NULL` (default) then 
+#' centering values are determined by the function (see Details).
 #' 
 #' @details 
 #' Centering is done by means for continuous variables (i.e. more than 2
@@ -314,17 +317,19 @@ transform_vector_power <- function(x,
 #' values used for centering.
 #' 
 #' @export
-center_matrix <- function(mat) {
+center_matrix <- function(mat, centers = NULL) {
   
-  center_values <- colMeans(mat) 
-  
-  # identify the column with at most 2 unique values
-  index_binary <- which(apply(mat, 2, function(x) length(unique(x))) <= 2)
-  
-  # replace the means of binary variables with the minimum 
-  if (any(index_binary)) {
-    center_values[index_binary] <- apply(mat[,index_binary, drop = FALSE], 2, min)
+  if (is.null(centers)) {
+    centers <- colMeans(mat) 
+    
+    # identify the column with at most 2 unique values
+    index_binary <- which(apply(mat, 2, function(x) length(unique(x))) <= 2)
+    
+    # replace the means of binary variables with the minimum 
+    if (any(index_binary)) {
+      centers[index_binary] <- apply(mat[,index_binary, drop = FALSE], 2, min)
+    }
   }
   
-  scale(mat, center = center_values, scale = FALSE)
+  scale(mat, center = centers, scale = FALSE)
 }

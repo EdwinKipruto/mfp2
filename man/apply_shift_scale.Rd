@@ -4,7 +4,7 @@
 \alias{apply_shift_scale}
 \title{A function that is used to shift x values to positive values if it contains
 negative or zero values.If all values of x are positive then the original
-values of x is returned without shifting.
+values of x is returned without shifting .
 if x has already been shifted and scaled then the function does nothing}
 \usage{
 apply_shift_scale(x, scale, shift)
@@ -14,16 +14,16 @@ apply_shift_scale(x, scale, shift)
 
 \item{scale}{scaling factors for x of interest. Must be positive integers.
 Default is NULL and  scaling factors are automatically estimated using
-find_scale_factor() function else it uses user suppled scaling factors. If no scaling
-is needed just use scale = 1 because x/1 = x}
+find_scale_factor() function else it uses user supplied scaling factors. If no scaling
+is needed just use scale = 1}
 
 \item{shift}{adjustment factors required for shifting x to positive
 values. Default is NULL and adjustment factors are estimated automatically
-using Royston and Sauerbrei formula.}
+using find_shift_factor() function}
 }
 \description{
 A function that is used to shift x values to positive values if it contains
 negative or zero values.If all values of x are positive then the original
-values of x is returned without shifting.
+values of x is returned without shifting .
 if x has already been shifted and scaled then the function does nothing
 }

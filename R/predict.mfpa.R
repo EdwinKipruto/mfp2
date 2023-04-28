@@ -213,3 +213,45 @@ predict.mfpa <- function(object,
     stats::predict.glm(object = object, type = type, ...)
   }
 }
+
+#' Helper function to compute standard error of a partial predictor
+#' 
+#' To be used in [predict.mfpa()].
+#' 
+#' @param model fitted `mfpa` object.
+#' @param X input matrix with variables of interest for partial predictor.
+#' 
+#' @return 
+#' Standard error.
+calculate_standard_error <- function(model, 
+                                     X) { 
+
+  # the first column is the intercept in glm
+  vcovx <- vcov(object = model)
+  
+  # get rid of variance and covariance of intercept if any
+  xnames <- colnames(X)
+  ind <- match(xnames, colnames(vcovx))
+  vcovx1 <- vcovx[ind, ind, drop = FALSE] 
+  # accumulate variance of the partial predictor
+  v1 <- 0
+  for (i in 1:length(xnames)) {
+    for (j in 1:i) {
+      v1 <- v1 + ((j < i) + 1) * vcovx1[i, j] * X[, i] * X[, j]
+    }
+  }
+  
+  # deal with intercept
+  if (model$family_string != "cox") {
+    ind <- c(1, ind)
+    vcovx2 <- vcovx[ind, ind, drop = F]
+    v2 <- 0
+    for (i in seq_along(xnames)) {
+      # we assume intercept is in column 1 of vcov which is always the case
+      v2 <- v2 + 2 * vcovx2[1, i + 1] * X[, i]
+    }
+    v1 <- vcovx2[1, 1] + v2 + v1
+  }
+  
+  sqrt(v1)
+}

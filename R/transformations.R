@@ -71,9 +71,13 @@
 #' depends on the number of powers provided, the number of rows is equal to the
 #' length of `x`. The columns are sorted by increased power.
 #' If all powers are `NA`, then this function returns `NULL`.
-#' In case an acd transformation is applied, the acd term is returned
-#' as the last column of the matrix (i.e. in case that the power for the 
-#' normal data is `NA`, then it is the only column in the matrix). 
+#' In case an acd transformation is applied, the output is a list with two 
+#' entries. The first `acd` is the matrix of transformed variables, the acd 
+#' term is returned as the last column of the matrix (i.e. in case that the 
+#' power for the normal data is `NA`, then it is the only column in the matrix).
+#' The second entry `acd_parameter` returns a list of estimated parameters
+#' for the ACD transformation, or simply the input `acd_parameter` if it was
+#' not `NULL`.
 #' 
 #' @references 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
@@ -163,7 +167,10 @@ transform_vector_acd <- function(x,
   
   if (is.null(acd_parameter)) {
     # estimate acd(x)
-    x_acd <- fit_acd(x, powers = powers, shift = shift, scale = scale)$acd
+    acd_parameter <- fit_acd(x, powers = powers, shift = shift, scale = scale)
+    x_acd <- acd_parameter$acd
+    # no need to store acd further
+    acd_parameter$acd <- NULL
   } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
   
   name_acd <- NULL
@@ -174,11 +181,14 @@ transform_vector_acd <- function(x,
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
   # component is not used in the final result, as desired
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
-                      scale = scale, shift = shift, name = name_acd)
+                               scale = scale, shift = shift, name = name_acd)
   x_fp <- transform_vector_fp(x = x, power = power[1],
                               scale = scale, shift = shift, name = name)
 
-  cbind(x_fp, x_acd)
+  list(
+    acd = cbind(x_fp, x_acd),
+    acd_parameter = acd_parameter
+  )
 }
 
 #' Function to transform each column of matrix using final FP powers or acd
@@ -211,13 +221,15 @@ transform_vector_acd <- function(x,
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.
-#' Otherwise a list with two entries: the first is a matrix 
+#' Otherwise a list with three entries: the first `x_transformed` is a matrix 
 #' with transformed variables as named in `power_list`. 
 #' The number of columns may possibly be different to the 
 #' input matrix due to higher order FP transformations.
-#' The second entry stores the values used to center the variables if for any
-#' variable we have `center = TRUE` (note that usually all variables are 
+#' The second entry `centers` stores the values used to center the variables if
+#' for any variable `center = TRUE` (note that usually all variables are 
 #' centered, or none of them).
+#' The third entry `acd_parameter` stores a named list of estimated 
+#' `acd_parameters`. May be empty if no ACD transformation is applied.
 #' 
 #' @export
 transform_matrix <- function(x,
@@ -253,13 +265,16 @@ transform_matrix <- function(x,
   acdx <- acdx[names_vars]
 
   x_trafo = list()
+  acd_parameter = list()
   for (name in names_vars) {
     if (acdx[name]) {
       # apply acd transformation
-      x_trafo[[name]] <- transform_vector_acd(
+      acd <- transform_vector_acd(
         x[, name], power = power_list[[name]],  
         acd_parameter = acd_parameter_list[[name]], name = name
       )
+      x_trafo[[name]] <- acd$acd
+      acd_parameter[[name]] <- acd$acd_parameter
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
@@ -277,11 +292,11 @@ transform_matrix <- function(x,
     x_transformed <- center_matrix(x_transformed)
     centers <- attr(x_transformed, "scaled:center")
   }
-    
   
   list(
     x_transformed = x_transformed,
-    centers = centers
+    centers = centers,
+    acd_parameter = acd_parameter
   )
 }
 

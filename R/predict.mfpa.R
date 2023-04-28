@@ -111,7 +111,8 @@ predict.mfpa <- function(object,
           x_seq, 
           power_list = object$fp_powers[t], 
           acdx = setNames(object$fp_terms[t, "acd"], t), 
-          center = setNames(c(FALSE), t)
+          center = setNames(c(FALSE), t),
+          acd_parameter_list = object$acd_parameter
         )$x_transformed
         
         if (!is.null(object$centers))

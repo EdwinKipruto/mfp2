@@ -312,6 +312,12 @@ mfpa <- function(x,
   ties <- match.arg(ties)
   
   # assertions -----------------------------------------------------------------
+  if(!is.matrix(x))
+    stop("x must be a matrix")
+  if(any(is.character(x)))
+    stop("Characters values not allowed in x. convert categorical variables to 
+         dummy variables using the model.matrix() function")
+  
   # assert dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])

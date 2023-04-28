@@ -1,13 +1,13 @@
 #' Plot response functions from a fitted `mfpa` object
 #'
-#' Plots partial linear predictors against the selected covariate(s) of 
-#' interest, including a confidence interval.
+#' Plots the partial linear predictors with confidence limits 
+#' against the selected covariate(s) of interest. 
 #'
 #' @param model fitted `mfpa` model.
 #' @param terms character vector with variable names to be plotted.
 #' @param partial_only a logical value indicating whether only the partial 
-#' predictor is drawn (`TRUE`), or also observed data points (`FALSE`, the 
-#' default). See below for details. 
+#' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
+#' (`FALSE`, the default). See below for details. 
 #' @param terms_seq `terms_seq` argument of [predict.mfpa()].
 #' @param terms_alpha `terms_alpha` argument of [predict.mfpa()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
@@ -18,9 +18,12 @@
 #' interval.
 #' 
 #' @details 
-#' The data points are computed as the partial linear predictors plus residuals
-#' extracted from the fitted model (deviance residuals for glms, and martingale
-#' residuals for Cox models), following the mfp implementation in Stata.
+#' The confidence limits of the partial linear predictors are obtained from the
+#' variance–covariance matrix of the entire model, which takes into account the
+#' uncertainty in estimating the model parameters but not the FP powers. The
+#' component-plus-residual, is the partial linear predictor plus residuals, where 
+#' deviance residuals are used in generalized linear regression models, while 
+#' martingale residuals are used in Cox models, as done in Stata program.
 #' 
 #' @return 
 #' A list of `ggplot2` plot objects, one for each term requested. Can be 

@@ -666,6 +666,21 @@ print.mfpa <- function(x,
   NextMethod("print", x)
 }
 
+#' Helper function to extract selected variables from fitted `mfpa` object
+#' 
+#' Simply extracts all variables for which not all powers are estimated to 
+#' be `NA`. The names refer to the original names in the dataset and do not
+#' include transformations.
+#' 
+#' @return 
+#' Character vector of names, ordered as defined by `xorder` in [mfpa()].
+#' 
+#' @export
+get_selected_variable_names <- function(object) {
+  nms <- rownames(object$fp_terms)
+  nms[object$fp_terms[, "selected"]]
+}
+
 #' Helper to assign degrees of freedom
 #' 
 #' Determine the number of unique values in a variable. To be used in [mfpa()].

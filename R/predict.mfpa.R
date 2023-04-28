@@ -66,7 +66,7 @@
 #' @method predict mfpa
 #' @export 
 predict.mfpa <- function(object, 
-                         newdata=NULL, 
+                         newdata = NULL, 
                          type = NULL,
                          terms = NULL,
                          terms_seq = c("equidistant", "data"),
@@ -150,9 +150,10 @@ predict.mfpa <- function(object,
   
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
+    newdata <- as.matrix(newdata)
+    
     # step 1: shift and scale data using using shifting and scaling factors 
-    # from the training data
-    # 
+    # from the training data 
     # subset and sort columns of newdata based on the names of shift/scale
     newdata <- newdata[, rownames(object$transformations), drop = FALSE]
     newdata <- sweep(newdata, 2, object$transformations[,"shift"], "+")
@@ -165,7 +166,7 @@ predict.mfpa <- function(object,
     
     # step 2: transform the shifted and scaled data
     # do not center in this step
-    newdata_transformed <- transform_matrix(
+    newdata <- transform_matrix(
       newdata,
       power_list = object$fp_powers, 
       center = setNames(rep(FALSE, nrow(object$transformations)), 
@@ -173,14 +174,11 @@ predict.mfpa <- function(object,
       keep_x_order = TRUE,
       acdx = setNames(object$fp_terms[,"acd"], 
                       rownames(object$fp_terms))
-    )
+    )$x_transformed
     
     # step 3: center the transformed data
     if (!is.null(object$centers)) {
-      newdata <- center_matrix(
-        newdata_transformed$x_transformed,
-        object$centers
-      )
+      newdata <- center_matrix(newdata, object$centers)
     }
     
     newdata <- data.frame(newdata)

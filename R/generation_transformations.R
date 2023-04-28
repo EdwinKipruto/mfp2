@@ -63,7 +63,7 @@ generate_transformations_acd <- function(x,
   # Save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
   for (i in seq_len(nfp)) {
-    fpdt[[i]] <- transform_vector_acd(x = x, power = combs[i, ])
+    fpdt[[i]] <- transform_vector_acd(x = x, power = combs[i, ])$acd
   }
   
   list(

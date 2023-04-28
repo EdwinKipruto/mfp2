@@ -50,9 +50,13 @@ Returns a matrix of transformed variable(s). The number of columns
 depends on the number of powers provided, the number of rows is equal to the
 length of \code{x}. The columns are sorted by increased power.
 If all powers are \code{NA}, then this function returns \code{NULL}.
-In case an acd transformation is applied, the acd term is returned
-as the last column of the matrix (i.e. in case that the power for the
-normal data is \code{NA}, then it is the only column in the matrix).
+In case an acd transformation is applied, the output is a list with two
+entries. The first \code{acd} is the matrix of transformed variables, the acd
+term is returned as the last column of the matrix (i.e. in case that the
+power for the normal data is \code{NA}, then it is the only column in the matrix).
+The second entry \code{acd_parameter} returns a list of estimated parameters
+for the ACD transformation, or simply the input \code{acd_parameter} if it was
+not \code{NULL}.
 }
 \description{
 These functions generate fractional polynomials for a variable similar to
@@ -88,9 +92,9 @@ Binary variables are not transformed.
 }
 \section{Functions}{
 \itemize{
-\item \code{transform_vector_acd}: Function to generate acd transformation.
-}}
+\item \code{transform_vector_acd()}: Function to generate acd transformation.
 
+}}
 \section{Data processing}{
 
 An important note on data processing. Variables are shifted and scaled

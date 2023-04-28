@@ -225,6 +225,7 @@ fit_mfp <- function(x,
     modelfit$fit,
     list(
       centers = data_transformed$centers,
+      acd_parameter = data_transformed$acd_parameter,
       convergence_mfp = converged,
       # untransformed and scaled x for selected variables
       # selected means that not all powers are NA

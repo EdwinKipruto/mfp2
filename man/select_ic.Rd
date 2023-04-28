@@ -93,9 +93,9 @@ this function will not exclude it from the model (by setting its power to
 }
 \section{Functions}{
 \itemize{
-\item \code{select_ic_acd}: Function to select ACD based transformation.
-}}
+\item \code{select_ic_acd()}: Function to select ACD based transformation.
 
+}}
 \seealso{
 \code{\link[=select_ra2]{select_ra2()}}
 }

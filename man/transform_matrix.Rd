@@ -38,13 +38,15 @@ parameters for the acd transformations are to be estimated.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.
-Otherwise a list with two entries: the first is a matrix
+Otherwise a list with three entries: the first \code{x_transformed} is a matrix
 with transformed variables as named in \code{power_list}.
 The number of columns may possibly be different to the
 input matrix due to higher order FP transformations.
-The second entry stores the values used to center the variables if for any
-variable we have \code{center = TRUE} (note that usually all variables are
+The second entry \code{centers} stores the values used to center the variables if
+for any variable \code{center = TRUE} (note that usually all variables are
 centered, or none of them).
+The third entry \code{acd_parameter} stores a named list of estimated
+\code{acd_parameters}. May be empty if no ACD transformation is applied.
 }
 \description{
 Function to transform each column of matrix using final FP powers or acd

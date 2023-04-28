@@ -17,8 +17,8 @@ Function for verbose printing of function selection procedure (FSP)
 }
 \section{Functions}{
 \itemize{
-\item \code{print_mfp_pvalue_step}: Helper for verbose printing based on p-value.
+\item \code{print_mfp_pvalue_step()}: Helper for verbose printing based on p-value.
 
-\item \code{print_mfp_ic_step}: Helper for verbose printing based on information criterion.
+\item \code{print_mfp_ic_step()}: Helper for verbose printing based on information criterion.
+
 }}
-

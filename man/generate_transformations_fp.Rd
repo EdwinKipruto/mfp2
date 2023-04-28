@@ -50,6 +50,6 @@ the power is set to 1 (linear).
 }
 \section{Functions}{
 \itemize{
-\item \code{generate_transformations_acd}: Function to generate acd transformations.
-}}
+\item \code{generate_transformations_acd()}: Function to generate acd transformations.
 
+}}

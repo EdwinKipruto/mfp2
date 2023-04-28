@@ -1221,7 +1221,7 @@ transform_data_step <- function(x,
         data_adj[[i]] <- transform_vector_acd(
           x = x_adj[, i, drop = TRUE], power = powers_adj[[i]],
           powers = powers
-        )
+        )$acd
       } else {
         data_adj[[i]] <- transform_vector_fp(
           x = x_adj[, i, drop = TRUE], power = powers_adj[[i]]

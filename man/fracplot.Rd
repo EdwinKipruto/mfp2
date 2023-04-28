@@ -2,68 +2,68 @@
 % Please edit documentation in R/fracplot.R
 \name{fracplot}
 \alias{fracplot}
-\title{plot data and fit from fractional polynomial model}
+\alias{plot_mfp}
+\title{Plot response functions from a fitted \code{mfpa} object}
 \usage{
 fracplot(
   model,
-  x,
-  plotype = c("ggplot", "rplot"),
-  partials = F,
-  col.points = "gray",
-  title = NULL,
-  ylim = NULL,
-  col.line = "red",
-  pch = 16,
-  size = 2,
-  lty = 1,
-  cex = 1,
-  ylab = NULL,
-  xlab = NULL,
-  fill = "gray",
-  alpha = 0.3,
-  ...
+  terms = NULL,
+  partial_only = FALSE,
+  terms_seq = "data",
+  terms_alpha = 0.05,
+  color_points = "#AAAAAA",
+  color_line = "#000000",
+  color_fill = "#000000",
+  shape = 1,
+  size_points = 1,
+  linetype = "solid",
+  linewidth = 1,
+  alpha_fill = 0.1
 )
+
+plot_mfp(...)
 }
 \arguments{
-\item{model}{mfpa model}
+\item{model}{fitted \code{mfpa} model.}
 
-\item{x}{variable name to be plotted.}
+\item{terms}{character vector with variable names to be plotted.}
 
-\item{plotype}{selects which graphics engine to use to generate the
-fractional polynomial plot. Either 'ggplot' or 'rplot'. Default is "ggplot"}
+\item{partial_only}{a logical value indicating whether only the partial
+predictor is drawn (\code{TRUE}), or also observed data points (\code{FALSE}, the
+default). See below for details.}
 
-\item{partials}{produces component-plus-residual plots of the continuous variables when set to TRUE otherwise
-partial predictor would be produced. Default is TRUE}
+\item{terms_seq}{\code{terms_seq} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
 
-\item{col.points}{The color of the data points when component-plus-residual plot is generated}
+\item{terms_alpha}{\code{terms_alpha} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
 
-\item{title}{The title of the plot}
+\item{color_line, linetype, linewidth}{\code{ggplot2} properties of line for
+partial predictor.}
 
-\item{col.line}{The color of the partial predictor line}
+\item{color_fill, alpha_fill}{\code{ggplot2} properties of ribbon for confidence
+interval.}
 
-\item{size, cex}{line width of the partial predictor and the size of the points
-when component-plus-residual plot is generated}
-
-\item{ylab, xlab, pch}{other graphical parameters}
-
-\item{fill}{the color for confidence interval}
-
-\item{alpha}{refers to the opacity of the confidence interval.
-Values of alpha range from 0 to 1, with lower values corresponding to more
-transparent colors. See ggplot2
-\subsection{Details on \code{plotype} option}{
-
-Selects which graphics engine to use to generate the
-fractional polynomial plot. Either 'ggplot' or 'rplot'. Default is "ggplot"
-
-For Cox models, the response should preferably be a \code{Surv} object,
-created by the \code{Surv()} function in \pkg{survival} package and the \code{family = cox}. Only
-right-censored data are currently supported. To fit stratified Cox
-models, strata option can be used.
-}}
+\item{shape, size_points, color_points}{\code{ggplot2} properties of drawn
+data points.}
+}
+\value{
+A list of \code{ggplot2} plot objects, one for each term requested. Can be
+drawn as individual plots of facetted / combined easily using e.g.
+\code{patchwork::wrap_plots} and further customized.
 }
 \description{
-plots the data and fit, with 95\% confidence limits, from the fractional
-polynomial (FP) model. The data and fit are plotted against the selected covariate of
-interest.
+Plots partial linear predictors against the selected covariate(s) of
+interest, including a confidence interval.
+}
+\details{
+The data points are computed as the partial linear predictors plus residuals
+extracted from the fitted model (deviance residuals for glms, and martingale
+residuals for Cox models), following the mfp implementation in Stata.
+}
+\section{Functions}{
+\itemize{
+\item \code{plot_mfp()}: Alias for fracplot.
+
+}}
+\seealso{
+\code{\link[=predict.mfpa]{predict.mfpa()}}
 }

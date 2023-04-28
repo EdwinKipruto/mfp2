@@ -92,9 +92,9 @@ Binary variables are not transformed.
 }
 \section{Functions}{
 \itemize{
-\item \code{transform_vector_acd}: Function to generate acd transformation.
-}}
+\item \code{transform_vector_acd()}: Function to generate acd transformation.
 
+}}
 \section{Data processing}{
 
 An important note on data processing. Variables are shifted and scaled

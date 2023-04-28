@@ -46,6 +46,6 @@ than two are not supported.
 }
 \section{Functions}{
 \itemize{
-\item \code{generate_powers_acd}: Function to generate acd powers.
-}}
+\item \code{generate_powers_acd()}: Function to generate acd powers.
 
+}}

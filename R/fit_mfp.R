@@ -557,7 +557,8 @@ calculate_df <- function(p) {
     df <- 0
   } else {
     # Remove NAs in powers (2,NA) or (NA,1) etc. Happens because of acd
-    p <- p[!is.na(p)]
+    # make sure to drop names by using as.numeric
+    p <- as.numeric(p[!is.na(p)])
     # df of linear function
     if (identical(p, 1)) {
       df <- 1

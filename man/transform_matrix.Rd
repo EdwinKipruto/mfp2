@@ -20,7 +20,8 @@ transform_matrix(
 \code{x}. Only variables named in this list are transformed.}
 
 \item{center}{a named logical vector specifying whether the columns in \code{x}
-should be centered.}
+should be centered. Centering will occur after transformations and will be
+done separately for each individual column of the transformed data matrix.}
 
 \item{acdx}{a named logical vector specifying the use of acd transformation.}
 
@@ -37,13 +38,13 @@ parameters for the acd transformations are to be estimated.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.
-Otherwise a matrix is returned with transformed variables as named in
-\code{power_list}. The number of columns may possibly be different to the
+Otherwise a list with two entries: the first is a matrix
+with transformed variables as named in \code{power_list}.
+The number of columns may possibly be different to the
 input matrix due to higher order FP transformations.
-The output matrix has an attribute "scaled:center" that provides
-centering values for the variables if for any variable we have
-\code{center = TRUE} (note that usually all variables are centered, or none of
-them).
+The second entry stores the values used to center the variables if for any
+variable we have \code{center = TRUE} (note that usually all variables are
+centered, or none of them).
 }
 \description{
 Function to transform each column of matrix using final FP powers or acd

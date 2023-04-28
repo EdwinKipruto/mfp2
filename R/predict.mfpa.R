@@ -33,17 +33,82 @@ predict.mfpa <- function(object,
                          newdata=NULL, 
                          type = NULL,
                          terms = NULL,
+                         terms_seq = c("equidistant", "data"),
+                         terms_alpha = 0.05,
                          strata = NULL, 
                          offset = NULL, 
                          ...) {
-  print("hello")
+  
+  # set defaults and match arguments
   if (is.null(type)) 
     type <- ifelse(object$family_string == "cox", "lp", "link")
+  
+  if (is.null(terms))
+    terms <- get_selected_variable_names(object)
+  
+  terms_seq <- match.arg(terms_seq)
   
   # TODO: add checks for missing strata and offset in case they were used in fit
   
   if (type == "terms") {
+    terms <- intersect(terms, get_selected_variable_names(object))
     
+    res_terms <- list()
+    for (t in terms) {
+      
+      # define sequence of variable data as named list
+      # TODO: definition of sequence should be more flexible
+      if (terms_seq == "equidistant") {
+        x_range <- range(object$x_original[, t])
+        x_seq  <- matrix(
+          seq(x_range[1], x_range[2], length.out = 100),
+          ncol = 1
+        )
+        colnames(x_seq) <- t
+      } else {
+        # use data
+        x_seq <- object$x_original[, t, drop = FALSE]
+      }
+      
+      # transform and center if required
+      if (terms_seq != "data") {
+        # center after transformation using fitted centers
+        x_trafo <- transform_matrix(
+          x_seq, 
+          power_list = object$fp_powers[t], 
+          acdx = setNames(object$fp_terms[t, "acd"], t), 
+          center = setNames(c(FALSE), t)
+        )$x_transformed
+        
+        if (!is.null(object$centers))
+          x_trafo <- center_matrix(x_trafo,
+                                   object$centers[colnames(x_trafo)])
+      } else {
+        # use data directly
+        x_trafo <- object$x[, names(object$fp_powers[[t]]), drop = FALSE]
+      }
+      
+      term_coef <- coef(object)[colnames(x_trafo)]
+      
+      # create output data.frame
+      intercept = coef(object)["(Intercept)"]
+      if (is.na(intercept)) 
+        intercept = 0
+      
+      res <- data.frame(
+        variable = as.numeric(x_seq),
+        contrast = x_trafo %*% term_coef + intercept
+      )
+      res$se <- calculate_standard_error(object, x_trafo)
+      mult <- qnorm(1 - (terms_alpha / 2))
+      res$lower <- res$contrast - mult * res$se
+      res$upper <- res$contrast + mult * res$se
+      
+      res_terms[[t]] <- res
+    }
+    names(res_terms) <- terms
+    
+    return(res_terms)
   }
   
   # transform newdata using the FP powers from the training model

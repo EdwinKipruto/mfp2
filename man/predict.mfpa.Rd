@@ -9,47 +9,82 @@
   newdata = NULL,
   type = NULL,
   terms = NULL,
-  se.fit = FALSE,
-  dispersion = NULL,
-  na.action = na.pass,
-  collapse,
-  reference = c("strata", "sample", "zero"),
+  terms_seq = c("equidistant", "data"),
+  terms_alpha = 0.05,
+  strata = NULL,
+  offset = NULL,
   ...
 )
 }
 \arguments{
-\item{object}{a fitted object of class \code{mfpa} which inherit from \code{glm},\code{lm} or \code{coxph}.}
+\item{object}{a fitted object of class \code{mfpa}.}
 
-\item{newdata}{optionally, a data frame in which to look for variables with
-which to predict. See \code{predict.glm()} or \code{predict.coxph()} for details}
+\item{newdata}{optionally, a matrix with column names in which to look for
+variables with which to predict. See \code{\link[=mfpa]{mfpa()}} for details.}
 
 \item{type}{the type of prediction required.  The default is on the
-scale of the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for details}
+scale of the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for
+details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.}
 
-\item{terms}{to be discussed}
+\item{terms}{a character vector of variable names specifying for which
+variables term predictions are desired. Only used in case \code{type = "terms"}.
+If \code{NULL} (the default) then all selected variables in the final model will
+be used. In any case, only variables used in the final model are used, even
+if more variable names are passed.}
 
-\item{se.fit}{NOT NEEDED, TO DISCUSS WITH MICHAEL}
+\item{terms_seq}{a character string specifying how the range of variable
+values for term predictions are handled. The default \code{equidistant} resamples
+the data range to 100 equidistant points to properly show the functional
+form estimated in the final model.
+The option \code{data} uses the observed data values directly, but these may not
+adequately reflect the functional form (e.g. when influential points are
+present).}
 
-\item{dispersion}{NOT NEEDED}
+\item{terms_alpha}{significance level used for computations of confidence
+intervals in terms prediction.}
 
-\item{na.action}{function determining what should be done with missing values in newdata. The default is to predict NA.}
+\item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
+}
+\value{
+For any \code{type} other than \code{"terms"} the output conforms to the output
+of \code{predict.glm()} or \code{predict.coxph()}.
 
-\item{collapse}{optional vector of subject identifiers. If specified, the output will contain one entry per subject rather than one entry per observation.}
-
-\item{reference}{reference for centering predictions, see details below}
-
-\item{...}{further arguments passed to or from other methods.}
+If \code{type = "terms"}, then a named list with entries for each variable
+requested in \code{terms} (excluding those not present in the final model).
+Each entry is a \code{data.frame} with the following columns:
+\itemize{
+\item \code{variable}: variable values (shifted, scaled and centered as required).
+\item \code{contrast}: partial linear predictor.
+\item \code{se}: standard error of partial linear predictor.
+\item \code{lower}: lower limit of confidence interval.
+\item \code{upper}: upper limit of confidence interval.
+}
 }
 \description{
-Obtains predictions from an \code{mfpa} object
+Obtains predictions from an \code{mfpa} object.
 }
 \details{
-To prepare the \code{newdata} for prediction, the first step is to apply any
-necessary shifting and scaling based on the factors obtained from the training data.
-It's important to note that if the shifting factors are not sufficiently large,
-variables may end up with negative values, which can cause prediction errors.
+To prepare the \code{newdata} for prediction, this function applies any
+necessary shifting and scaling based on the factors obtained from the
+training data.
+It is important to note that if the shifting factors are not sufficiently
+large as estimated from the training data, variables in \code{newdata} may end up
+with negative values, which can cause prediction errors if non-linear
+functional forms are used. A warning is given in this case by the function.
 The next step involves transforming the data using the selected
 fractional polynomial (FP) power. Once the transformation is complete, the
 transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
 depending on the chosen family of models.
+}
+\section{Terms prediction}{
+
+This function allows to compute the partial linear predictors, or contrasts,
+for each variable selected into the final model if \code{type = "terms"}. Note
+that the results returned from this function are different to both
+\code{predict.glm()} and \code{predict.coxph()} since these functions do not take
+into account that a single variable may be represented by multiple terms.
+}
+
+\seealso{
+\code{\link[=mfpa]{mfpa()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}}, \code{\link[survival:predict.coxph]{survival::predict.coxph()}}
 }

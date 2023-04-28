@@ -1,34 +1,68 @@
 #' Predict Method for `mfpa` Fits
 #' 
-#' Obtains predictions from an `mfpa` object
+#' Obtains predictions from an `mfpa` object.
 #' 
-#'@details 
-#'To prepare the `newdata` for prediction, the first step is to apply any 
-#'necessary shifting and scaling based on the factors obtained from the training data. 
-#'It's important to note that if the shifting factors are not sufficiently large,
-#'variables may end up with negative values, which can cause prediction errors.
-#'The next step involves transforming the data using the selected
-#'fractional polynomial (FP) power. Once the transformation is complete, the 
-#'transformed data is passed to either `predict.glm()` or `predict.coxph()`, 
-#'depending on the chosen family of models.
+#' @details 
+#' To prepare the `newdata` for prediction, this function applies any 
+#' necessary shifting and scaling based on the factors obtained from the
+#' training data. 
+#' It is important to note that if the shifting factors are not sufficiently 
+#' large as estimated from the training data, variables in `newdata` may end up
+#' with negative values, which can cause prediction errors if non-linear 
+#' functional forms are used. A warning is given in this case by the function.
+#' The next step involves transforming the data using the selected
+#' fractional polynomial (FP) power. Once the transformation is complete, the 
+#' transformed data is passed to either `predict.glm()` or `predict.coxph()`, 
+#' depending on the chosen family of models.
 #'
-#' TODO: document behaviour of terms, if terms for glm are desired use
-#' predict.glm directly...
+#' @section Terms prediction:
+#' This function allows to compute the partial linear predictors, or contrasts,
+#' for each variable selected into the final model if `type = "terms"`. Note 
+#' that the results returned from this function are different to both
+#' `predict.glm()` and `predict.coxph()` since these functions do not take
+#' into account that a single variable may be represented by multiple terms.
 #' 
-#'@param object a fitted object of class `mfpa` which inherit from `glm`,`lm` or `coxph`.
-#'@param newdata optionally, a data frame in which to look for variables with
-#' which to predict. See `predict.glm()` or `predict.coxph()` for details
-#'@param type the type of prediction required.  The default is on the
-#' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for details 
-#'@param se.fit NOT NEEDED, TO DISCUSS WITH MICHAEL
-#'@param dispersion NOT NEEDED 
-#'@param terms to be discussed 
-#'@param na.action function determining what should be done with missing values in newdata. The default is to predict NA. 
-#'@param collapse optional vector of subject identifiers. If specified, the output will contain one entry per subject rather than one entry per observation.
-#'@param reference reference for centering predictions, see details below
-#'@param ... further arguments passed to or from other methods.
-#'@method predict mfpa
-#'@export 
+#' @param object a fitted object of class `mfpa`.
+#' @param newdata optionally, a matrix with column names in which to look for 
+#' variables with which to predict. See [mfpa()] for details.
+#' @param type the type of prediction required.  The default is on the
+#' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for
+#' details. In case `type = "terms"`, see the Section on `Terms prediction`.
+#' @param terms a character vector of variable names specifying for which 
+#' variables term predictions are desired. Only used in case `type = "terms"`.
+#' If `NULL` (the default) then all selected variables in the final model will 
+#' be used. In any case, only variables used in the final model are used, even
+#' if more variable names are passed.
+#' @param terms_seq a character string specifying how the range of variable 
+#' values for term predictions are handled. The default `equidistant` resamples
+#' the data range to 100 equidistant points to properly show the functional 
+#' form estimated in the final model. 
+#' The option `data` uses the observed data values directly, but these may not 
+#' adequately reflect the functional form (e.g. when influential points are
+#' present).
+#' @param terms_alpha significance level used for computations of confidence
+#' intervals in terms prediction.
+#' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
+#' 
+#' @return 
+#' For any `type` other than `"terms"` the output conforms to the output
+#' of `predict.glm()` or `predict.coxph()`.
+#' 
+#' If `type = "terms"`, then a named list with entries for each variable
+#' requested in `terms` (excluding those not present in the final model).
+#' Each entry is a `data.frame` with the following columns:
+#' 
+#' * `variable`: variable values (shifted, scaled and centered as required).
+#' * `contrast`: partial linear predictor.
+#' * `se`: standard error of partial linear predictor.
+#' * `lower`: lower limit of confidence interval.
+#' * `upper`: upper limit of confidence interval.
+#' 
+#' @seealso 
+#' [mfpa()], [stats::predict.glm()], [survival::predict.coxph()]
+#' 
+#' @method predict mfpa
+#' @export 
 predict.mfpa <- function(object, 
                          newdata=NULL, 
                          type = NULL,

@@ -172,7 +172,9 @@ or \code{coxph}, and in addition the following entries:
 terms.}
 \item{transformations: }{a data.frame with information on shifting, scaling
 and centering for all variables.}
-\item{fp_powers: }{a list with all powers of fractional polynomial terms.}
+\item{fp_powers: }{a list with all powers of fractional polynomial terms.
+Each entry of the list is named according to the transformation of the
+variable.}
 \item{acd: }{a vector with information for which variables the acd
 transformation was applied.}
 \item{x_original: }{the scaled and shifted input matrix but without

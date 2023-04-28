@@ -68,9 +68,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   # strip the names of the variables by getting rid of dot extension
   varnamesx <- unlist(lapply(strsplit(c(names(model$coefficients)), "[.]"), `[[`, 1))
   # Get rid of "A" in acd variables such that FP2 variables or FP1 with acd are put together
-  varnamesx <- unlist(strsplit(varnamesx, "[()]"))
-  varnamesx <- varnamesx[varnamesx != ""]
-  varnamesx <- varnamesx[varnamesx != "A"]
+  varnamesx <- gsub(pattern = "A_", replacement = "", varnamesx)
   # Rename coefficients such that FP2 have the same name
   coefx <- setNames(model$coefficients, varnamesx)
   # converts coefx to a list for easy identification of coefficients of x of interest
@@ -79,19 +77,19 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   x.coefs <- unlist(sepcoef[if (family == "cox") {
     x
   } else {
-    c("Intercept", x)
+    c("(Intercept)", x)
   }])
   nx <- length(sepcoef[[x]])
   # select transformed x values for x of interest. Note that names of transformed
-  # variables are x.1, x.2 if FP2 and x.1 and (A)x.1 if acd. It can happen that
+  # variables are x.1, x.2 if FP2 and x.1 and A_x.1 if acd. It can happen that
   # in acd one of the variables has FP power NA so its transformed values are missing
   kk <- if (acdx[x]) {
-    paste0(c(x, paste0("(A)", x)), ".", c(1, 1))
+    paste0(c(x, paste0("A_", x)), ".", c(1, 1))
   } else {
     paste(rep(x, nx), 1:nx, sep = ".")
   }
   k2 <- kk[which(!is.na(pwrs[[x]]))]
-  X <- model$X[, k2, drop = F]
+  X <- model$x[, k2, drop = F]
   # calculate partial predictor: beta0 + beta^T*X or beta^T*X in case of cox
   if (family == "cox") {
     partial <- X %*% x.coefs
@@ -113,7 +111,7 @@ fracplot <- function(model, x, plotype = c("ggplot", "rplot"), partials = F, col
   # Component + residual.
   compresid <- residx + partial
   # Combine original x, partial, component, lowerci and upperci
-  xx <- cbind(model$x[, x], partial, compresid, lowerci, upperci)
+  xx <- cbind(model$x_original[, x], partial, compresid, lowerci, upperci)
   colnames(xx) <- c(x, "partial", "component", "lower", "upper")
   # order xx
   xx <- xx[order(xx[, x]), ]

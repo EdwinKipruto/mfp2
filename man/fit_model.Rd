@@ -14,7 +14,8 @@ fit_model(
   strata = NULL,
   control = NULL,
   rownames = NULL,
-  nocenter = NULL
+  nocenter = NULL,
+  fast = TRUE
 )
 }
 \arguments{
@@ -32,7 +33,9 @@ for Cox models.}
 See \code{\link[survival:coxph]{survival::coxph()}}.}
 
 \item{strata, control, weights, offset, rownames, nocenter}{parameters for Cox
-model. See \code{\link[survival:coxph]{survival::coxph()}} for details.
+model. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+
+\item{fast}{passed to \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
 
 @return
 A list with the following components:
@@ -45,7 +48,7 @@ A list with the following components:
 }}
 }
 \description{
-Fits generalized linear models and cox proportional hazard models.
+Fits generalized linear models and Cox proportional hazard models.
 }
 \details{
 Computations rely on \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.

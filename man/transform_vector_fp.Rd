@@ -5,14 +5,7 @@
 \alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
-transform_vector_fp(
-  x,
-  power = 1,
-  scale = 1,
-  center = FALSE,
-  shift = 0,
-  name = NULL
-)
+transform_vector_fp(x, power = 1, scale = 1, shift = 0, name = NULL)
 
 transform_vector_acd(
   x,
@@ -20,7 +13,6 @@ transform_vector_acd(
   shift = 0,
   powers = NULL,
   scale = 1,
-  center = FALSE,
   acd_parameter = NULL,
   name = NULL
 )
@@ -38,10 +30,6 @@ FP.}
 or \code{NULL}. Default is 1, meaning no scaling is applied.
 If \code{NULL}, then scaling factors are automatically estimated by the
 program.}
-
-\item{center}{Specification of centering for variable using
-the mean i.e. \code{f(x) - mean(f(x))} for continuous variables and
-\code{x - min(x)} for binary variables. Default is no centering.}
 
 \item{shift}{shift required for shifting x to positive values. Default is 0,
 meaning no shift is applied. If \code{NULL} then the shift is estimated
@@ -75,7 +63,8 @@ for a variable.
 The fp transformation generally transforms \code{x} as follows. For each pi in
 \code{power} = (p1, p2, ..., pn) it creates a variable x^pi and returns the
 collection of variables as a matrix. It may process the data using
-shifting, scaling and centering as desired.
+shifting and scaling as desired. Centering has to be done after the
+data is transformed using these functions, if desired.
 
 A special case are repeated powers, i.e. when some pi = pj. In this case,
 the fp transformations are given by x^pi and x^pi * log(x). In case
@@ -95,7 +84,7 @@ in either sorted, or ACD specific order and the columns of the matrix
 returned by this function will always align with the powers used
 throughout this package.
 
-Binary variables are not transformed, but may only be centered.
+Binary variables are not transformed.
 }
 \section{Functions}{
 \itemize{
@@ -109,10 +98,13 @@ before being transformed by any powers. That is to ensure positive values
 and reasonable scales. Note that scaling does not change the estimated
 powers, see also \code{\link[=find_scale_factor]{find_scale_factor()}}.
 
-However, they are centered after transformation.
+However, they may be centered after transformation. This is not done by
+these functions.
 That is to ensure that the correlation between variables stay intact,
 as centering before transformation would affect them. This is described
 in Sauerbrei et al (2006), as well as in the Stata manual of \code{mfp}.
+Also, centering is not recommended, and should only be done for the final
+model if desired.
 }
 
 \references{

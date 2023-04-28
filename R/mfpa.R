@@ -201,15 +201,15 @@
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
 #' models only and has no effect for other model families. 
 #' See [survival::coxph()] for details.
-#' @param strata a character vector specifying the variables to be used for 
-#' stratification in a Cox model. A new factor, whose levels are all possible 
-#' combinations of the variables supplied as arguments will be created. 
+#' @param strata a numeric vector or matrix of variables that define strata
+#' to be used for stratification in a Cox model. A new factor, whose levels are 
+#' all possible combinations of the variables supplied will be created. 
 #' Default is `NULL` and a Cox model without stratification would be fitted. 
 #' See [survival::coxph()] for details. Currently only a single stratification
 #' factor is supported by `mfpa()`.
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a character vector of names of continuous variables to undergo 
+#' @param acdx a numeric vector of names of continuous variables to undergo 
 #' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes the function-selection procedure to determine the 
 #' best-fitting FP1(p1, p2) model (see Details section). 
@@ -233,29 +233,25 @@
 #' The generic accessor function `coef()` can be used to extract the vector of 
 #' coefficients from the fitted model object.
 #' 
-#' An object of class `mfpa` is a list containing at least the following 
-#' components:  
+#' An object of class `mfpa` is a list containing all entries as for `glm`
+#' or `coxph`, and in addition the following entries:  
 #' \itemize{
 #' \item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
-#' \item{coefficients: }{a named vector of coefficients.}
-#' \item{residuals: }{working residuals as returned by [stats::glm()] or 
-#' martingale residuals as returned by [survival::coxph()], depending on 
-#' `family`.}
-#' \item{family: }{either the [stats::family()] object used for families supported
-#' by [stats::glm()] or "cox" for Cox proportional hazards models.}
-#' \item{linear.predictors: }{the vector of linear predictors, i.e. the linear fit
-#' on link scale. For `family = "cox"` this vector has been centered, see
-#' [survival::predict.coxph()] for more details.}
 #' \item{fp_terms: }{a data.frame with information on fractional polynomial 
 #' terms.}
 #' \item{transformations: }{a data.frame with information on shifting, scaling
 #' and centering for all variables.}   
-#' \item{fp_powers: }{a list with all powers of fractional polynomial terms.}
+#' \item{fp_powers: }{a list with all powers of fractional polynomial terms. 
+#' Each entry of the list is named according to the transformation of the 
+#' variable.}
 #' \item{acd: }{a vector with information for which variables the acd 
 #' transformation was applied.}
-#' \item{x: }{the scaled and shifted input matrix but without transformations.}
+#' \item{x_original: }{the scaled and shifted input matrix but without
+#' transformations.}
 #' \item{y: }{the original outcome variable.}
-#' \item{X: }{the final transformed input matrix used to fit the final model.}
+#' \item{x: }{the final transformed input matrix used to fit the final model.}
+#' \item{call_mfp: }{the call to the `mfpa()` function.}
+#' \item{family_string: }{the family stored as character string.}
 #' }
 #' The `mfpa` object may contain further information depending on family.
 #' 
@@ -476,10 +472,12 @@ mfpa <- function(x,
       }
       
       if (!is.null(strata)) {
-          # assert stratification factors are in x
-          if (!all(strata %in% colnames(x))) {
-              warning("i The set of variables named in strata is not a subset of the variables in x.\n", 
-                      "i mfpa() continues with the intersection of strata and colnames(x).")
+          # assert stratification factors are of correct length
+          if (is.vector(strata)) {
+            strata_len = length(strata)
+          } else strata_len = nrow(strata)
+          if (strata_len != nrow(x)) {
+              stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
           }
       }
   } else {
@@ -539,7 +537,6 @@ mfpa <- function(x,
   }
   
   keep <- intersect(keep, colnames(x))
-  strata <- intersect(strata, colnames(x))
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(F, nvars)
@@ -581,9 +578,7 @@ mfpa <- function(x,
   # stratification
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
-      istrata <- survival::strata(x[, strata], shortlabel = TRUE)
-      # drop the variable(s) in x used for stratification
-      x <- x[, -c(which(colnames(x) %in% strata)), drop = FALSE]
+      istrata <- survival::strata(strata, shortlabel = TRUE)
   }
   
   # fit model ------------------------------------------------------------------
@@ -598,7 +593,11 @@ mfpa <- function(x,
       control = control, 
       verbose = verbose
   )
-  fit$call <- cl
+  
+  # add additional information to fitted object
+  # original mfpa call
+  fit$call_mfp <- cl
+  fit$family_string <- family
   
   fit
 }
@@ -667,6 +666,21 @@ print.mfpa <- function(x,
   
   # print model object using underlying print function
   NextMethod("print", x)
+}
+
+#' Helper function to extract selected variables from fitted `mfpa` object
+#' 
+#' Simply extracts all variables for which not all powers are estimated to 
+#' be `NA`. The names refer to the original names in the dataset and do not
+#' include transformations.
+#' 
+#' @return 
+#' Character vector of names, ordered as defined by `xorder` in [mfpa()].
+#' 
+#' @export
+get_selected_variable_names <- function(object) {
+  nms <- rownames(object$fp_terms)
+  nms[object$fp_terms[, "selected"]]
 }
 
 #' Helper to assign degrees of freedom

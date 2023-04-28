@@ -9,7 +9,7 @@ create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
 \value{
 Data.frame with overview of all fp terms. Each row represents a variable,
 with rownames giving the name of the variable. Variables with acd
-transformation are denoted by (A) by the \code{print} and \code{summary} methods.
+transformation are prefixed by \code{A_} by the \code{print} and \code{summary} methods.
 The data.frame comprises the following columns:
 \itemize{
 \item \code{df_initial}: initial degrees of freedom.

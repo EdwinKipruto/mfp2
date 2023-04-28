@@ -8,7 +8,8 @@
 #' The fp transformation generally transforms `x` as follows. For each pi in
 #' `power` = (p1, p2, ..., pn) it creates a variable x^pi and returns the
 #' collection of variables as a matrix. It may process the data using 
-#' shifting, scaling and centering as desired. 
+#' shifting and scaling as desired. Centering has to be done after the 
+#' data is transformed using these functions, if desired. 
 #' 
 #' A special case are repeated powers, i.e. when some pi = pj. In this case, 
 #' the fp transformations are given by x^pi and x^pi * log(x). In case
@@ -28,7 +29,7 @@
 #' returned by this function will always align with the powers used
 #' throughout this package.
 #' 
-#' Binary variables are not transformed, but may only be centered. 
+#' Binary variables are not transformed. 
 #' 
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
@@ -36,10 +37,13 @@
 #' and reasonable scales. Note that scaling does not change the estimated 
 #' powers, see also [find_scale_factor()].
 #' 
-#' However, they are centered after transformation. 
+#' However, they may be centered after transformation. This is not done by
+#' these functions.
 #' That is to ensure that the correlation between variables stay intact, 
 #' as centering before transformation would affect them. This is described
 #' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.
+#' Also, centering is not recommended, and should only be done for the final
+#' model if desired.
 #' 
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
@@ -59,9 +63,6 @@
 #' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
 #' `scale` which are to be applied when using the acd transformation in 
 #' new data.
-#' @param center Specification of centering for variable using
-#' the mean i.e. `f(x) - mean(f(x))` for continuous variables and 
-#' `x - min(x)` for binary variables. Default is no centering.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
 #' 
@@ -84,7 +85,6 @@
 transform_vector_fp <- function(x, 
                                 power = 1,
                                 scale = 1, 
-                                center = FALSE, 
                                 shift = 0, 
                                 name = NULL) {
   
@@ -93,17 +93,13 @@ transform_vector_fp <- function(x,
     return(NULL)
   }
   
-  # do not transform x when it is a two level variable but center if necessary
+  # do not transform x when it is a two level variable 
   if (length(unique(x)) <= 2) {
     x <- as.matrix(x)
     if (!is.null(name))
-      colnames(x) <- paste0(name, ".1")
+      colnames(x) <- name_transformed_variables(name, 1)
     
-    # center using the lower(minimum) of the two distinct values of the covariates
-    # as also done in stata mfp 
-    if (center) {
-      return(x - min(x))
-    } else return(x)
+    return(x)
   } 
   
   # process input data by shifting and scaling
@@ -139,13 +135,9 @@ transform_vector_fp <- function(x,
       x_trafo[, k] <- transform_vector_power(x, power[k])
     }
   }
-
-  if (center) {
-    x_trafo <- scale(x_trafo, scale = FALSE)
-  }
   
   if (!is.null(name)) {
-    colnames(x_trafo) <- paste0(name, ".", 1:ncol(x_trafo))
+    colnames(x_trafo) <- name_transformed_variables(name, ncol(x_trafo))
   }
   
   x_trafo
@@ -158,7 +150,6 @@ transform_vector_acd <- function(x,
                                  shift = 0, 
                                  powers = NULL, 
                                  scale = 1, 
-                                 center = FALSE, 
                                  acd_parameter = NULL, 
                                  name = NULL) {
   
@@ -177,18 +168,15 @@ transform_vector_acd <- function(x,
   
   name_acd <- NULL
   if (!is.null(name))
-    name_acd <- paste0("(A)", name)
-  
+    name_acd <- paste0("A_", name)
   
   # apply fp transform on x (if required) and acd(x)
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
   # component is not used in the final result, as desired
   x_acd <- transform_vector_fp(x = x_acd, power = power[2],
-                      scale = scale, shift = shift, 
-                      center = center, name = name_acd)
+                      scale = scale, shift = shift, name = name_acd)
   x_fp <- transform_vector_fp(x = x, power = power[1],
-                              scale = scale, shift = shift,
-                              center = center, name = name)
+                              scale = scale, shift = shift, name = name)
 
   cbind(x_fp, x_acd)
 }
@@ -199,7 +187,8 @@ transform_vector_acd <- function(x,
 #' @param power_list a named list of FP powers to be applied to the columns of
 #' `x`. Only variables named in this list are transformed.
 #' @param center a named logical vector specifying whether the columns in `x`
-#' should be centered.
+#' should be centered. Centering will occur after transformations and will be
+#' done separately for each individual column of the transformed data matrix. 
 #' @param acdx a named logical vector specifying the use of acd transformation.
 #' @param keep_x_order a logical indicating whether the order of columns
 #' should be kept as in the input matrix `x`, of if the columns should be 
@@ -218,13 +207,17 @@ transform_vector_acd <- function(x,
 #' @section Column names: 
 #' Generally the original variable names are suffixed with ".i", where
 #' i enumerates the powers for a given variable in `power_list`. If a term
-#' uses an acd transformation, then the variable is prefixed with "(A)".
+#' uses an acd transformation, then the variable is prefixed with `A_`.
 #' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.
-#' Otherwise a matrix is returned with transformed variables as named in 
-#' `power_list`. The number of columns may possibly be different to the 
+#' Otherwise a list with two entries: the first is a matrix 
+#' with transformed variables as named in `power_list`. 
+#' The number of columns may possibly be different to the 
 #' input matrix due to higher order FP transformations.
+#' The second entry stores the values used to center the variables if for any
+#' variable we have `center = TRUE` (note that usually all variables are 
+#' centered, or none of them).
 #' 
 #' @export
 transform_matrix <- function(x,
@@ -240,13 +233,13 @@ transform_matrix <- function(x,
   }
   
   # power_list, center and acdx must have names
-  if(is.null(names(power_list))) 
+  if (is.null(names(power_list))) 
     stop("! List power_list must have names.")
   
-  if(is.null(names(center))) 
+  if (is.null(names(center))) 
     stop("! Vector center must have names.")
   
-  if(is.null(names(acdx)))
+  if (is.null(names(acdx)))
     stop("! Vector acdx must have names.")
 
   if (keep_x_order)
@@ -264,19 +257,32 @@ transform_matrix <- function(x,
     if (acdx[name]) {
       # apply acd transformation
       x_trafo[[name]] <- transform_vector_acd(
-        x[, name], power = power_list[[name]], center = center[name], 
+        x[, name], power = power_list[[name]],  
         acd_parameter = acd_parameter_list[[name]], name = name
       )
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
-        x[, name], power = power_list[[name]], center = center[name], 
-        name = name
+        x[, name], power = power_list[[name]], name = name
       )
     }
   }
   
-  do.call(cbind, x_trafo)
+  # create output matrix
+  x_transformed <- do.call(cbind, x_trafo)
+  
+  # also center values if required
+  centers = NULL
+  if (any(center)) {
+    x_transformed <- center_matrix(x_transformed)
+    centers <- attr(x_transformed, "scaled:center")
+  }
+    
+  
+  list(
+    x_transformed = x_transformed,
+    centers = centers
+  )
 }
 
 #' Simple function to transform vector by a single power
@@ -289,4 +295,52 @@ transform_vector_power <- function(x,
     return(log(x))
   
   x^power
+}
+
+#' Simple function to center data
+#' 
+#' @param mat a transformed data matrix. 
+#' @param centers a vector of centering values. Length must be equal to the 
+#' number of columns in `mat`. If `NULL` (default) then 
+#' centering values are determined by the function (see Details).
+#' 
+#' @details 
+#' Centering is done by means for continuous variables (i.e. more than 2
+#' distinct values), and the minimum for binary variables. 
+#' 
+#' It is assumed all categorical variables in the data are represented by 
+#' binary dummy variables. 
+#' 
+#' @return 
+#' Transformed data matrix. Has an attribute `scaled:center` that stores 
+#' values used for centering.
+#' 
+#' @export
+center_matrix <- function(mat, centers = NULL) {
+  
+  if (is.null(centers)) {
+    centers <- colMeans(mat) 
+    
+    # identify the column with at most 2 unique values
+    index_binary <- which(apply(mat, 2, function(x) length(unique(x))) <= 2)
+    
+    # replace the means of binary variables with the minimum 
+    if (any(index_binary)) {
+      centers[index_binary] <- apply(mat[,index_binary, drop = FALSE], 2, min)
+    }
+  }
+  
+  scale(mat, center = centers, scale = FALSE)
+}
+
+#' Helper function to name transformed variables
+#' 
+#' @return 
+#' Character vector of names of length `n_powers`.
+name_transformed_variables <- function(name, n_powers, acd = FALSE) {
+  if (!acd) {
+    paste0(name, ".", 1:n_powers)
+  } else {
+    c(paste0(name, ".1"), paste0("A_", name, ".1"))
+  }
 }

@@ -33,14 +33,15 @@ be used. In any case, only variables used in the final model are used, even
 if more variable names are passed.}
 
 \item{terms_seq}{a character string specifying how the range of variable
-values for term predictions are handled. The default \code{equidistant} resamples
-the data range to 100 equidistant points to properly show the functional
+values for term predictions are handled. The default \code{equidistant} computes
+the range of the data range and generates an equidistant sequence of
+100 points from the minimum to the maximum values to properly show the functional
 form estimated in the final model.
 The option \code{data} uses the observed data values directly, but these may not
-adequately reflect the functional form (e.g. when influential points are
-present).}
+adequately reflect the functional form of the data, especially when extreme
+values or influential points are present.}
 
-\item{terms_alpha}{significance level used for computations of confidence
+\item{terms_alpha}{significance level used for computing confidence
 intervals in terms prediction.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
@@ -72,7 +73,8 @@ large as estimated from the training data, variables in \code{newdata} may end u
 with negative values, which can cause prediction errors if non-linear
 functional forms are used. A warning is given in this case by the function.
 The next step involves transforming the data using the selected
-fractional polynomial (FP) power. Once the transformation is complete, the
+fractional polynomial (FP) power. If necessary, centering of variables is
+conducted. Once the transformation (and centering) is complete, the
 transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
 depending on the chosen family of models.
 }
@@ -80,9 +82,9 @@ depending on the chosen family of models.
 
 This function allows to compute the partial linear predictors, or contrasts,
 for each variable selected into the final model if \code{type = "terms"}. Note
-that the results returned from this function are different to both
+that the results returned from this function are different from those of
 \code{predict.glm()} and \code{predict.coxph()} since these functions do not take
-into account that a single variable may be represented by multiple terms.
+into account that a single variable can be represented by multiple terms.
 }
 
 \seealso{

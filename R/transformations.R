@@ -97,7 +97,7 @@ transform_vector_fp <- function(x,
   if (length(unique(x)) <= 2) {
     x <- as.matrix(x)
     if (!is.null(name))
-      colnames(x) <- paste0(name, ".1")
+      colnames(x) <- name_transformed_variables(name, 1)
     
     return(x)
   } 
@@ -137,7 +137,7 @@ transform_vector_fp <- function(x,
   }
   
   if (!is.null(name)) {
-    colnames(x_trafo) <- paste0(name, ".", 1:ncol(x_trafo))
+    colnames(x_trafo) <- name_transformed_variables(name, ncol(x_trafo))
   }
   
   x_trafo
@@ -169,7 +169,6 @@ transform_vector_acd <- function(x,
   name_acd <- NULL
   if (!is.null(name))
     name_acd <- paste0("A_", name)
-  
   
   # apply fp transform on x (if required) and acd(x)
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
@@ -332,4 +331,16 @@ center_matrix <- function(mat, centers = NULL) {
   }
   
   scale(mat, center = centers, scale = FALSE)
+}
+
+#' Helper function to name transformed variables
+#' 
+#' @return 
+#' Character vector of names of length `n_powers`.
+name_transformed_variables <- function(name, n_powers, acd = FALSE) {
+  if (!acd) {
+    paste0(name, ".", 1:n_powers)
+  } else {
+    c(paste0(name, ".1"), paste0("A_", name, ".1"))
+  }
 }

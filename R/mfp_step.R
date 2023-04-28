@@ -163,6 +163,11 @@ find_best_fp_step <- function(x,
       power_best = NA 
   } 
   
+  # create names for powers
+  names(power_best) <- name_transformed_variables(xi, 
+                                                  length(power_best),
+                                                  acd = acdx[xi])
+  
   power_best
 }
 

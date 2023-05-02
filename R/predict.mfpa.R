@@ -178,12 +178,15 @@ predict.mfpa <- function(object,
 #' @param object fitted `mfpa` model object.
 #' @param newdata dataset to be prepared for predictions. Its columns can be
 #' a subset of the columns used for fitting the model. 
+#' @param strata,offset passed from [predict.mfpa()].
 #' @param apply_pre logical indicating wether the fitted pre-transformation
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
+                                        strata = NULL, 
+                                        offset = NULL, 
                                         apply_pre = TRUE, 
                                         apply_center = TRUE) {
   newdata <- as.matrix(newdata)

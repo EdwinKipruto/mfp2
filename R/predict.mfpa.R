@@ -133,6 +133,7 @@ predict.mfpa <- function(object,
         value = x_trafo %*% term_coef + intercept
       )
       
+      x_ref_trafo <- NULL
       if (type == "contrasts") {
         # compute transformations for reference level
         # note that intercepts do not play a role here and that
@@ -142,7 +143,7 @@ predict.mfpa <- function(object,
         if (is.null(x_ref)) {
           v <- object$x_original[, t]
           if (length(unique(v)) == 2) {
-            x_ref <- min(t, na.rm = TRUE)
+            x_ref <- min(v, na.rm = TRUE)
           } else x_ref <- mean(v, na.rm = TRUE) 
         } else {
           # TODO: scale and shift - should be given on original level
@@ -160,7 +161,7 @@ predict.mfpa <- function(object,
       }
       
       # TODO: contrasts
-      res$se <- calculate_standard_error(object, x_trafo)
+      res$se <- calculate_standard_error(object, x_trafo, x_ref_trafo)
       mult <- qnorm(1 - (alpha / 2))
       res$lower <- res$value - mult * res$se
       res$upper <- res$value + mult * res$se

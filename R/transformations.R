@@ -90,7 +90,8 @@ transform_vector_fp <- function(x,
                                 power = 1,
                                 scale = 1, 
                                 shift = 0, 
-                                name = NULL) {
+                                name = NULL, 
+                                check_binary = TRUE) {
   
   if (all(is.na(power))) { 
     # variable omitted
@@ -98,7 +99,7 @@ transform_vector_fp <- function(x,
   }
   
   # do not transform x when it is a two level variable 
-  if (length(unique(x)) <= 2) {
+  if (check_binary && length(unique(x)) <= 2) {
     x <- as.matrix(x)
     if (!is.null(name))
       colnames(x) <- name_transformed_variables(name, 1)

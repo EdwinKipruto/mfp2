@@ -150,50 +150,9 @@ predict.mfpa <- function(object,
   
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
-    newdata <- as.matrix(newdata)
-    
-    # step 1: shift and scale data using using shifting and scaling factors 
-    # from the training data 
-    # subset and sort columns of newdata based on the names of shift/scale
-    newdata <- newdata[, rownames(object$transformations), drop = FALSE]
-    newdata <- sweep(newdata, 2, object$transformations[,"shift"], "+")
-    
-    if (!all(newdata > 0)) 
-      warning("i After shifting using training data some values in newdata remain negative.",
-              "i Predictions for such observations may not be available in case of non-linear transformations.")
-    
-    newdata <- sweep(newdata, 2, object$transformations[,"scale"], "/")
-    
-    # step 2: transform the shifted and scaled data
-    # do not center in this step
-    newdata <- transform_matrix(
-      newdata,
-      power_list = object$fp_powers, 
-      center = setNames(rep(FALSE, nrow(object$transformations)), 
-                        rownames(object$transformations)),
-      keep_x_order = TRUE,
-      acdx = setNames(object$fp_terms[,"acd"], 
-                      rownames(object$fp_terms))
-    )$x_transformed
-    
-    # step 3: center the transformed data
-    if (!is.null(object$centers)) {
-      newdata <- center_matrix(newdata, object$centers)
-    }
-    
-    newdata <- data.frame(newdata)
+    newdata <- prepare_newdata_for_predict(object, newdata)
     
     if (object$family_string == "cox") {
-      # use of NextMethod here does not work as expected
-      
-      # add strata and offset as required
-      if (!is.null(strata))
-        newdata$strata_ = survival::strata(strata, shortlabel = TRUE)
-      
-      if (!is.null(offset))
-        newdata$offset_ = offset
-      
-      # use getFromNamespace here, as predict.coxph is not exported
       return(getFromNamespace("predict.coxph", "survival")(
         object = object, newdata = newdata, type = type, ...
       ))
@@ -213,6 +172,58 @@ predict.mfpa <- function(object,
   } else {
     stats::predict.glm(object = object, type = type, ...)
   }
+}
+
+#' Helper function to prepare newdata for predict function
+#' 
+#' To be used in [predict.mfpa()].
+prepare_newdata_for_predict <- function(object, 
+                                        newdata) {
+  newdata <- as.matrix(newdata)
+  
+  # step 1: shift and scale data using using shifting and scaling factors 
+  # from the training data 
+  # subset and sort columns of newdata based on the names of shift/scale
+  newdata <- newdata[, rownames(object$transformations), drop = FALSE]
+  newdata <- sweep(newdata, 2, object$transformations[,"shift"], "+")
+  
+  if (!all(newdata > 0)) 
+    warning("i After shifting using training data some values in newdata remain negative.",
+            "i Predictions for such observations may not be available in case of non-linear transformations.")
+  
+  newdata <- sweep(newdata, 2, object$transformations[,"scale"], "/")
+  
+  # step 2: transform the shifted and scaled data
+  # do not center in this step
+  newdata <- transform_matrix(
+    newdata,
+    power_list = object$fp_powers, 
+    center = setNames(rep(FALSE, nrow(object$transformations)), 
+                      rownames(object$transformations)),
+    keep_x_order = TRUE,
+    acdx = setNames(object$fp_terms[,"acd"], 
+                    rownames(object$fp_terms))
+  )$x_transformed
+  
+  # step 3: center the transformed data
+  if (!is.null(object$centers)) {
+    newdata <- center_matrix(newdata, object$centers)
+  }
+  
+  newdata <- data.frame(newdata)
+  
+  if (object$family_string == "cox") {
+    # use of NextMethod here does not work as expected
+    
+    # add strata and offset as required
+    if (!is.null(strata))
+      newdata$strata_ = survival::strata(strata, shortlabel = TRUE)
+    
+    if (!is.null(offset))
+      newdata$offset_ = offset
+  } 
+  
+  newdata
 }
 
 #' Helper function to compute standard error of a partial predictor

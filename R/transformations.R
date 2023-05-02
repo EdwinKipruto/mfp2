@@ -210,6 +210,7 @@ transform_vector_acd <- function(x,
 #' `acdx` is set to `TRUE`. Each components is to be passed to 
 #' [transform_vector_acd()]. The default value `NULL` indicates that the
 #' parameters for the acd transformations are to be estimated.
+#' @param check_binary passed to [transform_vector_fp()].
 #' 
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
@@ -238,7 +239,8 @@ transform_matrix <- function(x,
                              center, 
                              acdx, 
                              keep_x_order = FALSE, 
-                             acd_parameter_list = NULL) {
+                             acd_parameter_list = NULL,
+                             check_binary = TRUE) {
 
   if (all(is.na(unlist(power_list)))) {
     # all variables were eliminated
@@ -279,7 +281,8 @@ transform_matrix <- function(x,
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
-        x[, name], power = power_list[[name]], name = name
+        x[, name], power = power_list[[name]], name = name, 
+        check_binary = check_binary
       )
     }
   }

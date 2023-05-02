@@ -90,11 +90,13 @@ predict.mfpa <- function(object,
   terms_seq <- match.arg(terms_seq)
   
   # TODO: add checks for missing strata and offset in case they were used in fit
+  # TODO: add checks for correct specificatio of ref
+  # TODO: add warning when terms are removed
   
-  if (type %in% c("terms", "contrast")) {
+  if (type %in% c("terms", "contrasts")) {
     terms <- intersect(terms, get_selected_variable_names(object))
     
-    res_terms <- list()
+    res_list <- list()
     for (t in terms) {
       
       # define sequence of variable data as named list
@@ -108,9 +110,9 @@ predict.mfpa <- function(object,
         colnames(x_seq) <- t
         
         # no need to apply pretransformation, already done in x_original
-        x_trafo <- prepare_newdata_for_predict(object, 
-                                               x_seq, 
-                                               apply_pre = FALSE)
+        x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
+                                                         x_seq, 
+                                                         apply_pre = FALSE))
       } else {
         # use data
         x_seq <- object$x_original[, t, drop = FALSE]
@@ -120,28 +122,54 @@ predict.mfpa <- function(object,
       term_coef <- coef(object)[colnames(x_trafo)]
       
       # create output data.frame
+    
+      # intercepts do not play a role for Cox models, or contrasts
       intercept = coef(object)["(Intercept)"]
-      if (is.na(intercept)) 
+      if (is.na(intercept) || type == "contrasts") 
         intercept = 0
       
       res <- data.frame(
         variable = as.numeric(x_seq),
-        contrast = x_trafo %*% term_coef + intercept
+        value = x_trafo %*% term_coef + intercept
       )
+      
+      if (type == "contrasts") {
+        # compute transformations for reference level
+        # note that intercepts do not play a role here and that
+        # (f(x) - f(x_ref)) * coef == f(x) * coef - f(x_ref) * coef
+        
+        x_ref <- ref[[t]]
+        if (is.null(x_ref)) {
+          v <- object$x_original[, t]
+          if (length(unique(v)) == 2) {
+            x_ref <- min(t, na.rm = TRUE)
+          } else x_ref <- mean(v, na.rm = TRUE) 
+        } else {
+          # TODO: scale and shift - should be given on original level
+        }
+        # make sure it is a named matrix
+        x_ref <- matrix(x_ref, nrow = 1, ncol = 1)
+        colnames(x_ref) <- t
+        
+        # transform 
+        x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
+          object, x_ref, apply_pre = FALSE, check_binary = FALSE))
+        
+        # compute contrasts, no intercepts necessary
+        res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
+      }
+      
+      # TODO: contrasts
       res$se <- calculate_standard_error(object, x_trafo)
       mult <- qnorm(1 - (alpha / 2))
-      res$lower <- res$contrast - mult * res$se
-      res$upper <- res$contrast + mult * res$se
+      res$lower <- res$value - mult * res$se
+      res$upper <- res$value + mult * res$se
       
-      res_terms[[t]] <- res
+      res_list[[t]] <- res
     }
-    names(res_terms) <- terms
+    names(res_list) <- terms
     
-    return(res_terms)
-  }
-  
-  if (type == "contrasts") {
-    
+    return(res_list)
   }
   
   # predict values
@@ -183,12 +211,14 @@ predict.mfpa <- function(object,
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
+#' @param check_binary passed to [transform_vector_fp()].
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
                                         strata = NULL, 
                                         offset = NULL, 
                                         apply_pre = TRUE, 
-                                        apply_center = TRUE) {
+                                        apply_center = TRUE,
+                                        check_binary = TRUE) {
   newdata <- as.matrix(newdata)
   
   # subset as appropriate
@@ -217,7 +247,8 @@ prepare_newdata_for_predict <- function(object,
     power_list = object$fp_powers[vnames], 
     center = setNames(rep(FALSE, length(vnames)), vnames),
     keep_x_order = TRUE,
-    acdx = setNames(object$fp_terms[vnames, "acd"], vnames)
+    acdx = setNames(object$fp_terms[vnames, "acd"], vnames),
+    check_binary = check_binary
   )$x_transformed
   
   # step 3: center the transformed data

@@ -82,7 +82,7 @@ fracplot <- function(model,
   plots <- list()
   for (v in names(pred)) {
     plots[[v]] <- ggplot2::ggplot(data = pred[[v]], 
-                         aes(x = variable, y = contrast)) + 
+                         aes(x = variable, y = value)) + 
       ggplot2::geom_line(linewidth = linewidth,
                          linetype = linetype,
                          color = color_line) + 
@@ -97,7 +97,7 @@ fracplot <- function(model,
     
     if (!partial_only) 
       plots[[v]] <- plots[[v]] + 
-        ggplot2::geom_point(data = pred_data[[v]], aes(y = contrast + resid),
+        ggplot2::geom_point(data = pred_data[[v]], aes(y = value + resid),
                             color = color_points,
                             size = size_points, 
                             shape = shape)

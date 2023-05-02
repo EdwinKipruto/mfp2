@@ -29,6 +29,7 @@
 #' @param type the type of prediction required.  The default is on the
 #' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for
 #' details. In case `type = "terms"`, see the Section on `Terms prediction`.
+#' In case `type = "contrast"` TODO
 #' @param terms a character vector of variable names specifying for which 
 #' variables term predictions are desired. Only used in case `type = "terms"`.
 #' If `NULL` (the default) then all selected variables in the final model will 
@@ -42,7 +43,7 @@
 #' The option `data` uses the observed data values directly, but these may not 
 #' adequately reflect the functional form of the data, especially when extreme
 #' values or influential points are present.
-#' @param terms_alpha significance level used for computing confidence
+#' @param alpha significance level used for computing confidence
 #' intervals in terms prediction.
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
@@ -70,7 +71,8 @@ predict.mfpa <- function(object,
                          type = NULL,
                          terms = NULL,
                          terms_seq = c("equidistant", "data"),
-                         terms_alpha = 0.05,
+                         alpha = 0.05,
+                         ref = NULL, 
                          strata = NULL, 
                          offset = NULL, 
                          ...) {
@@ -82,11 +84,14 @@ predict.mfpa <- function(object,
   if (is.null(terms))
     terms <- get_selected_variable_names(object)
   
+  if (is.null(ref))  
+    ref <- lapply(terms, function(v) NULL)
+  
   terms_seq <- match.arg(terms_seq)
   
   # TODO: add checks for missing strata and offset in case they were used in fit
   
-  if (type == "terms") {
+  if (type %in% c("terms", "contrast")) {
     terms <- intersect(terms, get_selected_variable_names(object))
     
     res_terms <- list()
@@ -101,27 +106,14 @@ predict.mfpa <- function(object,
           ncol = 1
         )
         colnames(x_seq) <- t
+        
+        # no need to apply pretransformation, already done in x_original
+        x_trafo <- prepare_newdata_for_predict(object, 
+                                               x_seq, 
+                                               apply_pre = FALSE)
       } else {
         # use data
         x_seq <- object$x_original[, t, drop = FALSE]
-      }
-      
-      # transform and center if required
-      if (terms_seq != "data") {
-        # center after transformation using fitted centers
-        x_trafo <- transform_matrix(
-          x_seq, 
-          power_list = object$fp_powers[t], 
-          acdx = setNames(object$fp_terms[t, "acd"], t), 
-          center = setNames(c(FALSE), t),
-          acd_parameter_list = object$acd_parameter
-        )$x_transformed
-        
-        if (!is.null(object$centers))
-          x_trafo <- center_matrix(x_trafo,
-                                   object$centers[colnames(x_trafo)])
-      } else {
-        # use data directly
         x_trafo <- object$x[, names(object$fp_powers[[t]]), drop = FALSE]
       }
       
@@ -137,7 +129,7 @@ predict.mfpa <- function(object,
         contrast = x_trafo %*% term_coef + intercept
       )
       res$se <- calculate_standard_error(object, x_trafo)
-      mult <- qnorm(1 - (terms_alpha / 2))
+      mult <- qnorm(1 - (alpha / 2))
       res$lower <- res$contrast - mult * res$se
       res$upper <- res$contrast + mult * res$se
       
@@ -148,6 +140,11 @@ predict.mfpa <- function(object,
     return(res_terms)
   }
   
+  if (type == "contrasts") {
+    
+  }
+  
+  # predict values
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
     newdata <- prepare_newdata_for_predict(object, newdata)
@@ -177,37 +174,52 @@ predict.mfpa <- function(object,
 #' Helper function to prepare newdata for predict function
 #' 
 #' To be used in [predict.mfpa()].
+#' 
+#' @param object fitted `mfpa` model object.
+#' @param newdata dataset to be prepared for predictions. Its columns can be
+#' a subset of the columns used for fitting the model. 
+#' @param apply_pre logical indicating wether the fitted pre-transformation
+#' is applied or not.
+#' @param apply_center logical indicating whether the fitted centers are applied
+#' after transformation or not.
 prepare_newdata_for_predict <- function(object, 
-                                        newdata) {
+                                        newdata, 
+                                        apply_pre = TRUE, 
+                                        apply_center = TRUE) {
   newdata <- as.matrix(newdata)
   
-  # step 1: shift and scale data using using shifting and scaling factors 
-  # from the training data 
-  # subset and sort columns of newdata based on the names of shift/scale
-  newdata <- newdata[, rownames(object$transformations), drop = FALSE]
-  newdata <- sweep(newdata, 2, object$transformations[,"shift"], "+")
+  # subset as appropriate
+  vnames <- intersect(colnames(newdata), rownames(object$transformations))
+  # sort as in object
+  vnames <- vnames[match(vnames, rownames(object$transformations))]
+  newdata <- newdata[, vnames, drop = FALSE]
   
-  if (!all(newdata > 0)) 
-    warning("i After shifting using training data some values in newdata remain negative.",
-            "i Predictions for such observations may not be available in case of non-linear transformations.")
-  
-  newdata <- sweep(newdata, 2, object$transformations[,"scale"], "/")
+  if (apply_pre) {
+    # step 1: shift and scale data using using shifting and scaling factors 
+    # from the training data 
+    # sort columns of newdata based on the names of shift/scale
+    newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
+    
+    if (!all(newdata > 0)) 
+      warning("i After shifting using training data some values in newdata remain negative.",
+              "i Predictions for such observations may not be available in case of non-linear transformations.")
+    
+    newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
+  }
   
   # step 2: transform the shifted and scaled data
   # do not center in this step
   newdata <- transform_matrix(
     newdata,
-    power_list = object$fp_powers, 
-    center = setNames(rep(FALSE, nrow(object$transformations)), 
-                      rownames(object$transformations)),
+    power_list = object$fp_powers[vnames], 
+    center = setNames(rep(FALSE, length(vnames)), vnames),
     keep_x_order = TRUE,
-    acdx = setNames(object$fp_terms[,"acd"], 
-                    rownames(object$fp_terms))
+    acdx = setNames(object$fp_terms[vnames, "acd"], vnames)
   )$x_transformed
   
   # step 3: center the transformed data
-  if (!is.null(object$centers)) {
-    newdata <- center_matrix(newdata, object$centers)
+  if (apply_center && !is.null(object$centers)) {
+    newdata <- center_matrix(newdata, object$centers[colnames(newdata)])
   }
   
   newdata <- data.frame(newdata)

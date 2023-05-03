@@ -10,7 +10,8 @@ transform_matrix(
   center,
   acdx,
   keep_x_order = FALSE,
-  acd_parameter_list = NULL
+  acd_parameter_list = NULL,
+  check_binary = TRUE
 )
 }
 \arguments{
@@ -35,6 +36,8 @@ are to be applied to new data. Entries must correspond to the entries where
 \code{acdx} is set to \code{TRUE}. Each components is to be passed to
 \code{\link[=transform_vector_acd]{transform_vector_acd()}}. The default value \code{NULL} indicates that the
 parameters for the acd transformations are to be estimated.}
+
+\item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.

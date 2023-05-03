@@ -10,7 +10,8 @@
   type = NULL,
   terms = NULL,
   terms_seq = c("equidistant", "data"),
-  terms_alpha = 0.05,
+  alpha = 0.05,
+  ref = NULL,
   strata = NULL,
   offset = NULL,
   ...
@@ -24,7 +25,8 @@ variables with which to predict. See \code{\link[=mfpa]{mfpa()}} for details.}
 
 \item{type}{the type of prediction required.  The default is on the
 scale of the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for
-details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.}
+details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.
+In case \code{type = "contrasts"}, see the Section on \code{Contrasts}.}
 
 \item{terms}{a character vector of variable names specifying for which
 variables term predictions are desired. Only used in case \code{type = "terms"}.
@@ -41,8 +43,14 @@ The option \code{data} uses the observed data values directly, but these may not
 adequately reflect the functional form of the data, especially when extreme
 values or influential points are present.}
 
-\item{terms_alpha}{significance level used for computing confidence
+\item{alpha}{significance level used for computing confidence
 intervals in terms prediction.}
+
+\item{ref}{a named list of reference values used when \code{type = "contrasts"}.
+Note that any variable requested in \code{terms}, but not having an entry in this
+list (or if the entry is \code{NULL}) then the mean value (or minimum for binary
+variables) will be used as reference. Values are specified on the original
+scale of the variable.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }
@@ -50,12 +58,15 @@ intervals in terms prediction.}
 For any \code{type} other than \code{"terms"} the output conforms to the output
 of \code{predict.glm()} or \code{predict.coxph()}.
 
-If \code{type = "terms"}, then a named list with entries for each variable
-requested in \code{terms} (excluding those not present in the final model).
+If \code{type = "terms"} or \code{type = "contrasts"}, then a named list with entries
+for each variable requested in \code{terms} (excluding those not present in the
+final model).
 Each entry is a \code{data.frame} with the following columns:
 \itemize{
-\item \code{variable}: variable values (shifted, scaled and centered as required).
-\item \code{contrast}: partial linear predictor.
+\item \code{variable}: variable values on original scale.
+\item \code{variable_pre}: variable with pre-transformation applied, i.e. shifted,
+scaled and centered as required.
+\item \code{value}: partial linear predictor.
 \item \code{se}: standard error of partial linear predictor.
 \item \code{lower}: lower limit of confidence interval.
 \item \code{upper}: upper limit of confidence interval.
@@ -80,11 +91,21 @@ depending on the chosen family of models.
 }
 \section{Terms prediction}{
 
-This function allows to compute the partial linear predictors, or contrasts,
+This function allows to compute the partial linear predictors
 for each variable selected into the final model if \code{type = "terms"}. Note
 that the results returned from this function are different from those of
 \code{predict.glm()} and \code{predict.coxph()} since these functions do not take
 into account that a single variable can be represented by multiple terms.
+This functionality is useful to assess model fit, since it also allows to
+draw data points based on residuals.
+}
+
+\section{Contrasts}{
+
+This functions allows to compute contrasts with reference to a specified
+variable value if \code{type = "contrasts"}. In this case, the fitted partial
+predictors will be centered at the reference value (i.e. 0), and also
+confidence intervals will have width 0 at that point.
 }
 
 \seealso{

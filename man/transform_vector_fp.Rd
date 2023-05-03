@@ -5,7 +5,14 @@
 \alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
-transform_vector_fp(x, power = 1, scale = 1, shift = 0, name = NULL)
+transform_vector_fp(
+  x,
+  power = 1,
+  scale = 1,
+  shift = 0,
+  name = NULL,
+  check_binary = TRUE
+)
 
 transform_vector_acd(
   x,
@@ -37,6 +44,11 @@ automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 
 \item{name}{character used to define names for the output matrix. Default
 is \code{NULL}, meaning the output will have unnamed columns.}
+
+\item{check_binary}{a logical indicating whether or not input \code{x} is checked
+if it is a binary variable (i.e. has only two distinct values). The default
+\code{TRUE} usually only needs to changed when this function is to be used to
+transform data for predictions. See Details.}
 
 \item{powers}{passed to \code{\link[=fit_acd]{fit_acd()}}.}
 
@@ -88,7 +100,13 @@ in either sorted, or ACD specific order and the columns of the matrix
 returned by this function will always align with the powers used
 throughout this package.
 
-Binary variables are not transformed.
+Binary variables are not transformed, unless \code{check_binary} is set to
+\code{FALSE}. This is usually not necessary, the only special case to set it to
+\code{FALSE} is when a single value is to be transformed during prediction (e.g.
+to transform a reference value). When this is done, binary variables are
+still returned unchanged, but a single value from a continuous variable will
+be transformed as desired by the fitted transformations. For model fit,
+\code{check_binary} should always be at its default value.
 }
 \section{Functions}{
 \itemize{

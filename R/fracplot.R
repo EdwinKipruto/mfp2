@@ -9,7 +9,7 @@
 #' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
 #' (`FALSE`, the default). See below for details. 
 #' @param terms_seq `terms_seq` argument of [predict.mfpa()].
-#' @param terms_alpha `terms_alpha` argument of [predict.mfpa()].
+#' @param alpha `alpha` argument of [predict.mfpa()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
 #' data points.
 #' @param color_line,linetype,linewidth `ggplot2` properties of line for 
@@ -39,7 +39,7 @@ fracplot <- function(model,
                      terms = NULL, 
                      partial_only = FALSE, 
                      terms_seq = "data",
-                     terms_alpha = 0.05,
+                     alpha = 0.05,
                      color_points = "#AAAAAA",
                      color_line = "#000000", 
                      color_fill = "#000000",
@@ -57,7 +57,11 @@ fracplot <- function(model,
     )
   }
   
-  pred <- predict(model, type = "terms", terms = terms, terms_seq = terms_seq)
+  pred <- predict(model, 
+                  type = "terms", 
+                  terms = terms, 
+                  terms_seq = terms_seq,
+                  alpha = alpha)
   
   # for points also need the data point predictions
   pred_data <- pred
@@ -85,7 +89,7 @@ fracplot <- function(model,
   plots <- list()
   for (v in names(pred)) {
     plots[[v]] <- ggplot2::ggplot(data = pred[[v]], 
-                         aes(x = variable, y = contrast)) + 
+                         aes(x = variable, y = value)) + 
       ggplot2::geom_line(linewidth = linewidth,
                          linetype = linetype,
                          color = color_line) + 
@@ -100,7 +104,7 @@ fracplot <- function(model,
     
     if (!partial_only) 
       plots[[v]] <- plots[[v]] + 
-        ggplot2::geom_point(data = pred_data[[v]], aes(y = contrast + resid),
+        ggplot2::geom_point(data = pred_data[[v]], aes(y = value + resid),
                             color = color_points,
                             size = size_points, 
                             shape = shape)

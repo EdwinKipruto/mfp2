@@ -29,7 +29,13 @@
 #' returned by this function will always align with the powers used
 #' throughout this package.
 #' 
-#' Binary variables are not transformed. 
+#' Binary variables are not transformed, unless `check_binary` is set to
+#' `FALSE`. This is usually not necessary, the only special case to set it to 
+#' `FALSE` is when a single value is to be transformed during prediction (e.g.
+#' to transform a reference value). When this is done, binary variables are
+#' still returned unchanged, but a single value from a continuous variable will
+#' be transformed as desired by the fitted transformations. For model fit, 
+#' `check_binary` should always be at its default value.
 #' 
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
@@ -65,6 +71,10 @@
 #' new data.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
+#' @param check_binary a logical indicating whether or not input `x` is checked
+#' if it is a binary variable (i.e. has only two distinct values). The default
+#' `TRUE` usually only needs to changed when this function is to be used to 
+#' transform data for predictions. See Details.
 #' 
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns
@@ -90,7 +100,8 @@ transform_vector_fp <- function(x,
                                 power = 1,
                                 scale = 1, 
                                 shift = 0, 
-                                name = NULL) {
+                                name = NULL, 
+                                check_binary = TRUE) {
   
   if (all(is.na(power))) { 
     # variable omitted
@@ -98,7 +109,7 @@ transform_vector_fp <- function(x,
   }
   
   # do not transform x when it is a two level variable 
-  if (length(unique(x)) <= 2) {
+  if (check_binary && length(unique(x)) <= 2) {
     x <- as.matrix(x)
     if (!is.null(name))
       colnames(x) <- name_transformed_variables(name, 1)
@@ -209,6 +220,7 @@ transform_vector_acd <- function(x,
 #' `acdx` is set to `TRUE`. Each components is to be passed to 
 #' [transform_vector_acd()]. The default value `NULL` indicates that the
 #' parameters for the acd transformations are to be estimated.
+#' @param check_binary passed to [transform_vector_fp()].
 #' 
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
@@ -237,7 +249,8 @@ transform_matrix <- function(x,
                              center, 
                              acdx, 
                              keep_x_order = FALSE, 
-                             acd_parameter_list = NULL) {
+                             acd_parameter_list = NULL,
+                             check_binary = TRUE) {
 
   if (all(is.na(unlist(power_list)))) {
     # all variables were eliminated
@@ -278,7 +291,8 @@ transform_matrix <- function(x,
     } else {
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
-        x[, name], power = power_list[[name]], name = name
+        x[, name], power = power_list[[name]], name = name, 
+        check_binary = check_binary
       )
     }
   }

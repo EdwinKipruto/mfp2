@@ -313,10 +313,11 @@ mfpa <- function(x,
   
   # assertions -----------------------------------------------------------------
   if(!is.matrix(x))
-    stop("x must be a matrix")
+    stop("x must be a matrix", call. = F)
+    
   if(any(is.character(x)))
-    stop("Characters values not allowed in x. convert categorical variables to 
-         dummy variables using the model.matrix() function")
+    stop("x contain characters values. Convert categorical variables to 
+         dummy variables", call. = F)
   
   # assert dimension of x
   np <- dim(x)

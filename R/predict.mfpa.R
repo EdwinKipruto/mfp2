@@ -92,6 +92,7 @@ predict.mfpa <- function(object,
   # TODO: add checks for missing strata and offset in case they were used in fit
   # TODO: add checks for correct specificatio of ref
   # TODO: add warning when terms are removed, or are not in the model
+  # TODO: add warning when ref list is not named
   
   if (type %in% c("terms", "contrasts")) {
     terms <- intersect(terms, get_selected_variable_names(object))
@@ -130,7 +131,10 @@ predict.mfpa <- function(object,
         intercept = 0
       
       res <- data.frame(
-        variable = as.numeric(x_seq),
+        # backtransform variable to original scale
+        variable = (as.numeric(x_seq) * object$transformations[t,"scale"]) - 
+          object$transformations[t,"shift"],
+        variable_pre = as.numeric(x_seq),
         value = x_trafo %*% term_coef + intercept
       )
       
@@ -147,12 +151,8 @@ predict.mfpa <- function(object,
             x_ref <- min(v, na.rm = TRUE)
           } else x_ref <- mean(v, na.rm = TRUE) 
         } else {
-          # TODO: scale and shift - should be given on original level
-          scalex <- object$transformations[t,"scale"]
-          shiftx <- object$transformations[t,"shift"]
-          # shift and scale xref. We assume xref is in the original scale, hence
-          # shifting and scaling is required
-          x_ref <- (x_ref + shiftx)/scalex
+          # pretransform given reference level
+          x_ref <- (x_ref + object$transformations[t,"shift"]) / object$transformations[t,"scale"]
         }
         # make sure it is a named matrix
         x_ref <- matrix(x_ref, nrow = 1, ncol = 1)
@@ -166,7 +166,6 @@ predict.mfpa <- function(object,
         res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
       }
       
-      # TODO: contrasts
       res$se <- calculate_standard_error(object, x_trafo, x_ref_trafo)
       mult <- qnorm(1 - (alpha / 2))
       res$lower <- res$value - mult * res$se

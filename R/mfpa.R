@@ -313,7 +313,8 @@ mfpa <- function(x,
   
   # assertions -----------------------------------------------------------------
   if(!is.matrix(x))
-    stop("x must be a matrix",call. = F)
+    stop("x must be a matrix", call. = F)
+    
   if(any(is.character(x)))
     stop("x contain characters values. Convert categorical variables to 
          dummy variables", call. = F)

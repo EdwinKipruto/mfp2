@@ -17,11 +17,19 @@
 #' depending on the chosen family of models.
 #'
 #' @section Terms prediction:
-#' This function allows to compute the partial linear predictors, or contrasts,
+#' This function allows to compute the partial linear predictors
 #' for each variable selected into the final model if `type = "terms"`. Note 
 #' that the results returned from this function are different from those of
 #' `predict.glm()` and `predict.coxph()` since these functions do not take
 #' into account that a single variable can be represented by multiple terms.
+#' This functionality is useful to assess model fit, since it also allows to 
+#' draw data points based on residuals. 
+#' 
+#' @section Contrasts: 
+#' This functions allows to compute contrasts with reference to a specified
+#' variable value if `type = "contrasts"`. In this case, the fitted partial
+#' predictors will be centered at the reference value (i.e. 0), and also 
+#' confidence intervals will have width 0 at that point. 
 #' 
 #' @param object a fitted object of class `mfpa`.
 #' @param newdata optionally, a matrix with column names in which to look for 
@@ -29,7 +37,7 @@
 #' @param type the type of prediction required.  The default is on the
 #' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for
 #' details. In case `type = "terms"`, see the Section on `Terms prediction`.
-#' In case `type = "contrast"` TODO
+#' In case `type = "contrasts"`, see the Section on `Contrasts`.
 #' @param terms a character vector of variable names specifying for which 
 #' variables term predictions are desired. Only used in case `type = "terms"`.
 #' If `NULL` (the default) then all selected variables in the final model will 
@@ -45,18 +53,26 @@
 #' values or influential points are present.
 #' @param alpha significance level used for computing confidence
 #' intervals in terms prediction.
+#' @param ref a named list of reference values used when `type = "contrasts"`.
+#' Note that any variable requested in `terms`, but not having an entry in this
+#' list (or if the entry is `NULL`) then the mean value (or minimum for binary
+#' variables) will be used as reference. Values are specified on the original 
+#' scale of the variable. 
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @return 
 #' For any `type` other than `"terms"` the output conforms to the output
 #' of `predict.glm()` or `predict.coxph()`.
 #' 
-#' If `type = "terms"`, then a named list with entries for each variable
-#' requested in `terms` (excluding those not present in the final model).
+#' If `type = "terms"` or `type = "contrasts"`, then a named list with entries
+#' for each variable requested in `terms` (excluding those not present in the
+#' final model).
 #' Each entry is a `data.frame` with the following columns:
 #' 
-#' * `variable`: variable values (shifted, scaled and centered as required).
-#' * `contrast`: partial linear predictor.
+#' * `variable`: variable values on original scale.
+#' * `variable_pre`: variable with pre-transformation applied, i.e. shifted, 
+#' scaled and centered as required.
+#' * `value`: partial linear predictor.
 #' * `se`: standard error of partial linear predictor.
 #' * `lower`: lower limit of confidence interval.
 #' * `upper`: upper limit of confidence interval.
@@ -284,10 +300,21 @@ prepare_newdata_for_predict <- function(object,
 #' 
 #' @param model fitted `mfpa` object.
 #' @param X transformed input matrix with variables of interest for partial predictor.
-#' @param x_ref_transformed reference value for variable of interest. Default is NULL
+#' @param xref reference value for variable of interest. Default is `NULL`, 
+#' in which case this function computes standard errors without reference 
+#' values.
+#' 
+#' @details 
+#' See page 91 and following in the book by Royston and Sauerbrei 2008
+#' for the formulas and mathematical details.
 #' 
 #' @return 
 #' Standard error.
+#' 
+#' @references
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
+#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 calculate_standard_error <- function(model, 
                                      X, 
                                      xref = NULL) { 
@@ -299,15 +326,11 @@ calculate_standard_error <- function(model,
   xnames <- colnames(X)
   ind <- match(xnames, colnames(vcovx))
   
-  # SECTION FOR REFERENCE VALUE IF PROVIDED
   if (!is.null(xref)) {
     # Subtract the reference value: f(x)-f(xref)
-    X <- sweep(X, 2, xref,"-")
+    X <- sweep(X, 2, xref, "-")
   }
-  # accumulate variance of the partial predictor
-  # this part does not include the variance and covariance of the 
-  # intercept. See formula in Royston and Sauerbrei book pg 91
-  
+
   # augment X by intercept if necessary
   # i.e. when a cox model is used or a reference value is given we don't use
   # the variance and covariances of the intercept
@@ -316,12 +339,14 @@ calculate_standard_error <- function(model,
     ind <- c(1, ind)
   }
 
-  vcovx2 <- vcovx[ind, ind, drop = FALSE]
-  v1 <- sapply(
+  # the following computation is equivalent to the formula in the book but
+  # uses matrix multiplications for efficency
+  vcovx <- vcovx[ind, ind, drop = FALSE]
+  v <- sapply(
     1:nrow(X), 
-    function(i, x, vcovx2) x[i, , drop = FALSE] %*% vcovx2 %*% t(x[i, , drop = FALSE]),
-    x = X, vcovx2 = vcovx2
+    function(i, x, vcovx) x[i, , drop = FALSE] %*% vcovx %*% t(x[i, , drop = FALSE]),
+    x = X, vcovx = vcovx
   )
   
-  sqrt(v1)
+  sqrt(v)
 }

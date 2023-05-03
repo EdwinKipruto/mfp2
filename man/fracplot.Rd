@@ -10,7 +10,7 @@ fracplot(
   terms = NULL,
   partial_only = FALSE,
   terms_seq = "data",
-  terms_alpha = 0.05,
+  alpha = 0.05,
   color_points = "#AAAAAA",
   color_line = "#000000",
   color_fill = "#000000",
@@ -34,7 +34,7 @@ default). See below for details.}
 
 \item{terms_seq}{\code{terms_seq} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
 
-\item{terms_alpha}{\code{terms_alpha} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
+\item{alpha}{\code{alpha} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
 
 \item{color_line, linetype, linewidth}{\code{ggplot2} properties of line for
 partial predictor.}

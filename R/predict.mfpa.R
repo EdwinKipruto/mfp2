@@ -94,7 +94,7 @@ predict.mfpa <- function(object,
                          strata = NULL, 
                          offset = NULL, 
                          ...) {
-  # check offset
+  # check offset and strata
  # if(is.null(offset)){
  #  }
   
@@ -112,8 +112,6 @@ predict.mfpa <- function(object,
   
   # TODO: add checks for missing strata and offset in case they were used in fit
   # TODO: add checks for correct specificatio of ref
-  # TODO: add warning when terms are removed, or are not in the model
-  # TODO: add warning when ref list is not named
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE))
     warning("i The supplied reference values (ref) must all be named.\n", 
             "i predict() continues but uses means (if variables are continous) or
@@ -216,6 +214,11 @@ predict.mfpa <- function(object,
   # predict values
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
+    # assert that x has no missing data
+    if (anyNA(newdata)) stop("! newdata must not contain any NA (missing data).\n", 
+                       "i Please remove any missing data before passing newdata to this function.",
+                       call. = FALSE)
+    
     newdata <- prepare_newdata_for_predict(object, newdata)
     
     if (object$family_string == "cox") {

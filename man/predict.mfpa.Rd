@@ -10,7 +10,8 @@
   type = NULL,
   terms = NULL,
   terms_seq = c("equidistant", "data"),
-  terms_alpha = 0.05,
+  alpha = 0.05,
+  ref = NULL,
   strata = NULL,
   offset = NULL,
   ...
@@ -24,7 +25,8 @@ variables with which to predict. See \code{\link[=mfpa]{mfpa()}} for details.}
 
 \item{type}{the type of prediction required.  The default is on the
 scale of the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for
-details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.}
+details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.
+In case \code{type = "contrast"} TODO}
 
 \item{terms}{a character vector of variable names specifying for which
 variables term predictions are desired. Only used in case \code{type = "terms"}.
@@ -41,7 +43,7 @@ The option \code{data} uses the observed data values directly, but these may not
 adequately reflect the functional form of the data, especially when extreme
 values or influential points are present.}
 
-\item{terms_alpha}{significance level used for computing confidence
+\item{alpha}{significance level used for computing confidence
 intervals in terms prediction.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}

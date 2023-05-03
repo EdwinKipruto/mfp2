@@ -5,7 +5,14 @@
 \alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
-transform_vector_fp(x, power = 1, scale = 1, shift = 0, name = NULL)
+transform_vector_fp(
+  x,
+  power = 1,
+  scale = 1,
+  shift = 0,
+  name = NULL,
+  check_binary = TRUE
+)
 
 transform_vector_acd(
   x,

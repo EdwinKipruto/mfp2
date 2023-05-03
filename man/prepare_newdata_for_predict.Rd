@@ -4,7 +4,31 @@
 \alias{prepare_newdata_for_predict}
 \title{Helper function to prepare newdata for predict function}
 \usage{
-prepare_newdata_for_predict(object, newdata)
+prepare_newdata_for_predict(
+  object,
+  newdata,
+  strata = NULL,
+  offset = NULL,
+  apply_pre = TRUE,
+  apply_center = TRUE,
+  check_binary = TRUE
+)
+}
+\arguments{
+\item{object}{fitted \code{mfpa} model object.}
+
+\item{newdata}{dataset to be prepared for predictions. Its columns can be
+a subset of the columns used for fitting the model.}
+
+\item{strata, offset}{passed from \code{\link[=predict.mfpa]{predict.mfpa()}}.}
+
+\item{apply_pre}{logical indicating wether the fitted pre-transformation
+is applied or not.}
+
+\item{apply_center}{logical indicating whether the fitted centers are applied
+after transformation or not.}
+
+\item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
 }
 \description{
 To be used in \code{\link[=predict.mfpa]{predict.mfpa()}}.

@@ -4,12 +4,14 @@
 \alias{calculate_standard_error}
 \title{Helper function to compute standard error of a partial predictor}
 \usage{
-calculate_standard_error(model, X)
+calculate_standard_error(model, X, xref = NULL)
 }
 \arguments{
 \item{model}{fitted \code{mfpa} object.}
 
-\item{X}{input matrix with variables of interest for partial predictor.}
+\item{X}{transformed input matrix with variables of interest for partial predictor.}
+
+\item{x_ref_transformed}{reference value for variable of interest. Default is NULL}
 }
 \value{
 Standard error.

@@ -29,7 +29,13 @@
 #' returned by this function will always align with the powers used
 #' throughout this package.
 #' 
-#' Binary variables are not transformed. 
+#' Binary variables are not transformed, unless `check_binary` is set to
+#' `FALSE`. This is usually not necessary, the only special case to set it to 
+#' `FALSE` is when a single value is to be transformed during prediction (e.g.
+#' to transform a reference value). When this is done, binary variables are
+#' still returned unchanged, but a single value from a continuous variable will
+#' be transformed as desired by the fitted transformations. For model fit, 
+#' `check_binary` should always be at its default value.
 #' 
 #' @section Data processing: 
 #' An important note on data processing. Variables are shifted and scaled 
@@ -65,6 +71,10 @@
 #' new data.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
+#' @param check_binary a logical indicating whether or not input `x` is checked
+#' if it is a binary variable (i.e. has only two distinct values). The default
+#' `TRUE` usually only needs to changed when this function is to be used to 
+#' transform data for predictions. See Details.
 #' 
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns

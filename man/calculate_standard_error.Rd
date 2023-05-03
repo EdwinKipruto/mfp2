@@ -11,11 +11,22 @@ calculate_standard_error(model, X, xref = NULL)
 
 \item{X}{transformed input matrix with variables of interest for partial predictor.}
 
-\item{x_ref_transformed}{reference value for variable of interest. Default is NULL}
+\item{xref}{reference value for variable of interest. Default is \code{NULL},
+in which case this function computes standard errors without reference
+values.}
 }
 \value{
 Standard error.
 }
 \description{
 To be used in \code{\link[=predict.mfpa]{predict.mfpa()}}.
+}
+\details{
+See page 91 and following in the book by Royston and Sauerbrei 2008
+for the formulas and mathematical details.
+}
+\references{
+Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
+for Modelling Continuous Variables. John Wiley & Sons.}\cr
 }

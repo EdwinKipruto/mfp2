@@ -9,7 +9,7 @@
 #' predictor is drawn (`TRUE`), or also observed data points (`FALSE`, the 
 #' default). See below for details. 
 #' @param terms_seq `terms_seq` argument of [predict.mfpa()].
-#' @param terms_alpha `terms_alpha` argument of [predict.mfpa()].
+#' @param alpha `alpha` argument of [predict.mfpa()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
 #' data points.
 #' @param color_line,linetype,linewidth `ggplot2` properties of line for 
@@ -36,7 +36,7 @@ fracplot <- function(model,
                      terms = NULL, 
                      partial_only = FALSE, 
                      terms_seq = "data",
-                     terms_alpha = 0.05,
+                     alpha = 0.05,
                      color_points = "#AAAAAA",
                      color_line = "#000000", 
                      color_fill = "#000000",
@@ -54,7 +54,11 @@ fracplot <- function(model,
     )
   }
   
-  pred <- predict(model, type = "terms", terms = terms, terms_seq = terms_seq)
+  pred <- predict(model, 
+                  type = "terms", 
+                  terms = terms, 
+                  terms_seq = terms_seq,
+                  alpha = alpha)
   
   # for points also need the data point predictions
   pred_data <- pred

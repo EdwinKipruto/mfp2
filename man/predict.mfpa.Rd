@@ -29,7 +29,8 @@ details. In case \code{type = "terms"}, see the Section on \verb{Terms predictio
 In case \code{type = "contrasts"}, see the Section on \code{Contrasts}.}
 
 \item{terms}{a character vector of variable names specifying for which
-variables term predictions are desired. Only used in case \code{type = "terms"}.
+variables term or contrast predictions are desired.
+Only used in case \code{type = "terms"} or \code{type = "contrasts"}.
 If \code{NULL} (the default) then all selected variables in the final model will
 be used. In any case, only variables used in the final model are used, even
 if more variable names are passed.}
@@ -50,7 +51,8 @@ intervals in terms prediction.}
 Note that any variable requested in \code{terms}, but not having an entry in this
 list (or if the entry is \code{NULL}) then the mean value (or minimum for binary
 variables) will be used as reference. Values are specified on the original
-scale of the variable.}
+scale of the variable. By default, this function uses the means (for
+continuous variables) and minima (for binary variables) as reference values.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }

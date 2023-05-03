@@ -39,7 +39,8 @@
 #' details. In case `type = "terms"`, see the Section on `Terms prediction`.
 #' In case `type = "contrasts"`, see the Section on `Contrasts`.
 #' @param terms a character vector of variable names specifying for which 
-#' variables term predictions are desired. Only used in case `type = "terms"`.
+#' variables term or contrast predictions are desired.
+#' Only used in case `type = "terms"` or `type = "contrasts"`.
 #' If `NULL` (the default) then all selected variables in the final model will 
 #' be used. In any case, only variables used in the final model are used, even
 #' if more variable names are passed.
@@ -57,7 +58,8 @@
 #' Note that any variable requested in `terms`, but not having an entry in this
 #' list (or if the entry is `NULL`) then the mean value (or minimum for binary
 #' variables) will be used as reference. Values are specified on the original 
-#' scale of the variable. 
+#' scale of the variable. By default, this function uses the means (for 
+#' continuous variables) and minima (for binary variables) as reference values. 
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @return 
@@ -104,7 +106,7 @@ predict.mfpa <- function(object,
     terms <- get_selected_variable_names(object)
   # TODO return error when terms given are not in the final model
   if (is.null(ref))  
-    ref <- lapply(terms, function(v) NULL)
+    ref <- setNames(lapply(terms, function(v) NULL), terms)
   
   terms_seq <- match.arg(terms_seq)
   
@@ -112,24 +114,23 @@ predict.mfpa <- function(object,
   # TODO: add checks for correct specificatio of ref
   # TODO: add warning when terms are removed, or are not in the model
   # TODO: add warning when ref list is not named
-  if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm=TRUE))
+  if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE))
     warning("i The supplied reference values (ref) must all be named.\n", 
             "i predict() continues but uses means (if variables are continous) or
-            min (if binary) instead of the reference values.",call. = FALSE)
+            min (if binary) instead of the reference values.", call. = FALSE)
   
   if (type %in% c("terms", "contrasts")) {
     n_term1 <- length(terms)
     terms <- intersect(terms, get_selected_variable_names(object))
     # length of terms after intersections
     n_term2 <- length(terms)
-    if (n_term2==0)
+    if (n_term2 == 0) {
       warning("i All the terms supplied are not in the final model.\n", 
-              "i predict() continues but returns an empty list.",call. = FALSE) 
-    
-    if(n_term2 < n_term1)
+              "i predict() continues but returns an empty list.", call. = FALSE) 
+    } else if (n_term2 < n_term1)
       warning("i Some terms supplied are not in the final model.\n", 
               "i predict() continues but returns an empty list for those terms 
-                 not in the model.",call. = FALSE)
+                 not in the model.", call. = FALSE)
       
     res_list <- list()
     for (t in terms) {

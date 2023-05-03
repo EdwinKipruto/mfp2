@@ -29,8 +29,8 @@ plot_mfp(...)
 \item{terms}{character vector with variable names to be plotted.}
 
 \item{partial_only}{a logical value indicating whether only the partial
-predictor is drawn (\code{TRUE}), or also observed data points (\code{FALSE}, the
-default). See below for details.}
+predictor (component) is drawn (\code{TRUE}), or also component-plus-residual
+(\code{FALSE}, the default). See below for details.}
 
 \item{terms_seq}{\code{terms_seq} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
 
@@ -51,13 +51,16 @@ drawn as individual plots of facetted / combined easily using e.g.
 \code{patchwork::wrap_plots} and further customized.
 }
 \description{
-Plots partial linear predictors against the selected covariate(s) of
-interest, including a confidence interval.
+Plots the partial linear predictors with confidence limits
+against the selected covariate(s) of interest.
 }
 \details{
-The data points are computed as the partial linear predictors plus residuals
-extracted from the fitted model (deviance residuals for glms, and martingale
-residuals for Cox models), following the mfp implementation in Stata.
+The confidence limits of the partial linear predictors are obtained from the
+variance–covariance matrix of the entire model, which takes into account the
+uncertainty in estimating the model parameters but not the FP powers. The
+component-plus-residual, is the partial linear predictor plus residuals, where
+deviance residuals are used in generalized linear regression models, while
+martingale residuals are used in Cox models, as done in Stata program.
 }
 \section{Functions}{
 \itemize{

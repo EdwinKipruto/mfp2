@@ -91,7 +91,7 @@ predict.mfpa <- function(object,
   
   # TODO: add checks for missing strata and offset in case they were used in fit
   # TODO: add checks for correct specificatio of ref
-  # TODO: add warning when terms are removed
+  # TODO: add warning when terms are removed, or are not in the model
   
   if (type %in% c("terms", "contrasts")) {
     terms <- intersect(terms, get_selected_variable_names(object))
@@ -224,8 +224,7 @@ prepare_newdata_for_predict <- function(object,
   
   # subset as appropriate
   vnames <- intersect(colnames(newdata), rownames(object$transformations))
-  # sort as in object
-  vnames <- vnames[match(vnames, rownames(object$transformations))]
+  # sorting is not relevant as we always pass vnames
   newdata <- newdata[, vnames, drop = FALSE]
   
   if (apply_pre) {
@@ -284,7 +283,8 @@ prepare_newdata_for_predict <- function(object,
 #' @return 
 #' Standard error.
 calculate_standard_error <- function(model, 
-                                     X, xref = NULL) { 
+                                     X, 
+                                     xref = NULL) { 
 
   # the first column is the intercept in glm
   vcovx <- vcov(object = model)
@@ -292,44 +292,30 @@ calculate_standard_error <- function(model,
   # get rid of variance and covariance of intercept if any
   xnames <- colnames(X)
   ind <- match(xnames, colnames(vcovx))
-  vcovx1 <- vcovx[ind, ind, drop = FALSE] 
+  
   # SECTION FOR REFERENCE VALUE IF PROVIDED
-  if(!is.null(xref)){
-    # extract the corresponding fp powers
-    pwrs <- unlist(setNames(model$fp_powers, NULL))[xnames]
-    # extract the scaling factors
-    xn <- sub('\\.1$','', names(pwrs)[1])
-    scalex <- model$transformations[xn,"scale"]
-    # scale xref
-    xref <- xref/scalex
-    # transform xref based on pwrs
-    xref_transformed <- transform_vector_fp(xref,power = pwrs, check_binary = F)
+  if (!is.null(xref)) {
     # Subtract the reference value: f(x)-f(xref)
-    X<- sweep(X, 2, xref_transformed,"-")
+    X <- sweep(X, 2, xref,"-")
   }
   # accumulate variance of the partial predictor
   # this part does not include the variance and covariance of the 
   # intercept. See formula in Royston and Sauerbrei book pg 91
-  v1 <- 0
-  for (i in 1:length(xnames)) {
-    for (j in 1:i) {
-      v1 <- v1 + ((j < i) + 1) * vcovx1[i, j] * X[, i] * X[, j]
-    }
-  }
   
-  # Include variance and covariance of the intercept for glm since
-  # cox does not have intercept. We only do this if xref is NULL
-  if(is.null(xref)){
-  if (model$family_string != "cox") {
+  # augment X by intercept if necessary
+  # i.e. when a cox model is used or a reference value is given we don't use
+  # the variance and covariances of the intercept
+  if (model$family_string != "cox" && is.null(xref)) {
+    X <- cbind(1, X)
     ind <- c(1, ind)
-    vcovx2 <- vcovx[ind, ind, drop = F]
-    v2 <- 0
-    for (i in seq_along(xnames)) {
-      # we assume intercept is in column 1 of vcov which is always the case
-      v2 <- v2 + 2 * vcovx2[1, i + 1] * X[, i]
-    }
-    v1 <- vcovx2[1, 1] + v2 + v1
   }
-  }
+    
+  vcovx2 <- vcovx[ind, ind, drop = FALSE]
+  v1 <- sapply(
+    1:nrow(X), 
+    function(i, x, vcovx2) x[i, , drop = FALSE] %*% vcovx2 %*% t(x[i, , drop = FALSE]),
+    x = X, vcovx2 = vcovx2
+  )
+  
   sqrt(v1)
 }

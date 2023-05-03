@@ -478,6 +478,10 @@ mfpa <- function(x,
       }
       
       if (!is.null(strata)) {
+          # assert numeric
+          if(is.factor(strata)){
+            strata <- as.numeric(strata)
+          }
           # assert stratification factors are of correct length
           if (is.vector(strata)) {
             strata_len = length(strata)

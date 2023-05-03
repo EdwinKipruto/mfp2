@@ -150,7 +150,8 @@ predict.mfpa <- function(object,
           # TODO: scale and shift - should be given on original level
           scalex <- object$transformations[t,"scale"]
           shiftx <- object$transformations[t,"shift"]
-          # shift and scale xref
+          # shift and scale xref. We assume xref is in the original scale, hence
+          # shifting and scaling is required
           x_ref <- (x_ref + shiftx)/scalex
         }
         # make sure it is a named matrix
@@ -162,8 +163,7 @@ predict.mfpa <- function(object,
           object, x_ref, apply_pre = FALSE, check_binary = FALSE))
         
         # compute contrasts, no intercepts necessary
-        #res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
-        res$value <- sweep(res$value, 2, as.numeric(x_ref_trafo %*% term_coef))
+        res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
       }
       
       # TODO: contrasts
@@ -177,7 +177,7 @@ predict.mfpa <- function(object,
     names(res_list) <- terms
     
     return(res_list)
-  }
+  } else {
   
   # predict values
   # transform newdata using the FP powers from the training model
@@ -203,6 +203,7 @@ predict.mfpa <- function(object,
     )
   } else {
     stats::predict.glm(object = object, type = type, ...)
+  }
   }
 }
 

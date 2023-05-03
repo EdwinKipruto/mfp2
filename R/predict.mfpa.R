@@ -253,6 +253,7 @@ prepare_newdata_for_predict <- function(object,
     center = setNames(rep(FALSE, length(vnames)), vnames),
     keep_x_order = TRUE,
     acdx = setNames(object$fp_terms[vnames, "acd"], vnames),
+    acd_parameter_list = object$acd_parameter[vnames],
     check_binary = check_binary
   )$x_transformed
   

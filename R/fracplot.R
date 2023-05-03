@@ -8,7 +8,7 @@
 #' @param partial_only a logical value indicating whether only the partial 
 #' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
 #' (`FALSE`, the default). See below for details. 
-#' @param terms_seq `terms_seq` argument of [predict.mfpa()].
+#' @param type,ref,terms_seq arguments of [predict.mfpa()].
 #' @param alpha `alpha` argument of [predict.mfpa()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
 #' data points.
@@ -38,6 +38,8 @@
 fracplot <- function(model, 
                      terms = NULL, 
                      partial_only = FALSE, 
+                     type = c("terms","constrasts"),
+                     ref = NULL,
                      terms_seq = "data",
                      alpha = 0.05,
                      color_points = "#AAAAAA",
@@ -56,17 +58,21 @@ fracplot <- function(model,
          call. = FALSE
     )
   }
-  
+ # set defaults
+  type <- match.arg(type)
+  # ADDED "type" AND "ref" IN THE PREDICT FUNCTION, MICHAEL TO FIX IT AND USE
+  # HIS EXAMPLE
   pred <- predict(model, 
-                  type = "terms", 
-                  terms = terms, 
+                  type = type, 
+                  terms = terms,
+                  ref = ref,
                   terms_seq = terms_seq,
                   alpha = alpha)
-  
   # for points also need the data point predictions
   pred_data <- pred
   if (!partial_only && terms_seq != "data")
-    pred_data <- predict(model, type = "terms", 
+    pred_data <- predict(model,
+                         type = "terms", 
                          terms = terms, 
                          terms_seq = "data")
   

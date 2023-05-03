@@ -117,7 +117,7 @@ predict.mfpa <- function(object,
             "i predict() continues but uses means (if variables are continous) or
             min (if binary) instead of the reference values.", call. = FALSE)
   
-  if (type %in% c("terms", "contrasts")) {
+   if (type %in% c("terms", "contrasts")) {
     n_term1 <- length(terms)
     terms <- intersect(terms, get_selected_variable_names(object))
     # length of terms after intersections
@@ -129,7 +129,11 @@ predict.mfpa <- function(object,
       warning("i Some terms supplied are not in the final model.\n", 
               "i predict() continues but returns an empty list for those terms 
                  not in the model.", call. = FALSE)
-      
+    # TODO: return warning if the names(ref) != names(terms)
+    if(!all(sapply(ref, is.null)) && any(!names(ref)%in% terms))
+      warning("i Some of names of ref are not in terms.\n", 
+              "i predict() continues but does not consider them.", call. = FALSE)
+ 
     res_list <- list()
     for (t in terms) {
       

@@ -26,9 +26,11 @@
 #' * `pvalue`: p-value
 calculate_lr_test <- function(logl, 
                               dfs) {
+  statistic <- 2 * (logl[2] - logl[1])
+  
   list(
-    statistic = 2 * (logl[2] - logl[1]), 
-    pvalue = pchisq(2 * (logl[2] - logl[1]), 
+    statistic = statistic, 
+    pvalue = pchisq(statistic, 
                     df = dfs[2] - dfs[1], 
                     lower.tail = FALSE)
   )

@@ -323,10 +323,11 @@ mfpa <- function(x,
   np <- dim(x)
   nobs <- as.integer(np[1])
   nvars <- as.integer(np[2])
+  
   # assert that x is a matrix
   if (is.null(np)) {
       stop("! The dimensions of x must not be Null.\n",
-           "i Please make sure that x is a matrix or data.frame with at least one row and column.")
+           "i Please make sure that x is a matrix or data.frame with at least one row and column.", call. = FALSE)
   }
   # assert that x has column names
   vnames <- colnames(x)
@@ -578,7 +579,7 @@ mfpa <- function(x,
   }
 
   # data preparation -----------------------------------------------------------
-  # shift, scale 
+  # shift and scale 
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   

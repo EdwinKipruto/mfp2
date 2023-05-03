@@ -131,7 +131,7 @@ predict.mfpa <- function(object,
                  not in the model.", call. = FALSE)
     # TODO: return warning if the names(ref) != names(terms)
     if(!all(sapply(ref, is.null)) && any(!names(ref)%in% terms))
-      warning("i Some of names of ref are not in terms.\n", 
+      warning("i Some of names of reference values are not in terms.\n", 
               "i predict() continues but does not consider them.", call. = FALSE)
  
     res_list <- list()

@@ -109,7 +109,8 @@ predict.mfpa <- function(object,
         )
         colnames(x_seq) <- t
         
-        # no need to apply pretransformation, already done in x_original
+        # no need to apply pretransformation (shift and scaling), already done 
+        # in x_original
         x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
                                                          x_seq, 
                                                          apply_pre = FALSE))
@@ -147,17 +148,22 @@ predict.mfpa <- function(object,
           } else x_ref <- mean(v, na.rm = TRUE) 
         } else {
           # TODO: scale and shift - should be given on original level
+          scalex <- object$transformations[t,"scale"]
+          shiftx <- object$transformations[t,"shift"]
+          # shift and scale xref
+          x_ref <- (x_ref + shiftx)/scalex
         }
         # make sure it is a named matrix
         x_ref <- matrix(x_ref, nrow = 1, ncol = 1)
         colnames(x_ref) <- t
         
-        # transform 
+        # transform x_ref 
         x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
           object, x_ref, apply_pre = FALSE, check_binary = FALSE))
         
         # compute contrasts, no intercepts necessary
-        res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
+        #res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
+        res$value <- sweep(res$value, 2, as.numeric(x_ref_trafo %*% term_coef))
       }
       
       # TODO: contrasts
@@ -264,10 +270,10 @@ prepare_newdata_for_predict <- function(object,
     
     # add strata and offset as required
     if (!is.null(strata))
-      newdata$strata_ = survival::strata(strata, shortlabel = TRUE)
+      newdata$strata_ <- survival::strata(strata, shortlabel = TRUE)
     
     if (!is.null(offset))
-      newdata$offset_ = offset
+      newdata$offset_ <- offset
   } 
   
   newdata

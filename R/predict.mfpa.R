@@ -83,7 +83,7 @@ predict.mfpa <- function(object,
   
   if (is.null(terms))
     terms <- get_selected_variable_names(object)
-  
+  # TODO return error when terms given are not in the final model
   if (is.null(ref))  
     ref <- lapply(terms, function(v) NULL)
   
@@ -109,7 +109,8 @@ predict.mfpa <- function(object,
         )
         colnames(x_seq) <- t
         
-        # no need to apply pretransformation, already done in x_original
+        # no need to apply pretransformation (shift and scaling), already done 
+        # in x_original
         x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
                                                          x_seq, 
                                                          apply_pre = FALSE))
@@ -147,12 +148,17 @@ predict.mfpa <- function(object,
           } else x_ref <- mean(v, na.rm = TRUE) 
         } else {
           # TODO: scale and shift - should be given on original level
+          scalex <- object$transformations[t,"scale"]
+          shiftx <- object$transformations[t,"shift"]
+          # shift and scale xref. We assume xref is in the original scale, hence
+          # shifting and scaling is required
+          x_ref <- (x_ref + shiftx)/scalex
         }
         # make sure it is a named matrix
         x_ref <- matrix(x_ref, nrow = 1, ncol = 1)
         colnames(x_ref) <- t
         
-        # transform 
+        # transform x_ref 
         x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
           object, x_ref, apply_pre = FALSE, check_binary = FALSE))
         
@@ -171,7 +177,7 @@ predict.mfpa <- function(object,
     names(res_list) <- terms
     
     return(res_list)
-  }
+  } 
   
   # predict values
   # transform newdata using the FP powers from the training model
@@ -263,10 +269,10 @@ prepare_newdata_for_predict <- function(object,
     
     # add strata and offset as required
     if (!is.null(strata))
-      newdata$strata_ = survival::strata(strata, shortlabel = TRUE)
+      newdata$strata_ <- survival::strata(strata, shortlabel = TRUE)
     
     if (!is.null(offset))
-      newdata$offset_ = offset
+      newdata$offset_ <- offset
   } 
   
   newdata
@@ -277,8 +283,8 @@ prepare_newdata_for_predict <- function(object,
 #' To be used in [predict.mfpa()].
 #' 
 #' @param model fitted `mfpa` object.
-#' @param X input matrix with variables of interest for partial predictor.
-#' @param xref reference value for variable of interest. Default is NULL
+#' @param X transformed input matrix with variables of interest for partial predictor.
+#' @param x_ref_transformed reference value for variable of interest. Default is NULL
 #' 
 #' @return 
 #' Standard error.
@@ -309,7 +315,7 @@ calculate_standard_error <- function(model,
     X <- cbind(1, X)
     ind <- c(1, ind)
   }
-    
+
   vcovx2 <- vcovx[ind, ind, drop = FALSE]
   v1 <- sapply(
     1:nrow(X), 

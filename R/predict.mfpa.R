@@ -76,6 +76,9 @@ predict.mfpa <- function(object,
                          strata = NULL, 
                          offset = NULL, 
                          ...) {
+  # check offset
+ # if(is.null(offset)){
+ #  }
   
   # set defaults and match arguments
   if (is.null(type)) 
@@ -93,10 +96,25 @@ predict.mfpa <- function(object,
   # TODO: add checks for correct specificatio of ref
   # TODO: add warning when terms are removed, or are not in the model
   # TODO: add warning when ref list is not named
+  if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm=TRUE))
+    warning("i The supplied reference values (ref) must all be named.\n", 
+            "i predict() continues but uses means (if variables are continous) or
+            min (if binary) instead of the reference values.",call. = FALSE)
   
   if (type %in% c("terms", "contrasts")) {
+    n_term1 <- length(terms)
     terms <- intersect(terms, get_selected_variable_names(object))
+    # length of terms after intersections
+    n_term2 <- length(terms)
+    if (n_term2==0)
+      warning("i All the terms supplied are not in the final model.\n", 
+              "i predict() continues but returns an empty list.",call. = FALSE) 
     
+    if(n_term2 < n_term1)
+      warning("i Some terms supplied are not in the final model.\n", 
+              "i predict() continues but returns an empty list for those terms 
+                 not in the model.",call. = FALSE)
+      
     res_list <- list()
     for (t in terms) {
       

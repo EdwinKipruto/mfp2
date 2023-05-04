@@ -24,7 +24,7 @@
 #' @section Details on `family` option:
 #'
 #' `mfp2()` supports the family object as used by [stats::glm()]. The built in
-#' families are specifed via a character string. `mfp2(..., family="binomial")` 
+#' families are specified via a character string. `mfp2(..., family="binomial")` 
 #' fits a logistic regression model, while `mfp2(..., family="gaussian")`
 #' fits a linear regression (ordinary least squares) model.
 #'

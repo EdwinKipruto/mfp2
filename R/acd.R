@@ -37,7 +37,7 @@
 #' * `scale`: scaling factor used for computations. 
 #' 
 #' @references 
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 #' 

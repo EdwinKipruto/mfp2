@@ -266,7 +266,7 @@
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 #' regression models with a sigmoid dose-response function. 
 #' Stata Journal 14(2): 329-341.}\cr
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}\cr
 #' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 

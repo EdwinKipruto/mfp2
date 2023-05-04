@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{fit_mfp}
 \alias{fit_mfp}
-\title{Function to fit a model using the mfp2 algorithm}
+\title{Function to fit a model using (an extension of) the mfp algorithm}
 \usage{
 fit_mfp(
   x,

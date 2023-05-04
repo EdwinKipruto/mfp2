@@ -1,4 +1,4 @@
-#' Function to fit a model using the mfp2 algorithm
+#' Function to fit a model using (an extension of) the mfp algorithm
 #' 
 #' Not exported. To be called from the [`mfp2()`] function. Most parameters
 #' are explained in the documentation of `mfp2()`, but their form may differ

@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_model.R
 \name{fit_model}
 \alias{fit_model}
-\title{Function that fits models supported by \code{mfpa}}
+\title{Function that fits models supported by \code{mfp2}}
 \usage{
 fit_model(
   x,

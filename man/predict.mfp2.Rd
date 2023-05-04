@@ -70,8 +70,8 @@ Each entry is a \code{data.frame} with the following columns:
 \item \code{variable}: variable values on original scale.
 \item \code{variable_pre}: variable with pre-transformation applied, i.e. shifted,
 scaled and centered as required.
-\item \code{value}: partial linear predictor.
-\item \code{se}: standard error of partial linear predictor.
+\item \code{value}: partial linear predictor or contrast (depending on \code{type}).
+\item \code{se}: standard error of partial linear predictor or contrast.
 \item \code{lower}: lower limit of confidence interval.
 \item \code{upper}: upper limit of confidence interval.
 }

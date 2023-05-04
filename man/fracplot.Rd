@@ -9,7 +9,7 @@ fracplot(
   model,
   terms = NULL,
   partial_only = FALSE,
-  type = c("terms", "constrasts"),
+  type = c("terms", "contrasts"),
   ref = NULL,
   terms_seq = c("data", "equidistant"),
   alpha = 0.05,
@@ -32,9 +32,10 @@ plot_mfp(...)
 
 \item{partial_only}{a logical value indicating whether only the partial
 predictor (component) is drawn (\code{TRUE}), or also component-plus-residual
-(\code{FALSE}, the default). See below for details.}
+(\code{FALSE}, the default). Only used if \code{type = "terms"}. See below for details.}
 
-\item{type, ref, terms_seq}{arguments of \code{\link[=predict.mfp2]{predict.mfp2()}}.}
+\item{type, ref, terms_seq}{arguments of \code{\link[=predict.mfp2]{predict.mfp2()}}. Only
+\code{type = "terms"} and \code{type = "contrasts"} are supported by this function.}
 
 \item{alpha}{\code{alpha} argument of \code{\link[=predict.mfp2]{predict.mfp2()}}.}
 
@@ -57,12 +58,15 @@ Plots the partial linear predictors with confidence limits
 against the selected covariate(s) of interest.
 }
 \details{
-The confidence limits of the partial linear predictors are obtained from the
-variance–covariance matrix of the entire model, which takes into account the
-uncertainty in estimating the model parameters but not the FP powers. The
-component-plus-residual, is the partial linear predictor plus residuals, where
-deviance residuals are used in generalized linear regression models, while
-martingale residuals are used in Cox models, as done in Stata program.
+The confidence limits of the partial linear predictors or contrasts are
+obtained from the variance–covariance matrix of the final fitted model,
+which takes into account the uncertainty in estimating the model parameters
+but not the FP powers.
+
+The component-plus-residual, is the partial linear predictor plus residuals,
+where deviance residuals are used in generalized linear regression models,
+while martingale residuals are used in Cox models, as done in Stata program.
+This kind of plot is only available if \code{type = "terms"}.
 }
 \section{Functions}{
 \itemize{

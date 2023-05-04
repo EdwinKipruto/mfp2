@@ -29,7 +29,7 @@ done separately for each individual column of the transformed data matrix.}
 \item{keep_x_order}{a logical indicating whether the order of columns
 should be kept as in the input matrix \code{x}, of if the columns should be
 ordered according to \code{power_list}. The default is \code{FALSE}, since
-the ordering by \code{power_list} reflects the \code{xorder} argument in \code{\link[=mfpa]{mfpa()}}.}
+the ordering by \code{power_list} reflects the \code{xorder} argument in \code{\link[=mfp2]{mfp2()}}.}
 
 \item{acd_parameter_list}{a named list. Only required when transformation
 are to be applied to new data. Entries must correspond to the entries where

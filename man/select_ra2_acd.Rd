@@ -49,14 +49,14 @@ captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
 This function extends the algorithm used in \code{\link[=select_ra2]{select_ra2()}} to allow the
 usage of ACD transformations. The implementation follows the description
 in Royston and Sauerbrei (2016). The procedure is outlined in detail in
-the corresponding section in the documentation of \code{\link[=mfpa]{mfpa()}}.
+the corresponding section in the documentation of \code{\link[=mfp2]{mfp2()}}.
 
 When a variable is forced into the model by including it in \code{keep}, then
 this function will not exclude it from the model (by setting its power to
 \code{NA}), but will only choose its functional form.
 }
 \references{
-Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}
 }

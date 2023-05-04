@@ -479,6 +479,11 @@ mfp2 <- function(x,
                "i Currently only right censoring is supported by mfp2().")
       }
       
+      # assert numeric
+      if (is.factor(strata)){
+        strata <- as.numeric(strata)
+      }
+      
       if (!is.null(strata)) {
           # assert stratification factors are of correct length
           if (is.vector(strata)) {

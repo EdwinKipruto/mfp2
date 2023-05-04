@@ -20,7 +20,7 @@ Function that calculates an integer used to scale predictor
 }
 \details{
 For details on why scaling is useful see the corresponding section in the
-documentation of \code{\link[=mfpa]{mfpa()}}.
+documentation of \code{\link[=mfp2]{mfp2()}}.
 
 The determination of the scaling factor is independent (i.e. not affected
 by) shifts in the input data, as it only depends on the range of the

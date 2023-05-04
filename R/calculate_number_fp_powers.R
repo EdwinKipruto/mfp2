@@ -1,7 +1,7 @@
 # Calculates total number of fp powers in adjustment variables
 # x is a list of fp powers for all variables
 calculate_number_fp_powers <- function(x) {
-  # Remove NA-variables eliminated in usual mfp. In MFPA, a variable can have
+  # Remove NA-variables eliminated in usual mfp. In mfp2, a variable can have
   # powers c(1,NA) or c(NA,1) and its unaffected
   x <- x[!is.na(x)]
   if (!is.null(x)) {

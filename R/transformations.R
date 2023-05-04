@@ -214,7 +214,7 @@ transform_vector_acd <- function(x,
 #' @param keep_x_order a logical indicating whether the order of columns
 #' should be kept as in the input matrix `x`, of if the columns should be 
 #' ordered according to `power_list`. The default is `FALSE`, since 
-#' the ordering by `power_list` reflects the `xorder` argument in [mfpa()].
+#' the ordering by `power_list` reflects the `xorder` argument in [mfp2()].
 #' @param acd_parameter_list a named list. Only required when transformation
 #' are to be applied to new data. Entries must correspond to the entries where
 #' `acdx` is set to `TRUE`. Each components is to be passed to 

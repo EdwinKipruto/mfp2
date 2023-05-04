@@ -26,7 +26,7 @@ deviance_gaussian <- function(rss, weights, n) {
   n * (1 - meanwts + k)
 }
 
-#' Function to compute model metrics to be used within `mfpa`
+#' Function to compute model metrics to be used within `mfp2`
 #' 
 #' Mostly used within an mfp step to compare between the different fp models
 #' of a variable. 

@@ -2,7 +2,7 @@
 #' 
 #' @details
 #' For details on why scaling is useful see the corresponding section in the
-#' documentation of [mfpa()].
+#' documentation of [mfp2()].
 #' 
 #' The determination of the scaling factor is independent (i.e. not affected 
 #' by) shifts in the input data, as it only depends on the range of the 
@@ -49,7 +49,7 @@ find_scale_factor <- function(x) {
 #' 
 #' @details
 #' For details on why shifting is necessary see the corresponding section in the
-#' documentation of [mfpa()].
+#' documentation of [mfp2()].
 #' 
 #' This function implements the formula in Section 4.7 of Royston and 
 #' Sauerbrei (2008).

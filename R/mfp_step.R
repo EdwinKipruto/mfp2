@@ -1,6 +1,6 @@
 #' Function to estimate the best FP functions for a single variable
 #' 
-#' See [mfpa()] for a brief summary on the notation used here and 
+#' See [mfp2()] for a brief summary on the notation used here and 
 #' [fit_mfp()] for an overview of the fitting procedure.  
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
@@ -97,7 +97,7 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 find_best_fp_step <- function(x,
@@ -679,7 +679,7 @@ select_ra2 <- function(x,
 #' This function extends the algorithm used in [select_ra2()] to allow the 
 #' usage of ACD transformations. The implementation follows the description 
 #' in Royston and Sauerbrei (2016). The procedure is outlined in detail in 
-#' the corresponding section in the documentation of [mfpa()].
+#' the corresponding section in the documentation of [mfp2()].
 #' 
 #' When a variable is forced into the model by including it in `keep`, then 
 #' this function will not exclude it from the model (by setting its power to 
@@ -704,7 +704,7 @@ select_ra2 <- function(x,
 #' * `statistic`: test statistic used, depends on `ftest`.
 #' 
 #' @references 
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 #' 

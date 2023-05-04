@@ -23,21 +23,21 @@
 #'
 #' @section Details on `family` option:
 #'
-#' `mfpa()` supports the family object as used by [stats::glm()]. The built in
-#' families are specifed via a character string. `mfpa(..., family="binomial")` 
-#' fits a logistic regression model, while `mfpa(..., family="gaussian")`
+#' `mfp2()` supports the family object as used by [stats::glm()]. The built in
+#' families are specifed via a character string. `mfp2(..., family="binomial")` 
+#' fits a logistic regression model, while `mfp2(..., family="gaussian")`
 #' fits a linear regression (ordinary least squares) model.
 #'
 #' For Cox models, the response should preferably be a `Surv` object,
 #' created by the [survival::Surv()] function, and the `family = "cox"`. 
 #' Only right-censored data are currently supported. To fit stratified Cox
-#' models, the strata option can be used. Currently `mfpa()` only supports
+#' models, the strata option can be used. Currently `mfp2()` only supports
 #' a single factor as strata.
 #'
 #' @section Details on shifting, scaling and centering:
 #' 
 #' Fractional polynomials are only defined for positive variables due to the 
-#' use of logarithms. Thus, `mfpa()` estimates shifts for each variables to 
+#' use of logarithms. Thus, `mfp2()` estimates shifts for each variables to 
 #' achieve this, or assumes that this is the case when computing fractional 
 #' powers of the input variables in case that shifting is disabled manually. 
 #' 
@@ -206,7 +206,7 @@
 #' all possible combinations of the variables supplied will be created. 
 #' Default is `NULL` and a Cox model without stratification would be fitted. 
 #' See [survival::coxph()] for details. Currently only a single stratification
-#' factor is supported by `mfpa()`.
+#' factor is supported by `mfp2()`.
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
 #' @param acdx a numeric vector of names of continuous variables to undergo 
@@ -224,16 +224,16 @@
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @return 
-#' `mfpa()` returns an object of class inheriting from `glm` or `copxh`, 
+#' `mfp2()` returns an object of class inheriting from `glm` or `copxh`, 
 #' depending on the `family` parameter. 
 #' 
-#' The function `summary()` (i.e. [summary.mfpa()]) can be used to obtain or
+#' The function `summary()` (i.e. [summary.mfp2()]) can be used to obtain or
 #' print a summary of the results. 
 #' 
 #' The generic accessor function `coef()` can be used to extract the vector of 
 #' coefficients from the fitted model object.
 #' 
-#' An object of class `mfpa` is a list containing all entries as for `glm`
+#' An object of class `mfp2` is a list containing all entries as for `glm`
 #' or `coxph`, and in addition the following entries:  
 #' \itemize{
 #' \item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
@@ -250,10 +250,10 @@
 #' transformations.}
 #' \item{y: }{the original outcome variable.}
 #' \item{x: }{the final transformed input matrix used to fit the final model.}
-#' \item{call_mfp: }{the call to the `mfpa()` function.}
+#' \item{call_mfp: }{the call to the `mfp2()` function.}
 #' \item{family_string: }{the family stored as character string.}
 #' }
-#' The `mfpa` object may contain further information depending on family.
+#' The `mfp2` object may contain further information depending on family.
 #' 
 #' @references
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
@@ -266,7 +266,7 @@
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 #' regression models with a sigmoid dose-response function. 
 #' Stata Journal 14(2): 329-341.}\cr
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}\cr
 #' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
@@ -274,10 +274,10 @@
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
-#' [summary.mfpa()], [coef.mfpa()]
+#' [summary.mfp2()], [coef.mfp2()]
 #' 
 #' @export
-mfpa <- function(x, 
+mfp2 <- function(x, 
                  y, 
                  weights = NULL, 
                  offset = NULL, 
@@ -301,7 +301,7 @@ mfpa <- function(x,
                  control = NULL, 
                  verbose = TRUE) {
   
-  # this function prepares everything for fitting the actual mfpa model
+  # this function prepares everything for fitting the actual mfp2 model
   
   cl <- match.call()
   
@@ -386,7 +386,7 @@ mfpa <- function(x,
   if (!is.null(keep)) {
       if (!all(keep %in% colnames(x))) {
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
-                  "i mfpa() continues with the intersection of keep and colnames(x).")
+                  "i mfp2() continues with the intersection of keep and colnames(x).")
       }
   }
   
@@ -421,7 +421,7 @@ mfpa <- function(x,
   if (!is.null(acdx)) {
       if (!all(acdx %in% colnames(x))) {
           warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
-                  "i mfpa() continues with the intersection of acdx and colnames(x).")
+                  "i mfp2() continues with the intersection of acdx and colnames(x).")
       }
   }
   
@@ -456,7 +456,7 @@ mfpa <- function(x,
   # assert ftest and family are compatible
   if (ftest && family != "gaussian") {
       warning(sprintf("i F-test not suitable for family = %s.\n", family),
-              "i mfpa() reverts to use Chi-square instead.")
+              "i mfp2() reverts to use Chi-square instead.")
   }
   
   if (family == "cox") {
@@ -476,7 +476,7 @@ mfpa <- function(x,
       type <- attr(y, "type")
       if (type != "right") {
           stop(sprintf("! Type of censoring must not be %s.", type), 
-               "i Currently only right censoring is supported by mfpa().")
+               "i Currently only right censoring is supported by mfp2().")
       }
       
       if (!is.null(strata)) {
@@ -570,7 +570,7 @@ mfpa <- function(x,
     nux <- apply(x, 2, function(v) length(unique(v)))
     index <- nux <= 3
     if (any(df[index] != 1)) {
-        warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfpa().\n", 
+        warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n", 
                 sprintf("i This applies to the following variables: %s.", 
                         paste0(colnames(x)[index & df != 1], collapse = ", ")))
         df[index] <- 1
@@ -603,36 +603,36 @@ mfpa <- function(x,
   )
   
   # add additional information to fitted object
-  # original mfpa call
+  # original mfp2 call
   fit$call_mfp <- cl
   fit$family_string <- family
   
   fit
 }
 
-#' Extract coefficients from object of class `mfpa`
+#' Extract coefficients from object of class `mfp2`
 #' 
 #' This function is a method for the generic [stats::coef()] function for 
-#' objects of class `mfpa`. 
+#' objects of class `mfp2`. 
 #' 
-#' @param object an object of class `mfpa`, usually, a result of a call to
-#' [mfpa()].
+#' @param object an object of class `mfp2`, usually, a result of a call to
+#' [mfp2()].
 #' 
 #' @return 
 #' Named numeric vector of coefficients extracted from the model `object`.
 #' 
 #' @export
-coef.mfpa <- function(object) {
+coef.mfp2 <- function(object) {
   object$coefficients
 }
 
-#' Summarizing `mfpa` model fits
+#' Summarizing `mfp2` model fits
 #' 
 #' This function is a method for the generic [base::summary()] function for
-#' objects of class `mfpa`.
+#' objects of class `mfp2`.
 #' 
-#' @param object an object of class `mfpa`, usually, a result of a call to
-#' [mfpa()].
+#' @param object an object of class `mfp2`, usually, a result of a call to
+#' [mfp2()].
 #' @param ... further arguments passed to the summary functions for `glm()` 
 #' ([stats::summary.glm()], i.e. families supported by `glm()`) or `coxph()` 
 #' ([survival::summary.coxph()], if `object$family = "cox"`).
@@ -642,21 +642,21 @@ coef.mfpa <- function(object) {
 #' [survival::summary.coxph()], depending on the family parameter of `object`.
 #' 
 #' @seealso 
-#' [mfpa()], [stats::glm()], [stats::summary.glm()], [survival::coxph()],
+#' [mfp2()], [stats::glm()], [stats::summary.glm()], [survival::coxph()],
 #' [survival::summary.coxph()]
 #' 
 #' @export
-summary.mfpa <- function(object, ...) {
+summary.mfp2 <- function(object, ...) {
   NextMethod("summary", object)
 }
 
-#' Print method for objects of class `mfpa`
+#' Print method for objects of class `mfp2`
 #' 
 #' Enhances printing by information on data processing and fractional 
 #' polynomials.
 #' 
 #' @export
-print.mfpa <- function(x,
+print.mfp2 <- function(x,
                        digits = max(3L, getOption("digits") - 3L), 
                        signif.stars = FALSE, 
                        ...) {
@@ -676,14 +676,14 @@ print.mfpa <- function(x,
   NextMethod("print", x)
 }
 
-#' Helper function to extract selected variables from fitted `mfpa` object
+#' Helper function to extract selected variables from fitted `mfp2` object
 #' 
 #' Simply extracts all variables for which not all powers are estimated to 
 #' be `NA`. The names refer to the original names in the dataset and do not
 #' include transformations.
 #' 
 #' @return 
-#' Character vector of names, ordered as defined by `xorder` in [mfpa()].
+#' Character vector of names, ordered as defined by `xorder` in [mfp2()].
 #' 
 #' @export
 get_selected_variable_names <- function(object) {
@@ -693,7 +693,7 @@ get_selected_variable_names <- function(object) {
 
 #' Helper to assign degrees of freedom
 #' 
-#' Determine the number of unique values in a variable. To be used in [mfpa()].
+#' Determine the number of unique values in a variable. To be used in [mfp2()].
 #' 
 #' @details 
 #' Variables with fewer than or equal to three unique values, for example,

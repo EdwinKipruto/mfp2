@@ -1,15 +1,15 @@
-#' Plot response functions from a fitted `mfpa` object
+#' Plot response functions from a fitted `mfp2` object
 #'
 #' Plots the partial linear predictors with confidence limits 
 #' against the selected covariate(s) of interest. 
 #'
-#' @param model fitted `mfpa` model.
+#' @param model fitted `mfp2` model.
 #' @param terms character vector with variable names to be plotted.
 #' @param partial_only a logical value indicating whether only the partial 
 #' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
 #' (`FALSE`, the default). See below for details. 
-#' @param type,ref,terms_seq arguments of [predict.mfpa()].
-#' @param alpha `alpha` argument of [predict.mfpa()].
+#' @param type,ref,terms_seq arguments of [predict.mfp2()].
+#' @param alpha `alpha` argument of [predict.mfp2()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
 #' data points.
 #' @param color_line,linetype,linewidth `ggplot2` properties of line for 
@@ -31,7 +31,7 @@
 #' `patchwork::wrap_plots` and further customized. 
 #' 
 #' @seealso 
-#' [predict.mfpa()]
+#' [predict.mfp2()]
 #' 
 #' @import ggplot2
 #' @export
@@ -40,7 +40,7 @@ fracplot <- function(model,
                      partial_only = FALSE, 
                      type = c("terms","constrasts"),
                      ref = NULL,
-                     terms_seq = "data",
+                     terms_seq = c("data", "equidistant"),
                      alpha = 0.05,
                      color_points = "#AAAAAA",
                      color_line = "#000000", 
@@ -60,8 +60,10 @@ fracplot <- function(model,
   }
  # set defaults
   type <- match.arg(type)
+  terms_seq <- match.arg(terms_seq)
+  
   # ADDED "type" AND "ref" IN THE PREDICT FUNCTION, MICHAEL TO FIX IT AND USE
-  # HIS EXAMPLE
+  # HIS EXAMPLE TO SHOW THE USEFULNESS OF REFERENCE VALUE
   pred <- predict(model, 
                   type = type, 
                   terms = terms,

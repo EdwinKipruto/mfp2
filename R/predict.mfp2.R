@@ -1,6 +1,6 @@
-#' Predict Method for `mfpa` Fits
+#' Predict Method for `mfp2` Fits
 #' 
-#' Obtains predictions from an `mfpa` object.
+#' Obtains predictions from an `mfp2` object.
 #' 
 #' @details 
 #' To prepare the `newdata` for prediction, this function applies any 
@@ -31,9 +31,9 @@
 #' predictors will be centered at the reference value (i.e. 0), and also 
 #' confidence intervals will have width 0 at that point. 
 #' 
-#' @param object a fitted object of class `mfpa`.
+#' @param object a fitted object of class `mfp2`.
 #' @param newdata optionally, a matrix with column names in which to look for 
-#' variables with which to predict. See [mfpa()] for details.
+#' variables with which to predict. See [mfp2()] for details.
 #' @param type the type of prediction required.  The default is on the
 #' scale of the linear predictors. See `predict.glm()` or `predict.coxph()` for
 #' details. In case `type = "terms"`, see the Section on `Terms prediction`.
@@ -80,11 +80,11 @@
 #' * `upper`: upper limit of confidence interval.
 #' 
 #' @seealso 
-#' [mfpa()], [stats::predict.glm()], [survival::predict.coxph()]
+#' [mfp2()], [stats::predict.glm()], [survival::predict.coxph()]
 #' 
-#' @method predict mfpa
+#' @method predict mfp2
 #' @export 
-predict.mfpa <- function(object, 
+predict.mfp2 <- function(object, 
                          newdata = NULL, 
                          type = NULL,
                          terms = NULL,
@@ -249,12 +249,12 @@ predict.mfpa <- function(object,
 
 #' Helper function to prepare newdata for predict function
 #' 
-#' To be used in [predict.mfpa()].
+#' To be used in [predict.mfp2()].
 #' 
-#' @param object fitted `mfpa` model object.
+#' @param object fitted `mfp2` model object.
 #' @param newdata dataset to be prepared for predictions. Its columns can be
 #' a subset of the columns used for fitting the model. 
-#' @param strata,offset passed from [predict.mfpa()].
+#' @param strata,offset passed from [predict.mfp2()].
 #' @param apply_pre logical indicating wether the fitted pre-transformation
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
@@ -322,9 +322,9 @@ prepare_newdata_for_predict <- function(object,
 
 #' Helper function to compute standard error of a partial predictor
 #' 
-#' To be used in [predict.mfpa()].
+#' To be used in [predict.mfp2()].
 #' 
-#' @param model fitted `mfpa` object.
+#' @param model fitted `mfp2` object.
 #' @param X transformed input matrix with variables of interest for partial predictor.
 #' @param xref reference value for variable of interest. Default is `NULL`, 
 #' in which case this function computes standard errors without reference 

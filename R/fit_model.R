@@ -1,4 +1,4 @@
-#' Function that fits models supported by `mfpa`
+#' Function that fits models supported by `mfp2`
 #' 
 #' Fits generalized linear models and Cox proportional hazard models. 
 #' 
@@ -76,7 +76,7 @@ fit_model <- function(x,
 #' to be included in the linear predictor during fitting. 
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
-#' uses the normal fitting routines (used for the final output of `mfpa`).
+#' uses the normal fitting routines (used for the final output of `mfp2`).
 #' 
 #' @return 
 #' A list with the following components: 
@@ -143,7 +143,7 @@ fit_glm <- function(x,
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
 #' `FALSE`uses the normal fitting routines (used for the final output of 
-#' `mfpa`).
+#' `mfp2`).
 #' 
 #' @return 
 #' A list with the following components: 

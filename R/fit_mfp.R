@@ -1,9 +1,9 @@
-#' Function to fit a model using the mfpa algorithm
+#' Function to fit a model using the mfp2 algorithm
 #' 
-#' Not exported. To be called from the [`mfpa()`] function. Most parameters
-#' are explained in the documentation of `mfpa()`, but their form may differ
+#' Not exported. To be called from the [`mfp2()`] function. Most parameters
+#' are explained in the documentation of `mfp2()`, but their form may differ
 #' in this function. This function does not check its arguments and expects that 
-#' its input is prepared in `mfpa()`.
+#' its input is prepared in `mfp2()`.
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
@@ -59,7 +59,7 @@
 #' * Step 4: fit final model using estimated powers.
 #' 
 #' @return 
-#' See [mfpa()] for details on the returned object.
+#' See [mfp2()] for details on the returned object.
 #' 
 #' @references 
 #' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
@@ -67,7 +67,7 @@
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
-#' [mfpa()], [find_best_fp_cycle()]
+#' [mfp2()], [find_best_fp_cycle()]
 fit_mfp <- function(x, 
                     y, 
                     weights,
@@ -218,7 +218,7 @@ fit_mfp <- function(x,
     nocenter = nocenter, fast = FALSE
   )
   
-  # create mfpa object ---------------------------------------------------------
+  # create mfp2 object ---------------------------------------------------------
   
   # add components to fitted model object
   fit <- modifyList(
@@ -253,12 +253,12 @@ fit_mfp <- function(x,
   #     control$toler.chol
   #   )$test
   
-  class(fit) <- c("mfpa", class(fit))
+  class(fit) <- c("mfp2", class(fit))
 
   fit
 }
 
-#' Helper to order variables for mfpa algorithm
+#' Helper to order variables for mfp2 algorithm
 #' 
 #' To be used in [fit_mfp()].
 #' 

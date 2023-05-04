@@ -77,8 +77,8 @@
 #' * `variable`: variable values on original scale.
 #' * `variable_pre`: variable with pre-transformation applied, i.e. shifted, 
 #' scaled and centered as required.
-#' * `value`: partial linear predictor.
-#' * `se`: standard error of partial linear predictor.
+#' * `value`: partial linear predictor or contrast (depending on `type`).
+#' * `se`: standard error of partial linear predictor or contrast.
 #' * `lower`: lower limit of confidence interval.
 #' * `upper`: upper limit of confidence interval.
 #' 

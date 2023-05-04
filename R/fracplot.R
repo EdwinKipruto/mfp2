@@ -7,8 +7,9 @@
 #' @param terms character vector with variable names to be plotted.
 #' @param partial_only a logical value indicating whether only the partial 
 #' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
-#' (`FALSE`, the default). See below for details. 
-#' @param type,ref,terms_seq arguments of [predict.mfp2()].
+#' (`FALSE`, the default). Only used if `type = "terms"`. See below for details. 
+#' @param type,ref,terms_seq arguments of [predict.mfp2()]. Only 
+#' `type = "terms"` and `type = "contrasts"` are supported by this function. 
 #' @param alpha `alpha` argument of [predict.mfp2()].
 #' @param shape,size_points,color_points `ggplot2` properties of drawn 
 #' data points.
@@ -18,12 +19,15 @@
 #' interval.
 #' 
 #' @details 
-#' The confidence limits of the partial linear predictors are obtained from the
-#' variance–covariance matrix of the entire model, which takes into account the
-#' uncertainty in estimating the model parameters but not the FP powers. The
-#' component-plus-residual, is the partial linear predictor plus residuals, where 
-#' deviance residuals are used in generalized linear regression models, while 
-#' martingale residuals are used in Cox models, as done in Stata program.
+#' The confidence limits of the partial linear predictors or contrasts are
+#' obtained from the variance–covariance matrix of the final fitted model, 
+#' which takes into account the uncertainty in estimating the model parameters 
+#' but not the FP powers. 
+#' 
+#' The component-plus-residual, is the partial linear predictor plus residuals, 
+#' where deviance residuals are used in generalized linear regression models, 
+#' while martingale residuals are used in Cox models, as done in Stata program.
+#' This kind of plot is only available if `type = "terms"`.
 #' 
 #' @return 
 #' A list of `ggplot2` plot objects, one for each term requested. Can be 
@@ -38,7 +42,7 @@
 fracplot <- function(model, 
                      terms = NULL, 
                      partial_only = FALSE, 
-                     type = c("terms","constrasts"),
+                     type = c("terms","contrasts"),
                      ref = NULL,
                      terms_seq = c("data", "equidistant"),
                      alpha = 0.05,
@@ -58,12 +62,19 @@ fracplot <- function(model,
          call. = FALSE
     )
   }
- # set defaults
+  
+  
+  
+ # set defaults depending on type
   type <- match.arg(type)
+  if (type == "contrasts") {
+    partial_only = TRUE
+    if (missing(terms_seq))
+      terms_seq <- "equidistant"
+  }
+  
   terms_seq <- match.arg(terms_seq)
   
-  # ADDED "type" AND "ref" IN THE PREDICT FUNCTION, MICHAEL TO FIX IT AND USE
-  # HIS EXAMPLE TO SHOW THE USEFULNESS OF REFERENCE VALUE
   pred <- predict(model, 
                   type = type, 
                   terms = terms,

@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_metrics.R
 \name{calculate_model_metrics}
 \alias{calculate_model_metrics}
-\title{Function to compute model metrics to be used within \code{mfpa}}
+\title{Function to compute model metrics to be used within \code{mfp2}}
 \usage{
 calculate_model_metrics(obj, n_obs, df_additional = 0)
 }

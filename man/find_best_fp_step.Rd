@@ -95,7 +95,7 @@ requested, but otherwise is either a vector with all numeric entries, or a
 single \code{NA}.
 }
 \description{
-See \code{\link[=mfpa]{mfpa()}} for a brief summary on the notation used here and
+See \code{\link[=mfp2]{mfp2()}} for a brief summary on the notation used here and
 \code{\link[=fit_mfp]{fit_mfp()}} for an overview of the fitting procedure.
 }
 \details{
@@ -150,7 +150,7 @@ is chosen as the final one. This is implemented in \code{\link[=select_ic]{selec
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}\cr
-Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}
 }

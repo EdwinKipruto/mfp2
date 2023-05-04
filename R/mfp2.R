@@ -305,6 +305,132 @@ mfp2.formula <- function(formula,
                          control = NULL, 
                          verbose = TRUE) {
   # TODO
+  family <- match.arg(family)
+  
+  # m2 <- match.call(expand.dots = FALSE)
+  # temp2 <- c("", "formula", "data", "weights", "na.action")
+  # m2 <- m2[match(temp2, names(m2), nomatch = 0)]
+  special <- c("strata", "fp", "acd")
+  Terms <- terms(formula, special, data = data)
+  
+  m2$formula <- Terms
+  m2$alpha <- m2$select <- m2$scale <- m2$family <- m2$method <- m2$verbose <- NULL
+  m2$drop.unused.levels <- TRUE  
+  m2[[1]] <- as.name("model.frame")
+  m2 <- eval(m2, parent.frame())
+  if(missing(subset)) m <- m2 else m <- m2[subset,]
+  #
+  Y <- model.extract(m, "response")
+  weights <- model.extract(m, "weights")
+  offset <- attr(Terms, "offset")
+  tt <- length(offset)
+  offset <- if (tt == 0 & cox) 
+    rep(0, nrow(Y))
+  else if (tt == 0 & !cox) 
+    rep(0, length(Y))
+  else if (tt == 1) 
+    m[[offset]]
+  else {
+    ff <- m[[offset[1]]]
+    for (i in 2:tt) ff <- ff + m[[offset[i]]]
+    ff
+  }
+  attr(Terms, "intercept") <- 1
+  dropx <- NULL
+  if(cox){
+    strats <- attr(Terms, "specials")$strata
+    if (length(strats)) {
+      temp <- untangle.specials(Terms, "strata", 1)
+      dropx <- temp$terms
+      if (length(temp$vars) == 1) 
+        strata.keep <- m[[temp$vars]]
+      else strata.keep <- strata(m[, temp$vars], shortlabel = TRUE)
+      strats <- as.numeric(strata.keep)
+    }
+  }
+  if (length(dropx)) 
+    newTerms <- Terms[-dropx]
+  else newTerms <- Terms
+  X <- model.matrix(newTerms, m)
+  if (missing(init)) 
+    init <- NULL
+  nx <- ncol(X) - 1
+  nobs <- nrow(X)
+  df.list <- rep(1, nx)
+  scale.list <- rep(FALSE, nx)
+  alpha.list <- rep(alpha, nx)
+  select.list <- rep(select, nx)
+  fp.pos <- grep("fp", dimnames(X)[[2]])
+  fp.mpos <- attributes(Terms)$specials$fp
+  #
+  if(cox) 
+    fp.xpos <- unlist(attributes(Terms)$specials) - 1
+  else
+    fp.xpos <- unlist(attributes(Terms)$specials$fp) - 1
+  assign <- attr(X, "assign")[-1]
+  if (length(fp.pos) > 0) {
+    fp.pos <- fp.pos - 1
+    if(!missing(subset)) for(im in fp.mpos) attributes(m[,im]) <- attributes(m2[,im])
+    fp.data <- m[, fp.mpos, drop = FALSE]
+    df.list[fp.pos] <- unlist(lapply(fp.data, attr, "df"))
+    if(length(tmp.scale <- unlist(lapply(fp.data, attr, "scale")))!=length(fp.pos)) {
+      stop("scale must be given as TRUE or FALSE.")
+    } else { 
+      if(all(tmp.scale %in% c(0,1))) scale.list[fp.pos] <- tmp.scale
+      else stop("scale must be given as TRUE or FALSE.")
+    }
+    alpha.list[fp.pos] <- unlist(lapply(fp.data, attr, "alpha"))
+    alpha.list[sapply(alpha.list, is.na)] <- alpha
+    select.list[fp.pos] <- unlist(lapply(fp.data, attr, "select"))
+    select.list[sapply(select.list, is.na)] <- select
+    names <- dimnames(X)[[2]]
+    names[fp.pos + 1] <- unlist(lapply(fp.data, attr, "name"))
+    xnames <- names[-1]
+    tab <- table(assign[-fp.pos])
+    if (length(fp.xpos) > 0) {
+      xnames[-fp.pos] <- rep(attr(Terms, "term.labels")[-fp.xpos],tab)
+    } else {
+      xnames[-fp.pos] <- rep(attr(Terms, "term.labels"),tab)
+    }
+    dimnames(X)[[2]] <- names
+  } else {
+    names <- dimnames(X)[[2]]
+    tab <- table(assign)
+    if (length(fp.xpos) > 0) {
+      xnames <- rep(attr(Terms, "term.labels")[-fp.xpos],tab)
+    } else {
+      xnames <- rep(attr(Terms, "term.labels"),tab)
+    }
+  }
+  #  need some variables to be kept in the model
+  if(!is.null(keep))
+    for(ik in keep) select.list[grep(ik, xnames)] <- 1
+  
+  # call default method
+  mfp2.default(x, 
+               y, 
+               weights = weights, 
+               offset = offset, 
+               cycles = cycles,
+               scale = scale, 
+               shift = shift, 
+               df = df_vector, 
+               center = center,
+               family = family,
+               criterion = criterion,
+               select = select_vector, 
+               alpha = alpha_vector,
+               keep = keep,
+               xorder = xorder,
+               powers = powers,
+               ties = ties,
+               strata = strata_matrix,
+               nocenter = nocenter,
+               acdx = acdx_list,
+               ftest = ftest,
+               control = control, 
+               verbose = verbose
+  )
 }
 
 mfp2.default <- function(x, 

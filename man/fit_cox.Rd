@@ -34,7 +34,7 @@ See \code{\link[survival:coxph]{survival::coxph()}}.}
 \item{fast}{a logical which determines how the model is fitted. The default
 \code{TRUE} uses fast fitting routines (i.e. \code{\link[survival:agreg.fit]{survival::coxph.fit()}}), while
 \code{FALSE}uses the normal fitting routines (used for the final output of
-\code{mfpa}).}
+\code{mfp2}).}
 }
 \value{
 A list with the following components:

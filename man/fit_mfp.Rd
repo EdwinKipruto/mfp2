@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{fit_mfp}
 \alias{fit_mfp}
-\title{Function to fit a model using the mfpa algorithm}
+\title{Function to fit a model using the mfp2 algorithm}
 \usage{
 fit_mfp(
   x,
@@ -94,13 +94,13 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 \item{verbose}{a logical; run in verbose mode.}
 }
 \value{
-See \code{\link[=mfpa]{mfpa()}} for details on the returned object.
+See \code{\link[=mfp2]{mfp2()}} for details on the returned object.
 }
 \description{
-Not exported. To be called from the \code{\link[=mfpa]{mfpa()}} function. Most parameters
-are explained in the documentation of \code{mfpa()}, but their form may differ
+Not exported. To be called from the \code{\link[=mfp2]{mfp2()}} function. Most parameters
+are explained in the documentation of \code{mfp2()}, but their form may differ
 in this function. This function does not check its arguments and expects that
-its input is prepared in \code{mfpa()}.
+its input is prepared in \code{mfp2()}.
 }
 \section{Algorithm}{
 
@@ -124,5 +124,5 @@ and diagnostic models: transformation of the predictors by using fractional
 polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 }
 \seealso{
-\code{\link[=mfpa]{mfpa()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}
 }

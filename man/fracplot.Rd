@@ -3,13 +3,15 @@
 \name{fracplot}
 \alias{fracplot}
 \alias{plot_mfp}
-\title{Plot response functions from a fitted \code{mfpa} object}
+\title{Plot response functions from a fitted \code{mfp2} object}
 \usage{
 fracplot(
   model,
   terms = NULL,
   partial_only = FALSE,
-  terms_seq = "data",
+  type = c("terms", "constrasts"),
+  ref = NULL,
+  terms_seq = c("data", "equidistant"),
   alpha = 0.05,
   color_points = "#AAAAAA",
   color_line = "#000000",
@@ -24,7 +26,7 @@ fracplot(
 plot_mfp(...)
 }
 \arguments{
-\item{model}{fitted \code{mfpa} model.}
+\item{model}{fitted \code{mfp2} model.}
 
 \item{terms}{character vector with variable names to be plotted.}
 
@@ -32,9 +34,9 @@ plot_mfp(...)
 predictor (component) is drawn (\code{TRUE}), or also component-plus-residual
 (\code{FALSE}, the default). See below for details.}
 
-\item{terms_seq}{\code{terms_seq} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
+\item{type, ref, terms_seq}{arguments of \code{\link[=predict.mfp2]{predict.mfp2()}}.}
 
-\item{alpha}{\code{alpha} argument of \code{\link[=predict.mfpa]{predict.mfpa()}}.}
+\item{alpha}{\code{alpha} argument of \code{\link[=predict.mfp2]{predict.mfp2()}}.}
 
 \item{color_line, linetype, linewidth}{\code{ggplot2} properties of line for
 partial predictor.}
@@ -68,5 +70,5 @@ martingale residuals are used in Cox models, as done in Stata program.
 
 }}
 \seealso{
-\code{\link[=predict.mfpa]{predict.mfpa()}}
+\code{\link[=predict.mfp2]{predict.mfp2()}}
 }

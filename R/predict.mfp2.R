@@ -14,7 +14,8 @@
 #' fractional polynomial (FP) power. If necessary, centering of variables is 
 #' conducted. Once the transformation (and centering) is complete, the 
 #' transformed data is passed to either `predict.glm()` or `predict.coxph()`, 
-#' depending on the chosen family of models.
+#' depending on the chosen family of models and when type is not 
+#' `terms` and `contrasts`.
 #'
 #' @section Terms prediction:
 #' This function allows to compute the partial linear predictors
@@ -58,8 +59,10 @@
 #' Note that any variable requested in `terms`, but not having an entry in this
 #' list (or if the entry is `NULL`) then the mean value (or minimum for binary
 #' variables) will be used as reference. Values are specified on the original 
-#' scale of the variable. By default, this function uses the means (for 
-#' continuous variables) and minima (for binary variables) as reference values. 
+#' scale of the variable since the program will internally scale it using the
+#' scaling factors obtained from [find_scale_factor()]. By default, this function
+#' uses the means (for continuous variables) and minima (for binary variables) as
+#' reference values. 
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @return 
@@ -330,12 +333,12 @@ prepare_newdata_for_predict <- function(object,
 #' 
 #' @param model fitted `mfp2` object.
 #' @param X transformed input matrix with variables of interest for partial predictor.
-#' @param xref reference value for variable of interest. Default is `NULL`, 
-#' in which case this function computes standard errors without reference 
+#' @param xref transformed reference value for variable of interest. Default is
+#'  `NULL`, in which case this function computes standard errors without reference 
 #' values.
 #' 
 #' @details 
-#' See page 91 and following in the book by Royston and Sauerbrei 2008
+#' See pages 91-92 and following in the book by Royston and Sauerbrei 2008
 #' for the formulas and mathematical details.
 #' 
 #' @return 
@@ -370,8 +373,9 @@ calculate_standard_error <- function(model,
   }
 
   # the following computation is equivalent to the formula in the book but
-  # uses matrix multiplications for efficency
+  # uses matrix multiplications for efficiency
   vcovx <- vcovx[ind, ind, drop = FALSE]
+  # similar to v = diag(x%*%vcovx%*%t(x))
   v <- sapply(
     1:nrow(X), 
     function(i, x, vcovx) x[i, , drop = FALSE] %*% vcovx %*% t(x[i, , drop = FALSE]),

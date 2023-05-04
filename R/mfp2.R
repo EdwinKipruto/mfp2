@@ -277,7 +277,37 @@
 #' [summary.mfp2()], [coef.mfp2()]
 #' 
 #' @export
-mfp2 <- function(x, 
+mfp2 <- function(x, ...) {
+  UseMethod("mfp2", x)
+}
+
+mfp2.formula <- function(formula, 
+                         data, 
+                         weights = NULL, 
+                         offset = NULL, 
+                         cycles = 5,
+                         scale = NULL, 
+                         shift = NULL, 
+                         df = 4, 
+                         center = TRUE,
+                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         criterion = c("pvalue", "aic", "bic"),
+                         select = 0.05, 
+                         alpha = 0.05,
+                         keep = NULL,
+                         xorder = c("ascending", "descending", "original"),
+                         powers = NULL,
+                         ties = c("breslow", "efron"),
+                         strata = NULL,
+                         nocenter = NULL,
+                         acdx = NULL,
+                         ftest = FALSE,
+                         control = NULL, 
+                         verbose = TRUE) {
+  # TODO
+}
+
+mfp2.default <- function(x, 
                  y, 
                  weights = NULL, 
                  offset = NULL, 

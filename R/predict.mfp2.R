@@ -98,6 +98,10 @@ predict.mfp2 <- function(object,
  # if(is.null(offset)){
  #  }
   
+  # assert that the model is mfp2
+  if (!inherits(object, "mfp2")) 
+    warning("calling predict.mfp2(<fake-mfp2-object>) ...")
+  
   # set defaults and match arguments
   if (is.null(type)) 
     type <- ifelse(object$family_string == "cox", "lp", "link")
@@ -111,7 +115,7 @@ predict.mfp2 <- function(object,
   terms_seq <- match.arg(terms_seq)
   
   # TODO: add checks for missing strata and offset in case they were used in fit
-  # TODO: add checks for correct specificatio of ref
+  # TODO: add checks for correct specification of ref
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE))
     warning("i The supplied reference values (ref) must all be named.\n", 
             "i predict() continues but uses means (if variables are continous) or

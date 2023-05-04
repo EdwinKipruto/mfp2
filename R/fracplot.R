@@ -63,7 +63,9 @@ fracplot <- function(model,
     )
   }
   
-  
+ # check if ref is a list 
+  if (!is.list(ref))
+    stop("ref must be a list", call. = F)
   
  # set defaults depending on type
   type <- match.arg(type)

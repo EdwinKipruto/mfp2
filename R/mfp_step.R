@@ -97,7 +97,7 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 find_best_fp_step <- function(x,
@@ -704,7 +704,7 @@ select_ra2 <- function(x,
 #' * `statistic`: test statistic used, depends on `ftest`.
 #' 
 #' @references 
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
 #' 

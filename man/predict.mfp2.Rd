@@ -51,8 +51,10 @@ intervals in terms prediction.}
 Note that any variable requested in \code{terms}, but not having an entry in this
 list (or if the entry is \code{NULL}) then the mean value (or minimum for binary
 variables) will be used as reference. Values are specified on the original
-scale of the variable. By default, this function uses the means (for
-continuous variables) and minima (for binary variables) as reference values.}
+scale of the variable since the program will internally scale it using the
+scaling factors obtained from \code{\link[=find_scale_factor]{find_scale_factor()}}. By default, this function
+uses the means (for continuous variables) and minima (for binary variables) as
+reference values.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }
@@ -89,7 +91,8 @@ The next step involves transforming the data using the selected
 fractional polynomial (FP) power. If necessary, centering of variables is
 conducted. Once the transformation (and centering) is complete, the
 transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
-depending on the chosen family of models.
+depending on the chosen family of models and when type is not
+\code{terms} and \code{contrasts}.
 }
 \section{Terms prediction}{
 

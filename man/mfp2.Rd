@@ -213,7 +213,7 @@ For details see e.g. Sauerbrei et al (2006).
 
 
 \code{mfp2()} supports the family object as used by \code{\link[stats:glm]{stats::glm()}}. The built in
-families are specifed via a character string. \code{mfp2(..., family="binomial")}
+families are specified via a character string. \code{mfp2(..., family="binomial")}
 fits a logistic regression model, while \code{mfp2(..., family="gaussian")}
 fits a linear regression (ordinary least squares) model.
 
@@ -328,7 +328,7 @@ Comput Stat Data Anal, 50(12): 3464-85.}\cr
 Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 regression models with a sigmoid dose-response function.
 Stata Journal 14(2): 329-341.}\cr
-Royston, P. and Sauerbrei, W., 2016. \emph{mfp2: Extension of mfp using the
+Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}\cr
 Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic

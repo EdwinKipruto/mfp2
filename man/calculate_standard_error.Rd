@@ -11,8 +11,8 @@ calculate_standard_error(model, X, xref = NULL)
 
 \item{X}{transformed input matrix with variables of interest for partial predictor.}
 
-\item{xref}{reference value for variable of interest. Default is \code{NULL},
-in which case this function computes standard errors without reference
+\item{xref}{transformed reference value for variable of interest. Default is
+\code{NULL}, in which case this function computes standard errors without reference
 values.}
 }
 \value{
@@ -22,7 +22,7 @@ Standard error.
 To be used in \code{\link[=predict.mfp2]{predict.mfp2()}}.
 }
 \details{
-See page 91 and following in the book by Royston and Sauerbrei 2008
+See pages 91-92 and following in the book by Royston and Sauerbrei 2008
 for the formulas and mathematical details.
 }
 \references{

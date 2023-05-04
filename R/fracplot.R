@@ -62,6 +62,9 @@ fracplot <- function(model,
          call. = FALSE
     )
   }
+  # assert that the object must be mfp2
+  if (!inherits(model, "mfp2")) 
+    stop("The model entered is not an mfp2 object.", call. = FALSE)
   
  # check if ref is a list 
   if (!is.list(ref))

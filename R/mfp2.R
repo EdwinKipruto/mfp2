@@ -331,11 +331,11 @@ mfp2.formula <- function(formula,
   # variable names of variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
   # df, scale, alpha and select based on user inputs
-  df <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
-  alpha <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
-  select <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
-  scale <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
-  acd <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
+  dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
+  alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
+  selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
+  scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
+  acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
   # rename column of data1. assign the real names not with fp
   #colnames(data1)[fp.pos] <- unname(varnames_fp)
   # extract attributes of the data frame
@@ -365,14 +365,14 @@ mfp2.formula <- function(formula,
   indx <- grep("fp", xnames)
   xnames[indx]<-vnames_fp
   #set default df and modify based on user inputs
-  df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), df))
+  df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), dfx))
   # set default scale and modify based on user inputs
-  scale.list<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scale))
+  scale.list<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scalex))
   # set default alpha and select and modify based on user inputs
-  alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alpha))
-  select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), select))
+  alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
+  select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
   # acd 
-  acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acd))
+  acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
   
   # call default method
   mfp2.default(x = x, 

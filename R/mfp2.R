@@ -361,13 +361,15 @@ mfp2.formula <- function(formula,
   nx <- ncol(x) - 1 
   # number of observations
   nobs <- nrow(x)
-  xnames <- colnames(X)[-1]
+  xnames <- colnames(x)[-1]
   indx <- grep("fp", xnames)
   xnames[indx]<-vnames_fp
+  
   #set default df and modify based on user inputs
   df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), dfx))
+
   # set default scale and modify based on user inputs
-  scale.list<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scalex))
+  scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scalex))
   # set default alpha and select and modify based on user inputs
   alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
@@ -380,7 +382,7 @@ mfp2.formula <- function(formula,
                weights = weights, 
                offset = offset, 
                cycles = cycles,
-               scale = scale.vector, 
+               scale = scale_vector, 
                shift = shift, 
                df = df_vector, 
                center = center,

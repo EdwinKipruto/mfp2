@@ -375,10 +375,10 @@ mfp2.formula <- function(formula,
   colnames(x) <- xnames
   
   #set default df etc and modify based on user inputs
-  df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), dfx))
+  df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) df),xnames), dfx))
   scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
   shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
-  center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) TRUE),xnames), centerx))
+  center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) center),xnames), centerx))
   alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))

@@ -4,7 +4,7 @@
 #' a variable with its attributes.
 #' 
 #' @export
-fp <- function(x, df = 4, select = NA, alpha = NA, scale=TRUE, acd = FALSE)
+fp <- function(x, df = 4, select = 0.05, alpha = 0.05, scale=TRUE, acd = FALSE)
 {
   #
   name <- deparse(substitute(x))

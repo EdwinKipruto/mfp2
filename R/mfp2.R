@@ -123,11 +123,10 @@
 #' }
 #' The result is the selection of one of the six models. 
 #'
-#' @param x an input matrix of dimension nobs x nvars. Each row is an 
-#' observation vector.
-#' @param y a vector for the response variable. For `family="binomial"` it 
-#' should be  a vector with two levels (see [stats::glm()]). 
-#' For `family="cox"` it must be a `Surv` object containing  2 columns.
+#' @param formula a formula object, with the response on the left of a ~ operator,
+#'  and the terms on the right. The response must be a survival object if
+#'  `family=cox` as returned by the Surv function. `Offset` and `strata` are not
+#'  part of the formula.
 #' @param weights a vector of observation weights of length nobs. 
 #' Default is `NULL` which assigns a weight of 1 to each observation.
 #' @param offset a vector of length nobs that is included in the linear
@@ -154,7 +153,7 @@
 #' values for a variable as follows: 
 #' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
 #' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
-#' `df = default`.
+#' `df = default`. NOT in mfp2.formula()
 #' @param center a logical determining whether variables are centered before 
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
@@ -310,29 +309,39 @@ mfp2.formula <- function(formula,
   # Assert that a formula must be provided
   if (missing(formula)) 
     stop("a formula argument is required.", call. = FALSE)
-  ##############################################################################
-  mf <- match.call(expand.dots = FALSE)
-  # look for the position of formula in names(mf). If no formula, return 0
-  #m <- match(c("formula"), names(mf), 0L)
-  #formula <- mf[[m]]
+  # Assert that the length of df, alpha, select, center, shift, scale, acdx
+  # must be equal to one to be replicated by the program. If the user wants
+  # to use different parameters for each variable, they can enter directly in
+  # fp() function
+  if(length(df)!=1)
+    stop("The length of df > 1. Use fp() to set different df values.", call. = FALSE)
+  if(length(alpha)!=1)
+    stop("The length of alpha > 1. Use fp() to set different alpha values.", call. = FALSE)
+  if(length(select)!=1)
+    stop("The length of select > 1. Use fp() to set different select values.", call. = FALSE)
+  if(!is.null(scale) && length(scale)!=1)
+    stop("The length of scale > 1. Use fp() to set different scaling factors.", call. = FALSE)
+  if(length(center)!=1)
+    stop("The length of center > 1. Use fp() to set different centering values.", call. = FALSE)
+  # TODO: WHAT HAPPENS TO SHIFTING?
   
   # Model.frame can handle missing data and subset the data if subset indices is
   # provided. It can also identify variables in fp() function because it stores
   # the names as attributes....subset and na.action might be added but weights, 
   # offset and strata must be subsetted.It seems including subset interferes 
   # with the attributes of the variables
-  data1 <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  df1 <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   # extract the response variable
-  y <- model.extract(data1, "response")
-  # Find position of fp in columns of data1 which includes intercept
-  fp.pos <- grep("fp", colnames(data1))
-  # select only variables that undergo fp transformation. Better use data1 instead
-  # of X (see below) because the former is data.frame with attributes that are 
-  # required later
-  fp.data <- data1[, fp.pos, drop = FALSE]
-  # variable names of variables that undergo fp transformation
+  y <- model.extract(df1, "response")
+  # Find position of fp in columns of df1
+  fp.pos <- grep("fp", colnames(df1))
+  # select only variables that undergo fp transformation. It is better to use 
+  # df1 instead of x because the former is data frame with attributes that will 
+  # be required later
+  fp.data <- df1[, fp.pos, drop = FALSE]
+  # variable names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
-  # df, scale, alpha and select based on user inputs
+  # df, scale, alpha, select, etc based on user inputs
   dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
   alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
   selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
@@ -340,14 +349,9 @@ mfp2.formula <- function(formula,
   scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
   centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
   acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
-  # rename column of data1. assign the real names not with fp
-  #colnames(data1)[fp.pos] <- unname(varnames_fp)
-  # extract attributes of the data frame
-  mt <- attr(data1, "terms")
-  # Use model.matrix to create x. It is useful if factor variables or interactions
-  # exist in the data.
-  x <- model.matrix(mt, data1)[,-1, drop = FALSE]
-
+  # extract attributes of the data frame to be used by model.matrix() which
+  # is useful if factor variables or interactions exists
+  x <- model.matrix(attr(df1, "terms"), df1)[,-1, drop = FALSE]
   # if subset is provided, use it to subset weights, offset and strata
   # if(!is.null(subset) && !is.null(weights))
   #   weights <- weights[subset]
@@ -357,39 +361,34 @@ mfp2.formula <- function(formula,
   #   strata <- strata[subset]
 
   # in old mfp "strata" was considered special because it was part of the formula
-  # here it is not and therefore we only consider fp as special. WHAT IS THE IMPORTANCE 
-  # OF THIS!!!!!
-  Terms <- terms.formula(formula, special = "fp", data = data1)
+  # here it is not and therefore we only consider fp as special. NOT USED 
+  # ANYWARE AT THE MOMENT
+  #Terms <- terms.formula(formula, special = "fp", data = df1)
   
   # number of variables without intercept
   nx <- ncol(x) 
-  # number of observations
-  nobs <- nrow(x)
   xnames <- colnames(x)
-  # replace names with fp with real names
+  # replace names such as fp(x1) by real name "x1"
   indx <- grep("fp", xnames)
   xnames[indx]<-vnames_fp
   # rename column of x
   colnames(x) <- xnames
   
-  #set default df and modify based on user inputs
+  #set default df etc and modify based on user inputs
   df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), dfx))
-  # set default scale and modify based on user inputs
   scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
   shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
   center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) TRUE),xnames), centerx))
-  # set default alpha and select and modify based on user inputs
   alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
-  # acd 
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
-  # subset variables with acd option set = TRUE
-  if(sum(acdx_vector)==0)
+  # subset variables with acd
+  if(sum(acdx_vector)==0) # no acd variables
     acdx_vector <- NULL
   else
   acdx_vector <- names(acdx_vector[acdx_vector])
   # call default method
-  fit <- mfp2.default(x = x, 
+  mfp2.default(x = x, 
                y = y, 
                weights = weights, 
                offset = offset, 
@@ -413,7 +412,6 @@ mfp2.formula <- function(formula,
                control = control,
                verbose = verbose
   )
-  return(fit)
 }
 
 mfp2.default <- function(x, 

@@ -369,8 +369,8 @@ mfp2.formula <- function(formula,
   # set default scale and modify based on user inputs
   scale.list<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scale))
   # set default alpha and select and modify based on user inputs
-  alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), scale))
-  select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), scale))
+  alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alpha))
+  select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), select))
   # acd 
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acd))
   

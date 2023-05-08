@@ -342,7 +342,7 @@ mfp2.formula <- function(formula,
   mt <- attr(data1, "terms")
   # Use model.matrix to create x. It is useful if factor variables or interactions
   # exist in the data.
-  x <- model.matrix(mt, data1)
+  x <- model.matrix(mt, data1)[,-1, drop = FALSE]
 
   # if subset is provided, use it to subset weights, offset and strata
   # if(!is.null(subset) && !is.null(weights))
@@ -358,10 +358,10 @@ mfp2.formula <- function(formula,
   Terms <- terms.formula(formula, special = "fp", data = data1)
   
   # number of variables without intercept
-  nx <- ncol(x) - 1 
+  nx <- ncol(x) 
   # number of observations
   nobs <- nrow(x)
-  xnames <- colnames(x)[-1]
+  xnames <- colnames(x)
   indx <- grep("fp", xnames)
   xnames[indx]<-vnames_fp
   
@@ -377,7 +377,7 @@ mfp2.formula <- function(formula,
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
   
   # call default method
-  mfp2.default(x = x, 
+  fit <- mfp2.default(x = x, 
                y = y, 
                weights = weights, 
                offset = offset, 
@@ -401,6 +401,7 @@ mfp2.formula <- function(formula,
                control = control,
                verbose = verbose
   )
+  return(fit)
 }
 
 mfp2.default <- function(x, 

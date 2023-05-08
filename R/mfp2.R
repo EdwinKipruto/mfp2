@@ -304,16 +304,18 @@ mfp2.formula <- function(formula,
                          ftest = FALSE,
                          control = NULL,
                          verbose = TRUE) {
-  # 
-  family <- match.arg(family)
   # Assert that data must be provided
   if(missing(data))
     stop("Data is missing and must be provided.", call. = FALSE)
+  # Assert that a formula must be provided
+  if (missing(formula)) 
+    stop("a formula argument is required.", call. = FALSE)
   ##############################################################################
   mf <- match.call(expand.dots = FALSE)
   # look for the position of formula in names(mf). If no formula, return 0
-  m <- match(c("formula"), names(mf), 0L)
-  formula <- mf[[m]]
+  #m <- match(c("formula"), names(mf), 0L)
+  #formula <- mf[[m]]
+  
   # Model.frame can handle missing data and subset the data if subset indices is
   # provided. It can also identify variables in fp() function because it stores
   # the names as attributes....subset and na.action might be added but weights, 
@@ -334,7 +336,9 @@ mfp2.formula <- function(formula,
   dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
   alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
   selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
+  shiftx <- setNames(lapply(fp.data, function(v) attr(v, "shift")),vnames_fp)
   scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
+  centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
   acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
   # rename column of data1. assign the real names not with fp
   #colnames(data1)[fp.pos] <- unname(varnames_fp)
@@ -362,14 +366,18 @@ mfp2.formula <- function(formula,
   # number of observations
   nobs <- nrow(x)
   xnames <- colnames(x)
+  # replace names with fp with real names
   indx <- grep("fp", xnames)
   xnames[indx]<-vnames_fp
+  # rename column of x
+  colnames(x) <- xnames
   
   #set default df and modify based on user inputs
   df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) 1),xnames), dfx))
-
   # set default scale and modify based on user inputs
-  scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), scalex))
+  scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
+  shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
+  center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) TRUE),xnames), centerx))
   # set default alpha and select and modify based on user inputs
   alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
@@ -383,9 +391,9 @@ mfp2.formula <- function(formula,
                offset = offset, 
                cycles = cycles,
                scale = scale_vector, 
-               shift = shift, 
+               shift = shift_vector, 
                df = df_vector, 
-               center = center,
+               center = center_vector,
                family = family,
                criterion = criterion,
                select = select_vector, 
@@ -396,7 +404,7 @@ mfp2.formula <- function(formula,
                ties = ties,
                strata = strata,
                nocenter = nocenter,
-               acdx = acdx_vector,
+               acdx = names(acdx_vector),
                ftest = ftest,
                control = control,
                verbose = verbose

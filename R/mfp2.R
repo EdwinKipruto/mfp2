@@ -383,7 +383,11 @@ mfp2.formula <- function(formula,
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
   # acd 
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
-  
+  # subset variables with acd option set = TRUE
+  if(sum(acdx_vector)==0)
+    acdx_vector <- NULL
+  else
+  acdx_vector <- names(acdx_vector[acdx_vector])
   # call default method
   fit <- mfp2.default(x = x, 
                y = y, 
@@ -404,7 +408,7 @@ mfp2.formula <- function(formula,
                ties = ties,
                strata = strata,
                nocenter = nocenter,
-               acdx = names(acdx_vector),
+               acdx = acdx_vector,
                ftest = ftest,
                control = control,
                verbose = verbose

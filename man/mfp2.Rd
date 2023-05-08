@@ -5,31 +5,7 @@
 \title{Multivariable fractional polynomial models with extensions of sigmoid
 functions}
 \usage{
-mfp2(
-  x,
-  y,
-  weights = NULL,
-  offset = NULL,
-  cycles = 5,
-  scale = NULL,
-  shift = NULL,
-  df = 4,
-  center = TRUE,
-  family = c("gaussian", "poisson", "binomial", "cox"),
-  criterion = c("pvalue", "aic", "bic"),
-  select = 0.05,
-  alpha = 0.05,
-  keep = NULL,
-  xorder = c("ascending", "descending", "original"),
-  powers = NULL,
-  ties = c("breslow", "efron"),
-  strata = NULL,
-  nocenter = NULL,
-  acdx = NULL,
-  ftest = FALSE,
-  control = NULL,
-  verbose = TRUE
-)
+mfp2(x, ...)
 }
 \arguments{
 \item{x}{an input matrix of dimension nobs x nvars. Each row is an

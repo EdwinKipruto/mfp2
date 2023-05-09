@@ -40,7 +40,7 @@ fit_model <- function(x,
                       nocenter = NULL, 
                       fast = TRUE) {
   
-  if (is.null(colnames(x)))
+  if (!is.null(dim(x)) && is.null(colnames(x)))
     colnames(x) <- colnames(x, do.NULL = FALSE)
   
   if (family == "cox") {

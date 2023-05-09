@@ -8,12 +8,15 @@ functions}
 mfp2(x, ...)
 }
 \arguments{
-\item{x}{an input matrix of dimension nobs x nvars. Each row is an
-observation vector.}
-
-\item{y}{a vector for the response variable. For \code{family="binomial"} it
-should be  a vector with two levels (see \code{\link[stats:glm]{stats::glm()}}).
+\item{x, y}{for \code{mfp2.default}: \code{x} is an input matrix of dimension nobs x nvars.
+Each row is an observation vector. \code{y} is a vector for the response variable.
+For \code{family="binomial"} it should be  a vector with two levels (see \code{\link[stats:glm]{stats::glm()}}).
 For \code{family="cox"} it must be a \code{Surv} object containing  2 columns.}
+
+\item{formula}{a formula object, with the response on the left of a ~ operator,
+and the terms on the right. The response must be a survival object if
+\code{family=cox} as returned by the Surv function. \code{Offset} and \code{strata} are not
+part of the formula.}
 
 \item{weights}{a vector of observation weights of length nobs.
 Default is \code{NULL} which assigns a weight of 1 to each observation.}
@@ -46,12 +49,15 @@ The program overrides default df based on the number of distinct (unique)
 values for a variable as follows:
 2-3 distinct values are assigned \code{df = 1} (linear), 4-5 distinct values are
 assigned \code{df = min(2, default)} and >= 6 distinct values are assigned
-\code{df = default}.}
+\code{df = default}. NOT in mfp2.formula()}
 
 \item{center}{a logical determining whether variables are centered before
 model fit. The default \code{TRUE} implies mean centering, except for binary
 covariates, where the covariate is centered using the lower of the two
 distinct values of the covariate. See Details section below.}
+
+\item{subset}{subset    an optional vector specifying a subset of observations
+to be used in the fitting process.Default is \code{NULL} and all observations are used.}
 
 \item{family}{a character string representing a \code{glm()} family object as well
 as Cox models. For more information, see Details section below.}

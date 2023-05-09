@@ -234,21 +234,11 @@ find_best_fpm_step <- function(x,
     x = x, xi = xi, df = 2 * degree,
     powers_current = powers_current, powers = powers, acdx = acdx
   )
-  # adjustment data
-  data_adjx <- x_transformed$data_adj
-  # Set adjustment data to NULL if dim = 0 by 0 before cbinding
-  # npp <- dim(data_adjx)
-  # if(npp[1]==0 && npp[2]==0){
-  #   data_adjx <- NULL
-  # } 
-  # if(is.null(ncol(x))){
-  #   data_adjx <- NULL
-  # }
   metrics = list()
   for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
     fit <- fit_model(
-      x = cbind(x_transformed$data_fp[[i]], data_adjx), y = y, ...
+      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj), y = y, ...
     )
     
     # use degree many additional degrees of freedom

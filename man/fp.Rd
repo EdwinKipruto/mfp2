@@ -2,13 +2,27 @@
 % Please edit documentation in R/fp.R
 \name{fp}
 \alias{fp}
-\title{Helper function to assign attribute to a variable}
+\title{A function that assign attribute to a variable that undergo fp transformation}
 \usage{
-fp(x, df = 4, select = 0.05, alpha = 0.05, scale = TRUE, acd = FALSE)
+fp(
+  x,
+  df = 4,
+  alpha = 0.05,
+  select = 0.05,
+  shift = NULL,
+  scale = NULL,
+  center = TRUE,
+  acd = FALSE
+)
+}
+\arguments{
+\item{x}{a vector of variable to be assigned attributes}
+
+\item{df, alpha, select, shift, scale, center, acd}{See \code{\link[=mfp2]{mfp2()}}) for details.}
 }
 \value{
 a variable with its attributes.
 }
 \description{
-Helper function to assign attribute to a variable
+A function that assign attribute to a variable that undergo fp transformation
 }

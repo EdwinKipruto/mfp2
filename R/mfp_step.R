@@ -234,13 +234,21 @@ find_best_fpm_step <- function(x,
     x = x, xi = xi, df = 2 * degree,
     powers_current = powers_current, powers = powers, acdx = acdx
   )
-  
+  # adjustment data
+  data_adjx <- x_transformed$data_adj
+  # Set adjustment data to NULL if dim = 0 by 0 before cbinding
+  # npp <- dim(data_adjx)
+  # if(npp[1]==0 && npp[2]==0){
+  #   data_adjx <- NULL
+  # } 
+  # if(is.null(ncol(x))){
+  #   data_adjx <- NULL
+  # }
   metrics = list()
-  
   for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
     fit <- fit_model(
-      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj), y = y, ...
+      x = cbind(x_transformed$data_fp[[i]], data_adjx), y = y, ...
     )
     
     # use degree many additional degrees of freedom
@@ -302,6 +310,7 @@ fit_null_step <- function(x,
   
   # fit null model
   # i.e. a model that does not contain xi but only adjustment variables
+  # In addition, adjustment model can be NULL, so we have intercept only
   model_null <- fit_model(x = x_transformed$data_adj, y = y, ...)
   
   list(
@@ -1211,7 +1220,8 @@ transform_data_step <- function(x,
   # check whether all adjustment powers = NA
   if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
     # all adjustment variables were eliminated in MFP backfitting process
-    data_adj <- matrix(nrow = 0, ncol = 0)
+    #data_adj <- matrix(nrow = 0, ncol = 0)
+    data_adj <- NULL
     powers_adj <- NULL
   } else {
     data_adj <- vector(mode = "list", length = ncol(x_adj))

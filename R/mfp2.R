@@ -157,7 +157,7 @@
 #' values for a variable as follows: 
 #' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
 #' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
-#' `df = default`. NOT in mfp2.formula()
+#' `df = default`. NOT in mfp2.formula()...df = 1 makes sense in formula to avoid warnings from binary variables
 #' @param center a logical determining whether variables are centered before 
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
@@ -293,7 +293,7 @@ mfp2.formula <- function(formula,
                          cycles = 5,
                          scale = NULL, 
                          shift = NULL, 
-                         df = 4, 
+                         df = 1, 
                          center = TRUE,
                          subset = NULL,
                          family = c("gaussian", "poisson", "binomial", "cox"),
@@ -313,6 +313,10 @@ mfp2.formula <- function(formula,
   # Assert that data must be provided
   if(missing(data))
     stop("Data is missing and must be provided.", call. = FALSE)
+  # assert that x has column names
+  vnames <- colnames(data)
+  if (is.null(vnames)) stop("! The column names of data must not be Null.\n",
+                            "i Please set column names for data.")
   # Assert that a formula must be provided
   if (missing(formula)) 
     stop("a formula argument is required.", call. = FALSE)
@@ -332,23 +336,17 @@ mfp2.formula <- function(formula,
     stop("The length of center > 1. Use fp() to set different centering values.", call. = FALSE)
   # TODO: WHAT HAPPENS TO SHIFTING?
   
-  # Model.frame can handle missing data and subset the data if subset indices is
-  # provided. It can also identify variables in fp() function because it stores
-  # the names as attributes....subset and na.action might be added but weights, 
-  # offset and strata must be subsetted.It seems including subset interferes 
-  # with the attributes of the variables
+  # model.frame preserves the attributes of the data unlike model.matrix
   df1 <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   # extract the response variable
   y <- model.extract(df1, "response")
   # Find position of fp in columns of df1
   fp.pos <- grep("fp", colnames(df1))
-  # select only variables that undergo fp transformation. It is better to use 
-  # df1 instead of x because the former is data frame with attributes that will 
-  # be required later
+  # select only variables that undergo fp transformation. 
   fp.data <- df1[, fp.pos, drop = FALSE]
   # Names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
-  # df, scale, alpha, select, etc based on user inputs
+  # capture df, scale, alpha, select, etc based on user inputs
   dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
   alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
   selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
@@ -356,32 +354,21 @@ mfp2.formula <- function(formula,
   scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
   centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
   acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
-  # extract attributes of the data frame to be used by model.matrix() which
-  # is useful if factor variables or interactions exists
+  
+  # Generate x matrix based on the attributes of the data frame
   x <- model.matrix(attr(df1, "terms"), df1)[,-1, drop = FALSE]
-  # if subset is provided, use it to subset weights, offset and strata
-  # if(!is.null(subset) && !is.null(weights))
-  #   weights <- weights[subset]
-  # if(!is.null(subset) && !is.null(offset))
-  #   offset <- offset[subset]
-  # if(!is.null(subset) && !is.null(strata))
-  #   strata <- strata[subset]
-
-  # in old mfp "strata" was considered special because it was part of the formula
-  # here it is not and therefore we only consider fp as special. NOT USED 
-  # ANYWARE AT THE MOMENT
-  #Terms <- terms.formula(formula, special = "fp", data = df1)
   
   # number of variables without intercept
   nx <- ncol(x) 
   xnames <- colnames(x)
   # replace names such as fp(x1) by real name "x1"
   indx <- grep("fp", xnames)
-  xnames[indx]<-vnames_fp
+  #xnames[indx]<-vnames_fp
+  xnames <- replace(xnames, indx, vnames_fp)
   # rename column of x
   colnames(x) <- xnames
   
-  #set default df etc and modify based on user inputs
+  #set default and modify based on user inputs
   df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) df),xnames), dfx))
   scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
   shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
@@ -753,6 +740,15 @@ mfp2.default <- function(x,
     offset <- offset[subset]
     istrata<-istrata[subset]
   }
+  # Assert that nrow(x)>ncol(x): low dimensional settings
+  if(ncol(x)>nrow(x))
+    stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
+         sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
+                 nrow(x), ncol(x)), call. = FALSE)
+  # stop if sample size is too small probably after subsetting
+  if(nrow(x)<5)
+    stop("! The sample size is too small (<5) to fit an mfp model.", 
+         sprintf("i The number of observations is %d", nrow(x)), call. = FALSE)
   
   # fit model ------------------------------------------------------------------
   fit <- fit_mfp(

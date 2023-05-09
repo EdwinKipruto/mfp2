@@ -162,7 +162,9 @@ predict.mfp2 <- function(object,
       } else {
         # use data
         x_seq <- object$x_original[, t, drop = FALSE]
-        x_trafo <- object$x[, names(object$fp_powers[[t]]), drop = FALSE]
+        xnam <- object$fp_powers[[t]]
+        # in acd we might have a power and NA so we need to remove NA
+        x_trafo <- object$x[, names(xnam[!is.na(xnam)]), drop = FALSE]
       }
       
       term_coef <- coef(object)[colnames(x_trafo)]
@@ -354,7 +356,9 @@ calculate_standard_error <- function(model,
 
   # the first column is the intercept in glm
   vcovx <- vcov(object = model)
-  
+  # this might happen is subset is used with very few observations
+  if(any(is.nan(vcovx)))
+    warning("i Nan detected in the covariance matrix of the model.\n Standard errors for calculation of confident intervals may not exist")
   # get rid of variance and covariance of intercept if any
   xnames <- colnames(X)
   ind <- match(xnames, colnames(vcovx))

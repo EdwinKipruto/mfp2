@@ -127,6 +127,10 @@
 #'  and the terms on the right. The response must be a survival object if
 #'  `family=cox` as returned by the Surv function. `Offset` and `strata` are not
 #'  part of the formula.
+#' @param x,y for `mfp2.default`: `x` is an input matrix of dimension nobs x nvars.
+#'  Each row is an observation vector. `y` is a vector for the response variable.
+#'  For `family="binomial"` it should be  a vector with two levels (see [stats::glm()]). 
+#' For `family="cox"` it must be a `Surv` object containing  2 columns.
 #' @param weights a vector of observation weights of length nobs. 
 #' Default is `NULL` which assigns a weight of 1 to each observation.
 #' @param offset a vector of length nobs that is included in the linear
@@ -158,6 +162,8 @@
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
+#' @param subset subset	an optional vector specifying a subset of observations
+#' to be used in the fitting process.Default is `NULL` and all observations are used.
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a character string defining the criterion used to select 
@@ -289,6 +295,7 @@ mfp2.formula <- function(formula,
                          shift = NULL, 
                          df = 4, 
                          center = TRUE,
+                         subset = NULL,
                          family = c("gaussian", "poisson", "binomial", "cox"),
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
@@ -339,7 +346,7 @@ mfp2.formula <- function(formula,
   # df1 instead of x because the former is data frame with attributes that will 
   # be required later
   fp.data <- df1[, fp.pos, drop = FALSE]
-  # variable names of the variables that undergo fp transformation
+  # Names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
   # df, scale, alpha, select, etc based on user inputs
   dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
@@ -397,6 +404,7 @@ mfp2.formula <- function(formula,
                shift = shift_vector, 
                df = df_vector, 
                center = center_vector,
+               subset = subset,
                family = family,
                criterion = criterion,
                select = select_vector, 
@@ -423,6 +431,7 @@ mfp2.default <- function(x,
                  shift = NULL, 
                  df = 4, 
                  center = TRUE,
+                 subset = NULL,
                  family = c("gaussian", "poisson", "binomial", "cox"),
                  criterion = c("pvalue", "aic", "bic"),
                  select = 0.05, 
@@ -474,7 +483,18 @@ mfp2.default <- function(x,
   # assert that x has no missing data
   if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
                      "i Please remove any missing data before passing x to this function.")
-  
+  # assert that subset is a vector
+  if (!is.null(subset)){
+    if(!is.vector(subset))
+      stop(sprintf("! Subset must not be of class %s.", 
+                   paste0(class(subset), collapse = ", ")), 
+           "i Please convert subset to a vector.")
+    if(any(subset<0))
+      stop("! Subset must not contain negative values.", call. = FALSE)
+      
+  }  
+      
+    
   # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
     if (any(weights < 0)) {
@@ -724,6 +744,14 @@ mfp2.default <- function(x,
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(strata, shortlabel = TRUE)
+  }
+  # TODO: SUBSETTING
+  if(!is.null(subset)){
+    x <- x[subset,,drop = F]
+    y <- if(family!="cox"){y[subset]}else{y[subset,,drop = F]}
+    weights <- weights[subset]
+    offset <- offset[subset]
+    istrata<-istrata[subset]
   }
   
   # fit model ------------------------------------------------------------------

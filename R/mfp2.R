@@ -347,30 +347,30 @@ mfp2.formula <- function(formula,
   # Find position of fp in columns of df1
   fp.pos <- grep("fp", colnames(df1))
   # Return warning when fp() is not used in the formula
-  if(length(fp.pos)==0)
-    warning("i No variable has been selected for function selection in the formula.\n", 
-            "i mfp2() continues and uses the default df to select functions for continous variables.", call. = FALSE)
+  if (length(fp.pos)==0)
+    warning("i No continuous variable has been chosen for function selection in the formula.\n", 
+            "mfp2() continues and uses the default df=",df," to select functions for continuous variables.", call. = FALSE)
+  
   # select only variables that undergo fp transformation and extract their attributes. 
   fp.data <- df1[, fp.pos, drop = FALSE]
   
   # Names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
 
-  # check for variables used more than once in fp() function and have different
-  # parameters. If they have the same parameters no error will be returned
+  # check for variables used more than once in fp() function within the formula
   duplicated_vnames_fp <- vnames_fp[duplicated(vnames_fp)]
-  if(length(duplicated_vnames_fp)!=0)
+  if (length(duplicated_vnames_fp)!=0)
     stop("i Variables should be used only once in the fp() within the formula.\n", 
          sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
                  paste0(duplicated_vnames_fp, collapse = ", ")), call. = FALSE)
   
   # Check for variables used in fp() as well as other parts of the formula
   index_rep_var <- which(colnames(df1)%in%vnames_fp)
-  if(length(index_rep_var)!=0)
-    stop("i Variables used in the fp() function should not be included in other parts of the formula.\n", 
+  
+  if (length(index_rep_var)!=0)
+    stop("i Variables used in the fp() should not be included in other parts of the formula.\n", 
          sprintf("i This applies to the following variable(s): %s.", 
                  paste0(colnames(df1)[index_rep_var], collapse = ", ")), call. = FALSE)
-
 
   # capture df, scale, alpha, select, etc based on user inputs. Returns empty list
   # when fp() is not used in the formula
@@ -403,8 +403,9 @@ mfp2.formula <- function(formula,
   alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
   select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
   acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
-  # subset variables with acd
-  if(sum(acdx_vector)==0) # no acd variables
+  
+  # acd variables if any
+  if(sum(acdx_vector)==0) 
     acdx_vector <- NULL
   else
   acdx_vector <- names(acdx_vector[acdx_vector])
@@ -472,14 +473,16 @@ mfp2.default <- function(x,
   ties <- match.arg(ties)
   
   # assertions -----------------------------------------------------------------
+  # assert that x is a matrix
   if(!is.matrix(x))
     stop("x must be a matrix", call. = F)
-    
+  
+  # assert that x must not contain character values
   if(any(is.character(x)))
     stop("x contain characters values. Convert categorical variables to 
          dummy variables", call. = F)
   
-  # assert dimension of x
+  # check dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])
   nvars <- as.integer(np[2])
@@ -487,41 +490,41 @@ mfp2.default <- function(x,
   # assert that x is a matrix
   if (is.null(np)) {
       stop("! The dimensions of x must not be Null.\n",
-           "i Please make sure that x is a matrix or data.frame with at least one row and column.", call. = FALSE)
+           "i Please make sure that x is a matrix with at least one row and column.", call. = FALSE)
   }
-  # assert that x has column names
+  # assert that x must have column names
   vnames <- colnames(x)
   if (is.null(vnames)) stop("! The column names of x must not be Null.\n",
-                            "i Please set column names for x.")
+                            "i Please set column names for x.", call. = FALSE)
 
   # assert that x has no missing data
   if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
-                     "i Please remove any missing data before passing x to this function.")
-  # assert that subset is a vector
+                     "i Please remove any missing data before passing x to this function.", call. = FALSE)
+  
+  # assert that subset must be a vector and does not contain negative values
   if (!is.null(subset)){
-    if(!is.vector(subset))
+    if (!is.vector(subset))
       stop(sprintf("! Subset must not be of class %s.", 
                    paste0(class(subset), collapse = ", ")), 
-           "i Please convert subset to a vector.")
-    if(any(subset<0))
-      stop("! Subset must not contain negative values.", call. = FALSE)
-      
-  }  
-      
+           "i Please convert subset to a vector.", call. = FALSE)
     
+    if (any(subset<0))
+      stop("! Subset must not contain negative values.", call. = FALSE)
+  }  
+
   # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
     if (any(weights < 0)) {
-        stop("! Weights must not be negative.")
+        stop("! Weights must not be negative.", call. = FALSE)
     }
     if (length(weights) != nobs) {
       stop("! The number of observations (rows in x) and weights must match.\n", 
            sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
-                   nobs, length(weights)))
+                   nobs, length(weights)), call. = FALSE)
     }
   }
   
-  # assert dimensions of offset
+  # assert that the length of offset must be equal to the no. of observations
   if (!is.null(offset)) {
       if (length(offset) != nobs) {
           stop("! The number of observations (rows in x) and offset must match.\n", 
@@ -530,7 +533,7 @@ mfp2.default <- function(x,
       }
   }
   
-  # assert alpha between 0 and 1
+  # assert that alpha must be between 0 and 1
   if (any(alpha > 1) || any(alpha < 0)) {
       stop("! alpha must not be < 0 or > 1.")
   }
@@ -542,7 +545,7 @@ mfp2.default <- function(x,
                    nvars, length(alpha)))
   }
   
-  # assert select between 0 and 1
+  # assert that select must be between 0 and 1
   if (any(select > 1) || any(select < 0)) {
       stop("! select must not be < 0 or > 1.")
   }
@@ -553,7 +556,7 @@ mfp2.default <- function(x,
                    nvars, length(select)))
   }
   
-  # assert keep is a subset of x
+  # assert that keep is a subset of x
   if (!is.null(keep)) {
       if (!all(keep %in% colnames(x))) {
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
@@ -675,7 +678,7 @@ mfp2.default <- function(x,
 
   # set defaults ---------------------------------------------------------------
   if (is.null(powers)) {
-      # default FP powers proposed by Royston and Sauerbrei (2008)
+      # default FP powers proposed by Royston and Altman (1994)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   powers <- sort(unique(powers))
@@ -743,7 +746,7 @@ mfp2.default <- function(x,
     if (any(df[index] != 1)) {
         warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n", 
                 sprintf("i This applies to the following variables: %s.", 
-                        paste0(colnames(x)[index & df != 1], collapse = ", ")))
+                        paste0(colnames(x)[index & df != 1], collapse = ", ")), call. = FALSE)
         df[index] <- 1
     }
     df.list <- df
@@ -754,15 +757,21 @@ mfp2.default <- function(x,
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   
-  # stratification
+  # stratification for cox model
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(strata, shortlabel = TRUE)
   }
-  # TODO: SUBSETTING
+  
+  # data subsetting-------------------------------------------------------------
   if(!is.null(subset)){
+    # check the sample size if it is too small. Likely to occur after subsetting
+    if (length(subset)<5)
+      stop("! The length of subset is too small (<5) to fit an mfp model.", 
+           sprintf("i The number of observations is %d", length(subset)), call. = FALSE)
+    
     x <- x[subset,,drop = F]
-    y <- if(family!="cox"){y[subset]}else{y[subset,,drop = F]}
+    y <- if (family!="cox"){y[subset]}else {y[subset,,drop = F]}
     weights <- weights[subset]
     offset <- offset[subset]
     istrata<-istrata[subset]
@@ -772,11 +781,6 @@ mfp2.default <- function(x,
     stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
          sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
                  nrow(x), ncol(x)), call. = FALSE)
-  # stop if sample size is too small probably after subsetting
-  if(nrow(x)<5)
-    stop("! The sample size is too small (<5) to fit an mfp model.", 
-         sprintf("i The number of observations is %d", nrow(x)), call. = FALSE)
-  
   # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 

@@ -313,10 +313,10 @@ mfp2.formula <- function(formula,
   # Assert that data must be provided
   if(missing(data))
     stop("Data is missing and must be provided.", call. = FALSE)
-  # assert that x has column names
+  # assert that data has column names
   vnames <- colnames(data)
   if (is.null(vnames)) stop("! The column names of data must not be Null.\n",
-                            "i Please set column names for data.")
+                            "i Please set column names.")
   # Assert that a formula must be provided
   if (missing(formula)) 
     stop("a formula argument is required.", call. = FALSE)
@@ -325,15 +325,19 @@ mfp2.formula <- function(formula,
   # to use different parameters for each variable, they can enter directly in
   # fp() function
   if(length(df)!=1)
-    stop("The length of df > 1. Use fp() to set different df values.", call. = FALSE)
+    stop("The length of df > 1. Use fp() function to set different df values.", call. = FALSE)
+  
   if(length(alpha)!=1)
-    stop("The length of alpha > 1. Use fp() to set different alpha values.", call. = FALSE)
+    stop("The length of alpha > 1. Use fp() function to set different alpha values.", call. = FALSE)
+  
   if(length(select)!=1)
-    stop("The length of select > 1. Use fp() to set different select values.", call. = FALSE)
+    stop("The length of select > 1. Use fp()function to set different select values.", call. = FALSE)
+  
   if(!is.null(scale) && length(scale)!=1)
-    stop("The length of scale > 1. Use fp() to set different scaling factors.", call. = FALSE)
+    stop("The length of scale > 1. Use fp() function to set different scaling factors.", call. = FALSE)
+  
   if(length(center)!=1)
-    stop("The length of center > 1. Use fp() to set different centering values.", call. = FALSE)
+    stop("The length of center > 1. Use fp() function to set different centering values.", call. = FALSE)
   # TODO: WHAT HAPPENS TO SHIFTING?
   
   # model.frame preserves the attributes of the data unlike model.matrix
@@ -342,11 +346,34 @@ mfp2.formula <- function(formula,
   y <- model.extract(df1, "response")
   # Find position of fp in columns of df1
   fp.pos <- grep("fp", colnames(df1))
-  # select only variables that undergo fp transformation. 
+  # Return warning when fp() is not used in the formula
+  if(length(fp.pos)==0)
+    warning("i No variable has been selected for function selection in the formula.\n", 
+            "i mfp2() continues and uses the default df to select functions for continous variables.", call. = FALSE)
+  # select only variables that undergo fp transformation and extract their attributes. 
   fp.data <- df1[, fp.pos, drop = FALSE]
+  
   # Names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
-  # capture df, scale, alpha, select, etc based on user inputs
+
+  # check for variables used more than once in fp() function and have different
+  # parameters. If they have the same parameters no error will be returned
+  duplicated_vnames_fp <- vnames_fp[duplicated(vnames_fp)]
+  if(length(duplicated_vnames_fp)!=0)
+    stop("i Variables should be used only once in the fp() within the formula.\n", 
+         sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
+                 paste0(duplicated_vnames_fp, collapse = ", ")), call. = FALSE)
+  
+  # Check for variables used in fp() as well as other parts of the formula
+  index_rep_var <- which(colnames(df1)%in%vnames_fp)
+  if(length(index_rep_var)!=0)
+    stop("i Variables used in the fp() function should not be included in other parts of the formula.\n", 
+         sprintf("i This applies to the following variable(s): %s.", 
+                 paste0(colnames(df1)[index_rep_var], collapse = ", ")), call. = FALSE)
+
+
+  # capture df, scale, alpha, select, etc based on user inputs. Returns empty list
+  # when fp() is not used in the formula
   dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
   alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
   selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
@@ -369,7 +396,7 @@ mfp2.formula <- function(formula,
   colnames(x) <- xnames
   
   #set default and modify based on user inputs
-  df_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) df),xnames), dfx))
+  dfx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) df),xnames), dfx))
   scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
   shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
   center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) center),xnames), centerx))
@@ -389,7 +416,7 @@ mfp2.formula <- function(formula,
                cycles = cycles,
                scale = scale_vector, 
                shift = shift_vector, 
-               df = df_vector, 
+               df = dfx_vector, 
                center = center_vector,
                subset = subset,
                family = family,

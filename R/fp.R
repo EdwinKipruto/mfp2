@@ -12,7 +12,7 @@ fp <- function(x, df = 4, alpha = 0.05,select = 0.05, shift = NULL, scale=NULL,c
   name <- deparse(substitute(x))
   # Assert that a factor variable must not be subjected to fp transformation
   if(is.factor(x))
-    stop(name," is a factor variable and must not undergo fp transformation")
+    stop(name," is a factor variable and should not be passed to the fp() function.")
   # attributes of x
   attr(x, "df") <- df
   attr(x, "alpha") <- alpha

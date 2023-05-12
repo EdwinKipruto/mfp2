@@ -125,8 +125,9 @@
 #'
 #' @param formula a formula object, with the response on the left of a ~ operator,
 #'  and the terms on the right. The response must be a survival object if
-#'  `family=cox` as returned by the Surv function. `Offset` and `strata` are not
-#'  part of the formula.
+#'  `family=cox` as returned by the Surv function. The `Offset` and `strata` can be
+#'  added either in the formula or as arguments. If both are present in the formula
+#'  and as argument, the latter will be ignored.
 #' @param x,y for `mfp2.default`: `x` is an input matrix of dimension nobs x nvars.
 #'  Each row is an observation vector. `y` is a vector for the response variable.
 #'  For `family="binomial"` it should be  a vector with two levels (see [stats::glm()]). 
@@ -368,10 +369,12 @@ mfp2.formula <- function(formula,
     # only one strata exist in the formula since the number of strata variables is 1
     if (length(stemp$vars) == 1) 
       strata <- mf[[stemp$vars]]
-    # more than one strata exist in the formula
-    else strata <- strata(mf[, stemp$vars], shortlabel = TRUE)
-    # convert the strata into integers
-    strata <- as.integer(strata)
+    # more than one strata exist in the formula. we do not use strata() because  mfp2.default uses it
+    #else strata <- strata(mf[, stemp$vars], shortlabel = TRUE)
+    else strata <- mf[, stemp$vars]
+    
+    # convert the strata into integers. not necessary since mfp2.default will do it
+    #strata <- as.integer(strata)
     # extract the position of strata variables in the terms to be dropped
       dropterms <- stemp$terms
   }
@@ -829,6 +832,8 @@ mfp2.default <- function(x,
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(strata, shortlabel = TRUE)
+      # convert strata to integers as conducted by coxph
+      istrata <- as.integer(istrata)
   }
   
   # data subsetting-------------------------------------------------------------

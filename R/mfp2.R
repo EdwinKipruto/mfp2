@@ -457,13 +457,6 @@ mfp2.formula <- function(formula,
     scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
     centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
     acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
-
-    # replace names such as fp(x1) by real name "x1" in the x matrix
-    indx <- grep("fp", xnames)
-    #xnames[indx]<-vnames_fp
-    xnames <- replace(xnames, indx, vnames_fp)
-    # rename column of x
-    colnames(x) <- xnames
     
     # modify the default parameters based on the user inputs
     dfx_vector<- modifyList(dfx_vector, dfx)
@@ -738,7 +731,7 @@ mfp2.default <- function(x,
       if (!is.vector(y)) {
           stop(sprintf("! Outcome y must not be of class %s.", 
                        paste0(class(y), collapse = ", ")), 
-               "i Please convert y to a vector.")
+               "i Please convert y to a vector.", call. = FALSE)
       }
       if (length(y) != nobs) {
           stop("! Number of observations in y and x must match.", 
@@ -746,7 +739,7 @@ mfp2.default <- function(x,
                        length(y), nobs))
       }
   }
-
+  
   # set defaults ---------------------------------------------------------------
   if (is.null(powers)) {
       # default FP powers proposed by Royston and Altman (1994)

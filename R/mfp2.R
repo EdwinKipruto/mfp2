@@ -282,7 +282,7 @@
 #' [summary.mfp2()], [coef.mfp2()]
 #' 
 #' @export
-mfp2 <- function(x, ...) {
+mfp2 <- function(x,...) {
   UseMethod("mfp2", x)
 }
 
@@ -303,13 +303,16 @@ mfp2.formula <- function(formula,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron"),
+                         ties = c("breslow", "efron", "exact"),
                          strata = NULL,
                          nocenter = NULL,
                          acdx = NULL,
                          ftest = FALSE,
                          control = NULL,
                          verbose = TRUE) {
+  # capture the call
+  call <- match.call()
+  family = match.arg(family)
   # Assert that data must be provided
   if(missing(data))
     stop("Data is missing and must be provided.", call. = FALSE)
@@ -324,39 +327,91 @@ mfp2.formula <- function(formula,
   # must be equal to one to be replicated by the program. If the user wants
   # to use different parameters for each variable, they can enter directly in
   # fp() function
-  if(length(df)!=1)
+  if (length(df)!=1)
     stop("The length of df > 1. Use fp() function to set different df values.", call. = FALSE)
   
-  if(length(alpha)!=1)
+  if (length(alpha)!=1)
     stop("The length of alpha > 1. Use fp() function to set different alpha values.", call. = FALSE)
   
-  if(length(select)!=1)
+  if (length(select)!=1)
     stop("The length of select > 1. Use fp()function to set different select values.", call. = FALSE)
   
-  if(!is.null(scale) && length(scale)!=1)
+  if (!is.null(scale) && length(scale)!=1)
     stop("The length of scale > 1. Use fp() function to set different scaling factors.", call. = FALSE)
   
-  if(length(center)!=1)
+  if (length(center)!=1)
     stop("The length of center > 1. Use fp() function to set different centering values.", call. = FALSE)
   # TODO: WHAT HAPPENS TO SHIFTING?
   
-  # model.frame preserves the attributes of the data unlike model.matrix
-  df1 <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
-  # extract the response variable
-  y <- model.extract(df1, "response")
-  # Find position of fp in columns of df1
-  fp.pos <- grep("fp", colnames(df1))
-  # Return warning when fp() is not used in the formula
-  if (length(fp.pos)==0)
+  # create dataframe: model.frame preserves the attributes of the data unlike model.matrix
+  mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  # extract the response variable from the data
+  y <- model.extract(mf, "response")
+
+  #===Deal with strata in cox---------------------------------------------------
+  # strata is not allowed in the formula if the family is not cox
+  specials <- "strata"
+  Terms <- terms(formula, specials, data)
+  # position of strata in the formula: it can be NULL when it doesn't exist
+  strats <- attr(Terms,"specials")$strata
+  # set default drop terms. This is basically for strata variables
+  dropterms <- NULL
+  if (family=="cox"){
+  # strata exist in the formula. It might be two or more strata
+  if (!is.null(strats)) {
+    # check whether strata is both in the formula and in the argument
+    if(!is.null(call$strata))
+      warning("strata appear both in the formula and as an argument. The argument\n term ignored.", call. = FALSE)
+    # untangle the terms for strata. This function returns the strata names, 
+    # e.g "strata(x1)" and its position in the terms when outcome is excluded
+    stemp <- untangle.specials(Terms, "strata", 1)
+    # only one strata exist in the formula since the number of strata variables is 1
+    if (length(stemp$vars) == 1) 
+      strata <- mf[[stemp$vars]]
+    # more than one strata exist in the formula
+    else strata <- strata(mf[, stemp$vars], shortlabel = TRUE)
+    # convert the strata into integers
+    strata <- as.integer(strata)
+    # extract the position of strata variables in the terms to be dropped
+      dropterms <- stemp$terms
+  }
+  } else {
+    if (!is.null(strats))
+      stop("strata is not allowed when family = ", family, ".\n Please remove it from the formula",
+           call. = FALSE)
+  }
+  # Drop strata variables if available in the formula before using model.matrix()
+  if (!is.null(dropterms)) 
+    newTerms <- Terms[-dropterms]
+  else newTerms <- Terms
+
+  ##Deal with offset-===--------------------------------------------------------
+  # position of offset in the formula. NULL if not supplied in the formula
+  offs1 <- attr(Terms,"offset")
+   if (!is.null(offs1) && length(offs1)>1)
+       stop("! only one offset is allowed, but ", 
+        sprintf("%d offsets are used in the formula.",length(offs1)), call. = FALSE)
+  
+  # check whether offset is both in the formula and as an argument.
+  if (!is.null(offs1) && !is.null(call$offset)){
+    warning("offset appear both in the formula and as an argument.\n The argument term ignored.", call. = FALSE)
+    offset <- as.vector(model.offset(mf))
+  }
+  # Create the x matrix without offset and strata-------------------------------
+  x <- model.matrix(newTerms, mf)[,-1, drop = FALSE]
+  nx <- ncol(x) 
+  xnames <- colnames(x)
+  # Deal with FP terms----------------------------------------------------------
+  # select only variables that undergo fp transformation and extract their attributes.
+  fp.pos <- grep("fp", colnames(mf))
+  if (length(fp.pos)==0){
     warning("i No continuous variable has been chosen for function selection in the formula.\n", 
             "mfp2() continues and uses the default df=",df," to select functions for continuous variables.", call. = FALSE)
+  } else {
+  fp.data <- mf[, fp.pos, drop = FALSE]
   
-  # select only variables that undergo fp transformation and extract their attributes. 
-  fp.data <- df1[, fp.pos, drop = FALSE]
-  
-  # Names of the variables that undergo fp transformation
+  # Extract names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
-
   # check for variables used more than once in fp() function within the formula
   duplicated_vnames_fp <- vnames_fp[duplicated(vnames_fp)]
   if (length(duplicated_vnames_fp)!=0)
@@ -365,65 +420,78 @@ mfp2.formula <- function(formula,
                  paste0(duplicated_vnames_fp, collapse = ", ")), call. = FALSE)
   
   # Check for variables used in fp() as well as other parts of the formula
-  index_rep_var <- which(colnames(df1)%in%vnames_fp)
+  index_rep_var <- which(colnames(mf)%in%vnames_fp)
   
   if (length(index_rep_var)!=0)
     stop("i Variables used in the fp() should not be included in other parts of the formula.\n", 
          sprintf("i This applies to the following variable(s): %s.", 
-                 paste0(colnames(df1)[index_rep_var], collapse = ", ")), call. = FALSE)
-
-  # capture df, scale, alpha, select, etc based on user inputs. Returns empty list
-  # when fp() is not used in the formula
-  dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
-  alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
-  selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
-  shiftx <- setNames(lapply(fp.data, function(v) attr(v, "shift")),vnames_fp)
-  scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
-  centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
-  acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
+                 paste0(colnames(mf)[index_rep_var], collapse = ", ")), call. = FALSE)
   
-  # Generate x matrix based on the attributes of the data frame
-  x <- model.matrix(attr(df1, "terms"), df1)[,-1, drop = FALSE]
-  
-  # number of variables without intercept
-  nx <- ncol(x) 
-  xnames <- colnames(x)
-  # replace names such as fp(x1) by real name "x1"
+  # replace names such as fp(x1) by real name "x1" in the x matrix
   indx <- grep("fp", xnames)
-  #xnames[indx]<-vnames_fp
   xnames <- replace(xnames, indx, vnames_fp)
   # rename column of x
   colnames(x) <- xnames
-  
-  #set default and modify based on user inputs
-  dfx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) df),xnames), dfx))
-  scale_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), scalex))
-  shift_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) NULL),xnames), shiftx))
-  center_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) center),xnames), centerx))
-  alpha_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) alpha),xnames), alphax))
-  select_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) select),xnames), selectx))
-  acdx_vector<- unlist(modifyList(setNames(lapply(1:nx, function(v) FALSE),xnames), acdx))
-  
-  # acd variables if any
+  }
+
+  # if fp() is not used in the formula, it reduces to mfp2.default() so we need
+  # to replicate the default parameters e.g. df to be equal to ncol(x)
+  dfx_vector<- setNames(lapply(1:nx,function(z) df), xnames)
+  scale_vector<- setNames(lapply(1:nx,function(z) scale),xnames)
+  shift_vector<- setNames(lapply(1:nx,function(z) shift),xnames)
+  center_vector<- setNames(lapply(1:nx,function(z) center),xnames)
+  alpha_vector<- setNames(lapply(1:nx,function(z) alpha),xnames)
+  select_vector<- setNames(lapply(1:nx,function(z) select),xnames)
+  acdx_vector<- setNames(lapply(1:nx,function(z) acdx),xnames)
+
+  # if fp() is used in the formula
+  if(length(fp.pos)!=0){
+    # capture df, scale, alpha, select, etc. based on the user inputs. 
+    dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
+    alphax <- setNames(lapply(fp.data, function(v) attr(v, "alpha")), vnames_fp)
+    selectx <- setNames(lapply(fp.data, function(v) attr(v, "select")),vnames_fp)
+    shiftx <- setNames(lapply(fp.data, function(v) attr(v, "shift")),vnames_fp)
+    scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
+    centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
+    acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
+
+    # replace names such as fp(x1) by real name "x1" in the x matrix
+    indx <- grep("fp", xnames)
+    #xnames[indx]<-vnames_fp
+    xnames <- replace(xnames, indx, vnames_fp)
+    # rename column of x
+    colnames(x) <- xnames
+    
+    # modify the default parameters based on the user inputs
+    dfx_vector<- modifyList(dfx_vector, dfx)
+    scale_vector<- modifyList(scale_vector, scalex)
+    shift_vector<- modifyList(shift_vector, shiftx)
+    center_vector<- modifyList(center_vector, centerx)
+    alpha_vector<- modifyList(alpha_vector, alphax)
+    select_vector<- modifyList(select_vector, selectx)
+    acdx_vector<- modifyList(acdx_vector, acdx)
+}
+  # acd require variable names or NULL option
+  acdx_vector<- unlist(acdx_vector)
   if(sum(acdx_vector)==0) 
     acdx_vector <- NULL
   else
-  acdx_vector <- names(acdx_vector[acdx_vector])
-  # call default method
+    acdx_vector <- names(acdx_vector[acdx_vector])
+  # call default method---------------------------------------------------------
   mfp2.default(x = x, 
                y = y, 
                weights = weights, 
                offset = offset, 
                cycles = cycles,
-               scale = scale_vector, 
-               shift = shift_vector, 
-               df = dfx_vector, 
-               center = center_vector,
+               scale = unlist(scale_vector), 
+               shift = unlist(shift_vector), 
+               df = unlist(dfx_vector), 
+               center = unlist(center_vector),
                subset = subset,
                family = family,
                criterion = criterion,
-               select = select_vector, 
-               alpha = alpha_vector,
+               select = unlist(select_vector), 
+               alpha = unlist(alpha_vector),
                keep = keep,
                xorder = xorder,
                powers = powers,
@@ -454,7 +522,7 @@ mfp2.default <- function(x,
                  keep = NULL,
                  xorder = c("ascending", "descending", "original"),
                  powers = NULL,
-                 ties = c("breslow", "efron"),
+                 ties = c("breslow", "efron", "exact"),
                  strata = NULL,
                  nocenter = NULL,
                  acdx = NULL,

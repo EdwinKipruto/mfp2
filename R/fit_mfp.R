@@ -101,12 +101,16 @@ fit_mfp <- function(x,
   }
   
   # step 1: order variables ----------------------------------------------------
+  if(length(variables_x)>1){
   variables_ordered = order_variables(
     xorder = xorder, 
     x = x, y = y, family = family,  weights = weights, offset = offset, 
     strata = strata, method = method, control = control, nocenter = nocenter
-  ) 
-  
+  )
+  # important if you just have one variable
+  } else {
+    variables_ordered <- variables_x
+  }
   if (verbose) 
     cat(sprintf("\ni Visiting order: %s\n", 
                 paste0(variables_ordered, collapse = ", ")))
@@ -296,7 +300,8 @@ order_variables <- function(xorder = "ascending",
   names_ordered
 }
 
-#' @describeIn order_variables Order by significance in regression model.
+#' @describeIn order_variables Order by significance in regression model.The 
+#' number of column of x should be greater than 1 for cox
 order_variables_by_significance <- function(xorder, 
                                             x, 
                                             y,
@@ -342,7 +347,8 @@ order_variables_by_significance <- function(xorder,
     p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
     names(p.value) <- names(dev) <- names(df.reduced) <- varnames
     for (i in 1:ns) {
-      # remove one variable at a time and fit the reduced model
+      # remove one variable at a time and fit the reduced model. Only works
+      # if you have more than one variable due to (-i)
       fit.reduced <- glm.fit(
         x = cbind(rep(1, n), x[, -i, drop = FALSE]), y = y,
         weights = weights, offset = offset, family = family

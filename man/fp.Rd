@@ -2,7 +2,7 @@
 % Please edit documentation in R/fp.R
 \name{fp}
 \alias{fp}
-\title{A function that assign attribute to a variable that undergo fp transformation}
+\title{A function that assign attribute to a continuous variable that undergo fp transformation}
 \usage{
 fp(
   x,
@@ -16,7 +16,7 @@ fp(
 )
 }
 \arguments{
-\item{x}{a vector of variable to be assigned attributes}
+\item{x}{a vector of continuous variable to be assigned attributes}
 
 \item{df, alpha, select, shift, scale, center, acd}{See \code{\link[=mfp2]{mfp2()}}) for details.}
 }
@@ -24,5 +24,5 @@ fp(
 a variable with its attributes.
 }
 \description{
-A function that assign attribute to a variable that undergo fp transformation
+A function that assign attribute to a continuous variable that undergo fp transformation
 }

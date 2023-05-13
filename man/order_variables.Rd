@@ -52,6 +52,7 @@ To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 }
 \section{Functions}{
 \itemize{
-\item \code{order_variables_by_significance()}: Order by significance in regression model.
+\item \code{order_variables_by_significance()}: Order by significance in regression model.The
+number of column of x should be greater than 1 for cox
 
 }}

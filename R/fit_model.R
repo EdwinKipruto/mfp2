@@ -111,9 +111,10 @@ fit_glm <- function(x,
       x = xx, y = y, family = family, weights = weights, offset = offset
     )  
   } else {
-    fit <- glm(y ~ ., data = data.frame(x, y), 
-               family = family, weights = weights, offset = offset, 
-               x = TRUE, y = TRUE)
+    # important to cbind in case x is null otherwise it will return an error
+    data<- data.frame(cbind(x,y))
+    fit <- glm(y~., data = data, family = family, weights = weights,
+               offset = offset, x = TRUE, y = TRUE)
   }
 
   # account for estimation of variance parameter in gaussian models
@@ -177,7 +178,7 @@ fit_cox <- function(x,
     )  
   } else {
     # construct appropriate formula incorporating offset and strata terms
-    d <- data.frame(x, y)
+    d <- data.frame(cbind(x, y))
     f <- sprintf("y ~ %s", 
                 paste(setdiff(names(d), "y"), collapse = "+ "))
     

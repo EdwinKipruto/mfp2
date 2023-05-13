@@ -1,3 +1,8 @@
+#' Function to create an instance of mfp2 class
+mfp2 <- function(object,...){
+  UseMethod("mfp2",object)
+}
+
 #' Multivariable fractional polynomial models with extensions of sigmoid 
 #' functions
 #'
@@ -281,11 +286,8 @@
 #' 
 #' @seealso 
 #' [summary.mfp2()], [coef.mfp2()]
-#' 
+## @method mfp2 formula
 #' @export
-mfp2 <- function(x,...) {
-  UseMethod("mfp2", x)
-}
 
 mfp2.formula <- function(formula, 
                          data, 
@@ -501,6 +503,9 @@ mfp2.formula <- function(formula,
   )
 }
 
+## Default function
+## @method mfp2 default
+## @export
 mfp2.default <- function(x, 
                  y, 
                  weights = NULL, 
@@ -867,6 +872,7 @@ mfp2.default <- function(x,
   
   fit
 }
+
 
 #' Extract coefficients from object of class `mfp2`
 #' 

@@ -350,7 +350,11 @@ mfp2.formula <- function(formula,
   mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   # extract the response variable from the data
   y <- model.extract(mf, "response")
-
+  
+  # check whether no predictor exist in the model i.e y~1: 
+  labels <-  attr(terms(mf), "term.labels")
+  if(length(labels)==0)
+    stop("No predictors were provided for model fitting.", call. = FALSE)
   #===Deal with strata in cox---------------------------------------------------
   # strata is not allowed in the formula if the family is not cox
   specials <- "strata"

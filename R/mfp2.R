@@ -505,7 +505,7 @@ mfp2.formula <- function(formula,
 
 ## Default function
 ## @method mfp2 default
-## @export
+#' @export
 mfp2.default <- function(x, 
                  y, 
                  weights = NULL, 

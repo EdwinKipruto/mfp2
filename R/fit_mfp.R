@@ -31,7 +31,7 @@
 #' in the model. 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' @param powers a numeric list that sets the permitted FP powers for each 
 #' covariates.
 #' @param method a character string specifying the method for tie handling in 
 #' Cox regression.
@@ -204,12 +204,12 @@ fit_mfp <- function(x,
   
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
-  # x has already been shifted and scaled.
+  # x has already been shifted and scaled. Centering can now be applied
   data_transformed <- transform_matrix(
     x = x, power_list = powers_current, center = center, acdx = acdx
   )
 
-  # fit model, and return full glm or coxph object
+  # fit model, and return glm or coxph object
   modelfit <- fit_model(
     x =  data_transformed$x_transformed, y = y, 
     family = family, weights = weights, offset = offset,

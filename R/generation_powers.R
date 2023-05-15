@@ -43,6 +43,9 @@ generate_powers_fp <- function(degree = NULL,
   
   if (degree == 0)
     return(matrix(1, nrow = 1, ncol = 1))
+   # combination below does not work if x is of length 1
+     if (length(powers) == 1)
+    return(matrix(powers, nrow = 1, ncol = 1))
   
   # using replacement because powers may be repeated e.g. (0,0) or (1,1)
   arrangements::combinations(x = powers, k = degree, replace = TRUE)

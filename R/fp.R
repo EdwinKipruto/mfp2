@@ -2,11 +2,13 @@
 #' 
 #' @param x a vector of continuous variable to be assigned attributes
 #' @param df,alpha,select,shift,scale,center,acd See [mfp2::mfp2()]) for details. 
+#' @param pow a vector of powers to be evaluated for x. Default is NULL and 
+#' powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3) will be used
 #' @return 
 #' a variable with its attributes.
 #' 
 #' @export
-fp <- function(x, df = 4, alpha = 0.05,select = 0.05, shift = NULL, scale=NULL,center = TRUE, acd = FALSE)
+fp <- function(x, df = 4, alpha = 0.05,select = 0.05, shift = NULL, scale=NULL,center = TRUE, acd = FALSE, pow = NULL)
 {
 
   name <- deparse(substitute(x))

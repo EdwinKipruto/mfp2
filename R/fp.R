@@ -23,6 +23,7 @@ fp <- function(x, df = 4, alpha = 0.05,select = 0.05, shift = NULL, scale=NULL,c
   attr(x, "scale") <- scale
   attr(x, "center") <- center
   attr(x, "acd") <- acd
+  attr(x, "pow") <- pow
   attr(x, "name") <- name
   x
 }

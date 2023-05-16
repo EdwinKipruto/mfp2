@@ -42,9 +42,10 @@ mfp2 <- function(object,...){
 #' @section Details on shifting, scaling and centering:
 #' 
 #' Fractional polynomials are only defined for positive variables due to the 
-#' use of logarithms. Thus, `mfp2()` estimates shifts for each variables to 
-#' achieve this, or assumes that this is the case when computing fractional 
-#' powers of the input variables in case that shifting is disabled manually. 
+#' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for each 
+#' variables to ensure positivity or assumes that the variables are already 
+#' shifted when computing fractional powers of the input variables in 
+#' case that shifting is disabled manually. 
 #' 
 #' If the values of the variables are too large or too small, the reported 
 #' results of fractional polynomials may be difficult to interpret. 
@@ -61,14 +62,15 @@ mfp2 <- function(object,...){
 #' values of \eqn{x'}. For example, for the FP1 model \eqn{\beta_0 + \beta_1x^p},
 #' the actual model fitted by the software would be 
 #' \eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
-#' the revised constant \eqn{\beta'_0} equals the fitted value of the FP
-#' function at the mean of \eqn{x'}.
+#' the revised constant \eqn{\beta'_0} or baseline hazard function in  a Cox
+#' model retains a meaningful interpretation.
 #' 
 #' So in brief: shifting is required to make input values positive, scaling
 #' helps to bring the values to a reasonable range. Both operations are 
-#' applied before applying the FP transformation to an input variable. 
-#' Centering, however, is done after applying the FP transformation.
-#' Also see [transform_vector_fp()] for some more details.
+#' conducted before estimating the FP powers for an input variable. 
+#' Centering, however, is done after estimating the FP powers for each variable.
+#' Centering before estimating the FP powers may result in different powers and 
+#' should be  avoided. Also see [transform_vector_fp()] for some more details.
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 
@@ -445,13 +447,13 @@ mfp2.formula <- function(formula,
 
   # if fp() is not used in the formula, it reduces to mfp2.default() so we need
   # to replicate the default parameters e.g. df to be equal to ncol(x)
-  dfx_vector<- setNames(lapply(1:nx,function(z) df), xnames)
-  scale_vector<- setNames(lapply(1:nx,function(z) scale),xnames)
-  shift_vector<- setNames(lapply(1:nx,function(z) shift),xnames)
-  center_vector<- setNames(lapply(1:nx,function(z) center),xnames)
-  alpha_vector<- setNames(lapply(1:nx,function(z) alpha),xnames)
-  select_vector<- setNames(lapply(1:nx,function(z) select),xnames)
-  acdx_vector<- setNames(lapply(1:nx,function(z) acdx),xnames)
+  dfx_list <- setNames(lapply(1:nx,function(z) df), xnames)
+  scale_list <- setNames(lapply(1:nx,function(z) scale),xnames)
+  shift_list <- setNames(lapply(1:nx,function(z) shift),xnames)
+  center_list <- setNames(lapply(1:nx,function(z) center),xnames)
+  alpha_list <- setNames(lapply(1:nx,function(z) alpha),xnames)
+  select_list <- setNames(lapply(1:nx,function(z) select),xnames)
+  acdx_list <- setNames(lapply(1:nx,function(z) acdx),xnames)
 
   # if fp() is used in the formula
   if(length(fp.pos)!=0){
@@ -465,16 +467,16 @@ mfp2.formula <- function(formula,
     acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
     
     # modify the default parameters based on the user inputs
-    dfx_vector<- modifyList(dfx_vector, dfx)
-    scale_vector<- modifyList(scale_vector, scalex)
-    shift_vector<- modifyList(shift_vector, shiftx)
-    center_vector<- modifyList(center_vector, centerx)
-    alpha_vector<- modifyList(alpha_vector, alphax)
-    select_vector<- modifyList(select_vector, selectx)
-    acdx_vector<- modifyList(acdx_vector, acdx)
+    dfx_list<- modifyList(dfx_list, dfx)
+    scale_list<- modifyList(scale_list, scalex)
+    shift_list<- modifyList(shift_list, shiftx)
+    center_list<- modifyList(center_list, centerx)
+    alpha_list<- modifyList(alpha_list, alphax)
+    select_list<- modifyList(select_list, selectx)
+    acdx_list<- modifyList(acdx_list, acdx)
 }
   # acd require variable names or NULL option
-  acdx_vector<- unlist(acdx_vector)
+  acdx_vector<- unlist(acdx_list)
   if(sum(acdx_vector)==0) 
     acdx_vector <- NULL
   else
@@ -485,15 +487,15 @@ mfp2.formula <- function(formula,
                weights = weights, 
                offset = offset, 
                cycles = cycles,
-               scale = unlist(scale_vector), 
-               shift = unlist(shift_vector), 
-               df = unlist(dfx_vector), 
-               center = unlist(center_vector),
+               scale = unlist(scale_list), 
+               shift = unlist(shift_list), 
+               df = unlist(dfx_list), 
+               center = unlist(center_list),
                subset = subset,
                family = family,
                criterion = criterion,
-               select = unlist(select_vector), 
-               alpha = unlist(alpha_vector),
+               select = unlist(select_list), 
+               alpha = unlist(alpha_list),
                keep = keep,
                xorder = xorder,
                powers = powers,
@@ -791,14 +793,14 @@ mfp2.default <- function(x,
     }
   }
   
-  keep <- intersect(keep, colnames(x))
+  keep <- intersect(keep, vnames)
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(F, nvars)
   } else {
       # Get rid of duplicates names
       acdx <- unique(acdx)
-      acdx <- intersect(acdx, colnames(x))
+      acdx <- intersect(acdx, vnames)
       # the variables that undergo acd transformation have acdx = TRUE
       acdx <- replace(rep(FALSE, nvars), 
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))

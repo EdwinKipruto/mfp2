@@ -469,7 +469,7 @@ mfp2.formula <- function(formula,
     centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
     acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
     powerx <- setNames(lapply(fp.data, function(v) attr(v, "pow")),vnames_fp)
-
+    
     # modify the default parameters based on the user inputs
     dfx_list<- modifyList(dfx_list, dfx)
     scale_list<- modifyList(scale_list, scalex)
@@ -757,11 +757,22 @@ mfp2.default <- function(x,
       }
   }
   # assert that the powers supplied must be a named list
-  if(!is.null(powers)){
-    if(!is.list(powers))
+  if (!is.null(powers)){
+   
+     if (!is.list(powers))
       stop("Powers must be a list of length ", nvars, call. = FALSE)
-    if(is.null(names(powers)))
+    
+    if ( is.null(names(powers)))
       stop("Powers must be named list", call. = FALSE)
+    
+    # check whether any NA exist in powers
+    if (any(unlist(sapply(powers, function(x) is.na(x)))))
+    stop("NA values exist within the powers and not allowed.", call. = FALSE)
+    
+    # Check whether all powers are numeric
+    if(!all(sapply(powers, function(x) is.numeric(x))))
+      stop("All powers must be numeric.", call. = FALSE)
+    
     if(!all(names(powers)%in%vnames))
        warning("i All the names of powers supplied are not identical to colnames(x).\n", 
                "i mfp2() continues but considers intersection and set missing \n powers to default.", call. = FALSE)

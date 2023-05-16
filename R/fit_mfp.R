@@ -7,7 +7,7 @@
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
-#' necessary. Data are assumed to be shifted and scaled. 
+#' necessary. The data is assumed to be shifted and scaled. 
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
@@ -20,18 +20,18 @@
 #' @param df a numeric vector of length nvars of degrees of freedom.
 #' @param center a logical vector of length nvars indicating if variables are 
 #' to be centered.
-#' @param family a character string representing a family object.
+#' @param family a character string specifying a family object.
 #' @param criterion a character string defining the criterion used to select 
 #' variables and FP models of different degrees.
 #' @param select a numeric vector of length nvars indicating significance levels
-#' for backward elimination.
+#' for variable selection using backward elimination.
 #' @param alpha a numeric vector of length nvars indicating significance levels 
 #' for tests between FP models of different degrees. 
-#' @param keep a character vector that with names of variables to be kept 
+#' @param keep a character vector with names of variables to be retained 
 #' in the model. 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' @param powers a numeric list that sets the permitted FP powers for each 
 #' covariates.
 #' @param method a character string specifying the method for tie handling in 
 #' Cox regression.
@@ -100,17 +100,17 @@ fit_mfp <- function(x,
           quote = FALSE)
   }
   
-  # step 1: order variables ----------------------------------------------------
+  # step 1: order variables if necessary ---------------------------------------
+  variables_ordered <- variables_x
+  
   if(length(variables_x)>1){
-  variables_ordered = order_variables(
-    xorder = xorder, 
-    x = x, y = y, family = family,  weights = weights, offset = offset, 
+     variables_ordered = order_variables(
+      xorder = xorder, 
+      x = x, y = y, family = family,  weights = weights, offset = offset, 
     strata = strata, method = method, control = control, nocenter = nocenter
   )
-  # important if you just have one variable
-  } else {
-    variables_ordered <- variables_x
   }
+  
   if (verbose) 
     cat(sprintf("\ni Visiting order: %s\n", 
                 paste0(variables_ordered, collapse = ", ")))
@@ -127,7 +127,8 @@ fit_mfp <- function(x,
   shift <- setNames(shift, variables_x)[variables_ordered]
   scale <- setNames(scale, variables_x)[variables_ordered]
   acdx <- setNames(acdx, variables_x)[variables_ordered]
-  
+  # powers is already named. so we need to sort it based on variables_ordered
+  powers <- powers[variables_ordered]
   # force variables into the model by setting p-value to 1
   if (!is.null(keep)) {
     select[which(names(select) %in% keep)] <- 1
@@ -140,7 +141,8 @@ fit_mfp <- function(x,
     
     # assign two powers to acd variables (1, NA): 
     # the first is for xi, and the second is for acd(xi). 
-    # Initially NA is assigned to acd(xi), to be updated in step 3.
+    # Initially NA is assigned to acd(xi), to be updated in step 3.ACD is not
+    # required unless the data suggest so
     variables_acd <- names(acdx)[acdx == TRUE]
     powers_current_acd <- sapply(variables_acd, function(v) c(1, NA), 
                             simplify = FALSE, USE.NAMES = TRUE)
@@ -410,7 +412,8 @@ order_variables_by_significance <- function(xorder,
   # Order the p-values based on xorder
   pvalues <- switch(xorder,
                     "descending" = sort(p.value, decreasing = TRUE), 
-                    sort(p.value, decreasing = FALSE) # default ascending
+                    "ascending" = sort(p.value, decreasing = FALSE), # default ascending
+                    "original"  = p.value
   )
   
   names(pvalues)
@@ -512,6 +515,7 @@ find_best_fp_cycle <- function(x,
                                nocenter, 
                                acdx) {
   
+  # names of current powers in the model
   names_x <- names(powers_current)
   
   for (i in 1:ncol(x)) {

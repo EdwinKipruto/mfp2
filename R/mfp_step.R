@@ -4,14 +4,15 @@
 #' [fit_mfp()] for an overview of the fitting procedure.  
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
-#' intercept, but columns are already expanded into dummy variables as 
-#' necessary. Data are assumed to be shifted and scaled. 
+#' intercept, but categorical variables are already expanded into dummy 
+#' variables. Data are assumed to be shifted and scaled. 
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param xi a character string indicating the name of the current variable 
 #' of interest, for which the best fractional polynomial transformation is
-#' to be found in the current step. 
-#' @param weights a vector of observation weights of length nobs. 
-#' @param offset a vector of length nobs of offsets.
+#' to be estimated in the current step. 
+#' @param weights a numeric vector of observation weights of length nobs. 
+#' @param offset a component to be included to the linear predictor during 
+#' fitting. It is a numeric vector of length equal to nobs.
 #' @param df a numeric vector indicating the maximum degrees of freedom for the 
 #' variable of interest `xi`.
 #' @param powers_current a list of length equal to the number of variables, 
@@ -21,14 +22,14 @@
 #' @param criterion a character string defining the criterion used to select 
 #' variables and FP models of different degrees.
 #' @param select a numeric value indicating the significance level
-#' for backward elimination of `xi`.
+#' for variable selection using backward elimination for variable `xi`.
 #' @param alpha a numeric value indicating the significance level
 #' for tests between FP models of different degrees for `xi`. 
-#' @param keep a character vector that with names of variables to be kept 
+#' @param keep a character vector with names of variables to be retained 
 #' in the model. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
-#' covariates.
-#' @param method a character string specifying the method for tie handling in 
+#' @param powers a named list of numeric values that sets the permitted FP 
+#' powers for each covariates.
+#' @param method a character string specifying the method for handling ties in 
 #' Cox regression.
 #' @param strata a factor of all possible combinations of stratification 
 #' variables. Returned from [survival::strata()]. 
@@ -258,8 +259,8 @@ find_best_fpm_step <- function(x,
     )
   }
   
-  metrics = do.call(rbind, metrics) 
-  model_best = as.numeric(which.max(metrics[, "logl"]))
+  metrics <- do.call(rbind, metrics) 
+  model_best <- as.numeric(which.max(metrics[, "logl"]))
    
   list(
     acd = acdx[xi],
@@ -1159,7 +1160,7 @@ select_ic_acd <- function(x,
 #' including `xi`. Note that these powers are updated during backfitting or MFP 
 #' cycles.
 #' @param df a numeric vector of degrees of freedom for `xi`.
-#' @param powers a set of allowed FP powers.
+#' @param powers a list of allowed FP powers for each covariate.
 #' @param acdx a logical vector indicating the use of acd transformation.
 #' 
 #' @details
@@ -1203,12 +1204,13 @@ transform_data_step <- function(x,
   vars_adj <- names_powers_current[!(names_powers_current %in% xi)]
   x_adj <- x[, vars_adj, drop = FALSE]
   
-  # transformations of adjustment variables
+  # powers of adjustment variables
   powers_adj <- powers_current[vars_adj]
+  # adjustment variables that undergo acd transformations
   acdx_adj <- unname(acdx[vars_adj])
   
   # generate adjustment data 
-  # check whether all adjustment powers = NA
+  # check whether all adjustment powers = NA implying all variables were removed
   if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
     # all adjustment variables were eliminated in MFP backfitting process
     #data_adj <- matrix(nrow = 0, ncol = 0)
@@ -1221,7 +1223,7 @@ transform_data_step <- function(x,
       if (acdx_adj[i]) {
         data_adj[[i]] <- transform_vector_acd(
           x = x_adj[, i, drop = TRUE], power = powers_adj[[i]],
-          powers = powers[[vars_adj[i]]]
+          powers = powers[[vars_adj[i]]] # powers needed by acd() function
         )$acd
       } else {
         data_adj[[i]] <- transform_vector_fp(
@@ -1236,11 +1238,11 @@ transform_data_step <- function(x,
     data_adj <- do.call(cbind, data_adj)
     
     # assign arbitrary names to adjustment matrix 
-    # the names of adjustment variables at this stage are not relevant
+    # since the names of adjustment variables at this stage are not relevant
     colnames(data_adj) <- paste0("var_adj", 1:ncol(data_adj))
   }
   
-  # generate fp data
+  # generate fp data for x of interest. Here we call it xi
   data_xi <- x[, xi, drop = TRUE]
   
   if (length(unique(data_xi)) <= 3) {

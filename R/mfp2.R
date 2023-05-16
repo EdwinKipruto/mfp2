@@ -47,10 +47,11 @@ mfp2 <- function(object,...){
 #' shifted when computing fractional powers of the input variables in 
 #' case that shifting is disabled manually. 
 #' 
-#' If the values of the variables are too large or too small, the reported 
-#' results of fractional polynomials may be difficult to interpret. 
-#' Scaling can be done automatically or by directly specifying the
-#' scaling values so that the magnitude of the `x` values are not too large.
+#' If the values of the variables are too large or too small, it is important
+#' to conduct variable scaling to reduce the chances of numerical underflow or
+#' overflow which can lead to inaccuracies and difficulties in estimating 
+#' the model. Scaling can be done automatically or by directly specifying the
+#' scaling values so that the magnitude of the `x` values are not too extreme.
 #' By default scaling factors are estimated by the program as follows.
 #'
 #' After adjusting the location of \eqn{x} so that its minimum value is positive,

@@ -206,7 +206,7 @@ mfp2 <- function(object,...){
 #' multiple regression (i.e. most significant first).
 #' `descending` places them in reverse significance order, whereas 
 #' `original` respects the original order in `x`.
-#' @param powers a numeric vector that sets the permitted FP powers for all 
+#' @param powers a numeric list that sets the permitted FP powers for each 
 #' covariates. Default is `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`,
 #' where 0 means natural logarithm. Duplicates are removed, and powers are 
 #' sorted before further processing in the program. 
@@ -455,7 +455,9 @@ mfp2.formula <- function(formula,
   alpha_list <- setNames(lapply(1:nx,function(z) alpha),xnames)
   select_list <- setNames(lapply(1:nx,function(z) select),xnames)
   acdx_list <- setNames(lapply(1:nx,function(z) acdx),xnames)
-
+  powerd <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  # set default power for each variable
+  power_list <- setNames(lapply(1:nx, function(z) powerd), xnames)
   # if fp() is used in the formula
   if(length(fp.pos)!=0){
     # capture df, scale, alpha, select, etc. based on the user inputs. 
@@ -466,7 +468,8 @@ mfp2.formula <- function(formula,
     scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
     centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
     acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
-    
+    powerx <- setNames(lapply(fp.data, function(v) attr(v, "pow")),vnames_fp)
+
     # modify the default parameters based on the user inputs
     dfx_list<- modifyList(dfx_list, dfx)
     scale_list<- modifyList(scale_list, scalex)
@@ -475,6 +478,8 @@ mfp2.formula <- function(formula,
     alpha_list<- modifyList(alpha_list, alphax)
     select_list<- modifyList(select_list, selectx)
     acdx_list<- modifyList(acdx_list, acdx)
+    power_list<- modifyList(power_list, powerx)
+
 }
   # acd require variable names or NULL option
   acdx_vector<- unlist(acdx_list)
@@ -499,7 +504,7 @@ mfp2.formula <- function(formula,
                alpha = unlist(alpha_list),
                keep = keep,
                xorder = xorder,
-               powers = powers,
+               powers = power_list,
                ties = ties,
                strata = strata,
                nocenter = nocenter,
@@ -751,13 +756,31 @@ mfp2.default <- function(x,
                        length(y), nobs))
       }
   }
-  
-  # set defaults ---------------------------------------------------------------
-  if (is.null(powers)) {
-      # default FP powers proposed by Royston and Altman (1994)
-      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  # assert that the powers supplied must be a named list
+  if(!is.null(powers)){
+    if(!is.list(powers))
+      stop("Powers must be a list of length ", nvars, call. = FALSE)
+    if(is.null(names(powers)))
+      stop("Powers must be named list", call. = FALSE)
+    if(!all(names(powers)%in%vnames))
+       warning("i All the names of powers supplied are not identical to colnames(x).\n", 
+               "i mfp2() continues but considers intersection and set missing \n powers to default.", call. = FALSE)
   }
-  powers <- sort(unique(powers))
+  # set defaults ---------------------------------------------------------------
+# default FP powers proposed by Royston and Altman (1994)
+  powerx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  power_list <- setNames(lapply(1:nvars,function(z) powerx),vnames)
+  
+  if (!is.null(powers)) {
+  # find intersection of colnames(x) and names(powers)
+   pnames <-  intersect(vnames, names(powers))
+   # update default power_list
+    power_list<- modifyList(power_list, powers[pnames])
+    # sort unique powers
+    power_list <- lapply(power_list, function(x) sort(unique(x)))
+
+  }
+  
   if (is.null(weights)) {
       weights <- rep.int(1, nobs)
   }
@@ -865,7 +888,7 @@ mfp2.default <- function(x,
       weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, center = center, 
       family = family, criterion = criterion, select = select, alpha = alpha, 
-      keep = keep, xorder = xorder, powers = powers, 
+      keep = keep, xorder = xorder, powers = power_list, 
       method = ties, strata = istrata, nocenter = nocenter,
       acdx = acdx, ftest = ftest, 
       control = control, 

@@ -3,19 +3,19 @@
 #'
 #' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
-#' between x and an outcome variable using the approximate cumulative 
+#' between x and an outcome variable (y) using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2016).
 #' 
 #' @section Brief summary of FPs:
 #' 
 #' In the following we denote fractional polynomials for a variable \eqn{x} by 
-#' increasing complexity as either FP1 or FP2. \eqn{FP2(p1, p2)} is the most 
-#' flexible FP tranformation where 
+#' increasing complexity as either FP1 or FP2. In this example, 
+#' \eqn{FP2(p1, p2)} is the most flexible FP tranformation where 
 #' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
 #' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 #' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
-#' 0 indicates the logarithm. The optimal FP is then found by a closed testing
-#' procedure that seeks the best combination from all 36 pairs of
+#' 0 indicates the natural logarithm. The best FP2 is then estimated by a 
+#' closed testing procedure that seeks the best combination from all 36 pairs of
 #' powers \eqn{(p1, p2)}. Functions that only involve a single power of
 #' the variable are denoted as FP1, i.e. 
 #' \deqn{FP1(p1) = \beta_1 x^{p1}.}

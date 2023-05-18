@@ -319,10 +319,12 @@ mfp2.formula <- function(formula,
                          verbose = TRUE) {
   # capture the call
   call <- match.call()
-  family = match.arg(family)
+  family <- match.arg(family)
+  
   # Assert that data must be provided
   if(missing(data))
     stop("Data is missing and must be provided.", call. = FALSE)
+  
   # assert that data has column names
   vnames <- colnames(data)
   if (is.null(vnames)) 
@@ -332,6 +334,7 @@ mfp2.formula <- function(formula,
   # Assert that a formula must be provided
   if (missing(formula)) 
     stop("a formula argument is required.", call. = FALSE)
+  
   # Assert that the length of df, alpha, select, center, shift, scale, acdx
   # must be equal to one to be replicated by the program. If the user wants
   # to use different parameters for each variable, they can enter directly in
@@ -348,33 +351,38 @@ mfp2.formula <- function(formula,
   if (!is.null(scale) && length(scale)!=1)
     stop("The length of scale > 1. Use fp() function to set different scaling factors.", call. = FALSE)
   
+  if (!is.null(shift) && length(shift)!=1)
+    stop("The length of shift > 1. Use fp() function to set different shifting factors.", call. = FALSE)
+  
   if (length(center)!=1)
     stop("The length of center > 1. Use fp() function to set different centering values.", call. = FALSE)
-  # TODO: WHAT HAPPENS TO SHIFTING?
   
+  if(!is.null(powers) && !is.list(powers))
+      stop(" Powers must be a list not", call. = FALSE)
+
   # create dataframe: model.frame() preserves the attributes of the data unlike model.matrix
   mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  
   # extract the response variable from the data
   y <- model.extract(mf, "response")
   
   # check whether no predictor exist in the model i.e y~1: 
   labels <-  attr(terms(mf), "term.labels")
-  if(length(labels)==0)
+  if (length(labels)==0)
     stop("No predictors are provided for model fitting.\n At least one predictor is required", call. = FALSE)
   
   #===Deal with strata in cox---------------------------------------------------
-  # strata is not allowed in the formula if the family is not cox
   specials <- "strata"
   Terms <- terms.formula(formula, specials, data)
   # position of strata in the formula: it can be NULL when it doesn't exist
   strats <- attr(Terms,"specials")$strata
-  # set default drop terms. This is basically for dropping strata variables
+  # set default dropterms. This is basically for dropping strata variables
   dropterms <- NULL
   if (family=="cox"){
-  # strata exist in the formula. It might be two or more strata
+  # strata exist in the formula. It might be one, two or more strata
   if (!is.null(strats)) {
     # check whether strata is both in the formula and in the argument
-    if(!is.null(call$strata))
+    if (!is.null(call$strata))
       warning("strata appear both in the formula and as an argument. The argument\n term ignored.", call. = FALSE)
     # untangle the terms for strata. This function returns the strata names, 
     # e.g "strata(x1)" and its position in the terms when outcome is excluded
@@ -382,12 +390,13 @@ mfp2.formula <- function(formula,
     # only one strata exist in the formula since the number of strata variables is 1
     if (length(stemp$vars) == 1) 
       strata <- mf[[stemp$vars]]
-    # more than one strata exist in the formula. Here, we do not use strata() 
-    # function because  mfp2.default() will apply it
+    # more than one strata exist in the formula. At this point, we do not use
+    # strata() function like coxph() because  mfp2.default() will apply it
     #else strata <- strata(mf[, stemp$vars], shortlabel = TRUE)
     else strata <- mf[, stemp$vars]
     
-    # convert the strata into integers. not necessary since mfp2.default will do it
+    # convert the strata into integers like coxph(). Here, not necessary since 
+    # mfp2.default will do it
     #strata <- as.integer(strata)
     # extract the position of strata variables in the terms to be dropped
       dropterms <- stemp$terms
@@ -415,9 +424,9 @@ mfp2.formula <- function(formula,
     offset <- as.vector(model.offset(mf))
   }
   
-  # Create the x matrix without offset and strata and intercept-----------------
+  # Create the x matrix without offset, strata and intercept-----------------
   x <- model.matrix(newTerms, mf)[,-1, drop = FALSE]
-  nx <- ncol(x) 
+  nx <- dim(x)[2L] 
   xnames <- colnames(x)
   
   # Deal with FP terms supplied in the formula----------------------------------
@@ -432,8 +441,10 @@ mfp2.formula <- function(formula,
   
   # Extract names of the variables that undergo fp transformation
   vnames_fp <- unname(unlist(lapply(fp.data, function(v) attr(v, "name"))))
+  
   # check for variables used more than once in fp() function within the formula
   duplicated_vnames_fp <- vnames_fp[duplicated(vnames_fp)]
+  
   if (length(duplicated_vnames_fp)!=0)
     stop("i Variables should be used only once in the fp() within the formula.\n", 
          sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
@@ -462,12 +473,28 @@ mfp2.formula <- function(formula,
   center_list <- setNames(lapply(1:nx,function(z) center),xnames)
   alpha_list <- setNames(lapply(1:nx,function(z) alpha),xnames)
   select_list <- setNames(lapply(1:nx,function(z) select),xnames)
-  acdx_list <- setNames(lapply(1:nx,function(z) acdx),xnames)
-  powerd <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  
   # set default power for each variable
+  powerd <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   power_list <- setNames(lapply(1:nx, function(z) powerd), xnames)
   
-  # if fp() is used in the formula we update the default parameters
+  acdx_list <- setNames(lapply(1:nx,function(z) FALSE),xnames)
+  
+  # check the dimension of acd, we prefer the user to use fp()
+  if (!is.null(acdx)){
+    kk <- which(!acdx%in%colnames(x))
+    # check the names of supplied powers
+    if (length(kk) !=0)
+      stop(" All the acdx names must be in the column names of x.\n",
+           sprintf("i This applies to the following powers: %s.", 
+                   paste0(acdx[kk], collapse = ", ")), call. = FALSE)
+    # set acd variables to TRUE 
+    acdx2 <- setNames(lapply(1:length(acdx),function(z) TRUE),acdx)
+    acdx_list<- modifyList(acdx_list, acdx2)
+
+  }
+
+  # if fp() is used in the formula then update the default parameters
   if (length(fp.pos)!=0){
     # capture df, scale, alpha, select, etc. based on the user inputs. 
     dfx <- setNames(lapply(fp.data, function(v) attr(v, "df")), vnames_fp)
@@ -476,18 +503,57 @@ mfp2.formula <- function(formula,
     shiftx <- setNames(lapply(fp.data, function(v) attr(v, "shift")),vnames_fp)
     scalex <- setNames(lapply(fp.data, function(v) attr(v, "scale")),vnames_fp)
     centerx <- setNames(lapply(fp.data, function(v) attr(v, "center")),vnames_fp)
-    acdx <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
+    acdx_fp <- setNames(lapply(fp.data, function(v) attr(v, "acd")),vnames_fp)
     powerx <- setNames(lapply(fp.data, function(v) attr(v, "pow")),vnames_fp)
+    
+    # get rid of NULL in powers, scale and shift. Returns empty list if all 
+    # elements are NULL
+    powerx <- Filter(Negate(is.null), powerx)
+    shiftx <- Filter(Negate(is.null), shiftx)
+    scalex <- Filter(Negate(is.null), scalex)
     
     # Update the default parameters based on the user inputs
     dfx_list<- modifyList(dfx_list, dfx)
-    scale_list<- modifyList(scale_list, scalex)
-    shift_list<- modifyList(shift_list, shiftx)
+    scale_list<- modifyList(scale_list, scalex, keep.null = TRUE)
+    shift_list<- modifyList(shift_list, shiftx, keep.null = TRUE)
     center_list<- modifyList(center_list, centerx)
     alpha_list<- modifyList(alpha_list, alphax)
     select_list<- modifyList(select_list, selectx)
-    acdx_list<- modifyList(acdx_list, acdx)
     power_list<- modifyList(power_list, powerx)
+    
+    # if acd is set to TRUE in fp() and also available as argument then
+    # there's no difference, but if is supplied as argument we set it to
+    # TRUE
+    # select only the variables with TRUE supplied through fp() in the formula
+    acdx_fp <- acdx_fp[unlist(acdx_fp)]
+    if (length(acdx_fp) !=0){
+    # override the acd parameters passed through the arguments
+    acdx_list<- modifyList(acdx_list, acdx_fp)
+    }
+    # suppose the user decides to use `powers` option as well as `pow` in fp()
+    if (!is.null(powers)){
+        if (length(powers) != sum(names(powers) != "", na.rm = TRUE))
+        stop(" All the powers supplied in the argument must have names", call. = FALSE)
+        dd <- which(!names(powers)%in%colnames(x))
+      # check the names of supplied powers
+      if (length(dd) !=0)
+        stop(" The names of all powers must be in the column names of x.\n",
+             sprintf("i This applies to the following powers: %s.", 
+                     paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+
+      # find the intersection of names of powers supplied in both fp() and
+      # powers argument
+      nax <- intersect(names(powerx), names(powers))
+      if (length(nax)!=0)
+              warning("i Powers appear both in the fp() function in the formula\n and as an argument. The argument term ignored.\n", 
+                sprintf("i This applies to the following variables: %s.", 
+                        paste0(nax, collapse = ", ")), call. = FALSE)
+        
+     # if powers are only supplied in the argument not fp() in the formula, then
+     # override the defaults
+      dnames <- setdiff(names(powers), names(powerx))
+      power_list<- modifyList(power_list, powers[dnames])
+    }
 
 }
   # acd require variable names or NULL option

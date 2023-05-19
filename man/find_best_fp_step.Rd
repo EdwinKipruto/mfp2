@@ -30,18 +30,19 @@ find_best_fp_step(
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
-intercept, but columns are already expanded into dummy variables as
-necessary. Data are assumed to be shifted and scaled.}
+intercept, but categorical variables are already expanded into dummy
+variables. Data are assumed to be shifted and scaled.}
 
 \item{y}{a vector for the response variable or a \code{Surv} object.}
 
 \item{xi}{a character string indicating the name of the current variable
 of interest, for which the best fractional polynomial transformation is
-to be found in the current step.}
+to be estimated in the current step.}
 
-\item{weights}{a vector of observation weights of length nobs.}
+\item{weights}{a numeric vector of observation weights of length nobs.}
 
-\item{offset}{a vector of length nobs of offsets.}
+\item{offset}{a component to be included to the linear predictor during
+fitting. It is a numeric vector of length equal to nobs.}
 
 \item{df}{a numeric vector indicating the maximum degrees of freedom for the
 variable of interest \code{xi}.}
@@ -56,18 +57,18 @@ indicating the fp powers to be used in the current step for all variables
 variables and FP models of different degrees.}
 
 \item{select}{a numeric value indicating the significance level
-for backward elimination of \code{xi}.}
+for variable selection using backward elimination for variable \code{xi}.}
 
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be retained
 in the model.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariates.}
 
-\item{method}{a character string specifying the method for tie handling in
+\item{method}{a character string specifying the method for handling ties in
 Cox regression.}
 
 \item{strata}{a factor of all possible combinations of stratification

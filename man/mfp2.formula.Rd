@@ -26,7 +26,6 @@ functions}
   ties = c("breslow", "efron", "exact"),
   strata = NULL,
   nocenter = NULL,
-  acdx = NULL,
   ftest = FALSE,
   control = NULL,
   verbose = TRUE
@@ -119,10 +118,11 @@ multiple regression (i.e. most significant first).
 \code{descending} places them in reverse significance order, whereas
 \code{original} respects the original order in \code{x}.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates. Default is \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)},
-where 0 means natural logarithm. Duplicates are removed, and powers are
-sorted before further processing in the program.}
+\item{powers}{a numeric list of unique values that sets the permitted FP
+powers for each covariates. Default is
+\code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 means natural logarithm.
+Duplicates are removed, and powers are sorted before further processing in
+the program.}
 
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are
@@ -140,12 +140,6 @@ factor is supported by \code{mfp2()}.}
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{acdx}{a numeric vector of names of continuous variables to undergo
-the approximate cumulative distribution (ACD) transformation.
-It also invokes the function-selection procedure to determine the
-best-fitting FP1(p1, p2) model (see Details section).
-The variable representing the ACD transformation of \code{x} is named \code{A(x)}.}
-
 \item{ftest}{a logical; for normal error models with small samples, critical
 points from the F-distribution can be used instead of Chi-Square
 distribution. Default \code{FALSE} uses the latter. This argument is used for
@@ -161,6 +155,12 @@ Default is \code{NULL} to use default parameters for the given model class.}
 Each row is an observation vector. \code{y} is a vector for the response variable.
 For \code{family="binomial"} it should be  a vector with two levels (see \code{\link[stats:glm]{stats::glm()}}).
 For \code{family="cox"} it must be a \code{Surv} object containing  2 columns.}
+
+\item{acdx}{for \code{mfp2.default}: a vector of names of continuous variables to
+undergo the approximate cumulative distribution (ACD) transformation.
+It also invokes the function-selection procedure to determine the
+best-fitting FP1(p1, p2) model (see Details section).
+The variable representing the ACD transformation of \code{x} is named \code{A(x)}.}
 }
 \value{
 \code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},
@@ -197,20 +197,20 @@ The \code{mfp2} object may contain further information depending on family.
 \description{
 Selects the multivariable fractional polynomial (FP) model that best predicts
 the outcome variable. It also has the ability to model a sigmoid relationship
-between x and an outcome variable using the approximate cumulative
+between x and an outcome variable (y) using the approximate cumulative
 distribution (ACD) transformation proposed by Royston (2016).
 }
 \section{Brief summary of FPs}{
 
 
 In the following we denote fractional polynomials for a variable \eqn{x} by
-increasing complexity as either FP1 or FP2. \eqn{FP2(p1, p2)} is the most
-flexible FP tranformation where
+increasing complexity as either FP1 or FP2. In this example,
+\eqn{FP2(p1, p2)} is the most flexible FP tranformation where
 \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
 The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
-0 indicates the logarithm. The optimal FP is then found by a closed testing
-procedure that seeks the best combination from all 36 pairs of
+0 indicates the natural logarithm. The best FP2 is then estimated by a
+closed testing procedure that seeks the best combination from all 36 pairs of
 powers \eqn{(p1, p2)}. Functions that only involve a single power of
 the variable are denoted as FP1, i.e.
 \deqn{FP1(p1) = \beta_1 x^{p1}.}
@@ -229,21 +229,23 @@ For Cox models, the response should preferably be a \code{Surv} object,
 created by the \code{\link[survival:Surv]{survival::Surv()}} function, and the \code{family = "cox"}.
 Only right-censored data are currently supported. To fit stratified Cox
 models, the strata option can be used. Currently \code{mfp2()} only supports
-a single factor as strata.
+a single factor as strata................................................TO DISCUSS WITH MICHAEL
 }
 
 \section{Details on shifting, scaling and centering}{
 
 
-Fractional polynomials are only defined for positive variables due to the
-use of logarithms. Thus, \code{mfp2()} estimates shifts for each variables to
-achieve this, or assumes that this is the case when computing fractional
-powers of the input variables in case that shifting is disabled manually.
+Fractional polynomials are defined only for positive variables due to the
+use of logarithms and other powers. Thus, \code{mfp2()} estimates shifts for
+each variables to ensure positivity or assumes that the variables are
+already positive when computing fractional powers of the input variables
+in case that shifting is disabled manually.
 
-If the values of the variables are too large or too small, the reported
-results of fractional polynomials may be difficult to interpret.
-Scaling can be done automatically or by directly specifying the
-scaling values so that the magnitude of the \code{x} values are not too large.
+If the values of the variables are too large or too small, it is important to
+conduct variable scaling to reduce the chances of numerical underflow or
+overflow which can lead to inaccuracies and difficulties in estimating the
+model. Scaling can be done automatically or by directly specifying the
+scaling values so that the magnitude of the \code{x} values are not too extreme.
 By default scaling factors are estimated by the program as follows.
 
 After adjusting the location of \eqn{x} so that its minimum value is positive,
@@ -255,14 +257,15 @@ The FP transformation of \eqn{x'} is centered on the mean of the observed
 values of \eqn{x'}. For example, for the FP1 model \eqn{\beta_0 + \beta_1x^p},
 the actual model fitted by the software would be
 \eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
-the revised constant \eqn{\beta'_0} equals the fitted value of the FP
-function at the mean of \eqn{x'}.
+the revised constant \eqn{\beta'_0} or baseline hazard function in a Cox
+model retains a meaningful interpretation.
 
 So in brief: shifting is required to make input values positive, scaling
 helps to bring the values to a reasonable range. Both operations are
-applied before applying the FP transformation to an input variable.
-Centering, however, is done after applying the FP transformation.
-Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
+conducted before estimating the FP powers for an input variable.
+Centering, however, is done after estimating the FP functions each variable.
+Centering before estimating the FP powers may result in different powers and
+should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
 }
 
 \section{Details on  approximate cumulative distribution transformation}{
@@ -301,7 +304,7 @@ functions,M1-M6, giving models M1 (most complex) through M6 (null):
 }
 Selection among these six sub-functions is performed by a closed test
 procedure known as the function-selection pocedure FSPA.
-It maintains the familywise type 1 error
+It maintains the family-wise type 1 error
 probability for selecting \eqn{x} at the value determined by the
 \code{select} parameter. To obtain a 'final' model, a structured sequence of up
 to five tests is carried out, the first at the significance level specified

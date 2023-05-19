@@ -20,7 +20,7 @@ cycles.}
 
 \item{df}{a numeric vector of degrees of freedom for \code{xi}.}
 
-\item{powers}{a set of allowed FP powers.}
+\item{powers}{a list of allowed FP powers for each covariate.}
 
 \item{acdx}{a logical vector indicating the use of acd transformation.}
 }

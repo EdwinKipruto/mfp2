@@ -33,7 +33,7 @@ fit_mfp(
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
 intercept, but columns are already expanded into dummy variables as
-necessary. Data are assumed to be shifted and scaled.}
+necessary. The data is assumed to be shifted and scaled.}
 
 \item{y}{a vector for the response variable or a \code{Surv} object.}
 
@@ -55,24 +55,24 @@ but re-ordered to conform to \code{xorder}.}
 \item{center}{a logical vector of length nvars indicating if variables are
 to be centered.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{a character string specifying a family object.}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}
 
 \item{select}{a numeric vector of length nvars indicating significance levels
-for backward elimination.}
+for variable selection using backward elimination.}
 
 \item{alpha}{a numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be retained
 in the model.}
 
 \item{xorder}{a string determining the order of entry of the covariates
 into the model-selection algorithm.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
+\item{powers}{a numeric list that sets the permitted FP powers for each
 covariates.}
 
 \item{method}{a character string specifying the method for tie handling in

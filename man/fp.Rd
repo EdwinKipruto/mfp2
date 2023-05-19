@@ -12,13 +12,45 @@ fp(
   shift = NULL,
   scale = NULL,
   center = TRUE,
-  acd = FALSE
+  acd = FALSE,
+  pow = NULL
 )
 }
 \arguments{
 \item{x}{a vector of continuous variable to be assigned attributes}
 
-\item{df, alpha, select, shift, scale, center, acd}{See \code{\link[=mfp2]{mfp2()}}) for details.}
+\item{df}{a numeric value specifying the degrees of freedom (df) for
+predictor x. Default is 4 (FP2)}
+
+\item{alpha}{a numeric value that sets the significance levels for
+function selection. The default nominal significance level is 0.05.}
+
+\item{select}{a numeric value that sets the nominal significance levels for
+variable selection by backward elimination. The default nominal significance
+level is 0.05. Setting the nominal significance level to be 1 forces the into
+the model.}
+
+\item{shift}{a numeric value specifying a shifting value for x. Default is
+\code{NULL}which lets the program estimate the shifting factor. If shifting is
+not required, set \code{shift = 0} to disable it.}
+
+\item{scale}{a numeric value specifying  scaling factors for x. Default
+is \code{NULL} which lets the program estimate the scaling factors.
+If scaling is not required set \code{scale = 1} to disable it.}
+
+\item{center}{a logical determining whether transformed variable x
+should be centered before fitting the final model. The default \code{TRUE}
+which implies mean centering, except for binary covariates, where the
+covariate is centered using the lower of the two distinct values of the
+covariate.}
+
+\item{acd}{logical indicating whether variable x should undergo
+the approximate cumulative distribution (ACD) transformation.
+It also invokes the function-selection procedure to determine the
+best-fitting FP1(p1, p2) model.}
+
+\item{pow}{a distinct vector of powers to be evaluated for x. Default is NULL
+and powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3) will be used.}
 }
 \value{
 a variable with its attributes.

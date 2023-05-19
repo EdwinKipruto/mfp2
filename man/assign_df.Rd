@@ -20,6 +20,6 @@ Determine the number of unique values in a variable. To be used in \code{\link[=
 \details{
 Variables with fewer than or equal to three unique values, for example,
 will be assigned df = 1. df = 2 will be assigned to variables with 4-5
-unique values, and df = 4 will be assigned to variables with unique values
-greater than or equal to 6.
+unique values, and df = 4 (default) will be assigned to variables with unique
+values greater than or equal to 6.
 }

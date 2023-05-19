@@ -7,6 +7,6 @@
 \method{print}{mfp2}(x, digits = max(3L, getOption("digits") - 3L), signif.stars = FALSE, ...)
 }
 \description{
-Enhances printing by information on data processing and fractional
+Enhances printing by providing information on data processing and fractional
 polynomials.
 }

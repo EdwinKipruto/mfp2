@@ -252,9 +252,9 @@ find_best_fpm_step <- function(x,
     p = sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
     # respect acd
     if (acdx[xi])
-      p[length(p)] = sprintf("A(%s)", p[length(p)])
+      p[length(p)] <- sprintf("A(%s)", p[length(p)])
     
-    metrics[[paste(p, collapse = " ")]] = calculate_model_metrics(
+    metrics[[paste(p, collapse = " ")]] <- calculate_model_metrics(
       fit, n_obs, degree
     )
   }
@@ -416,8 +416,8 @@ select_linear <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     ...
   )
-  powers = rbind(fit_null$powers, fit_linear$powers)
-  metrics = rbind(fit_null$metrics, fit_linear$metrics)
+  powers <- rbind(fit_null$powers, fit_linear$powers)
+  metrics <- rbind(fit_null$metrics, fit_linear$metrics)
   
   # compute best model according to different criteria
   if (ftest) {
@@ -548,8 +548,8 @@ select_ra2 <- function(x,
     }
   }
 
-  n_obs = nrow(x)
-  fpmax = paste0("FP", degree)
+  n_obs <- nrow(x)
+  fpmax <- paste0("FP", degree)
   
   # output list
   res <- list(
@@ -601,7 +601,7 @@ select_ra2 <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   
-  old_names = rownames(res$metrics)
+  old_names <- rownames(res$metrics)
   res$metrics <- rbind(
     res$metrics, 
     fit_lin$metrics
@@ -663,8 +663,8 @@ select_ra2 <- function(x,
   }
   
   # return highest power
-  res$power_best = fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
-  res$model_best = 1
+  res$power_best <- fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
+  res$model_best <- 1
   
   res
 }
@@ -743,9 +743,9 @@ select_ra2_acd <- function(x,
     }
   }
   
-  n_obs = nrow(x)
-  fpmax = "FP1(x, A(x))"
-  acdx_reset_xi = acdx
+  n_obs <- nrow(x)
+  fpmax <- "FP1(x, A(x))"
+  acdx_reset_xi <- acdx
   acdx_reset_xi[xi] = FALSE
   
   # output list

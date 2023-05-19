@@ -289,8 +289,495 @@ mfp2 <- function(object,...){
 #' 
 #' @seealso 
 #' [summary.mfp2()], [coef.mfp2()]
-## @method mfp2 formula
 #' @export
+mfp2.default <- function(x, 
+                 y, 
+                 weights = NULL, 
+                 offset = NULL, 
+                 cycles = 5,
+                 scale = NULL, 
+                 shift = NULL, 
+                 df = 4, 
+                 center = TRUE,
+                 subset = NULL,
+                 family = c("gaussian", "poisson", "binomial", "cox"),
+                 criterion = c("pvalue", "aic", "bic"),
+                 select = 0.05, 
+                 alpha = 0.05,
+                 keep = NULL,
+                 xorder = c("ascending", "descending", "original"),
+                 powers = NULL,
+                 ties = c("breslow", "efron", "exact"),
+                 strata = NULL,
+                 nocenter = NULL,
+                 acdx = NULL,
+                 ftest = FALSE,
+                 control = NULL, 
+                 verbose = TRUE) {
+  
+  # this function prepares everything for fitting the actual mfp2 model
+  
+  cl <- match.call()
+  
+  # match arguments ------------------------------------------------------------
+  criterion <- match.arg(criterion)
+  xorder <- match.arg(xorder)
+  family <- match.arg(family)
+  ties <- match.arg(ties)
+  
+  # assertions -----------------------------------------------------------------
+  # assert that x is a matrix
+  if(!is.matrix(x))
+    stop("x must be a matrix", call. = F)
+  
+  # assert that x must not contain character values
+  if(any(is.character(x)))
+    stop("x contain characters values. Convert categorical variables to 
+         dummy variables", call. = F)
+  
+  # check dimension of x
+  np <- dim(x)
+  nobs <- as.integer(np[1])
+  nvars <- as.integer(np[2])
+  
+  # assert that x is a matrix
+  if (is.null(np)) {
+      stop("! The dimensions of x must not be Null.\n",
+           "i Please make sure that x is a matrix with at least one row and column.", call. = FALSE)
+  }
+  # assert that x must have column names
+  vnames <- colnames(x)
+  if (is.null(vnames)) stop("! The column names of x must not be Null.\n",
+                            "i Please set column names for x.", call. = FALSE)
+
+  # assert that x has no missing data
+  if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
+                     "i Please remove any missing data before passing x to this function.", call. = FALSE)
+  
+  # assert that subset must be a vector and does not contain negative values
+  if (!is.null(subset)){
+    if (!is.vector(subset))
+      stop(sprintf("! Subset must not be of class %s.", 
+                   paste0(class(subset), collapse = ", ")), 
+           "i Please convert subset to a vector.", call. = FALSE)
+    
+    if (any(subset<0))
+      stop("! Subset must not contain negative values.", call. = FALSE)
+  }  
+
+  # assert that weights are positive and of appropriate dimensions
+  if (!is.null(weights)) {
+    if (any(weights < 0)) {
+        stop("! Weights must not be negative.", call. = FALSE)
+    }
+    if (length(weights) != nobs) {
+      stop("! The number of observations (rows in x) and weights must match.\n", 
+           sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
+                   nobs, length(weights)), call. = FALSE)
+    }
+  }
+  
+  # assert that the length of offset must be equal to the no. of observations
+  if (!is.null(offset)) {
+      if (length(offset) != nobs) {
+          stop("! The number of observations (rows in x) and offset must match.\n", 
+               sprintf("i The number of rows in x is %d, but the number of elements in offset is %d.", 
+                       nobs, length(offset)))
+      }
+  }
+  
+  # assert that alpha must be between 0 and 1
+  if (any(alpha > 1) || any(alpha < 0)) {
+      stop("! alpha must not be < 0 or > 1.")
+  }
+  
+  # assert length of alpha 
+  if (length(alpha) != 1 && length(alpha) != nvars) {
+      stop("! alpha must be a single number, or the number of variables (columns in x) and alpha must match.\n", 
+           sprintf("i The number of variables in x is %d, but the number of elements in alpha is %d.", 
+                   nvars, length(alpha)))
+  }
+  
+  # assert that select must be between 0 and 1
+  if (any(select > 1) || any(select < 0)) {
+      stop("! select must not be < 0 or > 1.")
+  }
+  # assert length of select 
+  if (length(select) != 1 && length(select) != nvars) {
+      stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
+           sprintf("i The number of variables in x is %d, but the number of elements in select is %d.", 
+                   nvars, length(select)))
+  }
+  
+  # assert that keep is a subset of x
+  if (!is.null(keep)) {
+      if (!all(keep %in% colnames(x))) {
+          warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
+                  "i mfp2() continues with the intersection of keep and colnames(x).")
+      }
+  }
+  
+  # assert shift vector is of correct dimension
+  if (!is.null(shift)) {
+      if (length(shift) != 1 && length(shift) != nvars) {
+          stop("! shift must either be NULL, a single number, or the number of variables (columns in x) and shift must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
+                       nvars, length(shift)))
+      }
+  }
+  
+  # assert scale vector is of correct dimension
+  if (!is.null(scale)) {
+      if (length(scale) != 1 && length(scale) != nvars) {
+          stop("! scale must either be NULL, a single number, or the number of variables (columns in x) and scale must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
+                       nvars, length(scale)))
+      }
+  }
+  
+  # assert center vector is of correct dimension
+  if (length(center) != 1) {
+      if (length(center) != nvars) {
+          stop("! center must either be of length 1, or the number of variables (columns in x) and center must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in center is %d.", 
+                       nvars, length(center)))
+      }
+  }
+  
+  # assert acdx is a subset of x
+  if (!is.null(acdx)) {
+      if (!all(acdx %in% colnames(x))) {
+          warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
+                  "i mfp2() continues with the intersection of acdx and colnames(x).")
+      }
+  }
+  
+  # assert df is positive
+  if (any(df <= 0)) {
+      stop("! df must not be 0 or negative.\n", 
+           sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP."))
+  }
+  
+  if (length(df) == 1) {
+      # assert df is 1 or even 
+      if (df != 1 && df %% 2 != 0) {
+          stop("! Any df > 1 must not be odd.\n", 
+               sprintf("i df = %d was passed, but df must be either 1 (linear) or 2m, where m is the degree of FP.", 
+                       df))
+      } 
+  } else {
+      # assert length of df
+      if (length(df) != nvars) {
+          stop("! df must be a single number, or the number of variables (columns in x) and df must match.\n", 
+               sprintf("i The number of variables in x is %d, but the number of elements in df is %d.", 
+                       nvars, length(df)))
+      }
+      # assert all df are 1 or even 
+      if (any(df != 1 & df %% 2 != 0)) {
+          stop("! Any df > 1 must not be odd.\n", 
+               sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP.", 
+                       df))
+      }
+  }
+  
+  # assert ftest and family are compatible
+  if (ftest && family != "gaussian") {
+      warning(sprintf("i F-test not suitable for family = %s.\n", family),
+              "i mfp2() reverts to use Chi-square instead.")
+  }
+  
+  if (family == "cox") {
+      # assert y is a Surv object
+      if (!survival::is.Surv(y)) {
+          stop("! Response y must be a survival::Surv object.")
+      }
+      
+      # assert dimensions of y 
+      if (nrow(y) != nobs) {
+          stop("! Number of observations in y and x must match.", 
+               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
+                       nrow(y), nobs))
+      }
+      
+      # assert right censoring (other censoring types are not implemented yet)
+      type <- attr(y, "type")
+      if (type != "right") {
+          stop(sprintf("! Type of censoring must not be %s.", type), 
+               "i Currently only right censoring is supported by mfp2().")
+      }
+      
+      # assert numeric
+      if (is.factor(strata)){
+        strata <- as.numeric(strata)
+      }
+      
+      if (!is.null(strata)) {
+          # assert stratification factors are of correct length
+          if (is.vector(strata)) {
+            strata_len = length(strata)
+          } else strata_len = nrow(strata)
+          if (strata_len != nrow(x)) {
+              stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
+          }
+      }
+  } else {
+      # assert type of y
+      if (!is.vector(y)) {
+          stop(sprintf("! Outcome y must not be of class %s.", 
+                       paste0(class(y), collapse = ", ")), 
+               "i Please convert y to a vector.", call. = FALSE)
+      }
+      if (length(y) != nobs) {
+          stop("! Number of observations in y and x must match.", 
+               sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
+                       length(y), nobs))
+      }
+  }
+  
+  # set defaults ---------------------------------------------------------------
+  if (is.null(powers)) {
+      # default FP powers proposed by Royston and Altman (1994)
+      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  }
+  powers <- sort(unique(powers))
+  if (is.null(weights)) {
+      weights <- rep.int(1, nobs)
+  }
+  if (is.null(offset)) {
+      offset <- rep.int(0, nobs)
+  }
+  if (length(select) == 1) {
+      select <- rep(select, nvars)
+  } 
+  if (length(alpha) == 1) {
+      alpha <- rep(alpha, nvars)
+  } 
+  if (is.null(shift)) {
+      shift <- apply(x, 2, find_shift_factor)
+  } else if (length(shift) == 1) {
+      shift <- rep(shift, nvars)
+  }
+  if (is.null(scale)) {
+      scale <- apply(x, 2, find_scale_factor)
+  } else if (length(scale) == 1) {
+      scale <- rep(scale, nvars)
+  }
+  if (length(center) == 1) {
+      center <- rep(center, nvars)    
+  }
+  if (ftest && family != "gaussian") {
+      ftest <- FALSE
+  }
+  if (is.null(control)) {
+    if (family == "cox") {
+      control = survival::coxph.control()
+    } else {
+      control = stats::glm.control()
+    }
+  }
+  
+  keep <- intersect(keep, vnames)
+  # convert acdx to logical vector
+  if (is.null(acdx)) {
+      acdx <- rep(F, nvars)
+  } else {
+      # Get rid of duplicates names
+      acdx <- unique(acdx)
+      acdx <- intersect(acdx, vnames)
+      # the variables that undergo acd transformation have acdx = TRUE
+      acdx <- replace(rep(FALSE, nvars), 
+                      which(vnames %in% acdx), rep(TRUE, length(acdx)))
+  }
+  
+  # set df ---------------------------------------------------------------------
+  if (length(df) == 1) {
+    if (df != 1) {
+      # we assign variables different df based on number of unique values
+      df.list <- assign_df(x = x, df_default = df)
+    } else {
+      df.list <- rep(df, nvars)
+    }
+  } else {
+    # ensure that variables with <= 3 unique values have df = 1
+    nux <- apply(x, 2, function(v) length(unique(v)))
+    index <- nux <= 3
+    if (any(df[index] != 1)) {
+        warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n", 
+                sprintf("i This applies to the following variables: %s.", 
+                        paste0(colnames(x)[index & df != 1], collapse = ", ")), call. = FALSE)
+        df[index] <- 1
+    }
+    df.list <- df
+  }
+
+  # data preparation -----------------------------------------------------------
+  # shift and scale 
+  x <- sweep(x, 2, shift, "+")
+  x <- sweep(x, 2, scale, "/")
+  
+  # stratification for cox model
+  istrata <- strata
+  if (family == "cox" && !is.null(strata)) {
+      istrata <- survival::strata(strata, shortlabel = TRUE)
+      # convert strata to integers as conducted by coxph
+      istrata <- as.integer(istrata)
+  }
+  
+  # data subsetting-------------------------------------------------------------
+  if(!is.null(subset)){
+    # check the sample size if it is too small. Likely to occur after subsetting
+    if (length(subset)<5)
+      stop("! The length of subset is too small (<5) to fit an mfp model.", 
+           sprintf("i The number of observations is %d", length(subset)), call. = FALSE)
+    
+    x <- x[subset,,drop = F]
+    y <- if (family!="cox"){y[subset]}else {y[subset,,drop = F]}
+    weights <- weights[subset]
+    offset <- offset[subset]
+    istrata<-istrata[subset]
+  }
+  # Assert that nrow(x)>ncol(x): low dimensional settings
+  if(ncol(x)>nrow(x))
+    stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
+         sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
+                 nrow(x), ncol(x)), call. = FALSE)
+  # fit model ------------------------------------------------------------------
+  fit <- fit_mfp(
+      x = x, y = y, 
+      weights = weights, offset = offset, cycles = cycles,
+      scale = scale, shift = shift, df = df.list, center = center, 
+      family = family, criterion = criterion, select = select, alpha = alpha, 
+      keep = keep, xorder = xorder, powers = powers, 
+      method = ties, strata = istrata, nocenter = nocenter,
+      acdx = acdx, ftest = ftest, 
+      control = control, 
+      verbose = verbose
+  )
+  
+  # add additional information to fitted object
+  # original mfp2 call
+  fit$call_mfp <- cl
+  fit$family_string <- family
+  
+  fit
+}
+
+
+#' Extract coefficients from object of class `mfp2`
+#' 
+#' This function is a method for the generic [stats::coef()] function for 
+#' objects of class `mfp2`. 
+#' 
+#' @param object an object of class `mfp2`, usually, a result of a call to
+#' [mfp2()].
+#' 
+#' @return 
+#' Named numeric vector of coefficients extracted from the model `object`.
+#' 
+#' @export
+coef.mfp2 <- function(object) {
+  object$coefficients
+}
+
+#' Summarizing `mfp2` model fits
+#' 
+#' This function is a method for the generic [base::summary()] function for
+#' objects of class `mfp2`.
+#' 
+#' @param object an object of class `mfp2`, usually, a result of a call to
+#' [mfp2()].
+#' @param ... further arguments passed to the summary functions for `glm()` 
+#' ([stats::summary.glm()], i.e. families supported by `glm()`) or `coxph()` 
+#' ([survival::summary.coxph()], if `object$family = "cox"`).
+#' 
+#' @return 
+#' An object returned from [stats::summary.glm()] or
+#' [survival::summary.coxph()], depending on the family parameter of `object`.
+#' 
+#' @seealso 
+#' [mfp2()], [stats::glm()], [stats::summary.glm()], [survival::coxph()],
+#' [survival::summary.coxph()]
+#' 
+#' @export
+summary.mfp2 <- function(object, ...) {
+  NextMethod("summary", object)
+}
+
+#' Print method for objects of class `mfp2`
+#' 
+#' Enhances printing by information on data processing and fractional 
+#' polynomials.
+#' 
+#' @export
+print.mfp2 <- function(x,
+                       digits = max(3L, getOption("digits") - 3L), 
+                       signif.stars = FALSE, 
+                       ...) {
+  # shift and scaling factors with centering values
+  cat("Shifting, Scaling and Centering of covariates", "\n")
+  print.data.frame(x$transformations)
+  cat("\n")
+  
+  # Final MFP Powers
+  cat("Final Multivariable Fractional Polynomial for y", "\n")
+  print.data.frame(x$fp_terms)
+  cat("\n")
+  
+  cat(sprintf("MFP algorithm convergence: %s\n", x$convergence_mfp))
+  
+  # print model object using underlying print function
+  NextMethod("print", x)
+}
+
+#' Helper function to extract selected variables from fitted `mfp2` object
+#' 
+#' Simply extracts all variables for which not all powers are estimated to 
+#' be `NA`. The names refer to the original names in the dataset and do not
+#' include transformations.
+#' 
+#' @return 
+#' Character vector of names, ordered as defined by `xorder` in [mfp2()].
+#' 
+#' @export
+get_selected_variable_names <- function(object) {
+  nms <- rownames(object$fp_terms)
+  nms[object$fp_terms[, "selected"]]
+}
+
+#' Helper to assign degrees of freedom
+#' 
+#' Determine the number of unique values in a variable. To be used in [mfp2()].
+#' 
+#' @details 
+#' Variables with fewer than or equal to three unique values, for example,
+#' will be assigned df = 1. df = 2 will be assigned to variables with 4-5 
+#' unique values, and df = 4 will be assigned to variables with unique values 
+#' greater than or equal to 6.
+#' 
+#' @param x input matrix.
+#' @param df_default default df to be used. Default is 4.
+#' 
+#' @return 
+#' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
+assign_df <- function(x, 
+                      df_default = 4) {
+  
+  # default degrees of freedom for each variable
+  df <- rep(df_default, ncol(x))
+  # unique values of each column of x
+  nu <- apply(x, 2, function(x) length(unique(x)))
+  
+  index1 <- which(nu <= 3)
+  index2 <- which(nu >= 4 & nu <= 5)
+  if (length(index1) != 0) {
+    df <- replace(df, index1, rep(1, length(index1)))
+  }
+  if (length(index2) != 0) {
+    df <- replace(df, index1, rep(1, length(index1)))
+  }
+  
+  df
+}
 
 mfp2.formula <- function(formula, 
                          data, 

@@ -162,6 +162,7 @@
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
+#' @param subset subset	an optional vector specifying a subset of observations
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a character string defining the criterion used to select 
@@ -289,6 +290,7 @@ mfp2.default <- function(x,
                  shift = NULL, 
                  df = 4, 
                  center = TRUE,
+                 subset = NULL,
                  family = c("gaussian", "poisson", "binomial", "cox"),
                  criterion = c("pvalue", "aic", "bic"),
                  select = 0.05, 
@@ -340,6 +342,17 @@ mfp2.default <- function(x,
   # assert that x has no missing data
   if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
                      "i Please remove any missing data before passing x to this function.")
+                     
+ # assert that subset must be a vector and does not contain negative values
+  if (!is.null(subset)){
+    if (!is.vector(subset))
+      stop(sprintf("! Subset must not be of class %s.", 
+                   paste0(class(subset), collapse = ", ")), 
+           "i Please convert subset to a vector.", call. = FALSE)
+    
+    if (any(subset<0))
+      stop("! Subset must not contain negative values.", call. = FALSE)
+  }  
   
   # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
@@ -596,8 +609,25 @@ mfp2.default <- function(x,
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(strata, shortlabel = TRUE)
   }
-  
-  # fit model ------------------------------------------------------------------
+    # data subsetting-------------------------------------------------------------
+  if(!is.null(subset)){
+    # check the sample size if it is too small. Likely to occur after subsetting
+    if (length(subset)<5)
+      stop("! The length of subset is too small (<5) to fit an mfp model.", 
+           sprintf("i The number of observations is %d", length(subset)), call. = FALSE)
+    
+    x <- x[subset,,drop = F]
+    y <- if (family!="cox"){y[subset]}else {y[subset,,drop = F]}
+    weights <- weights[subset]
+    offset <- offset[subset]
+    istrata<-istrata[subset]
+  }
+    # Assert that nrow(x)>ncol(x): low dimensional settings
+  if(ncol(x)>nrow(x))
+    stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
+         sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
+                 nrow(x), ncol(x)), call. = FALSE)
+    # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 
       weights = weights, offset = offset, cycles = cycles,

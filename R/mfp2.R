@@ -483,7 +483,7 @@ mfp2.formula <- function(formula,
   else
     acdx_vector <- names(acdx_vector[acdx_vector])
   # call default method---------------------------------------------------------
-  mfp2.default(x = x, 
+ fit <-  mfp2.default(x = x, 
                y = y, 
                weights = weights, 
                offset = offset, 
@@ -508,6 +508,7 @@ mfp2.formula <- function(formula,
                control = control,
                verbose = verbose
   )
+  return(fit)
 }
 
 ## Default function

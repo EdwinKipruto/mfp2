@@ -100,17 +100,16 @@ fit_mfp <- function(x,
           quote = FALSE)
   }
   
-  # step 1: order variables if necessary ---------------------------------------
+  # step 1: order variables ----------------------------------------------------
   variables_ordered <- variables_x
-  
+  # order only variables if they are 2 or more
   if(length(variables_x)>1){
-     variables_ordered = order_variables(
-      xorder = xorder, 
-      x = x, y = y, family = family,  weights = weights, offset = offset, 
+  variables_ordered <- order_variables(
+    xorder = xorder, 
+    x = x, y = y, family = family,  weights = weights, offset = offset, 
     strata = strata, method = method, control = control, nocenter = nocenter
-  )
+  ) 
   }
-  
   if (verbose) 
     cat(sprintf("\ni Visiting order: %s\n", 
                 paste0(variables_ordered, collapse = ", ")))

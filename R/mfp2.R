@@ -8,19 +8,19 @@ mfp2 <- function(object,...){
 #'
 #' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
-#' between x and an outcome variable using the approximate cumulative 
+#' between x and an outcome variable (y) using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2016).
 #' 
 #' @section Brief summary of FPs:
 #' 
 #' In the following we denote fractional polynomials for a variable \eqn{x} by 
-#' increasing complexity as either FP1 or FP2. \eqn{FP2(p1, p2)} is the most 
-#' flexible FP tranformation where 
+#' increasing complexity as either FP1 or FP2. In this example, 
+#' \eqn{FP2(p1, p2)} is the most flexible FP tranformation where 
 #' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
 #' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 #' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
-#' 0 indicates the logarithm. The optimal FP is then found by a closed testing
-#' procedure that seeks the best combination from all 36 pairs of
+#' 0 indicates the natural logarithm. The best FP2 is then estimated by a 
+#' closed testing procedure that seeks the best combination from all 36 pairs of
 #' powers \eqn{(p1, p2)}. Functions that only involve a single power of
 #' the variable are denoted as FP1, i.e. 
 #' \deqn{FP1(p1) = \beta_1 x^{p1}.}
@@ -37,20 +37,20 @@ mfp2 <- function(object,...){
 #' created by the [survival::Surv()] function, and the `family = "cox"`. 
 #' Only right-censored data are currently supported. To fit stratified Cox
 #' models, the strata option can be used. Currently `mfp2()` only supports
-#' a single factor as strata.
+#' a single factor as strata................................................TO DISCUSS WITH MICHAEL
 #'
 #' @section Details on shifting, scaling and centering:
 #' 
-#' Fractional polynomials are only defined for positive variables due to the 
-#' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for each 
-#' variables to ensure positivity or assumes that the variables are already 
-#' shifted when computing fractional powers of the input variables in 
-#' case that shifting is disabled manually. 
+#' Fractional polynomials are defined only for positive variables due to the 
+#' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for 
+#' each variables to ensure positivity or assumes that the variables are 
+#' already positive when computing fractional powers of the input variables
+#' in case that shifting is disabled manually. 
 #' 
-#' If the values of the variables are too large or too small, it is important
-#' to conduct variable scaling to reduce the chances of numerical underflow or
-#' overflow which can lead to inaccuracies and difficulties in estimating 
-#' the model. Scaling can be done automatically or by directly specifying the
+#' If the values of the variables are too large or too small, it is important to
+#' conduct variable scaling to reduce the chances of numerical underflow or 
+#' overflow which can lead to inaccuracies and difficulties in estimating the
+#' model. Scaling can be done automatically or by directly specifying the
 #' scaling values so that the magnitude of the `x` values are not too extreme.
 #' By default scaling factors are estimated by the program as follows.
 #'
@@ -63,15 +63,15 @@ mfp2 <- function(object,...){
 #' values of \eqn{x'}. For example, for the FP1 model \eqn{\beta_0 + \beta_1x^p},
 #' the actual model fitted by the software would be 
 #' \eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
-#' the revised constant \eqn{\beta'_0} or baseline hazard function in  a Cox
+#' the revised constant \eqn{\beta'_0} or baseline hazard function in a Cox
 #' model retains a meaningful interpretation.
 #' 
 #' So in brief: shifting is required to make input values positive, scaling
 #' helps to bring the values to a reasonable range. Both operations are 
 #' conducted before estimating the FP powers for an input variable. 
-#' Centering, however, is done after estimating the FP powers for each variable.
-#' Centering before estimating the FP powers may result in different powers and 
-#' should be  avoided. Also see [transform_vector_fp()] for some more details.
+#' Centering, however, is done after estimating the FP functions each variable.
+#' Centering before estimating the FP powers may result in different powers and
+#' should be avoided. Also see [transform_vector_fp()] for some more details.
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 
@@ -108,7 +108,7 @@ mfp2 <- function(object,...){
 #' }
 #' Selection among these six sub-functions is performed by a closed test 
 #' procedure known as the function-selection pocedure FSPA. 
-#' It maintains the familywise type 1 error 
+#' It maintains the family-wise type 1 error 
 #' probability for selecting \eqn{x} at the value determined by the 
 #' `select` parameter. To obtain a 'final' model, a structured sequence of up 
 #' to five tests is carried out, the first at the significance level specified 
@@ -837,6 +837,11 @@ mfp2.default <- function(x,
       if (type != "right") {
           stop(sprintf("! Type of censoring must not be %s.", type), 
                "i Currently only right censoring is supported by mfp2().")
+      }
+      
+      # assert numeric
+      if (is.factor(strata)){
+        strata <- as.numeric(strata)
       }
       
       if (!is.null(strata)) {

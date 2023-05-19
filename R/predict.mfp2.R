@@ -101,9 +101,9 @@ predict.mfp2 <- function(object,
  # if(is.null(offset)){
  #  }
   
-  # assert that the model is mfp2
+  # assert that the object must be mfp2
   if (!inherits(object, "mfp2")) 
-    warning("calling predict.mfp2(<fake-mfp2-object>) ...")
+    stop("The object is not an mfp2 object.", call. = FALSE)
   
   # set defaults and match arguments
   if (is.null(type)) 

@@ -25,7 +25,7 @@
 #' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes the function-selection procedure to determine the 
 #' best-fitting FP1(p1, p2) model. 
-#' @param pow a distinct vector of powers to be evaluated for x. Default is NULL
+#' @param pow a distinct vector of powers to be evaluated for covariate x. Default is NULL
 #' and powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3) will be used. 
 #' @return 
 #' a variable with its attributes.

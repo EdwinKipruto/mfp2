@@ -1,4 +1,3 @@
-#' Function to create an instance of mfp2 class
 mfp2 <- function(object,...){
   UseMethod("mfp2",object)
 }
@@ -161,7 +160,7 @@ mfp2 <- function(object,...){
 #' (default) degrees of freedom (df) for each predictor. If a single numeric, 
 #' then the value will be replicated as necessary. The df (not counting 
 #' the intercept) are twice the degree of a fractional polynomial (FP). 
-#' For example, an FP2 has 4 df, while FP3 has 6 df. 
+#' For example, an FP2 has 4 df, while FPm has 2*m df. 
 #' The program overrides default df based on the number of distinct (unique) 
 #' values for a variable as follows: 
 #' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
@@ -184,8 +183,8 @@ mfp2 <- function(object,...){
 #' ignores the nominal significance levels and selects variables and functional 
 #' forms using the chosen information criterion.
 #' @param select a numeric vector of length nvars or a single numeric that 
-#' sets the nominal significance levels for variable selection by
-#' backward elimination. If a single numeric, then the value will be replicated
+#' sets the nominal significance levels for variable selection on each predictor
+#' by backward elimination. If a single numeric, then the value will be replicated
 #' as necessary. The default nominal significance level is 0.05 
 #' for all variables. Setting the nominal significance level to be 1 for  
 #' certain variables forces them into the model, leaving all other variables
@@ -213,7 +212,7 @@ mfp2 <- function(object,...){
 #' @param ties a character string specifying the method for tie handling in 
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
-#' models only and has no effect for other model families. 
+#' models only and has no effect on other model families. 
 #' See [survival::coxph()] for details.
 #' @param strata a numeric vector or matrix of variables that define strata
 #' to be used for stratification in a Cox model. A new factor, whose levels are 
@@ -351,10 +350,10 @@ mfp2.default <- function(x,
                             "i Please set column names for x.", call. = FALSE)
 
   # assert that x has no missing data
-  if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
-                     "i Please remove any missing data before passing x to this function.", call. = FALSE)
-  
-  # assert that subset must be a vector and does not contain negative values
+  if (anyNA(x)) stop("! x must not contain any NA (missing data).\n",   
+                     "i Please remove any missing data before passing x to this function.")
+                     
+ # assert that subset must be a vector and does not contain negative values
   if (!is.null(subset)){
     if (!is.vector(subset))
       stop(sprintf("! Subset must not be of class %s.", 
@@ -364,7 +363,7 @@ mfp2.default <- function(x,
     if (any(subset<0))
       stop("! Subset must not contain negative values.", call. = FALSE)
   }  
-
+  
   # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
     if (any(weights < 0)) {
@@ -411,7 +410,7 @@ mfp2.default <- function(x,
   
   # assert that keep is a subset of x
   if (!is.null(keep)) {
-      if (!all(keep %in% colnames(x))) {
+      if (!all(keep %in% vnames)) {
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
                   "i mfp2() continues with the intersection of keep and colnames(x).")
       }
@@ -446,7 +445,7 @@ mfp2.default <- function(x,
   
   # assert acdx is a subset of x
   if (!is.null(acdx)) {
-      if (!all(acdx %in% colnames(x))) {
+      if (!all(acdx %in% vnames)) {
           warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
                   "i mfp2() continues with the intersection of acdx and colnames(x).")
       }
@@ -604,7 +603,7 @@ mfp2.default <- function(x,
     if (any(df[index] != 1)) {
         warning("i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().\n", 
                 sprintf("i This applies to the following variables: %s.", 
-                        paste0(colnames(x)[index & df != 1], collapse = ", ")), call. = FALSE)
+                        paste0(vnames[index & df != 1], collapse = ", ")))
         df[index] <- 1
     }
     df.list <- df
@@ -622,8 +621,8 @@ mfp2.default <- function(x,
       # convert strata to integers as conducted by coxph
       istrata <- as.integer(istrata)
   }
-  
-  # data subsetting-------------------------------------------------------------
+
+    # data subsetting-------------------------------------------------------------
   if(!is.null(subset)){
     # check the sample size if it is too small. Likely to occur after subsetting
     if (length(subset)<5)
@@ -636,12 +635,14 @@ mfp2.default <- function(x,
     offset <- offset[subset]
     istrata<-istrata[subset]
   }
-  # Assert that nrow(x)>ncol(x): low dimensional settings
+                 
+    # Assert that nrow(x)>ncol(x): low dimensional settings
   if(ncol(x)>nrow(x))
     stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
          sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
                  nrow(x), ncol(x)), call. = FALSE)
-  # fit model ------------------------------------------------------------------
+
+    # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 
       weights = weights, offset = offset, cycles = cycles,

@@ -407,8 +407,8 @@ order_variables_by_significance <- function(xorder,
   # Order the p-values based on xorder
   pvalues <- switch(xorder,
                     "descending" = sort(p.value, decreasing = TRUE),
-                    "ascending" = sort(p.value, decreasing = FALSE,
-                     "original" = p.value) 
+                    "ascending" = sort(p.value, decreasing = FALSE),
+                     "original" = p.value 
   )
   
   names(pvalues)

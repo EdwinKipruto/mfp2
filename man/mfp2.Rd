@@ -65,7 +65,7 @@ If shifting is not required, set \code{shift = 0} to disable it.}
 (default) degrees of freedom (df) for each predictor. If a single numeric,
 then the value will be replicated as necessary. The df (not counting
 the intercept) are twice the degree of a fractional polynomial (FP).
-For example, an FP2 has 4 df, while FP3 has 6 df.
+For example, an FP2 has 4 df, while FPm has 2*m df.
 The program overrides default df based on the number of distinct (unique)
 values for a variable as follows:
 2-3 distinct values are assigned \code{df = 1} (linear), 4-5 distinct values are
@@ -90,8 +90,8 @@ ignores the nominal significance levels and selects variables and functional
 forms using the chosen information criterion.}
 
 \item{select}{a numeric vector of length nvars or a single numeric that
-sets the nominal significance levels for variable selection by
-backward elimination. If a single numeric, then the value will be replicated
+sets the nominal significance levels for variable selection on each predictor
+by backward elimination. If a single numeric, then the value will be replicated
 as necessary. The default nominal significance level is 0.05
 for all variables. Setting the nominal significance level to be 1 for
 certain variables forces them into the model, leaving all other variables
@@ -124,7 +124,7 @@ sorted before further processing in the program.}
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are
 equivalent. Default is the Breslow method. This argument is used for Cox
-models only and has no effect for other model families.
+models only and has no effect on other model families.
 See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
 \item{strata}{a numeric vector or matrix of variables that define strata

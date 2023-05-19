@@ -162,7 +162,7 @@
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
-#' @param subset subset	an optional vector specifying a subset of observations
+## @param subset subset	an optional vector specifying a subset of observations
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a character string defining the criterion used to select 

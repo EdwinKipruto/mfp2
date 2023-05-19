@@ -280,7 +280,7 @@
 #' [summary.mfp2()], [coef.mfp2()]
 #' 
 #' @export
-mfp2 <- function(x, 
+mfp2.default <- function(x, 
                  y, 
                  weights = NULL, 
                  offset = NULL, 

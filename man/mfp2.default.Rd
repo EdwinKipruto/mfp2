@@ -23,7 +23,7 @@ functions}
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron"),
+  ties = c("breslow", "efron", "exact"),
   strata = NULL,
   nocenter = NULL,
   acdx = NULL,

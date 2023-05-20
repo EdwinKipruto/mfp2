@@ -78,6 +78,9 @@ model fit. The default \code{TRUE} implies mean centering, except for binary
 covariates, where the covariate is centered using the lower of the two
 distinct values of the covariate. See Details section below.}
 
+\item{subset}{subset    an optional vector specifying a subset of observations
+to be used in the fitting process.Default is \code{NULL} and all observations are used.}
+
 \item{family}{a character string representing a \code{glm()} family object as well
 as Cox models. For more information, see Details section below.}
 

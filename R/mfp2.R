@@ -132,11 +132,6 @@ mfp2 <- function(object,...){
 #' }
 #' The result is the selection of one of the six models. 
 #'
-#' @param formula a formula object, with the response on the left of a ~ operator,
-#'  and the terms on the right. The response must be a survival object if
-#'  `family=cox` as returned by the Surv function. The `Offset` and `strata` can be
-#'  added either in the formula or as arguments. If both are present in the formula
-#'  and as argument, the latter will be ignored.
 #' @param x,y for `mfp2.default`: `x` is an input matrix of dimension nobs x nvars.
 #'  Each row is an observation vector. `y` is a vector for the response variable.
 #'  For `family="binomial"` it should be  a vector with two levels (see [stats::glm()]). 
@@ -783,6 +778,15 @@ assign_df <- function(x,
   df
 }
 
+#' Fits mfp using a formula option
+#' 
+#' @param formula a formula object, with the response on the left of a ~ operator,
+#'  and the terms on the right. The response must be a survival object if
+#'  `family=cox` as returned by the Surv function. The `Offset` and `strata` can be
+#'  added either in the formula or as arguments. If both are present in the formula
+#'  and as argument, the latter will be ignored.
+#'  @rdname mfp2.formula
+#'  @export
 mfp2.formula <- function(formula, 
                          data, 
                          weights = NULL, 

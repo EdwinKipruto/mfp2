@@ -155,12 +155,6 @@ Returned by either \code{\link[stats:glm.control]{stats::glm.control()}} or \cod
 Default is \code{NULL} to use default parameters for the given model class.}
 
 \item{verbose}{a logical; run in verbose mode.}
-
-\item{formula}{a formula object, with the response on the left of a ~ operator,
-and the terms on the right. The response must be a survival object if
-\code{family=cox} as returned by the Surv function. The \code{Offset} and \code{strata} can be
-added either in the formula or as arguments. If both are present in the formula
-and as argument, the latter will be ignored.}
 }
 \value{
 \code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},

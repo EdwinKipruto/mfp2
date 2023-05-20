@@ -2,10 +2,12 @@
 % Please edit documentation in R/mfp2.R
 \name{mfp2}
 \alias{mfp2}
-\title{Multivariable fractional polynomial models with extensions of sigmoid
-functions}
+\alias{mfp2.default}
+\title{Define next method}
 \usage{
-mfp2(
+mfp2(object, ...)
+
+\method{mfp2}{default}(
   x,
   y,
   weights = NULL,
@@ -15,6 +17,7 @@ mfp2(
   shift = NULL,
   df = 4,
   center = TRUE,
+  subset = NULL,
   family = c("gaussian", "poisson", "binomial", "cox"),
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,

@@ -12,13 +12,17 @@ fp(
   shift = NULL,
   scale = NULL,
   center = TRUE,
-  acd = FALSE
+  acd = FALSE,
+  pow = NULL
 )
 }
 \arguments{
 \item{x}{a vector of continuous variable to be assigned attributes}
 
 \item{df, alpha, select, shift, scale, center, acd}{See \code{\link[=mfp2]{mfp2()}}) for details.}
+
+\item{pow}{a vector of powers to be evaluated for x. Default is NULL and
+powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3) will be used}
 }
 \value{
 a variable with its attributes.

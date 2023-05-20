@@ -1,5 +1,7 @@
+#' Define next method
+#' @export
 mfp2 <- function(object,...){
-  UseMethod("mfp2",object)
+  UseMethod("mfp2")
 }
 
 #' Multivariable fractional polynomial models with extensions of sigmoid 
@@ -288,6 +290,7 @@ mfp2 <- function(object,...){
 #' 
 #' @seealso 
 #' [summary.mfp2()], [coef.mfp2()]
+#' @rdname mfp2.default
 #' @export
 mfp2.default <- function(x, 
                  y, 

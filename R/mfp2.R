@@ -284,7 +284,7 @@ mfp2 <- function(object,...){
 #' 
 #' @seealso 
 #' [summary.mfp2()], [coef.mfp2()]
-#' @rdname mfp2
+#' @rdname mfp2.default
 #' @export
 mfp2.default <- function(x, 
                  y, 

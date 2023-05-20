@@ -1066,6 +1066,7 @@ mfp2.formula <- function(formula,
     
     #---------------------------------------------------------------------------
     # Deal with powers supplied both in the formula through fp() and as argument 
+    # REMEMBER TO ADD THIS PART TO mfp2.default() WHEN MERGED
     #---------------------------------------------------------------------------
     if (!is.null(powers)){
         if (length(powers) != sum(names(powers) != "", na.rm = TRUE))

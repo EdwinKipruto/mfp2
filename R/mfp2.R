@@ -537,12 +537,19 @@ mfp2.default <- function(x,
       }
   }
   
+  # Assert that powers must be NULL or list when provided
+  if (!is.null(powers) && !is.list(powers))
+    stop("Powers must be a list")
+  
   # set defaults ---------------------------------------------------------------
   if (is.null(powers)) {
       # default FP powers proposed by Royston and Altman (1994)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+      power <- setNames(lapply(1:nx, function(z) powers), vnames)
+      
   }
-  powers <- sort(unique(powers))
+  # sort unique powers
+  powers <- lapply(powers, function(v) sort(unique(v)))
   if (is.null(weights)) {
       weights <- rep.int(1, nobs)
   }
@@ -1044,14 +1051,8 @@ mfp2.formula <- function(formula,
     power_list<- modifyList(power_list, powerx)
     scale_list<- modifyList(scale_list, scalex)
     shift_list<- modifyList(shift_list, shiftx)
-    
-    # acd require variable names or NULL option in the mdp2.default()
-    acdx_list<- modifyList(acdx_list, acdx_fp[unlist(acdx_fp)])
-    acdx_vector<- unlist(acdx_list)
-    if(sum(acdx_vector)==0) 
-      acdx_vector <- NULL
-    else
-      acdx_vector <- names(acdx_vector[acdx_vector])
+    acdx_list<- modifyList(acdx_list, acdx_fp)
+
     # IT DOES NOT MAKE SENSE TO HAVE ACD AS ARGUMENT. ONLY IN FP() FUNCTION
     # # if acd is set to TRUE in fp() and also available as argument then
     # # there's no difference, but if is supplied as argument we set it to
@@ -1092,7 +1093,12 @@ mfp2.formula <- function(formula,
     }
 
 }
-  
+  # acd require variable names or NULL option in the mdp2.default()
+  acdx_vector<- unlist(acdx_list)
+  if(sum(acdx_vector)==0) 
+    acdx_vector <- NULL
+  else
+    acdx_vector <- names(acdx_vector[acdx_vector])
   # call default method---------------------------------------------------------
   mfp2.default(x = x, 
                y = y, 

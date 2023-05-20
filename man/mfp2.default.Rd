@@ -33,9 +33,11 @@ functions}
 )
 }
 \arguments{
-\item{x, y}{for \code{mfp2.default}: \code{x} is an input matrix of dimension nobs x nvars.
-Each row is an observation vector. \code{y} is a vector for the response variable.
-For \code{family="binomial"} it should be  a vector with two levels (see \code{\link[stats:glm]{stats::glm()}}).
+\item{x}{an input matrix of dimension nobs x nvars. Each row is an
+observation vector.}
+
+\item{y}{a vector for the response variable. For \code{family="binomial"} it
+should be  a vector with two levels (see \code{\link[stats:glm]{stats::glm()}}).
 For \code{family="cox"} it must be a \code{Surv} object containing  2 columns.}
 
 \item{weights}{a vector of observation weights of length nobs.
@@ -69,8 +71,7 @@ The program overrides default df based on the number of distinct (unique)
 values for a variable as follows:
 2-3 distinct values are assigned \code{df = 1} (linear), 4-5 distinct values are
 assigned \code{df = min(2, default)} and >= 6 distinct values are assigned
-\code{df = default}. NOT in mfp2.formula()...df = 1 makes sense in formula to avoid warnings from binary variables}
-
+\code{df = default}.}
 \item{center}{a logical determining whether variables are centered before
 model fit. The default \code{TRUE} implies mean centering, except for binary
 covariates, where the covariate is centered using the lower of the two
@@ -117,13 +118,10 @@ them by ascending p-values, or decreasing order of significance in a
 multiple regression (i.e. most significant first).
 \code{descending} places them in reverse significance order, whereas
 \code{original} respects the original order in \code{x}.}
-
-\item{powers}{a numeric list of unique values that sets the permitted FP
-powers for each covariates. Default is
-\code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 means natural logarithm.
-Duplicates are removed, and powers are sorted before further processing in
-the program.}
-
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates. Default is \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)},
+where 0 means natural logarithm. Duplicates are removed, and powers are
+sorted before further processing in the program.}
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are
 equivalent. Default is the Breslow method. This argument is used for Cox
@@ -139,9 +137,8 @@ factor is supported by \code{mfp2()}.}
 
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
-
-\item{acdx}{for \code{mfp2.default}: a vector of names of continuous variables to
-undergo the approximate cumulative distribution (ACD) transformation.
+\item{acdx}{a numeric vector of names of continuous variables to undergo
+the approximate cumulative distribution (ACD) transformation.
 It also invokes the function-selection procedure to determine the
 best-fitting FP1(p1, p2) model (see Details section).
 The variable representing the ACD transformation of \code{x} is named \code{A(x)}.}
@@ -156,12 +153,6 @@ Returned by either \code{\link[stats:glm.control]{stats::glm.control()}} or \cod
 Default is \code{NULL} to use default parameters for the given model class.}
 
 \item{verbose}{a logical; run in verbose mode.}
-
-\item{formula}{a formula object, with the response on the left of a ~ operator,
-and the terms on the right. The response must be a survival object if
-\code{family=cox} as returned by the Surv function. The \code{Offset} and \code{strata} can be
-added either in the formula or as arguments. If both are present in the formula
-and as argument, the latter will be ignored.}
 }
 \value{
 \code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},

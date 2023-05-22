@@ -845,6 +845,9 @@ mfp2.formula <- function(formula,
   
   # data preparation -----------------------------------------------------------
   
+  y <- as.numeric(model.extract(mf, "response"))
+  # TODO: cox model?
+  
   x <- model.matrix(terms_model, mf)
   # remove intercept if necessary
   # intercept is coded as entry 0 in attribute assigned by model.matrix
@@ -855,12 +858,8 @@ mfp2.formula <- function(formula,
   nx <- ncol(x) 
   names_x <- colnames(x)
   
-  y <- as.numeric(model.extract(mf, "response"))
-  # TODO: cox model?
-  
-  # FP terms -------------------------------------------------------------------
   # select variables that undergo fp transformation and extract their attributes
-  fp_pos <- grep("fp", colnames(mf))
+  fp_pos <- grep("fp(.*)", colnames(mf))
   
   if (length(fp_pos) == 0) {
     warning("i No continuous variable has been chosen for function selection in the formula.\n", 
@@ -871,92 +870,91 @@ mfp2.formula <- function(formula,
     fp_data <- mf[, fp_pos, drop = FALSE]
     
     # extract names of the variables that undergo fp transformation
-    vnames_fp <- unname(unlist(lapply(fp_data, function(v) attr(v, "name"))))
-    # check for variables used more than once in fp() function within the formula
-    duplicated_vnames_fp <- vnames_fp[duplicated(vnames_fp)]
-    if (length(duplicated_vnames_fp)!=0)
-      stop("i Variables should be used only once in the fp() within the formula.\n", 
+    fp_vars <- unname(sapply(fp_data, function(v) attr(v, "name")))
+    
+    # check for variables used more than once in fp() function 
+    fp_vars_duplicates <- fp_vars[duplicated(fp_vars)]
+    if (length(fp_vars_duplicates) != 0)
+      stop("! Variables should be used only once in the fp() within the formula.\n", 
            sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
-                   paste0(duplicated_vnames_fp, collapse = ", ")), call. = FALSE)
+                   paste0(fp_vars_duplicates, collapse = ", ")), 
+           call. = FALSE)
     
-    # Check for variables used in fp() as well as other parts of the formula
-    index_rep_var <- which(colnames(mf)%in%vnames_fp)
-    
-    if (length(index_rep_var)!=0)
-      stop("i Variables used in the fp() should not be included in other parts of the formula.\n", 
+    # check for variables used in fp() as well as other parts of the formula
+    vars_duplicates <- which(colnames(mf) %in% fp_vars)
+    if (length(vars_duplicates) != 0)
+      stop("! Variables used in the fp() should not be included in other parts of the formula.\n", 
            sprintf("i This applies to the following variable(s): %s.", 
-                   paste0(colnames(mf)[index_rep_var], collapse = ", ")), call. = FALSE)
+                   paste0(colnames(mf)[vars_duplicates], collapse = ", ")), 
+           call. = FALSE)
     
     # replace names such as fp(x1) by real name "x1" in the x matrix
-    indx <- grep("fp", names_x)
-    names_x <- replace(names_x, indx, vnames_fp)
-    # rename column of x
+    names_x <- replace(names_x, grep("fp(.*)", names_x), fp_vars)
     colnames(x) <- names_x
   }
   
-  # if fp() is not used in the formula, it reduces to mfp2.default() so we need
-  # to replicate the default parameters e.g. df to be equal to ncol(x)
-  dfx_list <- setNames(lapply(1:nx,function(z) df), names_x)
-  scale_list <- setNames(lapply(1:nx,function(z) scale),names_x)
-  shift_list <- setNames(lapply(1:nx,function(z) shift),names_x)
-  center_list <- setNames(lapply(1:nx,function(z) center),names_x)
-  alpha_list <- setNames(lapply(1:nx,function(z) alpha),names_x)
-  select_list <- setNames(lapply(1:nx,function(z) select),names_x)
-  acdx_list <- setNames(lapply(1:nx,function(z) NULL),names_x)
+  # call default method---------------------------------------------------------
+  
+  # if fp() is not used in the formula, it reduces to mfp2.default() 
+  df_list <- setNames(rep(list(df), nx), names_x)
+  scale_list <- setNames(rep(list(scale), nx), names_x)
+  shift_list <- setNames(rep(list(shift), nx), names_x)
+  center_list <- setNames(rep(list(center), nx), names_x)
+  alpha_list <- setNames(rep(list(alpha), nx), names_x)
+  select_list <- setNames(rep(list(select), nx), names_x)
+  acdx_list <- setNames(rep(list(NULL), nx), names_x)
   
   # if fp() is used in the formula
-  if(length(fp_pos)!=0){
-    # capture df, scale, alpha, select, etc. based on the user inputs. 
-    dfx <- setNames(lapply(fp_data, function(v) attr(v, "df")), vnames_fp)
-    alphax <- setNames(lapply(fp_data, function(v) attr(v, "alpha")), vnames_fp)
-    selectx <- setNames(lapply(fp_data, function(v) attr(v, "select")),vnames_fp)
-    shiftx <- setNames(lapply(fp_data, function(v) attr(v, "shift")),vnames_fp)
-    scalex <- setNames(lapply(fp_data, function(v) attr(v, "scale")),vnames_fp)
-    centerx <- setNames(lapply(fp_data, function(v) attr(v, "center")),vnames_fp)
-    acdx <- setNames(lapply(fp_data, function(v) attr(v, "acd")),vnames_fp)
-    
+  if (length(fp_pos) != 0) {
     # modify the default parameters based on the user inputs
-    dfx_list<- modifyList(dfx_list, dfx)
-    scale_list<- modifyList(scale_list, scalex)
-    shift_list<- modifyList(shift_list, shiftx)
-    center_list<- modifyList(center_list, centerx)
-    alpha_list<- modifyList(alpha_list, alphax)
-    select_list<- modifyList(select_list, selectx)
-    acdx_list<- modifyList(acdx_list, acdx)
+    df_list <- modifyList(df_list, 
+                          setNames(lapply(fp_data, attr, "df"), fp_vars))
+    scale_list <- modifyList(scale_list, 
+                             setNames(lapply(fp_data, attr, "scale"), fp_vars))
+    shift_list <- modifyList(shift_list, 
+                             setNames(lapply(fp_data, attr, "shift"), fp_vars))
+    center_list <- modifyList(center_list,
+                              setNames(lapply(fp_data, attr, "center"), fp_vars))
+    alpha_list <- modifyList(alpha_list, 
+                             setNames(lapply(fp_data, attr, "alpha"), fp_vars))
+    select_list <- modifyList(select_list, 
+                              setNames(lapply(fp_data, attr, "select"), fp_vars))
+    acdx_list <- modifyList(acdx_list, 
+                            setNames(lapply(fp_data, attr, "acd"), fp_vars))
   }
-  # acd require variable names or NULL option
-  acdx_vector<- unlist(acdx_list)
-  if(sum(acdx_vector)==0) 
+  
+  # acd requires variable names or NULL 
+  acdx_vector <- unlist(acdx_list)
+  if (sum(acdx_vector) == 0) 
     acdx_vector <- NULL
   else
     acdx_vector <- names(acdx_vector[acdx_vector])
-  # call default method---------------------------------------------------------
-  fit <-  mfp2.default(x = x, 
-                       y = y, 
-                       weights = weights, 
-                       offset = offset, 
-                       cycles = cycles,
-                       scale = unlist(scale_list), 
-                       shift = unlist(shift_list), 
-                       df = unlist(dfx_list), 
-                       center = unlist(center_list),
-                       subset = subset,
-                       family = family,
-                       criterion = criterion,
-                       select = unlist(select_list), 
-                       alpha = unlist(alpha_list),
-                       keep = keep,
-                       xorder = xorder,
-                       powers = powers,
-                       ties = ties,
-                       strata = strata,
-                       nocenter = nocenter,
-                       acdx = acdx_vector,
-                       ftest = ftest,
-                       control = control,
-                       verbose = verbose
+
+  mfp2.default(x = x, 
+               y = y, 
+               weights = weights, 
+               offset = offset, 
+               cycles = cycles,
+               scale = unlist(scale_list), 
+               shift = unlist(shift_list), 
+               df = unlist(df_list), 
+               center = unlist(center_list),
+               subset = subset,
+               family = family,
+               criterion = criterion,
+               select = unlist(select_list), 
+               alpha = unlist(alpha_list),
+               keep = keep,
+               xorder = xorder,
+               powers = powers,
+               ties = ties,
+               strata = strata,
+               nocenter = nocenter,
+               acdx = acdx_vector,
+               ftest = ftest,
+               control = control,
+               verbose = verbose
   )
-  return(fit)
 }
 
 #' Extract coefficients from object of class `mfp2`

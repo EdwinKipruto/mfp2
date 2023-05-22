@@ -75,8 +75,6 @@ Default is \code{NULL} which assigns a weight of 1 to each observation.}
 
 \item{offset}{a vector of length nobs that is included in the linear
 predictor. Useful for the poisson family (e.g. log of exposure time).
-This option should also be used for the formula interface \code{mfp2.formula} as
-\code{offset} terms inside the model formula are not supported by \code{mfp2}.
 Default is \code{NULL} which assigns an offset  of 0 to each observation.
 If supplied, then values must also be supplied to the \code{predict()} function.}
 
@@ -179,8 +177,6 @@ See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 \item{strata}{a numeric vector or matrix of variables that define strata
 to be used for stratification in a Cox model. A new factor, whose levels are
 all possible combinations of the variables supplied will be created.
-This option should also be used for the formula interface \code{mfp2.formula} as
-\code{strata} terms inside the model formula are not supported by \code{mfp2}.
 Default is \code{NULL} and a Cox model without stratification would be fitted.
 See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
@@ -256,7 +252,7 @@ distribution (ACD) transformation proposed by Royston (2016).
 \itemize{
 \item \code{mfp2(default)}: Default method using input matrix \code{x} and outcome vector \code{y}.
 
-\item \code{mfp2(formula)}: Provides standard formula interface for \code{mfp2.default}.
+\item \code{mfp2(formula)}: Provides formula interface for \code{mfp2}.
 
 }}
 \section{Brief summary of FPs}{
@@ -287,9 +283,9 @@ fits a linear regression (ordinary least squares) model.
 For Cox models, the response should preferably be a \code{Surv} object,
 created by the \code{\link[survival:Surv]{survival::Surv()}} function, and the \code{family = "cox"}.
 Only right-censored data are currently supported. To fit stratified Cox
-models, the \code{strata} option can be used. Note that using a \code{strata} term
-inside the model formula is not supported, and strata should be specified
-using the \code{strata} input, even in the formula interface \code{mfp2.formula}.
+models, the \code{strata} option can be used, or alternatively \code{strata} terms
+can be included in the model formula when using the formula interface
+\code{mfp2.formula}.
 }
 
 \section{Details on shifting, scaling and centering}{
@@ -406,9 +402,8 @@ variable selection (\code{select}), confidence level for functional form
 selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
 centering (\code{center}) and the ACD-transformation (\code{acd}).
 
-Note that \code{strata} and \code{offset} terms inside the model \code{formula} are not
-supported by \code{mfp2}, and the corresponding input arguments for \code{mfp2.formula}
-should be used instead.
+The formula may also contain \code{strata} terms to fit stratified Cox models, or
+an \code{offset} term to specify a model offset.
 }
 
 \references{

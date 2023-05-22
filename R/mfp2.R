@@ -845,8 +845,9 @@ mfp2.formula <- function(formula,
   
   # data preparation -----------------------------------------------------------
   
-  y <- as.numeric(model.extract(mf, "response"))
-  # TODO: cox model?
+  y <- model.extract(mf, "response")
+  if (family != "cox") 
+    y <- as.numeric(y)
   
   x <- model.matrix(terms_model, mf)
   # remove intercept if necessary

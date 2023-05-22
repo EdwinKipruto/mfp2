@@ -234,6 +234,7 @@ find_best_fpm_step <- function(x,
     x = x, xi = xi, df = 2 * degree,
     powers_current = powers_current, powers = powers, acdx = acdx
   )
+  
   metrics = list()
   for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
@@ -1210,7 +1211,6 @@ transform_data_step <- function(x,
   # check whether all adjustment powers = NA
   if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
     # all adjustment variables were eliminated in MFP backfitting process
-    #data_adj <- matrix(nrow = 0, ncol = 0)
     data_adj <- NULL
     powers_adj <- NULL
   } else {

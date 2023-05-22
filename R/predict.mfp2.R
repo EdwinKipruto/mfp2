@@ -137,7 +137,7 @@ predict.mfp2 <- function(object,
               "i predict() continues but returns an empty list for those terms 
                  not in the model.", call. = FALSE)
     # TODO: return warning if the names(ref) != names(terms)
-    if(!all(sapply(ref, is.null)) && any(!names(ref)%in% terms))
+    if (!all(sapply(ref, is.null)) && any(!names(ref) %in% terms))
       warning("i Some of names of reference values are not in terms.\n", 
               "i predict() continues but does not consider them.", call. = FALSE)
  
@@ -162,9 +162,9 @@ predict.mfp2 <- function(object,
       } else {
         # use data
         x_seq <- object$x_original[, t, drop = FALSE]
-        xnam <- object$fp_powers[[t]]
+        x_names <- object$fp_powers[[t]]
         # in acd we might have a power and NA so we need to remove NA
-        x_trafo <- object$x[, names(xnam[!is.na(xnam)]), drop = FALSE]
+        x_trafo <- object$x[, names(x_names[!is.na(x_names)]), drop = FALSE]
       }
       
       term_coef <- coef(object)[colnames(x_trafo)]
@@ -354,11 +354,13 @@ calculate_standard_error <- function(model,
                                      X, 
                                      xref = NULL) { 
 
-  # the first column is the intercept in glm
   vcovx <- vcov(object = model)
-  # this might happen is subset is used with very few observations
-  if(any(is.nan(vcovx)))
-    warning("i Nan detected in the covariance matrix of the model.\n Standard errors for calculation of confident intervals may not exist")
+  
+  # this might happen if subset is used with very few observations
+  if (any(is.nan(vcovx)))
+    warning("i NaN detected in the covariance matrix of the model.",
+            "i Standard errors for calculation of confident intervals may not exist")
+  
   # get rid of variance and covariance of intercept if any
   xnames <- colnames(X)
   ind <- match(xnames, colnames(vcovx))

@@ -545,7 +545,7 @@ mfp2.default <- function(x,
   if (is.null(powers)) {
       # default FP powers proposed by Royston and Altman (1994)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-      power <- setNames(lapply(1:nx, function(z) powers), vnames)
+      power <- setNames(lapply(1:nvars, function(z) powers), vnames)
       
   }
   # sort unique powers

@@ -2,6 +2,7 @@
 
 S3method(coef,mfp2)
 S3method(mfp2,default)
+S3method(mfp2,formula)
 S3method(predict,mfp2)
 S3method(print,mfp2)
 S3method(summary,mfp2)

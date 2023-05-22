@@ -18,7 +18,7 @@ fp <- function(x,
                alpha = 0.05,
                select = 0.05, 
                shift = NULL, 
-               scale=NULL,
+               scale = NULL,
                center = TRUE, 
                acd = FALSE, 
                powers = NULL) {

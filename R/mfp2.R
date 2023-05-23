@@ -34,7 +34,7 @@
 #' can be included in the model formula when using the formula interface 
 #' `mfp2.formula`. 
 #'
-#' @section Details on shifting, scaling and centering:
+#' @section Details on shifting, scaling, centering:
 #' 
 #' Fractional polynomials are defined only for positive variables due to the 
 #' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for 
@@ -67,6 +67,23 @@
 #' Centering, however, is done after estimating the FP functions each variable.
 #' Centering before estimating the FP powers may result in different powers and
 #' should be avoided. Also see [transform_vector_fp()] for some more details.
+#' 
+#' @section Details on the `subset` argument: 
+#' Note that subsetting occurs after data pre-processing, but before model
+#' selection and fit. In detail, when the option `subset` is used and scale, 
+#' shift or centering values are to be estimated, then `mfp2()` first estimates
+#' these using the full dataset (no subsetting), then applies subsetting, then 
+#' proceeds to do model selection and fit on the subset of the data specified. 
+#' 
+#' Therefore, subsetting in `mfp2()` is not equivalent to subsetting the data
+#' before passing it to `mfp2()`, and thus cannot be used to implement e.g. 
+#' cross-validation or to remove `NA`. This should be done by the caller 
+#' beforehand. However, it does allow to use the same data pre-processing 
+#' for different subsets of the data. An example usecase is when separate
+#' models are to be estimated for women and men in the dataset, but a common
+#' data pre-processing should be applied. In this case the `subset` option 
+#' can be used to restrict model selection to either women or men, but share
+#' data processing between the two models. 
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' 
@@ -141,10 +158,20 @@
 #' specification of degrees of freedom (`df`), confidence level for 
 #' variable selection (`select`), confidence level for functional form 
 #' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
-#' centering (`center`) and the ACD-transformation (`acd`).
+#' centering (`center`) and the ACD-transformation (`acd`). Values specified 
+#' by these functions override the values specified as defaults and passed to 
+#' the `mfp2()` function. 
 #' 
 #' The formula may also contain `strata` terms to fit stratified Cox models, or
 #' an `offset` term to specify a model offset.
+#' 
+#' Note that for a formula using `.`, such as `y ~ .` the function may not
+#' fit a linear model, but may also do selection of variable and functional 
+#' forms using FP-transformations, depending on the default settings of `df`, 
+#' `select` and `alpha` passed as arguments to `mfp2()`. If `df` has a value 
+#' larger than 1, then potential warnings about binary variables being reset 
+#' to not use FP-transformations due to a low number of distinct values can be 
+#' safely ignored. 
 #'
 #' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
 #' nobs x nvars. Each row is an observation vector.
@@ -198,8 +225,8 @@
 #' covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
 #' @param subset subset	an optional vector specifying a subset of observations
-#' to be used in the fitting process.Default is `NULL` and all observations are 
-#' used.
+#' to be used in the fitting process. Default is `NULL` and all observations are 
+#' used. See Details below. 
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a character string defining the criterion used to select 
@@ -717,7 +744,7 @@ mfp2.formula <- function(formula,
                          cycles = 5,
                          scale = NULL, 
                          shift = NULL, 
-                         df = 1, 
+                         df = 4, 
                          center = TRUE,
                          subset = NULL,
                          family = c("gaussian", "poisson", "binomial", "cox"),
@@ -864,12 +891,7 @@ mfp2.formula <- function(formula,
   # select variables that undergo fp transformation and extract their attributes
   fp_pos <- grep("fp(.*)", colnames(mf))
   
-  if (length(fp_pos) == 0) {
-    warning("i No continuous variable has been chosen for function selection in the formula.\n", 
-            "i mfp2() continues and uses the default df = ", df, 
-            " to select functions for continuous variables.", 
-            call. = FALSE)
-  } else {
+  if (length(fp_pos) > 0) {
     fp_data <- mf[, fp_pos, drop = FALSE]
     
     # extract names of the variables that undergo fp transformation
@@ -1054,7 +1076,7 @@ fp <- function(x,
   name <- deparse(substitute(x))
   
   # Assert that a factor variable must not be subjected to fp transformation
-  if(is.factor(x))
+  if (is.factor(x))
     stop(name," is a factor variable and should not be passed to the fp() function.")
   
   attr(x, "df") <- df

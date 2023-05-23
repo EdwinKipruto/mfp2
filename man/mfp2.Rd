@@ -43,7 +43,7 @@ mfp2(x, ...)
   cycles = 5,
   scale = NULL,
   shift = NULL,
-  df = 1,
+  df = 4,
   center = TRUE,
   subset = NULL,
   family = c("gaussian", "poisson", "binomial", "cox"),
@@ -117,8 +117,8 @@ covariates, where the covariate is centered using the lower of the two
 distinct values of the covariate. See Details section below.}
 
 \item{subset}{subset    an optional vector specifying a subset of observations
-to be used in the fitting process.Default is \code{NULL} and all observations are
-used.}
+to be used in the fitting process. Default is \code{NULL} and all observations are
+used. See Details below.}
 
 \item{family}{a character string representing a \code{glm()} family object as well
 as Cox models. For more information, see Details section below.}
@@ -288,7 +288,7 @@ can be included in the model formula when using the formula interface
 \code{mfp2.formula}.
 }
 
-\section{Details on shifting, scaling and centering}{
+\section{Details on shifting, scaling, centering}{
 
 
 Fractional polynomials are defined only for positive variables due to the
@@ -322,6 +322,25 @@ conducted before estimating the FP powers for an input variable.
 Centering, however, is done after estimating the FP functions each variable.
 Centering before estimating the FP powers may result in different powers and
 should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
+}
+
+\section{Details on the \code{subset} argument}{
+
+Note that subsetting occurs after data pre-processing, but before model
+selection and fit. In detail, when the option \code{subset} is used and scale,
+shift or centering values are to be estimated, then \code{mfp2()} first estimates
+these using the full dataset (no subsetting), then applies subsetting, then
+proceeds to do model selection and fit on the subset of the data specified.
+
+Therefore, subsetting in \code{mfp2()} is not equivalent to subsetting the data
+before passing it to \code{mfp2()}, and thus cannot be used to implement e.g.
+cross-validation or to remove \code{NA}. This should be done by the caller
+beforehand. However, it does allow to use the same data pre-processing
+for different subsets of the data. An example usecase is when separate
+models are to be estimated for women and men in the dataset, but a common
+data pre-processing should be applied. In this case the \code{subset} option
+can be used to restrict model selection to either women or men, but share
+data processing between the two models.
 }
 
 \section{Details on  approximate cumulative distribution transformation}{
@@ -400,10 +419,20 @@ all details are specified using special \code{fp} terms. These support the
 specification of degrees of freedom (\code{df}), confidence level for
 variable selection (\code{select}), confidence level for functional form
 selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
-centering (\code{center}) and the ACD-transformation (\code{acd}).
+centering (\code{center}) and the ACD-transformation (\code{acd}). Values specified
+by these functions override the values specified as defaults and passed to
+the \code{mfp2()} function.
 
 The formula may also contain \code{strata} terms to fit stratified Cox models, or
 an \code{offset} term to specify a model offset.
+
+Note that for a formula using \code{.}, such as \code{y ~ .} the function may not
+fit a linear model, but may also do selection of variable and functional
+forms using FP-transformations, depending on the default settings of \code{df},
+\code{select} and \code{alpha} passed as arguments to \code{mfp2()}. If \code{df} has a value
+larger than 1, then potential warnings about binary variables being reset
+to not use FP-transformations due to a low number of distinct values can be
+safely ignored.
 }
 
 \references{

@@ -1101,6 +1101,7 @@ fp <- function(x,
 }
 
 #' @describeIn fp Alias for `fp()` - use in formula when both `mfp` and `mfp2` are loaded to avoid name shadowing.
+#' @export
 fp2 <- function(...) {
   fp(...)
 }

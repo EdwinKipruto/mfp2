@@ -435,6 +435,16 @@ to not use FP-transformations due to a low number of distinct values can be
 safely ignored.
 }
 
+\section{Compatibility with \code{mfp} package}{
+
+\code{mfp2} is an extension of the \code{mfp} package and can be used to reproduce
+the results from a model fitted by \code{mfp}. Since both packages provide
+an implementation of the MFP algorithm, both packages use functions of the
+same name. Thus, if you load both packages by a call to \code{library} there will
+be namespace conflicts and only the functions of the package loaded later
+will be working properly.
+}
+
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials

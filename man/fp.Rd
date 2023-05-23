@@ -2,6 +2,7 @@
 % Please edit documentation in R/mfp2.R
 \name{fp}
 \alias{fp}
+\alias{fp2}
 \title{Helper to assign attributes to a variable undergoing FP-transformation}
 \usage{
 fp(
@@ -15,6 +16,8 @@ fp(
   acd = FALSE,
   powers = NULL
 )
+
+fp2(...)
 }
 \arguments{
 \item{x}{a vector representing a continuous variable undergoing
@@ -32,3 +35,8 @@ arguments passed to this function will be stored as attributes.
 \description{
 Used in formula interface to \code{mfp2()}.
 }
+\section{Functions}{
+\itemize{
+\item \code{fp2()}: Alias for \code{fp()} - use in formula when both \code{mfp} and \code{mfp2} are loaded to avoid name shadowing.
+
+}}

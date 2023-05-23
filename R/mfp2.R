@@ -171,7 +171,15 @@
 #' `select` and `alpha` passed as arguments to `mfp2()`. If `df` has a value 
 #' larger than 1, then potential warnings about binary variables being reset 
 #' to not use FP-transformations due to a low number of distinct values can be 
-#' safely ignored. 
+#' safely ignored.
+#' 
+#' @section Compatibility with `mfp` package: 
+#' `mfp2` is an extension of the `mfp` package and can be used to reproduce
+#' the results from a model fitted by `mfp`. Since both packages provide
+#' an implementation of the MFP algorithm, both packages use functions of the 
+#' same name. Thus, if you load both packages by a call to `library` there will
+#' be namespace conflicts and only the functions of the package loaded later
+#' will be working properly. 
 #'
 #' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
 #' nobs x nvars. Each row is an observation vector.
@@ -1090,6 +1098,11 @@ fp <- function(x,
   attr(x, "name") <- name
   
   x
+}
+
+#' @describeIn fp Alias for `fp()` - use in formula when both `mfp` and `mfp2` are loaded to avoid name shadowing.
+fp2 <- function(...) {
+  fp(...)
 }
 
 #' Helper function to extract selected variables from fitted `mfp2` object

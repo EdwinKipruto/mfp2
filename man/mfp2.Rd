@@ -216,9 +216,10 @@ depending on the \code{family} parameter.
 
 The function \code{summary()} (i.e. \code{\link[=summary.mfp2]{summary.mfp2()}}) can be used to obtain or
 print a summary of the results.
-
 The generic accessor function \code{coef()} can be used to extract the vector of
 coefficients from the fitted model object.
+The generic \code{predict()} can be used to obtain predictions from the fitted
+model object.
 
 An object of class \code{mfp2} is a list containing all entries as for \code{glm}
 or \code{coxph}, and in addition the following entries:
@@ -464,5 +465,5 @@ and diagnostic models: transformation of the predictors by using fractional
 polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 }
 \seealso{
-\code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}
+\code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=fp]{fp()}}
 }

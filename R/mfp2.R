@@ -309,10 +309,11 @@
 #' depending on the `family` parameter. 
 #' 
 #' The function `summary()` (i.e. [summary.mfp2()]) can be used to obtain or
-#' print a summary of the results. 
-#' 
+#' print a summary of the results.  
 #' The generic accessor function `coef()` can be used to extract the vector of 
-#' coefficients from the fitted model object.
+#' coefficients from the fitted model object. 
+#' The generic `predict()` can be used to obtain predictions from the fitted 
+#' model object.
 #' 
 #' An object of class `mfp2` is a list containing all entries as for `glm`
 #' or `coxph`, and in addition the following entries:  
@@ -355,7 +356,7 @@
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
-#' [summary.mfp2()], [coef.mfp2()]
+#' [summary.mfp2()], [coef.mfp2()], [predict.mfp2()], [fp()]
 #' 
 #' @export
 mfp2 <- function(x, ...){

@@ -810,7 +810,7 @@ mfp2.formula <- function(formula,
          call. = FALSE)
   
   if (length(center) != 1)
-    stop("! center must be a single numeric.", 
+    stop("! center must be a single logical value.", 
          "i Use the fp() function to set different center values in the input formula.",
          call. = FALSE)
   

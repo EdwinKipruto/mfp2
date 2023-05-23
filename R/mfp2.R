@@ -790,7 +790,7 @@ mfp2.formula <- function(formula,
 
   # strata not allowed in the formula if the family is not cox
   specials <- "strata"
-  terms_formula <- terms(formula, specials, data)
+  terms_formula <- terms(formula, specials = specials, data = data)
 
   # remember position of strata variables to drop from input data if necessary
   terms_drop <- NULL
@@ -806,7 +806,9 @@ mfp2.formula <- function(formula,
       # untangle the terms for strata as in coxph
       # this function returns the strata names, e.g "strata(x1)" 
       # and its position in the terms when outcome is excluded
-      stemp <- survival::untangle.specials(terms_formula, "strata", 1)
+      stemp <- survival::untangle.specials(terms_formula,
+                                           special = "strata", 
+                                           order = 1)
       
       if (length(stemp$vars) == 1) {
         # only one strata exists in the formula   

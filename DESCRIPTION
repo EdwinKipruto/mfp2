@@ -19,7 +19,7 @@ Imports:
 Description: Algorithm to select variables and functional forms through 
   Fractional polynomials in regression models (GLMs, Cox). 
   A key reference is Royston and Altman (1994), JRSS. Series C, 43(3), 429-467.
-License: GPL-3
+License: GPL-3 + file LICENSE
 URL: https://github.com/EdwinKipruto/mfp2
 BugReports: https://github.com/EdwinKipruto/mfp2/issues
 Encoding: UTF-8

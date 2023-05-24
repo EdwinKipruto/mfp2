@@ -4,11 +4,13 @@
 \alias{coef.mfp2}
 \title{Extract coefficients from object of class \code{mfp2}}
 \usage{
-\method{coef}{mfp2}(object)
+\method{coef}{mfp2}(object, ...)
 }
 \arguments{
 \item{object}{an object of class \code{mfp2}, usually, a result of a call to
 \code{\link[=mfp2]{mfp2()}}.}
+
+\item{...}{not used.}
 }
 \value{
 Named numeric vector of coefficients extracted from the model \code{object}.

@@ -1000,12 +1000,13 @@ mfp2.formula <- function(formula,
 #' 
 #' @param object an object of class `mfp2`, usually, a result of a call to
 #' [mfp2()].
+#' @param ... not used.
 #' 
 #' @return 
 #' Named numeric vector of coefficients extracted from the model `object`.
 #' 
 #' @export
-coef.mfp2 <- function(object) {
+coef.mfp2 <- function(object, ...) {
   object$coefficients
 }
 

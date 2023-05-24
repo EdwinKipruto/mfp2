@@ -153,7 +153,7 @@
 #' 
 #' Both interfaces are equivalent in terms of possible fitted models, only the
 #' details of specification differ. In the standard interface all details 
-#' regarding fp-transformations are given as vectors. In the formula interface
+#' regarding FP-transformations are given as vectors. In the formula interface
 #' all details are specified using special `fp` terms. These support the 
 #' specification of degrees of freedom (`df`), confidence level for 
 #' variable selection (`select`), confidence level for functional form 
@@ -168,10 +168,12 @@
 #' Note that for a formula using `.`, such as `y ~ .` the function may not
 #' fit a linear model, but may also do selection of variable and functional 
 #' forms using FP-transformations, depending on the default settings of `df`, 
-#' `select` and `alpha` passed as arguments to `mfp2()`. If `df` has a value 
-#' larger than 1, then potential warnings about binary variables being reset 
-#' to not use FP-transformations due to a low number of distinct values can be 
-#' safely ignored.
+#' `select` and `alpha` passed as arguments to `mfp2()`. 
+#' For example, using `y ~ .` with default settings for all other arguments
+#' means that `mfp2()` will apply FP transformation with 4 df to all 
+#' continuous variables and use alpha equal to 0.05 to select functional forms, 
+#' and use the selection algorithm with significance level 0.05 for all 
+#' variables. 
 #' 
 #' @section Compatibility with `mfp` package: 
 #' `mfp2` is an extension of the `mfp` package and can be used to reproduce
@@ -930,7 +932,7 @@ mfp2.formula <- function(formula,
   # call default method---------------------------------------------------------
   
   # if fp() is not used in the formula, it reduces to mfp2.default() 
-  df_list <- setNames(rep(list(df), nx), names_x)
+  df_list <-  setNames(as.list(assign_df(x = x, df_default = df)), names_x)
   scale_list <- setNames(rep(list(scale), nx), names_x)
   shift_list <- setNames(rep(list(shift), nx), names_x)
   center_list <- setNames(rep(list(center), nx), names_x)

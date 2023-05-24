@@ -415,7 +415,7 @@ such as \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{sur
 
 Both interfaces are equivalent in terms of possible fitted models, only the
 details of specification differ. In the standard interface all details
-regarding fp-transformations are given as vectors. In the formula interface
+regarding FP-transformations are given as vectors. In the formula interface
 all details are specified using special \code{fp} terms. These support the
 specification of degrees of freedom (\code{df}), confidence level for
 variable selection (\code{select}), confidence level for functional form
@@ -430,10 +430,12 @@ an \code{offset} term to specify a model offset.
 Note that for a formula using \code{.}, such as \code{y ~ .} the function may not
 fit a linear model, but may also do selection of variable and functional
 forms using FP-transformations, depending on the default settings of \code{df},
-\code{select} and \code{alpha} passed as arguments to \code{mfp2()}. If \code{df} has a value
-larger than 1, then potential warnings about binary variables being reset
-to not use FP-transformations due to a low number of distinct values can be
-safely ignored.
+\code{select} and \code{alpha} passed as arguments to \code{mfp2()}.
+For example, using \code{y ~ .} with default settings for all other arguments
+means that \code{mfp2()} will apply FP transformation with 4 df to all
+continuous variables and use alpha equal to 0.05 to select functional forms,
+and use the selection algorithm with significance level 0.05 for all
+variables.
 }
 
 \section{Compatibility with \code{mfp} package}{

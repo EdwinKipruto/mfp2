@@ -539,7 +539,7 @@ select_ra2 <- function(x,
       )
     }
   } else {
-    calculate_test <- function(metrics, ...) {
+    calculate_test <- function(metrics, n_obs) {
       calculate_lr_test(
         logl = metrics[, "logl", drop = TRUE], 
         dfs = metrics[, "df", drop = TRUE] 
@@ -734,7 +734,7 @@ select_ra2_acd <- function(x,
       )
     }
   } else {
-    calculate_test <- function(metrics, ...) {
+    calculate_test <- function(metrics, n_obs) {
       calculate_lr_test(
         logl = metrics[, "logl", drop = TRUE], 
         dfs = metrics[, "df", drop = TRUE] 

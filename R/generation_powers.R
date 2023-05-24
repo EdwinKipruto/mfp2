@@ -48,7 +48,7 @@ generate_powers_fp <- function(degree = NULL,
     return(matrix(powers, nrow = 1, ncol = 1))
   
   # using replacement because powers may be repeated e.g. (0,0) or (1,1)
-  arrangements::combinations(x = powers, k = degree, replace = TRUE)
+  generate_combinations_with_replacement(powers, degree)
 }
 
 #' @describeIn generate_powers_fp Function to generate acd powers.
@@ -69,4 +69,40 @@ generate_powers_acd <- function(degree = NULL,
     return(matrix(c(rep(NA, length(powers)), powers), ncol = 2))
   
   matrix(as.matrix(expand.grid(powers, powers)), ncol = 2)
+}
+
+#' Helper function to generate combinations with replacement
+#' 
+#' This very simple helper generates combinations with replacement. 
+#' 
+#' @param x vector of elements to choose from.
+#' @param k number of elements to choose. 
+#' 
+#' @details 
+#' This is replicating the functionality from `arrangements::combinations` with
+#' `replace = TRUE`. Note that base R function `utils::combn` only returns
+#' combinations without replacement, thus pairs like (0, 0) are not in the 
+#' output. 
+#' 
+#' Note that this function is extremely inefficient and only intended to be
+#' used with small use cases, i.e. small k. This is typically the case in the
+#' context of MFP, but a warning is given if this is not the case since the 
+#' algorithm may take a while to compute the combinations, and even longer
+#' to do model selection.
+#' 
+#' @return 
+#' A m x k matrix, where m is the number of combinations.
+generate_combinations_with_replacement <- function(x, 
+                                                   k) {
+  
+  if (k > 5)
+    warning("i FP degree higher than 5, the MFP algorithm may take a while to do model selection.")
+  
+  # generate all possible pairs
+  pairs = expand.grid(rep(list(x), k))
+  
+  # and remove duplicates
+  # reverse column order to conform with ordering of arrangements::combinations
+  # i.e. we have identical results
+  unname(as.matrix(pairs[!duplicated(t(apply(pairs, 1, sort))), rev(1:k)]))
 }

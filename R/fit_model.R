@@ -40,7 +40,7 @@ fit_model <- function(x,
                       nocenter = NULL, 
                       fast = TRUE) {
   
-  if (is.null(colnames(x)))
+  if (!is.null(dim(x)) && is.null(colnames(x)))
     colnames(x) <- colnames(x, do.NULL = FALSE)
   
   if (family == "cox") {
@@ -76,7 +76,10 @@ fit_model <- function(x,
 #' to be included in the linear predictor during fitting. 
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
-#' uses the normal fitting routines (used for the final output of `mfp2`).
+#' uses the normal fitting routines (used for the final output of `mfp2`). 
+#' The difference is mainly due to the fact that normal fitting routines have
+#' to handle data.frames, which is a lot slower than using the model matrix
+#' and outcome vectors directly. 
 #' 
 #' @return 
 #' A list with the following components: 
@@ -111,9 +114,11 @@ fit_glm <- function(x,
       x = xx, y = y, family = family, weights = weights, offset = offset
     )  
   } else {
-    fit <- glm(y ~ ., data = data.frame(x, y), 
-               family = family, weights = weights, offset = offset, 
-               x = TRUE, y = TRUE)
+    # important to cbind in case x is null otherwise it will return an error
+    data <- data.frame(cbind(x, y))
+    fit <- glm(y ~ ., 
+               data = data, family = family, weights = weights,
+               offset = offset, x = TRUE, y = TRUE)
   }
 
   # account for estimation of variance parameter in gaussian models
@@ -177,7 +182,7 @@ fit_cox <- function(x,
     )  
   } else {
     # construct appropriate formula incorporating offset and strata terms
-    d <- data.frame(x, y)
+    d <- data.frame(cbind(x, y))
     f <- sprintf("y ~ %s", 
                 paste(setdiff(names(d), "y"), collapse = "+ "))
     

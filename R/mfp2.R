@@ -1,22 +1,15 @@
-#' Define next method
-#' @export
-mfp2 <- function(object,...){
-  UseMethod("mfp2")
-}
-
-#' Multivariable fractional polynomial models with extensions of sigmoid 
-#' functions
+#' Multivariable fractional polynomial models with extensions 
 #'
 #' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
-#' between x and an outcome variable (y) using the approximate cumulative 
+#' between `x` and an outcome variable `y` using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2016).
 #' 
 #' @section Brief summary of FPs:
 #' 
 #' In the following we denote fractional polynomials for a variable \eqn{x} by 
 #' increasing complexity as either FP1 or FP2. In this example, 
-#' \eqn{FP2(p1, p2)} is the most flexible FP tranformation where 
+#' \eqn{FP2(p1, p2)} is the most flexible FP transformation where 
 #' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
 #' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
 #' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
@@ -37,10 +30,11 @@ mfp2 <- function(object,...){
 #' For Cox models, the response should preferably be a `Surv` object,
 #' created by the [survival::Surv()] function, and the `family = "cox"`. 
 #' Only right-censored data are currently supported. To fit stratified Cox
-#' models, the strata option can be used. Currently `mfp2()` only supports
-#' a single factor as strata................................................TO DISCUSS WITH MICHAEL
+#' models, the `strata` option can be used, or alternatively `strata` terms 
+#' can be included in the model formula when using the formula interface 
+#' `mfp2.formula`. 
 #'
-#' @section Details on shifting, scaling and centering:
+#' @section Details on shifting, scaling, centering:
 #' 
 #' Fractional polynomials are defined only for positive variables due to the 
 #' use of logarithms and other powers. Thus, `mfp2()` estimates shifts for 
@@ -73,8 +67,26 @@ mfp2 <- function(object,...){
 #' Centering, however, is done after estimating the FP functions each variable.
 #' Centering before estimating the FP powers may result in different powers and
 #' should be avoided. Also see [transform_vector_fp()] for some more details.
+#' 
+#' @section Details on the `subset` argument: 
+#' Note that subsetting occurs after data pre-processing, but before model
+#' selection and fit. In detail, when the option `subset` is used and scale, 
+#' shift or centering values are to be estimated, then `mfp2()` first estimates
+#' these using the full dataset (no subsetting), then applies subsetting, then 
+#' proceeds to do model selection and fit on the subset of the data specified. 
+#' 
+#' Therefore, subsetting in `mfp2()` is not equivalent to subsetting the data
+#' before passing it to `mfp2()`, and thus cannot be used to implement e.g. 
+#' cross-validation or to remove `NA`. This should be done by the caller 
+#' beforehand. However, it does allow to use the same data pre-processing 
+#' for different subsets of the data. An example usecase is when separate
+#' models are to be estimated for women and men in the dataset, but a common
+#' data pre-processing should be applied. In this case the `subset` option 
+#' can be used to restrict model selection to either women or men, but share
+#' data processing between the two models. 
 #'
 #' @section Details on  approximate cumulative distribution transformation:
+#' 
 #' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 
 #' converts each predictor, \eqn{x}, smoothly to an approximation, \eqn{acd(x)}, 
 #' of its empirical cumulative distribution function. 
@@ -131,12 +143,56 @@ mfp2 <- function(object,...){
 #' Otherwise, accept model 5. End of procedure.}
 #' }
 #' The result is the selection of one of the six models. 
+#' 
+#' @section Details on model specification using a `formula`:
+#' `mfp2` supports model specifications using two different interfaces: one
+#' which allows passing of the data matrix `x` and outcome vector `y` directly
+#' (as done in e.g. [stats::glm.fit()] or `glmnet`) and another which conforms
+#' to the formula interface used by many commonly used R modelling functions 
+#' such as [stats::glm()] or [survival::coxph()]. 
+#' 
+#' Both interfaces are equivalent in terms of possible fitted models, only the
+#' details of specification differ. In the standard interface all details 
+#' regarding fp-transformations are given as vectors. In the formula interface
+#' all details are specified using special `fp` terms. These support the 
+#' specification of degrees of freedom (`df`), confidence level for 
+#' variable selection (`select`), confidence level for functional form 
+#' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
+#' centering (`center`) and the ACD-transformation (`acd`). Values specified 
+#' by these functions override the values specified as defaults and passed to 
+#' the `mfp2()` function. 
+#' 
+#' The formula may also contain `strata` terms to fit stratified Cox models, or
+#' an `offset` term to specify a model offset.
+#' 
+#' Note that for a formula using `.`, such as `y ~ .` the function may not
+#' fit a linear model, but may also do selection of variable and functional 
+#' forms using FP-transformations, depending on the default settings of `df`, 
+#' `select` and `alpha` passed as arguments to `mfp2()`. If `df` has a value 
+#' larger than 1, then potential warnings about binary variables being reset 
+#' to not use FP-transformations due to a low number of distinct values can be 
+#' safely ignored.
+#' 
+#' @section Compatibility with `mfp` package: 
+#' `mfp2` is an extension of the `mfp` package and can be used to reproduce
+#' the results from a model fitted by `mfp`. Since both packages provide
+#' an implementation of the MFP algorithm, both packages use functions of the 
+#' same name. Thus, if you load both packages by a call to `library` there will
+#' be namespace conflicts and only the functions of the package loaded later
+#' will be working properly. 
 #'
-#' @param x an input matrix of dimension nobs x nvars. Each row is an 
-#' observation vector.
-#' @param y a vector for the response variable. For `family="binomial"` it 
-#' should be  a vector with two levels (see [stats::glm()]). 
-#' For `family="cox"` it must be a `Surv` object containing  2 columns.
+#' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
+#' nobs x nvars. Each row is an observation vector.
+#' @param y for `mfp2.default`: `y` is a vector for the response variable.
+#' For `family = "binomial"` it should be  a vector with two levels (see 
+#' [stats::glm()]). For `family = "cox"` it must be a [survival::Surv()] object
+#' containing 2 columns.
+#' @param formula for `mfp2.formula`: an object of class `formula`: a symbolic 
+#' description of the model to be fitted. Special `fp` terms can be used to 
+#' define fp-transformations. The details of model specification are given 
+#' under ‘Details’.
+#' @param data for `mfp2.formula`: a `data.frame` which contains all variables
+#' specified in `formula`.
 #' @param weights a vector of observation weights of length nobs. 
 #' Default is `NULL` which assigns a weight of 1 to each observation.
 #' @param offset a vector of length nobs that is included in the linear
@@ -146,30 +202,39 @@ mfp2 <- function(object,...){
 #' @param cycles an integer, maximum number of iteration cycles. Default is 5.
 #' @param scale a numeric vector of length nvars or single numeric specifying 
 #' scaling factors. If a single numeric, then the value will be replicated as
-#' necessary. Default is `NULL` which lets the program estimate the scaling 
-#' factors (see Details section).
-#' If scaling is not required set `scale = 1` to disable it.
+#' necessary. The formula interface `mfp2.formula` only supports single numeric 
+#' input to set a default value, individual values can be set using `fp` terms
+#' in the `formula` input. 
+#' Default is `NULL` which lets the program estimate the scaling factors 
+#' (see Details section). If scaling is not required set `scale = 1` to disable 
+#' it.
 #' @param shift a numeric vector of length nvars or a single numeric specifying
 #' shift terms. If a single numeric, then the value will be replicated as
-#' necessary. Default is `NULL` which lets the program estimate the shifts
-#' (see Details section).
-#' If shifting is not required, set `shift = 0` to disable it.
+#' necessary. The formula interface `mfp2.formula` only supports single numeric 
+#' input to set a default value, individual values can be set using `fp` terms
+#' in the `formula` input.
+#' Default is `NULL` which lets the program estimate the shifts
+#' (see Details section). If shifting is not required, set `shift = 0` to 
+#' disable it.
 #' @param df a numeric vector of length nvars or a single numeric that sets the 
 #' (default) degrees of freedom (df) for each predictor. If a single numeric, 
-#' then the value will be replicated as necessary. The df (not counting 
-#' the intercept) are twice the degree of a fractional polynomial (FP). 
-#' For example, an FP2 has 4 df, while FPm has 2*m df. 
+#' then the value will be replicated as necessary. The formula interface
+#' `mfp2.formula` only supports single numeric input to set a default value, 
+#' individual values can be set using `fp` terms in the `formula` input. 
+#' The df (not counting the intercept) are twice the degree of a fractional 
+#' polynomial (FP). For example, an FP2 has 4 df, while FPm has 2*m df. 
 #' The program overrides default df based on the number of distinct (unique) 
 #' values for a variable as follows: 
 #' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
 #' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
-#' `df = default`.
+#' `df = default`. 
 #' @param center a logical determining whether variables are centered before 
 #' model fit. The default `TRUE` implies mean centering, except for binary 
 #' covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
 #' @param subset subset	an optional vector specifying a subset of observations
-#' to be used in the fitting process.Default is `NULL` and all observations are used.
+#' to be used in the fitting process. Default is `NULL` and all observations are 
+#' used. See Details below. 
 #' @param family a character string representing a `glm()` family object as well
 #' as Cox models. For more information, see Details section below.
 #' @param criterion a character string defining the criterion used to select 
@@ -183,14 +248,18 @@ mfp2 <- function(object,...){
 #' @param select a numeric vector of length nvars or a single numeric that 
 #' sets the nominal significance levels for variable selection on each predictor
 #' by backward elimination. If a single numeric, then the value will be replicated
-#' as necessary. The default nominal significance level is 0.05 
+#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
+#' input to set a default value, individual values can be set using `fp` terms
+#' in the `formula` input. The default nominal significance level is 0.05 
 #' for all variables. Setting the nominal significance level to be 1 for  
 #' certain variables forces them into the model, leaving all other variables
 #' to be selected. 
 #' @param alpha a numeric vector of length nvars or a single numeric that 
 #' sets the significance levels for testing between FP models of 
 #' different degrees. If a single numeric, then the value will be replicated
-#' as necessary. The default nominal significance level is 0.05 for all 
+#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
+#' input to set a default value, individual values can be set using `fp` terms
+#' in the `formula` input. The default nominal significance level is 0.05 for all 
 #' variables. 
 #' @param keep a character vector that with names of variables to be kept 
 #' in the model. In case that `criterion = "pvalue"`, this is equivalent to
@@ -216,14 +285,15 @@ mfp2 <- function(object,...){
 #' to be used for stratification in a Cox model. A new factor, whose levels are 
 #' all possible combinations of the variables supplied will be created. 
 #' Default is `NULL` and a Cox model without stratification would be fitted. 
-#' See [survival::coxph()] for details. Currently only a single stratification
-#' factor is supported by `mfp2()`.
+#' See [survival::coxph()] for details. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
 #' @param acdx a numeric vector of names of continuous variables to undergo 
 #' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes the function-selection procedure to determine the 
-#' best-fitting FP1(p1, p2) model (see Details section). 
+#' best-fitting FP1(p1, p2) model (see Details section). Not present in the 
+#' formula interface `mfp2.formula` and to be set using `fp` terms in the 
+#' `formula` input.
 #' The variable representing the ACD transformation of `x` is named `A(x)`.
 #' @param ftest a logical; for normal error models with small samples, critical 
 #' points from the F-distribution can be used instead of Chi-Square 
@@ -239,10 +309,11 @@ mfp2 <- function(object,...){
 #' depending on the `family` parameter. 
 #' 
 #' The function `summary()` (i.e. [summary.mfp2()]) can be used to obtain or
-#' print a summary of the results. 
-#' 
+#' print a summary of the results.  
 #' The generic accessor function `coef()` can be used to extract the vector of 
-#' coefficients from the fitted model object.
+#' coefficients from the fitted model object. 
+#' The generic `predict()` can be used to obtain predictions from the fitted 
+#' model object.
 #' 
 #' An object of class `mfp2` is a list containing all entries as for `glm`
 #' or `coxph`, and in addition the following entries:  
@@ -285,33 +356,39 @@ mfp2 <- function(object,...){
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
 #' 
 #' @seealso 
-#' [summary.mfp2()], [coef.mfp2()]
-#' @rdname mfp2.default
+#' [summary.mfp2()], [coef.mfp2()], [predict.mfp2()], [fp()]
+#' 
+#' @export
+mfp2 <- function(x, ...){
+  UseMethod("mfp2", x)
+}
+
+#' @describeIn mfp2 Default method using input matrix `x` and outcome vector `y`.
 #' @export
 mfp2.default <- function(x, 
-                 y, 
-                 weights = NULL, 
-                 offset = NULL, 
-                 cycles = 5,
-                 scale = NULL, 
-                 shift = NULL, 
-                 df = 4, 
-                 center = TRUE,
-                 subset = NULL,
-                 family = c("gaussian", "poisson", "binomial", "cox"),
-                 criterion = c("pvalue", "aic", "bic"),
-                 select = 0.05, 
-                 alpha = 0.05,
-                 keep = NULL,
-                 xorder = c("ascending", "descending", "original"),
-                 powers = NULL,
-                 ties = c("breslow", "efron", "exact"),
-                 strata = NULL,
-                 nocenter = NULL,
-                 acdx = NULL,
-                 ftest = FALSE,
-                 control = NULL, 
-                 verbose = TRUE) {
+                         y, 
+                         weights = NULL, 
+                         offset = NULL, 
+                         cycles = 5,
+                         scale = NULL, 
+                         shift = NULL, 
+                         df = 4, 
+                         center = TRUE,
+                         subset = NULL,
+                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         criterion = c("pvalue", "aic", "bic"),
+                         select = 0.05, 
+                         alpha = 0.05,
+                         keep = NULL,
+                         xorder = c("ascending", "descending", "original"),
+                         powers = NULL,
+                         ties = c("breslow", "efron", "exact"),
+                         strata = NULL,
+                         nocenter = NULL,
+                         acdx = NULL,
+                         ftest = FALSE,
+                         control = NULL, 
+                         verbose = TRUE) {
   
   # this function prepares everything for fitting the actual mfp2 model
   
@@ -324,56 +401,65 @@ mfp2.default <- function(x,
   ties <- match.arg(ties)
   
   # assertions -----------------------------------------------------------------
-  if(!is.matrix(x))
-    stop("x must be a matrix", call. = F)
-    
-  if(any(is.character(x)))
-    stop("x contain characters values. Convert categorical variables to 
-         dummy variables", call. = F)
+  # assert that x is a matrix
+  if (!is.matrix(x))
+    stop("! x must be a matrix", call. = F)
   
-  # assert dimension of x
+  # assert that x must not contain character values
+  if (any(is.character(x)))
+    stop("! x contains characters values.\n",
+         "i Please convert categorical variables to dummy variables.", 
+         call. = F)
+  
+  # check dimension of x
   np <- dim(x)
   nobs <- as.integer(np[1])
   nvars <- as.integer(np[2])
   
   # assert that x is a matrix
   if (is.null(np)) {
-      stop("! The dimensions of x must not be Null.\n",
-           "i Please make sure that x is a matrix or data.frame with at least one row and column.", call. = FALSE)
+      stop("! The dimensions of x must not be missing.\n",
+           "i Please make sure that x is a matrix with at least one row and column.", 
+           call. = FALSE)
   }
-  # assert that x has column names
+  # assert that x must have column names
   vnames <- colnames(x)
-  if (is.null(vnames)) stop("! The column names of x must not be Null.\n",
-                            "i Please set column names for x.")
+  if (is.null(vnames)) 
+    stop("! The column names of x must not be missing.\n",
+         "i Please set column names for x.",
+         call. = FALSE)
 
   # assert that x has no missing data
-  if (anyNA(x)) stop("! x must not contain any NA (missing data).\n", 
-                     "i Please remove any missing data before passing x to this function.")
+  if (anyNA(x)) 
+    stop("! x must not contain any NA (missing data).\n",   
+         "i Please remove any missing data before passing x to this function.")
                      
  # assert that subset must be a vector and does not contain negative values
-  if (!is.null(subset)){
+  if (!is.null(subset)) {
     if (!is.vector(subset))
-      stop(sprintf("! Subset must not be of class %s.", 
+      stop(sprintf("! Subset must not be of class %s.\n", 
                    paste0(class(subset), collapse = ", ")), 
-           "i Please convert subset to a vector.", call. = FALSE)
+           "i Please convert subset to a vector.", 
+           call. = FALSE)
     
-    if (any(subset<0))
+    if (any(subset < 0))
       stop("! Subset must not contain negative values.", call. = FALSE)
   }  
   
   # assert that weights are positive and of appropriate dimensions
   if (!is.null(weights)) {
     if (any(weights < 0)) {
-        stop("! Weights must not be negative.")
+        stop("! Weights must not be negative.", call. = FALSE)
     }
     if (length(weights) != nobs) {
       stop("! The number of observations (rows in x) and weights must match.\n", 
            sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
-                   nobs, length(weights)))
+                   nobs, length(weights)), 
+           call. = FALSE)
     }
   }
   
-  # assert dimensions of offset
+  # assert that the length of offset must be equal to the number of observations
   if (!is.null(offset)) {
       if (length(offset) != nobs) {
           stop("! The number of observations (rows in x) and offset must match.\n", 
@@ -382,7 +468,7 @@ mfp2.default <- function(x,
       }
   }
   
-  # assert alpha between 0 and 1
+  # assert that alpha must be between 0 and 1
   if (any(alpha > 1) || any(alpha < 0)) {
       stop("! alpha must not be < 0 or > 1.")
   }
@@ -394,7 +480,7 @@ mfp2.default <- function(x,
                    nvars, length(alpha)))
   }
   
-  # assert select between 0 and 1
+  # assert that select must be between 0 and 1
   if (any(select > 1) || any(select < 0)) {
       stop("! select must not be < 0 or > 1.")
   }
@@ -405,7 +491,7 @@ mfp2.default <- function(x,
                    nvars, length(select)))
   }
   
-  # assert keep is a subset of x
+  # assert that keep is a subset of x
   if (!is.null(keep)) {
       if (!all(keep %in% vnames)) {
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
@@ -451,7 +537,7 @@ mfp2.default <- function(x,
   # assert df is positive
   if (any(df <= 0)) {
       stop("! df must not be 0 or negative.\n", 
-           sprintf("i All df must be either 1 (linear) or 2m, where m is the degree of FP."))
+           "i All df must be either 1 (linear) or 2m, where m is the degree of FP.")
   }
   
   if (length(df) == 1) {
@@ -503,7 +589,7 @@ mfp2.default <- function(x,
       }
       
       # assert numeric
-      if (is.factor(strata)){
+      if (is.factor(strata)) {
         strata <- as.numeric(strata)
       }
       
@@ -521,7 +607,7 @@ mfp2.default <- function(x,
       if (!is.vector(y)) {
           stop(sprintf("! Outcome y must not be of class %s.", 
                        paste0(class(y), collapse = ", ")), 
-               "i Please convert y to a vector.")
+               "i Please convert y to a vector.", call. = FALSE)
       }
       if (length(y) != nobs) {
           stop("! Number of observations in y and x must match.", 
@@ -529,10 +615,10 @@ mfp2.default <- function(x,
                        length(y), nobs))
       }
   }
-
+  
   # set defaults ---------------------------------------------------------------
   if (is.null(powers)) {
-      # default FP powers proposed by Royston and Sauerbrei (2008)
+      # default FP powers proposed by Royston and Altman (1994)
       powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   powers <- sort(unique(powers))
@@ -611,30 +697,33 @@ mfp2.default <- function(x,
   x <- sweep(x, 2, shift, "+")
   x <- sweep(x, 2, scale, "/")
   
-  # stratification
+  # stratification for cox model
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
       istrata <- survival::strata(strata, shortlabel = TRUE)
+      # convert strata to integers as conducted by coxph
+      istrata <- as.integer(istrata)
   }
-    # data subsetting-------------------------------------------------------------
-  if(!is.null(subset)){
-    # check the sample size if it is too small. Likely to occur after subsetting
-    if (length(subset)<5)
+
+    # data subsetting ----------------------------------------------------------
+  if (!is.null(subset)) {
+    # check the sample size if it is too small, likely to occur after subsetting
+    if (length(subset) < 5)
       stop("! The length of subset is too small (<5) to fit an mfp model.", 
-           sprintf("i The number of observations is %d", length(subset)), call. = FALSE)
+           sprintf("i The number of observations is %d", length(subset)), 
+           call. = FALSE)
     
-    x <- x[subset,,drop = F]
-    y <- if (family!="cox"){y[subset]}else {y[subset,,drop = F]}
+    x <- x[subset, , drop = FALSE]
+    y <- if (family != "cox") {
+      y[subset]
+    } else y[subset, , drop = FALSE]
+    
     weights <- weights[subset]
     offset <- offset[subset]
-    istrata<-istrata[subset]
+    istrata <- istrata[subset]
   }
-    # Assert that nrow(x)>ncol(x): low dimensional settings
-  if(ncol(x)>nrow(x))
-    stop("! The number of observations (rows in x) must be greater than the number of variables.\n", 
-         sprintf("i The number of rows in x is %d, and the number of variables is %d.", 
-                 nrow(x), ncol(x)), call. = FALSE)
-    # fit model ------------------------------------------------------------------
+                 
+  # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 
       weights = weights, offset = offset, cycles = cycles,
@@ -653,6 +742,253 @@ mfp2.default <- function(x,
   fit$family_string <- family
   
   fit
+}
+
+#' @describeIn mfp2 Provides formula interface for `mfp2`.
+#' @export
+mfp2.formula <- function(formula, 
+                         data, 
+                         weights = NULL, 
+                         offset = NULL, 
+                         cycles = 5,
+                         scale = NULL, 
+                         shift = NULL, 
+                         df = 4, 
+                         center = TRUE,
+                         subset = NULL,
+                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         criterion = c("pvalue", "aic", "bic"),
+                         select = 0.05, 
+                         alpha = 0.05,
+                         keep = NULL,
+                         xorder = c("ascending", "descending", "original"),
+                         powers = NULL,
+                         ties = c("breslow", "efron", "exact"),
+                         strata = NULL,
+                         nocenter = NULL,
+                         ftest = FALSE,
+                         control = NULL,
+                         verbose = TRUE) {
+  # capture the call
+  call <- match.call()
+  family <- match.arg(family)
+  
+  # assert that data must be provided
+  if (missing(data))
+    stop("! data argument is missing.\n",
+         "i An input data.frame is required for the use of mfp2.",
+         call. = FALSE)
+  
+  # assert that data has column names
+  if (is.null(colnames(data)))
+    stop("! data must have column names.\n",
+         "i Please set column names.")
+  
+  # assert that a formula must be provided
+  if (missing(formula)) 
+    stop("! formula is missing.", call. = FALSE)
+  
+  # assert length of df, alpha, select, center, shift, scale, acdx equal to one
+  if (length(df) != 1)
+    stop("! df must be a single numeric.", 
+         "i Use the fp() function to set different df values in the input formula.",
+         call. = FALSE)
+  
+  if (length(alpha) != 1)
+    stop("! alpha must be a single numeric.", 
+         "i Use the fp() function to set different alpha values in the input formula.",
+         call. = FALSE)
+  
+  if (length(select) != 1)
+    stop("! select must be a single numeric.", 
+         "i Use the fp() function to set different select values in the input formula.",
+         call. = FALSE)
+  
+  if (!is.null(scale) && length(scale) != 1)
+    stop("! scale must be a single numeric or NULL.",
+         "i Use the fp() function to set different scaling factors in the input formula.", 
+         call. = FALSE)
+  
+  if (length(center) != 1)
+    stop("! center must be a single logical value.", 
+         "i Use the fp() function to set different center values in the input formula.",
+         call. = FALSE)
+  
+  if (!is.null(shift) && length(shift) != 1)
+    stop("! shift must be a single numeric.", 
+         "i Use the fp() function to set different shift values in the input formula.",
+         call. = FALSE)
+  
+  # model.frame preserves the attributes of the data unlike model.matrix
+  mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  
+  # stratification for Cox models ----------------------------------------------
+
+  # strata not allowed in the formula if the family is not cox
+  specials <- "strata"
+  terms_formula <- terms(formula, specials = specials, data = data)
+
+  # remember position of strata variables to drop from input data if necessary
+  terms_drop <- NULL
+  if (!is.null(attr(terms_formula,"specials")$strata)) {
+    if (family == "cox") {
+      
+      # check whether strata is both in the formula and in the argument
+      if (!is.null(call$strata))
+        warning("i strata appear both in the formula and as an input argument.\n",
+                "i The information in the formula is used and the input argument ignored.",
+                call. = FALSE)
+      
+      # untangle the terms for strata as in coxph
+      # this function returns the strata names, e.g "strata(x1)" 
+      # and its position in the terms when outcome is excluded
+      stemp <- survival::untangle.specials(terms_formula,
+                                           special = "strata", 
+                                           order = 1)
+      
+      if (length(stemp$vars) == 1) {
+        # only one strata exists in the formula   
+        strata <- mf[[stemp$vars]]
+      } else {
+        # more than one strata exists in the formula
+        strata <- mf[, stemp$vars]
+      }
+      
+      # extract the position of strata variables in the terms to be dropped
+      terms_drop <- stemp$terms
+    } else {
+      stop("! strata are only allowed for Cox models.\n", 
+           "i Please remove any strata terms from the model formula.",
+           call. = FALSE)
+    }
+  }
+  
+  # drop strata variables if necessary before using model.matrix()
+  if (!is.null(terms_drop)) 
+    terms_model <- terms_formula[-terms_drop]
+  else terms_model <- terms_formula
+  
+  # offset ---------------------------------------------------------------------
+  term_offset <- attr(terms_formula, "offset")
+  if (!is.null(term_offset) && length(term_offset) > 1)
+    stop("! Only one offset in the formula is allowed.", call. = FALSE)
+  
+  # check whether offset is both in the formula and as an argument.
+  if (!is.null(term_offset) && !is.null(call$offset)) {
+    warning("i Offset appears both in the formula and as an input argument.\n", 
+            "i The information in the model formula is used and the input argument is ignored.", 
+            call. = FALSE)
+    offset <- as.vector(model.offset(mf))
+  }
+  
+  # data preparation -----------------------------------------------------------
+  
+  y <- model.extract(mf, "response")
+  if (family != "cox") 
+    y <- as.numeric(y)
+  
+  x <- model.matrix(terms_model, mf)
+  # remove intercept if necessary
+  # intercept is coded as entry 0 in attribute assigned by model.matrix
+  # intercept is always the first column
+  if (0 %in% attr(x, "assign")) 
+    x <- x[, -1, drop = FALSE]
+  
+  nx <- ncol(x) 
+  names_x <- colnames(x)
+  
+  # select variables that undergo fp transformation and extract their attributes
+  fp_pos <- grep("fp(.*)", colnames(mf))
+  
+  if (length(fp_pos) > 0) {
+    fp_data <- mf[, fp_pos, drop = FALSE]
+    
+    # extract names of the variables that undergo fp transformation
+    fp_vars <- unname(sapply(fp_data, function(v) attr(v, "name")))
+    
+    # check for variables used more than once in fp() function 
+    fp_vars_duplicates <- fp_vars[duplicated(fp_vars)]
+    if (length(fp_vars_duplicates) != 0)
+      stop("! Variables should be used only once in the fp() within the formula.\n", 
+           sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
+                   paste0(fp_vars_duplicates, collapse = ", ")), 
+           call. = FALSE)
+    
+    # check for variables used in fp() as well as other parts of the formula
+    vars_duplicates <- which(colnames(mf) %in% fp_vars)
+    if (length(vars_duplicates) != 0)
+      stop("! Variables used in the fp() should not be included in other parts of the formula.\n", 
+           sprintf("i This applies to the following variable(s): %s.", 
+                   paste0(colnames(mf)[vars_duplicates], collapse = ", ")), 
+           call. = FALSE)
+    
+    # replace names such as fp(x1) by real name "x1" in the x matrix
+    names_x <- replace(names_x, grep("fp(.*)", names_x), fp_vars)
+    colnames(x) <- names_x
+  }
+  
+  # call default method---------------------------------------------------------
+  
+  # if fp() is not used in the formula, it reduces to mfp2.default() 
+  df_list <- setNames(rep(list(df), nx), names_x)
+  scale_list <- setNames(rep(list(scale), nx), names_x)
+  shift_list <- setNames(rep(list(shift), nx), names_x)
+  center_list <- setNames(rep(list(center), nx), names_x)
+  alpha_list <- setNames(rep(list(alpha), nx), names_x)
+  select_list <- setNames(rep(list(select), nx), names_x)
+  acdx_list <- setNames(rep(list(NULL), nx), names_x)
+  
+  # if fp() is used in the formula
+  if (length(fp_pos) != 0) {
+    # modify the default parameters based on the user inputs
+    df_list <- modifyList(df_list, 
+                          setNames(lapply(fp_data, attr, "df"), fp_vars))
+    scale_list <- modifyList(scale_list, 
+                             setNames(lapply(fp_data, attr, "scale"), fp_vars))
+    shift_list <- modifyList(shift_list, 
+                             setNames(lapply(fp_data, attr, "shift"), fp_vars))
+    center_list <- modifyList(center_list,
+                              setNames(lapply(fp_data, attr, "center"), fp_vars))
+    alpha_list <- modifyList(alpha_list, 
+                             setNames(lapply(fp_data, attr, "alpha"), fp_vars))
+    select_list <- modifyList(select_list, 
+                              setNames(lapply(fp_data, attr, "select"), fp_vars))
+    acdx_list <- modifyList(acdx_list, 
+                            setNames(lapply(fp_data, attr, "acd"), fp_vars))
+  }
+  
+  # acd requires variable names or NULL 
+  acdx_vector <- unlist(acdx_list)
+  if (sum(acdx_vector) == 0) 
+    acdx_vector <- NULL
+  else
+    acdx_vector <- names(acdx_vector[acdx_vector])
+
+  mfp2.default(x = x, 
+               y = y, 
+               weights = weights, 
+               offset = offset, 
+               cycles = cycles,
+               scale = unlist(scale_list), 
+               shift = unlist(shift_list), 
+               df = unlist(df_list), 
+               center = unlist(center_list),
+               subset = subset,
+               family = family,
+               criterion = criterion,
+               select = unlist(select_list), 
+               alpha = unlist(alpha_list),
+               keep = keep,
+               xorder = xorder,
+               powers = powers,
+               ties = ties,
+               strata = strata,
+               nocenter = nocenter,
+               acdx = acdx_vector,
+               ftest = ftest,
+               control = control,
+               verbose = verbose
+  )
 }
 
 #' Extract coefficients from object of class `mfp2`
@@ -719,6 +1055,56 @@ print.mfp2 <- function(x,
   
   # print model object using underlying print function
   NextMethod("print", x)
+}
+
+#' Helper to assign attributes to a variable undergoing FP-transformation
+#' 
+#' Used in formula interface to `mfp2()`.
+#' 
+#' @param x a vector representing a continuous variable undergoing 
+#' fp-transformation.
+#' @param df,alpha,select,shift,scale,center,acd See [mfp2::mfp2()]) for details. 
+#' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
+#' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
+#' 
+#' @return 
+#' The vector `x` with new attributes relevant for fp-transformation. All 
+#' arguments passed to this function will be stored as attributes. 
+#' 
+#' @export
+fp <- function(x, 
+               df = 4, 
+               alpha = 0.05,
+               select = 0.05, 
+               shift = NULL, 
+               scale = NULL,
+               center = TRUE, 
+               acd = FALSE, 
+               powers = NULL) {
+  
+  name <- deparse(substitute(x))
+  
+  # Assert that a factor variable must not be subjected to fp transformation
+  if (is.factor(x))
+    stop(name," is a factor variable and should not be passed to the fp() function.")
+  
+  attr(x, "df") <- df
+  attr(x, "alpha") <- alpha
+  attr(x, "select") <- select
+  attr(x, "shift") <- shift
+  attr(x, "scale") <- scale
+  attr(x, "center") <- center
+  attr(x, "acd") <- acd
+  attr(x, "powers") <- powers
+  attr(x, "name") <- name
+  
+  x
+}
+
+#' @describeIn fp Alias for `fp()` - use in formula when both `mfp` and `mfp2` are loaded to avoid name shadowing.
+#' @export
+fp2 <- function(...) {
+  fp(...)
 }
 
 #' Helper function to extract selected variables from fitted `mfp2` object

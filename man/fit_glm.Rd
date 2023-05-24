@@ -21,7 +21,10 @@ to be included in the linear predictor during fitting.}
 
 \item{fast}{a logical which determines how the model is fitted. The default
 \code{TRUE} uses fast fitting routines (i.e. \code{\link[stats:glm]{stats::glm.fit()}}), while \code{FALSE}
-uses the normal fitting routines (used for the final output of \code{mfp2}).}
+uses the normal fitting routines (used for the final output of \code{mfp2}).
+The difference is mainly due to the fact that normal fitting routines have
+to handle data.frames, which is a lot slower than using the model matrix
+and outcome vectors directly.}
 }
 \value{
 A list with the following components:

@@ -781,7 +781,7 @@ mfp2.formula <- function(formula,
   # capture the call
   call <- match.call()
   family <- match.arg(family)
-  
+ 
   # assert that data must be provided
   if (missing(data))
     stop("! data argument is missing.\n",
@@ -796,6 +796,9 @@ mfp2.formula <- function(formula,
   # assert that a formula must be provided
   if (missing(formula)) 
     stop("! formula is missing.", call. = FALSE)
+  
+  if (!inherits(formula, "formula"))
+    stop("method is only for formula objects", call. = FALSE)
   
   # assert length of df, alpha, select, center, shift, scale, acdx equal to one
   if (length(df) != 1)

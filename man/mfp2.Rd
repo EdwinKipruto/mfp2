@@ -32,7 +32,8 @@ mfp2(x, ...)
   acdx = NULL,
   ftest = FALSE,
   control = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 )
 
 \method{mfp2}{formula}(
@@ -58,7 +59,8 @@ mfp2(x, ...)
   nocenter = NULL,
   ftest = FALSE,
   control = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 )
 }
 \arguments{
@@ -248,6 +250,10 @@ Selects the multivariable fractional polynomial (FP) model that best predicts
 the outcome variable. It also has the ability to model a sigmoid relationship
 between \code{x} and an outcome variable \code{y} using the approximate cumulative
 distribution (ACD) transformation proposed by Royston (2016).
+This function provides two interfaces for input data: one for inputting
+data matrix \code{x} and  outcome vector \code{y} directly and the other for using a
+\code{formula} object together with a data.frame \code{data}. Both interfaces are
+equivalent in terms of functionality.
 }
 \section{Methods (by class)}{
 \itemize{

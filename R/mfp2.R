@@ -4,6 +4,10 @@
 #' the outcome variable. It also has the ability to model a sigmoid relationship
 #' between `x` and an outcome variable `y` using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2016).
+#' This function provides two interfaces for input data: one for inputting 
+#' data matrix `x` and  outcome vector `y` directly and the other for using a
+#' `formula` object together with a data.frame `data`. Both interfaces are
+#' equivalent in terms of functionality.
 #' 
 #' @section Brief summary of FPs:
 #' 
@@ -390,7 +394,8 @@ mfp2.default <- function(x,
                          acdx = NULL,
                          ftest = FALSE,
                          control = NULL, 
-                         verbose = TRUE) {
+                         verbose = TRUE,
+                         ...) {
   
   # this function prepares everything for fitting the actual mfp2 model
   
@@ -770,7 +775,8 @@ mfp2.formula <- function(formula,
                          nocenter = NULL,
                          ftest = FALSE,
                          control = NULL,
-                         verbose = TRUE) {
+                         verbose = TRUE,
+                         ...) {
   # capture the call
   call <- match.call()
   family <- match.arg(family)

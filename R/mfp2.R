@@ -896,7 +896,13 @@ mfp2.formula <- function(formula,
   
   nx <- ncol(x) 
   names_x <- colnames(x)
+  # indices of categorical variables: they have numeric after bracket
+  index_cat <- grep( "^fp\\(.*\\)\\d+$", colnames(x))
   
+  # extract their real names
+  matching_cols <- grep("^fp\\((.*)\\)\\d+$", colnames(x), value = TRUE)
+  extracted_names <- sub("^fp\\((.*)\\)\\d+$", "\\1", matching_cols)
+  #final_names <- paste0(unique(extracted_names), 1:length(extracted_names))
   # select variables that undergo fp transformation and extract their attributes
   fp_pos <- grep("fp(.*)", colnames(mf))
   
@@ -1085,16 +1091,16 @@ fp <- function(x,
   name <- deparse(substitute(x))
   
   # Assert that a factor variable must not be subjected to fp transformation
-  if (is.factor(x))
-    stop(name," is a factor variable and should not be passed to the fp() function.")
+  #if (is.factor(x))
+  #  stop(name," is a factor variable and should not be passed to the fp() function.")
   
-  attr(x, "df") <- df
+  attr(x, "df") <- ifelse(is.factor(x), 1, df)
   attr(x, "alpha") <- alpha
   attr(x, "select") <- select
   attr(x, "shift") <- shift
   attr(x, "scale") <- scale
   attr(x, "center") <- center
-  attr(x, "acd") <- acd
+  attr(x, "acd") <- ifelse(is.factor(x), FALSE, acd)
   attr(x, "powers") <- powers
   attr(x, "name") <- name
   

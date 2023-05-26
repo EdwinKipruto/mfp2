@@ -8,9 +8,19 @@
 \usage{
 print_mfp_step(xi, criterion, fit)
 
-print_mfp_pvalue_step(xi, fit, ...)
+print_mfp_pvalue_step(xi, fit)
 
-print_mfp_ic_step(xi, fit, criterion, ...)
+print_mfp_ic_step(xi, fit, criterion)
+}
+\arguments{
+\item{xi}{a character string indicating the name of the current variable
+of interest, for which the best fractional polynomial transformation is
+to be found in the current step.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+
+\item{fit}{intermediary model fit in \code{mfp_step}.}
 }
 \description{
 Function for verbose printing of function selection procedure (FSP)

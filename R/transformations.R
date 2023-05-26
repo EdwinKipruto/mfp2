@@ -364,6 +364,10 @@ center_matrix <- function(mat, centers = NULL) {
 
 #' Helper function to name transformed variables
 #' 
+#' @param name character with name of variable being transformed.
+#' @param n_powers number of resulting variables from FP-transformation.
+#' @param acd logical indicating the use of ACD-transformation
+#' 
 #' @return 
 #' Character vector of names of length `n_powers`.
 name_transformed_variables <- function(name, n_powers, acd = FALSE) {

@@ -118,6 +118,9 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
 #' 
 #' To be used in [fit_acd()].
 #' 
+#' @inheritParams fit_acd
+#' @param y normal cdf of rank transform of `x`.
+#' 
 #' @return 
 #' The best FP power with smallest deviance.
 find_best_fp1_for_acd <- function(x, 

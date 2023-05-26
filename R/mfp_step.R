@@ -212,6 +212,10 @@ find_best_fp_step <- function(x,
 #' * `metrics`: a matrix with performance indices for all models investigated. 
 #' Same number of rows as, and indexed by, `powers`.
 #' * `model_best`: row index of best model in `metrics`.
+#' 
+#' @inheritParams find_best_fp_step
+#' @param degree degrees of freedom for fp transformation of `xi`.
+#' @param ... passed to `fit_model()`.
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -282,6 +286,9 @@ find_best_fpm_step <- function(x,
 #' 
 #' * `powers`: fp power(s) of `xi` in fitted model - in this case `NA`.
 #' * `metrics`: a matrix with performance indices for fitted model.
+#' 
+#' @inheritParams find_best_fp_step
+#' @param ... passed to `fit_model()`.
 fit_null_step <- function(x, 
                           xi, 
                           y, 
@@ -323,6 +330,9 @@ fit_null_step <- function(x,
 #' 
 #' * `powers`: fp power(s) of `xi` (or its ACD transformation) in fitted model.
 #' * `metrics`: a matrix with performance indices for fitted model.
+#' 
+#' @inheritParams find_best_fp_step
+#' @param ... passed to `fit_model()`.
 fit_linear_step <- function(x, 
                             xi, 
                             y, 
@@ -389,6 +399,10 @@ fit_linear_step <- function(x,
 #' * `model_best`: row index of best model in `metrics`.
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
+#' 
+#' @param degree not used.
+#' @param ... passed to fitting functions. 
+#' @inheritParams find_best_fp_step 
 select_linear <- function(x, 
                           xi,
                           keep, 
@@ -512,6 +526,10 @@ select_linear <- function(x,
 #' 
 #' @seealso 
 #' [select_ra2_acd()]
+#'  
+#' @param degree integer > 0 giving the degree for the FP transformation. 
+#' @param ... passed to fitting functions. 
+#' @inheritParams find_best_fp_step
 select_ra2 <- function(x, 
                        xi,
                        keep, 
@@ -710,6 +728,10 @@ select_ra2 <- function(x,
 #' 
 #' @seealso 
 #' [select_ra2()]
+#'
+#' @param degree integer > 0 giving the degree for the FP transformation. 
+#' @param ... passed to fitting functions. 
+#' @inheritParams find_best_fp_step
 select_ra2_acd <- function(x, 
                            xi,
                            keep, 
@@ -966,6 +988,10 @@ select_ra2_acd <- function(x,
 #' 
 #' @seealso 
 #' [select_ra2()]
+#' 
+#' @param degree integer > 0 giving the degree for the FP transformation. 
+#' @param ... passed to fitting functions. 
+#' @inheritParams find_best_fp_step
 select_ic <- function(x, 
                       xi,
                       keep, 
@@ -1272,6 +1298,10 @@ transform_data_step <- function(x,
 #' Helper function to ensure vectors have a specified length
 #' 
 #' Used to make sure dimensions of matrix rows match.
+#' 
+#' @param x input vector or matrix. 
+#' @param size length or size of `x` which is desired.
+#' @param fill value to fill in if `x` is not of desired length or size.
 ensure_length <- function(x, 
                           size, 
                           fill = NA) {

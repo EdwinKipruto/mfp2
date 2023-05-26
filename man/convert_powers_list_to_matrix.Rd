@@ -6,6 +6,9 @@
 \usage{
 convert_powers_list_to_matrix(power_list)
 }
+\arguments{
+\item{power_list}{list of powers created in \code{fit_mfp()}.}
+}
 \description{
 To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 }

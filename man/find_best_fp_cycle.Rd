@@ -27,6 +27,60 @@ find_best_fp_cycle(
   acdx
 )
 }
+\arguments{
+\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+intercept, but columns are already expanded into dummy variables as
+necessary. Data are assumed to be shifted and scaled.}
+
+\item{y}{a vector for the response variable or a \code{Surv} object.}
+
+\item{powers_current}{a list of length equal to the number of variables,
+indicating the fp powers to be used in the current step for all variables
+(except \code{xi}).}
+
+\item{df}{a numeric vector of length nvars of degrees of freedom.}
+
+\item{weights}{a vector of observation weights of length nobs.}
+
+\item{offset}{a vector of length nobs of offsets.}
+
+\item{family}{a character string representing a family object.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+
+\item{select}{a numeric vector of length nvars indicating significance levels
+for backward elimination.}
+
+\item{alpha}{a numeric vector of length nvars indicating significance levels
+for tests between FP models of different degrees.}
+
+\item{keep}{a character vector that with names of variables to be kept
+in the model.}
+
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates.}
+
+\item{method}{a character string specifying the method for tie handling in
+Cox regression.}
+
+\item{strata}{a factor of all possible combinations of stratification
+variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
+
+\item{verbose}{a logical; run in verbose mode.}
+
+\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+
+\item{control}{a list with parameters for model fit.}
+
+\item{rownames}{passed to \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.}
+
+\item{nocenter}{a numeric vector with a list of values for fitting Cox
+models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+}
 \description{
 This function estimates the best FP functions for all predictors in the
 current cycle. To be used in \code{\link[=fit_mfp]{fit_mfp()}}.

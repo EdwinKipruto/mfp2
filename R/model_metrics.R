@@ -1,5 +1,9 @@
 #' Deviance computations as used in mfp in stata
 #' 
+#' @param rss residual sum of squares. 
+#' @param weights numeric vector of weights used in computation of `rss`.
+#' @param n number of observations used to compute `rss`.
+#' 
 #' @details 
 #' Note that this is not the usual formula of deviance used in R, but
 #' uses the formula found here https://www.stata.com/manuals/rfp.pdf.

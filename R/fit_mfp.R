@@ -282,6 +282,7 @@ fit_mfp <- function(x,
 #' [stats::glm()] or [survival::coxph()] depending on family. 
 #' @param strata,method,control,nocenter Cox model specific parameters, see
 #' [survival::coxph()].
+#' @param ... passed to `order_variables_by_significance`.
 #' 
 #' @return 
 #' A vector of the variable names in `x`, ordered according to `xorder`.
@@ -491,6 +492,12 @@ reset_acd <- function(x,
 #' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
 #' and diagnostic models: transformation of the predictors by using fractional 
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
+#' 
+#' @inheritParams fit_mfp
+#' @param powers_current a list of length equal to the number of variables, 
+#' indicating the fp powers to be used in the current step for all variables 
+#' (except `xi`). 
+#' @param rownames passed to [survival::coxph.fit()].
 find_best_fp_cycle <- function(x, 
                                y, 
                                powers_current, 
@@ -581,6 +588,8 @@ calculate_df <- function(p) {
 #' Helper to convert a nested list with same or different length into a matrix
 #' 
 #' To be used in [fit_mfp()].
+#' 
+#' @param power_list list of powers created in `fit_mfp()`.
 convert_powers_list_to_matrix <- function(power_list) {
   # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
   psize <- sapply(power_list, length)
@@ -616,6 +625,9 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' * `acd`: logical value encoding use of ACD transformation.
 #' * `powerN`: one or more columns with the final estimated fp powers (numbered
 #' 1 to N).
+#' 
+#' @inheritParams fit_mfp
+#' @param fp_powers powers of the created FP terms.
 create_fp_terms <- function(fp_powers, 
                             acdx, 
                             df,

@@ -6,6 +6,13 @@
 \usage{
 name_transformed_variables(name, n_powers, acd = FALSE)
 }
+\arguments{
+\item{name}{character with name of variable being transformed.}
+
+\item{n_powers}{number of resulting variables from FP-transformation.}
+
+\item{acd}{logical indicating the use of ACD-transformation}
+}
 \value{
 Character vector of names of length \code{n_powers}.
 }

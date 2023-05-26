@@ -6,6 +6,23 @@
 \usage{
 create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
 }
+\arguments{
+\item{fp_powers}{powers of the created FP terms.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{df}{a numeric vector of length nvars of degrees of freedom.}
+
+\item{select}{a numeric vector of length nvars indicating significance levels
+for backward elimination.}
+
+\item{alpha}{a numeric vector of length nvars indicating significance levels
+for tests between FP models of different degrees.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+}
 \value{
 Data.frame with overview of all fp terms. Each row represents a variable,
 with rownames giving the name of the variable. Variables with acd

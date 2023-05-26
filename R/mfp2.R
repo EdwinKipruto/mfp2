@@ -309,6 +309,7 @@
 #' Returned by either [stats::glm.control()] or [survival::coxph.control()]. 
 #' Default is `NULL` to use default parameters for the given model class. 
 #' @param verbose a logical; run in verbose mode.
+#' @param ... not used.
 #' 
 #' @return 
 #' `mfp2()` returns an object of class inheriting from `glm` or `copxh`, 
@@ -1045,10 +1046,12 @@ summary.mfp2 <- function(object, ...) {
 #' Enhances printing by information on data processing and fractional 
 #' polynomials.
 #' 
+#' @param x `mfp2` object to be printed.
+#' @param ... passed to `print` methods of underlying model class. A useful 
+#' option os the `digits` argument, indicating printed digits.
+#' 
 #' @export
 print.mfp2 <- function(x,
-                       digits = max(3L, getOption("digits") - 3L), 
-                       signif.stars = FALSE, 
                        ...) {
   # shift and scaling factors with centering values
   cat("Shifting, Scaling and Centering of covariates", "\n")
@@ -1075,6 +1078,7 @@ print.mfp2 <- function(x,
 #' @param df,alpha,select,shift,scale,center,acd See [mfp2::mfp2()]) for details. 
 #' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
 #' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
+#' @param ... used in alias `fp2` to pass arguments.
 #' 
 #' @return 
 #' The vector `x` with new attributes relevant for fp-transformation. All 
@@ -1121,6 +1125,8 @@ fp2 <- function(...) {
 #' Simply extracts all variables for which not all powers are estimated to 
 #' be `NA`. The names refer to the original names in the dataset and do not
 #' include transformations.
+#' 
+#' @param object fitted `mfp2` object.
 #' 
 #' @return 
 #' Character vector of names, ordered as defined by `xorder` in [mfp2()].

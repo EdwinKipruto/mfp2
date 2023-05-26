@@ -6,6 +6,9 @@
 \usage{
 get_selected_variable_names(object)
 }
+\arguments{
+\item{object}{fitted \code{mfp2} object.}
+}
 \value{
 Character vector of names, ordered as defined by \code{xorder} in \code{\link[=mfp2]{mfp2()}}.
 }

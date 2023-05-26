@@ -4,7 +4,13 @@
 \alias{print.mfp2}
 \title{Print method for objects of class \code{mfp2}}
 \usage{
-\method{print}{mfp2}(x, digits = max(3L, getOption("digits") - 3L), signif.stars = FALSE, ...)
+\method{print}{mfp2}(x, ...)
+}
+\arguments{
+\item{x}{\code{mfp2} object to be printed.}
+
+\item{...}{passed to \code{print} methods of underlying model class. A useful
+option os the \code{digits} argument, indicating printed digits.}
 }
 \description{
 Enhances printing by information on data processing and fractional

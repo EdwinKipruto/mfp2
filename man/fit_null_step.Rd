@@ -6,6 +6,29 @@
 \usage{
 fit_null_step(x, xi, y, powers_current, powers, acdx, ...)
 }
+\arguments{
+\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+intercept, but columns are already expanded into dummy variables as
+necessary. Data are assumed to be shifted and scaled.}
+
+\item{xi}{a character string indicating the name of the current variable
+of interest, for which the best fractional polynomial transformation is
+to be found in the current step.}
+
+\item{y}{a vector for the response variable or a \code{Surv} object.}
+
+\item{powers_current}{a list of length equal to the number of variables,
+indicating the fp powers to be used in the current step for all variables
+(except \code{xi}).}
+
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{...}{passed to \code{fit_model()}.}
+}
 \value{
 A list with two entries:
 \itemize{

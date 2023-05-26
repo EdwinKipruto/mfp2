@@ -1,4 +1,7 @@
 #' Function for verbose printing of function selection procedure (FSP)
+#' 
+#' @param fit intermediary model fit in `mfp_step`.
+#' @inheritParams find_best_fp_step
 print_mfp_step <- function(xi, criterion, fit) {
   
   print_mat_fct <- switch(
@@ -37,7 +40,7 @@ print_mfp_step <- function(xi, criterion, fit) {
 }
 
 #' @describeIn print_mfp_step Helper for verbose printing based on p-value.
-print_mfp_pvalue_step <- function(xi, fit, ...) {
+print_mfp_pvalue_step <- function(xi, fit) {
   
   fpmax <- rownames(fit$metrics)[1]
   
@@ -54,7 +57,7 @@ print_mfp_pvalue_step <- function(xi, fit, ...) {
 }
 
 #' @describeIn print_mfp_step Helper for verbose printing based on information criterion.
-print_mfp_ic_step <- function(xi, fit, criterion, ...) {
+print_mfp_ic_step <- function(xi, fit, criterion) {
   
   # IC specific matrix for printing
   mat_print <- cbind(

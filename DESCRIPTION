@@ -5,7 +5,7 @@ Version: 0.1.3.9003
 Date: 2023-05-25
 Authors@R: c(
   person("Edwin", "Kipruto", role = c("aut", "cre"), email = "edwin.kipruto@uniklinik-freiburg.de"),
-  person("Michael", "Kammer", role = c("aut", "cre"), email = "michael.kammer@meduniwien.ac.at"),
+  person("Michael", "Kammer", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"),
   person("Willi", "Sauerbrei", role = c("aut"), email = "wilhelm.sauerbrei@uniklinik-freiburg.de")
   )
 Depends: 
@@ -26,7 +26,7 @@ Encoding: UTF-8
 NeedsCompilation: yes
 Author: 
   Edwin Kipruto [aut, cre], 
-  Michael Kammer [aut, cre], 
+  Michael Kammer [aut], 
   Willi Sauerbrei [aut]
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
 RoxygenNote: 7.2.3

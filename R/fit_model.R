@@ -149,6 +149,7 @@ fit_glm <- function(x,
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
 #' `FALSE`uses the normal fitting routines (used for the final output of 
 #' `mfp2`).
+#' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
 #' 
 #' @return 
 #' A list with the following components: 

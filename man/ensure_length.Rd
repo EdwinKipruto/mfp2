@@ -6,6 +6,13 @@
 \usage{
 ensure_length(x, size, fill = NA)
 }
+\arguments{
+\item{x}{input vector or matrix.}
+
+\item{size}{length or size of \code{x} which is desired.}
+
+\item{fill}{value to fill in if \code{x} is not of desired length or size.}
+}
 \description{
 Used to make sure dimensions of matrix rows match.
 }

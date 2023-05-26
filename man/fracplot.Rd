@@ -47,6 +47,8 @@ interval.}
 
 \item{shape, size_points, color_points}{\code{ggplot2} properties of drawn
 data points.}
+
+\item{...}{used in alias \code{plot_mfp} to pass arguments.}
 }
 \value{
 A list of \code{ggplot2} plot objects, one for each term requested. Can be

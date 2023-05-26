@@ -32,6 +32,8 @@ multiple regression (i.e. most significant first).
 observations and p the number of predictors including intercept for glms,
 or excluding intercept for Cox models.}
 
+\item{...}{passed to \code{order_variables_by_significance}.}
+
 \item{y}{a vector of responses for glms, or a \code{Surv} object generated using
 the \code{\link[survival:Surv]{survival::Surv()}} function for Cox models.}
 

@@ -27,6 +27,8 @@ fp-transformation.}
 
 \item{powers}{a vector of powers to be evaluated for \code{x}. Default is \code{NULL}
 and \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} will be used.}
+
+\item{...}{used in alias \code{fp2} to pass arguments.}
 }
 \value{
 The vector \code{x} with new attributes relevant for fp-transformation. All

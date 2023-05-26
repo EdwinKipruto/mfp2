@@ -37,6 +37,45 @@ select_ic_acd(
   ...
 )
 }
+\arguments{
+\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+intercept, but columns are already expanded into dummy variables as
+necessary. Data are assumed to be shifted and scaled.}
+
+\item{xi}{a character string indicating the name of the current variable
+of interest, for which the best fractional polynomial transformation is
+to be found in the current step.}
+
+\item{keep}{a character vector that with names of variables to be kept
+in the model.}
+
+\item{degree}{integer > 0 giving the degree for the FP transformation.}
+
+\item{acdx}{a logical vector of length nvars indicating continuous variables
+to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{y}{a vector for the response variable or a \code{Surv} object.}
+
+\item{powers_current}{a list of length equal to the number of variables,
+indicating the fp powers to be used in the current step for all variables
+(except \code{xi}).}
+
+\item{powers}{a numeric vector that sets the permitted FP powers for all
+covariates.}
+
+\item{criterion}{a character string defining the criterion used to select
+variables and FP models of different degrees.}
+
+\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+
+\item{select}{a numeric value indicating the significance level
+for backward elimination of \code{xi}.}
+
+\item{alpha}{a numeric value indicating the significance level
+for tests between FP models of different degrees for \code{xi}.}
+
+\item{...}{passed to fitting functions.}
+}
 \value{
 A list with several components:
 \itemize{

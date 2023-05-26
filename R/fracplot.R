@@ -17,6 +17,7 @@
 #' partial predictor.
 #' @param color_fill,alpha_fill `ggplot2` properties of ribbon for confidence
 #' interval.
+#' @param ... used in alias `plot_mfp` to pass arguments. 
 #' 
 #' @details 
 #' The confidence limits of the partial linear predictors or contrasts are

@@ -22,6 +22,8 @@ fit_cox(
 
 \item{y}{a \code{Surv} object.}
 
+\item{strata, control, rownames, nocenter}{passed to \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.}
+
 \item{weights}{a numeric vector of length nobs of 'prior weights' to be used
 in the fitting process.}
 

@@ -6,6 +6,13 @@
 \usage{
 deviance_gaussian(rss, weights, n)
 }
+\arguments{
+\item{rss}{residual sum of squares.}
+
+\item{weights}{numeric vector of weights used in computation of \code{rss}.}
+
+\item{n}{number of observations used to compute \code{rss}.}
+}
 \description{
 Deviance computations as used in mfp in stata
 }

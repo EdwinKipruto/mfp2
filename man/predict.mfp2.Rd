@@ -56,6 +56,10 @@ scaling factors obtained from \code{\link[=find_scale_factor]{find_scale_factor(
 uses the means (for continuous variables) and minima (for binary variables) as
 reference values.}
 
+\item{strata}{stratum levels used for predictions.}
+
+\item{offset}{vector offsets used for predictions.}
+
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }
 \value{

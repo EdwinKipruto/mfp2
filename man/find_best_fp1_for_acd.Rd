@@ -6,6 +6,14 @@
 \usage{
 find_best_fp1_for_acd(x, y, powers)
 }
+\arguments{
+\item{x}{a numeric vector.}
+
+\item{y}{normal cdf of rank transform of \code{x}.}
+
+\item{powers}{a vector of allowed FP powers. The default value is \code{NULL},
+meaning that the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
+}
 \value{
 The best FP power with smallest deviance.
 }

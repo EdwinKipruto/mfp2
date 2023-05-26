@@ -63,6 +63,8 @@
 #' scaling factors obtained from [find_scale_factor()]. By default, this function
 #' uses the means (for continuous variables) and minima (for binary variables) as
 #' reference values. 
+#' @param strata stratum levels used for predictions. 
+#' @param offset vector offsets used for predictions. 
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @return 

@@ -110,6 +110,11 @@ fracplot <- function(model,
     } else {
       residuals.glm(model, type = "deviance")
     }
+    # add residuals to the data
+    #pred_data <- lapply(pred_data, function(v) transform(v, resid = resid))
+    pred_data <- lapply(pred_data, function(v) {
+      v$resid <- resid
+    v})
   }
   
   # Preallocate the list for plots

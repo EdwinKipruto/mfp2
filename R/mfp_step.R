@@ -1234,8 +1234,9 @@ transform_data_step <- function(x,
   acdx_adj <- unname(acdx[vars_adj])
   
   # generate adjustment data 
-  # check whether all adjustment powers = NA
-  if (all(is.na(unlist(powers_adj, use.names = FALSE)))) {
+  # check whether all adjustment powers = NA or length(vars_adj)=0 for 1 variable
+  # in the model (univariable fp) 
+  if (all(is.na(unlist(powers_adj, use.names = FALSE))) || length(vars_adj)==0) {
     # all adjustment variables were eliminated in MFP backfitting process
     data_adj <- NULL
     powers_adj <- NULL

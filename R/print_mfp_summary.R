@@ -40,7 +40,7 @@ print_mfp_step <- function(xi, criterion, fit) {
 }
 
 #' @describeIn print_mfp_step Helper for verbose printing based on p-value.
-print_mfp_pvalue_step <- function(xi, fit) {
+print_mfp_pvalue_step <- function(xi, fit, criterion) {
   
   fpmax <- rownames(fit$metrics)[1]
   

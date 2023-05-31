@@ -837,8 +837,7 @@ mfp2.formula <- function(formula,
   # check whether no predictor exist in the model i.e y~1: 
   labels <-  attr(terms(mf), "term.labels")
   if (length(labels)==0)
-    stop("No predictors are provided for model fitting.\n At least one predictor
-         is required", call. = FALSE)
+    stop("No predictors are provided for model fitting.\n At least one predictor is required", call. = FALSE)
   
   # stratification for Cox models ----------------------------------------------
 

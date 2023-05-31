@@ -992,7 +992,7 @@ mfp2.formula <- function(formula,
   select_list <- setNames(lapply(1:nx,function(z) select),xnames)
   
   # scale and shift is only important if the user requires no scaling and
-  # shifting for all variables.
+  # shifting for all variables. MICHAEL INCLUDE THIS PART IN THE FORMULA OPTION
   if (is.null(shift)) {
     shift <- apply(x, 2, find_shift_factor)
   } else {
@@ -1039,6 +1039,7 @@ mfp2.formula <- function(formula,
     
     # get rid of NULL in powers, scale and shift. Returns empty list if all 
     # elements are NULL. This is important before modifying the list (see below)
+    # CURRENTLY NOT CONSIDERED IN THE MFP FORMULA. INCLUDE IT MICHAEL OR THINK ABOUT IT
     powerx <- Filter(Negate(is.null), powerx)
     shiftx <- Filter(Negate(is.null), shiftx)
     scalex <- Filter(Negate(is.null), scalex)
@@ -1066,7 +1067,7 @@ mfp2.formula <- function(formula,
     
     #---------------------------------------------------------------------------
     # Deal with powers supplied both in the formula through fp() and as argument 
-    # REMEMBER TO ADD THIS PART TO mfp2.default() WHEN MERGED
+    # REMEMBER TO ADD THE FIRST TWO CONDITIONS OF THIS PART TO mfp2.default() WHEN MERGED
     #---------------------------------------------------------------------------
     if (!is.null(powers)){
         if (length(powers) != sum(names(powers) != "", na.rm = TRUE))

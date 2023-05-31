@@ -834,6 +834,12 @@ mfp2.formula <- function(formula,
   # model.frame preserves the attributes of the data unlike model.matrix
   mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   
+  # check whether no predictor exist in the model i.e y~1: 
+  labels <-  attr(terms(mf), "term.labels")
+  if (length(labels)==0)
+    stop("No predictors are provided for model fitting.\n At least one predictor
+         is required", call. = FALSE)
+  
   # stratification for Cox models ----------------------------------------------
 
   # strata not allowed in the formula if the family is not cox

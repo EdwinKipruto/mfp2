@@ -389,14 +389,62 @@ To mitigate the impact of influential observations, it is important to assess th
 Some suggestions for investigating inﬂuential points (IPs) and handling such issues in MFP modeling can be found in R&S (2008, Chapters 5 and 10) and their paper on improving the robustness of FP models (R&S, 2007).
 Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023).
 The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model.
-However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables.
-(add one plot)
+However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables. Figure 2 illustrates the effects of influential observation 151 on the art dataset. The variable of interest is x5 with extremely large values, and the outcome is a continuous variable. The inclusion of observation 151 in the data results in the selection of the FP2 function, while its elimination leads to the selection of the FP1 function. Therefore, it is sufficient to describe variable x5 using a simpler FP1 function rather than a complex FP2 function. For more details, refer to Sauerbrei et al. (2023).
+```{r, echo=FALSE,results='hide'}
+library(mfp2)
+data("art")
+fit1 <- mfp2::mfp2(y~fp(x5), data = art)
+fit2 <- mfp2::mfp2(y~fp(x5), data = art[-151,])
 
+```
 
+```{r, echo=FALSE, fig.show='hide'}
+f1 <- mfp2::fracplot(fit1, terms = "x5", terms_seq = "equi")
+f2 <- mfp2::fracplot(fit2, terms = "x5", terms_seq = "equi")
 
+```
+
+```{r, echo=FALSE, fig.show='hide'}
+f1 <- mfp2::fracplot(fit1, terms = "x5", terms_seq = "equi", shape = 16)
+f1 <- f1[[1]] + ylab("y")
+f2 <- mfp2::fracplot(fit2, terms = "x5", terms_seq = "equi", shape = 16)
+f2 <- f2[[1]] + ylab("y")
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6, out.width="100%", fig.align='center',fig.cap="Figure 2. Examples of FP1 curves (left) and FP2 curves (middle) are shown for different powers. The right panel illustrates FP2 powers (-2, 2) with different regression coefficients"}
+# COMBINE THE TWO PLOTS
+patchwork::wrap_plots(f1,f2, ncol=2, widths = 10,heights = 4)
+
+```
 # Installation
+To install the `mfp2` package, enter the following command in the R console:
+```{r, eval=FALSE}
+install.packages("mfp2", repos = "??")
+```
 
 ## Quick Start
+The purpose of this section is to provide users with a comprehensive understanding of the mfp2 package. We will offer a concise overview of its key functions, fundamental operations, and resulting outputs. By the end of this section, users will have a clearer understanding of the available functions and be able to identify the appropriate ones for their needs. Additionally, we will delve into each function in detail, highlighting their specific capabilities and potential use cases. This will provide users with a deeper understanding of the package's functionality. The package includes a built-in dataset that is specifically designed for analysis within the `mfp2` framework. This dataset is readily available and can be accessed directly from the package.
+
+To begin, let's load the `mfp2` package:
+```{r}
+library(mfp2)
+```
+
+Load the art dataset from the `mfp2` package
+
+```{r}
+data("art")
+head(art)
+x <- as.matrix(art[,c(2:4,5:8,10:14)])
+y <- art$y
+```
+The default model used in the package is the Guassian linear model or "least squares", which we will demonstrate in this section. We load a set of data created beforehand for illustration:
+
+
+We fit the model using the most basic call to  `mfp2`.
+```{r}
+fit <- mfp2(x, y)
+```
 
 ## Linear Regression
 

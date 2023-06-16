@@ -1,5 +1,5 @@
 ---
-title: "Multivariable Fractional Polynomials and Extensions"
+title: "Multivariable Fractional Polynomials with Extensions"
 author:
 - Edwin Kipruto
 - Michael Kammer
@@ -41,9 +41,9 @@ figcaption {
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Introduction
+# Introduction to Multivariable Fractional Polynomial(MFP)
 
-## Overview of Multivariable Fractional Polynomial(MFP)
+## Overview of MFP
 Multivariable regression models are widely used across various fields of science where empirical data is analyzed. In model building, many researchers often assume a linear function for continuous variables, sometimes after applying “standard” transformations such as logarithmic, or divide the variable into several categories. However, assuming linearity without considering non-linear relationships may hinder the detection of stronger effects or even 
 cause the effects to be mis-modeled. Categorizing continuous variables, which 
 results in modeling implausible step functions, is a common practice but widely
@@ -407,51 +407,53 @@ f2 <- f2[[1]] + ylab("y")
 patchwork::wrap_plots(f1,f2, ncol=2, widths = 10,heights = 4)
 
 ```
-# Installation
+
+# Introduction to mfp2 package
+
+`mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: p-value, Akaike information criterion (AIC), and Bayesian information criterion (BIC). Furthermore, it provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.
+
+The main function, `mfp2()`, implements both MFP and MFP with ACD transformation.
+It offers two interfaces for input data. The first interface allows direct input of the predictor matrix `x` and the outcome vector `y`. The second interface uses a formula object in conjunction with a data.frame, similar to the `glm()` function
+with slight modifications. Both interfaces are equivalent in terms of functionality.
+
+## Estimation algorithm
+The estimation algorithm employed in `mfp2` sequentially processes the predictors using a back-fitting approach. It calculates the p-values of each predictor 
+using the likelihood ratio test, assuming linearity. Subsequently, the 
+predictors are arranged based on these p-values. By default, the predictors are arranged in order of decreasing statistical significance. This ordering aims to prioritize modeling relatively important variables before less important ones. 
+This approach may help mitigate potential challenges in model fitting arising
+from collinearity or more generally, the presence of "concurvity" among the predictors (stata??). Although alternative options for predictor ordering are available, we prefer the default option.
+
+If a predictor contains nonpositive values, the program by default shifts the location of the predictor x to ensure positivity. In addition, it scales the 
+shifted predictor before the first cycle of the algorithm. For more information on shifting and scaling, please refer to section xx.
+
+At the initial cycle, the best-fitting FP function for the first variable (after ordering) is determined, with all the other variables assumed to be linear. The functional form (but not the estimated regression
+coefficients) is kept, and the process is repeated for the other variables. The
+first iteration concludes when all the variables have been processed in this way.
+The next cycle is similar, except that the functional forms from the initial cycle are retained for all variables except the one currently being processed
+
+
+A variable whose functional form is prespecified to be linear is tested
+for exclusion within the above procedure when its nominal p-value is less than 1
+or argument `keep = FALSE`; otherwise, it is included.
+Updating of FP functions and candidate variables continues until the functions
+and variables included in the overall model do not change (convergence). 
+Convergence is usually achieved within 1–5 cycles.
+
+
+## Installation
 To install the `mfp2` package, enter the following command in the R console:
 ```{r, eval=FALSE}
 install.packages("mfp2", repos = "??")
 ```
 
-## Introduction to mfp2 package
-
-`mfp2` is a package that selects the MFP model. In additional, it has the ability to to model a sigmoid relationship between x and an outcome variable y using the ACD transformation proposed by Royston (2016). Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.
-
-
-
-Selects the multivariable fractional polynomial (FP) model that best predicts the outcome variable. It also has the ability to model a sigmoid relationship between x and an outcome variable y using the approximate cumulative distribution (ACD) transformation proposed by Royston (2016). This function provides two interfaces for input data: one for inputting data matrix x and outcome vector y directly and the other for using a formula object together with a data.frame data. Both interfaces are equivalent in terms of functionality.
-
-
-
-
-
-
-
-
-Several 
-
-MFP extends backward elimination by systematically searching for improvement in fit by modeling possible nonlinearity in the effects of continuous variables. The heart of MFP lies in
-modeling each continuous predictor using FP functions combined with a principled function selection procedure (FSP) to yield a simplified functional form, if appropriate. Each predictor
-is modeled univariately by this method, adjusted for the other predictors, within an
-overarching back-fitting algorithm that visits each predictor in turn.
-
-
-
-
-
-
-
-The
-regularization path is computed for the lasso or elastic net penalty at a grid of values (on the log scale)
-for the regularization parameter lambda. The algorithm is extremely fast, and can exploit sparsity in the
-input matrix x. It fits linear, logistic and multinomial, poisson, and Cox regression models. It can also fit
-multi-response linear regression, generalized linear models for custom families, and relaxed lasso regression
-models. The package includes methods for prediction and plotting, and functions for cross-validation.
-
-
 
 ## Quick Start
-The purpose of this section is to provide users with a comprehensive understanding of the mfp2 package. We will offer a concise overview of its key functions, fundamental operations, and resulting outputs. By the end of this section, users will have a clearer understanding of the available functions and be able to identify the appropriate ones for their needs. Additionally, we will delve into each function in detail, highlighting their specific capabilities and potential use cases. This will provide users with a deeper understanding of the package's functionality. The package includes a built-in dataset that is specifically designed for analysis within the `mfp2` framework. This dataset is readily available and can be accessed directly from the package.
+The purpose of this section is to provide users with a comprehensive 
+understanding of the `mfp2` package. We will provide a concise overview of its 
+key functions, fundamental operations, and resulting outputs. We will delve into
+each function in detail, highlighting their specific use. This will provide 
+users with a deeper understanding of the package's functionality. The package includes a built-in dataset that is specifically designed for analysis within
+the `mfp2` framework. 
 
 To begin, let's load the `mfp2` package:
 ```{r}

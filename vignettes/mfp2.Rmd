@@ -498,7 +498,7 @@ library(mfp2)
 ```
 
 ## Linear Regression
-The default `family` in our package is `Gaussian`, which fits a Gaussian 
+The default `family` in `mfp2` package is `Gaussian`, which fits a Gaussian 
 linear model. In this section, we will demonstrate how to fit this model. We will use the prostate cancer data (Stamey et al., 1989) included
 in our package. The dataset contains seven predictors (six continuous variables
 and one binary variable) and a continuous outcome variable (log prostate-specific antigen (lpsa)) of 97 patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist in the
@@ -526,14 +526,24 @@ means that `mfp2` inherits properties and methods from `glm` and `lm`, which
 allows the `mfp2` to utilize methods and functions specific to `glm` and `lm`. Various methods are defined for extracting components from the `mfp2` object, such as coef, print, summary, fracplot, and predict. These methods allow users to access different components of the mfp2 object, including coefficient estimates,
 summary statistics, plotting functionalities, and predictions.
 
-Now, we demonstrate how to fit the same model using the formula interface. We
-utilize the `fp()` function which takes in some parameters
+We demonstrate how to fit the same model using the formula interface. In this 
+case, we will use the `fp()` function, which requires the continuous variable 
+as an argument. For more comprehensive information on the fp() function, please refer to section xx
 
 ```{r, eval=FALSE}
 fit <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +
               fp(cp), data = prostate)
 ```
 
+The main distinction between the `mfp2()` and `glm()` functions in R is the inclusion of the `fp()` function within the formula used by `mfp2()`. The presence of the `fp()` function indicates that the variables included within it should undergo fractional polynomial (FP) transformation, provided that the degree of freedom is not equal to 1.
+
+It's worth noting that the variable `svi` is a binary variable, hence not passed 
+to the `fp()` function. Since FP transformation is not applicable to binary or
+factor variables, it is excluded from the transformation process. However, if a binary variable is passed to the `fp()` function, the program will automatically set the degrees of freedom to 1, treating the variable as linear. Factor variables
+will return an error when passed to `fp()` function.
+
+
+By default the mfp2() 
 
 
 

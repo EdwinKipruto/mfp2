@@ -1,0 +1,438 @@
+---
+title: "Multivariable Fractional Polynomials with Extensions"
+author:
+- Edwin Kipruto
+- Michael Kammer
+- Patrick Royston
+- Willi Sauerbrei
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+bibliography: assets/mfp_refs.bib
+link-citations: true
+output:
+  html_document:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+    df_print: paged
+  word_document:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+  pdf_document:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+editor_options:
+  markdown:
+    wrap: sentence
+vignette: >
+  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+   \usepackage[utf8]{inputenc}
+---
+
+```{r include=FALSE}
+# the code in this chunk enables us to truncate the print output for each
+# chunk using the `out.lines` option
+# save the built-in output hook
+hook_output <- knitr::knit_hooks$get("output")
+
+# set a new output hook to truncate text output
+knitr::knit_hooks$set(output = function(x, options) {
+  if (!is.null(n <- options$out.lines)) {
+    x <- xfun::split_lines(x)
+    if (length(x) > n) {
+        
+      # truncate the output
+      x <- c(head(x, n), "....\n")
+    }
+    x <- paste(x, collapse = "\n")
+  }
+  hook_output(x, options)
+})
+```
+
+<!-- justify text in the entire document-->
+<style>
+body {
+  text-align: justify;
+}
+
+figcaption {
+  text-align: justify;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction to Multivariable Fractional Polynomial(MFP)
+
+## Overview of MFP
+Multivariable regression models are widely used across various fields of science where empirical data is analyzed. In model building, many researchers often assume a linear function for continuous variables, sometimes after applying “standard” transformations such as logarithmic, or divide the variable into several categories. However, assuming linearity without considering non-linear relationships may hinder the detection of stronger effects or even 
+cause the effects to be mis-modeled. Categorizing continuous variables, which 
+results in modeling implausible step functions, is a common practice but widely
+criticized (Sauerbrei et al. 2023; Royston et al. 2006). 
+
+
+When building a descriptive model with the aim of identifying predictors of an 
+outcome and understanding the the relationship between the predictors and the 
+outcome, two components are often considered: variable selection, which involves
+identifying the subset of “important” predictors, and identification of possible
+non-linearity in continuous predictors. 
+
+The MFP approach has been proposed as a pragmatic method for dealing with
+non-linearity in multivariable model-building. This approach retains continuous
+predictors as continuous, identifies non-linear functions if sufficiently 
+supported by the data, and eliminates weakly influential predictors using 
+backward elimination (BE). Despite its simplicity and ease of understanding for
+researchers familiar with regression models, the selected models often capture
+the essential information from the data. The MFP models are relatively 
+straightforward to interpret and report, which is essential for their 
+transportability and practical applicability. In summary, the MFP procedure 
+combines:
+
+* variable selection through backward elimination (BE) with\
+* Selection of fractional polynomial (FP) functions for continuous variables
+
+The analyst must decide on a nominal significance level $(\alpha)$ for both 
+components. The choice of these two significance levels has a strong influence 
+on the complexity of the final model. While it is possible to use the same 
+$\alpha$ level for both components, they can also differ. The decision regarding
+these significance levels heavily depends on the specific aim of the analysis.
+
+Section 1.2 provides an overview of fractional polynomial functions for a single
+continuous variable in the model, including the function selection procedure (FSP).
+In Section 1.3, the MFP approach is described, focusing on models that involve 
+two or more variables. Section 2 is an introduction to our package which covers the installation process and provides instructions for utilizing it in various linear regression models. Section 3 presents a 
+comparison between our package and other R packages that implement MFP. 
+Section 4 introduces an extension of MFP using the approximate cumulative distribution (ACD) transformation of a continuous covariate. This extension 
+allows for modeling a sigmoid relationship between covariates and an outcome
+variable. Subsection 4.1 describes the function selection procedure with ACD 
+transformation (FSPA), while section 4.2 offers a guide on how to implement 
+MFPA using our package. Lastly, Section 5 describes an additional extension of
+MFP that is not currently implemented in our package but is available in the 
+STATA software.
+
+For more comprehensive information about MFP and its extensions, please visit
+our website at https://mfp.imbi.uni-freiburg.de/.
+
+
+## Fractional polynomial models for a continuous variable
+
+Suppose that we have an outcome variable, a single continuous covariate x, and 
+a regression model relating them. A starting point is the straight-line model,
+$\beta_1x$ (for simplicity, we suppress the constant term, $\beta_0$). Often, a
+straight line is an adequate description of the relationship, but other models
+should be investigated for possible improvements in ﬁt. A simple extension of 
+the straight line is a power transformation model, $\beta_1x^{p}$. The latter 
+model has often been used by practitioners in an ad hoc way, utilizing diﬀerent
+choices of p. Royston and Altman (1994) formalized the model by calling it a
+ﬁrst-degree fractional polynomial or FP1 function. The power p is chosen from a 
+pragmatically restricted set of eight elements: 
+S = {−2, − 1, − 0.5, 0, 0.5, 1, 2, 3}, where $x^0$ denotes natural logarithm  of
+x, $log (x)$.
+
+As with polynomial regression, extension from one-term FP1 functions to more 
+complex and ﬂexible two-term FP2 functions is straightforward.
+The quadratic function $\beta_1x^1 + \beta_2x^2$ is written as 
+$\beta_1x^{p1} + \beta_2x^{p2}$ in FP terminology. The powers $p1=1$ and $p2=2$ 
+are members of S. Royston and Altman extended the class of FP2 functions with
+different powers to cases with equal powers ($p1=p2=p$) by defining them as
+$\beta_1x^p + \beta_2x^p log(x)$. These are known as repeated-powers functions.
+Detailed definition of FP functions or models is given in Section 4.3.1 of 
+Royston and Sauerbrei (2008). For formal deﬁnitions, we use notation from 
+Royston and Sauerbrei (2008). Throughout the rest of this article, we use 
+abbreviations (R&S, year) and (S&R, year) for papers published by these two author.
+
+FP1 functions are always monotonic and those with power $p < 0$ have an asymptote
+as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e., 
+have one maximum or one minimum for some positive values of x), and they have an
+asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
+For more details, see R&S (2008), Section 4.4.
+Figure 1 shows FP1 and some FP2 curves. The subset of FP2 powers is chosen to 
+illustrate the ﬂexibility available with a few pairs of powers ($p1, p2$).
+
+In total, there are 44 models available within the set of FP powers (S),
+consisting of 8 FP1 models and 36 FP2 models. Although the allowed class of FP
+functions may seem limited, it encompasses a wide range of diverse shapes. 
+This is illustrated in Figure 1, with the left panel displaying eight FP1 powers
+and the middle panel depicting a subset of FP2 powers. The right panel 
+demonstrates the variations in shape for a fixed FP2 power (-2, 2) but different
+regression coefficients.
+
+Based on extensive experience with real data and several simulation studies, 
+FP1 and FP2 are generally considered adequate in the context of multivariable 
+model building, particularly when variable selection and functional forms is 
+required. The content of this article has been previously published in two 
+encyclopedia articles (Sauerbrei and Royston, 2011; Sauerbrei and Royston, 2016).
+
+
+```{r, echo=FALSE,results='hide'}
+x <- seq(0.05, 1.05, length.out = 1000)
+funx <- function(x, power){
+  ifelse(power==rep(0,length(x)),log(x), x^power)
+}
+funx(x = x, power = -2)
+
+s <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+# transform x using the powers in s
+outx = lapply(s, function(s) funx(x = x, power = s))
+# multiply the first 3 with -1 so that the function increase rather than decrease
+# due to negative powers. these are betas i,e y = beta*x^p
+k <- c(-1, -1, -1, 1, 1, 1, 1, 1)
+datx = matrix(unlist(outx), ncol = length(s))
+datax = datx%*%diag(k)
+head(datax)
+# standardize the data so that y is in the same range
+dataxx = apply(datax, 2,function(x) (x-min(x))/(max(x)-min(x)))
+colnames(dataxx) <- c(paste0("x",1:length(s)))
+head(dataxx)
+dataxx <- as.data.frame(dataxx)
+dataxx$x <- x
+```
+
+```{r, echo=FALSE,results='hide'}
+library(ggplot2)
+# Different FP2 functions
+# Define functions
+f1 <- function(x) 3 - 10*x^2 + 4*x^3
+f2 <- function(x) 20 - 15.4*x^2 + 4*x^3
+f3 <- function(x) -20 + 6*log(x) + 6*log(x)*log(x)
+f4 <- function(x) 20 + 0.3*(x^-2) - 4*(x^-1)
+f5 <- function(x) -10 + 5*(x^0.5) + 14*(x^-0.5)
+f6 <- function(x) 33 + 19*log(x) - 7*(x^2)
+f7 <- function(x) -10 + 10*(x-1.5) + 10*(x-1.5)^2
+
+# Create data frames for each function
+x = seq(0.1, 3, by = 0.01)
+df1 <- data.frame(x = x, y = f1(x))
+df2 <- data.frame(x = x, y = f2(x))
+df3 <- data.frame(x = x, y = f3(x))
+df4 <- data.frame(x = x, y = f4(x))
+df5 <- data.frame(x = x, y = f5(x))
+df6 <- data.frame(x = x, y = f6(x))
+df7 <- data.frame(x = x, y = f7(x))
+
+##############################################################################
+# Fixed FP2 POWER TERMS (-2, 2) 
+# ADAPTED FROM ROYSTON STATA CODES. SEE FIGURE 4.5 IN HIS BOOK R&S 2008
+    x = (1:400)/10+10
+    # Generate additional variables
+    x2 <- x^2
+    x_2 <- 1/x2
+    x_1 <- 1/x
+    x05 <- sqrt(x)
+    x_05 <- 1/x05
+    x3 <- x*x2
+    x0 <- log(x)
+    y1 <- scale(x)
+    y2 <- scale(x2)
+    y3 <- scale(x_2)
+    y4 <- scale(x_1)
+    y5 <- scale(x05)
+    y6 <- scale(x_05)
+    y7 <- scale(x3)
+    y8 <- scale(x0)
+    # Generate FP2 curves for -2, 2
+    f1 <- scale(10 + y3 - 10*y2)
+    f2 <- scale(10 + y3 - 5*y2)
+    f3 <- scale(10 + y3 - 2*y2)
+    f4 <- scale(10 + y3 - 0.5*y2)
+    f5 <- scale(10 + y3 - 0.05*y2)
+    f6 <- scale(10 + y3 + 10*y2)
+    f7 <- scale(10 + y3 + 5*y2)
+    f8 <- scale(10 + y3 + 2*y2)
+    f9 <- scale(10 + y3 + 0.5*y2)
+    f10 <- scale(10 + y3 + 0.05*y2)
+    f11 <- scale(10 + y2 - 10*y3)
+    f12 <- scale(10 + y2 - 5*y3)
+    f13 <- scale(10 + y2 - 2*y3)
+    f14 <- scale(10 + y2 - 0.5*y3)
+    f15 <- scale(10 + y2 - 0.05*y3)
+    f16 <- scale(10 + y2 + 10*y3)
+    f17<-scale(10+y2+5*y3)
+    f18<-scale(10+y2+2*y3)
+    f19<-scale(10+y2+0.5*y3)
+    f20<-scale(10+y2+0.05*y3)
+      
+df <- data.frame(x, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12, f13, f14, f15, f16, f17, f18, f19, f20)
+    df <- tidyr::pivot_longer(df, cols = -x, names_to = "curve", values_to = "y")
+    library(RColorBrewer)
+    n <- 20
+    colrs <- brewer.pal.info[brewer.pal.info$colorblind == TRUE, ]
+    col_vec = unlist(mapply(brewer.pal, colrs$maxcolors, rownames(colrs)))
+    col <- sample(col_vec, n)
+    col = c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000')
+```  
+
+```{r, echo=FALSE, fig.show='hide'}
+colx <- randomcoloR::distinctColorPalette(8)
+linewd=0.7
+# 8 fp1
+p1 =  ggplot(dataxx, aes(x)) + 
+  geom_line(aes(y = x1, colour = "x1"), linewidth = 0.7) + 
+  geom_line(aes(y = x2, colour = "x2"), linewidth = linewd) + 
+  geom_line(aes(y = x3, colour = "x3"), linewidth = linewd) +
+  geom_line(aes(y = x4, colour = "x4"), linewidth = linewd) +
+  geom_line(aes(y = x5, colour = "x5"), linewidth = linewd) +
+  geom_line(aes(y = x6, colour = "x6"), linewidth = linewd) +
+  geom_line(aes(y = x7, colour = "x7"), linewidth = linewd) +
+  geom_line(aes(y = x8, colour = "x8"), linewidth = linewd) +
+  labs(x = "x", y = "f(x)", color = "Power") +
+  geom_text(aes(x = 0.12, y = 0.95, label = "(-2)"), size = 5, color =  colx[1]) +
+  geom_text(aes(x = 0.25, y = 0.9, label = "(-1)"),size = 5, color =  colx[2]) +
+  geom_text(aes(x = 0.375, y = 0.87, label = "(-0.5)"),size = 5, color = colx[3]) +
+  geom_text(aes(x = 0.5, y = 0.82, label = "(0)"),size = 5, color =  colx[4]) +
+  geom_text(aes(x = 0.5, y = 0.675, label = "(0.5)"),size = 5, color =  colx[5]) +
+  geom_text(aes(x = 0.5, y = 0.54, label = "(1)"),size = 5, color =  colx[6]) +
+  geom_text(aes(x = 0.675, y = 0.5, label = "(2)"),size = 5, color =  colx[7]) +
+  geom_text(aes(x = 0.75, y = 0.275, label = "(3)"),size = 5, color =  colx[8]) +
+  theme_bw() +  theme(legend.position = "none")
+```
+
+```{r, echo=FALSE, fig.show='hide'}
+# Plot functions
+p2 = ggplot() +
+  geom_line(data = df1, aes(x = x, y = y), color = "#e41a1c") +
+  geom_line(data = df2, aes(x = x, y = y), color = "#377eb8") +
+  geom_line(data = df3, aes(x = x, y = y), color = "#4daf4a") +
+  geom_line(data = df4, aes(x = x, y = y), color = "#984ea3") +
+  geom_line(data = df5, aes(x = x, y = y), color = "#ff7f00") +
+  geom_line(data = df6, aes(x = x, y = y), color = "#FF00FF") +
+  geom_line(data = df7, aes(x = x, y = y), color = "#a65628") +
+  scale_x_continuous(limits = c(0, 3)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(-25,40)) + theme_classic() +
+  geom_text(aes(x = 0.75, y = 2.4,size = 5, label = "(2, 3)"), color = "#e41a1c") +
+  geom_text(aes(x = 1.6, y =1.95,size = 5, label = "(2, 3)"), color = "#377eb8")+
+  geom_text(aes(x = 0.7, y = -18,size = 5, label = "(0, 0)"), color = "#4daf4a") +
+  geom_text(aes(x = 1.25, y = 20,size = 5, label = "(-2, -1)"), color = "#984ea3") +
+  geom_text(aes(x = 1.3, y = 12,size = 5, label = "(-0.5, 0.5)"), color = "#ff7f00") +
+  geom_text(aes(x = 1.25, y = 29.5,size = 5, label = "(0, 2)"), color = "#FF00FF") +
+  geom_text(aes(x = 1, y = -9.5,size = 5, label = "(1, 2)"), color = "#a65628") +
+  ylab("f(x)") + theme_bw() +  theme(legend.position = "none") + theme(axis.title.y = element_blank())
+```
+
+```{r, echo=FALSE, fig.show='hide'}
+p3 =  ggplot(df, aes(x, y, color = curve)) +
+      geom_line()  + theme_classic() +
+     theme(
+       legend.position = "none",
+       axis.ticks = element_blank(),
+       axis.text.y = element_blank(),
+       axis.title=element_text(size=18),
+       axis.text.x = element_blank()) +
+      ylab("f(x)") + theme_bw() +
+     geom_text(aes(x = 45, y = 4.3, label = "(-2, 2)"),size = 5, color = "black") +
+   theme(legend.position = "none") + theme(axis.title.y = element_blank())
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6, out.width="100%", fig.align='center',fig.cap="Figure 1. Examples of FP1 curves (left) and FP2 curves (middle) are shown for different powers. The right panel illustrates FP2 powers (-2, 2) with different regression coefficients"}
+# COMBINE THE TWO PLOTS
+patchwork::wrap_plots(p1,p2, ncol=2, widths = 10,heights = 4)
+
+    # (figure =ggpubr::ggarrange(p1,p2,p3,ncol = 3, nrow = 1, widths = 10,heights = 6, common.legend = F, legend = "none", vjust = 2))
+
+```
+
+### Function selection procedure (FSP)
+
+Choosing the best FP1 or FP2 function by grid search, minimizing the deviance (minus twice the maximized log-likelihood), is straightforward.
+However, having a suitable default function is important for increasing the parsimony, stability, and general usefulness of selected functions.
+In most of the algorithms implementing fractional polynomial (FP) modeling, the default function is linear -- arguably, a natural choice.
+Therefore, unless the data support a more complex FP function, a straight line model is chosen.
+There are occasional exceptions; for example, in modeling time-varying regression coeﬃcients in the Cox model, Sauerbrei et al. (2007) chose a default time ($t$) transformation of $log (t)$ rather than $t$.
+It can be assumed that deviance diﬀerence between an FPm and an FP (m−1) model is distributed approximately as central $𝜒2$ on 2 degrees of freedom (d.f.) (R&S 2008, Chapter 4.9; Ambler and Royston (2001).
+To select a speciﬁc function, a closed test procedure (other procedures had been proposed before) was proposed (R&S 2008, Section 4.10).
+The complexity of the ﬁnally chosen function is predicated on preliminary decisions as to the nominal p value (𝛼) and the degree (m) of the most complex FP model allowed.
+Typical choices are 𝛼 = 0.05 and FP2 (m = 2).
+We illustrate the strategy for m = 2, which runs as follows:
+
+1.  Test the best FP2 model for x at the 𝛼 signiﬁcance level against the null model using 4 d.f. If the test is not signiﬁcant, stop and conclude that the eﬀect of x is "not signiﬁcant" at the 𝛼 level. Otherwise continue.
+2.  Test the best FP2 for x against a straight line at the 𝛼 level using 3 d.f. If the test is not signiﬁcant, stop, the ﬁnal model being a straight line. Otherwise continue.
+3.  Test the best FP2 for x against the best FP1 at the 𝛼 level using 2 d.f. If the test is not signiﬁcant, the ﬁnal model is FP1, otherwise, the ﬁnal model is FP2. This marks the end of procedure.
+
+The test at step 1 is of overall association of the outcome with x.
+The test at step 2 examines the evidence for nonlinearity.
+The test at step 3 chooses between a simpler or more complex nonlinear model.
+
+## Multivariable fractional polynomial (MFP) procedure
+
+When developing a multivariable model with a relatively large number of candidate covariates (say 20, we are not envisaging the case of high-dimensional data), an important distinction is between descriptive, predictive and explanatory modelling (Shmueli, 2010).
+MFP was mainly developed for descriptive modelling, aiming to capture the data structure parsimoniously.
+Nevertheless, a suitable descriptive model often has a fit similar to a model whose aim is good prediction.
+In some fields, the term explanatory modelling is used exclusively for testing causal theory.
+Unlike developing a predictive model based on acceptable statistical criteria, developing a model suitable for description is much more challenging (Sauerbrei et al., 2015).
+
+In many areas of science, the main interest often lies in the identification of inﬂuential variables and determination of appropriate functional forms for continuous variables.
+Often, linearity is presumed without checking this important assumption, and much better-ﬁtting nonlinear functions may not be considered.
+The MFP procedure was proposed as a pragmatic strategy to investigate whether nonlinear functions can improve the model ﬁt (R&S, 2008; S&R, 1999).
+MFP combines backward elimination (BE) for the selection of variables with a systematic search for possible nonlinearity by the function selection procedure (FSP).
+The extension is feasible with any type of regression model to which BE is applicable.
+When developing models for description, it is important to consider factors such as model stability, generalizability, and practical usefulness.
+The philosophy behind MFP modeling is to create interpretable and relatively simple models (Sauerbrei et al 2007).
+Consequently, an analyst using MFP should be less concerned about failing to include variables with a weak eﬀect or failing to identify minor curvature in a functional form of a continuous covariate.
+Modiﬁcations that may improve MFP models are combination with post-estimation shrinkage (Dunkler et al., 2016, R-package shrink) and a more systematic check for overlooked local features (Binder and Sauerbrei, 2010, currently not implemented
+in our package).Successful use of MFP requires only general knowledge about building regression models.
+
+Two nominal signiﬁcance level values are the main tuning parameters: $\alpha_1$ for selecting variables with BE (in the ﬁrst step of the FSP) and $\alpha_2$ for comparing the ﬁt of functions within the FSP.
+Often, $\alpha_1=\alpha_2$ is a good choice.
+If available, subject-matter knowledge should replace or at least guide data-dependent model choice.
+Only minor modiﬁcations are required to incorporate various types of subject-matter knowledge into MFP modeling.
+For a detailed example, see S&R (1999).
+Recommendations for practitioners of MFP modeling are given in Sauerbrei et al. (2007b) and in R&S (2008, Section 12.2).
+
+### MFP -- Key Issues and Approaches to Handling Them
+
+Mainly focusing on the FP component, we brieﬂy mention key issues of MFP modeling and refer to the literature for further reading.
+Regarding variable selection, we have summarized relevant issues and provided arguments for backward elimination as our preferred strategy (R&S 2008, Chapter 2).
+Even when a search for model improvement using a nonlinear function is not considered, that is, all functions are assumed linear, it is infeasible to derive a suitable and stable model for description in small datasets.
+Below we provide some information about sample size needed, but implicitly we assume that the sample size is "suﬃcient".
+
+#### The variable has to be positive
+
+The class of FP1 and FP2 functions includes a log and other transformations which require that the continuous variable must be positive.
+A preliminary origin-shift transformation can be applied (R&S 2008, Chapters 4.7 and 11).
+For variables with a "spike" of probability mass at zero, a binary indicator variable may be added to the model and the FSP may be modiﬁed accordingly (Royston et al., 2010; Becher et al., 2012; Lorenz et al., 2018).
+
+#### Sample size, influential observations and replicability of MFP models
+
+All statistical models are potentially adversely aﬀected by inﬂuential observations or "outliers".
+However, compared with models that comprise only linear functions, the situation may be more critical for FP functions because logarithmic or negative power transformations may produce extreme functional estimates at small values of x.
+Conversely, the same may happen with large positive powers at large values of x.
+Such transformations may create inﬂuential observations that may affect parts of the FSP.
+To mitigate the impact of influential observations, it is important to assess the robustness of FP functions.
+Some suggestions for investigating inﬂuential points (IPs) and handling such issues in MFP modeling can be found in R&S (2008, Chapters 5 and 10) and their paper on improving the robustness of FP models (R&S, 2007).
+Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023).
+The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model.
+However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables. Figure 2 illustrates the effects of influential observation 151 on the art dataset. The variable of interest is x5 with extremely large values, and the outcome is a continuous variable. The inclusion of observation 151 in the data results in the selection of the FP2 function, while its elimination leads to the selection of the FP1 function. Therefore, it is sufficient to describe variable x5 using a simpler FP1 function rather than a complex FP2 function. For more details, refer to Sauerbrei et al. (2023).
+```{r, echo=FALSE,results='hide'}
+library(mfp2)
+data("art")
+fit1 <- mfp2::mfp2(y~fp(x5), data = art)
+fit2 <- mfp2::mfp2(y~fp(x5), data = art[-151,])
+
+```
+
+```{r, echo=FALSE, fig.show='hide'}
+f1 <- mfp2::fracplot(fit1, terms = "x5", terms_seq = "equi")
+f2 <- mfp2::fracplot(fit2, terms = "x5", terms_seq = "equi")
+
+```
+
+```{r, echo=FALSE, fig.show='hide'}
+f1 <- mfp2::fracplot(fit1, terms = "x5", terms_seq = "equi", shape = 16)
+f1 <- f1[[1]] + ylab("y")
+f2 <- mfp2::fracplot(fit2, terms = "x5", terms_seq = "equi", shape = 16)
+f2 <- f2[[1]] + ylab("y")
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=6, out.width="100%", fig.align='center',fig.cap="Figure 2. Examples of FP1 curves (left) and FP2 curves (middle) are shown for different powers. The right panel illustrates FP2 powers (-2, 2) with different regression coefficients"}
+# COMBINE THE TWO PLOTS
+patchwork::wrap_plots(f1,f2, ncol=2, widths = 10,heights = 4)
+
+```

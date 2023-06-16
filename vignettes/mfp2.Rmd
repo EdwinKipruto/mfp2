@@ -510,8 +510,8 @@ data.
 Load the `prostate` dataset from the `mfp2` package
 
 ```{r out.lines = 10}
-data("prostate_ca")
-head(prostate_ca)
+data("prostate")
+head(prostate)
 ```
 The command loads a dataframe from the R data archive since the .
 

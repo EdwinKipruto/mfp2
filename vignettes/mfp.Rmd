@@ -436,3 +436,81 @@ f2 <- f2[[1]] + ylab("y")
 patchwork::wrap_plots(f1,f2, ncol=2, widths = 10,heights = 4)
 
 ```
+
+### Fractional polynomials are unsuitable for modeling some types of functions
+
+#### MFPA to model sigmoid functions
+
+Sigmoid (doubly asymptotic) functions are not represented in the class of standard FP functions.
+Royston (2014) introduced the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and an outcome variable.
+In addition, R&S (2016) proposed the MFPA procedure, which extends standard MFP by permitting selection of sigmoid functions derived from the ACD transformation when supported by suﬃciently strongly evidence in the data.
+
+#### Local features
+
+Unlike splines which have a local interpretation of the fitted function, FPs provide a curve with a global interpretation.
+To investigate possible "overlooked" local features of an FP function, Binder and Sauerbrei (2010) conducted a systematic analysis of model ﬁts obtained by MFP.
+If local features are detected by their MFP + L procedure, statistically signiﬁcant local polynomials are then parsimoniously added to the predictor from MFP.
+This enables the identification and incorporation of local features that may have been missed by the global FP function.
+So far not implemented.
+
+#### Improved fit by more complex functions
+
+Lack of ﬁt is a potential issue for any model.
+Possible reasons are manifold, and it is not usually obvious how best to improve the model.
+In the context of (FP) functions, ﬁt may be improved by applying a preliminary transformation or using higher order fractional polynomials (R&S 2008, Section 5), eg.
+FP3).
+However, for more than two decades of practical experience with data from the health sciences, higher order FPs (larger than 2) were hardly ever required to improve a model.
+Obviously, lack of ﬁt may also point to overlooked covariate interactions or other types of mismodeling.
+
+### Parameter estimates are likely to be biased
+
+For all types of regression models, data-dependent model building introduces selection bias in parameter estimates.
+Shrinkage factors oﬀer a possible way to try to correct for this bias (R&S 2008, Chapter 2.8; Sauerbrei, 1999).
+For parameters that are highly correlated or structurally associated, such as dummy variables coding a categorical variable or several parameters describing a nonlinear (FP2) function, the approach has been extended to joint shrinkage factors (Dunkler et al., 2016).\
+
+In addition, data-dependent search for the best-fitting functional form (determination of power terms and corresponding parameter estimates) implies that estimated standard errors and conﬁdence intervals tend to be too small because inference is done as if the model had been prespeciﬁed (sometimes called naive estimates).
+The uncertainty of the selection process is ignored.
+The general weakness of all strategies that derive a model in a data-dependent way has been known for a long time.
+More than two decades ago, Breiman (1992) called this a "quiet scandal".
+To tackle the issue, one could improve interval estimates using approaches based on the bootstrap (R&S 2008, Chapter 6.6) or the model uncertainty concept and model averaging (Draper, 1995; Faes et al., 2007).
+
+### Extensions of MFP to investigate for interactions
+
+Substantia shortening required.
+For more details see the website and papers cited.
+Stata programs for MFPI and MFPIgen are available (<https://mfp.imbi.uni-freiburg.de/>)\
+MFP was developed to select main effects of covariates on the outcome.
+If a variable $x_2$ explains (at least partially) the relationship between a covariate $x_1$ and the outcome y then confounding is present.
+Another important issue in multivariable modeling is interaction between two or more covariates.
+An interaction between $x_1$ and $x_2$ is present if $x_2$ modifies the relationship between x1 and the outcome.
+This means that the effect of $x_1$ is different in subgroups determined by $x_2$.
+Extensions of MFP have been proposed to handle two-way interactions involving at least one continuous covariate (R&S, 2004; R&S 2008, Chapter 7).\
+
+To investigate for a possible interaction between a continuous covariate and two treatment arms in a randomized controlled trial, the multivariable fractional polynomial interaction (MFPI) procedure was introduced (R&S, 2004).
+In a first step, the FP class is used to model the prognostic effect of the continuous variable separately in the two treatment arms, usually under some restrictions such as the same power terms in each arm.
+In a second step, a test for the equality of the prognostic functions is conducted.
+If significant, an interaction is present and the difference between two functions estimates the influence of the prognostic factor on the effect of treatment.
+The difference function is called a treatment effect function and should be plotted.
+For interpretation, it is important to distinguish between the two cases of a predefined hypothesis and of searching for hypotheses (R&S 2008; R&S 2004).\
+
+In a large simulation study, R&S (2013; 2014) evaluated the significance levels of 21 methods for investigating interactions between a binary treatment effect and a continuous covariate in a randomized controlled trial.
+They concluded that the results provided sufficient evidence to recommend the MFPI procedure as a suitable approach to investigate interactions of treatment with a continuous variable.
+For more than 2 groups, extensions to investigate continuous by categorical interactions are immediate.
+Furthermore, MFPI allows investigation of treatment-covariate interactions in models with or without adjustment for other covariates.
+The adjustment for other covariates enables the use of the procedure also in observational studies.
+Continuous-by-continuous interactions are important in observational studies.
+A popular approach is to assume linearity for both variables and test the multiplicative term for significance.
+However, the model may fit poorly if one or both of the main effects is non-linear.
+In R&S (2008, Chapter 7) an extension of MFPI, known as MFPIgen, was introduced.
+Products of selected main effect FP functions are considered as candidates for an interaction between a pair of continuous variables.
+Several continuous variables are usually available, and a test of interaction is conducted for each such pair.
+If more than one interaction is detected, interactions are added to the main-effects model in a step-up manner.
+The MFPT(ime) algorithm (Sauerbrei et al 2007) combines selection of variables and of the functional form for continuous variables with determination of time-varying effects in a Cox proportional hazards model for survival data.
+A procedure analogous to the FSP was suggested for investigating whether the effect of a variable varies in time, i.e. whether a time-by-covariate interaction is present.
+Buchholz and Sauerbrei (2011) compared procedures to assess non-linear and time-varying effects in multivariable models for survival data.
+They found that assessing time-varying effects depends on issues such as modeling the functional form for a continuous covariate and omitting other covariates.
+Among the approaches investigated, MFPT seems to be preferable for investigating several issues.
+A large effective sample size is needed to investigate non-linear and time-varying effects in a survival data model.
+
+
+

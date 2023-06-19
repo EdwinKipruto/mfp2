@@ -279,11 +279,65 @@ variable in the column of `x`, which is `age`, is assigned a shifting factor of 
 and a scaling factor of 10. The second variable, `svi`, is assigned a shifting 
 factor of 0 and a scaling factor of 1, and so on.
 
-### degrees of freedom
+### Setting degrees of freedom for each variable
 
-```{r out.lines = 10}
-fit <- mfp2(x, y)
+The degrees of freedom (df) for each predictor (excluding the intercept) are 
+twice the degrees of freedom of the FP. For instance, if the maximum allowed 
+complexity of variable $x_1$ is a second-degree FP (FP2), then the degrees of 
+freedom assigned to this variable should be 4. The default df = 4` for each 
+predictor.
+
+After assigning the default degrees of freedom to each variable, the program 
+proceeds and overrides the default value based on the number of unique values 
+for a given variable. The rules for overriding the default degrees of freedom 
+are as follows:
+
+* If a variable has 2-3 distinct values, it is assigned `df` = 1 (linear).\
+* If a variable has 4-5 distinct values, it is assigned `df` = min(2, default).\
+* If a variable has 6 or more distinct values, it is assigned `df` = default.
+
+These rules ensure that the appropriate `df` are assigned to variables. For 
+instance, it is not sensible to fit an FP2 function to a variable with only 3 distinct values. 
+
+The following code illustrates how to set different `df` for  each variable. In 
+the default interface, the `df` of the binary variable `svi` is explicitly set 
+to 1. In the formula interface, there is no need to specify the `df`, as the
+program automatically assigns `df = 1` for binary variables.
+
+If the user attempts to enter df = 4` for `svi` in the default interface, the 
+program will reset the `df` to 1 and issue a warning.
+
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age, df = 4) + svi + fp(pgg45, df = 4) + fp(cavol, df = 4) + fp(weight, df = 4) +
+       fp(bph, df = 4) + fp(cp, df = 4),data = prostate)
+
 ```
+
+If the user does not explicitly assign `df` to variables, the program will automatically assign a `df = 4` to each variable. It is important to note that 
+even if a continuous variable is not passed to the `fp`()` function in the 
+formula interface, the `df` of that variable will still be set to the default 
+value and will later be adjusted based on the unique values. The following three examples are equivalent:
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y)
+
+# Formula Interface
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+       fp(bph) + fp(cp), data = prostate)
+
+# Formula Interface but `cp` not passed to the fp() function
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+       fp(bph) + cp, data = prostate)
+```
+
+### Setting significance levels for variable and function selection
+
 
 ### Gaussian family
 

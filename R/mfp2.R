@@ -948,12 +948,27 @@ mfp2.formula <- function(formula,
   
   # if fp() is not used in the formula, it reduces to mfp2.default() 
   df_list <-  setNames(as.list(assign_df(x = x, df_default = df)), names_x)
-  scale_list <- setNames(rep(list(scale), nx), names_x)
-  shift_list <- setNames(rep(list(shift), nx), names_x)
+  
+  # scaling
+  if (is.null(scale)) {
+    scale_list <- setNames(as.list(apply(x, 2, find_scale_factor)), names_x)
+  } else {
+    scale_list <- setNames(rep(list(scale), nx), names_x)
+    
+  }
+  
+  # shifting
+  if (is.null(shift)) {
+    shift_list <- setNames(as.list(apply(x, 2, find_shift_factor)), names_x)
+  } else {
+    shift_list <- setNames(rep(list(shift), nx), names_x)
+  }
+  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list <- setNames(rep(list(alpha), nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
-  acdx_list <- setNames(rep(list(NULL), nx), names_x)
+  acdx_list <- setNames(rep(list(FALSE), nx), names_x)
+
   
   # if fp() is used in the formula
   if (length(fp_pos) != 0) {
@@ -961,9 +976,11 @@ mfp2.formula <- function(formula,
     df_list <- modifyList(df_list, 
                           setNames(lapply(fp_data, attr, "df"), fp_vars))
     scale_list <- modifyList(scale_list, 
-                             setNames(lapply(fp_data, attr, "scale"), fp_vars))
+                             Filter(Negate(is.null),setNames(lapply(fp_data, attr,
+                                                                    "scale"), fp_vars)))
     shift_list <- modifyList(shift_list, 
-                             setNames(lapply(fp_data, attr, "shift"), fp_vars))
+                             Filter(Negate(is.null),setNames(lapply(fp_data, 
+                                                                    attr, "shift"), fp_vars)))
     center_list <- modifyList(center_list,
                               setNames(lapply(fp_data, attr, "center"), fp_vars))
     alpha_list <- modifyList(alpha_list, 

@@ -150,12 +150,11 @@ is already loaded. We create a matrix `x` and a numeric vector `y` from the data
 
 ### Fitting MFP Models Using Default and Formula Interface
 
-The default interface of `mfp2()` requires a matrix of predictors and a numeric 
-vector of response `y` for continuous outcomes. If you have one predictor, make 
-sure you convert it into a matrix with a single column.
+The default interface of `mfp2()` requires a matrix of predictors `x` and a 
+numeric vector of response `y` for continuous outcomes. If you have one predictor, make sure you convert it into a matrix with a single column.
 
-We fit the Gaussian linear model using the default interface of `mfp2()` with 
-default parameters.
+We demonstrate how to fit the Gaussian linear model using the default interface 
+of `mfp2()` with default parameters.
 
 ```{r, eval=FALSE}
 fit <- mfp2(x, y)
@@ -180,34 +179,26 @@ The main distinction between the `mfp2()` and `glm()` functions in R is the
 inclusion of the `fp()` function within the formula. The presence of the `fp()` 
 function in the formula indicates that the variables included within it should 
 undergo fractional polynomial (FP) transformation, provided that the degree of 
-freedom (DF) is not equal to 1. A DF of 1 represents a linear relationship,
-which does not require transformation. Note that DF is an argument in the 
+freedom (df) is not equal to 1. A df of 1 indicates a linear relationship,
+which does not require transformation. Note that df is an argument in the 
 `fp()` function. For more details on the fp() function, please refer to section
 xx
 
-It's important to note that the variable `svi` is a binary variable and is
-therefore not passed to the `fp()` function. This is because binary or factor
-variables do not undergo FP transformation. However, if a binary variable is 
-mistakenly passed to the `fp()` function, the program will automatically set
-the DF to 1, treating the variable as linear. However, passing a factor variable
-to the `fp()` function will result in an error. For more details on handling 
-factor variables, refer to section XX.
+The variable `svi` is a binary variable and is therefore not passed to the `fp()` function. This is because binary or factor variables do not undergo FP transformation. If a binary variable is mistakenly passed to the `fp()` function,
+the program will automatically set the df to 1, treating the variable as linear. However, passing a factor variable to the `fp()` function will result in an error. For more details on handling factor variables, refer to section XX.
 
 ### Shifting and Scaling of Predictors
 Fractional polynomials are defined only for positive variables due to the use of
 logarithms and other powers. Thus, `mfp2()`function estimates shifting factors
-for each variables to ensure positivity or assumes that the variables are 
-already positive when computing fractional powers of the input variables in case
-that shifting is disabled manually. The function `find_shift_factor()` 
-automatically estimates shifting factors for continuous variables. 
-The formula used to estimate the shifting factor for a variable, say `x1`,
-is given by:
+for each variables to ensure positivity. The function `find_shift_factor()`,
+used internally by `mfp2`, automatically estimates shifting factors for continuous variables. The formula used to estimate the shifting factor for a variable, 
+say `x1`, is given by:
 \[
-\gamma - min(x1)
+shift_{x1} = \gamma - min(x1)
 \]
 where $min(x1)$ is the smallest observed value of `x1`, while $\gamma$ is the 
 minimum increment between successive ordered sample values of `x1`, excluding 0 
-(Royston and Sauerbrei,2008).
+(Royston and Sauerbrei,2008). The new variable $x1' = x1 + shift_{x1}$ will then be used by `mfp2()` in estimating the FP powers. 
 
 For example, to estimate shifting factors for predictor matrix `x` from prostate
 data in R, you can run the following code:
@@ -220,7 +211,7 @@ apply(x, 2, min)
 apply(x, 2, find_shift_factor)
 ```
 We see that among the continuous variables, only the variable `pgg45` is shifted
-by a value of 1, which is attributed to its minimum value being 0. Even though
+by a factor of 1, which is attributed to its minimum value being 0. Even though
 the variable `svi` also has a minimum value of 0, it is not shifted by the 
 program because its a binary variable. The user can manually set the shifting 
 factors for each variable in `mfp2()` function. 
@@ -244,7 +235,8 @@ process is implemented through the `find_scale_factor()` function. The following
 R code demonstrates the estimation of scaling factors for `x`. From the output
 below, we see that the variables `age`, `cavol`, and `cp` have scaling factors 
 of 10 each, while the variables `pgg45` and `weight` have scaling factors of 100
-each. Each variable will be divided by its corresponding scaling factor.
+each. Each variable will be divided by its corresponding scaling factor. A 
+scaling factor of 1 implies no scaling.
 
 ```{r}
 # shift x 
@@ -279,12 +271,12 @@ variable in the column of `x`, which is `age`, is assigned a shifting factor of 
 and a scaling factor of 10. The second variable, `svi`, is assigned a shifting 
 factor of 0 and a scaling factor of 1, and so on.
 
-### Setting degrees of freedom for each variable
+### Setting degrees of freedom for each variable {#df_vars}
 
 The degrees of freedom (df) for each predictor (excluding the intercept) are 
 twice the degrees of freedom of the FP. For instance, if the maximum allowed 
 complexity of variable $x_1$ is a second-degree FP (FP2), then the degrees of 
-freedom assigned to this variable should be 4. The default df = 4` for each 
+freedom assigned to this variable should be 4. The default `df` is 4 for each 
 predictor.
 
 After assigning the default degrees of freedom to each variable, the program 
@@ -301,10 +293,10 @@ instance, it is not sensible to fit an FP2 function to a variable with only 3 di
 
 The following code illustrates how to set different `df` for  each variable. In 
 the default interface, the `df` of the binary variable `svi` is explicitly set 
-to 1. In the formula interface, there is no need to specify the `df`, as the
+to 1, while In the formula interface, there is no need to specify the `df`, as the
 program automatically assigns `df = 1` for binary variables.
 
-If the user attempts to enter df = 4` for `svi` in the default interface, the 
+If the user attempts to enter `df = 4` for `svi` in the default interface, the 
 program will reset the `df` to 1 and issue a warning.
 
 
@@ -336,11 +328,169 @@ mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
        fp(bph) + cp, data = prostate)
 ```
 
-### Setting significance levels for variable and function selection
+### Tuning parameters for MFP
+The two key components of MFP are variable selection with backward elimination
+(BE) and function selection for continuous variables through the function 
+selection procedure (FSP). These components require two nominal significance 
+levels: $\alpha_1$  for variable selection with BE and $\alpha_2$  for comparing
+the fit of the functions within the FSP. The choice of these significance levels
+strongly influences the complexity and stability of the final model. While it 
+is possible to use the same nominal significance level for both components, they 
+can also differ based on the aims of the analysis.
+
+The `mfp2()` function has an argument called `criterion`, which allows the user 
+to specify the criteria for variable and function selection. The default 
+criterion is `pvalue`, which enables the user to set the two nominal significance
+levels. Please refer to section [section 1.4.4.1](#Nominal_significance_levels) 
+for instructions on setting the nominal significance levels.
 
 
-### Gaussian family
+Information criteria, such as the Akaike information criterion (AIC) and the
+Bayesian information criterion (BIC), have been proposed for selecting models
+fitted on the same data. The `mfp2` package offers an alternative approach to 
+variable and function selection by utilizing information criteria. In the MFP 
+framework, each predictor is evaluated univariately while accounting for the
+other predictors within an overarching back-fitting algorithm. This algorithm 
+iteratively assesses each predictor and selects the model (null, linear, FP1, 
+FP2, etc.) with the minimum AIC or BIC for each variable.
 
+The "null" model refers to a model without the predictor of interest. A "linear" 
+model assumes a linear relationship with the outcome variable, while an FP1 model 
+assumes a non-linear relationship using the FP1 function. The `criterion` argument
+allows users to specify whether they want to use AIC or BIC criteria for both
+variable and function selection. If AIC or BIC is selected as the criterion, the
+nominal significance levels set through the `select` and `alpha` arguments will 
+be ignored. For details on using AIC and BIC in variable and function selection,
+please refer to [section 1.4.4.2](#information_criteria).
+
+#### Nominal significance levels {#Nominal_significance_levels}
+
+The `mfp2()` function has the arguments `select` and `alpha` for setting the 
+nominal significance level for variable selection by BE and for testing between
+FP models of different degrees, respectively. It is important to note that when
+using these arguments, you should ensure that the `criterion` is set to `"pvalue"` 
+to correctly use the specified significance levels.
+
+For variable selection, a significance level can be set using the `select` 
+argument. A value of 1 (`select = 1`) for all variables forces them all into the model. Setting the nominal significance level to be 1 for a given variable forces
+it into the model, leaving others to be selected or not. A variable is dropped if
+its removal leads to a nonsignificant increase in deviance
+
+On the other hand, the `alpha` argument is used to determine the complexity of 
+the selected FP function. A value of 1 (`alpha = 1`) will choose the most 
+complex FP function permitted for a given variable. For example, if FP2 is the
+most complex function allowed for variable x1, setting alpha = 1 will select the FP2 function.
+
+The rules for setting `select` and `alpha` are the same as those for setting `df` 
+([see section 1.4.3](#df_vars)). The following R codes shows how to set equal
+nominal significance levels for variable and function selection 
+$(\alpha_1 = alpha_2 = 0.05)$ for each variable and produces identical results.
+Setting different nominal significance levels is straightforward. Simply replace
+the value 0.05 with the desired significance level of your choice.
+
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y, select = rep(0.05, ncol(x)), alpha = rep(0.05, ncol(x)))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, select = 0.05) + 
+       fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, data = prostate)
+
+```
+
+In the formula interface, binary variables such as `svi` that are not passed in
+the `fp()` function utilize the global `select` argument. In our example, the
+global parameter is set to `select = 0.05`. If several binary variables exist in
+the model, the global parameters will be used for all of them. However, if 
+specific parameters need to be set for individual binary variables, the user can
+use the `fp()`function. In summary, if a variable is not passed through the `fp`
+function, it will utilize the global parameters.
+
+Suppose we want to force the variables "age" and "svi" in the model. To achieve
+this, we have two options:
+
+* Set `select = 1` specifically for these variables: By setting `select = 1` for `age` and `svi` in the `mfp2()` function, we force these variables to be included
+in the model.\
+
+* Use the `keep` argument: Alternatively, we can use the `keep` argument, which resets the nominal significance levels for `age` and `svi` to 1 if they are 
+different from 1. This ensures that these variables are retained in the model.
+
+```{r eval = FALSE}
+#------Default Interface
+# Set select to 1 for age and svi
+mfp2(x,y, select = c(1, 1, 0.05, 0.05, 0.05, 0.05, 0.05), alpha = rep(0.05, ncol(x)))
+
+# use keep argument
+mfp2(x,y, select = c(0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05), alpha = rep(0.05, ncol(x)), 
+     keep = c("age", "svi"))
+
+#-------Formula Interface
+# use fp() function and set select to 1 for age and svi
+mfp2(lpsa ~ fp(age, select = 1) + fp(svi, df = 1, select = 1) + fp(pgg45, select = 0.05) + 
+       fp(cavol, select = 0.05) + fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, data = prostate)
+
+# use keep argument
+mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, select = 0.05) + 
+       fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, keep = c("age", "svi"),  data = prostate)
+```
+
+#### Information criterion {#information_criteria}
+Instead of using nominal significance levels ($\alpha_1, \alpha_2$) for variable and function selection, 
+an alternative approach is to directly utilize the AIC or BIC. This can be 
+achieved by setting the `criterion` argument to either "aic" or "bic". 
+Additionally, if there is a need to force certain variables, such as "age" and
+"svi", into the model, the `keep` argument can be used.
+
+The following R code demonstrates how to implement this approach using both the
+default and formula interfaces, as well as how to force specific variables into
+the model:
+
+```{r, eval=FALSE}
+# Default Interface
+mfp2(x,y,criterion = "aic", keep = c("age", "svi"))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
+     criterion = "aic", keep = c("age", "svi"), data = prostate)
+
+```
+
+### Model comparison tests
+The FSP in MFP is used to compare various models, such as FP2 vs NULL, 
+FP2 vs Linear, and FP2 vs FP1, when the `criterion = "pvalue"` (
+see section xx for details).
+
+When comparing Gaussian models, the mfp2() function provides two options for 
+calculating p-values: the F-test and the Chi-square test. The Chi-square test is
+the default option. For other model families like Cox or logistic regression 
+models, the Chi-square test is used. For more detailed information, please refer
+to page 23 of the paper available at this link: https://www.stata.com/manuals/rfp.pdf
+
+To use the F-test in R, we can set the `ftest` argument to TRUE (`ftest = TRUE`),
+as demonstrated in the example below:
+
+```{r, eval=FALSE}
+# Default Interface
+mfp2(x,y,criterion = "pvalue", ftest = TRUE)
+
+# Formula Interface
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
+     criterion = "pvalue", ftest = TRUE, data = prostate)
+
+```
+
+It is important to note that the p-values reported by the `mfp` program in `STATA`
+for Gaussian models are based solely on the F-test. To facilitate result comparison,
+the user must ensure that the `ftest = TRUE` in R. 
+
+### Fraction Polynomial Powers
+
+
+### Explanation of output from model-selection algorithm
 ## Logistic Regression
 
 ## Poisson regression

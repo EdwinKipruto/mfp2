@@ -8,16 +8,16 @@ author:
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 link-citations: true
 output: 
- rmarkdown::html_vignette:
-    fig_caption: yes
-    toc: yes
-    toc_depth: 3
-    number_sections: yes
  rmarkdown::pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
     number_sections: true
+ rmarkdown::html_vignette:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
 vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\VignetteEncoding{UTF-8}
@@ -56,21 +56,7 @@ knitr::knit_hooks$set(output = function(x, options) {
 })
 ```
 
-<!-- justify text in the entire document-->
-<style>
-body {
-  text-align: justify;
-}
-
-figcaption {
-  text-align: justify;
-}
-</style>
-
-
-
 # Introduction to mfp2 package
-
 `mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: p-value, Akaike information criterion (AIC), and Bayesian information criterion (BIC). Furthermore, it provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.
 
 The main function, `mfp2()`, implements both MFP and MFP with ACD transformation.
@@ -503,7 +489,7 @@ the results between the two R packages, the user must set` ftest = FALSE`.
 Low order polynomials offer a limited family of shapes, and high order polynomials
 may fit poorly at the extreme values of the covariates. Due to these limitations,
 Royston an Altman (1994) proposed an extended family of curves known as fractional polynomials, whose power terms are restricted to a small predefined set,
-$S = \{−2, −1, −0.5, 0, 0.5, 1, 2, 3\}$ of integer and non-integer values. The powers
+$S = {\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3}$ of integer and non-integer values. The powers
 are selected so that conventional polynomials are a subset of the family. The 
 power of 0 denotes the natural logarithm of x, log(x), while the power of 1 denotes
 no transformation. Furthermore, the set includes other powers such as the 

@@ -535,20 +535,49 @@ mfp2(lpsa ~ fp(age, powers = c(0, 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = 
 
  
 ### Explanation of output from model-selection algorithm
-Using the prostate example we briefly explain, how the algorithm works. Like backward elimination it starts with the full model and investigates whether variables can be eliminated. However, for each of the continuous variables the function selection procedure (FSP) is used to check whether a non-linear function fits the data significantly better than a linear function. After a first cycle some variables will be eliminated and for some continuous variables a better fitting non-linear function may have been determined. The algorithm starts a second cycle, but the new starting model now has less variables (as some were eliminated) and perhaps non-linear functions for some of the continuous variables. In the second cycle all variables will be reconsidered (even if they were not significant at the end of the first cycle) and FSP is used again to determine the ‘best’ fitting FP function (it may be different because other ‘adjustment’ variables are in the model). This yields the result of cycle 2 which is the starting model for cycle 3. In most cases the model does not change anymore in cycle 3 or 4 and the algorithm stops with the final MFP model.   
+Using the prostate example, we briefly explain how the algorithm works. Similar to backward elimination, it starts with the full model (model with all variables) and investigates whether variables can be eliminated. However, for each of the continuous variables, the FSP is used to check whether a non-linear function fits the data significantly better than a linear function. After the first cycle, some variables may be eliminated from the model, and for some continuous variables, a more suitable non-linear function may be identified as a better fit for the data.
 
-Important is the order of ‘searching’ for model improvement by better fitting non-linear functions. Obviously, mismodelling the functional form of a variable with a strong effect is more critical than mismodelling the functional form of a variable with a weak effect. Therefore the order is determined by p-values in the full model. Variables with a small p-value are considered first. Boxes 6.1 and 6.2 from our book illustrate the algorithm for the prostate data. We use 5% for both variable elimination and function selection.
-
-
-The order is given by p-values in the full model (<0.001 for cavol,…, 0.53 for age.) Adjusting for other variables and functions currently in the model (all six variables svi – age, functions all linear) a suitable function for cavol is selected by the FSP. The best FP2 function fits significantly better than null (elimination of the variable) and also than linearity. The comparison of the best FP2 with the best FP1 function is no longer significant (p=0.215) and FP1 is selected. The power is ‘0’ which means log(cavol). Next svi is checked in a model including log(cavol) (log function just selected) and the other five variables pgg45, …,age still in the model. Svi is binary and there is only one test which is significant (p=0.004). Svi remains in the model. In the next step the continuous variable pgg45 is assessed in the same model as for svi. The p-value in the first step (FP2 versus null) is non-significant (p=0.309) and the variable is eliminated for the following steps of the cycle. Therefore the effect of weight is investigated in a model adjusting for log(cavol), svi and the three variables bph, cp, age which come below weight. For weight the first test is non-significant (p = 0.052) and the variable is eliminated for the rest of the cycle. In the following steps bph, cp and age are also eliminated and in the first cycle a simple model including log(cavol) and svi is selected.
-
-This is the new starting model for the second cycle. The effect of cavol is investigated again, but now in a simple model adjusting for svi only. Deviances are larger than in cycle 1 (because the five variables pgg45 – age do no longer belong to the ‘adjustment’ model) but FSP, which uses p-values based on deviance differences, selects log(cavol) again. Investigations for svi and pgg45 confirm that svi should be in and pgg45 should be out of the model. Weight is the variable considered next. In contrast to the first cycle the test for inclusion (FP2 vs null) is significant (p=0.005) and weight needs to be re-included in the model. The second test of the FSP (FP2 vs linearity) is non-significant and a linear function is chosen for weight. In following steps bph, cp and age are investigated in models adjusting for log(cavol), svi (binary) and weight (linear). Compared to the first cycle p-values change but all are much larger than 0.05. None of these variables are included and cycle 2 ends with the model log(cavol), svi (binary) and weight (linear).
-This model is the new starting model for cycle 3 where all seven variables are investigated again. There are no further changes and cycle 3 ends with the same model as cycle 2. The algorithm stops. Parameter estimates and residual plots of the selected MFP(0.05,0.05) model with cavol(0), svi and weight(1) are given above.
+The algorithm then proceeds to the second cycle, but the new starting model
+now has fewer variables due to the elimination process in the previous cycle. Additionally, non-linear functions may have been identified for some of the continuous variables. In the second cycle, all variables will be reconsidered, even if they were not significant at the end of the first cycle, and FSP is used again to determine the 'best' fitting FP function (the functions may be different due to potential variations in the adjustment variables). The results obtained from the second cycle then serve as the starting model for the third cycle. In most cases, the variables and functions selected remain unchanged in cycles 3 or 4 and the algorithm stops with the final MFP model.
 
 
-```{r out.lines = 55, R.options = list(width = 100)}
-fit <- mfp2(x, y, ftest = TRUE)
+The order of 'searching' for model improvement by better fitting non-linear functions is important. Mismodelling the functional form of a variable with a strong effect is more critical than mismodelling the functional form of a variable with a weak effect. Therefore, the order is determined by the p-values in the full model. Variables with small p-values are considered first.
+
+To explain the output of the MFP algorithm, we will use the default interface of the `mfp2()` function to build an MFP model with the default parameters. Specifically, all continuous variables are assigned a degree of freedom (df) of 4, implying that FP2 is the most complex permitted function. Moreover, we employ the 'pvalue' as the criterion for variable and function selection, and we set the nominal significance levels for both components to 0.05 for all variables. Finally, we use the F-test instead of Chi-square to calculate the p-values. The **R** output displays the df used for each variable, as denoted by the "initial degrees of freedom". The program correctly identifies "svi" as a binary variable and assigns it a df of 1. Additionally, the variables are ordered based on their p-values in descending order of significance, as indicated by the "visiting order". The variable "cavol" has the smallest p-value and will be evaluated first, while "age" has the largest p-value and will be evaluated last.
+
+
+```{r out.lines = 103, R.options = list(width = 100)}
+fit <- mfp2(x, y, criterion = "pvalue", select = 0.05, alpha = 0.05, ftest = TRUE)
 ```
+
+After the variables are ordered, the MFP algorithm starts by searching for a suitable function for "cavol". It compares the best-fitting FP2 (-0.5, 1) function for "cavol" against a null model that excludes "cavol." This comparison involves adjusting for all other six variables ("svi" to "age") using linear functions. The test is highly significant (p = 0.0000), indicating that the best FP2 function fits significantly better than a null model. Next, the model with the best FP2 function is compared to a model assuming linearity, and the test remains significant (p  = 0.0011). This suggests that "cavol" can be better described by a non-linear function at this stage. Finally, the best FP2 function is compared to the best FP1 (0) function, and the test is not significant (p = 0.2226). Thus, at this stage in the model-selection procedure, the final function for "cavol" is FP1 with power 0, denoting a log function. 
+
+The next variable to be evaluated is "svi," which is a binary variable. In this case, only the test of null versus linear is appropriate. Both the null and linear models of "svi" include "log(cavol)" (the log function just selected) and the other five variables ("pgg45", "cp", "weight", "bph", and "age") that are still present in the model. The test of null versus linear is significant (p = 0.0042), indicating that "svi" remains in the model.
+
+
+Next, we evaluate the continuous variable "pgg45" in the same model as for "svi". The p-value for the first test (FP2 versus null) is not significant (p = 0.3091), and the variable is eliminated from the model and will not be considered in the rest of the first cycle.
+
+Following that, the algorithm evaluates the variable "weight" in a model adjusting for "log(cavol)", "svi", and the three variables ("cp", "bph", and "age") that have not yet been evaluated. The first test is non-significant (p = 0.0521), and the variable is eliminated for the rest of the first cycle. In the subsequent steps, "bph", "cp", and "age" are also eliminated.
+
+**At the end of the first cycle, only two variables were selected: "log(cavol)" and "svi".**
+
+The variables selected in the first cycle becomes the new starting model for the second cycle. In the second cycle, the effect of "cavol" is investigated again, but this time in a simpler model adjusting for "svi" only. Deviances are larger compared to cycle 1 because the five variables ("pgg45", "age", "weight", "bph" and "cp") no longer belong to the 'adjustment' model. However, the FSP  still selects "log(cavol)".
+
+The svi is evaluated in a model with only log(cavol) and the test confirms that the variable should be included in the model. Pgg45 is evaluated in a model with svi and log(cavol) but the test (FP2 vs null) is not significant and the variable is again eliminated.
+
+The "svi" is evaluated in a model that includes only "log(cavol)", and the test of linear vs null confirms that the variable should be included in the model. Pgg45 is evaluated in a model with "svi" and "log(cavol)" as adjustment variables, but the test of inclusion (FP2 vs null) is not significant, hence the variable is eliminated again.
+
+
+The variable "weight" is considered next in a model with "svi" and "log(cavol)". In contrast to the first cycle, the test for inclusion (FP2 vs null) is significant (p = 0.0052), indicating that "weight" needs to be re-included into the model. The second test of the FSP (FP2 vs linearity) is non-significant and a linear function is chosen for weight. 
+
+In the subsequent steps, "bph", "cp", and "age" are investigated in models adjusting for "log(cavol)", "svi", and "weight" (linear). Compared to the first cycle, the p-values change, but all of them are much larger than 0.05. Therefore, none of these variables are included in the model. 
+
+**The second cycle ends with the model consisting of "log(cavol)", "svi" (binary), and "weight" (linear)**. 
+
+This model serves as the starting point for the third cycle, where all seven variables are investigated again. However, there are no further changes in the third cycle, and it concludes with the same model as the second cycle. At this point, the algorithm stops, and the final model consists of "log(cavol)," "svi" (binary), and "weight" (linear).
+
+### Graphical presentation of FP functions
+
 
 ## Logistic Regression
 

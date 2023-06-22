@@ -432,7 +432,11 @@ mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, 
 
 #### Information criterion {#information_criteria}
 Instead of using nominal significance levels ($\alpha_1, \alpha_2$) for variable and function selection, 
-an alternative approach is to directly utilize the AIC or BIC. This can be 
+an alternative approach is to directly utilize the AIC or BIC. EXPLAIN HOW AIC AND BIC IS CALCULATED
+
+
+
+This can be 
 achieved by setting the `criterion` argument to either "aic" or "bic". 
 Additionally, if there is a need to force certain variables, such as "age" and
 "svi", into the model, the `keep` argument can be used.
@@ -493,8 +497,8 @@ $S = {\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3}$ of integer and non-integer values. 
 are selected so that conventional polynomials are a subset of the family. The 
 power of 0 denotes the natural logarithm of x, log(x), while the power of 1 denotes
 no transformation. Furthermore, the set includes other powers such as the 
-reciprocal (-1), square root (0.5), and square (2). No subsequent changes to $S$
-have been proposed.
+reciprocal (-1), square root (0.5), and square (2). ADD INFORMATION ABOUT
+BOUNDARY OF PARAMETER SPACE
 
 By default, the `mfp2()` function utilizes the predefined set $S$ for each
 continuous covariate. However, there may be situations where users want to 

@@ -26,8 +26,8 @@
 #' for tests between FP models of different degrees for `xi`. 
 #' @param keep a character vector that with names of variables to be kept 
 #' in the model. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
-#' covariates.
+#' @param powers a named list of numeric values that sets the permitted FP 
+#' powers for each covariate.
 #' @param method a character string specifying the method for tie handling in 
 #' Cox regression.
 #' @param strata a factor of all possible combinations of stratification 
@@ -229,7 +229,8 @@ find_best_fpm_step <- function(x,
   
   if (degree == 1) {
     # remove linear model for normal data, but keep for acd transformation
-    powers = setdiff(powers, c(1))
+    powers <- lapply(powers, function(v) setdiff(v, c(1)))
+    
   }
     
   
@@ -1247,7 +1248,8 @@ transform_data_step <- function(x,
       if (acdx_adj[i]) {
         data_adj[[i]] <- transform_vector_acd(
           x = x_adj[, i, drop = TRUE], power = powers_adj[[i]],
-          powers = powers
+          powers = powers[[vars_adj[i]]] # powers needed by acd() function
+          
         )$acd
       } else {
         data_adj[[i]] <- transform_vector_fp(
@@ -1278,11 +1280,11 @@ transform_data_step <- function(x,
       # when df = 1 -> degree = 0
       # and we return the data unchanged, i.e. with power = 1
       fpd <- generate_transformations_acd(data_xi, degree = floor(df / 2),
-                                          powers = powers)
+                                          powers = powers[[xi]])
     } else {
       # note that degree is df / 2
       fpd <- generate_transformations_fp(data_xi, degree = floor(df / 2),
-                                         powers = powers)
+                                         powers = powers[[xi]])
     }
     data_fp <- fpd$data
     powers_fp <- fpd$powers

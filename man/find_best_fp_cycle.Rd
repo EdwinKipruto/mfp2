@@ -58,8 +58,8 @@ for tests between FP models of different degrees.}
 \item{keep}{a character vector that with names of variables to be kept
 in the model.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariate.}
 
 \item{method}{a character string specifying the method for tie handling in
 Cox regression.}

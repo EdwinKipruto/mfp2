@@ -167,10 +167,15 @@ multiple regression (i.e. most significant first).
 \code{descending} places them in reverse significance order, whereas
 \code{original} respects the original order in \code{x}.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates. Default is \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)},
-where 0 means natural logarithm. Duplicates are removed, and powers are
-sorted before further processing in the program.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariate. The default is NULL, and each covariate is assigned
+\code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 means the natural
+logarithm. Duplicates are removed, and powers are sorted before further
+processing in the program. If some variables are not assigned powers, the
+default powers will be assigned. The formula interface offers two options
+for supplying powers: through the 'powers' argument and the 'fp()' function.
+So, if the user supplies powers in both options for a certain variable, the
+powers supplied through 'fp()' will be given preference.}
 
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are

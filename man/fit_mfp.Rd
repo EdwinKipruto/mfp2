@@ -72,8 +72,8 @@ in the model.}
 \item{xorder}{a string determining the order of entry of the covariates
 into the model-selection algorithm.}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariate.}
 
 \item{method}{a character string specifying the method for tie handling in
 Cox regression.}

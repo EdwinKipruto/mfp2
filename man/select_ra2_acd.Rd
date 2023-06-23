@@ -43,8 +43,8 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 indicating the fp powers to be used in the current step for all variables
 (except \code{xi}).}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariate.}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}

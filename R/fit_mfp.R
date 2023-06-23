@@ -126,6 +126,8 @@ fit_mfp <- function(x,
   shift <- setNames(shift, variables_x)[variables_ordered]
   scale <- setNames(scale, variables_x)[variables_ordered]
   acdx <- setNames(acdx, variables_x)[variables_ordered]
+  # powers is already named. so we need to sort it based on variables_ordered
+  powers <- powers[variables_ordered]
   
   # force variables into the model by setting p-value to 1
   if (!is.null(keep)) {

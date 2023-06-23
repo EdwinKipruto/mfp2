@@ -625,14 +625,40 @@ mfp2.default <- function(x,
   }
   
   # set defaults ---------------------------------------------------------------
-  if (is.null(powers)) {
-      # default FP powers proposed by Royston and Altman (1994)
-      powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  # Assert that powers must be NULL or list when provided
+  if (!is.null(powers) && !is.list(powers))
+    stop("Powers must be a list")
+  
+  # set defaults ---------------------------------------------------------------
+    # default FP powers proposed by Royston and Altman (1994)
+    powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+    power_list <- setNames(replicate(nvars, powx, simplify = FALSE), vnames)
+    
+    # deal with user supplied powers
+    if (!is.null(powers)) {
+      if (length(powers) != sum(names(powers) != "", na.rm = TRUE))
+         stop(" All the powers supplied in the argument must have names",
+           call. = FALSE)
+    
+    # check the names of supplied powers
+    dd <- which(!names(powers) %in% vnames)
+    if (length(dd) !=0)
+      stop(" The names of all powers must be in the column names of x.\n",
+           sprintf("i This applies to the following powers: %s.", 
+                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+    
+    # sort unique powers
+    powers <- lapply(powers, function(v) sort(unique(v)))
+    
+    # modify the default powers, some variables assigned default powers
+    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
+    
   }
-  powers <- sort(unique(powers))
+  
   if (is.null(weights)) {
-      weights <- rep.int(1, nobs)
+    weights <- rep.int(1, nobs)
   }
+
   if (is.null(offset)) {
       offset <- rep.int(0, nobs)
   }
@@ -737,7 +763,7 @@ mfp2.default <- function(x,
       weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, center = center, 
       family = family, criterion = criterion, select = select, alpha = alpha, 
-      keep = keep, xorder = xorder, powers = powers, 
+      keep = keep, xorder = xorder, powers = power_list, 
       method = ties, strata = istrata, nocenter = nocenter,
       acdx = acdx, ftest = ftest, 
       control = control, 
@@ -830,6 +856,9 @@ mfp2.formula <- function(formula,
     stop("! shift must be a single numeric.", 
          "i Use the fp() function to set different shift values in the input formula.",
          call. = FALSE)
+  
+  if(!is.null(powers) && !is.list(powers))
+    stop(" Powers must be a named list or set it to NULL", call. = FALSE)
   
   # model.frame preserves the attributes of the data unlike model.matrix
   mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
@@ -964,11 +993,37 @@ mfp2.formula <- function(formula,
     shift_list <- setNames(rep(list(shift), nx), names_x)
   }
   
+  # center, alpha, select and acd
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list <- setNames(rep(list(alpha), nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
   acdx_list <- setNames(rep(list(FALSE), nx), names_x)
-
+  
+  
+  # default FP powers proposed by Royston and Altman (1994)
+  powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  power_list <- setNames(replicate(nx, powx, simplify = FALSE),names_x)
+  
+  # deal with user supplied powers in the argument not through fp()
+  if (!is.null(powers)) {
+    if (length(powers) != sum(names(powers) != "", na.rm = TRUE))
+      stop(" All the powers supplied in the argument must have names",
+           call. = FALSE)
+    
+    # check the names of supplied powers
+    dd <- which(!names(powers) %in% names_x)
+    if (length(dd) !=0)
+      stop(" The names of all powers must be in the column names of x.\n",
+           sprintf("i This applies to the following powers: %s.", 
+                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+    
+    # sort unique powers
+    powers <- lapply(powers, function(v) sort(unique(v)))
+    
+    # modify the default powers, some variables assigned default powers
+    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
+    
+  }
   
   # if fp() is used in the formula
   if (length(fp_pos) != 0) {
@@ -989,6 +1044,18 @@ mfp2.formula <- function(formula,
                               setNames(lapply(fp_data, attr, "select"), fp_vars))
     acdx_list <- modifyList(acdx_list, 
                             setNames(lapply(fp_data, attr, "acd"), fp_vars))
+    
+    # We give preference to powers supplied in the fp() function over the power argument.
+    powerx <- Filter(Negate(is.null),setNames(lapply(fp_data, attr, "powers"), fp_vars))
+    
+    nax <- intersect(names(powerx), names(powers))
+    if (length(nax)!= 0)
+      warning("i Powers are specified in both the `fp()` function within\n the formula and as an argument.                 The argument term ignored.\n", 
+              sprintf("i This applies to the following variables: %s.", 
+                      paste0(nax, collapse = ", ")), call. = FALSE)
+    
+    power_list <- modifyList(power_list, powerx)
+    
   }
   
   # acd requires variable names or NULL 
@@ -1014,7 +1081,7 @@ mfp2.formula <- function(formula,
                alpha = unlist(alpha_list),
                keep = keep,
                xorder = xorder,
-               powers = powers,
+               powers = power_list,
                ties = ties,
                strata = strata,
                nocenter = nocenter,

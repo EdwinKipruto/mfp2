@@ -22,6 +22,7 @@ vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\VignetteEncoding{UTF-8}
   %\VignetteEngine{knitr::rmarkdown}
+
 ---
 
 ```{r, include = FALSE}
@@ -157,7 +158,7 @@ estimates, plotting functionalities, and predictions.
 
 To fit the same model using the formula interface, we use the `fp()` function. 
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 fit <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), data = prostate)
 ```
 
@@ -248,7 +249,7 @@ can be directly specified within the` fp()` function. Below is an example to
 illustrate this:
 
 
-```{r, eval = FALSE}
+```{r, eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 # Default interface
 mfp2(x,y, shift = c(0, 0, 1, 0, 0, 0, 0), scale = c(10, 1, 100, 10, 100, 1, 10))
 
@@ -292,14 +293,13 @@ If the user attempts to enter `df = 4` for `svi` in the default interface, the
 program will reset the `df` to 1 and issue a warning.
 
 
-```{r eval = FALSE}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 # Default Interface
 mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
 
 # Formula Interface
-mfp2(lpsa ~ fp(age, df = 4) + svi + fp(pgg45, df = 4) + fp(cavol, df = 4) + fp(weight, df = 4) +
-       fp(bph, df = 4) + fp(cp, df = 4),data = prostate)
-
+mfp2(lpsa ~ fp(age, df = 4) + svi + fp(pgg45, df = 4) + fp(cavol, df = 4) + fp(weight, df = 4) + fp(bph, df = 4) + fp(cp, df = 4),
+     data = prostate)
 ```
 
 If the user does not explicitly assign `df` to variables, the program will automatically assign a `df = 4` to each variable. It is important to note that 
@@ -307,13 +307,12 @@ even if a continuous variable is not passed to the `fp`()` function in the
 formula interface, the `df` of that variable will still be set to the default 
 value and will later be adjusted based on the unique values. The following three examples are equivalent:
 
-```{r eval = FALSE}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 # Default Interface
 mfp2(x,y)
 
 # Formula Interface
-mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-       fp(bph) + fp(cp), data = prostate)
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), data = prostate)
 
 # Formula Interface but `cp` not passed to the fp() function
 mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
@@ -371,17 +370,17 @@ its removal leads to a nonsignificant increase in deviance
 On the other hand, the `alpha` argument is used to determine the complexity of 
 the selected FP function. A value of 1 (`alpha = 1`) will choose the most 
 complex FP function permitted for a given variable. For example, if FP2 is the
-most complex function allowed for variable x1, setting alpha = 1 will select the FP2 function.
+most complex function allowed for variable x1, setting alpha = 1 will select the best FP2 function.
 
 The rules for setting `select` and `alpha` are the same as those for setting `df` 
 ([see section 1.4.3](#df_vars)). The following R codes shows how to set equal
 nominal significance levels for variable and function selection 
-$(\alpha_1 = alpha_2 = 0.05)$ for each variable and produces identical results.
+$(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical results.
 Setting different nominal significance levels is straightforward. Simply replace
 the value 0.05 with the desired significance level of your choice.
 
 
-```{r eval = FALSE}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 # Default Interface
 mfp2(x,y, select = rep(0.05, ncol(x)), alpha = rep(0.05, ncol(x)))
 
@@ -403,13 +402,12 @@ function, it will utilize the global parameters.
 Suppose we want to force the variables "age" and "svi" in the model. To achieve
 this, we have two options:
 
-* Set `select = 1` specifically for these variables: By setting `select = 1` for `age` and `svi` in the `mfp2()` function, we force these variables to be included
-in the model.\
+* Set `select = 1` for `age` and `svi` in the `mfp2()` function.\
 
-* Use the `keep` argument: Alternatively, we can use the `keep` argument, which resets the nominal significance levels for `age` and `svi` to 1 if they are 
+* Alternatively, we can use the `keep` argument, which resets the nominal significance levels for `age` and `svi` to 1 if they are 
 different from 1. This ensures that these variables are retained in the model.
 
-```{r eval = FALSE}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
 #------Default Interface
 # Set select to 1 for age and svi
 mfp2(x,y, select = c(1, 1, 0.05, 0.05, 0.05, 0.05, 0.05), alpha = rep(0.05, ncol(x)))
@@ -431,21 +429,23 @@ mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, 
 ```
 
 #### Information criterion {#information_criteria}
-Instead of using nominal significance levels ($\alpha_1, \alpha_2$) for variable and function selection, 
-an alternative approach is to directly utilize the AIC or BIC. EXPLAIN HOW AIC AND BIC IS CALCULATED
+Instead of using nominal significance levels ($\alpha_1, \alpha_2$) for variable and function selection, an alternative approach is to directly utilize the AIC or BIC, defined below. 
+\setlength{\jot}{0pt}
+\begin{align*}
+AIC & = -2 \log(L) + 2k \\
+BIC & = -2 \log(L) + \log(n) \times k
+\end{align*}
 
+Where $\log(L)$ is the maximum log-likelihood of the fitted model, which measures how well the model fits the data. The parameter $k$ corresponds to the number of estimated parameters in the model (regression estimates and FP powers) and $n$ is the sample size or the number of observations in the dataset. AIC and BIC consider both model fit and complexity, with lower values indicating better-fitting models.
 
+For instance, when selecting the best model for a variable of interest (z) with fixed adjustment variables x1 (with power p3) and x2 (linear), we can compare the AIC and BIC of different models, such as FP2, FP1, linear, and null models. The adjustment models all have the same number of parameters (4, including the intercept if it exists). However, the FP2, FP1, and linear models have additional 4, 2, and 1 parameters, respectively. The total number of parameters for each model type is used in calculating the AIC and BIC. The model with the smallest AIC or BIC is then selected.
 
-This can be 
-achieved by setting the `criterion` argument to either "aic" or "bic". 
-Additionally, if there is a need to force certain variables, such as "age" and
-"svi", into the model, the `keep` argument can be used.
+In `mfp2` package, this can be achieved by setting the `criterion` argument to either "aic" or "bic" in the `mfp2()` function. Additionally, if there is a need to force certain variables, such as "age" and "svi", into the model, the `keep` argument can be used.
 
-The following R code demonstrates how to implement this approach using both the
-default and formula interfaces, as well as how to force specific variables into
+The following R code demonstrates how to implement this approach using both the default and formula interfaces, as well as how to force specific variables into
 the model:
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default Interface
 mfp2(x,y,criterion = "aic", keep = c("age", "svi"))
 
@@ -456,21 +456,21 @@ mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) + fp(
 ```
 
 ### Model comparison tests
-The FSP in `mfp2()` function compares various models for the variable of interest. For instance, if the most complex allowed FP function is FP2, the FSP will compare the best FP2 model with the NULL model, the best FP2 model with the Linear model, and the best FP2 model with the best FP1 model, when the `criterion = "pvalue"`. The deviance for
+The FSP in `mfp2()` function compares various models for the variable of interest. For instance, if the most complex allowed FP function is FP2, the FSP will compare the best FP2 model with the null model, the best FP2 model with the Linear model, and the best FP2 model with the best FP1 model, when the `criterion = "pvalue"`. The deviance for
 each model (NULL, Linear, FP1, and FP2) and their corresponding differences and
 p-values will be calculated.
 
-When comparing Gaussian models, the mfp2() function provides two options for 
+When comparing Gaussian models, the `mfp2()` function provides two options for 
 calculating p-values: the F-test and the Chi-square test. The Chi-square test is
 the default option. For other model families like Cox or logistic regression 
 models, the Chi-square test is used. For more detailed information, please refer
-to page 23 of the paper available at this link: https://www.stata.com/manuals/rfp.pdf
+to page 23 of the MFP Stata manual paper available at this link: https://www.stata.com/manuals/rfp.pdf
 
 To use the F-test in **R**, we can set the `ftest` argument to TRUE (`ftest = TRUE`),
 as demonstrated in the example below. Conversely, to use the Chi-square test,
 set `ftest = FALSE`.
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default Interface
 mfp2(x,y,criterion = "pvalue", ftest = TRUE)
 
@@ -481,32 +481,31 @@ mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(c
 ```
 
 Please note that the p-values reported by the `mfp` program in `Stata` for 
-Gaussian models are solely based on the F-test. If you intend to compare the
+Gaussian models are based on the F-test. If you intend to compare the
 results between the two software packages, it is crucial to ensure that 
 `ftest = TRUE` is set in R.
 
-However, it's important to be aware that the older version of the `mfp` package 
-in R utilizes the chi-square test for all model types. Therefore, when comparing
+However, it is important to be aware that the older version of the `mfp` package 
+in R uses the Chi-square test for all model types. Therefore, when comparing
 the results between the two R packages, the user must set` ftest = FALSE`.
 
 ### Fraction Polynomial Powers
 Low order polynomials offer a limited family of shapes, and high order polynomials
 may fit poorly at the extreme values of the covariates. Due to these limitations,
 Royston an Altman (1994) proposed an extended family of curves known as fractional polynomials, whose power terms are restricted to a small predefined set,
-$S = {\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3}$ of integer and non-integer values. The powers
+$S = \{\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3\}$ of integer and non-integer values. The powers
 are selected so that conventional polynomials are a subset of the family. The 
 power of 0 denotes the natural logarithm of x, log(x), while the power of 1 denotes
 no transformation. Furthermore, the set includes other powers such as the 
-reciprocal (-1), square root (0.5), and square (2). ADD INFORMATION ABOUT
-BOUNDARY OF PARAMETER SPACE
+reciprocal (-1), square root (0.5), and square (2).
 
 By default, the `mfp2()` function utilizes the predefined set $S$ for each
 continuous covariate. However, there may be situations where users want to 
 provide their own power terms based on their subject matter knowledge. In such 
 cases, the `powers` argument which takes a list of distinct powers can be 
 employed to specify the desired power terms. If the user provides identical powers
-for a variable, such as (0, 0), the program will remove the duplicates and 
-consider only the power 0.
+for a variable, such as (0, 0, 2), the program will remove the duplicates and 
+consider only the powers 0 and 2.
 
 The following example illustrates how to assign different power terms to covariates. 
 Two power terms (0 and 0.5) are evaluated for the "age" covariate. This set 
@@ -524,11 +523,9 @@ It is important to note that when using the `fp()` function in the formula
 interface, the power terms provided must be a vector not a list since they are
 specific to a particular variable.
 
-
-```{r, eval=FALSE}
+```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # create a list of power terms for covariates age and cavol
 powx <- list(age = c(0, 0.5), cavol = 0)   
-
 # Default Interface
 mfp2(x, y, criterion = "pvalue", powers = powx)
 
@@ -545,7 +542,7 @@ The algorithm then proceeds to the second cycle, but the new starting model
 now has fewer variables due to the elimination process in the previous cycle. Additionally, non-linear functions may have been identified for some of the continuous variables. In the second cycle, all variables will be reconsidered, even if they were not significant at the end of the first cycle, and FSP is used again to determine the 'best' fitting FP function (the functions may be different due to potential variations in the adjustment variables). The results obtained from the second cycle then serve as the starting model for the third cycle. In most cases, the variables and functions selected remain unchanged in cycles 3 or 4 and the algorithm stops with the final MFP model.
 
 
-The order of 'searching' for model improvement by better fitting non-linear functions is important. Mismodelling the functional form of a variable with a strong effect is more critical than mismodelling the functional form of a variable with a weak effect. Therefore, the order is determined by the p-values in the full model. Variables with small p-values are considered first.
+The order of 'searching' for model improvement by better fitting non-linear functions is important. Mismodelling the functional form of a variable with a strong effect is more critical than mismodelling the functional form of a variable with a weak effect. Therefore, the order is determined by the p-values from the full model. Variables with small p-values are considered first.
 
 To explain the output of the MFP algorithm, we will use the default interface of the `mfp2()` function to build an MFP model with the default parameters. Specifically, all continuous variables are assigned a degree of freedom (df) of 4, implying that FP2 is the most complex permitted function. Moreover, we employ the 'pvalue' as the criterion for variable and function selection, and we set the nominal significance levels for both components to 0.05 for all variables. Finally, we use the F-test instead of Chi-square to calculate the p-values. The **R** output displays the df used for each variable, as denoted by the "initial degrees of freedom". The program correctly identifies "svi" as a binary variable and assigns it a df of 1. Additionally, the variables are ordered based on their p-values in descending order of significance, as indicated by the "visiting order". The variable "cavol" has the smallest p-value and will be evaluated first, while "age" has the largest p-value and will be evaluated last.
 
@@ -567,20 +564,32 @@ Following that, the algorithm evaluates the variable "weight" in a model adjusti
 
 The variables selected in the first cycle becomes the new starting model for the second cycle. In the second cycle, the effect of "cavol" is investigated again, but this time in a simpler model adjusting for "svi" only. Deviances are larger compared to cycle 1 because the five variables ("pgg45", "age", "weight", "bph" and "cp") no longer belong to the 'adjustment' model. However, the FSP  still selects "log(cavol)".
 
-The svi is evaluated in a model with only log(cavol) and the test confirms that the variable should be included in the model. Pgg45 is evaluated in a model with svi and log(cavol) but the test (FP2 vs null) is not significant and the variable is again eliminated.
-
-The "svi" is evaluated in a model that includes only "log(cavol)", and the test of linear vs null confirms that the variable should be included in the model. Pgg45 is evaluated in a model with "svi" and "log(cavol)" as adjustment variables, but the test of inclusion (FP2 vs null) is not significant, hence the variable is eliminated again.
+The "svi" is evaluated in a model that includes only "log(cavol)", and the test of linear vs null confirms that the variable should be included in the model. Pgg45 is evaluated in a model with "svi" and "log(cavol)" as adjustment variables, but the test of inclusion (FP2 vs null) is not significant and the variable is again eliminated.
 
 
-The variable "weight" is considered next in a model with "svi" and "log(cavol)". In contrast to the first cycle, the test for inclusion (FP2 vs null) is significant (p = 0.0052), indicating that "weight" needs to be re-included into the model. The second test of the FSP (FP2 vs linearity) is non-significant and a linear function is chosen for weight. 
+The variable "weight" is considered next in a model with "svi" and "log(cavol)". In contrast to the first cycle, the test for inclusion (FP2 vs null) is significant (p = 0.0052), indicating that "weight" needs to be re-included into the model. The second test of the FSP (FP2 vs linearity) is non-significant and a linear function is chosen for weight.  The inclusion of weight in the second cycle is a result of eliminating "bph", "cp" and "age" in the first cycle, and of the correlation with these variables
 
 In the subsequent steps, "bph", "cp", and "age" are investigated in models adjusting for "log(cavol)", "svi", and "weight" (linear). Compared to the first cycle, the p-values change, but all of them are much larger than 0.05. Therefore, none of these variables are included in the model. 
 
 **The second cycle ends with the model consisting of "log(cavol)", "svi" (binary), and "weight" (linear)**. 
 
-This model serves as the starting point for the third cycle, where all seven variables are investigated again. However, there are no further changes in the third cycle, and it concludes with the same model as the second cycle. At this point, the algorithm stops, and the final model consists of "log(cavol)," "svi" (binary), and "weight" (linear).
+This model serves as the starting point for the third cycle (not shown), where all seven variables are investigated again. However, there are no further 
+change in the selected variables or functions occurs, so MFP terminates with the three variables as the second cycle. For more detailed information, please visit the MFP website at For more detailed information, please visit the [MFP website](https://mfp.imbi.uni-freiburg.de/mfp).
+
 
 ### Graphical presentation of FP functions
+The regression estimates $(\hat{\beta})$ for FP terms provide incomplete information as a report of results since they tell us little about the fitted function for the variable of interest. A more informative approach is to visualize the function plot.
+
+Suppose an x is modeled as an FP with power(s) p and parameter estimate $\beta$. The partial predictor for x, denoted as $\eta_x$, is defined as $\beta_0 + x^p\beta$ (see Section 4.3). Its standard error (conditional on the selection of p) is given by the square root of Equation (4.1). In a multivariable model, the interpretation of $\eta_x$ is an adjusted estimate of the functional form for the effect of x. With the recommended centering of FP functions around the mean x of x (see Section 4.11), $\eta_x$ equals the intercept $\beta_0$ at x. In a model without an intercept (e.g., the Cox model), $\eta_x$ and its standard error equal zero at x.
+
+A function plot, sometimes referred to as a component-plus-residual plot when residuals are plotted, illustrates the relationship between x and $\eta_x$. It plots $\eta_x$ plus or minus twice its standard error against x, overlaid with the sum of $\eta_x$ and the residual for each individual observation.
+
+Function plots for cavol and weight are shown in Figure 6.2. In a model with a single predictor, the points would exactly equal the y values. They show the amount of residual variation at each x and may indicate lack of fit and outliers in y. Additionally, they provide an understanding of the positions of the covariate observations. In this example, there are no obviously disturbing features to note about the model. Further discussion on the role of function plots in model criticism can be found in Section 6.5.1.
+
+For generating function plots, the 'fracplot' function in Stata can be used. It produces a component-plus-residual plot, which, for normal-error models with constant weights and one covariate, amounts to a plot of the observations with the fitted line inscribed. For other normal-error models, weighted residuals are calculated and added to the fitted values. In models with additional covariates, the line represents the partial linear predictor for the variable in question (xvar1 or a covariate) and includes the intercept.
+
+For generalized linear and Cox models, the fitted values are plotted on the scale of the 'index' (linear predictor). Deviance residuals are added to the (partial) linear predictor to give component-plus-residual values, which are represented as small circles in the plot.
+
 
 
 ## Logistic Regression

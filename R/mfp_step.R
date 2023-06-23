@@ -26,8 +26,8 @@
 #' for tests between FP models of different degrees for `xi`. 
 #' @param keep a character vector that with names of variables to be kept 
 #' in the model. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
-#' covariates.
+#' @param powers a named list of numeric values that sets the permitted FP 
+#' powers for each covariate.
 #' @param method a character string specifying the method for tie handling in 
 #' Cox regression.
 #' @param strata a factor of all possible combinations of stratification 

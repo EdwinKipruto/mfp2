@@ -31,8 +31,8 @@
 #' in the model. 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. 
-#' @param powers a numeric vector that sets the permitted FP powers for all 
-#' covariates.
+#' @param powers a named list of numeric values that sets the permitted FP 
+#' powers for each covariate.
 #' @param method a character string specifying the method for tie handling in 
 #' Cox regression.
 #' @param strata a factor of all possible combinations of stratification 

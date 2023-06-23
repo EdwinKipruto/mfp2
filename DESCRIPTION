@@ -17,7 +17,7 @@ Imports:
   stats,
   survival,
   utils
-Suggests: knitr,testthat,xfun,rmarkdown
+Suggests: knitr,testthat,xfun,rmarkdown,formatR
 Description: Algorithm to select variables and functional forms through 
   fractional polynomials in regression models (GLMs, Cox). This package also
   implements various extensions of the original algorithm (sigmoid functional 

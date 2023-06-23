@@ -21,8 +21,8 @@ to be found in the current step.}
 indicating the fp powers to be used in the current step for all variables
 (except \code{xi}).}
 
-\item{powers}{a numeric vector that sets the permitted FP powers for all
-covariates.}
+\item{powers}{a named list of numeric values that sets the permitted FP
+powers for each covariate.}
 
 \item{acdx}{a logical vector of length nvars indicating continuous variables
 to undergo the approximate cumulative distribution (ACD) transformation.}

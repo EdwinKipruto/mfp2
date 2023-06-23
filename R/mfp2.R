@@ -652,6 +652,9 @@ mfp2.default <- function(x,
            sprintf("i This applies to the following powers: %s.", 
                    paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
     
+    if (!all(sapply(powers, is.numeric)))
+      stop("All elements of powers must be numeric", call. = FALSE)
+    
     # sort unique powers
     powers <- lapply(powers, function(v) sort(unique(v)))
     

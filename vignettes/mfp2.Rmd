@@ -788,3 +788,10 @@ known to reduce recurrence rates and is forced into the model. We use mfp to bui
 initial set of eight predictors by using the backfitting model-selection algorithm. We set the nominal
 p-value for variable and FP selection to 0.05 for all variables except hormon, which it is set to 1:
 
+## MFP with ACD transformation
+
+
+## Comparison with other R packages
+
+
+

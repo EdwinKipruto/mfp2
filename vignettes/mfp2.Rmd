@@ -770,6 +770,7 @@ For generating function plots, the 'fracplot' function in Stata can be used. It 
 
 For generalized linear and Cox models, the fitted values are plotted on the scale of the 'index' (linear predictor). Deviance residuals are added to the (partial) linear predictor to give component-plus-residual values, which are represented as small circles in the plot.
 
+### Prediction
 
 
 ## Logistic Regression

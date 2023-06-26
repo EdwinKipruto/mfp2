@@ -1,29 +1,34 @@
 ---
 title: "Multivariable Fractional Polynomials with Extensions"
 author:
-- Edwin Kipruto
-- Michael Kammer
-- Patrick Royston
-- Willi Sauerbrei
+  - Edwin Kipruto
+  - Michael Kammer
+  - Patrick Royston
+  - Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 link-citations: true
 output: 
- rmarkdown::pdf_document:
+  pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
     number_sections: true
- rmarkdown::html_vignette:
+  html_vignette:
     fig_caption: yes
     toc: yes
     toc_depth: 3
-    number_sections: yes
+    number_sections: true
+  word_vignette:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: true
 vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\VignetteEncoding{UTF-8}
   %\VignetteEngine{knitr::rmarkdown}
-
 ---
+
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
@@ -321,28 +326,17 @@ The default interface of `mfp2()` requires a matrix of predictors `x` and a
 numeric vector of response `y` for continuous outcomes. If you have one predictor,
 make sure you convert it into a matrix with a single column.
 
-We demonstrate how to fit the Gaussian linear model using the default interface 
-of `mfp2()` with default parameters.
+We demonstrate how to fit the Gaussian linear model using the default and formula interface with default parameters. The formula interface uses the `fp()` function. The two approaches leads to the same results.
 
 ```{r, eval=FALSE}
-fit <- mfp2(x, y)
+# default interface
+fit_default <- mfp2(x, y)
+
+# formula interface
+fit_formula <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), data = prostate)
 ```
 
-The fit is an object of class `mfp2` that inherits from `glm` and `lm`. This 
-means that `mfp2` inherits properties and methods from `glm` and `lm`, which 
-allows the `mfp2` to utilize methods and functions specific to `glm` and `lm`. 
-Various methods are defined for extracting components from the `mfp2` object, 
-such as coef, print, summary, fracplot, and predict. These methods allow users 
-to access different components of the mfp2 object, including coefficient 
-estimates, plotting functionalities, and predictions.
-
-To fit the same model using the formula interface, we use the `fp()` function. 
-
-```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
-fit <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), data = prostate)
-```
-
-The main distinction between the `mfp2()` and `glm()` functions in **R** is the 
+The main distinction between the `mfp2()` using the formula interface and `glm()` functions in **R** is the 
 inclusion of the `fp()` function within the formula. The presence of the `fp()` 
 function in the formula indicates that the variables included within it should 
 undergo fractional polynomial (FP) transformation, provided that the degree of 
@@ -756,6 +750,43 @@ In the subsequent steps, "bph", "cp", and "age" are investigated in models adjus
 This model serves as the starting point for the third cycle (not shown), where all seven variables are investigated again. However, there are no further 
 change in the selected variables or functions occurs, so MFP terminates with the three variables as the second cycle. For more detailed information, please visit the MFP website at For more detailed information, please visit the [MFP website](https://mfp.imbi.uni-freiburg.de/mfp).
 
+### Methods defined for mfp2
+Once you fit an MFP model using the `mfp2()` function, you can apply various methods to the resulting model object to extract information or perform specific tasks. Suppose we fit an MFP model for the Gaussian family with default parameters as follows:
+
+```{r, eval= FALSE}
+fit <- mfp2(x, y)
+```
+
+The `fit` is an object of class `mfp2`, which inherits from `glm` and `lm`. If the `family = "cox"`, the fit will inherit from `coxph`. This 
+means that `mfp2` can utilize methods and functions defined for `glm`, `lm` or `coxph`. 
+
+To obtain a summary of the final `mfp2` object, you can simply enter the object name (e.g., "fit" in our example) or use the print function. The `print()` function provides a comprehensive summary of the final MFP model, including the parameters used in the MFP model such as shifting and scaling factors, degrees of freedom (denoted by df_initial), nominal significance levels ("select" and "alpha"), and other relevant information.
+
+Furthermore, it shows the final degrees of freedom (denoted by "df_final"), where a df of 0 indicates that a variable was eliminated, which is confirmed by the "selected" column. The "acd" column specifies whether the ACD transformation was conducted for a certain variable, and the "power" column shows the final FP powers for variables, with eliminated variables assigned NA.
+
+```{r, eval= TRUE}
+print(fit)
+```
+
+To display the regression coefficients from the final MFP model, you can use the `coef()` or `summary()` function. It's important to note that the variables in the model have names with dot extensions. This means that a variable with two FP powers (FP2) will be denoted as "var.1" and "var.2". Please note that the displayed regression coefficients are not currently scaled back to the original scale.
+```{r, eval= TRUE}
+# extract only regression coefficients
+coef(fit)
+
+# display regression coefficients with other statistics
+summary(fit)
+```
+
+Users can also make predictions for new or existing data based on the fitted MFP model using `predict()` function.
+
+```{r out.lines = 10, eval= TRUE}
+# extract only regression coefficients
+predict(fit, newdata = data.frame(x[1:5,]))
+
+```
+
+To prepare the newdata for prediction, this function applies any necessary shifting and scaling based on the factors obtained from the training data. It is important to note that if the shifting factors are not sufficiently large as estimated from the training data, variables in newdata may end up with negative values, which can cause prediction errors if non-linear functional forms are used. A warning is given in this case by the function. The next step involves transforming the data using the selected fractional polynomial (FP) power. If necessary, centering of variables is conducted. Once the transformation (and centering) is complete, the transformed data is passed to either predict.glm() or predict.coxph(), depending on the chosen family of models and when type is not terms and contrasts.
+
 
 ### Graphical presentation of FP functions
 The regression estimates $(\hat{\beta})$ for FP terms provide incomplete information as a report of results since they tell us little about the fitted function for the variable of interest. A more informative approach is to visualize the function plot.
@@ -771,6 +802,33 @@ For generating function plots, the 'fracplot' function in Stata can be used. It 
 For generalized linear and Cox models, the fitted values are plotted on the scale of the 'index' (linear predictor). Deviance residuals are added to the (partial) linear predictor to give component-plus-residual values, which are represented as small circles in the plot.
 
 ### Prediction
+
+A summary of the final mfp2 object is displayed if we just enter the object name or use the print function:
+
+
+Various methods are defined for extracting components from the `mfp2` object, 
+such as coef, print, summary, fracplot, and predict. These methods allow users 
+to access different components of the mfp2 object, including coefficient 
+estimates, plotting functionalities, and predictions.
+
+
+
+Here are some commonly used methods available for objects created with lm():
+
+
+, various methods are provided for the
+object such as plot, print, coef and predict that enable us to execute those tasks more elegantly.
+
+
+The fit is an object of class `mfp2` that inherits from `glm` and `lm`. This 
+means that `mfp2` inherits properties and methods from `glm` and `lm`, which 
+allows the `mfp2` to utilize methods and functions specific to `glm` and `lm`. 
+Various methods are defined for extracting components from the `mfp2` object, 
+such as coef, print, summary, fracplot, and predict. These methods allow users 
+to access different components of the mfp2 object, including coefficient 
+estimates, plotting functionalities, and predictions.
+
+To fit the same model using the formula interface, we use the `fp()` function. 
 
 
 ## Logistic Regression

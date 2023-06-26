@@ -234,7 +234,7 @@ predict.mfp2 <- function(object,
                        "i Please remove any missing data before passing newdata to this function.",
                        call. = FALSE)
     
-    newdata <- prepare_newdata_for_predict(object, newdata)
+    newdata <- prepare_newdata_for_predict(object, newdata, check_binary = FALSE)
     
     if (object$family_string == "cox") {
       return(getFromNamespace("predict.coxph", "survival")(

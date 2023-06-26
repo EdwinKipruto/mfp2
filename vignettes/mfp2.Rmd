@@ -777,58 +777,81 @@ coef(fit)
 summary(fit)
 ```
 
-Users can also make predictions for new or existing data based on the fitted MFP model using `predict()` function.
+Users can generate predictions for new or existing data based on the fitted MFP model using the `predict()` function. To illustrate this, let's consider an example using the prostate dataset. Suppose we want to make predictions for the first five observations in the matrix x (considering them as new observations). We can achieve this with the following code:
 
 ```{r out.lines = 10, eval= TRUE}
-# extract only regression coefficients
-predict(fit, newdata = data.frame(x[1:5,]))
+ # extract the first five observations from 'x'
+new_observations <- x[1:5, ] 
+
+# make predictions for these new observations.
+predict(fit, newdata = new_observations)
 
 ```
 
-To prepare the newdata for prediction, this function applies any necessary shifting and scaling based on the factors obtained from the training data. It is important to note that if the shifting factors are not sufficiently large as estimated from the training data, variables in newdata may end up with negative values, which can cause prediction errors if non-linear functional forms are used. A warning is given in this case by the function. The next step involves transforming the data using the selected fractional polynomial (FP) power. If necessary, centering of variables is conducted. Once the transformation (and centering) is complete, the transformed data is passed to either predict.glm() or predict.coxph(), depending on the chosen family of models and when type is not terms and contrasts.
+To prepare the `newdata` for prediction, the predict() function applies any necessary shifting and scaling based on the factors obtained from the development data. It is important to note that if the shifting factors are not sufficiently large as estimated from the development data, variables in `newdata` may end up with negative values, which can cause prediction errors if non-linear functional forms are used. A warning is given in this case by the function. 
 
 
 ### Graphical presentation of FP functions
-The regression estimates $(\hat{\beta})$ for FP terms provide incomplete information as a report of results since they tell us little about the fitted function for the variable of interest. A more informative approach is to visualize the function plot.
+The regression estimates ($\hat{\beta}$) for FP terms provide incomplete information as they only give limited insight into the fitted function for the variable of interest. A more informative approach is to visualize functions for variables with non-linear effects. The mfp2 package offers the `fracplot()` function specifically designed for this purpose.
 
-Suppose an x is modeled as an FP with power(s) p and parameter estimate $\beta$. The partial predictor for x, denoted as $\eta_x$, is defined as $\beta_0 + x^p\beta$ (see Section 4.3). Its standard error (conditional on the selection of p) is given by the square root of Equation (4.1). In a multivariable model, the interpretation of $\eta_x$ is an adjusted estimate of the functional form for the effect of x. With the recommended centering of FP functions around the mean x of x (see Section 4.11), $\eta_x$ equals the intercept $\beta_0$ at x. In a model without an intercept (e.g., the Cox model), $\eta_x$ and its standard error equal zero at x.
+By providing the mfp2 object and other relevant arguments, `fracplot()` generates plots of the functions for variables along with $95\%$ confidence limits. You can specify the variable to be plotted using the `terms` argument. If `terms` is set to NULL (the default), the function returns a list of plots for all variables included in the model.
 
-A function plot, sometimes referred to as a component-plus-residual plot when residuals are plotted, illustrates the relationship between x and $\eta_x$. It plots $\eta_x$ plus or minus twice its standard error against x, overlaid with the sum of $\eta_x$ and the residual for each individual observation.
+`fracplot()` function, by default produces a component-plus-residual plot. This is because the `partial_only` argument is set to FALSE by default. 
 
-Function plots for cavol and weight are shown in Figure 6.2. In a model with a single predictor, the points would exactly equal the y values. They show the amount of residual variation at each x and may indicate lack of fit and outliers in y. Additionally, they provide an understanding of the positions of the covariate observations. In this example, there are no obviously disturbing features to note about the model. Further discussion on the role of function plots in model criticism can be found in Section 6.5.1.
-
-For generating function plots, the 'fracplot' function in Stata can be used. It produces a component-plus-residual plot, which, for normal-error models with constant weights and one covariate, amounts to a plot of the observations with the fitted line inscribed. For other normal-error models, weighted residuals are calculated and added to the fitted values. In models with additional covariates, the line represents the partial linear predictor for the variable in question (xvar1 or a covariate) and includes the intercept.
-
-For generalized linear and Cox models, the fitted values are plotted on the scale of the 'index' (linear predictor). Deviance residuals are added to the (partial) linear predictor to give component-plus-residual values, which are represented as small circles in the plot.
-
-### Prediction
-
-A summary of the final mfp2 object is displayed if we just enter the object name or use the print function:
+For Gaussian models with constant weights and a single covariate, this amounts to a plot of the outcome variable (y) and a covariate with the fitted line inscribed.
 
 
-Various methods are defined for extracting components from the `mfp2` object, 
-such as coef, print, summary, fracplot, and predict. These methods allow users 
-to access different components of the mfp2 object, including coefficient 
-estimates, plotting functionalities, and predictions.
+For other normal-error models, weighted residuals are calculated and added to the fit. For models with two or more covariates, the line is the partial linear predictor for the variable of interest and includes the intercept.
 
 
+For generalized linear and Cox models, the `fracplot()` function plots the fitted values on the scale of the linear predictor. Deviance residuals are added to the (partial) linear predictor for generalized linear models, while martingale residuals are added for Cox models to give component-plus-residual. These values are small circles on the plot.The component-plus-residual plots may show the amount of residual variation at each covariate and may indicate lack of fit or outliers in the outcome (Royston and Sauerbrei, 2008). 
 
-Here are some commonly used methods available for objects created with lm():
-
-
-, various methods are provided for the
-object such as plot, print, coef and predict that enable us to execute those tasks more elegantly.
+If you set `partial_only = TRUE`, the fracplot() function will plot only the partial linear predictor without including the residuals. For more detailed information on component-plus-residuals, you can refer to the [Stata manual(click here)](https://www.stata.com/manuals/rmfppostestimation.pdf).
 
 
-The fit is an object of class `mfp2` that inherits from `glm` and `lm`. This 
-means that `mfp2` inherits properties and methods from `glm` and `lm`, which 
-allows the `mfp2` to utilize methods and functions specific to `glm` and `lm`. 
-Various methods are defined for extracting components from the `mfp2` object, 
-such as coef, print, summary, fracplot, and predict. These methods allow users 
-to access different components of the mfp2 object, including coefficient 
-estimates, plotting functionalities, and predictions.
+For instance, to plot the function for "cavol" in the model, you can use the following code:
 
-To fit the same model using the formula interface, we use the `fp()` function. 
+```{r, eval= TRUE}
+plots <- fracplot(fit)
+class(plots)
+plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+```
+
+The fracplot() function also supports the incorporation of a reference point or target value in the plot. Including a reference point allows for visualizing whether other data points exceed or fall below the reference. To achieve this, you can use the `type` argument and set it to "contrasts" (`type = "contrasts"`). Additionally, you can supply the reference point using the `ref` argument. By default, the `ref` argument is set to `NULL`, and average values are used as the reference points for continuous variables, while the minimum values are used as reference points for binary variables. For instance, if we want the reference value for the continuous variable "cavol" to be 5, we can use the following code:
+
+```{r, eval= TRUE}
+plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 5))
+class(plots)
+plots[[1]] + ggplot2::ylab("Partial predictor")
+
+```
+
+In certain cases, when the data points for a specific variable contain extreme values, the resulting function plotted using the original data can appear very sharp. This sharpness is primarily due to the limited number of data points that are close to the extreme values of the variable.
+
+
+The `fracplot()` function provides two options for generating the plot. The first option is to use the original data that was used to fit the model (`terms_seq = "data"`). The second option is to generate a sequence of equidistant new data points using the range of the original data for the variable of interest (`terms_seq = "equidistant"`).
+
+To illustrate these options, we will use the `art` dataset included in the mfp2 package. This dataset is described in detail by Royston and Sauerbrei (2008), and the outcome variable is continuous. In our example, we will fit an MFP model with a single covariate (x5).
+
+```{r, eval= TRUE}
+# load art data
+data("art")
+
+# fit mfp model using art data
+xx <- as.matrix(art[,"x5", drop = FALSE])
+yy <- as.numeric(art$y)
+fit2 <- mfp2(xx, yy, verbose = FALSE)
+
+# generate plot using original data 
+plot1 <- fracplot(fit2)
+plot1[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+# generate plot using sequence of data
+plot2 <- fracplot(fit2, terms_seq = "equidistant")
+plot2[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+```
 
 
 ## Logistic Regression

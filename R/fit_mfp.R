@@ -642,11 +642,11 @@ create_fp_terms <- function(fp_powers,
     df_initial = df, 
     select = select, 
     alpha = alpha, 
+    acd = acdx, 
     # presence / absence in final model encoded by NAs in fp_powers
     selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom
     df_final = sapply(fp_powers, calculate_df), 
-    acd = acdx, 
     convert_powers_list_to_matrix(fp_powers)
   )
   rownames(fp_terms) <- names(fp_powers)

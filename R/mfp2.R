@@ -1148,7 +1148,7 @@ summary.mfp2 <- function(object, ...) {
 #' 
 #' @param x `mfp2` object to be printed.
 #' @param ... passed to `print` methods of underlying model class. A useful 
-#' option os the `digits` argument, indicating printed digits.
+#' option as the `digits` argument, indicating printed digits.
 #' 
 #' @export
 print.mfp2 <- function(x,

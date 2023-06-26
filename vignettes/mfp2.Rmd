@@ -224,11 +224,11 @@ Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei
 
 ### Fractional polynomials are unsuitable for modeling some types of functions
 
-#### MFPA to model sigmoid functions
+#### MFPA to model sigmoid functions:
 
 Sigmoid (doubly asymptotic) functions are not represented in the class of standard FP functions. Royston (2014) introduced the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and an outcome variable. In addition, Royston and Sauerbrei (2016) proposed the MFPA procedure, which extends standard MFP by permitting selection of sigmoid functions derived from the ACD transformation when supported by suﬃciently strongly evidence in the data.
 
-#### Local features
+#### Local features:
 
 Unlike splines which have a local interpretation of the fitted function, FPs provide a curve with a global interpretation.
 To investigate possible "overlooked" local features of an FP function, Binder and Sauerbrei (2010) conducted a systematic analysis of model ﬁts obtained by MFP.

@@ -68,50 +68,43 @@ knitr::knit_hooks$set(output = function(x, options) {
 Multivariable regression models are widely used across various fields of science where empirical data is analyzed. In model building, many researchers often assume a linear function for continuous variables, sometimes after applying “standard” transformations such as logarithmic, or divide the variable into several categories. However, assuming linearity without considering non-linear relationships may hinder the detection of stronger effects or even 
 cause the effects to be mis-modeled. Categorizing continuous variables, which 
 results in modeling implausible step functions, is a common practice but widely
-criticized (Sauerbrei et al. 2023; Royston et al. 2006). 
+criticized (Royston et al. 2006; Sauerbrei et al. 2023). 
 
 
-When building a descriptive model with the aim of identifying predictors of an 
-outcome and understanding the the relationship between the predictors and the 
-outcome, two components are often considered: variable selection, which involves
-identifying the subset of “important” predictors, and identification of possible
-non-linearity in continuous predictors. 
+When building a descriptive model with the aim of capturing the data structure parsimoniously, two components are often considered: Variable selection which entails identifying the subset of "important" predictors that have a significant impact on the outcome and  investigation of non-linear relationships between continuous predictors and the outcome. 
 
-The MFP approach has been proposed as a pragmatic method for dealing with
-non-linearity in multivariable model-building. This approach retains continuous
+The MFP approach has been proposed as a pragmatic method that combines variable selection and function selection simultaneously in multivariable linear regression modeling. This approach retains continuous
 predictors as continuous, identifies non-linear functions if sufficiently 
 supported by the data, and eliminates weakly influential predictors using 
 backward elimination (BE). Despite its simplicity and ease of understanding for
 researchers familiar with regression models, the selected models often capture
 the essential information from the data. The MFP models are relatively 
-straightforward to interpret and report, which is essential for their 
+straightforward to interpret and report, which is important for 
 transportability and practical applicability. In summary, the MFP procedure 
 combines:
 
-* variable selection through backward elimination (BE) with\
-* Selection of fractional polynomial (FP) functions for continuous variables
+* variable selection through backward elimination with\
+* selection of fractional polynomial (FP) functions for continuous variables
 
-The analyst must decide on a nominal significance level $(\alpha)$ for both 
+The analyst must decide on nominal significance levels $(\alpha_1, \alpha_2)$ for both 
 components. The choice of these two significance levels has a strong influence 
-on the complexity of the final model. While it is possible to use the same 
-$\alpha$ level for both components, they can also differ. The decision regarding
-these significance levels heavily depends on the specific aim of the analysis.
+on the complexity of the final model. Often, the same significance levels 
+$(\alpha_1 = \alpha_2)$ are used for both components, but they can also differ. The decision regarding
+these significance levels strongly depends on the specific aim of the analysis.
 
 Section 1.2 provides an overview of fractional polynomial functions for a single
 continuous variable in the model, including the function selection procedure (FSP).
-In Section 1.3, the MFP approach is described, focusing on models that involve 
-two or more variables. Section 2 is an introduction to our package which covers the installation process and provides instructions for utilizing it in various linear regression models. Section 3 presents a 
-comparison between our package and other R packages that implement MFP. 
+Section 1.3, describes the MFP approach, focusing on models that involve 
+two or more covariates. Section 2 is an introduction to mfp2 package which covers the installation process and provides instructions for utilizing it in various linear regression models. The package's functionality is predominantly demonstrated using Gaussian linear models. Section 3 presents a 
+comparison between the new `mfp2` package and the old `mfp` package in R. 
 Section 4 introduces an extension of MFP using the approximate cumulative distribution (ACD) transformation of a continuous covariate. This extension 
 allows for modeling a sigmoid relationship between covariates and an outcome
 variable. Subsection 4.1 describes the function selection procedure with ACD 
-transformation (FSPA), while section 4.2 offers a guide on how to implement 
-MFPA using our package. Lastly, Section 5 describes an additional extension of
-MFP that is not currently implemented in our package but is available in the 
-STATA software.
+transformation (FSPA), while subsection 4.2 offers a guide on how to implement 
+MFPA using `mfp2` package. Lastly, Section 5 describes an additional extension of MFP that is currently not implemented in `mfp2` package, such as interactions between variables. However, this extension is available in the Stata software
 
 For more comprehensive information about MFP and its extensions, please visit
-our website at https://mfp.imbi.uni-freiburg.de/.
+[MFP website (click here)](https://mfp.imbi.uni-freiburg.de/).
 
 ## Fractional polynomial models for a continuous variable
 Suppose that we have an outcome variable, a single continuous covariate x, and a regression model relating them. A starting point is the straight-line model,
@@ -120,8 +113,8 @@ straight line is an adequate description of the relationship, but other models
 should be investigated for possible improvements in ﬁt. A simple extension of 
 the straight line is a power transformation model, $\beta_1x^{p}$. The latter 
 model has often been used by practitioners in an ad hoc way, utilizing diﬀerent
-choices of p. Royston and Altman (1994) formalized the model by calling it a
-ﬁrst-degree fractional polynomial or FP1 function. The power p is chosen from a 
+choices of `p`. Royston and Altman (1994) formalized the model by calling it a
+ﬁrst-degree fractional polynomial or FP1 function. The power `p` is chosen from a 
 pragmatically restricted set of eight elements: 
 $S = \{\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3\}$ , where $x^0$ denotes natural logarithm  of
 x, $log (x)$.
@@ -130,19 +123,18 @@ As with polynomial regression, extension from one-term FP1 functions to more
 complex and ﬂexible two-term FP2 functions is straightforward.
 The quadratic function $\beta_1x^1 + \beta_2x^2$ is written as 
 $\beta_1x^{p1} + \beta_2x^{p2}$ in FP terminology. The powers $p1=1$ and $p2=2$ 
-are members of S. Royston and Altman extended the class of FP2 functions with
+are members of set `S`. Royston and Altman extended the class of FP2 functions with
 different powers to cases with equal powers ($p1=p2=p$) by defining them as
 $\beta_1x^p + \beta_2x^p log(x)$. These are known as repeated-powers functions.
 Detailed definition of FP functions or models is given in Section 4.3.1 of 
 Royston and Sauerbrei (2008). For formal deﬁnitions, we use notation from 
-Royston and Sauerbrei (2008). Throughout the rest of this article, we use 
-abbreviations (R&S, year) and (S&R, year) for papers published by these two author.
+Royston and Sauerbrei (2008).
 
 FP1 functions are always monotonic and those with power $p < 0$ have an asymptote
 as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e., 
 have one maximum or one minimum for some positive values of x), and they have an
 asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
-For more details, see R&S (2008), Section 4.4.
+For more details, see Royston and Sauerbrei (2008), Section 4.4.
 Figure 1 shows FP1 and some FP2 curves. The subset of FP2 powers is chosen to 
 illustrate the ﬂexibility available with a few pairs of powers ($p1, p2$).
 
@@ -150,9 +142,7 @@ In total, there are 44 models available within the set of FP powers (S),
 consisting of 8 FP1 models and 36 FP2 models. Although the allowed class of FP
 functions may seem limited, it encompasses a wide range of diverse shapes. 
 This is illustrated in Figure 1, with the left panel displaying eight FP1 powers
-and the middle panel depicting a subset of FP2 powers. The right panel 
-demonstrates the variations in shape for a fixed FP2 power (-2, 2) but different
-regression coefficients.
+and the middle panel depicting a subset of FP2 powers. 
 
 Based on extensive experience with real data and several simulation studies, 
 FP1 and FP2 are generally considered adequate in the context of multivariable 
@@ -169,8 +159,8 @@ However, having a suitable default function is important for increasing the pars
 There are occasional exceptions; for example, in modeling time-varying regression coeﬃcients in the Cox model, Sauerbrei et al. (2007) chose a 
 default time (t) transformation of $(log (t))$ rather than $(t)$.
 It can be assumed that deviance diﬀerence between an FPm and an FP \\(m-1\\) 
-model is distributed approximately as central $\chi^2$ on 2 degrees of freedom (d.f.) (R&S 2008, Chapter 4.9; Ambler and Royston (2001).
- To select a speciﬁc function, a closed test procedure (other procedures had been proposed before) was proposed (R&S 2008, Section 4.10).
+model is distributed approximately as central $\chi^2$ on 2 degrees of freedom (d.f.) (Royston and Sauerbrei 2008, Chapter 4.9; Ambler and Royston (2001).
+ To select a speciﬁc function, a closed test procedure (other procedures had been proposed before) was proposed (Royston and Sauerbrei 2008, Section 4.10).
  The complexity of the ﬁnally chosen function is predicated on preliminary decisions as to the nominal significance level $(\alpha)$ and the degree (m) of the most complex FP model allowed.
  Typical choices are $\alpha = 0.05$ and FP2 (m = 2).
  We illustrate the strategy for m = 2, which runs as follows:
@@ -193,33 +183,33 @@ Unlike developing a predictive model based on acceptable statistical criteria, d
 
 In many areas of science, the main interest often lies in the identification of inﬂuential variables and determination of appropriate functional forms for continuous variables.
 Often, linearity is presumed without checking this important assumption, and much better-ﬁtting nonlinear functions may not be considered.
-The MFP procedure was proposed as a pragmatic strategy to investigate whether nonlinear functions can improve the model ﬁt (R&S, 2008; S&R, 1999).
-MFP combines backward elimination (BE) for the selection of variables with a systematic search for possible nonlinearity by the function selection procedure (FSP).
+The MFP procedure was proposed as a pragmatic strategy to investigate whether nonlinear functions can improve the model ﬁt (Royston and Sauerbrei, 2008; Sauerbrei and Royston, 1999).
+MFP combines backward elimination for the selection of variables with a systematic search for possible nonlinearity by the function selection procedure.
 The extension is feasible with any type of regression model to which BE is applicable.
 When developing models for description, it is important to consider factors such as model stability, generalizability, and practical usefulness.
-The philosophy behind MFP modeling is to create interpretable and relatively simple models (Sauerbrei et al 2007).
+The philosophy behind MFP modeling is to create interpretable and relatively simple models (Sauerbrei et al. 2007).
 Consequently, an analyst using MFP should be less concerned about failing to include variables with a weak eﬀect or failing to identify minor curvature in a functional form of a continuous covariate.
 Modiﬁcations that may improve MFP models are combination with post-estimation shrinkage (Dunkler et al., 2016, R-package shrink) and a more systematic check for overlooked local features (Binder and Sauerbrei, 2010, currently not implemented
-in our package).Successful use of MFP requires only general knowledge about building regression models.
+in mfp2 package). Successful use of MFP requires only general knowledge about building regression models.
 
 Two nominal signiﬁcance level values are the main tuning parameters: $\alpha_1$ for selecting variables with BE (in the ﬁrst step of the FSP) and $\alpha_2$ for comparing the ﬁt of functions within the FSP.
 Often, $\alpha_1=\alpha_2$ is a good choice.
 If available, subject-matter knowledge should replace or at least guide data-dependent model choice.
 Only minor modiﬁcations are required to incorporate various types of subject-matter knowledge into MFP modeling.
-For a detailed example, see S&R (1999).
-Recommendations for practitioners of MFP modeling are given in Sauerbrei et al. (2007b) and in R&S (2008, Section 12.2).
+For a detailed example, see Sauerbrei and Royston (1999).
+Recommendations for practitioners of MFP modeling are given in Sauerbrei et al. (2007b) and in Royston and Sauerbrei (2008, Section 12.2).
 
 ### MFP -- Key Issues and Approaches to Handling Them
 
 Mainly focusing on the FP component, we brieﬂy mention key issues of MFP modeling and refer to the literature for further reading.
-Regarding variable selection, we have summarized relevant issues and provided arguments for backward elimination as our preferred strategy (R&S 2008, Chapter 2).
+Regarding variable selection, we have summarized relevant issues and provided arguments for backward elimination as our preferred strategy (Royston and Sauerbrei 2008, Chapter 2).
 Even when a search for model improvement using a nonlinear function is not considered, that is, all functions are assumed linear, it is infeasible to derive a suitable and stable model for description in small datasets.
 Below we provide some information about sample size needed, but implicitly we assume that the sample size is "suﬃcient".
 
 #### The variable has to be positive
 
 The class of FP1 and FP2 functions includes a log and other transformations which require that the continuous variable must be positive.
-A preliminary origin-shift transformation can be applied (R&S 2008, Chapters 4.7 and 11).
+A preliminary origin-shift transformation can be applied (Royston and Sauerbrei 2008, Chapters 4.7 and 11).
 For variables with a "spike" of probability mass at zero, a binary indicator variable may be added to the model and the FSP may be modiﬁed accordingly (Royston et al., 2010; Becher et al., 2012; Lorenz et al., 2018).
 
 #### Sample size, influential observations and replicability of MFP models
@@ -229,18 +219,21 @@ However, compared with models that comprise only linear functions, the situation
 Conversely, the same may happen with large positive powers at large values of x.
 Such transformations may create inﬂuential observations that may affect parts of the FSP.
 To mitigate the impact of influential observations, it is important to assess the robustness of FP functions.
-Some suggestions for investigating inﬂuential points (IPs) and handling such issues in MFP modeling can be found in R&S (2008, Chapters 5 and 10) and their paper on improving the robustness of FP models (R&S, 2007).
-Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023).
-The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model.
-However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables. Figure 2 illustrates the effects of influential observation 151 on the art dataset. The variable of interest is x5 with extremely large values, and the outcome is a continuous variable. The inclusion of observation 151 in the data results in the selection of the FP2 function, while its elimination leads to the selection of the FP1 function. Therefore, it is sufficient to describe variable x5 using a simpler FP1 function rather than a complex FP2 function. For more details, refer to Sauerbrei et al. (2023).
+Some suggestions for investigating inﬂuential points (IPs) and handling such issues in MFP modeling can be found in Royston and Sauerbrei (2008, Chapters 5 and 10) and their paper on improving the robustness of FP models (Royston and Sauerbrei, 2007).
+Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023). The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model. However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables.
 
 ### Fractional polynomials are unsuitable for modeling some types of functions
 
 #### MFPA to model sigmoid functions
 
-Sigmoid (doubly asymptotic) functions are not represented in the class of standard FP functions.
-Royston (2014) introduced the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and an outcome variable.
-In addition, R&S (2016) proposed the MFPA procedure, which extends standard MFP by permitting selection of sigmoid functions derived from the ACD transformation when supported by suﬃciently strongly evidence in the data.
+Sigmoid (doubly asymptotic) functions are not represented in the class of standard FP functions. Royston (2014) introduced the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and an outcome variable. In addition, Royston and Sauerbrei (2016) proposed the MFPA procedure, which extends standard MFP by permitting selection of sigmoid functions derived from the ACD transformation when supported by suﬃciently strongly evidence in the data.
+
+#### Local features
+
+Unlike splines which have a local interpretation of the fitted function, FPs provide a curve with a global interpretation.
+To investigate possible "overlooked" local features of an FP function, Binder and Sauerbrei (2010) conducted a systematic analysis of model ﬁts obtained by MFP.
+If local features are detected by their MFP + L procedure, statistically signiﬁcant local polynomials are then parsimoniously added to the predictor from MFP.
+This enables the identification and incorporation of local features that may have been missed by the global FP function. The approach is not currently implemented in the `mfp2` package, but it is a potential area for future extensions.
 
 # Introduction to mfp2 package
 `mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: p-value, Akaike information criterion (AIC), and Bayesian information criterion (BIC). Furthermore, it provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.

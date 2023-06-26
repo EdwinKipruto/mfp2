@@ -291,7 +291,10 @@ prepare_newdata_for_predict <- function(object,
     # sort columns of newdata based on the names of shift/scale
     newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
     
-    if (!all(newdata > 0)) 
+  # exclude binary variables before returning an error
+  index <-  unname(which(apply(newdata, 2, function (x) length(unique(x)))>2))
+    
+    if (!all(newdata[,index] > 0)) 
       warning("i After shifting using training data some values in newdata remain negative.",
               "i Predictions for such observations may not be available in case of non-linear transformations.")
     

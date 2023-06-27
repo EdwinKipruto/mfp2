@@ -450,6 +450,7 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
         
         for (i in seq_along(levels_list)) {
           level <- levels_list[[i]]
+          # TODO: improve names
           var_name <- paste0(col, "_", paste(level, collapse = "_"))
           data[[var_name]] <- as.integer(!data[[col]] %in% level)
         }

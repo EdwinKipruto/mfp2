@@ -753,17 +753,19 @@ There are two steps to successfully set up dummy variables in a multiple regress
 
 
 ```{r, eval = TRUE}
+# load art data
+data("art")
 # order the levels of the variable such that Levels: 1 < 2 < 3
 art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
 
 # create dummy variables for x4 based on ordinal coding
-art <- create_dummy_variables(art, var_ordinal = c("x4"))
+art <- create_dummy_variables(art, var_ordinal = c("x4"), drop_variables = TRUE)
 
 # convert x9 to factor and assign level 1 as reference group
 art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
 
 # create dummy variables for x9 using categorical coding 
-art <- create_dummy_variables(art, var_nominal = c("x9"))
+art <- create_dummy_variables(art, var_nominal = c("x9"), drop_variables = TRUE)
 head(art)
 
 ```

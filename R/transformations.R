@@ -378,18 +378,20 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
   }
 }
 
-#' Simple function to create dummy variables for ordinal variables
+#' Simple function to create dummy variables for ordinal and nominal variables
 #' 
-#' @param data a dataframe containing the ordinal variable. 
-#' @param var_names names of ordinal variables in the data.
+#' @param data A dataframe containing the ordinal variable. 
+#' @param var_ordinal Names of ordinal variables in the data for which dummy variables should be created.
+#' @param var_nominal Names of nominal variables in the data for which dummy variables should be created.
 #' 
 #' @details 
-#' This function creates based on ordinal coding described in Royston and Sauerbrei (2008) book (chapter 3, Table 3.5)
+#' This function creates dummy variables based on ordinal and categorical coding described in Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5).
+#' 
 #' @return 
-#' dataframe with new dummy variables.
+#' A dataframe with new dummy variables.
 #' 
 #' @export
-create_dummy_ordinal <- function(data, var_names) {
+create_dummy_variables <- function(data, var_ordinal = NULL, var_nominal = NULL) {
   # assert that data must be provided
   if (missing(data))
     stop("! data argument is missing.\n",
@@ -397,12 +399,27 @@ create_dummy_ordinal <- function(data, var_names) {
          call. = FALSE)
   if (!is.data.frame(data))
     stop ("The data must be a data.frame")
+  # colnames of data
+  xnames <- colnames(data)
   
-  for (col in var_names) {
-    if (is.null(data[[col]]) || length(data[[col]]) == 0) {
-      stop(paste("variable name ", col, "is empty or does not exist."))
+  if (is.null(xnames))
+    stop("colnames of data is null")
+  
+  # Deal with ordinal variables
+  if (!is.null(var_ordinal)){
+    index1 <- which(!var_ordinal %in% xnames)
+    
+    if (length(index1) != 0)
+      stop(paste0("Variable ", var_ordinal[index1], " is not in column name of data", collapse = ", "))
+    
+    if (!is.null(var_nominal)){
+      index2 <- which(!var_nominal %in% xnames)
+      
+      if (length(index2) != 0)
+        stop(paste0("Variable ", var_nominal[index2], " is not in column name of data", collapse = ", "))
     }
     
+  for (col in var_ordinal) {
     unique_levels <- unique(data[[col]])
     if (length(unique_levels) == 1) {
       warning(paste("var_names ", col, "has only one unique level. Skipping dummy variable creation."))
@@ -416,6 +433,14 @@ create_dummy_ordinal <- function(data, var_names) {
       var_name <- paste0(col, "_", paste(level, collapse = "_"))
       data[[var_name]] <- as.integer(!data[[col]] %in% level)
     }
+  }
+  }
+  
+  # Deal with nominal variables
+  if (!is.null(var_nominal)){
+
+  dummies <- model.matrix(~ ., data = data[, var_nominal, drop = FALSE])[, -1]
+      data <- cbind(data, dummies)
   }
   
   return(data)

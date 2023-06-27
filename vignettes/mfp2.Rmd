@@ -150,6 +150,7 @@ model building, particularly when variable selection and functional forms is
 required. The content of this article has been previously published in two 
 encyclopedia articles (Sauerbrei and Royston, 2011; Sauerbrei and Royston, 2016).
 
+
 ### Function selection procedure (FSP)
 Choosing the best FP1 or FP2 function by grid search, minimizing the deviance (minus twice the maximized log-likelihood), is straightforward.
 However, having a suitable default function is important for increasing the parsimony, stability, and general usefulness of selected functions.
@@ -751,6 +752,22 @@ Fortunately, the Create Dummy Variables procedure in SPSS Statistics versions 22
 There are two steps to successfully set up dummy variables in a multiple regression: (1) create dummy variables that represent the categories of your categorical independent variable; and (2) enter values into these dummy variables – known as dummy coding – to represent the categories of the categorical independent variable
 
 
+```{r, eval = TRUE}
+# order the levels of the variable such that Levels: 1 < 2 < 3
+art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
+
+# create dummy variables for x4 based on ordinal coding
+art <- create_dummy_ordinal(art, var_names = c("x4"))
+
+# convert x9 to factor and assign level 1 as reference group
+art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
+
+# create dummy variables for x9 using categorical coding 
+art <- cbind(art, model.matrix(~ . - 1, data = art[, "x9", drop = FALSE])
+head(art)
+
+
+```
 
 
 #### nominal variables:

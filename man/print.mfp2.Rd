@@ -10,7 +10,7 @@
 \item{x}{\code{mfp2} object to be printed.}
 
 \item{...}{passed to \code{print} methods of underlying model class. A useful
-option os the \code{digits} argument, indicating printed digits.}
+option as the \code{digits} argument, indicating printed digits.}
 }
 \description{
 Enhances printing by information on data processing and fractional

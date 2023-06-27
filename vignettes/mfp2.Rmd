@@ -233,7 +233,7 @@ Sigmoid (doubly asymptotic) functions are not represented in the class of standa
 Unlike splines which have a local interpretation of the fitted function, FPs provide a curve with a global interpretation.
 To investigate possible "overlooked" local features of an FP function, Binder and Sauerbrei (2010) conducted a systematic analysis of model ﬁts obtained by MFP.
 If local features are detected by their MFP + L procedure, statistically signiﬁcant local polynomials are then parsimoniously added to the predictor from MFP.
-This enables the identification and incorporation of local features that may have been missed by the global FP function. The approach is not currently implemented in the `mfp2` package, but it is a potential area for future extensions.
+This enables the identification and incorporation of local features that may have been missed by the global FP function. This approach is not currently implemented in the `mfp2` package, but it is a potential area for future extensions.
 
 # Introduction to mfp2 package
 `mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: p-value, Akaike information criterion (AIC), and Bayesian information criterion (BIC). Furthermore, it provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.
@@ -742,6 +742,20 @@ In the subsequent steps, "bph", "cp", and "age" are investigated in models adjus
 
 This model serves as the starting point for the third cycle (not shown), where all seven variables are investigated again. However, there are no further 
 change in the selected variables or functions occurs, so MFP terminates with the three variables as the second cycle. For more detailed information, please visit the MFP website at For more detailed information, please visit the [MFP website](https://mfp.imbi.uni-freiburg.de/mfp).
+
+### Handling categorical variables
+The number of dummy variables you need to create will depend on how many categories your categorical independent variable has. As a general rule, you will create one less dummy variable than the number of categories in your categorical independent variable. For example, if you have a categorical independent variable with three categories (e.g., favourite_sport, with the following three categories: "swimming", "cycling" and "running"), you will create two dummy variables and select one category to act as a reference category (e.g., "swimming" and "cycling" become dummy variables and "running" becomes the reference category). We explain more about reference categories after the following table, which provides some examples of categorical independent variables and the number of dummy variables that need to be created:
+
+Fortunately, the Create Dummy Variables procedure in SPSS Statistics versions 22 to 28 (and the subscription version of SPSS Statistics) automatically creates a dummy variable for every category of your categorical independent variable. However, this is not the case for the Recode into Different Variables procedure in SPSS Statistics version 21 or earlier versions of SPSS Statistics. Therefore, under normal circumstances, you will have created the following setup in SPSS Statistics, depending on whether you have version 21 or earlier or version 22 and above:
+
+There are two steps to successfully set up dummy variables in a multiple regression: (1) create dummy variables that represent the categories of your categorical independent variable; and (2) enter values into these dummy variables – known as dummy coding – to represent the categories of the categorical independent variable
+
+
+
+
+#### nominal variables:
+
+#### ordinal variables
 
 ### Methods defined for mfp2
 Once you fit an MFP model using the `mfp2()` function, you can apply various methods to the resulting model object to extract information or perform specific tasks. Suppose we fit an MFP model for the Gaussian family with default parameters as follows:

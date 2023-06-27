@@ -377,3 +377,47 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
     c(paste0(name, ".1"), paste0("A_", name, ".1"))
   }
 }
+
+#' Simple function to create dummy variables for ordinal variables
+#' 
+#' @param data a dataframe containing the ordinal variable. 
+#' @param var_names names of ordinal variables in the data.
+#' 
+#' @details 
+#' This function creates based on ordinal coding described in Royston and Sauerbrei (2008) book (chapter 3, Table 3.5)
+#' @return 
+#' dataframe with new dummy variables.
+#' 
+#' @export
+create_dummy_ordinal <- function(data, var_names) {
+  # assert that data must be provided
+  if (missing(data))
+    stop("! data argument is missing.\n",
+         "i An input data.frame is required for the use of create_dummy_ordinal.",
+         call. = FALSE)
+  if (!is.data.frame(data))
+    stop ("The data must be a data.frame")
+  
+  for (col in var_names) {
+    if (is.null(data[[col]]) || length(data[[col]]) == 0) {
+      stop(paste("variable name ", col, "is empty or does not exist."))
+    }
+    
+    unique_levels <- unique(data[[col]])
+    if (length(unique_levels) == 1) {
+      warning(paste("var_names ", col, "has only one unique level. Skipping dummy variable creation."))
+      next
+    }
+    
+    levels_list <- lapply(seq_along(unique_levels)[-length(unique_levels)], function(i) unique_levels[seq(i)])
+    
+    for (i in seq_along(levels_list)) {
+      level <- levels_list[[i]]
+      var_name <- paste0(col, "_", paste(level, collapse = "_"))
+      data[[var_name]] <- as.integer(!data[[col]] %in% level)
+    }
+  }
+  
+  return(data)
+}
+

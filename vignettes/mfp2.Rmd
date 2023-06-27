@@ -744,37 +744,6 @@ In the subsequent steps, "bph", "cp", and "age" are investigated in models adjus
 This model serves as the starting point for the third cycle (not shown), where all seven variables are investigated again. However, there are no further 
 change in the selected variables or functions occurs, so MFP terminates with the three variables as the second cycle. For more detailed information, please visit the MFP website at For more detailed information, please visit the [MFP website](https://mfp.imbi.uni-freiburg.de/mfp).
 
-### Handling categorical variables
-The number of dummy variables you need to create will depend on how many categories your categorical independent variable has. As a general rule, you will create one less dummy variable than the number of categories in your categorical independent variable. For example, if you have a categorical independent variable with three categories (e.g., favourite_sport, with the following three categories: "swimming", "cycling" and "running"), you will create two dummy variables and select one category to act as a reference category (e.g., "swimming" and "cycling" become dummy variables and "running" becomes the reference category). We explain more about reference categories after the following table, which provides some examples of categorical independent variables and the number of dummy variables that need to be created:
-
-Fortunately, the Create Dummy Variables procedure in SPSS Statistics versions 22 to 28 (and the subscription version of SPSS Statistics) automatically creates a dummy variable for every category of your categorical independent variable. However, this is not the case for the Recode into Different Variables procedure in SPSS Statistics version 21 or earlier versions of SPSS Statistics. Therefore, under normal circumstances, you will have created the following setup in SPSS Statistics, depending on whether you have version 21 or earlier or version 22 and above:
-
-There are two steps to successfully set up dummy variables in a multiple regression: (1) create dummy variables that represent the categories of your categorical independent variable; and (2) enter values into these dummy variables – known as dummy coding – to represent the categories of the categorical independent variable
-
-
-```{r, eval = TRUE}
-# load art data
-data("art")
-# order the levels of the variable such that Levels: 1 < 2 < 3
-art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
-
-# create dummy variables for x4 based on ordinal coding
-art <- create_dummy_variables(art, var_ordinal = c("x4"), drop_variables = TRUE)
-
-# convert x9 to factor and assign level 1 as reference group
-art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
-
-# create dummy variables for x9 using categorical coding 
-art <- create_dummy_variables(art, var_nominal = c("x9"), drop_variables = TRUE)
-head(art)
-
-```
-
-
-#### nominal variables:
-
-#### ordinal variables
-
 ### Methods defined for mfp2
 Once you fit an MFP model using the `mfp2()` function, you can apply various methods to the resulting model object to extract information or perform specific tasks. Suppose we fit an MFP model for the Gaussian family with default parameters as follows:
 
@@ -876,6 +845,48 @@ plot1[[1]] + ggplot2::ylab("Partial predictor + residuals")
 plot2 <- fracplot(fit2, terms_seq = "equidistant")
 plot2[[1]] + ggplot2::ylab("Partial predictor + residuals")
 
+```
+
+### Handling categorical variables
+The `mfp2` package requires the creation of dummy (indicator) variables for qualitative independent variables before using the `mfp2()` function. The number of dummy variables depends on the number of classes in the categorical variable. As a general rule of thumb, a categorical variable with `k` classes is represented by `k-1` dummy variables, each taking on the values of 0 and 1 (Kutner et al., 2005).
+
+Categorical variables can be measured using an ordinal scale or a nominal scale. An ordinal variable indicates that the levels of the variable are ordered in some way, such as the levels of income (e.g., low income, medium income, and high income). On the other hand, a nominal variable has no intrinsic ordering among its categories. When variable selection is involved in the model building process, it is important to consider different approaches for coding ordinal and nominal variables in order to facilitate interpretation. This is because, during variable selection, certain dummy variables may be eliminated, which is analogous to combining some levels of variables. For more details on handling categorical variables, refer to Royston and Sauerbrei (2008, Chapter 3).
+
+The `model.matrix()` function in **R** automatically generates dummy variables for categorical variables. However, it may not be suitable for ordinal variables. Fortunately, the `mfp2` package offers a function called `create_dummy_variables()` that provides an alternative to the `model.matrix()` specifically designed for creating dummy variables for both ordinal and nominal variables. 
+
+Before using the `create_dummy_variables()` function, we recommend converting the variable of interest to a factor using the `factor()` function in base R. If necessary, you can specify the levels of the variable. Otherwise, the first level will be used as the reference. We will illustrate how to handle categorical variables using the `art` data. The outcome variable is continuous, and there are 10 covariates. For more details about the data, please refer to Royston and Sauerbrei (2008).
+
+The R code below demonstrates how to convert the ordinal variable x4, which has 3 levels (1 as the reference, 2, and 3), to dummy variables using ordinal coding. Similarly, it demonstrates how to convert the nominal variable x9, which also has 3 levels (1 as the reference, 2, and 3), to dummy variables using categorical coding. The final data will contain the dummy variables, which can be supplied to the `mfp2()` function. 
+
+
+```{r out.lines = 103, R.options = list(width = 100)}
+# load art data
+data("art")
+# order the levels of the variable such that Levels: 1 < 2 < 3
+art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
+
+# convert x9 to factor and assign level 1 as reference group
+art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
+
+# create dummy variables for x4 and x9 based on ordinal an categorical coding and drop 
+# the original variable
+art <- create_dummy_variables(art, var_ordinal = c("x4"), var_nominal = c("x9"),
+                              drop_variables = TRUE)
+
+# display the first 20 observations
+head(art, 10)
+```
+
+After creating the dummy variables (x4_1 and x4_1_2 for x4, and x92 and x93 for x9), we fit the MFP model using the `mfp2()` function with default parameters. If a categorical variable is not an important predictor of the outcome, all the dummy variables will be eliminated, as in the case of x9 where all the dummies were eliminated. On the other hand, variable x4 is an important predictor, and only one dummy (x4_1_2) out of the two was eliminated (similar to combining levels 2 and 3) as shown below.
+
+```{r out.lines = 103, R.options = list(width = 100)}
+# create matrix x and outcome y
+x <- as.matrix(art[,-1])
+y <- as.numeric(art$y)
+
+# fit mfp using default interface with default parameters
+fit <- mfp2(x,y, verbose = FALSE)
+print(fit)
 ```
 
 

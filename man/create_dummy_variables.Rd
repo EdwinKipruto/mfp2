@@ -4,7 +4,12 @@
 \alias{create_dummy_variables}
 \title{Simple function to create dummy variables for ordinal and nominal variables}
 \usage{
-create_dummy_variables(data, var_ordinal = NULL, var_nominal = NULL)
+create_dummy_variables(
+  data,
+  var_ordinal = NULL,
+  var_nominal = NULL,
+  drop_variables = FALSE
+)
 }
 \arguments{
 \item{data}{A dataframe containing the ordinal variable.}
@@ -12,6 +17,9 @@ create_dummy_variables(data, var_ordinal = NULL, var_nominal = NULL)
 \item{var_ordinal}{Names of ordinal variables in the data for which dummy variables should be created.}
 
 \item{var_nominal}{Names of nominal variables in the data for which dummy variables should be created.}
+
+\item{drop_variables}{Specifies whether to drop the original variables after dummy variables have
+been created. The default value is FALSE, and the original variables are kept in the data.}
 }
 \value{
 A dataframe with new dummy variables.
@@ -20,5 +28,6 @@ A dataframe with new dummy variables.
 Simple function to create dummy variables for ordinal and nominal variables
 }
 \details{
-This function creates dummy variables based on ordinal and categorical coding described in Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5).
+This function creates dummy variables based on ordinal and categorical coding described in
+Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5).
 }

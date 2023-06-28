@@ -436,7 +436,14 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
       }
       
       for (col in var_ordinal) {
-        unique_levels <- unique(data[[col]])
+        # levels of the variable if it exist: important for reference
+        unique_levels <- levels(data[[col]])
+        
+        # if levels does not exist use unique values
+        if (is.null(unique_levels)) {
+          unique_levels <- unique(data[[col]])
+        }
+        
         if (length(unique_levels) == 1) {
           warning(paste("var_names ", col,
               "has only one unique level. Skipping dummy variable creation."
@@ -444,14 +451,14 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
           )
           next
         }
-        
-        levels_list <- lapply(seq_along(unique_levels)[-length(unique_levels)], function(i)
+    
+          levels_list <- lapply(seq_along(unique_levels)[-length(unique_levels)], function(i)
             unique_levels[seq(i)])
         
         for (i in seq_along(levels_list)) {
           level <- levels_list[[i]]
           # TODO: improve names
-          var_name <- paste0(col, "_", paste(level, collapse = "_"))
+          var_name <- paste0(col, "_", paste(i, collapse = "_"))
           data[[var_name]] <- as.integer(!data[[col]] %in% level)
         }
       }

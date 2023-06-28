@@ -13,7 +13,7 @@ fp(
   shift = NULL,
   scale = NULL,
   center = TRUE,
-  acd = FALSE,
+  acdx = FALSE,
   powers = NULL
 )
 
@@ -23,7 +23,7 @@ fp2(...)
 \item{x}{a vector representing a continuous variable undergoing
 fp-transformation.}
 
-\item{df, alpha, select, shift, scale, center, acd}{See \code{\link[=mfp2]{mfp2()}}) for details.}
+\item{df, alpha, select, shift, scale, center, acdx}{See \code{\link[=mfp2]{mfp2()}}) for details.}
 
 \item{powers}{a vector of powers to be evaluated for \code{x}. Default is \code{NULL}
 and \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} will be used.}

@@ -805,7 +805,7 @@ If you set `partial_only = TRUE`, the fracplot() function will plot only the par
 
 For instance, to plot the function for "cavol" in the model, you can use the following code:
 
-```{r, eval= TRUE}
+```{r, eval= TRUE,fig.cap="Prostate data. Graphical presentation of results from an FP analysis"}
 plots <- fracplot(fit)
 class(plots)
 plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
@@ -814,7 +814,7 @@ plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
 
 The fracplot() function also supports the incorporation of a reference point or target value in the plot. Including a reference point allows for visualizing whether other data points exceed or fall below the reference. To achieve this, you can use the `type` argument and set it to "contrasts" (`type = "contrasts"`). Additionally, you can supply the reference point using the `ref` argument. By default, the `ref` argument is set to `NULL`, and average values are used as the reference points for continuous variables, while the minimum values are used as reference points for binary variables. For instance, if we want the reference value for the continuous variable "cavol" to be 5, we can use the following code:
 
-```{r, eval= TRUE}
+```{r, eval= TRUE, fig.cap="Prostate data. Illustration on how to use reference points"}
 plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 5))
 class(plots)
 plots[[1]] + ggplot2::ylab("Partial predictor")
@@ -828,7 +828,7 @@ The `fracplot()` function provides two options for generating the plot. The firs
 
 To illustrate these options, we will use the `art` dataset included in the mfp2 package. This dataset is described in detail by Royston and Sauerbrei (2008), and the outcome variable is continuous. In our example, we will fit an MFP model with a single covariate (x5).
 
-```{r, eval= TRUE}
+```{r terms_seq, eval= TRUE, fig.cap="Art data. Illustration on how to use terms_seq argument in fracplot"}
 # load art data
 data("art")
 
@@ -877,7 +877,7 @@ art <- create_dummy_variables(art, var_ordinal = c("x4"), var_nominal = c("x9"),
 head(art, 10)
 ```
 
-After creating the dummy variables (x4_1 and x4_1_2 for x4, and x92 and x93 for x9), we fit the MFP model using the `mfp2()` function with default parameters. If a categorical variable is not an important predictor of the outcome, all the dummy variables will be eliminated, as in the case of x9 where all the dummies were eliminated. On the other hand, variable x4 is an important predictor, and only one dummy (x4_1_2) out of the two was eliminated (similar to combining levels 2 and 3) as shown below.
+After creating the dummy variables (x4_1 and x4_2 for x4, and x92 and x93 for x9), we fit the MFP model using the `mfp2()` function with default parameters. If a categorical variable is not an important predictor of the outcome, all the dummy variables will be eliminated, as in the case of x9 where all the dummies were eliminated. On the other hand, variable x4 is an important predictor, and only one dummy (x4_2) out of the two was eliminated (similar to combining levels 2 and 3) as shown below.
 
 ```{r out.lines = 103, R.options = list(width = 100)}
 # create matrix x and outcome y
@@ -906,6 +906,72 @@ initial set of eight predictors by using the backfitting model-selection algorit
 p-value for variable and FP selection to 0.05 for all variables except hormon, which it is set to 1:
 
 ## MFP with ACD transformation
+Royston (2015) proposed the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and
+an outcome variable. He described an extension of univariate FP modeling via the ACD covariate transformation. The ACD transformation is a smooth function that maps a continuous covariate, x, to an approximation, ACD (x), of its distribution function. By construction, the distribution of ACD (x)
+in the sample is roughly uniform on (0, 1). FP modeling is then performed with the
+transformed values ACD (x) instead of x as a predictor. He further showed that
+such an approach could successfully represent a sigmoid function of x, something a standard FP function cannot do (Royston and Sauerbrei 2008). He went on to
+demonstrate that useful flexibility in functional form could be achieved by considering
+both x and a = ACD (x) simultaneously as independent predictors and applying the MFP
+algorithm to x and a. To limit instability and overfitting, he suggested restricting the
+models considered for x and a to FP1 functions. Furthermore, Royston (2015) highlighted that models
+based on ACD (x) may have other advantages in terms of interpretability of regression
+coefficients and may help reduce the influence of extreme
+covariate values on a selected function (see Figure 5 for an example).
+
+Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate the ACD transformation, resulting in the MFPA (MFP with ACD) transformation. To implement this extension, they introduced the MFPA algorithm, where the original FP FSP is replaced by a modified version known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the features of MFP algorithm plus the ability to model a sigmoid function. For additional information on MFPA, including FSPA, please refer to [Royston and Sauerbrei (2016)(click here)](https://journals.sagepub.com/doi/pdf/10.1177/1536867X1601600109)
+
+We will demonstrate how to fit the MFPA using the `mfp2()` function. In this example, we couldn't find a suitable dataset that exhibits a sigmoid relationship between the outcome variable y and predictor variable x. Therefore, we will simulate the data to create an example that showcases this relationship. The simulation process is outlined below.
+
+
+```{r out.lines = 103, R.options = list(width = 100)}
+# Generate artificial data with sigmoid relationship
+set.seed(54) 
+n <- 500  
+x <- matrix(rnorm(n), ncol = 1, dimnames = list(NULL, "x") )
+
+# Apply sigmoid transformation to x
+sigmoid <- function(x) {
+  1 / (1 + exp(-x))
+}
+
+# Generate y with sigmoid relationship to x
+y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.2))
+
+#-----Fit MFPA 
+# using default interface
+fit <- mfp2(x, y, acdx = "x", verbose = FALSE)
+
+# using formula interface
+datax <- data.frame(y,x)
+fit <- mfp2(y ~ fp(x, acdx = TRUE), data = datax, verbose = FALSE)
+
+# display selected power terms
+fit$fp_terms
+
+```
+The selected function is FP1(1,1) which is equivalent to $\beta_0 + \beta_1x^1 +\beta_2a^1$. The function is shown below
+
+```{r,fig.cap="Art data. Sigmoid relationship between x and outcome"}
+fracplot(fit, terms = "x")[[1]] + ggplot2::ylab("y")
+```
+
+The example below demonstrates the effectiveness of MFPA in mitigating the impact of extreme covariate values on a selected function for variable x5 in the `art` data. We see that the extreme value (observation number 151) has minimal influence on the functional form, compared to usual FP2 as shown in Figure 3.
+ 
+```{r out.lines = 103, R.options = list(width = 100),fig.cap="Art data. Effectiveness of MFPA in mitigating the impact of extreme covariate values",fig.align='center', fig.style='page-break-inside: avoid;'}
+# load art data
+data("art")
+# create matrix x and outcome y
+x <- as.matrix(art[,-1])
+y <- as.numeric(art$y)
+
+# fit mfp using default interface with default parameters
+fit <- mfp2(x,y, acdx = "x5", verbose = FALSE)
+fit$fp_terms
+
+fracplot(fit, terms = "x5")[[1]] + ggplot2::ylab("Partial predictor + residuals")
+```
+
 
 
 ## Comparison with other R packages

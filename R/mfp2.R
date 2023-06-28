@@ -1175,7 +1175,7 @@ print.mfp2 <- function(x,
 #' 
 #' @param x a vector representing a continuous variable undergoing 
 #' fp-transformation.
-#' @param df,alpha,select,shift,scale,center,acd See [mfp2::mfp2()]) for details. 
+#' @param df,alpha,select,shift,scale,center,acdx See [mfp2::mfp2()]) for details. 
 #' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
 #' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
 #' @param ... used in alias `fp2` to pass arguments.
@@ -1192,7 +1192,7 @@ fp <- function(x,
                shift = NULL, 
                scale = NULL,
                center = TRUE, 
-               acd = FALSE, 
+               acdx = FALSE, 
                powers = NULL) {
   
   name <- deparse(substitute(x))
@@ -1207,7 +1207,7 @@ fp <- function(x,
   attr(x, "shift") <- shift
   attr(x, "scale") <- scale
   attr(x, "center") <- center
-  attr(x, "acd") <- acd
+  attr(x, "acd") <- acdx
   attr(x, "powers") <- powers
   attr(x, "name") <- name
   

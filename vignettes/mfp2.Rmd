@@ -13,6 +13,7 @@ output:
     toc: yes
     toc_depth: 3
     number_sections: true
+    latex_engine: xelatex
   html_vignette:
     fig_caption: yes
     toc: yes
@@ -36,6 +37,7 @@ knitr::opts_chunk$set(
   comment = "#>"
 )
 ```
+
 
 ```{r setup, echo=FALSE}
 library(mfp2)
@@ -828,7 +830,8 @@ The `fracplot()` function provides two options for generating the plot. The firs
 
 To illustrate these options, we will use the `art` dataset included in the mfp2 package. This dataset is described in detail by Royston and Sauerbrei (2008), and the outcome variable is continuous. In our example, we will fit an MFP model with a single covariate (x5).
 
-```{r terms_seq, eval= TRUE, fig.cap="Art data. Illustration on how to use terms_seq argument in fracplot"}
+```{r terms_seq, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot", fig.show = 'hold'}
+
 # load art data
 data("art")
 
@@ -839,11 +842,13 @@ fit2 <- mfp2(xx, yy, verbose = FALSE)
 
 # generate plot using original data 
 plot1 <- fracplot(fit2)
-plot1[[1]] + ggplot2::ylab("Partial predictor + residuals")
+plot1[[1]] <- plot1[[1]] + ggplot2::ylab("Partial predictor + residuals")
+plot1
 
 # generate plot using sequence of data
 plot2 <- fracplot(fit2, terms_seq = "equidistant")
-plot2[[1]] + ggplot2::ylab("Partial predictor + residuals")
+plot2[[1]] <- plot2[[1]] + ggplot2::ylab("Partial predictor + residuals")
+plot2
 
 ```
 
@@ -888,9 +893,37 @@ y <- as.numeric(art$y)
 fit <- mfp2(x,y, verbose = FALSE)
 print(fit)
 ```
-
-
 ## Logistic Regression
+Logistic regression is a statistical method used to model binary outcomes. The `mfp2()` function implements the logistic regression model using the `family = "binomial"` argument. For illustration, we will use the Pima Indians dataset included in the mfp2 package, which was downloaded from the [MFP website(here)](https://mfp.imbi.uni-freiburg.de/book#dataset_tables).
+The dataset originates from a study conducted on a cohort of 768 female Pima Indians, a group known to be particularly susceptible to diabetes. Out of the 768 individuals, 268 developed diabetes. The dataset consists of a binary outcome variable, denoting the presence (1) or absence (0) of diabetes, and eight covariates. For more information on the dataset, please refer to the book by Royston and Sauerbrei (2008) Chapter 9.7.
+
+In the `mfp2()` function, it is important to note that the response variable, y, should be provided as a binary vector rather than a matrix. The other arguments whether using the "default" or "formula" interface for binomial regression, are nearly identical to those previously explained for the Gaussian family.
+
+```{r out.lines = 103, R.options = list(width = 100)}
+# load pima data
+data("pima")
+head(pima)
+
+# matrix x
+x <- as.matrix(pima[,2:9])
+# outcome y
+y <- as.vector(pima$y)
+
+# fit mfp
+fit <- mfp2(x, y, family = "binomial", verbose = FALSE)
+fit$fp_terms
+```
+From the output, it is evident that four continuous variables (glucose(power 1), bmi(-2), diabetes(1) and age (0, 3)) are selected. We can use `fracplot()` function to generate plots for these selected variables, as illustrated below, which produced Figure 3.
+
+```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+plots <- fracplot(fit)
+# rename y-label for all plots
+plots <- lapply(plots, function(v) {
+  v + ggplot2::ylab("Partial pred + residuals")
+})
+# combine multiple ggplot objects into a single figure
+patchwork::wrap_plots(plots, ncol = 2)
+```
 
 ## Poisson regression
 
@@ -901,9 +934,31 @@ Group of patients with node-positive breast cancer. The response variable is rec
 time (rectime), and the censoring variable is censrec. There are 686 patients with 299 events. We
 use Cox regression to predict the log hazard of recurrence from prognostic factors of which five are
 continuous (x1, x3, x5, x6, x7) and three are binary (x2, x4a, x4b). Hormonal therapy (hormon) is
-known to reduce recurrence rates and is forced into the model. We use mfp to build a model from the
+known to reduce recurrence rates and is forced into the model.
+
+
+We use mfp to build a model from the
 initial set of eight predictors by using the backfitting model-selection algorithm. We set the nominal
 p-value for variable and FP selection to 0.05 for all variables except hormon, which it is set to 1:
+
+```{r out.lines = 103, R.options = list(width = 80)}
+# load gbsg data
+data("gbsg")
+gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = FALSE)
+
+head(gbsg, 10)
+
+# matrix x
+x <- as.matrix(gbsg[,c(2:9,12,13)])
+
+# outcome y
+y <- survival::Surv(gbsg$rectime, gbsg$censrec)
+
+# fit mfp and keep hormon in the model
+mfp2(x, y, family = "cox", keep = "hormon", verbose = FALSE)
+```
+
+
 
 ## MFP with ACD transformation
 Royston (2015) proposed the approximate cumulative distribution (ACD) transformation of a continuous covariate x as a route toward modeling a sigmoid relationship between x and
@@ -921,7 +976,7 @@ covariate values on a selected function (see Figure 5 for an example).
 
 Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate the ACD transformation, resulting in the MFPA (MFP with ACD) transformation. To implement this extension, they introduced the MFPA algorithm, where the original FP FSP is replaced by a modified version known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the features of MFP algorithm plus the ability to model a sigmoid function. For additional information on MFPA, including FSPA, please refer to [Royston and Sauerbrei (2016)(click here)](https://journals.sagepub.com/doi/pdf/10.1177/1536867X1601600109)
 
-We will demonstrate how to fit the MFPA using the `mfp2()` function. In this example, we couldn't find a suitable dataset that exhibits a sigmoid relationship between the outcome variable y and predictor variable x. Therefore, we will simulate the data to create an example that showcases this relationship. The simulation process is outlined below.
+We will demonstrate how to fit the MFPA using the `mfp2()` function. In this example, we couldn't find a suitable dataset that exhibits a sigmoid relationship between the outcome variable `y` and predictor variable `x`. Therefore, we will simulate the data to create an example that showcases this relationship. The simulation process is outlined below.
 
 
 ```{r out.lines = 103, R.options = list(width = 100)}
@@ -937,6 +992,11 @@ sigmoid <- function(x) {
 
 # Generate y with sigmoid relationship to x
 y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.2))
+```
+
+The `mfp2()` function has an `acdx` argument that allows the user to specify the names of continuous variables to undergo the ACD transformation. The `acdx` invokes the FSPA to determine the best-fitting model (see documentation for more details). The `acdx` can be set in the formula interface using the `fp()` function, as demonstrated in the R code below. To avoid confusion with the original variable `x`, the variable representing the ACD transformation of `x` is named `A(x)`.
+
+```{r out.lines = 103, R.options = list(width = 100)}
 
 #-----Fit MFPA 
 # using default interface
@@ -950,26 +1010,36 @@ fit <- mfp2(y ~ fp(x, acdx = TRUE), data = datax, verbose = FALSE)
 fit$fp_terms
 
 ```
-The selected function is FP1(1,1) which is equivalent to $\beta_0 + \beta_1x^1 +\beta_2a^1$. The function is shown below
 
-```{r,fig.cap="Art data. Sigmoid relationship between x and outcome"}
+The selected function is FP1(1,1) which is equivalent to $\beta_0 + \beta_1x^1 +\beta_2a^1$. The function is shown in Figure 5.
+```{r,fig.cap="Art data. Sigmoid relationship between x and outcome",fig.align='center', echo=FALSE, out.width= '45%',out.height='50%'}
 fracplot(fit, terms = "x")[[1]] + ggplot2::ylab("y")
 ```
 
 The example below demonstrates the effectiveness of MFPA in mitigating the impact of extreme covariate values on a selected function for variable x5 in the `art` data. We see that the extreme value (observation number 151) has minimal influence on the functional form, compared to usual FP2 as shown in Figure 3.
  
-```{r out.lines = 103, R.options = list(width = 100),fig.cap="Art data. Effectiveness of MFPA in mitigating the impact of extreme covariate values",fig.align='center', fig.style='page-break-inside: avoid;'}
+```{r out.lines = 103, R.options = list(width = 100),fig.cap="Art data. Effectiveness of MFPA in mitigating the impact of extreme covariate values",fig.align='center', out.width= '45%',out.height='50%', fig.show='hold'}
 # load art data
 data("art")
 # create matrix x and outcome y
 x <- as.matrix(art[,-1])
 y <- as.numeric(art$y)
 
-# fit mfp using default interface with default parameters
-fit <- mfp2(x,y, acdx = "x5", verbose = FALSE)
-fit$fp_terms
+# fit mfp without acd
+fit1 <- mfp2(x,y, verbose = FALSE)
+fit1$fp_terms
 
-fracplot(fit, terms = "x5")[[1]] + ggplot2::ylab("Partial predictor + residuals")
+# fit mfp with acd
+fit2 <- mfp2(x,y, acdx = "x5", verbose = FALSE)
+fit2$fp_terms
+
+fracplot(fit1, terms = "x5")[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+fracplot(fit2, terms = "x5")[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+#patchwork::wrap_plots(list(a,b), ncol = 2)
+
+
 ```
 
 

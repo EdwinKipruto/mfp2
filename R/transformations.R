@@ -441,7 +441,7 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
         
         # if levels does not exist use unique values
         if (is.null(unique_levels)) {
-          unique_levels <- unique(data[[col]])
+          unique_levels <- sort(unique(data[[col]]))
         }
         
         if (length(unique_levels) == 1) {

@@ -1044,7 +1044,7 @@ fracplot(fit2, terms = "x5")[[1]] + ggplot2::ylab("Partial predictor + residuals
 
 
 
-## Comparison with other R packages
+## Addition of mfp2 to mfp package
 
 
 

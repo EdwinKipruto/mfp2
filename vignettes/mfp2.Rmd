@@ -13,7 +13,7 @@ output:
     toc: yes
     toc_depth: 3
     number_sections: true
-    latex_engine: xelatex
+    latex_engine: lualatex
   html_vignette:
     fig_caption: yes
     toc: yes
@@ -41,6 +41,8 @@ knitr::opts_chunk$set(
 
 ```{r setup, echo=FALSE}
 library(mfp2)
+library(ggplot2)
+library(survival)
 ```
 
 ```{r include=FALSE}
@@ -928,36 +930,71 @@ patchwork::wrap_plots(plots, ncol = 2)
 ## Poisson regression
 
 ## Survival data
-We illustrate two of the analyses performed by Sauerbrei and Royston (1999). We use
-brcancer.dta, which contains prognostic factors data from the German Breast Cancer Study
-Group of patients with node-positive breast cancer. The response variable is recurrence-free survival
-time (rectime), and the censoring variable is censrec. There are 686 patients with 299 events. We
-use Cox regression to predict the log hazard of recurrence from prognostic factors of which five are
-continuous (x1, x3, x5, x6, x7) and three are binary (x2, x4a, x4b). Hormonal therapy (hormon) is
-known to reduce recurrence rates and is forced into the model.
+We illustrate two of the analyses performed by Sauerbrei and Royston (1999). We use the gbsg data, which contains prognostic factors data from the German Breast Cancer Study Group of patients with node-positive breast cancer. The response variable is recurrence-free survival time (rectime), and the censoring variable is censrec. There are 686 patients with 299 events. We use Cox regression to predict the log hazard of recurrence from prognostic factors, of which five are continuous (age, size, nodes, pgr, er), and one is binary (meno). The variable grade is ordinal, and we will use ordinal coding to create two dummy variables (grade_1 and grade_2). Hormonal therapy (hormon) is known to reduce recurrence rates and is forced into the model. Additionally, we stratify the analysis using the hormon variable.
 
 
-We use mfp to build a model from the
-initial set of eight predictors by using the backfitting model-selection algorithm. We set the nominal
-p-value for variable and FP selection to 0.05 for all variables except hormon, which it is set to 1:
+We use the `mfp2()` function with default parameters to build a model from the initial set of eight predictors. We set the nominal significance level for variable and FP selection to 0.05 for all variables except "hormon". "hormon" is forced into the model using the `keep` argument, which sets the significance level of "hormon" to 1.
 
-```{r out.lines = 103, R.options = list(width = 80)}
+The `mfp2()` function for survival outcome requires the outcome variable to be a survival object created using the `survival::Surv()` function. Other arguments are similar to those explained previously for the Gaussian family.
+
+```{r out.lines = 103,R.options = list(width = 100)}
 # load gbsg data
 data("gbsg")
-gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = FALSE)
 
-head(gbsg, 10)
+#--- data preparation 
+# create dummy variable for grade using ordinal coding
+gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
 
-# matrix x
-x <- as.matrix(gbsg[,c(2:9,12,13)])
 
-# outcome y
+# predictor matrix x 
+x <- as.matrix(gbsg[,-c(1,6, 10,11)])
+head(x, 10)
+
+# use Surv() function to create outcome y
 y <- survival::Surv(gbsg$rectime, gbsg$censrec)
 
-# fit mfp and keep hormon in the model
-mfp2(x, y, family = "cox", keep = "hormon", verbose = FALSE)
+#---fit mfp and keep hormon in the model
+fit1 <- mfp2(x, y, family = "cox", keep = "hormon", verbose = FALSE,
+             control = coxph.control(iter.max = 50))
+fit1$fp_terms
 ```
 
+According to Sauerbrei and Royston (1999), medical knowledge dictates that the estimated risk function for nodes (number of positive nodes), which was based on the above FP with powers (-2, -1), should be monotonic, but it was not. They improved Model II by estimating a preliminary exponential transformation, enodes = exp(-0.12 * nodes), for nodes and fitting a degree 1 FP for enodes, thus obtaining a monotonic risk function. The value of -0.12 was estimated univariately using nonlinear Cox regression. To ensure a negative exponent, Sauerbrei and Royston (1999) restricted the powers for enodes to be positive. Their Model III
+may be fit by using the following R command, which yields identical results to the [mfp command in Stata(here)](https://www.stata.com/manuals13/rmfp.pdf):
+
+```{r out.lines = 103,R.options = list(width = 100)}
+# remove nodes and include enodes
+x <- as.matrix(gbsg[,-c(1,5, 10,11)])
+#---fit mfp and keep hormon in the model
+fit2 <- mfp2(x, y, family = "cox", keep = "hormon", verbose = FALSE,
+             powers = list(enodes = c(0.5, 1, 2, 3)), control = coxph.control(iter.max = 50))
+fit2$fp_terms
+```
+### stratified Cox model
+The stratified Cox model is a variation of the Cox proportional hazards (PH) model that allows for controlling the effect of a predictor that does not satisfy the PH assumption (Therneau et al. 2000). The model includes predictors that are assumed to satisfy the PH assumption, while the predictor being stratified is not included in the model.Instead of including the stratified variable as a covariate in the model, it is used to define distinct subgroups.
+
+The mfp2() function like coxph() function in survival package has a strata argument which allow stratification. The fitted mfp model assumes that the FP functions for a certain variable do not vary over the strata. Obviously, the user should evaluate this assumption
+
+The `mfp2()` function, similar to the `coxph()` function in the survival package, includes a strata argument that enables stratification. The fitted MFP model assumes that the FP functions for a particular variable do not vary over the strata. However, it is essential for the user to evaluate this assumption carefully.
+
+
+To provide an illustrative example, we will stratify the analysis using the variable "hormon." The following R code demonstrates how to fit a stratified Cox model using both the default and formula interfaces, along with their default parameters.
+
+
+```{r out.lines = 103,R.options = list(width = 100)}
+# using default interface
+fit2 <- mfp2(x[,-7], y, family = "cox", strata = x[,7],
+     control = coxph.control(iter.max = 50),verbose = FALSE)
+fit2$fp_terms
+
+# using formula interface
+
+fit3 <- mfp2(Surv(rectime,censrec)~ age + meno + size + nodes + pgr + er + grade_1 + 
+               grade_2 + strata(hormon),family = "cox", data =gbsg, verbose = FALSE)
+
+fit2$fp_terms
+
+```
 
 
 ## MFP with ACD transformation

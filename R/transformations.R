@@ -387,7 +387,13 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
 #'  been created. The default value is FALSE, and the original variables are kept in the data.
 #' @details 
 #' This function creates dummy variables based on ordinal and categorical coding described in
-#'  Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5).
+#' the Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5). It uses the levels of
+#' the categorical variable if they exist; otherwise, it will extract the unique values of the
+#' variable, sort them, and use them as levels. We recommend that the user sets the levels of
+#' categorical variables and specifies their reference group. You can use the factor() function in
+#' base R. If the levels are 1, 2, and 3, then 1 will be the reference group. On the other hand,
+#' if the levels are 3, 2, and 1, then 3 will be the reference group. In brief, the first
+#' level will be taken as the reference group.
 #' 
 #' @return 
 #' A dataframe with new dummy variables.

@@ -917,7 +917,7 @@ fit$fp_terms
 ```
 From the output, it is evident that four continuous variables (glucose(power 1), bmi(-2), diabetes(1) and age (0, 3)) are selected. We can use `fracplot()` function to generate plots for these selected variables, as illustrated below, which produced Figure 3.
 
-```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE,fig.align='center', echo=FALSE, out.width= '90%'}
 plots <- fracplot(fit)
 # rename y-label for all plots
 plots <- lapply(plots, function(v) {
@@ -926,7 +926,7 @@ plots <- lapply(plots, function(v) {
 # combine multiple ggplot objects into a single figure
 patchwork::wrap_plots(plots, ncol = 2)
 ```
-
+\newpage
 ## Poisson regression
 
 ## Survival data
@@ -1013,6 +1013,7 @@ covariate values on a selected function (see Figure 5 for an example).
 
 Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate the ACD transformation, resulting in the MFPA (MFP with ACD) transformation. To implement this extension, they introduced the MFPA algorithm, where the original FP FSP is replaced by a modified version known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the features of MFP algorithm plus the ability to model a sigmoid function. For additional information on MFPA, including FSPA, please refer to [Royston and Sauerbrei (2016)(click here)](https://journals.sagepub.com/doi/pdf/10.1177/1536867X1601600109)
 
+### modeling a sigmoid relationship
 We will demonstrate how to fit the MFPA using the `mfp2()` function. In this example, we couldn't find a suitable dataset that exhibits a sigmoid relationship between the outcome variable `y` and predictor variable `x`. Therefore, we will simulate the data to create an example that showcases this relationship. The simulation process is outlined below.
 
 
@@ -1024,7 +1025,7 @@ x <- matrix(rnorm(n), ncol = 1, dimnames = list(NULL, "x") )
 
 # Apply sigmoid transformation to x
 sigmoid <- function(x) {
-  1 / (1 + exp(-x))
+  1 / (1 + exp(-1.7*x))
 }
 
 # Generate y with sigmoid relationship to x
@@ -1041,18 +1042,27 @@ fit <- mfp2(x, y, acdx = "x", verbose = FALSE)
 
 # using formula interface
 datax <- data.frame(y,x)
-fit <- mfp2(y ~ fp(x, acdx = TRUE), data = datax, verbose = FALSE)
+fit1 <- mfp2(y ~ fp(x, acdx = TRUE), data = datax, verbose = FALSE)
 
 # display selected power terms
-fit$fp_terms
+fit2$fp_terms
+
+# fit usual mfp: bad idea but useful for illustration
+fit2 <- mfp2(y ~ fp(x, acdx = FALSE), data = datax, verbose = FALSE)
+fit2$fp_terms
 
 ```
+The selected function using the ACD transformation is FP1(1,1), represented by $\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3log(x)$. Figure 4 shows these functions. It is evident from the figure that the ACD approach provides a better fit to the data compared to the usual MFP model, particularly at the extreme ends.
 
-The selected function is FP1(1,1) which is equivalent to $\beta_0 + \beta_1x^1 +\beta_2a^1$. The function is shown in Figure 5.
-```{r,fig.cap="Art data. Sigmoid relationship between x and outcome",fig.align='center', echo=FALSE, out.width= '45%',out.height='50%'}
+```{r,fig.cap="Art data. Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)",fig.align='center', echo=FALSE, fig.show='hold',out.width= '45%',out.height='50%'}
 fracplot(fit, terms = "x")[[1]] + ggplot2::ylab("y")
-```
 
+
+fracplot(fit2, terms = "x")[[1]] + ggplot2::ylab("y")
+
+```
+\newpage
+### use of MFPA to reduce effects of extreme covariate values.
 The example below demonstrates the effectiveness of MFPA in mitigating the impact of extreme covariate values on a selected function for variable x5 in the `art` data. We see that the extreme value (observation number 151) has minimal influence on the functional form, compared to usual FP2 as shown in Figure 3.
  
 ```{r out.lines = 103, R.options = list(width = 100),fig.cap="Art data. Effectiveness of MFPA in mitigating the impact of extreme covariate values",fig.align='center', out.width= '45%',out.height='50%', fig.show='hold'}

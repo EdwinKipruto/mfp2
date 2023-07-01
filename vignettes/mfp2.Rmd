@@ -8,17 +8,17 @@ author:
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 link-citations: true
 output: 
-  html_vignette:
-    fig_caption: yes
-    toc: yes
-    toc_depth: 3
-    number_sections: true
   pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
     number_sections: true
     latex_engine: lualatex
+  html_vignette:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: true
   word_vignette:
     fig_caption: yes
     toc: yes

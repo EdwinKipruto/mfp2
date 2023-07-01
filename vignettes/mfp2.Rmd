@@ -277,34 +277,31 @@ library(mfp2)
 ```
 
 ## Linear Regression
-This section aims to provide users with a comprehensive understanding of the `mfp2` package using classical linear regression models. We will present a concise overview of the package's key functions and resulting outputs, delving into each function in detail to highlight their specific use.
+This section aims to provide users with a comprehensive understanding of the `mfp2` package using classical linear regression models. We will present a concise overview of the package's key functions and resulting outputs.
 
-The default `family` in `mfp2` package is `Gaussian`, which fits a Gaussian 
+The default `family` in `mfp2` package is `family = "gaussian"`, which fits a Gaussian 
 linear model. In this section, we will demonstrate how to fit this model. We will use the prostate cancer data (Stamey et al., 1989) included
-in our package. The dataset contains seven predictors (six continuous variables (age, pgg45, cavol, weight, bph and cp)
-and one binary (svi) variable and a continuous outcome variable (log prostate-specific antigen (lpsa)) of 97 patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
+in our package. The dataset contains seven predictors (six continuous (age, pgg45, cavol, weight, bph, and cp) and one binary (svi)) and a continuous outcome variable log prostate-specific antigen (lpsa) of 97 male patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
 the outcome variable.
 
-Load the `prostate` dataset from the `mfp2` package and display the first few 
-rows of the dataset  
+Load the `prostate` dataset from the `mfp2` package and display the first six rows  
 
 ```{r out.lines = 10}
 # Load prostate data
 data("prostate")
-head(prostate)
+head(prostate, 6)
 
 # create predictor matrix x and numeric vector y 
 x <- as.matrix(prostate[,2:8])
 y <- as.numeric(prostate$lpsa)
 ```
-The command loads a data frame from the **R** data archive since the `mfp2` package 
-is already loaded. We create a matrix `x` and a numeric vector `y` from the data frame to be used by the default interface of `mfp2()` function. 
+The command `data("prostate")` loads a data frame from the `mfp2` package. We create a matrix `x` and a numeric vector `y` from the data frame to be used by the default interface of `mfp2()` function. 
 
 ### Fitting MFP Models Using Default and Formula Interface
 
 The default interface of `mfp2()` requires a matrix of predictors `x` and a 
 numeric vector of response `y` for continuous outcomes. If you have one predictor,
-make sure you convert it into a matrix with a single column.
+make sure you convert it to a matrix with a single column.
 
 We demonstrate how to fit the Gaussian linear model using the default and formula interface with default parameters. The formula interface uses the `fp()` function. The two approaches leads to the same results.
 

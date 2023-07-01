@@ -233,29 +233,23 @@ This enables the identification and incorporation of local features that may hav
 
 
 # Introduction to mfp2 package
-`mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: p-value, Akaike information criterion (AIC), and Bayesian information criterion (BIC). Furthermore, it provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other generalized linear models or parametric survival models.
+`mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: nominal significance levels (p-value), Akaike information criterion (AIC), and Bayesian information criterion (BIC). It also provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other regression models.
 
-The main function, `mfp2()`, implements both MFP and MFP with ACD transformation.
-It offers two interfaces for input data. The first interface allows direct input of the predictor matrix `x` and the outcome vector `y`. The second interface uses a formula object in conjunction with a data.frame, similar to the `glm()` function
-with slight modifications. Both interfaces are equivalent in terms of functionality.
+The main function, `mfp2()`, implements both MFP and MFP with ACD (MFPA) transformation.
+It offers two interfaces for input data. The first interface (default) allows direct input of the predictor matrix `x` and the outcome vector `y`. The second interface uses a formula object in conjunction with a data frame, similar to the `glm()` function
+with slight modifications. Both interfaces are equivalent in terms of functionality.  The package includes a built-in dataset specifically designed for analysis within the `mfp2` framework. 
 
 
-The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei, with contribution from Gregory Steiner and Georg Heinze. The R package is maintained by Edwin Kipruto, while the STATA version of `mfp` is maintained by Patrick Royston. 
+The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei, with contribution from Gregory Steiner and Georg Heinze. The R package is maintained by Edwin Kipruto, while the Stata MFP and MFPA programs are maintained by Patrick Royston. 
 
-This vignette describes basic usage of `mfp2` in R. There are additional vignettes available that will further enhance your understanding on the mfp2 package.
-
-* ["Introduction to Multivariable Fractional Polynomial"](https://github.com/EdwinKipruto/mfp2/tree/main/inst/docs/mfp.html) provides an overview of multivariable fractional polynomials.
-
+This vignette provides an introduction to the basic usage of the `mfp2` package in **R**. To deepen your understanding and enhance your knowledge of MFP, we recommend reading the book by Royston and Sauerbrei (2008) and the papers cited in this vignette. 
 
 ## Estimation algorithm
-The estimation algorithm employed in `mfp2` sequentially processes the predictors using a back-fitting approach. It calculates the p-values of each predictor 
-using the likelihood ratio test, assuming linearity. Subsequently, the 
-predictors are arranged based on these p-values. By default, the predictors are arranged in order of decreasing statistical significance. This ordering aims to prioritize modeling relatively important variables before less important ones. 
-This approach may help mitigate potential challenges in model fitting arising
-from collinearity or more generally, the presence of "concurvity" among the predictors (stata??). Although alternative options for predictor ordering are available, we prefer the default option.
+The estimation algorithm employed in `mfp2` sequentially processes the predictors using a back-fitting approach. It calculates the p-values of each predictor using the likelihood ratio test, assuming linearity, and then arranges the predictors based on these p-values. By default, the predictors are arranged in order of decreasing statistical significance. 
+This ordering aims to prioritize modeling relatively important variables before less important ones, which helps mitigate potential challenges in model fitting arising from collinearity or, more generally, the presence of "concurvity" among the predictors (stata manual??). Although alternative options for predictor ordering are available in `mfp2` package, we prefer the default option (`xorder = "ascending"`).
 
 If a predictor contains nonpositive values, the program by default shifts the location of the predictor x to ensure positivity. In addition, it scales the 
-shifted predictor before the first cycle of the algorithm. For more information on shifting and scaling, please refer to section xx.
+shifted predictor before the first cycle of the algorithm. For more information on shifting and scaling, please see section 2.3.x.
 
 At the initial cycle, the best-fitting FP function for the first variable (after ordering) is determined, with all the other variables assumed to be linear. The functional form (but not the estimated regression
 coefficients) is kept, and the process is repeated for the other variables. The
@@ -265,34 +259,30 @@ The next cycle is similar, except that the functional forms from the initial cyc
 
 A variable whose functional form is prespecified to be linear is tested
 for exclusion within the above procedure when its nominal p-value is less than 1
-or argument `keep = FALSE`; otherwise, it is included.
+or argument `keep = FALSE`; otherwise, it is forced into the model.
 Updating of FP functions and candidate variables continues until the functions
 and variables included in the overall model do not change (convergence). 
-Convergence is usually achieved within 1–5 cycles.
+
+Typically, MFP requires two to four cycles for convergence. However, nonconvergence may occur when there is oscillation between two or more models, and this situation is extremely rare.
 
 
 ## Installation
-To install the `mfp2` package, enter the following command in the R console:
+To install and load the `mfp2` package, enter the following command in the R console:
 ```{r, eval=FALSE}
+# install the package
 install.packages("mfp2")
-```
 
-
-## Quick Start
-The purpose of this section is to provide users with a comprehensive 
-understanding of the `mfp2` package. We will provide a concise overview of its 
-key functions and resulting outputs. We will delve into each function in detail, highlighting their specific use. This will provide users with a deeper understanding of the package's functionality. The package includes a built-in dataset that is specifically designed for analysis within the `mfp2` framework. 
-
-To begin, let's load the `mfp2` package:
-```{r}
+# load the package
 library(mfp2)
 ```
 
 ## Linear Regression
+This section aims to provide users with a comprehensive understanding of the `mfp2` package using classical linear regression models. We will present a concise overview of the package's key functions and resulting outputs, delving into each function in detail to highlight their specific use.
+
 The default `family` in `mfp2` package is `Gaussian`, which fits a Gaussian 
 linear model. In this section, we will demonstrate how to fit this model. We will use the prostate cancer data (Stamey et al., 1989) included
-in our package. The dataset contains seven predictors (six continuous variables
-and one binary variable) and a continuous outcome variable (log prostate-specific antigen (lpsa)) of 97 patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
+in our package. The dataset contains seven predictors (six continuous variables (age, pgg45, cavol, weight, bph and cp)
+and one binary (svi) variable and a continuous outcome variable (log prostate-specific antigen (lpsa)) of 97 patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
 the outcome variable.
 
 Load the `prostate` dataset from the `mfp2` package and display the first few 
@@ -307,8 +297,8 @@ head(prostate)
 x <- as.matrix(prostate[,2:8])
 y <- as.numeric(prostate$lpsa)
 ```
-The command loads a dataframe from the **R** data archive since the `mfp2` package 
-is already loaded. We create a matrix `x` and a numeric vector `y` from the dataframe. 
+The command loads a data frame from the **R** data archive since the `mfp2` package 
+is already loaded. We create a matrix `x` and a numeric vector `y` from the data frame to be used by the default interface of `mfp2()` function. 
 
 ### Fitting MFP Models Using Default and Formula Interface
 

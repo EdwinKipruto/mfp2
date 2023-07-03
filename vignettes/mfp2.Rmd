@@ -1,33 +1,36 @@
 ---
 title: "Multivariable Fractional Polynomials with Extensions"
 author:
-  - Edwin Kipruto
-  - Michael Kammer
-  - Patrick Royston
-  - Willi Sauerbrei
+- Edwin Kipruto
+- Michael Kammer
+- Patrick Royston
+- Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
-link-citations: true
-output: 
-  pdf_document:
+output:
+  word_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
-    number_sections: true
-    latex_engine: lualatex
+    number_sections: yes
   html_vignette:
     fig_caption: yes
     toc: yes
     toc_depth: 3
-    number_sections: true
+    number_sections: yes
   word_vignette:
     fig_caption: yes
     toc: yes
     toc_depth: 3
-    number_sections: true
-vignette: >
-  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
-  %\VignetteEncoding{UTF-8}
-  %\VignetteEngine{knitr::rmarkdown}
+    number_sections: yes
+  pdf_document:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+    latex_engine: lualatex
+link-citations: yes
+vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\\VignetteEncoding{UTF-8} %\\VignetteEngine{knitr::rmarkdown}\n"
 ---
 
 
@@ -98,11 +101,9 @@ these significance levels strongly depends on the specific aim of the analysis.
 
 The rest of the paper is organized as follows. Section 1.2 provides an overview of fractional polynomial functions for a single continuous covariate in the model, including the function selection procedure (FSP). Section 1.3 describes the MFP approach, focusing on models involving two or more covariates.
 
-Section 2 serves as an introduction to the mfp2 package. It covers the installation process and provides instructions for utilizing the package in various linear regression models. The package's functionality is predominantly demonstrated using Gaussian linear models (Section 2.4), while other models, such as logistic (Section 2.5), Poisson (Section 2.6), and Cox (Section 2.7), are briefly explained.
+Section 2 serves as an introduction to the mfp2 package. It covers the installation process and provides instructions for utilizing the package in various linear regression models. The package's functionality is predominantly demonstrated using Gaussian linear models (Subsection 2.3), while other models, such as logistic (Subsection 2.4), Poisson (Subsection 2.5), and Cox (Subsection 2.6), are briefly explained.
 
 Section 3 introduces an extension of MFP using the approximate cumulative distribution (ACD) transformation of a continuous covariate. This extension allows for modeling a sigmoid relationship between covariates and an outcome variable (subsection 3.1) and may help mitigate the influence of extreme covariate values on a selected function (subsection 3.2).
-
-Lastly, Section 4 describes an additional extension of MFP that is currently not implemented in the `mfp2` package, such as interactions between variables. However, this extension is available in the Stata software.
 
 For more comprehensive information about MFP and its extensions, please visit
 [MFP website (click here)](https://mfp.imbi.uni-freiburg.de/).
@@ -249,7 +250,7 @@ The estimation algorithm employed in `mfp2` sequentially processes the predictor
 This ordering aims to prioritize modeling relatively important variables before less important ones, which can help mitigate potential challenges in model fitting arising from collinearity or, more generally, the presence of "concurvity" among the predictors (stata manual??). Although alternative options for predictor ordering are available in the `mfp2` package, we prefer the default option (`xorder = "ascending"`).
 
 If a predictor contains nonpositive values, the program by default shifts the location of the predictor x to ensure positivity. In addition, it scales the 
-shifted predictor before the first cycle of the algorithm. For more information on shifting and scaling, please see section 2.3.x.
+shifted predictor before the first cycle of the algorithm. For more information on shifting and scaling, please see section 2.3.2.
 
 At the initial cycle, the best-fitting FP function for the first variable (after ordering) is determined, with all the other variables assumed to be linear. The functional form (but not the estimated regression
 coefficients) is kept, and the process is repeated for the other variables. The
@@ -263,7 +264,7 @@ or argument `keep = FALSE`; otherwise, it is forced into the model.
 Updating of FP functions and candidate variables continues until the functions
 and variables included in the overall model do not change (convergence). 
 
-Typically, MFP requires two to four cycles for convergence. However, nonconvergence may occur when there is oscillation between two or more models, and this situation is extremely rare.If this situation arises, try changing the nominal significance levels.
+Typically, MFP requires two to four cycles for convergence. However, nonconvergence may occur when there is oscillation between two or more models, and this situation is extremely rare. If this situation arises, try changing the nominal significance levels.
 
 
 ## Installation
@@ -281,7 +282,7 @@ This section aims to provide users with a comprehensive understanding of the `mf
 
 The default `family` in `mfp2` package is `family = "gaussian"`, which fits a Gaussian 
 linear model. We will use the prostate cancer data (Stamey et al., 1989) included
-in our package to demonstrate how to fit this model. The dataset contains seven predictors (six continuous (age, pgg45, cavol, weight, bph, and cp) and one binary (svi)) and a continuous outcome variable log prostate-specific antigen (lpsa) of 97 male patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
+in our package to demonstrate how to fit this model. The dataset contains seven predictors (six continuous (`age`, `pgg45`, `cavol`, `weight`, `bph`, and `cp`) and one binary (`svi`)) and a continuous outcome variable log prostate-specific antigen (lpsa) of 97 male patients with prostate cancer. Our aim is to determine whether non-linear functional relationships exist between the predictors and
 the outcome variable.
 
 Load the `prostate` dataset from the `mfp2` package and display the first six rows  
@@ -319,15 +320,15 @@ inclusion of the `fp()` function within the formula. The presence of the `fp()`
 function in the formula indicates that the variables included within it should 
 undergo FP transformation, provided that the degree of 
 freedom (df) is not equal to 1. A df of 1 indicates a linear relationship,
-which does not require transformation. Note that df is an argument in the 
+which does not require transformation. Note that `df` is an argument of the 
 `fp()` function.
 
 The variable `svi` is a binary variable and is therefore not passed to the `fp()`
 function. This is because binary or factor variables do not undergo FP 
 transformation. If a binary variable is passed to the `fp()` function,
-the program will automatically set the df to 1, treating the variable as linear.
+the program will automatically set the `df` to 1, treating the variable as linear.
 However, passing a factor variable to the `fp()` function will result in an error.
-For more details on how `mfp2` handles categorical variables, refer to section XX.
+For more details on how `mfp2` handles categorical variables, refer to section 2.3.10.
 
 ### Shifting and Scaling of Predictors
 Fractional polynomials are defined only for positive variables due to the use of
@@ -485,7 +486,7 @@ strongly influences the complexity and stability of the final model.
 The `mfp2()` function has an argument called `criterion`, which allows the user 
 to specify the criteria for variable and function selection. The default 
 criterion is `pvalue`, which enables the user to set the two nominal significance
-levels. Please refer to section [section 1.4.4.1](#Nominal_significance_levels) 
+levels. Please refer to section [section 2.3.4.1](#Nominal_significance_levels) 
 for instructions on setting the nominal significance levels.
 
 
@@ -505,7 +506,7 @@ allows users to specify whether they want to use AIC or BIC criteria for both
 variable and function selection. If AIC or BIC is selected as the criterion, the
 nominal significance levels set through the `select` and `alpha` arguments will 
 be ignored. For details on using AIC and BIC in variable and function selection,
-please refer to [section 1.4.4.2](#information_criteria).
+please refer to [section 2.4.4.2](#information_criteria).
 
 #### Nominal significance levels {#Nominal_significance_levels}
 
@@ -526,7 +527,7 @@ complex FP function permitted for a given variable. For example, if FP2 is the
 most complex function allowed for continuous variable x1, setting `alpha = 1` will select the best FP2 function.
 
 The rules for setting `select` and `alpha` are the same as those for setting `df` 
-([see section 1.4.3](#df_vars)). The following R codes shows how to set equal
+([see section 2.3.3](#df_vars)). The following R codes shows how to set equal
 nominal significance levels for variable and function selection 
 $(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical results.
 Setting different nominal significance levels is straightforward. Simply replace

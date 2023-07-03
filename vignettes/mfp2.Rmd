@@ -241,7 +241,7 @@ It offers two interfaces for input data. The first interface (default) allows di
 with slight modifications. Both interfaces are equivalent in terms of functionality.  The package includes a built-in dataset for analysis within the `mfp2` framework. More details about the dataset are found in the book by Royston and Sauerbrei (2008).
 
 
-The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei. We acknowledge the valuable contribution made by Georg Heinze and Gregory Steiner, which helped us improve our package. The R package is maintained by Edwin Kipruto, while the Stata MFP and MFPA programs are maintained by Patrick Royston. 
+The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei. We acknowledge contributions made by Georg Heinze and Gregory Steiner, which helped us improve our package. The R package is maintained by Edwin Kipruto, while the Stata MFP and MFPA programs are maintained by Patrick Royston. 
 
 This vignette provides an introduction to the basic usage of the `mfp2` package in **R**. To deepen your understanding and enhance your knowledge of MFP, we recommend reading the book by Royston and Sauerbrei (2008) and the papers cited in this vignette. 
 

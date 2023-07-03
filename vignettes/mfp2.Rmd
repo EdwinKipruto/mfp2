@@ -7,11 +7,12 @@ author:
 - Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
-  word_document:
+  pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
     number_sections: yes
+    latex_engine: lualatex
   html_vignette:
     fig_caption: yes
     toc: yes
@@ -22,12 +23,11 @@ output:
     toc: yes
     toc_depth: 3
     number_sections: yes
-  pdf_document:
+  word_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
     number_sections: yes
-    latex_engine: lualatex
 link-citations: yes
 vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\\VignetteEncoding{UTF-8} %\\VignetteEngine{knitr::rmarkdown}\n"

@@ -211,9 +211,9 @@ Below we provide some information about sample size needed, but implicitly we as
 
 #### The variable has to be positive
 
-The class of FP1 and FP2 functions includes a log and other transformations which require that the continuous variable must be positive.
-A preliminary origin-shift transformation can be applied (Royston and Sauerbrei 2008, Chapters 4.7 and 11).
-For variables with a "spike" of probability mass at zero, a binary indicator variable may be added to the model and the FSP may be modiﬁed accordingly (Royston et al., 2010; Becher et al., 2012; Lorenz et al., 2018).
+The class of FP1 and FP2 functions includes a log and other transformations which require that the continuous variable must be positive. A preliminary origin-shift transformation can be applied as shown in section 2.3.2.
+
+In epidemiologic studies, there are variables that exhibit a spike at zero. This means that a certain proportion of individuals have zero exposure, while among those who are exposed, the variable has a continuous distribution. Typical examples are cigarette consumption or alcohol intake. There are different approaches to modeling such variables. Royston et al. (2010) proposed a method that involves adding a binary indicator for exposure (exposed/nonexposed) to the regression model. Additionally, they utilized fractional polynomials (FP) to determine the functional form of the variable. In a two-stage procedure, they assessed whether the binary variable and/or the continuous function for the exposed individuals is required for a good fit to the data. Becher et al. (2012) proposed a modification of this approach. These two approaches are currently not implemented in the `mfp2` package.
 
 #### Sample size and influential observations
 
@@ -223,7 +223,7 @@ Conversely, the same may happen with large positive powers at large values of x.
 Such transformations may create inﬂuential observations that may affect parts of the FSP.
 To mitigate the impact of influential observations, it is important to assess the robustness of FP functions.
 Some suggestions for investigating inﬂuential points (IPs) and handling such issues in MFP modeling can be found in Royston and Sauerbrei (2008, Chapters 5 and 10) and their paper on improving the robustness of FP models (Royston and Sauerbrei, 2007).
-Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023). The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model. However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis is often a suitable way to select a multivariable regression model which includes continuous variables.
+Using synthetic data, a more detailed investigation of IPs is given in Sauerbrei et al. (2023). The authors conclude that for smaller sample sizes, IPs and low power are important reasons that the MFP approach may not be able to identify underlying functional relationships for continuous variables and selected models might differ substantially from the true model. However, for larger sample sizes (about 50 or more observations per variable) a carefully conducted MFP analysis (which includes checks for IPs and other aspects of model criticism) is often a suitable way to select a multivariable regression model which includes continuous variables.
 
 #### Local features:
 
@@ -234,14 +234,14 @@ This enables the identification and incorporation of local features that may hav
 
 
 # Introduction to mfp2 package
-`mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2016). The package offers three options for variable and function selection: nominal significance levels (p-value), Akaike information criterion (AIC), and Bayesian information criterion (BIC). It also provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other regression models.
+`mfp2` is a package that selects the MFP model. In addition, it has the ability to model a sigmoid relationship between `x` and an outcome variable `y` using the ACD transformation proposed by Royston (2015) and implemented in the Stata procedure MFPA (Royston and Sauerbrei 2016). The package offers three options for variable and function selection: nominal significance levels (p-value), Akaike information criterion (AIC), and Bayesian information criterion (BIC). It also provides functions for prediction and plotting. Currently, the package implements linear, logistic, Poisson, and Cox regression models. However, the package is designed in such a way that it can easily incorporate other regression models.
 
 The main function, `mfp2()`, implements both MFP and MFP with ACD (MFPA) transformation.
 It offers two interfaces for input data. The first interface (default) allows direct input of the predictor matrix `x` and the outcome `y`. The second interface uses a formula object in conjunction with a data frame, similar to the `glm()` function
 with slight modifications. Both interfaces are equivalent in terms of functionality.  The package includes a built-in dataset for analysis within the `mfp2` framework. More details about the dataset are found in the book by Royston and Sauerbrei (2008).
 
 
-The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei. We acknowledge contributions made by Georg Heinze and Gregory Steiner, which helped us improve our package. The R package is maintained by Edwin Kipruto, while the Stata MFP and MFPA programs are maintained by Patrick Royston. 
+The authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei. We acknowledge the comments and suggestions provided by Georg Heinze and Gregory Steiner, which helped us improve our package. The R package is maintained by Edwin Kipruto, while the Stata MFP and MFPA programs are maintained by Patrick Royston. Parts of the text and some recommendations (e.g. section 2.3.3) have been taken from the Stata programs MFP and MFPA.
 
 This vignette provides an introduction to the basic usage of the `mfp2` package in **R**. To deepen your understanding and enhance your knowledge of MFP, we recommend reading the book by Royston and Sauerbrei (2008) and the papers cited in this vignette. 
 
@@ -718,7 +718,7 @@ Next, the algorithm evaluates the variable "weight" in a model adjusting for "lo
 
 **At the end of the first cycle, only two variables were selected: "log(cavol)" and "svi".**
 
-The variables selected in the first cycle becomes the new starting model for the second cycle. In the second cycle, the effect of "cavol" is investigated again, but this time in a simpler model adjusting for "svi" only. Deviances are larger compared to cycle 1 because the five variables ("pgg45", "age", "weight", "bph" and "cp") no longer belong to the 'adjustment' model. However, the FSP  still selects "log(cavol)".
+The variables and functions selected in the first cycle becomes the new starting model for the second cycle. In the second cycle, the effect of "cavol" is investigated again, but this time in a simpler model adjusting for "svi" only. Deviances are larger compared to cycle 1 because the five variables ("pgg45", "age", "weight", "bph" and "cp") no longer belong to the 'adjustment' model. However, the FSP  still selects "log(cavol)".
 
 The "svi" is evaluated in a model that includes only "log(cavol)", and the test of linear vs null confirms that the variable should be included in the model. "Pgg45" is evaluated in a model with "svi" and "log(cavol)" as adjustment variables, but the test of inclusion (FP2 vs null) is not significant and the variable is again eliminated.
 

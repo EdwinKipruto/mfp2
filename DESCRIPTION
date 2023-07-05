@@ -17,7 +17,13 @@ Imports:
   stats,
   survival,
   utils
-Suggests: knitr,testthat,xfun,rmarkdown,formatR,patchwork
+Suggests: 
+  knitr,
+  testthat,
+  xfun,
+  rmarkdown,
+  formatR,
+  patchwork
 Description: Algorithm to select variables and functional forms through 
   fractional polynomials in regression models (GLMs, Cox). This package also
   implements various extensions of the original algorithm (sigmoid functional 
@@ -39,4 +45,4 @@ Author:
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
 RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
-VignetteBuilder: knitr
+VignetteBuilder: knitr, rmarkdown

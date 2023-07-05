@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 *.Rproj
-inst/doc
+/doc/
+/Meta/

@@ -323,8 +323,8 @@ For more details on how `mfp2` handles categorical variables, refer to section 2
 
 ### Shifting and Scaling of covariates
 Fractional polynomials are defined only for positive variables due to the use of
-logarithms and other powers such as square root. Thus, `mfp2()`function estimates
-shifting factors for each variables to ensure positivity. The function 
+logarithms and other powers such as square root. Thus, `mfp2()` estimates
+shifting factors for each variables to ensure positivity.If all continuous variables have positive values, shifting is not needed because all shifting factors will be zero. The function 
 `find_shift_factor()`, used internally by `mfp2`, automatically estimates 
 shifting factors for each continuous variables. The formula used to estimate the
 shifting factor for a continuous variable, say `x1`, is given by:
@@ -629,24 +629,20 @@ Gaussian models are based on the F-test. If you intend to compare the
 results between the two software packages, it is crucial to ensure that 
 `ftest = TRUE` is set in R since the default is `ftest = FALSE`.
 
-It is important to be aware that the older version of the `mfp` package in **R** uses the Chi-square test for all model types, which may yield different results compared to the Stata program, particularly for Gaussian models. Therefore, when comparing
+It is important to be aware that the older version of the `mfp` package in **R** uses the Chi-square test for all model types, which may yield different results compared to the Stata program, for Gaussian models. Therefore, when comparing
 the results between the two R packages, the user must set` ftest = FALSE`. In summary, the `mfp2` package reproduces the results of Stata (mfp and mfpa programs), as well as the old `mfp` program in **R** if you set `ftest = FALSE`.
 
 ### Fraction Polynomial Powers
 By default, the `mfp2()` function uses the predefined set $S = \{\-2, {\-1}, {\-0.5}, 0, 0.5, 1, 2, 3\}$ for each
 continuous covariate, as proposed in the original paper by Royston and Altman (1994). However, there may be situations where users want to 
 provide their own power terms based on subject matter knowledge (not all powers allowed). In such 
-cases, the `powers` argument which takes a list of distinct powers can be 
-employed to specify the desired power terms. If the user provides identical powers
-for a variable, such as (0, 0, 0.5), the program will remove duplicates and 
-consider only the distinct powers 0 and 0.5.
-
-On the other side, more extreme powers may be considered for a possible improvement of the fit. This may be sensible if the ‘extreme’ power terms (-2, -2) or (3,3) are selected, Considering (-3,-3) or (4,4) may be a suitable option. 
+cases, the `powers` argument which takes a list of powers can be 
+employed to specify the desired power terms. More extreme powers may be considered for a possible improvement of the model fit. This may be sensible if the ‘extreme’ power terms (-2, -2) or (3,3) are selected, Considering (-3,-3) or (4,4) may be a suitable option. 
 
 The following example illustrates how to assign different power terms to continuous covariates. 
-Two power terms (0 and 0.5) are evaluated for the `age` covariate. This set 
-includes three models of degree 2 (with power combinations of (0, 0), 
-(0, 0.5), and (0.5, 0.5)), and two models of degree 1 (with power of 0 and 0.5). ). A linear model (power=1) is not allowed.
+Two power terms (1 and 0.5) are evaluated for the `age` covariate. This set 
+includes three models of degree 2 (with power combinations of (1, 0.5), 
+(1, 1), and (0.5, 0.5)),and a model of degree 1 (with power of 0.5). A linear model (power=1) is also allowed.
 
 The `cavol` variable is assigned a single power
 term (0), ), implying that the log function is fixed for cavol. 
@@ -661,12 +657,12 @@ specific to a particular variable.
 
 ```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # create a list of power terms for covariates "age" and "cavol"
-powx <- list(age = c(0, 0.5), cavol = 0)   
+powx <- list(age = c(1, 0.5), cavol = 0)   
 # Default Interface
 mfp2(x, y, criterion = "pvalue", powers = powx)
 
 # Formula Interface
-mfp2(lpsa ~ fp(age, powers = c(0, 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = 0) + fp(weight) + fp(bph) +  fp(cp), data = prostate)
+mfp2(lpsa ~ fp(age, powers = c(1, 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = 0) + fp(weight) + fp(bph) +  fp(cp), data = prostate)
 
 ```
 

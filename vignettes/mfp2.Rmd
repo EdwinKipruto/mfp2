@@ -239,7 +239,7 @@ This vignette provides an introduction to the basic usage of the `mfp2` package 
 
 ## Estimation algorithm
 The estimation algorithm employed in `mfp2` sequentially processes the covariates using a back-fitting approach. It calculates the p-values of each covariate using the likelihood ratio test, assuming linearity, and then arranges the covariates based on these p-values. By default, the covariates are arranged in order of decreasing statistical significance. 
-This ordering aims to prioritize modeling relatively important variables before less important ones, which can help mitigate potential challenges in model fitting arising from collinearity or, more generally, the presence of "concurvity" among the covariates (StataCorp. 2023). Although alternative options for covariate ordering are available in the `mfp2` package, such as increasing statistical significance (`xorder = "descending"`) and respecting the user's original variable order (`xorder = "original"`), we prefer the default option (`xorder = "ascending"`).
+This ordering aims to prioritize modeling relatively important variables before less important ones, which can help mitigate potential challenges in model fitting arising from collinearity or, more generally, the presence of "concurvity" among the covariates (StataCorp. 2023). Although alternative options for covariate ordering are available in the `mfp2` package, such as increasing statistical significance (`xorder = "descending"`) and respecting the user's original variable order (`xorder = "original"`), we strongly recommend the default option (`xorder = "ascending"`). Occasionally, there may be subject matter knowledge that provides arguments to change this order.
 
 If a covariate contains nonpositive values, the program by default shifts the location of the covariate x to ensure positivity. In addition, it scales the 
 shifted covariate before the first cycle of the algorithm. For more information on shifting and scaling, please see section 2.3.2.
@@ -644,8 +644,7 @@ Two power terms (1 and 0.5) are evaluated for the `age` covariate. This set
 includes three models of degree 2 (with power combinations of (1, 0.5), 
 (1, 1), and (0.5, 0.5)),and a model of degree 1 (with power of 0.5). A linear model (power=1) is also allowed.
 
-The `cavol` variable is assigned a single power
-term (0), ), implying that the log function is fixed for cavol. 
+The `cavol` variable is assigned three powers (1,0,1). 
 The remaining continuous variables, namely `pgg45`, `weight`, `bph`, and `cp`, 
 are not assigned any power terms. Instead, the default powers defined in set $S$
 are used and  a search through all possible fractional polynomials up to the
@@ -657,12 +656,12 @@ specific to a particular variable.
 
 ```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # create a list of power terms for covariates "age" and "cavol"
-powx <- list(age = c(1, 0.5), cavol = 0)   
+powx <- list(age = c(1, 0.5), cavol = c(1,0,1))   
 # Default Interface
 mfp2(x, y, criterion = "pvalue", powers = powx)
 
 # Formula Interface
-mfp2(lpsa ~ fp(age, powers = c(1, 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = 0) + fp(weight) + fp(bph) +  fp(cp), data = prostate)
+mfp2(lpsa ~ fp(age, powers = c(1 , 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = c(1,0,1)) + fp(weight) + fp(bph) +  fp(cp), data = prostate)
 
 ```
 
@@ -756,7 +755,7 @@ To prepare the `newdata` for prediction, the `predict()` function applies any ne
 ### Graphical presentation of FP functions
 The regression estimates ($\hat{\beta}$) for FP terms provide incomplete information as they only give limited insight into the fitted function for the variable of interest. A more informative approach is to visualize functions for variables with non-linear effects (Royston and Sauerbrei, 2008). The `mfp2` package offers the `fracplot()` function specifically designed for this purpose.
 
-By providing the `mfp2` object and other relevant arguments, `fracplot()` generates plots of the functions for variables along with $95\%$ confidence limits. You can specify the variable to be plotted using the `terms` argument. If `terms` is set to NULL (the default), the function returns a list of plots for all variables included in the model.
+By providing the `mfp2` object and other relevant arguments, `fracplot()` generates plots of the functions for variables along with $95\%$ confidence limits. As for all data derived models, confidence limits can be too narrow and bootstrap are often used to derive a more realistic estimates of standard errors and pointwise confidence intervals (Royston and Sauerbrei 2007). You can specify the variable to be plotted using the `terms` argument. If `terms` is set to NULL (the default), the function returns a list of plots for all variables included in the model.
 
 `fracplot()` function, by default produces a component-plus-residual plot. This is because the `partial_only` argument is set to FALSE by default. 
 
@@ -786,7 +785,7 @@ plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
 \newpage
 The `fracplot()`  function also supports the incorporation of a reference point or target value in the plot. Including a reference point allows for visualizing whether other data points exceed or fall below the reference point. To achieve this, you can use the `type` argument and set it to "contrasts" (`type = "contrasts"`). Additionally, you can supply the reference point using the `ref` argument. By default, the `ref` argument is set to `NULL`, and average values are used as the reference points for continuous variables, while the minimum values are used as reference points for binary variables. For instance, if we want the reference value for the continuous variable `cavol` to be 30, we can use the following code:
 
-```{r, eval= TRUE, fig.cap="Prostate data. Illustration on how to use reference points"}
+```{r, eval= TRUE, fig.cap="Prostate data. Illustration on how to use reference points (ref point = 30)"}
 plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 30))
 class(plots)
 plots[[1]] + ggplot2::ylab("Partial predictor")
@@ -800,7 +799,7 @@ The `fracplot()` function provides two options for generating the plot. The firs
 
 To illustrate these options, we will use the `art` dataset included in the `mfp2` package. This dataset is described in detail by Royston and Sauerbrei (2008, Chapter 10), and the outcome variable is continuous. In our example, we will fit an MFP model with a single covariate (x5).
 
-```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot"}
+```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot. In the original x5 values, there are no values between 62.21 and 235.Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
 
 # load art data
 data("art")
@@ -819,7 +818,7 @@ plot2 <- fracplot(fit2, terms_seq = "equidistant")
 plot2[[1]] <- plot2[[1]] + ggplot2::ylab("Partial predictor + residuals")
 
 # combine plots
-patchwork::wrap_plots(plot1[[1]], plot2[[1]], ncol = 2, widths = 8)
+patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8)
 
 ```
 
@@ -959,8 +958,6 @@ fit2$fp_terms
 fit3 <- mfp2(Surv(rectime,censrec)~ age + meno + size + nodes + pgr + er + grade_1 + 
                grade_2 + strata(hormon),family = "cox", data =gbsg, verbose = FALSE)
 
-fit2$fp_terms
-
 ```
 
 
@@ -1019,42 +1016,13 @@ fit3 <- mfp2(y ~ fp(x, acdx = FALSE), data = datax, verbose = FALSE)
 fit3$fp_terms
 
 ```
-The selected function using the ACD transformation is FP1(1,1), represented by $\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3log(x)$. Figure 4 shows these functions. It is evident from the figure that the ACD approach provides a better fit to the data compared to the usual MFP model, particularly at the extreme ends.
+The selected function using the ACD transformation is FP1(1,1), represented by $\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3log(x)$. Figure 4 shows these functions. It is evident from the figure that the ACD approach provides a better fit to the data compared to the usual MFP model.
 
 ```{r,fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)",fig.align='center', echo=FALSE, fig.show='hold',out.width= '45%',out.height='50%'}
 fracplot(fit1, terms = "x")[[1]] + ggplot2::ylab("y")
 
 
 fracplot(fit3, terms = "x")[[1]] + ggplot2::ylab("y")
-
-```
-\newpage
-## use of MFPA to reduce effects of extreme covariate values.
-The example below demonstrates the effectiveness of MFPA in mitigating the impact of extreme covariate values on a selected function for variable `x5` in the `art` data. We see that the extreme value (observation number 151) has minimal influence on the functional form, compared to usual FP2 as shown in Figure 5.
- 
-```{r out.lines = 90, R.options = list(width = 100),fig.cap="Art data. Effectiveness of MFPA in mitigating the impact of extreme covariate values",fig.align='center', out.width= '45%',out.height='50%', fig.show='hold'}
-# load art data
-data("art")
-# create matrix x and outcome y
-x <- as.matrix(art[,-1])
-y <- as.numeric(art$y)
-
-# fit mfp without acd
-fit1 <- mfp2(x,y, verbose = FALSE)
-fit1$fp_terms
-
-# fit mfp with acd
-fit2 <- mfp2(x,y, acdx = "x5", verbose = FALSE)
-fit2$fp_terms
-
-fracplot(fit1, terms = "x5", color_points  = "black")[[1]] +
-  ggplot2::ylab("Partial predictor + residuals")
-
-fracplot(fit2, terms = "x5", color_points  = "black")[[1]] +
-  ggplot2::ylab("Partial predictor + residuals")
-
-#patchwork::wrap_plots(list(a,b), ncol = 2)
-
 
 ```
 

@@ -149,7 +149,12 @@ predict.mfp2 <- function(object,
       # define sequence of variable data as named list
       # TODO: definition of sequence should be more flexible
       if (terms_seq == "equidistant") {
-        x_range <- range(object$x_original[, t])
+        if (!is.null(newdata)){
+          x_range <- range(newdata[, t])
+        }else {
+          x_range <- range(object$x_original[, t])
+        }
+        
         x_seq  <- matrix(
           seq(x_range[1], x_range[2], length.out = 100),
           ncol = 1
@@ -163,13 +168,21 @@ predict.mfp2 <- function(object,
                                                          apply_pre = FALSE))
       } else {
         # use data
-        x_seq <- object$x_original[, t, drop = FALSE]
+        if (!is.null(newdata)){
+          x_seq <- newdata[, t, drop = FALSE]
+          
+        }else {
+          x_seq <- object$x_original[, t, drop = FALSE]
+        }
         x_names <- object$fp_powers[[t]]
         # in acd we might have a power and NA so we need to remove NA
-        x_trafo <- object$x[, names(x_names[!is.na(x_names)]), drop = FALSE]
+        #x_trafo <- object$x[, names(x_names[!is.na(x_names)]), drop = FALSE]
+        x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
+                                                         x_seq, 
+                                                         apply_pre = FALSE))
       }
       
-      term_coef <- coef(object)[colnames(x_trafo)]
+      term_coef <- coef(object)[colnames(object$x[, names(x_names[!is.na(x_names)]), drop = FALSE])]
       
       # create output data.frame
     
@@ -194,7 +207,11 @@ predict.mfp2 <- function(object,
         
         x_ref <- ref[[t]]
         if (is.null(x_ref)) {
-          v <- object$x_original[, t]
+          if (newdata){
+            v <- newdata[, t]
+          }else {
+            v <- object$x_original[, t]
+          }
           if (length(unique(v)) == 2) {
             x_ref <- min(v, na.rm = TRUE)
           } else x_ref <- mean(v, na.rm = TRUE) 

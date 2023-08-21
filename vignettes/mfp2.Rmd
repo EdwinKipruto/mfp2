@@ -253,7 +253,6 @@ figure =ggpubr::ggarrange(p,q,ncol = 2, nrow = 1, widths = 10,heights = 4, commo
 figure
 ```
 
-Figure 1 about here.
 
 Based on extensive experience with real data and several simulation studies, 
 FP1 and FP2 are generally considered adequate in the context of multivariable 

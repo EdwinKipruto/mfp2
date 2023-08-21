@@ -181,8 +181,8 @@ predict.mfp2 <- function(object,
                                                          x_seq, 
                                                          apply_pre = FALSE))
       }
-      
-      term_coef <- coef(object)[colnames(object$x[, names(x_names[!is.na(x_names)]), drop = FALSE])]
+      # TODO: CHECK WHETHER COLNAMES(x_trafo) is correct
+      term_coef <- coef(object)[colnames(x_trafo)]
       
       # create output data.frame
     
@@ -207,7 +207,7 @@ predict.mfp2 <- function(object,
         
         x_ref <- ref[[t]]
         if (is.null(x_ref)) {
-          if (newdata){
+          if (!is.null(newdata)){
             v <- newdata[, t]
           }else {
             v <- object$x_original[, t]

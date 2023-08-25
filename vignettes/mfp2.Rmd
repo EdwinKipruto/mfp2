@@ -159,16 +159,26 @@ dataxx$x <- x
 width = 1
 fig1 = ggplot(dataxx, aes(x)) + 
   geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
-  geom_line(aes(y = x2, colour = "x2"), linewidth = width, color = "#ff0000") + 
-  geom_line(aes(y = x3, colour = "x3"), linewidth = width, color = "#ffd700") +
-  geom_line(aes(y = x4, colour = "x4"), linewidth = width, color = "#ff00ff") +
-  geom_line(aes(y = x5, colour = "x5"), linewidth = width, color = "#ffb6c1") +
-  geom_line(aes(y = x6, colour = "x6"), linewidth = width, color = "#00ff00") +
-  geom_line(aes(y = x7, colour = "x7"), linewidth = width, color = "#0000ff") +
-  geom_line(aes(y = x8, colour = "x8"), linewidth = width, color =  "#000000") +
-  labs(x = "x", y = "f(x)", color = "Power") +  theme_bw() +
+  geom_line(aes(y = x2, colour = "x2"), linewidth = width, color ="#ff0000") + 
+  geom_line(aes(y = x3, colour = "x3"), linewidth = width, color ="#ffd700") +
+  geom_line(aes(y = x4, colour = "x4"), linewidth = width, color ="#ff00ff") +
+  geom_line(aes(y = x5, colour = "x5"), linewidth = width, color ="#ffb6c1") +
+  geom_line(aes(y = x6, colour = "x6"), linewidth = width, color ="#00ff00") +
+  geom_line(aes(y = x7, colour = "x7"), linewidth = width, color ="#0000ff") +
+  geom_line(aes(y = x8, colour = "x8"), linewidth = width, color ="#000000") +
+  labs(x = "x", y = "f(x)", color = "Power") +
+  theme_bw() +
+  geom_text(aes(x = 0.175, y = 0.95,size = 5, label = "-2"), color = "#006400") +
+  geom_text(aes(x = 0.25, y = 0.875,size = 5, label = "-1"), color = "#ff0000") +
+  geom_text(aes(x = 0.3, y = 0.8,size = 5, label = "-0.5"), color = "#ffd700") +
+  geom_text(aes(x = 0.4, y = 0.725,size = 5, label = "0"), color = "#ff00ff") +
+  geom_text(aes(x = 0.5, y = 0.65,size = 5, label = "0.5"), color = "#ffb6c1") +
+  geom_text(aes(x = 0.59, y = 0.575,size = 5, label = "1"), color = "#00ff00") +
+  geom_text(aes(x = 0.7, y = 0.475,size = 5, label = "2"), color = "#0000ff") +
+  geom_text(aes(x = 0.75, y = 0.4,size = 5, label = "3"), color = "#000000") +
+  
   theme(
-    legend.position = "right",
+    legend.position = "none",
     panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
     axis.ticks = element_blank(),
     axis.text.y = element_blank(),

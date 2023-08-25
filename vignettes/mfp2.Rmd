@@ -145,19 +145,17 @@ funx <- function(x, power){
 s <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
 # transform x using the powers in s
 outx = lapply(s, function(s) funx(x = x, power = s))
+
 # multiply the first 3 with -1 so that the function increase rather than decrease
 # due to negative powers. these are betas i,e y = beta*x^p
 k <- c(-1, -1, -1, 1, 1, 1, 1, 1)
 datx = matrix(unlist(outx), ncol = length(s))
 datax = datx%*%diag(k)
-head(datax)
 # standardize the data so that y is in the same range
 dataxx = apply(datax, 2,function(x) (x-min(x))/(max(x)-min(x)))
 colnames(dataxx) <- c(paste0("x",1:length(s)))
-head(dataxx)
 dataxx <- as.data.frame(dataxx)
 dataxx$x <- x
-head(dataxx)library(ggplot2)
 width = 1
 fig1 = ggplot(dataxx, aes(x)) + 
   geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
@@ -215,7 +213,7 @@ fig2 = ggplot() +
     geom_text(aes(x = 1.3, y = 12,size = 5, label = "(-0.5, 0.5)"), color = "#ff7f00") +
     geom_text(aes(x = 1.25, y = 29.5,size = 5, label = "(0, 2)"), color = "#FF00FF") +
     geom_text(aes(x = 1, y = -9.5,size = 5, label = "(1, 2)"), color = "#a65628") +
-    ylab("Fractional polynomial f(x)")+
+    ylab(" ")+
     theme(
       legend.position = "none",
       panel.border = element_rect(colour = "black", fill=NA, linewidth=1),

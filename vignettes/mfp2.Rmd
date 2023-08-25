@@ -156,7 +156,7 @@ dataxx = apply(datax, 2,function(x) (x-min(x))/(max(x)-min(x)))
 colnames(dataxx) <- c(paste0("x",1:length(s)))
 dataxx <- as.data.frame(dataxx)
 dataxx$x <- x
-width = 1
+width = 0.5
 fig1 = ggplot(dataxx, aes(x)) + 
   geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
   geom_line(aes(y = x2, colour = "x2"), linewidth = width, color ="#ff0000") + 
@@ -168,9 +168,9 @@ fig1 = ggplot(dataxx, aes(x)) +
   geom_line(aes(y = x8, colour = "x8"), linewidth = width, color ="#000000") +
   labs(x = "x", y = "f(x)", color = "Power") +
   theme_bw() +
-  geom_text(aes(x = 0.175, y = 0.95,size = 5, label = "-2"), color = "#006400") +
-  geom_text(aes(x = 0.25, y = 0.875,size = 5, label = "-1"), color = "#ff0000") +
-  geom_text(aes(x = 0.3, y = 0.8,size = 5, label = "-0.5"), color = "#ffd700") +
+  geom_text(aes(x = 0.175, y = 1,size = 5, label = "-2"), color = "#006400") +
+  geom_text(aes(x = 0.25, y = 0.9,size = 5, label = "-1"), color = "#ff0000") +
+  geom_text(aes(x = 0.33, y = 0.83,size = 5, label = "-0.5"), color = "#ffd700") +
   geom_text(aes(x = 0.4, y = 0.725,size = 5, label = "0"), color = "#ff00ff") +
   geom_text(aes(x = 0.5, y = 0.65,size = 5, label = "0.5"), color = "#ffb6c1") +
   geom_text(aes(x = 0.59, y = 0.575,size = 5, label = "1"), color = "#00ff00") +
@@ -179,7 +179,7 @@ fig1 = ggplot(dataxx, aes(x)) +
   
   theme(
     legend.position = "none",
-    panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+    panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
     axis.ticks = element_blank(),
     axis.text.y = element_blank(),
     axis.title=element_text(size=18),
@@ -226,7 +226,7 @@ fig2 = ggplot() +
     ylab(" ")+
     theme(
       legend.position = "none",
-      panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+      panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
       axis.title=element_text(size=18),
       axis.ticks = element_blank(),
       axis.text.y = element_blank(),
@@ -287,7 +287,7 @@ fig3 =  ggplot(df, aes(x, y, color = curve)) +
   geom_line()  + theme_classic() +
   theme(
     legend.position = "none",
-    panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+    panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
     axis.ticks = element_blank(),
     axis.text.y = element_blank(),
     axis.title=element_text(size=18),
@@ -296,7 +296,7 @@ fig3 =  ggplot(df, aes(x, y, color = curve)) +
   geom_text(aes(x = 45, y = 4.3, label = "(-2, 2)"),size = 5, color = "black") 
 
 # COMBINE THE TWO PLOTS
-figure =ggpubr::ggarrange(fig1,fig2,ncol = 2, nrow = 1, widths = 10,heights = 4, common.legend = F, legend = "none", vjust = 2)
+figure =ggpubr::ggarrange(fig1,fig2,ncol = 2, nrow = 1, widths = 8,heights = 2, common.legend = F, legend = "none", vjust = 2)
 
 ```
 

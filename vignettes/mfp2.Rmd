@@ -135,6 +135,49 @@ This is illustrated in Figure 1, with the left panel displaying eight FP1 powers
 and the middle panel depicting a subset of FP2 powers.
 
 ```{r, eval=TRUE, echo=FALSE}
+#==============================================================================
+# 8 FP1 FUNCTIONS 
+#===============================================================================
+x <- seq(0.05, 1.05, length.out = 1000)
+funx <- function(x, power){
+  ifelse(power==rep(0,length(x)),log(x), x^power)
+}
+s <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+# transform x using the powers in s
+outx = lapply(s, function(s) funx(x = x, power = s))
+# multiply the first 3 with -1 so that the function increase rather than decrease
+# due to negative powers. these are betas i,e y = beta*x^p
+k <- c(-1, -1, -1, 1, 1, 1, 1, 1)
+datx = matrix(unlist(outx), ncol = length(s))
+datax = datx%*%diag(k)
+head(datax)
+# standardize the data so that y is in the same range
+dataxx = apply(datax, 2,function(x) (x-min(x))/(max(x)-min(x)))
+colnames(dataxx) <- c(paste0("x",1:length(s)))
+head(dataxx)
+dataxx <- as.data.frame(dataxx)
+dataxx$x <- x
+head(dataxx)library(ggplot2)
+width = 1
+fig1 = ggplot(dataxx, aes(x)) + 
+  geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
+  geom_line(aes(y = x2, colour = "x2"), linewidth = width, color = "#ff0000") + 
+  geom_line(aes(y = x3, colour = "x3"), linewidth = width, color = "#ffd700") +
+  geom_line(aes(y = x4, colour = "x4"), linewidth = width, color = "#ff00ff") +
+  geom_line(aes(y = x5, colour = "x5"), linewidth = width, color = "#ffb6c1") +
+  geom_line(aes(y = x6, colour = "x6"), linewidth = width, color = "#00ff00") +
+  geom_line(aes(y = x7, colour = "x7"), linewidth = width, color = "#0000ff") +
+  geom_line(aes(y = x8, colour = "x8"), linewidth = width, color =  "#000000") +
+  labs(x = "x", y = "f(x)", color = "Power") +  theme_bw() +
+  theme(
+    legend.position = "right",
+    panel.border = element_rect(colour = "black", fill=NA, linewidth=1),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title=element_text(size=18),
+    axis.text.x = element_blank()) +
+  labs(x="x", y="Fractional polynomial f(x)")
+
 # Define functions
 f1 <- function(x) 3 - 10*x^2 + 4*x^3
 f2 <- function(x) 20 - 15.4*x^2 + 4*x^3
@@ -155,7 +198,7 @@ df6 <- data.frame(x = x, y = f6(x))
 df7 <- data.frame(x = x, y = f7(x))
 
 # Plot functions
-p = ggplot() +
+fig2 = ggplot() +
     geom_line(data = df1, aes(x = x, y = y), color = "#e41a1c") +
     geom_line(data = df2, aes(x = x, y = y), color = "#377eb8") +
     geom_line(data = df3, aes(x = x, y = y), color = "#4daf4a") +
@@ -232,7 +275,7 @@ colrs <- brewer.pal.info[brewer.pal.info$colorblind == TRUE, ]
 col_vec = unlist(mapply(brewer.pal, colrs$maxcolors, rownames(colrs)))
 col <- sample(col_vec, n)
 col = c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000')
-q =  ggplot(df, aes(x, y, color = curve)) +
+fig3 =  ggplot(df, aes(x, y, color = curve)) +
   geom_line()  + theme_classic() +
   theme(
     legend.position = "none",
@@ -245,11 +288,11 @@ q =  ggplot(df, aes(x, y, color = curve)) +
   geom_text(aes(x = 45, y = 4.3, label = "(-2, 2)"),size = 5, color = "black") 
 
 # COMBINE THE TWO PLOTS
-figure =ggpubr::ggarrange(p,q,ncol = 2, nrow = 1, widths = 10,heights = 4, common.legend = F, legend = "none", vjust = 2)
+figure =ggpubr::ggarrange(fig1,fig2,ncol = 2, nrow = 1, widths = 10,heights = 4, common.legend = F, legend = "none", vjust = 2)
 
 ```
 
-```{r, echo=FALSE, fig.cap="Examples of FP2 curves for different powers (left panel) and for the fixed FP2 powers (-2, 2) but different regression coefficients (right panel)", echo=FALSE,fig.align='center'}
+```{r, echo=FALSE, fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)", echo=FALSE,fig.align='center'}
 figure
 ```
 

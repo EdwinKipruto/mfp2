@@ -119,6 +119,10 @@ predict.mfp2 <- function(object,
   
   terms_seq <- match.arg(terms_seq)
   
+  # checks for newdata
+  if (!is.null(newdata) && is.null(colnames(newdata)))
+    stop("Newdata must have column names", call. = FALSE)
+  
   # TODO: add checks for missing strata and offset in case they were used in fit
   # TODO: add checks for correct specification of ref
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE))

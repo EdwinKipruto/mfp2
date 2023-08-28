@@ -123,9 +123,6 @@ predict.mfp2 <- function(object,
   if (!is.null(newdata) && is.null(colnames(newdata)))
     stop("Newdata must have column names", call. = FALSE)
   
-  #if (!is.matrix(newdata))
-  #  stop("Newdata must be a matrix", call. = FALSE)
-  
   # TODO: add checks for missing strata and offset in case they were used in fit
   # TODO: add checks for correct specification of ref
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE))
@@ -177,7 +174,6 @@ predict.mfp2 <- function(object,
         # use data
         if (!is.null(newdata)){
           x_seq <- newdata[, t, drop = FALSE]
-          
         }else {
           x_seq <- object$x_original[, t, drop = FALSE]
         }

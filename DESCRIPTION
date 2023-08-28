@@ -1,8 +1,8 @@
 Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models and Extensions
-Version: 0.1.3.9004
-Date: 2023-05-25
+Version: 0.1.3.9007
+Date: 2023-08-28
 Authors@R: c(
   person("Edwin", "Kipruto", role = c("aut", "cre"), email = "edwin.kipruto@uniklinik-freiburg.de"),
   person("Michael", "Kammer", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"),

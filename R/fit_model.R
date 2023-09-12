@@ -188,7 +188,7 @@ fit_cox <- function(x,
                 paste(setdiff(names(d), dimnames(y)[[2]]), collapse = "+ "))
     
     if (any(offset != 0)) {
-      ff <- paste(f, " + offset(offset_)")
+      ff <- paste(ff, " + offset(offset_)")
       d$offset_ <- offset
     }
     

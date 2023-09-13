@@ -14,13 +14,11 @@ output:
     number_sections: yes
     latex_engine: lualatex
     fig_crop: yes
-  html_document:
-    toc: yes
-    toc_depth: '3'
-    df_print: paged
 link-citations: yes
-vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
-  %\\VignetteEncoding{UTF-8}  %\\VignetteEngine{knitr::rmarkdown}\n"
+vignette: >
+  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\VignetteEncoding{UTF-8}  
+  %\VignetteEngine{knitr::rmarkdown}
 ---
 
 

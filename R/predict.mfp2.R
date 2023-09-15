@@ -64,7 +64,9 @@
 #' uses the means (for continuous variables) and minima (for binary variables) as
 #' reference values. 
 #' @param strata stratum levels used for predictions. 
-#' @param offset vector offsets used for predictions. 
+#' @param newoffset A vector of offsets used for predictions. This parameter is important when 
+#' newdata is supplied. The offsets will be directly added to the linear predictor without any 
+#' transformations.
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @return 
@@ -97,7 +99,7 @@ predict.mfp2 <- function(object,
                          alpha = 0.05,
                          ref = NULL, 
                          strata = NULL, 
-                         offset = NULL, 
+                         newoffset = NULL, 
                          ...) {
   # check offset and strata
  # if(is.null(offset)){
@@ -255,17 +257,38 @@ predict.mfp2 <- function(object,
                        call. = FALSE)
     
     newdata <- prepare_newdata_for_predict(object, newdata, check_binary = FALSE)
+    betas <- object$coefficients
+    
+    # subset newdata based on names of coefficients in the model
+    newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
+    
+    # check whether offset was used in the model
+    no_offset <- all(object$offset==0)
     
     if (object$family_string == "cox") {
-      return(getFromNamespace("predict.coxph", "survival")(
-        object = object, newdata = newdata, type = type, ...
-      ))
+      nfit <- newdata%*%betas
     } else {
-      # TODO: offsets for glm?
-      return(stats::predict.glm(
-        object = object, newdata = newdata, type = type, ...
-      ))
+      nfit <- cbind(1,newdata)%*%betas
+
     } 
+  
+    if (!no_offset) {
+      if (is.null(newoffset))
+        stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
+       nr <- dim(newdata)[1]
+       if (nr!=length(newoffset))
+         stop("The length of newoffset must be equal to the number of rows of newdata", call. = FALSE)
+      nfit <- nfit + newoffset
+    }
+    
+    if (object$family_string=="gaussian")
+      return(nfit)
+    
+    # response = risk score in coxph
+    return(switch (type,
+                   response = exp(nfit),
+                   nfit
+    ))
   }
   
   # no newdata supplied

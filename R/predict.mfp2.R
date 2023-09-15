@@ -258,16 +258,17 @@ predict.mfp2 <- function(object,
     
     newdata <- prepare_newdata_for_predict(object, newdata, check_binary = FALSE)
     betas <- object$coefficients
-    
-    # subset newdata based on names of coefficients in the model
-    newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
-    
+  
     # check whether offset was used in the model
     no_offset <- all(object$offset==0)
     
     if (object$family_string == "cox") {
+      # subset newdata based on names of coefficients in the model
+      newdata <- as.matrix(newdata[,names(betas),drop = FALSE])
       nfit <- newdata%*%betas
     } else {
+      # remove intercept before subsetting 
+      newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
       nfit <- cbind(1,newdata)%*%betas
 
     } 

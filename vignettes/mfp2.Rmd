@@ -1656,6 +1656,7 @@ figurex <- patchwork::wrap_plots(p1, p2,
 figurex
 ```
 
+\newpage
 # References
 * StataCorp. 2023. Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC.\
 * Royston, P. and Sauerbrei, W., 2008. Multivariable model-building: a pragmatic approach to regression anaylsis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.\

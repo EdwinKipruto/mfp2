@@ -267,7 +267,7 @@ figure <- patchwork::wrap_plots(fig1, fig2,
 
 ```
 
-```{r echo=FALSE, fig.align='center', fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)"}
+```{r echo=FALSE, fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)"}
 figure
 ```
 
@@ -1175,6 +1175,7 @@ We can achieve this with the following code:
 ```{r out.lines = 10, eval= TRUE,  R.options = list(width = 100)}
  # extract the first five observations from 'x'
 new_observations <- x[1:5, ] 
+dim(new_observations)
 
 # make predictions for these new observations.
 predict(fit, newdata = new_observations)
@@ -1432,7 +1433,7 @@ From the output, it is evident that four continuous variables (`glucose`(power
 `fracplot()` function to generate plots for these selected variables, as
 illustrated below, which produced Figure 3.
 
-```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE,fig.align='center', echo=FALSE, out.width= '90%'}
+```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
 plots <- fracplot(fit)
 
 # rename y-label for all plots
@@ -1642,9 +1643,17 @@ selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3 \log(x)$.
 Figure 4 shows these functions. It is evident from the figure that the ACD
 approach provides a better fit to the data compared to the usual MFP model.
 
-```{r,fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)",fig.align='center', echo=FALSE, fig.show='hold',out.width= '45%',out.height='50%'}
-fracplot(fit1, terms = "x")[[1]] + ggplot2::ylab("y")
-fracplot(fit3, terms = "x")[[1]] + ggplot2::ylab("y")
+
+```{r,echo=FALSE,eval=TRUE}
+p1 = fracplot(fit1, terms = "x")[[1]] + ggplot2::ylab("y")
+p2 = fracplot(fit3, terms = "x")[[1]] + ggplot2::ylab("y")
+figurex <- patchwork::wrap_plots(p1, p2, 
+                               ncol = 2, nrow = 1, 
+                               widths = 8, heights = 2)
+```
+
+```{r,echo=FALSE, fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)"}
+figurex
 ```
 
 # References

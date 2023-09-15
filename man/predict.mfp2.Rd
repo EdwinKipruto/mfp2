@@ -13,7 +13,7 @@
   alpha = 0.05,
   ref = NULL,
   strata = NULL,
-  offset = NULL,
+  newoffset = NULL,
   ...
 )
 }
@@ -58,7 +58,9 @@ reference values.}
 
 \item{strata}{stratum levels used for predictions.}
 
-\item{offset}{vector offsets used for predictions.}
+\item{newoffset}{A vector of offsets used for predictions. This parameter is important when
+newdata is supplied. The offsets will be directly added to the linear predictor without any
+transformations.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }

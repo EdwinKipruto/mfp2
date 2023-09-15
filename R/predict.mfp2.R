@@ -288,6 +288,7 @@ predict.mfp2 <- function(object,
     # response = risk score in coxph
     return(switch (type,
                    response = exp(nfit),
+                   risk = exp(nfit),
                    nfit
     ))
   }

@@ -782,6 +782,7 @@ mfp2.default <- function(x,
   # original mfp2 call
   fit$call_mfp <- cl
   fit$family_string <- family
+  fit$offset <- offset
   
   fit
 }

@@ -13,7 +13,7 @@ output:
     toc_depth: 3
     number_sections: yes
     latex_engine: lualatex
-    fig_crop: yes
+    fig_crop: no
 link-citations: yes
 vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}

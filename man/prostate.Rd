@@ -3,25 +3,25 @@
 \docType{data}
 \name{prostate}
 \alias{prostate}
-\title{Prostate cancer dataset used in Royston and Sauerbrei (2008)}
+\title{Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.}
 \format{
-A data set with 97 observations and 8 variables.
+A dataset with 97 observations and 8 variables.
 \describe{
-\item{obsno}{observation number.}
-\item{age}{age in years.}
-\item{svi}{seminal vessel invasion (yes/no)}
-\item{pgg45}{percentage gleason score 4 or 5}
-\item{cavol}{cancer volume (mm)}
-\item{weight}{prostate weight (g)}
-\item{bph}{amount of benign prostatic hyperplasia (g)}
-\item{cp}{amount of capsular penetration (g)}
-\item{lpsa}{log PSA concentration-outcome variable}
+\item{obsno}{Observation number.}
+\item{age}{Age in years.}
+\item{svi}{Seminal vessel invasion (yes/no).}
+\item{pgg45}{Percentage Gleason score 4 or 5.}
+\item{cavol}{Cancer volume (mm).}
+\item{weight}{Prostate weight (g).}
+\item{bph}{Amount of benign prostatic hyperplasia (g).}
+\item{cp}{Amount of capsular penetration (g).}
+\item{lpsa}{Log PSA concentration (outcome variable).}
 }
 }
 \usage{
 data(prostate)
 }
 \description{
-Prostate cancer dataset used in Royston and Sauerbrei (2008)
+Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.
 }
 \keyword{data}

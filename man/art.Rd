@@ -7,19 +7,19 @@
 \format{
 The dataset has 250 observations and 10 covariates
 \describe{
-\item{y}{continuous response variable.}
-\item{x1, x3, x5-x7, x10}{continous covariates.}
-\item{x2}{binary variable.}
-\item{x4}{ordinal variable with 3 levels.}
-\item{x8}{binary variable.}
-\item{x9}{nominal variable with 3 levels}
+\item{y}{Continuous response variable.}
+\item{x1, x3, x5-x7, x10}{Continuous covariates.}
+\item{x2}{Binary variable.}
+\item{x4}{Ordinal variable with 3 levels.}
+\item{x8}{Binary variable.}
+\item{x9}{Nominal variable with 3 levels.}
 }
 }
 \usage{
 data(art)
 }
 \description{
-The ART data set mimic the GBSG breast cancer study in terms of the
-distribution of predictors and correlation structure
+The ART data set mimics the GBSG breast cancer study in terms of the
+distribution of predictors and correlation structure.
 }
 \keyword{data}

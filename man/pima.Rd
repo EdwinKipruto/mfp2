@@ -3,20 +3,20 @@
 \docType{data}
 \name{pima}
 \alias{pima}
-\title{Pima Indians dataset used in Royston and Sauerbrei (2008) book}
+\title{Pima Indians dataset used in the Royston and Sauerbrei (2008) book.}
 \format{
-A data set with 768 observations and 9 variables.
+A dataset with 768 observations and 9 variables.
 \describe{
-\item{id}{patient identifier.}
-\item{pregnant}{number of times pregnant.}
-\item{glucose}{plasma glucose concentration at 2h in an oral glucose tolerance test.}
-\item{diastolic}{diastolic blood pressure in mmHg}
-\item{triceps}{triceps skin fold thickness in mm}
-\item{insulin}{2-h serum insulin}
-\item{bmi}{body mass index}
-\item{diabetes}{diabetes pedigree function}
-\item{age}{age in years}
-\item{y}{binary outcome variable (diabetes, yes/no)}
+\item{id}{Patient identifier.}
+\item{pregnant}{Number of times pregnant.}
+\item{glucose}{Plasma glucose concentration at 2h in an oral glucose tolerance test.}
+\item{diastolic}{Diastolic blood pressure in mmHg.}
+\item{triceps}{Triceps skin fold thickness in mm.}
+\item{insulin}{2-h serum insulin.}
+\item{bmi}{Body mass index.}
+\item{diabetes}{Diabetes pedigree function.}
+\item{age}{Age in years.}
+\item{y}{Binary outcome variable (diabetes, yes/no).}
 }
 }
 \usage{
@@ -26,6 +26,6 @@ data(pima)
 The dataset arises from an investigation of potential predictors of
 the onset of diabetes in a cohort of 768 female Pima Indians of whom 268
 developed diabetes. Missing values were imputed using the ice procedure
-for stata
+for Stata.
 }
 \keyword{data}

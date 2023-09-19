@@ -37,7 +37,6 @@ knitr::opts_chunk$set(
 )
 library(mfp2)
 library(ggplot2)
-library(survival)
 ```
 
 ```{r include=FALSE}

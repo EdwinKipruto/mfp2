@@ -651,10 +651,6 @@ create_fp_terms <- function(fp_powers,
   )
   rownames(fp_terms) <- names(fp_powers)
   
-  # don't include acd column if all its elements are false
-  if(all(!acdx)) {
-    fp_terms <- fp_terms[, !names(fp_terms) %in% "acd"]
-  }
   
   if (criterion != "pvalue") {
     fp_terms$select <- toupper(criterion)

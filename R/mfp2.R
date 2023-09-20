@@ -1161,7 +1161,14 @@ print.mfp2 <- function(x,
   
   # Final MFP Powers
   cat("Final Multivariable Fractional Polynomial for y", "\n")
-  print.data.frame(x$fp_terms)
+
+  # Exclude 'acd' column if all its elements are false
+  fp_terms <- x$fp_terms
+  if(all(!fp_terms["acd"])) {
+    fp_terms <- fp_terms[, !names(fp_terms) %in% "acd"]
+  }
+  
+  print.data.frame(fp_terms)
   cat("\n")
   
   cat(sprintf("MFP algorithm convergence: %s\n", x$convergence_mfp))

@@ -32,9 +32,11 @@ knitr::opts_chunk$set(
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
-	warning = FALSE
+	warning = FALSE,
+	tidy = TRUE
 )
-knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80),tidy = TRUE)
+options(width = 100)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=70))
 
 library(mfp2)
 library(ggplot2)
@@ -562,7 +564,7 @@ continuous variables should be modelled using fractional polynomials (with
 default parameters). The two approaches lead to the same results as demonstrated
 by calling `summary()` with the fitted models as input.
 
-```{r }
+```{r}
 # default interface
 fit_default <- mfp2(x, y, 
                     verbose = FALSE)
@@ -611,7 +613,7 @@ then be used by `mfp2()` in estimating the FP powers.
 For example, to estimate shifting factors for covariate matrix `x` from prostate
 data in R, you can run the following code:
 
-```{r, eval = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval = TRUE}
 # minimum values for each covariate
 apply(x, 2, min)
 
@@ -648,7 +650,7 @@ of 10 each, while the variables `pgg45` and `weight` have scaling factors of 100
 each. Each variable will be divided by its corresponding scaling factor. A
 scaling factor of 1 (e.g. `bph` and `svi`) implies no scaling.
 
-```{r, eval=TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval=TRUE}
 # shift x if nonpositive values exist
 shift <- apply(x, 2, find_shift_factor)
 xnew <- sweep(x, 2, shift, "+")
@@ -664,7 +666,7 @@ be provided. In the formula interface, shifting or scaling factors
 can be directly specified within the `fp()` function. Below is an example to 
 illustrate this (not run):
 
-```{r, eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval = FALSE}
 # Default interface
 mfp2(x,y, 
      shift = c(0, 0, 1, 0, 0, 0, 0), 
@@ -707,13 +709,13 @@ distinct values (StataCorp. 2023).
 
 The following code illustrates how to set different `df` for  each variable. In 
 the default interface, the `df` of the binary variable `svi` is explicitly set 
-to 1 (linear), while In the formula interface, there is no need to specify the
+to 1 (linear), while in the formula interface, there is no need to specify the
 `df`, as the program automatically assigns `df = 1` for binary variables.
 
 If the user attempts to enter `df = 4` for `svi` in the default interface, the 
 program will reset the `df` to 1 and issue a warning.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r eval = FALSE}
 # Default Interface
 mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
 
@@ -730,7 +732,7 @@ interface, the `df` of that variable will still be set to the default value and
 will later be adjusted based on the unique values. The following examples are
 all equivalent:
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r eval = FALSE}
 # Default Interface
 mfp2(x,y)
 
@@ -809,7 +811,7 @@ $(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical results.
 Setting different nominal significance levels is straightforward. Simply replace
 the value 0.05 with the desired significance level of your choice.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r eval = FALSE}
 # Default Interface
 mfp2(x,y, 
      select = rep(0.05, ncol(x)), 
@@ -838,7 +840,7 @@ this, we have two options:
 significance levels for `age` and `svi` to 1 if they are different from 1. 
 This ensures that these variables are retained in the model.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r eval = FALSE}
 # default Interface
 # Set select to 1 for variables "age" and "svi"
 mfp2(x,y, 
@@ -902,7 +904,7 @@ The following R code demonstrates how to implement this approach using both the
 default and formula interfaces, as well as how to force specific variables into
 the model:
 
-```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval=FALSE}
 # Default Interface
 mfp2(x, y,
      criterion = "aic", 
@@ -933,7 +935,7 @@ to page 23 of the [MFP Stata manual paper (here)]( https://www.stata.com/manuals
 To use the F-test, we can set the `ftest = TRUE`, as demonstrated in the example
 below. Conversely, to use the Chi-square test, set `ftest = FALSE`.
 
-```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval=FALSE}
 # Default Interface
 mfp2(x, y,
      criterion = "pvalue", 
@@ -985,7 +987,7 @@ When using the `fp()` function in the formula interface, the power terms
 provided must be a `vector` not a list since they are specific to a particular
 variable.
 
-```{r, eval=FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+```{r, eval=FALSE}
 # create a list of power terms for covariates "age" and "cavol"
 powx <- list(age = c(1, 0.5), cavol = c(1, 0, 1))   
 
@@ -1045,7 +1047,7 @@ on their p-values in descending order of significance, as indicated by the
 evaluated first, while `age` has the largest p-value and will be evaluated last.
 
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 fit <- mfp2(x, y, 
             criterion = "pvalue", 
             select = 0.05, alpha = 0.05, 
@@ -1136,7 +1138,7 @@ package. This means that `mfp2` can utilize methods and functions defined for
 `glm`, `lm` or `coxph`.
 
 To obtain a summary of the final `mfp2` object, you can simply enter the object
-name (e.g., `fit in our example) or use the print function. The `print()`
+name (e.g., `fit` in our example) or use the print function. The `print()`
 function provides a comprehensive summary of the final MFP model, including the
 parameters used in the MFP model such as shifting and scaling factors, degrees
 of freedom (denoted by `df_initial`), nominal significance levels (`select` and
@@ -1148,7 +1150,7 @@ by the `selected` column. The `acd` column specifies whether the ACD
 transformation was conducted for a certain variable, and the `power` column
 shows the final FP powers for variables, with eliminated variables assigned `NA`.
 
-```{r, eval= TRUE,  R.options = list(width = 100)}
+```{r, eval= TRUE}
 print(fit)
 ```
 
@@ -1159,7 +1161,7 @@ powers (FP2) will be denoted as "var.1" and "var.2". Please note that the
 displayed regression coefficients are not currently scaled back to the original
 scale.
 
-```{r, eval= TRUE, R.options = list(width = 100)}
+```{r, eval= TRUE}
 # extract only regression coefficients
 coef(fit)
 
@@ -1173,7 +1175,7 @@ example using the prostate dataset. Suppose we want to make predictions for the
 first five observations in the matrix $x$ (considering them as new observations).
 We can achieve this with the following code:
 
-```{r out.lines = 10, eval= TRUE,  R.options = list(width = 100)}
+```{r out.lines = 10, eval= TRUE}
  # extract the first five observations from 'x'
 new_observations <- x[1:5, ] 
 dim(new_observations)
@@ -1277,7 +1279,7 @@ variable of interest (`terms_seq = "equidistant"`).
 To illustrate these options, we will use the `art` dataset included in the
 `mfp2` package. This dataset is described in detail by Royston and Sauerbrei
 (2008, Chapter 10), and the outcome variable is continuous. In our example, we
-will fit an MFP model with a single covariate ($x5$).
+will fit an MFP model with a single covariate ($x5$) (see Figure 4).
 
 ```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot. In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
 
@@ -1353,7 +1355,7 @@ which also has 3 levels (1 as the reference, 2, and 3), to dummy variables using
 categorical coding. The final data will contain the dummy variables, which can
 be supplied to the `mfp2()` function.
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 # load art data
 data("art")
 
@@ -1383,7 +1385,7 @@ dummy (`x4_2`) out of the two was eliminated. Elimination of `x4_2` means that
 the two categories  2 and 3 are collapsed as a result of the selection
 process.
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 # create matrix x and outcome y
 x <- as.matrix(art[,-1])
 y <- as.numeric(art$y)
@@ -1412,7 +1414,7 @@ binary vector rather than a matrix. The other arguments whether using the
 "default" or "formula" interface for logistic regression, are nearly identical
 to those previously explained for the Gaussian family.
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 # load pima data
 data("pima")
 head(pima)
@@ -1432,9 +1434,9 @@ fit$fp_terms
 From the output, it is evident that four continuous variables (`glucose`(power
 1), bmi(-2), `diabetes`(1) and `age` (0, 3)) are selected. We can use
 `fracplot()` function to generate plots for these selected variables, as
-illustrated below, which produced Figure 3.
+illustrated below, which produced Figure 5.
 
-```{r out.lines = 103, R.options = list(width = 100), fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+```{r out.lines = 103, fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
 plots <- fracplot(fit)
 
 # rename y-label for all plots
@@ -1470,7 +1472,7 @@ The `mfp2()` function for survival outcome requires the outcome variable to be a
 survival object created using the `survival::Surv()` function. Other arguments
 are similar to those explained previously for the Gaussian family.
 
-```{r out.lines = 103,R.options = list(width = 100)}
+```{r out.lines = 103}
 # load gbsg data
 data("gbsg")
 
@@ -1488,10 +1490,9 @@ head(x, 10)
 y <- survival::Surv(gbsg$rectime, gbsg$censrec)
 
 # fit mfp and keep hormon in the model
-fit1 <- mfp2(x, y, family = "cox",
-             keep = "hormon", 
-             verbose = FALSE,
-             control = survival::coxph.control(iter.max = 50))
+fit1 <- mfp2(x, y, family = "cox",keep = "hormon", 
+             control = coxph.control(iter.max = 50),
+                          verbose = FALSE)
 fit1$fp_terms
 ```
 
@@ -1507,16 +1508,15 @@ Sauerbrei and Royston (1999) restricted the powers for `enodes` to be positive.
 Their Model III may be fit by using the following R command, which yields
 identical results to the [mfp command in Stata(here)](https://www.stata.com/manuals13/rmfp.pdf):
 
-```{r out.lines = 103,R.options = list(width = 100)}
+```{r out.lines = 103}
 # remove nodes and include enodes
 x <- as.matrix(gbsg[,-c(1, 5, 10, 11)])
 
 # fit mfp and keep hormon in the model
-fit2 <- mfp2(x, y, family = "cox",
-             keep = "hormon", 
-             verbose = FALSE,
+fit2 <- mfp2(x, y, family = "cox", keep = "hormon",
              powers = list(enodes = c(0.5, 1, 2, 3)), 
-             control = survival::coxph.control(iter.max = 50))
+             control = coxph.control(iter.max = 50),
+             verbose = FALSE)
 fit2$fp_terms
 ```
 
@@ -1543,7 +1543,7 @@ variable `hormon`. The following **R** code demonstrates how to fit a stratified
 Cox model using both the default and formula interfaces, along with their
 default parameters.
 
-```{r out.lines = 103,R.options = list(width = 100)}
+```{r out.lines = 103}
 # using default interface
 fit2 <- mfp2(x[,-7], y, family = "cox", 
              strata = x[,7], 
@@ -1574,10 +1574,9 @@ represent a sigmoid function of `x`, something a standard FP function cannot do
 in functional form could be achieved by considering both `x` and `a = ACD (x)`
 simultaneously as independent covariates and applying the MFP algorithm to `x`
 and `a`. To limit instability and overfitting, he suggested restricting the
-models considered for x and a to FP1 functions. Furthermore, Royston (2014)
+models considered for `x` and `a` to FP1 functions. Furthermore, Royston (2014)
 highlighted that models based on `ACD (x)` may have other advantages in terms of
-interpretability of regression coefficients and may help reduce the influence of
-extreme covariate values on a selected function (see Figure 5 for an example).
+interpretability of regression coefficients (see Figure 6 for an example).
 
 Royston and Sauerbrei (2015) extended the MFP modeling approach to incorporate
 the ACD transformation, resulting in the MFPA (MFP with ACD) algorithm. To
@@ -1593,7 +1592,7 @@ We will demonstrate how to fit the MFPA using the `mfp2()` function. In this
 example, we simulated the data to create an example that showcases this
 relationship. The simulation process is outlined below.
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 # Generate artificial data with sigmoid relationship
 set.seed(54) 
 n <- 500  
@@ -1616,7 +1615,7 @@ function, as demonstrated in the R code below. To avoid confusion with the
 original variable `x`, the variable representing the ACD transformation of `x`
 is named `A(x)` in the output.
 
-```{r out.lines = 103, R.options = list(width = 100)}
+```{r out.lines = 103}
 # default interface
 fit1 <- mfp2(x, y, 
              acdx = "x", 
@@ -1658,11 +1657,51 @@ figurex
 ```
 
 \newpage
-# References
+# References (Springer: Willi to remove or add)
 * StataCorp. 2023. Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC.\
 * Royston, P. and Sauerbrei, W., 2008. Multivariable model-building: a pragmatic approach to regression anaylsis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.\
 * Royston, P. and Sauerbrei, W., 2016. mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), pp.72-87.\
 * Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. Effects of influential points and sample size on the selection and replicability of multivariable fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.\
-* Sauerbrei W. and Royston P. (2011): Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclo- pedia of Statistical Science, Springer Berlin, p. 899-902.
-* Huebner, M., Vach, W. and le Cessie, S., 2016. A systematic approach to initial data analysis is good research practice. The journal of thoracic and cardiovascular surgery, 151(1), pp.25-27.
+* Sauerbrei W. and Royston P. (2011): Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclo- pedia of Statistical Science, Springer Berlin, p. 899-902.\
+* Huebner, M., Vach, W. and le Cessie, S., 2016. A systematic approach to initial data analysis is good research practice. The journal of thoracic and cardiovascular surgery, 151(1), pp.25-27.\
+* Ambler, G. and Royston, P. (2001) Fractional polynomial model selection procedures: investigation of type I error rate. J. Stat. Comput. Simul., 69, 89–108.\
+* Becher, H., Lorenz, E., Royston, P., and Sauerbrei, W. (2012) Analysing covariates with spike at zero: a modiﬁed FP procedure and conceptual issues. Biom. J., 54 (5), 686–700.\
+* Binder, H. and Sauerbrei, W. (2010) Adding local components to global functions for continuous covariates in multivariable regression modeling. Stat. Med., 29, 808–817.\
+* Binder, H., Sauerbrei, W., and Royston, P. (2013) Comparison between splines and fractional polynomials for multivariable model building with continuous covariates: a simulation study with continuous response. Stat. Med., 32, 2262–2277.\
+* Buchholz, A. and Sauerbrei, W. (2011) Comparison of procedures to assess non-linear and time-varying eﬀects in multivariable models for survival data. Biom. J., 53, 308–331. DOI: 10.1002/bimj.201000159.\
+* Draper, D. (1995) Assessment and propagation of model selection uncertainty (with discussion). J. R. Stat. Soc. Ser. B, 57, 45–97.\
+* Dunkler, D., Sauerbrei, W., and Heinze, G. (2016) Global, parameterwise and joint post-estimation shrinkage. J. Stat. Softw. \
+* Faes, C., Aerts, M., Geys, H., and Molenberghs, G. (2007) Model averaging using fractional polynomials to estimate a safe level of exposure. Risk Anal., 27, 111–123.\
+* Kasenda B., Sauerbrei W., Royston P., Mercat A., Slutsky AS., Cook D., Guyatt GH., Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.\
+* Lambert, P.C., Smith, L.K., Jones, D.R., and Botha, J.L. (2005) Additive and multiplicative covariate regression models for relative survival incorporating fractional polynomials for time-dependent eﬀects. Stat. Med., 24, 3871–3885.\
+* Long, J. and Ryoo, J. (2010) Using fractional polynomials to model non-linear trends in longitudinal data. Br. J. Math. Stat. Psychol., 63, 177–203.\
+* Royston, P. (2014) A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. Stata J., 14, 
+329–341.\ 
+* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.\  
+
+* Royston, P. and Sauerbrei, W. (2004) A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomial. Stat. Med., 23, 2509–2525. \
+
+* Royston, P. and Sauerbrei, W. (2007) Improving the robustness of fractional polynomial models by preliminary covariate transformation. Comput. Stat. Data Anal., 51,
+4240–4253.\ 
+* Royston, P. and Sauerbrei, W. (2008) Multivariable Model-Building—A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables, John Wiley & Sons, Chichester, UK.\
+* Royston, P. and Sauerbrei, W. (2013) Interaction of treatment with a continuous variable: simulation study of signiﬁcance level for several methods of analysis. Stat. Med., 32 (22), 3788–3803.\ 
+* Royston, P. and Sauerbrei, W. (2014) Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. Stat. Med., 33, 4695–4708.\
+* Royston, P., and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), 72-87.\ 
+* Royston, P., Sauerbrei, W., and Becher, H. (2010) Modelling continuous exposures with a ‘spike’ at zero: a new procedure based on fractional polynomials. Stat. Med., 29, 1219–1227.\ 
+* Sauerbrei, W. (1999). The use of resampling methods to simplify regression models in medical statistics. Appl. Stat., 48, 313–329.\      
+* Sauerbrei, W., Abrahamowicz, M., Altman, D.G., et al. (2014) STrengthening Analytical Thinking for Observational Strate- gies: the STRATOS initiative. Stat. Med., 33 (30), 5413–32.\
+* Sauerbrei W., Buchholz A., Boulesteix A.-L. and Binder H. (2015): On stability issues in deriving multivariable regression models. Biometrical Journal, 57: 531-555, DOI: 10.1002/bimj.201300222.\ 
+* Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006): Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485\ 
+* Sauerbrei, W. and Royston, P. (1999) Building multivariable prognostic and diagnostic models: transformation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.\    
+* Sauerbrei, W. and Royston, P. (2011b) A new strategy for meta-analysis of continuous covariates in observational studies. Stat. Med., 30 (28), 3341–3360.\  
+* Sauerbrei W. and Royston P. (2011a): Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.\  
+* Sauerbrei, W. and Royston, P. (2016). Multivariable Fractional Polynomial Models. Wiley StatsRef: Statistics Reference Online. 1–8. DOI: 10.1002/9781118445112.stat07861 \
+31.	 Sauerbrei, W. and Royston, P., 2022. Investigating treatment-effect modification by a continuous covariate in IPD meta-analysis: an approach using fractional polynomials. BMC medical research methodology, 22(1), pp.1 \ 
+* Sauerbrei, W., Royston, P., and Binder, H. (2007b) Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.\  
+* Sauerbrei, W., Royston, P., and Look, M. (2007a) A new proposal for multivariable modelling of time-varying eﬀects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.\     
+* Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.\ 
+
+* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration (2019): Meta-analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: 10.1002/sim.7974. \ 
+
+
 

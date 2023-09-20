@@ -15,6 +15,9 @@ output:
     latex_engine: lualatex
     fig_crop: no
 link-citations: yes
+header-includes:
+    - \usepackage{setspace}
+    - \doublespacing
 vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\VignetteEncoding{UTF-8}  
@@ -68,7 +71,6 @@ knitr::knit_hooks$set(output = function(x, options) {
 # Introduction to Multivariable Fractional Polynomials (MFP)
 
 ## Overview of MFP
-
 Multivariable regression models are widely used across various fields of science
 where empirical data is analyzed. In model building, many researchers often
 assume a linear function for continuous variables, sometimes after applying

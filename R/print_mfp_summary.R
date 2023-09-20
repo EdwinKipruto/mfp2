@@ -48,10 +48,15 @@ print_mfp_pvalue_step <- function(xi, fit, criterion) {
   cbind(
     "Deviance   " = sprintf("%.1f", fit$metrics[, "deviance_rs"]), 
     "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1)), 
-    "Deviance diff." = c(NA, 
-                         sprintf("%.1f", 
-                                 fit$metrics[-1, "deviance_rs"] - 
-                                   fit$metrics[fpmax, "deviance_rs"])), 
+    "Deviance diff." = c(NA, switch(fpmax,
+                                    "null" = sprintf("%.1f",
+                                                     fit$metrics[fpmax, "deviance_rs"]-
+                                                     fit$metrics[-1, "deviance_rs"] 
+                                                       ),
+                                    sprintf("%.1f", 
+                                            fit$metrics[-1, "deviance_rs"] - 
+                                              fit$metrics[fpmax, "deviance_rs"]))
+                                    ), 
     "P-value" = c(NA, sprintf("%.4f", fit$pvalue))
   )
 }

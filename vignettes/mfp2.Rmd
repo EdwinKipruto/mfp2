@@ -1658,50 +1658,77 @@ figurex
 
 \newpage
 # References (Springer: Willi to remove or add)
-* StataCorp. 2023. Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC.\
-* Royston, P. and Sauerbrei, W., 2008. Multivariable model-building: a pragmatic approach to regression anaylsis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.\
-* Royston, P. and Sauerbrei, W., 2016. mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), pp.72-87.\
-* Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. Effects of influential points and sample size on the selection and replicability of multivariable fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.\
-* Sauerbrei W. and Royston P. (2011): Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclo- pedia of Statistical Science, Springer Berlin, p. 899-902.\
-* Huebner, M., Vach, W. and le Cessie, S., 2016. A systematic approach to initial data analysis is good research practice. The journal of thoracic and cardiovascular surgery, 151(1), pp.25-27.\
-* Ambler, G. and Royston, P. (2001) Fractional polynomial model selection procedures: investigation of type I error rate. J. Stat. Comput. Simul., 69, 89–108.\
-* Becher, H., Lorenz, E., Royston, P., and Sauerbrei, W. (2012) Analysing covariates with spike at zero: a modiﬁed FP procedure and conceptual issues. Biom. J., 54 (5), 686–700.\
-* Binder, H. and Sauerbrei, W. (2010) Adding local components to global functions for continuous covariates in multivariable regression modeling. Stat. Med., 29, 808–817.\
-* Binder, H., Sauerbrei, W., and Royston, P. (2013) Comparison between splines and fractional polynomials for multivariable model building with continuous covariates: a simulation study with continuous response. Stat. Med., 32, 2262–2277.\
-* Buchholz, A. and Sauerbrei, W. (2011) Comparison of procedures to assess non-linear and time-varying eﬀects in multivariable models for survival data. Biom. J., 53, 308–331. DOI: 10.1002/bimj.201000159.\
-* Draper, D. (1995) Assessment and propagation of model selection uncertainty (with discussion). J. R. Stat. Soc. Ser. B, 57, 45–97.\
-* Dunkler, D., Sauerbrei, W., and Heinze, G. (2016) Global, parameterwise and joint post-estimation shrinkage. J. Stat. Softw. \
-* Faes, C., Aerts, M., Geys, H., and Molenberghs, G. (2007) Model averaging using fractional polynomials to estimate a safe level of exposure. Risk Anal., 27, 111–123.\
-* Kasenda B., Sauerbrei W., Royston P., Mercat A., Slutsky AS., Cook D., Guyatt GH., Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.\
-* Lambert, P.C., Smith, L.K., Jones, D.R., and Botha, J.L. (2005) Additive and multiplicative covariate regression models for relative survival incorporating fractional polynomials for time-dependent eﬀects. Stat. Med., 24, 3871–3885.\
-* Long, J. and Ryoo, J. (2010) Using fractional polynomials to model non-linear trends in longitudinal data. Br. J. Math. Stat. Psychol., 63, 177–203.\
-* Royston, P. (2014) A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. Stata J., 14, 
-329–341.\ 
-* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.\  
 
-* Royston, P. and Sauerbrei, W. (2004) A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomial. Stat. Med., 23, 2509–2525. \
+* Ambler, G. and Royston, P. (2001). Fractional polynomial model selection procedures: investigation of type I error rate. J. Stat. Comput. Simul., 69, 89–108.
 
-* Royston, P. and Sauerbrei, W. (2007) Improving the robustness of fractional polynomial models by preliminary covariate transformation. Comput. Stat. Data Anal., 51,
-4240–4253.\ 
-* Royston, P. and Sauerbrei, W. (2008) Multivariable Model-Building—A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables, John Wiley & Sons, Chichester, UK.\
-* Royston, P. and Sauerbrei, W. (2013) Interaction of treatment with a continuous variable: simulation study of signiﬁcance level for several methods of analysis. Stat. Med., 32 (22), 3788–3803.\ 
-* Royston, P. and Sauerbrei, W. (2014) Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. Stat. Med., 33, 4695–4708.\
-* Royston, P., and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), 72-87.\ 
-* Royston, P., Sauerbrei, W., and Becher, H. (2010) Modelling continuous exposures with a ‘spike’ at zero: a new procedure based on fractional polynomials. Stat. Med., 29, 1219–1227.\ 
-* Sauerbrei, W. (1999). The use of resampling methods to simplify regression models in medical statistics. Appl. Stat., 48, 313–329.\      
-* Sauerbrei, W., Abrahamowicz, M., Altman, D.G., et al. (2014) STrengthening Analytical Thinking for Observational Strate- gies: the STRATOS initiative. Stat. Med., 33 (30), 5413–32.\
-* Sauerbrei W., Buchholz A., Boulesteix A.-L. and Binder H. (2015): On stability issues in deriving multivariable regression models. Biometrical Journal, 57: 531-555, DOI: 10.1002/bimj.201300222.\ 
-* Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006): Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485\ 
-* Sauerbrei, W. and Royston, P. (1999) Building multivariable prognostic and diagnostic models: transformation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.\    
-* Sauerbrei, W. and Royston, P. (2011b) A new strategy for meta-analysis of continuous covariates in observational studies. Stat. Med., 30 (28), 3341–3360.\  
-* Sauerbrei W. and Royston P. (2011a): Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.\  
-* Sauerbrei, W. and Royston, P. (2016). Multivariable Fractional Polynomial Models. Wiley StatsRef: Statistics Reference Online. 1–8. DOI: 10.1002/9781118445112.stat07861 \
-31.	 Sauerbrei, W. and Royston, P., 2022. Investigating treatment-effect modification by a continuous covariate in IPD meta-analysis: an approach using fractional polynomials. BMC medical research methodology, 22(1), pp.1 \ 
-* Sauerbrei, W., Royston, P., and Binder, H. (2007b) Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.\  
-* Sauerbrei, W., Royston, P., and Look, M. (2007a) A new proposal for multivariable modelling of time-varying eﬀects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.\     
-* Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.\ 
+* Becher, H., Lorenz, E., Royston, P., and Sauerbrei, W. (2012). Analysing covariates with spike at zero: a modified FP procedure and conceptual issues. Biom. J., 54 (5), 686–700.
 
-* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration (2019): Meta-analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: 10.1002/sim.7974. \ 
+* Binder, H. and Sauerbrei, W. (2010). Adding local components to global functions for continuous covariates in multivariable regression modeling. Stat. Med., 29, 808–817.
 
+* Binder, H., Sauerbrei, W., and Royston, P. (2013). Comparison between splines and fractional polynomials for multivariable model building with continuous covariates: a simulation study with continuous response. Stat. Med., 32, 2262–2277.
+
+* Buchholz, A. and Sauerbrei, W. (2011). Comparison of procedures to assess non-linear and time-varying effects in multivariable models for survival data. Biom. J., 53, 308–331. DOI: 10.1002/bimj.201000159.
+
+* Draper, D. (1995). Assessment and propagation of model selection uncertainty (with discussion). J. R. Stat. Soc. Ser. B, 57, 45–97.
+
+* Dunkler, D., Sauerbrei, W., and Heinze, G. (2016). Global, parameterwise and joint post-estimation shrinkage. J. Stat. Softw.
+
+* Faes, C., Aerts, M., Geys, H., and Molenberghs, G. (2007). Model averaging using fractional polynomials to estimate a safe level of exposure. Risk Anal., 27, 111–123.
+
+* Huebner, M., Vach, W. and le Cessie, S. (2016). A systematic approach to initial data analysis is good research practice. The journal of thoracic and cardiovascular surgery, 151(1), pp.25-27.
+
+* Kasenda B., Sauerbrei W., Royston P., Mercat A., Slutsky AS., Cook D., Guyatt GH., Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.
+
+* Lambert, P.C., Smith, L.K., Jones, D.R., and Botha, J.L. (2005). Additive and multiplicative covariate regression models for relative survival incorporating fractional polynomials for time-dependent effects. Stat. Med., 24, 3871–3885.
+
+* Long, J. and Ryoo, J. (2010). Using fractional polynomials to model non-linear trends in longitudinal data. Br. J. Math. Stat. Psychol., 63, 177–203.
+
+* Royston, P. (2014). A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. Stata J., 14, 329–341.
+
+* Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomial. Stat. Med., 23, 2509–2525.
+
+* Royston, P. and Sauerbrei, W. (2007). Improving the robustness of fractional polynomial models by preliminary covariate transformation. Comput. Stat. Data Anal., 51, 4240–4253.
+
+* Royston, P. and Sauerbrei, W. (2008). Multivariable Model-Building—A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables, John Wiley & Sons, Chichester, UK.
+
+* Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a continuous variable: simulation study of significance level for several methods of analysis. Stat. Med., 32 (22), 3788–3803.
+
+* Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. Stat. Med., 33, 4695–4708.
+
+* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.
+
+* Royston, P., Sauerbrei, W., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
+
+* Royston, P., Sauerbrei, W., Look, M. (2007a). A new proposal for multivariable modelling of time-varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+
+* Royston, P. and Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to regression analysis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.
+
+* Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), 72-87.
+
+* Royston, P., Sauerbrei, W., and Becher, H. (2010). Modelling continuous exposures with a ‘spike’ at zero: a new procedure based on fractional polynomials. Stat. Med., 29, 1219–1227.
+
+* Sauerbrei, W. (1999). The use of resampling methods to simplify regression models in medical statistics. Appl. Stat., 48, 313–329.
+
+* Sauerbrei, W., Abrahamowicz, M., Altman, D.G., et al. (2014). STrengthening Analytical Thinking for Observational Strategies: the STRATOS initiative. Stat. Med., 33 (30), 5413–32.
+
+* Sauerbrei W., Buchholz A., Boulesteix A.-L. and Binder H. (2015). On stability issues in deriving multivariable regression models. Biometrical Journal, 57: 531-555, DOI: 10.1002/bimj.201300222.
+
+* Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006). Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485.
+
+* Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: transformation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.
+
+* Sauerbrei, W. and Royston, P. (2011a). A new strategy for meta-analysis of continuous covariates in observational studies. Stat. Med., 30 (28), 3341–3360.
+
+* Sauerbrei, W. and Royston, P. (2011b). Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.
+
+* Sauerbrei, W. and Royston, P. (2016). Multivariable Fractional Polynomial Models. Wiley StatsRef: Statistics Reference Online. 1–8. DOI: 10.1002/9781118445112.stat07861.
+
+* Sauerbrei, W., Royston, P., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
+
+* Sauerbrei, W., Royston, P., Look, M. (2007a). A new proposal for multivariable modelling of time-varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+
+* Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.
+
+* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration ([2019]). Meta-analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: [10.1002/sim.7974].
 
 

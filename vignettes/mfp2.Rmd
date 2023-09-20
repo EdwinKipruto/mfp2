@@ -1394,7 +1394,7 @@ y <- as.numeric(art$y)
 
 # fit mfp using default interface with default parameters
 fit <- mfp2(x,y, verbose = FALSE)
-fit$fp_terms
+fit
 ```
 
 ## Logistic regression
@@ -1430,7 +1430,7 @@ y <- as.vector(pima$y)
 fit <- mfp2(x, y, 
             family = "binomial", 
             verbose = FALSE)
-fit$fp_terms
+fit
 ```
 
 From the output, it is evident that four continuous variables (`glucose`(power
@@ -1495,7 +1495,7 @@ y <- survival::Surv(gbsg$rectime, gbsg$censrec)
 fit1 <- mfp2(x, y, family = "cox",keep = "hormon", 
              control = coxph.control(iter.max = 50),
                           verbose = FALSE)
-fit1$fp_terms
+fit1
 ```
 
 According to Sauerbrei and Royston (1999), medical knowledge dictates that the
@@ -1519,7 +1519,7 @@ fit2 <- mfp2(x, y, family = "cox", keep = "hormon",
              powers = list(enodes = c(0.5, 1, 2, 3)), 
              control = coxph.control(iter.max = 50),
              verbose = FALSE)
-fit2$fp_terms
+fit2
 ```
 
 See Figure 1 in Sauerbrei and Royston (1999) for the functions for nodes with
@@ -1550,7 +1550,7 @@ default parameters.
 fit2 <- mfp2(x[,-7], y, family = "cox", 
              strata = x[,7], 
              verbose = FALSE)
-fit2$fp_terms
+fit2
 
 # using formula interface
 fit3 <- mfp2(Surv(rectime,censrec)~ age + meno + size + nodes + pgr + er + grade_1 + 
@@ -1558,7 +1558,6 @@ fit3 <- mfp2(Surv(rectime,censrec)~ age + meno + size + nodes + pgr + er + grade
              family = "cox", 
              data =gbsg, 
              verbose = FALSE)
-fit3$fp_terms
 ```
 
 # MFP with ACD transformation
@@ -1630,13 +1629,13 @@ fit2 <- mfp2(y ~ fp(x, acdx = TRUE),
              verbose = FALSE)
 
 # display selected power terms
-fit2$fp_terms
+fit2
 
 # fit usual mfp: bad idea but useful for illustration
 fit3 <- mfp2(y ~ fp(x, acdx = FALSE), 
              data = datax, 
              verbose = FALSE)
-fit3$fp_terms
+fit3
 ```
 
 The selected function using the ACD transformation is FP1(1,1), represented by

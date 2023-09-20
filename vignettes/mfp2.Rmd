@@ -1729,6 +1729,8 @@ figurex
 
 * Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.
 
+* StataCorp. (2023). Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC. 
+
 * White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration ([2019]). Meta-analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: [10.1002/sim.7974].
 
 

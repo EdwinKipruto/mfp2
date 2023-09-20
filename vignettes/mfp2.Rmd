@@ -29,14 +29,17 @@ knitr::opts_chunk$set(
 )
 ```
 
-
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE
 )
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 80),tidy = TRUE)
+
 library(mfp2)
 library(ggplot2)
+library(survival)
+library(formatR)
 ```
 
 ```{r include=FALSE}
@@ -105,18 +108,17 @@ of fractional polynomial functions for a single continuous covariate in the
 model, including the function selection procedure (FSP). Section 1.3 describes
 the MFP approach, focusing on models involving two or more covariates.
 
-Section 2 serves as an introduction to the `mfp2` package. It covers the
+Section 2 is an introduction to the `mfp2` package. It covers the
 installation process and provides instructions for utilizing the package in
 various linear regression models. The package functionality is predominantly
 demonstrated using Gaussian linear models (Subsection 2.3), while other models,
-such as logistic (Subsection 2.4), Poisson (Subsection 2.5), and Cox (Subsection
-2.6), are briefly explained.
+such as logistic (Subsection 2.4),and Cox (Subsection
+2.5), are briefly explained.
 
 Section 3 introduces an extension of MFP using the approximate cumulative
 distribution (ACD) transformation of a continuous covariate. This extension
 allows for modelling a sigmoid relationship between covariates and an outcome
-variable (subsection 3.1) and may help mitigate the influence of extreme
-covariate values on a selected function (subsection 3.2).
+variable (subsection 3.1).
 
 For more comprehensive information about MFP and its extensions, please refer to
 Royston and Sauerbrei 2008 or visit [MFP website (click here)](https://mfp.imbi.uni-freiburg.de/) 
@@ -159,7 +161,7 @@ health research data with MFP. For $m = 2$, there are 44 models available within
 the set of FP powers ($S$), consisting of 8 FP1 models and 36 FP2 models. Although
 the allowed class of FP functions may seem limited, it encompasses a wide range
 of diverse shapes. This is illustrated in Figure 1, with the left panel
-displaying eight FP1 powers and the middle panel depicting a subset of FP2
+displaying eight FP1 powers and the right panel depicting a subset of FP2
 powers.
 
 ```{r, eval=TRUE, echo=FALSE}
@@ -273,7 +275,7 @@ figure
 Based on extensive experience with real data and several simulation studies, FP1
 and FP2 are generally considered adequate in the context of multivariable model
 building, particularly when variable selection and functional forms is required
-(Royston and Sauerbrei S2008, Sauerbrei 2007).
+(Royston and Sauerbrei S2008; Sauerbrei 2007).
 
 ### Function selection procedure (FSP)
 
@@ -353,7 +355,7 @@ good choice. If available, subject-matter knowledge should replace or at least
 guide data-dependent model choice. Only minor modiﬁcations are required to
 incorporate various types of subject-matter knowledge into MFP modeling. For a
 detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
-modeling in practice are given in Sauerbrei et al. (2007b) and in Royston and
+modeling in practice are given in Sauerbrei et al. (2007) and in Royston and
 Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
 $\alpha_1$ and $\alpha_2$ by AIC or BIC.
 
@@ -560,7 +562,7 @@ continuous variables should be modelled using fractional polynomials (with
 default parameters). The two approaches lead to the same results as demonstrated
 by calling `summary()` with the fitted models as input.
 
-```{r, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r }
 # default interface
 fit_default <- mfp2(x, y, 
                     verbose = FALSE)
@@ -582,7 +584,7 @@ does not require transformation. Note that `df` is an argument of the `fp()`
 function.
 
 The variable `svi` is a binary variable and is therefore not passed to the `fp()`
-function. This is because binary or factor variables may not undergo FP 
+function. This is because binary or factor variables should not undergo FP 
 transformation. If a binary variable is passed to the `fp()` function,
 the program will automatically set the `df` to 1, treating the variable as linear.
 However, passing a factor variable to the `fp()` function will result in an error.
@@ -609,7 +611,7 @@ then be used by `mfp2()` in estimating the FP powers.
 For example, to estimate shifting factors for covariate matrix `x` from prostate
 data in R, you can run the following code:
 
-```{r}
+```{r, eval = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # minimum values for each covariate
 apply(x, 2, min)
 
@@ -646,7 +648,7 @@ of 10 each, while the variables `pgg45` and `weight` have scaling factors of 100
 each. Each variable will be divided by its corresponding scaling factor. A
 scaling factor of 1 (e.g. `bph` and `svi`) implies no scaling.
 
-```{r}
+```{r, eval=TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # shift x if nonpositive values exist
 shift <- apply(x, 2, find_shift_factor)
 xnew <- sweep(x, 2, shift, "+")
@@ -662,7 +664,7 @@ be provided. In the formula interface, shifting or scaling factors
 can be directly specified within the `fp()` function. Below is an example to 
 illustrate this (not run):
 
-```{r, eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r, eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default interface
 mfp2(x,y, 
      shift = c(0, 0, 1, 0, 0, 0, 0), 
@@ -711,7 +713,7 @@ to 1 (linear), while In the formula interface, there is no need to specify the
 If the user attempts to enter `df = 4` for `svi` in the default interface, the 
 program will reset the `df` to 1 and issue a warning.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default Interface
 mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
 
@@ -728,7 +730,7 @@ interface, the `df` of that variable will still be set to the default value and
 will later be adjusted based on the unique values. The following examples are
 all equivalent:
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default Interface
 mfp2(x,y)
 
@@ -807,7 +809,7 @@ $(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical results.
 Setting different nominal significance levels is straightforward. Simply replace
 the value 0.05 with the desired significance level of your choice.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # Default Interface
 mfp2(x,y, 
      select = rep(0.05, ncol(x)), 
@@ -836,7 +838,7 @@ this, we have two options:
 significance levels for `age` and `svi` to 1 if they are different from 1. 
 This ensures that these variables are retained in the model.
 
-```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 75)}
+```{r eval = FALSE, tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
 # default Interface
 # Set select to 1 for variables "age" and "svi"
 mfp2(x,y, 
@@ -1489,7 +1491,7 @@ y <- survival::Surv(gbsg$rectime, gbsg$censrec)
 fit1 <- mfp2(x, y, family = "cox",
              keep = "hormon", 
              verbose = FALSE,
-             control = coxph.control(iter.max = 50))
+             control = survival::coxph.control(iter.max = 50))
 fit1$fp_terms
 ```
 
@@ -1514,7 +1516,7 @@ fit2 <- mfp2(x, y, family = "cox",
              keep = "hormon", 
              verbose = FALSE,
              powers = list(enodes = c(0.5, 1, 2, 3)), 
-             control = coxph.control(iter.max = 50))
+             control = survival::coxph.control(iter.max = 50))
 fit2$fp_terms
 ```
 

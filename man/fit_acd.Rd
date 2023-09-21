@@ -50,11 +50,11 @@ where the fitted values of the estimated model are used.
 }
 \examples{
 
-# Gaussian
-data("prostate")
-x = as.numeric(prostate[,5,drop = T])
-y = as.numeric(prostate$lpsa)
+set.seed(42)
+x = apply_shift_scale(rnorm(100))
+y = rnorm(100)
 fit_acd(x, y)
+
 }
 \references{
 Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the

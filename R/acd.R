@@ -27,11 +27,11 @@
 #' an appropriate scaling factor automatically (see [find_scale_factor()]). 
 #' @examples
 #'
-#' # Gaussian
-#' data("prostate")
-#' x = as.numeric(prostate[,5,drop = T])
-#' y = as.numeric(prostate$lpsa)
+#'set.seed(42)
+#' x = apply_shift_scale(rnorm(100))
+#' y = rnorm(100)
 #' fit_acd(x, y)
+#' 
 #' @return 
 #' A list is returned with components
 #' 

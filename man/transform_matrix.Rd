@@ -65,3 +65,12 @@ i enumerates the powers for a given variable in \code{power_list}. If a term
 uses an acd transformation, then the variable is prefixed with \code{A_}.
 }
 
+\examples{
+x = matrix(1:100, nrow = 10)
+colnames(x) = paste0("x", 1:ncol(x))
+powx = setNames(replicate(ncol(x), c(1,2), simplify = FALSE), colnames(x))
+center = setNames(rep(FALSE, nrow(x)), colnames(x))
+acdx = setNames(rep(FALSE, nrow(x)), colnames(x))
+transform_matrix(x, powx, center, acdx)
+
+}

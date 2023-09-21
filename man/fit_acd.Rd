@@ -48,6 +48,14 @@ The ACD transformation is then given as
 \deqn{acd(x) = \Phi(\hat{z}),}
 where the fitted values of the estimated model are used.
 }
+\examples{
+
+# Gaussian
+data("prostate")
+x = as.numeric(prostate[,5,drop = T])
+y = as.numeric(prostate$lpsa)
+fit_acd(x, y)
+}
 \references{
 Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.

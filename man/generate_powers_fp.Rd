@@ -49,3 +49,8 @@ than two are not supported.
 \item \code{generate_powers_acd()}: Function to generate acd powers.
 
 }}
+\examples{
+powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+generate_powers_fp(degree = 2, powers = powx)
+generate_powers_acd(degree = 2, powers = powx)
+}

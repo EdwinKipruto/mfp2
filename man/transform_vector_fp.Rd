@@ -129,6 +129,11 @@ Also, centering is not recommended, and should only be done for the final
 model if desired.
 }
 
+\examples{
+z = 1:10
+transform_vector_fp(z)
+transform_vector_acd(z)
+}
 \references{
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 \emph{Multivariable regression model building by using fractional

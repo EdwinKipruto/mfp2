@@ -19,6 +19,10 @@
 #' [find_shift_factor()]). This function requires at least 2 distinct values to 
 #' work.
 #' 
+#' #' @examples
+#' x = 1:1000
+#' find_scale_factor(x)
+#' 
 #' @return 
 #' An integer that can be used to scale `x` to a reasonable range. For binary
 #' variables 1 is returned.
@@ -56,6 +60,10 @@ find_scale_factor <- function(x) {
 #' 
 #' @param x a numeric vector.
 #' 
+#' @examples
+#' x = 1:1000
+#' find_shift_factor(x)
+#' 
 #' @return 
 #' A numeric value that can be used to shift `x` to positive values. 
 #' If all values are positive, or if `x` is binary then 0 is returned. 
@@ -92,9 +100,15 @@ find_shift_factor <- function(x) {
 #' @param shift adjustment factors required for shifting x to positive
 #' values. Default is NULL and adjustment factors are estimated automatically
 #' using find_shift_factor() function
+#' @examples
+#' x = 1:1000
+#' apply_shift_scale(x)
 #' 
+#' @returns 
+#' A numeric value that has been shifted and scaled.
+#'  
 #' @export
-apply_shift_scale <- function(x, scale, shift) {
+apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
   # restrict x to be a vector not matrix
   if (is.matrix(x)) stop("x must be a vector not a matrix")
   N <- length(x)

@@ -9,7 +9,11 @@ find_scale_factor(x)
 \arguments{
 \item{x}{a numeric vector already shifted to positive values (see
 \code{\link[=find_shift_factor]{find_shift_factor()}}). This function requires at least 2 distinct values to
-work.}
+work.
+
+#' @examples
+x = 1:1000
+find_scale_factor(x)}
 }
 \value{
 An integer that can be used to scale \code{x} to a reasonable range. For binary

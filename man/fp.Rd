@@ -42,3 +42,9 @@ Used in formula interface to \code{mfp2()}.
 \item \code{fp2()}: Alias for \code{fp()} - use in formula when both \code{mfp} and \code{mfp2} are loaded to avoid name shadowing.
 
 }}
+\examples{
+
+xr = 1:10
+fp(xr)
+fp2(xr)
+}

@@ -119,6 +119,17 @@ predictors will be centered at the reference value (i.e. 0), and also
 confidence intervals will have width 0 at that point.
 }
 
+\examples{
+
+# Gaussian model
+data("prostate")
+x = as.matrix(prostate[,2:8])
+y = as.numeric(prostate$lpsa)
+# default interface
+fit1 = mfp2(x, y, verbose = FALSE)
+predict(fit1) # make predictions
+
+}
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}}, \code{\link[survival:predict.coxph]{survival::predict.coxph()}}
 }

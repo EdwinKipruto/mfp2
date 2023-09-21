@@ -7,7 +7,7 @@ negative or zero values.If all values of x are positive then the original
 values of x is returned without shifting .
 if x has already been shifted and scaled then the function does nothing}
 \usage{
-apply_shift_scale(x, scale, shift)
+apply_shift_scale(x, scale = NULL, shift = NULL)
 }
 \arguments{
 \item{x}{A vector of predictor variable}
@@ -21,9 +21,17 @@ is needed just use scale = 1}
 values. Default is NULL and adjustment factors are estimated automatically
 using find_shift_factor() function}
 }
+\value{
+A numeric value that has been shifted and scaled.
+}
 \description{
 A function that is used to shift x values to positive values if it contains
 negative or zero values.If all values of x are positive then the original
 values of x is returned without shifting .
 if x has already been shifted and scaled then the function does nothing
+}
+\examples{
+x = 1:1000
+apply_shift_scale(x)
+
 }

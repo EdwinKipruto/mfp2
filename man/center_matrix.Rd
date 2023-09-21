@@ -27,3 +27,8 @@ distinct values), and the minimum for binary variables.
 It is assumed all categorical variables in the data are represented by
 binary dummy variables.
 }
+\examples{
+mat = matrix(1:100, nrow = 10)
+center_matrix(mat)
+
+}

@@ -75,6 +75,17 @@ This kind of plot is only available if \code{type = "terms"}.
 \item \code{plot_mfp()}: Alias for fracplot.
 
 }}
+\examples{
+
+# Gaussian
+data("prostate")
+x = as.matrix(prostate[,2:8])
+y = as.numeric(prostate$lpsa)
+# default interface
+fit = mfp2(x, y, verbose = FALSE)
+fracplot(fit) # generate plots
+
+}
 \seealso{
 \code{\link[=predict.mfp2]{predict.mfp2()}}
 }

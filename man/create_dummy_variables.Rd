@@ -37,3 +37,10 @@ base R. If the levels are 1, 2, and 3, then 1 will be the reference group. On th
 if the levels are 3, 2, and 1, then 3 will be the reference group. In brief, the first
 level will be taken as the reference group.
 }
+\examples{
+data("gbsg")
+# create dummy variable for grade using ordinal coding
+gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
+head(gbsg)
+
+}

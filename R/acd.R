@@ -25,7 +25,13 @@
 #' @param scale a numeric used to scale `x`. The default value is 1, meaning 
 #' no scaling is conducted. If `NULL`, then the program will estimate 
 #' an appropriate scaling factor automatically (see [find_scale_factor()]). 
-#' 
+#' @examples
+#'
+#' # Gaussian
+#' data("prostate")
+#' x = as.numeric(prostate[,5,drop = T])
+#' y = as.numeric(prostate$lpsa)
+#' fit_acd(x, y)
 #' @return 
 #' A list is returned with components
 #' 

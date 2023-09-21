@@ -17,3 +17,14 @@ Simply extracts all variables for which not all powers are estimated to
 be \code{NA}. The names refer to the original names in the dataset and do not
 include transformations.
 }
+\examples{
+
+# Gaussian model
+data("prostate")
+x = as.matrix(prostate[,2:8])
+y = as.numeric(prostate$lpsa)
+# default interface
+fit = mfp2(x, y, verbose = FALSE)
+get_selected_variable_names(fit)
+
+}

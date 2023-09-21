@@ -23,6 +23,11 @@ documentation of \code{\link[=mfp2]{mfp2()}}.
 This function implements the formula in Section 4.7 of Royston and
 Sauerbrei (2008).
 }
+\examples{
+x = 1:1000
+find_shift_factor(x)
+
+}
 \references{
 Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials

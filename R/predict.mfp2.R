@@ -69,6 +69,16 @@
 #' transformations.
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
+#' @examples
+#'
+#' # Gaussian model
+#' data("prostate")
+#' x = as.matrix(prostate[,2:8])
+#' y = as.numeric(prostate$lpsa)
+#' # default interface
+#' fit1 = mfp2(x, y, verbose = FALSE)
+#' predict(fit1) # make predictions
+#' 
 #' @return 
 #' For any `type` other than `"terms"` the output conforms to the output
 #' of `predict.glm()` or `predict.coxph()`.

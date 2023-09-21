@@ -76,6 +76,10 @@
 #' `TRUE` usually only needs to changed when this function is to be used to 
 #' transform data for predictions. See Details.
 #' 
+#' @examples
+#' z = 1:10
+#' transform_vector_fp(z)
+#' transform_vector_acd(z)
 #' @return 
 #' Returns a matrix of transformed variable(s). The number of columns
 #' depends on the number of powers provided, the number of rows is equal to the
@@ -231,6 +235,14 @@ transform_vector_acd <- function(x,
 #' i enumerates the powers for a given variable in `power_list`. If a term
 #' uses an acd transformation, then the variable is prefixed with `A_`.
 #' 
+#' @examples
+#' x = matrix(1:100, nrow = 10)
+#' colnames(x) = paste0("x", 1:ncol(x))
+#' powx = setNames(replicate(ncol(x), c(1,2), simplify = FALSE), colnames(x))
+#' center = setNames(rep(FALSE, nrow(x)), colnames(x))
+#' acdx = setNames(rep(FALSE, nrow(x)), colnames(x))
+#' transform_matrix(x, powx, center, acdx)
+#' 
 #' @return 
 #' If all elements of `power_list` are `NA` then this function returns `NULL`.
 #' Otherwise a list with three entries: the first `x_transformed` is a matrix 
@@ -339,6 +351,9 @@ transform_vector_power <- function(x,
 #' 
 #' It is assumed all categorical variables in the data are represented by 
 #' binary dummy variables. 
+#' @examples
+#' mat = matrix(1:100, nrow = 10)
+#' center_matrix(mat)
 #' 
 #' @return 
 #' Transformed data matrix. Has an attribute `scaled:center` that stores 
@@ -394,6 +409,12 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
 #' base R. If the levels are 1, 2, and 3, then 1 will be the reference group. On the other hand,
 #' if the levels are 3, 2, and 1, then 3 will be the reference group. In brief, the first
 #' level will be taken as the reference group.
+#' 
+#' @examples
+#' data("gbsg")
+#' # create dummy variable for grade using ordinal coding
+#' gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
+#' head(gbsg)
 #' 
 #' @return 
 #' A dataframe with new dummy variables.

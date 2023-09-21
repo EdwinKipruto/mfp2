@@ -24,6 +24,10 @@
 #' `NA` to indicate that the normal data do not play a role. Higher degrees
 #' than two are not supported. 
 #' 
+#' @examples
+#' powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+#' generate_powers_fp(degree = 2, powers = powx)
+#' generate_powers_acd(degree = 2, powers = powx)
 #' @return 
 #' A matrix of powers with degree columns and rows depending on the `degree`.
 #' For ACD powers always a matrix with two columns. For normal fps each row

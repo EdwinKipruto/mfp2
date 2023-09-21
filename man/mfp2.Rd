@@ -461,6 +461,37 @@ be namespace conflicts and only the functions of the package loaded later
 will be working properly.
 }
 
+\examples{
+
+# Gaussian model
+data("prostate")
+x = as.matrix(prostate[,2:8])
+y = as.numeric(prostate$lpsa)
+# default interface
+fit1 = mfp2(x, y, verbose = FALSE)
+fracplot(fit1) # generate plots
+coef(fit1)
+print(fit1)
+summary(fit1)
+# formula interface
+fit1b = mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
+fp(bph) + fp(cp), data = prostate)
+# logistic regression model
+data("pima")
+xx <- as.matrix(pima[, 2:9])
+yy <- as.vector(pima$y)
+fit2 <- mfp2(xx, yy, family = "binomial", verbose = FALSE)
+
+# Cox regression model
+data("gbsg")
+# create dummy variable for grade using ordinal coding
+gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
+xd <- as.matrix(gbsg[, -c(1, 6, 10, 11)])
+yd <- survival::Surv(gbsg$rectime, gbsg$censrec)
+# fit mfp and keep hormon in the model
+fit3 <- mfp2(xd, yd, family = "cox", keep = "hormon", verbose = FALSE)
+
+}
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials

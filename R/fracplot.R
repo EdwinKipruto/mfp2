@@ -29,7 +29,16 @@
 #' where deviance residuals are used in generalized linear regression models, 
 #' while martingale residuals are used in Cox models, as done in Stata program.
 #' This kind of plot is only available if `type = "terms"`.
-#' 
+#' @examples
+#'
+#' # Gaussian
+#' data("prostate")
+#' x = as.matrix(prostate[,2:8])
+#' y = as.numeric(prostate$lpsa)
+#' # default interface
+#' fit = mfp2(x, y, verbose = FALSE)
+#' fracplot(fit) # generate plots
+#'
 #' @return 
 #' A list of `ggplot2` plot objects, one for each term requested. Can be 
 #' drawn as individual plots of facetted / combined easily using e.g. 

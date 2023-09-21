@@ -32,6 +32,9 @@ pak::pak("EdwinKipruto/mfp2")
 # install.packages("remotes")
 remotes::install_github("EdwinKipruto/mfp2")
 ```
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/EdwinKipruto/mfp2/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/EdwinKipruto/mfp2/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
 
 ## References
 

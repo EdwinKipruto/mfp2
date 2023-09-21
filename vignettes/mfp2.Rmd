@@ -98,9 +98,8 @@ models are relatively straightforward to interpret and report, which is
 important for transportability and practical usability.
 
 In detail, the MFP procedure combines:
-
-* variable selection through backward elimination with\ 
-* selection of fractional polynomial (FP) functions for continuous variables.
+- variable selection through backward elimination with
+- selection of fractional polynomial (FP) functions for continuous variables.
 
 The analyst must decide on nominal significance levels $(\alpha_1, \alpha_2)$
 for both components. This choice has a strong influence on the complexity of the
@@ -1126,12 +1125,13 @@ methods to the resulting model object to extract information or perform specific
 tasks. Suppose we fit an MFP model for the Gaussian family with default
 parameters as follows:
 
-```{r, eval= FALSE,  tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
-fit <- mfp2(x, y)
+```{r, eval= TRUE,  tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+fit <- mfp2(x, y, verbose = FALSE)
+class(fit)
 ```
 
-The `fit` is an object of class `mfp2`, which inherits from `glm` and `lm`. If
-the `family = "cox"`, the fit will inherit from `coxph` from the survival
+The `fit` is an object of class `mfp2`, which inherits properties from `glm` and `lm`. If
+the `family = "cox"`, the fit will inherit from `coxph` in the survival
 package. This means that `mfp2` can utilize methods and functions defined for
 `glm`, `lm` or `coxph`.
 
@@ -1144,9 +1144,8 @@ of freedom (denoted by `df_initial`), nominal significance levels (`select` and
 
 Furthermore, it shows the final degrees of freedom (denoted by `df_final`),
 where a `df` of 0 indicates that a variable was eliminated, which is confirmed
-by the `selected` column. The `acd` column specifies whether the ACD
-transformation was conducted for a certain variable, and the `power` column
-shows the final FP powers for variables, with eliminated variables assigned `NA`.
+by the `selected` column. The `power` column
+shows the final FP powers for variables, with eliminated variables assigned `NA`. The `acd` column, which indicates whether ACD transformation was applied to a covariate, will only be displayed when the user chooses to apply ACD transformation to at least one covariate.
 
 ```{r, eval= TRUE}
 print(fit)

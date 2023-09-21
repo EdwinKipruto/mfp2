@@ -769,7 +769,7 @@ complexity and stability of the final model. Please refer to section [section
 2.3.4.1](#Nominal_significance_levels) for instructions on setting the nominal
 significance levels.
 
-The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-ad (criterion set to aic) or BIC-ad (criterion set to bic). Here, AIC and BIC are referred to as AIC-ad and BIC-ad to distinguish them from the original AIC and BIC. However, in the program, we retain the original abbreviations AIC and BIC.
+The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-ad (criterion set to aic) or BIC-ad (criterion set to bic). Here, AIC-ad and BIC-ad refer to the adapted versions of AIC and BIC, respectively, to distinguish them from the original AIC and BIC. However, in the program, we use the abbreviations AIC and BIC to denote AIC-ad and BIC-ad.
 
 The "null" model refers to a model without the covariate of interest. A "linear" 
 model assumes a linear relationship with the outcome variable, while an FP1 model 
@@ -868,7 +868,7 @@ mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, 
 #### Information criteria {#information_criteria}
 
 Instead of using nominal significance levels for variable and function selection, 
-an alternative approach is to directly use adapted AIC or BIC, defined below.
+an alternative approach is to directly use adapted versions of AIC or BIC, defined below.
 
 \setlength{\jot}{0.5pt}
 \begin{align*}
@@ -1279,7 +1279,7 @@ To illustrate these options, we will use the `art` dataset included in the
 (2008, Chapter 10), and the outcome variable is continuous. In our example, we
 will fit an MFP model with a single covariate ($x5$) (see Figure \ref{fig:fig4}).
 
-```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot.The first option is to use the original data that was used to fit the model (terms_seq = "data"). The second option is to generate a sequence of equidistant new data points using the range of the original data for the variable of interest (terms_seq ="equidistant"). In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
+```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot.The first option is to use the original data that was used to fit the model. The second option is to generate a sequence of equidistant new data points using the range of the original data for the variable of interest. In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
 
 # load art data
 data("art")
@@ -1602,7 +1602,7 @@ sigmoid <- function(x) {
 }
 
 # Generate y with sigmoid relationship to x
-y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.8))
+y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.5))
 ```
 
 The `mfp2()` function has an `acdx` argument that allows the user to specify the
@@ -1650,12 +1650,12 @@ figurex <- patchwork::wrap_plots(p1, p2,
                                widths = 8, heights = 2)
 ```
 
-```{r,echo=FALSE, fig.cap="\\label{fig:fig6}The selected function using the ACD transformation is FP1(1,1)(left panel) while the usual MFP selected FP2(3,3)(right panel). See text for more details", fig.width=8, fig.height=4}
+```{r,echo=FALSE, fig.cap="\\label{fig:fig6}The selected function using the ACD transformation is FP1(1,1) represented by $\\beta_0 + \\beta_1x^1 +\\beta_2a^1$(left panel), while the usual MFP selected FP2(3,3), equivalent to $\\beta_0 + \\beta_1x^3 +\\beta_2x^3\\log(x)$ (right panel). See text for more details", fig.width=8, fig.height=4}
 figurex
 ```
 
 \newpage
-# References (Springer: Willi to remove or add)
+# References
 
 * Ambler, G. and Royston, P. (2001). Fractional polynomial model selection procedures: investigation of type I error rate. J. Stat. Comput. Simul., 69, 89–108.
 

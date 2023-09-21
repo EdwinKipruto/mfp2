@@ -131,10 +131,11 @@ fracplot <- function(model,
       ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, 
                                         ymax = .data$upper), 
                            alpha = alpha_fill) + 
-      ggplot2::ggtitle(sprintf("FP(%s)%s", 
-                      paste0(model$fp_powers[[v]], collapse = ", "),
-                      ifelse(model$fp_terms[v, "acd"], ", ACD", "")
-                      )) +
+      ggplot2::ggtitle(sprintf("FP%s(%s)%s", 
+                               ifelse(model$fp_terms[v, "acd"], "1", ""),
+                               paste0(model$fp_powers[[v]], collapse = ", "),
+                               ifelse(model$fp_terms[v, "acd"], ":ACD", "")
+      )) +
       ggplot2::xlab(v) +
       ggplot2::theme_bw()
     

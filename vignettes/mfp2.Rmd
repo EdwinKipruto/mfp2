@@ -12,7 +12,6 @@ output:
     toc: yes
     toc_depth: 3
     number_sections: yes
-    latex_engine: pdflatex
     fig_crop: no
 link-citations: yes
 header-includes:

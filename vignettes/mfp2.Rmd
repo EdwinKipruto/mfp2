@@ -158,14 +158,14 @@ as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e.,
 have one maximum or one minimum for positive values of $x$), and they have an
 asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
 For more details, see Royston and Sauerbrei (2008), Section 4.4.
-Figure 1 shows FP1 and some FP2 curves. The subset of FP2 powers is chosen to 
+Figure \ref{fig:fig1} shows FP1 and some FP2 curves. The subset of FP2 powers is chosen to 
 illustrate the ﬂexibility available with a few pairs of powers ($p1, p2$).
 
 Extension to FPm is straightforward but $m>2$ is hardly needed when modelling
 health research data with MFP. For $m = 2$, there are 44 models available within
 the set of FP powers ($S$), consisting of 8 FP1 models and 36 FP2 models. Although
 the allowed class of FP functions may seem limited, it encompasses a wide range
-of diverse shapes. This is illustrated in Figure 1, with the left panel
+of diverse shapes. This is illustrated in Figure \ref{fig:fig1}, with the left panel
 displaying eight FP1 powers and the right panel depicting a subset of FP2
 powers.
 
@@ -273,7 +273,7 @@ figure <- patchwork::wrap_plots(fig1, fig2,
 
 ```
 
-```{r echo=FALSE, fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)", fig.height= 5, fig.width=8}
+```{r echo=FALSE, fig.cap="\\label{fig:fig1}Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height= 5, fig.width=8}
 figure
 ```
 
@@ -296,7 +296,7 @@ algorithm (e.g. via pre-defined significance levels).
 
 The default function in most implementations of MFP is a linear function.
 Therefore, unless the data support a more complex FP function, a straight line
-model is chosen. There are occasional exceptions. For example, to model
+model is chosen. Concerning the default, there are occasional exceptions. For example, to model
 time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007)
 chose a default time ($t$) transformation of $\log (t)$ rather than $t$.
 
@@ -363,7 +363,7 @@ incorporate various types of subject-matter knowledge into MFP modeling. For a
 detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
 modeling in practice are given in Sauerbrei et al. (2007) and in Royston and
 Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
-$\alpha_1$ and $\alpha_2$ by AIC or BIC.
+$\alpha_1$ and $\alpha_2$ by AIC-ad or BIC-ad.
 
 ### MFP -- Key issues and approaches to handling them
 
@@ -395,7 +395,7 @@ zero or positive values) to the regression model. Additionally, they utilized
 fractional polynomials to determine the functional form of the variable. In
 a two-stage procedure, they assessed whether the binary variable and/or the
 continuous function is required for a good fit to the data. Becher et al. (2012)
-proposed a modification of this approach. These two approaches are currently not
+proposed a slight modification of this approach. These two approaches are currently not
 implemented in the `mfp2` package.
 
 #### Sample size and influential observations
@@ -437,7 +437,7 @@ provide a curve with a global interpretation. To investigate possible
 "overlooked" local features of an FP function, Binder and Sauerbrei (2010)
 conducted a systematic analysis of residuals from a model obtained by MFP. If
 local features are detected by their MFP + L procedure, statistically signiﬁcant
-local polynomials are then parsimoniously added to FP function. This enables the
+local polynomials are then parsimoniously added to the FP function. This enables the
 identification and incorporation of local features that may have been missed by
 the global FP function. This approach is not currently implemented in the `mfp2`
 package, but it is a potential area for future extensions.
@@ -449,8 +449,8 @@ addition, it has the ability to model a sigmoid relationship between `x` and an
 outcome variable `y` using the ACD transformation proposed by Royston (2015) and
 implemented in the Stata procedure MFPA (Royston and Sauerbrei 2016). The
 package offers three options for variable and function selection: nominal
-significance levels (p-value), Akaike information criterion (AIC), and Bayesian
-information criterion (BIC). It also provides functions for prediction and
+significance levels (p-value), adapted Akaike information criterion (AIC-ad), and adapted Bayesian
+information criterion (BIC-ad). It also provides functions for prediction and
 plotting. Currently, the package implements linear, logistic, Poisson, and Cox
 regression models. However, the package is designed in such a way that it can
 easily incorporate other regression models.
@@ -769,21 +769,15 @@ complexity and stability of the final model. Please refer to section [section
 2.3.4.1](#Nominal_significance_levels) for instructions on setting the nominal
 significance levels.
 
-The `mfp2` package offers alternative approaches to variable and function
-selection by utilizing information criteria. In the MFP framework, each
-covariate is evaluated univariately while adjusting for the other covariates
-within an overarching back-fitting algorithm. This algorithm iteratively
-assesses each covariate and selects the model (null, linear, FP1, FP2, etc.)
-with the minimum AIC (criterion set to `aic`) or BIC (criterion set to `bic`)
-for each variable.
+The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-ad (criterion set to aic) or BIC-ad (criterion set to bic). Here, AIC and BIC are referred to as AIC-ad and BIC-ad to distinguish them from the original AIC and BIC. However, in the program, we retain the original abbreviations AIC and BIC.
 
 The "null" model refers to a model without the covariate of interest. A "linear" 
 model assumes a linear relationship with the outcome variable, while an FP1 model 
 assumes a non-linear relationship using the FP1 function. The `criterion` argument
-allows users to specify whether they want to use AIC or BIC criteria for both
-variable and function selection. If AIC or BIC is selected as the criterion, the
+allows users to specify whether they want to use AIC-ad or BIC-ad criteria for both
+variable and function selection. If AIC-ad or BIC-ad is selected as the criterion, the
 nominal significance levels set through the `select` and `alpha` arguments will 
-be ignored. For details on using AIC and BIC in variable and function selection,
+be ignored. For details on using AIC-ad and BIC-ad in variable and function selection,
 please refer to [section 2.3.4.2](#information_criteria).
 
 #### Nominal significance levels {#Nominal_significance_levels}
@@ -874,19 +868,19 @@ mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, 
 #### Information criteria {#information_criteria}
 
 Instead of using nominal significance levels for variable and function selection, 
-an alternative approach is to directly use the AIC or BIC, defined below.
+an alternative approach is to directly use adapted AIC or BIC, defined below.
 
 \setlength{\jot}{0.5pt}
 \begin{align*}
-AIC & = -2 \log(L) + 2k \\
-BIC & = -2 \log(L) + \log(n) \times k,
+AIC-ad & = -2 \log(L) + 2k \\
+BIC-ad & = -2 \log(L) + \log(n) \times k,
 \end{align*}
 
 where $\log(L)$ is the maximum log-likelihood of the fitted model, which
 measures how well the model fits the data. The parameter $k$ corresponds to the
 number of estimated parameters in the model (regression estimates and FP powers)
-and $n$ is the sample size or the number of observations in the dataset. AIC and
-BIC consider both model fit and complexity, with lower values indicating
+and $n$ is the sample size or the number of observations in the dataset. AIC-ad and
+BIC-ad consider both model fit and complexity, with lower values indicating
 better-fitting models.
 
 For instance, assume we want to select the best model for a variable of interest
@@ -896,8 +890,8 @@ AIC and BIC of different models, such as FP2, FP1, linear, and null models for
 $z$. The adjustment models all have the same number of parameters (2 for $x1$, 1
 for $x2$ and perhaps an intercept if it exists). However, the FP2, FP1, and
 linear models have additional 4, 2, and 1 parameters, respectively. The total
-number of parameters for each model type is used in calculating the AIC and BIC.
-The model with the smallest AIC or BIC is then selected for $z$.
+number of parameters for each model type is used in calculating the AIC-ad and BIC-ad.
+The model with the smallest AIC-ad or BIC-ad is then selected for $z$.
 
 In `mfp2` package, this can be achieved by setting the `criterion` argument to
 either `"aic"` or `"bic"` in the `mfp2()` function. Additionally, if there is a
@@ -963,7 +957,7 @@ compared to the Stata program, for Gaussian models. In summary, the `mfp2`
 package reproduces the results of Stata (mfp and mfpa programs), as well as the
 old `mfp` program in **R** if you set `ftest = FALSE`.
 
-### Fraction polynomial powers
+### Subject matter knowledge may require changes in fractional polynomial powers.
 
 By default, the `mfp2()` function uses the predefined set $S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}$ 
 for each continuous covariate, as proposed in the original
@@ -973,7 +967,7 @@ powers allowed). In such cases, the `powers` argument which takes a list of
 powers can be employed to specify the desired power terms. More extreme powers
 may be considered for a possible improvement of the model fit. This may be
 sensible if the ‘extreme’ power terms (-2, -2) or (3,3) are selected,
-Considering (-3,-3) or (4,4) may be a suitable option.
+Considering (-3,-3) or (4,4) may be a suitable option. By default, the covariates are arranged in order of decreasing statistical significance (see section 2.1 for other options).
 
 The following example illustrates how to assign different power terms to
 continuous covariates. Two power terms (1 and 0.5) are evaluated for the `age`
@@ -1207,7 +1201,7 @@ package offers the `fracplot()` function specifically designed for this purpose.
 By providing the `mfp2` object and other relevant arguments, `fracplot()`
 generates plots of the functions for variables along with 95% confidence
 intervals. As for all data derived models, model based confidence limits may be
-too narrow. The bootstrap may be used to derive a more realistic estimates of
+too narrow. The bootstrap may be used to derive more realistic estimates of
 standard errors and pointwise confidence intervals (Royston and Sauerbrei 2007).
 You can specify the variable to be plotted using the `terms` argument. If
 `terms` is set to `NULL` (the default), the function returns a list of plots for
@@ -1240,7 +1234,7 @@ information on component-plus-residuals, you can refer to the
 For instance, to plot the function for `cavol` in the model, you can use the 
 following code:
 
-```{r, eval= TRUE,fig.cap="Prostate data. Graphical presentation of results from an FP analysis"}
+```{r, eval= TRUE,fig.cap="\\label{fig:fig2}Prostate data. Graphical presentation of results from an FP analysis"}
 plots <- fracplot(fit)
 
 # plots is a list
@@ -1264,7 +1258,7 @@ values are used as reference points for binary variables. For instance, if we
 want the reference value for the continuous variable `cavol` to be 30, we can
 use the following code:
 
-```{r, eval= TRUE, fig.cap="Prostate data. Illustration on how to use reference points (ref point = 30)"}
+```{r, eval= TRUE, fig.cap="\\label{fig:fig3}Prostate data. Illustration on how to use reference points (ref point = 30)"}
 plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 30))
 plots[[1]] + ggplot2::ylab("Partial predictor")
 ```
@@ -1283,9 +1277,9 @@ variable of interest (`terms_seq = "equidistant"`).
 To illustrate these options, we will use the `art` dataset included in the
 `mfp2` package. This dataset is described in detail by Royston and Sauerbrei
 (2008, Chapter 10), and the outcome variable is continuous. In our example, we
-will fit an MFP model with a single covariate ($x5$) (see Figure 4).
+will fit an MFP model with a single covariate ($x5$) (see Figure \ref{fig:fig4}).
 
-```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot. In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
+```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot.The first option is to use the original data that was used to fit the model (terms_seq = "data"). The second option is to generate a sequence of equidistant new data points using the range of the original data for the variable of interest (terms_seq ="equidistant"). In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
 
 # load art data
 data("art")
@@ -1308,7 +1302,7 @@ plot2[[1]] <- plot2[[1]] +
   ggplot2::ggtitle("Equidistant")
 
 # combine plots
-patchwork::wrap_plots(plot1[[1]], plot2[[1]], ncol = 2, widths = 8, heights = 4)
+patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
 
 ```
 
@@ -1439,9 +1433,9 @@ fit
 From the output, it is evident that four continuous variables (`glucose`(power
 1), bmi(-2), `diabetes`(1) and `age` (0, 3)) are selected. We can use
 `fracplot()` function to generate plots for these selected variables, as
-illustrated below, which produced Figure 5.
+illustrated below, which produced Figure \ref{fig:fig5}.
 
-```{r out.lines = 103, fig.show='hold',fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+```{r out.lines = 103, fig.show='hold',fig.cap="\\label{fig:fig5}Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
 plots <- fracplot(fit)
 
 # rename y-label for all plots
@@ -1464,7 +1458,7 @@ Cox regression to predict the log hazard of recurrence from prognostic factors,
 of which five are continuous (`age`, `size`, `nodes`, `pgr`, `er`), and one is
 binary (`meno`). The variable `grade` is ordinal, and we will use ordinal coding
 to create two dummy variables (`grade_1` and `grade_2`). The treatment variable
-Hormonal therapy (`hormon`) is forced into the model. Additionally, we stratify
+hormonal therapy (`hormon`) is forced into the model. As an alternative we stratify
 the analysis using the `hormon` variable.
 
 We use the `mfp2()` function with default parameters to build a model from the
@@ -1580,7 +1574,7 @@ simultaneously as independent covariates and applying the MFP algorithm to `x`
 and `a`. To limit instability and overfitting, he suggested restricting the
 models considered for `x` and `a` to FP1 functions. Furthermore, Royston (2014)
 highlighted that models based on `ACD (x)` may have other advantages in terms of
-interpretability of regression coefficients (see Figure 6 for an example).
+interpretability of regression coefficients (see Figure \ref{fig:fig6} for an example).
 
 Royston and Sauerbrei (2015) extended the MFP modeling approach to incorporate
 the ACD transformation, resulting in the MFPA (MFP with ACD) algorithm. To
@@ -1608,7 +1602,7 @@ sigmoid <- function(x) {
 }
 
 # Generate y with sigmoid relationship to x
-y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.2))
+y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.8))
 ```
 
 The `mfp2()` function has an `acdx` argument that allows the user to specify the
@@ -1656,7 +1650,7 @@ figurex <- patchwork::wrap_plots(p1, p2,
                                widths = 8, heights = 2)
 ```
 
-```{r,echo=FALSE, fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)", fig.width=8, fig.height=4}
+```{r,echo=FALSE, fig.cap="\\label{fig:fig6}The selected function using the ACD transformation is FP1(1,1)(left panel) while the usual MFP selected FP2(3,3)(right panel). See text for more details", fig.width=8, fig.height=4}
 figurex
 ```
 

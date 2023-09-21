@@ -36,7 +36,8 @@ knitr::opts_chunk$set(
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
-	tidy = TRUE
+	tidy = TRUE,
+	fig.pos = "h"
 )
 options(width = 100)
 knitr::opts_chunk$set(tidy.opts=list(width.cutoff=70))
@@ -272,9 +273,10 @@ figure <- patchwork::wrap_plots(fig1, fig2,
 
 ```
 
-```{r echo=FALSE, fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)"}
+```{r echo=FALSE, fig.cap="8 FP1 functions (left panel) and a subset of FP2 functions (right panel)", fig.height= 5, fig.width=8}
 figure
 ```
+
 
 Based on extensive experience with real data and several simulation studies, FP1
 and FP2 are generally considered adequate in the context of multivariable model
@@ -1306,9 +1308,10 @@ plot2[[1]] <- plot2[[1]] +
   ggplot2::ggtitle("Equidistant")
 
 # combine plots
-patchwork::wrap_plots(plot1[[1]], plot2[[1]], ncol = 2, widths = 8)
+patchwork::wrap_plots(plot1[[1]], plot2[[1]], ncol = 2, widths = 8, heights = 4)
 
 ```
+
 
 ### Handling categorical variables
 
@@ -1641,7 +1644,7 @@ fit3
 The selected function using the ACD transformation is FP1(1,1), represented by
 $\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach
 selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3 \log(x)$.
-Figure 4 shows these functions. It is evident from the figure that the ACD
+Figure 6 shows these functions. It is evident from the figure that the ACD
 approach provides a better fit to the data compared to the usual MFP model.
 
 
@@ -1653,7 +1656,7 @@ figurex <- patchwork::wrap_plots(p1, p2,
                                widths = 8, heights = 2)
 ```
 
-```{r,echo=FALSE, fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)"}
+```{r,echo=FALSE, fig.cap="Relationship between x and outcome y estimated using ACD transformation (left panel) and usual MFP algorithm (right panel)", fig.width=8, fig.height=4}
 figurex
 ```
 

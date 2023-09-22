@@ -7,7 +7,7 @@ author:
 - Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
-  html_document:
+  pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
@@ -39,7 +39,7 @@ knitr::opts_chunk$set(
 	fig.pos = "h"
 )
 options(width = 100)
-knitr::opts_chunk$set(tidy.opts=list(width.cutoff=70))
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=75))
 
 library(mfp2)
 library(ggplot2)

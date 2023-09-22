@@ -106,8 +106,7 @@ find_best_fp_step <- function(x,
                               weights, 
                               offset, 
                               df, 
-                              powers_current,
-                              powers_previous,
+                              powers_current, 
                               family,
                               criterion, 
                               select, 
@@ -144,9 +143,9 @@ find_best_fp_step <- function(x,
   fit <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
     y = y, family = family, weights = weights, offset = offset, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, criterion = criterion, ftest = ftest, select = select, 
-    alpha = alpha,method = method, strata = strata, nocenter = nocenter, 
+    powers_current = powers_current, powers = powers,  
+    criterion = criterion, ftest = ftest, select = select, alpha = alpha,
+    method = method, strata = strata, nocenter = nocenter, 
     control = control, rownames = rownames
   )
   
@@ -222,7 +221,6 @@ find_best_fpm_step <- function(x,
                                degree,
                                y, 
                                powers_current,
-                               powers_previous,
                                powers,  
                                acdx, 
                                ...) {
@@ -239,9 +237,7 @@ find_best_fpm_step <- function(x,
   # generate FP data for x of interest (xi) and adjustment variables
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 2 * degree,
-    powers_current = powers_current,
-    powers_previous = powers_previous,
-    powers = powers, acdx = acdx
+    powers_current = powers_current, powers = powers, acdx = acdx
   )
   
   metrics = list()
@@ -298,7 +294,6 @@ fit_null_step <- function(x,
                           xi, 
                           y, 
                           powers_current,
-                          powers_previous,
                           powers,
                           acdx, 
                           ...) {
@@ -309,9 +304,7 @@ fit_null_step <- function(x,
   # set variable of interest to linear term only
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 1,
-    powers_current = powers_current,
-    powers_previous = powers_previous,
-    acdx = acdx, powers = powers
+    powers_current = powers_current, acdx = acdx, powers = powers
   ) 
   
   # fit null model
@@ -345,7 +338,6 @@ fit_linear_step <- function(x,
                             xi, 
                             y, 
                             powers_current,
-                            powers_previous,
                             powers,
                             acdx, 
                             ...) {
@@ -356,9 +348,7 @@ fit_linear_step <- function(x,
   # set variable of interest to linear term only
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 1,
-    powers_current = powers_current, 
-    powers_previous = powers_previous,
-    acdx = acdx, powers = powers
+    powers_current = powers_current, acdx = acdx, powers = powers
   ) 
   
   # fit a model based on the assumption that xi is linear 
@@ -421,7 +411,6 @@ select_linear <- function(x,
                           acdx, 
                           y, 
                           powers_current,
-                          powers_previous,
                           powers,  
                           criterion,
                           ftest, 
@@ -433,14 +422,12 @@ select_linear <- function(x,
   
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current,powers_previous = powers_previous,
-    powers = powers, acdx = acdx, 
+    powers_current = powers_current, powers = powers, acdx = acdx, 
     ...
   )
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current,powers_previous = powers_previous,
-    powers = powers, acdx = acdx, 
+    powers_current = powers_current, powers = powers, acdx = acdx, 
     ...
   )
   powers <- rbind(fit_null$powers, fit_linear$powers)
@@ -551,7 +538,6 @@ select_ra2 <- function(x,
                        acdx, 
                        y, 
                        powers_current,
-                       powers_previous,
                        powers,  
                        criterion,
                        ftest, 
@@ -598,13 +584,11 @@ select_ra2 <- function(x,
   # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
-    powers_current = powers_current,powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -632,8 +616,7 @@ select_ra2 <- function(x,
   # df for tests are degree * 2 - 1
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -668,8 +651,7 @@ select_ra2 <- function(x,
       
       fit_fpm <- find_best_fpm_step(
         x = x, xi = xi, degree = current_degree, y = y, 
-        powers_current = powers_current, powers_previous = powers_previous,
-        powers = powers, acdx = acdx, ...
+        powers_current = powers_current, powers = powers, acdx = acdx, ...
       )
       
       old_names = rownames(res$metrics)
@@ -758,7 +740,6 @@ select_ra2_acd <- function(x,
                            acdx, 
                            y, 
                            powers_current,
-                           powers_previous,
                            powers,  
                            criterion,
                            ftest, 
@@ -804,13 +785,11 @@ select_ra2_acd <- function(x,
   # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = 2, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -838,8 +817,7 @@ select_ra2_acd <- function(x,
   # df for tests are degree * 2 - 1 = 3
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
   )
   
   old_names = rownames(res$metrics)
@@ -867,8 +845,7 @@ select_ra2_acd <- function(x,
   # test for functional form, comparison with FP1(x, .)
   fit <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
-    powers_current = powers_current,  powers_previous = powers_previous,
-    powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
   )
   
   old_names = rownames(res$metrics)
@@ -896,8 +873,7 @@ select_ra2_acd <- function(x,
   # test for functional form, comparison with FP1(., A(x))
   fit_fp1a <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   
   old_names = rownames(res$metrics)
@@ -925,8 +901,7 @@ select_ra2_acd <- function(x,
   # return best model between FP1(., A(x)) and linear(., A(x))
   fit_lineara <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1025,7 +1000,6 @@ select_ic <- function(x,
                       acdx, 
                       y, 
                       powers_current,
-                      powers_previous,
                       powers,  
                       criterion,
                       ftest, 
@@ -1053,21 +1027,18 @@ select_ic <- function(x,
   # fit all relevant models
   fit_null <- fit_null_step(
       x = x, xi = xi, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
     )
   fit_lin <- fit_linear_step(
       x = x, xi = xi, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
     )
   
   fits_fpm = list()
   for (m in 1:degree) {
     fits_fpm[[sprintf("FP%g", m)]] <- find_best_fpm_step(
       x = x, xi = xi, degree = m, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
     )
   }
   
@@ -1113,7 +1084,6 @@ select_ic_acd <- function(x,
                           acdx, 
                           y, 
                           powers_current,
-                          powers_previous,
                           powers,  
                           criterion,
                           ftest, 
@@ -1139,35 +1109,29 @@ select_ic_acd <- function(x,
   # fit all relevant models
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers_previous = powers_previous,
-    powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx, ...
   )
   
   fits <- list(
     "FP1(x, .)" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx_reset_xi, ...
+      powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
     ), 
     "FP1(., A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
     ), 
     "FP1(x, A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
-      powers_current = powers_current, powers_previous = powers_previous,
-      powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx, ...
     )
   )
 
@@ -1254,7 +1218,6 @@ select_ic_acd <- function(x,
 transform_data_step <- function(x,
                                 xi,
                                 powers_current,
-                                powers_previous,
                                 df, 
                                 powers,
                                 acdx) {
@@ -1279,12 +1242,6 @@ transform_data_step <- function(x,
     data_adj <- NULL
     powers_adj <- NULL
   } else {
-    
-    # Do this only when previous and current powers are different
-    if (identical(powers_current,powers_previous )) {
-      # calculated in the previous cycle
-      data_adj <- 
-    } else {
     data_adj <- vector(mode = "list", length = ncol(x_adj))
     
     for (i in 1:ncol(x_adj)) {
@@ -1309,7 +1266,6 @@ transform_data_step <- function(x,
     # assign arbitrary names to adjustment matrix 
     # the names of adjustment variables at this stage are not relevant
     colnames(data_adj) <- paste0("var_adj", 1:ncol(data_adj))
-    }
   }
   
   # generate fp data

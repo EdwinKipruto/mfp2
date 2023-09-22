@@ -7,7 +7,7 @@ author:
 - Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
-  pdf_document:
+  html_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3

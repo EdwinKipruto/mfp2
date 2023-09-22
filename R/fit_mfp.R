@@ -118,6 +118,9 @@ fit_mfp <- function(x,
   # named list of initial fp powers set to 1 ordered by xorder
   powers_current <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
   
+  # Initial previous powers
+  powers_previous <- setNames(as.list(rep(2, ncol(x))), variables_ordered)
+  
   # name and reorder input vectors by xorder
   alpha <- setNames(alpha, variables_x)[variables_ordered]
   select <- setNames(select, variables_x)[variables_ordered]
@@ -147,15 +150,17 @@ fit_mfp <- function(x,
                             simplify = FALSE, USE.NAMES = TRUE)
     # update initial powers 
     powers_current <- modifyList(x = powers_current, val = powers_current_acd)
+    powers_previous <- modifyList(x = powers_previous, val = powers_current_acd)
     # override df of acd variables by setting them to 4
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
 
+  
   # step 3: mfp cycles ---------------------------------------------------------
   # initialize cycle counter 
   j <- 1
   converged <- FALSE
-  
+  print(powers_previous)
   # run cycles and update the powers in each step
   while (j <= cycles) {
     if (verbose) {
@@ -169,6 +174,7 @@ fit_mfp <- function(x,
       x = x,
       y = y,
       powers_current = powers_current,
+      powers_previous = powers_previous,
       df = df,
       weights = weights,
       offset = offset,
@@ -196,6 +202,8 @@ fit_mfp <- function(x,
           j))   
       break
     } else {
+      # Update powers_previous with the powers_current
+      powers_previous <- powers_current  
       # update the powers of the variables at the end of each cycle
       powers_current <- powers_updated
       j <- j + 1
@@ -502,7 +510,8 @@ reset_acd <- function(x,
 #' @param rownames passed to [survival::coxph.fit()].
 find_best_fp_cycle <- function(x, 
                                y, 
-                               powers_current, 
+                               powers_current,
+                               powers_previous,
                                df, 
                                weights, 
                                offset, 
@@ -534,6 +543,7 @@ find_best_fp_cycle <- function(x,
       y = y,
       xi = names_x[i],
       powers_current = powers_current,
+      powers_previous = powers_previous,
       weights = weights,
       offset = offset,
       df = df[i], 

@@ -294,7 +294,7 @@ algorithm (e.g. via pre-defined significance levels).
 The default function in most implementations of MFP is a linear function.
 Therefore, unless the data support a more complex FP function, a straight line
 model is chosen. Concerning the default, there are occasional exceptions. For example, to model
-time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007)
+time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007b)
 chose a default time ($t$) transformation of $\log (t)$ rather than $t$.
 
 It can be assumed that deviance diﬀerence between an FPm and an FP(m-1) model is
@@ -342,7 +342,7 @@ for the selection of variables with a systematic search for possible
 nonlinearity by the function selection procedure (FSP). The extension is
 feasible with any type of regression model to which BE is applicable. The
 philosophy behind MFP modeling is to create interpretable and relatively simple
-models (Sauerbrei et al. 2007). Consequently, an analyst using MFP should be
+models (Sauerbrei et al. 2007a). Consequently, an analyst using MFP should be
 less concerned about failing to include variables with a weak eﬀect or failing
 to identify minor curvature in a functional form of a continuous covariate.
 Modiﬁcations that may improve MFP models are combination with post-estimation
@@ -358,9 +358,9 @@ good choice. If available, subject-matter knowledge should replace or at least
 guide data-dependent model choice. Only minor modiﬁcations are required to
 incorporate various types of subject-matter knowledge into MFP modeling. For a
 detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
-modeling in practice are given in Sauerbrei et al. (2007) and in Royston and
+modeling in practice are given in Sauerbrei et al. (2007a) and in Royston and
 Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
-$\alpha_1$ and $\alpha_2$ by AIC-ad or BIC-ad.
+$\alpha_1$ and $\alpha_2$ by AIC-P or BIC-P.
 
 ### MFP -- Key issues and approaches to handling them
 
@@ -446,8 +446,8 @@ addition, it has the ability to model a sigmoid relationship between `x` and an
 outcome variable `y` using the ACD transformation proposed by Royston (2014) and
 implemented in the Stata procedure MFPA (Royston and Sauerbrei 2016). The
 package offers three options for variable and function selection: nominal
-significance levels (p-value), adapted Akaike information criterion (AIC-ad), and adapted Bayesian
-information criterion (BIC-ad). It also provides functions for prediction and
+significance levels (p-value), adapted Akaike information criterion (AIC-P), and adapted Bayesian
+information criterion (BIC-P). It also provides functions for prediction and
 plotting. Currently, the package implements linear, logistic, Poisson, and Cox
 regression models. However, the package is designed in such a way that it can
 easily incorporate other regression models.
@@ -766,15 +766,15 @@ complexity and stability of the final model. Please refer to section [section
 2.3.4.1](#Nominal_significance_levels) for instructions on setting the nominal
 significance levels.
 
-The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-ad (criterion set to aic) or BIC-ad (criterion set to bic). Here, AIC-ad and BIC-ad refer to the adapted versions of AIC and BIC, respectively, to distinguish them from the original AIC and BIC. However, in the program, we use the abbreviations AIC and BIC to denote AIC-ad and BIC-ad.
+The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-P (criterion set to aic) or BIC-P (criterion set to bic) (see section 2.3.4.2). Here, AIC-P and BIC-P refer to the adapted versions of AIC and BIC, respectively, to distinguish them from the original AIC and BIC. However, in the program, we use the abbreviations AIC and BIC to denote AIC-P and BIC-P.
 
 The "null" model refers to a model without the covariate of interest. A "linear" 
 model assumes a linear relationship with the outcome variable, while an FP1 model 
 assumes a non-linear relationship using the FP1 function. The `criterion` argument
-allows users to specify whether they want to use AIC-ad or BIC-ad criteria for both
-variable and function selection. If AIC-ad or BIC-ad is selected as the criterion, the
+allows users to specify whether they want to use AIC-P or BIC-P criteria for both
+variable and function selection. If AIC-P or BIC-P is selected as the criterion, the
 nominal significance levels set through the `select` and `alpha` arguments will 
-be ignored. For details on using AIC-ad and BIC-ad in variable and function selection,
+be ignored. For details on using AIC-P and BIC-P in variable and function selection,
 please refer to [section 2.3.4.2](#information_criteria).
 
 #### Nominal significance levels {#Nominal_significance_levels}
@@ -869,26 +869,20 @@ an alternative approach is to directly use adapted versions of AIC or BIC, defin
 
 \setlength{\jot}{0.5pt}
 \begin{align*}
-AIC-ad & = -2 \log(L) + 2k \\
-BIC-ad & = -2 \log(L) + \log(n) \times k,
+AIC-P & = -2 \log(L) + 2k \\
+BIC-P & = -2 \log(L) + \log(n) \times k,
 \end{align*}
 
 where $\log(L)$ is the maximum log-likelihood of the fitted model, which
 measures how well the model fits the data. The parameter $k$ corresponds to the
 number of estimated parameters in the model (regression estimates and FP powers)
-and $n$ is the sample size or the number of observations in the dataset. AIC-ad and
-BIC-ad consider both model fit and complexity, with lower values indicating
+and $n$ is the sample size or the number of observations in the dataset. AIC-P and
+BIC-P consider both model fit and complexity, with lower values indicating
 better-fitting models.
 
-For instance, assume we want to select the best model for a variable of interest
-($z$) with fixed adjustment variables $x1$ (with power p3 as the best FP1
-function) and $x2$ (linear function was pre-specified). Then we can compare the
-AIC and BIC of different models, such as FP2, FP1, linear, and null models for
-$z$. The adjustment models all have the same number of parameters (2 for $x1$, 1
-for $x2$ and perhaps an intercept if it exists). However, the FP2, FP1, and
-linear models have additional 4, 2, and 1 parameters, respectively. The total
-number of parameters for each model type is used in calculating the AIC-ad and BIC-ad.
-The model with the smallest AIC-ad or BIC-ad is then selected for $z$.
+For instance, let's assume we want to select the best model for a variable of interest ($z$) with fixed adjustment variables $x1$ (with power $p3$ as the best FP1 function) and $x2$ (linear function was pre-specified). Then, we can compare the AIC and BIC of different models, such as FP2, FP1, linear, and null models for $z$. The adjustment models all have the same number of parameters (2 for $x1$, 1 for $x2$, and perhaps an intercept if it exists). For $z$, we have 4, 2, and 1 parameters for FP2, FP1, and linear models, respectively, for a model without an intercept. So, in a model without an intercept, the total number of parameters including adjustment variables for variable $z$ are (4 + 3) for FP2, (2 + 3) for FP1, and (1 + 3) for a linear model. The total
+number of parameters for each model type is used in calculating the AIC-P and BIC-P.
+The model with the smallest AIC-P or BIC-P is then selected for $z$.
 
 In `mfp2` package, this can be achieved by setting the `criterion` argument to
 either `"aic"` or `"bic"` in the `mfp2()` function. Additionally, if there is a
@@ -954,7 +948,7 @@ compared to the Stata program, for Gaussian models. In summary, the `mfp2`
 package reproduces the results of Stata (mfp and mfpa programs), as well as the
 old `mfp` program in **R** if you set `ftest = FALSE`.
 
-### Subject matter knowledge may require changes in fractional polynomial powers.
+### Subject matter knowledge may require changes in fractional polynomial powers
 
 By default, the `mfp2()` function uses the predefined set $S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}$ 
 for each continuous covariate, as proposed in the original
@@ -1276,7 +1270,7 @@ To illustrate these options, we will use the `art` dataset included in the
 (2008, Chapter 10), and the outcome variable is continuous. In our example, we
 will fit an MFP model with a single covariate ($x5$) (see Figure \ref{fig:fig4}).
 
-```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot.The first option is to use the original data that was used to fit the model. The second option is to generate a sequence of equidistant new data points using the range of the original data for the variable of interest. In the original x5 values, there are no values between 62.21 and 235. Consequently, the FP2 function, when applied to the original dataset, exhibits a linear trend instead of a curve in the right tail region."}
+```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot. In the original data, the function FP(0,3) was selected, equivalent to $\\beta_0 + \\beta_1log(x5) + \\beta_2x5^3$. This function was plotted using the original values of x5 in the data (right panel) and a sequence of equidistant new data points using the range of the original x5 data (left panel). The two functions are identical up to x5 = 62. However, beyond this point, a linear trend is estimated when the original values are used due to lack of data points between 62.21 and 235. If the new data is used, it results in a curve, clearly depicting the FP2 function."}
 
 # load art data
 data("art")
@@ -1289,14 +1283,12 @@ fit2 <- mfp2(xx, yy, verbose = FALSE)
 # generate plot using original data 
 plot1 <- fracplot(fit2)
 plot1[[1]] <- plot1[[1]] + 
-  ggplot2::ylab("Partial predictor + residuals") + 
-  ggplot2::ggtitle("Original data")
+  ggplot2::ylab("Partial predictor + residuals") 
 
 # generate plot using sequence of data
 plot2 <- fracplot(fit2, terms_seq = "equidistant")
 plot2[[1]] <- plot2[[1]] + 
-  ggplot2::ylab("Partial predictor + residuals") + 
-  ggplot2::ggtitle("Equidistant")
+  ggplot2::ylab("Partial predictor + residuals") 
 
 # combine plots
 patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
@@ -1672,13 +1664,9 @@ figurex
 
 * Huebner, M., le Cessie, S., Schmidt, C. O., & Vach, W. (2018). A contemporary conceptual framework for initial data analysis. Observational Studies, 4(1), 171-192.
 
-* Kasenda B., Sauerbrei W., Royston P.,  Mercat  A.,  Slutsky  AS.,  Cook  D.,  Guyatt  GH.,  Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.
-
-* Lambert, P.C., Smith, L.K., Jones, D.R., and Botha, J.L. (2005). Additive and multiplicative covariate regression models for relative survival incorporating fractional polynomials for time-dependent effects. Stat. Med., 24, 3871–3885.
-
-* Long, J. and Ryoo, J. (2010). Using fractional polynomials to model non-linear trends in longitudinal data. Br. J. Math. Stat. Psychol., 63, 177–203.
-
 * Royston, P. (2014). A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. Stata J., 14, 329–341.
+
+* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.
 
 * Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomial. Stat. Med., 23, 2509–2525.
 
@@ -1690,13 +1678,7 @@ figurex
 
 * Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. Stat. Med., 33, 4695–4708.
 
-* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.
-
 * Royston, P., Altman, D.G., Sauerbrei, W. (2006): Dichotomizing continuous predictors in multiple regression: a bad idea. Statistics in  Medicine, 25: 127-141
-
-* Royston, P., Sauerbrei, W., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
-
-* Royston, P., Sauerbrei, W., Look, M. (2007a). A new proposal for multivariable modelling of time- varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
 
 * Royston, P. and Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to re- gression analysis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.
 
@@ -1708,9 +1690,11 @@ figurex
 
 * Sauerbrei, W., Abrahamowicz, M., Altman, D.G., et al. (2014). STrengthening Analytical Thinking for Observational Strategies: the STRATOS initiative. Stat. Med., 33 (30), 5413–32.
 
-* Sauerbrei W., Buchholz A., Boulesteix A.-L. and Binder H. (2015). On stability issues in deriving multivariable regression models. Biometrical Journal, 57: 531-555, DOI: 10.1002/bimj.201300222.
+* Sauerbrei, W., Kipruto, E., Balmford, J. (2022). Effects of Influential Points and Sample Size on the Selection and Replicability of Multivariable Fractional Polynomial Models. Diagnostic and Prognostic Research, 7(1):7
 
 * Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006). Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485.
+
+* Sauerbrei W, Perperoglou A, Schmid M, Abrahamowicz M, Becher H, Binder H, Dunkler D, Harrell Jr. FE, Royston P, Heinze G for TG2 of the STRATOS initiative (2020). State of the art in selection of variables and functional forms in multivariable analysis - outstanding issues. Diagnostic and Prognostic Research, 4:3, 1-18. DOI: 10.1186/s41512-020-00074-3
 
 * Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: trans- formation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.
 
@@ -1724,10 +1708,6 @@ figurex
 
 * Sauerbrei, W., Royston, P. (2007): Modelling to extract more information from clinical trials data : on some roles for the bootstrap. Statistics in Medicine, 26: 4989-5001.
 
-* Sauerbrei W, Perperoglou A, Schmid M, Abrahamowicz M, Becher H, Binder H, Dunkler D, Harrell Jr. FE, Royston P, Heinze G for TG2 of the STRATOS initiative (2020). State of the art in selection of variables and functional forms in multivariable analysis - outstanding issues. Diagnostic and Prognostic Research, 4:3, 1-18. DOI: 10.1186/s41512-020-00074-3
-
-* Sauerbrei, W., Kipruto, E., Balmford, J. (2022). Effects of Influential Points and Sample Size on the Selection and Replicability of Multivariable Fractional Polynomial Models. Diagnostic and Prognostic Research, 7(1):7
-
 * Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.
 
 * Stamey TA, Kabalin JN, McNeal JE, Johnstone I.M, Freiha F, Redwine EA and Yang N (1989). Prostate specific antigen in the diagnosis and treatment of adenocarcinoma of the prostate. II. Radical prostatectomy treated patients. The Journal of Urology;141(5),1076-1083.
@@ -1736,7 +1716,6 @@ figurex
 
 * Therneau, T.M., Grambsch, P.M., Therneau, T.M. and Grambsch, P.M., (2000). The cox model (pp. 39-77). Springer New York.
 
-* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration ([2019]). Meta- analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: [10.1002/sim.7974].
 
 
 

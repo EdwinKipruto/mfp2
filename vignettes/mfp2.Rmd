@@ -7,7 +7,7 @@ author:
 - Willi Sauerbrei
 date: "`r format(Sys.time(), '%B %d, %Y')`"
 output:
-  html_document:
+  pdf_document:
     fig_caption: yes
     toc: yes
     toc_depth: 3
@@ -880,7 +880,7 @@ and $n$ is the sample size or the number of observations in the dataset. AIC-P a
 BIC-P consider both model fit and complexity, with lower values indicating
 better-fitting models.
 
-For instance, let's assume we want to select the best model for a variable of interest ($z$) with fixed adjustment variables $x1$ (with power $p3$ as the best FP1 function) and $x2$ (linear function was pre-specified). Then, we can compare the AIC and BIC of different models, such as FP2, FP1, linear, and null models for $z$. The adjustment models all have the same number of parameters (2 for $x1$, 1 for $x2$, and perhaps an intercept if it exists). For $z$, we have 4, 2, and 1 parameters for FP2, FP1, and linear models, respectively, for a model without an intercept. So, in a model without an intercept, the total number of parameters including adjustment variables for variable $z$ are (4 + 3) for FP2, (2 + 3) for FP1, and (1 + 3) for a linear model. The total
+For instance, let's assume we want to select the best model for a variable of interest ($z$) with fixed adjustment variables $x1$ (with power $p3$ as the best FP1 function) and $x2$ (linear function was pre-specified). Then, we can compare the AIC and BIC of different models, such as FP2, FP1, linear, and null models for $z$. The adjustment models all have the same number of parameters (2 for $x1$, 1 for $x2$, and perhaps an intercept if it exists). For $z$, we have 4, 2, and 1 parameter(s) for FP2, FP1, and linear models, respectively, for a model without an intercept. In a model without an intercept, the total number of parameters, including adjustment variables, for variable z are 7 (4 + 3) for FP2, 5 (2 + 3) for FP1, and 4 (1 + 3) for a linear model. These total
 number of parameters for each model type is used in calculating the AIC-P and BIC-P.
 The model with the smallest AIC-P or BIC-P is then selected for $z$.
 

@@ -652,7 +652,7 @@ mfp2.default <- function(x,
       }
   } else {
       # assert type of y
-      if (!is.vector(y)) {
+      if (is.matrix(y)||is.data.frame(y)) {
           stop(sprintf("! Outcome y must not be of class %s.", 
                        paste0(class(y), collapse = ", ")), 
                "i Please convert y to a vector.", call. = FALSE)

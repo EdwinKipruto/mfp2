@@ -79,7 +79,7 @@ several categories. Assuming linearity without considering non-linear
 relationships may hinder the detection of effects or cause the effects to be
 mismodeled. Categorizing continuous variables, which results in modelling
 implausible step functions, is a common practice but widely criticized (Royston
-et al. 2006; Sauerbrei et al. 2023).
+et al. 2006; Sauerbrei et al. 2020).
 
 When building a descriptive model with the aim of capturing the data structure
 parsimoniously, two components should be considered: first, variable selection
@@ -148,8 +148,7 @@ in FP terminology. The powers $p1=1$ and $p2=2$ are members of set $S$. Royston
 and Altman extended the class of FP2 functions with different powers to cases
 with equal powers ($p1=p2=p$) by defining them as $\beta_1x^p + \beta_2x^p \log(x)$.
 These are known as repeated-powers functions. Detailed definitions of FP
-functions are given in Section 4.3.1 of Royston and Sauerbrei (2008).
-For formal deﬁnitions, we use notation from Royston and Sauerbrei (2008).
+functions are given in Section 4.3.1 of Royston and Sauerbrei (2008). For formal deﬁnitions, we use their notation.
 
 FP1 functions are always monotonic and those with power $p < 0$ have an asymptote
 as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e., 
@@ -278,8 +277,8 @@ figure
 
 Based on extensive experience with real data and several simulation studies, FP1
 and FP2 are generally considered adequate in the context of multivariable model
-building, particularly when variable selection and functional forms is required
-(Royston and Sauerbrei S2008; Sauerbrei 2007).
+building, particularly when the selection of variable and functional forms are required
+(Royston and Sauerbrei 2008; Sauerbrei et al. 2007a).
 
 ### Function selection procedure (FSP)
 
@@ -330,7 +329,7 @@ high-dimensional data), an important distinction is between descriptive,
 predictive and explanatory modelling (Shmueli, 2010). MFP was mainly developed
 for descriptive modelling, aiming to capture the data structure parsimoniously.
 Nevertheless, a suitable descriptive model often has a fit similar to a model
-whose aim is good prediction (Sauerbrei et al. 2007). In some fields, the term
+whose aim is good prediction (Sauerbrei et al. 2007a). In some fields, the term
 explanatory modelling is used exclusively for testing causal theory.
 
 In many areas of science, the main interest often lies in the identification of
@@ -444,7 +443,7 @@ package, but it is a potential area for future extensions.
 
 `mfp2` is a package that implements the MFP approach to model selection. In
 addition, it has the ability to model a sigmoid relationship between `x` and an
-outcome variable `y` using the ACD transformation proposed by Royston (2015) and
+outcome variable `y` using the ACD transformation proposed by Royston (2014) and
 implemented in the Stata procedure MFPA (Royston and Sauerbrei 2016). The
 package offers three options for variable and function selection: nominal
 significance levels (p-value), adapted Akaike information criterion (AIC-ad), and adapted Bayesian
@@ -1200,7 +1199,7 @@ By providing the `mfp2` object and other relevant arguments, `fracplot()`
 generates plots of the functions for variables along with 95% confidence
 intervals. As for all data derived models, model based confidence limits may be
 too narrow. The bootstrap may be used to derive more realistic estimates of
-standard errors and pointwise confidence intervals (Royston and Sauerbrei 2007).
+standard errors and pointwise confidence intervals (Sauerbrei and Royston 2007).
 You can specify the variable to be plotted using the `terms` argument. If
 `terms` is set to `NULL` (the default), the function returns a list of plots for
 all variables included in the model.
@@ -1318,7 +1317,7 @@ matter knowledge you may also decide to combine some of the categories,
 resulting in a smaller number of dummy variables and decide to include these
 dummy variables in the model, not allowing their elimination. In principle, this
 would be an important decision from the initial data analysis process (Huebner
-et al 2016).
+et al 2018).
 
 Categorical variables can be measured using an ordinal scale or a nominal scale.
 An ordinal variable indicates that the levels of the variable are ordered in
@@ -1574,7 +1573,7 @@ models considered for `x` and `a` to FP1 functions. Furthermore, Royston (2014)
 highlighted that models based on `ACD (x)` may have other advantages in terms of
 interpretability of regression coefficients (see Figure \ref{fig:fig6} for an example).
 
-Royston and Sauerbrei (2015) extended the MFP modeling approach to incorporate
+Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate
 the ACD transformation, resulting in the MFPA (MFP with ACD) algorithm. To
 implement this extension, the original FSP is replaced by a modified version
 known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the
@@ -1671,9 +1670,9 @@ figurex
 
 * Faes, C., Aerts, M., Geys, H., and Molenberghs, G. (2007). Model averaging using fractional polynomials to estimate a safe level of exposure. Risk Anal., 27, 111–123.
 
-* Huebner, M., Vach, W. and le Cessie, S. (2016). A systematic approach to initial data analysis is good research practice. The journal of thoracic and cardiovascular surgery, 151(1), pp.25-27.
+* Huebner, M., le Cessie, S., Schmidt, C. O., & Vach, W. (2018). A contemporary conceptual framework for initial data analysis. Observational Studies, 4(1), 171-192.
 
-* Kasenda B., Sauerbrei W., Royston P., Mercat A., Slutsky AS., Cook D., Guyatt GH., Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.
+* Kasenda B., Sauerbrei W., Royston P.,  Mercat  A.,  Slutsky  AS.,  Cook  D.,  Guyatt  GH.,  Brochard L., Richard JCM., Stewart TE., Meade M., Briel M. (2016): Multivariable fractional polynomial interaction to investigate continuous effect modifiers in a meta-analysis on higher versus lower PEEP for patients with ARDS. BMJ Open; 6:e011148, DOI: 10.1136/bmjopen-2016-011148.
 
 * Lambert, P.C., Smith, L.K., Jones, D.R., and Botha, J.L. (2005). Additive and multiplicative covariate regression models for relative survival incorporating fractional polynomials for time-dependent effects. Stat. Med., 24, 3871–3885.
 
@@ -1693,11 +1692,13 @@ figurex
 
 * Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.
 
+* Royston, P., Altman, D.G., Sauerbrei, W. (2006): Dichotomizing continuous predictors in multiple regression: a bad idea. Statistics in  Medicine, 25: 127-141
+
 * Royston, P., Sauerbrei, W., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
 
-* Royston, P., Sauerbrei, W., Look, M. (2007a). A new proposal for multivariable modelling of time-varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+* Royston, P., Sauerbrei, W., Look, M. (2007a). A new proposal for multivariable modelling of time- varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
 
-* Royston, P. and Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to regression analysis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.
+* Royston, P. and Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to re- gression analysis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.
 
 * Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), 72-87.
 
@@ -1711,22 +1712,34 @@ figurex
 
 * Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006). Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485.
 
-* Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: transformation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.
+* Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: trans- formation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.
 
-* Sauerbrei, W. and Royston, P. (2011a). A new strategy for meta-analysis of continuous covariates in observational studies. Stat. Med., 30 (28), 3341–3360.
-
-* Sauerbrei, W. and Royston, P. (2011b). Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.
+* Sauerbrei, W. and Royston, P. (2011). Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.
 
 * Sauerbrei, W. and Royston, P. (2016). Multivariable Fractional Polynomial Models. Wiley StatsRef: Statistics Reference Online. 1–8. DOI: 10.1002/9781118445112.stat07861.
 
 * Sauerbrei, W., Royston, P., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
 
-* Sauerbrei, W., Royston, P., Look, M. (2007a). A new proposal for multivariable modelling of time-varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+* Sauerbrei, W., Royston, P., Look, M. (2007a). A new proposal for multivariable modelling of time- varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+
+* Sauerbrei, W., Royston, P. (2007): Modelling to extract more information from clinical trials data : on some roles for the bootstrap. Statistics in Medicine, 26: 4989-5001.
+
+* Sauerbrei W, Perperoglou A, Schmid M, Abrahamowicz M, Becher H, Binder H, Dunkler D, Harrell Jr. FE, Royston P, Heinze G for TG2 of the STRATOS initiative (2020). State of the art in selection of variables and functional forms in multivariable analysis - outstanding issues. Diagnostic and Prognostic Research, 4:3, 1-18. DOI: 10.1186/s41512-020-00074-3
+
+* Sauerbrei, W., Kipruto, E., Balmford, J. (2022). Effects of Influential Points and Sample Size on the Selection and Replicability of Multivariable Fractional Polynomial Models. Diagnostic and Prognostic Research, 7(1):7
 
 * Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.
 
-* StataCorp. (2023). Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC. 
+* Stamey TA, Kabalin JN, McNeal JE, Johnstone I.M, Freiha F, Redwine EA and Yang N (1989). Prostate specific antigen in the diagnosis and treatment of adenocarcinoma of the prostate. II. Radical prostatectomy treated patients. The Journal of Urology;141(5),1076-1083.
 
-* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration ([2019]). Meta-analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: [10.1002/sim.7974].
+* StataCorp. (2023). Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC.
+
+* Therneau, T.M., Grambsch, P.M., Therneau, T.M. and Grambsch, P.M., (2000). The cox model (pp. 39-77). Springer New York.
+
+* White IR, Kaptoge S, Royston P, Sauerbrei W, Emerging Risk Factors Collaboration ([2019]). Meta- analysis of non-linear exposure-outcome relationships using individual participant data: A comparison of two methods. Statistics in Medicine; 38(3): 326-338; doi: [10.1002/sim.7974].
+
+
+
+
 
 

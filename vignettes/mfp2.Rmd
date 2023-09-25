@@ -155,14 +155,12 @@ as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e.,
 have one maximum or one minimum for positive values of $x$), and they have an
 asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
 For more details, see Royston and Sauerbrei (2008), Section 4.4.
-Figure \ref{fig:fig1} shows FP1 and some FP2 curves. The subset of FP2 powers is chosen to 
-illustrate the ﬂexibility available with a few pairs of powers ($p1, p2$).
 
 Extension to FPm is straightforward but $m>2$ is hardly needed when modelling
 health research data with MFP. For $m = 2$, there are 44 models available within
 the set of FP powers ($S$), consisting of 8 FP1 models and 36 FP2 models. Although
 the allowed class of FP functions may seem limited, it encompasses a wide range
-of diverse shapes. This is illustrated in Figure \ref{fig:fig1}, with the left panel
+of diverse shapes. This is illustrated in the Figure below, with the left panel
 displaying eight FP1 powers and the right panel depicting a subset of FP2
 powers.
 
@@ -270,7 +268,7 @@ figure <- patchwork::wrap_plots(fig1, fig2,
 
 ```
 
-```{r echo=FALSE, fig.cap="\\label{fig:fig1}Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height= 5, fig.width=8}
+```{r fig1, echo=FALSE, fig.cap="Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height= 5, fig.width=8}
 figure
 ```
 
@@ -1268,9 +1266,9 @@ variable of interest (`terms_seq = "equidistant"`).
 To illustrate these options, we will use the `art` dataset included in the
 `mfp2` package. This dataset is described in detail by Royston and Sauerbrei
 (2008, Chapter 10), and the outcome variable is continuous. In our example, we
-will fit an MFP model with a single covariate ($x5$) (see Figure \ref{fig:fig4}).
+will fit an MFP model with a single covariate ($x5$) (see Figure below).
 
-```{r, eval = TRUE, fig.cap = "\\label{fig:fig4}Art data. Illustration on how to use terms_seq argument in fracplot. In the original data, the function FP(0,3) was selected, equivalent to $\\beta_0 + \\beta_1log(x5) + \\beta_2x5^3$. This function was plotted using the original values of x5 in the data (right panel) and a sequence of equidistant new data points using the range of the original x5 data (left panel). The two functions are identical up to x5 = 62. However, beyond this point, a linear trend is estimated when the original values are used due to lack of data points between 62.21 and 235. If the new data is used, it results in a curve, clearly depicting the FP2 function."}
+```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot. In the original data, the function FP(0,3) was selected, equivalent to $\\beta_0 + \\beta_1log(x5) + \\beta_2x5^3$. This function was plotted using the original values of x5 in the data (right panel) and a sequence of equidistant new data points using the range of the original x5 data (left panel). The two functions are identical up to x5 = 62. However, beyond this point, a linear trend is estimated when the original values are used due to lack of data points between 62.21 and 235. If the new data is used, it results in a curve, clearly depicting the FP2 function."}
 
 # load art data
 data("art")
@@ -1422,9 +1420,9 @@ fit
 From the output, it is evident that four continuous variables (`glucose`(power
 1), bmi(-2), `diabetes`(1) and `age` (0, 3)) are selected. We can use
 `fracplot()` function to generate plots for these selected variables, as
-illustrated below, which produced Figure \ref{fig:fig5}.
+illustrated below, which produced the Figure below.
 
-```{r out.lines = 103, fig.show='hold',fig.cap="\\label{fig:fig5}Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+```{r out.lines = 103, fig.show='hold', fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
 plots <- fracplot(fit)
 
 # rename y-label for all plots
@@ -1563,7 +1561,7 @@ simultaneously as independent covariates and applying the MFP algorithm to `x`
 and `a`. To limit instability and overfitting, he suggested restricting the
 models considered for `x` and `a` to FP1 functions. Furthermore, Royston (2014)
 highlighted that models based on `ACD (x)` may have other advantages in terms of
-interpretability of regression coefficients (see Figure \ref{fig:fig6} for an example).
+interpretability of regression coefficients.
 
 Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate
 the ACD transformation, resulting in the MFPA (MFP with ACD) algorithm. To
@@ -1627,7 +1625,7 @@ fit3
 The selected function using the ACD transformation is FP1(1,1), represented by
 $\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach
 selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3 \log(x)$.
-Figure 6 shows these functions. It is evident from the figure that the ACD
+The Figure below shows these functions. It is evident from the figure that the ACD
 approach provides a better fit to the data compared to the usual MFP model.
 
 
@@ -1639,7 +1637,7 @@ figurex <- patchwork::wrap_plots(p1, p2,
                                widths = 8, heights = 2)
 ```
 
-```{r,echo=FALSE, fig.cap="\\label{fig:fig6}The selected function using the ACD transformation is FP1(1,1) represented by $\\beta_0 + \\beta_1x^1 +\\beta_2a^1$(left panel), while the usual MFP selected FP2(3,3), equivalent to $\\beta_0 + \\beta_1x^3 +\\beta_2x^3\\log(x)$ (right panel). See text for more details", fig.width=8, fig.height=4}
+```{r,echo=FALSE, fig.cap="The selected function using the ACD transformation is FP1(1,1) represented by $\\beta_0 + \\beta_1x^1 +\\beta_2a^1$(left panel), while the usual MFP selected FP2(3,3), equivalent to $\\beta_0 + \\beta_1x^3 +\\beta_2x^3\\log(x)$ (right panel). See text for more details", fig.width=8, fig.height=4}
 figurex
 ```
 

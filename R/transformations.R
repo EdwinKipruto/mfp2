@@ -443,6 +443,9 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
     
     # Deal with ordinal variables when provided
     if (!is.null(var_ordinal)) {
+      if (!is.character(var_ordinal))
+        stop("var_ordinal must be a character name.")
+      
       index1 <- which(!var_ordinal %in% xnames)
       
       if (length(index1) != 0)
@@ -451,6 +454,10 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
         ))
       
       if (!is.null(var_nominal)) {
+        
+        if (!is.character(var_nominal))
+          stop("var_nominal must be a character name.")
+        
         index2 <- which(!var_nominal %in% xnames)
         
         if (length(index2) != 0)

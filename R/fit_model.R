@@ -183,7 +183,7 @@ fit_cox <- function(x,
     )  
   } else {
     # construct appropriate formula incorporating offset and strata terms
-    d <- data.frame(cbind(x, y))
+    d <- as.data.frame(cbind(x, y))
     ff <- sprintf("y ~ %s", 
                 paste(setdiff(names(d), dimnames(y)[[2]]), collapse = "+ "))
     

@@ -186,7 +186,7 @@ fit_cox <- function(x,
     d <- as.data.frame(cbind(x, y))
     
     # it can happen that x is null
-    ff <- ifelse(!is.null(x),
+    ff <- ifelse(is.null(x),
                   sprintf("y ~ %s",1),
                  sprintf("y ~ %s", 
                 paste(setdiff(colnames(d), dimnames(y)[[2]]), collapse = "+ "))

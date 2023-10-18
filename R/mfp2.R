@@ -482,12 +482,6 @@ mfp2.default <- function(x,
     stop("! x must not contain any NA (missing data).\n",   
          "i Please remove any missing data before passing x to this function.")
   
- # assert that "time" must not be variable name in x: reserved for dimnames(y) for cox
-  if (family == "cox" && any(vnames %in% "time")) {
-    stop("The variable name 'time' is not allowed in predictors. Please rename it.",
-         call. = FALSE)
-  }
-  
  # assert that subset must be a vector and does not contain negative values
   if (!is.null(subset)) {
     if (!is.vector(subset))

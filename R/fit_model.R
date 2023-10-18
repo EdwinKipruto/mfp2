@@ -183,15 +183,16 @@ fit_cox <- function(x,
     )  
   } else {
     # construct appropriate formula incorporating offset and strata terms
-    # binding y will lead to two variables: time and status
-    d <- as.data.frame(cbind(x, y))
-    
+    # cbinding y will lead to two variables: time and status
+
     # it can happen that x is null
     if (is.null(x)) {
-      ff <- sprintf("Surv(time, status) ~ %s",1)
+      d <- data.frame(y)
+      ff <- sprintf("y ~ %s",1)
     } else {
-      ff <- sprintf("Surv(time, status) ~ %s", 
-                    paste(setdiff(colnames(d), dimnames(y)[[2]]), collapse = "+ "))
+      d <- data.frame(x,y)
+      varx <- setdiff(colnames(d), "y")
+      ff <- sprintf("y ~ %s", paste(varx, collapse = "+ "))
     }
     # add offset and strata
     if (any(offset != 0)) {

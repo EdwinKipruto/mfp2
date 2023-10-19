@@ -191,9 +191,11 @@ fit_mfp <- function(x,
     # check for convergence (i.e. no change in powers in model)
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
+      if (verbose) {
       cat(sprintf(
           "\ni Fractional polynomial fitting algorithm converged after %d cycles.\n", 
-          j))   
+          j)) 
+        }  
       break
     } else {
       # update the powers of the variables at the end of each cycle

@@ -1307,14 +1307,16 @@ get_selected_variable_names <- function(object) {
 #' 
 #' @param x input matrix.
 #' @param df_default default df to be used. Default is 4.
-#' @examples
 #' 
+#' @examples
 #' x = matrix(1:100, nrow = 10)
 #' assign_df(x)
 #'
 #' @return 
 #' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
+#' 
 #' @export
+
 assign_df <- function(x, 
                       df_default = 4) {
   

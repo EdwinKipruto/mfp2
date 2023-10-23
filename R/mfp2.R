@@ -1309,8 +1309,7 @@ get_selected_variable_names <- function(object) {
 #' @param df_default default df to be used. Default is 4.
 #' @examples
 #' 
-#' data("prostate")
-#' x = as.matrix(prostate[,2:8])
+#' x = matrix(1:100, nrow = 10)
 #' assign_df(x)
 #'
 #' @return 

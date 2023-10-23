@@ -24,9 +24,7 @@ unique values, and df = 4 will be assigned to variables with unique values
 greater than or equal to 6.
 }
 \examples{
-
-data("prostate")
-x = as.matrix(prostate[,2:8])
+x = matrix(1:100, nrow = 10)
 assign_df(x)
 
 }

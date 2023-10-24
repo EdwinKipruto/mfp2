@@ -24,7 +24,7 @@ unique values, and df = 4 will be assigned to variables with unique values
 greater than or equal to 6.
 }
 \examples{
-x = matrix(1:100, nrow = 10)
+x <- matrix(1:100, nrow = 10)
 assign_df(x)
 
 }

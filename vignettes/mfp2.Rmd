@@ -15,12 +15,10 @@ output:
     fig_crop: no
 link-citations: yes
 header-includes:
-    - \usepackage{setspace}
-    - \doublespacing
-vignette: >
-  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
-  %\VignetteEncoding{UTF-8}  
-  %\VignetteEngine{knitr::rmarkdown}
+- \usepackage{setspace}
+- \doublespacing
+vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\\VignetteEncoding{UTF-8}   %\\VignetteEngine{knitr::rmarkdown}\n"
 ---
 
 

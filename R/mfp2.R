@@ -1326,12 +1326,13 @@ assign_df <- function(x,
   
   index1 <- which(nu <= 3)
   index2 <- which(nu >= 4 & nu <= 5)
+  # set df to 1
   if (length(index1) != 0) {
-    df <- replace(df, index1, rep(1, length(index1)))
+    df[index1] <- 1
   }
   if (length(index2) != 0) {
-    df <- replace(df, index1, rep(1, length(index1)))
+    df[index2] <- 2
   }
   
-  df
+  return(df)
 }

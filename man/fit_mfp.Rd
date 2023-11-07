@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{fit_mfp}
 \alias{fit_mfp}
-\title{Function to fit a model using (an extension of) the mfp algorithm}
+\title{Function for fitting a model using the MFP or MFPA algorithm}
 \usage{
 fit_mfp(
   x,
@@ -41,8 +41,8 @@ necessary. Data are assumed to be shifted and scaled.}
 
 \item{offset}{a vector of length nobs of offsets.}
 
-\item{cycles}{an integer, maximum number of iteration cycles (i.e. update
-powers for all predictors).}
+\item{cycles}{an integer representing the maximum number of
+iteration cycles during which FP powers for all predictor are updated.}
 
 \item{scale}{a numeric vector of length nvars of scaling factors. Not applied,
 but re-ordered to conform to \code{xorder}.}
@@ -66,7 +66,7 @@ for backward elimination.}
 \item{alpha}{a numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be kept
 in the model.}
 
 \item{xorder}{a string determining the order of entry of the covariates
@@ -76,7 +76,7 @@ into the model-selection algorithm.}
 powers for each covariate.}
 
 \item{method}{a character string specifying the method for tie handling in
-Cox regression.}
+Cox regression model.}
 
 \item{strata}{a factor of all possible combinations of stratification
 variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
@@ -84,12 +84,14 @@ variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{acdx}{a logical vector of length nvars indicating continuous variables
-to undergo the approximate cumulative distribution (ACD) transformation.}
+\item{acdx}{a logical vector of length nvars indicating which continuous
+variables should undergo the approximate cumulative distribution (ACD)
+transformation.}
 
 \item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
 
-\item{control}{a list with parameters for model fit.}
+\item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
+for details.}
 
 \item{verbose}{a logical; run in verbose mode.}
 }
@@ -97,10 +99,11 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 See \code{\link[=mfp2]{mfp2()}} for details on the returned object.
 }
 \description{
-Not exported. To be called from the \code{\link[=mfp2]{mfp2()}} function. Most parameters
-are explained in the documentation of \code{mfp2()}, but their form may differ
-in this function. This function does not check its arguments and expects that
-its input is prepared in \code{mfp2()}.
+This function is not exported and is intended to be called from
+the \code{\link[=mfp2]{mfp2()}} function. While most parameters are explained in
+the documentation of \code{mfp2()}, their form may differ in this
+function. Note that this function does not check its arguments
+and expects that its input has been prepared in \code{mfp2()} function.
 }
 \section{Algorithm}{
 
@@ -110,7 +113,7 @@ fitting a regression model to determine order of significance.
 \item Step 2: input data pre-processing. Setting initial powers for fractional
 polynomial terms, checking if acd transformation is required and allowed.
 Note that the initial powers of all variables are always set to 1, and higher
-fps are only evaluated in turn for each variables in the first cycle of the
+FPs are only evaluated in turn for each variables in the first cycle of the
 algorithm. See e.g. Sauerbrei and Royston (1999).
 \item Step 3: run mfp algorithm cycles. See \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}} for more
 details.

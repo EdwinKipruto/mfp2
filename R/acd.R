@@ -1,6 +1,8 @@
-#' Function to estimate Approximate cumulative distribution (ACD)
+#' Function to estimate approximate cumulative distribution (ACD)
 #' 
-#' Fits acd transformation as outlined in Royston and Sauerbrei (2016).
+#' Fits ACD transformation as outlined in Royston (2014). The ACD transformation 
+#' smoothly maps the observed distribution of a continuous covariate x onto one scale,
+#' namely, that of an approximate uniform distribution on the interval (0, 1). 
 #' 
 #' @details 
 #' Briefly, the estimation works as follows. First, the input data are shifted
@@ -14,10 +16,18 @@
 #' The ACD transformation is then given as
 #' \deqn{acd(x) = \Phi(\hat{z}),}
 #' where the fitted values of the estimated model are used. 
+#' If the relationship between a response Y and acd(x) is linear,
+#' say, \eqn{E(Y) = \beta_0 + \beta_1 acd(x)}, the relationship between Y 
+#' and x is nonlinear and is typically sigmoid in shape.  
+#' The parameters \eqn{\beta_0} and \eqn{\beta_0 + \beta_1} in such a model are 
+#' interpreted as the expected values of Y at the minimum and maximum of x,
+#' that is, at acd(x) = 0 and 1, respectively. 
+#' The parameter \eqn{\beta_1} represents the range of predictions of \eqn{E(Y)} 
+#' across the whole observed distribution of x (Royston 2014).
 #' 
 #' @param x a numeric vector.
 #' @param powers a vector of allowed FP powers. The default value is `NULL`,
-#' meaning that the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.
+#' meaning that the set S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
 #' @param shift a numeric that is used to shift the values of `x` to positive
 #' values. The default value is 0, meaning no shifting is conducted. 
 #' If `NULL`, then the program will estimate an appropriate shift automatically
@@ -43,9 +53,13 @@
 #' * `scale`: scaling factor used for computations. 
 #' 
 #' @references 
-#' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+#' Royston, P. and Sauerbrei, W. (2016). \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
+#' 
+#' Royston, P. (2014). \emph{A smooth covariate rank transformation for use in 
+#' regression models with a sigmoid dose–response function. The Stata Journal,
+#'  14(2), 329-341}. 
 #' 
 #' @export
 fit_acd <- function(x, 
@@ -59,19 +73,22 @@ fit_acd <- function(x,
   }
 
   # preprocess data
-  if (is.null(shift)) 
+  if (is.null(shift)) {
     shift <- find_shift_factor(x)
+  } 
   
-  if (is.null(scale)) 
+  if (is.null(scale)) {
     scale <- find_scale_factor(x)
+  }
   
   x <- (x + shift) / scale
   
   # check whether acd is estimable
   if (!all(x > 0)) 
     stop("! All x must be positive after shifting.", 
-         "i Please use another shift value or let it be estimated by the programm by setting `shift = NULL`.")
+         "i Please use another shift value or let it be estimated by the program by setting `shift = NULL`.")
   
+  # see here for details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5663339/pdf/emss-59479.pdf)
   n <- length(x)
   z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
 
@@ -89,10 +106,11 @@ fit_acd <- function(x,
        scale = scale)
 }
 
-#' Function to apply Approximate cumulative distribution (ACD)
+#' Function to apply Approximate Cumulative Distribution (ACD)
 #' 
-#' Apply acd transformation as outlined in Royston and Sauerbrei (2016). 
-#' Designed to work with the output of [fit_acd()], see the corresponding
+#' Applies the acd transformation as outlined in Royston (2014) and Royston and 
+#' Sauerbrei (2016). 
+#' Designed to work with the output of [fit_acd()], Please refer to the corresponding
 #' documentation for more details.
 #' 
 #' @param x a numeric vector.
@@ -141,6 +159,7 @@ find_best_fp1_for_acd <- function(x,
   
   # Fit linear models for each FP1 function
   n_powers <- length(powers)
+  
   # store deviance and model object
   devs <- vector("numeric", n_powers)
   fits <- vector("list", n_powers)

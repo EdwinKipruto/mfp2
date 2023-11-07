@@ -55,14 +55,14 @@ for backward elimination.}
 \item{alpha}{a numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be kept
 in the model.}
 
 \item{powers}{a named list of numeric values that sets the permitted FP
 powers for each covariate.}
 
 \item{method}{a character string specifying the method for tie handling in
-Cox regression.}
+Cox regression model.}
 
 \item{strata}{a factor of all possible combinations of stratification
 variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
@@ -71,41 +71,43 @@ variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
 
 \item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
 
-\item{control}{a list with parameters for model fit.}
+\item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
+for details.}
 
 \item{rownames}{passed to \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.}
 
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{acdx}{a logical vector of length nvars indicating continuous variables
-to undergo the approximate cumulative distribution (ACD) transformation.}
+\item{acdx}{a logical vector of length nvars indicating which continuous
+variables should undergo the approximate cumulative distribution (ACD)
+transformation.}
 }
 \description{
 This function estimates the best FP functions for all predictors in the
 current cycle. To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 }
 \details{
-A cycle is defined as a pass through all of the predictors in the input
-matrix \code{x}. A step is defined as the assessment of a single predictor.
-This algorithm is described in Sauerbrei et al (2006) and given in detail
+A cycle is defined as a complete pass through all the predictors in the input
+matrix \code{x}, while a step is defined as the assessment of a single predictor.
+This algorithm is described in Sauerbrei et al. (2006) and given in detail
 in Royston and Sauerbrei (2008), in particular chapter 6.
 
-Briefly, a cycle works as follows. It has as input the data matrix and a set
-of current best fp powers for each variable. In each step, the fp powers of a
-single covariate are assessed.
-To do this, all of the other variables are transformed as defined by the
-current powers (this is done in \code{\link[=transform_data_step]{transform_data_step()}}) and the
-fp powers of the variable of interest are tested using the closed test
-procedure (done in \code{\link[=find_best_fp_step]{find_best_fp_step()}}). Some of the adjustment variables
-may have their fp power set to \code{NA}, which means they were deselected from
-the working model and are not used in that step.
-The results from all steps are collected and returned, completing a cycle.
+Briefly, a cycle works as follows: it takes as input the data matrix along with
+a set of current best fp powers for each variable. In each step, the fp
+powers of a single covariate are assessed, while adjusting for other
+covariates. Adjustment variables are transformed using their current
+fp powers (this is done in \code{\link[=transform_data_step]{transform_data_step()}}) and the fp powers
+of the variable of interest are tested using the closed test procedure
+(conducted in \code{\link[=find_best_fp_step]{find_best_fp_step()}}).
+Some of the adjustment variables may have their fp power set to \code{NA},
+which means they were not selected from the working model and are not used
+in that step. The results from all steps are returned, completing a cycle.
 
-Note that each cycle goes through all variables. In particular that means
-even if a variable was eliminated in an earlier cycle, it will re-enter
-each new cycle at the beginning to be evaluated to be added to the
-working model or to be eliminated again.
+Note that in each cycle every variable is evaluated.This includes variables
+that may have been eliminated in previous cycles. They will re-enter each
+new cycle for potential inclusion in the working model or to be re-evaluated
+for elimination.
 
 The current adjustment set is always given through the current fp powers,
 which are updated in each step (denoted as \code{powers_current}).

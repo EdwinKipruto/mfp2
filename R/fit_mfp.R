@@ -1,9 +1,10 @@
-#' Function to fit a model using (an extension of) the mfp algorithm
+#' Function for fitting a model using the MFP or MFPA algorithm
 #' 
-#' Not exported. To be called from the [`mfp2()`] function. Most parameters
-#' are explained in the documentation of `mfp2()`, but their form may differ
-#' in this function. This function does not check its arguments and expects that 
-#' its input is prepared in `mfp2()`.
+#' This function is not exported and is intended to be called from 
+#' the [`mfp2()`] function. While most parameters are explained in 
+#' the documentation of `mfp2()`, their form may differ in this 
+#' function. Note that this function does not check its arguments 
+#' and expects that its input has been prepared in `mfp2()` function.
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
@@ -11,8 +12,8 @@
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
-#' @param cycles an integer, maximum number of iteration cycles (i.e. update
-#' powers for all predictors). 
+#' @param cycles an integer representing the maximum number of 
+#' iteration cycles during which FP powers for all predictor are updated. 
 #' @param scale a numeric vector of length nvars of scaling factors. Not applied,
 #' but re-ordered to conform to `xorder`.
 #' @param shift a numeric vector of length nvars of shifts. Not applied, 
@@ -27,22 +28,24 @@
 #' for backward elimination.
 #' @param alpha a numeric vector of length nvars indicating significance levels 
 #' for tests between FP models of different degrees. 
-#' @param keep a character vector that with names of variables to be kept 
+#' @param keep a character vector with names of variables to be kept 
 #' in the model. 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. 
 #' @param powers a named list of numeric values that sets the permitted FP 
 #' powers for each covariate.
 #' @param method a character string specifying the method for tie handling in 
-#' Cox regression.
+#' Cox regression model.
 #' @param strata a factor of all possible combinations of stratification 
 #' variables. Returned from [survival::strata()]. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a logical vector of length nvars indicating continuous variables 
-#' to undergo the approximate cumulative distribution (ACD) transformation.
+#' @param acdx a logical vector of length nvars indicating which continuous
+#' variables should undergo the approximate cumulative distribution (ACD) 
+#' transformation.
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
-#' @param control a list with parameters for model fit.
+#' @param control a list with parameters for model fit. See [survival::coxph()]
+#' for details. 
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @section Algorithm: 
@@ -52,7 +55,7 @@
 #' * Step 2: input data pre-processing. Setting initial powers for fractional 
 #' polynomial terms, checking if acd transformation is required and allowed.
 #' Note that the initial powers of all variables are always set to 1, and higher
-#' fps are only evaluated in turn for each variables in the first cycle of the 
+#' FPs are only evaluated in turn for each variables in the first cycle of the 
 #' algorithm. See e.g. Sauerbrei and Royston (1999).
 #' * Step 3: run mfp algorithm cycles. See [find_best_fp_cycle()] for more 
 #' details.
@@ -102,6 +105,7 @@ fit_mfp <- function(x,
   
   # step 1: order variables ----------------------------------------------------
   variables_ordered <- variables_x
+  
   # order only variables if they are 2 or more
   if (length(variables_x) > 1) {
   variables_ordered <- order_variables(
@@ -110,6 +114,7 @@ fit_mfp <- function(x,
     strata = strata, method = method, control = control, nocenter = nocenter
   ) 
   }
+  
   if (verbose) 
     cat(sprintf("\ni Visiting order: %s\n", 
                 paste0(variables_ordered, collapse = ", ")))
@@ -126,6 +131,7 @@ fit_mfp <- function(x,
   shift <- setNames(shift, variables_x)[variables_ordered]
   scale <- setNames(scale, variables_x)[variables_ordered]
   acdx <- setNames(acdx, variables_x)[variables_ordered]
+  
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
   
@@ -147,6 +153,7 @@ fit_mfp <- function(x,
                             simplify = FALSE, USE.NAMES = TRUE)
     # update initial powers 
     powers_current <- modifyList(x = powers_current, val = powers_current_acd)
+    
     # override df of acd variables by setting them to 4
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
@@ -188,7 +195,7 @@ fit_mfp <- function(x,
       verbose = verbose
     )
 
-    # check for convergence (i.e. no change in powers in model)
+    # check for convergence (i.e. no change in powers and variables in model)
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
       if (verbose) {
@@ -218,11 +225,17 @@ fit_mfp <- function(x,
 
   # fit model, and return full glm or coxph object
   modelfit <- fit_model(
-    x =  data_transformed$x_transformed, y = y, 
-    family = family, weights = weights, offset = offset,
-    method = method, strata = strata, control = control,
+    x =  data_transformed$x_transformed,
+    y = y, 
+    family = family,
+    weights = weights,
+    offset = offset,
+    method = method,
+    strata = strata,
+    control = control,
     rownames = rownames(data_transformed$x_transformed), 
-    nocenter = nocenter, fast = FALSE
+    nocenter = nocenter,
+    fast = FALSE
   )
   
   # create mfp2 object ---------------------------------------------------------
@@ -295,10 +308,10 @@ fit_mfp <- function(x,
 order_variables <- function(xorder = "ascending",
                             x = NULL, 
                             ...) {
-  names_ordered = colnames(x)
+  names_ordered <- colnames(x)
   
   if (xorder != "original") {
-    names_ordered = order_variables_by_significance(xorder = xorder, x = x, ...)
+    names_ordered <- order_variables_by_significance(xorder = xorder, x = x, ...)
   }
   
   names_ordered
@@ -335,16 +348,21 @@ order_variables_by_significance <- function(xorder,
     fit.full <- glm.fit(
       x = cbind(rep(1, n), x), y = y, weights = weights, offset = offset,
       family = family
-    ) # full model
+    )
+    
     # Rank of the glm full model
     p1 <- fit.full$rank
+    
     # There is an additional scale parameter to estimate in OLS regression. The
     # binomial and Poisson regression models have no scale parameter.
     if (fam == "gaussian") p1 <- p1 + 1
-    # loglikelihood of the full model
-    logl.full <- p1 - fit.full$aic / 2 # not that aic = -2logL + 2k
+    
+    # loglikelihood of the full model calculated based on  aic = -2logL + 2k
+    logl.full <- p1 - fit.full$aic / 2 
+    
     # Deviance of the full model
     dev.full <- -2 * logl.full
+    
     # we need to calculate p-values for each variable using likelihood ratio test
     varnames <- colnames(x)
     ns <- length(varnames)
@@ -354,35 +372,53 @@ order_variables_by_significance <- function(xorder,
       # remove one variable at a time and fit the reduced model. 
       # only works if you have more than one variable due to (-i)
       fit.reduced <- glm.fit(
-        x = cbind(rep(1, n), x[, -i, drop = FALSE]), y = y,
-        weights = weights, offset = offset, family = family
+        x = cbind(rep(1, n), x[, -i, drop = FALSE]),
+        y = y,
+        weights = weights, 
+        offset = offset, 
+        family = family
       )
-      # calculate the deviance of the reduced model
+      # calculate the deviance of the reduced model-model without the ith variable
       p2 <- fit.reduced$rank
+      
       if (fam == "gaussian") p2 <- p2 + 1
       # loglikelihood of the reduced model
-      logl.reduced <- p2 - fit.reduced$aic / 2 # not that aic = -2logL + 2k
+      logl.reduced <- p2 - fit.reduced$aic / 2 
+      
       # Deviance of the reduced model
       dev[i] <- -2 * logl.reduced
+      
       # degrees of freedom of the reduced model
       df.reduced[i] <- p2
+      
       # loglik difference: -2(logL.reduced - logL.full)
       teststatic <- -2 * logl.reduced + 2 * logl.full
+      
       # calculate the Chi-square p.value
       p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
     }
   } else { # cox model
     fit.full <- fit_cox(
-      x = x, y = y, strata = strata, weights = weights,
-      offset = offset, control = control, method = method,
-      rownames = rownames(x), nocenter = nocenter
-    ) # full model
-    # Deviance of the full cox model
+      x = x, 
+      y = y, 
+      strata = strata,
+      weights = weights,
+      offset = offset,
+      control = control, 
+      method = method,
+      rownames = rownames(x),
+      nocenter = nocenter
+    ) 
+    
+    # Degrees of freedom for the full cox model
     p1 <- fit.full$df
-    # loglikelihood of the full model
+    
+    # loglikelihood of the full cox model
     logl.full <- fit.full$logl
-    # Deviance of the full model
+    
+    # Deviance of the full cox model
     dev.full <- -2 * logl.full
+    
     # we need to calculate p-values for each variable using likelihood ratio test
     varnames <- colnames(x)
     ns <- length(varnames)
@@ -391,21 +427,30 @@ order_variables_by_significance <- function(xorder,
     for (i in 1:ns) {
       # remove one variable at a time and fit the reduced model
       fit.reduced <- fit_cox(
-        x = x[, -i, drop = FALSE], y = y, strata = strata,
-        weights = weights, offset = offset, control = control,
-        method = method, rownames = rownames(x),
+        x = x[, -i, drop = FALSE],
+        y = y, strata = strata,
+        weights = weights, 
+        offset = offset, 
+        control = control,
+        method = method,
+        rownames = rownames(x),
         nocenter = nocenter
       )
-      # calculate the deviance of the reduced model
+      # Degrees of freedom for the reduced model
       p2 <- fit.reduced$df
+      
       # loglikelihood of the reduced model
       logl.reduced <- fit.reduced$logl
+      
       # Deviance of the reduced model
       dev[i] <- -2 * logl.reduced
+      
       # degrees of freedom of the reduced model
-      df.reduced[i] <- fit.reduced$df
+      df.reduced[i] <- p2
+      
       # loglik difference: -2(logL.reduced - logL.full)
       teststatic <- -2 * logl.reduced + 2 * logl.full
+      
       # calculate the p.value
       p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
     }
@@ -414,8 +459,8 @@ order_variables_by_significance <- function(xorder,
   # Order the p-values based on xorder
   pvalues <- switch(xorder,
                     "descending" = sort(p.value, decreasing = TRUE),
-                    "ascending" = sort(p.value, decreasing = FALSE),
-                     "original" = p.value 
+                    "ascending"  = sort(p.value, decreasing = FALSE),
+                     "original"  = p.value 
   )
   
   names(pvalues)
@@ -429,8 +474,8 @@ order_variables_by_significance <- function(xorder,
 #' 
 #' @param x a design matrix of dimension nobs x nvars where nvars is the number 
 #' of predictors excluding an intercept.  
-#' @param acdx a named logical vector of length nvars indicating continuous
-#' variables to undergo the approximate cumulative distribution (ACD) 
+#' @param acdx a named logical vector of length nvars indicating which continuous
+#' variables should undergo the approximate cumulative distribution (ACD) 
 #' transformation. May be ordered differently than the columns of `x`.
 #' 
 #' @return 
@@ -443,6 +488,7 @@ reset_acd <- function(x,
   # number of unique values of each column in acdx
   n_unique <- apply(x[, names_acd, drop = FALSE], 2, 
                     function(col) length(unique(col)))
+  
   ind_reset <- which(n_unique < 5)
   
   if (length(ind_reset) > 0) {
@@ -461,26 +507,26 @@ reset_acd <- function(x,
 #' current cycle. To be used in [fit_mfp()].
 #' 
 #' @details 
-#' A cycle is defined as a pass through all of the predictors in the input
-#' matrix `x`. A step is defined as the assessment of a single predictor. 
-#' This algorithm is described in Sauerbrei et al (2006) and given in detail
+#' A cycle is defined as a complete pass through all the predictors in the input
+#' matrix `x`, while a step is defined as the assessment of a single predictor. 
+#' This algorithm is described in Sauerbrei et al. (2006) and given in detail
 #' in Royston and Sauerbrei (2008), in particular chapter 6.
 #' 
-#' Briefly, a cycle works as follows. It has as input the data matrix and a set 
-#' of current best fp powers for each variable. In each step, the fp powers of a 
-#' single covariate are assessed. 
-#' To do this, all of the other variables are transformed as defined by the 
-#' current powers (this is done in [transform_data_step()]) and the 
-#' fp powers of the variable of interest are tested using the closed test 
-#' procedure (done in [find_best_fp_step()]). Some of the adjustment variables 
-#' may have their fp power set to `NA`, which means they were deselected from 
-#' the working model and are not used in that step.
-#' The results from all steps are collected and returned, completing a cycle.
+#' Briefly, a cycle works as follows: it takes as input the data matrix along with
+#' a set of current best fp powers for each variable. In each step, the fp
+#' powers of a single covariate are assessed, while adjusting for other
+#' covariates. Adjustment variables are transformed using their current
+#' fp powers (this is done in [transform_data_step()]) and the fp powers 
+#' of the variable of interest are tested using the closed test procedure
+#' (conducted in [find_best_fp_step()]).
+#' Some of the adjustment variables may have their fp power set to `NA`, 
+#' which means they were not selected from the working model and are not used
+#' in that step. The results from all steps are returned, completing a cycle.
 #' 
-#' Note that each cycle goes through all variables. In particular that means
-#' even if a variable was eliminated in an earlier cycle, it will re-enter
-#' each new cycle at the beginning to be evaluated to be added to the 
-#' working model or to be eliminated again. 
+#' Note that in each cycle every variable is evaluated.This includes variables
+#' that may have been eliminated in previous cycles. They will re-enter each
+#' new cycle for potential inclusion in the working model or to be re-evaluated
+#' for elimination.
 #' 
 #' The current adjustment set is always given through the current fp powers, 
 #' which are updated in each step (denoted as `powers_current`). 
@@ -598,6 +644,7 @@ convert_powers_list_to_matrix <- function(power_list) {
   # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
   psize <- sapply(power_list, length)
   maxp <- max(psize)
+  
   # Create a new nested list of same length. This means that if FP1 was choosen
   # for x then the second power should be NA
   new_list_powers <- vector(mode = "list", length = length(power_list))

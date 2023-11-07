@@ -9,8 +9,9 @@ create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
 \arguments{
 \item{fp_powers}{powers of the created FP terms.}
 
-\item{acdx}{a logical vector of length nvars indicating continuous variables
-to undergo the approximate cumulative distribution (ACD) transformation.}
+\item{acdx}{a logical vector of length nvars indicating which continuous
+variables should undergo the approximate cumulative distribution (ACD)
+transformation.}
 
 \item{df}{a numeric vector of length nvars of degrees of freedom.}
 

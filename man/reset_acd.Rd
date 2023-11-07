@@ -10,8 +10,8 @@ reset_acd(x, acdx)
 \item{x}{a design matrix of dimension nobs x nvars where nvars is the number
 of predictors excluding an intercept.}
 
-\item{acdx}{a named logical vector of length nvars indicating continuous
-variables to undergo the approximate cumulative distribution (ACD)
+\item{acdx}{a named logical vector of length nvars indicating which continuous
+variables should undergo the approximate cumulative distribution (ACD)
 transformation. May be ordered differently than the columns of \code{x}.}
 }
 \value{

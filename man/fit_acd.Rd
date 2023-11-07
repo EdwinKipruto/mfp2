@@ -2,7 +2,7 @@
 % Please edit documentation in R/acd.R
 \name{fit_acd}
 \alias{fit_acd}
-\title{Function to estimate Approximate cumulative distribution (ACD)}
+\title{Function to estimate approximate cumulative distribution (ACD)}
 \usage{
 fit_acd(x, powers = NULL, shift = 0, scale = 1)
 }
@@ -10,7 +10,7 @@ fit_acd(x, powers = NULL, shift = 0, scale = 1)
 \item{x}{a numeric vector.}
 
 \item{powers}{a vector of allowed FP powers. The default value is \code{NULL},
-meaning that the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
+meaning that the set S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
 
 \item{shift}{a numeric that is used to shift the values of \code{x} to positive
 values. The default value is 0, meaning no shifting is conducted.
@@ -33,7 +33,9 @@ A list is returned with components
 }
 }
 \description{
-Fits acd transformation as outlined in Royston and Sauerbrei (2016).
+Fits ACD transformation as outlined in Royston (2014). The ACD transformation
+smoothly maps the observed distribution of a continuous covariate x onto one scale,
+namely, that of an approximate uniform distribution on the interval (0, 1).
 }
 \details{
 Briefly, the estimation works as follows. First, the input data are shifted
@@ -47,6 +49,14 @@ provides the best fitting model among all possible FP1 models.
 The ACD transformation is then given as
 \deqn{acd(x) = \Phi(\hat{z}),}
 where the fitted values of the estimated model are used.
+If the relationship between a response Y and acd(x) is linear,
+say, \eqn{E(Y) = \beta_0 + \beta_1 acd(x)}, the relationship between Y
+and x is nonlinear and is typically sigmoid in shape.
+The parameters \eqn{\beta_0} and \eqn{\beta_0 + \beta_1} in such a model are
+interpreted as the expected values of Y at the minimum and maximum of x,
+that is, at acd(x) = 0 and 1, respectively.
+The parameter \eqn{\beta_1} represents the range of predictions of \eqn{E(Y)}
+across the whole observed distribution of x (Royston 2014).
 }
 \examples{
 
@@ -57,7 +67,11 @@ fit_acd(x, y)
 
 }
 \references{
-Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
+Royston, P. and Sauerbrei, W. (2016). \emph{mfpa: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}
+
+Royston, P. (2014). \emph{A smooth covariate rank transformation for use in
+regression models with a sigmoid dose–response function. The Stata Journal,
+14(2), 329-341}.
 }

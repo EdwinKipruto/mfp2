@@ -2,7 +2,7 @@
 % Please edit documentation in R/acd.R
 \name{apply_acd}
 \alias{apply_acd}
-\title{Function to apply Approximate cumulative distribution (ACD)}
+\title{Function to apply Approximate Cumulative Distribution (ACD)}
 \usage{
 apply_acd(x, beta0, beta1, power, shift, scale, ...)
 }
@@ -26,7 +26,8 @@ positive values.}
 The transformed input vector \code{x}.
 }
 \description{
-Apply acd transformation as outlined in Royston and Sauerbrei (2016).
-Designed to work with the output of \code{\link[=fit_acd]{fit_acd()}}, see the corresponding
+Applies the acd transformation as outlined in Royston (2014) and Royston and
+Sauerbrei (2016).
+Designed to work with the output of \code{\link[=fit_acd]{fit_acd()}}, Please refer to the corresponding
 documentation for more details.
 }

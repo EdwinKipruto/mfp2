@@ -18,7 +18,7 @@ header-includes:
 - \usepackage{setspace}
 - \doublespacing
 vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
-  %\\VignetteEncoding{UTF-8}   %\\VignetteEngine{knitr::knitr}\n"
+  %\\VignetteEncoding{UTF-8}   %\\VignetteEngine{knitr::rmarkdown}\n"
 ---
 
 

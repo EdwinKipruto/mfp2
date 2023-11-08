@@ -10,7 +10,7 @@ Authors@R: c(
   person("Willi", "Sauerbrei", role = c("aut"), email = "wilhelm.sauerbrei@uniklinik-freiburg.de")
   )
 Depends: 
-  R (>= 4.3.0)
+  R (>= 4.2.0)
 Imports: 
   ggplot2 (>= 3.4.0),
   stats,

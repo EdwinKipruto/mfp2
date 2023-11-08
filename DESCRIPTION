@@ -2,7 +2,7 @@ Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models and Extensions
 Version: 0.2.9001
-Date: 2023-09-13
+Date: 2023-11-09
 Authors@R: c(
   person("Edwin", "Kipruto", role = c("aut", "cre"), email = "edwin.kipruto@uniklinik-freiburg.de"),
   person("Michael", "Kammer", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"),
@@ -10,9 +10,9 @@ Authors@R: c(
   person("Willi", "Sauerbrei", role = c("aut"), email = "wilhelm.sauerbrei@uniklinik-freiburg.de")
   )
 Depends: 
-  R (>= 3.6.0)
+  R (>= 4.3.0)
 Imports: 
-  ggplot2 (>= 3.3.3),
+  ggplot2 (>= 3.4.4),
   stats,
   survival,
   utils
@@ -27,7 +27,7 @@ Description: Algorithm to select variables and functional forms through
   fractional polynomials in regression models (GLMs, Cox). This package also
   implements various extensions of the original algorithm (sigmoid functional 
   forms) and provides estimation and visualisation of non-linear effects. 
-  A key reference is the book Royston, P. and Sauerbrei, W., 2008. 
+  A key reference is the book by Royston and Sauerbrei, 2008. 
   Multivariable Model - Building: A Pragmatic Approach to Regression Analysis 
   based on Fractional Polynomials for Modelling Continuous Variables. 
   John Wiley & Sons.

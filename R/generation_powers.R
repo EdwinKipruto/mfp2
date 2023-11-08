@@ -1,9 +1,10 @@
 #' Function that generates a matrix of FP powers for any degree
 #'
-#' @param degree The degree of fractional polynomial; degree = 1 is FP1 and
-#' returns 8 powers; degree 2 is FP2 and returns 36 pairs of powers; degree 3 is
-#' FP3 and returns 120 triples of powers etc. If the ACD transformation is used,
-#' this degree is assumed to be 2. #'
+#' @param degree The degree of fractional polynomial. For example,
+#' degree = 1 is FP1 and returns 8 powers; degree 2 is FP2 and 
+#' returns 36 pairs of powers; degree 3 is FP3 and returns 120 
+#' triples of powers, and so on. If the ACD transformation is used,
+#' this degree is assumed to be 2.
 #' @param powers the set of allowed powers for the fractional polynomials. 
 #' Default is `NULL` and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.
 #' 
@@ -28,6 +29,7 @@
 #' powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
 #' generate_powers_fp(degree = 2, powers = powx)
 #' generate_powers_acd(degree = 2, powers = powx)
+#' 
 #' @return 
 #' A matrix of powers with degree columns and rows depending on the `degree`.
 #' For ACD powers always a matrix with two columns. For normal fps each row
@@ -40,15 +42,19 @@ generate_powers_fp <- function(degree = NULL,
   if (is.null(degree)) {
     degree <- 2
   }
+  
   if (is.null(powers)) {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   
-  if (degree == 0)
+  if (degree == 0) {
     return(matrix(1, nrow = 1, ncol = 1))
+  }
+  
    # combination below does not work if x is of length 1
-     if (length(powers) == 1)
+     if (length(powers) == 1){
     return(matrix(powers, nrow = 1, ncol = 1))
+    }
   
   # using replacement because powers may be repeated e.g. (0,0) or (1,1)
   generate_combinations_with_replacement(powers, degree)
@@ -102,7 +108,7 @@ generate_combinations_with_replacement <- function(x,
     warning("i FP degree higher than 5, the MFP algorithm may take a while to do model selection.")
   
   # generate all possible pairs
-  pairs = expand.grid(rep(list(x), k))
+  pairs <- expand.grid(rep(list(x), k))
   
   # and remove duplicates
   # reverse column order to conform with ordering of arrangements::combinations

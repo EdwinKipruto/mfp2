@@ -27,9 +27,9 @@ necessary. Data are assumed to be shifted and scaled.}
 
 \item{xi}{a character string indicating the name of the current variable
 of interest, for which the best fractional polynomial transformation is
-to be found in the current step.}
+to be estimated in the current step.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be kept
 in the model.}
 
 \item{degree}{integer > 0 giving the degree for the FP transformation.}

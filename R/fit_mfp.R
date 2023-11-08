@@ -45,7 +45,7 @@
 #' transformation.
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit. See [survival::coxph()]
-#' for details. 
+#' or [stats::glm()] for details. 
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @section Algorithm: 
@@ -134,6 +134,18 @@ fit_mfp <- function(x,
   
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
+  
+  # Assert repeated powers of 1 is not supported. The program will fail when
+  # degree is 1 in find_best_fpm_step() due to setdiff(v, c(1))
+  diff_one <- unlist(lapply(powers, function(v) all(c(v%in%1)) && length(v)!=1))
+  if (any(diff_one)) {
+    dfx <- df[diff_one]
+    if (any(dfx>1))
+      stop(" The powers of some variables are repeated and all equal to 1. Set df for those 
+           variables to 1 or change the powers.\n",
+           sprintf("i This applies to the following variables: %s.", 
+                   paste0(names(dfx>1), collapse = ", ")), call. = FALSE)
+  }
   
   # force variables into the model by setting p-value to 1
   if (!is.null(keep)) {

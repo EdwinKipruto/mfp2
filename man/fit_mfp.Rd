@@ -91,7 +91,7 @@ transformation.}
 \item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
 
 \item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
-for details.}
+or \code{\link[stats:glm]{stats::glm()}} for details.}
 
 \item{verbose}{a logical; run in verbose mode.}
 }

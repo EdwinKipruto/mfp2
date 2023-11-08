@@ -13,7 +13,7 @@ necessary. Data are assumed to be shifted and scaled.}
 
 \item{xi}{a character string indicating the name of the current variable
 of interest, for which the best fractional polynomial transformation is
-to be found in the current step.}
+to be estimated in the current step.}
 
 \item{y}{a vector for the response variable or a \code{Surv} object.}
 

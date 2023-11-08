@@ -3,7 +3,7 @@
 #' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
 #' between `x` and an outcome variable `y` using the approximate cumulative 
-#' distribution (ACD) transformation proposed by Royston (2016).
+#' distribution (ACD) transformation proposed by Royston (2014).
 #' This function provides two interfaces for input data: one for inputting 
 #' data matrix `x` and  outcome vector `y` directly and the other for using a
 #' `formula` object together with a data.frame `data`. Both interfaces are
@@ -13,11 +13,13 @@
 #' 
 #' In the following we denote fractional polynomials for a variable \eqn{x} by 
 #' increasing complexity as either FP1 or FP2. In this example, 
-#' \eqn{FP2(p1, p2)} is the most flexible FP transformation where 
-#' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
-#' The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
-#' of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
-#' 0 indicates the natural logarithm. The best FP2 is then estimated by a 
+#' \eqn{FP2(p1, p2)} for \eqn{p1\neq p2} is the most flexible FP transformation,
+#' where \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
+#' When \eqn{p1 = p2}(repeated powers), the FP2 model is given by 
+#' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p1}log(x).}
+#' The powers \eqn{p1} and \eqn{p2} are usually chosen from a predefined set
+#' of powers \eqn{S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}} where the power
+#' of 0 indicates the natural logarithm. The best FP2 is then estimated by using a 
 #' closed testing procedure that seeks the best combination from all 36 pairs of
 #' powers \eqn{(p1, p2)}. Functions that only involve a single power of
 #' the variable are denoted as FP1, i.e. 
@@ -27,8 +29,8 @@
 #' @section Details on `family` option:
 #'
 #' `mfp2()` supports the family object as used by [stats::glm()]. The built in
-#' families are specified via a character string. `mfp2(..., family="binomial")` 
-#' fits a logistic regression model, while `mfp2(..., family="gaussian")`
+#' families are specified via a character string. `mfp2(..., family = "binomial")` 
+#' fits a logistic regression model, while `mfp2(..., family = "gaussian")`
 #' fits a linear regression (ordinary least squares) model.
 #'
 #' For Cox models, the response should preferably be a `Surv` object,
@@ -68,30 +70,32 @@
 #' So in brief: shifting is required to make input values positive, scaling
 #' helps to bring the values to a reasonable range. Both operations are 
 #' conducted before estimating the FP powers for an input variable. 
-#' Centering, however, is done after estimating the FP functions each variable.
+#' Centering, however, is done after estimating the FP functions for each 
+#' variable.
 #' Centering before estimating the FP powers may result in different powers and
 #' should be avoided. Also see [transform_vector_fp()] for some more details.
 #' 
 #' @section Details on the `subset` argument: 
-#' Note that subsetting occurs after data pre-processing, but before model
-#' selection and fit. In detail, when the option `subset` is used and scale, 
-#' shift or centering values are to be estimated, then `mfp2()` first estimates
-#' these using the full dataset (no subsetting), then applies subsetting, then 
-#' proceeds to do model selection and fit on the subset of the data specified. 
+#' Note that subsetting occurs after data pre-processing (shifting and scaling),
+#' but before model selection and fitting. In detail, when the option `subset` is 
+#' used and scale, shift or centering values are to be estimated, then `mfp2()` 
+#' first estimates these parameters using the full dataset (no subsetting). 
+#' It then conduct subsetting before proceeding to perform model selection and 
+#' fitting on the specified subset of the data. 
 #' 
 #' Therefore, subsetting in `mfp2()` is not equivalent to subsetting the data
-#' before passing it to `mfp2()`, and thus cannot be used to implement e.g. 
-#' cross-validation or to remove `NA`. This should be done by the caller 
+#' before passing it to `mfp2()`, and thus cannot be used to implement, for example, 
+#' cross-validation or to remove `NA`. These tasks should be done by the caller 
 #' beforehand. However, it does allow to use the same data pre-processing 
-#' for different subsets of the data. An example usecase is when separate
+#' for different subsets of the data. An example use case is when separate
 #' models are to be estimated for women and men in the dataset, but a common
 #' data pre-processing should be applied. In this case the `subset` option 
-#' can be used to restrict model selection to either women or men, but share
-#' data processing between the two models. 
+#' can be used to restrict model selection to either women or men, but the
+#' data processing (e.g. shifting factors) will be shared between the two models. 
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' 
-#' The approximate cumulative distribution (ACD) transformation (Royston 2014a) 
+#' The approximate cumulative distribution (ACD) transformation (Royston 2014) 
 #' converts each predictor, \eqn{x}, smoothly to an approximation, \eqn{acd(x)}, 
 #' of its empirical cumulative distribution function. 
 #' This is done by smoothing a probit transformation of 
@@ -99,20 +103,20 @@
 #' as a covariate. This has the advantage of providing sigmoid curves, something
 #' that regular FP functions cannot achieve. 
 #' Details of the precise definition and some possible uses of the ACD 
-#' transformation in a univariate context are given by Royston (2014a). 
-#' Royston (2014b) describes how one could go further and replace FP2
+#' transformation in a univariate context are given by Royston (2014). 
+#' Royston and Sauerbrei (2016) describes how one could go further and replace FP2
 #' functions with a pair of FP1 functions, one in \eqn{x} and the other in 
 #' \eqn{acd(x)}.
 #' 
 #' This alternative class of four-parameter functions provides about
 #' the same flexibility as the standard FP2 family, but the ACD component offers
 #' the additional possibility of sigmoid functions.
-#' Royston (2014b) discusses how the extended the class of functions known as
+#' Royston (2014) discusses how the extended class of functions known as
 #' \eqn{FP1(p1, p2)}, namely
 #' \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
 #' can be fitted optimally by seeking the best combination of all 64 pairs of
 #' powers (p1, p2). The optimisation is invoked by use of the `acdx` parameter.
-#' Royston (2014b) also described simplification of the chosen function through
+#' Royston (2014) also described simplification of the chosen function through
 #' model reduction by applying significance testing to six sub-families of
 #' functions,M1-M6, giving models M1 (most complex) through M6 (null):
 #' \itemize{
@@ -158,34 +162,39 @@
 #' Both interfaces are equivalent in terms of possible fitted models, only the
 #' details of specification differ. In the standard interface all details 
 #' regarding FP-transformations are given as vectors. In the formula interface
-#' all details are specified using special `fp` terms. These support the 
-#' specification of degrees of freedom (`df`), confidence level for 
-#' variable selection (`select`), confidence level for functional form 
+#' all details are specified using special `fp()` function. These support the 
+#' specification of degrees of freedom (`df`), nominal significance level for 
+#' variable selection (`select`), nominal significance level for functional form 
 #' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
 #' centering (`center`) and the ACD-transformation (`acd`). Values specified 
-#' by these functions override the values specified as defaults and passed to 
+#' through `fp()` function override the values specified as defaults and passed to 
 #' the `mfp2()` function. 
 #' 
 #' The formula may also contain `strata` terms to fit stratified Cox models, or
 #' an `offset` term to specify a model offset.
 #' 
-#' Note that for a formula using `.`, such as `y ~ .` the function may not
-#' fit a linear model, but may also do selection of variable and functional 
-#' forms using FP-transformations, depending on the default settings of `df`, 
+#' Note that for a formula using `.`, such as `y ~ .` the `mfp2()` function may not
+#' fit a linear model, but may perform variable and functional form selection 
+#' using FP-transformations, depending on the default settings of `df`, 
 #' `select` and `alpha` passed as arguments to `mfp2()`. 
-#' For example, using `y ~ .` with default settings for all other arguments
-#' means that `mfp2()` will apply FP transformation with 4 df to all 
-#' continuous variables and use alpha equal to 0.05 to select functional forms, 
-#' and use the selection algorithm with significance level 0.05 for all 
-#' variables. 
+#' For example, using `y ~ .` with default settings means that `mfp2()` will 
+#' apply FP transformation with 4 df to all continuous variables and use alpha
+#' equal to 0.05 to select functional forms, along with the selection algorithm
+#' with a significance level of 0.05 for all variables. 
 #' 
 #' @section Compatibility with `mfp` package: 
 #' `mfp2` is an extension of the `mfp` package and can be used to reproduce
-#' the results from a model fitted by `mfp`. Since both packages provide
-#' an implementation of the MFP algorithm, both packages use functions of the 
-#' same name. Thus, if you load both packages by a call to `library` there will
-#' be namespace conflicts and only the functions of the package loaded later
-#' will be working properly. 
+#' the results from a model fitted by `mfp`. Since both packages implement the 
+#' MFP algorithm, they use functions with the same names (e.g `fp()`). Therefore,
+#' if you load both packages using a call to `library`, there will
+#' be namespace conflicts and only the functions from the package loaded last
+#' will work properly. 
+#' 
+#' @section Convergence and Troubleshooting: 
+#' Typically, `mfp2` requires two to four cycles to achieve convergence. Lack of 
+#' convergence involves oscillation between two or more models and is extremely
+#' rare. If the model does not converge, you can try changing the nominal 
+#' significance levels for variable (`select`) or function selection (`alpha`).
 #'
 #' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
 #' nobs x nvars. Each row is an observation vector.
@@ -205,7 +214,8 @@
 #' predictor. Useful for the poisson family (e.g. log of exposure time).
 #' Default is `NULL` which assigns an offset  of 0 to each observation.
 #' If supplied, then values must also be supplied to the `predict()` function.
-#' @param cycles an integer, maximum number of iteration cycles. Default is 5.
+#' @param cycles an integer, specifying the maximum number of iteration cycles. 
+#' Default is 5.
 #' @param scale a numeric vector of length nvars or single numeric specifying 
 #' scaling factors. If a single numeric, then the value will be replicated as
 #' necessary. The formula interface `mfp2.formula` only supports single numeric 
@@ -235,18 +245,18 @@
 #' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
 #' `df = default`. 
 #' @param center a logical determining whether variables are centered before 
-#' model fit. The default `TRUE` implies mean centering, except for binary 
-#' covariates, where the covariate is centered using the lower of the two 
+#' final model fitting. The default `TRUE` implies mean centering, except for
+#' binary covariates, where the covariate is centered using the lower of the two 
 #' distinct values of the covariate. See Details section below.
-#' @param subset subset	an optional vector specifying a subset of observations
+#' @param subset an optional vector specifying a subset of observations
 #' to be used in the fitting process. Default is `NULL` and all observations are 
 #' used. See Details below. 
 #' @param family a character string representing a `glm()` family object as well
-#' as Cox models. For more information, see Details section below.
-#' @param criterion a character string defining the criterion used to select 
+#' as Cox models. For more information, see details section below.
+#' @param criterion a character string specifying the criterion used to select 
 #' variables and FP models of different degrees. 
 #' Default is to use p-values in which case the user can specify
-#' the significance level (or use default level of 0.05) for variable and
+#' the nominal significance level (or use default level of 0.05) for variable and
 #' functional form selection (see `select` and `alpha` parameters below).
 #' If the user specifies the BIC (`bic`) or AIC (`aic`) criteria the program  
 #' ignores the nominal significance levels and selects variables and functional 
@@ -267,7 +277,7 @@
 #' input to set a default value, individual values can be set using `fp` terms
 #' in the `formula` input. The default nominal significance level is 0.05 for all 
 #' variables. 
-#' @param keep a character vector that with names of variables to be kept 
+#' @param keep a character vector with names of variables to be kept 
 #' in the model. In case that `criterion = "pvalue"`, this is equivalent to
 #' setting the selection level for the variables in `keep` to 1. 
 #' However, this option also keeps the specified variables in the model when 
@@ -388,16 +398,20 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' 
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
 #' \emph{Multivariable regression model building by using fractional 
 #' polynomials: Description of SAS, STATA and R programs. 
 #' Comput Stat Data Anal, 50(12): 3464-85.}\cr
+#' 
 #' Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 #' regression models with a sigmoid dose-response function. 
 #' Stata Journal 14(2): 329-341.}\cr
+#' 
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}\cr
+#' 
 #' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
 #' and diagnostic models: transformation of the predictors by using fractional 
 #' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
@@ -451,13 +465,13 @@ mfp2.default <- function(x,
   # assertions -----------------------------------------------------------------
   # assert that x is a matrix
   if (!is.matrix(x))
-    stop("! x must be a matrix", call. = F)
+    stop("! x must be a matrix", call. = FALSE)
   
   # assert that x must not contain character values
   if (any(is.character(x)))
     stop("! x contains characters values.\n",
          "i Please convert categorical variables to dummy variables.", 
-         call. = F)
+         call. = FALSE)
   
   # check dimension of x
   np <- dim(x)
@@ -512,38 +526,39 @@ mfp2.default <- function(x,
       if (length(offset) != nobs) {
           stop("! The number of observations (rows in x) and offset must match.\n", 
                sprintf("i The number of rows in x is %d, but the number of elements in offset is %d.", 
-                       nobs, length(offset)))
+                       nobs, length(offset)), call. = FALSE)
       }
   }
   
   # assert that alpha must be between 0 and 1
   if (any(alpha > 1) || any(alpha < 0)) {
-      stop("! alpha must not be < 0 or > 1.")
+      stop("! alpha must not be < 0 or > 1.", call. = FALSE)
   }
   
   # assert length of alpha 
   if (length(alpha) != 1 && length(alpha) != nvars) {
       stop("! alpha must be a single number, or the number of variables (columns in x) and alpha must match.\n", 
            sprintf("i The number of variables in x is %d, but the number of elements in alpha is %d.", 
-                   nvars, length(alpha)))
+                   nvars, length(alpha)), call. = FALSE)
   }
   
   # assert that select must be between 0 and 1
   if (any(select > 1) || any(select < 0)) {
-      stop("! select must not be < 0 or > 1.")
+      stop("! select must not be < 0 or > 1.", call. = FALSE)
   }
   # assert length of select 
   if (length(select) != 1 && length(select) != nvars) {
       stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
            sprintf("i The number of variables in x is %d, but the number of elements in select is %d.", 
-                   nvars, length(select)))
+                   nvars, length(select)), call. = FALSE)
   }
   
   # assert that keep is a subset of x
   if (!is.null(keep)) {
       if (!all(keep %in% vnames)) {
           warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
-                  "i mfp2() continues with the intersection of keep and colnames(x).")
+                  "i mfp2() continues with the intersection of keep and colnames(x).", 
+                  call. = FALSE)
       }
   }
   
@@ -552,7 +567,7 @@ mfp2.default <- function(x,
       if (length(shift) != 1 && length(shift) != nvars) {
           stop("! shift must either be NULL, a single number, or the number of variables (columns in x) and shift must match.\n", 
                sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
-                       nvars, length(shift)))
+                       nvars, length(shift)), call. = FALSE)
       }
   }
   
@@ -561,7 +576,7 @@ mfp2.default <- function(x,
       if (length(scale) != 1 && length(scale) != nvars) {
           stop("! scale must either be NULL, a single number, or the number of variables (columns in x) and scale must match.\n", 
                sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
-                       nvars, length(scale)))
+                       nvars, length(scale)), call. = FALSE)
       }
   }
   
@@ -570,7 +585,7 @@ mfp2.default <- function(x,
       if (length(center) != nvars) {
           stop("! center must either be of length 1, or the number of variables (columns in x) and center must match.\n", 
                sprintf("i The number of variables in x is %d, but the number of elements in center is %d.", 
-                       nvars, length(center)))
+                       nvars, length(center)), call. = FALSE)
       }
   }
   
@@ -578,14 +593,16 @@ mfp2.default <- function(x,
   if (!is.null(acdx)) {
       if (!all(acdx %in% vnames)) {
           warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
-                  "i mfp2() continues with the intersection of acdx and colnames(x).")
+                  "i mfp2() continues with the intersection of acdx and colnames(x).", 
+                  call. = FALSE
+                  )
       }
   }
   
   # assert df is positive
   if (any(df <= 0)) {
       stop("! df must not be 0 or negative.\n", 
-           "i All df must be either 1 (linear) or 2m, where m is the degree of FP.")
+           "i All df must be either 1 (linear) or 2m, where m is the degree of FP.", call. = FALSE)
   }
   
   if (length(df) == 1) {
@@ -593,14 +610,14 @@ mfp2.default <- function(x,
       if (df != 1 && df %% 2 != 0) {
           stop("! Any df > 1 must not be odd.\n", 
                sprintf("i df = %d was passed, but df must be either 1 (linear) or 2m, where m is the degree of FP.", 
-                       df))
+                       df), call. = FALSE)
       } 
   } else {
       # assert length of df
       if (length(df) != nvars) {
           stop("! df must be a single number, or the number of variables (columns in x) and df must match.\n", 
                sprintf("i The number of variables in x is %d, but the number of elements in df is %d.", 
-                       nvars, length(df)))
+                       nvars, length(df)), call. = FALSE)
       }
       # assert all df are 1 or even 
       if (any(df != 1 & df %% 2 != 0)) {
@@ -667,7 +684,7 @@ mfp2.default <- function(x,
   # set defaults ---------------------------------------------------------------
   # Assert that powers must be NULL or list when provided
   if (!is.null(powers) && !is.list(powers))
-    stop("Powers must be a list")
+    stop("Powers must be a list", call. = FALSE)
   
   # set defaults ---------------------------------------------------------------
     # default FP powers proposed by Royston and Altman (1994)
@@ -738,7 +755,7 @@ mfp2.default <- function(x,
   keep <- intersect(keep, vnames)
   # convert acdx to logical vector
   if (is.null(acdx)) {
-      acdx <- rep(F, nvars)
+      acdx <- rep(FALSE, nvars)
   } else {
       # Get rid of duplicates names
       acdx <- unique(acdx)
@@ -768,6 +785,7 @@ mfp2.default <- function(x,
     }
     df.list <- df
   }
+  
 
   # data preparation -----------------------------------------------------------
   # shift and scale 
@@ -861,7 +879,7 @@ mfp2.formula <- function(formula,
   # assert that data has column names
   if (is.null(colnames(data)))
     stop("! data must have column names.\n",
-         "i Please set column names.")
+         "i Please set column names.", call. = FALSE)
   
   # assert that a formula must be provided
   if (missing(formula)) 
@@ -910,7 +928,8 @@ mfp2.formula <- function(formula,
   # check whether no predictor exist in the model i.e y~1: 
   labels <-  attr(terms(mf), "term.labels")
   if (length(labels)==0)
-    stop("No predictors are provided for model fitting.\n At least one predictor is required", call. = FALSE)
+    stop("No predictors are provided for model fitting.\n At least one predictor is required",
+         call. = FALSE)
   
   # stratification for Cox models ----------------------------------------------
 

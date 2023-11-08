@@ -15,7 +15,7 @@ print_mfp_ic_step(xi, fit, criterion)
 \arguments{
 \item{xi}{a character string indicating the name of the current variable
 of interest, for which the best fractional polynomial transformation is
-to be found in the current step.}
+to be estimated in the current step.}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}

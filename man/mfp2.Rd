@@ -82,7 +82,8 @@ predictor. Useful for the poisson family (e.g. log of exposure time).
 Default is \code{NULL} which assigns an offset  of 0 to each observation.
 If supplied, then values must also be supplied to the \code{predict()} function.}
 
-\item{cycles}{an integer, maximum number of iteration cycles. Default is 5.}
+\item{cycles}{an integer, specifying the maximum number of iteration cycles.
+Default is 5.}
 
 \item{scale}{a numeric vector of length nvars or single numeric specifying
 scaling factors. If a single numeric, then the value will be replicated as
@@ -116,21 +117,21 @@ assigned \code{df = min(2, default)} and >= 6 distinct values are assigned
 \code{df = default}.}
 
 \item{center}{a logical determining whether variables are centered before
-model fit. The default \code{TRUE} implies mean centering, except for binary
-covariates, where the covariate is centered using the lower of the two
+final model fitting. The default \code{TRUE} implies mean centering, except for
+binary covariates, where the covariate is centered using the lower of the two
 distinct values of the covariate. See Details section below.}
 
-\item{subset}{subset    an optional vector specifying a subset of observations
+\item{subset}{an optional vector specifying a subset of observations
 to be used in the fitting process. Default is \code{NULL} and all observations are
 used. See Details below.}
 
 \item{family}{a character string representing a \code{glm()} family object as well
-as Cox models. For more information, see Details section below.}
+as Cox models. For more information, see details section below.}
 
-\item{criterion}{a character string defining the criterion used to select
+\item{criterion}{a character string specifying the criterion used to select
 variables and FP models of different degrees.
 Default is to use p-values in which case the user can specify
-the significance level (or use default level of 0.05) for variable and
+the nominal significance level (or use default level of 0.05) for variable and
 functional form selection (see \code{select} and \code{alpha} parameters below).
 If the user specifies the BIC (\code{bic}) or AIC (\code{aic}) criteria the program
 ignores the nominal significance levels and selects variables and functional
@@ -154,7 +155,7 @@ input to set a default value, individual values can be set using \code{fp} terms
 in the \code{formula} input. The default nominal significance level is 0.05 for all
 variables.}
 
-\item{keep}{a character vector that with names of variables to be kept
+\item{keep}{a character vector with names of variables to be kept
 in the model. In case that \code{criterion = "pvalue"}, this is equivalent to
 setting the selection level for the variables in \code{keep} to 1.
 However, this option also keeps the specified variables in the model when
@@ -256,7 +257,7 @@ The \code{mfp2} object may contain further information depending on family.
 Selects the multivariable fractional polynomial (FP) model that best predicts
 the outcome variable. It also has the ability to model a sigmoid relationship
 between \code{x} and an outcome variable \code{y} using the approximate cumulative
-distribution (ACD) transformation proposed by Royston (2016).
+distribution (ACD) transformation proposed by Royston (2014).
 This function provides two interfaces for input data: one for inputting
 data matrix \code{x} and  outcome vector \code{y} directly and the other for using a
 \code{formula} object together with a data.frame \code{data}. Both interfaces are
@@ -274,11 +275,13 @@ equivalent in terms of functionality.
 
 In the following we denote fractional polynomials for a variable \eqn{x} by
 increasing complexity as either FP1 or FP2. In this example,
-\eqn{FP2(p1, p2)} is the most flexible FP transformation where
-\deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
-The (fractional) powers \eqn{p1} and \eqn{p2} are taken from a set
-of allowed powers, usually {-2, -1, -0.5, 0, 0.5, 1, 2, 3} where the power
-0 indicates the natural logarithm. The best FP2 is then estimated by a
+\eqn{FP2(p1, p2)} for \eqn{p1\neq p2} is the most flexible FP transformation,
+where \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
+When \eqn{p1 = p2}(repeated powers), the FP2 model is given by
+\deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p1}log(x).}
+The powers \eqn{p1} and \eqn{p2} are usually chosen from a predefined set
+of powers \eqn{S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}} where the power
+of 0 indicates the natural logarithm. The best FP2 is then estimated by using a
 closed testing procedure that seeks the best combination from all 36 pairs of
 powers \eqn{(p1, p2)}. Functions that only involve a single power of
 the variable are denoted as FP1, i.e.
@@ -290,8 +293,8 @@ For details see e.g. Sauerbrei et al (2006).
 
 
 \code{mfp2()} supports the family object as used by \code{\link[stats:glm]{stats::glm()}}. The built in
-families are specified via a character string. \code{mfp2(..., family="binomial")}
-fits a logistic regression model, while \code{mfp2(..., family="gaussian")}
+families are specified via a character string. \code{mfp2(..., family = "binomial")}
+fits a logistic regression model, while \code{mfp2(..., family = "gaussian")}
 fits a linear regression (ordinary least squares) model.
 
 For Cox models, the response should preferably be a \code{Surv} object,
@@ -333,34 +336,36 @@ model retains a meaningful interpretation.
 So in brief: shifting is required to make input values positive, scaling
 helps to bring the values to a reasonable range. Both operations are
 conducted before estimating the FP powers for an input variable.
-Centering, however, is done after estimating the FP functions each variable.
+Centering, however, is done after estimating the FP functions for each
+variable.
 Centering before estimating the FP powers may result in different powers and
 should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
 }
 
 \section{Details on the \code{subset} argument}{
 
-Note that subsetting occurs after data pre-processing, but before model
-selection and fit. In detail, when the option \code{subset} is used and scale,
-shift or centering values are to be estimated, then \code{mfp2()} first estimates
-these using the full dataset (no subsetting), then applies subsetting, then
-proceeds to do model selection and fit on the subset of the data specified.
+Note that subsetting occurs after data pre-processing (shifting and scaling),
+but before model selection and fitting. In detail, when the option \code{subset} is
+used and scale, shift or centering values are to be estimated, then \code{mfp2()}
+first estimates these parameters using the full dataset (no subsetting).
+It then conduct subsetting before proceeding to perform model selection and
+fitting on the specified subset of the data.
 
 Therefore, subsetting in \code{mfp2()} is not equivalent to subsetting the data
-before passing it to \code{mfp2()}, and thus cannot be used to implement e.g.
-cross-validation or to remove \code{NA}. This should be done by the caller
+before passing it to \code{mfp2()}, and thus cannot be used to implement, for example,
+cross-validation or to remove \code{NA}. These tasks should be done by the caller
 beforehand. However, it does allow to use the same data pre-processing
-for different subsets of the data. An example usecase is when separate
+for different subsets of the data. An example use case is when separate
 models are to be estimated for women and men in the dataset, but a common
 data pre-processing should be applied. In this case the \code{subset} option
-can be used to restrict model selection to either women or men, but share
-data processing between the two models.
+can be used to restrict model selection to either women or men, but the
+data processing (e.g. shifting factors) will be shared between the two models.
 }
 
 \section{Details on  approximate cumulative distribution transformation}{
 
 
-The approximate cumulative distribution (ACD) transformation (Royston 2014a)
+The approximate cumulative distribution (ACD) transformation (Royston 2014)
 converts each predictor, \eqn{x}, smoothly to an approximation, \eqn{acd(x)},
 of its empirical cumulative distribution function.
 This is done by smoothing a probit transformation of
@@ -368,20 +373,20 @@ the scaled ranks of \eqn{x}. \eqn{acd(x)} could be used instead of \eqn{x}
 as a covariate. This has the advantage of providing sigmoid curves, something
 that regular FP functions cannot achieve.
 Details of the precise definition and some possible uses of the ACD
-transformation in a univariate context are given by Royston (2014a).
-Royston (2014b) describes how one could go further and replace FP2
+transformation in a univariate context are given by Royston (2014).
+Royston and Sauerbrei (2016) describes how one could go further and replace FP2
 functions with a pair of FP1 functions, one in \eqn{x} and the other in
 \eqn{acd(x)}.
 
 This alternative class of four-parameter functions provides about
 the same flexibility as the standard FP2 family, but the ACD component offers
 the additional possibility of sigmoid functions.
-Royston (2014b) discusses how the extended the class of functions known as
+Royston (2014) discusses how the extended class of functions known as
 \eqn{FP1(p1, p2)}, namely
 \deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
 can be fitted optimally by seeking the best combination of all 64 pairs of
 powers (p1, p2). The optimisation is invoked by use of the \code{acdx} parameter.
-Royston (2014b) also described simplification of the chosen function through
+Royston (2014) also described simplification of the chosen function through
 model reduction by applying significance testing to six sub-families of
 functions,M1-M6, giving models M1 (most complex) through M6 (null):
 \itemize{
@@ -429,36 +434,43 @@ such as \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{sur
 Both interfaces are equivalent in terms of possible fitted models, only the
 details of specification differ. In the standard interface all details
 regarding FP-transformations are given as vectors. In the formula interface
-all details are specified using special \code{fp} terms. These support the
-specification of degrees of freedom (\code{df}), confidence level for
-variable selection (\code{select}), confidence level for functional form
+all details are specified using special \code{fp()} function. These support the
+specification of degrees of freedom (\code{df}), nominal significance level for
+variable selection (\code{select}), nominal significance level for functional form
 selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
 centering (\code{center}) and the ACD-transformation (\code{acd}). Values specified
-by these functions override the values specified as defaults and passed to
+through \code{fp()} function override the values specified as defaults and passed to
 the \code{mfp2()} function.
 
 The formula may also contain \code{strata} terms to fit stratified Cox models, or
 an \code{offset} term to specify a model offset.
 
-Note that for a formula using \code{.}, such as \code{y ~ .} the function may not
-fit a linear model, but may also do selection of variable and functional
-forms using FP-transformations, depending on the default settings of \code{df},
+Note that for a formula using \code{.}, such as \code{y ~ .} the \code{mfp2()} function may not
+fit a linear model, but may perform variable and functional form selection
+using FP-transformations, depending on the default settings of \code{df},
 \code{select} and \code{alpha} passed as arguments to \code{mfp2()}.
-For example, using \code{y ~ .} with default settings for all other arguments
-means that \code{mfp2()} will apply FP transformation with 4 df to all
-continuous variables and use alpha equal to 0.05 to select functional forms,
-and use the selection algorithm with significance level 0.05 for all
-variables.
+For example, using \code{y ~ .} with default settings means that \code{mfp2()} will
+apply FP transformation with 4 df to all continuous variables and use alpha
+equal to 0.05 to select functional forms, along with the selection algorithm
+with a significance level of 0.05 for all variables.
 }
 
 \section{Compatibility with \code{mfp} package}{
 
 \code{mfp2} is an extension of the \code{mfp} package and can be used to reproduce
-the results from a model fitted by \code{mfp}. Since both packages provide
-an implementation of the MFP algorithm, both packages use functions of the
-same name. Thus, if you load both packages by a call to \code{library} there will
-be namespace conflicts and only the functions of the package loaded later
-will be working properly.
+the results from a model fitted by \code{mfp}. Since both packages implement the
+MFP algorithm, they use functions with the same names (e.g \code{fp()}). Therefore,
+if you load both packages using a call to \code{library}, there will
+be namespace conflicts and only the functions from the package loaded last
+will work properly.
+}
+
+\section{Convergence and Troubleshooting}{
+
+Typically, \code{mfp2} requires two to four cycles to achieve convergence. Lack of
+convergence involves oscillation between two or more models and is extremely
+rare. If the model does not converge, you can try changing the nominal
+significance levels for variable (\code{select}) or function selection (\code{alpha}).
 }
 
 \examples{
@@ -502,16 +514,20 @@ fracplot(fit3)
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}\cr
+
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 \emph{Multivariable regression model building by using fractional
 polynomials: Description of SAS, STATA and R programs.
 Comput Stat Data Anal, 50(12): 3464-85.}\cr
+
 Royston, P. 2014. \emph{A smooth covariate rank transformation for use in
 regression models with a sigmoid dose-response function.
 Stata Journal 14(2): 329-341.}\cr
+
 Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}\cr
+
 Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic
 and diagnostic models: transformation of the predictors by using fractional
 polynomials. J Roy Stat Soc a Sta, 162:71-94.}

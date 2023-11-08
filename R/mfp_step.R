@@ -9,7 +9,7 @@
 #' @param y a vector for the response variable or a `Surv` object.
 #' @param xi a character string indicating the name of the current variable 
 #' of interest, for which the best fractional polynomial transformation is
-#' to be found in the current step. 
+#' to be estimated in the current step. 
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
 #' @param df a numeric vector indicating the maximum degrees of freedom for the 
@@ -24,7 +24,7 @@
 #' for backward elimination of `xi`.
 #' @param alpha a numeric value indicating the significance level
 #' for tests between FP models of different degrees for `xi`. 
-#' @param keep a character vector that with names of variables to be kept 
+#' @param keep a character vector with names of variables to be kept 
 #' in the model. 
 #' @param powers a named list of numeric values that sets the permitted FP 
 #' powers for each covariate.
@@ -155,12 +155,12 @@ find_best_fp_step <- function(x,
     
   # prepare power to return
   # remove trailing NAs, unless ACD is used
-  power_best = as.numeric(fit$power_best)
+  power_best <- as.numeric(fit$power_best)
   
   if (!fit$acd) {
-    power_best = na.omit(power_best)
+    power_best <- na.omit(power_best)
     if (length(power_best) == 0)
-      power_best = NA 
+      power_best <- NA 
   } 
   
   # create names for powers
@@ -229,18 +229,18 @@ find_best_fpm_step <- function(x,
   
   if (degree == 1) {
     # remove linear model for normal data, but keep for acd transformation
+    # powers = numeric(0) if powers = c(1,1)
     powers <- lapply(powers, function(v) setdiff(v, c(1)))
     
   }
     
-  
   # generate FP data for x of interest (xi) and adjustment variables
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 2 * degree,
     powers_current = powers_current, powers = powers, acdx = acdx
   )
   
-  metrics = list()
+  metrics <- list()
   for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
     fit <- fit_model(
@@ -253,7 +253,8 @@ find_best_fpm_step <- function(x,
     # note: this doesn't change WHICH model is the best, since all use the 
     # same additional df, but it may affect further comparison between 
     # different fp models
-    p = sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
+    p <- sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
+    
     # respect acd
     if (acdx[xi])
       p[length(p)] <- sprintf("A(%s)", p[length(p)])

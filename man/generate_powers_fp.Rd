@@ -10,10 +10,11 @@ generate_powers_fp(degree = NULL, powers = NULL)
 generate_powers_acd(degree = NULL, powers = NULL)
 }
 \arguments{
-\item{degree}{The degree of fractional polynomial; degree = 1 is FP1 and
-returns 8 powers; degree 2 is FP2 and returns 36 pairs of powers; degree 3 is
-FP3 and returns 120 triples of powers etc. If the ACD transformation is used,
-this degree is assumed to be 2. #'}
+\item{degree}{The degree of fractional polynomial. For example,
+degree = 1 is FP1 and returns 8 powers; degree 2 is FP2 and
+returns 36 pairs of powers; degree 3 is FP3 and returns 120
+triples of powers, and so on. If the ACD transformation is used,
+this degree is assumed to be 2.}
 
 \item{powers}{the set of allowed powers for the fractional polynomials.
 Default is \code{NULL} and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
@@ -53,4 +54,5 @@ than two are not supported.
 powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
 generate_powers_fp(degree = 2, powers = powx)
 generate_powers_acd(degree = 2, powers = powx)
+
 }

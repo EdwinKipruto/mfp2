@@ -27,13 +27,13 @@ If column names are not provided they are set according to
 for Cox models.}
 
 \item{family}{a character strong specifying glm family to be used, or "cox"
-for Cox models.}
+for Cox models. The default family is set to 'Gaussian'.}
 
 \item{method}{a character string specifying the method for tie handling.
 See \code{\link[survival:coxph]{survival::coxph()}}.}
 
 \item{strata, control, weights, offset, rownames, nocenter}{parameters for Cox
-model. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+or glm. See \code{\link[survival:coxph]{survival::coxph()}} or \code{\link[stats:glm]{stats::glm()}} for details.}
 
 \item{fast}{passed to \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
 

@@ -13,9 +13,9 @@
 #' @param method a character string specifying the method for tie handling. 
 #' See [survival::coxph()].
 #' @param family a character strong specifying glm family to be used, or "cox"
-#' for Cox models.
+#' for Cox models. The default family is set to 'Gaussian'.
 #' @param strata,control,weights,offset,rownames,nocenter parameters for Cox 
-#' model. See [survival::coxph()] for details.
+#' or glm. See [survival::coxph()] or [stats::glm()] for details.
 #' @param fast passed to [fit_glm()] and [fit_cox()].
 #' 
 #'  @return 
@@ -40,15 +40,24 @@ fit_model <- function(x,
                       nocenter = NULL, 
                       fast = TRUE) {
   
-  if (!is.null(dim(x)) && is.null(colnames(x)))
+  # Set column names if not provided
+  if (!is.null(dim(x)) && is.null(colnames(x))){
     colnames(x) <- colnames(x, do.NULL = FALSE)
+  }
   
   if (family == "cox") {
     # cox needs more work especially on how to handle strata
     fit <- fit_cox(
-      x = x, y = y, strata = strata, weights = weights, offset = offset,
-      control = control, method = method, rownames = rownames,
-      nocenter = nocenter, fast = fast
+      x = x, 
+      y = y, 
+      strata = strata, 
+      weights = weights, 
+      offset = offset,
+      control = control, 
+      method = method, 
+      rownames = rownames,
+      nocenter = nocenter, 
+      fast = fast
     )
   } else {
     if (is.character(family)) {
@@ -67,16 +76,17 @@ fit_model <- function(x,
 
 #' Function that fits generalized linear models 
 #'
-#' @param x a matrix of predictors including intercept with nobs observations.
+#' @param x a matrix of predictors with nobs observations.
 #' @param y a vector for the outcome variable.
 #' @param family a family function e.g. `stats::gaussian()`.  
 #' @param weights a numeric vector of length nobs of 'prior weights' to be used 
-#' in the fitting process.
+#' in the fitting process. see [stats::glm()] for details.
 #' @param offset a numeric vector of length nobs of of a priori known component 
 #' to be included in the linear predictor during fitting. 
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
-#' uses the normal fitting routines (used for the final output of `mfp2`). 
+#' uses the normal fitting routines ([stats::glm()]) (used for the final output
+#' of `mfp2`). 
 #' The difference is mainly due to the fact that normal fitting routines have
 #' to handle data.frames, which is a lot slower than using the model matrix
 #' and outcome vectors directly. 
@@ -99,7 +109,7 @@ fit_glm <- function(x,
                     fast = TRUE) {
 
   if (fast) {
-    # add 1s for intercept
+    # add column of 1s for intercept
     xx <- cbind(rep(1, length(y)), x)
     # Note that x can be NULL when fitting a NULL model
     # (using only adjustment variable)
@@ -147,8 +157,8 @@ fit_glm <- function(x,
 #' See [survival::coxph()].
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
-#' `FALSE`uses the normal fitting routines (used for the final output of 
-#' `mfp2`).
+#' `FALSE`uses the normal fitting routines ([survival::coxph()]) (used for
+#'  the final output of `mfp2`).
 #' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
 #' 
 #' @return 
@@ -173,12 +183,20 @@ fit_cox <- function(x,
                     fast = TRUE) {
   
   # Set default for control
-  if (is.null(control)) control <- survival::coxph.control()
-
+  if (is.null(control)) { 
+    control <- survival::coxph.control()
+  }
+  
   if (fast) {
     fit <- survival::coxph.fit(
-      x = x, y = y, strata = strata, weights = weights, offset = offset,
-      control = control, method = method, rownames = rownames, resid = TRUE,
+      x = x, y = y, 
+      strata = strata,
+      weights = weights,
+      offset = offset,
+      control = control, 
+      method = method, 
+      rownames = rownames, 
+      resid = TRUE,
       nocenter = nocenter
     )  
   } else {

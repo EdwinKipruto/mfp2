@@ -52,7 +52,7 @@ data points.}
 }
 \value{
 A list of \code{ggplot2} plot objects, one for each term requested. Can be
-drawn as individual plots of facetted / combined easily using e.g.
+drawn as individual plots or facetted / combined easily using e.g.
 \code{patchwork::wrap_plots} and further customized.
 }
 \description{
@@ -63,11 +63,15 @@ against the selected covariate(s) of interest.
 The confidence limits of the partial linear predictors or contrasts are
 obtained from the variance–covariance matrix of the final fitted model,
 which takes into account the uncertainty in estimating the model parameters
-but not the FP powers.
+but not the FP powers. This can lead to narrow confidence intervals. A simple
+way to obtain more realistic confidence intervals within the FP is by using
+bootstrap, which is not currently implemented. See Royston and Sauerbrei (2008)
+chapter 4.9.2 for guidance on conducting bootstrapping within
+the FP class.
 
 The component-plus-residual, is the partial linear predictor plus residuals,
 where deviance residuals are used in generalized linear regression models,
-while martingale residuals are used in Cox models, as done in Stata program.
+while martingale residuals are used in Cox models, as done in Stata mfp program.
 This kind of plot is only available if \code{type = "terms"}.
 }
 \section{Functions}{

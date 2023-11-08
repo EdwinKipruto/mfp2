@@ -41,10 +41,13 @@ generate_transformations_fp <- function(x,
   
   # save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
+  
   for (i in 1:nfp) {
     fpdt[[i]] <- transform_vector_fp(x = x, power = combs[i, ])
   }
-
+  # to replace for loop
+  #fpdt <- lapply(1:nfp, function(i) transform_vector_fp(x = x, power = combs[i, ]))
+  
   list(
     data = fpdt,
     powers = combs
@@ -62,6 +65,7 @@ generate_transformations_acd <- function(x,
   
   # Save FP transformed data as list
   fpdt <- vector(mode = "list", length = nfp)
+  
   for (i in seq_len(nfp)) {
     fpdt[[i]] <- transform_vector_acd(x = x, power = combs[i, ])$acd
   }

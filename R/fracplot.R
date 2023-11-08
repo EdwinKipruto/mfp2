@@ -115,6 +115,8 @@ fracplot <- function(model,
     return()
   }
   
+  ylab <- "Partial Predictor"
+  
   if (!partial_only) {
     # compute residuals to plot points
     # for glm, deviance residuals are required
@@ -129,6 +131,9 @@ fracplot <- function(model,
     pred_data <- lapply(pred_data, function(v) {
       v$resid <- resid
     v})
+    
+    # y label for the plot
+    ylab <- "Partial Predictor + residuals"
   }
   
   # Preallocate the list for plots
@@ -151,7 +156,7 @@ fracplot <- function(model,
                                paste0(model$fp_powers[[v]], collapse = ", "),
                                ifelse(model$fp_terms[v, "acd"], ":ACD", "")
       )) +
-      ggplot2::xlab(v) +
+      ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw()
     
     if (!partial_only) 

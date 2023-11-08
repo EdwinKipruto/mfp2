@@ -35,7 +35,7 @@
 #' @export
 find_scale_factor <- function(x) {
 
-  n_unique = length(unique(x))
+  n_unique <- length(unique(x))
   
   if (n_unique == 1)
     stop("! Input data must not be constant.", 
@@ -82,15 +82,18 @@ find_shift_factor <- function(x) {
     return(0)
   
   difx <- diff(sort(x))
-  eps <- min(difx[difx != 0])
+  eps <- min(difx[difx != 0], na.rm = TRUE)
   
   eps - min(x, na.rm = TRUE)
 }
 
+#' Shift and scale vector x
+#' 
 #' A function that is used to shift x values to positive values if it contains
 #' negative or zero values.If all values of x are positive then the original
-#' values of x is returned without shifting .
-#' if x has already been shifted and scaled then the function does nothing
+#' values of x is returned without shifting but scaled if the scaling factor is
+#' not equal to 1. If x has already been shifted and scaled then the function does
+#' nothing.
 #' 
 #' @param x A vector of predictor variable
 #' @param scale scaling factors for x of interest. Must be positive integers.
@@ -110,7 +113,9 @@ find_shift_factor <- function(x) {
 #' @export
 apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
   # restrict x to be a vector not matrix
-  if (is.matrix(x)) stop("x must be a vector not a matrix")
+  if (is.matrix(x))
+    stop("x must be a vector not a matrix", call. = FALSE)
+  
   N <- length(x)
   # If adjustment factors are NULL we use R&S formula to shift x to positive values
   if (is.null(shift)) {
@@ -128,8 +133,10 @@ apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
     # term + a
     x <- x + shift
     # check whether all x are now positive
-    if (!all(x > 0)) stop("The minimum value of x after shifting x is ", min(x, na.rm = T), " which is not > 0. Check your adjustment factors")
+    if (!all(x > 0))
+      stop("The minimum value of x after shifting x is ", min(x, na.rm = T), " which is not > 0. Check your adjustment factors")
   }
+  
   # if scale is NULL then scale x for computational stability using R&S formula
   if (is.null(scale)) { # No scaling
     x <- x / find_scale_factor(x)

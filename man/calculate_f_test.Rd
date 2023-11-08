@@ -15,7 +15,7 @@ used to test the difference \code{deviances[1] - deviances[2]}.}
 
 \item{n_obs}{a numeric value with the number of observations.}
 
-\item{d1}{a numeriv value giving \code{d1} in the formula below directly as
+\item{d1}{a numeric value giving \code{d1} in the formula below directly as
 the number of additional degrees of freedom in model 2 compared to model 1.
 In this case \code{dfs_resid} must be a single numeric value giving the residual
 df for model 2. This interface is sometimes more convenient than to specify

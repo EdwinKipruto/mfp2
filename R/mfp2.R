@@ -315,7 +315,7 @@
 #' best-fitting FP1(p1, p2) model (see Details section). Not present in the 
 #' formula interface `mfp2.formula` and to be set using `fp` terms in the 
 #' `formula` input.
-#' The variable representing the ACD transformation of `x` is named `A(x)`.
+#' The variable representing the ACD transformation of `x` is named `A_x`.
 #' @param ftest a logical; for normal error models with small samples, critical 
 #' points from the F-distribution can be used instead of Chi-Square 
 #' distribution. Default `FALSE` uses the latter. This argument is used for 

@@ -31,7 +31,7 @@ likelihoods are equal.
 
 Model likelihoods can then be compared by computing
 D = -2 log(likelihood reduced model / likelihood full model), and then
-use a Chi-square distribution with df_full - df_reduced many degrees
+use a Chi-square distribution with df_full - df_reduced degrees
 of freedom to derive a p-value.
 
 This is basically the same way as \code{\link[stats:anova]{stats::anova()}} implements the

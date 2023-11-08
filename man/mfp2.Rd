@@ -199,7 +199,7 @@ It also invokes the function-selection procedure to determine the
 best-fitting FP1(p1, p2) model (see Details section). Not present in the
 formula interface \code{mfp2.formula} and to be set using \code{fp} terms in the
 \code{formula} input.
-The variable representing the ACD transformation of \code{x} is named \code{A(x)}.}
+The variable representing the ACD transformation of \code{x} is named \code{A_x}.}
 
 \item{ftest}{a logical; for normal error models with small samples, critical
 points from the F-distribution can be used instead of Chi-Square

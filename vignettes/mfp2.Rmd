@@ -17,8 +17,10 @@ link-citations: yes
 header-includes:
 - \usepackage{setspace}
 - \doublespacing
-vignette: "%\\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
-  %\\VignetteEncoding{UTF-8}   %\\VignetteEngine{knitr::rmarkdown}\n"
+vignette: >
+  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
 ---
 
 

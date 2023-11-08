@@ -94,7 +94,7 @@ large as estimated from the training data, variables in \code{newdata} may end u
 with negative values, which can cause prediction errors if non-linear
 functional forms are used. A warning is given in this case by the function.
 The next step involves transforming the data using the selected
-fractional polynomial (FP) power. If necessary, centering of variables is
+fractional polynomial (FP) powers. If necessary, centering of variables is
 conducted. Once the transformation (and centering) is complete, the
 transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
 depending on the chosen family of models and when type is not

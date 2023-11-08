@@ -2,10 +2,7 @@
 % Please edit documentation in R/preprocessing.R
 \name{apply_shift_scale}
 \alias{apply_shift_scale}
-\title{A function that is used to shift x values to positive values if it contains
-negative or zero values.If all values of x are positive then the original
-values of x is returned without shifting .
-if x has already been shifted and scaled then the function does nothing}
+\title{Shift and scale vector x}
 \usage{
 apply_shift_scale(x, scale = NULL, shift = NULL)
 }
@@ -27,8 +24,9 @@ A numeric value that has been shifted and scaled.
 \description{
 A function that is used to shift x values to positive values if it contains
 negative or zero values.If all values of x are positive then the original
-values of x is returned without shifting .
-if x has already been shifted and scaled then the function does nothing
+values of x is returned without shifting but scaled if the scaling factor is
+not equal to 1. If x has already been shifted and scaled then the function does
+nothing.
 }
 \examples{
 x = 1:1000

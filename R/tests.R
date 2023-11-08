@@ -12,7 +12,7 @@
 #' 
 #' Model likelihoods can then be compared by computing 
 #' D = -2 log(likelihood reduced model / likelihood full model), and then 
-#' use a Chi-square distribution with df_full - df_reduced many degrees
+#' use a Chi-square distribution with df_full - df_reduced degrees
 #' of freedom to derive a p-value.
 #' 
 #' This is basically the same way as [stats::anova()] implements the 
@@ -45,7 +45,7 @@ calculate_lr_test <- function(logl,
 #' used to test the difference `deviances[1] - deviances[2]`.
 #' @param dfs_resid a numeric vector with residual degrees of freedom.
 #' @param n_obs a numeric value with the number of observations.
-#' @param d1 a numeriv value giving `d1` in the formula below directly as 
+#' @param d1 a numeric value giving `d1` in the formula below directly as 
 #' the number of additional degrees of freedom in model 2 compared to model 1.
 #' In this case `dfs_resid` must be a single numeric value giving the residual
 #' df for model 2. This interface is sometimes more convenient than to specify

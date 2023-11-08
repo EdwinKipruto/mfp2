@@ -140,8 +140,10 @@ transform_vector_fp <- function(x,
 
   # transform data
   x_trafo <- matrix(NA, nrow = length(x), ncol = length(power))
+  
   # transform using first power
   x_trafo[, 1] <- transform_vector_power(x, power[1])
+  
   # transform other powers via loop if necessary
   for (j in seq_len(length(power) - 1)) { 
     k <- j + 1

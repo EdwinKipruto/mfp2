@@ -44,5 +44,5 @@ Author:
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
 RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
-VignetteBuilder: knitr, rmarkdown
+VignetteBuilder: knitr
 Config/testthat/edition: 3

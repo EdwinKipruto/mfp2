@@ -10,10 +10,10 @@ supports generalized linear models and Cox proportional hazards models.
 ## Compatibility with existing software packages
 
 `mfp2` closely emulates the functionality of the [`mfp` package in
-stata](https://www.stata.com/manuals13/rmfp.pdf).
+stata].
 
 It augments the functionality of the existing [`mfp` R
-package](https://cran.r-project.org/web/packages/mfp/index.html) by:
+package]by:
 
 -   a matrix and a formula interface for input
 -   sigmoid transformations via the approximate cumulative distribution (ACD)

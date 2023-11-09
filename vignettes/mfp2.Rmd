@@ -1569,7 +1569,7 @@ implement this extension, the original FSP is replaced by a modified version
 known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the
 features of the MFP algorithm plus the ability to model a sigmoid function. For
 additional information on MFPA, including FSPA, please refer to
-[Royston and Sauerbrei (2016)(here)](https://journals.sagepub.com/doi/pdf/10.1177/1536867X1601600109)
+Royston and Sauerbrei (2016)
 
 ## Modeling a sigmoid relationship
 

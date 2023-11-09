@@ -4,7 +4,7 @@
 \alias{mfp2}
 \alias{mfp2.default}
 \alias{mfp2.formula}
-\title{Multivariable fractional polynomial models with extensions}
+\title{Multivariable Fractional Polynomial Models with Extensions}
 \usage{
 mfp2(x, ...)
 

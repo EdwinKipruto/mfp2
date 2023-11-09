@@ -1,4 +1,4 @@
-#' Multivariable fractional polynomial models with extensions 
+#' Multivariable Fractional Polynomial Models with Extensions 
 #'
 #' Selects the multivariable fractional polynomial (FP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship

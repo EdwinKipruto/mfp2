@@ -17,7 +17,7 @@ triples of powers, and so on. If the ACD transformation is used,
 this degree is assumed to be 2.}
 
 \item{powers}{the set of allowed powers for the fractional polynomials.
-Default is \code{NULL} and the set {-2, -1, -0.5, 0, 0.5, 1, 2, 3} is used.}
+Default is \code{NULL} and the set \eqn{(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
 }
 \value{
 A matrix of powers with degree columns and rows depending on the \code{degree}.

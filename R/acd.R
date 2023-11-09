@@ -27,7 +27,7 @@
 #' 
 #' @param x a numeric vector.
 #' @param powers a vector of allowed FP powers. The default value is `NULL`,
-#' meaning that the set S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
+#' meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
 #' @param shift a numeric that is used to shift the values of `x` to positive
 #' values. The default value is 0, meaning no shifting is conducted. 
 #' If `NULL`, then the program will estimate an appropriate shift automatically

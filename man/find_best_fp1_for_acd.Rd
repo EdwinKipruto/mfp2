@@ -12,7 +12,7 @@ find_best_fp1_for_acd(x, y, powers)
 \item{y}{normal cdf of rank transform of \code{x}.}
 
 \item{powers}{a vector of allowed FP powers. The default value is \code{NULL},
-meaning that the set S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
+meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
 }
 \value{
 The best FP power with smallest deviance and the fitted model.

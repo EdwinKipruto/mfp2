@@ -237,22 +237,22 @@ model object.
 An object of class \code{mfp2} is a list containing all entries as for \code{glm}
 or \code{coxph}, and in addition the following entries:
 \itemize{
-\item{convergence_mfp: }{logical value indicating convergence of mfp algorithm.}
-\item{fp_terms: }{a data.frame with information on fractional polynomial
+\item{"convergence_mfp:" }{logical value indicating convergence of mfp algorithm.}
+\item{"fp_terms: "}{a data.frame with information on fractional polynomial
 terms.}
-\item{transformations: }{a data.frame with information on shifting, scaling
+\item{"transformations: "}{a data.frame with information on shifting, scaling
 and centering for all variables.}
-\item{fp_powers: }{a list with all powers of fractional polynomial terms.
+\item{"fp_powers: "}{a list with all powers of fractional polynomial terms.
 Each entry of the list is named according to the transformation of the
 variable.}
-\item{acd: }{a vector with information for which variables the acd
+\item{"acd: "}{a vector with information for which variables the acd
 transformation was applied.}
-\item{x_original: }{the scaled and shifted input matrix but without
+\item{"x_original: "}{the scaled and shifted input matrix but without
 transformations.}
-\item{y: }{the original outcome variable.}
-\item{x: }{the final transformed input matrix used to fit the final model.}
-\item{call_mfp: }{the call to the \code{mfp2()} function.}
-\item{family_string: }{the family stored as character string.}
+\item{"y: "}{the original outcome variable.}
+\item{"x: "}{the final transformed input matrix used to fit the final model.}
+\item{"call_mfp: "}{the call to the \code{mfp2()} function.}
+\item{"family_string: "}{the family stored as character string.}
 }
 The \code{mfp2} object may contain further information depending on family.
 }

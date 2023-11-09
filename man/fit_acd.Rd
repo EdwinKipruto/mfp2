@@ -10,7 +10,7 @@ fit_acd(x, powers = NULL, shift = 0, scale = 1)
 \item{x}{a numeric vector.}
 
 \item{powers}{a vector of allowed FP powers. The default value is \code{NULL},
-meaning that the set S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
+meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
 
 \item{shift}{a numeric that is used to shift the values of \code{x} to positive
 values. The default value is 0, meaning no shifting is conducted.

@@ -120,12 +120,12 @@
 #' model reduction by applying significance testing to six sub-families of
 #' functions,M1-M6, giving models M1 (most complex) through M6 (null):
 #' \itemize{
-#' \item{M1: }{FP1(p1, p2) (no simplification)}
-#' \item{M2: }{FP1(p1, .) (regular FP1 function of \eqn{x})}
-#' \item{M3: }{FP1(., p2) (regular FP1 function of \eqn{acd(x)})}
-#' \item{M4: }{FP1(1, .) (linear function of \eqn{x})}
-#' \item{M5: }{FP1(., 1) (linear function of \eqn{acd(x)})}
-#' \item{M6: }{Null (\eqn{x} omitted entirely)}
+#' \item M1: FP1(p1, p2) (no simplification)
+#' \item M2: FP1(p1, .) (regular FP1 function of \eqn{x})
+#' \item M3: FP1(., p2) (regular FP1 function of \eqn{acd(x)})
+#' \item M4: FP1(1, .) (linear function of \eqn{x})
+#' \item M5: FP1(., 1) (linear function of \eqn{acd(x)})
+#' \item M6: Null (\eqn{x} omitted entirely)
 #' }
 #' Selection among these six sub-functions is performed by a closed test 
 #' procedure known as the function-selection pocedure FSPA. 
@@ -137,18 +137,18 @@
 #' provided by the `alpha` option. 
 #' The sequence of tests is as follows:
 #' \itemize{
-#' \item{Test 1: }{Compare the deviances of models 6 and 1 on 4 d.f. 
-#' If not significant then stop and omit \eqn{x}, otherwise continue to step 2.}
-#' \item{Test 2: }{Compare the deviances of models 4 and 1 on 3 d.f. 
-#' If not significant then accept model 4 and stop. Otherwise, continue to step 3.}
-#' \item{Test 3: }{Compare the deviance of models 2 and 1 on 2 d.f. 
-#' If not significant then accept model 2 and stop. Otherwise continue to step 4.}
-#' \item{Test 4: }{Compare the deviance of models 3 and 1 on 2 d.f. 
+#' \item Test 1: Compare the deviances of models 6 and 1 on 4 d.f. 
+#' If not significant then stop and omit \eqn{x}, otherwise continue to step 2.
+#' \item Test 2: Compare the deviances of models 4 and 1 on 3 d.f. 
+#' If not significant then accept model 4 and stop. Otherwise, continue to step 3.
+#' \item Test 3: Compare the deviance of models 2 and 1 on 2 d.f. 
+#' If not significant then accept model 2 and stop. Otherwise continue to step 4.
+#' \item Test 4: Compare the deviance of models 3 and 1 on 2 d.f. 
 #' If significant then model 1 cannot be simplified; accept model 1 and stop.  
-#' Otherwise continue to step 5.}
-#' \item{Test 5: }{Compare the deviances of models 5 and 3 on 1 d.f. 
+#' Otherwise continue to step 5.
+#' \item Test 5: Compare the deviances of models 5 and 3 on 1 d.f. 
 #' If significant then model 3 cannot be simplified; accept model 3. 
-#' Otherwise, accept model 5. End of procedure.}
+#' Otherwise, accept model 5. End of procedure.
 #' }
 #' The result is the selection of one of the six models. 
 #' 
@@ -378,22 +378,22 @@
 #' An object of class `mfp2` is a list containing all entries as for `glm`
 #' or `coxph`, and in addition the following entries:  
 #' \itemize{
-#' \item{"convergence_mfp:" }{logical value indicating convergence of mfp algorithm.}
-#' \item{"fp_terms: "}{a data.frame with information on fractional polynomial 
-#' terms.}
-#' \item{"transformations: "}{a data.frame with information on shifting, scaling
-#' and centering for all variables.}   
-#' \item{"fp_powers: "}{a list with all powers of fractional polynomial terms. 
+#' \item convergence_mfp: logical value indicating convergence of mfp algorithm.
+#' \item fp_terms: a data.frame with information on fractional polynomial 
+#' terms.
+#' \item transformations: a data.frame with information on shifting, scaling
+#' and centering for all variables.  
+#' \item fp_powers: a list with all powers of fractional polynomial terms. 
 #' Each entry of the list is named according to the transformation of the 
-#' variable.}
-#' \item{"acd: "}{a vector with information for which variables the acd 
-#' transformation was applied.}
-#' \item{"x_original: "}{the scaled and shifted input matrix but without
-#' transformations.}
-#' \item{"y: "}{the original outcome variable.}
-#' \item{"x: "}{the final transformed input matrix used to fit the final model.}
-#' \item{"call_mfp: "}{the call to the `mfp2()` function.}
-#' \item{"family_string: "}{the family stored as character string.}
+#' variable.
+#' \item acd: a vector with information for which variables the acd 
+#' transformation was applied.
+#' \item x_original: the scaled and shifted input matrix but without
+#' transformations.
+#' \item y: the original outcome variable.
+#' \item x: the final transformed input matrix used to fit the final model.
+#' \item call_mfp: the call to the `mfp2()` function.
+#' \item family_string: the family stored as character string.
 #' }
 #' The `mfp2` object may contain further information depending on family.
 #' 

@@ -22,7 +22,8 @@ Suggests:
     xfun,
     rmarkdown,
     formatR,
-    patchwork
+    patchwork,
+    spelling
 Description: Algorithm to select variables and functional forms through 
   fractional polynomials in regression models (Generalized linear models 
   and Cox). This package also
@@ -47,3 +48,4 @@ RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
 Config/testthat/edition: 3
+Language: en-US

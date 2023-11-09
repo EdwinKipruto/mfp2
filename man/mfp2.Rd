@@ -176,7 +176,10 @@ processing in the program. If some variables are not assigned powers, the
 default powers will be assigned. The formula interface offers two options
 for supplying powers: through the 'powers' argument and the 'fp()' function.
 So, if the user supplies powers in both options for a certain variable, the
-powers supplied through 'fp()' will be given preference.}
+powers supplied through 'fp()' will be given preference.For the algorithm to
+select the powers, each variable must have a minimum of two powers. If the
+users wants to use one power, they should first transform their variables
+before using \code{mfp2()} function and specify appropriate df}
 
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are

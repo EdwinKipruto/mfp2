@@ -296,7 +296,10 @@
 #' default powers will be assigned. The formula interface offers two options
 #' for supplying powers: through the 'powers' argument and the 'fp()' function. 
 #' So, if the user supplies powers in both options for a certain variable, the 
-#' powers supplied through 'fp()' will be given preference.
+#' powers supplied through 'fp()' will be given preference.For the algorithm to
+#' select the powers, each variable must have a minimum of two powers. If the 
+#' users wants to use one power, they should first transform their variables 
+#' before using `mfp2()` function and specify appropriate df
 #' @param ties a character string specifying the method for tie handling in 
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
@@ -709,6 +712,15 @@ mfp2.default <- function(x,
     
     # sort powers
     powers <- lapply(powers, function(v) sort(v))
+    
+    # assert that the number of powers should be at least 2
+    pow_length <- sapply(powers, function(v) length(v))
+    pow_length_one <- which(pow_length == 1)
+    if (length(pow_length_one)!=0)
+      stop(" The number of powers for each variable must be at least two.\n",
+           sprintf("i This applies to the following variables: %s.", 
+                   paste0(names(pow_length_one), collapse = ", ")), call. = FALSE)
+    
     
     # modify the default powers, some variables assigned default powers
     power_list <- modifyList(power_list, Filter(Negate(is.null), powers))

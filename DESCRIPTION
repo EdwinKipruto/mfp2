@@ -24,7 +24,8 @@ Suggests:
     formatR,
     patchwork
 Description: Algorithm to select variables and functional forms through 
-  fractional polynomials in regression models (GLMs, Cox). This package also
+  fractional polynomials in regression models (Generalized linear models 
+  and Cox). This package also
   implements various extensions of the original algorithm (sigmoid functional 
   forms) and provides estimation and visualisation of non-linear effects. 
   A key reference is the book by Royston and Sauerbrei, 2008. 

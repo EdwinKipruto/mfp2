@@ -560,6 +560,9 @@ reset_acd <- function(x,
 #' indicating the fp powers to be used in the current step for all variables 
 #' (except `xi`). 
 #' @param rownames passed to [survival::coxph.fit()].
+#' 
+#' @return 
+#' current FP powers
 find_best_fp_cycle <- function(x, 
                                y, 
                                powers_current, 
@@ -626,6 +629,9 @@ find_best_fp_cycle <- function(x,
 #' @details 
 #' An example calculation: if p is the power(s) and p = c(1,2), then df = 4 
 #' but if x = NA then df = 0.
+#' 
+#' @return 
+#' returns degrees of freedom (df).
 calculate_df <- function(p) {
   if (all(is.na(p))) {
     # df for unselected variable
@@ -652,6 +658,9 @@ calculate_df <- function(p) {
 #' To be used in [fit_mfp()].
 #' 
 #' @param power_list list of powers created in `fit_mfp()`.
+#' 
+#' @return 
+#' a matrix.
 convert_powers_list_to_matrix <- function(power_list) {
   # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
   psize <- sapply(power_list, length)

@@ -97,6 +97,7 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' 
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
 #' ACD covariate transformation for enhanced parametric multivariable modeling. 
 #' The Stata Journal, 16(1), pp.72-87.}
@@ -1011,7 +1012,7 @@ select_ic <- function(x,
   if (degree < 1)
     return(NULL)
   
-  fpmax = paste0("FP", degree)
+  fpmax <- paste0("FP", degree)
   
   # output list
   res <- list(
@@ -1035,7 +1036,8 @@ select_ic <- function(x,
       powers_current = powers_current, powers = powers, acdx = acdx, ...
     )
   
-  fits_fpm = list()
+  fits_fpm <- list()
+  
   for (m in 1:degree) {
     fits_fpm[[sprintf("FP%g", m)]] <- find_best_fpm_step(
       x = x, xi = xi, degree = m, y = y, 
@@ -1065,7 +1067,8 @@ select_ic <- function(x,
   )
   rownames(res$metrics) <- c("null", "linear", names(fits_fpm))
   
-  ind_select = 1:nrow(res$metrics)
+  ind_select <- 1:nrow(res$metrics)
+  
   if (xi %in% keep) 
     # prevent selection of null model
     ind_select = 2:nrow(res$metrics)
@@ -1092,8 +1095,8 @@ select_ic_acd <- function(x,
                           alpha, 
                           ...) {
   
-  acdx_reset_xi = acdx
-  acdx_reset_xi[xi] = FALSE
+  acdx_reset_xi <- acdx
+  acdx_reset_xi[xi] <- FALSE
   
   # output list
   res <- list(

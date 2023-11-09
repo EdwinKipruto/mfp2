@@ -125,8 +125,6 @@ fit_acd <- function(x,
 #' 
 #' @return 
 #' The transformed input vector `x`.
-#' 
-#' @export
 apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
   
   if (length(power) != 1) 
@@ -146,7 +144,7 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
 #' @param y normal cdf of rank transform of `x`.
 #' 
 #' @return 
-#' The best FP power with smallest deviance.
+#' The best FP power with smallest deviance and the fitted model.
 find_best_fp1_for_acd <- function(x, 
                                   y, 
                                   powers) {

@@ -83,6 +83,9 @@ models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
 }
+\value{
+current FP powers
+}
 \description{
 This function estimates the best FP functions for all predictors in the
 current cycle. To be used in \code{\link[=fit_mfp]{fit_mfp()}}.

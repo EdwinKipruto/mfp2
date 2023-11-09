@@ -9,6 +9,9 @@ calculate_df(p)
 \arguments{
 \item{p}{power of a variable.}
 }
+\value{
+returns degrees of freedom (df).
+}
 \description{
 To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
 }

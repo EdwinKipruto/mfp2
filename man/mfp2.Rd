@@ -486,8 +486,6 @@ y = as.numeric(prostate$lpsa)
 fit1 = mfp2(x, y, verbose = FALSE)
 fit1$fp_terms
 fracplot(fit1) # generate plots
-coef(fit1)
-print(fit1)
 summary(fit1)
 # formula interface
 fit1b = mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
@@ -499,7 +497,6 @@ xx <- as.matrix(pima[, 2:9])
 yy <- as.vector(pima$y)
 fit2 <- mfp2(xx, yy, family = "binomial", verbose = FALSE)
 fit2$fp_terms
-fracplot(fit2)
 
 # Cox regression model
 data("gbsg")
@@ -510,7 +507,6 @@ yd <- survival::Surv(gbsg$rectime, gbsg$censrec)
 # fit mfp and keep hormon in the model
 fit3 <- mfp2(xd, yd, family = "cox", keep = "hormon", verbose = FALSE)
 fit3$fp_terms
-fracplot(fit3)
 
 }
 \references{

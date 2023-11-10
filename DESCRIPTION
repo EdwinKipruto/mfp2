@@ -24,11 +24,11 @@ Suggests:
     formatR,
     patchwork,
     spelling
-Description: Algorithm to select variables and functional forms through 
+Description: Algorithm to select variables and functional forms simultaneously through 
   fractional polynomials in regression models (Generalized linear models 
-  and Cox). In addition, it has the ability to model a sigmoid relationship
-  between x and an outcome variable y using the approximate cumulative 
-  distribution transformation proposed by "Royston" in 2014.
+  and Cox models). In addition, it can model a 'sigmoid' relationship
+  between variable x and an outcome variable y using the approximate cumulative 
+  distribution transformation- something that a standard fractional polynomial function cannot do.
 License: GPL-3 + file LICENSE
 URL: https://github.com/EdwinKipruto/mfp2
 BugReports: https://github.com/EdwinKipruto/mfp2/issues

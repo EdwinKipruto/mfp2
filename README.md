@@ -13,8 +13,7 @@ using approximate cumulative distribution (ACD) transformation- a feature that a
 
 `mfp2` closely emulates the functionality of the `mfp` and `mfpa` package in Stata.
 
-It augments the functionality of the existing `mfp` R
-package by:
+It augments the functionality of the existing `mfp` package in R by:
 
 -   a matrix and a formula interface for input
 -   sigmoid transformations via the ACD transformation

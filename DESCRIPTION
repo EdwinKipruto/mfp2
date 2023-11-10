@@ -28,7 +28,7 @@ Description: Algorithm to select variables and functional forms simultaneously t
   fractional polynomials in regression models (Generalized linear models 
   and Cox models). In addition, it can model a 'sigmoid' relationship
   between variable x and an outcome variable y using the approximate cumulative 
-  distribution transformation- something that a standard fractional polynomial function cannot do.
+  distribution transformation- a feature that a standard fractional polynomial function cannot do.
 License: GPL-3 + file LICENSE
 URL: https://github.com/EdwinKipruto/mfp2
 BugReports: https://github.com/EdwinKipruto/mfp2/issues

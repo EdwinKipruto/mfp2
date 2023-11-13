@@ -30,6 +30,9 @@ after transformation or not.}
 
 \item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
 }
+\value{
+A dataframe of transformed newdata
+}
 \description{
 To be used in \code{\link[=predict.mfp2]{predict.mfp2()}}.
 }

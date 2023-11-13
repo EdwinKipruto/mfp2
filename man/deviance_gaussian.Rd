@@ -13,6 +13,9 @@ deviance_gaussian(rss, weights, n)
 
 \item{n}{number of observations used to compute \code{rss}.}
 }
+\value{
+A numeric value representing the deviance of a Gaussian model.
+}
 \description{
 Deviance computations as used in mfp in stata
 }

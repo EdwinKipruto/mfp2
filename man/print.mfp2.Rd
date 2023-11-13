@@ -12,6 +12,12 @@
 \item{...}{passed to \code{print} methods of underlying model class. A useful
 option as the \code{digits} argument, indicating printed digits.}
 }
+\value{
+Two dataframes: the first one contains preprocessing parameters (shifting, scaling, and
+centering), and the second one includes additional parameters such as \code{df}, \code{select}, and
+\code{alpha} passed through \code{mfp2}. It also returns a list of the final model fitted, which can be
+either a GLM or Cox model depending on the chosen family.
+}
 \description{
 Enhances printing by information on data processing and fractional
 polynomials.

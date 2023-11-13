@@ -1212,7 +1212,11 @@ summary.mfp2 <- function(object, ...) {
 #' @param x `mfp2` object to be printed.
 #' @param ... passed to `print` methods of underlying model class. A useful 
 #' option as the `digits` argument, indicating printed digits.
-#' 
+#'
+#' @return Two dataframes: the first one contains preprocessing parameters (shifting, scaling, and
+#' centering), and the second one includes additional parameters such as `df`, `select`, and 
+#' `alpha` passed through `mfp2`. It also returns a list of the final model fitted, which can be 
+#' either a GLM or Cox model depending on the chosen family.
 #' @export
 print.mfp2 <- function(x,
                        ...) {

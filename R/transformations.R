@@ -332,6 +332,7 @@ transform_matrix <- function(x,
 #' 
 #' @param x a vector of a predictor variable.
 #' @param power single power. 
+#' @return A vector of transformed values if power is not equal to 1
 transform_vector_power <- function(x,
                                    power = 1) {
   if (power == 0)

@@ -10,6 +10,7 @@
 #' 
 #' It can be applied for normal error models, but should not be used for other
 #' kinds of glms.
+#' @return A numeric value representing the deviance of a Gaussian model.
 deviance_gaussian <- function(rss, weights, n) {
   
   if (any(is.null(rss), is.null(weights), is.null(n))) return(NULL)

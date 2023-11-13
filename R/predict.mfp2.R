@@ -326,6 +326,8 @@ predict.mfp2 <- function(object,
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
 #' @param check_binary passed to [transform_vector_fp()].
+#' 
+#' @return A dataframe of transformed newdata
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
                                         strata = NULL, 

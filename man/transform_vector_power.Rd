@@ -11,6 +11,9 @@ transform_vector_power(x, power = 1)
 
 \item{power}{single power.}
 }
+\value{
+A vector of transformed values if power is not equal to 1
+}
 \description{
 Simple function to transform vector by a single power
 }

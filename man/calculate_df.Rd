@@ -10,7 +10,7 @@ calculate_df(p)
 \item{p}{power of a variable.}
 }
 \value{
-returns degrees of freedom (df).
+returns numeric value denoting the number of degrees of freedom (df).
 }
 \description{
 To be used in \code{\link[=fit_mfp]{fit_mfp()}}.

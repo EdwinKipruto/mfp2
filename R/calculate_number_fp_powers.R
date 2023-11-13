@@ -1,5 +1,12 @@
-# Calculates the total number of fp powers in adjustment variables
-# x is a list of fp powers for all variables
+#' Calculates the total number of fractional polynomial powers in adjustment variables.
+#'
+#' This function takes a list \code{x} containing fractional polynomial powers for all variables
+#' and calculates the total number of powers across the variables.
+#'
+#' @param x A list of fractional polynomial powers for all variables.
+#' 
+#' @return Numeric value denoting total number of fractional polynomial powers in the adjustment
+#' variables.
 calculate_number_fp_powers <- function(x) {
   # Remove NA-variables eliminated in usual mfp. In mfpa, a variable can have
   # powers c(1,NA) or c(NA,1) and its unaffected

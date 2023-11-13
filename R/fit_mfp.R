@@ -631,7 +631,7 @@ find_best_fp_cycle <- function(x,
 #' but if x = NA then df = 0.
 #' 
 #' @return 
-#' returns degrees of freedom (df).
+#' returns numeric value denoting the number of degrees of freedom (df).
 calculate_df <- function(p) {
   if (all(is.na(p))) {
     # df for unselected variable
@@ -684,10 +684,10 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' To be used in [fit_mfp()].
 #' 
 #' @return 
-#' Data.frame with overview of all fp terms. Each row represents a variable, 
+#' Dataframe with overview of all fp terms. Each row represents a variable, 
 #' with rownames giving the name of the variable. Variables with acd 
 #' transformation are prefixed by `A_` by the `print` and `summary` methods. 
-#' The data.frame comprises the following columns: 
+#' The dataframe comprises the following columns: 
 #' 
 #' * `df_initial`: initial degrees of freedom. 
 #' * `select`: significance level for backward elimination.

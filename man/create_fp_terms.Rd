@@ -25,10 +25,10 @@ for tests between FP models of different degrees.}
 variables and FP models of different degrees.}
 }
 \value{
-Data.frame with overview of all fp terms. Each row represents a variable,
+Dataframe with overview of all fp terms. Each row represents a variable,
 with rownames giving the name of the variable. Variables with acd
 transformation are prefixed by \code{A_} by the \code{print} and \code{summary} methods.
-The data.frame comprises the following columns:
+The dataframe comprises the following columns:
 \itemize{
 \item \code{df_initial}: initial degrees of freedom.
 \item \code{select}: significance level for backward elimination.

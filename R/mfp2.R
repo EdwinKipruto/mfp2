@@ -1,12 +1,12 @@
 #' Multivariable Fractional Polynomial Models with Extensions 
 #'
-#' Selects the multivariable fractional polynomial (FP) model that best predicts
+#' Selects the multivariable fractional polynomial (MFP) model that best predicts
 #' the outcome variable. It also has the ability to model a sigmoid relationship
 #' between `x` and an outcome variable `y` using the approximate cumulative 
 #' distribution (ACD) transformation proposed by Royston (2014).
 #' This function provides two interfaces for input data: one for inputting 
 #' data matrix `x` and  outcome vector `y` directly and the other for using a
-#' `formula` object together with a data.frame `data`. Both interfaces are
+#' `formula` object together with a dataframe `data`. Both interfaces are
 #' equivalent in terms of functionality.
 #' 
 #' @section Brief summary of FPs:
@@ -15,7 +15,7 @@
 #' increasing complexity as either FP1 or FP2. In this example, 
 #' \eqn{FP2(p1, p2)} for \eqn{p1\neq p2} is the most flexible FP transformation,
 #' where \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
-#' When \eqn{p1 = p2}(repeated powers), the FP2 model is given by 
+#' When \eqn{p1 = p2} (repeated powers), the FP2 model is given by 
 #' \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p1}log(x).}
 #' The powers \eqn{p1} and \eqn{p2} are usually chosen from a predefined set
 #' of powers \eqn{S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}} where the power

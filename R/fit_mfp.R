@@ -628,7 +628,7 @@ find_best_fp_cycle <- function(x,
 #' 
 #' @details 
 #' An example calculation: if p is the power(s) and p = c(1,2), then df = 4 
-#' but if x = NA then df = 0.
+#' but if p = NA then df = 0.
 #' 
 #' @return 
 #' returns numeric value denoting the number of degrees of freedom (df).

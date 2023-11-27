@@ -81,7 +81,7 @@ This kind of plot is only available if \code{type = "terms"}.
 }}
 \examples{
 
-# Gaussian
+# Gaussian response
 data("prostate")
 x = as.matrix(prostate[,2:8])
 y = as.numeric(prostate$lpsa)

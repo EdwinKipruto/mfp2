@@ -1,8 +1,8 @@
 Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models with Extensions
-Version: 1.0.0
-Date: 2023-11-13
+Version: 1.0.1
+Date: 2024-02-02
 Authors@R: c(
   person("Edwin", "Kipruto", role = c("aut", "cre"), email = "edwin.kipruto@uniklinik-freiburg.de"),
   person("Michael", "Kammer", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"),
@@ -36,7 +36,7 @@ Author:
   Patrick Royston [aut],
   Willi Sauerbrei [aut]
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.1
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
 Config/testthat/edition: 3

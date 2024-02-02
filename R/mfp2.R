@@ -738,8 +738,19 @@ mfp2.default <- function(x,
   } 
   if (is.null(shift)) {
       shift <- apply(x, 2, find_shift_factor)
-  } else if (length(shift) == 1) {
+  } else {
+    if (length(shift) == 1){
       shift <- rep(shift, nvars)
+    }
+      # Check if the shifting factors are sufficiently large
+      shift_based_data <- apply(x, 2, find_shift_factor)
+      difference_from_target  <- shift - shift_based_data
+      indices_of_negatives  <- which(difference_from_target < 0)
+      
+      if(length(indices_of_negatives)!= 0)
+        stop("i The shifting factors for the following variables are not large enough to shift x to positive values.\n", 
+                sprintf("i This applies to the following variables: %s.", 
+                        paste0(vnames[indices_of_negatives], collapse = ", ")), call. = FALSE)
   }
   if (is.null(scale)) {
       scale <- apply(x, 2, find_scale_factor)

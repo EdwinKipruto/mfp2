@@ -1067,15 +1067,20 @@ select_ic <- function(x,
   )
   rownames(res$metrics) <- c("null", "linear", names(fits_fpm))
   
-  ind_select <- 1:nrow(res$metrics)
-  
-  if (xi %in% keep) 
+  if (xi %in% keep){ 
     # prevent selection of null model
-    ind_select = 2:nrow(res$metrics)
-  
-  res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
-                                         drop = TRUE])
-  res$power_best = res$powers[res$model_best, , drop = FALSE]
+    ind_select <- 2:nrow(res$metrics)
+    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
+                                           drop = TRUE])
+    # shift the positions by 1 since null was omitted when finding the index
+    res$model_best <- res$model_best + 1
+  }else{
+    ind_select <- 1:nrow(res$metrics)
+    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
+                                            drop = TRUE])
+  }
+
+  res$power_best <- res$powers[res$model_best, , drop = FALSE]
   
   res
 }
@@ -1168,12 +1173,18 @@ select_ic_acd <- function(x,
   rownames(res$metrics) <- c("null", "linear", "linear(., A(x))", names(fits))
   
   ind_select = 1:nrow(res$metrics)
-  if (xi %in% keep) 
+  if (xi %in% keep) {
     # prevent selection of null model
-    ind_select = 2:nrow(res$metrics)
+    ind_select <- 2:nrow(res$metrics)
+    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
+                                           drop = TRUE])
+    res$model_best <- res$model_best + 1
+  }else{
+    res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
+                                           drop = TRUE])
+  }
   
-  res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
-                                         drop = TRUE])
+
   res$power_best = res$powers[res$model_best, , drop = FALSE]
   
   res

@@ -24,7 +24,10 @@ find_best_fp_cycle(
   control,
   rownames,
   nocenter,
-  acdx
+  acdx,
+  robust,
+  cluster,
+  scalew
 )
 }
 \arguments{

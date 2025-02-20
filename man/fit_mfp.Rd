@@ -27,6 +27,9 @@ fit_mfp(
   acdx,
   ftest,
   control,
+  scalew,
+  robust,
+  cluster,
   verbose
 )
 }

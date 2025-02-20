@@ -18,6 +18,9 @@ select_ic(
   ftest,
   select,
   alpha,
+  robust,
+  cluster,
+  scalew,
   ...
 )
 
@@ -34,6 +37,9 @@ select_ic_acd(
   ftest,
   select,
   alpha,
+  robust,
+  scalew,
+  cluster,
   ...
 )
 }

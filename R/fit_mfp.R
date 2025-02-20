@@ -93,6 +93,9 @@ fit_mfp <- function(x,
                     acdx, 
                     ftest,
                     control,
+                    scalew,
+                    robust, 
+                    cluster,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -111,7 +114,8 @@ fit_mfp <- function(x,
   variables_ordered <- order_variables(
     xorder = xorder, 
     x = x, y = y, family = family,  weights = weights, offset = offset, 
-    strata = strata, method = method, control = control, nocenter = nocenter
+    strata = strata, method = method, control = control, nocenter = nocenter,
+    scale = scalew, robust = robust, cluster = cluster
   ) 
   }
   
@@ -137,14 +141,14 @@ fit_mfp <- function(x,
   
   # Assert repeated powers of 1 is not supported. The program will fail when
   # degree is 1 in find_best_fpm_step() due to setdiff(v, c(1))
-  diff_one <- unlist(lapply(powers, function(v) all(c(v%in%1)) && length(v)!=1))
+  diff_one <- unlist(lapply(powers, function(v) all(c(v %in% 1)) && length(v) != 1))
   if (any(diff_one)) {
     dfx <- df[diff_one]
-    if (any(dfx>1))
+    if (any(dfx > 1))
       stop(" The powers of some variables are repeated and all equal to 1. Set df for those 
            variables to 1 or change the powers.\n",
            sprintf("i This applies to the following variables: %s.", 
-                   paste0(names(dfx>1), collapse = ", ")), call. = FALSE)
+                   paste0(names(dfx > 1), collapse = ", ")), call. = FALSE)
   }
   
   # force variables into the model by setting p-value to 1
@@ -204,6 +208,9 @@ fit_mfp <- function(x,
       nocenter = nocenter,
       method = method,
       acdx = acdx, 
+      robust = robust,
+      cluster = cluster,
+      scalew = scalew,
       verbose = verbose
     )
 
@@ -247,6 +254,9 @@ fit_mfp <- function(x,
     control = control,
     rownames = rownames(data_transformed$x_transformed), 
     nocenter = nocenter,
+    robust = robust,
+    scalew = scalew,
+    cluster = cluster,
     fast = FALSE
   )
   
@@ -340,7 +350,10 @@ order_variables_by_significance <- function(xorder,
                                             strata, 
                                             method, 
                                             control,
-                                            nocenter) {
+                                            nocenter,
+                                            robust,
+                                            scale,
+                                            cluster) {
   
   # Convert factors to dummy variables if it exists...take it to the main function
   # x = model.matrix(as.formula(paste("~", paste(colnames(x), collapse="+"))),
@@ -350,7 +363,122 @@ order_variables_by_significance <- function(xorder,
   # number of rows of x or observations
   n <- dim(x)[1]
   
-  if (family != "cox") {
+  if (family == "cox") { # cox model
+    fit.full <- fit_cox(
+      x = x, 
+      y = y, 
+      strata = strata,
+      weights = weights,
+      offset = offset,
+      control = control, 
+      method = method,
+      rownames = rownames(x),
+      nocenter = nocenter
+    ) 
+    
+    # Degrees of freedom for the full cox model
+    p1 <- fit.full$df
+    
+    # loglikelihood of the full cox model
+    logl.full <- fit.full$logl
+    
+    # Deviance of the full cox model
+    dev.full <- -2 * logl.full
+    
+    # we need to calculate p-values for each variable using likelihood ratio test
+    varnames <- colnames(x)
+    ns <- length(varnames)
+    p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
+    names(p.value) <- names(dev) <- names(df.reduced) <- varnames
+    for (i in 1:ns) {
+      # remove one variable at a time and fit the reduced model
+      fit.reduced <- fit_cox(
+        x = x[, -i, drop = FALSE],
+        y = y, strata = strata,
+        weights = weights, 
+        offset = offset, 
+        control = control,
+        method = method,
+        rownames = rownames(x),
+        nocenter = nocenter
+      )
+      # Degrees of freedom for the reduced model
+      p2 <- fit.reduced$df
+      
+      # loglikelihood of the reduced model
+      logl.reduced <- fit.reduced$logl
+      
+      # Deviance of the reduced model
+      dev[i] <- -2 * logl.reduced
+      
+      # degrees of freedom of the reduced model
+      df.reduced[i] <- p2
+      
+      # loglik difference: -2(logL.reduced - logL.full)
+      teststatic <- -2 * logl.reduced + 2 * logl.full
+      
+      # calculate the p.value
+      p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
+    }
+  } else if (family == "weibull") {
+    fit.full <- fit_weibull(
+      x = x, 
+      y = y, 
+      weights = weights,
+      offset = offset,
+      control = control, 
+      robust = robust,
+      scale = scale,
+      cluster = cluster
+    ) 
+    
+    # Degrees of freedom for the full cox model
+    p1 <- fit.full$df
+    
+    # loglikelihood of the full cox model
+    logl.full <- fit.full$logl
+    
+    # Deviance of the full cox model
+    dev.full <- -2 * logl.full
+    
+    # we need to calculate p-values for each variable using likelihood ratio test
+    varnames <- colnames(x)
+    ns <- length(varnames)
+    p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
+    names(p.value) <- names(dev) <- names(df.reduced) <- varnames
+    for (i in 1:ns) {
+      # remove one variable at a time and fit the reduced model
+      fit.reduced <- fit_weibull(
+        x = x[, -i, drop = FALSE],
+        y = y, 
+        strata = strata,
+        weights = weights, 
+        offset = offset, 
+        control = control,
+        robust = robust,
+        cluster = cluster,
+        scale = scale,
+        fast = FALSE
+      )
+      # Degrees of freedom for the reduced model
+      p2 <- fit.reduced$df
+      
+      # loglikelihood of the reduced model
+      logl.reduced <- fit.reduced$logl
+      
+      # Deviance of the reduced model
+      dev[i] <- -2 * logl.reduced
+      
+      # degrees of freedom of the reduced model
+      df.reduced[i] <- p2
+      
+      # loglik difference: -2(logL.reduced - logL.full)
+      teststatic <- -2 * logl.reduced + 2 * logl.full
+      
+      # calculate the p.value
+      p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
+    }
+  } else {
     # glm.fit requires a function as a family not a character name
     if (is.character(family)) {
       family <- get(family, mode = "function", envir = parent.frame())
@@ -407,63 +535,6 @@ order_variables_by_significance <- function(xorder,
       teststatic <- -2 * logl.reduced + 2 * logl.full
       
       # calculate the Chi-square p.value
-      p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
-    }
-  } else { # cox model
-    fit.full <- fit_cox(
-      x = x, 
-      y = y, 
-      strata = strata,
-      weights = weights,
-      offset = offset,
-      control = control, 
-      method = method,
-      rownames = rownames(x),
-      nocenter = nocenter
-    ) 
-    
-    # Degrees of freedom for the full cox model
-    p1 <- fit.full$df
-    
-    # loglikelihood of the full cox model
-    logl.full <- fit.full$logl
-    
-    # Deviance of the full cox model
-    dev.full <- -2 * logl.full
-    
-    # we need to calculate p-values for each variable using likelihood ratio test
-    varnames <- colnames(x)
-    ns <- length(varnames)
-    p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
-    names(p.value) <- names(dev) <- names(df.reduced) <- varnames
-    for (i in 1:ns) {
-      # remove one variable at a time and fit the reduced model
-      fit.reduced <- fit_cox(
-        x = x[, -i, drop = FALSE],
-        y = y, strata = strata,
-        weights = weights, 
-        offset = offset, 
-        control = control,
-        method = method,
-        rownames = rownames(x),
-        nocenter = nocenter
-      )
-      # Degrees of freedom for the reduced model
-      p2 <- fit.reduced$df
-      
-      # loglikelihood of the reduced model
-      logl.reduced <- fit.reduced$logl
-      
-      # Deviance of the reduced model
-      dev[i] <- -2 * logl.reduced
-      
-      # degrees of freedom of the reduced model
-      df.reduced[i] <- p2
-      
-      # loglik difference: -2(logL.reduced - logL.full)
-      teststatic <- -2 * logl.reduced + 2 * logl.full
-      
-      # calculate the p.value
       p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
     }
   }
@@ -582,7 +653,10 @@ find_best_fp_cycle <- function(x,
                                control,
                                rownames,
                                nocenter, 
-                               acdx) {
+                               acdx,
+                               robust,
+                               cluster,
+                               scalew) {
   
   names_x <- names(powers_current)
   
@@ -613,6 +687,9 @@ find_best_fp_cycle <- function(x,
       rownames = rownames,
       nocenter = nocenter,
       acdx = acdx,
+      robust = robust,
+      scalew = scalew,
+      cluster = cluster,
       verbose = verbose
     )
   }

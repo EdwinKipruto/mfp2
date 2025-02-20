@@ -3,7 +3,7 @@
 #' Fits generalized linear models and Cox proportional hazard models. 
 #' 
 #' @details 
-#' Computations rely on [fit_glm()] and [fit_cox()].
+#' Computations rely on [fit_glm()], [fit_cox()] and [fit_cox()].
 #'
 #' @param x a matrix of predictors (excluding intercept) with column names.
 #' If column names are not provided they are set according to
@@ -37,11 +37,14 @@ fit_model <- function(x,
                       strata = NULL, 
                       control = NULL,
                       rownames = NULL,
-                      nocenter = NULL, 
+                      nocenter = NULL,
+                      robust = FALSE,
+                      cluster = FALSE,
+                      scalew = 0,
                       fast = TRUE) {
-  
+
   # Set column names if not provided
-  if (!is.null(dim(x)) && is.null(colnames(x))){
+  if (!is.null(dim(x)) && is.null(colnames(x))) {
     colnames(x) <- colnames(x, do.NULL = FALSE)
   }
   
@@ -59,12 +62,24 @@ fit_model <- function(x,
       nocenter = nocenter, 
       fast = fast
     )
+  } else if (family == "weibull") {
+    fast <- FALSE
+    fit <- fit_weibull(x = x,
+                       y = y,
+                       weights = weights,
+                       offset = offset,
+                       control = control,
+                       robust = robust,
+                       cluster = cluster,
+                       scalew = scalew,
+                       strata = strata,
+                       fast = fast)
   } else {
     if (is.character(family)) {
       family <- get(family, mode = "function", envir = parent.frame())
     }
     if (is.function(family)) family <- family()
-  
+    
     fit <- fit_glm(
       y = y, x = x, family = family, weights = weights, offset = offset, 
       fast = fast
@@ -246,3 +261,108 @@ fit_cox <- function(x,
     sse = sum(fit$residuals^2)
   )
 }
+
+
+#' Function that fits AFT model with weibull distribution
+#'
+#' @param x a matrix of predictors excluding intercept with nobs observations.
+#' @param y a `Surv` object.
+#' @param weights a numeric vector of length nobs of 'prior weights' to be used
+#' in the fitting process.
+#' @param offset a numeric vector of length nobs of of a priori known component
+#' to be included in the linear predictor during fitting.
+#' @param fast a logical which determines how the model is fitted. The default
+#' `TRUE` uses fast fitting routines (i.e. [survival::survreg.fit()]), while
+#' `FALSE`uses the normal fitting routines ([survival::survreg()]) (used for
+#'  the final output of `mfp2`).
+#' @param strata,control passed to [survival::survreg.fit()].
+#'
+#' @return
+#' A list with the following components:
+#'
+#' * `logl`: the log likelihood of the fitted model.
+#' * `coefficients`: regression coefficients.
+#' * `df`: number of parameters (degrees of freedom).
+#' * `sse`: residual sum of squares (not used).
+#' * `fit`: the fitted model object.
+#'
+#' @import survival
+fit_weibull <- function(x,
+                        y,
+                        weights,
+                        offset,
+                        control = NULL,
+                        robust = FALSE,
+                        cluster,
+                        scalew = 0,
+                        strata = NULL,
+                        fast = TRUE) {
+  
+  # Set default for control
+  if (is.null(control)) {
+    control <- survival::survreg.control()
+  }
+  fast <- FALSE
+  if (fast) {
+    fit <- survival::survreg.fit(
+      x = x, y = y,
+      weights = weights,
+      offset = offset,
+      init = NULL,
+      controlvals = control,
+      dist = survival::survreg.distributions[["weibull"]],
+      scale = scalew,
+      nstrat = 1,
+      strata = 0,
+      parms = NULL
+    )  
+  } else {
+    # construct appropriate formula incorporating offset and strata terms
+    # cbinding y will lead to two variables: time and status
+    
+    # it can happen that x is null
+    if (is.null(x)) {
+      d <- data.frame(y)
+      ff <- sprintf("y ~ %s",1)
+    } else {
+      d <- data.frame(x,y)
+      varx <- setdiff(colnames(d), "y")
+      ff <- sprintf("y ~ %s", paste(varx, collapse = "+ "))
+    }
+    # add offset and strata
+    if (any(offset != 0)) {
+      ff <- paste(ff, " + offset(offset_)")
+      d$offset_ <- offset
+    }
+    
+    if (!is.null(strata)) {
+      ff <- paste(ff, " + strata(strata_)")
+      d$strata_ <- strata
+    }
+    
+    ff <- as.formula(ff)
+    
+    fit <- survival::survreg(
+      ff, data = d,
+      weights = weights,
+      dist = "weibull",
+      control = control,
+      parms = NULL,
+      x = TRUE, y = TRUE
+    )
+  }
+  
+  list(
+    fit = fit,
+    # coxph.fit() returns loglikelihood for a null and a model with predictors.
+    # If x is a null matrix, one loglikelihood for the null model is returned.
+    logl = ifelse(!is.null(ncol(x)), fit$loglik[2], fit$loglik),
+    coefficients = fit$coefficients,
+    # sometimes coefficients can be NA
+    # for example when including same variables in the model
+    df = length(fit$coefficients[!is.na(fit$coefficients)]),
+    sse = sum(fit$residuals^2)
+  )
+}
+
+

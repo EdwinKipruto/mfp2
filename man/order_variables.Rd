@@ -17,7 +17,10 @@ order_variables_by_significance(
   strata,
   method,
   control,
-  nocenter
+  nocenter,
+  robust,
+  scale,
+  cluster
 )
 }
 \arguments{

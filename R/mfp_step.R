@@ -120,7 +120,10 @@ find_best_fp_step <- function(x,
                               acdx, 
                               ftest, 
                               control,
-                              rownames, 
+                              rownames,
+                              scalew,
+                              robust,
+                              cluster,
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -147,7 +150,8 @@ find_best_fp_step <- function(x,
     powers_current = powers_current, powers = powers,  
     criterion = criterion, ftest = ftest, select = select, alpha = alpha,
     method = method, strata = strata, nocenter = nocenter, 
-    control = control, rownames = rownames
+    control = control, rownames = rownames, cluster = cluster,
+    robust = robust, scalew = scalew 
   )
   
   if (verbose) {
@@ -418,18 +422,23 @@ select_linear <- function(x,
                           ftest, 
                           select, 
                           alpha, 
+                          scalew,
+                          robust,
+                          cluster,
                           ...) {
   
   n_obs <- dim(x)[1L]
   
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, 
+    powers_current = powers_current, powers = powers, acdx = acdx,robust = robust,
+    scalew = scalew, cluster = cluster,
     ...
   )
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, 
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, scalew = scalew, cluster = cluster,
     ...
   )
   powers <- rbind(fit_null$powers, fit_linear$powers)
@@ -544,7 +553,10 @@ select_ra2 <- function(x,
                        criterion,
                        ftest, 
                        select, 
-                       alpha, 
+                       alpha,
+                       robust,
+                       cluster,
+                       scalew,
                        ...) {
   
   if (degree < 1)
@@ -586,11 +598,13 @@ select_ra2 <- function(x,
   # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -618,7 +632,8 @@ select_ra2 <- function(x,
   # df for tests are degree * 2 - 1
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -653,7 +668,8 @@ select_ra2 <- function(x,
       
       fit_fpm <- find_best_fpm_step(
         x = x, xi = xi, degree = current_degree, y = y, 
-        powers_current = powers_current, powers = powers, acdx = acdx, ...
+        powers_current = powers_current, powers = powers, acdx = acdx,
+        robust = robust, cluster = cluster, scalew = scalew, ...
       )
       
       old_names = rownames(res$metrics)
@@ -746,7 +762,10 @@ select_ra2_acd <- function(x,
                            criterion,
                            ftest, 
                            select, 
-                           alpha, 
+                           alpha,
+                           robust,
+                           scalew,
+                           cluster,
                            ...) {
   
   # simplify testing by defining test helper function
@@ -787,11 +806,13 @@ select_ra2_acd <- function(x,
   # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = 2, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew,...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -819,7 +840,8 @@ select_ra2_acd <- function(x,
   # df for tests are degree * 2 - 1 = 3
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   old_names = rownames(res$metrics)
@@ -847,7 +869,8 @@ select_ra2_acd <- function(x,
   # test for functional form, comparison with FP1(x, .)
   fit <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   old_names = rownames(res$metrics)
@@ -875,7 +898,8 @@ select_ra2_acd <- function(x,
   # test for functional form, comparison with FP1(., A(x))
   fit_fp1a <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   old_names = rownames(res$metrics)
@@ -903,7 +927,8 @@ select_ra2_acd <- function(x,
   # return best model between FP1(., A(x)) and linear(., A(x))
   fit_lineara <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1007,6 +1032,9 @@ select_ic <- function(x,
                       ftest, 
                       select, 
                       alpha, 
+                      robust,
+                      cluster,
+                      scalew,
                       ...) {
   
   if (degree < 1)
@@ -1029,11 +1057,13 @@ select_ic <- function(x,
   # fit all relevant models
   fit_null <- fit_null_step(
       x = x, xi = xi, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     )
   fit_lin <- fit_linear_step(
       x = x, xi = xi, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     )
   
   fits_fpm <- list()
@@ -1041,7 +1071,8 @@ select_ic <- function(x,
   for (m in 1:degree) {
     fits_fpm[[sprintf("FP%g", m)]] <- find_best_fpm_step(
       x = x, xi = xi, degree = m, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     )
   }
   
@@ -1098,6 +1129,9 @@ select_ic_acd <- function(x,
                           ftest, 
                           select, 
                           alpha, 
+                          robust,
+                          scalew,
+                          cluster,
                           ...) {
   
   acdx_reset_xi <- acdx
@@ -1118,29 +1152,35 @@ select_ic_acd <- function(x,
   # fit all relevant models
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew,...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+    powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
-    powers_current = powers_current, powers = powers, acdx = acdx, ...
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    robust = robust, cluster = cluster, scalew = scalew, ...
   )
   
   fits <- list(
     "FP1(x, .)" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx_reset_xi, ...
+      powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     ), 
     "FP1(., A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     ), 
     "FP1(x, A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
-      powers_current = powers_current, powers = powers, acdx = acdx, ...
+      powers_current = powers_current, powers = powers, acdx = acdx,
+      robust = robust, cluster = cluster, scalew = scalew, ...
     )
   )
 

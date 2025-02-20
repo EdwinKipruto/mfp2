@@ -17,6 +17,9 @@ select_ra2(
   ftest,
   select,
   alpha,
+  robust,
+  cluster,
+  scalew,
   ...
 )
 }

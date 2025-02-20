@@ -123,6 +123,8 @@ fracplot <- function(model,
     # while for cox martingale residuals
     resid <- if (model$family_string == "cox") {
       model$residuals
+    } else if (model$family_string == "weibull") {
+      residuals(model, type = "deviance")
     } else {
       residuals.glm(model, type = "deviance")
     }

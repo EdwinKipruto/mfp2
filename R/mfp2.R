@@ -435,7 +435,7 @@ mfp2.default <- function(x,
                          df = 4, 
                          center = TRUE,
                          subset = NULL,
-                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         family = c("gaussian", "poisson", "binomial", "cox", "weibull"),
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
                          alpha = 0.05,
@@ -447,7 +447,10 @@ mfp2.default <- function(x,
                          nocenter = NULL,
                          acdx = NULL,
                          ftest = FALSE,
-                         control = NULL, 
+                         control = NULL,
+                         scalew = 0,
+                         robust = FALSE, 
+                         cluster = NULL,
                          verbose = TRUE,
                          ...) {
   
@@ -632,7 +635,7 @@ mfp2.default <- function(x,
               "i mfp2() reverts to use Chi-square instead.")
   }
   
-  if (family == "cox") {
+  if (family == "cox" || family == "weibull") {
       # assert y is a Surv object
       if (!survival::is.Surv(y)) {
           stop("! Response y must be a survival::Surv object.")
@@ -668,7 +671,7 @@ mfp2.default <- function(x,
       }
   } else {
       # assert type of y
-      if (is.matrix(y)||is.data.frame(y)) {
+      if (is.matrix(y) || is.data.frame(y)) {
           stop(sprintf("! Outcome y must not be of class %s.", 
                        paste0(class(y), collapse = ", ")), 
                "i Please convert y to a vector.", call. = FALSE)
@@ -698,7 +701,7 @@ mfp2.default <- function(x,
     
     # check the names of supplied powers
     dd <- which(!names(powers) %in% vnames)
-    if (length(dd) !=0)
+    if (length(dd) != 0)
       stop(" The names of all powers must be in the column names of x.\n",
            sprintf("i This applies to the following powers: %s.", 
                    paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
@@ -712,7 +715,7 @@ mfp2.default <- function(x,
     # assert that the number of powers should be at least 2
     pow_length <- sapply(powers, function(v) length(v))
     pow_length_one <- which(pow_length == 1)
-    if (length(pow_length_one)!=0)
+    if (length(pow_length_one) != 0)
       stop(" The number of powers for each variable must be at least two.\n",
            sprintf("i This applies to the following variables: %s.", 
                    paste0(names(pow_length_one), collapse = ", ")), call. = FALSE)
@@ -739,7 +742,7 @@ mfp2.default <- function(x,
   if (is.null(shift)) {
       shift <- apply(x, 2, find_shift_factor)
   } else {
-    if (length(shift) == 1){
+    if (length(shift) == 1) {
       shift <- rep(shift, nvars)
     }
       # Check if the shifting factors are sufficiently large
@@ -747,7 +750,7 @@ mfp2.default <- function(x,
       difference_from_target  <- shift - shift_based_data
       indices_of_negatives  <- which(difference_from_target < 0)
       
-      if(length(indices_of_negatives)!= 0)
+      if(length(indices_of_negatives) != 0)
         stop("i The shifting factors for the following variables are not large enough to shift x to positive values.\n", 
                 sprintf("i This applies to the following variables: %s.", 
                         paste0(vnames[indices_of_negatives], collapse = ", ")), call. = FALSE)
@@ -765,9 +768,11 @@ mfp2.default <- function(x,
   }
   if (is.null(control)) {
     if (family == "cox") {
-      control = survival::coxph.control()
+      control <- survival::coxph.control()
+    } else if (family == "weibull") {
+      control <- survival::survreg.control()
     } else {
-      control = stats::glm.control()
+      control <- stats::glm.control()
     }
   }
   
@@ -847,6 +852,9 @@ mfp2.default <- function(x,
       method = ties, strata = istrata, nocenter = nocenter,
       acdx = acdx, ftest = ftest, 
       control = control, 
+      cluster = cluster,
+      robust = robust,
+      scalew = scalew,
       verbose = verbose
   )
   

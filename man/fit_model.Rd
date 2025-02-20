@@ -15,6 +15,9 @@ fit_model(
   control = NULL,
   rownames = NULL,
   nocenter = NULL,
+  robust = FALSE,
+  cluster = FALSE,
+  scalew = 0,
   fast = TRUE
 )
 }
@@ -51,5 +54,5 @@ A list with the following components:
 Fits generalized linear models and Cox proportional hazard models.
 }
 \details{
-Computations rely on \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
+Computations rely on \code{\link[=fit_glm]{fit_glm()}}, \code{\link[=fit_cox]{fit_cox()}} and \code{\link[=fit_cox]{fit_cox()}}.
 }

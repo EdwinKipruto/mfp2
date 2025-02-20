@@ -17,6 +17,9 @@ select_linear(
   ftest,
   select,
   alpha,
+  scalew,
+  robust,
+  cluster,
   ...
 )
 }

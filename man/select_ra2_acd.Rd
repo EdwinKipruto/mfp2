@@ -17,6 +17,9 @@ select_ra2_acd(
   ftest,
   select,
   alpha,
+  robust,
+  scalew,
+  cluster,
   ...
 )
 }

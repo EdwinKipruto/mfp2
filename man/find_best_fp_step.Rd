@@ -25,6 +25,9 @@ find_best_fp_step(
   ftest,
   control,
   rownames,
+  scalew,
+  robust,
+  cluster,
   verbose
 )
 }

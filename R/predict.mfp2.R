@@ -165,7 +165,7 @@ predict.mfp2 <- function(object,
       # define sequence of variable data as named list
       # TODO: definition of sequence should be more flexible
       if (terms_seq == "equidistant") {
-        if (!is.null(newdata)){
+        if (!is.null(newdata)) {
           x_range <- range(newdata[, t])
         }else {
           x_range <- range(object$x_original[, t])
@@ -184,9 +184,9 @@ predict.mfp2 <- function(object,
                                                          apply_pre = FALSE))
       } else {
         # use data
-        if (!is.null(newdata)){
+        if (!is.null(newdata)) {
           x_seq <- newdata[, t, drop = FALSE]
-        }else {
+        } else {
           x_seq <- object$x_original[, t, drop = FALSE]
         }
         x_names <- object$fp_powers[[t]]
@@ -202,9 +202,10 @@ predict.mfp2 <- function(object,
       # create output data.frame
     
       # intercepts do not play a role for Cox models, or contrasts
-      intercept = coef(object)["(Intercept)"]
-      if (is.na(intercept) || type == "contrasts") 
-        intercept = 0
+      intercept <- coef(object)["(Intercept)"]
+      if (is.na(intercept) || type == "contrasts") {
+        intercept <- 0
+      }
       
       res <- data.frame(
         # backtransform variable to original scale
@@ -222,7 +223,7 @@ predict.mfp2 <- function(object,
         
         x_ref <- ref[[t]]
         if (is.null(x_ref)) {
-          if (!is.null(newdata)){
+          if (!is.null(newdata)) {
             v <- newdata[, t]
           }else {
             v <- object$x_original[, t]
@@ -270,16 +271,16 @@ predict.mfp2 <- function(object,
     betas <- object$coefficients
   
     # check whether offset was used in the model
-    no_offset <- all(object$offset==0)
+    no_offset <- all(object$offset == 0)
     
     if (object$family_string == "cox") {
       # subset newdata based on names of coefficients in the model
       newdata <- as.matrix(newdata[,names(betas),drop = FALSE])
-      nfit <- newdata%*%betas
+      nfit <- newdata %*% betas
     } else {
       # remove intercept before subsetting 
       newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
-      nfit <- cbind(1,newdata)%*%betas
+      nfit <- cbind(1,newdata) %*% betas
 
     } 
   
@@ -287,16 +288,16 @@ predict.mfp2 <- function(object,
       if (is.null(newoffset))
         stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
        nr <- dim(newdata)[1]
-       if (nr!=length(newoffset))
+       if (nr != length(newoffset))
          stop("The length of newoffset must be equal to the number of rows of newdata", call. = FALSE)
       nfit <- nfit + newoffset
     }
     
-    if (object$family_string=="gaussian")
+    if (object$family_string == "gaussian")
       return(nfit)
     
     # response = risk score in coxph
-    return(switch (type,
+    return(switch(type,
                    response = exp(nfit),
                    risk = exp(nfit),
                    nfit
@@ -308,8 +309,13 @@ predict.mfp2 <- function(object,
     getFromNamespace("predict.coxph", "survival")(
       object = object, type = type, ...
     )
+  } else if (object$family_string == "weibull") {
+    getFromNamespace("predict.survreg", "survival")(
+      object = object, type = type, ...
+    )
   } else {
     stats::predict.glm(object = object, type = type, ...)
+    
   }
 }
 
@@ -349,7 +355,7 @@ prepare_newdata_for_predict <- function(object,
     newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
     
   # exclude binary variables before returning an error
-  index <-  unname(which(apply(newdata, 2, function (x) length(unique(x)))>2))
+  index <-  unname(which(apply(newdata, 2, function(x) length(unique(x))) > 2))
     
     if (!all(newdata[,index] > 0)) 
       warning("i After shifting using training data some values in newdata remain negative.",
@@ -377,7 +383,7 @@ prepare_newdata_for_predict <- function(object,
   
   newdata <- data.frame(newdata)
   
-  if (object$family_string == "cox") {
+  if (object$family_string == "cox" || object$family_string == "weibull") {
     # use of NextMethod here does not work as expected
     
     # add strata and offset as required

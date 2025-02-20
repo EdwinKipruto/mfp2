@@ -19,7 +19,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "cox"),
+  family = c("gaussian", "poisson", "binomial", "cox", "weibull"),
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -32,6 +32,9 @@ mfp2(x, ...)
   acdx = NULL,
   ftest = FALSE,
   control = NULL,
+  scalew = 0,
+  robust = FALSE,
+  cluster = NULL,
   verbose = TRUE,
   ...
 )

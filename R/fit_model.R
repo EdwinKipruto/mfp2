@@ -304,18 +304,40 @@ fit_weibull <- function(x,
   }
   fast <- FALSE
   if (fast) {
+    dlist <- survreg.distributions[["weibull"]]
+    # see survreg... if(is.atomic(dlist$dist))
+    dlist <- survreg.distributions[[dlist$dist]]
+    # loglikelihood from this approach needs to be added logcorrect, see survreg()
+   exactsurv <- y[, ncol(y)] == 1
+    if (any(exactsurv)) {
+      if (is.null(weights)) {
+        logcorrect <- sum(log(dlist$dtrans(y[exactsurv, 
+                                             1])))
+        } else {
+        logcorrect <- sum(weights[exactsurv] * log(dlist$dtrans(Y[exactsurv, 
+                                                                     1])))
+        }
+    }
+    # Prepare y: this should be moved to mfp2()
+    tranfun <- dlist$trans
+    # Right censoring, see survreg() for left, interval etc
+    # we need a function that prepares this
+    y <- cbind(tranfun(y[, 1]), y[, 2])
+
+    
     fit <- survival::survreg.fit(
       x = x, y = y,
       weights = weights,
       offset = offset,
       init = NULL,
       controlvals = control,
-      dist = survival::survreg.distributions[["weibull"]],
+      dist = dlist,
       scale = scalew,
       nstrat = 1,
       strata = 0,
       parms = NULL
     )  
+    fit$loglik <- fit$loglik + logcorrect
   } else {
     # construct appropriate formula incorporating offset and strata terms
     # cbinding y will lead to two variables: time and status

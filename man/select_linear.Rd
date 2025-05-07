@@ -17,6 +17,7 @@ select_linear(
   ftest,
   select,
   alpha,
+  family,
   ...
 )
 }
@@ -56,6 +57,8 @@ for backward elimination of \code{xi}.}
 
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
+
+\item{family}{a character string representing a family object.}
 
 \item{...}{passed to fitting functions.}
 }

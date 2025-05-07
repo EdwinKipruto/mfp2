@@ -4,7 +4,7 @@
 \alias{find_best_fpm_step}
 \title{Function to find the best FP functions of given degree for a single variable}
 \usage{
-find_best_fpm_step(x, xi, degree, y, powers_current, powers, acdx, ...)
+find_best_fpm_step(x, xi, degree, y, powers_current, powers, acdx, family, ...)
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
@@ -28,6 +28,8 @@ powers for each covariate.}
 
 \item{acdx}{a logical vector of length nvars indicating continuous variables
 to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{family}{a character string representing a family object.}
 
 \item{...}{passed to \code{fit_model()}.}
 }

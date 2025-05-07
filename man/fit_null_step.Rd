@@ -4,7 +4,7 @@
 \alias{fit_null_step}
 \title{Function to fit null model excluding variable of interest}
 \usage{
-fit_null_step(x, xi, y, powers_current, powers, acdx, ...)
+fit_null_step(x, xi, y, powers_current, powers, acdx, family, ...)
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
@@ -26,6 +26,8 @@ powers for each covariate.}
 
 \item{acdx}{a logical vector of length nvars indicating continuous variables
 to undergo the approximate cumulative distribution (ACD) transformation.}
+
+\item{family}{a character string representing a family object.}
 
 \item{...}{passed to \code{fit_model()}.}
 }

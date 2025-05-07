@@ -226,7 +226,7 @@ find_best_fpm_step <- function(x,
                                acdx, 
                                ...) {
   
-  n_obs <- dim(x)[1L]
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   if (degree == 1) {
     # remove linear model for normal data, but keep for acd transformation
@@ -300,7 +300,7 @@ fit_null_step <- function(x,
                           acdx, 
                           ...) {
   
-  n_obs <- dim(x)[1L]
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
@@ -344,7 +344,7 @@ fit_linear_step <- function(x,
                             acdx, 
                             ...) {
   
-  n_obs <- dim(x)[1L]
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
@@ -420,7 +420,7 @@ select_linear <- function(x,
                           alpha, 
                           ...) {
   
-  n_obs <- dim(x)[1L]
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -550,6 +550,8 @@ select_ra2 <- function(x,
   if (degree < 1)
     return(NULL)
   
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  
   # simplify testing by defining test helper function
   if (ftest) {
     calculate_test <- function(metrics, n_obs) {
@@ -568,7 +570,6 @@ select_ra2 <- function(x,
     }
   }
 
-  n_obs <- nrow(x)
   fpmax <- paste0("FP", degree)
   
   # output list
@@ -767,7 +768,9 @@ select_ra2_acd <- function(x,
     }
   }
   
-  n_obs <- nrow(x)
+  #n_obs <- nrow(x)
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  
   fpmax <- "FP1(x, A(x))"
   acdx_reset_xi <- acdx
   acdx_reset_xi[xi] = FALSE

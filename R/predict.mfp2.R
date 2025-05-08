@@ -69,6 +69,8 @@
 #' @param newoffset A vector of offsets used for predictions. This parameter is 
 #' important when newdata is supplied. The offsets are directly added to the 
 #' linear predictor without any transformations.
+#' @param nseq Integer specifying how many values to generate when 
+#' `terms_seq = "equidistant"`. Default is 100.
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @examples
@@ -111,12 +113,11 @@ predict.mfp2 <- function(object,
                          ref = NULL, 
                          strata = NULL, 
                          newoffset = NULL, 
+                         nseq = 100,
                          ...) {
-  # check offset and strata
- # if(is.null(offset)){
- #  }
  
   terms_seq <- match.arg(terms_seq)
+  
   # assert that the object must be mfp2
   if (!inherits(object, "mfp2")) { 
     stop("The object is not an mfp2 object.", call. = FALSE)
@@ -131,7 +132,6 @@ predict.mfp2 <- function(object,
     terms <- get_selected_variable_names(object)
   }
   
-  # TODO return error when terms given are not in the final model
   if (is.null(ref)) {
     ref <- setNames(lapply(terms, function(v) NULL), terms)
   }
@@ -142,7 +142,6 @@ predict.mfp2 <- function(object,
   }
   
   # TODO: add checks for missing strata and offset in case they were used in fit
-  # TODO: add checks for correct specification of ref
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE)) {
     warning("i The supplied reference values (ref) must all be named.\n", 
             "i predict() continues but uses means (if variables are continous) or
@@ -161,14 +160,13 @@ predict.mfp2 <- function(object,
       warning("i Some terms supplied are not in the final model.\n", 
               "i predict() continues but returns an empty list for those terms 
                  not in the model.", call. = FALSE)
-    # TODO: return warning if the names(ref) != names(terms)
+    # return warning if the names(ref) != names(terms)
     if (!all(sapply(ref, is.null)) && any(!names(ref) %in% terms))
       warning("i Some of names of reference values are not in terms.\n", 
               "i predict() continues but does not consider them.", call. = FALSE)
    # 
     res_list <- list()
     for (t in terms) {
-      
       # define sequence of variable data as named list
       # TODO: definition of sequence should be more flexible
       if (terms_seq == "equidistant") {
@@ -179,7 +177,7 @@ predict.mfp2 <- function(object,
         }
         
         x_seq  <- matrix(
-          seq(x_range[1], x_range[2], length.out = 100),
+          seq(x_range[1], x_range[2], length.out = nseq),
           ncol = 1
         )
         colnames(x_seq) <- t
@@ -203,7 +201,7 @@ predict.mfp2 <- function(object,
                                                          x_seq, 
                                                          apply_pre = FALSE))
       }
-      # TODO: CHECK WHETHER COLNAMES(x_trafo) is correct
+      # 
       term_coef <- coef(object)[colnames(x_trafo)]
       
       # create output data.frame

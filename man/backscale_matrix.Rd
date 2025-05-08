@@ -20,9 +20,3 @@ from a named vector. Typically used to reverse prior scaling (i.e., backscaling)
 This is an internal helper function and not intended for direct use by package
 users.
 }
-\examples{
-x <- matrix(1:6, nrow = 2, byrow = TRUE)
-colnames(x) <- c("x1", "x2", "x3")
-scalex <- c(x1 = 10, x2 = 0.5, x3 = -1)
-backscale_matrix(x, scalex)
-}

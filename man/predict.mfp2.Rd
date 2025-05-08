@@ -14,6 +14,7 @@
   ref = NULL,
   strata = NULL,
   newoffset = NULL,
+  nseq = 100,
   ...
 )
 }
@@ -64,6 +65,9 @@ reference values.}
 \item{newoffset}{A vector of offsets used for predictions. This parameter is
 important when newdata is supplied. The offsets are directly added to the
 linear predictor without any transformations.}
+
+\item{nseq}{Integer specifying how many values to generate when
+\code{terms_seq = "equidistant"}. Default is 100.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }

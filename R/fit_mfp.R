@@ -748,11 +748,6 @@ create_fp_terms <- function(fp_powers,
 #'
 #' @return A matrix with backscaled columns, or `NULL` if `x` is `NULL`.
 #'
-#' @examples
-#' x <- matrix(1:6, nrow = 2, byrow = TRUE)
-#' colnames(x) <- c("x1", "x2", "x3")
-#' scalex <- c(x1 = 10, x2 = 0.5, x3 = -1)
-#' backscale_matrix(x, scalex)
 backscale_matrix <- function(x, scalex) {
   # If x is NULL, return NULL
   if (is.null(x)) {

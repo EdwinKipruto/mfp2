@@ -782,6 +782,7 @@ backscale_matrix <- function(x, scalex) {
   }
   
   # Multiply each column by the corresponding scalar
-  sweep(x, 2, scalex[vnames], FUN = "*")
+  unscale_x <- sweep(x, 2, scalex[vnames], FUN = "*")
+  return(unscale_x)
 }
 

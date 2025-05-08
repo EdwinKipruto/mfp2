@@ -21,46 +21,49 @@
 \item{object}{a fitted object of class \code{mfp2}.}
 
 \item{newdata}{optionally, a matrix with column names in which to look for
-variables with which to predict. See \code{\link[=mfp2]{mfp2()}} for details.}
+variables with which to predict. If provided, the variables are internally
+shifted using the shifting values stored in \code{object}. See \code{\link[=mfp2]{mfp2()}} for
+further details.}
 
-\item{type}{the type of prediction required.  The default is on the
-scale of the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for
-details. In case \code{type = "terms"}, see the Section on \verb{Terms prediction}.
-In case \code{type = "contrasts"}, see the Section on \code{Contrasts}.}
+\item{type}{the type of prediction required.  The default is on the scale of
+the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for details.
+In case \code{type = "terms"}, see the Section on \verb{Terms prediction}. In case
+\code{type = "contrasts"}, see the Section on \code{Contrasts}.}
 
 \item{terms}{a character vector of variable names specifying for which
-variables term or contrast predictions are desired.
-Only used in case \code{type = "terms"} or \code{type = "contrasts"}.
-If \code{NULL} (the default) then all selected variables in the final model will
-be used. In any case, only variables used in the final model are used, even
-if more variable names are passed.}
+variables term or contrast predictions are desired. Only used in case
+\code{type = "terms"} or \code{type = "contrasts"}. If \code{NULL} (the default) then all
+selected variables in the final model will be used. In any case, only
+variables used in the final model are used, even if more variable names are
+passed.}
 
 \item{terms_seq}{a character string specifying how the range of variable
 values for term predictions are handled. The default \code{equidistant} computes
 the range of the data range and generates an equidistant sequence of
-100 points from the minimum to the maximum values to properly show the functional
-form estimated in the final model.
+100 points from the minimum to the maximum values of shifted values to
+properly show the functional form estimated in the final model.
 The option \code{data} uses the observed data values directly, but these may not
 adequately reflect the functional form of the data, especially when extreme
 values or influential points are present.}
 
-\item{alpha}{significance level used for computing confidence
-intervals in terms prediction.}
+\item{alpha}{significance level used for computing confidence intervals in
+terms prediction.}
 
 \item{ref}{a named list of reference values used when \code{type = "contrasts"}.
 Note that any variable requested in \code{terms}, but not having an entry in this
-list (or if the entry is \code{NULL}) then the mean value (or minimum for binary
-variables) will be used as reference. Values are specified on the original
-scale of the variable since the program will internally scale it using the
-scaling factors obtained from \code{\link[=find_scale_factor]{find_scale_factor()}}. By default, this function
-uses the means (for continuous variables) and minima (for binary variables) as
+list (or if the entry is \code{NULL}) then the mean value of shifted data
+(or minimum for binary variables) will be used as reference. Values should be
+specified on the original scale of the variable since the program will
+internally scale it using the scaling factors obtained from
+\code{\link[=find_scale_factor]{find_scale_factor()}}. By default, this function uses the means
+(for continuous variables) and minimum (for binary variables) as
 reference values.}
 
 \item{strata}{stratum levels used for predictions.}
 
-\item{newoffset}{A vector of offsets used for predictions. This parameter is important when
-newdata is supplied. The offsets will be directly added to the linear predictor without any
-transformations.}
+\item{newoffset}{A vector of offsets used for predictions. This parameter is
+important when newdata is supplied. The offsets are directly added to the
+linear predictor without any transformations.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }
@@ -73,9 +76,8 @@ for each variable requested in \code{terms} (excluding those not present in the
 final model).
 Each entry is a \code{data.frame} with the following columns:
 \itemize{
-\item \code{variable}: variable values on original scale.
-\item \code{variable_pre}: variable with pre-transformation applied, i.e. shifted,
-scaled and centered as required.
+\item \code{variable}: variable values on original scale (without shifting).
+\item \code{variable_pre}: variable with pre-transformation applied, i.e. shifted, and centered as required.
 \item \code{value}: partial linear predictor or contrast (depending on \code{type}).
 \item \code{se}: standard error of partial linear predictor or contrast.
 \item \code{lower}: lower limit of confidence interval.
@@ -87,8 +89,7 @@ Obtains predictions from an \code{mfp2} object.
 }
 \details{
 To prepare the \code{newdata} for prediction, this function applies any
-necessary shifting and scaling based on the factors obtained from the
-training data.
+necessary shifting based on the factors obtained from the training data.
 It is important to note that if the shifting factors are not sufficiently
 large as estimated from the training data, variables in \code{newdata} may end up
 with negative values, which can cause prediction errors if non-linear
@@ -97,14 +98,14 @@ The next step involves transforming the data using the selected
 fractional polynomial (FP) powers. If necessary, centering of variables is
 conducted. Once the transformation (and centering) is complete, the
 transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
-depending on the chosen family of models and when type is not
-\code{terms} and \code{contrasts}.
+depending on the chosen family of models and when type is not \code{terms} and
+\code{contrasts}.
 }
 \section{Terms prediction}{
 
-This function allows to compute the partial linear predictors
-for each variable selected into the final model if \code{type = "terms"}. Note
-that the results returned from this function are different from those of
+This function allows to compute the partial linear predictors for each
+variable selected into the final model if \code{type = "terms"}. Note that the
+results returned from this function are different from those of
 \code{predict.glm()} and \code{predict.coxph()} since these functions do not take
 into account that a single variable can be represented by multiple terms.
 This functionality is useful to assess model fit, since it also allows to

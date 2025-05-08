@@ -329,10 +329,11 @@ creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by
 \eqn{10^p} where the exponent \eqn{p} is given by
 \deqn{p = sign(k) \times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x')- min(x'))}
 
-The FP transformation of \eqn{x'} is centered on the mean of the observed
-values of \eqn{x'}. For example, for the FP1 model \eqn{\beta_0 + \beta_1x^p},
-the actual model fitted by the software would be
-\eqn{\beta'_0 + \beta'_1(x'^p-mean(x'^p))}. This approach ensures that
+After the final FP powers are estimated, the program backscales \eqn{x'} to
+the original scale \eqn{x}. The FP transformation of \eqn{x} is centered on
+the mean of the observed values of \eqn{x}. For example, for the FP1 model
+\eqn{\beta_0 + \beta_1x^p},the actual model fitted by the software would be
+\eqn{\beta'_0 + \beta'_1(x^p-mean(x^p))}. This approach ensures that
 the revised constant \eqn{\beta'_0} or baseline hazard function in a Cox
 model retains a meaningful interpretation.
 

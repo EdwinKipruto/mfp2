@@ -22,7 +22,7 @@ a subset of the columns used for fitting the model.}
 
 \item{strata, offset}{passed from \code{\link[=predict.mfp2]{predict.mfp2()}}.}
 
-\item{apply_pre}{logical indicating wether the fitted pre-transformation
+\item{apply_pre}{logical indicating whether the fitted pre-transformation
 is applied or not.}
 
 \item{apply_center}{logical indicating whether the fitted centers are applied

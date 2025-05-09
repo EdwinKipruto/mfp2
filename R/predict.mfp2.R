@@ -1,35 +1,83 @@
-#' Predict Method for `mfp2` Fits
+#' Predict Method for `mfp2`
 #' 
 #' Obtains predictions from an `mfp2` object.
 #' 
 #' @details 
 #' To prepare the `newdata` for prediction, this function applies any 
-#' necessary shifting based on the factors obtained from the training data. 
-#' It is important to note that if the shifting factors are not sufficiently 
-#' large as estimated from the training data, variables in `newdata` may end up
-#' with negative values, which can cause prediction errors if non-linear 
-#' functional forms are used. A warning is given in this case by the function.
+#' necessary shifting based on factors obtained from the training data. 
+#' It is important to note that if the shifting factors estimated from the 
+#' training data are not sufficiently large, variables in `newdata` may end up
+#' being non-positive, which can cause prediction errors when non-linear 
+#' functional forms such as logarithms are used. In such cases, the function
+#' issues a warning. 
 #' The next step involves transforming the data using the selected
-#' fractional polynomial (FP) powers. If necessary, centering of variables is 
-#' conducted. Once the transformation (and centering) is complete, the 
-#' transformed data is passed to either `predict.glm()` or `predict.coxph()`, 
-#' depending on the chosen family of models and when type is not `terms` and
-#' `contrasts`.
+#' fractional polynomial (FP) powers. After transformation, variables are
+#' centered if `center` was set to TRUE in `mfp2()`. Once transformation 
+#' (and centering) is complete, the transformed data is passed 
+#' to either `predict.glm()` or `predict.coxph()`, depending on the model 
+#' family used, provided that `type` is neither `terms` nor `contrasts` (see the
+#' section handling `terms` and `contrasts` for details).
 #'
 #' @section Terms prediction:
-#' This function allows to compute the partial linear predictors for each 
-#' variable selected into the final model if `type = "terms"`. Note that the 
-#' results returned from this function are different from those of
-#' `predict.glm()` and `predict.coxph()` since these functions do not take
-#' into account that a single variable can be represented by multiple terms.
-#' This functionality is useful to assess model fit, since it also allows to 
-#' draw data points based on residuals. 
+#' If `type = "terms"`, this function computes the partial linear predictors 
+#' for each variable included in the final model. Unlike `predict.glm()` and 
+#' `predict.coxph()`, this function accounts for the fact that a single variable 
+#' may be represented by multiple transformed terms.
+#'
+#' For a variable modeled using a first-degree fractional polynomial (FP1), 
+#' the partial predictor is given by \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, where 
+#' \eqn{x_j^*} is the transformed variable (centered if `center = TRUE`).
+#'
+#' For a second-degree fractional polynomial (FP2), the partial predictor 
+#' takes the form \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}, 
+#' where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components 
+#' of the original variable (again, centered if `center = TRUE`).
+#'
+#' This functionality is particularly useful for assessing model fit, as it 
+#' enables the visualization of individual data points.
+
 #' 
-#' @section Contrasts: 
-#' This functions allows to compute contrasts with reference to a specified
-#' variable value if `type = "contrasts"`. In this case, the fitted partial
-#' predictors will be centered at the reference value (i.e. 0), and also 
-#' confidence intervals will have width 0 at that point. 
+#' @section Contrasts:
+#' If `type = "contrasts"`, this function computes contrasts relative to a 
+#' specified reference value for the \eqn{j}th variable (e.g., age = 50). Let 
+#' \eqn{x_j} denote the values of the \eqn{j}th variable in `newdata`, and 
+#' \eqn{x_j^{\text{ref}}} the reference value. The contrast is defined as the 
+#' difference between the partial linear predictor evaluated at the transformed 
+#' (and centered, if `center = TRUE`) value \eqn{x_j}, and that evaluated at the
+#' transformed reference value \eqn{x_j^{(\text{ref}})}, 
+#' i.e., \eqn{f(x_j^*) - f(x_j^{*(\text{ref})})}.
+#'
+#' For a first-degree fractional polynomial (FP1), the partial predictor is:
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}
+#' and the contrast is:
+#' \deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_j^* \hat{\beta}_j - x_j^{*(\text{ref})} \hat{\beta}_j}
+#'
+#' For a second-degree fractional polynomial (FP2), the partial predictor is:
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}
+#' and the contrast is:
+#' \deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} - x_{j1}^{*(\text{ref})} \hat{\beta}_{j1} - x_{j2}^{*(\text{ref})} \hat{\beta}_{j2}}
+#'
+#' where \eqn{x_j^*}, \eqn{x_{j1}^*}, and \eqn{x_{j2}^*} are the transformed 
+#' (and centered, if applicable) components of the \eqn{j}th variable, and 
+#' the \eqn{\hat{\beta}} terms are the corresponding model estimates
+#'
+#' The reference value \eqn{x_j^{(\text{ref})}} is first **shifted** using the 
+#' same shifting factor estimated from the training data, then transformed using 
+#' the estimated fractional polynomial (FP) powers, and finally **centered** 
+#' (if `center = TRUE`) using the **mean of the transformed (and shifted) values 
+#' of \eqn{x_j} in the training data**—ensuring full consistency with the fitted model.
+#'
+#' If `ref = NULL`, the function uses the **mean of the shifted \eqn{x_j}** as the 
+#' reference value when \eqn{x_j} is continuous, or the **minimum of \eqn{x_j}** 
+#' (typically 0) when \eqn{x_j} is binary. This provides a natural and interpretable 
+#' baseline in the absence of a user-specified reference.
+#'
+#' The fitted partial predictors are centered at the reference point, 
+#' meaning the contrast at that point is zero. Correspondingly, confidence intervals 
+#' at the reference value have zero width, reflecting no contrast.
+#'
+#' This functionality is especially useful for comparing the effect of a variable 
+#' relative to a meaningful baseline, such as clinically relevant value.
 #' 
 #' @param object a fitted object of class `mfp2`.
 #' @param newdata optionally, a matrix with column names in which to look for 
@@ -168,7 +216,6 @@ predict.mfp2 <- function(object,
     res_list <- list()
     for (t in terms) {
       # define sequence of variable data as named list
-      # TODO: definition of sequence should be more flexible
       if (terms_seq == "equidistant") {
         if (!is.null(newdata)) {
           x_range <- range(newdata[, t]) + object$transformations[t,"shift"]

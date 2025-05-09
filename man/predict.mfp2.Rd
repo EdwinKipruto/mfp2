@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict.mfp2.R
 \name{predict.mfp2}
 \alias{predict.mfp2}
-\title{Predict Method for \code{mfp2} Fits}
+\title{Predict Method for \code{mfp2}}
 \usage{
 \method{predict}{mfp2}(
   object,
@@ -93,35 +93,82 @@ Obtains predictions from an \code{mfp2} object.
 }
 \details{
 To prepare the \code{newdata} for prediction, this function applies any
-necessary shifting based on the factors obtained from the training data.
-It is important to note that if the shifting factors are not sufficiently
-large as estimated from the training data, variables in \code{newdata} may end up
-with negative values, which can cause prediction errors if non-linear
-functional forms are used. A warning is given in this case by the function.
+necessary shifting based on factors obtained from the training data.
+It is important to note that if the shifting factors estimated from the
+training data are not sufficiently large, variables in \code{newdata} may end up
+being non-positive, which can cause prediction errors when non-linear
+functional forms such as logarithms are used. In such cases, the function
+issues a warning.
 The next step involves transforming the data using the selected
-fractional polynomial (FP) powers. If necessary, centering of variables is
-conducted. Once the transformation (and centering) is complete, the
-transformed data is passed to either \code{predict.glm()} or \code{predict.coxph()},
-depending on the chosen family of models and when type is not \code{terms} and
-\code{contrasts}.
+fractional polynomial (FP) powers. After transformation, variables are
+centered if \code{center} was set to TRUE in \code{mfp2()}. Once transformation
+(and centering) is complete, the transformed data is passed
+to either \code{predict.glm()} or \code{predict.coxph()}, depending on the model
+family used, provided that \code{type} is neither \code{terms} nor \code{contrasts} (see the
+section handling \code{terms} and \code{contrasts} for details).
 }
 \section{Terms prediction}{
 
-This function allows to compute the partial linear predictors for each
-variable selected into the final model if \code{type = "terms"}. Note that the
-results returned from this function are different from those of
-\code{predict.glm()} and \code{predict.coxph()} since these functions do not take
-into account that a single variable can be represented by multiple terms.
-This functionality is useful to assess model fit, since it also allows to
-draw data points based on residuals.
+If \code{type = "terms"}, this function computes the partial linear predictors
+for each variable included in the final model. Unlike \code{predict.glm()} and
+\code{predict.coxph()}, this function accounts for the fact that a single variable
+may be represented by multiple transformed terms.
+
+For a variable modeled using a first-degree fractional polynomial (FP1),
+the partial predictor is given by \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, where
+\eqn{x_j^*} is the transformed variable (centered if \code{center = TRUE}).
+
+For a second-degree fractional polynomial (FP2), the partial predictor
+takes the form \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}},
+where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components
+of the original variable (again, centered if \code{center = TRUE}).
+
+This functionality is particularly useful for assessing model fit, as it
+enables the visualization of individual data points.
 }
 
 \section{Contrasts}{
 
-This functions allows to compute contrasts with reference to a specified
-variable value if \code{type = "contrasts"}. In this case, the fitted partial
-predictors will be centered at the reference value (i.e. 0), and also
-confidence intervals will have width 0 at that point.
+If \code{type = "contrasts"}, this function computes contrasts relative to a
+specified reference value for the \eqn{j}th variable (e.g., age = 50). Let
+\eqn{x_j} denote the values of the \eqn{j}th variable in \code{newdata}, and
+\eqn{x_j^{\text{ref}}} the reference value. The contrast is defined as the
+difference between the partial linear predictor evaluated at the transformed
+(and centered, if \code{center = TRUE}) value \eqn{x_j}, and that evaluated at the
+transformed reference value \eqn{x_j^{(\text{ref}})},
+i.e., \eqn{f(x_j^*) - f(x_j^{*(\text{ref})})}.
+
+For a first-degree fractional polynomial (FP1), the partial predictor is:
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}
+and the contrast is:
+\deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_j^* \hat{\beta}_j - x_j^{*(\text{ref})} \hat{\beta}_j}
+
+For a second-degree fractional polynomial (FP2), the partial predictor is:
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}
+and the contrast is:
+\deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} - x_{j1}^{*(\text{ref})} \hat{\beta}_{j1} - x_{j2}^{*(\text{ref})} \hat{\beta}_{j2}}
+
+where \eqn{x_j^*}, \eqn{x_{j1}^*}, and \eqn{x_{j2}^*} are the transformed
+(and centered, if applicable) components of the \eqn{j}th variable, and
+the \eqn{\hat{\beta}} terms are the corresponding model estimates
+
+The reference value \eqn{x_j^{(\text{ref})}} is first \strong{shifted} using the
+same shifting factor estimated from the training data, then transformed using
+the estimated fractional polynomial (FP) powers, and finally \strong{centered}
+(if \code{center = TRUE}) using the \strong{mean of the transformed (and shifted) values
+of \eqn{x_j} in the training data}—ensuring full consistency with the fitted model.
+
+If \code{ref = NULL}, the function uses the \strong{mean of the shifted \eqn{x_j}} as the
+reference value when \eqn{x_j} is continuous, or the \strong{minimum of \eqn{x_j}}
+(typically 0) when \eqn{x_j} is binary. This provides a natural and interpretable
+baseline in the absence of a user-specified reference.
+
+The fitted partial predictors are centered at the reference point,
+meaning the contrast at that point is zero. Correspondingly, confidence intervals
+at the reference value have zero width, reflecting no contrast.
+
+This functionality is especially useful for comparing the effect of a variable
+relative to a meaningful baseline, such as clinically relevant value.
 }
 
 \examples{

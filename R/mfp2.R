@@ -660,9 +660,8 @@ mfp2.default <- function(x,
       
       if (!is.null(strata)) {
           # assert stratification factors are of correct length
-          if (is.vector(strata)) {
-            strata_len = length(strata)
-          } else strata_len = nrow(strata)
+        strata_len <- ifelse(is.vector(strata), length(strata), nrow(strata))
+        
           if (strata_len != nrow(x)) {
               stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
           }

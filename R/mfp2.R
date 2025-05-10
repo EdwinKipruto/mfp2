@@ -740,19 +740,11 @@ mfp2.default <- function(x,
   if (is.null(shift)) {
       shift <- apply(x, 2, find_shift_factor)
   } else {
-    if (length(shift) == 1){
+    if (length(shift) == 1) {
       shift <- rep(shift, nvars)
     }
-      # Check if the shifting factors are sufficiently large
-      shift_based_data <- apply(x, 2, find_shift_factor)
-      difference_from_target  <- shift - shift_based_data
-      indices_of_negatives  <- which(difference_from_target < 0)
-      
-      if(length(indices_of_negatives)!= 0)
-        stop("i The shifting factors for the following variables are not large enough to shift x to positive values.\n", 
-                sprintf("i This applies to the following variables: %s.", 
-                        paste0(vnames[indices_of_negatives], collapse = ", ")), call. = FALSE)
   }
+    
   if (is.null(scale)) {
       scale <- apply(x, 2, find_scale_factor)
   } else if (length(scale) == 1) {
@@ -808,8 +800,37 @@ mfp2.default <- function(x,
   
 
   # data preparation -----------------------------------------------------------
-  # shift and scale 
+  # Apply shift transformation to the x matrix
   x <- sweep(x, 2, shift, "+")
+  
+  # Identify variables that require fractional polynomial transformation 
+  # (where df.list != 1)
+  nonlinear_variables <- which(df.list != 1)
+  
+  # Only check for non-positive values in variables that will undergo FP transformation
+  if (length(nonlinear_variables) > 0) {
+    # Extract only the relevant columns that need the positivity check
+    xd <- x[, nonlinear_variables, drop = FALSE]
+    
+    # Check which columns still have zero or negative values after shifting
+    neg_cols <- which(colSums(xd <= 0) > 0)
+    
+    if (length(neg_cols) > 0) {
+      # Get the names of problematic columns for user-friendly error message
+      cols_with_negatives <- colnames(xd)[neg_cols]
+      
+      # Provide a clear error message with the specific columns that have issues
+      stop(
+        "i The shifting factors are insufficient to ensure positive values for fractional polynomial transformation.\n", 
+        sprintf("i Problematic variables: %s", 
+                paste0(cols_with_negatives, collapse = ", ")), 
+        "\ni Consider increasing the shift values for these variables.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  # scale x after shifting
   x <- sweep(x, 2, scale, "/")
   
   # stratification for cox model
@@ -1359,8 +1380,7 @@ get_selected_variable_names <- function(object) {
 #' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
 #' 
 #' @export
-assign_df <- function(x, 
-                      df_default = 4) {
+assign_df <- function(x,df_default = 4) {
   
   # default degrees of freedom for each variable
   df <- rep(df_default, ncol(x))

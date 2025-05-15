@@ -232,8 +232,10 @@ fit_mfp <- function(x,
   # transform x using the final FP powers selected. 
   # x has already been shifted and scaled.
   
-  # back scale x then transform using powers
+  # Apply backscaling only if at least one scaling factor is not equal to 1
+  if (any(scale != 1)) {
   x <- backscale_matrix(x,scale)
+  }
   
   data_transformed <- transform_matrix(
     x = x, 

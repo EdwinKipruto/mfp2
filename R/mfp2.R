@@ -835,6 +835,10 @@ mfp2.default <- function(x,
   # stratification for cox model
   istrata <- strata
   if (family == "cox" && !is.null(strata)) {
+    # TODO: Replace strata with interaction()
+    # survival::strata: When used outside of a coxph formula the result of the
+    # function is essentially identical to the interaction function, though the
+    # labels from strata are often more verbose.
       istrata <- survival::strata(strata, shortlabel = TRUE)
       # convert strata to integers as conducted by coxph
       istrata <- as.integer(istrata)

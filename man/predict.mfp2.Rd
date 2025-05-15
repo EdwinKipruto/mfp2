@@ -123,8 +123,9 @@ takes the form \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x
 where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components
 of the original variable (again, centered if \code{center = TRUE}).
 
-This functionality is particularly useful for assessing model fit, as it
-enables the visualization of individual data points.
+This functionality is particularly useful for visualizing the functional
+relationship of a continuous variable, or for assessing model fit when
+residuals are included. See also \code{fracplot()}.
 }
 
 \section{Contrasts}{

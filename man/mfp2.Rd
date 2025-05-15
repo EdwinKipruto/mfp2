@@ -85,14 +85,15 @@ If supplied, then values must also be supplied to the \code{predict()} function.
 \item{cycles}{an integer, specifying the maximum number of iteration cycles.
 Default is 5.}
 
-\item{scale}{a numeric vector of length nvars or single numeric specifying
+\item{scale}{a numeric vector of length \code{nvars} or single numeric specifying
 scaling factors. If a single numeric, then the value will be replicated as
 necessary. The formula interface \code{mfp2.formula} only supports single numeric
 input to set a default value, individual values can be set using \code{fp} terms
 in the \code{formula} input.
 Default is \code{NULL} which lets the program estimate the scaling factors
 (see Details section). If scaling is not required set \code{scale = 1} to disable
-it.}
+it. The final regression coefficients are expressed in the original scale of
+the data.}
 
 \item{shift}{a numeric vector of length nvars or a single numeric specifying
 shift terms. If a single numeric, then the value will be replicated as
@@ -289,7 +290,9 @@ closed testing procedure that seeks the best combination from all 36 pairs of
 powers \eqn{(p1, p2)}. Functions that only involve a single power of
 the variable are denoted as FP1, i.e.
 \deqn{FP1(p1) = \beta_1 x^{p1}.}
-For details see e.g. Sauerbrei et al (2006).
+For details, see Sauerbrei et al. (2006) and Royston & Sauerbrei (2008).
+For the effects of influential points on FP functions, see Sauerbrei et al.
+(2023).
 }
 
 \section{Details on \code{family} option}{
@@ -330,12 +333,13 @@ creating \eqn{x'}, automatic scaling will divide each value of \eqn{x'} by
 \deqn{p = sign(k) \times floor(|k|) \quad \text{where} \quad k = log_{10} (max(x')- min(x'))}
 
 After the final FP powers are estimated, the program backscales \eqn{x'} to
-the original scale \eqn{x}. The FP transformation of \eqn{x} is centered on
-the mean of the observed values of \eqn{x}. For example, for the FP1 model
-\eqn{\beta_0 + \beta_1x^p},the actual model fitted by the software would be
-\eqn{\beta'_0 + \beta'_1(x^p-mean(x^p))}. This approach ensures that
-the revised constant \eqn{\beta'_0} or baseline hazard function in a Cox
-model retains a meaningful interpretation.
+the original scale \eqn{x}, ensuring that the final regression coefficients
+are expressed in the original scale of the data. The FP transformation of
+\eqn{x} is centered on the mean of the observed values of \eqn{x}. For example,
+for the FP1 model \eqn{\beta_0 + \beta_1x^p},the actual model fitted by the
+software would be \eqn{\beta'_0 + \beta'_1(x^p-mean(x^p))}. This approach
+ensures that the revised constant \eqn{\beta'_0} or baseline hazard function
+in a Cox model retains a meaningful interpretation.
 
 So in brief: shifting is required to make input values positive, scaling
 helps to bring the values to a reasonable range. Both operations are
@@ -424,7 +428,8 @@ Otherwise continue to step 5.
 If significant then model 3 cannot be simplified; accept model 3.
 Otherwise, accept model 5. End of procedure.
 }
-The result is the selection of one of the six models.
+The result is the selection of one of the six models. For details see
+Royston and Sauerbrei (2016).
 }
 
 \section{Details on model specification using a \code{formula}}{
@@ -530,7 +535,11 @@ The Stata Journal, 16(1), pp.72-87.}\cr
 
 Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic
 and diagnostic models: transformation of the predictors by using fractional
-polynomials. J Roy Stat Soc a Sta, 162:71-94.}
+polynomials. J Roy Stat Soc a Sta, 162:71-94.}\cr
+
+Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential
+points and sample size on the selection and replicability of multivariable
+fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}
 }
 \seealso{
 \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=fp]{fp()}}

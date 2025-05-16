@@ -755,8 +755,13 @@ mfp2.default <- function(x,
     
   if (is.null(scale)) {
       scale <- apply(x, 2, find_scale_factor)
-  } else if (length(scale) == 1) {
-      scale <- rep(scale, nvars)
+  } else {
+    if (length(scale) == 1) {
+      scale <- rep(scale, nvars) 
+    }
+      if (any(scale <= 0 | is.na(scale))) {
+        stop("All scale values must be positive and non-missing.", call. = FALSE)
+      }
   }
   if (length(center) == 1) {
       center <- rep(center, nvars)    

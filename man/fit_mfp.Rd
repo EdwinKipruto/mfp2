@@ -27,6 +27,8 @@ fit_mfp(
   acdx,
   ftest,
   control,
+  zero,
+  catzero,
   verbose
 )
 }
@@ -93,7 +95,19 @@ transformation.}
 \item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
 or \code{\link[stats:glm]{stats::glm()}} for details.}
 
-\item{verbose}{a logical; run in verbose mode.}
+\item{zero}{A logical vector indicating, by position, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length and in the same order as the columns
+of \code{x}.}
+
+\item{catzero}{A logical vector similar to \code{zero}, indicating which
+columns of \code{x} should treat nonpositive values as zero and also have a binary
+indicator automatically created and included in the model. Must match the length
+and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
+
+\item{verbose}{Logical; if \code{TRUE}, additional information will be printed
+during model fitting steps. Useful for understanding internal processing.
+Default is \code{FALSE}.}
 }
 \value{
 See \code{\link[=mfp2]{mfp2()}} for details on the returned object.

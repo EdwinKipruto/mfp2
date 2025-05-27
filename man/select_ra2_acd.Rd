@@ -18,6 +18,8 @@ select_ra2_acd(
   select,
   alpha,
   family,
+  zero,
+  catzero,
   ...
 )
 }
@@ -59,6 +61,17 @@ for backward elimination of \code{xi}.}
 for tests between FP models of different degrees for \code{xi}.}
 
 \item{family}{a character string representing a family object.}
+
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 
 \item{...}{passed to fitting functions.}
 }

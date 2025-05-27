@@ -4,7 +4,7 @@
 \alias{fit_acd}
 \title{Function to estimate approximate cumulative distribution (ACD)}
 \usage{
-fit_acd(x, powers = NULL, shift = 0, scale = 1)
+fit_acd(x, powers = NULL, shift = 0, scale = 1, zero = FALSE)
 }
 \arguments{
 \item{x}{a numeric vector.}
@@ -20,6 +20,12 @@ If \code{NULL}, then the program will estimate an appropriate shift automaticall
 \item{scale}{a numeric used to scale \code{x}. The default value is 1, meaning
 no scaling is conducted. If \code{NULL}, then the program will estimate
 an appropriate scaling factor automatically (see \code{\link[=find_scale_factor]{find_scale_factor()}}).}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive
+values are replaced with zero before transformation. If \code{FALSE} (default),
+all values are shifted (if needed) to ensure positivity before transformation.}
 }
 \value{
 A list is returned with components

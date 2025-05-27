@@ -4,7 +4,7 @@
 \alias{apply_acd}
 \title{Function to apply Approximate Cumulative Distribution (ACD)}
 \usage{
-apply_acd(x, beta0, beta1, power, shift, scale, ...)
+apply_acd(x, beta0, beta1, power, shift, scale, zero, ...)
 }
 \arguments{
 \item{x}{a numeric vector.}
@@ -19,6 +19,11 @@ the ACD transformation.}
 positive values.}
 
 \item{scale}{a numeric value used to scale \code{x}.}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive values
+are replaced with zero before transformation.}
 
 \item{...}{not used.}
 }

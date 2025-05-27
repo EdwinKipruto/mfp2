@@ -25,6 +25,8 @@ find_best_fp_step(
   ftest,
   control,
   rownames,
+  zero,
+  catzero,
   verbose
 )
 }
@@ -84,6 +86,17 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 \item{control}{a list with parameters for model fit.}
 
 \item{rownames}{a parameter for Cox models.}
+
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 
 \item{verbose}{a logical; run in verbose mode.}
 }

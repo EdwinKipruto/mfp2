@@ -46,7 +46,17 @@
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit. See [survival::coxph()]
 #' or [stats::glm()] for details. 
-#' @param verbose a logical; run in verbose mode.
+#' @param zero A logical vector indicating, by position, which columns of 
+#' \code{x} should treat nonpositive values (zero or negative) as zero before 
+#' transformation. Must be the same length and in the same order as the columns 
+#' of \code{x}.
+#' @param catzero A logical vector similar to \code{zero}, indicating which 
+#' columns of \code{x} should treat nonpositive values as zero and also have a binary 
+#' indicator automatically created and included in the model. Must match the length 
+#' and order of the columns in \code{x}. See \code{\link{mfp2}} for details.
+#' @param verbose Logical; if \code{TRUE}, additional information will be printed
+#' during model fitting steps. Useful for understanding internal processing. 
+#' Default is \code{FALSE}.
 #' 
 #' @section Algorithm: 
 #' 
@@ -93,6 +103,8 @@ fit_mfp <- function(x,
                     acdx, 
                     ftest,
                     control,
+                    zero,
+                    catzero,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -115,10 +127,11 @@ fit_mfp <- function(x,
   ) 
   }
   
-  if (verbose) 
+  if (verbose) {
     cat(sprintf("\ni Visiting order: %s\n", 
                 paste0(variables_ordered, collapse = ", ")))
-
+  }
+  
   # step 2: pre-process input --------------------------------------------------
   # named list of initial fp powers set to 1 ordered by xorder
   powers_current <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
@@ -131,20 +144,27 @@ fit_mfp <- function(x,
   shift <- setNames(shift, variables_x)[variables_ordered]
   scale <- setNames(scale, variables_x)[variables_ordered]
   acdx <- setNames(acdx, variables_x)[variables_ordered]
+  zero <- setNames(zero, variables_x)[variables_ordered]
+  catzero <- setNames(catzero, variables_x)[variables_ordered]
   
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
   
+  # Ensure that any variable marked as 'catzero' is also set to 'zero'
+  # already done in mfp2() but repeated here in case a user calls this function
+
+  zero[catzero] <- TRUE
+  
   # Assert repeated powers of 1 is not supported. The program will fail when
   # degree is 1 in find_best_fpm_step() due to setdiff(v, c(1))
-  diff_one <- unlist(lapply(powers, function(v) all(c(v%in%1)) && length(v)!=1))
+  diff_one <- unlist(lapply(powers, function(v) all(c(v %in% 1)) && length(v) != 1))
   if (any(diff_one)) {
     dfx <- df[diff_one]
-    if (any(dfx>1))
+    if (any(dfx > 1))
       stop(" The powers of some variables are repeated and all equal to 1. Set df for those 
            variables to 1 or change the powers.\n",
            sprintf("i This applies to the following variables: %s.", 
-                   paste0(names(dfx>1), collapse = ", ")), call. = FALSE)
+                   paste0(names(dfx > 1), collapse = ", ")), call. = FALSE)
   }
   
   # force variables into the model by setting p-value to 1
@@ -169,7 +189,43 @@ fit_mfp <- function(x,
     # override df of acd variables by setting them to 4
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
+  
+  #--- Create binary variables for catzero and convert all nonpositive to zero
+  # to avoid repetition. The functions will handle infinite values caused
+  # by zeros correctly
+  
+  # store original zero for use later
+  zero_x <- zero
+  
+  # Reorder zero to match column order of x
+  zero_aligned <- zero[colnames(x)]
+  
+  # Identify columns to apply the zeroing
+  cols_to_zero <- which(zero_aligned)
+  
+  if (length(cols_to_zero) > 0) {
+    # Set nonpositive values to 0
+    for (j in cols_to_zero) {
+      x[, j][x[, j] <= 0] <- 0
+    }
+    
+    # reset zero to FALSE
+    zero_x <- setNames(rep(FALSE, ncol(x)), variables_ordered)
 
+  }
+  
+  # Create binary variables for catzero variables
+  catzero_list <- lapply(names(catzero), function(v) {
+    if (catzero[[v]]) {
+      as.integer(x[, v] > 0)
+    } else {
+      NULL
+    }
+  })
+  
+  # Assign names to the list
+  names(catzero_list) <- names(catzero)
+  
   # step 3: mfp cycles ---------------------------------------------------------
   # initialize cycle counter 
   j <- 1
@@ -204,6 +260,8 @@ fit_mfp <- function(x,
       nocenter = nocenter,
       method = method,
       acdx = acdx, 
+      zero = zero_x,# All are FALSE since the variables have been converted
+      catzero = catzero_list, # A named list of binary variables
       verbose = verbose
     )
 
@@ -230,7 +288,7 @@ fit_mfp <- function(x,
   
   # step 4: fit final model with estimated functional forms --------------------
   # transform x using the final FP powers selected. 
-  # x has already been shifted and scaled.
+  # x has already been shifted and scaled if necessary.
   
   # Apply backscaling only if at least one scaling factor is not equal to 1
   if (any(scale != 1)) {
@@ -238,13 +296,13 @@ fit_mfp <- function(x,
   }
   
   data_transformed <- transform_matrix(
-    x = x, 
-    power_list = powers_current, center = center, acdx = acdx
+    x = x,  power_list = powers_current, center = center, acdx = acdx, 
+    zero = zero, catzero = catzero
   )
 
   # fit model, and return full glm or coxph object
   modelfit <- fit_model(
-    x =  data_transformed$x_transformed,
+    x = data_transformed$x_transformed,
     y = y, 
     family = family,
     weights = weights,
@@ -271,27 +329,17 @@ fit_mfp <- function(x,
       x_original = x[, names(powers_current[!sapply(powers_current, function(x) all(is.na(x)))]), 
             drop = F],
       y = y, 
-      fp_terms = create_fp_terms(powers_current, acdx,
-                                 df, select, alpha, criterion),
+      fp_terms = create_fp_terms(powers_current, acdx, df, select, alpha, 
+                                 criterion, zero, catzero),
       transformations = data.frame(shift = shift, 
                                    scale = scale, 
                                    center = center),
       fp_powers = powers_current,
-      acd = acdx
+      acd = acdx,
+      zero = zero
     )
   )
-  
-  # expand list to conform to glm or coxph objects
-  # 
-  # # check if still necessary
-  #   # add wald test in order to use summary.coxph()
-  #   # this calculation follows coxph() source code
-  #   nabeta <- !is.na(fit$coefficients)
-  #   fit$wald.test <- survival::coxph.wtest(
-  #     fit$var[nabeta, nabeta], fit$coefficients[nabeta],
-  #     control$toler.chol
-  #   )$test
-  
+
   class(fit) <- c("mfp2", class(fit))
 
   fit
@@ -499,8 +547,7 @@ order_variables_by_significance <- function(xorder,
 #' 
 #' @return 
 #' Logical vector of same length as `acdx`.
-reset_acd <- function(x, 
-                      acdx) {
+reset_acd <- function(x, acdx) {
   
   names_acd <- names(acdx)[which(acdx == TRUE)]
   
@@ -549,6 +596,12 @@ reset_acd <- function(x,
 #' 
 #' The current adjustment set is always given through the current fp powers, 
 #' which are updated in each step (denoted as `powers_current`). 
+#'
+#' If \code{catzero} variables are supplied, the algorithm will automatically create 
+#' the corresponding binary variables and include them in the model. Additionally, 
+#' each binary variable and its associated continuous variable will be treated as 
+#' one predictor, and they will be tested jointly for inclusion in the model.
+#'  
 #' 
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
@@ -566,10 +619,16 @@ reset_acd <- function(x,
 #' @param powers_current a list of length equal to the number of variables, 
 #' indicating the fp powers to be used in the current step for all variables 
 #' (except `xi`). 
+#' @param catzero A named list of binary indicator variables of length \code{ncol(x)} 
+#' for nonpositive values, created when specific variables are passed to the 
+#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is 
+#' \code{NULL}, it indicates that the corresponding variable was not specified by
+#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
 #' @param rownames passed to [survival::coxph.fit()].
 #' 
 #' @return 
-#' current FP powers
+#' A list of current FP powers
 find_best_fp_cycle <- function(x, 
                                y, 
                                powers_current, 
@@ -588,7 +647,9 @@ find_best_fp_cycle <- function(x,
                                ftest, 
                                control,
                                rownames,
-                               nocenter, 
+                               nocenter,
+                               zero,
+                               catzero, 
                                acdx) {
   
   names_x <- names(powers_current)
@@ -620,6 +681,8 @@ find_best_fp_cycle <- function(x,
       rownames = rownames,
       nocenter = nocenter,
       acdx = acdx,
+      zero = zero,
+      catzero = catzero,
       verbose = verbose
     )
   }
@@ -712,7 +775,9 @@ create_fp_terms <- function(fp_powers,
                             df,
                             select, 
                             alpha, 
-                            criterion) {
+                            criterion,
+                            zero,
+                            catzero) {
   
   fp_terms <- data.frame(
     # initial degrees of freedom
@@ -720,6 +785,8 @@ create_fp_terms <- function(fp_powers,
     select = select, 
     alpha = alpha, 
     acd = acdx, 
+    zero = zero,
+    catzero = catzero,
     # presence / absence in final model encoded by NAs in fp_powers
     selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom

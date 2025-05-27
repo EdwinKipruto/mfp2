@@ -4,7 +4,7 @@
 \alias{create_fp_terms}
 \title{Helper to create overview table of fp terms}
 \usage{
-create_fp_terms(fp_powers, acdx, df, select, alpha, criterion)
+create_fp_terms(fp_powers, acdx, df, select, alpha, criterion, zero, catzero)
 }
 \arguments{
 \item{fp_powers}{powers of the created FP terms.}
@@ -23,6 +23,16 @@ for tests between FP models of different degrees.}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}
+
+\item{zero}{A logical vector indicating, by position, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length and in the same order as the columns
+of \code{x}.}
+
+\item{catzero}{A logical vector similar to \code{zero}, indicating which
+columns of \code{x} should treat nonpositive values as zero and also have a binary
+indicator automatically created and included in the model. Must match the length
+and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
 }
 \value{
 Dataframe with overview of all fp terms. Each row represents a variable,

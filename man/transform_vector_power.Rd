@@ -4,12 +4,17 @@
 \alias{transform_vector_power}
 \title{Simple function to transform vector by a single power}
 \usage{
-transform_vector_power(x, power = 1)
+transform_vector_power(x, power = 1, zero = FALSE)
 }
 \arguments{
 \item{x}{a vector of a predictor variable.}
 
 \item{power}{single power.}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive values
+are replaced with zero before transformation.}
 }
 \value{
 A vector of transformed values if power is not equal to 1

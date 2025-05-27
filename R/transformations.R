@@ -51,6 +51,13 @@
 #' Also, centering is not recommended, and should only be done for the final
 #' model if desired.
 #' 
+#' If a variable is specified in the \code{zero} or \code{catzero} arguments, 
+#' nonpositive values (zero or negative) are not shifted. Instead, they are replaced 
+#' with zero, and transformation is applied only to the positive values. This approach 
+#' is useful in cases where nonpositive values have a qualitatively different interpretation 
+#' (e.g., nonsmokers in smoking data) and should not be transformed in the same way 
+#' as positive values.
+#' 
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
 #' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
@@ -71,6 +78,11 @@
 #' new data.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
+#' are replaced with zero before transformation. If \code{FALSE} (default), all values 
+#' are shifted (if needed) to ensure positivity before transformation.
 #' @param check_binary a logical indicating whether or not input `x` is checked
 #' if it is a binary variable (i.e. has only two distinct values). The default
 #' `TRUE` usually only needs to changed when this function is to be used to 
@@ -105,7 +117,12 @@ transform_vector_fp <- function(x,
                                 scale = 1, 
                                 shift = 0, 
                                 name = NULL, 
+                                zero = FALSE,
                                 check_binary = TRUE) {
+  
+  if (!is.logical(zero) || length(zero) != 1 || is.na(zero)) {
+    stop("`zero` must be a single logical value (TRUE or FALSE).", call. = FALSE)
+  }
   
   if (all(is.na(power))) { 
     # variable omitted
@@ -124,6 +141,12 @@ transform_vector_fp <- function(x,
   # process input data by shifting and scaling
   if (is.null(shift)) {
     shift <- find_shift_factor(x)
+  }
+  
+  if (zero) {
+    # Replace all zero or negative values with 0
+    x[x <= 0] <- 0
+    shift <- 0
   }
   
   if (is.null(scale)) {
@@ -155,12 +178,14 @@ transform_vector_fp <- function(x,
       # the subsequent power is not repeated, e.g. 1, 2, 3
       x_trafo[, k] <- transform_vector_power(x, power[k])
     }
+    # Clean up invalid entries; can arise due to zero argument
+    x_trafo[!is.finite(x_trafo[, k]), k] <- 0
   }
   
   if (!is.null(name)) {
     colnames(x_trafo) <- name_transformed_variables(name, ncol(x_trafo))
   }
-  
+
   x_trafo
 }
 
@@ -172,7 +197,8 @@ transform_vector_acd <- function(x,
                                  powers = NULL, 
                                  scale = 1, 
                                  acd_parameter = NULL, 
-                                 name = NULL) {
+                                 name = NULL,
+                                 zero = FALSE) {
   
   if (length(power) != 2) 
     stop("! power must have length two.", 
@@ -184,23 +210,29 @@ transform_vector_acd <- function(x,
   
   if (is.null(acd_parameter)) {
     # estimate acd(x)
-    acd_parameter <- fit_acd(x, powers = powers, shift = shift, scale = scale)
+    acd_parameter <- fit_acd(x, powers = powers, shift = shift, scale = scale, zero = zero)
     x_acd <- acd_parameter$acd
     # no need to store acd further
     acd_parameter$acd <- NULL
-  } else x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
+  } else {
+    if (zero) {
+      x[x <= 0] <- 0
+    }
+    x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
+  }
   
   name_acd <- NULL
-  if (!is.null(name))
+  if (!is.null(name)) {
     name_acd <- paste0("A_", name)
+  }
   
   # apply fp transform on x (if required) and acd(x)
   # if any of these is NA, transform_vector_fp returns NULL and thus the 
   # component is not used in the final result, as desired
-  x_acd <- transform_vector_fp(x = x_acd, power = power[2],
-                               scale = scale, shift = shift, name = name_acd)
-  x_fp <- transform_vector_fp(x = x, power = power[1],
-                              scale = scale, shift = shift, name = name)
+  x_acd <- transform_vector_fp(x = x_acd, power = power[2], scale = scale, 
+                               shift = shift, name = name_acd, zero = zero)
+  x_fp <- transform_vector_fp(x = x, power = power[1], scale = scale, 
+                              shift = shift, name = name, zero = zero)
 
   list(
     acd = cbind(x_fp, x_acd),
@@ -227,7 +259,18 @@ transform_vector_acd <- function(x,
 #' [transform_vector_acd()]. The default value `NULL` indicates that the
 #' parameters for the acd transformations are to be estimated.
 #' @param check_binary passed to [transform_vector_fp()].
-#' 
+#' @param zero A named logical vector specifying, for each variable, whether only 
+#' positive values should be transformed. If \code{TRUE}, the transformation is applied 
+#' only to positive values; nonpositive values (zero or negative) are replaced with zero. 
+#' If \code{FALSE}, all values are used (after shifting, if necessary). 
+#' Variable names must match the corresponding column names in \code{x}. The default 
+#' is \code{NULL}, meaning no variables are treated as zero-transformed.
+#' @param catzero A named logical vector similar to \code{zero}, indicating which 
+#' columns in \code{x} should treat nonpositive values as zero and additionally have a 
+#' binary indicator created and included in the model. The vector must have names matching 
+#' the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero 
+#' variables are used.
+
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
 #' [transform_vector_acd()].
@@ -264,41 +307,107 @@ transform_matrix <- function(x,
                              acdx, 
                              keep_x_order = FALSE, 
                              acd_parameter_list = NULL,
-                             check_binary = TRUE) {
-
+                             check_binary = TRUE,
+                             zero = NULL,
+                             catzero = NULL) {
+  
+  # Checks
+  if (!is.matrix(x)) {
+    stop("! 'x' must be a matrix.")
+  }
+  
   if (all(is.na(unlist(power_list)))) {
     # all variables were eliminated
     return(NULL)
   }
   
   # power_list, center and acdx must have names
-  if (is.null(names(power_list))) 
+  if (is.null(names(power_list))) { 
     stop("! List power_list must have names.")
+  }
   
-  if (is.null(names(center))) 
+  #-Ensure x has column names
+  if (is.null(colnames(x))) {
+    stop("! Input data 'x' must have column names.")
+  }
+  
+  #--- Check that all names in power_list exist in x
+  pl_names <- names(power_list)
+  missing_in_x <- setdiff(pl_names, colnames(x))
+  if (length(missing_in_x) > 0) {
+    stop("! The following variables in 'power_list' are not found in 'x': ",
+         paste(missing_in_x, collapse = ", "))
+  }
+  
+  if (is.null(names(center))) {
     stop("! Vector center must have names.")
+  }
   
-  if (is.null(names(acdx)))
+  if (is.null(names(acdx))) {
     stop("! Vector acdx must have names.")
-
-  if (keep_x_order)
+  }
+  
+  if (!is.logical(center)) {
+    stop("! 'center' must be a logical vector.")
+  }
+  
+  if (length(center) != length(power_list)) {
+    stop("! 'center' must have the same length as 'power_list'.")
+  }
+  
+  
+  if (is.null(zero)) {
+   zero <- setNames(rep(FALSE, length(power_list)), names(power_list))
+  } else {
+    if (is.null(names(zero))) {
+      stop("! Vector zero must have names.")
+    } 
+  }
+  
+  if (is.null(catzero)) {
+    catzero <- setNames(rep(FALSE, length(power_list)), names(power_list))
+  } else {
+    if (is.null(names(catzero))) {
+      stop("! Vector catzero must have names.")
+    } 
+  }
+  
+  if (any(zero)) {
+    vars_to_check <- names(zero)[zero]
+    bad_vars <- vars_to_check[
+      apply(x[, vars_to_check, drop = FALSE], 2, function(col) all(col > 0, na.rm = TRUE))
+    ]
+    if (length(bad_vars) > 0) {
+      warning("These variables were marked as 'zero = TRUE' but contain only positive values. ",
+              "Resetting 'zero' and 'catzero' to FALSE for: ",
+              paste(bad_vars, collapse = ", "))
+      zero[bad_vars] <- FALSE
+      catzero[bad_vars] <- FALSE
+    }
+  }
+  
+  if (keep_x_order) {
     # reorder power_list to be in same order as columns in x
     power_list <- power_list[order(match(names(power_list), colnames(x)))]
-
+  }
+  
   # only consider variables in power_list
   names_vars <- names(power_list)
   x <- x[, names_vars, drop = FALSE]
   center <- center[names_vars]
   acdx <- acdx[names_vars]
-
-  x_trafo = list()
-  acd_parameter = list()
+  zero <- zero[names_vars]
+  catzero <- catzero[names_vars]
+  
+  x_trafo <- list()
+  acd_parameter <- list()
   for (name in names_vars) {
     if (acdx[name]) {
       # apply acd transformation
       acd <- transform_vector_acd(
         x[, name], power = power_list[[name]],  
-        acd_parameter = acd_parameter_list[[name]], name = name
+        acd_parameter = acd_parameter_list[[name]], name = name, 
+        zero = zero[name] 
       )
       x_trafo[[name]] <- acd$acd
       acd_parameter[[name]] <- acd$acd_parameter
@@ -306,7 +415,7 @@ transform_matrix <- function(x,
       # apply fp transform
       x_trafo[[name]] <- transform_vector_fp(
         x[, name], power = power_list[[name]], name = name, 
-        check_binary = check_binary
+        check_binary = check_binary, zero = zero[name]
       )
     }
   }
@@ -314,10 +423,46 @@ transform_matrix <- function(x,
   # create output matrix
   x_transformed <- do.call(cbind, x_trafo)
   
-  # also center values if required
-  centers = NULL
+  # --- Handle catzero binary variables ---
+  cat_vars <- names(catzero)[catzero]
+  
+  if (length(cat_vars) > 0) {
+    # Build list of binary variables (skip NA-only power entries)
+    catzero_list <- lapply(cat_vars, function(v) {
+      if (all(is.na(power_list[[v]]))) {
+        return(NULL)  # skip
+      } else {
+        return(as.integer(x[, v] > 0))
+      }
+    })
+    
+    # Remove NULLs
+    valid_idx <- !sapply(catzero_list, is.null)
+    catzero_list <- catzero_list[valid_idx]
+    cat_vars_valid <- cat_vars[valid_idx]
+    names(catzero_list) <- cat_vars_valid
+    
+    # Only bind if there’s something left
+    if (length(catzero_list) > 0) {
+      catzero_matrix <- do.call(cbind, catzero_list)
+      colnames(catzero_matrix) <- paste0(cat_vars_valid, "_bin")
+    } else {
+      catzero_matrix <- NULL
+    }
+    
+  } else {
+    catzero_matrix <- NULL
+  }
+  
+  # Add binary variables to transformed matrix
+  if (!is.null(catzero_matrix)) {
+  x_transformed <- cbind(x_transformed, catzero_matrix)
+  }
+  
+  #--- Centering ---
+  centers <- NULL
   if (any(center)) {
-    x_transformed <- center_matrix(x_transformed)
+    x_transformed <- center_matrix(x_transformed) # check centering of zero variables?
     centers <- attr(x_transformed, "scaled:center")
   }
   
@@ -331,14 +476,25 @@ transform_matrix <- function(x,
 #' Simple function to transform vector by a single power
 #' 
 #' @param x a vector of a predictor variable.
-#' @param power single power. 
+#' @param power single power.
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
+#' are replaced with zero before transformation. 
 #' @return A vector of transformed values if power is not equal to 1
-transform_vector_power <- function(x,
-                                   power = 1) {
-  if (power == 0)
-    return(log(x))
+transform_vector_power <- function(x, power = 1, zero = FALSE) {
   
-  x^power
+  if (zero) {
+    x[x <= 0] <- 0
+  }
+  if (power == 0) {
+    xt <- log(x)
+  } else {
+  xt <- x ^ power
+  }
+  xt[!is.finite(xt)] <- 0
+  
+  return(xt)
 }
 
 #' Simple function to center data
@@ -432,7 +588,7 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
       )
   
     if (!is.data.frame(data))
-      stop ("The data must be a data.frame")
+      stop("The data must be a data.frame")
   
     # colnames of data
     xnames <- colnames(data)
@@ -508,7 +664,7 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
     }
     
     # drop original variables
-    if (drop_variables){
+    if (drop_variables) {
     vars_to_drop <- c(var_nominal, var_ordinal)
     data <- data[, !(colnames(data) %in% vars_to_drop)]
     }

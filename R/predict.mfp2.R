@@ -1,3 +1,4 @@
+# TODO: INCLUDE CATZERO VARIABLES IN PREDICT 27.05.2025
 #' Predict Method for `mfp2`
 #' 
 #' Obtains predictions from an `mfp2` object.

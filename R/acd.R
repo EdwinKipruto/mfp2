@@ -34,7 +34,12 @@
 #' (see [find_shift_factor()]).
 #' @param scale a numeric used to scale `x`. The default value is 1, meaning 
 #' no scaling is conducted. If `NULL`, then the program will estimate 
-#' an appropriate scaling factor automatically (see [find_scale_factor()]). 
+#' an appropriate scaling factor automatically (see [find_scale_factor()]).
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive 
+#' values are replaced with zero before transformation. If \code{FALSE} (default),
+#' all values are shifted (if needed) to ensure positivity before transformation.
 #' @examples
 #'
 #'set.seed(42)
@@ -62,20 +67,52 @@
 #'  14(2), 329-341}. 
 #' 
 #' @export
-fit_acd <- function(x, 
-                    powers = NULL, 
-                    shift = 0, 
-                    scale = 1) {
+fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   
-  if (is.null(powers)) {
-    # default FP powers proposed by Royston and Sauerbrei (2008)
+  # --- Input checks ---
+  if (!is.numeric(x)) {
+    stop("`x` must be a numeric vector.")
+  }
+  if (!is.vector(x)) {
+    stop("`x` must be a vector (not a matrix, data.frame, or list).")
+  }
+  if (length(x) < 2) {
+    stop("`x` must contain at least two values.")
+  }
+  if (anyNA(x)) {
+    stop("`x` contains missing values. Please remove or impute them before calling fit_acd().")
+  }
+  
+  if (!is.null(powers)) {
+    if (!is.numeric(powers) || any(!is.finite(powers))) {
+      stop("`powers` must be a numeric vector of finite values or NULL.")
+    }
+  } else {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
-
-  # preprocess data
+  
+  if (!is.null(shift) && (!is.numeric(shift) || length(shift) != 1 || is.na(shift))) {
+    stop("`shift` must be a single numeric value or NULL.")
+  }
+  
+  if (!is.null(scale) && (!is.numeric(scale) || length(scale) != 1 || scale <= 0 || is.na(scale))) {
+    stop("`scale` must be a single positive numeric value or NULL.")
+  }
+  
+  if (!is.logical(zero) || length(zero) != 1) {
+    stop("`zero` must be a single logical value (TRUE or FALSE).")
+  }
+  
+  # --- Preprocessing ---
   if (is.null(shift)) {
     shift <- find_shift_factor(x)
   } 
+  
+  if (zero) {
+    x[x <= 0] <- 0
+    # zero transformation overrides shift
+    shift <- 0
+  }
   
   if (is.null(scale)) {
     scale <- find_scale_factor(x)
@@ -84,16 +121,17 @@ fit_acd <- function(x,
   x <- (x + shift) / scale
   
   # check whether acd is estimable
-  if (!all(x > 0)) 
-    stop("! All x must be positive after shifting.", 
-         "i Please use another shift value or let it be estimated by the program by setting `shift = NULL`.")
-  
+  #if (!all(x > 0) && !zero) {
+  #  warning("All values of `x` must be positive after shifting. ",
+  #       "Try specifying a larger `shift` or use `shift = NULL` to estimate it automatically.")
+  #}
+  # --- ACD transformation ---
   # see here for details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5663339/pdf/emss-59479.pdf)
   n <- length(x)
   z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-  fit <- find_best_fp1_for_acd(x = x, y = z, powers = powers)
+  fit <- find_best_fp1_for_acd(x = x, y = z, powers = powers, zero = zero)
   
   coefx <- fit$fit$coefficients
   zhat <- fit$fit$fitted.values
@@ -121,17 +159,27 @@ fit_acd <- function(x,
 #' @param shift a numeric value that is used to shift the values of `x` to
 #' positive values. 
 #' @param scale a numeric value used to scale `x`. 
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
+#' are replaced with zero before transformation.
 #' @param ... not used.
 #' 
 #' @return 
 #' The transformed input vector `x`.
-apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
+apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
   
-  if (length(power) != 1) 
+  if (length(power) != 1) {
     stop("! `power` must be a single numeric value.")
+  }
+  
+  if (zero) {
+    x[x <= 0] <- 0
+    shift <- 0
+  }
   
   x <- (x + shift) / scale
-  zhat <- beta0 + beta1 * transform_vector_power(x, power)
+  zhat <- beta0 + beta1 * transform_vector_power(x = x, power = power, zero = FALSE)
   
   stats::pnorm(zhat)
 }
@@ -147,13 +195,15 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, ...) {
 #' The best FP power with smallest deviance and the fitted model.
 find_best_fp1_for_acd <- function(x, 
                                   y, 
-                                  powers) {
+                                  powers,
+                                  zero) {
   
-  if (!is.null(dim(x))) 
+  if (!is.null(dim(x))) {
     stop("! `x` must be a vector.")
+  }
   
   # generate all possible FP1 transformations
-  trafo <- generate_transformations_fp(x = x, degree = 1, powers = powers)$data
+  trafo <- generate_transformations_fp(x = x, degree = 1, powers = powers, zero = zero)$data
   
   # Fit linear models for each FP1 function
   n_powers <- length(powers)

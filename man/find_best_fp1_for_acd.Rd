@@ -4,7 +4,7 @@
 \alias{find_best_fp1_for_acd}
 \title{Function to fit univariable FP1 models for acd transformation}
 \usage{
-find_best_fp1_for_acd(x, y, powers)
+find_best_fp1_for_acd(x, y, powers, zero)
 }
 \arguments{
 \item{x}{a numeric vector.}
@@ -13,6 +13,12 @@ find_best_fp1_for_acd(x, y, powers)
 
 \item{powers}{a vector of allowed FP powers. The default value is \code{NULL},
 meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive
+values are replaced with zero before transformation. If \code{FALSE} (default),
+all values are shifted (if needed) to ensure positivity before transformation.}
 }
 \value{
 The best FP power with smallest deviance and the fitted model.

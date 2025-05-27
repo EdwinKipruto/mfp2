@@ -2,9 +2,20 @@
 % Please edit documentation in R/mfp_step.R
 \name{fit_null_step}
 \alias{fit_null_step}
-\title{Function to fit null model excluding variable of interest}
+\title{Function to fit a null model excluding variable of interest}
 \usage{
-fit_null_step(x, xi, y, powers_current, powers, acdx, family, ...)
+fit_null_step(
+  x,
+  xi,
+  y,
+  powers_current,
+  powers,
+  acdx,
+  family,
+  zero,
+  catzero,
+  ...
+)
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
@@ -29,13 +40,24 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 
 \item{family}{a character string representing a family object.}
 
-\item{...}{passed to \code{fit_model()}.}
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{...}{Parameters passed to \code{fit_model()}.}
 }
 \value{
 A list with two entries:
 \itemize{
-\item \code{powers}: fp power(s) of \code{xi} in fitted model - in this case \code{NA}.
-\item \code{metrics}: a matrix with performance indices for fitted model.
+\item \code{powers}: FP power(s) of \code{xi} in fitted model - in this case \code{NA}.
+\item \code{metrics}: A matrix with performance indices for fitted model.
 }
 }
 \description{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfp_step.R
 \name{select_linear}
 \alias{select_linear}
-\title{Helper to select between null and linear term for a single variable}
+\title{Helper function to select between null and linear term for a single variable}
 \usage{
 select_linear(
   x,
@@ -18,6 +18,8 @@ select_linear(
   select,
   alpha,
   family,
+  zero,
+  catzero,
   ...
 )
 }
@@ -60,6 +62,17 @@ for tests between FP models of different degrees for \code{xi}.}
 
 \item{family}{a character string representing a family object.}
 
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
 \item{...}{passed to fitting functions.}
 }
 \value{
@@ -76,18 +89,26 @@ Same number of rows as, and indexed by, \code{powers}.
 \item \code{model_best}: row index of best model in \code{metrics}.
 \item \code{pvalue}: p-value for comparison of linear and null model.
 \item \code{statistic}: test statistic used, depends on \code{ftest}.
+\item \code{zero}: Logical indicating whether a zero transformation was applied to \code{xi}.
+In this case, nonpositive values of \code{xi} were set to zero before transformation,
+and only positive values were transformed.
+\item \code{catzero}: Logical indicating whether a combination of a zero transformation
+and a binary indicator variable was applied to \code{xi}. This means that
+nonpositive values of \code{xi} were set to zero, only positive values were
+transformed, and an additional binary variable was created to indicate
+whether \code{xi} was positive or nonpositive.
 }
 }
 \description{
 To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.
 Handles all criteria for selection.
 For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+captured by \code{...} are passed to \code{\link[=fit_model]{fit_model()}}.
 }
 \details{
 This function assesses a single variable of interest \code{xi} regarding its
 functional form in the current working model as indicated by
-\code{powers_current}, with the choice between a excluding \code{xi} ("null model") and
+\code{powers_current}, with the choice between excluding \code{xi} ("null model") and
 including a linear term ("linear fp") for \code{xi}.
 
 Note that this function handles an ACD transformation for \code{xi} as well.

@@ -24,6 +24,8 @@ find_best_fp_cycle(
   control,
   rownames,
   nocenter,
+  zero,
+  catzero,
   acdx
 )
 }
@@ -67,7 +69,9 @@ Cox regression model.}
 \item{strata}{a factor of all possible combinations of stratification
 variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
 
-\item{verbose}{a logical; run in verbose mode.}
+\item{verbose}{Logical; if \code{TRUE}, additional information will be printed
+during model fitting steps. Useful for understanding internal processing.
+Default is \code{FALSE}.}
 
 \item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
 
@@ -79,12 +83,24 @@ or \code{\link[stats:glm]{stats::glm()}} for details.}
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
+\item{zero}{A logical vector indicating, by position, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length and in the same order as the columns
+of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
 \item{acdx}{a logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
 }
 \value{
-current FP powers
+A list of current FP powers
 }
 \description{
 This function estimates the best FP functions for all predictors in the
@@ -114,6 +130,11 @@ for elimination.
 
 The current adjustment set is always given through the current fp powers,
 which are updated in each step (denoted as \code{powers_current}).
+
+If \code{catzero} variables are supplied, the algorithm will automatically create
+the corresponding binary variables and include them in the model. Additionally,
+each binary variable and its associated continuous variable will be treated as
+one predictor, and they will be tested jointly for inclusion in the model.
 }
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:

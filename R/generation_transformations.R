@@ -1,53 +1,99 @@
 #' Function to generate all requested FP transformations for a single variable
 #' 
-#' @param x a numeric vector of length nobs assumed to have been shifted and 
+#' @param x A numeric vector of length \code{nobs}, assumed to have been shifted 
+#' (except for variables with \code{zero} or \code{catzero} transformations) and
 #' scaled.
-#' @param degree numeric indicating the degree of FPs. Assumed to be 2 for acd
-#' transformation.
-#' @param powers a vector of allowed FP powers.
-#' 
+#' @param degree A numeric value indicating the degree of fractional polynomials (FPs). 
+#' For ACD transformation, this is assumed to be 2.
+#' @param powers A numeric vector specifying the set of allowed fractional 
+#' polynomial (FP) powers to be used in the transformation. 
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive
+#' values are replaced with zero before transformation. If \code{FALSE} (default), 
+#' all values are shifted (if needed) to ensure positivity before transformation.
+#' @param catzero A vector of binary values to be added to the transformed variables.
+#' Default is NULL, meaning no binary variables added.
 #' @details 
-#' Any FP transformation is given by a vector of powers, e.g. (p1, p2) for 
-#' degree 2. These correspond to powers x^p1 and x^p2. Thus, we only need to 
-#' consider combinations of all values in `powers`, since order of the entries
-#' does not matter. See [generate_powers_fp()]. 
-#' A special case are repeated powers, i.e. p1 = p2. In this case, the repeated 
-#' entries are multiplied by log(x) (see [transform_vector_fp()]).
+#' Any fractional polynomial (FP) transformation is defined by a vector of powers, 
+#' such as \code{(p1, p2)} for degree 2. These correspond to the terms \code{x^p1} 
+#' and \code{x^p2}. Therefore, all combinations of the values in \code{powers} 
+#' are considered (see \code{\link{generate_powers_fp}}). 
 #' 
-#' When the ACD transformation is requested, then all pairs of length 2
-#' are considered, i.e. 64. See [generate_powers_acd()].
+#' A special case arises when powers are repeated, i.e., \code{p1 = p2}. In such cases, 
+#' the second term is multiplied by \code{log(x)}, following the standard FP convention 
+#' (see \code{\link{transform_vector_fp}}).
+#' 
+#' When the ACD transformation is requested, all pairs of powers of length 2 are evaluated, 
+#' resulting in 64 unique combinations (see \code{\link{generate_powers_acd}}).
 #' 
 #' If `degree = 0` then these functions return the data unchanged for fp, 
 #' or simply the acd transformation of the input variable, i.e. in both cases
 #' the power is set to 1 (linear).
 #' 
-#' @return 
-#' A list with two entries: 
+#' If \code{degree = 0}, the function returns the data unchanged for an FP transformation, 
+#' or applies only the ACD transformation to the input variable. In both cases, 
+#' the power is set to 1 (linear).
 #' 
-#' * `data`: a list with length equal to the number of possible FPs for the 
-#' variable of interest. Each entry is a matrix with degree many columns, 
-#' and nobs observations comprising the FP transformed input variable. 
-#' For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
-#' Values are not centered. If `degree = 0`, the single entry has a single 
-#' column.
-#' * `powers`: the associated FP powers for each entry in data. 
+#' When \code{catzero} is used, the transformed (or untransformed) continuous variable is 
+#' combined with its corresponding binary indicator, representing whether the original 
+#' value was positive or nonpositive.
+#' 
+#' @return 
+#' A list with two components:
+#' 
+#' * \code{data}: A list with length equal to the number of possible fractional polynomial (FP) 
+#'   transformations for the variable of interest. Each entry is a matrix with \code{nobs} rows. 
+#'   The number of columns equals the FP \code{degree}, unless \code{catzero = TRUE}, in which case 
+#'   an additional column is included for the binary indicator variable. For example, with 
+#'   \code{degree = 2}, \code{catzero = TRUE}, and \code{nobs = 10}, each entry is a 10 × 3 matrix. 
+#'   The FP-transformed values are not centered. If \code{degree = 0}, the list contains a single 
+#'   entry with one column (or two columns if \code{catzero = TRUE}), representing the linear 
+#'   transformation (and binary indicator, if applicable).
+#' *  \code{data}: the associated FP powers for each entry in data. 
+#' * \code{powers}: A matrix of FP powers corresponding to each entry in \code{data}. 
+#'   Each row contains the powers used for the associated transformation (e.g., 
+#'  two columns for \code{degree = 2}, one for \code{degree = 1}, and one for
+#'   \code{degree = 0}).
 generate_transformations_fp <- function(x, 
                                         degree, 
-                                        powers) {
+                                        powers,
+                                        zero,
+                                        catzero = NULL) {
+  
+  # Validate catzero, if provided
+  if (!is.null(catzero)) {
+    if (length(catzero) != length(x)) {
+      stop("`catzero` must have the same length as `x`.")
+    }
+    
+    # Check type
+    if (!is.numeric(catzero)) {
+      stop("`catzero` must be a numeric vector.")
+    }
+  }
   
   # all possible combination of powers given degree
   combs <- generate_powers_fp(degree = degree, powers = powers)
   nfp <- dim(combs)[1]
   
-  # save FP transformed data as list
-  fpdt <- vector(mode = "list", length = nfp)
+  # Precompute whether catzero is provided to avoid repeated is.null() checks 
+  # inside lapply
+  use_catzero <- !is.null(catzero)
   
-  for (i in 1:nfp) {
-    fpdt[[i]] <- transform_vector_fp(x = x, power = combs[i, ])
-  }
-  # to replace for loop
-  #fpdt <- lapply(1:nfp, function(i) transform_vector_fp(x = x, power = combs[i, ]))
+  # Apply transformation and optionally append catzero
+  fpdt <- lapply(seq_len(nfp), function(i) {
+    mat <- transform_vector_fp(x = x, power = combs[i, ], zero = zero)
+    
+    if (use_catzero) {
+      mat <- cbind(catzero, mat)
+      colnames(mat)[1] <- "catzero"
+    }
+    
+    mat
+  })
   
+  # Return list with transformed data and powers used
   list(
     data = fpdt,
     powers = combs
@@ -57,18 +103,41 @@ generate_transformations_fp <- function(x,
 #' @describeIn generate_transformations_fp Function to generate acd transformations.
 generate_transformations_acd <- function(x, 
                                          degree, 
-                                         powers) {
-
+                                         powers,
+                                         zero,
+                                         catzero = NULL) {
+  
+  # Validate catzero, if provided
+  if (!is.null(catzero)) {
+    if (length(catzero) != length(x)) {
+      stop("`catzero` must have the same length as `x`.")
+    }
+    
+    # Check type
+    if (!is.numeric(catzero)) {
+      stop("`catzero` must be a numeric vector.")
+    }
+  }
+  
   # all possible pairs of powers
   combs <- generate_powers_acd(degree = degree, powers = powers)
   nfp <- dim(combs)[1L]
   
-  # Save FP transformed data as list
-  fpdt <- vector(mode = "list", length = nfp)
+  # Precompute whether catzero is provided to avoid repeated is.null() checks 
+  # inside lapply
+  use_catzero <- !is.null(catzero)
   
-  for (i in seq_len(nfp)) {
-    fpdt[[i]] <- transform_vector_acd(x = x, power = combs[i, ])$acd
-  }
+  # Apply transformation and optionally append catzero
+  fpdt <- lapply(seq_len(nfp), function(i) {
+    mat <- transform_vector_acd(x = x, power = combs[i, ], zero = zero)$acd
+    
+    if (use_catzero) {
+      mat <- cbind(catzero, mat)
+      colnames(mat)[1] <- "catzero"
+    }
+    
+    mat
+  })
   
   list(
     data = fpdt, 

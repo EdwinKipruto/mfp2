@@ -18,6 +18,8 @@ select_ra2(
   select,
   alpha,
   family,
+  zero,
+  catzero,
   ...
 )
 }
@@ -60,7 +62,18 @@ for tests between FP models of different degrees for \code{xi}.}
 
 \item{family}{a character string representing a family object.}
 
-\item{...}{passed to fitting functions.}
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{...}{passed to fitting functions \code{\link[=fit_model]{fit_model()}}.}
 }
 \value{
 A list with several components:
@@ -84,34 +97,39 @@ Same number of rows as, and indexed by, \code{powers}.
 \description{
 Used in \code{\link[=find_best_fp_step]{find_best_fp_step()}} when \code{criterion = "pvalue"}.
 For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+captured by \code{...} are passed to \code{\link[=fit_model]{fit_model()}}.
 }
 \details{
 In case \code{criterion = "pvalue"} the function selection procedure as outlined
 in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used.
 \itemize{
-\item \emph{Step 1}: test the best FPm function against a null model at level
-\code{select} with 2m df. If not significant, the variable is excluded.
-Otherwise continue with step 2.
-\item \emph{Step 2}: test the best FPm versus a linear model at level \code{alpha}
-with 2m - 1 df. If not significant, use a linear model.
-Otherwise continue with step 3.
-\item \emph{Step 3}: test the best FPm versus the best FP1 at
-level \code{alpha} with 2m - 2 df. If not significant, use the best FP1 model.
-Otherwise, repeat this step for all remaining higher order FPs until
-FPm-1, which is tested at level \code{alpha} with 2 df against FPm.
-If the final test is not significant, use a FPm-1 model, otherwise use FPm.
+\item \emph{Step 1}: Test the best FP\emph{m} function against a null model at the
+significance level specified by \code{select}, using 2\emph{m} degrees of freedom.
+If the test is not significant, the variable is excluded. Otherwise, proceed
+to Step 2.
+\item \emph{Step 2}: Test the best FP\emph{m} function against a linear model at
+the significance level specified by \code{alpha}, using 2\emph{m}-1 degrees
+of freedom. If the test is not significant, select the linear model.
+Otherwise, proceed to Step 3.
+\item \emph{Step 3}: Test the best FP\emph{m} function against the best FP1 model
+at the significance level specified by \code{alpha}, using 2\emph{m}-2 degrees
+of freedom. If the test is not significant, retain the best FP1 model. Otherwise,
+repeat this step by comparing FP\emph{m} to all remaining lower-order FP models,
+down to FP\emph{m}–1, which is tested with 2 degrees of freedom. If the final
+test is not significant, retain the best FP\emph{m}–1 model; otherwise,
+retain the best FP\emph{m} model.
 }
 
-Note that the "best" FPx model used in each step is given by the model using
-a FPx transformation for the variable of interest and having the highest
-likelihood of all such models given the current powers for all other
-variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-These best FPx models are computed in \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}.
+Note that the "best" FP\emph{x} model used in each step refers to the model
+that applies an FP\emph{x} transformation to the variable of interest and
+achieves the highest likelihood among all such models, given the current
+power transformations for all other variables. This procedure is described
+in Section 4.8 of Royston and Sauerbrei (2008). The best FP\emph{x} models
+are computed by \code{\link{find_best_fpm_step}}.
 
-When a variable is forced into the model by including it in \code{keep}, then
-this function will not exclude it from the model (by setting its power to
-\code{NA}), but will only choose its functional form.
+When a variable is forced into the model by including it in the \code{keep}
+argument of \code{mfp2()}, this function will not exclude it (i.e., will not
+set its power to \code{NA}), but will instead select its functional form.
 }
 \references{
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:

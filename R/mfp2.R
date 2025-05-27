@@ -187,6 +187,29 @@
 #' equal to 0.05 to select functional forms, along with the selection algorithm
 #' with a significance level of 0.05 for all variables. 
 #' 
+#' @section Handling Nonpositive Values (\code{zero} and \code{catzero}):
+#'
+#' The \code{zero} and \code{catzero} options provide mechanisms for handling covariates 
+#' with nonpositive values in fractional polynomial (FP) models, especially when those 
+#' values have a qualitatively different interpretation than positive ones.
+#'
+#' The \code{zero} argument allows fitting FP models using only the positive values of a covariate, 
+#' while treating nonpositive values (e.g., zero or negative) as exactly zero. This is useful 
+#' when the relationship between the covariate and the outcome is expected to begin only above zero. 
+#' For example, in modeling the effect of cigarette consumption, nonsmokers (zero cigarettes) may be 
+#' fundamentally different from smokers. Instead of applying a constant shift (e.g., adding 1) to all 
+#' values before transformation, the \code{zero} argument allows the model to treat zero values as a 
+#' separate baseline and apply FP transformations only to the positive values.
+#'
+#' The \code{catzero} argument extends this idea by automatically creating a binary indicator 
+#' for whether the covariate is positive. This indicator is included in the model alongside the 
+#' transformed version of the covariate. Both are treated as a single predictor during model 
+#' selection (if applicable). This approach captures the potential difference between having a value 
+#' of zero and having any positive value, while still allowing flexible modeling of the positive range.
+#'
+#' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15) and is particularly 
+#' relevant in epidemiological contexts where exposure may have a threshold effect.
+#'
 #' @section Compatibility with `mfp` package: 
 #' `mfp2` is an extension of the `mfp` package and can be used to reproduce
 #' the results from a model fitted by `mfp`. Since both packages implement the 
@@ -332,6 +355,17 @@
 #' @param control a list object with parameters controlling model fit details. 
 #' Returned by either [stats::glm.control()] or [survival::coxph.control()]. 
 #' Default is `NULL` to use default parameters for the given model class. 
+#' @param zero A character vector specifying the names of variables for which 
+#' nonpositive values should be treated as zero. This allows fitting a fractional 
+#' polynomial (FP) model using only the positive values of a covariate, while 
+#' setting nonpositive values to zero during transformation. See the **Details** 
+#' section
+#' @param catzero A character vector specifying the names of variables for which 
+#' nonpositive values should be treated as zero, similar to the \code{zero} argument. 
+#' The key difference is that \code{mfp2} will automatically create a corresponding 
+#' binary indicator variable (e.g., \code{var > 0}) and include it in the model 
+#' alongside the transformed variable. #' See the **Details** section
+
 #' @param verbose a logical; run in verbose mode.
 #' @param ... not used.
 #' @examples
@@ -445,7 +479,7 @@ mfp2.default <- function(x,
                          df = 4, 
                          center = TRUE,
                          subset = NULL,
-                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
                          alpha = 0.05,
@@ -458,6 +492,8 @@ mfp2.default <- function(x,
                          acdx = NULL,
                          ftest = FALSE,
                          control = NULL, 
+                         zero = NULL,
+                         catzero = NULL,
                          verbose = TRUE,
                          ...) {
   
@@ -571,6 +607,33 @@ mfp2.default <- function(x,
       }
   }
   
+  # assert that zero is a subset of x
+  if (!is.null(zero)) {
+    if (!all(zero %in% vnames)) {
+      warning("i The set of variables named in zero is not a subset of the variables in x.\n", 
+              "i mfp2() continues with the intersection of zero and colnames(x).", 
+              call. = FALSE)
+    }
+  }
+  
+  # assert that catzero is a subset of x
+  if (!is.null(catzero)) {
+    if (!all(catzero %in% vnames)) {
+      warning("i The set of variables named in catzero is not a subset of the variables in x.\n", 
+              "i mfp2() continues with the intersection of catzero and colnames(x).", 
+              call. = FALSE)
+    }
+  }
+  
+  # Check for intersection between zero and catzero variables
+  if (!is.null(zero) && !is.null(catzero)) {
+    overlap <- intersect(zero, catzero)
+    if (length(overlap) > 0) {
+      stop(sprintf("The following variable(s) are specified in both `zero` and `catzero`: %s. Please use only one of the two options per variable.", 
+                   paste(overlap, collapse = ", ")))
+    }
+  }
+  
   # assert shift vector is of correct dimension
   if (!is.null(shift)) {
       if (length(shift) != 1 && length(shift) != nvars) {
@@ -677,7 +740,7 @@ mfp2.default <- function(x,
       }
   } else {
       # assert type of y
-      if (is.matrix(y)||is.data.frame(y)) {
+      if (is.matrix(y) || is.data.frame(y)) {
           stop(sprintf("! Outcome y must not be of class %s.", 
                        paste0(class(y), collapse = ", ")), 
                "i Please convert y to a vector.", call. = FALSE)
@@ -707,7 +770,7 @@ mfp2.default <- function(x,
     
     # check the names of supplied powers
     dd <- which(!names(powers) %in% vnames)
-    if (length(dd) !=0)
+    if (length(dd) != 0)
       stop(" The names of all powers must be in the column names of x.\n",
            sprintf("i This applies to the following powers: %s.", 
                    paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
@@ -721,7 +784,7 @@ mfp2.default <- function(x,
     # assert that the number of powers should be at least 2
     pow_length <- sapply(powers, function(v) length(v))
     pow_length_one <- which(pow_length == 1)
-    if (length(pow_length_one)!=0)
+    if (length(pow_length_one) != 0)
       stop(" The number of powers for each variable must be at least two.\n",
            sprintf("i This applies to the following variables: %s.", 
                    paste0(names(pow_length_one), collapse = ", ")), call. = FALSE)
@@ -778,6 +841,60 @@ mfp2.default <- function(x,
   }
   
   keep <- intersect(keep, vnames)
+  
+  #-------Deal with zero and catzero
+  zero <- intersect(zero, vnames)
+  catzero <- intersect(catzero, vnames)
+  
+  # convert zero and catzero to logical vector
+  if (is.null(zero)) {
+    # If zero is NULL, initialize as all FALSE with variable names
+    zero <- setNames(rep(FALSE, nvars), vnames)
+  } else {
+    # Otherwise, mark only the specified variable names as TRUE
+    zero_vars <- zero  # character vector of variable names
+    zero <- setNames(rep(FALSE, nvars), vnames)
+    zero[vnames %in% zero_vars] <- TRUE
+  }
+  
+  if (is.null(catzero)) {
+    # If catzero is NULL, initialize as all FALSE with variable names
+    catzero <- setNames(rep(FALSE, nvars), vnames)
+  } else {
+    # Otherwise, mark only the specified variable names as TRUE
+    catzero_vars <- catzero  # character vector of variable names
+    catzero <- setNames(rep(FALSE, nvars), vnames)
+    catzero[vnames %in% catzero_vars] <- TRUE
+  }
+  
+  # Ensure that any variable marked as 'catzero' is also set to 'zero'
+  zero[catzero] <- TRUE
+  
+  # Only check variables where zero is TRUE
+  if (any(zero)) {
+    vars_to_check <- vnames[zero]
+    
+    # Identify variables that contain only positive values
+    bad_vars <- vars_to_check[
+      apply(x[, vars_to_check, drop = FALSE], 2, function(col) all(col > 0, na.rm = TRUE))
+    ]
+    
+    if (length(bad_vars) > 0) {
+      warning(
+        "The following variables were marked as 'zero = TRUE' but contain only positive values. ",
+        "Setting 'zero' and 'catzero' to FALSE for: ",
+        paste(bad_vars, collapse = ", ")
+      )
+      
+      # Set zero and catzero to FALSE for these variables
+      zero[bad_vars] <- FALSE
+      catzero[bad_vars] <- FALSE
+    }
+  }
+  
+  
+  
+  #-------- Deal with acdx
   # convert acdx to logical vector
   if (is.null(acdx)) {
       acdx <- rep(FALSE, nvars)
@@ -811,7 +928,25 @@ mfp2.default <- function(x,
     df.list <- df
   }
   
-
+  # Set shifting factors of zero and catzero to 0
+  # Initialize logical vector to track variables that should have shift = 0
+  shift_to_zero <- rep(FALSE, length(vnames))
+  names(shift_to_zero) <- vnames
+  
+  # Set TRUE for variables marked TRUE in `zero`
+  if (!is.null(zero)) {
+    shift_to_zero[names(zero)[zero]] <- TRUE
+  }
+  
+  # Set TRUE for variables marked TRUE in `catzero`
+  if (!is.null(catzero)) {
+    shift_to_zero[names(catzero)[catzero]] <- TRUE
+  }
+  
+  # Apply shift = 0 to the selected variables
+  shift[shift_to_zero] <- 0
+  
+  
   # data preparation -----------------------------------------------------------
   # Apply shift transformation to the x matrix
   x <- sweep(x, 2, shift, "+")
@@ -820,13 +955,21 @@ mfp2.default <- function(x,
   # (where df.list != 1)
   nonlinear_variables <- which(df.list != 1)
   
-  # Only check for non-positive values in variables that will undergo FP transformation
-  if (length(nonlinear_variables) > 0) {
+  # Get the corresponding variable names from x
+  nonlinear_names <- vnames[nonlinear_variables]
+  
+  # Exclude variables that are in `zero` or `catzero`
+  all_zero_vars <- union(names(zero)[zero],  names(catzero)[catzero])
+  vars_to_check <- setdiff(nonlinear_names, all_zero_vars)
+  
+  # Proceed only if there are variables left to check
+  if (length(vars_to_check) > 0) {
     # Extract only the relevant columns that need the positivity check
-    xd <- x[, nonlinear_variables, drop = FALSE]
+    check_indices <- match(vars_to_check, vnames)
+    xd <- x[, check_indices, drop = FALSE]
     
-    # Check which columns still have zero or negative values after shifting
-    neg_cols <- which(colSums(xd <= 0) > 0)
+    # Check for nonpositive values after shifting
+    neg_cols <- which(colSums(xd <= 0, na.rm = TRUE) > 0)
     
     if (length(neg_cols) > 0) {
       # Get the names of problematic columns for user-friendly error message
@@ -882,10 +1025,9 @@ mfp2.default <- function(x,
       weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, center = center, 
       family = family, criterion = criterion, select = select, alpha = alpha, 
-      keep = keep, xorder = xorder, powers = power_list, 
-      method = ties, strata = istrata, nocenter = nocenter,
-      acdx = acdx, ftest = ftest, 
-      control = control, 
+      keep = keep, xorder = xorder, powers = power_list, method = ties, 
+      strata = istrata, nocenter = nocenter, acdx = acdx, ftest = ftest, 
+      control = control, zero = zero, catzero = catzero,
       verbose = verbose
   )
   
@@ -910,7 +1052,7 @@ mfp2.formula <- function(formula,
                          df = 4, 
                          center = TRUE,
                          subset = NULL,
-                         family = c("gaussian", "poisson", "binomial", "cox"),
+                         family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
                          alpha = 0.05,
@@ -977,7 +1119,7 @@ mfp2.formula <- function(formula,
          "i Use the fp() function to set different shift values in the input formula.",
          call. = FALSE)
   
-  if(!is.null(powers) && !is.list(powers))
+  if (!is.null(powers) && !is.list(powers))
     stop(" Powers must be a named list or set it to NULL", call. = FALSE)
   
   # model.frame preserves the attributes of the data unlike model.matrix
@@ -985,7 +1127,7 @@ mfp2.formula <- function(formula,
   
   # check whether no predictor exist in the model i.e y~1: 
   labels <-  attr(terms(mf), "term.labels")
-  if (length(labels)==0)
+  if (length(labels ) == 0)
     stop("No predictors are provided for model fitting.\n At least one predictor is required",
          call. = FALSE)
   
@@ -1133,7 +1275,7 @@ mfp2.formula <- function(formula,
     
     # check the names of supplied powers
     dd <- which(!names(powers) %in% names_x)
-    if (length(dd) !=0)
+    if (length(dd) != 0)
       stop(" The names of all powers must be in the column names of x.\n",
            sprintf("i This applies to the following powers: %s.", 
                    paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
@@ -1147,6 +1289,8 @@ mfp2.formula <- function(formula,
   }
   
   # if fp() is used in the formula
+  zero <- NULL
+  catzero <- NULL
   if (length(fp_pos) != 0) {
     # modify the default parameters based on the user inputs
     df_list <- modifyList(df_list, 
@@ -1170,22 +1314,40 @@ mfp2.formula <- function(formula,
     powerx <- Filter(Negate(is.null),setNames(lapply(fp_data, attr, "powers"), fp_vars))
     
     nax <- intersect(names(powerx), names(powers))
-    if (length(nax)!= 0)
+    if (length(nax) != 0)
       warning("i Powers are specified in both the `fp()` function within\n the formula and as an argument.                 The argument term ignored.\n", 
               sprintf("i This applies to the following variables: %s.", 
                       paste0(nax, collapse = ", ")), call. = FALSE)
     
     power_list <- modifyList(power_list, powerx)
     
+    # zero and catzero variables
+    zero <- setNames(sapply(fp_data, attr, "zero"), fp_vars)
+    catzero <- setNames(sapply(fp_data, attr, "catzero"), fp_vars)
+    
+    # mfp2.default() requires zero and catzero to be variable names or NULL 
+    if (sum(zero) == 0) {
+      zero <- NULL
+    } else {
+      zero <- names(zero[zero])
+    }
+    
+    if (sum(catzero) == 0) {
+      catzero <- NULL
+    } else {
+      catzero <- names(catzero[catzero])
+    }
+    
   }
   
   # acd requires variable names or NULL 
   acdx_vector <- unlist(acdx_list)
-  if (sum(acdx_vector) == 0) 
+  if (sum(acdx_vector) == 0) {
     acdx_vector <- NULL
-  else
+  } else {
     acdx_vector <- names(acdx_vector[acdx_vector])
-
+  }
+  
   mfp2.default(x = x, 
                y = y, 
                weights = weights, 
@@ -1209,6 +1371,8 @@ mfp2.formula <- function(formula,
                acdx = acdx_vector,
                ftest = ftest,
                control = control,
+               zero = zero,
+               catzero = catzero,
                verbose = verbose
   )
 }
@@ -1280,7 +1444,7 @@ print.mfp2 <- function(x,
 
   # Exclude 'acd' column if all its elements are false
   fp_terms <- x$fp_terms
-  if(all(!fp_terms["acd"])) {
+  if (all(!fp_terms["acd"])) {
     fp_terms <- fp_terms[, !names(fp_terms) %in% "acd"]
   }
   
@@ -1299,7 +1463,7 @@ print.mfp2 <- function(x,
 #' 
 #' @param x a vector representing a continuous variable undergoing 
 #' fp-transformation.
-#' @param df,alpha,select,shift,scale,center,acdx See [mfp2::mfp2()]) for details. 
+#' @param df,alpha,select,shift,scale,center,acdx,zero,catzero See [mfp2::mfp2()]) for details. 
 #' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
 #' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
 #' @param ... used in alias `fp2` to pass arguments.
@@ -1322,7 +1486,9 @@ fp <- function(x,
                scale = NULL,
                center = TRUE, 
                acdx = FALSE, 
-               powers = NULL) {
+               powers = NULL,
+               zero = FALSE,
+               catzero = FALSE) {
   
   name <- deparse(substitute(x))
   
@@ -1338,6 +1504,8 @@ fp <- function(x,
   attr(x, "center") <- center
   attr(x, "acd") <- acdx
   attr(x, "powers") <- powers
+  attr(x, "zero") <- zero
+  attr(x, "catzero") <- catzero
   attr(x, "name") <- name
   
   x

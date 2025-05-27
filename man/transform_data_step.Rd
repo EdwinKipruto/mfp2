@@ -4,7 +4,7 @@
 \alias{transform_data_step}
 \title{Function to extract and transform adjustment variables}
 \usage{
-transform_data_step(x, xi, powers_current, df, powers, acdx)
+transform_data_step(x, xi, powers_current, df, powers, acdx, zero, catzero)
 }
 \arguments{
 \item{x}{a matrix of predictors that includes the variable of interest \code{xi}.
@@ -23,6 +23,15 @@ cycles.}
 \item{powers}{a set of allowed FP powers.}
 
 \item{acdx}{a logical vector indicating the use of acd transformation.}
+
+\item{zero}{named logical vector of length ncol(x)}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 }
 \value{
 A list containing the following elements:

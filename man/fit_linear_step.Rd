@@ -4,7 +4,18 @@
 \alias{fit_linear_step}
 \title{Function to fit linear model for variable of interest}
 \usage{
-fit_linear_step(x, xi, y, powers_current, powers, acdx, family, ...)
+fit_linear_step(
+  x,
+  xi,
+  y,
+  powers_current,
+  powers,
+  acdx,
+  family,
+  zero,
+  catzero,
+  ...
+)
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
@@ -29,19 +40,33 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 
 \item{family}{a character string representing a family object.}
 
-\item{...}{passed to \code{fit_model()}.}
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{...}{Parameters passed to \code{fit_model()}.}
 }
 \value{
 A list with two entries:
 \itemize{
-\item \code{powers}: fp power(s) of \code{xi} (or its ACD transformation) in fitted model.
-\item \code{metrics}: a matrix with performance indices for fitted model.
+\item \code{powers}: FP power(s) of \code{xi} (or its ACD transformation) in fitted model.
+\item \code{metrics}: A matrix with performance indices for fitted model.
 }
 }
 \description{
-"Linear" model here refers to a model which includes the variable
-of interest \code{xi} with a fp power of 1. Note that \code{xi} may be ACD transformed
-if indicated by \code{acdx[xi]}.
-For parameter definitions, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+"Linear" model here refers to a model that includes the variable
+of interest \code{xi} with an FP (fractional polynomial) power of 1.
+Note that \code{xi} may be ACD-transformed if indicated by \code{acdx[xi]}.
+If the variable was passed through the \code{catzero} argument in \code{mfp2()},
+both the continuous variable and its corresponding binary indicator
+will be included in the model as linear terms.
+For parameter definitions, see \code{\link{find_best_fp_step}}.
+All parameters captured by \code{...} are passed to \code{\link{fit_model}}.
 }

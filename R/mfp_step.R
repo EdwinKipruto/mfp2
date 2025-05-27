@@ -39,6 +39,17 @@
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit.
 #' @param rownames a parameter for Cox models.
+#' @param zero a named logical vector
+#' @param catzero a named logical vector
+#' @param zero A named logical vector indicating, which columns of 
+#' \code{x} should treat nonpositive values (zero or negative) as zero before 
+#' transformation. Must be the same length as the columns of \code{x}.
+#' @param catzero A named list of binary indicator variables of length \code{ncol(x)} 
+#' for nonpositive values, created when specific variables are passed to the 
+#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is 
+#' \code{NULL}, it indicates that the corresponding variable was not specified by
+#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -121,6 +132,8 @@ find_best_fp_step <- function(x,
                               ftest, 
                               control,
                               rownames, 
+                              zero,
+                              catzero,# a named list of binary variables
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -147,7 +160,7 @@ find_best_fp_step <- function(x,
     powers_current = powers_current, powers = powers,  
     criterion = criterion, ftest = ftest, select = select, alpha = alpha,
     method = method, strata = strata, nocenter = nocenter, 
-    control = control, rownames = rownames
+    control = control, rownames = rownames, zero = zero, catzero = catzero
   )
   
   if (verbose) {
@@ -213,10 +226,18 @@ find_best_fp_step <- function(x,
 #' * `metrics`: a matrix with performance indices for all models investigated. 
 #' Same number of rows as, and indexed by, `powers`.
 #' * `model_best`: row index of best model in `metrics`.
+#' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}. 
+#'   In this case, nonpositive values of \code{xi} were set to zero before transformation, 
+#'   and only positive values were transformed.
+#' * `catzero`: Logical indicating whether a combination of a zero transformation 
+#'   and a binary indicator variable was applied to \code{xi}. This means that 
+#'   nonpositive values of \code{xi} were set to zero, only positive values were 
+#'   transformed, and an additional binary variable was created to indicate 
+#'   whether \code{xi} was positive or nonpositive.
 #' 
 #' @inheritParams find_best_fp_step
 #' @param degree degrees of freedom for fp transformation of `xi`.
-#' @param ... passed to `fit_model()`.
+#' @param ... parameters passed to `fit_model()`.
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -225,8 +246,10 @@ find_best_fpm_step <- function(x,
                                powers,  
                                acdx, 
                                family,
+                               zero,
+                               catzero, # a list of binary variables or null
                                ...) {
-  
+  # Number of events
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   if (degree == 1) {
@@ -237,16 +260,17 @@ find_best_fpm_step <- function(x,
   }
     
   # generate FP data for x of interest (xi) and adjustment variables
+  # Takes into account variables that should not be shifted thru 'zero'
   x_transformed <- transform_data_step(
-    x = x, xi = xi, df = 2 * degree,
-    powers_current = powers_current, powers = powers, acdx = acdx
+    x = x, xi = xi, df = 2 * degree, powers_current = powers_current, 
+    powers = powers, acdx = acdx, zero = zero, catzero = catzero
   )
   
   metrics <- list()
   for (i in seq_along(x_transformed$data_fp)) {
     # combine FP variables for x of interest with adjustment variables
     fit <- fit_model(
-      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj), y = y,
+      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj), y = y, # catzero plays a role here thru data_fp and data_adj
       family = family, ...
     )
     
@@ -263,7 +287,7 @@ find_best_fpm_step <- function(x,
       p[length(p)] <- sprintf("A(%s)", p[length(p)])
     
     metrics[[paste(p, collapse = " ")]] <- calculate_model_metrics(
-      fit, n_obs, degree
+      fit, n_obs, degree # fit will include df of binary when catzero is used so this part does not change
     )
   }
   
@@ -275,11 +299,13 @@ find_best_fpm_step <- function(x,
     powers = x_transformed$powers_fp, 
     power_best = x_transformed$powers_fp[model_best, , drop = TRUE], 
     metrics = metrics, 
-    model_best = model_best
+    model_best = model_best,
+    zero = zero[xi],
+    catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE)
   ) 
 }
 
-#' Function to fit null model excluding variable of interest
+#' Function to fit a null model excluding variable of interest
 #' 
 #' "Null" model here refers to a model which does not include the variable 
 #' of interest `xi`. 
@@ -289,11 +315,11 @@ find_best_fpm_step <- function(x,
 #' @return 
 #' A list with two entries: 
 #' 
-#' * `powers`: fp power(s) of `xi` in fitted model - in this case `NA`.
-#' * `metrics`: a matrix with performance indices for fitted model.
+#' * `powers`: FP power(s) of `xi` in fitted model - in this case `NA`.
+#' * `metrics`: A matrix with performance indices for fitted model.
 #' 
 #' @inheritParams find_best_fp_step
-#' @param ... passed to `fit_model()`.
+#' @param ... Parameters passed to `fit_model()`.
 fit_null_step <- function(x, 
                           xi, 
                           y, 
@@ -301,22 +327,25 @@ fit_null_step <- function(x,
                           powers,
                           acdx, 
                           family,
+                          zero,
+                          catzero,
                           ...) {
   
+  # Number of events
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
   x_transformed <- transform_data_step(
-    x = x, xi = xi, df = 1,
-    powers_current = powers_current, acdx = acdx, powers = powers
+    x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx, 
+    powers = powers, zero = zero, catzero = catzero
   ) 
   
   # fit null model
   # i.e. a model that does not contain xi but only adjustment variables
   # In addition, adjustment model can be NULL, so we have intercept only
   model_null <- fit_model(x = x_transformed$data_adj, y = y,
-                          family = family, ...)
+                          family = family, ...) 
   
   list(
     powers = NA,
@@ -326,20 +355,23 @@ fit_null_step <- function(x,
 
 #' Function to fit linear model for variable of interest
 #' 
-#' "Linear" model here refers to a model which includes the variable 
-#' of interest `xi` with a fp power of 1. Note that `xi` may be ACD transformed
-#' if indicated by `acdx[xi]`.
-#' For parameter definitions, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' "Linear" model here refers to a model that includes the variable 
+#' of interest \code{xi} with an FP (fractional polynomial) power of 1. 
+#' Note that \code{xi} may be ACD-transformed if indicated by \code{acdx[xi]}. 
+#' If the variable was passed through the \code{catzero} argument in \code{mfp2()}, 
+#' both the continuous variable and its corresponding binary indicator 
+#' will be included in the model as linear terms.
+#' For parameter definitions, see \code{\link{find_best_fp_step}}. 
+#' All parameters captured by \code{...} are passed to \code{\link{fit_model}}.
 #' 
 #' @return 
 #' A list with two entries: 
 #' 
-#' * `powers`: fp power(s) of `xi` (or its ACD transformation) in fitted model.
-#' * `metrics`: a matrix with performance indices for fitted model.
+#' * `powers`: FP power(s) of `xi` (or its ACD transformation) in fitted model.
+#' * `metrics`: A matrix with performance indices for fitted model.
 #' 
 #' @inheritParams find_best_fp_step
-#' @param ... passed to `fit_model()`.
+#' @param ... Parameters passed to `fit_model()`.
 fit_linear_step <- function(x, 
                             xi, 
                             y, 
@@ -347,18 +379,21 @@ fit_linear_step <- function(x,
                             powers,
                             acdx, 
                             family,
+                            zero,
+                            catzero, 
                             ...) {
-  
+  # Number of events in survival models or observation in GLM 
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
   x_transformed <- transform_data_step(
-    x = x, xi = xi, df = 1,
-    powers_current = powers_current, acdx = acdx, powers = powers
+    x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx,
+    powers = powers, zero = zero, catzero = catzero
   ) 
   
-  # fit a model based on the assumption that xi is linear 
+  # fit a model based on the assumption that xi is linear. If catzero, its
+  # corresponding binary variable will be included in the model
   model_linear <- fit_model(
     x = cbind(x_transformed$data_fp[[1]], x_transformed$data_adj), y = y,
     family = family, ...
@@ -375,17 +410,18 @@ fit_linear_step <- function(x,
   )
 }
 
-#' Helper to select between null and linear term for a single variable
+
+#' Helper function to select between null and linear term for a single variable
 #' 
 #' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
 #' Handles all criteria for selection.
 #' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' captured by `...` are passed to [fit_model()].
 #' 
 #' @details 
 #' This function assesses a single variable of interest `xi` regarding its
 #' functional form in the current working model as indicated by
-#' `powers_current`, with the choice between a excluding `xi` ("null model") and
+#' `powers_current`, with the choice between excluding `xi` ("null model") and
 #' including a linear term ("linear fp") for `xi`.
 #' 
 #' Note that this function handles an ACD transformation for `xi` as well. 
@@ -408,7 +444,14 @@ fit_linear_step <- function(x,
 #' * `model_best`: row index of best model in `metrics`.
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
-#' 
+#' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}. 
+#'   In this case, nonpositive values of \code{xi} were set to zero before transformation, 
+#'   and only positive values were transformed.
+#' * `catzero`: Logical indicating whether a combination of a zero transformation 
+#'   and a binary indicator variable was applied to \code{xi}. This means that 
+#'   nonpositive values of \code{xi} were set to zero, only positive values were 
+#'   transformed, and an additional binary variable was created to indicate 
+#'   whether \code{xi} was positive or nonpositive.
 #' @param degree not used.
 #' @param ... passed to fitting functions. 
 #' @inheritParams find_best_fp_step 
@@ -425,24 +468,31 @@ select_linear <- function(x,
                           select, 
                           alpha,
                           family,
+                          zero,
+                          catzero,
                           ...) {
   
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
+  # Model 1: Null model
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
+  
+  # Model 2: Linear model
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
+  
+  # Extract powers and metrics of interest
   powers <- rbind(fit_null$powers, fit_linear$powers)
   metrics <- rbind(fit_null$metrics, fit_linear$metrics)
   
-  # compute best model according to different criteria
+  # compute F or Chi-square statistic between the two models
   if (ftest) {
     # note that ftest is only TRUE if model is gaussian
     stats <- calculate_f_test(
@@ -453,19 +503,25 @@ select_linear <- function(x,
   } else {
     stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
+  
+  # Compute the corresponding p-value
   pvalue <- stats$pvalue
   names(pvalue) <- c("null vs linear")
   statistic <- stats$statistic 
   names(statistic) <- c("null vs linear")
   
+  # Check whether the variable should be forced into the model; index 1 denotes
+  # a null, while 2 denotes a linear model
   if (xi %in% keep) {
     model_best <- 2
-  } else model_best <- switch(
+  } else {
+    model_best <- switch(
     tolower(criterion), 
     "pvalue" = ifelse(pvalue > select, 1, 2), 
     "aic" = which.min(metrics[, "aic", drop = TRUE]), 
     "bic" = which.min(metrics[, "bic", drop = TRUE])
   ) 
+  }
   
   list(
     keep = xi %in% keep, 
@@ -475,7 +531,9 @@ select_linear <- function(x,
     metrics = metrics,
     model_best = model_best,
     pvalue = pvalue,
-    statistic = statistic
+    statistic = statistic,
+    zero = zero[xi],
+    catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE)
   )
 }
 
@@ -483,33 +541,38 @@ select_linear <- function(x,
 #' 
 #' Used in [find_best_fp_step()] when `criterion = "pvalue"`.
 #' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' captured by `...` are passed to [fit_model()].
 #' 
 #' @details  
 #' In case `criterion = "pvalue"` the function selection procedure as outlined 
 #' in Chapters 4 and 6 of Royston and Sauerbrei (2008) is used. 
 #' 
-#' * \emph{Step 1}: test the best FPm function against a null model at level
-#' `select` with 2m df. If not significant, the variable is excluded. 
-#' Otherwise continue with step 2.
-#' * \emph{Step 2}: test the best FPm versus a linear model at level `alpha` 
-#' with 2m - 1 df. If not significant, use a linear model. 
-#' Otherwise continue with step 3.
-#' * \emph{Step 3}: test the best FPm versus the best FP1 at 
-#' level `alpha` with 2m - 2 df. If not significant, use the best FP1 model. 
-#' Otherwise, repeat this step for all remaining higher order FPs until 
-#' FPm-1, which is tested at level `alpha` with 2 df against FPm.
-#' If the final test is not significant, use a FPm-1 model, otherwise use FPm. 
+#' * \emph{Step 1}: Test the best FP\emph{m} function against a null model at the 
+#' significance level specified by \code{select}, using 2\emph{m} degrees of freedom. 
+#' If the test is not significant, the variable is excluded. Otherwise, proceed
+#' to Step 2.
+#' * \emph{Step 2}: Test the best FP\emph{m} function against a linear model at 
+#' the significance level specified by \code{alpha}, using 2\emph{m}-1 degrees 
+#' of freedom. If the test is not significant, select the linear model. 
+#' Otherwise, proceed to Step 3.
+#' * \emph{Step 3}: Test the best FP\emph{m} function against the best FP1 model 
+#' at the significance level specified by \code{alpha}, using 2\emph{m}-2 degrees
+#' of freedom. If the test is not significant, retain the best FP1 model. Otherwise,
+#' repeat this step by comparing FP\emph{m} to all remaining lower-order FP models, 
+#' down to FP\emph{m}–1, which is tested with 2 degrees of freedom. If the final 
+#' test is not significant, retain the best FP\emph{m}–1 model; otherwise, 
+#' retain the best FP\emph{m} model.
 #' 
-#' Note that the "best" FPx model used in each step is given by the model using
-#' a FPx transformation for the variable of interest and having the highest 
-#' likelihood of all such models given the current powers for all other
-#' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-#' These best FPx models are computed in [find_best_fpm_step()].
+#' Note that the "best" FP\emph{x} model used in each step refers to the model 
+#' that applies an FP\emph{x} transformation to the variable of interest and 
+#' achieves the highest likelihood among all such models, given the current 
+#' power transformations for all other variables. This procedure is described 
+#' in Section 4.8 of Royston and Sauerbrei (2008). The best FP\emph{x} models 
+#' are computed by \code{\link{find_best_fpm_step}}.
 #' 
-#' When a variable is forced into the model by including it in `keep`, then 
-#' this function will not exclude it from the model (by setting its power to 
-#' `NA`), but will only choose its functional form. 
+#' When a variable is forced into the model by including it in the \code{keep} 
+#' argument of \code{mfp2()}, this function will not exclude it (i.e., will not 
+#' set its power to \code{NA}), but will instead select its functional form.
 #' 
 #' @return 
 #' A list with several components:
@@ -538,7 +601,7 @@ select_linear <- function(x,
 #' [select_ra2_acd()]
 #'  
 #' @param degree integer > 0 giving the degree for the FP transformation. 
-#' @param ... passed to fitting functions. 
+#' @param ... passed to fitting functions [fit_model()]. 
 #' @inheritParams find_best_fp_step
 select_ra2 <- function(x, 
                        xi,
@@ -553,11 +616,15 @@ select_ra2 <- function(x,
                        select, 
                        alpha, 
                        family,
+                       zero,
+                       catzero,
                        ...) {
   
-  if (degree < 1)
+  if (degree < 1) {
     return(NULL)
+  }
   
+  # Number of events in survival models or observations in GLM
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   # simplify testing by defining test helper function
@@ -596,12 +663,12 @@ select_ra2 <- function(x,
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -610,7 +677,7 @@ select_ra2 <- function(x,
   rownames(res$metrics) <- c(fpmax, "null")
   res$powers <- rbind(fit_fpmax$power_best, NA)
   
-  # test for overall significance
+  # Test 1: test for overall significance (null vs best FPm)
   # df for tests are degree * 2
   stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
   res$statistic <- stats$statistic
@@ -625,12 +692,12 @@ select_ra2 <- function(x,
     return(res)
   }
   
-  # test for non-linearity
+  # Test 2: test for non-linearity (linear vs best FPm)
   # df for tests are degree * 2 - 1
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -656,7 +723,8 @@ select_ra2 <- function(x,
     return(res)
   }
   
-  # tests for functional form - do this for all fps with lower degrees
+  # Test 3: test for complexity of the functions (best FP1 vs best FPm)
+  # do this for all fps with lower degrees
   # dfs for tests are decreasing
   if (degree > 1) {
     
@@ -666,7 +734,7 @@ select_ra2 <- function(x,
       fit_fpm <- find_best_fpm_step(
         x = x, xi = xi, degree = current_degree, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx,
-        family = family, ...
+        family = family, zero = zero, catzero = catzero, ...
       )
       
       old_names = rownames(res$metrics)
@@ -761,6 +829,8 @@ select_ra2_acd <- function(x,
                            select, 
                            alpha, 
                            family,
+                           zero,
+                           catzero,
                            ...) {
   
   # simplify testing by defining test helper function
@@ -804,12 +874,12 @@ select_ra2_acd <- function(x,
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = 2, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, ...
+    family = family,zero = zero, catzero = catzero, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -838,7 +908,7 @@ select_ra2_acd <- function(x,
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family, ...
+    family = family,zero = zero, catzero = catzero, ...
   )
   
   old_names = rownames(res$metrics)
@@ -867,7 +937,7 @@ select_ra2_acd <- function(x,
   fit <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family, ...
+    family = family,zero = zero, catzero = catzero, ...
   )
   
   old_names = rownames(res$metrics)
@@ -896,7 +966,7 @@ select_ra2_acd <- function(x,
   fit_fp1a <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family,...
+    family = family, zero = zero, catzero = catzero,...
   )
   
   old_names = rownames(res$metrics)
@@ -925,7 +995,7 @@ select_ra2_acd <- function(x,
   fit_lineara <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family,...
+    family = family, zero = zero, catzero = catzero, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1030,6 +1100,8 @@ select_ic <- function(x,
                       select, 
                       alpha, 
                       family,
+                      zero,
+                      catzero,
                       ...) {
   
   if (degree < 1)
@@ -1050,24 +1122,27 @@ select_ic <- function(x,
   )
   
   # fit all relevant models
+  # Null Model
   fit_null <- fit_null_step(
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family, ...
+      family = family,zero = zero, catzero = catzero, ...
     )
+  # Linear model
   fit_lin <- fit_linear_step(
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family, ...
+      family = family, zero = zero, catzero = catzero, ...
     )
   
+  # All FPm models
   fits_fpm <- list()
   
   for (m in 1:degree) {
     fits_fpm[[sprintf("FP%g", m)]] <- find_best_fpm_step(
       x = x, xi = xi, degree = m, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family, ...
+      family = family,zero = zero, catzero = catzero, ...
     )
   }
   
@@ -1125,6 +1200,8 @@ select_ic_acd <- function(x,
                           select, 
                           alpha, 
                           family,
+                          zero,
+                          catzero,
                           ...) {
   
   acdx_reset_xi <- acdx
@@ -1146,24 +1223,24 @@ select_ic_acd <- function(x,
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family,...
+    family = family, zero = zero, catzero = catzero, ...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, ...
+    family = family, zero = zero, catzero = catzero, ...
   )
   
   fits <- list(
     "FP1(x, .)" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-      family = family, ...
+      family = family, zero = zero, catzero = catzero, ...
     ), 
     "FP1(., A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
@@ -1173,7 +1250,7 @@ select_ic_acd <- function(x,
     "FP1(x, A(x))" = find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family, ...
+      family = family,zero = zero, catzero = catzero, ...
     )
   )
 
@@ -1236,7 +1313,13 @@ select_ic_acd <- function(x,
 #' @param df a numeric vector of degrees of freedom for `xi`.
 #' @param powers a set of allowed FP powers.
 #' @param acdx a logical vector indicating the use of acd transformation.
-#' 
+#' @param zero named logical vector of length ncol(x)
+#' @param catzero A named list of binary indicator variables of length \code{ncol(x)} 
+#' for nonpositive values, created when specific variables are passed to the 
+#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is 
+#' \code{NULL}, it indicates that the corresponding variable was not specified by
+#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
 #' @details
 #' After extracting the adjustment variables this function, using their
 #' corresponding FP powers stored in `powers_current`, transforms them. 
@@ -1268,7 +1351,9 @@ transform_data_step <- function(x,
                                 powers_current,
                                 df, 
                                 powers,
-                                acdx) {
+                                acdx,
+                                zero,
+                                catzero) { 
   
   # sort x based on the names of the powers
   names_powers_current <- names(powers_current)
@@ -1281,11 +1366,12 @@ transform_data_step <- function(x,
   # transformations of adjustment variables
   powers_adj <- powers_current[vars_adj]
   acdx_adj <- unname(acdx[vars_adj])
+  zero_adj <- unname(zero[vars_adj])
   
   # generate adjustment data 
   # check whether all adjustment powers = NA or length(vars_adj)=0 for 1 variable
   # in the model (univariable fp) 
-  if (all(is.na(unlist(powers_adj, use.names = FALSE))) || length(vars_adj)==0) {
+  if (all(is.na(unlist(powers_adj, use.names = FALSE))) || length(vars_adj) == 0) {
     # all adjustment variables were eliminated in MFP backfitting process
     data_adj <- NULL
     powers_adj <- NULL
@@ -1295,13 +1381,16 @@ transform_data_step <- function(x,
     for (i in 1:ncol(x_adj)) {
       if (acdx_adj[i]) {
         data_adj[[i]] <- transform_vector_acd(
-          x = x_adj[, i, drop = TRUE], power = powers_adj[[i]],
+          x = x_adj[, i, drop = TRUE], 
+          power = powers_adj[[i]],
+          zero = zero_adj[i],
           powers = powers[[vars_adj[i]]] # powers needed by acd() function
           
         )$acd
       } else {
         data_adj[[i]] <- transform_vector_fp(
-          x = x_adj[, i, drop = TRUE], power = powers_adj[[i]]
+          x = x_adj[, i, drop = TRUE], power = powers_adj[[i]], 
+          zero = zero_adj[i]
         )
       }
     }
@@ -1309,7 +1398,15 @@ transform_data_step <- function(x,
     # combine into data.frame
     # note some variables may have been extended to more than one column
     # in the loop above due to transformation
-    data_adj <- do.call(cbind, data_adj)
+    data_adj <- do.call(cbind, data_adj) 
+    
+    # Add catzero binary indicators for adjustment variables
+    catzero_adj <- catzero[vars_adj]
+    catzero_adj <- catzero_adj[!sapply(catzero_adj, is.null)]  # keep only non-null
+    
+    if (length(catzero_adj) > 0) {
+      data_adj <- cbind(data_adj, do.call(cbind, catzero_adj))
+    }
     
     # assign arbitrary names to adjustment matrix 
     # the names of adjustment variables at this stage are not relevant
@@ -1321,6 +1418,14 @@ transform_data_step <- function(x,
   
   if (length(unique(data_xi)) <= 3) {
     # if a variable has less than 4 levels we do not generate FP data
+    # but set nonpositive values to zero, when zero argument is used
+    if (zero[xi]) {
+      data_xi[data_xi <= 0] <- 0 
+    }
+    
+    # add catzero variable if not null; if null cbind will remove it
+    data_xi <- cbind(catzero[[xi]], data_xi)
+    
     data_fp <- list(data_xi)
     powers_fp <- 1
   } else {
@@ -1328,11 +1433,15 @@ transform_data_step <- function(x,
       # when df = 1 -> degree = 0
       # and we return the data unchanged, i.e. with power = 1
       fpd <- generate_transformations_acd(data_xi, degree = floor(df / 2),
-                                          powers = powers[[xi]])
+                                          powers = powers[[xi]], 
+                                          zero = zero[xi], 
+                                          catzero = catzero[[xi]])
     } else {
       # note that degree is df / 2
       fpd <- generate_transformations_fp(data_xi, degree = floor(df / 2),
-                                         powers = powers[[xi]])
+                                         powers = powers[[xi]], 
+                                         zero = zero[xi],
+                                         catzero = catzero[[xi]])
     }
     data_fp <- fpd$data
     powers_fp <- fpd$powers
@@ -1353,9 +1462,7 @@ transform_data_step <- function(x,
 #' @param x input vector or matrix. 
 #' @param size length or size of `x` which is desired.
 #' @param fill value to fill in if `x` is not of desired length or size.
-ensure_length <- function(x, 
-                          size, 
-                          fill = NA) {
+ensure_length <- function(x, size, fill = NA) {
   if (length(x) == size)
     return(x)
     

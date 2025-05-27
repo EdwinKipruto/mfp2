@@ -5,48 +5,75 @@
 \alias{generate_transformations_acd}
 \title{Function to generate all requested FP transformations for a single variable}
 \usage{
-generate_transformations_fp(x, degree, powers)
+generate_transformations_fp(x, degree, powers, zero, catzero = NULL)
 
-generate_transformations_acd(x, degree, powers)
+generate_transformations_acd(x, degree, powers, zero, catzero = NULL)
 }
 \arguments{
-\item{x}{a numeric vector of length nobs assumed to have been shifted and
+\item{x}{A numeric vector of length \code{nobs}, assumed to have been shifted
+(except for variables with \code{zero} or \code{catzero} transformations) and
 scaled.}
 
-\item{degree}{numeric indicating the degree of FPs. Assumed to be 2 for acd
-transformation.}
+\item{degree}{A numeric value indicating the degree of fractional polynomials (FPs).
+For ACD transformation, this is assumed to be 2.}
 
-\item{powers}{a vector of allowed FP powers.}
+\item{powers}{A numeric vector specifying the set of allowed fractional
+polynomial (FP) powers to be used in the transformation.}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive
+values are replaced with zero before transformation. If \code{FALSE} (default),
+all values are shifted (if needed) to ensure positivity before transformation.}
+
+\item{catzero}{A vector of binary values to be added to the transformed variables.
+Default is NULL, meaning no binary variables added.}
 }
 \value{
-A list with two entries:
+A list with two components:
 \itemize{
-\item \code{data}: a list with length equal to the number of possible FPs for the
-variable of interest. Each entry is a matrix with degree many columns,
-and nobs observations comprising the FP transformed input variable.
-For example, for degree = 2 and nobs = 10, each entry is a 10 x 2 matrix.
-Values are not centered. If \code{degree = 0}, the single entry has a single
-column.
-\item \code{powers}: the associated FP powers for each entry in data.
+\item \code{data}: A list with length equal to the number of possible fractional polynomial (FP)
+transformations for the variable of interest. Each entry is a matrix with \code{nobs} rows.
+The number of columns equals the FP \code{degree}, unless \code{catzero = TRUE}, in which case
+an additional column is included for the binary indicator variable. For example, with
+\code{degree = 2}, \code{catzero = TRUE}, and \code{nobs = 10}, each entry is a 10 × 3 matrix.
+The FP-transformed values are not centered. If \code{degree = 0}, the list contains a single
+entry with one column (or two columns if \code{catzero = TRUE}), representing the linear
+transformation (and binary indicator, if applicable).
+\item \code{data}: the associated FP powers for each entry in data.
+\item \code{powers}: A matrix of FP powers corresponding to each entry in \code{data}.
+Each row contains the powers used for the associated transformation (e.g.,
+two columns for \code{degree = 2}, one for \code{degree = 1}, and one for
+\code{degree = 0}).
 }
 }
 \description{
 Function to generate all requested FP transformations for a single variable
 }
 \details{
-Any FP transformation is given by a vector of powers, e.g. (p1, p2) for
-degree 2. These correspond to powers x^p1 and x^p2. Thus, we only need to
-consider combinations of all values in \code{powers}, since order of the entries
-does not matter. See \code{\link[=generate_powers_fp]{generate_powers_fp()}}.
-A special case are repeated powers, i.e. p1 = p2. In this case, the repeated
-entries are multiplied by log(x) (see \code{\link[=transform_vector_fp]{transform_vector_fp()}}).
+Any fractional polynomial (FP) transformation is defined by a vector of powers,
+such as \code{(p1, p2)} for degree 2. These correspond to the terms \code{x^p1}
+and \code{x^p2}. Therefore, all combinations of the values in \code{powers}
+are considered (see \code{\link{generate_powers_fp}}).
 
-When the ACD transformation is requested, then all pairs of length 2
-are considered, i.e. 64. See \code{\link[=generate_powers_acd]{generate_powers_acd()}}.
+A special case arises when powers are repeated, i.e., \code{p1 = p2}. In such cases,
+the second term is multiplied by \code{log(x)}, following the standard FP convention
+(see \code{\link{transform_vector_fp}}).
+
+When the ACD transformation is requested, all pairs of powers of length 2 are evaluated,
+resulting in 64 unique combinations (see \code{\link{generate_powers_acd}}).
 
 If \code{degree = 0} then these functions return the data unchanged for fp,
 or simply the acd transformation of the input variable, i.e. in both cases
 the power is set to 1 (linear).
+
+If \code{degree = 0}, the function returns the data unchanged for an FP transformation,
+or applies only the ACD transformation to the input variable. In both cases,
+the power is set to 1 (linear).
+
+When \code{catzero} is used, the transformed (or untransformed) continuous variable is
+combined with its corresponding binary indicator, representing whether the original
+value was positive or nonpositive.
 }
 \section{Functions}{
 \itemize{

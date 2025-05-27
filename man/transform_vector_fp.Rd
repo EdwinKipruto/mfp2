@@ -11,6 +11,7 @@ transform_vector_fp(
   scale = 1,
   shift = 0,
   name = NULL,
+  zero = FALSE,
   check_binary = TRUE
 )
 
@@ -21,7 +22,8 @@ transform_vector_acd(
   powers = NULL,
   scale = 1,
   acd_parameter = NULL,
-  name = NULL
+  name = NULL,
+  zero = FALSE
 )
 }
 \arguments{
@@ -44,6 +46,12 @@ automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 
 \item{name}{character used to define names for the output matrix. Default
 is \code{NULL}, meaning the output will have unnamed columns.}
+
+\item{zero}{Logical indicating whether only positive values of the variable
+should be transformed, with nonpositive values (zero or negative) set to zero.
+If \code{TRUE}, transformation is applied only to positive values; nonpositive values
+are replaced with zero before transformation. If \code{FALSE} (default), all values
+are shifted (if needed) to ensure positivity before transformation.}
 
 \item{check_binary}{a logical indicating whether or not input \code{x} is checked
 if it is a binary variable (i.e. has only two distinct values). The default
@@ -127,6 +135,13 @@ as centering before transformation would affect them. This is described
 in Sauerbrei et al (2006), as well as in the Stata manual of \code{mfp}.
 Also, centering is not recommended, and should only be done for the final
 model if desired.
+
+If a variable is specified in the \code{zero} or \code{catzero} arguments,
+nonpositive values (zero or negative) are not shifted. Instead, they are replaced
+with zero, and transformation is applied only to the positive values. This approach
+is useful in cases where nonpositive values have a qualitatively different interpretation
+(e.g., nonsmokers in smoking data) and should not be transformed in the same way
+as positive values.
 }
 
 \examples{

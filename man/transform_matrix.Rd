@@ -11,7 +11,9 @@ transform_matrix(
   acdx,
   keep_x_order = FALSE,
   acd_parameter_list = NULL,
-  check_binary = TRUE
+  check_binary = TRUE,
+  zero = NULL,
+  catzero = NULL
 )
 }
 \arguments{
@@ -38,6 +40,19 @@ are to be applied to new data. Entries must correspond to the entries where
 parameters for the acd transformations are to be estimated.}
 
 \item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
+
+\item{zero}{A named logical vector specifying, for each variable, whether only
+positive values should be transformed. If \code{TRUE}, the transformation is applied
+only to positive values; nonpositive values (zero or negative) are replaced with zero.
+If \code{FALSE}, all values are used (after shifting, if necessary).
+Variable names must match the corresponding column names in \code{x}. The default
+is \code{NULL}, meaning no variables are treated as zero-transformed.}
+
+\item{catzero}{A named logical vector similar to \code{zero}, indicating which
+columns in \code{x} should treat nonpositive values as zero and additionally have a
+binary indicator created and included in the model. The vector must have names matching
+the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero
+variables are used.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.

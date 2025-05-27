@@ -19,7 +19,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "cox"),
+  family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -32,6 +32,8 @@ mfp2(x, ...)
   acdx = NULL,
   ftest = FALSE,
   control = NULL,
+  zero = NULL,
+  catzero = NULL,
   verbose = TRUE,
   ...
 )
@@ -47,7 +49,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "cox"),
+  family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -213,6 +215,18 @@ Gaussian models only and has no effect for other model families.}
 \item{control}{a list object with parameters controlling model fit details.
 Returned by either \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}.
 Default is \code{NULL} to use default parameters for the given model class.}
+
+\item{zero}{A character vector specifying the names of variables for which
+nonpositive values should be treated as zero. This allows fitting a fractional
+polynomial (FP) model using only the positive values of a covariate, while
+setting nonpositive values to zero during transformation. See the \strong{Details}
+section}
+
+\item{catzero}{A character vector specifying the names of variables for which
+nonpositive values should be treated as zero, similar to the \code{zero} argument.
+The key difference is that \code{mfp2} will automatically create a corresponding
+binary indicator variable (e.g., \code{var > 0}) and include it in the model
+alongside the transformed variable. #' See the \strong{Details} section}
 
 \item{verbose}{a logical; run in verbose mode.}
 
@@ -462,6 +476,31 @@ For example, using \code{y ~ .} with default settings means that \code{mfp2()} w
 apply FP transformation with 4 df to all continuous variables and use alpha
 equal to 0.05 to select functional forms, along with the selection algorithm
 with a significance level of 0.05 for all variables.
+}
+
+\section{Handling Nonpositive Values (\code{zero} and \code{catzero})}{
+
+
+The \code{zero} and \code{catzero} options provide mechanisms for handling covariates
+with nonpositive values in fractional polynomial (FP) models, especially when those
+values have a qualitatively different interpretation than positive ones.
+
+The \code{zero} argument allows fitting FP models using only the positive values of a covariate,
+while treating nonpositive values (e.g., zero or negative) as exactly zero. This is useful
+when the relationship between the covariate and the outcome is expected to begin only above zero.
+For example, in modeling the effect of cigarette consumption, nonsmokers (zero cigarettes) may be
+fundamentally different from smokers. Instead of applying a constant shift (e.g., adding 1) to all
+values before transformation, the \code{zero} argument allows the model to treat zero values as a
+separate baseline and apply FP transformations only to the positive values.
+
+The \code{catzero} argument extends this idea by automatically creating a binary indicator
+for whether the covariate is positive. This indicator is included in the model alongside the
+transformed version of the covariate. Both are treated as a single predictor during model
+selection (if applicable). This approach captures the potential difference between having a value
+of zero and having any positive value, while still allowing flexible modeling of the positive range.
+
+This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15) and is particularly
+relevant in epidemiological contexts where exposure may have a threshold effect.
 }
 
 \section{Compatibility with \code{mfp} package}{

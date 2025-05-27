@@ -4,7 +4,19 @@
 \alias{find_best_fpm_step}
 \title{Function to find the best FP functions of given degree for a single variable}
 \usage{
-find_best_fpm_step(x, xi, degree, y, powers_current, powers, acdx, family, ...)
+find_best_fpm_step(
+  x,
+  xi,
+  degree,
+  y,
+  powers_current,
+  powers,
+  acdx,
+  family,
+  zero,
+  catzero,
+  ...
+)
 }
 \arguments{
 \item{x}{an input matrix of dimensions nobs x nvars. Does not contain
@@ -31,7 +43,18 @@ to undergo the approximate cumulative distribution (ACD) transformation.}
 
 \item{family}{a character string representing a family object.}
 
-\item{...}{passed to \code{fit_model()}.}
+\item{zero}{A named logical vector indicating, which columns of
+\code{x} should treat nonpositive values (zero or negative) as zero before
+transformation. Must be the same length as the columns of \code{x}.}
+
+\item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
+for nonpositive values, created when specific variables are passed to the
+\code{catzero} argument of \code{fit_mfp}. If an element of the list is
+\code{NULL}, it indicates that the corresponding variable was not specified by
+the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
+is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{...}{parameters passed to \code{fit_model()}.}
 }
 \value{
 A list with several components:
@@ -44,6 +67,14 @@ of columns will depend on \code{degree}.
 \item \code{metrics}: a matrix with performance indices for all models investigated.
 Same number of rows as, and indexed by, \code{powers}.
 \item \code{model_best}: row index of best model in \code{metrics}.
+\item \code{zero}: Logical indicating whether a zero transformation was applied to \code{xi}.
+In this case, nonpositive values of \code{xi} were set to zero before transformation,
+and only positive values were transformed.
+\item \code{catzero}: Logical indicating whether a combination of a zero transformation
+and a binary indicator variable was applied to \code{xi}. This means that
+nonpositive values of \code{xi} were set to zero, only positive values were
+transformed, and an additional binary variable was created to indicate
+whether \code{xi} was positive or nonpositive.
 }
 }
 \description{

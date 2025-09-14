@@ -34,6 +34,7 @@ mfp2(x, ...)
   control = NULL,
   zero = NULL,
   catzero = NULL,
+  spike = NULL,
   verbose = TRUE,
   ...
 )
@@ -227,6 +228,8 @@ nonpositive values should be treated as zero, similar to the \code{zero} argumen
 The key difference is that \code{mfp2} will automatically create a corresponding
 binary indicator variable (e.g., \code{var > 0}) and include it in the model
 alongside the transformed variable. #' See the \strong{Details} section}
+
+\item{spike}{description}
 
 \item{verbose}{a logical; run in verbose mode.}
 

@@ -27,6 +27,7 @@ find_best_fp_step(
   rownames,
   zero,
   catzero,
+  spike,
   verbose
 )
 }

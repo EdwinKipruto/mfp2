@@ -29,6 +29,7 @@ fit_mfp(
   control,
   zero,
   catzero,
+  spike,
   verbose
 )
 }
@@ -104,6 +105,10 @@ of \code{x}.}
 columns of \code{x} should treat nonpositive values as zero and also have a binary
 indicator automatically created and included in the model. Must match the length
 and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
+
+\item{spike}{A logical vector indicating which columns of \code{x} contain
+a spike at zero. The length and order of \code{spike} must match those of
+the columns in \code{x}.}
 
 \item{verbose}{Logical; if \code{TRUE}, additional information will be printed
 during model fitting steps. Useful for understanding internal processing.

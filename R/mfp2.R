@@ -365,6 +365,7 @@
 #' The key difference is that \code{mfp2} will automatically create a corresponding 
 #' binary indicator variable (e.g., \code{var > 0}) and include it in the model 
 #' alongside the transformed variable. #' See the **Details** section
+#' @param spike description
 
 #' @param verbose a logical; run in verbose mode.
 #' @param ... not used.
@@ -494,6 +495,7 @@ mfp2.default <- function(x,
                          control = NULL, 
                          zero = NULL,
                          catzero = NULL,
+                         spike = NULL,
                          verbose = TRUE,
                          ...) {
   
@@ -669,6 +671,16 @@ mfp2.default <- function(x,
                   call. = FALSE
                   )
       }
+  }
+  
+  # assert acdx is a subset of x
+  if (!is.null(spike)) {
+    if (!all(spike %in% vnames)) {
+      warning("i The set of variables named in spike is not a subset of the variables in x.\n", 
+              "i mfp2() continues with the intersection of spike and colnames(x).", 
+              call. = FALSE
+      )
+    }
   }
   
   # assert df is positive
@@ -892,8 +904,6 @@ mfp2.default <- function(x,
     }
   }
   
-  
-  
   #-------- Deal with acdx
   # convert acdx to logical vector
   if (is.null(acdx)) {
@@ -906,6 +916,23 @@ mfp2.default <- function(x,
       acdx <- replace(rep(FALSE, nvars), 
                       which(vnames %in% acdx), rep(TRUE, length(acdx)))
   }
+  
+  #-------- Deal with spike
+  # convert spike to logical vector
+  if (is.null(spike)) {
+    spike <- rep(FALSE, nvars)
+  } else {
+    # Get rid of duplicates names
+    spike <- unique(spike)
+    spike <- intersect(spike, vnames)
+    # the variables that undergo spike transformation have spike = TRUE
+    spike <- replace(rep(FALSE, nvars), 
+                    which(vnames %in% spike), rep(TRUE, length(spike)))
+  }
+  
+  # TODO: Set spike = FALSE if all values do not contain zeros 
+  # Ensure that all spike variables also have catzero = TRUE
+  catzero[spike] <- TRUE
   
   # set df ---------------------------------------------------------------------
   if (length(df) == 1) {
@@ -1027,7 +1054,7 @@ mfp2.default <- function(x,
       family = family, criterion = criterion, select = select, alpha = alpha, 
       keep = keep, xorder = xorder, powers = power_list, method = ties, 
       strata = istrata, nocenter = nocenter, acdx = acdx, ftest = ftest, 
-      control = control, zero = zero, catzero = catzero,
+      control = control, zero = zero, catzero = catzero,spike = spike,
       verbose = verbose
   )
   

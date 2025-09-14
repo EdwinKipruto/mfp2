@@ -134,6 +134,7 @@ find_best_fp_step <- function(x,
                               rownames, 
                               zero,
                               catzero,# a named list of binary variables
+                              spike,
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -154,7 +155,7 @@ find_best_fp_step <- function(x,
     } else select_fct <- select_ic
   }
   
-  fit <- select_fct(
+  fit1 <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
     y = y, family = family, weights = weights, offset = offset, 
     powers_current = powers_current, powers = powers,  
@@ -164,14 +165,14 @@ find_best_fp_step <- function(x,
   )
   
   if (verbose) {
-    print_mfp_step(xi = xi, criterion = criterion, fit = fit)
+    print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
   }
     
   # prepare power to return
   # remove trailing NAs, unless ACD is used
-  power_best <- as.numeric(fit$power_best)
+  power_best <- as.numeric(fit1$power_best)
   
-  if (!fit$acd) {
+  if (!fit1$acd) {
     power_best <- na.omit(power_best)
     if (length(power_best) == 0)
       power_best <- NA 
@@ -181,8 +182,118 @@ find_best_fp_step <- function(x,
   names(power_best) <- name_transformed_variables(xi, 
                                                   length(power_best),
                                                   acd = acdx[xi])
+  # Return best power and decision
+  if (all(is.na(power_best)) || !spike[xi]) { # add if (all(is.na(power_best)) || !spike)
+    return(list(power_best = power_best, decision = NA))
+  }
   
-  power_best
+  # ----------------------------------------------------------------------------
+  # Evaluate spike at zero (SAZ) variables
+  # Stage 2 of SAZ algorithm 
+  # ----------------------------------------------------------------------------
+  # fit candidate models to evaluate Spike at zero variables
+  models <- fit_candidate_models(x, xi, y, weights, offset, family, method, strata,
+                                 nocenter, control, rownames, powers_current, powers,
+                                 acdx, zero, catzero, power_best, degree)
+  
+  # compute metrics to decide on SAZ models
+  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  metrics <- compute_metrics(fit1, models$fit2, models$fit3, n_obs, degree,
+            power_best)
+  
+  # Decision on whether binary only, both, or FPm only is needed
+  decision <- compute_decision(metrics, criterion, select)
+  
+  return(list(power_best = power_best, decision = decision))
+
+}
+
+#--- Helper: fit candidate models (full, linear-only, binary-only) ---
+fit_candidate_models <- function(x, xi, y, weights, offset, family, method, strata,
+                                 nocenter, control, rownames, powers_current, powers,
+                                 acdx, zero, catzero, power_best, degree) {
+  
+  x_transformed <- transform_data_step(
+    x = x, xi = xi, df = ifelse(degree == 1 && power_best == 1, 1, 2 * degree),
+    powers_current = powers_current, powers = powers, 
+    acdx = acdx, zero = zero, catzero = catzero
+  )
+  
+  best_model_index <- which(apply(
+    x_transformed$powers_fp, 1, function(row) all(row == power_best)
+  ))
+  
+  # No binary
+  fit2 <- fit_model(
+    x = cbind(x_transformed$data_fp[[best_model_index]][, -1, drop = FALSE],
+              x_transformed$data_adj),
+    y = y, family = family, weights = weights, offset = offset, 
+    method = method, strata = strata, nocenter = nocenter, 
+    control = control, rownames = rownames
+  )
+  
+  # Binary-only
+  fit3 <- fit_model(
+    x = cbind(x_transformed$data_fp[[1]][, 1, drop = FALSE],
+              x_transformed$data_adj),
+    y = y, family = family, weights = weights, offset = offset, 
+    method = method, strata = strata, nocenter = nocenter, 
+    control = control, rownames = rownames
+  )
+  
+  return(list(fit2 = fit2, fit3 = fit3, x_transformed = x_transformed))
+}
+
+#--- Helper: compute metrics for all models ---
+compute_metrics <- function(fit1, fit2, fit3, n_obs, degree, power_best) {
+  metrics1 <- fit1$metrics[fit1$model_best, ]
+  metrics2 <- calculate_model_metrics(
+    fit2, n_obs, ifelse(degree == 1 && power_best == 1, 0, degree)
+  )
+  metrics3 <- calculate_model_metrics(fit3, n_obs)
+  return(list(metrics1 = metrics1, metrics2 = metrics2, metrics3 = metrics3))
+}
+
+#--- Helper: decision logic ---
+compute_decision <- function(metrics, criterion, select) {
+  criterion <- tolower(criterion)
+  
+  if (criterion == "pvalue") {
+    # if (ftest) { # TO CHECK THE FORMULA
+    #   # note that ftest is only TRUE if model is gaussian
+    #   stats <- calculate_f_test(
+    #     deviances = metrics[, "deviance_gaussian"], 
+    #     dfs_resid = metrics[, "df_resid"],
+    #     n_obs = n_obs
+    #   )
+    # } else {
+    stats1 <- calculate_lr_test(
+      c(metrics$metrics2["logl"], metrics$metrics1["logl"]),
+      c(metrics$metrics2["df"], metrics$metrics1["df"])
+    )
+    stats2 <- calculate_lr_test(
+      c(metrics$metrics3["logl"], metrics$metrics1["logl"]),
+      c(metrics$metrics3["df"], metrics$metrics1["df"])
+    )
+    
+    p12 <- stats1$pvalue
+    p13 <- stats2$pvalue
+    
+    if (p12 <= select & p13 <= select) {
+      return(1)  # Model 1: both terms
+    } else if (p12 <= select & p13 > select) {
+      return(3)  # Model 3: spike only
+    } else if (p12 > select & p13 <= select) {
+      return(2)  # Model 2: linear only
+    } else {
+      if (metrics$metrics2["logl"] > metrics$metrics3["logl"]) 2 else 3
+    }
+    
+  } else if (criterion == "aic") {
+    return(which.min(c(metrics$metrics1["aic"], metrics$metrics2["aic"], metrics$metrics3["aic"])))
+  } else {
+    return(which.min(c(metrics$metrics1["bic"], metrics$metrics2["bic"], metrics$metrics3["bic"])))
+  }
 }
 
 
@@ -293,6 +404,8 @@ find_best_fpm_step <- function(x,
   
   metrics <- do.call(rbind, metrics) 
   model_best <- as.numeric(which.max(metrics[, "logl"]))
+  
+  # FOR SPIKE VARIABLE: We need metrics for: best FPm + z, best FPm, and z only models
    
   list(
     acd = acdx[xi],
@@ -403,6 +516,8 @@ fit_linear_step <- function(x,
   metrics <- rbind(linear = calculate_model_metrics(model_linear, n_obs))  
   if (acdx[xi])
     rownames(metrics) <- "linear(., A(x))"
+  
+  # FOR SPIKE VARIABLE: We need metrics for: linear + z, linear, and z only models
   
   list(
     powers = x_transformed$powers_fp,

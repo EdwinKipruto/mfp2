@@ -54,6 +54,9 @@
 #' columns of \code{x} should treat nonpositive values as zero and also have a binary 
 #' indicator automatically created and included in the model. Must match the length 
 #' and order of the columns in \code{x}. See \code{\link{mfp2}} for details.
+#' @param spike A logical vector indicating which columns of \code{x} contain
+#' a spike at zero. The length and order of \code{spike} must match those of
+#' the columns in \code{x}.
 #' @param verbose Logical; if \code{TRUE}, additional information will be printed
 #' during model fitting steps. Useful for understanding internal processing. 
 #' Default is \code{FALSE}.
@@ -105,6 +108,7 @@ fit_mfp <- function(x,
                     control,
                     zero,
                     catzero,
+                    spike,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -146,9 +150,15 @@ fit_mfp <- function(x,
   acdx <- setNames(acdx, variables_x)[variables_ordered]
   zero <- setNames(zero, variables_x)[variables_ordered]
   catzero <- setNames(catzero, variables_x)[variables_ordered]
+  spike <- setNames(spike, variables_x)[variables_ordered]
   
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
+  
+  # Spike variables must have catzero = TRUE to force the binary variable into the
+  # model, which is later handled by the Spike algorithm. Already done in mfp2()
+  #  but repeated here in case a user calls this function directly
+  catzero[spike] <- TRUE
   
   # Ensure that any variable marked as 'catzero' is also set to 'zero'
   # already done in mfp2() but repeated here in case a user calls this function
@@ -190,6 +200,10 @@ fit_mfp <- function(x,
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
   
+  # Reset spike indicators for variables without zeros
+  if (any(spike == TRUE)) {
+    spike <- reset_spike(x, spike)
+  }
   #--- Create binary variables for catzero and convert all nonpositive to zero
   # to avoid repetition. The functions will handle infinite values caused
   # by zeros correctly
@@ -262,6 +276,7 @@ fit_mfp <- function(x,
       acdx = acdx, 
       zero = zero_x,# All are FALSE since the variables have been converted
       catzero = catzero_list, # A named list of binary variables
+      spike = spike,
       verbose = verbose
     )
 
@@ -548,6 +563,8 @@ order_variables_by_significance <- function(xorder,
 #' @return 
 #' Logical vector of same length as `acdx`.
 reset_acd <- function(x, acdx) {
+  # exit early if all acdx values are FALSE
+  if (!any(acdx)) return(acdx)
   
   names_acd <- names(acdx)[which(acdx == TRUE)]
   
@@ -566,6 +583,48 @@ reset_acd <- function(x, acdx) {
   
   acdx
 }
+
+#' Reset spike indicators for variables without zeros
+#'
+#' This function resets elements of a logical vector \code{spike} to \code{FALSE}
+#' if the corresponding variables in \code{x} contain no zero values.
+#'
+#' @param x A data frame or matrix.
+#' @param spike A logical vector indicating which columns of \code{x} are
+#'   expected to contain a spike at zero. Its length and order must match
+#'   the columns of \code{x}.
+#'
+#' @return A logical vector of the same length as \code{spike}, with entries
+#'   reset to \code{FALSE} where the corresponding variable in \code{x}
+#'   contains no zeros.
+#'
+#' @details
+#' A warning is issued listing the variables for which the spike option
+#' has been reset.
+#'
+#' @keywords internal
+reset_spike <- function(x, spike) {
+  # exit early if all spike values are FALSE
+  if (!any(spike)) return(spike)
+  
+  names_spike <- names(spike)[spike]
+  
+  # identify columns without zeros
+  has_zero <- apply(x[, names_spike, drop = FALSE], 2, function(col) any(col == 0))
+  
+  ind_reset <- which(!has_zero)
+  
+  if (length(ind_reset) > 0) {
+    spike[names_spike][ind_reset] <- FALSE
+    warning(sprintf(
+      "The spike option has been reset to FALSE for the following variables because they contain no zero values: %s",
+      paste(names_spike[ind_reset], collapse = ", ")
+    ))
+  }
+  
+  spike
+}
+
 
 #' Helper to run cycles of the mfp algorithm 
 #' 
@@ -650,6 +709,7 @@ find_best_fp_cycle <- function(x,
                                nocenter,
                                zero,
                                catzero, 
+                               spike,
                                acdx) {
   
   names_x <- names(powers_current)
@@ -683,6 +743,7 @@ find_best_fp_cycle <- function(x,
       acdx = acdx,
       zero = zero,
       catzero = catzero,
+      spike,
       verbose = verbose
     )
   }

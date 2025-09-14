@@ -26,6 +26,7 @@ find_best_fp_cycle(
   nocenter,
   zero,
   catzero,
+  spike,
   acdx
 )
 }
@@ -94,6 +95,10 @@ for nonpositive values, created when specific variables are passed to the
 \code{NULL}, it indicates that the corresponding variable was not specified by
 the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{spike}{A logical vector indicating which columns of \code{x} contain
+a spike at zero. The length and order of \code{spike} must match those of
+the columns in \code{x}.}
 
 \item{acdx}{a logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)

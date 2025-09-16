@@ -20,6 +20,8 @@ select_ra2(
   family,
   zero,
   catzero,
+  spike,
+  spike_decision,
   ...
 )
 }

@@ -20,6 +20,8 @@ select_ra2_acd(
   family,
   zero,
   catzero,
+  spike,
+  spike_decision,
   ...
 )
 }

@@ -27,6 +27,7 @@ find_best_fp_cycle(
   zero,
   catzero,
   spike,
+  spike_decision,
   acdx
 )
 }

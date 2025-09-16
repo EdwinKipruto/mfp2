@@ -20,6 +20,8 @@ select_linear(
   family,
   zero,
   catzero,
+  spike,
+  spike_decision,
   ...
 )
 }

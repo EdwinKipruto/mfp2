@@ -8,9 +8,9 @@
 \usage{
 print_mfp_step(xi, criterion, fit)
 
-print_mfp_pvalue_step(xi, fit, criterion)
+print_mfp_pvalue_step(xi, fit, criterion, spike = FALSE)
 
-print_mfp_ic_step(xi, fit, criterion)
+print_mfp_ic_step(xi, fit, criterion, spike = FALSE)
 }
 \arguments{
 \item{xi}{a character string indicating the name of the current variable

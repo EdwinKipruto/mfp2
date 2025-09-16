@@ -4,7 +4,17 @@
 \alias{transform_data_step}
 \title{Function to extract and transform adjustment variables}
 \usage{
-transform_data_step(x, xi, powers_current, df, powers, acdx, zero, catzero)
+transform_data_step(
+  x,
+  xi,
+  powers_current,
+  df,
+  powers,
+  acdx,
+  zero,
+  catzero,
+  spike_decision
+)
 }
 \arguments{
 \item{x}{a matrix of predictors that includes the variable of interest \code{xi}.
@@ -32,17 +42,30 @@ for nonpositive values, created when specific variables are passed to the
 \code{NULL}, it indicates that the corresponding variable was not specified by
 the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
+
+\item{spike_decision}{a named numeric vector with the same names as the
+\code{x} matrix. Each element controls how the corresponding adjustment
+variable contributes to the adjustment matrix:
+\itemize{
+\item \code{1}: combine both the transformed adjustment variable and its binary
+indicator (\code{catzero}).
+\item \code{2}: include only the transformed adjustment variable.
+\item \code{3}: include only the binary indicator (\code{catzero}).
+}
+
+This applies only to adjustment variables, not the focal predictor \code{xi}.}
 }
 \value{
 A list containing the following elements:
 \itemize{
-\item \code{powers_fp}: fp powers used for \code{data_fp}.
-\item \code{data_fp}: a list with all possible fp transformations for \code{xi}, see the
+\item \code{powers_fp}: FP powers used for \code{data_fp}.
+\item \code{data_fp}: a list with all possible FP transformations for \code{xi}, see the
 \code{data} component of the output of \code{\link[=generate_transformations_fp]{generate_transformations_fp()}} and
 \code{\link[=generate_transformations_acd]{generate_transformations_acd()}}.
 \item \code{powers_adj}: fp powers for adjustment variables in \code{data_adj}.
-\item \code{data_adj}: adjustment data, i.e. transformed input data for adjustment
-variables.
+\item \code{data_adj}: adjustment data matrix, constructed according to
+\code{spike_decision}, i.e. using transformed adjustment variables, their
+binary indicators, or both.
 }
 }
 \description{
@@ -53,9 +76,18 @@ After extracting the adjustment variables this function, using their
 corresponding FP powers stored in \code{powers_current}, transforms them.
 This is necessary When evaluating x of interest, as we must account for other
 variables, which can be transformed or untransformed, depending on the
-individual powers. It's worth noting that some powers can be NA, indicating
-that the variable has been left out of the adjustment variables. It also
-returns the FP data, which is dependent on the degrees of freedom. For example,
+individual powers. Some powers can be NA, indicating
+that the variable has been left out of the adjustment variables.
+
+The role of \code{spike_decision} is to determine how each adjustment variable is
+represented in the presence of potential spike-at-zero effects. For every
+adjustment variable, the function can include the transformed variable, the
+binary indicator for nonpositive values (\code{catzero}), or both. This makes it
+possible to model spike-at-zero behavior directly in the adjustment matrix,
+while preserving flexibility in how variables are included.
+
+The function also returns the FP data for predictor \code{xi} of interest, which
+depends on the specified degrees of freedom. For example,
 \code{df = 2} is equivalent to FP degree one, resulting in the generation of 8
 variables. If \code{acdx} for the current variables of interest is set to \code{TRUE},
 however, 64 variables are generated.

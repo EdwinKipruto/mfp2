@@ -14,6 +14,7 @@ fit_linear_step(
   family,
   zero,
   catzero,
+  spike_decision,
   ...
 )
 }

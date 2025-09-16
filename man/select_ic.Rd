@@ -21,6 +21,8 @@ select_ic(
   family,
   zero,
   catzero,
+  spike,
+  spike_decision,
   ...
 )
 
@@ -40,6 +42,8 @@ select_ic_acd(
   family,
   zero,
   catzero,
+  spike,
+  spike_decision,
   ...
 )
 }

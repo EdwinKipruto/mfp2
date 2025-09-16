@@ -204,6 +204,14 @@ fit_mfp <- function(x,
   if (any(spike == TRUE)) {
     spike <- reset_spike(x, spike)
   }
+  
+  # Set default for spike decision: 
+  # 1 = FPM/linear + binary
+  # 2 = FPM/linear-usual FP algorithm---default
+  # 3 = binary ony. 
+  spike_decision <- rep(2, length(variables_ordered))
+  names(spike_decision) <- variables_ordered
+
   #--- Create binary variables for catzero and convert all nonpositive to zero
   # to avoid repetition. The functions will handle infinite values caused
   # by zeros correctly
@@ -254,7 +262,7 @@ fit_mfp <- function(x,
     }
     
     # estimated powers for the j-th cycle
-    powers_updated <- find_best_fp_cycle(
+    fit_best_cycle <- find_best_fp_cycle(
       x = x,
       y = y,
       powers_current = powers_current,
@@ -277,9 +285,12 @@ fit_mfp <- function(x,
       zero = zero_x,# All are FALSE since the variables have been converted
       catzero = catzero_list, # A named list of binary variables
       spike = spike,
+      spike_decision = spike_decision,
       verbose = verbose
     )
-
+    
+    powers_updated <- fit_best_cycle$powers_current
+    spike_decision <- fit_best_cycle$spike_decision
     # check for convergence (i.e. no change in powers and variables in model)
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
@@ -710,6 +721,7 @@ find_best_fp_cycle <- function(x,
                                zero,
                                catzero, 
                                spike,
+                               spike_decision,
                                acdx) {
   
   names_x <- names(powers_current)
@@ -720,7 +732,7 @@ find_best_fp_cycle <- function(x,
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
     # note that the adjustment set and powers are given by powers_current
     # which is updated in each step
-    powers_current[[i]] <- find_best_fp_step(
+    fit_best_fp_step <- find_best_fp_step(
       x = x, 
       y = y,
       xi = names_x[i],
@@ -743,12 +755,17 @@ find_best_fp_cycle <- function(x,
       acdx = acdx,
       zero = zero,
       catzero = catzero,
-      spike,
+      spike = spike,
+      spike_decision = spike_decision,
       verbose = verbose
     )
+    # Update parameters
+    powers_current[[i]] <- fit_best_fp_step$power_best
+    spike_decision <- fit_best_fp_step$spike_decision
+      
   }
   
-  powers_current
+  list(powers_current = powers_current, spike_decision = spike_decision)
 }
 
 #' Helper to calculates the final degrees of freedom for the selected model

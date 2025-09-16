@@ -28,6 +28,7 @@ find_best_fp_step(
   zero,
   catzero,
   spike,
+  spike_decision,
   verbose
 )
 }

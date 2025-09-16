@@ -14,6 +14,7 @@ fit_null_step(
   family,
   zero,
   catzero,
+  spike_decision,
   ...
 )
 }

@@ -206,7 +206,7 @@ find_best_fp_step <- function(x,
   
   # Update spike_decision. That is decision on whether binary only, both, or 
   # FPm only is needed
-  decision <- compute_decision(metrics, criterion, select)
+  decision <- compute_decision(metrics, criterion, select, n_obs, ftest)
   spike_decision[xi] <- decision$decision
   
   # add spike metrics to fit 1 for printing
@@ -224,7 +224,27 @@ find_best_fp_step <- function(x,
 
 }
 
-#--- Helper: fit candidate models (full, linear-only, binary-only) ---
+#' Fit Candidate Models for Stage 2 of the Spike-at-Zero Algorithm
+#'
+#' This function fits the two candidate regression models required for stage 2 
+#' of the spike-at-zero (SAZ) algorithm. Stage 2 ideally considers three models 
+#' (Model 1: complex, Model 2: FPm/linear only, Model 3: binary only), but 
+#' Model 1 is already fitted in stage 1. This function therefore fits Model 2, 
+#' which includes fractional polynomial/linear terms plus adjusted covariates, 
+#' and Model 3, which includes binary-only terms plus adjusted covariates.
+#'
+#' @details
+#' The function performs the following steps: First, it transforms the predictors
+#' according to selected FP powers and other adjustments. Second, it fits models
+#' 2 and 3 for comparison. Then returns both model fits (`fit2` and `fit3`) and 
+#' the transformed predictor structure.
+#'
+#' @return A list with the following elements:
+#'   * `fit2`: Model 2 fit (FPm/linear only + adjusted covariates).
+#'   * `fit3`: Model 3 fit (binary only + adjusted covariates).
+#'   * `x_transformed`: List containing transformed predictor matrices.
+#' @inheritParams find_best_fp_step
+#' @keywords internal
 fit_candidate_models <- function(x, xi, y, weights, offset, family, method, strata,
                                  nocenter, control, rownames, powers_current, powers,
                                  acdx, zero, catzero, power_best,
@@ -269,30 +289,128 @@ fit_candidate_models <- function(x, xi, y, weights, offset, family, method, stra
   return(list(fit2 = fit2, fit3 = fit3, x_transformed = x_transformed))
 }
 
-#--- Helper: compute metrics for all models ---
+#' Compute Model Metrics for Candidate Spike-at-zero Models
+#'
+#' This function computes fit statistics for the three candidate models 
+#' used in the spike-at-zero (SAZ) algorithm. Model 1 metrics are extracted 
+#' directly from the previously fitted model, while metrics for Model 2 
+#' (FPm/linear only) and Model 3 (binary-only) are computed using 
+#' `calculate_model_metrics`.
+#'
+#' @param fit1 Fitted object for Model 1 (complex model from stage 1 of SAZ).
+#' @param fit2 Fitted object for Model 2 (FPm/linear only plus adjusted covariates).
+#' @param fit3 Fitted object for Model 3 (binary-only plus adjusted covariates).
+#' @param n_obs Number of observations in the dataset.
+#' @param power_best Numeric vector of selected powers for the best FP terms
+#' from stage 1 of SAZ algorithm.
+#'
+#' @details
+#' The function determines the degree of the fractional polynomial based on `power_best`. 
+#' Model 1 metrics are retrieved from the best-fit row of the `fit1` object. 
+#' Metrics for Models 2 and 3 are calculated using `calculate_model_metrics`.
+#'
+#' @return A list with three elements:
+#'   * `metrics1`: Fit statistics for Model 1.
+#'   * `metrics2`: Fit statistics for Model 2.
+#'   * `metrics3`: Fit statistics for Model 3.
+#'
+#' @keywords internal
 compute_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   degree <- length(power_best)
+  
+  # Extract Model 1 metrics safely
+  if (is.null(fit1$metrics) || is.null(fit1$model_best)) {
+    stop("fit1 must contain 'metrics' and 'model_best' elements.")
+  }
+  if (fit1$model_best > nrow(fit1$metrics) || fit1$model_best < 1) {
+    stop("fit1$model_best is out of bounds for fit1$metrics.")
+  }
   metrics1 <- fit1$metrics[fit1$model_best, ]
-  metrics2 <- calculate_model_metrics(
-    fit2, n_obs, ifelse(degree == 1 && power_best == 1, 0, degree)
+  
+  # Compute Model 2 metrics with degree adjustment
+  deg2 <- if (degree == 1 && power_best == 1) 0 else degree
+  metrics2 <- tryCatch(
+    calculate_model_metrics(fit2, n_obs, deg2),
+    error = function(e) stop("Failed to compute metrics for fit2: ", e$message)
   )
-  metrics3 <- calculate_model_metrics(fit3, n_obs)
+  
+  # Compute Model 3 metrics
+  metrics3 <- tryCatch(
+    calculate_model_metrics(fit3, n_obs),
+    error = function(e) stop("Failed to compute metrics for fit3: ", e$message)
+  )
   return(list(metrics1 = metrics1, metrics2 = metrics2, metrics3 = metrics3))
 }
 
-#--- Helper: decision logic ---
-compute_decision <- function(metrics, criterion, select) {
+#' Compute Model Selection Decision
+#'
+#' This function compares competing regression models based on a specified 
+#' selection criterion (`pvalue`, `aic`, or `bic`) and returns a decision 
+#' about which model to retain. It is used in stage 2 of the 
+#' spike-at-zero (SAZ) algorithm, where a decision is made between alternative 
+#' reduced or complex models after stage 1 selection.
+#'
+#' @param metrics A list containing model fit statistics for three candidate models:
+#'   * `metrics1`: statistics for the most complex model selected in stage 1 of the SAZ algorithm, typically including both FPm/linear and binary terms.
+#'   * `metrics2`: statistics for a reduced model, e.g., FPm/linear only.
+#'   * `metrics3`: statistics for an alternative reduced model, e.g., binary only.
+#' Each element must provide named values for:
+#'   * `logl`: log-likelihood,
+#'   * `df`: model degrees of freedom,
+#'   * `aic`: Akaike Information Criterion,
+#'   * `bic`: Bayesian Information Criterion,
+#'   * `deviance_gaussian`: Gaussian deviance (required if `ftest = TRUE`),
+#'   * `df_resid`: residual degrees of freedom (required if `ftest = TRUE`).
+#' @param criterion A string specifying the selection criterion. 
+#'   One of `"pvalue"`, `"aic"`, or `"bic"`.
+#' @param select Numeric threshold for significance testing (used only when 
+#'   `criterion = "pvalue"`).
+#' @param n_obs Integer. Number of observations in the data (used for F-tests).
+#' @param ftest Logical. If `TRUE`, use F-tests instead of likelihood ratio 
+#'   tests when `criterion = "pvalue"`.
+#'
+#' @details
+#' - When `criterion = "pvalue"`, the function compares:
+#'   * Model 1 (both FPm/linear and binary terms),
+#'   * Model 2 (FPm/linear only),
+#'   * Model 3 (binary only).
+#'   Significance is determined by comparing complex vs. reduced models 
+#'   using either likelihood ratio tests or F-tests.
+#'
+#' - When `criterion = "aic"` or `"bic"`, the function selects the model 
+#'   with the lowest information criterion value.
+#'
+#' @return A list with two elements:
+#'   - `decision`: An integer indicating the selected model 
+#'     (1 = both terms, 2 = FPm/linear only, 3 = binary only).
+#'   - `pvalue`: A numeric vector of p-values from the pairwise tests, 
+#'     or `NA` when `criterion` is `"aic"` or `"bic"`.
+#'
+#' @keywords internal
+compute_decision <- function(metrics, criterion, select, n_obs, ftest = FALSE) {
   criterion <- tolower(criterion)
   
   if (criterion == "pvalue") {
-    # if (ftest) { # TO CHECK THE FORMULA
-    #   # note that ftest is only TRUE if model is gaussian
-    #   stats <- calculate_f_test(
-    #     deviances = metrics[, "deviance_gaussian"], 
-    #     dfs_resid = metrics[, "df_resid"],
-    #     n_obs = n_obs
-    #   )
-    # } else {
+    if (ftest) { 
+      # Complex vs reduced model (FPm + Binary vs FPm)
+      stats1  <- calculate_f_test(
+        deviances = c(metrics$metrics2["deviance_gaussian"],
+                      metrics$metrics1["deviance_gaussian"]),
+        dfs_resid = c(metrics$metrics2["df_resid"],
+                      metrics$metrics1["df_resid"]),
+        n_obs = n_obs
+      )
+      # Complex vs reduced model (FPm + Binary vs Binary)
+      stats2  <- calculate_f_test(
+        deviances = c(metrics$metrics3["deviance_gaussian"],
+                      metrics$metrics1["deviance_gaussian"]),
+        dfs_resid = c(metrics$metrics3["df_resid"],
+                      metrics$metrics1["df_resid"]),
+        n_obs = n_obs
+      )
+      
+      
+    } else {
     
     # reduced model (FPm/Linear-mode 2) vs complex model (FPm/linear + binary-model 1)
     stats1 <- calculate_lr_test(
@@ -305,6 +423,7 @@ compute_decision <- function(metrics, criterion, select) {
       c(metrics$metrics3["logl"], metrics$metrics1["logl"]),
       c(metrics$metrics3["df"], metrics$metrics1["df"])
     )
+    }
     
     p12 <- stats1$pvalue
     p13 <- stats2$pvalue

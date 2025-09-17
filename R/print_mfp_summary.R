@@ -59,7 +59,7 @@ print_mfp_step <- function(xi, criterion, fit) {
     row_index <- match(model_name, rownames(mat_print))
     mat_print <- cbind(
       # remove NAs from printed powers
-      "Powers   " = c(mat_print[row_index, 1], 1, 1), 
+      "Powers   " = c(mat_print[row_index, 1], mat_print[row_index, 1], 1), 
       "DF   " = fit$spike_metrics$metrics[,"df"], 
       print_mat_fct(xi, fit, criterion, spike = TRUE)
     )

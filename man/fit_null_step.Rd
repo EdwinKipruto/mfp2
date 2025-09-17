@@ -15,6 +15,7 @@ fit_null_step(
   zero,
   catzero,
   spike_decision,
+  acd_parameter,
   ...
 )
 }

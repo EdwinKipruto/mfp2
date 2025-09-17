@@ -7,7 +7,14 @@
 \usage{
 generate_transformations_fp(x, degree, powers, zero, catzero = NULL)
 
-generate_transformations_acd(x, degree, powers, zero, catzero = NULL)
+generate_transformations_acd(
+  x,
+  degree,
+  powers,
+  zero,
+  catzero = NULL,
+  acd_parameter = NULL
+)
 }
 \arguments{
 \item{x}{A numeric vector of length \code{nobs}, assumed to have been shifted

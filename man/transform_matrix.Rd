@@ -55,16 +55,18 @@ the column names in \code{x}. The default is \code{NULL}, meaning no categorical
 variables are used.}
 }
 \value{
-If all elements of \code{power_list} are \code{NA} then this function returns \code{NULL}.
-Otherwise a list with three entries: the first \code{x_transformed} is a matrix
-with transformed variables as named in \code{power_list}.
-The number of columns may possibly be different to the
-input matrix due to higher order FP transformations.
-The second entry \code{centers} stores the values used to center the variables if
-for any variable \code{center = TRUE} (note that usually all variables are
-centered, or none of them).
-The third entry \code{acd_parameter} stores a named list of estimated
-\code{acd_parameters}. May be empty if no ACD transformation is applied.
+If all elements of \code{power_list} are \code{NA}, this function returns \code{NULL}.
+Otherwise, it returns a list with four entries. The entry \code{x_transformed}
+is a matrix of transformed variables as specified in \code{power_list}, possibly
+centered. The number of columns may differ from the input matrix due to
+higher-order FP transformations. Binary variables are also added if
+\code{catzero} is not \code{NULL}. The entry \code{centers} contains the values used to
+center variables if \code{center = TRUE} (typically all variables are centered,
+or none of them). The entry \code{acd_parameter} is a named list of estimated ACD
+parameters, which may be empty if no ACD transformation is applied. The
+entry \code{x_trafo} is a named list containing the transformed \code{x} matrix
+without \code{catzero} variables and without centering;  this last component is
+important for the spike-at-zero algorithm.
 }
 \description{
 Function to transform each column of matrix using final FP powers or acd

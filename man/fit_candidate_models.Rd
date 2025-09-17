@@ -22,7 +22,8 @@ fit_candidate_models(
   zero,
   catzero,
   power_best,
-  spike_decision
+  spike_decision,
+  acd_parameter
 )
 }
 \arguments{

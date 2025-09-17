@@ -22,6 +22,7 @@ select_linear(
   catzero,
   spike,
   spike_decision,
+  acd_parameter,
   ...
 )
 }

@@ -248,6 +248,15 @@ fit_mfp <- function(x,
   # Assign names to the list
   names(catzero_list) <- names(catzero)
   
+  # TODO: like catzero_list, create acd_parameters to speed up computation
+  acd_parameter <- lapply(seq_len(ncol(x)), function(i) {
+    if (acdx[i]) {
+      fit_acd(x[, i], powers = powers[[i]], zero = zero[i])
+    } else {
+      NULL
+    }
+  })
+  names(acd_parameter) <- colnames(x)
   # step 3: mfp cycles ---------------------------------------------------------
   # initialize cycle counter 
   j <- 1
@@ -286,6 +295,7 @@ fit_mfp <- function(x,
       catzero = catzero_list, # A named list of binary variables
       spike = spike,
       spike_decision = spike_decision,
+      acd_parameter = acd_parameter,
       verbose = verbose
     )
     
@@ -722,6 +732,7 @@ find_best_fp_cycle <- function(x,
                                catzero, 
                                spike,
                                spike_decision,
+                               acd_parameter,
                                acdx) {
   
   names_x <- names(powers_current)
@@ -757,6 +768,7 @@ find_best_fp_cycle <- function(x,
       catzero = catzero,
       spike = spike,
       spike_decision = spike_decision,
+      acd_parameter = acd_parameter,
       verbose = verbose
     )
     # Update parameters

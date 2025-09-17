@@ -16,6 +16,7 @@ find_best_fpm_step(
   zero,
   catzero,
   spike_decision,
+  acd_parameter,
   ...
 )
 }

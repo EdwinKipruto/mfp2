@@ -23,6 +23,7 @@ select_ic(
   catzero,
   spike,
   spike_decision,
+  acd_parameter,
   ...
 )
 
@@ -44,6 +45,7 @@ select_ic_acd(
   catzero,
   spike,
   spike_decision,
+  acd_parameter,
   ...
 )
 }

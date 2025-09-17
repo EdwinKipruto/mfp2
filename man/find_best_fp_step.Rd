@@ -29,6 +29,7 @@ find_best_fp_step(
   catzero,
   spike,
   spike_decision,
+  acd_parameter,
   verbose
 )
 }

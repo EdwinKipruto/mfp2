@@ -218,7 +218,7 @@ transform_vector_acd <- function(x,
     if (zero) {
       x[x <= 0] <- 0
     }
-    x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x)))
+    x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x, zero = FALSE)))
   }
   
   name_acd <- NULL
@@ -289,16 +289,18 @@ transform_vector_acd <- function(x,
 #' transform_matrix(x, powx, center, acdx)
 #' 
 #' @return 
-#' If all elements of `power_list` are `NA` then this function returns `NULL`.
-#' Otherwise a list with three entries: the first `x_transformed` is a matrix 
-#' with transformed variables as named in `power_list`. 
-#' The number of columns may possibly be different to the 
-#' input matrix due to higher order FP transformations.
-#' The second entry `centers` stores the values used to center the variables if
-#' for any variable `center = TRUE` (note that usually all variables are 
-#' centered, or none of them).
-#' The third entry `acd_parameter` stores a named list of estimated 
-#' `acd_parameters`. May be empty if no ACD transformation is applied.
+#' If all elements of `power_list` are `NA`, this function returns `NULL`.
+#' Otherwise, it returns a list with four entries. The entry `x_transformed` 
+#' is a matrix of transformed variables as specified in `power_list`, possibly 
+#' centered. The number of columns may differ from the input matrix due to 
+#' higher-order FP transformations. Binary variables are also added if 
+#' `catzero` is not `NULL`. The entry `centers` contains the values used to 
+#' center variables if `center = TRUE` (typically all variables are centered, 
+#' or none of them). The entry `acd_parameter` is a named list of estimated ACD 
+#' parameters, which may be empty if no ACD transformation is applied. The 
+#' entry `x_trafo` is a named list containing the transformed `x` matrix 
+#' without `catzero` variables and without centering;  this last component is 
+#' important for the spike-at-zero algorithm.
 #' 
 #' @export
 transform_matrix <- function(x,
@@ -469,7 +471,8 @@ transform_matrix <- function(x,
   list(
     x_transformed = x_transformed,
     centers = centers,
-    acd_parameter = acd_parameter
+    acd_parameter = acd_parameter,
+    x_trafo = x_trafo
   )
 }
 

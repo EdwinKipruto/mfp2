@@ -22,6 +22,7 @@ select_ra2(
   catzero,
   spike,
   spike_decision,
+  acd_parameter,
   ...
 )
 }

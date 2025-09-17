@@ -13,7 +13,8 @@ transform_data_step(
   acdx,
   zero,
   catzero,
-  spike_decision
+  spike_decision,
+  acd_parameter
 )
 }
 \arguments{

@@ -105,7 +105,8 @@ generate_transformations_acd <- function(x,
                                          degree, 
                                          powers,
                                          zero,
-                                         catzero = NULL) {
+                                         catzero = NULL,
+                                         acd_parameter = NULL) {
   
   # Validate catzero, if provided
   if (!is.null(catzero)) {
@@ -129,7 +130,8 @@ generate_transformations_acd <- function(x,
   
   # Apply transformation and optionally append catzero
   fpdt <- lapply(seq_len(nfp), function(i) {
-    mat <- transform_vector_acd(x = x, power = combs[i, ], zero = zero)$acd
+    mat <- transform_vector_acd(x = x, power = combs[i, ], zero = zero,
+          acd_parameter = acd_parameter)$acd
     
     if (use_catzero) {
       mat <- cbind(catzero, mat)

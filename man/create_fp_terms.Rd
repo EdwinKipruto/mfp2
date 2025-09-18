@@ -4,7 +4,18 @@
 \alias{create_fp_terms}
 \title{Helper to create overview table of fp terms}
 \usage{
-create_fp_terms(fp_powers, acdx, df, select, alpha, criterion, zero, catzero)
+create_fp_terms(
+  fp_powers,
+  acdx,
+  df,
+  select,
+  alpha,
+  criterion,
+  zero,
+  catzero,
+  spike,
+  spike_decision
+)
 }
 \arguments{
 \item{fp_powers}{powers of the created FP terms.}
@@ -33,6 +44,10 @@ of \code{x}.}
 columns of \code{x} should treat nonpositive values as zero and also have a binary
 indicator automatically created and included in the model. Must match the length
 and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
+
+\item{spike}{A logical vector indicating which columns of \code{x} contain
+a spike at zero. The length and order of \code{spike} must match those of
+the columns in \code{x}.}
 }
 \value{
 Dataframe with overview of all fp terms. Each row represents a variable,

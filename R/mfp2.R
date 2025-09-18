@@ -157,6 +157,8 @@
 #' The result is the selection of one of the six models. For details see 
 #' Royston and Sauerbrei (2016).
 #' 
+#' @section Details on  spike at zero:
+#' 
 #' @section Details on model specification using a `formula`:
 #' `mfp2` supports model specifications using two different interfaces: one
 #' which allows passing of the data matrix `x` and outcome vector `y` directly
@@ -189,26 +191,32 @@
 #' 
 #' @section Handling Nonpositive Values (\code{zero} and \code{catzero}):
 #'
-#' The \code{zero} and \code{catzero} options provide mechanisms for handling covariates 
-#' with nonpositive values in fractional polynomial (FP) models, especially when those 
-#' values have a qualitatively different interpretation than positive ones.
+#' The \code{zero} and \code{catzero} options provide mechanisms for handling 
+#' covariates with nonpositive values in fractional polynomial (FP) models, 
+#' especially when those values have a qualitatively different interpretation
+#' than positive ones.
 #'
-#' The \code{zero} argument allows fitting FP models using only the positive values of a covariate, 
-#' while treating nonpositive values (e.g., zero or negative) as exactly zero. This is useful 
-#' when the relationship between the covariate and the outcome is expected to begin only above zero. 
-#' For example, in modeling the effect of cigarette consumption, nonsmokers (zero cigarettes) may be 
-#' fundamentally different from smokers. Instead of applying a constant shift (e.g., adding 1) to all 
-#' values before transformation, the \code{zero} argument allows the model to treat zero values as a 
-#' separate baseline and apply FP transformations only to the positive values.
+#' The \code{zero} argument allows fitting FP models using only the positive 
+#' values of a covariate, while treating nonpositive values (e.g., zero or 
+#' negative) as exactly zero. This is useful when the relationship between the
+#' covariate and the outcome is expected to begin only above zero. For example,
+#' in modeling the effect of cigarette consumption, nonsmokers (zero cigarettes)
+#' may be fundamentally different from smokers. Instead of applying a constant
+#' shift (e.g., adding 1) to all values before transformation, the \code{zero} 
+#' argument allows the model to treat zero values as a separate baseline and 
+#' apply FP transformations only to the positive values.
 #'
-#' The \code{catzero} argument extends this idea by automatically creating a binary indicator 
-#' for whether the covariate is positive. This indicator is included in the model alongside the 
-#' transformed version of the covariate. Both are treated as a single predictor during model 
-#' selection (if applicable). This approach captures the potential difference between having a value 
-#' of zero and having any positive value, while still allowing flexible modeling of the positive range.
+#' The \code{catzero} argument extends this idea by automatically creating a 
+#' binary indicator for whether the covariate is positive. This indicator is 
+#' included in the model alongside the transformed version of the covariate. 
+#' Both are treated as a single predictor during model selection (if applicable).
+#' This approach captures the potential difference between having a value of 
+#' zero and having any positive value, while still allowing flexible modeling of
+#' the positive range.
 #'
-#' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15) and is particularly 
-#' relevant in epidemiological contexts where exposure may have a threshold effect.
+#' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
+#' and is particularly relevant in epidemiological contexts where exposure may 
+#' have a threshold effect.
 #'
 #' @section Compatibility with `mfp` package: 
 #' `mfp2` is an extension of the `mfp` package and can be used to reproduce
@@ -341,7 +349,7 @@
 #' See [survival::coxph()] for details. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a numeric vector of names of continuous variables to undergo 
+#' @param acdx a character vector of names of continuous variables to undergo 
 #' the approximate cumulative distribution (ACD) transformation.
 #' It also invokes the function-selection procedure to determine the 
 #' best-fitting FP1(p1, p2) model (see Details section). Not present in the 
@@ -365,8 +373,12 @@
 #' The key difference is that \code{mfp2} will automatically create a corresponding 
 #' binary indicator variable (e.g., \code{var > 0}) and include it in the model 
 #' alongside the transformed variable. #' See the **Details** section
-#' @param spike description
-
+#' @param spike A character vector specifying the continuous variables to be 
+#' assessed for a spike at zero. Supplying this argument also triggers the 
+#' function-selection procedure, which determines the best-fitting model among 
+#' three candidates (see Details). This argument is not available in the 
+#' formula interface `mfp2.formula`, where spike variables should instead be 
+#' specified using `fp` terms in the `formula` input.
 #' @param verbose a logical; run in verbose mode.
 #' @param ... not used.
 #' @examples

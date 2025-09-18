@@ -255,8 +255,19 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
   # Update the estimated FP power for variable xi
   powers_current[[xi]] <- as.vector(power_best)
   
-  # Prepare centering vector: no variables are centered
+  # Prepare centering vector: no variables are centered at this stage
+  # should be centered after the algorithm converges
   center_vector <- setNames(rep(FALSE, ncol(x)), colnames(x))
+  
+  # set spike_decision for xi to 2 to get correct transformation
+  spike_decision[xi] <- 2
+  
+  # transform_matrix() requires logical catzero. so we need to convert
+  # Any variable with spike_decision = 2 will be assigned catzero = FALSE by
+  # the function which is desired for our variable of interest. if spike_decision = 3,
+  # binary indicator will only be returned and by default catzero will be TRUE
+  # for this variable  
+  catzero_logical <- sapply(catzero, function(x) !is.null(x))
   
   # Transform x using the updated powers
   x_transformed <- transform_matrix(
@@ -267,12 +278,13 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
     keep_x_order = TRUE, 
     check_binary = TRUE,
     acd_parameter_list = acd_parameter,
-    zero = NULL,
-    catzero = NULL
+    zero = NULL, # already variables converted to zero in fit_mfp() 
+    catzero = catzero_logical,
+    spike_decision = spike_decision
     )
   
   # Fit model using the transformed variables
-  # transormed xi + adjustment variables
+  # transormed xi + adjustment variables no binary part
   fit2 <- fit_model(
     x = x_transformed$x_transformed,
     y = y, family = family, weights = weights, offset = offset, 

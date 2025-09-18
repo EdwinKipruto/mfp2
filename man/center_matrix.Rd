@@ -4,7 +4,7 @@
 \alias{center_matrix}
 \title{Simple function to center data}
 \usage{
-center_matrix(mat, centers = NULL)
+center_matrix(mat, centers = NULL, zero = NULL)
 }
 \arguments{
 \item{mat}{a transformed data matrix.}
@@ -12,6 +12,10 @@ center_matrix(mat, centers = NULL)
 \item{centers}{a vector of centering values. Length must be equal to the
 number of columns in \code{mat}. If \code{NULL} (default) then
 centering values are determined by the function (see Details).}
+
+\item{zero}{Optional named logical vector indicating which columns treat
+zero values specially. Names must match \code{mat} columns. Default \code{NULL} means
+no zero-specific handling.}
 }
 \value{
 Transformed data matrix. Has an attribute \code{scaled:center} that stores
@@ -21,14 +25,18 @@ values used for centering.
 Simple function to center data
 }
 \details{
-Centering is done by means for continuous variables (i.e. more than 2
-distinct values), and the minimum for binary variables.
+Centering is done by column means for continuous variables (more than 2
+distinct values) and by the minimum for binary variables. For variables
+with \code{zero = TRUE}, the mean is computed only over the non-zero values,
+while zero values remain at zero.
 
 It is assumed all categorical variables in the data are represented by
 binary dummy variables.
 }
 \examples{
-mat = matrix(1:100, nrow = 10)
-center_matrix(mat)
+mat <- matrix(1:100, nrow = 10)
+colnames(mat) <- paste0("x", 1:ncol(mat))
+zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
+center_matrix(mat, zero = zero)
 
 }

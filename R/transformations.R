@@ -240,8 +240,12 @@ transform_vector_acd <- function(x,
   )
 }
 
-#' Function to transform each column of matrix using final FP powers or acd
+#' Transform each column of matrix using final FP powers or ACD transformation
 #' 
+#' This function applies FP and/or ACD transformations to the columns of a matrix,
+#' optionally centers the transformed variables, and can generate binary indicators
+#' for variables with nonpositive values (catzero). The spike-at-zero variables 
+#' is supported via the `spike_decision` argument.
 #' @param x a matrix with all continuous variables shifted and scaled.
 #' @param power_list a named list of FP powers to be applied to the columns of
 #' `x`. Only variables named in this list are transformed.
@@ -270,16 +274,30 @@ transform_vector_acd <- function(x,
 #' binary indicator created and included in the model. The vector must have names matching 
 #' the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero 
 #' variables are used.
-
+#' @param spike_decision Named numeric vector with values 1, 2, or 3 specifying 
+#' spike-at-zero handling for each variable. Default is `NULL`, meaning no 
+#' spike-at-zero processing is applied. Value 1 includes both the transformed 
+#' variable and binary indicator, 2 disables the spike/binary indicator, and 3 
+#' keeps only the binary indicator.
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
 #' [transform_vector_acd()].
-#' 
-#' @section Column names: 
-#' Generally the original variable names are suffixed with ".i", where
-#' i enumerates the powers for a given variable in `power_list`. If a term
-#' uses an acd transformation, then the variable is prefixed with `A_`.
-#' 
+#' @details 
+#' Transformations are handled by [transform_vector_fp()] and [transform_vector_acd()]. 
+#' The `x_transformed` matrix contains transformed variables, optionally centered. 
+#' Binary indicators are appended if specified in `catzero`. 
+#' The `spike_decision` argument controls spike-at-zero (SAZ) processing: for variables 
+#' with value 2, the binary indicator is disabled reducing to usual transformations;
+#' for variables with value 3, only the binary indicator of SAZ is retained and
+#' any FP/linear transformations are removed. This ensures correct handling 
+#' of variables with SAZ.
+#'
+#' @section Column names:
+#' Transformed variable names are based on the original names. FP terms are 
+#' suffixed with ".i" to indicate the power index for that variable. Variables 
+#' transformed using ACD are prefixed with "A_". Binary indicators created 
+#' for nonpositive values (catzero) are suffixed with "_bin".
+#'
 #' @examples
 #' x = matrix(1:100, nrow = 10)
 #' colnames(x) = paste0("x", 1:ncol(x))
@@ -298,10 +316,10 @@ transform_vector_acd <- function(x,
 #' center variables if `center = TRUE` (typically all variables are centered, 
 #' or none of them). The entry `acd_parameter` is a named list of estimated ACD 
 #' parameters, which may be empty if no ACD transformation is applied. The 
-#' entry `x_trafo` is a named list containing the transformed `x` matrix 
-#' without `catzero` variables and without centering;  this last component is 
+#' entry `x_trafo` is a named list of transformed `x` without centering or
+#' `catzero` variables and ;  this last component is 
 #' important for the spike-at-zero algorithm.
-#' 
+#'   
 #' @export
 transform_matrix <- function(x,
                              power_list, 
@@ -311,69 +329,121 @@ transform_matrix <- function(x,
                              acd_parameter_list = NULL,
                              check_binary = TRUE,
                              zero = NULL,
-                             catzero = NULL) {
-  
-  # Checks
+                             catzero = NULL,
+                             spike_decision = NULL) {
+  #-------------------------
+  # Input checks
+  #-------------------------
   if (!is.matrix(x)) {
     stop("! 'x' must be a matrix.")
   }
   
-  if (all(is.na(unlist(power_list)))) {
-    # all variables were eliminated
-    return(NULL)
-  }
-  
-  # power_list, center and acdx must have names
-  if (is.null(names(power_list))) { 
-    stop("! List power_list must have names.")
-  }
-  
   #-Ensure x has column names
-  if (is.null(colnames(x))) {
+  x_cols <- colnames(x)
+  if (is.null(x_cols)) {
     stop("! Input data 'x' must have column names.")
   }
   
-  #--- Check that all names in power_list exist in x
+  if (!is.list(power_list)) {
+    stop("! 'power_list' must be a list.")
+    }
+  
+  if (all(is.na(unlist(power_list)))) {
+    # All variables were eliminated, nothing to transform
+    return(NULL)
+  }
+  
+  if (is.null(names(power_list))) { 
+    stop("! power_list must have names.")
+  }
+  
+  # Ensure power_list variables are present in x
   pl_names <- names(power_list)
-  missing_in_x <- setdiff(pl_names, colnames(x))
+  missing_in_x <- setdiff(pl_names, x_cols)
   if (length(missing_in_x) > 0) {
-    stop("! The following variables in 'power_list' are not found in 'x': ",
+    stop("! The following variables in 'power_list' are not in 'x': ",
          paste(missing_in_x, collapse = ", "))
   }
   
-  if (is.null(names(center))) {
-    stop("! Vector center must have names.")
-  }
-  
-  if (is.null(names(acdx))) {
-    stop("! Vector acdx must have names.")
-  }
-  
+  # Center
   if (!is.logical(center)) {
     stop("! 'center' must be a logical vector.")
   }
   
-  if (length(center) != length(power_list)) {
-    stop("! 'center' must have the same length as 'power_list'.")
+  if (is.null(names(center))) {
+    stop("! 'center' must have names.")
   }
   
+  if (length(center) != length(power_list)) {
+    stop("! 'center' must have same length as 'power_list'.")
+  }
   
+  # acdx
+  if (!is.logical(acdx)) {
+    stop("! 'acdx' must be a logical vector.")
+  }
+  
+  if (is.null(names(acdx))) {
+    stop("! 'acdx' must have names.")
+  }
+  
+  if (length(acdx) != length(power_list)) {
+    stop("! 'acdx' must have same length as 'power_list'.")
+  }
+  
+  # zero
   if (is.null(zero)) {
    zero <- setNames(rep(FALSE, length(power_list)), names(power_list))
   } else {
+    if (!is.logical(zero)) {
+      stop("! 'zero' must be a logical vector.")
+    }
+    
     if (is.null(names(zero))) {
-      stop("! Vector zero must have names.")
+      stop("! 'zero' must have names.")
     } 
+    zero <- zero[names(power_list)]
   }
   
+  # catzero
   if (is.null(catzero)) {
     catzero <- setNames(rep(FALSE, length(power_list)), names(power_list))
   } else {
+    if (!is.logical(catzero)) {
+      stop("! 'catzero' must be a logical vector.")
+    }
+    
     if (is.null(names(catzero))) {
-      stop("! Vector catzero must have names.")
+      stop("! 'catzero' must have names.")
     } 
+    catzero <- catzero[names(power_list)]
   }
   
+  # spike_decision
+  if (!is.null(spike_decision)) {
+    if (!is.numeric(spike_decision)) {
+      stop("! 'spike_decision' must be numeric (values 1, 2, or 3).")
+    }
+    
+    if (is.null(names(spike_decision))) {
+      stop("! 'spike_decision' must have names.")
+    }
+    
+    bad_vals <- setdiff(unique(spike_decision), c(1, 2, 3))
+    if (length(bad_vals) > 0) {
+      stop("! 'spike_decision' must only contain values 1, 2, or 3.")
+    }
+    
+    # # Automatically set zero = TRUE for variables with spike_decision = 1
+    # # this is important for centering. 
+    # spike1_vars <- intersect(names(spike_decision)[spike_decision == 1], names(zero))
+    # if (length(spike1_vars) > 0) zero[spike1_vars] <- TRUE
+  }
+  
+  
+  #-------------------------
+  # Check zero variables
+  #-------------------------
   if (any(zero)) {
     vars_to_check <- names(zero)[zero]
     bad_vars <- vars_to_check[
@@ -388,9 +458,12 @@ transform_matrix <- function(x,
     }
   }
   
+  #----------------------
+  # Reorder to match x
+  #----------------------
   if (keep_x_order) {
     # reorder power_list to be in same order as columns in x
-    power_list <- power_list[order(match(names(power_list), colnames(x)))]
+    power_list <- power_list[order(match(names(power_list), x_cols))]
   }
   
   # only consider variables in power_list
@@ -401,6 +474,9 @@ transform_matrix <- function(x,
   zero <- zero[names_vars]
   catzero <- catzero[names_vars]
   
+  #----------------------
+  # Transformations
+  #----------------------
   x_trafo <- list()
   acd_parameter <- list()
   for (name in names_vars) {
@@ -422,10 +498,33 @@ transform_matrix <- function(x,
     }
   }
   
-  # create output matrix
+  #----------------------
+  # Apply spike_decision logic AFTER x_trafo is built
+  #----------------------
+  if (!is.null(spike_decision)) {
+    # Variables where spike is not needed
+    vars_no_spike <- names(spike_decision)[spike_decision == 2]
+    intersect_vars <- intersect(vars_no_spike, names(catzero))
+    if (length(intersect_vars) > 0) {
+      catzero[intersect_vars] <- FALSE
+    }
+    
+    # Variables where only spike binary is needed (remove FP/linear transform)
+    vars_only_spike <- names(spike_decision)[spike_decision == 3]
+    intersect_vars2 <- intersect(vars_only_spike, names(x_trafo))
+    if (length(intersect_vars2) > 0) {
+      x_trafo[intersect_vars2] <- NULL
+    }
+  }
+  
+  #-------------------------
+  # Build output matrix
+  #-------------------------
   x_transformed <- do.call(cbind, x_trafo)
   
-  # --- Handle catzero binary variables ---
+  #----------------------
+  # Handle catzero binary vars
+  #----------------------
   cat_vars <- names(catzero)[catzero]
   
   if (length(cat_vars) > 0) {
@@ -434,7 +533,7 @@ transform_matrix <- function(x,
       if (all(is.na(power_list[[v]]))) {
         return(NULL)  # skip
       } else {
-        return(as.integer(x[, v] > 0))
+        as.integer(x[, v] > 0)
       }
     })
     
@@ -448,23 +547,40 @@ transform_matrix <- function(x,
     if (length(catzero_list) > 0) {
       catzero_matrix <- do.call(cbind, catzero_list)
       colnames(catzero_matrix) <- paste0(cat_vars_valid, "_bin")
-    } else {
-      catzero_matrix <- NULL
-    }
-    
-  } else {
-    catzero_matrix <- NULL
-  }
+      x_transformed <- cbind(x_transformed, catzero_matrix)
+    } 
+  } 
   
-  # Add binary variables to transformed matrix
-  if (!is.null(catzero_matrix)) {
-  x_transformed <- cbind(x_transformed, catzero_matrix)
-  }
-  
-  #--- Centering ---
+  #----------------------
+  # Centering
+  #----------------------
   centers <- NULL
   if (any(center)) {
-    x_transformed <- center_matrix(x_transformed) # check centering of zero variables?
+    # Initialize expanded zero with FALSE for every transformed column
+    zero_expanded <- setNames(rep(FALSE, ncol(x_transformed)), colnames(x_transformed))
+    
+    # For each original variable flagged zero=TRUE, mark its transformed
+    # columns (FP or ACD) as zero-handled, but exclude *_bin columns.
+    orig_zero_vars <- names(zero)[which(zero)]
+    if (length(orig_zero_vars) > 0) {
+      for (nm in orig_zero_vars) {
+        # Match either "nm" or "A_nm" followed by dot or end-of-string.
+        # This captures: nm, nm.1, nm.2, A_nm, A_nm.1, ...
+        pat <- paste0("(^", nm, "(\\.|$))|(^A_", nm, "(\\.|$))")
+        matches <- grep(pat, colnames(x_transformed), perl = TRUE, value = TRUE)
+        if (length(matches) > 0) {
+          # Exclude binary indicator columns (those ending with "_bin")
+          matches <- matches[!grepl("_bin$", matches)]
+          if (length(matches) > 0) zero_expanded[matches] <- TRUE
+        }
+      }
+    }
+    
+    # Ensure any explicit *_bin columns are FALSE (defensive)
+    bin_cols <- grep("_bin$", colnames(x_transformed), value = TRUE)
+    if (length(bin_cols) > 0) zero_expanded[bin_cols] <- FALSE
+    
+    x_transformed <- center_matrix(mat = x_transformed, centers = NULL, zero = zero_expanded) # check centering of zero variables, do we need the positive part?
     centers <- attr(x_transformed, "scaled:center")
   }
   
@@ -506,37 +622,76 @@ transform_vector_power <- function(x, power = 1, zero = FALSE) {
 #' @param centers a vector of centering values. Length must be equal to the 
 #' number of columns in `mat`. If `NULL` (default) then 
 #' centering values are determined by the function (see Details).
-#' 
+#' @param zero Optional named logical vector indicating which columns treat 
+#' zero values specially. Names must match `mat` columns. Default `NULL` means 
+#' no zero-specific handling.
+#'
 #' @details 
-#' Centering is done by means for continuous variables (i.e. more than 2
-#' distinct values), and the minimum for binary variables. 
+#' Centering is done by column means for continuous variables (more than 2 
+#' distinct values) and by the minimum for binary variables. For variables 
+#' with `zero = TRUE`, the mean is computed only over the non-zero values, 
+#' while zero values remain at zero.
 #' 
 #' It is assumed all categorical variables in the data are represented by 
 #' binary dummy variables. 
 #' @examples
-#' mat = matrix(1:100, nrow = 10)
-#' center_matrix(mat)
+#' mat <- matrix(1:100, nrow = 10)
+#' colnames(mat) <- paste0("x", 1:ncol(mat))
+#' zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
+#' center_matrix(mat, zero = zero)
 #' 
 #' @return 
 #' Transformed data matrix. Has an attribute `scaled:center` that stores 
 #' values used for centering.
 #' 
 #' @export
-center_matrix <- function(mat, centers = NULL) {
+center_matrix <- function(mat, centers = NULL, zero = NULL) {
+  
+  if (!is.matrix(mat)) {
+    stop("! 'mat' must be a matrix.")
+  }
+  if (is.null(colnames(mat))) {
+    stop("! 'mat' must have column names.")
+  }
+  
+  # Validate zero
+  if (!is.null(zero)) {
+    if (!is.logical(zero)) {
+      stop("! 'zero' must be a logical vector.")
+    }
+    if (is.null(names(zero))) {
+      stop("! 'zero' must have names.")
+    }
+    if (!setequal(names(zero), colnames(mat))) {
+      stop("! 'zero' names must match column names of 'mat'.")
+    }
+    zero <- zero[colnames(mat)]  # reorder to match mat
+  } else {
+    zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
+  }
   
   if (is.null(centers)) {
-    centers <- colMeans(mat) 
+    centers <- numeric(ncol(mat))
     
-    # identify the column with at most 2 unique values
-    index_binary <- which(apply(mat, 2, function(x) length(unique(x))) <= 2)
-    
-    # replace the means of binary variables with the minimum 
-    if (any(index_binary)) {
-      centers[index_binary] <- apply(mat[,index_binary, drop = FALSE], 2, min)
+    for (j in seq_len(ncol(mat))) {
+      x <- mat[, j]
+      is_binary <- length(unique(x)) <= 2
+      
+      if (zero[j]) {
+        spike_mask <- x == 0
+        centers[j] <- if (all(spike_mask)) 0 else mean(x[!spike_mask], na.rm = TRUE)
+      } else if (is_binary) {
+        # replace the means of binary variables with the minimum 
+        centers[j] <- min(x, na.rm = TRUE)
+      } else {
+        centers[j] <- mean(x, na.rm = TRUE)
+      }
     }
   }
   
-  scale(mat, center = centers, scale = FALSE)
+  mat_centered <- scale(mat, center = centers, scale = FALSE)
+  attr(mat_centered, "scaled:center") <- centers
+  mat_centered
 }
 
 #' Helper function to name transformed variables

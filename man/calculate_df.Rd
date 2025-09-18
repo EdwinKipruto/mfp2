@@ -4,7 +4,7 @@
 \alias{calculate_df}
 \title{Helper to calculates the final degrees of freedom for the selected model}
 \usage{
-calculate_df(p)
+calculate_df(powers, spike_decision)
 }
 \arguments{
 \item{p}{power of a variable.}

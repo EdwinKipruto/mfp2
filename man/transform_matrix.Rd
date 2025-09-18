@@ -2,7 +2,7 @@
 % Please edit documentation in R/transformations.R
 \name{transform_matrix}
 \alias{transform_matrix}
-\title{Function to transform each column of matrix using final FP powers or acd}
+\title{Transform each column of matrix using final FP powers or ACD transformation}
 \usage{
 transform_matrix(
   x,
@@ -13,7 +13,8 @@ transform_matrix(
   acd_parameter_list = NULL,
   check_binary = TRUE,
   zero = NULL,
-  catzero = NULL
+  catzero = NULL,
+  spike_decision = NULL
 )
 }
 \arguments{
@@ -53,6 +54,12 @@ columns in \code{x} should treat nonpositive values as zero and additionally hav
 binary indicator created and included in the model. The vector must have names matching
 the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero
 variables are used.}
+
+\item{spike_decision}{Named numeric vector with values 1, 2, or 3 specifying
+spike-at-zero handling for each variable. Default is \code{NULL}, meaning no
+spike-at-zero processing is applied. Value 1 includes both the transformed
+variable and binary indicator, 2 disables the spike/binary indicator, and 3
+keeps only the binary indicator.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA}, this function returns \code{NULL}.
@@ -64,22 +71,35 @@ higher-order FP transformations. Binary variables are also added if
 center variables if \code{center = TRUE} (typically all variables are centered,
 or none of them). The entry \code{acd_parameter} is a named list of estimated ACD
 parameters, which may be empty if no ACD transformation is applied. The
-entry \code{x_trafo} is a named list containing the transformed \code{x} matrix
-without \code{catzero} variables and without centering;  this last component is
+entry \code{x_trafo} is a named list of transformed \code{x} without centering or
+\code{catzero} variables and ;  this last component is
 important for the spike-at-zero algorithm.
 }
 \description{
-Function to transform each column of matrix using final FP powers or acd
+This function applies FP and/or ACD transformations to the columns of a matrix,
+optionally centers the transformed variables, and can generate binary indicators
+for variables with nonpositive values (catzero). The spike-at-zero variables
+is supported via the \code{spike_decision} argument.
 }
 \details{
 For details on the transformations see \code{\link[=transform_vector_fp]{transform_vector_fp()}} and
 \code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+
+Transformations are handled by \code{\link[=transform_vector_fp]{transform_vector_fp()}} and \code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+The \code{x_transformed} matrix contains transformed variables, optionally centered.
+Binary indicators are appended if specified in \code{catzero}.
+The \code{spike_decision} argument controls spike-at-zero (SAZ) processing: for variables
+with value 2, the binary indicator is disabled reducing to usual transformations;
+for variables with value 3, only the binary indicator of SAZ is retained and
+any FP/linear transformations are removed. This ensures correct handling
+of variables with SAZ.
 }
 \section{Column names}{
 
-Generally the original variable names are suffixed with ".i", where
-i enumerates the powers for a given variable in \code{power_list}. If a term
-uses an acd transformation, then the variable is prefixed with \code{A_}.
+Transformed variable names are based on the original names. FP terms are
+suffixed with ".i" to indicate the power index for that variable. Variables
+transformed using ACD are prefixed with "A_". Binary indicators created
+for nonpositive values (catzero) are suffixed with "_bin".
 }
 
 \examples{

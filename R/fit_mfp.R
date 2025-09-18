@@ -333,8 +333,13 @@ fit_mfp <- function(x,
   }
   
   data_transformed <- transform_matrix(
-    x = x,  power_list = powers_current, center = center, acdx = acdx, 
-    zero = zero, catzero = catzero
+    x = x,  
+    power_list = powers_current, 
+    center = center, 
+    acdx = acdx, 
+    zero = zero, # even if x is already processed, we need logical for centering
+    catzero = catzero, 
+    spike_decision = spike_decision
   )
 
   # fit model, and return full glm or coxph object
@@ -353,7 +358,7 @@ fit_mfp <- function(x,
   )
   
   # create mfp2 object ---------------------------------------------------------
-  
+  # STOPPED HERE 18.09.2025
   # add components to fitted model object
   fit <- modifyList(
     modelfit$fit,
@@ -367,7 +372,7 @@ fit_mfp <- function(x,
             drop = F],
       y = y, 
       fp_terms = create_fp_terms(powers_current, acdx, df, select, alpha, 
-                                 criterion, zero, catzero),
+                                 criterion, zero, catzero, spike),
       transformations = data.frame(shift = shift, 
                                    scale = scale, 
                                    center = center),
@@ -793,14 +798,18 @@ find_best_fp_cycle <- function(x,
 #' 
 #' @return 
 #' returns numeric value denoting the number of degrees of freedom (df).
-calculate_df <- function(p) {
-  if (all(is.na(p))) {
+calculate_df <- function(powers, spike_decision) {
+  if (spike_decision == 3) {
+    return(1)
+  }
+  
+  if (all(is.na(powers))) {
     # df for unselected variable
     df <- 0
   } else {
     # Remove NAs in powers (2,NA) or (NA,1) etc. Happens because of acd
     # make sure to drop names by using as.numeric
-    p <- as.numeric(p[!is.na(p)])
+    p <- as.numeric(powers[!is.na(powers)])
     # df of linear function
     if (identical(p, 1)) {
       df <- 1
@@ -868,7 +877,9 @@ create_fp_terms <- function(fp_powers,
                             alpha, 
                             criterion,
                             zero,
-                            catzero) {
+                            catzero,
+                            spike, 
+                            spike_decision) {
   
   fp_terms <- data.frame(
     # initial degrees of freedom
@@ -878,6 +889,7 @@ create_fp_terms <- function(fp_powers,
     acd = acdx, 
     zero = zero,
     catzero = catzero,
+    spike = spike,
     # presence / absence in final model encoded by NAs in fp_powers
     selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom

@@ -248,7 +248,7 @@ fit_mfp <- function(x,
   # Assign names to the list
   names(catzero_list) <- names(catzero)
   
-  # TODO: like catzero_list, create acd_parameters to speed up computation
+  # Create acd_parameters to speed up computation
   acd_parameter <- lapply(seq_len(ncol(x)), function(i) {
     if (acdx[i]) {
       fit_acd(x[, i], powers = powers[[i]], zero = zero[i])
@@ -257,6 +257,7 @@ fit_mfp <- function(x,
     }
   })
   names(acd_parameter) <- colnames(x)
+  
   # step 3: mfp cycles ---------------------------------------------------------
   # initialize cycle counter 
   j <- 1

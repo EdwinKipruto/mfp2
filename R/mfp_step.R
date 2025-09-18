@@ -196,7 +196,7 @@ find_best_fp_step <- function(x,
   # Stage 2 of SAZ algorithm 
   # ----------------------------------------------------------------------------
   # fit candidate models to evaluate Spike at zero variables
-  models <- fit_candidate_models(x, xi, y, weights, offset, family, method, strata,
+  models <- fit_spike_zero_models(x, xi, y, weights, offset, family, method, strata,
                                  nocenter, control, rownames, powers_current, powers,
                                  acdx, zero, catzero, power_best,
                                  spike_decision, acd_parameter)
@@ -247,41 +247,32 @@ find_best_fp_step <- function(x,
 #'   * `x_transformed`: List containing transformed predictor matrices.
 #' @inheritParams find_best_fp_step
 #' @keywords internal
-fit_candidate_models <- function(x, xi, y, weights, offset, family, method, strata,
+fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, strata,
                                  nocenter, control, rownames, powers_current, powers,
                                  acdx, zero, catzero, power_best,
                                  spike_decision, acd_parameter) {
   
-  # This functions returns the correct adjustment variables even with SAZ using
-  # spike_decision
-  # degree <- length(power_best) # this needs to be adapted for acd
-  # x_transformed <- transform_data_step(
-  #   x = x, xi = xi, df = ifelse(degree == 1 && power_best == 1, 1, 2 * degree),
-  #   powers_current = powers_current, powers = powers, 
-  #   acdx = acdx, zero = zero, catzero = catzero,
-  #   spike_decision = spike_decision, acd_parameter = acd_parameter
-  # )
-  # 
-  # best_model_index <- which(apply(
-  #   x_transformed$powers_fp, 1, function(row) all(row == power_best)
-  # ))
+  # Update the estimated FP power for variable xi
+  powers_current[[xi]] <- as.vector(power_best)
   
+  # Prepare centering vector: no variables are centered
+  center_vector <- setNames(rep(FALSE, ncol(x)), colnames(x))
   
-  # Using the estimated FP Powers, transform the x matrix
-  powers_current[[xi]] <- as.vector(power_best) # update the power for xi
-  center_vector <- setNames(rep(FALSE, ncol(x)),colnames(x))
-  x_transformed <- transform_matrix(x = x,  
-              power_list = powers_current, 
-              center = center_vector,
-              acdx = acdx,
-              keep_x_order = TRUE, 
-              check_binary = TRUE,
-              acd_parameter_list = acd_parameter,
-              zero = NULL,
-              catzero = NULL)
+  # Transform x using the updated powers
+  x_transformed <- transform_matrix(
+    x = x,  
+    power_list = powers_current,
+    center = center_vector,
+    acdx = acdx,
+    keep_x_order = TRUE, 
+    check_binary = TRUE,
+    acd_parameter_list = acd_parameter,
+    zero = NULL,
+    catzero = NULL
+    )
   
-  
-  # No binary
+  # Fit model using the transformed variables
+  # transormed xi + adjustment variables
   fit2 <- fit_model(
     x = x_transformed$x_transformed,
     y = y, family = family, weights = weights, offset = offset, 
@@ -290,10 +281,18 @@ fit_candidate_models <- function(x, xi, y, weights, offset, family, method, stra
   )
   
   # Binary-only + adjustment variables if any
-  names_p <- setdiff(names(powers_current), xi)
-  xx <- cbind(catzero[[xi]], do.call(cbind, x_transformed$x_trafo[names_p]))
+  adjustment_variable_names  <- setdiff(names(powers_current), xi)
+  
+  # Only bind adjustment variables if there are any
+  adjustment_matrix  <- if (length(adjustment_variable_names) > 0) {
+    do.call(cbind, x_transformed$x_trafo[adjustment_variable_names ])
+    } else {
+      NULL
+      }
+  binary_plus_adjustment  <- cbind(catzero[[xi]], adjustment_matrix)
+
   fit3 <- fit_model(
-    x = xx,
+    x = binary_plus_adjustment,
     y = y, family = family, weights = weights, offset = offset, 
     method = method, strata = strata, nocenter = nocenter, 
     control = control, rownames = rownames

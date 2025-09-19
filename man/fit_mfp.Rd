@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_mfp.R
 \name{fit_mfp}
 \alias{fit_mfp}
-\title{Function for fitting a model using the MFP or MFPA algorithm}
+\title{Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm}
 \usage{
 fit_mfp(
   x,
@@ -118,32 +118,51 @@ Default is \code{FALSE}.}
 See \code{\link[=mfp2]{mfp2()}} for details on the returned object.
 }
 \description{
-This function is not exported and is intended to be called from
-the \code{\link[=mfp2]{mfp2()}} function. While most parameters are explained in
-the documentation of \code{mfp2()}, their form may differ in this
-function. Note that this function does not check its arguments
-and expects that its input has been prepared in \code{mfp2()} function.
+This internal function implements the Multivariable Fractional Polynomial (MFP),
+MFP with Approximate Cumulative Distribution (MFPA), and spike-at-zero (SAZ)
+algorithms. It is not exported and is intended to be called from \code{\link[=mfp2]{mfp2()}}.
+While most parameters are documented in \code{mfp2()}, their form may differ here.
+The function does not perform argument checks and expects that all inputs
+have been properly prepared by \code{mfp2()}.
 }
 \section{Algorithm}{
 
 \itemize{
-\item Step 1: order variables according to \code{xorder}. This step may involve
-fitting a regression model to determine order of significance.
-\item Step 2: input data pre-processing. Setting initial powers for fractional
-polynomial terms, checking if acd transformation is required and allowed.
+\item Step 1: variable ordering. Variables are ordered according to \code{xorder}. This
+may involve fitting a regression model to determine entry order.
+\item Step 2 preprocessing: Initial powers for fractional  polynomial terms are
+set, checking if acd transformation is required and allowed, and
+zero and catzero variables are handled, spike variables are marked.
 Note that the initial powers of all variables are always set to 1, and higher
 FPs are only evaluated in turn for each variables in the first cycle of the
 algorithm. See e.g. Sauerbrei and Royston (1999).
-\item Step 3: run mfp algorithm cycles. See \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}} for more
-details.
-\item Step 4: fit final model using estimated powers.
+\item Step 3: MFP cycles.Iteratively updates FP powers and spike decisions using
+\code{find_best_fp_cycle()} until convergence or maximum cycles are reached.
+\item Step 4: Final transformation. Applies final FP powers to \code{x}, generates
+binary variables for catzero, handles centering, and applies backscaling if
+required.
+\item Step 5: Model fitting. Fits the final model using the transformed \code{x} and
+returns an \code{mfp2} object with transformed data, centers, FP powers,
+acd parameters, and convergence information.
 }
 }
 
 \references{
-Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic
+Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic
 and diagnostic models: transformation of the predictors by using fractional
-polynomials. J Roy Stat Soc a Sta, 162:71-94.}
+polynomials. \emph{Journal of the Royal Statistical Society: Series A (Statistics in Society)}, 162, 71–94.
+
+Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate
+transformation for enhanced parametric multivariable modeling. \emph{The Stata Journal},
+16(1), 72–87.
+
+Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2017). Modeling variables
+with a spike at zero: examples and practical recommendations. \emph{American Journal of Epidemiology},
+185(8), 650–660.
+
+Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2019). Modeling exposures
+with a spike at zero: simulation study and practical application to survival data.
+\emph{Biostatistics & Epidemiology}, 3(1), 23–37.
 }
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}

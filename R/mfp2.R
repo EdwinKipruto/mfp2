@@ -1,9 +1,12 @@
 #' Multivariable Fractional Polynomial Models with Extensions 
 #'
 #' Selects the multivariable fractional polynomial (MFP) model that best predicts
-#' the outcome variable. It also has the ability to model a sigmoid relationship
-#' between `x` and an outcome variable `y` using the approximate cumulative 
-#' distribution (ACD) transformation proposed by Royston (2014).
+#' the outcome variable. This function also supports approximate cumulative 
+#' distribution (ACD) transformations for continuous variables, which allow 
+#' modeling of sigmoid relationships between predictors `x` and the outcome `y` 
+#' (Royston, 2014; Royston and Sauerbrei, 2016), as well as spike-at-zero (SAZ) 
+#' modeling, which allows proper handling of semi-continuous predictors 
+#' (Lorenz et al., 2017, 2019).
 #' This function provides two interfaces for input data: one for inputting 
 #' data matrix `x` and  outcome vector `y` directly and the other for using a
 #' `formula` object together with a dataframe `data`. Both interfaces are
@@ -157,7 +160,73 @@
 #' The result is the selection of one of the six models. For details see 
 #' Royston and Sauerbrei (2016).
 #' 
-#' @section Details on  spike at zero:
+#' @section Details on  Spike-at-zero (SAZ) modeling:
+#' In epidemiological and clinical studies, a continuous covariate `x` may have a 
+#' mixture of zeros and positive values, which is called a semi-continuous variable. 
+#' There is a ‘spike’ at zero in an otherwise continuous distribution. Examples 
+#' include occupational exposures (e.g., asbestos) or alcohol and tobacco 
+#' consumption, where some individuals have no exposure, while others have a 
+#' positive continuous exposure. When x = 0 defines a distinct subpopulation, 
+#' the outcome for these individuals can be modeled explicitly using a binary 
+#' variable `z`, while the positive values are modeled as a continuous variable
+#' with a dose–response relationship.
+#' 
+#' An approach using FP functions for a spike-at-zero (SAZ) variable proceeds in
+#' two stages.
+#' 
+#' Stage 1: Functional form selection
+#' A binary indicator Z is created that takes the value 1 if x = 0 and 0 otherwise. 
+#' FP transformations are applied only to the positive values of x, so there is 
+#' no need to shift x. 
+#' The selection procedure proceeds sequentially as follows:
+#' 
+#' 1. Compare the most complex model (best FP2 + Z) with the null model:
+#'    - Degrees of freedom: 5 (4 from FP2, 1 from Z)
+#'    - If significant, continue; otherwise, choose the null model.
+#' 2. Compare best FP2 + Z versus linear + Z model:
+#'    - Degrees of freedom: 3 
+#'    - If significant, continue; otherwise, select linear + Z.
+#' 3. Compare best FP2 + Z versus best FP1 + Z model:
+#'    - Degrees of freedom: 2 
+#'    - If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
+#' 
+#' This ensures that the functional form is selected sequentially, retaining only models
+#' that significantly improve fit, always including Z.
+#' 
+#' Stage 2: Component assessment
+#' The selected model from Stage 1 (e.g., best FP2 + Z) is evaluated to decide 
+#' which components are needed:
+#' 
+#' * Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
+#' * Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
+#' 
+#' Decision rules:
+#' - If both tests are significant, retain both Z and FP2 in the final model.
+#' - If only one test is significant, retain that term and remove the non-significant one.
+#' - If neither test is significant, compare the deviance of models with only Z versus only FP2.
+#'   The final model is the one with the smaller deviance (i.e., better fit to the data).
+#' 
+#' If Z is removed, the spike at zero plays no specific role, and a usual FP 
+#' function is selected for the positive values of x. Conversely, if the FP 
+#' function is removed, leaving only Z in the model, the covariate's effect is
+#' entirely represented by the binary indicator. Note that the presence of Z 
+#' in Stage 1 may have influenced the choice of FP powers, so the final powers 
+#' may differ from those obtained in a standard FP analysis.
+#' 
+#' @section Handling Extreme Proportions of Zeros in Spike-at-zero (SAZ) Modeling:
+#' The SAZ approach is only applicable if the proportion of zeros is neither too small 
+#' nor too large, typically between 5% and 95%. Variables with fewer than 5% zeros may 
+#' not provide enough information to justify a separate binary term, and this threshold 
+#' may be too low for small sample sizes, where estimation of separate FP terms could be 
+#' unstable. Variables with more than 95% zeros are mostly zeros, and the positive portion 
+#' may be too sparse for reliable estimation.
+#' 
+#' In the implementation, the `reset_spike` function automatically handles such
+#' extreme cases. By default, if fewer than 5% or more than 95% of the values 
+#' are zero, the spike is reset to `FALSE`, and the variable is treated as a 
+#' standard continuous covariate. This ensures that spike-at-zero modeling is 
+#' applied only when there is sufficient information in both the zero and 
+#' positive portions of the variable.
 #' 
 #' @section Details on model specification using a `formula`:
 #' `mfp2` supports model specifications using two different interfaces: one
@@ -173,9 +242,9 @@
 #' specification of degrees of freedom (`df`), nominal significance level for 
 #' variable selection (`select`), nominal significance level for functional form 
 #' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
-#' centering (`center`) and the ACD-transformation (`acd`). Values specified 
-#' through `fp()` function override the values specified as defaults and passed to 
-#' the `mfp2()` function. 
+#' centering (`center`), CD-transformation (`acd`) and spike (`spike`). Values 
+#' specified through `fp()` function override the values specified as defaults 
+#' and passed to the `mfp2()` function. 
 #' 
 #' The formula may also contain `strata` terms to fit stratified Cox models, or
 #' an `offset` term to specify a model offset.
@@ -213,6 +282,12 @@
 #' This approach captures the potential difference between having a value of 
 #' zero and having any positive value, while still allowing flexible modeling of
 #' the positive range.
+#' 
+#' The \code{spike} argument triggers the spike-at-zero (SAZ) algorithm. When 
+#' \code{spike = TRUE}, the binary indicator created by \code{catzero} is 
+#' formally evaluated together with the FP terms during model selection. When 
+#' \code{spike = FALSE} but \code{catzero = TRUE}, the binary indicator is 
+#' included in the model without SAZ testing.
 #'
 #' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
 #' and is particularly relevant in epidemiological contexts where exposure may 
@@ -372,12 +447,11 @@
 #' nonpositive values should be treated as zero, similar to the \code{zero} argument. 
 #' The key difference is that \code{mfp2} will automatically create a corresponding 
 #' binary indicator variable (e.g., \code{var > 0}) and include it in the model 
-#' alongside the transformed variable. #' See the **Details** section
+#' alongside the transformed variable. See the **Details** section
 #' @param spike A character vector specifying the continuous variables to be 
-#' assessed for a spike at zero. Supplying this argument also triggers the 
-#' function-selection procedure, which determines the best-fitting model among 
-#' three candidates (see Details). This argument is not available in the 
-#' formula interface `mfp2.formula`, where spike variables should instead be 
+#' assessed for a spike at zero. Supplying this argument triggers the 
+#' spike-at-zero (SAZ) algorithm (see Details). This argument is not available 
+#' in the formula interface `mfp2.formula`, where spike variables should instead be 
 #' specified using `fp` terms in the `formula` input.
 #' @param verbose a logical; run in verbose mode.
 #' @param ... not used.
@@ -470,7 +544,11 @@
 #' 
 #' Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential 
 #' points and sample size on the selection and replicability of multivariable 
-#' fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}
+#' fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}\cr
+#' 
+#' Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H., 2019. \emph{Modeling exposures 
+#' with a spike at zero: simulation study and practical application to survival data. 
+#' Biostatistics & Epidemiology, 3(1), pp.23-37.}
 #' 
 #' @seealso 
 #' [summary.mfp2()], [coef.mfp2()], [predict.mfp2()], [fp()]

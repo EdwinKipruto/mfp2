@@ -1,11 +1,11 @@
-#' Function for fitting a model using the MFP or MFPA algorithm
+#' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #' 
-#' This function is not exported and is intended to be called from 
-#' the [`mfp2()`] function. While most parameters are explained in 
-#' the documentation of `mfp2()`, their form may differ in this 
-#' function. Note that this function does not check its arguments 
-#' and expects that its input has been prepared in `mfp2()` function.
-#' 
+#' This internal function implements the Multivariable Fractional Polynomial (MFP),
+#' MFP with Approximate Cumulative Distribution (MFPA), and spike-at-zero (SAZ) 
+#' algorithms. It is not exported and is intended to be called from [`mfp2()`]. 
+#' While most parameters are documented in `mfp2()`, their form may differ here. 
+#' The function does not perform argument checks and expects that all inputs 
+#' have been properly prepared by `mfp2()`.
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
 #' necessary. Data are assumed to be shifted and scaled. 
@@ -63,24 +63,42 @@
 #' 
 #' @section Algorithm: 
 #' 
-#' * Step 1: order variables according to `xorder`. This step may involve 
-#' fitting a regression model to determine order of significance. 
-#' * Step 2: input data pre-processing. Setting initial powers for fractional 
-#' polynomial terms, checking if acd transformation is required and allowed.
+#' * Step 1: variable ordering. Variables are ordered according to `xorder`. This
+#' may involve fitting a regression model to determine entry order. 
+#' * Step 2 preprocessing: Initial powers for fractional  polynomial terms are
+#' set, checking if acd transformation is required and allowed, and 
+#' zero and catzero variables are handled, spike variables are marked.
 #' Note that the initial powers of all variables are always set to 1, and higher
 #' FPs are only evaluated in turn for each variables in the first cycle of the 
 #' algorithm. See e.g. Sauerbrei and Royston (1999).
-#' * Step 3: run mfp algorithm cycles. See [find_best_fp_cycle()] for more 
-#' details.
-#' * Step 4: fit final model using estimated powers.
-#' 
+#' * Step 3: MFP cycles.Iteratively updates FP powers and spike decisions using
+#'  `find_best_fp_cycle()` until convergence or maximum cycles are reached.
+#' * Step 4: Final transformation. Applies final FP powers to `x`, generates 
+#' binary variables for catzero, handles centering, and applies backscaling if 
+#' required.
+#' * Step 5: Model fitting. Fits the final model using the transformed `x` and 
+#' returns an `mfp2` object with transformed data, centers, FP powers, 
+#' acd parameters, and convergence information.
+#'
 #' @return 
 #' See [mfp2()] for details on the returned object.
 #' 
 #' @references 
-#' Sauerbrei, W. and Royston, P., 1999. \emph{Building multivariable prognostic 
+#' Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic 
 #' and diagnostic models: transformation of the predictors by using fractional 
-#' polynomials. J Roy Stat Soc a Sta, 162:71-94.}
+#' polynomials. *Journal of the Royal Statistical Society: Series A (Statistics in Society)*, 162, 71–94.
+#' 
+#' Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate 
+#' transformation for enhanced parametric multivariable modeling. *The Stata Journal*, 
+#' 16(1), 72–87.
+#' 
+#' Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2017). Modeling variables 
+#' with a spike at zero: examples and practical recommendations. *American Journal of Epidemiology*, 
+#' 185(8), 650–660.
+#' 
+#' Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2019). Modeling exposures 
+#' with a spike at zero: simulation study and practical application to survival data. 
+#' *Biostatistics & Epidemiology*, 3(1), 23–37.
 #' 
 #' @seealso 
 #' [mfp2()], [find_best_fp_cycle()]
@@ -200,7 +218,10 @@ fit_mfp <- function(x,
     df[which(variables_ordered %in% variables_acd)] <- 4
   }
   
-  # Reset spike indicators for variables without zeros
+  # Reset spike indicators for variables without zeros. 
+  # Additionally, variables with zero proportions below 5% (too few zeros) 
+  # or above 95% (too many zeros) are considered uninformative for the 
+  # spike-at-zero.
   if (any(spike == TRUE)) {
     spike <- reset_spike(x, spike)
   }
@@ -214,7 +235,7 @@ fit_mfp <- function(x,
 
   #--- Create binary variables for catzero and convert all nonpositive to zero
   # to avoid repetition. The functions will handle infinite values caused
-  # by zeros correctly
+  # by transforming zeros correctly
   
   # store original zero for use later
   zero_x <- zero
@@ -236,7 +257,7 @@ fit_mfp <- function(x,
 
   }
   
-  # Create binary variables for catzero variables
+  # Create binary variables for catzero variables and assign names
   catzero_list <- lapply(names(catzero), function(v) {
     if (catzero[[v]]) {
       as.integer(x[, v] > 0)
@@ -244,8 +265,6 @@ fit_mfp <- function(x,
       NULL
     }
   })
-  
-  # Assign names to the list
   names(catzero_list) <- names(catzero)
   
   # Create acd_parameters to speed up computation
@@ -300,9 +319,13 @@ fit_mfp <- function(x,
       verbose = verbose
     )
     
+    # FP pwers and spike decision for the jth cycle 
     powers_updated <- fit_best_cycle$powers_current
-    spike_decision <- fit_best_cycle$spike_decision
+    spike_decision_updated <- fit_best_cycle$spike_decision
+    
     # check for convergence (i.e. no change in powers and variables in model)
+    # spike decisions do not affect FP powers because binary indicator is fixed
+    # in all models
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
       if (verbose) {
@@ -312,8 +335,10 @@ fit_mfp <- function(x,
         }  
       break
     } else {
-      # update the powers of the variables at the end of each cycle
+      # update the powers and spike decision of the variables at the end of 
+      # each cycle
       powers_current <- powers_updated
+      spike_decision <- spike_decision_updated
       j <- j + 1
     }
   }
@@ -328,6 +353,7 @@ fit_mfp <- function(x,
   # x has already been shifted and scaled if necessary.
   
   # Apply backscaling only if at least one scaling factor is not equal to 1
+  # Note that scaling does not affect FP power selection 
   if (any(scale != 1)) {
   x <- backscale_matrix(x,scale)
   }
@@ -610,46 +636,55 @@ reset_acd <- function(x, acdx) {
   acdx
 }
 
-#' Reset spike indicators for variables without zeros
+#' Reset spike indicators for variables without enough zeros
 #'
 #' This function resets elements of a logical vector \code{spike} to \code{FALSE}
-#' if the corresponding variables in \code{x} contain no zero values.
+#' if the corresponding variables in \code{x} contain too few or too many zero values
+#' based on a specified threshold.
 #'
 #' @param x A data frame or matrix.
 #' @param spike A logical vector indicating which columns of \code{x} are
 #'   expected to contain a spike at zero. Its length and order must match
 #'   the columns of \code{x}.
+#' @param min_prop Numeric between 0 and 0.5 specifying the minimum proportion
+#'   of zeros required to keep the spike indicator. Default is 0.05 (5%).
+#' @param max_prop Numeric between 0.5 and 1 specifying the maximum proportion
+#'   of zeros allowed to keep the spike indicator. Default is 0.95 (95%).
 #'
 #' @return A logical vector of the same length as \code{spike}, with entries
 #'   reset to \code{FALSE} where the corresponding variable in \code{x}
-#'   contains no zeros.
+#'   contains too few or too many zeros.
 #'
 #' @details
 #' A warning is issued listing the variables for which the spike option
-#' has been reset.
+#' has been reset. Variables with zero proportions outside \code{[min_prop, max_prop]}
+#' are considered uninformative for the spike-at-zero binary indicator.
 #'
 #' @keywords internal
-reset_spike <- function(x, spike) {
+reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
   # exit early if all spike values are FALSE
   if (!any(spike)) return(spike)
   
   names_spike <- names(spike)[spike]
   
-  # identify columns without zeros
-  has_zero <- apply(x[, names_spike, drop = FALSE], 2, function(col) any(col == 0))
+  # calculate proportion of zeros for each column
+  prop_zero <- colMeans(x[, names_spike, drop = FALSE] == 0, na.rm = TRUE)
   
-  ind_reset <- which(!has_zero)
+  # reset spike if all values are nonzero or proportion outside thresholds
+  ind_reset <- which(prop_zero < min_prop | prop_zero > max_prop)
   
   if (length(ind_reset) > 0) {
     spike[names_spike][ind_reset] <- FALSE
     warning(sprintf(
-      "The spike option has been reset to FALSE for the following variables because they contain no zero values: %s",
-      paste(names_spike[ind_reset], collapse = ", ")
+      "The spike option has been reset to FALSE for the following variables due to zero proportion outside [%g, %g]: %s",
+      min_prop, max_prop, paste(names_spike[ind_reset], collapse = ", ")
     ))
   }
   
   spike
 }
+
+
 
 
 #' Helper to run cycles of the mfp algorithm 

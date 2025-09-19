@@ -2,9 +2,9 @@
 % Please edit documentation in R/fit_mfp.R
 \name{reset_spike}
 \alias{reset_spike}
-\title{Reset spike indicators for variables without zeros}
+\title{Reset spike indicators for variables without enough zeros}
 \usage{
-reset_spike(x, spike)
+reset_spike(x, spike, min_prop = 0.05, max_prop = 0.95)
 }
 \arguments{
 \item{x}{A data frame or matrix.}
@@ -12,18 +12,26 @@ reset_spike(x, spike)
 \item{spike}{A logical vector indicating which columns of \code{x} are
 expected to contain a spike at zero. Its length and order must match
 the columns of \code{x}.}
+
+\item{min_prop}{Numeric between 0 and 0.5 specifying the minimum proportion
+of zeros required to keep the spike indicator. Default is 0.05 (5\%).}
+
+\item{max_prop}{Numeric between 0.5 and 1 specifying the maximum proportion
+of zeros allowed to keep the spike indicator. Default is 0.95 (95\%).}
 }
 \value{
 A logical vector of the same length as \code{spike}, with entries
 reset to \code{FALSE} where the corresponding variable in \code{x}
-contains no zeros.
+contains too few or too many zeros.
 }
 \description{
 This function resets elements of a logical vector \code{spike} to \code{FALSE}
-if the corresponding variables in \code{x} contain no zero values.
+if the corresponding variables in \code{x} contain too few or too many zero values
+based on a specified threshold.
 }
 \details{
 A warning is issued listing the variables for which the spike option
-has been reset.
+has been reset. Variables with zero proportions outside \code{[min_prop, max_prop]}
+are considered uninformative for the spike-at-zero binary indicator.
 }
 \keyword{internal}

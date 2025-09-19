@@ -2,20 +2,49 @@
 % Please edit documentation in R/fit_mfp.R
 \name{calculate_df}
 \alias{calculate_df}
-\title{Helper to calculates the final degrees of freedom for the selected model}
+\title{Calculate degrees of freedom for a transformed variable}
 \usage{
 calculate_df(powers, spike_decision)
 }
 \arguments{
-\item{p}{power of a variable.}
+\item{powers}{Numeric vector of selected powers for the variable. Can
+contain \code{NA} values (e.g., for ACD terms). If all values are \code{NA},
+the variable is considered unselected.}
+
+\item{spike_decision}{Integer scalar (1, 2, or 3) specifying spike-at-zero
+handling:
+\itemize{
+\item \code{1} – include both the continuous transformed term(s) and the binary
+spike-at-zero indicator.
+\item \code{2} – include only the continuous transformed term(s).
+\item \code{3} – include only the binary spike-at-zero indicator.
+}}
 }
 \value{
-returns numeric value denoting the number of degrees of freedom (df).
+Integer scalar giving the degrees of freedom for the variable.
 }
 \description{
-To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+Helper function used in \code{\link[=fit_mfp]{fit_mfp()}} to determine the final number of
+degrees of freedom (df) contributed by a variable, depending on its powers
+and the spike-at-zero decision.
 }
 \details{
+\itemize{
+\item If all entries in \code{powers} are \code{NA}, the df is \code{0} regardless of
+\code{spike_decision}.
+\item If \code{spike_decision = 3}, the df is \code{1} (only the binary indicator).
+\item If the variable is modeled linearly (exactly \code{powers = 1}), then df = 1.
+\item Otherwise, for fractional polynomials of degree \emph{m} (number of
+non-\code{NA} powers), df = 2 * m.
+\item If \code{spike_decision = 1}, one additional df is added for the binary
+indicator.
 An example calculation: if p is the power(s) and p = c(1,2), then df = 4
 but if p = NA then df = 0.
+}
+}
+\examples{
+calculate_df(c(1, 2), 2)   # df = 4 (two powers, no spike)
+calculate_df(1, 1)         # df = 2 (linear + binary spike)
+calculate_df(c(NA, NA), 1) # df = 0 (unselected variable)
+calculate_df(2, 3)        # df = 1 (binary spike only)
 }

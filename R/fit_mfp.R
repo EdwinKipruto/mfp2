@@ -358,7 +358,6 @@ fit_mfp <- function(x,
   )
   
   # create mfp2 object ---------------------------------------------------------
-  # STOPPED HERE 18.09.2025
   # add components to fitted model object
   fit <- modifyList(
     modelfit$fit,
@@ -372,7 +371,7 @@ fit_mfp <- function(x,
             drop = F],
       y = y, 
       fp_terms = create_fp_terms(powers_current, acdx, df, select, alpha, 
-                                 criterion, zero, catzero, spike),
+                                 criterion, zero, catzero, spike, spike_decision),
       transformations = data.frame(shift = shift, 
                                    scale = scale, 
                                    center = center),
@@ -786,41 +785,81 @@ find_best_fp_cycle <- function(x,
   list(powers_current = powers_current, spike_decision = spike_decision)
 }
 
-#' Helper to calculates the final degrees of freedom for the selected model
+#' Calculate degrees of freedom for a transformed variable
 #' 
-#' To be used in [fit_mfp()].
+#' Helper function used in [fit_mfp()] to determine the final number of 
+#' degrees of freedom (df) contributed by a variable, depending on its powers 
+#' and the spike-at-zero decision.
 #' 
-#' @param p power of a variable.
-#' 
+#' @param powers Numeric vector of selected powers for the variable. Can 
+#' contain `NA` values (e.g., for ACD terms). If all values are `NA`, 
+#' the variable is considered unselected.
+#' @param spike_decision Integer scalar (1, 2, or 3) specifying spike-at-zero 
+#'   handling:
+#'   * `1` – include both the continuous transformed term(s) and the binary 
+#'     spike-at-zero indicator.
+#'   * `2` – include only the continuous transformed term(s).
+#'   * `3` – include only the binary spike-at-zero indicator.
+#
 #' @details 
+#' * If all entries in `powers` are `NA`, the df is `0` regardless of 
+#'   `spike_decision`.
+#' * If `spike_decision = 3`, the df is `1` (only the binary indicator).
+#' * If the variable is modeled linearly (exactly `powers = 1`), then df = 1.
+#' * Otherwise, for fractional polynomials of degree *m* (number of 
+#'   non-`NA` powers), df = 2 * m.
+#' * If `spike_decision = 1`, one additional df is added for the binary 
+#'   indicator.
 #' An example calculation: if p is the power(s) and p = c(1,2), then df = 4 
 #' but if p = NA then df = 0.
 #' 
 #' @return 
-#' returns numeric value denoting the number of degrees of freedom (df).
+#' Integer scalar giving the degrees of freedom for the variable.
+#' @examples
+#' calculate_df(c(1, 2), 2)   # df = 4 (two powers, no spike)
+#' calculate_df(1, 1)         # df = 2 (linear + binary spike)
+#' calculate_df(c(NA, NA), 1) # df = 0 (unselected variable)
+#' calculate_df(2, 3)        # df = 1 (binary spike only)
 calculate_df <- function(powers, spike_decision) {
-  if (spike_decision == 3) {
-    return(1)
+  
+  #------------------
+  # Input checks
+  #------------------
+  if (length(spike_decision) != 1L || !(spike_decision %in% c(1L, 2L, 3L))) {
+    stop("`spike_decision` must be a single integer 1, 2, or 3.")
   }
   
+  # Convert to numeric in case powers is logical NA
+  powers <- as.numeric(powers)
+  
+  # unselected variable: no df regardless of spike_decision
   if (all(is.na(powers))) {
-    # df for unselected variable
-    df <- 0
-  } else {
-    # Remove NAs in powers (2,NA) or (NA,1) etc. Happens because of acd
-    # make sure to drop names by using as.numeric
-    p <- as.numeric(powers[!is.na(powers)])
-    # df of linear function
-    if (identical(p, 1)) {
-      df <- 1
-      # df of fpm. Note that df = 2m where m is the degree. if length = 1 then
-      # degree = 1 and df = 2 etc
-    } else {
-      df <- 2 * length(p)
-    }
+    return(0L)
   }
   
-  df
+  # case: binary only
+  if (spike_decision == 3) {
+    return(1L)
+  }
+  # base df from powers
+  # Remove NAs in powers (2,NA) or (NA,1) etc. Happens because of acd
+  # make sure to drop names by using as.numeric
+  p <- as.numeric(powers[!is.na(powers)])
+    # df of linear function
+  if (identical(p, 1)) {
+    df <- 1L
+    # df of fpm. Note that df = 2m where m is the degree. if length = 1 then
+    # degree = 1 and df = 2 etc
+  } else {
+    df <- 2L * length(p)
+  }
+  
+  # add spike binary if spike_decision = 1
+  if (spike_decision == 1) {
+    df <- df + 1L
+  }
+  
+  return(df)
 }
 
 #' Helper to convert a nested list with same or different length into a matrix
@@ -890,14 +929,16 @@ create_fp_terms <- function(fp_powers,
     zero = zero,
     catzero = catzero,
     spike = spike,
+    # Spike decision
+    spike_decision = spike_decision,
     # presence / absence in final model encoded by NAs in fp_powers
     selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom
-    df_final = sapply(fp_powers, calculate_df), 
+    df_final = mapply(calculate_df, fp_powers, spike_decision), 
     convert_powers_list_to_matrix(fp_powers)
   )
-  rownames(fp_terms) <- names(fp_powers)
-  
+
+    rownames(fp_terms) <- names(fp_powers)
   
   if (criterion != "pvalue") {
     fp_terms$select <- toupper(criterion)

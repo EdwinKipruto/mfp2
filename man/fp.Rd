@@ -16,7 +16,8 @@ fp(
   acdx = FALSE,
   powers = NULL,
   zero = FALSE,
-  catzero = FALSE
+  catzero = FALSE,
+  spike = FALSE
 )
 
 fp2(...)
@@ -25,7 +26,8 @@ fp2(...)
 \item{x}{a vector representing a continuous variable undergoing
 fp-transformation.}
 
-\item{df, alpha, select, shift, scale, center, acdx, zero, catzero}{See \code{\link[=mfp2]{mfp2()}}) for details.}
+\item{df, alpha, select, shift, scale, center, acdx, zero, catzero, spike}{See
+\code{\link[=mfp2]{mfp2()}}) for details.}
 
 \item{powers}{a vector of powers to be evaluated for \code{x}. Default is \code{NULL}
 and \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} will be used.}

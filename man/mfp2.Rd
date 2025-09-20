@@ -456,7 +456,7 @@ The result is the selection of one of the six models. For details see
 Royston and Sauerbrei (2016).
 }
 
-\section{Details on  Spike-at-zero (SAZ) modeling}{
+\section{Details on  spike-at-zero (SAZ) modeling}{
 
 In epidemiological and clinical studies, a continuous covariate \code{x} may have a
 mixture of zeros and positive values, which is called a semi-continuous variable.
@@ -494,12 +494,14 @@ The selection procedure proceeds sequentially as follows:
 }
 }
 
-This ensures that the functional form is selected sequentially, retaining only models
-that significantly improve fit, always including Z.
+This ensures that the functional form is selected sequentially, retaining only
+models that significantly improve fit, always including Z. Stage 1 is
+identical to the standard MFP function selection process, except that \code{Z} is
+forced into the model at every step.
 
 Stage 2: Component assessment
-The selected model from Stage 1 (e.g., best FP2 + Z) is evaluated to decide
-which components are needed:
+The selected model from Stage 1 is evaluated to decide which components are
+needed. For example, suppose the selected model is best FP2 + Z:
 \itemize{
 \item Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
 \item Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
@@ -507,10 +509,17 @@ which components are needed:
 
 Decision rules:
 \itemize{
-\item If both tests are significant, retain both Z and FP2 in the final model.
-\item If only one test is significant, retain that term and remove the non-significant one.
-\item If neither test is significant, compare the deviance of models with only Z versus only FP2.
-The final model is the one with the smaller deviance (i.e., better fit to the data).
+\item If both tests are significant, retain both Z and FP2 in the final model,
+because each component adds information beyond the other.
+\item If Test 1 is significant but Test 2 is not, retain only Z, because the
+spike indicator improves the model while the functional form does not
+contribute additional information.
+\item If Test 2  is significant but Test 1 is not, retain only FP2, because the
+functional form improves the model while the spike indicator does not add
+further explanatory value.
+\item If neither test is significant, compare the deviances of the Z-only and
+FP2-only models. The final model is the one with the smaller deviance,
+since it provides the better fit to the data without unnecessary terms.
 }
 
 If Z is removed, the spike at zero plays no specific role, and a usual FP
@@ -521,7 +530,7 @@ in Stage 1 may have influenced the choice of FP powers, so the final powers
 may differ from those obtained in a standard FP analysis.
 }
 
-\section{Handling Extreme Proportions of Zeros in Spike-at-zero (SAZ) Modeling}{
+\section{Handling extreme proportions of zeros in spike-at-zero (SAZ) modeling}{
 
 The SAZ approach is only applicable if the proportion of zeros is neither too small
 nor too large, typically between 5\% and 95\%. Variables with fewer than 5\% zeros may

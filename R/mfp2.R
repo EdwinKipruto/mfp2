@@ -160,7 +160,7 @@
 #' The result is the selection of one of the six models. For details see 
 #' Royston and Sauerbrei (2016).
 #' 
-#' @section Details on  Spike-at-zero (SAZ) modeling:
+#' @section Details on  spike-at-zero (SAZ) modeling:
 #' In epidemiological and clinical studies, a continuous covariate `x` may have a 
 #' mixture of zeros and positive values, which is called a semi-continuous variable. 
 #' There is a ‘spike’ at zero in an otherwise continuous distribution. Examples 
@@ -190,21 +190,30 @@
 #'    - Degrees of freedom: 2 
 #'    - If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
 #' 
-#' This ensures that the functional form is selected sequentially, retaining only models
-#' that significantly improve fit, always including Z.
+#' This ensures that the functional form is selected sequentially, retaining only 
+#' models that significantly improve fit, always including Z. Stage 1 is
+#' identical to the standard MFP function selection process, except that `Z` is 
+#' forced into the model at every step.
 #' 
 #' Stage 2: Component assessment
-#' The selected model from Stage 1 (e.g., best FP2 + Z) is evaluated to decide 
-#' which components are needed:
+#' The selected model from Stage 1 is evaluated to decide which components are 
+#' needed. For example, suppose the selected model is best FP2 + Z:
 #' 
 #' * Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
 #' * Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
 #' 
 #' Decision rules:
-#' - If both tests are significant, retain both Z and FP2 in the final model.
-#' - If only one test is significant, retain that term and remove the non-significant one.
-#' - If neither test is significant, compare the deviance of models with only Z versus only FP2.
-#'   The final model is the one with the smaller deviance (i.e., better fit to the data).
+#' - If both tests are significant, retain both Z and FP2 in the final model, 
+#'   because each component adds information beyond the other.
+#' - If Test 1 is significant but Test 2 is not, retain only Z, because the 
+#' spike indicator improves the model while the functional form does not 
+#' contribute additional information.
+#' - If Test 2  is significant but Test 1 is not, retain only FP2, because the 
+#' functional form improves the model while the spike indicator does not add 
+#' further explanatory value.
+#' - If neither test is significant, compare the deviances of the Z-only and 
+#'   FP2-only models. The final model is the one with the smaller deviance, 
+#'   since it provides the better fit to the data without unnecessary terms.
 #' 
 #' If Z is removed, the spike at zero plays no specific role, and a usual FP 
 #' function is selected for the positive values of x. Conversely, if the FP 
@@ -213,7 +222,7 @@
 #' in Stage 1 may have influenced the choice of FP powers, so the final powers 
 #' may differ from those obtained in a standard FP analysis.
 #' 
-#' @section Handling Extreme Proportions of Zeros in Spike-at-zero (SAZ) Modeling:
+#' @section Handling extreme proportions of zeros in spike-at-zero (SAZ) modeling:
 #' The SAZ approach is only applicable if the proportion of zeros is neither too small 
 #' nor too large, typically between 5% and 95%. Variables with fewer than 5% zeros may 
 #' not provide enough information to justify a separate binary term, and this threshold 
@@ -763,7 +772,7 @@ mfp2.default <- function(x,
       }
   }
   
-  # assert acdx is a subset of x
+  # assert spike is a subset of x
   if (!is.null(spike)) {
     if (!all(spike %in% vnames)) {
       warning("i The set of variables named in spike is not a subset of the variables in x.\n", 
@@ -969,9 +978,6 @@ mfp2.default <- function(x,
     catzero[vnames %in% catzero_vars] <- TRUE
   }
   
-  # Ensure that any variable marked as 'catzero' is also set to 'zero'
-  zero[catzero] <- TRUE
-  
   # Only check variables where zero is TRUE
   if (any(zero)) {
     vars_to_check <- vnames[zero]
@@ -1020,9 +1026,11 @@ mfp2.default <- function(x,
                     which(vnames %in% spike), rep(TRUE, length(spike)))
   }
   
-  # TODO: Set spike = FALSE if all values do not contain zeros 
   # Ensure that all spike variables also have catzero = TRUE
   catzero[spike] <- TRUE
+  
+  # Ensure that any variable marked as 'catzero' is also set to 'zero'
+  zero[catzero] <- TRUE
   
   # set df ---------------------------------------------------------------------
   if (length(df) == 1) {
@@ -1373,12 +1381,15 @@ mfp2.formula <- function(formula,
     shift_list <- setNames(rep(list(shift), nx), names_x)
   }
   
-  # center, alpha, select and acd
+  # center, alpha, select, acd, zero, catzero
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list <- setNames(rep(list(alpha), nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
-  acdx_list <- setNames(rep(list(FALSE), nx), names_x)
-  
+  # acdx_list <- setNames(rep(list(FALSE), nx), names_x)
+  # zero_list <- setNames(rep(list(FALSE), nx), names_x)
+  # catzero_list <- setNames(rep(list(FALSE), nx), names_x)
+  # spike_list <- setNames(rep(list(FALSE), nx), names_x)
+  # 
   
   # default FP powers proposed by Royston and Altman (1994)
   powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -1406,8 +1417,10 @@ mfp2.formula <- function(formula,
   }
   
   # if fp() is used in the formula
+  acdx <- NULL
   zero <- NULL
   catzero <- NULL
+  spike <- NULL
   if (length(fp_pos) != 0) {
     # modify the default parameters based on the user inputs
     df_list <- modifyList(df_list, 
@@ -1424,10 +1437,7 @@ mfp2.formula <- function(formula,
                              setNames(lapply(fp_data, attr, "alpha"), fp_vars))
     select_list <- modifyList(select_list, 
                               setNames(lapply(fp_data, attr, "select"), fp_vars))
-    acdx_list <- modifyList(acdx_list, 
-                            setNames(lapply(fp_data, attr, "acd"), fp_vars))
-    
-    # We give preference to powers supplied in the fp() function over the power argument.
+      # We give preference to powers supplied in the fp() function over the power argument.
     powerx <- Filter(Negate(is.null),setNames(lapply(fp_data, attr, "powers"), fp_vars))
     
     nax <- intersect(names(powerx), names(powers))
@@ -1438,11 +1448,19 @@ mfp2.formula <- function(formula,
     
     power_list <- modifyList(power_list, powerx)
     
-    # zero and catzero variables
+    # zero and catzero variables: check this
+    acdx <- setNames(sapply(fp_data, attr, "acd"), fp_vars)
     zero <- setNames(sapply(fp_data, attr, "zero"), fp_vars)
     catzero <- setNames(sapply(fp_data, attr, "catzero"), fp_vars)
+    spike <- setNames(sapply(fp_data, attr, "spike"), fp_vars)
     
-    # mfp2.default() requires zero and catzero to be variable names or NULL 
+    # mfp2.default() requires acdx, zero, catzero and spike to be variable names or NULL 
+    if (sum(acdx) == 0) {
+      acdx <- NULL
+    } else {
+      acdx <- names(acdx[acdx])
+    }
+    
     if (sum(zero) == 0) {
       zero <- NULL
     } else {
@@ -1455,15 +1473,21 @@ mfp2.formula <- function(formula,
       catzero <- names(catzero[catzero])
     }
     
+    if (sum(spike) == 0) {
+      spike <- NULL
+    } else {
+      spike <- names(spike[spike])
+    }
+    
   }
   
-  # acd requires variable names or NULL 
-  acdx_vector <- unlist(acdx_list)
-  if (sum(acdx_vector) == 0) {
-    acdx_vector <- NULL
-  } else {
-    acdx_vector <- names(acdx_vector[acdx_vector])
-  }
+  # # acd requires variable names or NULL 
+  # acdx_vector <- unlist(acdx_list)
+  # if (sum(acdx_vector) == 0) {
+  #   acdx_vector <- NULL
+  # } else {
+  #   acdx_vector <- names(acdx_vector[acdx_vector])
+  # }
   
   mfp2.default(x = x, 
                y = y, 
@@ -1485,11 +1509,12 @@ mfp2.formula <- function(formula,
                ties = ties,
                strata = strata,
                nocenter = nocenter,
-               acdx = acdx_vector,
+               acdx = acdx,
                ftest = ftest,
                control = control,
                zero = zero,
                catzero = catzero,
+               spike = spike,
                verbose = verbose
   )
 }
@@ -1580,7 +1605,8 @@ print.mfp2 <- function(x,
 #' 
 #' @param x a vector representing a continuous variable undergoing 
 #' fp-transformation.
-#' @param df,alpha,select,shift,scale,center,acdx,zero,catzero See [mfp2::mfp2()]) for details. 
+#' @param df,alpha,select,shift,scale,center,acdx,zero,catzero,spike See 
+#' [mfp2::mfp2()]) for details. 
 #' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
 #' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
 #' @param ... used in alias `fp2` to pass arguments.
@@ -1605,7 +1631,8 @@ fp <- function(x,
                acdx = FALSE, 
                powers = NULL,
                zero = FALSE,
-               catzero = FALSE) {
+               catzero = FALSE,
+               spike = FALSE) {
   
   name <- deparse(substitute(x))
   
@@ -1623,6 +1650,7 @@ fp <- function(x,
   attr(x, "powers") <- powers
   attr(x, "zero") <- zero
   attr(x, "catzero") <- catzero
+  attr(x, "spike") <- spike
   attr(x, "name") <- name
   
   x

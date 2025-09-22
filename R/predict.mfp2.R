@@ -230,8 +230,7 @@ predict.mfp2 <- function(object,
         )
         colnames(x_seq) <- t
         
-        # no need to apply pretransformation (shift), already done 
-        # in x_original
+        # no need to apply pretransformation (shift), already done
         x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
                                                          x_seq, 
                                                          apply_pre = FALSE))
@@ -398,7 +397,8 @@ prepare_newdata_for_predict <- function(object,
                                         offset = NULL, 
                                         apply_pre = TRUE, 
                                         apply_center = TRUE,
-                                        check_binary = TRUE) {
+                                        check_binary = TRUE
+                                        ) {
   newdata <- as.matrix(newdata)
   
   # subset as appropriate
@@ -431,12 +431,18 @@ prepare_newdata_for_predict <- function(object,
     keep_x_order = TRUE,
     acdx = setNames(object$fp_terms[vnames, "acd"], vnames),
     acd_parameter_list = object$acd_parameter[vnames],
-    check_binary = check_binary
+    check_binary = check_binary,
+    zero = object$zero[vnames],
+    catzero = object$catzero[vnames],
+    spike_decision = object$spike_decision[vnames]
   )$x_transformed
   
   # step 3: center the transformed data
   if (apply_center && !is.null(object$centers)) {
-    newdata <- center_matrix(newdata, object$centers[colnames(newdata)])
+    newdata <- center_matrix(newdata, 
+              centers = object$centers[colnames(newdata)],
+              zero = NULL # provided centers takes zero into account
+              ) 
   }
   
   newdata <- data.frame(newdata)

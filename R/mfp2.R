@@ -532,6 +532,15 @@
 #' \item x: the final transformed input matrix used to fit the final model.
 #' \item call_mfp: the call to the `mfp2()` function.
 #' \item family_string: the family stored as character string.
+#' \item zero: named logical vector indicating, for each variable, whether only
+#'  positive values were transformed.  
+#' \item catzero: named logical vector indicating which columns in `x` treated 
+#' nonpositive values as zero and included an additional binary indicator in 
+#' the model.  
+#' \item spike_decision: named numeric vector with values 1, 2, or 3 specifying 
+#' spike-at-zero handling for each variable. Value 1 includes both the 
+#' transformed variable and a binary indicator, 2 disables the spike and binary 
+#' indicator, and 3 retains only the binary indicator. 
 #' }
 #' The `mfp2` object may contain further information depending on family.
 #' 

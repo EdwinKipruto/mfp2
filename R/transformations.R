@@ -671,6 +671,21 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
     zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
   }
   
+  # Validate centers (if provided)
+  if (!is.null(centers)) {
+    if (!is.numeric(centers)) {
+      stop("! 'centers' must be numeric.")
+    }
+    if (is.null(names(centers))) {
+      stop("! 'centers' must have names.")
+    }
+    if (!setequal(names(centers), colnames(mat))) {
+      stop("! 'centers' names must match column names of 'mat'.")
+    }
+    centers <- centers[colnames(mat)]  # reorder to match mat
+  }
+  
+  # Compute centers if not provided
   if (is.null(centers)) {
     centers <- numeric(ncol(mat))
     
@@ -688,6 +703,8 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
         centers[j] <- mean(x, na.rm = TRUE)
       }
     }
+    
+    centers <- setNames(centers, colnames(mat))
   }
   
   mat_centered <- scale(mat, center = centers, scale = FALSE)

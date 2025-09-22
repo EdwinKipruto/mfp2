@@ -405,7 +405,9 @@ fit_mfp <- function(x,
                                    center = center),
       fp_powers = powers_current,
       acd = acdx,
-      zero = zero
+      zero = zero,
+      catzero = catzero,
+      spike_decision = spike_decision
     )
   )
 

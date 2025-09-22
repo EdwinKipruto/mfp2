@@ -533,7 +533,8 @@ transform_matrix <- function(x,
       if (all(is.na(power_list[[v]]))) {
         return(NULL)  # skip
       } else {
-        as.integer(x[, v] > 0)
+        #as.integer(x[, v] > 0)
+        as.integer(x[, v] == 0)  # 1 if zero, 0 if positive
       }
     })
     

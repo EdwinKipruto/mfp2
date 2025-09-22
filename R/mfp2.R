@@ -285,12 +285,18 @@
 #' apply FP transformations only to the positive values.
 #'
 #' The \code{catzero} argument extends this idea by automatically creating a 
-#' binary indicator for whether the covariate is positive. This indicator is 
-#' included in the model alongside the transformed version of the covariate. 
-#' Both are treated as a single predictor during model selection (if applicable).
-#' This approach captures the potential difference between having a value of 
-#' zero and having any positive value, while still allowing flexible modeling of
-#' the positive range.
+#' binary indicator for whether the covariate is positive. Specifically, for 
+#' each covariate where \code{catzero = TRUE}, a binary variable \code{Z} is 
+#' created such that:
+#'  
+#' \code{Z = 1} if the covariate value is zero (x = 0)  
+#' \code{Z = 0} if the covariate value is positive (x > 0)
+#' 
+#' This indicator is  included in the model alongside the transformed version 
+#' of the covariate. Both are treated as a single predictor during model 
+#' selection (if applicable). This approach captures the potential difference 
+#' between having a value of zero and having any positive value, while still 
+#' allowing flexible modeling of the positive range.
 #' 
 #' The \code{spike} argument triggers the spike-at-zero (SAZ) algorithm. When 
 #' \code{spike = TRUE}, the binary indicator created by \code{catzero} is 

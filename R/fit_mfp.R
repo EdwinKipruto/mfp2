@@ -257,10 +257,12 @@ fit_mfp <- function(x,
 
   }
   
-  # Create binary variables for catzero variables and assign names
+  # Create binary variables Z for catzero variables and assign names
+  # Z = 1 if the covariate value is zero (x = 0)  
+  # Z = 0 if the covariate value is positive (x > 0)
   catzero_list <- lapply(names(catzero), function(v) {
     if (catzero[[v]]) {
-      as.integer(x[, v] > 0)
+      as.integer(x[, v] == 0)
     } else {
       NULL
     }

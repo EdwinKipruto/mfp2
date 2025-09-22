@@ -279,6 +279,8 @@ transform_vector_acd <- function(x,
 #' spike-at-zero processing is applied. Value 1 includes both the transformed 
 #' variable and binary indicator, 2 disables the spike/binary indicator, and 3 
 #' keeps only the binary indicator.
+#' @param reset_zero Logical. If `TRUE` (default), variables incorrectly flagged 
+#' as `zero = TRUE` but containing only positive values are reset to `FALSE`.
 #' @details 
 #' For details on the transformations see [transform_vector_fp()] and
 #' [transform_vector_acd()].
@@ -291,6 +293,18 @@ transform_vector_acd <- function(x,
 #' for variables with value 3, only the binary indicator of SAZ is retained and
 #' any FP/linear transformations are removed. This ensures correct handling 
 #' of variables with SAZ.
+#' 
+#' **Centering:**  
+#' * For continuous variables, the mean of the transformed values is subtracted.  
+#' * For binary variables, centering uses the minimum (typically 0).  
+#' * If `zero = TRUE`, the mean is computed only over the positive transformed values, 
+#'   while the original zero entries are left at zero. This preserves the spike-at-zero
+#'   alignment on the original scale.  
+#' * Columns corresponding to `catzero` binary indicators are left as 0/1 in the
+#'   returned matrix; their centering value is `0` in the current implementation,
+#'   so the centering step does not change those columns. If you prefer mean-centering
+#'   of the binary indicators (subtracting their sample proportion), supply explicit
+#'   `centers` or post-process the returned matrix.
 #'
 #' @section Column names:
 #' Transformed variable names are based on the original names. FP terms are 
@@ -307,18 +321,23 @@ transform_vector_acd <- function(x,
 #' transform_matrix(x, powx, center, acdx)
 #' 
 #' @return 
-#' If all elements of `power_list` are `NA`, this function returns `NULL`.
-#' Otherwise, it returns a list with four entries. The entry `x_transformed` 
-#' is a matrix of transformed variables as specified in `power_list`, possibly 
-#' centered. The number of columns may differ from the input matrix due to 
+#' If all elements of `power_list` are `NA`, returns `NULL`. Otherwise, 
+#' returns with the following components:
+#' * `x_transformed`: matrix of transformed (and optionally centered) variables.
+#' The number of columns may differ from the input matrix due to 
 #' higher-order FP transformations. Binary variables are also added if 
-#' `catzero` is not `NULL`. The entry `centers` contains the values used to 
-#' center variables if `center = TRUE` (typically all variables are centered, 
-#' or none of them). The entry `acd_parameter` is a named list of estimated ACD 
-#' parameters, which may be empty if no ACD transformation is applied. The 
-#' entry `x_trafo` is a named list of transformed `x` without centering or
-#' `catzero` variables and ;  this last component is 
-#' important for the spike-at-zero algorithm.
+#' `catzero` is not `NULL`. 
+#' * `centers`: values used for centering, if `center = TRUE` (typically all 
+#' variables are centered, or none of them). 
+#' * `acd_parameter`: a named list of estimated ACD parameters, which may be 
+#' empty if no ACD transformation is applied. 
+#' * `x_trafo`: list of transformed variables before centering and adding 
+#' binary variables when `catzero = TRUE`. This is important for the 
+#' spike-at-zero algorithm.
+#' * `zero_expanded`: logical vector indicating, for each transformed column, 
+#'   whether zero-specific centering was applied (this may be `TRUE` even when 
+#'   no spike-at-zero processing is used). This is important for centering 
+#' transformed variables via `center_matrix`.
 #'   
 #' @export
 transform_matrix <- function(x,
@@ -330,7 +349,8 @@ transform_matrix <- function(x,
                              check_binary = TRUE,
                              zero = NULL,
                              catzero = NULL,
-                             spike_decision = NULL) {
+                             spike_decision = NULL,
+                             reset_zero = TRUE) {
   #-------------------------
   # Input checks
   #-------------------------
@@ -444,6 +464,7 @@ transform_matrix <- function(x,
   #-------------------------
   # Check zero variables
   #-------------------------
+  if (reset_zero) {
   if (any(zero)) {
     vars_to_check <- names(zero)[zero]
     bad_vars <- vars_to_check[
@@ -456,6 +477,7 @@ transform_matrix <- function(x,
       zero[bad_vars] <- FALSE
       catzero[bad_vars] <- FALSE
     }
+  }
   }
   
   #----------------------
@@ -555,8 +577,8 @@ transform_matrix <- function(x,
   #----------------------
   # Centering
   #----------------------
-  centers <- NULL
-  if (any(center)) {
+  centers <- NULL 
+
     # Initialize expanded zero with FALSE for every transformed column
     zero_expanded <- setNames(rep(FALSE, ncol(x_transformed)), colnames(x_transformed))
     
@@ -581,6 +603,8 @@ transform_matrix <- function(x,
     bin_cols <- grep("_bin$", colnames(x_transformed), value = TRUE)
     if (length(bin_cols) > 0) zero_expanded[bin_cols] <- FALSE
     
+    # Apply centering
+    if (any(center)) {
     x_transformed <- center_matrix(mat = x_transformed, centers = NULL, zero = zero_expanded) # check centering of zero variables, do we need the positive part?
     centers <- attr(x_transformed, "scaled:center")
   }
@@ -589,7 +613,8 @@ transform_matrix <- function(x,
     x_transformed = x_transformed,
     centers = centers,
     acd_parameter = acd_parameter,
-    x_trafo = x_trafo
+    x_trafo = x_trafo,
+    zero_expanded = zero_expanded
   )
 }
 
@@ -707,7 +732,15 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
     centers <- setNames(centers, colnames(mat))
   }
   
+  # Apply centering
   mat_centered <- scale(mat, center = centers, scale = FALSE)
+  
+  # Reset zero values for variables flagged with zero=TRUE
+  for (j in seq_len(ncol(mat))) {
+    if (zero[j]) {
+      mat_centered[mat[, j] == 0, j] <- 0
+    }
+  }
   attr(mat_centered, "scaled:center") <- centers
   mat_centered
 }

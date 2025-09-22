@@ -115,13 +115,24 @@ for each variable included in the final model. Unlike \code{predict.glm()} and
 may be represented by multiple transformed terms.
 
 For a variable modeled using a first-degree fractional polynomial (FP1),
-the partial predictor is given by \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, where
-\eqn{x_j^*} is the transformed variable (centered if \code{center = TRUE}).
+the partial predictor is given by
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j},
+where \eqn{x_j^*} is the transformed variable (centered if \code{center = TRUE}).
+
+If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
+partial predictor becomes
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
+where \eqn{z_j^*} is the binary indicator for nonpositive values and
+\eqn{\hat{\beta}_{z_j}} is its corresponding coefficient.
 
 For a second-degree fractional polynomial (FP2), the partial predictor
-takes the form \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}},
+takes the form
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}},
 where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components
-of the original variable (again, centered if \code{center = TRUE}).
+of the original variable (centered if \code{center = TRUE}).
+
+If \code{catzero = TRUE}, the FP2 partial predictor extends to
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
 
 This functionality is particularly useful for visualizing the functional
 relationship of a continuous variable, or for assessing model fit when
@@ -130,46 +141,54 @@ residuals are included. See also \code{fracplot()}.
 
 \section{Contrasts}{
 
+
+
 If \code{type = "contrasts"}, this function computes contrasts relative to a
 specified reference value for the \eqn{j}th variable (e.g., age = 50). Let
 \eqn{x_j} denote the values of the \eqn{j}th variable in \code{newdata}, and
-\eqn{x_j^{\text{ref}}} the reference value. The contrast is defined as the
+\eqn{x_j^{\mathrm{ref}}} the reference value. The contrast is defined as the
 difference between the partial linear predictor evaluated at the transformed
 (and centered, if \code{center = TRUE}) value \eqn{x_j}, and that evaluated at the
-transformed reference value \eqn{x_j^{(\text{ref}})},
-i.e., \eqn{f(x_j^*) - f(x_j^{*(\text{ref})})}.
+transformed reference value \eqn{x_j^{*(\mathrm{ref})}}, i.e.,
+\eqn{f(x_j^*) - f(x_j^{*(\mathrm{ref})})}.
 
-For a first-degree fractional polynomial (FP1), the partial predictor is:
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}
-and the contrast is:
-\deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_j^* \hat{\beta}_j - x_j^{*(\text{ref})} \hat{\beta}_j}
+For a first-degree fractional polynomial (FP1), the partial predictor is
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
+If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
+partial predictor becomes
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
+where \eqn{z_j^*} is the binary indicator for nonpositive values.
+The contrast is then computed as the difference between the partial predictor
+evaluated at \eqn{x_j^*} (and \eqn{z_j^*} if \code{catzero = TRUE}) and the
+partial predictor evaluated at the reference value \eqn{x_j^{*(\mathrm{ref})}}
+(and \eqn{z_j^{*(\mathrm{ref})}} if \code{catzero = TRUE}).
 
-For a second-degree fractional polynomial (FP2), the partial predictor is:
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}
-and the contrast is:
-\deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} - x_{j1}^{*(\text{ref})} \hat{\beta}_{j1} - x_{j2}^{*(\text{ref})} \hat{\beta}_{j2}}
+For a second-degree fractional polynomial (FP2), the partial predictor is
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}.
+If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
+partial predictor becomes
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
+The contrast is then computed in the same conditional manner as for FP1.
 
-where \eqn{x_j^*}, \eqn{x_{j1}^*}, and \eqn{x_{j2}^*} are the transformed
-(and centered, if applicable) components of the \eqn{j}th variable, and
-the \eqn{\hat{\beta}} terms are the corresponding model estimates
+Here, \eqn{x_j^*}, \eqn{x_{j1}^*}, \eqn{x_{j2}^*}, and \eqn{z_j^*} are the
+transformed (and centered if applicable) components, and the \eqn{\hat{\beta}}
+terms are the corresponding model coefficients.
 
-The reference value \eqn{x_j^{(\text{ref})}} is first \strong{shifted} using the
-same shifting factor estimated from the training data, then transformed using
-the estimated fractional polynomial (FP) powers, and finally \strong{centered}
-(if \code{center = TRUE}) using the \strong{mean of the transformed (and shifted) values
-of \eqn{x_j} in the training data}—ensuring full consistency with the fitted model.
+Reference values \eqn{x_j^{*(\mathrm{ref})}} (and \eqn{z_j^{*(\mathrm{ref})}} if \code{catzero = TRUE})
+are shifted, transformed, and centered using the training data, ensuring full
+consistency with the fitted model.
 
-If \code{ref = NULL}, the function uses the \strong{mean of the shifted \eqn{x_j}} as the
-reference value when \eqn{x_j} is continuous, or the \strong{minimum of \eqn{x_j}}
-(typically 0) when \eqn{x_j} is binary. This provides a natural and interpretable
-baseline in the absence of a user-specified reference.
+If \code{ref = NULL}, the function uses the mean of the shifted \eqn{x_j} for continuous
+variables and the minimum (typically 0) for binary variables. For \code{catzero} variables,
+the reference binary indicator \eqn{z_j^{*(\mathrm{ref})}} is determined by whether
+the value is positive or zero.
 
-The fitted partial predictors are centered at the reference point,
-meaning the contrast at that point is zero. Correspondingly, confidence intervals
-at the reference value have zero width, reflecting no contrast.
+The fitted partial predictors are centered at the reference point, meaning the
+contrast at that point is zero. Confidence intervals at the reference value have
+zero width.
 
-This functionality is especially useful for comparing the effect of a variable
-relative to a meaningful baseline, such as clinically relevant value.
+This approach allows direct comparison of a variable's effect relative to a
+meaningful baseline, including the spike-at-zero effect only when it is present.
 }
 
 \examples{

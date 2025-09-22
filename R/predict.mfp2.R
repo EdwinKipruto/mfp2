@@ -1,4 +1,3 @@
-# TODO: INCLUDE CATZERO VARIABLES IN PREDICT 27.05.2025
 #' Predict Method for `mfp2`
 #' 
 #' Obtains predictions from an `mfp2` object.
@@ -26,59 +25,77 @@
 #' may be represented by multiple transformed terms.
 #'
 #' For a variable modeled using a first-degree fractional polynomial (FP1), 
-#' the partial predictor is given by \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, where 
-#' \eqn{x_j^*} is the transformed variable (centered if `center = TRUE`).
+#' the partial predictor is given by 
+#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, 
+#' where \eqn{x_j^*} is the transformed variable (centered if `center = TRUE`). 
+#' 
+#' If a spike-at-zero binary indicator is included (`catzero = TRUE`), the 
+#' partial predictor becomes 
+#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}}, 
+#' where \eqn{z_j^*} is the binary indicator for nonpositive values and 
+#' \eqn{\hat{\beta}_{z_j}} is its corresponding coefficient.
 #'
 #' For a second-degree fractional polynomial (FP2), the partial predictor 
-#' takes the form \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}, 
+#' takes the form 
+#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}, 
 #' where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components 
-#' of the original variable (again, centered if `center = TRUE`).
+#' of the original variable (centered if `center = TRUE`).  
+#' 
+#' If `catzero = TRUE`, the FP2 partial predictor extends to 
+#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
 #'
 #' This functionality is particularly useful for visualizing the functional
 #' relationship of a continuous variable, or for assessing model fit when
 #' residuals are included. See also `fracplot()`.
 #' 
 #' @section Contrasts:
+#' @section Contrasts:
 #' If `type = "contrasts"`, this function computes contrasts relative to a 
 #' specified reference value for the \eqn{j}th variable (e.g., age = 50). Let 
 #' \eqn{x_j} denote the values of the \eqn{j}th variable in `newdata`, and 
-#' \eqn{x_j^{\text{ref}}} the reference value. The contrast is defined as the 
+#' \eqn{x_j^{\mathrm{ref}}} the reference value. The contrast is defined as the 
 #' difference between the partial linear predictor evaluated at the transformed 
 #' (and centered, if `center = TRUE`) value \eqn{x_j}, and that evaluated at the
-#' transformed reference value \eqn{x_j^{(\text{ref}})}, 
-#' i.e., \eqn{f(x_j^*) - f(x_j^{*(\text{ref})})}.
+#' transformed reference value \eqn{x_j^{*(\mathrm{ref})}}, i.e., 
+#' \eqn{f(x_j^*) - f(x_j^{*(\mathrm{ref})})}.
 #'
-#' For a first-degree fractional polynomial (FP1), the partial predictor is:
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}
-#' and the contrast is:
-#' \deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_j^* \hat{\beta}_j - x_j^{*(\text{ref})} \hat{\beta}_j}
+#' For a first-degree fractional polynomial (FP1), the partial predictor is
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
+#' If a spike-at-zero binary indicator is included (`catzero = TRUE`), the 
+#' partial predictor becomes
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
+#' where \eqn{z_j^*} is the binary indicator for nonpositive values.
+#' The contrast is then computed as the difference between the partial predictor 
+#' evaluated at \eqn{x_j^*} (and \eqn{z_j^*} if `catzero = TRUE`) and the 
+#' partial predictor evaluated at the reference value \eqn{x_j^{*(\mathrm{ref})}} 
+#' (and \eqn{z_j^{*(\mathrm{ref})}} if `catzero = TRUE`).
 #'
-#' For a second-degree fractional polynomial (FP2), the partial predictor is:
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}
-#' and the contrast is:
-#' \deqn{\hat{f}(x_j^*) - \hat{f}(x_j^{*(\text{ref})}) = x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} - x_{j1}^{*(\text{ref})} \hat{\beta}_{j1} - x_{j2}^{*(\text{ref})} \hat{\beta}_{j2}}
+#' For a second-degree fractional polynomial (FP2), the partial predictor is
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}.
+#' If a spike-at-zero binary indicator is included (`catzero = TRUE`), the 
+#' partial predictor becomes
+#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
+#' The contrast is then computed in the same conditional manner as for FP1.
 #'
-#' where \eqn{x_j^*}, \eqn{x_{j1}^*}, and \eqn{x_{j2}^*} are the transformed 
-#' (and centered, if applicable) components of the \eqn{j}th variable, and 
-#' the \eqn{\hat{\beta}} terms are the corresponding model estimates
+#' Here, \eqn{x_j^*}, \eqn{x_{j1}^*}, \eqn{x_{j2}^*}, and \eqn{z_j^*} are the 
+#' transformed (and centered if applicable) components, and the \eqn{\hat{\beta}} 
+#' terms are the corresponding model coefficients.
 #'
-#' The reference value \eqn{x_j^{(\text{ref})}} is first **shifted** using the 
-#' same shifting factor estimated from the training data, then transformed using 
-#' the estimated fractional polynomial (FP) powers, and finally **centered** 
-#' (if `center = TRUE`) using the **mean of the transformed (and shifted) values 
-#' of \eqn{x_j} in the training data**—ensuring full consistency with the fitted model.
+#' Reference values \eqn{x_j^{*(\mathrm{ref})}} (and \eqn{z_j^{*(\mathrm{ref})}} if `catzero = TRUE`) 
+#' are shifted, transformed, and centered using the training data, ensuring full 
+#' consistency with the fitted model.
 #'
-#' If `ref = NULL`, the function uses the **mean of the shifted \eqn{x_j}** as the 
-#' reference value when \eqn{x_j} is continuous, or the **minimum of \eqn{x_j}** 
-#' (typically 0) when \eqn{x_j} is binary. This provides a natural and interpretable 
-#' baseline in the absence of a user-specified reference.
+#' If `ref = NULL`, the function uses the mean of the shifted \eqn{x_j} for continuous 
+#' variables and the minimum (typically 0) for binary variables. For `catzero` variables, 
+#' the reference binary indicator \eqn{z_j^{*(\mathrm{ref})}} is determined by whether 
+#' the value is positive or zero.
 #'
-#' The fitted partial predictors are centered at the reference point, 
-#' meaning the contrast at that point is zero. Correspondingly, confidence intervals 
-#' at the reference value have zero width, reflecting no contrast.
+#' The fitted partial predictors are centered at the reference point, meaning the 
+#' contrast at that point is zero. Confidence intervals at the reference value have 
+#' zero width.
 #'
-#' This functionality is especially useful for comparing the effect of a variable 
-#' relative to a meaningful baseline, such as clinically relevant value.
+#' This approach allows direct comparison of a variable's effect relative to a 
+#' meaningful baseline, including the spike-at-zero effect only when it is present.
 #' 
 #' @param object a fitted object of class `mfp2`.
 #' @param newdata optionally, a matrix with column names in which to look for 
@@ -152,7 +169,7 @@
 #' [mfp2()], [stats::predict.glm()], [survival::predict.coxph()]
 #' 
 #' @method predict mfp2
-#' @export 
+#' @export
 predict.mfp2 <- function(object, 
                          newdata = NULL, 
                          type = NULL,
@@ -166,6 +183,14 @@ predict.mfp2 <- function(object,
                          ...) {
  
   terms_seq <- match.arg(terms_seq)
+  
+  if (!is.numeric(alpha) || alpha <= 0 || alpha >= 1) {
+    stop("'alpha' must be between 0 and 1.", call. = FALSE)
+  }
+  
+  if (!is.numeric(nseq) || nseq <= 0) {
+    stop("'nseq' must be a positive integer.", call. = FALSE)
+  }
   
   # assert that the object must be mfp2
   if (!inherits(object, "mfp2")) { 
@@ -188,6 +213,12 @@ predict.mfp2 <- function(object,
   # checks for newdata
   if (!is.null(newdata) && is.null(colnames(newdata))) {
     stop("Newdata must have column names", call. = FALSE)
+  }
+  
+  if (!is.null(newdata) && anyNA(newdata)) {
+      stop("! newdata must not contain any NA (missing data).\n", 
+           "i Please remove any missing data before passing newdata to this function.",
+           call. = FALSE)
   }
   
   # TODO: add checks for missing strata and offset in case they were used in fit
@@ -231,24 +262,27 @@ predict.mfp2 <- function(object,
         colnames(x_seq) <- t
         
         # no need to apply pretransformation (shift), already done
-        x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
-                                                         x_seq, 
-                                                         apply_pre = FALSE))
+        x_trafo <- prepare_newdata_for_predict(object, 
+                                    x_seq, 
+                                    apply_pre = FALSE)
+        x_trafo <- as.matrix(x_trafo)
       } else {
-        # use data
+        # no equidistant
         if (!is.null(newdata)) {
           x_seq <- newdata[, t, drop = FALSE] + object$transformations[t,"shift"]
         } else {
           x_seq <- object$x_original[, t, drop = FALSE] # already shifted
         }
-        x_names <- object$fp_powers[[t]]
+        
+        #x_names <- object$fp_powers[[t]]
         # in acd we might have a power and NA so we need to remove NA
         #x_trafo <- object$x[, names(x_names[!is.na(x_names)]), drop = FALSE]
         x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
                                                          x_seq, 
                                                          apply_pre = FALSE))
       }
-      # 
+      # using colnames(x_trafo) addresses issues of FPm and catzero because
+      #  prepare_newdata_for_predict() returns the final correct names
       term_coef <- coef(object)[colnames(x_trafo)]
       
       # create output data.frame
@@ -263,7 +297,6 @@ predict.mfp2 <- function(object,
         intercept <- 0
       }
       
-      # 
       res <- data.frame(
         # backtransform variable to original scale
         variable = (as.numeric(x_seq)) - object$transformations[t,"shift"],
@@ -287,7 +320,7 @@ predict.mfp2 <- function(object,
           }
           x_ref <- ifelse(length(unique(na.omit(v))) == 2,
                           min(v, na.rm = TRUE),
-                          mean(v, na.rm = TRUE))
+                          mean(v, na.rm = TRUE)) # What of zero argument? Do we need to adjust?
           
         } else {
           # pretransform given reference level
@@ -299,7 +332,8 @@ predict.mfp2 <- function(object,
         
         # transform x_ref using estimated FP powers
         x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
-          object, x_ref, apply_pre = FALSE, check_binary = FALSE))
+          object, x_ref, apply_pre = FALSE, check_binary = FALSE,
+          reset_zero = FALSE))
         
         # compute contrasts, no intercepts necessary
         res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
@@ -317,17 +351,12 @@ predict.mfp2 <- function(object,
     return(res_list)
   } 
   
-  # predicted values
+  # usual predicted values
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
-    # assert that x has no missing data
-    if (anyNA(newdata)) {
-      stop("! newdata must not contain any NA (missing data).\n", 
-                       "i Please remove any missing data before passing newdata to this function.",
-                       call. = FALSE)
-    }
     
-    newdata <- prepare_newdata_for_predict(object, newdata, check_binary = FALSE)
+    newdata <- prepare_newdata_for_predict(object, newdata, strata = strata,
+                check_binary = FALSE)
     betas <- object$coefficients
   
     # check whether offset was used in the model
@@ -355,15 +384,10 @@ predict.mfp2 <- function(object,
       nfit <- nfit + newoffset
     }
     
-    if (object$family_string == "gaussian")
-      return(nfit)
+    # return predictions based on family and type
+    pred <- transform_linear_predictor(nfit, object$family_string, type)
+    return(pred)
     
-    # response = risk score in coxph
-    return(switch(type,
-                   response = exp(nfit),
-                   risk = exp(nfit),
-                   nfit
-    ))
   }
   
   # no newdata supplied
@@ -375,6 +399,29 @@ predict.mfp2 <- function(object,
     stats::predict.glm(object = object, type = type, ...)
   }
 }
+
+#' Transform linear predictor to response/risk
+#' 
+#' Internal helper to convert linear predictors to the appropriate scale
+#' depending on the model family and `type`.
+#' 
+#' @param nfit Numeric vector of linear predictors.
+#' @param family Character string specifying model family: "gaussian", "binomial", "poisson", "cox", etc.
+#' @param type Type of prediction; e.g., "response", "risk", or NULL.
+#' 
+#' @return Numeric vector of predictions on the scale requested.
+#' 
+#' @keywords internal
+transform_linear_predictor  <- function(nfit, family, type = NULL) {
+  switch(family,
+         gaussian = nfit,
+         binomial = if (!is.null(type) && type == "response") 1 / (1 + exp(-nfit)) else nfit,
+         poisson = if (!is.null(type) && type == "response") exp(nfit) else nfit,
+         cox = if (!is.null(type) && type %in% c("response", "risk")) exp(nfit) else nfit,
+         nfit # default fallback for other families
+  )
+}
+
 
 #' Helper function to prepare newdata for predict function
 #' 
@@ -397,7 +444,8 @@ prepare_newdata_for_predict <- function(object,
                                         offset = NULL, 
                                         apply_pre = TRUE, 
                                         apply_center = TRUE,
-                                        check_binary = TRUE
+                                        check_binary = TRUE,
+                                        reset_zero = TRUE
                                         ) {
   newdata <- as.matrix(newdata)
   
@@ -413,18 +461,26 @@ prepare_newdata_for_predict <- function(object,
     newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
     
   # exclude binary variables before returning an error
-  index <-  unname(which(apply(newdata, 2, function(x) length(unique(x))) > 2))
+    continuous_cols <-  colnames(newdata)[apply(newdata, 2, function(x) length(unique(x)) > 2)]
+    # exclude spike-at-zero columns
+    nonzero_cols <- setdiff(continuous_cols, names(which(object$zero)))
     
-    if (!all(newdata[,index] > 0)) 
-      warning("i After shifting using training data some values in newdata remain negative.",
-              "i Predictions for such observations may not be available in case of non-linear transformations.")
+    # check positivity only if there are columns to check
+    if (length(nonzero_cols) > 0) {
+      if (!all(newdata[, nonzero_cols, drop = FALSE] > 0)) {
+        warning(
+          "i After shifting using training data some values in newdata remain negative.",
+          "i Predictions for such observations may not be available in case of non-linear transformations."
+        )
+      }
+    } 
     # already the coefficients are in original scale after shifting
     #newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
   }
   
   # step 2: transform the shifted data
   # do not center in this step
-  newdata <- transform_matrix(
+  x_trans <- transform_matrix(
     newdata,
     power_list = object$fp_powers[vnames], 
     center = setNames(rep(FALSE, length(vnames)), vnames),
@@ -434,14 +490,16 @@ prepare_newdata_for_predict <- function(object,
     check_binary = check_binary,
     zero = object$zero[vnames],
     catzero = object$catzero[vnames],
-    spike_decision = object$spike_decision[vnames]
-  )$x_transformed
+    spike_decision = object$spike_decision[vnames],
+    reset_zero = reset_zero
+  )
   
+  newdata <- x_trans$x_transformed
   # step 3: center the transformed data
   if (apply_center && !is.null(object$centers)) {
     newdata <- center_matrix(newdata, 
               centers = object$centers[colnames(newdata)],
-              zero = NULL # provided centers takes zero into account
+              zero = x_trans$zero_expanded
               ) 
   }
   

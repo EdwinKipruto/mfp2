@@ -14,7 +14,8 @@ transform_matrix(
   check_binary = TRUE,
   zero = NULL,
   catzero = NULL,
-  spike_decision = NULL
+  spike_decision = NULL,
+  reset_zero = TRUE
 )
 }
 \arguments{
@@ -60,20 +61,30 @@ spike-at-zero handling for each variable. Default is \code{NULL}, meaning no
 spike-at-zero processing is applied. Value 1 includes both the transformed
 variable and binary indicator, 2 disables the spike/binary indicator, and 3
 keeps only the binary indicator.}
+
+\item{reset_zero}{Logical. If \code{TRUE} (default), variables incorrectly flagged
+as \code{zero = TRUE} but containing only positive values are reset to \code{FALSE}.}
 }
 \value{
-If all elements of \code{power_list} are \code{NA}, this function returns \code{NULL}.
-Otherwise, it returns a list with four entries. The entry \code{x_transformed}
-is a matrix of transformed variables as specified in \code{power_list}, possibly
-centered. The number of columns may differ from the input matrix due to
+If all elements of \code{power_list} are \code{NA}, returns \code{NULL}. Otherwise,
+returns with the following components:
+\itemize{
+\item \code{x_transformed}: matrix of transformed (and optionally centered) variables.
+The number of columns may differ from the input matrix due to
 higher-order FP transformations. Binary variables are also added if
-\code{catzero} is not \code{NULL}. The entry \code{centers} contains the values used to
-center variables if \code{center = TRUE} (typically all variables are centered,
-or none of them). The entry \code{acd_parameter} is a named list of estimated ACD
-parameters, which may be empty if no ACD transformation is applied. The
-entry \code{x_trafo} is a named list of transformed \code{x} without centering or
-\code{catzero} variables and ;  this last component is
-important for the spike-at-zero algorithm.
+\code{catzero} is not \code{NULL}.
+\item \code{centers}: values used for centering, if \code{center = TRUE} (typically all
+variables are centered, or none of them).
+\item \code{acd_parameter}: a named list of estimated ACD parameters, which may be
+empty if no ACD transformation is applied.
+\item \code{x_trafo}: list of transformed variables before centering and adding
+binary variables when \code{catzero = TRUE}. This is important for the
+spike-at-zero algorithm.
+\item \code{zero_expanded}: logical vector indicating, for each transformed column,
+whether zero-specific centering was applied (this may be \code{TRUE} even when
+no spike-at-zero processing is used). This is important for centering
+transformed variables via \code{center_matrix}.
+}
 }
 \description{
 This function applies FP and/or ACD transformations to the columns of a matrix,
@@ -93,6 +104,20 @@ with value 2, the binary indicator is disabled reducing to usual transformations
 for variables with value 3, only the binary indicator of SAZ is retained and
 any FP/linear transformations are removed. This ensures correct handling
 of variables with SAZ.
+
+\strong{Centering:}
+\itemize{
+\item For continuous variables, the mean of the transformed values is subtracted.
+\item For binary variables, centering uses the minimum (typically 0).
+\item If \code{zero = TRUE}, the mean is computed only over the positive transformed values,
+while the original zero entries are left at zero. This preserves the spike-at-zero
+alignment on the original scale.
+\item Columns corresponding to \code{catzero} binary indicators are left as 0/1 in the
+returned matrix; their centering value is \code{0} in the current implementation,
+so the centering step does not change those columns. If you prefer mean-centering
+of the binary indicators (subtracting their sample proportion), supply explicit
+\code{centers} or post-process the returned matrix.
+}
 }
 \section{Column names}{
 

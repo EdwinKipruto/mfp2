@@ -11,7 +11,8 @@ prepare_newdata_for_predict(
   offset = NULL,
   apply_pre = TRUE,
   apply_center = TRUE,
-  check_binary = TRUE
+  check_binary = TRUE,
+  reset_zero = TRUE
 )
 }
 \arguments{

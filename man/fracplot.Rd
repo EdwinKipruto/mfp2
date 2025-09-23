@@ -26,29 +26,52 @@ fracplot(
 plot_mfp(...)
 }
 \arguments{
-\item{model}{fitted \code{mfp2} model.}
+\item{model}{A fitted \code{\link{mfp2}} model.}
 
-\item{terms}{character vector with variable names to be plotted.}
+\item{terms}{Character vector with variable names to be plotted.  If \code{NULL},
+all fractional polynomial terms in the model are plotted.}
 
-\item{partial_only}{a logical value indicating whether only the partial
-predictor (component) is drawn (\code{TRUE}), or also component-plus-residual
-(\code{FALSE}, the default). Only used if \code{type = "terms"}. See below for details.}
+\item{partial_only}{Logical. If \code{TRUE}, only the partial predictor (model
+component) is plotted. If \code{FALSE} (default), component-plus-residual plots
+are drawn. Only used if \code{type = "terms"}. See below for details.}
 
-\item{type, ref, terms_seq}{arguments of \code{\link[=predict.mfp2]{predict.mfp2()}}. Only
-\code{type = "terms"} and \code{type = "contrasts"} are supported by this function.}
+\item{type}{Character, one of \code{"terms"} or \code{"contrasts"}. Passed to
+\code{\link[=predict.mfp2]{predict.mfp2()}}. \code{"terms"} plots partial predictors (with or without
+residuals), while \code{"contrasts"} plots contrasts relative to a reference
+value.}
 
-\item{alpha}{\code{alpha} argument of \code{\link[=predict.mfp2]{predict.mfp2()}}.}
+\item{ref}{Reference list passed to \code{\link[=predict.mfp2]{predict.mfp2()}} when \code{type = "contrasts"}. Ignored otherwise.}
 
-\item{color_line, linetype, linewidth}{\code{ggplot2} properties of line for
-partial predictor.}
+\item{terms_seq}{Character, one of \code{"data"} or \code{"equidistant"}. Passed to
+\code{\link[=predict.mfp2]{predict.mfp2()}}. \code{"data"} uses the observed values, \code{"equidistant"} creates
+a grid over the covariate range.}
 
-\item{color_fill, alpha_fill}{\code{ggplot2} properties of ribbon for confidence
-interval.}
+\item{alpha}{Confidence level for intervals. Passed to \code{\link[=predict.mfp2]{predict.mfp2()}}.}
 
-\item{shape, size_points, color_points}{\code{ggplot2} properties of drawn
-data points.}
+\item{color_points}{Character value. Color of points used when residuals
+are displayed.}
 
-\item{...}{used in alias \code{plot_mfp} to pass arguments.}
+\item{color_line}{Character value. Color of the line representing
+the partial predictor.}
+
+\item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
+
+\item{shape}{Numeric value. Shape of points used when residuals
+are displayed.}
+
+\item{size_points}{Numeric value. Size of points used when residuals
+are displayed.}
+
+\item{linetype}{Character value. Line type for the partial predictor.
+See \code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} for options.}
+
+\item{linewidth}{Numeric value. Width of the line representing
+the partial predictor.}
+
+\item{alpha_fill}{Numeric value between 0 and 1. Transparency of the
+confidence interval ribbon.}
+
+\item{...}{Further arguments passed from the alias \code{plot_mfp()}.}
 }
 \value{
 A list of \code{ggplot2} plot objects, one for each term requested. Can be
@@ -56,23 +79,45 @@ drawn as individual plots or facetted / combined easily using e.g.
 \code{patchwork::wrap_plots} and further customized.
 }
 \description{
-Plots the partial linear predictors with confidence limits
-against the selected covariate(s) of interest.
+Produces partial predictor plots (or contrasts) with confidence intervals
+against selected covariates from a fitted \code{\link{mfp2}} model. If requested,
+component-plus-residual plots are also supported.
 }
 \details{
-The confidence limits of the partial linear predictors or contrasts are
-obtained from the variance–covariance matrix of the final fitted model,
-which takes into account the uncertainty in estimating the model parameters
-but not the FP powers. This can lead to narrow confidence intervals. A simple
-way to obtain more realistic confidence intervals within the FP is by using
-bootstrap, which is not currently implemented. See Royston and Sauerbrei (2008)
-chapter 4.9.2 for guidance on conducting bootstrapping within
-the FP class.
+Confidence intervals are based on the variance–covariance matrix of the
+final fitted model. They reflect uncertainty in the regression coefficients
+but not in the selection of fractional polynomial powers. Intervals may
+therefore be too narrow. A bootstrap approach (not yet implemented) is
+recommended for more realistic intervals (see Royston & Sauerbrei, 2008,
+Section 4.9.2).
 
-The component-plus-residual, is the partial linear predictor plus residuals,
-where deviance residuals are used in generalized linear regression models,
-while martingale residuals are used in Cox models, as done in Stata mfp program.
-This kind of plot is only available if \code{type = "terms"}.
+Component-plus-residual plots are available if \code{type = "terms"}. Deviance
+residuals are used for generalized linear models, while martingale residuals
+are used for Cox regression. This matches the behavior of the Stata \code{mfp}
+program.
+
+Spike-at-zero covariates are handled according to the \code{spike_decision} code:
+\itemize{
+\item \code{1} – Include both the transformed FP function for positive values and the binary
+spike-at-zero indicator.
+\item \code{2} – Ignore the spike; treat the variable as continuous (usual FP plot).
+\item \code{3} – Show only the binary spike-at-zero indicator.
+}
+
+Plot behavior for each decision:
+\itemize{
+\item If \code{spike_decision == 1}, the plot shows the FP function for positive values
+and includes the binary spike-at-zero indicator. The mean value for observations
+at zero is also displayed with a vertical error bar. The plot title includes
+\code{+ z} to indicate the presence of the spike-at-zero component. The FP power
+for the positive part is enclosed in parentheses. For example, \code{FP(0) + z}
+indicates an FP power of 0 (log) for the positive values.
+\item If \code{spike_decision == 3}, the plot shows the binary indicator alone (\verb{z only} in
+the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing
+confidence intervals is displayed.
+\item If \code{spike_decision == 2} (or not specified), the covariate is plotted as a
+continuous FP function in the usual way.
+}
 }
 \section{Functions}{
 \itemize{

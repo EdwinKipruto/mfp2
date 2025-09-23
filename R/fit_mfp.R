@@ -407,6 +407,7 @@ fit_mfp <- function(x,
       acd = acdx,
       zero = zero,
       catzero = catzero,
+      catzero_list = catzero_list,
       spike_decision = spike_decision
     )
   )

@@ -1,38 +1,73 @@
 #' Plot response functions from a fitted `mfp2` object
 #'
-#' Plots the partial linear predictors with confidence limits 
-#' against the selected covariate(s) of interest. 
+#' Produces partial predictor plots (or contrasts) with confidence intervals
+#' against selected covariates from a fitted [`mfp2`] model. If requested, 
+#' component-plus-residual plots are also supported. 
 #'
-#' @param model fitted `mfp2` model.
-#' @param terms character vector with variable names to be plotted.
-#' @param partial_only a logical value indicating whether only the partial 
-#' predictor (component) is drawn (`TRUE`), or also component-plus-residual 
-#' (`FALSE`, the default). Only used if `type = "terms"`. See below for details. 
-#' @param type,ref,terms_seq arguments of [predict.mfp2()]. Only 
-#' `type = "terms"` and `type = "contrasts"` are supported by this function. 
-#' @param alpha `alpha` argument of [predict.mfp2()].
-#' @param shape,size_points,color_points `ggplot2` properties of drawn 
-#' data points.
-#' @param color_line,linetype,linewidth `ggplot2` properties of line for 
-#' partial predictor.
-#' @param color_fill,alpha_fill `ggplot2` properties of ribbon for confidence
-#' interval.
-#' @param ... used in alias `plot_mfp` to pass arguments. 
+#' @param model A fitted [`mfp2`] model.
+#' @param terms Character vector with variable names to be plotted.  If `NULL`,
+#' all fractional polynomial terms in the model are plotted.
+#' @param partial_only Logical. If `TRUE`, only the partial predictor (model
+#' component) is plotted. If `FALSE` (default), component-plus-residual plots
+#' are drawn. Only used if `type = "terms"`. See below for details. 
+#' @param type Character, one of `"terms"` or `"contrasts"`. Passed to
+#' [predict.mfp2()]. `"terms"` plots partial predictors (with or without
+#' residuals), while `"contrasts"` plots contrasts relative to a reference
+#' value. 
+#' @param ref Reference list passed to [predict.mfp2()] when `type =
+#'  "contrasts"`. Ignored otherwise.
+#' @param terms_seq Character, one of `"data"` or `"equidistant"`. Passed to
+#'  [predict.mfp2()]. `"data"` uses the observed values, `"equidistant"` creates
+#' a grid over the covariate range.
+#' @param alpha Confidence level for intervals. Passed to [predict.mfp2()].
+#' @param shape Numeric value. Shape of points used when residuals 
+#' are displayed.
+#' @param size_points Numeric value. Size of points used when residuals 
+#' are displayed.
+#' @param color_points Character value. Color of points used when residuals 
+#'   are displayed.
+#' @param color_line Character value. Color of the line representing 
+#'   the partial predictor.
+#' @param linetype Character value. Line type for the partial predictor. 
+#'   See [ggplot2::geom_line()] for options.
+#' @param linewidth Numeric value. Width of the line representing 
+#' the partial predictor.
+#' @param color_fill Character value. Fill color of the confidence interval ribbon.
+#' @param alpha_fill Numeric value between 0 and 1. Transparency of the 
+#' confidence interval ribbon.
+#' @param ... Further arguments passed from the alias `plot_mfp()`. 
 #' 
 #' @details 
-#' The confidence limits of the partial linear predictors or contrasts are
-#' obtained from the variance–covariance matrix of the final fitted model, 
-#' which takes into account the uncertainty in estimating the model parameters 
-#' but not the FP powers. This can lead to narrow confidence intervals. A simple
-#' way to obtain more realistic confidence intervals within the FP is by using
-#' bootstrap, which is not currently implemented. See Royston and Sauerbrei (2008)
-#' chapter 4.9.2 for guidance on conducting bootstrapping within 
-#' the FP class.
+#' Confidence intervals are based on the variance–covariance matrix of the 
+#' final fitted model. They reflect uncertainty in the regression coefficients 
+#' but not in the selection of fractional polynomial powers. Intervals may 
+#' therefore be too narrow. A bootstrap approach (not yet implemented) is 
+#' recommended for more realistic intervals (see Royston & Sauerbrei, 2008, 
+#' Section 4.9.2).
 #' 
-#' The component-plus-residual, is the partial linear predictor plus residuals, 
-#' where deviance residuals are used in generalized linear regression models, 
-#' while martingale residuals are used in Cox models, as done in Stata mfp program.
-#' This kind of plot is only available if `type = "terms"`.
+#' Component-plus-residual plots are available if `type = "terms"`. Deviance 
+#' residuals are used for generalized linear models, while martingale residuals 
+#' are used for Cox regression. This matches the behavior of the Stata `mfp` 
+#' program.
+#' 
+#' Spike-at-zero covariates are handled according to the `spike_decision` code:
+#' * `1` – Include both the transformed FP function for positive values and the binary 
+#'       spike-at-zero indicator.
+#' * `2` – Ignore the spike; treat the variable as continuous (usual FP plot).
+#' * `3` – Show only the binary spike-at-zero indicator.
+#'
+#' Plot behavior for each decision:
+#' * If `spike_decision == 1`, the plot shows the FP function for positive values 
+#'   and includes the binary spike-at-zero indicator. The mean value for observations 
+#'   at zero is also displayed with a vertical error bar. The plot title includes 
+#'   `+ z` to indicate the presence of the spike-at-zero component. The FP power 
+#'   for the positive part is enclosed in parentheses. For example, `FP(0) + z` 
+#'   indicates an FP power of 0 (log) for the positive values.
+#' * If `spike_decision == 3`, the plot shows the binary indicator alone (`z only` in 
+#'   the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing 
+#'   confidence intervals is displayed.
+#' * If `spike_decision == 2` (or not specified), the covariate is plotted as a 
+#'   continuous FP function in the usual way.
 #' @examples
 #'
 #' # Gaussian response
@@ -142,32 +177,117 @@ fracplot <- function(model,
   # in the calls to ggplot2::aes use the .data pronoun to avoid notes 
   # generated by R CMD CHECK about missing bindings of global variables
   for (v in names(pred)) {
-    plots[[v]] <- ggplot2::ggplot(data = pred[[v]], 
-                         ggplot2::aes(x = .data$variable, 
-                                      y = .data$value)) + 
-      ggplot2::geom_line(linewidth = linewidth,
-                         linetype = linetype,
-                         color = color_line) + 
-      ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, 
-                                        ymax = .data$upper), 
-                           alpha = alpha_fill) + 
-      ggplot2::ggtitle(sprintf("FP%s(%s)%s", 
+    df <- pred[[v]]
+    # Check if variable has a spike-at-zero binary indicator
+    is_spike <- !is.null(model$catzero_list[[v]])
+    
+    # Title with FP powers and spike label
+    title_spike <- ifelse(model$spike_decision[v] == 1, " + z",
+                          ifelse(model$spike_decision[v] == 3, " (z only)", ""))
+    
+    p <- ggplot2::ggplot(data = df, ggplot2::aes(x = .data$variable, y = .data$value)) +
+      ggplot2::ggtitle(sprintf("FP%s(%s)%s%s", 
                                ifelse(model$fp_terms[v, "acd"], "1", ""),
                                paste0(model$fp_powers[[v]], collapse = ", "),
-                               ifelse(model$fp_terms[v, "acd"], ":ACD", "")
-      )) +
+                               ifelse(model$fp_terms[v, "acd"], ":ACD", ""),
+                               title_spike)
+      ) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw()
     
-    if (!partial_only) 
-      plots[[v]] <- plots[[v]] + 
-        ggplot2::geom_point(data = pred_data[[v]], 
-                            ggplot2::aes(y = .data$value + .data$resid),
-                            color = color_points,
-                            size = size_points, 
-                            shape = shape)
+    # Add line for positive values only if spike-at-zero exists
+    if (is_spike) {
+      if (model$spike_decision == 3) {
+        # Expect df to have two rows: one for 0 and one for 1
+        p <- p + ggplot2::geom_line(linewidth = linewidth,
+                                    linetype = linetype,
+                                    color = color_line) +
+          ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                               alpha = alpha_fill,
+                               fill = color_fill)
+        
+        # p <- p + 
+        #   ggplot2::geom_point(data = df,
+        #                       ggplot2::aes(x = .data$variable, y = .data$value),
+        #                       color = color_line,
+        #                       size = size_points) +
+        #   ggplot2::geom_errorbar(data = df,
+        #                          ggplot2::aes(x = .data$variable, ymin = .data$lower, ymax = .data$upper),
+        #                          width = 0.1,
+        #                          color = color_line) +
+        #   ggplot2::geom_line(data = df,
+        #                      ggplot2::aes(x = .data$variable, y = .data$value),
+        #                      linewidth = linewidth,
+        #                      linetype = linetype,
+        #                      color = color_line)
+        
+      } else {
+      pos_df <- df[df$variable > 0, , drop = FALSE]
+      p <- p + ggplot2::geom_line(data = pos_df, 
+                                  ggplot2::aes(x = .data$variable, y = .data$value),
+                                  linewidth = linewidth,
+                                  linetype = linetype,
+                                  color = color_line) +
+        ggplot2::geom_ribbon(data = pos_df,
+                             ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                             alpha = alpha_fill, fill = color_fill)
+      # Add point at zero for the spike
+      zero_df <- df[df$variable == 0, , drop = FALSE]
+      if (nrow(zero_df) > 0) {
+        p <- p + ggplot2::geom_point(data = zero_df,
+                                     ggplot2::aes(y = .data$value),
+                                     color = color_line,
+                                     size = size_points) + 
+          ggplot2::geom_errorbar(data = zero_df,
+                                 ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                                 width = 0.1,   # small width so it's vertical
+                                 color = color_line)
+      }
+      }
+    } else {
+      # regular continuous plot
+      p <- p + ggplot2::geom_line(linewidth = linewidth,
+                                  linetype = linetype,
+                                  color = color_line) +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                             alpha = alpha_fill, fill = color_fill)
+    }
+    
+    # Add residual points if needed
+    if (!partial_only) {
+      p <- p + ggplot2::geom_point(data = pred_data[[v]],
+                                   ggplot2::aes(y = .data$value + .data$resid),
+                                   color = color_points,
+                                   size = size_points,
+                                   shape = shape)
+    }
+    plots[[v]] <- p
+  #   plots[[v]] <- ggplot2::ggplot(data = pred[[v]], 
+  #                        ggplot2::aes(x = .data$variable, 
+  #                                     y = .data$value)) + 
+  #     ggplot2::geom_line(linewidth = linewidth,
+  #                        linetype = linetype,
+  #                        color = color_line) + 
+  #     ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, 
+  #                                       ymax = .data$upper), 
+  #                          alpha = alpha_fill) + 
+  #     ggplot2::ggtitle(sprintf("FP%s(%s)%s", 
+  #                              ifelse(model$fp_terms[v, "acd"], "1", ""),
+  #                              paste0(model$fp_powers[[v]], collapse = ", "),
+  #                              ifelse(model$fp_terms[v, "acd"], ":ACD", "")
+  #     )) +
+  #     ggplot2::xlab(v) + ggplot2::ylab(ylab) +
+  #     ggplot2::theme_bw()
+  #   
+  #   if (!partial_only) 
+  #     plots[[v]] <- plots[[v]] + 
+  #       ggplot2::geom_point(data = pred_data[[v]], 
+  #                           ggplot2::aes(y = .data$value + .data$resid),
+  #                           color = color_points,
+  #                           size = size_points, 
+  #                           shape = shape)
   }
-  
+
   plots
 }
 

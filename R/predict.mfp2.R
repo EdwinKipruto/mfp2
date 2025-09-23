@@ -297,10 +297,18 @@ predict.mfp2 <- function(object,
         intercept <- 0
       }
       
+      # backtransform variable to original scale
+      variable = (as.numeric(x_seq)) - object$transformations[t,"shift"]
+      variable_pre = as.numeric(x_seq)
+      
+      if (object$spike_decision[t] == 3) {
+        variable <- object$catzero_list[[t]]
+        variable_pre <- variable
+      }
+      
       res <- data.frame(
-        # backtransform variable to original scale
-        variable = (as.numeric(x_seq)) - object$transformations[t,"shift"],
-        variable_pre = as.numeric(x_seq),
+        variable = variable,
+        variable_pre = variable_pre,
         value = x_trafo %*% term_coef + intercept
       )
       

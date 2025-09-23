@@ -164,40 +164,38 @@
 #' In epidemiological and clinical studies, a continuous covariate `x` may have a 
 #' mixture of zeros and positive values, which is called a semi-continuous variable. 
 #' There is a ‘spike’ at zero in an otherwise continuous distribution. Examples 
-#' include occupational exposures (e.g., asbestos) or alcohol and tobacco 
-#' consumption, where some individuals have no exposure, while others have a 
-#' positive continuous exposure. When x = 0 defines a distinct subpopulation, 
-#' the outcome for these individuals can be modeled explicitly using a binary 
-#' variable `z`, while the positive values are modeled as a continuous variable
-#' with a dose–response relationship.
+#' include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption, 
+#' where some individuals have no exposure while others have positive values. When 
+#' `x = 0` defines a distinct subpopulation, the outcome for these individuals can 
+#' be modeled using a binary variable `Z`, while positive values are modeled with a 
+#' continuous FP function.
+#'
+#' **Stage 1: Functional form selection**
+#'
+#' A binary indicator `Z` is created (`Z = 1` if `x = 0`, `0` otherwise). FP 
+#' transformations are applied only to positive values of `x`, so there is no need 
+#' to shift `x`. The user must choose a significance level (`select`) if the 
+#' criterion is `"pvalue"`. If `"aic"` or `"bic"` is used, the model with the minimum 
+#' information criterion is selected. The user must also choose the maximum complexity 
+#' of the FP function for `x` (default is FP2).
+#'
+#' Suppose FP2 is the maximum complexity and `criterion = "pvalue"`. The selection 
+#' procedure proceeds sequentially as follows:
 #' 
-#' An approach using FP functions for a spike-at-zero (SAZ) variable proceeds in
-#' two stages.
-#' 
-#' Stage 1: Functional form selection
-#' A binary indicator Z is created that takes the value 1 if x = 0 and 0 otherwise. 
-#' FP transformations are applied only to the positive values of x, so there is 
-#' no need to shift x. 
-#' The selection procedure proceeds sequentially as follows:
-#' 
-#' 1. Compare the most complex model (best FP2 + Z) with the null model:
-#'    - Degrees of freedom: 5 (4 from FP2, 1 from Z)
-#'    - If significant, continue; otherwise, choose the null model.
-#' 2. Compare best FP2 + Z versus linear + Z model:
-#'    - Degrees of freedom: 3 
-#'    - If significant, continue; otherwise, select linear + Z.
-#' 3. Compare best FP2 + Z versus best FP1 + Z model:
-#'    - Degrees of freedom: 2 
-#'    - If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
-#' 
+#' 1. Compare the most complex model (best FP2 + Z) with the null model 
+#' (df = 5: 4 from FP2, 1 from Z). If significant, continue; otherwise, choose the null model.
+#' 2. Compare best FP2 + Z versus linear + Z (df = 3). If significant, continue; otherwise, select linear + Z.
+#' 3. Compare best FP2 + Z versus best FP1 + Z (df = 2). If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
+#'
 #' This ensures that the functional form is selected sequentially, retaining only 
-#' models that significantly improve fit, always including Z. Stage 1 is
-#' identical to the standard MFP function selection process, except that `Z` is 
-#' forced into the model at every step.
+#' models that significantly improve fit, always including `Z`. Stage 1 mirrors the 
+#' standard MFP function selection process, except that `Z` is forced into the model. 
+#' To force the variable into the model, set `select = 1` or use the `keep` argument.
 #' 
-#' Stage 2: Component assessment
+#' **Stage 2: Component assessment**
 #' The selected model from Stage 1 is evaluated to decide which components are 
-#' needed. For example, suppose the selected model is best FP2 + Z:
+#' needed. If the null model is selected in Stage 1, Stage 2 is not executed. 
+#' Otherwise, suppose the selected model is best FP2 + Z:
 #' 
 #' * Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
 #' * Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
@@ -206,17 +204,20 @@
 #' - If both tests are significant, retain both Z and FP2 in the final model, 
 #'   because each component adds information beyond the other.
 #' - If Test 1 is significant but Test 2 is not, retain only Z, because the 
-#' spike indicator improves the model while the functional form does not 
-#' contribute additional information.
-#' - If Test 2  is significant but Test 1 is not, retain only FP2, because the 
-#' functional form improves the model while the spike indicator does not add 
-#' further explanatory value.
+#'   spike indicator improves the model while the functional form does not 
+#'   contribute additional information.
+#' - If Test 2 is significant but Test 1 is not, retain only FP2, because the 
+#'   functional form improves the model while the spike indicator does not add 
+#'   further explanatory value.
 #' - If neither test is significant, compare the deviances of the Z-only and 
 #'   FP2-only models. The final model is the one with the smaller deviance, 
 #'   since it provides the better fit to the data without unnecessary terms.
 #' 
-#' If Z is removed, the spike at zero plays no specific role, and a usual FP 
-#' function is selected for the positive values of x. Conversely, if the FP 
+#' For `criterion = "aic"` or `criterion = "bic"`, the information criteria for
+#' the three models (FP2 + Z, FP2, and Z only) are compared, and the one with 
+#' the minimum value is chosen.
+#' If Z is removed, the spike at zero plays no specific role, and a standard FP 
+#' function is selected for the positive values of `x`. Conversely, if the FP 
 #' function is removed, leaving only Z in the model, the covariate's effect is
 #' entirely represented by the binary indicator. Note that the presence of Z 
 #' in Stage 1 may have influenced the choice of FP powers, so the final powers 
@@ -537,6 +538,8 @@
 #' \item catzero: named logical vector indicating which columns in `x` treated 
 #' nonpositive values as zero and included an additional binary indicator in 
 #' the model.  
+#' \item catzero_list: A list of binary variables created when `catzero` is set to
+#' TRUE. Returns `NULL` if `catzero` is FALSE.
 #' \item spike_decision: named numeric vector with values 1, 2, or 3 specifying 
 #' spike-at-zero handling for each variable. Value 1 includes both the 
 #' transformed variable and a binary indicator, 2 disables the spike and binary 
@@ -625,14 +628,16 @@ mfp2.default <- function(x,
   
   # assertions -----------------------------------------------------------------
   # assert that x is a matrix
-  if (!is.matrix(x))
+  if (!is.matrix(x)) {
     stop("! x must be a matrix", call. = FALSE)
+  }
   
   # assert that x must not contain character values
-  if (any(is.character(x)))
+  if (any(is.character(x))) {
     stop("! x contains characters values.\n",
          "i Please convert categorical variables to dummy variables.", 
          call. = FALSE)
+  }
   
   # check dimension of x
   np <- dim(x)
@@ -645,17 +650,20 @@ mfp2.default <- function(x,
            "i Please make sure that x is a matrix with at least one row and column.", 
            call. = FALSE)
   }
+  
   # assert that x must have column names
   vnames <- colnames(x)
-  if (is.null(vnames)) 
+  if (is.null(vnames)) {
     stop("! The column names of x must not be missing.\n",
          "i Please set column names for x.",
          call. = FALSE)
-
+  }
+  
   # assert that x has no missing data
-  if (anyNA(x)) 
+  if (anyNA(x)) {
     stop("! x must not contain any NA (missing data).\n",   
          "i Please remove any missing data before passing x to this function.")
+  }
   
  # assert that subset must be a vector and does not contain negative values
   if (!is.null(subset)) {
@@ -707,6 +715,7 @@ mfp2.default <- function(x,
   if (any(select > 1) || any(select < 0)) {
       stop("! select must not be < 0 or > 1.", call. = FALSE)
   }
+  
   # assert length of select 
   if (length(select) != 1 && length(select) != nvars) {
       stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
@@ -880,8 +889,9 @@ mfp2.default <- function(x,
   
   # set defaults ---------------------------------------------------------------
   # Assert that powers must be NULL or list when provided
-  if (!is.null(powers) && !is.list(powers))
+  if (!is.null(powers) && !is.list(powers)) {
     stop("Powers must be a list", call. = FALSE)
+  }
   
   # set defaults ---------------------------------------------------------------
     # default FP powers proposed by Royston and Altman (1994)
@@ -1652,8 +1662,9 @@ fp <- function(x,
   name <- deparse(substitute(x))
   
   # Assert that a factor variable must not be subjected to fp transformation
-  if (is.factor(x))
+  if (is.factor(x)) {
     stop(name," is a factor variable and should not be passed to the fp() function.")
+  }
   
   attr(x, "df") <- df
   attr(x, "alpha") <- alpha
@@ -1725,7 +1736,7 @@ get_selected_variable_names <- function(object) {
 #' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
 #' 
 #' @export
-assign_df <- function(x,df_default = 4) {
+assign_df <- function(x, df_default = 4) {
   
   # default degrees of freedom for each variable
   df <- rep(df_default, ncol(x))

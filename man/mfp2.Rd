@@ -280,6 +280,8 @@ positive values were transformed.
 \item catzero: named logical vector indicating which columns in \code{x} treated
 nonpositive values as zero and included an additional binary indicator in
 the model.
+\item catzero_list: A list of binary variables created when \code{catzero} is set to
+TRUE. Returns \code{NULL} if \code{catzero} is FALSE.
 \item spike_decision: named numeric vector with values 1, 2, or 3 specifying
 spike-at-zero handling for each variable. Value 1 includes both the
 transformed variable and a binary indicator, 2 disables the spike and binary
@@ -470,47 +472,39 @@ Royston and Sauerbrei (2016).
 In epidemiological and clinical studies, a continuous covariate \code{x} may have a
 mixture of zeros and positive values, which is called a semi-continuous variable.
 There is a ‘spike’ at zero in an otherwise continuous distribution. Examples
-include occupational exposures (e.g., asbestos) or alcohol and tobacco
-consumption, where some individuals have no exposure, while others have a
-positive continuous exposure. When x = 0 defines a distinct subpopulation,
-the outcome for these individuals can be modeled explicitly using a binary
-variable \code{z}, while the positive values are modeled as a continuous variable
-with a dose–response relationship.
+include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption,
+where some individuals have no exposure while others have positive values. When
+\code{x = 0} defines a distinct subpopulation, the outcome for these individuals can
+be modeled using a binary variable \code{Z}, while positive values are modeled with a
+continuous FP function.
 
-An approach using FP functions for a spike-at-zero (SAZ) variable proceeds in
-two stages.
+\strong{Stage 1: Functional form selection}
 
-Stage 1: Functional form selection
-A binary indicator Z is created that takes the value 1 if x = 0 and 0 otherwise.
-FP transformations are applied only to the positive values of x, so there is
-no need to shift x.
-The selection procedure proceeds sequentially as follows:
+A binary indicator \code{Z} is created (\code{Z = 1} if \code{x = 0}, \code{0} otherwise). FP
+transformations are applied only to positive values of \code{x}, so there is no need
+to shift \code{x}. The user must choose a significance level (\code{select}) if the
+criterion is \code{"pvalue"}. If \code{"aic"} or \code{"bic"} is used, the model with the minimum
+information criterion is selected. The user must also choose the maximum complexity
+of the FP function for \code{x} (default is FP2).
+
+Suppose FP2 is the maximum complexity and \code{criterion = "pvalue"}. The selection
+procedure proceeds sequentially as follows:
 \enumerate{
-\item Compare the most complex model (best FP2 + Z) with the null model:
-\itemize{
-\item Degrees of freedom: 5 (4 from FP2, 1 from Z)
-\item If significant, continue; otherwise, choose the null model.
-}
-\item Compare best FP2 + Z versus linear + Z model:
-\itemize{
-\item Degrees of freedom: 3
-\item If significant, continue; otherwise, select linear + Z.
-}
-\item Compare best FP2 + Z versus best FP1 + Z model:
-\itemize{
-\item Degrees of freedom: 2
-\item If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
-}
+\item Compare the most complex model (best FP2 + Z) with the null model
+(df = 5: 4 from FP2, 1 from Z). If significant, continue; otherwise, choose the null model.
+\item Compare best FP2 + Z versus linear + Z (df = 3). If significant, continue; otherwise, select linear + Z.
+\item Compare best FP2 + Z versus best FP1 + Z (df = 2). If significant, retain best FP2 + Z; otherwise, select best FP1 + Z.
 }
 
 This ensures that the functional form is selected sequentially, retaining only
-models that significantly improve fit, always including Z. Stage 1 is
-identical to the standard MFP function selection process, except that \code{Z} is
-forced into the model at every step.
+models that significantly improve fit, always including \code{Z}. Stage 1 mirrors the
+standard MFP function selection process, except that \code{Z} is forced into the model.
+To force the variable into the model, set \code{select = 1} or use the \code{keep} argument.
 
-Stage 2: Component assessment
+\strong{Stage 2: Component assessment}
 The selected model from Stage 1 is evaluated to decide which components are
-needed. For example, suppose the selected model is best FP2 + Z:
+needed. If the null model is selected in Stage 1, Stage 2 is not executed.
+Otherwise, suppose the selected model is best FP2 + Z:
 \itemize{
 \item Test 1: Compare best FP2 + Z versus best FP2 alone to assess the contribution of Z.
 \item Test 2: Compare best FP2 + Z versus Z alone to assess the contribution of the FP2 term.
@@ -523,7 +517,7 @@ because each component adds information beyond the other.
 \item If Test 1 is significant but Test 2 is not, retain only Z, because the
 spike indicator improves the model while the functional form does not
 contribute additional information.
-\item If Test 2  is significant but Test 1 is not, retain only FP2, because the
+\item If Test 2 is significant but Test 1 is not, retain only FP2, because the
 functional form improves the model while the spike indicator does not add
 further explanatory value.
 \item If neither test is significant, compare the deviances of the Z-only and
@@ -531,8 +525,11 @@ FP2-only models. The final model is the one with the smaller deviance,
 since it provides the better fit to the data without unnecessary terms.
 }
 
-If Z is removed, the spike at zero plays no specific role, and a usual FP
-function is selected for the positive values of x. Conversely, if the FP
+For \code{criterion = "aic"} or \code{criterion = "bic"}, the information criteria for
+the three models (FP2 + Z, FP2, and Z only) are compared, and the one with
+the minimum value is chosen.
+If Z is removed, the spike at zero plays no specific role, and a standard FP
+function is selected for the positive values of \code{x}. Conversely, if the FP
 function is removed, leaving only Z in the model, the covariate's effect is
 entirely represented by the binary indicator. Note that the presence of Z
 in Stage 1 may have influenced the choice of FP powers, so the final powers

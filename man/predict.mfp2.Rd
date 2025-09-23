@@ -141,8 +141,6 @@ residuals are included. See also \code{fracplot()}.
 
 \section{Contrasts}{
 
-
-
 If \code{type = "contrasts"}, this function computes contrasts relative to a
 specified reference value for the \eqn{j}th variable (e.g., age = 50). Let
 \eqn{x_j} denote the values of the \eqn{j}th variable in \code{newdata}, and

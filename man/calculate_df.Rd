@@ -43,8 +43,11 @@ but if p = NA then df = 0.
 }
 }
 \examples{
+\dontrun{
 calculate_df(c(1, 2), 2)   # df = 4 (two powers, no spike)
 calculate_df(1, 1)         # df = 2 (linear + binary spike)
 calculate_df(c(NA, NA), 1) # df = 0 (unselected variable)
 calculate_df(2, 3)        # df = 1 (binary spike only)
 }
+}
+\keyword{internal}

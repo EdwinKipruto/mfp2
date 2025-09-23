@@ -49,7 +49,6 @@
 #' residuals are included. See also `fracplot()`.
 #' 
 #' @section Contrasts:
-#' @section Contrasts:
 #' If `type = "contrasts"`, this function computes contrasts relative to a 
 #' specified reference value for the \eqn{j}th variable (e.g., age = 50). Let 
 #' \eqn{x_j} denote the values of the \eqn{j}th variable in `newdata`, and 
@@ -444,7 +443,9 @@ transform_linear_predictor  <- function(nfit, family, type = NULL) {
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
 #' @param check_binary passed to [transform_vector_fp()].
-#' 
+#' @param reset_zero Logical. If `TRUE` (default), variables incorrectly flagged 
+#' as `zero = TRUE` but containing only positive values are reset to `FALSE`. 
+#' Parameter of [transform_matrix()]
 #' @return A dataframe of transformed newdata
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 

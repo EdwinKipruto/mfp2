@@ -1,8 +1,8 @@
 Package: mfp2
 Type: Package
 Title: Multivariable Fractional Polynomial Models with Extensions
-Version: 1.0.1
-Date: 2025-05-15
+Version: 1.0.2
+Date: 2025-09-23
 Authors@R: c(
   person("Edwin", "Kipruto", role = c("aut", "cre"), email = "edwin.kipruto@uniklinik-freiburg.de"),
   person("Michael", "Kammer", role = c("aut"), email = "michael.kammer@meduniwien.ac.at"),
@@ -24,7 +24,7 @@ Suggests:
     formatR,
     patchwork,
     spelling
-Description: Multivariable fractional polynomial algorithm simultaneously selects variables and functional forms in both generalized linear models and Cox proportional hazard models. Key references are Royston and Altman (1994) <doi:10.2307/2986270> and Royston and Sauerbrei (2008, ISBN:978-0-470-02842-1). In addition, it can model a sigmoid relationship between variable x and an outcome variable y using the approximate cumulative distribution transformation proposed by Royston (2014) <doi:10.1177/1536867X1401400206>. This feature distinguishes it from a standard fractional polynomial function, which lacks the ability to achieve such modeling.
+Description: Multivariable fractional polynomial algorithm simultaneously selects variables and functional forms in both generalized linear models and Cox proportional hazard models. Key references are Royston and Altman (1994) <doi:10.2307/2986270> and Royston and Sauerbrei (2008, ISBN:978-0-470-02842-1). In addition, the implementation can model semi-continuous covariates with a “spike at zero” using a two-stage selection procedure. This extension follows the framework proposed by Becher et al. (2012) <doi:10.1002/bimj.201100263>. The package also includes the approximate cumulative distribution (ACD) transformation to model a sigmoid relationship between variable x and an outcome variable y, as described in Royston (2014) <doi:10.1177/1536867X1401400206> and Royston and Sauerbrei (2016) <doi: 10.1177/1536867X1601600>. This feature distinguishes it from a standard fractional polynomial function, which lacks the ability to achieve such modeling.
 License: GPL-3
 URL: https://github.com/EdwinKipruto/mfp2
 BugReports: https://github.com/EdwinKipruto/mfp2/issues

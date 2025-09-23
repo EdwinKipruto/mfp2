@@ -30,6 +30,10 @@ is applied or not.}
 after transformation or not.}
 
 \item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
+
+\item{reset_zero}{Logical. If \code{TRUE} (default), variables incorrectly flagged
+as \code{zero = TRUE} but containing only positive values are reset to \code{FALSE}.
+Parameter of \code{\link[=transform_matrix]{transform_matrix()}}}
 }
 \value{
 A dataframe of transformed newdata

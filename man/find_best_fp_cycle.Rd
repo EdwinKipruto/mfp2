@@ -102,6 +102,16 @@ is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 a spike at zero. The length and order of \code{spike} must match those of
 the columns in \code{x}.}
 
+\item{spike_decision}{Named vector indicating how spike-at-zero (SAZ)
+variables are handled. Each element corresponds to a variable and encodes
+the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
+\code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
+
+\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
+if an element is \code{NULL}, the variable was not specified in the
+\code{acdx} argument of \code{fit_mfp}.}
+
 \item{acdx}{a logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}

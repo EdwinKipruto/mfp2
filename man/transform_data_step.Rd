@@ -55,6 +55,9 @@ indicator (\code{catzero}).
 }
 
 This applies only to adjustment variables, not the focal predictor \code{xi}.}
+
+\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+with length equal to \code{ncol(x)}.}
 }
 \value{
 A list containing the following elements:

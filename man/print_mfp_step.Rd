@@ -21,6 +21,10 @@ to be estimated in the current step.}
 variables and FP models of different degrees.}
 
 \item{fit}{intermediary model fit in \code{mfp_step}.}
+
+\item{spike}{A logical vector indicating which columns of \code{x} contain
+a spike at zero. The length and order of \code{spike} must match those of
+the columns in \code{x}.}
 }
 \description{
 Function for verbose printing of function selection procedure (FSP)

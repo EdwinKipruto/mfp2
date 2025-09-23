@@ -50,6 +50,17 @@
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 #' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
+#' @param spike A logical vector indicating which columns of \code{x} contain
+#' a spike at zero. The length and order of \code{spike} must match those of
+#' the columns in \code{x}.
+#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' with length equal to \code{ncol(x)}. Each list element corresponds to a variable; 
+#' if an element is \code{NULL}, the variable was not specified in the 
+#' \code{acdx} argument of \code{fit_mfp}.
+#' @param spike_decision Named vector indicating how spike-at-zero (SAZ) 
+#' variables are handled. Each element corresponds to a variable and encodes 
+#' the selected strategy: `1` = include FP for positive values plus binary SAZ, 
+#' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -537,7 +548,6 @@ compute_decision <- function(metrics, criterion, select, n_obs, ftest = FALSE) {
 #'   nonpositive values of \code{xi} were set to zero, only positive values were 
 #'   transformed, and an additional binary variable was created to indicate 
 #'   whether \code{xi} was positive or nonpositive.
-#' 
 #' @inheritParams find_best_fp_step
 #' @param degree degrees of freedom for fp transformation of `xi`.
 #' @param ... parameters passed to `fit_model()`.
@@ -1733,6 +1743,8 @@ select_ic_acd <- function(x,
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 #' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
+#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' with length equal to \code{ncol(x)}.
 #' @param spike_decision a named numeric vector with the same names as the 
 #' `x` matrix. Each element controls how the corresponding adjustment 
 #' variable contributes to the adjustment matrix:

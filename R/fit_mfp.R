@@ -750,6 +750,14 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 #' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
+#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' with length equal to \code{ncol(x)}. Each list element corresponds to a variable; 
+#' if an element is \code{NULL}, the variable was not specified in the 
+#' \code{acdx} argument of \code{fit_mfp}.
+#' @param spike_decision Named vector indicating how spike-at-zero (SAZ) 
+#' variables are handled. Each element corresponds to a variable and encodes 
+#' the selected strategy: `1` = include FP for positive values plus binary SAZ, 
+#' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param rownames passed to [survival::coxph.fit()].
 #' 
 #' @return 
@@ -856,10 +864,13 @@ find_best_fp_cycle <- function(x,
 #' @return 
 #' Integer scalar giving the degrees of freedom for the variable.
 #' @examples
+#'\dontrun{
 #' calculate_df(c(1, 2), 2)   # df = 4 (two powers, no spike)
 #' calculate_df(1, 1)         # df = 2 (linear + binary spike)
 #' calculate_df(c(NA, NA), 1) # df = 0 (unselected variable)
 #' calculate_df(2, 3)        # df = 1 (binary spike only)
+#' }
+#' @keywords internal
 calculate_df <- function(powers, spike_decision) {
   
   #------------------
@@ -932,20 +943,28 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' 
 #' To be used in [fit_mfp()].
 #' 
+#' @param spike_decision Integer vector indicating the modeling decision for
+#' spike-at-zero variables.
+#' 
 #' @return 
 #' Dataframe with overview of all fp terms. Each row represents a variable, 
 #' with rownames giving the name of the variable. Variables with acd 
 #' transformation are prefixed by `A_` by the `print` and `summary` methods. 
 #' The dataframe comprises the following columns: 
 #' 
-#' * `df_initial`: initial degrees of freedom. 
-#' * `select`: significance level for backward elimination.
-#' * `alpha`: significance level for fractional polyomial terms.
-#' * `selected`: logical value encoding presence in the model.
-#' * `df_final`: final estimated degrees of freedom.
-#' * `acd`: logical value encoding use of ACD transformation.
-#' * `powerN`: one or more columns with the final estimated fp powers (numbered
-#' 1 to N).
+#' * `df_initial`: initial degrees of freedom.
+#' * `select`: significance level used for backward elimination (or criterion name if not "pvalue").
+#' * `alpha`: significance level for FP terms (or criterion name if not "pvalue").
+#' * `acd`: logical, whether an ACD transformation was applied.
+#' * `zero`: logical, indicates whether only the positive values of the variable
+#'  are transformed (i.e., whether the FP function is applied exclusively to 
+#'  values greater than zero).
+#' * `catzero`: logical, whether a binary variable for zero values was created.
+#' * `spike`: logical, indicates presence of a spike-at-zero variable.
+#' * `spike_decision`: integer code describing how the spike-at-zero variable is modeled.
+#' * `selected`: logical, whether the FP term is included in the final model.
+#' * `df_final`: final estimated degrees of freedom for the variable.
+#' * `power1, power2, ...`: final estimated FP powers (as many columns as needed).
 #' 
 #' @inheritParams fit_mfp
 #' @param fp_powers powers of the created FP terms.

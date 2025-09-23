@@ -48,6 +48,9 @@ and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
 \item{spike}{A logical vector indicating which columns of \code{x} contain
 a spike at zero. The length and order of \code{spike} must match those of
 the columns in \code{x}.}
+
+\item{spike_decision}{Integer vector indicating the modeling decision for
+spike-at-zero variables.}
 }
 \value{
 Dataframe with overview of all fp terms. Each row represents a variable,
@@ -56,13 +59,18 @@ transformation are prefixed by \code{A_} by the \code{print} and \code{summary} 
 The dataframe comprises the following columns:
 \itemize{
 \item \code{df_initial}: initial degrees of freedom.
-\item \code{select}: significance level for backward elimination.
-\item \code{alpha}: significance level for fractional polyomial terms.
-\item \code{selected}: logical value encoding presence in the model.
-\item \code{df_final}: final estimated degrees of freedom.
-\item \code{acd}: logical value encoding use of ACD transformation.
-\item \code{powerN}: one or more columns with the final estimated fp powers (numbered
-1 to N).
+\item \code{select}: significance level used for backward elimination (or criterion name if not "pvalue").
+\item \code{alpha}: significance level for FP terms (or criterion name if not "pvalue").
+\item \code{acd}: logical, whether an ACD transformation was applied.
+\item \code{zero}: logical, indicates whether only the positive values of the variable
+are transformed (i.e., whether the FP function is applied exclusively to
+values greater than zero).
+\item \code{catzero}: logical, whether a binary variable for zero values was created.
+\item \code{spike}: logical, indicates presence of a spike-at-zero variable.
+\item \code{spike_decision}: integer code describing how the spike-at-zero variable is modeled.
+\item \code{selected}: logical, whether the FP term is included in the final model.
+\item \code{df_final}: final estimated degrees of freedom for the variable.
+\item \verb{power1, power2, ...}: final estimated FP powers (as many columns as needed).
 }
 }
 \description{

@@ -197,7 +197,7 @@ fracplot <- function(model,
     
     # Add line for positive values only if spike-at-zero exists
     if (is_spike) {
-      if (model$spike_decision == 3) {
+      if (model$spike_decision[v] == 3) {
         # Expect df to have two rows: one for 0 and one for 1
         p <- p + ggplot2::geom_line(linewidth = linewidth,
                                     linetype = linetype,

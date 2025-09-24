@@ -61,6 +61,8 @@
 #' variables are handled. Each element corresponds to a variable and encodes 
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ, 
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
+#' @param prev_adj_params Named list storing adjustment variable transformations 
+#' from previous steps.
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -148,6 +150,7 @@ find_best_fp_step <- function(x,
                               spike,
                               spike_decision,
                               acd_parameter,
+                              prev_adj_params,
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -176,7 +179,7 @@ find_best_fp_step <- function(x,
     method = method, strata = strata, nocenter = nocenter, 
     control = control, rownames = rownames, zero = zero, catzero = catzero,
     spike = spike, spike_decision = spike_decision,
-    acd_parameter = acd_parameter
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params
   )
   
   if (verbose & !spike[xi]) {
@@ -188,7 +191,8 @@ find_best_fp_step <- function(x,
   power_best <- as.numeric(fit1$power_best)
   
   if (!fit1$acd) {
-    power_best <- na.omit(power_best)
+    #power_best <- na.omit(power_best) 
+    power_best <- power_best[!is.na(power_best)]
     if (length(power_best) == 0)
       power_best <- NA 
   } 
@@ -199,11 +203,12 @@ find_best_fp_step <- function(x,
                                                   acd = acdx[xi])
   # Return best power and decision
   if (all(is.na(power_best)) || !spike[xi]) { 
-    return(list(power_best = power_best, spike_decision = spike_decision))
+    return(list(power_best = power_best, spike_decision = spike_decision,
+                current_adj_params = fit1$current_adj_params))
   }
   
   # ----------------------------------------------------------------------------
-  # Evaluate spike at zero (SAZ) variables
+  # Evaluate spike at zero (SAZ) variables to update spike_decision 
   # Stage 2 of SAZ algorithm 
   # ----------------------------------------------------------------------------
   # fit candidate models to evaluate Spike at zero variables
@@ -233,7 +238,8 @@ find_best_fp_step <- function(x,
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
   }
   
-  return(list(power_best = power_best, spike_decision = spike_decision))
+  return(list(power_best = power_best, spike_decision = spike_decision,
+              current_adj_params = fit1$current_adj_params))
 
 }
 
@@ -563,6 +569,7 @@ find_best_fpm_step <- function(x,
                                catzero, # a list of binary variables or null
                                spike_decision, # a numeric vector
                                acd_parameter,
+                               prev_adj_params,
                                ...) {
   # Number of events
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
@@ -579,7 +586,8 @@ find_best_fpm_step <- function(x,
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 2 * degree, powers_current = powers_current, 
     powers = powers, acdx = acdx, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params
   )
   
   metrics <- list()
@@ -617,7 +625,8 @@ find_best_fpm_step <- function(x,
     metrics = metrics, 
     model_best = model_best,
     zero = zero[xi],
-    catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE)
+    catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
+    current_adj_params = x_transformed$current_params
   ) 
 }
 
@@ -647,6 +656,7 @@ fit_null_step <- function(x,
                           catzero,
                           spike_decision,
                           acd_parameter,
+                          prev_adj_params,
                           ...) {
   
   # Number of events
@@ -657,7 +667,8 @@ fit_null_step <- function(x,
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx, 
     powers = powers, zero = zero, catzero = catzero, 
-    spike_decision = spike_decision, acd_parameter = acd_parameter 
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params
   ) 
   
   # fit null model
@@ -668,7 +679,8 @@ fit_null_step <- function(x,
   
   list(
     powers = NA,
-    metrics = rbind(null = calculate_model_metrics(model_null, n_obs))  
+    metrics = rbind(null = calculate_model_metrics(model_null, n_obs)),
+    current_adj_params = x_transformed$current_params
   )
 }
 
@@ -702,6 +714,7 @@ fit_linear_step <- function(x,
                             catzero, 
                             spike_decision,
                             acd_parameter,
+                            prev_adj_params,
                             ...) {
   # Number of events in survival models or observation in GLM 
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
@@ -711,7 +724,8 @@ fit_linear_step <- function(x,
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx,
     powers = powers, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params
   ) 
   
   # fit a model based on the assumption that xi is linear. If catzero, its
@@ -728,7 +742,8 @@ fit_linear_step <- function(x,
   
   list(
     powers = x_transformed$powers_fp,
-    metrics = metrics
+    metrics = metrics,
+    current_adj_params = x_transformed$current_params
   )
 }
 
@@ -795,6 +810,7 @@ select_linear <- function(x,
                           spike,
                           spike_decision,
                           acd_parameter,
+                          prev_adj_params,
                           ...) {
   
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
@@ -803,16 +819,17 @@ select_linear <- function(x,
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero,spike_decision,
-    acd_parameter, ...
+    family = family, zero = zero, catzero = catzero,
+    spike_decision = spike_decision,
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
   
   # Model 2: Linear model
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero, spike_decision,
-    acd_parameter, ...
+    family = family, zero = zero, catzero = catzero, spike_decision = spike_decision,
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
   
   # Extract powers and metrics of interest
@@ -861,7 +878,8 @@ select_linear <- function(x,
     statistic = statistic,
     zero = zero[xi],
     catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
-    spike = spike[xi]
+    spike = spike[xi],
+    current_adj_params = fit_null$current_adj_params
   )
 }
 
@@ -949,6 +967,7 @@ select_ra2 <- function(x,
                        spike,
                        spike_decision,
                        acd_parameter,
+                       prev_adj_params,
                        ...) {
   
   if (degree < 1) {
@@ -989,7 +1008,8 @@ select_ra2 <- function(x,
     model_best = NULL, 
     statistic = NULL, 
     pvalue = NULL,
-    spike = spike[xi]
+    spike = spike[xi],
+    current_adj_params = NULL
   )
   
   # fit highest fp and null model for initial step
@@ -997,13 +1017,15 @@ select_ra2 <- function(x,
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -1011,6 +1033,9 @@ select_ra2 <- function(x,
   )
   rownames(res$metrics) <- c(fpmax, "null")
   res$powers <- rbind(fit_fpmax$power_best, NA)
+  
+  # return also the adjustment parameters
+  res$current_adj_params <- fit_fpmax$current_adj_params
   
   # Test 1: test for overall significance (null vs best FPm)
   # df for tests are degree * 2
@@ -1033,7 +1058,8 @@ select_ra2 <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -1078,7 +1104,8 @@ select_ra2 <- function(x,
         x = x, xi = xi, degree = current_degree, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx,
         family = family, zero = zero, catzero = catzero,
-        spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+        spike_decision = spike_decision, acd_parameter = acd_parameter,
+        prev_adj_params = prev_adj_params, ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1184,6 +1211,7 @@ select_ra2_acd <- function(x,
                            spike,
                            spike_decision,
                            acd_parameter,
+                           prev_adj_params,
                            ...) {
   
   # simplify testing by defining test helper function
@@ -1223,7 +1251,8 @@ select_ra2_acd <- function(x,
     model_best = NULL, 
     statistic = NULL, 
     pvalue = NULL,
-    spike = spike[xi]
+    spike = spike[xi],
+    current_adj_params = NULL
   )
   
   # fit highest fp and null model for initial step
@@ -1231,13 +1260,15 @@ select_ra2_acd <- function(x,
     x = x, xi = xi, degree = 2, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family,zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -1245,6 +1276,8 @@ select_ra2_acd <- function(x,
   )
   rownames(res$metrics) <- c(fpmax, "null")
   res$powers <- rbind(fit_fpmax$power_best, fit_null$powers)
+  
+  res$current_adj_params <- fit_fpmax$current_adj_params
   
   # test for overall significance
   # df for tests are degree * 2 = 4
@@ -1267,7 +1300,8 @@ select_ra2_acd <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family,zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1300,7 +1334,8 @@ select_ra2_acd <- function(x,
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family,zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1331,7 +1366,8 @@ select_ra2_acd <- function(x,
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1364,7 +1400,8 @@ select_ra2_acd <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1477,6 +1514,7 @@ select_ic <- function(x,
                       spike,
                       spike_decision,
                       acd_parameter,
+                      prev_adj_params,
                       ...) {
   
   if (degree < 1)
@@ -1495,7 +1533,8 @@ select_ic <- function(x,
     model_best = NULL, 
     statistic = NA, 
     pvalue = NA,
-    spike = spike[xi]
+    spike = spike[xi],
+    current_adj_params = NULL
   )
   
   # fit all relevant models
@@ -1504,15 +1543,20 @@ select_ic <- function(x,
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family,zero = zero, catzero = catzero,
-      spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision, acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     )
   # Linear model
   fit_lin <- fit_linear_step(
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family, zero = zero, catzero = catzero, 
-      spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision, acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     )
+  
+  res$current_adj_params <- fit_null$current_adj_params
+  
   
   # All FPm models
   fits_fpm <- list()
@@ -1522,7 +1566,8 @@ select_ic <- function(x,
       x = x, xi = xi, degree = m, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family,zero = zero, catzero = catzero,
-      spike_decision = spike_decision,acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision,acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     )
   }
 
@@ -1603,6 +1648,7 @@ select_ic_acd <- function(x,
                           spike,
                           spike_decision,
                           acd_parameter,
+                          prev_adj_params,
                           ...) {
   
   acdx_reset_xi <- acdx
@@ -1618,7 +1664,8 @@ select_ic_acd <- function(x,
     model_best = NULL, 
     statistic = NA, 
     pvalue = NA,
-    spike = spike[xi]
+    spike = spike[xi],
+    current_adj_params = NULL
   )
   
   # fit all relevant models
@@ -1626,20 +1673,26 @@ select_ic_acd <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, zero = zero, catzero = catzero, 
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, zero = zero, catzero = catzero,
-    spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+    spike_decision = spike_decision, acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params, ...
   )
+  
+  res$current_adj_params <- fit_null$current_adj_params
+  
   suffix <- if (spike[xi]) " + Binary" else ""
   fits <- setNames(
     list(
@@ -1647,19 +1700,22 @@ select_ic_acd <- function(x,
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
       family = family, zero = zero, catzero = catzero,
-      spike_decision = spike_decision,acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision,acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family,zero = zero, catzero = catzero, 
-      spike_decision = spike_decision, acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision, acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family,zero = zero, catzero = catzero,
-      spike_decision = spike_decision,acd_parameter = acd_parameter, ...
+      spike_decision = spike_decision,acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params, ...
     )
   ),
   c(
@@ -1753,16 +1809,20 @@ select_ic_acd <- function(x,
 #'   indicator (`catzero`).
 #' * `2`: include only the transformed adjustment variable.
 #' * `3`: include only the binary indicator (`catzero`).
-#' 
 #' This applies only to adjustment variables, not the focal predictor `xi`.
-#' 
+#' @param prev_adj_params Named list storing adjustment variable transformations 
+#' from previous steps.
 #' @details
-#' After extracting the adjustment variables this function, using their
-#' corresponding FP powers stored in `powers_current`, transforms them. 
-#' This is necessary When evaluating x of interest, as we must account for other
-#' variables, which can be transformed or untransformed, depending on the
-#' individual powers. Some powers can be NA, indicating
-#' that the variable has been left out of the adjustment variables. 
+#' This function extracts the adjustment variables and applies the corresponding
+#' FP or ACD transformations based on `powers_current`. When evaluating the variable
+#' of interest `xi`, it is necessary to account for other variables in the model, 
+#' which may be transformed or untransformed depending on their individual powers. 
+#' Some powers may be `NA`, indicating that the corresponding variable has been 
+#' excluded from the adjustment set. 
+#' 
+#' To improve efficiency, the function avoids recomputing adjustment variables if 
+#' their parameters (`powers` and `spike_decision`) have not changed from a 
+#' previous step, as provided in `prev_adj_params`.
 #' 
 #' The role of `spike_decision` is to determine how each adjustment variable is
 #' represented in the presence of potential spike-at-zero effects. For every 
@@ -1782,16 +1842,9 @@ select_ic_acd <- function(x,
 #' acd transformation is applied. 
 #' 
 #' @return 
-#' A list containing the following elements: 
-#' 
-#' * `powers_fp`: FP powers used for `data_fp`.
-#' * `data_fp`: a list with all possible FP transformations for `xi`, see the 
-#' `data` component of the output of [generate_transformations_fp()] and 
-#' [generate_transformations_acd()]. 
-#' * `powers_adj`: fp powers for adjustment variables in `data_adj`.
-#' * `data_adj`: adjustment data matrix, constructed according to 
-#'   `spike_decision`, i.e. using transformed adjustment variables, their 
-#'   binary indicators, or both.
+#' A list containing `power_best` (numeric vector of best FP powers for `xi`, 
+#' possibly including `NA`), `spike_decision` (updated spike-at-zero strategy), 
+#' and `current_adj_params` (adjustment variable transformations used in this step).
 transform_data_step <- function(x,
                                 xi,
                                 powers_current,
@@ -1801,86 +1854,131 @@ transform_data_step <- function(x,
                                 zero,
                                 catzero,
                                 spike_decision,
-                                acd_parameter) { 
+                                acd_parameter,
+                                prev_adj_params) { 
   
   # sort x based on the names of the powers
   names_powers_current <- names(powers_current)
   x <- x[, names_powers_current, drop = FALSE]
   
-  # extract the matrix of adjustment variables
-  vars_adj <- names_powers_current[!(names_powers_current %in% xi)]
-  x_adj <- x[, vars_adj, drop = FALSE]
+  # adjustment variables = all except xi
+  vars_adj <- setdiff(names_powers_current, xi)
+  x_adj <- if (length(vars_adj) > 0) x[, vars_adj, drop = FALSE] else NULL
   
-  # transformations of adjustment variables
-  powers_adj <- powers_current[vars_adj]
-  acdx_adj <- unname(acdx[vars_adj])
-  zero_adj <- unname(zero[vars_adj])
-  acd_parameter_adj <- acd_parameter[vars_adj]
-  # generate adjustment data 
-  # check whether all adjustment powers = NA or length(vars_adj)=0 for 1 variable
-  # in the model (univariable fp) 
-  if (all(is.na(unlist(powers_adj, use.names = FALSE))) || length(vars_adj) == 0) {
-    # all adjustment variables were eliminated in MFP backfitting process
-    data_adj <- NULL
-    powers_adj <- NULL
-  } else {
-    data_adj <- vector(mode = "list", length = ncol(x_adj))
-    
-    for (i in seq_along(vars_adj)) {
-      varname <- vars_adj[i]
+  powers_adj <- NULL
+  spike_decision_adj <- NULL
+  # Prepare a container for adjusted data
+  data_adj_list <- list()
+  if (length(vars_adj) > 0) {
+    # transformations of adjustment variables
+    powers_adj <- powers_current[vars_adj]
+    acdx_adj <- acdx[vars_adj]
+    zero_adj <- zero[vars_adj]
+    acd_parameter_adj <- acd_parameter[vars_adj]
+    spike_decision_adj <- spike_decision[vars_adj]
+    # For each adjustment variable, check if recomputation is needed
+    for (varname in vars_adj) {
+      xvec <- x_adj[, varname, drop = TRUE]
+      power_current <- powers_adj[[varname]]
       
-      # Transform variable
-      if (acdx_adj[i]) {
+      # Extract previous adjustments, powers, and spike_decision
+      prev_for_var <- NULL
+      if (!is.null(prev_adj_params[[xi]])) {
+        prev_xi <- prev_adj_params[[xi]]
+        
+        prev_data_adj <- prev_xi$data_adj_list[[varname]]
+        prev_power <- prev_xi$powers_adj[[varname]]
+        prev_spike <- prev_xi$spike_decision_adj[[varname]]
+        
+        if (!is.null(prev_data_adj)) {
+          prev_for_var <- list(
+            data_adj = prev_data_adj,
+            powers = prev_power,
+            spike_decision = prev_spike
+          )
+        }
+      }
+      # Check if powers or spike_decision changed
+      # Determine if recomputation is needed
+      recompute <- TRUE
+      if (!is.null(prev_for_var)) {
+        powers_same <- identical(prev_for_var$powers, power_current)
+        spike_same <- identical(prev_for_var$spike_decision, spike_decision[[varname]])
+        recompute <- !(powers_same && spike_same)
+      }
+      
+      # Transform if needed, otherwise reuse previous data
+      # # If power is NA or no transformation needed, create empty matrix
+      if (all(is.na(power_current))) {
+      adj_mat <- matrix(nrow = nrow(x), ncol = 0)
+      } else if (!recompute) {
+        adj_mat <- prev_for_var$data_adj
+        if (is.vector(adj_mat)) adj_mat <- matrix(adj_mat, ncol = 1)
+      } else {
+      # Transform variable if recomputation is needed
+      if (acdx_adj[varname]) {
         transformed <- transform_vector_acd(
-          x = x_adj[, i, drop = TRUE], 
-          power = powers_adj[[i]],
-          zero = zero_adj[i],
-          acd_parameter = acd_parameter_adj[[i]],
+          x = xvec, 
+          power = power_current,
+          zero = zero_adj[varname],
+          acd_parameter = acd_parameter_adj[[varname]],
           powers = powers[[varname]] # powers needed by acd() function
           
         )$acd
       } else {
         transformed <- transform_vector_fp(
-          x = x_adj[, i, drop = TRUE],
-          power = powers_adj[[i]], 
-          zero = zero_adj[i]
+          x = xvec,
+          power = power_current, 
+          zero = zero_adj[varname]
         )
       }
+        # normalize to matrix
+        if (is.null(transformed)) {
+          adj_mat <- matrix(nrow = nrow(x), ncol = 0)
+        } else if (is.null(dim(transformed))) {
+          adj_mat <- matrix(transformed, ncol = 1)
+        } else {
+          adj_mat <- as.matrix(transformed)
+        }
       # catzero for this variable (may be NULL) if catzero = FALSE
       # which is not possibe if spike = TRUE
-      cz <- catzero[[varname]]
+        # catzero (may be NULL)
+        cz <- catzero[[varname]]
+        if (!is.null(cz)) {
+          cz_mat <- as.matrix(cz)
+        } else {
+          cz_mat <- NULL
+        }
       
       # apply spike_decision rule
-      if (spike_decision[varname] == 1) {
-        data_adj[[i]] <- cbind(cz, transformed)
-      } else if (spike_decision[varname] == 2) {
-        data_adj[[i]] <- transformed
-      } else if (spike_decision[varname] == 3) {
-        data_adj[[i]] <- cz
+      spike_val <- spike_decision[[varname]]
+      if (spike_val == 1L) {
+        adj_mat  <- cbind(cz_mat, transformed)
+      } else if (spike_val == 2L) {
+        adj_mat  <- transformed
+      } else if (spike_val == 3L) {
+        adj_mat  <- cz_mat
       }
-    }
+      }
+      
+      # assign informative column names that preserve mapping to the variable
+      # assign names only if nonempty
     
-    # combine into data.frame
-    # note some variables may have been extended to more than one column
-    # in the loop above due to transformation
-    data_adj <- do.call(cbind, data_adj) 
-    
-    # Add catzero binary indicators for adjustment variables
-    #catzero_adj <- catzero[vars_adj]
-    #catzero_adj <- catzero_adj[!sapply(catzero_adj, is.null)]  # keep only non-null
-    
-    #if (length(catzero_adj) > 0) {
-    #  data_adj <- cbind(data_adj, do.call(cbind, catzero_adj))
-    #}
-    
-    # assign arbitrary names to adjustment matrix 
-    # the names of adjustment variables at this stage are not relevant
-    if (!is.null(data_adj)) {
-      colnames(data_adj) <- paste0("var_adj", seq_len(ncol(data_adj)))
+      if (!is.null(adj_mat) && ncol(adj_mat) > 0) {
+        colnames(adj_mat) <- paste0(varname, "_adj", seq_len(ncol(adj_mat)))
+      }
+      
+      # collect results per variable keyed by variable name
+      data_adj_list[[varname]] <- adj_mat
+
     }
   }
+    
+  # combine all adjustment columns into a single matrix (or NULL)
+  data_adj <- if (length(data_adj_list) > 0) do.call(cbind, data_adj_list) else NULL
   
-  # generate fp data (unchanged, spike_decision not applied here)
+  
+  # generate fp data for xi (unchanged, spike_decision not applied here)
   data_xi <- x[, xi, drop = TRUE]
   
   if (length(unique(data_xi)) <= 3) {
@@ -1915,11 +2013,22 @@ transform_data_step <- function(x,
     powers_fp <- fpd$powers
   }
   
+  #Store everything under xi in current_params
+  current_params <- list()
+  current_params[[xi]] <- list(
+    powers_adj = powers_adj,
+    spike_decision_adj = spike_decision_adj,
+    data_adj_list = data_adj_list,
+    data_adj = data_adj
+    )
+  
+  # Return results and current parameters for next step
   list(
     powers_fp = powers_fp, 
     data_fp = data_fp, 
     powers_adj = powers_adj,
-    data_adj = data_adj
+    data_adj = data_adj,
+    current_params = current_params
   )
 }
 

@@ -73,6 +73,9 @@
 #' algorithm. See e.g. Sauerbrei and Royston (1999).
 #' * Step 3: MFP cycles.Iteratively updates FP powers and spike decisions using
 #'  `find_best_fp_cycle()` until convergence or maximum cycles are reached.
+#'  During cycles, \code{prev_adj_params} stores previously computed transformations 
+#' for adjustment variables to avoid recomputation. It is updated at the end of 
+#'   each cycle and reused in the next.
 #' * Step 4: Final transformation. Applies final FP powers to `x`, generates 
 #' binary variables for catzero, handles centering, and applies backscaling if 
 #' required.
@@ -284,6 +287,10 @@ fit_mfp <- function(x,
   j <- 1
   converged <- FALSE
   
+  # Initialize prev_adj_params as a named list keyed by variable names
+  prev_adj_params <- vector("list", length = length(variables_ordered))
+  names(prev_adj_params) <- variables_ordered
+  
   # run cycles and update the powers in each step
   while (j <= cycles) {
     if (verbose) {
@@ -318,12 +325,16 @@ fit_mfp <- function(x,
       spike = spike,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params,
       verbose = verbose
     )
     
     # FP pwers and spike decision for the jth cycle 
     powers_updated <- fit_best_cycle$powers_current
     spike_decision_updated <- fit_best_cycle$spike_decision
+    
+    # preserve adjustments for the next cycle
+    prev_adj_params <- fit_best_cycle$prev_adj_params
     
     # check for convergence (i.e. no change in powers and variables in model)
     # spike decisions do not affect FP powers because binary indicator is fixed
@@ -690,8 +701,6 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 }
 
 
-
-
 #' Helper to run cycles of the mfp algorithm 
 #' 
 #' This function estimates the best FP functions for all predictors in the 
@@ -759,9 +768,15 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ, 
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param rownames passed to [survival::coxph.fit()].
+#' @param prev_adj_params Named list used to store previously computed adjustment 
+#' variable transformations. This is updated at each step and reused in the next 
+#' cycle to avoid recomputation.
 #' 
 #' @return 
-#' A list of current FP powers
+#' A list with updated components `powers_current` (current FP powers for all 
+#' variables), `spike_decision` (updated spike-at-zero decisions), and
+#' `prev_adj_params` (adjustment variable transformations to be used in the next
+#' cycle).
 find_best_fp_cycle <- function(x, 
                                y, 
                                powers_current, 
@@ -786,10 +801,10 @@ find_best_fp_cycle <- function(x,
                                spike,
                                spike_decision,
                                acd_parameter,
-                               acdx) {
+                               acdx,
+                               prev_adj_params) {
   
   names_x <- names(powers_current)
-  
   for (i in 1:ncol(x)) {
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
@@ -822,15 +837,18 @@ find_best_fp_cycle <- function(x,
       spike = spike,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
+      prev_adj_params = prev_adj_params,
       verbose = verbose
     )
     # Update parameters
     powers_current[[i]] <- fit_best_fp_step$power_best
     spike_decision <- fit_best_fp_step$spike_decision
-      
+    # Store the returned adjustments keyed by xi
+    prev_adj_params[[names_x[i]]] <- fit_best_fp_step$current_adj_params[[names_x[i]]]
   }
   
-  list(powers_current = powers_current, spike_decision = spike_decision)
+  list(powers_current = powers_current, spike_decision = spike_decision, 
+       prev_adj_params = prev_adj_params)
 }
 
 #' Calculate degrees of freedom for a transformed variable

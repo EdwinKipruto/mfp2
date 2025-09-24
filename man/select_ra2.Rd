@@ -23,6 +23,7 @@ select_ra2(
   spike,
   spike_decision,
   acd_parameter,
+  prev_adj_params,
   ...
 )
 }
@@ -89,6 +90,9 @@ the selected strategy: \code{1} = include FP for positive values plus binary SAZ
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
+
+\item{prev_adj_params}{Named list storing adjustment variable transformations
+from previous steps.}
 
 \item{...}{passed to fitting functions \code{\link[=fit_model]{fit_model()}}.}
 }

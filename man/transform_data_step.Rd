@@ -14,7 +14,8 @@ transform_data_step(
   zero,
   catzero,
   spike_decision,
-  acd_parameter
+  acd_parameter,
+  prev_adj_params
 )
 }
 \arguments{
@@ -52,36 +53,34 @@ variable contributes to the adjustment matrix:
 indicator (\code{catzero}).
 \item \code{2}: include only the transformed adjustment variable.
 \item \code{3}: include only the binary indicator (\code{catzero}).
-}
-
-This applies only to adjustment variables, not the focal predictor \code{xi}.}
+This applies only to adjustment variables, not the focal predictor \code{xi}.
+}}
 
 \item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
 with length equal to \code{ncol(x)}.}
+
+\item{prev_adj_params}{Named list storing adjustment variable transformations
+from previous steps.}
 }
 \value{
-A list containing the following elements:
-\itemize{
-\item \code{powers_fp}: FP powers used for \code{data_fp}.
-\item \code{data_fp}: a list with all possible FP transformations for \code{xi}, see the
-\code{data} component of the output of \code{\link[=generate_transformations_fp]{generate_transformations_fp()}} and
-\code{\link[=generate_transformations_acd]{generate_transformations_acd()}}.
-\item \code{powers_adj}: fp powers for adjustment variables in \code{data_adj}.
-\item \code{data_adj}: adjustment data matrix, constructed according to
-\code{spike_decision}, i.e. using transformed adjustment variables, their
-binary indicators, or both.
-}
+A list containing \code{power_best} (numeric vector of best FP powers for \code{xi},
+possibly including \code{NA}), \code{spike_decision} (updated spike-at-zero strategy),
+and \code{current_adj_params} (adjustment variable transformations used in this step).
 }
 \description{
 Function to extract and transform adjustment variables
 }
 \details{
-After extracting the adjustment variables this function, using their
-corresponding FP powers stored in \code{powers_current}, transforms them.
-This is necessary When evaluating x of interest, as we must account for other
-variables, which can be transformed or untransformed, depending on the
-individual powers. Some powers can be NA, indicating
-that the variable has been left out of the adjustment variables.
+This function extracts the adjustment variables and applies the corresponding
+FP or ACD transformations based on \code{powers_current}. When evaluating the variable
+of interest \code{xi}, it is necessary to account for other variables in the model,
+which may be transformed or untransformed depending on their individual powers.
+Some powers may be \code{NA}, indicating that the corresponding variable has been
+excluded from the adjustment set.
+
+To improve efficiency, the function avoids recomputing adjustment variables if
+their parameters (\code{powers} and \code{spike_decision}) have not changed from a
+previous step, as provided in \code{prev_adj_params}.
 
 The role of \code{spike_decision} is to determine how each adjustment variable is
 represented in the presence of potential spike-at-zero effects. For every

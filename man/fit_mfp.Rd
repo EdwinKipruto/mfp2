@@ -138,6 +138,9 @@ FPs are only evaluated in turn for each variables in the first cycle of the
 algorithm. See e.g. Sauerbrei and Royston (1999).
 \item Step 3: MFP cycles.Iteratively updates FP powers and spike decisions using
 \code{find_best_fp_cycle()} until convergence or maximum cycles are reached.
+During cycles, \code{prev_adj_params} stores previously computed transformations
+for adjustment variables to avoid recomputation. It is updated at the end of
+each cycle and reused in the next.
 \item Step 4: Final transformation. Applies final FP powers to \code{x}, generates
 binary variables for catzero, handles centering, and applies backscaling if
 required.

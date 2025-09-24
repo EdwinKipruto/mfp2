@@ -29,7 +29,8 @@ find_best_fp_cycle(
   spike,
   spike_decision,
   acd_parameter,
-  acdx
+  acdx,
+  prev_adj_params
 )
 }
 \arguments{
@@ -115,9 +116,16 @@ if an element is \code{NULL}, the variable was not specified in the
 \item{acdx}{a logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
+
+\item{prev_adj_params}{Named list used to store previously computed adjustment
+variable transformations. This is updated at each step and reused in the next
+cycle to avoid recomputation.}
 }
 \value{
-A list of current FP powers
+A list with updated components \code{powers_current} (current FP powers for all
+variables), \code{spike_decision} (updated spike-at-zero decisions), and
+\code{prev_adj_params} (adjustment variable transformations to be used in the next
+cycle).
 }
 \description{
 This function estimates the best FP functions for all predictors in the

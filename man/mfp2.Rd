@@ -35,6 +35,8 @@ mfp2(x, ...)
   zero = NULL,
   catzero = NULL,
   spike = NULL,
+  min_prop = 0.05,
+  max_prop = 0.95,
   verbose = TRUE,
   ...
 )
@@ -291,16 +293,17 @@ The \code{mfp2} object may contain further information depending on family.
 }
 \description{
 Selects the multivariable fractional polynomial (MFP) model that best predicts
-the outcome variable. This function also supports approximate cumulative
-distribution (ACD) transformations for continuous variables, which allow
+the outcome variable. It also supports approximate cumulative
+distribution (ACD) transformations for continuous variables, which enable
 modeling of sigmoid relationships between predictors \code{x} and the outcome \code{y}
-(Royston, 2014; Royston and Sauerbrei, 2016), as well as spike-at-zero (SAZ)
-modeling, which allows proper handling of semi-continuous predictors
-(Lorenz et al., 2017, 2019).
-This function provides two interfaces for input data: one for inputting
-data matrix \code{x} and  outcome vector \code{y} directly and the other for using a
-\code{formula} object together with a dataframe \code{data}. Both interfaces are
-equivalent in terms of functionality.
+(Royston, 2014; Royston and Sauerbrei, 2016). In addition, it implements
+spike-at-zero (SAZ) modeling, a method for appropriately handling
+semi-continuous predictors with a non-negligible proportion of zero values
+(Becher et al., 2012). The function provides two interfaces for input data:
+one for supplying the data matrix \code{x} and the outcome \code{y} directly, where \code{y}
+may be a numeric vector for continuous or binary outcomes, or a \code{Surv} object
+for Cox proportional hazards models; and another for using a \code{formula} object
+together with a dataframe \code{data}. Both interfaces are equivalent in functionality.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -309,40 +312,49 @@ equivalent in terms of functionality.
 \item \code{mfp2(formula)}: Provides formula interface for \code{mfp2}.
 
 }}
-\section{Brief summary of FPs}{
+\section{Brief summary of fractional polynomials (FPs)}{
 
 
-In the following we denote fractional polynomials for a variable \eqn{x} by
-increasing complexity as either FP1 or FP2. In this example,
-\eqn{FP2(p1, p2)} for \eqn{p1\neq p2} is the most flexible FP transformation,
-where \deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p2}.}
-When \eqn{p1 = p2} (repeated powers), the FP2 model is given by
-\deqn{FP2(p1, p2) = \beta_1 x^{p1} + \beta_2 x^{p1}log(x).}
-The powers \eqn{p1} and \eqn{p2} are usually chosen from a predefined set
-of powers \eqn{S = {(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}} where the power
-of 0 indicates the natural logarithm. The best FP2 is then estimated by using a
-closed testing procedure that seeks the best combination from all 36 pairs of
-powers \eqn{(p1, p2)}. Functions that only involve a single power of
-the variable are denoted as FP1, i.e.
-\deqn{FP1(p1) = \beta_1 x^{p1}.}
-For details, see Sauerbrei et al. (2006) and Royston & Sauerbrei (2008).
-For the effects of influential points on FP functions, see Sauerbrei et al.
-(2023).
+Fractional polynomials (FPs) provide a flexible framework for modeling
+nonlinear relationships between a continuous predictor \eqn{x} and an outcome.
+In general, we denote an FP of degree \eqn{m} as \eqn{FPm(p_1, \dots, p_m)},
+where \eqn{p_1, \dots, p_m} are the selected powers and \eqn{m \ge 1}.
+
+The most commonly used cases are:
+\itemize{
+\item \strong{FP1:} a single-term transformation, \eqn{FP1(p_1) = \beta_1 x^{p_1}},
+representing the simplest FP model.
+\item \strong{FP2:} a two-term transformation, \eqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_2}},
+where \eqn{p_1 \ne p_2}, providing greater flexibility to capture nonlinear
+effects.
+}
+
+When \eqn{p_1 = p_2} (repeated powers), the FP2 model is defined as
+\deqn{FP2(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 x^{p_1} \log(x).}
+
+The powers \eqn{p_1} and \eqn{p_2} are usually chosen from a predefined set
+\eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where a power of 0 indicates
+the natural logarithm. The best FP2 model is then selected using a closed
+testing procedure that evaluates all 36 pairs of powers \eqn{(p_1, p_2)}.
+
+For further details, see Sauerbrei et al. (2006) and Royston and Sauerbrei (2008).
+For the effects of influential points on FP functions, see Sauerbrei et al. (2023).
 }
 
 \section{Details on \code{family} option}{
 
 
-\code{mfp2()} supports the family object as used by \code{\link[stats:glm]{stats::glm()}}. The built in
-families are specified via a character string. \code{mfp2(..., family = "binomial")}
-fits a logistic regression model, while \code{mfp2(..., family = "gaussian")}
-fits a linear regression (ordinary least squares) model.
+\code{mfp2()} supports the \code{family} argument as used by \code{\link[stats:glm]{stats::glm()}}. Built-in
+families can be specified via a character string. For example,
+\code{mfp2(..., family = "binomial")} fits a logistic regression model, whereas
+\code{mfp2(..., family = "gaussian")} fits a linear regression model using ordinary
+least squares.
 
-For Cox models, the response should preferably be a \code{Surv} object,
-created by the \code{\link[survival:Surv]{survival::Surv()}} function, and the \code{family = "cox"}.
-Only right-censored data are currently supported. To fit stratified Cox
-models, the \code{strata} option can be used, or alternatively \code{strata} terms
-can be included in the model formula when using the formula interface
+For Cox proportional hazards models, the response should preferably be a
+\code{Surv} object, created with \code{\link[survival:Surv]{survival::Surv()}}, and the \code{family} argument
+should be set to \code{"cox"}. Only right-censored data are currently supported.
+Stratified Cox models can be specified using the \code{strata} argument, or by
+including \code{strata} terms in the model formula when using the formula interface
 \code{mfp2.formula}.
 }
 
@@ -387,59 +399,110 @@ should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_f
 
 \section{Details on the \code{subset} argument}{
 
-Note that subsetting occurs after data pre-processing (shifting and scaling),
-but before model selection and fitting. In detail, when the option \code{subset} is
-used and scale, shift or centering values are to be estimated, then \code{mfp2()}
-first estimates these parameters using the full dataset (no subsetting).
-It then conduct subsetting before proceeding to perform model selection and
-fitting on the specified subset of the data.
+Subsetting in \code{mfp2()} occurs after data pre-processing (shifting, scaling,
+or centering) but before model selection and fitting. Specifically, if the
+\code{subset} option is used and scale, shift, or centering parameters need to be
+estimated, \code{mfp2()} first estimates these parameters using the full dataset
+(without subsetting). The subset is then applied before performing model
+selection and fitting on the specified portion of the data.
 
-Therefore, subsetting in \code{mfp2()} is not equivalent to subsetting the data
-before passing it to \code{mfp2()}, and thus cannot be used to implement, for example,
-cross-validation or to remove \code{NA}. These tasks should be done by the caller
-beforehand. However, it does allow to use the same data pre-processing
-for different subsets of the data. An example use case is when separate
-models are to be estimated for women and men in the dataset, but a common
-data pre-processing should be applied. In this case the \code{subset} option
-can be used to restrict model selection to either women or men, but the
-data processing (e.g. shifting factors) will be shared between the two models.
+Consequently, subsetting within \code{mfp2()} is not equivalent to subsetting the
+data prior to calling the function. It should not be used to implement tasks
+such as cross-validation or removal of \code{NA} values, which should be handled
+by the user beforehand. The \code{subset} argument is primarily useful when the
+same pre-processing should be applied to multiple subsets. For example, one
+might estimate separate models for women and men while using identical
+data pre-processing (e.g., centering or scaling) across both subsets. In
+this case, \code{subset} can restrict model selection to the chosen group while
+retaining consistent pre-processing parameters.
 }
 
 \section{Details on  approximate cumulative distribution transformation}{
 
 
-The approximate cumulative distribution (ACD) transformation (Royston 2014)
-converts each predictor, \eqn{x}, smoothly to an approximation, \eqn{acd(x)},
-of its empirical cumulative distribution function.
-This is done by smoothing a probit transformation of
-the scaled ranks of \eqn{x}. \eqn{acd(x)} could be used instead of \eqn{x}
-as a covariate. This has the advantage of providing sigmoid curves, something
-that regular FP functions cannot achieve.
+The approximate cumulative distribution (ACD) transformation is a method
+to model continuous covariates flexibly in regression models. Instead of
+including the raw variable \eqn{X} directly, a smooth function approximating
+its empirical cumulative distribution function (ecdf) is used.
+
+\strong{Method}
+
+Let \eqn{x_1, \dots, x_n} be a sample from the distribution of \eqn{X}.
+The ACD transformation proceeds in three steps:
+\enumerate{
+\item \strong{Inverse normal transformation of ranks:}
+Compute the rank of each \eqn{x_i} in the sample and transform it using the
+standard normal inverse CDF (probit):
+\deqn{z_i = \Phi^{-1} \Big( \frac{\text{rank}(x_i) - 0.5}{n} \Big),}
+where \eqn{\Phi^{-1}} is the inverse standard normal CDF. This maps the
+empirical distribution of \eqn{X} to approximately standard normal values.
+\item \strong{Power-linear approximation:}
+Fit a one-term fractional polynomial regression of \eqn{z_i} on a shifted
+and powered version of \eqn{X}:
+\deqn{\hat{z}_i = \hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p,}
+where \eqn{p} is the best-fitting power, and \eqn{\text{shift}} ensures all
+values are positive if necessary. Ordinary least squares is used to estimate
+\eqn{\hat{\beta}_0} and \eqn{\hat{\beta}_1}. A power of 0 corresponds to a
+log transformation.
+\item \strong{Back-transformation to the (0,1) scale:}
+The fitted values \eqn{\hat{z}_i} are transformed back to the interval (0,1)
+using the standard normal CDF:
+\deqn{\text{ACD}(x_i) = a_i = \Phi(\hat{z}_i) = \Phi(\hat{\beta}_0 + \hat{\beta}_1 (x_i + \text{shift})^p),}
+producing a smooth approximation of the ecdf.
+}
+
+\strong{Interpretation}
+
+The ACD transformation maps \eqn{X} to an approximately uniform scale on (0,1).
+When a regression model is specified as
+\eqn{E(Y) = \beta_0 + \beta_1 \text{ACD}(X)}, the expected value of \eqn{Y}
+changes smoothly from \eqn{\beta_0} at \eqn{\text{ACD}(X) \approx 0}
+(corresponding to the minimum of \eqn{X}) to \eqn{\beta_0 + \beta_1} at
+\eqn{\text{ACD}(X) \approx 1} (corresponding to the maximum of \eqn{X}).
+
+Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped—changing
+slowly at the extremes and more rapidly in the central range—the resulting
+relationship between \eqn{Y} and \eqn{X} is typically nonlinear and
+sigmoid-shape. This sigmoid shape cannot be achieved by standard fractional
+polynomial (FP) functions.
+
+Intuitively, the ACD transformation “stretches” the middle of \eqn{X}'s
+distribution while compressing the tails. A linear effect of
+\eqn{\text{ACD}(X)} in the regression thus produces slow changes in \eqn{Y}
+for extreme values of \eqn{X} and faster changes for central values,
+generating a characteristic sigmoid curve.
+
 Details of the precise definition and some possible uses of the ACD
 transformation in a univariate context are given by Royston (2014).
-Royston and Sauerbrei (2016) describes how one could go further and replace FP2
-functions with a pair of FP1 functions, one in \eqn{x} and the other in
-\eqn{acd(x)}.
 
-This alternative class of four-parameter functions provides about
-the same flexibility as the standard FP2 family, but the ACD component offers
-the additional possibility of sigmoid functions.
-Royston (2014) discusses how the extended class of functions known as
-\eqn{FP1(p1, p2)}, namely
-\deqn{FP1(p1, p2) = \beta_1 x^{p1} + \beta_2 acd(x)^{p2}}
-can be fitted optimally by seeking the best combination of all 64 pairs of
-powers (p1, p2). The optimisation is invoked by use of the \code{acdx} parameter.
-Royston (2014) also described simplification of the chosen function through
-model reduction by applying significance testing to six sub-families of
-functions,M1-M6, giving models M1 (most complex) through M6 (null):
+\strong{FP1 with ACD component}
+
+Royston (2014) and Royston and Sauerbrei (2016) describe extending the FP2
+family by replacing one FP1 term with an ACD-transformed term:
+\deqn{FP1(p_1, p_2) = \beta_1 x^{p_1} + \beta_2 \text{ACD}(x)^{p_2},}
+which allows modeling of sigmoid-like effects while maintaining flexibility
+similar to standard FP2 functions.
+
+The powers \eqn{p_1} and \eqn{p_2} are chosen from a predefined set
+\eqn{S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, with 0 corresponding to a
+logarithmic transformation. All 64 combinations of \eqn{(p_1, p_2)} are
+considered during model selection.
+
+\strong{Model simplification}
+
+After fitting, the chosen FP1+ACD function can be simplified via a function
+selection procedure (FSPA) that evaluates six nested sub-families:
 \itemize{
 \item M1: FP1(p1, p2) (no simplification)
-\item M2: FP1(p1, .) (regular FP1 function of \eqn{x})
-\item M3: FP1(., p2) (regular FP1 function of \eqn{acd(x)})
-\item M4: FP1(1, .) (linear function of \eqn{x})
-\item M5: FP1(., 1) (linear function of \eqn{acd(x)})
-\item M6: Null (\eqn{x} omitted entirely)
+\item M2: FP1(p1, .) (regular FP1 in \eqn{x})
+\item M3: FP1(., p2) (FP1 in \eqn{ACD(x)})
+\item M4: FP1(1, .) (linear in \eqn{x})
+\item M5: FP1(., 1) (linear in \eqn{ACD(x)})
+\item M6: null (\eqn{x} omitted)
 }
+
+\strong{Closed test procedure to choose final model}
+
 Selection among these six sub-functions is performed by a closed test
 procedure known as the function-selection pocedure FSPA.
 It maintains the family-wise type 1 error
@@ -465,6 +528,12 @@ Otherwise, accept model 5. End of procedure.
 }
 The result is the selection of one of the six models. For details see
 Royston and Sauerbrei (2016).
+
+\strong{Sigmoid shapes and the M1–M6 model hierarchy}
+
+Sigmoid-shaped relationships between \eqn{X} and \eqn{Y} occur only when
+\eqn{\text{ACD}(X)} is included linearly (power of one). Among the M1–M6 models,
+this condition is met by model M5.
 }
 
 \section{Details on  spike-at-zero (SAZ) modeling}{
@@ -499,9 +568,11 @@ procedure proceeds sequentially as follows:
 This ensures that the functional form is selected sequentially, retaining only
 models that significantly improve fit, always including \code{Z}. Stage 1 mirrors the
 standard MFP function selection process, except that \code{Z} is forced into the model.
-To force the variable into the model, set \code{select = 1} or use the \code{keep} argument.
+To force the SAZ variable into the model, set \code{select = 1} or use the \code{keep}
+argument.
 
 \strong{Stage 2: Component assessment}
+
 The selected model from Stage 1 is evaluated to decide which components are
 needed. If the null model is selected in Stage 1, Stage 2 is not executed.
 Otherwise, suppose the selected model is best FP2 + Z:
@@ -528,29 +599,32 @@ since it provides the better fit to the data without unnecessary terms.
 For \code{criterion = "aic"} or \code{criterion = "bic"}, the information criteria for
 the three models (FP2 + Z, FP2, and Z only) are compared, and the one with
 the minimum value is chosen.
-If Z is removed, the spike at zero plays no specific role, and a standard FP
-function is selected for the positive values of \code{x}. Conversely, if the FP
-function is removed, leaving only Z in the model, the covariate's effect is
-entirely represented by the binary indicator. Note that the presence of Z
-in Stage 1 may have influenced the choice of FP powers, so the final powers
-may differ from those obtained in a standard FP analysis.
+If \eqn{Z} is removed, the spike at zero plays no specific role, and a
+standard FP function is selected for the positive values of \code{x}. Conversely,
+if the FP function is removed, leaving only \eqn{Z} in the model, the
+covariate's effect is entirely captured by the binary indicator. It should
+be noted that the presence of \eqn{Z} in Stage 1 may influence the selection
+of FP powers; consequently, the final powers may differ from those obtained
+in a standard FP analysis where both \code{spike = FALSE} and
+\code{catzero = FALSE} are applied.
 }
 
 \section{Handling extreme proportions of zeros in spike-at-zero (SAZ) modeling}{
 
-The SAZ approach is only applicable if the proportion of zeros is neither too small
-nor too large, typically between 5\% and 95\%. Variables with fewer than 5\% zeros may
-not provide enough information to justify a separate binary term, and this threshold
-may be too low for small sample sizes, where estimation of separate FP terms could be
-unstable. Variables with more than 95\% zeros are mostly zeros, and the positive portion
-may be too sparse for reliable estimation.
+The spike-at-zero (SAZ) approach is meaningful only when the proportion of zeros
+in a covariate is moderate, typically ranging from 5\% to 95\%. Covariates with
+fewer than 5\% zeros may not contain sufficient information to justify a
+separate binary indicator, particularly in small samples where estimation of
+separate FP terms could be unstable. Conversely, covariates with more than 95\%
+zeros are dominated by the zero values, leaving the positive portion too sparse
+for reliable estimation.
 
-In the implementation, the \code{reset_spike} function automatically handles such
-extreme cases. By default, if fewer than 5\% or more than 95\% of the values
-are zero, the spike is reset to \code{FALSE}, and the variable is treated as a
-standard continuous covariate. This ensures that spike-at-zero modeling is
-applied only when there is sufficient information in both the zero and
-positive portions of the variable.
+In the implementation, the \code{reset_spike} function automatically addresses such
+extreme cases. By default, if the proportion of zeros is below 5\% or above 95\%,
+the spike is reset to \code{FALSE}, and the variable is treated as a standard
+continuous covariate. This ensures that SAZ modeling is applied only when both
+the zero and positive portions of the covariate provide sufficient information.
+Users may override these thresholds using the \code{min_prop} and \code{max_prop} options.
 }
 
 \section{Details on model specification using a \code{formula}}{

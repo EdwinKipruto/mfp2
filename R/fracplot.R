@@ -97,10 +97,12 @@ fracplot <- function(model,
                      terms_seq = c("data", "equidistant"),
                      alpha = 0.05,
                      color_points = "#AAAAAA",
-                     color_line = "#000000", 
+                     color_line = "red", 
+                     color_line_spike = "red",
                      color_fill = "#000000",
                      shape = 1,
                      size_points = 1,
+                     size_points_spike = 2,
                      linetype = "solid", 
                      linewidth = 1,
                      alpha_fill = 0.1) {
@@ -195,8 +197,21 @@ fracplot <- function(model,
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw()
     
+    # Residuals go first
+    if (!partial_only) {
+      p <- p + ggplot2::geom_point(data = pred_data[[v]],
+                                   ggplot2::aes(y = .data$value + .data$resid),
+                                   color = color_points,
+                                   size = size_points,
+                                   shape = shape)
+    }
+    
+    # Then fitted line/ribbon on top
     # Add line for positive values only if spike-at-zero exists
-    if (is_spike) {
+    if (is_spike && model$spike_decision[v] != 2) {
+      pos_df <- df[df$variable > 0, , drop = FALSE]
+      zero_df <- df[df$variable == 0, , drop = FALSE]
+      
       if (model$spike_decision[v] == 3) {
         # Expect df to have two rows: one for 0 and one for 1
         p <- p + ggplot2::geom_line(linewidth = linewidth,
@@ -205,24 +220,7 @@ fracplot <- function(model,
           ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                                alpha = alpha_fill,
                                fill = color_fill)
-        
-        # p <- p + 
-        #   ggplot2::geom_point(data = df,
-        #                       ggplot2::aes(x = .data$variable, y = .data$value),
-        #                       color = color_line,
-        #                       size = size_points) +
-        #   ggplot2::geom_errorbar(data = df,
-        #                          ggplot2::aes(x = .data$variable, ymin = .data$lower, ymax = .data$upper),
-        #                          width = 0.1,
-        #                          color = color_line) +
-        #   ggplot2::geom_line(data = df,
-        #                      ggplot2::aes(x = .data$variable, y = .data$value),
-        #                      linewidth = linewidth,
-        #                      linetype = linetype,
-        #                      color = color_line)
-        
       } else {
-      pos_df <- df[df$variable > 0, , drop = FALSE]
       p <- p + ggplot2::geom_line(data = pos_df, 
                                   ggplot2::aes(x = .data$variable, y = .data$value),
                                   linewidth = linewidth,
@@ -236,14 +234,15 @@ fracplot <- function(model,
       if (nrow(zero_df) > 0) {
         p <- p + ggplot2::geom_point(data = zero_df,
                                      ggplot2::aes(y = .data$value),
-                                     color = color_line,
-                                     size = size_points) + 
+                                     color = color_line_spike,
+                                     size = size_points_spike) + 
           ggplot2::geom_errorbar(data = zero_df,
                                  ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                                  width = 0.1,   # small width so it's vertical
                                  color = color_line)
       }
       }
+      
     } else {
       # regular continuous plot
       p <- p + ggplot2::geom_line(linewidth = linewidth,
@@ -254,38 +253,14 @@ fracplot <- function(model,
     }
     
     # Add residual points if needed
-    if (!partial_only) {
-      p <- p + ggplot2::geom_point(data = pred_data[[v]],
-                                   ggplot2::aes(y = .data$value + .data$resid),
-                                   color = color_points,
-                                   size = size_points,
-                                   shape = shape)
-    }
+    # if (!partial_only) {
+    #   p <- p + ggplot2::geom_point(data = pred_data[[v]],
+    #                                ggplot2::aes(y = .data$value + .data$resid),
+    #                                color = color_points,
+    #                                size = size_points,
+    #                                shape = shape)
+    # }
     plots[[v]] <- p
-  #   plots[[v]] <- ggplot2::ggplot(data = pred[[v]], 
-  #                        ggplot2::aes(x = .data$variable, 
-  #                                     y = .data$value)) + 
-  #     ggplot2::geom_line(linewidth = linewidth,
-  #                        linetype = linetype,
-  #                        color = color_line) + 
-  #     ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, 
-  #                                       ymax = .data$upper), 
-  #                          alpha = alpha_fill) + 
-  #     ggplot2::ggtitle(sprintf("FP%s(%s)%s", 
-  #                              ifelse(model$fp_terms[v, "acd"], "1", ""),
-  #                              paste0(model$fp_powers[[v]], collapse = ", "),
-  #                              ifelse(model$fp_terms[v, "acd"], ":ACD", "")
-  #     )) +
-  #     ggplot2::xlab(v) + ggplot2::ylab(ylab) +
-  #     ggplot2::theme_bw()
-  #   
-  #   if (!partial_only) 
-  #     plots[[v]] <- plots[[v]] + 
-  #       ggplot2::geom_point(data = pred_data[[v]], 
-  #                           ggplot2::aes(y = .data$value + .data$resid),
-  #                           color = color_points,
-  #                           size = size_points, 
-  #                           shape = shape)
   }
 
   plots

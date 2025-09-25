@@ -116,7 +116,7 @@ if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
-from previous steps.}
+from previous steps for each variable.}
 
 \item{...}{passed to fitting functions.}
 }
@@ -140,6 +140,8 @@ investigated. Same number of rows as, and indexed by, \code{powers}.
 case..
 \item \code{statistic}: test statistic used, depends on \code{ftest}, \code{NA} in this
 case.
+\item \code{spike_decision}: Spike decision flag for xi.
+\item \code{prev_adj_params}: Previously adjusted parameters.
 }
 }
 \description{

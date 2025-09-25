@@ -65,7 +65,7 @@ if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
-from previous steps.}
+from previous steps for each variable.}
 
 \item{...}{Parameters passed to \code{fit_model()}.}
 }
@@ -74,6 +74,7 @@ A list with two entries:
 \itemize{
 \item \code{powers}: FP power(s) of \code{xi} (or its ACD transformation) in fitted model.
 \item \code{metrics}: A matrix with performance indices for fitted model.
+\item \code{prev_adj_params}: Previously adjusted parameters.
 }
 }
 \description{

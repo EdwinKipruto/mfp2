@@ -14,10 +14,12 @@ fracplot(
   terms_seq = c("data", "equidistant"),
   alpha = 0.05,
   color_points = "#AAAAAA",
-  color_line = "#000000",
+  color_line = "red",
+  color_line_spike = "red",
   color_fill = "#000000",
   shape = 1,
   size_points = 1,
+  size_points_spike = 2,
   linetype = "solid",
   linewidth = 1,
   alpha_fill = 0.1

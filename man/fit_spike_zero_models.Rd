@@ -105,8 +105,8 @@ and Model 3, which includes binary-only terms plus adjusted covariates.
 }
 \details{
 The function performs the following steps: First, it transforms the predictors
-according to selected FP powers and other adjustments. Second, it fits models
-2 and 3 for comparison. Then returns both model fits (\code{fit2} and \code{fit3}) and
-the transformed predictor structure.
+according to selected FP powers and other adjustments from stage 1. Second,
+it fits models 2 and 3 for comparison. Then returns both model fits (\code{fit2}
+and \code{fit3}) and the transformed predictor matrix
 }
 \keyword{internal}

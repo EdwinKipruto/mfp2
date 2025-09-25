@@ -117,7 +117,7 @@ if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
-from previous steps.}
+from previous steps for each variable.}
 
 \item{verbose}{a logical; run in verbose mode.}
 }

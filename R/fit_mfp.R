@@ -333,12 +333,13 @@ fit_mfp <- function(x,
     powers_updated <- fit_best_cycle$powers_current
     spike_decision_updated <- fit_best_cycle$spike_decision
     
-    # preserve adjustments for the next cycle
+    # preserve adjustments for the next cycle to avoid computation when FP
+    # powers and spike decision do not change
     prev_adj_params <- fit_best_cycle$prev_adj_params
     
     # check for convergence (i.e. no change in powers and variables in model)
     # spike decisions do not affect FP powers because binary indicator is fixed
-    # in all models
+    # in all models at stage 1 of SAZ algorithm
     if (identical(powers_current, powers_updated)) {
       converged <- TRUE
       if (verbose) {

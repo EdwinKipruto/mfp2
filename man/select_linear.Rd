@@ -92,7 +92,7 @@ if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
-from previous steps.}
+from previous steps for each variable.}
 
 \item{...}{passed to fitting functions.}
 }
@@ -118,6 +118,8 @@ and a binary indicator variable was applied to \code{xi}. This means that
 nonpositive values of \code{xi} were set to zero, only positive values were
 transformed, and an additional binary variable was created to indicate
 whether \code{xi} was positive or nonpositive.
+\item \code{spike_decision}: Spike decision flag for xi.
+\item \code{prev_adj_params}: Previously adjusted parameters.
 }
 }
 \description{

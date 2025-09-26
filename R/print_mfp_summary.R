@@ -2,7 +2,7 @@
 #' 
 #' @param fit intermediary model fit in `mfp_step`.
 #' @inheritParams find_best_fp_step
-print_mfp_step <- function(xi, criterion, fit) {
+print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
   
   print_mat_fct <- switch(
     criterion, 
@@ -33,21 +33,24 @@ print_mfp_step <- function(xi, criterion, fit) {
   # ensure fixed width model names
   rownames(mat_print) <- sprintf("%-16s", rownames(fit$metrics))
   
-  # print
-  #cat(sprintf("\nVariable: %s (keep = %s)\n", xi, fit$keep))
-  cat(sprintf(
-  "\nVariable: %s (keep = %s, spike = %s)\n", 
-  xi, fit$keep, fit$spike
-  ))
-  
-  if (fit$spike) {
-    cat("Stage 1 of Spike at Zero Algorithm: \n")
+  # Stage 1: only if not in Stage 2 mode
+  if (!stage2) {
+    cat(sprintf(
+      "\nVariable: %s (keep = %s, spike = %s)\n", 
+      xi, fit$keep, fit$spike
+    ))
+    if (fit$spike) {
+      cat("Stage 1 of Spike at Zero Algorithm:\n")
+    }
+    print(mat_print, quote = FALSE, na.print = ".", print.gap = 1)
+    selected_model <- rownames(fit$metrics)[fit$model_best]
+    cat(sprintf("Selected: %s\n", selected_model))
   }
-
-  print(mat_print, quote = FALSE, na.print = ".", print.gap = 1)
-  cat(sprintf("Selected: %s\n", rownames(fit$metrics)[fit$model_best]))
   
-  if (fit$spike) {
+  # Print only stage 2 of SAZ if the variable was selected
+  if (fit$spike && stage2) {
+    selected_model <- rownames(fit$metrics)[fit$model_best]
+    if (!selected_model %in% "null") {
     cat("Stage 2 of Spike at Zero Algorithm: \n")
     # Extract the dynamic row name
     model_name <- trimws(rownames(fit$metrics)[fit$model_best])
@@ -65,7 +68,7 @@ print_mfp_step <- function(xi, criterion, fit) {
     )
     print(mat_print, quote = FALSE, na.print = ".", print.gap = 1)
     cat(sprintf("Selected: %s\n", rownames(mat_print)[fit$spike_metrics$spike_decision]))
-    
+    } 
   }
 }
 

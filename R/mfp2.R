@@ -89,6 +89,12 @@
 #' conducted before estimating the FP powers for an input variable. 
 #' Centering, however, is done after estimating the FP functions for each 
 #' variable.
+#' 
+#' Additionally, any variable marked as `zero`, `catzero`, or with degrees of 
+#' freedom equal to 1 (`df = 1`) has its shift automatically set to zero. This
+#' ensures that variables for which transformations are unnecessary like linear
+#' are not artificially shifted. 
+#' 
 #' Centering before estimating the FP powers may result in different powers and
 #' should be avoided. Also see [transform_vector_fp()] for some more details.
 #' 
@@ -312,36 +318,42 @@
 #' Users may override these thresholds using the `min_prop` and `max_prop` options.
 #' 
 #' @section Details on model specification using a `formula`:
-#' `mfp2` supports model specifications using two different interfaces: one
-#' which allows passing of the data matrix `x` and outcome vector `y` directly
-#' (as done in e.g. [stats::glm.fit()] or `glmnet`) and another which conforms
-#' to the formula interface used by many commonly used R modelling functions 
-#' such as [stats::glm()] or [survival::coxph()]. 
+#' `mfp2` supports model specification through two interfaces. 
+#' The first accepts the design matrix `x` together with an outcome object `y`, 
+#' similar to [stats::glm.fit()] or [glmnet::glmnet()]. For generalized linear 
+#' models this may be a vector, but in the case of Cox regression `y` must be a
+#' two-column survival object (time and event indicator) created using 
+#' [survival::Surv()]. The second interface follows the formula style used by 
+#' functions such as [stats::glm()] or [survival::coxph()].
 #' 
-#' Both interfaces are equivalent in terms of possible fitted models, only the
-#' details of specification differ. In the standard interface all details 
-#' regarding FP-transformations are given as vectors. In the formula interface
-#' all details are specified using special `fp()` function. These support the 
-#' specification of degrees of freedom (`df`), nominal significance level for 
+#' Both interfaces are equivalent in functionality; only the details of 
+#' specification differ. In the standard interface all details regarding 
+#' FP-transformations are given as vectors, while in the formula interface 
+#' they are specified using the special `fp()` function. The following options 
+#' can be set: degrees of freedom (`df`), nominal significance level for 
 #' variable selection (`select`), nominal significance level for functional form 
 #' selection (`alpha`), shift values (`shift`), scale values (`scale`), 
-#' centering (`center`), CD-transformation (`acd`) and spike (`spike`). Values 
-#' specified through `fp()` function override the values specified as defaults 
-#' and passed to the `mfp2()` function. 
+#' centering (`center`), ACD-transformation (`acd`), handling of nonpositive 
+#' values (`zero`), automatic creation of binary indicators for nonpositive 
+#' values (`catzero`), and assessment of a potential spike at zero (`spike`).
+#' When arguments are supplied both inside `fp()` and as global defaults in 
+#' `mfp2()`, the specifications inside `fp()` take precedence. For example, in 
+#' `mfp2(y ~ fp(x, df = 2), df = 4, data = data)`, the fractional polynomial for 
+#' `x` is fitted with `df = 2`, and the global setting `df = 4` is ignored.
 #' 
 #' The formula may also contain `strata` terms to fit stratified Cox models, or
 #' an `offset` term to specify a model offset.
 #' 
-#' Note that for a formula using `.`, such as `y ~ .` the `mfp2()` function may not
-#' fit a linear model, but may perform variable and functional form selection 
-#' using FP-transformations, depending on the default settings of `df`, 
-#' `select` and `alpha` passed as arguments to `mfp2()`. 
-#' For example, using `y ~ .` with default settings means that `mfp2()` will 
-#' apply FP transformation with 4 df to all continuous variables and use alpha
-#' equal to 0.05 to select functional forms, along with the selection algorithm
-#' with a significance level of 0.05 for all variables. 
+#' Note that for a formula using `.`, such as `y ~ .` the `mfp2()` function may 
+#' not fit a linear model, but may perform variable and functional form selection 
+#' using FP-transformations, depending on the global default settings of `df`, 
+#' `select` and `alpha` passed as arguments to `mfp2()`. For example, using 
+#' `y ~ .` with default settings means that `mfp2()` will apply FP transformation
+#' with 4 df to all continuous variables and use alpha equal to 0.05 to select
+#' functional forms, along with the selection algorithm with a significance 
+#' level of 0.05 for all variables. 
 #' 
-#' @section Handling Nonpositive Values (\code{zero} and \code{catzero}):
+#' @section Handling nonpositive values (\code{zero} and \code{catzero}):
 #'
 #' The \code{zero} and \code{catzero} options provide mechanisms for handling 
 #' covariates with nonpositive values in fractional polynomial (FP) models, 
@@ -391,10 +403,11 @@
 #' will work properly. 
 #' 
 #' @section Convergence and Troubleshooting: 
-#' Typically, `mfp2` requires two to four cycles to achieve convergence. Lack of 
+#' Typically, `mfp2` requires two to five cycles to achieve convergence. Lack of 
 #' convergence involves oscillation between two or more models and is extremely
-#' rare. If the model does not converge, you can try changing the nominal 
-#' significance levels for variable (`select`) or function selection (`alpha`).
+#' rare. If convergence problems occur, consider adjusting the nominal 
+#' significance levels for variable selection (`select`) or functional form 
+#' selection (`alpha`)
 #'
 #' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
 #' nobs x nvars. Each row is an observation vector.
@@ -425,7 +438,7 @@
 #' (see Details section). If scaling is not required set `scale = 1` to disable 
 #' it. The final regression coefficients are expressed in the original scale of
 #' the data.
-#' @param shift a numeric vector of length nvars or a single numeric specifying
+#' @param shift a numeric vector of length `nvars` or a single numeric specifying
 #' shift terms. If a single numeric, then the value will be replicated as
 #' necessary. The formula interface `mfp2.formula` only supports single numeric 
 #' input to set a default value, individual values can be set using `fp` terms
@@ -489,18 +502,17 @@
 #' multiple regression (i.e. most significant first).
 #' `descending` places them in reverse significance order, whereas 
 #' `original` respects the original order in `x`.
-#' @param powers a named list of numeric values that sets the permitted FP 
-#' powers for each covariate. The default is NULL, and each covariate is assigned
-#' `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 means the natural 
-#' logarithm. Powers are sorted before further
-#' processing in the program. If some variables are not assigned powers, the 
-#' default powers will be assigned. The formula interface offers two options
-#' for supplying powers: through the 'powers' argument and the 'fp()' function. 
-#' So, if the user supplies powers in both options for a certain variable, the 
-#' powers supplied through 'fp()' will be given preference.For the algorithm to
-#' select the powers, each variable must have a minimum of two powers. If the 
-#' users wants to use one power, they should first transform their variables 
-#' before using `mfp2()` function and specify appropriate df
+#' @param powers a named list of numeric values specifying the set of candidate 
+#' FP powers for each covariate. The default is `NULL`, in which case every 
+#' covariate is assigned `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 
+#' `0` denotes the natural logarithm. Powers are sorted before further 
+#' processing. If some variables are not explicitly assigned powers, the default 
+#' set is used. In the formula interface, powers can be specified either through 
+#' the `powers` argument or within the `fp()` function. If both are provided for 
+#' the same variable, the specification inside `fp()` takes precedence. Each 
+#' variable must be assigned at least two candidate powers for model selection. 
+#' To restrict a variable to a single transformation, pre-transform the variable 
+#' and fit it with `df = 1`.
 #' @param ties a character string specifying the method for tie handling in 
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
@@ -513,35 +525,45 @@
 #' See [survival::coxph()] for details. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a character vector of names of continuous variables to undergo 
-#' the approximate cumulative distribution (ACD) transformation.
-#' It also invokes the function-selection procedure to determine the 
-#' best-fitting FP1(p1, p2) model (see Details section). Not present in the 
-#' formula interface `mfp2.formula` and to be set using `fp` terms in the 
-#' `formula` input.
-#' The variable representing the ACD transformation of `x` is named `A_x`.
-#' @param ftest a logical; for normal error models with small samples, critical 
-#' points from the F-distribution can be used instead of Chi-Square 
-#' distribution. Default `FALSE` uses the latter. This argument is used for 
-#' Gaussian models only and has no effect for other model families.
-#' @param control a list object with parameters controlling model fit details. 
-#' Returned by either [stats::glm.control()] or [survival::coxph.control()]. 
-#' Default is `NULL` to use default parameters for the given model class. 
-#' @param zero A character vector specifying the names of variables for which 
-#' nonpositive values should be treated as zero. This allows fitting a fractional 
-#' polynomial (FP) model using only the positive values of a covariate, while 
-#' setting nonpositive values to zero during transformation. See the **Details** 
-#' section
-#' @param catzero A character vector specifying the names of variables for which 
-#' nonpositive values should be treated as zero, similar to the \code{zero} argument. 
-#' The key difference is that \code{mfp2} will automatically create a corresponding 
-#' binary indicator variable (e.g., \code{var > 0}) and include it in the model 
-#' alongside the transformed variable. See the **Details** section
-#' @param spike A character vector specifying the continuous variables to be 
-#' assessed for a spike at zero. Supplying this argument triggers the 
-#' spike-at-zero (SAZ) algorithm (see Details). This argument is not available 
-#' in the formula interface `mfp2.formula`, where spike variables should instead be 
-#' specified using `fp` terms in the `formula` input.
+#' @param acdx a character vector giving the names of continuous variables to 
+#' undergo the approximate cumulative distribution (ACD) transformation. Using 
+#' this also triggers the function-selection procedure for ACD to determine the 
+#' best-fitting FP1(p1, p2) model (see Details). This argument is not available 
+#' in the formula interface (`mfp2.formula`), where the user should instead use 
+#' `fp()`. Within `fp()` terms, the ACD transformation is specified via the 
+#' logical argument `acdx` rather than by listing variable names. The variable
+#' representing the ACD transformation of `x` is named `A_x`.
+#' @param ftest a logical indicating whether `mfp2` should use critical values 
+#' from the F-distribution instead of the Chi-Square distribution for small-sample 
+#' normal error models. This affects variable selection, functional form selection, 
+#' and spike-at-zero testing when evaluating fractional polynomial terms. Default 
+#' is `FALSE`, in which case the Chi-Square distribution is used. This argument 
+#' applies only to Gaussian models.
+#' @param control a list of parameters controlling the fitting process, as 
+#' returned by [stats::glm.control()] or [survival::coxph.control()]. Default 
+#' is `NULL`, in which case `mfp2` uses the default settings for the specified 
+#' model family.
+#' @param zero A character vector specifying the names of continuous variables 
+#' for which nonpositive values should be treated as zero. This enables fitting a 
+#' fractional polynomial (FP) model using only the positive values of the 
+#' covariate, while setting nonpositive values to zero during transformation. 
+#' In `fp()` terms, `zero` is a logical value indicating whether the adjustment 
+#' should be applied to the variable. See the **Details** section.
+#' @param catzero A character vector specifying the names of continuous variables 
+#' for which nonpositive values should be treated as zero, similar to `zero`. In 
+#' addition, `mfp2` automatically creates a binary indicator variable and 
+#' includes it in the model alongside the transformed variable. 
+#' In `fp()` terms, `catzero` is a logical value indicating whether the adjustment 
+#' and indicator should be applied. See the **Details** section.
+#' @param spike A character vector specifying the names of continuous variables 
+#' to be assessed for a spike at zero. Supplying this triggers the spike-at-zero 
+#' (SAZ) algorithm (see Details). This argument is not available in the formula 
+#' interface (`mfp2.formula`), where spike is specified as a logical value within 
+#' `fp()` terms for each variable.
+#' @param min_prop A numeric value between 0 and 1; the minimum proportion of 
+#' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
+#' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
+#' zeros for which SAZ modeling is applied. Defaults to 0.95.
 #' @param verbose a logical; run in verbose mode.
 #' @param ... not used.
 #' @examples
@@ -645,6 +667,10 @@
 #' Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential 
 #' points and sample size on the selection and replicability of multivariable 
 #' fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}\cr
+#' 
+#' Becher, H., Lorenz, E., Royston, P. and Sauerbrei, W., 2012. \emph{Analysing 
+#' covariates with spike at zero: a modified FP procedure and conceptual issues.
+#' Biometrical journal, 54(5), pp.686-700.}\cr
 #' 
 #' Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H., 2019. \emph{Modeling exposures 
 #' with a spike at zero: simulation study and practical application to survival data. 
@@ -810,7 +836,7 @@ mfp2.default <- function(x,
   # assert that zero is a subset of x
   if (!is.null(zero)) {
     if (!all(zero %in% vnames)) {
-      warning("i The set of variables named in zero is not a subset of the variables in x.\n", 
+      warning("i The set of variables named in 'zero' is not a subset of the variables in x.\n", 
               "i mfp2() continues with the intersection of zero and colnames(x).", 
               call. = FALSE)
     }
@@ -819,7 +845,7 @@ mfp2.default <- function(x,
   # assert that catzero is a subset of x
   if (!is.null(catzero)) {
     if (!all(catzero %in% vnames)) {
-      warning("i The set of variables named in catzero is not a subset of the variables in x.\n", 
+      warning("i The set of variables named in 'catzero' is not a subset of the variables in x.\n", 
               "i mfp2() continues with the intersection of catzero and colnames(x).", 
               call. = FALSE)
     }
@@ -874,7 +900,7 @@ mfp2.default <- function(x,
   # assert spike is a subset of x
   if (!is.null(spike)) {
     if (!all(spike %in% vnames)) {
-      warning("i The set of variables named in spike is not a subset of the variables in x.\n", 
+      warning("i The set of variables named in 'spike' is not a subset of the variables in x.\n", 
               "i mfp2() continues with the intersection of spike and colnames(x).", 
               call. = FALSE
       )
@@ -935,8 +961,8 @@ mfp2.default <- function(x,
                "i Currently only right censoring is supported by mfp2().")
       }
       
-      # assert numeric
-      if (is.factor(strata)) {
+      # convert factor to numeric
+      if (!is.null(strata) && is.factor(strata)) {
         strata <- as.numeric(strata)
       }
       
@@ -960,6 +986,19 @@ mfp2.default <- function(x,
                sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
                        length(y), nobs))
       }
+  }
+  
+  # validate spike proportions
+  if (!is.numeric(min_prop) || length(min_prop) != 1 || min_prop < 0 || min_prop > 1) {
+    stop("! min_prop must be a single numeric value between 0 and 1.", call. = FALSE)
+  }
+  
+  if (!is.numeric(max_prop) || length(max_prop) != 1 || max_prop < 0 || max_prop > 1) {
+    stop("! max_prop must be a single numeric value between 0 and 1.", call. = FALSE)
+  }
+  
+  if (min_prop > max_prop) {
+    stop("! min_prop cannot be greater than max_prop.", call. = FALSE)
   }
   
   # set defaults ---------------------------------------------------------------
@@ -1006,19 +1045,25 @@ mfp2.default <- function(x,
     
   }
   
+  # Default weights and offset
   if (is.null(weights)) {
     weights <- rep.int(1, nobs)
   }
-
+  
   if (is.null(offset)) {
       offset <- rep.int(0, nobs)
   }
+  
+  # Default select and alpha
   if (length(select) == 1) {
       select <- rep(select, nvars)
   } 
+    
   if (length(alpha) == 1) {
       alpha <- rep(alpha, nvars)
   } 
+  
+  # Default shift and scale values
   if (is.null(shift)) {
       shift <- apply(x, 2, find_shift_factor)
   } else {
@@ -1037,12 +1082,18 @@ mfp2.default <- function(x,
         stop("All scale values must be positive and non-missing.", call. = FALSE)
       }
   }
+  
+  # Default center
   if (length(center) == 1) {
       center <- rep(center, nvars)    
   }
+  
+  # Revert to Chi-square when family is not Gaussian
   if (ftest && family != "gaussian") {
       ftest <- FALSE
   }
+  
+  # Set default control parameters for model fitting if not provided
   if (is.null(control)) {
     if (family == "cox") {
       control = survival::coxph.control()
@@ -1051,9 +1102,11 @@ mfp2.default <- function(x,
     }
   }
   
+  # Retain only those variables in `keep` that are actually present in `x`
   keep <- intersect(keep, vnames)
   
   #-------Deal with zero and catzero
+  ## Ensure that only variables present in x are considered for zero and catzero
   zero <- intersect(zero, vnames)
   catzero <- intersect(catzero, vnames)
   
@@ -1101,29 +1154,31 @@ mfp2.default <- function(x,
   }
   
   #-------- Deal with acdx
-  # convert acdx to logical vector
+  # Convert acdx to a named logical vector
   if (is.null(acdx)) {
-      acdx <- rep(FALSE, nvars)
+    acdx <- setNames(rep(FALSE, nvars), vnames)
   } else {
-      # Get rid of duplicates names
-      acdx <- unique(acdx)
-      acdx <- intersect(acdx, vnames)
-      # the variables that undergo acd transformation have acdx = TRUE
-      acdx <- replace(rep(FALSE, nvars), 
-                      which(vnames %in% acdx), rep(TRUE, length(acdx)))
+    # Remove duplicate names and keep only those present in x
+    acdx <- unique(acdx)
+    acdx <- intersect(acdx, vnames)
+    # Create named logical vector, marking variables that undergo acd transformation
+    acdx_vec <- setNames(rep(FALSE, nvars), vnames)
+    acdx_vec[acdx] <- TRUE
+    acdx <- acdx_vec
   }
-  
+
   #-------- Deal with spike
-  # convert spike to logical vector
+  # Convert spike to a named logical vector
   if (is.null(spike)) {
-    spike <- rep(FALSE, nvars)
+    spike <- setNames(rep(FALSE, nvars), vnames)
   } else {
-    # Get rid of duplicates names
+    # Remove duplicate names and keep only those present in x
     spike <- unique(spike)
     spike <- intersect(spike, vnames)
-    # the variables that undergo spike transformation have spike = TRUE
-    spike <- replace(rep(FALSE, nvars), 
-                    which(vnames %in% spike), rep(TRUE, length(spike)))
+    # Create named logical vector, marking variables that undergo spike transformation
+    spike_vec <- setNames(rep(FALSE, nvars), vnames)
+    spike_vec[spike] <- TRUE
+    spike <- spike_vec
   }
   
   # Ensure that all spike variables also have catzero = TRUE
@@ -1131,6 +1186,28 @@ mfp2.default <- function(x,
   
   # Ensure that any variable marked as 'catzero' is also set to 'zero'
   zero[catzero] <- TRUE
+  
+  # Identify binary columns (exactly two unique values)
+  binary_vars <- apply(x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
+  binary_names <- vnames[binary_vars]
+  
+  # Reset zero and catzero for binary variables, with warnings
+  if (length(binary_names) > 0) {
+    # Find which binary variables have zero = TRUE or catzero = TRUE
+    zero_binary <- intersect(binary_names, names(zero)[zero])
+    catzero_binary <- intersect(binary_names, names(catzero)[catzero])
+    
+    vars_to_reset <- union(zero_binary, catzero_binary)
+    
+    if (length(vars_to_reset) > 0) {
+      warning(
+        "The following binary variables were marked as 'zero = TRUE' or 'catzero = TRUE' but are binary and will be reset to FALSE: ",
+        paste(vars_to_reset, collapse = ", "), call. = FALSE
+      )
+      zero[vars_to_reset] <- FALSE
+      catzero[vars_to_reset] <- FALSE
+    }
+  }
   
   # set df ---------------------------------------------------------------------
   if (length(df) == 1) {
@@ -1153,34 +1230,30 @@ mfp2.default <- function(x,
     df.list <- df
   }
   
-  # Set shifting factors of zero and catzero to 0
+  # Reset shift = 0 for zero and catzero variables, since only the positive part 
+  # is transformed, so no shift is needed. Similar to variables with df = 1
+  
   # Initialize logical vector to track variables that should have shift = 0
   shift_to_zero <- rep(FALSE, length(vnames))
   names(shift_to_zero) <- vnames
   
-  # Set TRUE for variables marked TRUE in `zero`
-  if (!is.null(zero)) {
-    shift_to_zero[names(zero)[zero]] <- TRUE
-  }
+  # Set TRUE for variables marked TRUE in `zero` as well as catzero
+  shift_to_zero[names(zero)[zero]] <- TRUE
+  shift_to_zero[names(catzero)[catzero]] <- TRUE
   
-  # Set TRUE for variables marked TRUE in `catzero`
-  if (!is.null(catzero)) {
-    shift_to_zero[names(catzero)[catzero]] <- TRUE
-  }
-  
-  # Apply shift = 0 to the selected variables
+  # Mark linear terms (df = 1) as well as set shift to zero
+  shift_to_zero[vnames[df.list == 1]] <- TRUE
   shift[shift_to_zero] <- 0
-  
   
   # data preparation -----------------------------------------------------------
   # Apply shift transformation to the x matrix
   x <- sweep(x, 2, shift, "+")
   
   # Identify variables that require fractional polynomial transformation 
-  # (where df.list != 1)
+  # (where df.list not equal 1)
   nonlinear_variables <- which(df.list != 1)
   
-  # Get the corresponding variable names from x
+  # Get the corresponding names from x
   nonlinear_names <- vnames[nonlinear_variables]
   
   # Exclude variables that are in `zero` or `catzero`
@@ -1253,7 +1326,7 @@ mfp2.default <- function(x,
       keep = keep, xorder = xorder, powers = power_list, method = ties, 
       strata = istrata, nocenter = nocenter, acdx = acdx, ftest = ftest, 
       control = control, zero = zero, catzero = catzero,spike = spike,
-      verbose = verbose
+      min_prop = min_prop, max_prop = max_prop, verbose = verbose
   )
   
   # add additional information to fitted object
@@ -1289,6 +1362,8 @@ mfp2.formula <- function(formula,
                          nocenter = NULL,
                          ftest = FALSE,
                          control = NULL,
+                         min_prop = 0.05,
+                         max_prop = 0.95,
                          verbose = TRUE,
                          ...) {
   # capture the call
@@ -1296,65 +1371,77 @@ mfp2.formula <- function(formula,
   family <- match.arg(family)
  
   # assert that data must be provided
-  if (missing(data))
+  if (missing(data)) {
     stop("! data argument is missing.\n",
          "i An input data.frame is required for the use of mfp2.",
          call. = FALSE)
+  }
   
   # assert that data has column names
-  if (is.null(colnames(data)))
+  if (is.null(colnames(data))) {
     stop("! data must have column names.\n",
          "i Please set column names.", call. = FALSE)
+  }
   
   # assert that a formula must be provided
-  if (missing(formula)) 
+  if (missing(formula)) {
     stop("! formula is missing.", call. = FALSE)
+  }
   
-  if (!inherits(formula, "formula"))
+  if (!inherits(formula, "formula")) {
     stop("method is only for formula objects", call. = FALSE)
+  }
   
   # assert length of df, alpha, select, center, shift, scale, acdx equal to one
-  if (length(df) != 1)
+  if (length(df) != 1) {
     stop("! df must be a single numeric.", 
          "i Use the fp() function to set different df values in the input formula.",
          call. = FALSE)
+  }
   
-  if (length(alpha) != 1)
+  if (length(alpha) != 1) {
     stop("! alpha must be a single numeric.", 
          "i Use the fp() function to set different alpha values in the input formula.",
          call. = FALSE)
+  }
   
-  if (length(select) != 1)
+  if (length(select) != 1) {
     stop("! select must be a single numeric.", 
          "i Use the fp() function to set different select values in the input formula.",
          call. = FALSE)
+  }
   
-  if (!is.null(scale) && length(scale) != 1)
+  if (!is.null(scale) && length(scale) != 1) {
     stop("! scale must be a single numeric or NULL.",
          "i Use the fp() function to set different scaling factors in the input formula.", 
          call. = FALSE)
+  }
   
-  if (length(center) != 1)
+  if (length(center) != 1) {
     stop("! center must be a single logical value.", 
          "i Use the fp() function to set different center values in the input formula.",
          call. = FALSE)
+  }
   
-  if (!is.null(shift) && length(shift) != 1)
+  if (!is.null(shift) && length(shift) != 1) {
     stop("! shift must be a single numeric.", 
          "i Use the fp() function to set different shift values in the input formula.",
          call. = FALSE)
+  }
   
-  if (!is.null(powers) && !is.list(powers))
+  if (!is.null(powers) && !is.list(powers)) {
     stop(" Powers must be a named list or set it to NULL", call. = FALSE)
+  }
   
   # model.frame preserves the attributes of the data unlike model.matrix
   mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   
   # check whether no predictor exist in the model i.e y~1: 
   labels <-  attr(terms(mf), "term.labels")
-  if (length(labels ) == 0)
+  if (length(labels ) == 0) {
     stop("No predictors are provided for model fitting.\n At least one predictor is required",
          call. = FALSE)
+  }
   
   # stratification for Cox models ----------------------------------------------
 
@@ -1398,14 +1485,17 @@ mfp2.formula <- function(formula,
   }
   
   # drop strata variables if necessary before using model.matrix()
-  if (!is.null(terms_drop)) 
+  if (!is.null(terms_drop)) {
     terms_model <- terms_formula[-terms_drop]
-  else terms_model <- terms_formula
+  } else {
+    terms_model <- terms_formula
+  }
   
   # offset ---------------------------------------------------------------------
   term_offset <- attr(terms_formula, "offset")
-  if (!is.null(term_offset) && length(term_offset) > 1)
+  if (!is.null(term_offset) && length(term_offset) > 1) {
     stop("! Only one offset in the formula is allowed.", call. = FALSE)
+  }
   
   # check whether offset is both in the formula and as an argument.
   if (!is.null(term_offset) && !is.null(call$offset)) {
@@ -1418,15 +1508,17 @@ mfp2.formula <- function(formula,
   # data preparation -----------------------------------------------------------
   
   y <- model.extract(mf, "response")
-  if (family != "cox") 
+  if (family != "cox") {
     y <- as.numeric(y)
+  }
   
   x <- model.matrix(terms_model, mf)
   # remove intercept if necessary
   # intercept is coded as entry 0 in attribute assigned by model.matrix
   # intercept is always the first column
-  if (0 %in% attr(x, "assign")) 
+  if (0 %in% attr(x, "assign")) {
     x <- x[, -1, drop = FALSE]
+  }
   
   nx <- ncol(x) 
   names_x <- colnames(x)
@@ -1442,19 +1534,20 @@ mfp2.formula <- function(formula,
     
     # check for variables used more than once in fp() function 
     fp_vars_duplicates <- fp_vars[duplicated(fp_vars)]
-    if (length(fp_vars_duplicates) != 0)
+    if (length(fp_vars_duplicates) != 0) {
       stop("! Variables should be used only once in the fp() within the formula.\n", 
            sprintf("i The following variable(s) are duplicated in fp() function: %s.", 
                    paste0(fp_vars_duplicates, collapse = ", ")), 
            call. = FALSE)
-    
+    }
     # check for variables used in fp() as well as other parts of the formula
     vars_duplicates <- which(colnames(mf) %in% fp_vars)
-    if (length(vars_duplicates) != 0)
+    if (length(vars_duplicates) != 0) {
       stop("! Variables used in the fp() should not be included in other parts of the formula.\n", 
            sprintf("i This applies to the following variable(s): %s.", 
                    paste0(colnames(mf)[vars_duplicates], collapse = ", ")), 
            call. = FALSE)
+    }
     
     # replace names such as fp(x1) by real name "x1" in the x matrix
     names_x <- replace(names_x, grep("fp(.*)", names_x), fp_vars)
@@ -1485,11 +1578,6 @@ mfp2.formula <- function(formula,
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list <- setNames(rep(list(alpha), nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
-  # acdx_list <- setNames(rep(list(FALSE), nx), names_x)
-  # zero_list <- setNames(rep(list(FALSE), nx), names_x)
-  # catzero_list <- setNames(rep(list(FALSE), nx), names_x)
-  # spike_list <- setNames(rep(list(FALSE), nx), names_x)
-  # 
   
   # default FP powers proposed by Royston and Altman (1994)
   powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -1497,16 +1585,18 @@ mfp2.formula <- function(formula,
   
   # deal with user supplied powers in the argument not through fp()
   if (!is.null(powers)) {
-    if (length(powers) != sum(names(powers) != "", na.rm = TRUE))
+    if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
       stop(" All the powers supplied in the argument must have names",
            call. = FALSE)
+    }
     
     # check the names of supplied powers
     dd <- which(!names(powers) %in% names_x)
-    if (length(dd) != 0)
+    if (length(dd) != 0) {
       stop(" The names of all powers must be in the column names of x.\n",
            sprintf("i This applies to the following powers: %s.", 
                    paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+    }
     
     # sort powers
     powers <- lapply(powers, function(v) sort(v))
@@ -1522,7 +1612,8 @@ mfp2.formula <- function(formula,
   catzero <- NULL
   spike <- NULL
   if (length(fp_pos) != 0) {
-    # modify the default parameters based on the user inputs
+    # modify the default parameters based on the user inputs: 
+    # TODO: use helper function to avoid repetition
     df_list <- modifyList(df_list, 
                           setNames(lapply(fp_data, attr, "df"), fp_vars))
     scale_list <- modifyList(scale_list, 
@@ -1581,14 +1672,6 @@ mfp2.formula <- function(formula,
     
   }
   
-  # # acd requires variable names or NULL 
-  # acdx_vector <- unlist(acdx_list)
-  # if (sum(acdx_vector) == 0) {
-  #   acdx_vector <- NULL
-  # } else {
-  #   acdx_vector <- names(acdx_vector[acdx_vector])
-  # }
-  
   mfp2.default(x = x, 
                y = y, 
                weights = weights, 
@@ -1615,6 +1698,8 @@ mfp2.formula <- function(formula,
                zero = zero,
                catzero = catzero,
                spike = spike,
+               min_prop = min_prop,
+               max_prop = max_prop,
                verbose = verbose
   )
 }

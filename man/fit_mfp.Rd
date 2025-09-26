@@ -30,6 +30,8 @@ fit_mfp(
   zero,
   catzero,
   spike,
+  min_prop,
+  max_prop,
   verbose
 )
 }
@@ -110,6 +112,12 @@ and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
 a spike at zero. The length and order of \code{spike} must match those of
 the columns in \code{x}.}
 
+\item{min_prop}{A numeric value between 0 and 1; the minimum proportion of
+zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
+
+\item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
+zeros for which SAZ modeling is applied. Defaults to 0.95.}
+
 \item{verbose}{Logical; if \code{TRUE}, additional information will be printed
 during model fitting steps. Useful for understanding internal processing.
 Default is \code{FALSE}.}
@@ -170,3 +178,4 @@ with a spike at zero: simulation study and practical application to survival dat
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}
 }
+\keyword{internal}

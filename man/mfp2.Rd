@@ -64,6 +64,8 @@ mfp2(x, ...)
   nocenter = NULL,
   ftest = FALSE,
   control = NULL,
+  min_prop = 0.05,
+  max_prop = 0.95,
   verbose = TRUE,
   ...
 )
@@ -100,7 +102,7 @@ Default is \code{NULL} which lets the program estimate the scaling factors
 it. The final regression coefficients are expressed in the original scale of
 the data.}
 
-\item{shift}{a numeric vector of length nvars or a single numeric specifying
+\item{shift}{a numeric vector of length \code{nvars} or a single numeric specifying
 shift terms. If a single numeric, then the value will be replicated as
 necessary. The formula interface \code{mfp2.formula} only supports single numeric
 input to set a default value, individual values can be set using \code{fp} terms
@@ -174,18 +176,17 @@ multiple regression (i.e. most significant first).
 \code{descending} places them in reverse significance order, whereas
 \code{original} respects the original order in \code{x}.}
 
-\item{powers}{a named list of numeric values that sets the permitted FP
-powers for each covariate. The default is NULL, and each covariate is assigned
-\code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 means the natural
-logarithm. Powers are sorted before further
-processing in the program. If some variables are not assigned powers, the
-default powers will be assigned. The formula interface offers two options
-for supplying powers: through the 'powers' argument and the 'fp()' function.
-So, if the user supplies powers in both options for a certain variable, the
-powers supplied through 'fp()' will be given preference.For the algorithm to
-select the powers, each variable must have a minimum of two powers. If the
-users wants to use one power, they should first transform their variables
-before using \code{mfp2()} function and specify appropriate df}
+\item{powers}{a named list of numeric values specifying the set of candidate
+FP powers for each covariate. The default is \code{NULL}, in which case every
+covariate is assigned \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where
+\code{0} denotes the natural logarithm. Powers are sorted before further
+processing. If some variables are not explicitly assigned powers, the default
+set is used. In the formula interface, powers can be specified either through
+the \code{powers} argument or within the \code{fp()} function. If both are provided for
+the same variable, the specification inside \code{fp()} takes precedence. Each
+variable must be assigned at least two candidate powers for model selection.
+To restrict a variable to a single transformation, pre-transform the variable
+and fit it with \code{df = 1}.}
 
 \item{ties}{a character string specifying the method for tie handling in
 Cox regression. If there are no tied death times all the methods are
@@ -202,40 +203,52 @@ See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{acdx}{a character vector of names of continuous variables to undergo
-the approximate cumulative distribution (ACD) transformation.
-It also invokes the function-selection procedure to determine the
-best-fitting FP1(p1, p2) model (see Details section). Not present in the
-formula interface \code{mfp2.formula} and to be set using \code{fp} terms in the
-\code{formula} input.
-The variable representing the ACD transformation of \code{x} is named \code{A_x}.}
+\item{acdx}{a character vector giving the names of continuous variables to
+undergo the approximate cumulative distribution (ACD) transformation. Using
+this also triggers the function-selection procedure for ACD to determine the
+best-fitting FP1(p1, p2) model (see Details). This argument is not available
+in the formula interface (\code{mfp2.formula}), where the user should instead use
+\code{fp()}. Within \code{fp()} terms, the ACD transformation is specified via the
+logical argument \code{acdx} rather than by listing variable names. The variable
+representing the ACD transformation of \code{x} is named \code{A_x}.}
 
-\item{ftest}{a logical; for normal error models with small samples, critical
-points from the F-distribution can be used instead of Chi-Square
-distribution. Default \code{FALSE} uses the latter. This argument is used for
-Gaussian models only and has no effect for other model families.}
+\item{ftest}{a logical indicating whether \code{mfp2} should use critical values
+from the F-distribution instead of the Chi-Square distribution for small-sample
+normal error models. This affects variable selection, functional form selection,
+and spike-at-zero testing when evaluating fractional polynomial terms. Default
+is \code{FALSE}, in which case the Chi-Square distribution is used. This argument
+applies only to Gaussian models.}
 
-\item{control}{a list object with parameters controlling model fit details.
-Returned by either \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}.
-Default is \code{NULL} to use default parameters for the given model class.}
+\item{control}{a list of parameters controlling the fitting process, as
+returned by \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}. Default
+is \code{NULL}, in which case \code{mfp2} uses the default settings for the specified
+model family.}
 
-\item{zero}{A character vector specifying the names of variables for which
-nonpositive values should be treated as zero. This allows fitting a fractional
-polynomial (FP) model using only the positive values of a covariate, while
-setting nonpositive values to zero during transformation. See the \strong{Details}
-section}
+\item{zero}{A character vector specifying the names of continuous variables
+for which nonpositive values should be treated as zero. This enables fitting a
+fractional polynomial (FP) model using only the positive values of the
+covariate, while setting nonpositive values to zero during transformation.
+In \code{fp()} terms, \code{zero} is a logical value indicating whether the adjustment
+should be applied to the variable. See the \strong{Details} section.}
 
-\item{catzero}{A character vector specifying the names of variables for which
-nonpositive values should be treated as zero, similar to the \code{zero} argument.
-The key difference is that \code{mfp2} will automatically create a corresponding
-binary indicator variable (e.g., \code{var > 0}) and include it in the model
-alongside the transformed variable. See the \strong{Details} section}
+\item{catzero}{A character vector specifying the names of continuous variables
+for which nonpositive values should be treated as zero, similar to \code{zero}. In
+addition, \code{mfp2} automatically creates a binary indicator variable and
+includes it in the model alongside the transformed variable.
+In \code{fp()} terms, \code{catzero} is a logical value indicating whether the adjustment
+and indicator should be applied. See the \strong{Details} section.}
 
-\item{spike}{A character vector specifying the continuous variables to be
-assessed for a spike at zero. Supplying this argument triggers the
-spike-at-zero (SAZ) algorithm (see Details). This argument is not available
-in the formula interface \code{mfp2.formula}, where spike variables should instead be
-specified using \code{fp} terms in the \code{formula} input.}
+\item{spike}{A character vector specifying the names of continuous variables
+to be assessed for a spike at zero. Supplying this triggers the spike-at-zero
+(SAZ) algorithm (see Details). This argument is not available in the formula
+interface (\code{mfp2.formula}), where spike is specified as a logical value within
+\code{fp()} terms for each variable.}
+
+\item{min_prop}{A numeric value between 0 and 1; the minimum proportion of
+zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
+
+\item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
+zeros for which SAZ modeling is applied. Defaults to 0.95.}
 
 \item{verbose}{a logical; run in verbose mode.}
 
@@ -393,6 +406,12 @@ helps to bring the values to a reasonable range. Both operations are
 conducted before estimating the FP powers for an input variable.
 Centering, however, is done after estimating the FP functions for each
 variable.
+
+Additionally, any variable marked as \code{zero}, \code{catzero}, or with degrees of
+freedom equal to 1 (\code{df = 1}) has its shift automatically set to zero. This
+ensures that variables for which transformations are unnecessary like linear
+are not artificially shifted.
+
 Centering before estimating the FP powers may result in different powers and
 should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
 }
@@ -629,37 +648,43 @@ Users may override these thresholds using the \code{min_prop} and \code{max_prop
 
 \section{Details on model specification using a \code{formula}}{
 
-\code{mfp2} supports model specifications using two different interfaces: one
-which allows passing of the data matrix \code{x} and outcome vector \code{y} directly
-(as done in e.g. \code{\link[stats:glm]{stats::glm.fit()}} or \code{glmnet}) and another which conforms
-to the formula interface used by many commonly used R modelling functions
-such as \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{survival::coxph()}}.
+\code{mfp2} supports model specification through two interfaces.
+The first accepts the design matrix \code{x} together with an outcome object \code{y},
+similar to \code{\link[stats:glm]{stats::glm.fit()}} or \code{\link[glmnet:glmnet]{glmnet::glmnet()}}. For generalized linear
+models this may be a vector, but in the case of Cox regression \code{y} must be a
+two-column survival object (time and event indicator) created using
+\code{\link[survival:Surv]{survival::Surv()}}. The second interface follows the formula style used by
+functions such as \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{survival::coxph()}}.
 
-Both interfaces are equivalent in terms of possible fitted models, only the
-details of specification differ. In the standard interface all details
-regarding FP-transformations are given as vectors. In the formula interface
-all details are specified using special \code{fp()} function. These support the
-specification of degrees of freedom (\code{df}), nominal significance level for
+Both interfaces are equivalent in functionality; only the details of
+specification differ. In the standard interface all details regarding
+FP-transformations are given as vectors, while in the formula interface
+they are specified using the special \code{fp()} function. The following options
+can be set: degrees of freedom (\code{df}), nominal significance level for
 variable selection (\code{select}), nominal significance level for functional form
 selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
-centering (\code{center}), CD-transformation (\code{acd}) and spike (\code{spike}). Values
-specified through \code{fp()} function override the values specified as defaults
-and passed to the \code{mfp2()} function.
+centering (\code{center}), ACD-transformation (\code{acd}), handling of nonpositive
+values (\code{zero}), automatic creation of binary indicators for nonpositive
+values (\code{catzero}), and assessment of a potential spike at zero (\code{spike}).
+When arguments are supplied both inside \code{fp()} and as global defaults in
+\code{mfp2()}, the specifications inside \code{fp()} take precedence. For example, in
+\code{mfp2(y ~ fp(x, df = 2), df = 4, data = data)}, the fractional polynomial for
+\code{x} is fitted with \code{df = 2}, and the global setting \code{df = 4} is ignored.
 
 The formula may also contain \code{strata} terms to fit stratified Cox models, or
 an \code{offset} term to specify a model offset.
 
-Note that for a formula using \code{.}, such as \code{y ~ .} the \code{mfp2()} function may not
-fit a linear model, but may perform variable and functional form selection
-using FP-transformations, depending on the default settings of \code{df},
-\code{select} and \code{alpha} passed as arguments to \code{mfp2()}.
-For example, using \code{y ~ .} with default settings means that \code{mfp2()} will
-apply FP transformation with 4 df to all continuous variables and use alpha
-equal to 0.05 to select functional forms, along with the selection algorithm
-with a significance level of 0.05 for all variables.
+Note that for a formula using \code{.}, such as \code{y ~ .} the \code{mfp2()} function may
+not fit a linear model, but may perform variable and functional form selection
+using FP-transformations, depending on the global default settings of \code{df},
+\code{select} and \code{alpha} passed as arguments to \code{mfp2()}. For example, using
+\code{y ~ .} with default settings means that \code{mfp2()} will apply FP transformation
+with 4 df to all continuous variables and use alpha equal to 0.05 to select
+functional forms, along with the selection algorithm with a significance
+level of 0.05 for all variables.
 }
 
-\section{Handling Nonpositive Values (\code{zero} and \code{catzero})}{
+\section{Handling nonpositive values (\code{zero} and \code{catzero})}{
 
 
 The \code{zero} and \code{catzero} options provide mechanisms for handling
@@ -714,10 +739,11 @@ will work properly.
 
 \section{Convergence and Troubleshooting}{
 
-Typically, \code{mfp2} requires two to four cycles to achieve convergence. Lack of
+Typically, \code{mfp2} requires two to five cycles to achieve convergence. Lack of
 convergence involves oscillation between two or more models and is extremely
-rare. If the model does not converge, you can try changing the nominal
-significance levels for variable (\code{select}) or function selection (\code{alpha}).
+rare. If convergence problems occur, consider adjusting the nominal
+significance levels for variable selection (\code{select}) or functional form
+selection (\code{alpha})
 }
 
 \examples{
@@ -778,6 +804,10 @@ polynomials. J Roy Stat Soc a Sta, 162:71-94.}\cr
 Sauerbrei, W., Kipruto, E. and Balmford, J., 2023. \emph{Effects of influential
 points and sample size on the selection and replicability of multivariable
 fractional polynomial models. Diagnostic and Prognostic Research, 7(1), p.7.}\cr
+
+Becher, H., Lorenz, E., Royston, P. and Sauerbrei, W., 2012. \emph{Analysing
+covariates with spike at zero: a modified FP procedure and conceptual issues.
+Biometrical journal, 54(5), pp.686-700.}\cr
 
 Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H., 2019. \emph{Modeling exposures
 with a spike at zero: simulation study and practical application to survival data.

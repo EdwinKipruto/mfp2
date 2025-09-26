@@ -27,11 +27,13 @@ contains too few or too many zeros.
 \description{
 This function resets elements of a logical vector \code{spike} to \code{FALSE}
 if the corresponding variables in \code{x} contain too few or too many zero values
-based on a specified threshold.
+based on a specified threshold, or if the variable is binary (has exactly two
+unique values).
 }
 \details{
 A warning is issued listing the variables for which the spike option
 has been reset. Variables with zero proportions outside \code{[min_prop, max_prop]}
-are considered uninformative for the spike-at-zero binary indicator.
+or variables that are binary (two unique values) are considered uninformative
+for the spike-at-zero indicator.
 }
 \keyword{internal}

@@ -6,7 +6,7 @@
 \alias{print_mfp_ic_step}
 \title{Function for verbose printing of function selection procedure (FSP)}
 \usage{
-print_mfp_step(xi, criterion, fit)
+print_mfp_step(xi, criterion, fit, stage2 = FALSE)
 
 print_mfp_pvalue_step(xi, fit, criterion, spike = FALSE)
 

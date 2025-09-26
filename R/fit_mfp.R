@@ -57,6 +57,10 @@
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #' a spike at zero. The length and order of \code{spike} must match those of
 #' the columns in \code{x}.
+#' @param min_prop A numeric value between 0 and 1; the minimum proportion of 
+#' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
+#' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
+#' zeros for which SAZ modeling is applied. Defaults to 0.95.
 #' @param verbose Logical; if \code{TRUE}, additional information will be printed
 #' during model fitting steps. Useful for understanding internal processing. 
 #' Default is \code{FALSE}.
@@ -105,6 +109,7 @@
 #' 
 #' @seealso 
 #' [mfp2()], [find_best_fp_cycle()]
+#' @keywords internal
 fit_mfp <- function(x, 
                     y, 
                     weights,
@@ -130,6 +135,8 @@ fit_mfp <- function(x,
                     zero,
                     catzero,
                     spike,
+                    min_prop, 
+                    max_prop,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -151,6 +158,7 @@ fit_mfp <- function(x,
     strata = strata, method = method, control = control, nocenter = nocenter
   ) 
   }
+  
   
   if (verbose) {
     cat(sprintf("\ni Visiting order: %s\n", 
@@ -175,16 +183,6 @@ fit_mfp <- function(x,
   
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
-  
-  # Spike variables must have catzero = TRUE to force the binary variable into the
-  # model, which is later handled by the Spike algorithm. Already done in mfp2()
-  #  but repeated here in case a user calls this function directly
-  catzero[spike] <- TRUE
-  
-  # Ensure that any variable marked as 'catzero' is also set to 'zero'
-  # already done in mfp2() but repeated here in case a user calls this function
-
-  zero[catzero] <- TRUE
   
   # Assert repeated powers of 1 is not supported. The program will fail when
   # degree is 1 in find_best_fpm_step() due to setdiff(v, c(1))
@@ -226,8 +224,18 @@ fit_mfp <- function(x,
   # or above 95% (too many zeros) are considered uninformative for the 
   # spike-at-zero.
   if (any(spike == TRUE)) {
-    spike <- reset_spike(x, spike)
+    spike <- reset_spike(x, spike,min_prop, max_prop)
   }
+  
+  # Spike variables must have catzero = TRUE to force the binary variable into the
+  # model, which is later handled by the Spike algorithm. Already done in mfp2()
+  #  but repeated here in case a user calls this function directly
+  catzero[spike] <- TRUE
+  
+  # Ensure that any variable marked as 'catzero' is also set to 'zero'
+  # already done in mfp2() but repeated here in case a user calls this function
+  
+  zero[catzero] <- TRUE
   
   # Set default for spike decision: 
   # 1 = FPM/linear + binary
@@ -270,6 +278,7 @@ fit_mfp <- function(x,
       NULL
     }
   })
+  
   names(catzero_list) <- names(catzero)
   
   # Create acd_parameters to speed up computation
@@ -657,7 +666,8 @@ reset_acd <- function(x, acdx) {
 #'
 #' This function resets elements of a logical vector \code{spike} to \code{FALSE}
 #' if the corresponding variables in \code{x} contain too few or too many zero values
-#' based on a specified threshold.
+#' based on a specified threshold, or if the variable is binary (has exactly two
+#' unique values).
 #'
 #' @param x A data frame or matrix.
 #' @param spike A logical vector indicating which columns of \code{x} are
@@ -675,7 +685,8 @@ reset_acd <- function(x, acdx) {
 #' @details
 #' A warning is issued listing the variables for which the spike option
 #' has been reset. Variables with zero proportions outside \code{[min_prop, max_prop]}
-#' are considered uninformative for the spike-at-zero binary indicator.
+#' or variables that are binary (two unique values) are considered uninformative
+#' for the spike-at-zero indicator.
 #'
 #' @keywords internal
 reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
@@ -687,19 +698,35 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
   # calculate proportion of zeros for each column
   prop_zero <- colMeans(x[, names_spike, drop = FALSE] == 0, na.rm = TRUE)
   
-  # reset spike if all values are nonzero or proportion outside thresholds
-  ind_reset <- which(prop_zero < min_prop | prop_zero > max_prop)
+  # identify columns that are binary (only two unique values)
+  is_binary <- apply(x[, names_spike, drop = FALSE], 2, function(col) length(unique(col)) == 2)
   
-  if (length(ind_reset) > 0) {
-    spike[names_spike][ind_reset] <- FALSE
+  # indices to reset for proportion issues
+  ind_prop <- which(prop_zero < min_prop | prop_zero > max_prop)
+  # indices to reset for binary variables
+  ind_binary <- which(is_binary)
+  
+  # reset spike for proportion issues
+  if (length(ind_prop) > 0) {
+    spike[names_spike[ind_prop]] <- FALSE
     warning(sprintf(
       "The spike option has been reset to FALSE for the following variables due to zero proportion outside [%g, %g]: %s",
-      min_prop, max_prop, paste(names_spike[ind_reset], collapse = ", ")
+      min_prop, max_prop, paste(names_spike[ind_prop], collapse = ", ")
+    ))
+  }
+  
+  # reset spike for binary variables
+  if (length(ind_binary) > 0) {
+    spike[names_spike[ind_binary]] <- FALSE
+    warning(sprintf(
+      "The spike option has been reset to FALSE for the following variables because they are binary: %s",
+      paste(names_spike[ind_binary], collapse = ", ")
     ))
   }
   
   spike
 }
+
 
 
 #' Helper to run cycles of the mfp algorithm 
@@ -805,23 +832,26 @@ find_best_fp_cycle <- function(x,
                                acdx,
                                prev_adj_params) {
   
+  # order of names of powers does not change
   names_x <- names(powers_current)
+  
   for (i in 1:ncol(x)) {
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
     # note that the adjustment set and powers are given by powers_current
     # which is updated in each step
+    xi <- names_x[i]
     fit_best_fp_step <- find_best_fp_step(
-      x = x, 
+      x = x, # the order of columns does not matter since internal codes uses column names
       y = y,
-      xi = names_x[i],
+      xi = xi,
       powers_current = powers_current,
       weights = weights,
       offset = offset,
-      df = df[i], 
-      select = select[i], 
-      alpha = alpha[i],
+      df = df[xi], 
+      select = select[xi], 
+      alpha = alpha[xi],
       keep = keep,
       family = family,
       criterion = criterion,

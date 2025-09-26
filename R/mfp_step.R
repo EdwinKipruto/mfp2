@@ -182,7 +182,7 @@ find_best_fp_step <- function(x,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params
   )
   
-  if (verbose & !spike[xi]) {
+  if (verbose) {
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
   }
     
@@ -238,7 +238,7 @@ find_best_fp_step <- function(x,
                              spike_decision = spike_decision[xi],
                              pvalue = decision$pvalue)
   if (verbose) {
-    print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
+    print_mfp_step(xi = xi, criterion = criterion, fit = fit1, stage2 = TRUE)
   }
   
   return(list(power_best = power_best, spike_decision = spike_decision,
@@ -1004,7 +1004,7 @@ select_ra2 <- function(x,
   }
 
   #fpmax <- paste0("FP", degree)
-  fpmax <- ifelse(spike[xi],  paste0("FP", degree, " + Binary"), paste0("FP", degree))
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
   
   # output list
   res <- list(
@@ -1075,7 +1075,7 @@ select_ra2 <- function(x,
     res$metrics, 
     fit_lin$metrics
   )
-  lin_names <- ifelse(spike[xi],"linear + Binary", "linear")
+  lin_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear")
   rownames(res$metrics) <- c(old_names, lin_names)
   res$powers = rbind(res$powers, 
                      ensure_length(fit_lin$powers, ncol(res$powers)))
@@ -1102,7 +1102,7 @@ select_ra2 <- function(x,
     lower_degrees <- 1:(degree - 1)
     
     # Construct FP names once
-    fp_names <- paste0("FP", lower_degrees, if (spike[xi]) " + Binary" else "")
+    fp_names <- paste0("FP", lower_degrees, if (spike[xi] || !is.null(catzero[xi])) " + Binary" else "")
     
     for (i in seq_along(lower_degrees)) {
       current_degree <- lower_degrees[i]
@@ -1246,7 +1246,7 @@ select_ra2_acd <- function(x,
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   #fpmax <- "FP1(x, A(x))"
-  fpmax <- ifelse(spike[xi],  "FP1(x, A(x)) +  Binary", "FP1(x, A(x))")
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  "FP1(x, A(x)) +  Binary", "FP1(x, A(x))")
   
   acdx_reset_xi <- acdx
   acdx_reset_xi[xi] = FALSE
@@ -1320,7 +1320,7 @@ select_ra2_acd <- function(x,
     fit_lin$metrics
   )
   
-  lin_names <- ifelse(spike[xi],"linear + Binary", "linear")
+  lin_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear")
   
   rownames(res$metrics) <- c(old_names, lin_names)
   res$powers <- rbind(res$powers, c(1, NA))
@@ -1353,7 +1353,7 @@ select_ra2_acd <- function(x,
     res$metrics, 
     fit$metrics[fit$model_best, ]
   )
-  FP_names <- ifelse(spike[xi],"FP1(x, .) + Binary", "FP1(x, .)")
+  FP_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"FP1(x, .) + Binary", "FP1(x, .)")
   rownames(res$metrics) <- c(old_names, FP_names)
   res$powers <- rbind(res$powers, c(fit$power_best, NA))
   
@@ -1386,7 +1386,7 @@ select_ra2_acd <- function(x,
     fit_fp1a$metrics[fit_fp1a$model_best, ]
   )
   
-  FP1_names <- ifelse(spike[xi],"FP1(., A(x)) + Binary", "FP1(., A(x))")
+  FP1_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"FP1(., A(x)) + Binary", "FP1(., A(x))")
   
   rownames(res$metrics) <- c(old_names, FP1_names)
   res$powers <- rbind(res$powers, fit_fp1a$power_best)
@@ -1420,7 +1420,7 @@ select_ra2_acd <- function(x,
     fit_lineara$metrics
   )
   
-  linx_names <- ifelse(spike[xi],"linear(., A(x)) + Binary", "linear(., A(x))")
+  linx_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear(., A(x)) + Binary", "linear(., A(x))")
   
   rownames(res$metrics) <- c(old_names, linx_names)
   res$powers <- rbind(res$powers, fit_lineara$powers)
@@ -1533,7 +1533,7 @@ select_ic <- function(x,
     return(NULL)
   
   #fpmax <- paste0("FP", degree)
-  fpmax <- ifelse(spike[xi],  paste0("FP", degree, " + Binary"), paste0("FP", degree))
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
   
   # output list
   res <- list(
@@ -1583,7 +1583,7 @@ select_ic <- function(x,
     )
   }
 
-  if (spike[xi]) {
+  if (spike[xi] || !is.null(catzero[xi])) {
     names(fits_fpm) <- sprintf("FP%g + Binary", seq_len(degree))
   } else {
     names(fits_fpm) <- sprintf("FP%g", seq_len(degree))
@@ -1608,11 +1608,10 @@ select_ic <- function(x,
   # Assign row names: null, linear (with + Binary if spike), then original FP names
   rownames(res$powers) <- c(
     "null",
-    if (spike[xi]) "linear + Binary" else "linear",
+    if (spike[xi] || !is.null(catzero[xi])) "linear + Binary" else "linear",
     fp_names
   )
 
-  
   res$metrics <- lapply(fits_fpm, function(x) {
     x$metrics[x$model_best, , drop = FALSE] 
   })
@@ -1620,7 +1619,7 @@ select_ic <- function(x,
     rbind, 
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
   )
-  rownames(res$metrics) <- c("null", ifelse(spike[xi],"linear + Binary", "linear"), 
+  rownames(res$metrics) <- c("null", ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear"), 
                              names(fits_fpm))
   
   if (xi %in% keep) { 
@@ -1705,7 +1704,7 @@ select_ic_acd <- function(x,
   
   res$current_adj_params <- fit_null$current_adj_params
   
-  suffix <- if (spike[xi]) " + Binary" else ""
+  suffix <- if (spike[xi] || !is.null(catzero[xi])) " + Binary" else ""
   fits <- setNames(
     list(
      find_best_fpm_step(

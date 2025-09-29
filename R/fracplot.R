@@ -24,10 +24,14 @@
 #' are displayed.
 #' @param size_points Numeric value. Size of points used when residuals 
 #' are displayed.
+#' @param size_points_spike Numeric value. Size of the point drawn at zero 
+#' when the covariate includes a spike-at-zero component (`spike_decision = 1`).
 #' @param color_points Character value. Color of points used when residuals 
 #'   are displayed.
 #' @param color_line Character value. Color of the line representing 
 #'   the partial predictor.
+#' @param color_line_spike Character value. Color of the point drawn at zero 
+#'   when the covariate includes a spike-at-zero component (`spike_decision = 1`).
 #' @param linetype Character value. Line type for the partial predictor. 
 #'   See [ggplot2::geom_line()] for options.
 #' @param linewidth Numeric value. Width of the line representing 
@@ -238,7 +242,7 @@ fracplot <- function(model,
                                      size = size_points_spike) + 
           ggplot2::geom_errorbar(data = zero_df,
                                  ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
-                                 width = 0.1,   # small width so it's vertical
+                                 width = 0.2,   # small width so it's vertical
                                  color = color_line)
       }
       }

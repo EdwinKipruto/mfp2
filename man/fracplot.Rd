@@ -56,6 +56,9 @@ are displayed.}
 \item{color_line}{Character value. Color of the line representing
 the partial predictor.}
 
+\item{color_line_spike}{Character value. Color of the point drawn at zero
+when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
+
 \item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
 
 \item{shape}{Numeric value. Shape of points used when residuals
@@ -63,6 +66,9 @@ are displayed.}
 
 \item{size_points}{Numeric value. Size of points used when residuals
 are displayed.}
+
+\item{size_points_spike}{Numeric value. Size of the point drawn at zero
+when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
 
 \item{linetype}{Character value. Line type for the partial predictor.
 See \code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} for options.}

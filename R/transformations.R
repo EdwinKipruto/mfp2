@@ -244,8 +244,8 @@ transform_vector_acd <- function(x,
 #' 
 #' This function applies FP and/or ACD transformations to the columns of a matrix,
 #' optionally centers the transformed variables, and can generate binary indicators
-#' for variables with nonpositive values (catzero). The spike-at-zero variables 
-#' is supported via the `spike_decision` argument.
+#' for semi-continuous variables (catzero). Spike-at-zero variables are 
+#' supported via the `spike` and `spike_decision` arguments. 
 #' @param x a matrix with all continuous variables shifted and scaled.
 #' @param power_list a named list of FP powers to be applied to the columns of
 #' `x`. Only variables named in this list are transformed.
@@ -257,7 +257,7 @@ transform_vector_acd <- function(x,
 #' should be kept as in the input matrix `x`, of if the columns should be 
 #' ordered according to `power_list`. The default is `FALSE`, since 
 #' the ordering by `power_list` reflects the `xorder` argument in [mfp2()].
-#' @param acd_parameter_list a named list. Only required when transformation
+#' @param acd_parameter_list A named list of ACD parameters. Only required when transformation
 #' are to be applied to new data. Entries must correspond to the entries where
 #' `acdx` is set to `TRUE`. Each components is to be passed to 
 #' [transform_vector_acd()]. The default value `NULL` indicates that the
@@ -274,6 +274,8 @@ transform_vector_acd <- function(x,
 #' binary indicator created and included in the model. The vector must have names matching 
 #' the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero 
 #' variables are used.
+#' @param spike A named logical vector indicating which variables are subject to
+#' spike-at-zero handling. Default is NULL which is equivalent to setting all `FALSE`.
 #' @param spike_decision Named numeric vector with values 1, 2, or 3 specifying 
 #' spike-at-zero handling for each variable. Default is `NULL`, meaning no 
 #' spike-at-zero processing is applied. Value 1 includes both the transformed 
@@ -281,18 +283,27 @@ transform_vector_acd <- function(x,
 #' keeps only the binary indicator.
 #' @param reset_zero Logical. If `TRUE` (default), variables incorrectly flagged 
 #' as `zero = TRUE` but containing only positive values are reset to `FALSE`.
+#' 
 #' @details 
-#' For details on the transformations see [transform_vector_fp()] and
-#' [transform_vector_acd()].
-#' @details 
-#' Transformations are handled by [transform_vector_fp()] and [transform_vector_acd()]. 
-#' The `x_transformed` matrix contains transformed variables, optionally centered. 
-#' Binary indicators are appended if specified in `catzero`. 
-#' The `spike_decision` argument controls spike-at-zero (SAZ) processing: for variables 
-#' with value 2, the binary indicator is disabled reducing to usual transformations;
-#' for variables with value 3, only the binary indicator of SAZ is retained and
-#' any FP/linear transformations are removed. This ensures correct handling 
-#' of variables with SAZ.
+#' Transformations are applied via [transform_vector_fp()] and [transform_vector_acd()]. 
+#' The resulting `x_transformed` matrix contains transformed variables, optionally centered. 
+#' Binary indicators are appended for variables where `catzero = TRUE`.
+#'
+#' The interaction of `spike`, `spike_decision`, and `catzero` determines whether
+#' binary indicators are included:
+#' 
+#' * If `spike = TRUE`:
+#'   - `spike_decision = 1`: both FP/ACD transformation and binary (if `catzero = TRUE`)
+#'   - `spike_decision = 2`: FP/ACD only; binary suppressed, regardless of `catzero`
+#'   - `spike_decision = 3`: binary only (FP/ACD removed)
+#'
+#' * If `spike = FALSE`:
+#'   - Binary inclusion depends solely on `catzero`
+#'   - FP/ACD always included if powers are specified
+#'
+#' This distinction allows spike-at-zero variables to suppress or isolate the binary
+#' indicator based on the decision rule, while leaving non-spike variables controlled
+#' only by `catzero`
 #' 
 #' **Centering:**  
 #' * For continuous variables, the mean of the transformed values is subtracted.  
@@ -306,11 +317,11 @@ transform_vector_acd <- function(x,
 #'   of the binary indicators (subtracting their sample proportion), supply explicit
 #'   `centers` or post-process the returned matrix.
 #'
-#' @section Column names:
-#' Transformed variable names are based on the original names. FP terms are 
-#' suffixed with ".i" to indicate the power index for that variable. Variables 
-#' transformed using ACD are prefixed with "A_". Binary indicators created 
-#' for nonpositive values (catzero) are suffixed with "_bin".
+#' **Column names:**
+#' Transformed variable names are based on original names. FP terms are suffixed
+#' with `.i` to indicate the power index. Variables transformed using ACD are 
+#' prefixed with "A_". Binary indicators created for semi-continuous variables 
+#' (catzero) are suffixed with "_bin".
 #'
 #' @examples
 #' x = matrix(1:100, nrow = 10)
@@ -349,6 +360,7 @@ transform_matrix <- function(x,
                              check_binary = TRUE,
                              zero = NULL,
                              catzero = NULL,
+                             spike = NULL, # named logical
                              spike_decision = NULL,
                              reset_zero = TRUE) {
   #-------------------------
@@ -439,6 +451,15 @@ transform_matrix <- function(x,
     catzero <- catzero[names(power_list)]
   }
   
+  # spike
+  if (is.null(spike)) {
+    spike <- setNames(rep(FALSE, length(power_list)), names(power_list))
+  } else {
+    if (!is.logical(spike)) stop("! 'spike' must be a logical vector.")
+    if (is.null(names(spike))) stop("! 'spike' must have names.")
+    spike <- spike[names(power_list)]
+  }
+  
   # spike_decision
   if (!is.null(spike_decision)) {
     if (!is.numeric(spike_decision)) {
@@ -454,12 +475,7 @@ transform_matrix <- function(x,
       stop("! 'spike_decision' must only contain values 1, 2, or 3.")
     }
     
-    # # Automatically set zero = TRUE for variables with spike_decision = 1
-    # # this is important for centering. 
-    # spike1_vars <- intersect(names(spike_decision)[spike_decision == 1], names(zero))
-    # if (length(spike1_vars) > 0) zero[spike1_vars] <- TRUE
   }
-  
   
   #-------------------------
   # Check zero variables
@@ -520,22 +536,27 @@ transform_matrix <- function(x,
     }
   }
   
-  #----------------------
-  # Apply spike_decision logic AFTER x_trafo is built
-  #----------------------
+  #------------------------------
+  # Apply spike + decision logic
+  #------------------------------
   if (!is.null(spike_decision)) {
-    # Variables where spike is not needed
-    vars_no_spike <- names(spike_decision)[spike_decision == 2]
-    intersect_vars <- intersect(vars_no_spike, names(catzero))
-    if (length(intersect_vars) > 0) {
-      catzero[intersect_vars] <- FALSE
-    }
-    
-    # Variables where only spike binary is needed (remove FP/linear transform)
-    vars_only_spike <- names(spike_decision)[spike_decision == 3]
-    intersect_vars2 <- intersect(vars_only_spike, names(x_trafo))
-    if (length(intersect_vars2) > 0) {
-      x_trafo[intersect_vars2] <- NULL
+    for (v in names(spike_decision)) {
+      dec <- spike_decision[[v]]
+      if (spike[[v]]) {
+        if (dec == 2) {
+          # FP/ACD only, no binary
+          catzero[v] <- FALSE
+        }
+        if (dec == 3) {
+          # binary only
+          if (v %in% names(x_trafo)) x_trafo[[v]] <- NULL
+          # catzero[v] remains as is (must be TRUE for binary to appear)
+        }
+        # dec == 1: no change, allow FP/ACD + binary
+      } else {
+        # spike = FALSE: binary depends only on catzero
+        next
+      }
     }
   }
   

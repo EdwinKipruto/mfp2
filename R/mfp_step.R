@@ -218,7 +218,8 @@ find_best_fp_step <- function(x,
             nocenter = nocenter, control = control, rownames = rownames, 
             powers_current = powers_current, powers = powers, acdx = acdx, 
             zero = zero, catzero = catzero, power_best = power_best,
-            spike_decision = spike_decision, acd_parameter = acd_parameter)
+            spike = spike, spike_decision = spike_decision,
+            acd_parameter = acd_parameter)
   
   # compute metrics for the three models to decide on SAZ models
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
@@ -246,7 +247,7 @@ find_best_fp_step <- function(x,
 
 }
 
-#' Fit Candidate Models for Stage 2 of the Spike-at-Zero Algorithm
+#' Fit Candidate Models for a single variable for Stage 2 of SAZ
 #'
 #' This function fits the two candidate regression models required for stage 2 
 #' of the spike-at-zero (SAZ) algorithm. Stage 2 ideally considers three models 
@@ -260,6 +261,20 @@ find_best_fp_step <- function(x,
 #' according to selected FP powers and other adjustments from stage 1. Second, 
 #' it fits models 2 and 3 for comparison. Then returns both model fits (`fit2` 
 #' and `fit3`) and the transformed predictor matrix
+#' 
+#' For the variable of interest `xi`:
+#' * In **fit2**, the function sets `spike_decision[xi] = 2` and
+#'   `catzero[xi] = FALSE` before calling `transform_matrix()`. This guarantees
+#'   that the binary indicator of `xi` is excluded, so only its FP/ACD 
+#'   transformation is used.  
+#' * In **fit3**, the binary indicator for `xi` is taken directly from
+#'   `catzero[[xi]]` and combined with adjustment variables (the other
+#'   transformed predictors).  
+#'
+#' For variables other than `xi`, binary creation and spike-at-zero handling
+#' follow the rules in `transform_matrix()`. In particular:
+#' * spike_decision = 1 or 2 → FP/ACD transformation included; binary depends on `catzero`.
+#' * spike_decision = 3 → FP/ACD removed, only binary retained.
 #'
 #' @return A list with the following elements:
 #'   * `fit2`: Model 2 fit (FPm/linear only + adjusted covariates).
@@ -270,7 +285,7 @@ find_best_fp_step <- function(x,
 fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, strata,
                                  nocenter, control, rownames, powers_current, powers,
                                  acdx, zero, catzero, power_best,
-                                 spike_decision, acd_parameter) {
+                                 spike, spike_decision, acd_parameter) {
   
   # Update the estimated FP power for variable xi
   powers_current[[xi]] <- as.vector(power_best)
@@ -282,12 +297,15 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
   # set spike_decision for xi to 2 to get correct transformation
   spike_decision[xi] <- 2
   
-  # transform_matrix() requires logical catzero. so we to convert list to logical.
-  # Any variable with spike_decision = 2 will be assigned catzero = FALSE by
+  # transform_matrix() requires logical catzero. so we need to convert list to 
+  # logical. Any variable with spike_decision = 2 will be assigned catzero = FALSE by
   # the function which is desired for our variable of interest. if spike_decision = 3,
   # binary indicator will only be returned and by default catzero will be TRUE
   # for this variable  
   catzero_logical <- sapply(catzero, function(x) !is.null(x))
+  
+  # prevent binary creation for xi inside transform_matrix()
+  catzero_logical[xi] <- FALSE
   
   # Transform x using the updated powers
   x_transformed <- transform_matrix(
@@ -298,13 +316,15 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
     keep_x_order = TRUE, 
     check_binary = TRUE,
     acd_parameter_list = acd_parameter,
-    zero = NULL, # already variables converted to zero in fit_mfp() 
+    zero = NULL, # already handled upstream in fit_mfp() 
     catzero = catzero_logical,
+    spike = spike,
     spike_decision = spike_decision
     )
   
-  # Fit model using the transformed variables
-  # transormed xi + adjustment variables no binary part
+  #---------------------------------------------------
+  # Fit2: continuous-only (xi binary never created here)
+  #---------------------------------------------------
   fit2 <- fit_model(
     x = x_transformed$x_transformed,
     y = y, family = family, weights = weights, offset = offset, 
@@ -312,7 +332,11 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
     control = control, rownames = rownames
   )
   
-  # Binary-only + adjustment variables if any
+  #---------------------------------------------------
+  # Fit3: binary-only + adjustment variables
+  #---------------------------------------------------
+  
+  # adjustment variables = all except xi
   adjustment_variable_names  <- setdiff(names(powers_current), xi)
   
   # Only bind adjustment variables if there are any
@@ -320,8 +344,18 @@ fit_spike_zero_models <- function(x, xi, y, weights, offset, family, method, str
     do.call(cbind, x_transformed$x_trafo[adjustment_variable_names])
     } else {
       NULL
-      }
-  binary_plus_adjustment  <- cbind(catzero[[xi]], adjustment_matrix)
+    }
+  
+  # Build binary column with explicit name
+  binary_col <- as.matrix(catzero[[xi]])
+  colnames(binary_col) <- paste0(xi, "_bin")
+  
+  # Combine binary + adjustments
+  if (!is.null(adjustment_matrix)) {
+    binary_plus_adjustment <- cbind(binary_col, adjustment_matrix)
+  } else {
+    binary_plus_adjustment <- binary_col
+  }
 
   fit3 <- fit_model(
     x = binary_plus_adjustment,
@@ -1004,7 +1038,7 @@ select_ra2 <- function(x,
   }
 
   #fpmax <- paste0("FP", degree)
-  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
   
   # output list
   res <- list(
@@ -1075,7 +1109,7 @@ select_ra2 <- function(x,
     res$metrics, 
     fit_lin$metrics
   )
-  lin_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear")
+  lin_names <- ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear + Binary", "linear")
   rownames(res$metrics) <- c(old_names, lin_names)
   res$powers = rbind(res$powers, 
                      ensure_length(fit_lin$powers, ncol(res$powers)))
@@ -1102,7 +1136,7 @@ select_ra2 <- function(x,
     lower_degrees <- 1:(degree - 1)
     
     # Construct FP names once
-    fp_names <- paste0("FP", lower_degrees, if (spike[xi] || !is.null(catzero[xi])) " + Binary" else "")
+    fp_names <- paste0("FP", lower_degrees, if (spike[xi] || !is.null(catzero[[xi]])) " + Binary" else "")
     
     for (i in seq_along(lower_degrees)) {
       current_degree <- lower_degrees[i]
@@ -1246,7 +1280,7 @@ select_ra2_acd <- function(x,
   n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
   
   #fpmax <- "FP1(x, A(x))"
-  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  "FP1(x, A(x)) +  Binary", "FP1(x, A(x))")
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  "FP1(x, A(x)) +  Binary", "FP1(x, A(x))")
   
   acdx_reset_xi <- acdx
   acdx_reset_xi[xi] = FALSE
@@ -1320,7 +1354,7 @@ select_ra2_acd <- function(x,
     fit_lin$metrics
   )
   
-  lin_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear")
+  lin_names <- ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear + Binary", "linear")
   
   rownames(res$metrics) <- c(old_names, lin_names)
   res$powers <- rbind(res$powers, c(1, NA))
@@ -1353,7 +1387,7 @@ select_ra2_acd <- function(x,
     res$metrics, 
     fit$metrics[fit$model_best, ]
   )
-  FP_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"FP1(x, .) + Binary", "FP1(x, .)")
+  FP_names <- ifelse(spike[xi] || !is.null(catzero[[xi]]),"FP1(x, .) + Binary", "FP1(x, .)")
   rownames(res$metrics) <- c(old_names, FP_names)
   res$powers <- rbind(res$powers, c(fit$power_best, NA))
   
@@ -1386,7 +1420,7 @@ select_ra2_acd <- function(x,
     fit_fp1a$metrics[fit_fp1a$model_best, ]
   )
   
-  FP1_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"FP1(., A(x)) + Binary", "FP1(., A(x))")
+  FP1_names <- ifelse(spike[xi] || !is.null(catzero[[xi]]),"FP1(., A(x)) + Binary", "FP1(., A(x))")
   
   rownames(res$metrics) <- c(old_names, FP1_names)
   res$powers <- rbind(res$powers, fit_fp1a$power_best)
@@ -1420,7 +1454,7 @@ select_ra2_acd <- function(x,
     fit_lineara$metrics
   )
   
-  linx_names <- ifelse(spike[xi] || !is.null(catzero[xi]),"linear(., A(x)) + Binary", "linear(., A(x))")
+  linx_names <- ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear(., A(x)) + Binary", "linear(., A(x))")
   
   rownames(res$metrics) <- c(old_names, linx_names)
   res$powers <- rbind(res$powers, fit_lineara$powers)
@@ -1533,7 +1567,7 @@ select_ic <- function(x,
     return(NULL)
   
   #fpmax <- paste0("FP", degree)
-  fpmax <- ifelse(spike[xi] || !is.null(catzero[xi]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
+  fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
   
   # output list
   res <- list(
@@ -1583,7 +1617,7 @@ select_ic <- function(x,
     )
   }
 
-  if (spike[xi] || !is.null(catzero[xi])) {
+  if (spike[xi] || !is.null(catzero[[xi]])) {
     names(fits_fpm) <- sprintf("FP%g + Binary", seq_len(degree))
   } else {
     names(fits_fpm) <- sprintf("FP%g", seq_len(degree))
@@ -1608,7 +1642,7 @@ select_ic <- function(x,
   # Assign row names: null, linear (with + Binary if spike), then original FP names
   rownames(res$powers) <- c(
     "null",
-    if (spike[xi] || !is.null(catzero[xi])) "linear + Binary" else "linear",
+    if (spike[xi] || !is.null(catzero[[xi]])) "linear + Binary" else "linear",
     fp_names
   )
 
@@ -1619,7 +1653,7 @@ select_ic <- function(x,
     rbind, 
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
   )
-  rownames(res$metrics) <- c("null", ifelse(spike[xi] || !is.null(catzero[xi]),"linear + Binary", "linear"), 
+  rownames(res$metrics) <- c("null", ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear + Binary", "linear"), 
                              names(fits_fpm))
   
   if (xi %in% keep) { 
@@ -1704,7 +1738,7 @@ select_ic_acd <- function(x,
   
   res$current_adj_params <- fit_null$current_adj_params
   
-  suffix <- if (spike[xi] || !is.null(catzero[xi])) " + Binary" else ""
+  suffix <- if (spike[xi] || !is.null(catzero[[xi]])) " + Binary" else ""
   fits <- setNames(
     list(
      find_best_fpm_step(
@@ -1870,7 +1904,7 @@ select_ic_acd <- function(x,
 #' \item{current_params}{Named list containing adjustment variable parameters 
 #'  for reuse in later steps, including \code{powers_adj}, 
 #'   \code{spike_decision_adj}, \code{data_adj_list}, and \code{data_adj}.}
-#' @noRd
+#' @keywords internal
 transform_data_step <- function(x,
                                 xi,
                                 powers_current,

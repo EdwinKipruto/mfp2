@@ -14,6 +14,7 @@ transform_matrix(
   check_binary = TRUE,
   zero = NULL,
   catzero = NULL,
+  spike = NULL,
   spike_decision = NULL,
   reset_zero = TRUE
 )
@@ -35,7 +36,7 @@ should be kept as in the input matrix \code{x}, of if the columns should be
 ordered according to \code{power_list}. The default is \code{FALSE}, since
 the ordering by \code{power_list} reflects the \code{xorder} argument in \code{\link[=mfp2]{mfp2()}}.}
 
-\item{acd_parameter_list}{a named list. Only required when transformation
+\item{acd_parameter_list}{A named list of ACD parameters. Only required when transformation
 are to be applied to new data. Entries must correspond to the entries where
 \code{acdx} is set to \code{TRUE}. Each components is to be passed to
 \code{\link[=transform_vector_acd]{transform_vector_acd()}}. The default value \code{NULL} indicates that the
@@ -55,6 +56,9 @@ columns in \code{x} should treat nonpositive values as zero and additionally hav
 binary indicator created and included in the model. The vector must have names matching
 the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero
 variables are used.}
+
+\item{spike}{A named logical vector indicating which variables are subject to
+spike-at-zero handling. Default is NULL which is equivalent to setting all \code{FALSE}.}
 
 \item{spike_decision}{Named numeric vector with values 1, 2, or 3 specifying
 spike-at-zero handling for each variable. Default is \code{NULL}, meaning no
@@ -89,21 +93,33 @@ transformed variables via \code{center_matrix}.
 \description{
 This function applies FP and/or ACD transformations to the columns of a matrix,
 optionally centers the transformed variables, and can generate binary indicators
-for variables with nonpositive values (catzero). The spike-at-zero variables
-is supported via the \code{spike_decision} argument.
+for semi-continuous variables (catzero). Spike-at-zero variables are
+supported via the \code{spike} and \code{spike_decision} arguments.
 }
 \details{
-For details on the transformations see \code{\link[=transform_vector_fp]{transform_vector_fp()}} and
-\code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+Transformations are applied via \code{\link[=transform_vector_fp]{transform_vector_fp()}} and \code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+The resulting \code{x_transformed} matrix contains transformed variables, optionally centered.
+Binary indicators are appended for variables where \code{catzero = TRUE}.
 
-Transformations are handled by \code{\link[=transform_vector_fp]{transform_vector_fp()}} and \code{\link[=transform_vector_acd]{transform_vector_acd()}}.
-The \code{x_transformed} matrix contains transformed variables, optionally centered.
-Binary indicators are appended if specified in \code{catzero}.
-The \code{spike_decision} argument controls spike-at-zero (SAZ) processing: for variables
-with value 2, the binary indicator is disabled reducing to usual transformations;
-for variables with value 3, only the binary indicator of SAZ is retained and
-any FP/linear transformations are removed. This ensures correct handling
-of variables with SAZ.
+The interaction of \code{spike}, \code{spike_decision}, and \code{catzero} determines whether
+binary indicators are included:
+\itemize{
+\item If \code{spike = TRUE}:
+\itemize{
+\item \code{spike_decision = 1}: both FP/ACD transformation and binary (if \code{catzero = TRUE})
+\item \code{spike_decision = 2}: FP/ACD only; binary suppressed, regardless of \code{catzero}
+\item \code{spike_decision = 3}: binary only (FP/ACD removed)
+}
+\item If \code{spike = FALSE}:
+\itemize{
+\item Binary inclusion depends solely on \code{catzero}
+\item FP/ACD always included if powers are specified
+}
+}
+
+This distinction allows spike-at-zero variables to suppress or isolate the binary
+indicator based on the decision rule, while leaving non-spike variables controlled
+only by \code{catzero}
 
 \strong{Centering:}
 \itemize{
@@ -118,15 +134,13 @@ so the centering step does not change those columns. If you prefer mean-centerin
 of the binary indicators (subtracting their sample proportion), supply explicit
 \code{centers} or post-process the returned matrix.
 }
-}
-\section{Column names}{
 
-Transformed variable names are based on the original names. FP terms are
-suffixed with ".i" to indicate the power index for that variable. Variables
-transformed using ACD are prefixed with "A_". Binary indicators created
-for nonpositive values (catzero) are suffixed with "_bin".
+\strong{Column names:}
+Transformed variable names are based on original names. FP terms are suffixed
+with \code{.i} to indicate the power index. Variables transformed using ACD are
+prefixed with "A_". Binary indicators created for semi-continuous variables
+(catzero) are suffixed with "_bin".
 }
-
 \examples{
 x = matrix(1:100, nrow = 10)
 colnames(x) = paste0("x", 1:ncol(x))

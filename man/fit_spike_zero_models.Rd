@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfp_step.R
 \name{fit_spike_zero_models}
 \alias{fit_spike_zero_models}
-\title{Fit Candidate Models for Stage 2 of the Spike-at-Zero Algorithm}
+\title{Fit Candidate Models for a single variable for Stage 2 of SAZ}
 \usage{
 fit_spike_zero_models(
   x,
@@ -22,6 +22,7 @@ fit_spike_zero_models(
   zero,
   catzero,
   power_best,
+  spike,
   spike_decision,
   acd_parameter
 )
@@ -77,6 +78,10 @@ for nonpositive values, created when specific variables are passed to the
 the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 
+\item{spike}{A logical vector indicating which columns of \code{x} contain
+a spike at zero. The length and order of \code{spike} must match those of
+the columns in \code{x}.}
+
 \item{spike_decision}{Named vector indicating how spike-at-zero (SAZ)
 variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
@@ -108,5 +113,23 @@ The function performs the following steps: First, it transforms the predictors
 according to selected FP powers and other adjustments from stage 1. Second,
 it fits models 2 and 3 for comparison. Then returns both model fits (\code{fit2}
 and \code{fit3}) and the transformed predictor matrix
+
+For the variable of interest \code{xi}:
+\itemize{
+\item In \strong{fit2}, the function sets \code{spike_decision[xi] = 2} and
+\code{catzero[xi] = FALSE} before calling \code{transform_matrix()}. This guarantees
+that the binary indicator of \code{xi} is excluded, so only its FP/ACD
+transformation is used.
+\item In \strong{fit3}, the binary indicator for \code{xi} is taken directly from
+\code{catzero[[xi]]} and combined with adjustment variables (the other
+transformed predictors).
+}
+
+For variables other than \code{xi}, binary creation and spike-at-zero handling
+follow the rules in \code{transform_matrix()}. In particular:
+\itemize{
+\item spike_decision = 1 or 2 → FP/ACD transformation included; binary depends on \code{catzero}.
+\item spike_decision = 3 → FP/ACD removed, only binary retained.
+}
 }
 \keyword{internal}

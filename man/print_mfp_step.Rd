@@ -4,7 +4,7 @@
 \alias{print_mfp_step}
 \alias{print_mfp_pvalue_step}
 \alias{print_mfp_ic_step}
-\title{Function for verbose printing of function selection procedure (FSP)}
+\title{Verbose printing of the function selection procedure (FSP)}
 \usage{
 print_mfp_step(xi, criterion, fit, stage2 = FALSE)
 
@@ -13,21 +13,40 @@ print_mfp_pvalue_step(xi, fit, criterion, spike = FALSE)
 print_mfp_ic_step(xi, fit, criterion, spike = FALSE)
 }
 \arguments{
-\item{xi}{a character string indicating the name of the current variable
-of interest, for which the best fractional polynomial transformation is
-to be estimated in the current step.}
+\item{xi}{Character string. The name of the covariate currently being tested.}
 
-\item{criterion}{a character string defining the criterion used to select
-variables and FP models of different degrees.}
+\item{criterion}{Character string. The selection criterion, either \code{"pvalue"}
+or \code{"aic"}/\code{"bic"} (depending on implementation in
+\code{print_mfp_ic_step()}).}
 
-\item{fit}{intermediary model fit in \code{mfp_step}.}
+\item{fit}{A list containing the intermediate fit for the current variable.
+Typically produced by \code{mfp_step}.}
 
-\item{spike}{A logical vector indicating which columns of \code{x} contain
-a spike at zero. The length and order of \code{spike} must match those of
-the columns in \code{x}.}
+\item{stage2}{Logical. When \code{FALSE} (default), only Stage 1 results of the
+spike-at-zero (SAZ) procedure are printed, or the usual FSP output for
+\code{xi} when \code{fit$spike[xi] = FALSE}. When \code{TRUE}, Stage 1 results are printed,
+and if \code{fit$spike[xi] = TRUE} and the Stage 1 selected model is not \code{"null"},
+the Stage 2 spike-at-zero results are printed immediately after Stage 1.}
+
+\item{spike}{Logical. Indicates whether \code{xi} was treated as a spike-at-zero
+variable. Default is \code{FALSE}.}
 }
 \description{
-Function for verbose printing of function selection procedure (FSP)
+This function prints intermediate results from the fractional polynomial
+function selection process, including details of the spike-at-zero algorithm
+when relevant. It is primarily called from within \code{mfp_step} during model
+selection.
+}
+\details{
+Printing is split into two parts:
+\itemize{
+\item \strong{Stage 1}: All candidate FP/ACD models for \code{xi} are listed with their powers,
+degrees of freedom, and criterion-specific statistics. If \code{fit$spike[xi] = TRUE},
+this corresponds to the first stage of the spike-at-zero (SAZ) algorithm.
+\item \strong{Stage 2}: If \code{stage2 = TRUE} and the Stage 1 selected model for \code{xi} is
+not \code{"null"}, the results of the spike-at-zero are printed immediately
+after Stage 1. The chosen model is highlighted at the end of the table.
+}
 }
 \section{Functions}{
 \itemize{

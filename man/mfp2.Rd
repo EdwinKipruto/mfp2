@@ -19,7 +19,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
+  family = "gaussian",
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -52,7 +52,7 @@ mfp2(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
+  family = "gaussian",
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -192,16 +192,16 @@ and fit it with \code{df = 1}.}
 Cox regression. If there are no tied death times all the methods are
 equivalent. Default is the Breslow method. This argument is used for Cox
 models only and has no effect on other model families.
-See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+See \code{survival::coxph()} for details.}
 
 \item{strata}{a numeric vector or matrix of variables that define strata
 to be used for stratification in a Cox model. A new factor, whose levels are
 all possible combinations of the variables supplied will be created.
 Default is \code{NULL} and a Cox model without stratification would be fitted.
-See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+See \code{survival::coxph()} for details.}
 
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
-models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+models. See \code{survival::coxph()} for details.}
 
 \item{acdx}{a character vector giving the names of continuous variables to
 undergo the approximate cumulative distribution (ACD) transformation. Using
@@ -264,7 +264,7 @@ specified in \code{formula}.}
 \code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},
 depending on the \code{family} parameter.
 
-The function \code{summary()} (i.e. \code{\link[=summary.mfp2]{summary.mfp2()}}) can be used to obtain or
+The function \code{summary()} (i.e. \code{summary.mfp2()}) can be used to obtain or
 print a summary of the results.
 The generic accessor function \code{coef()} can be used to extract the vector of
 coefficients from the fitted model object.
@@ -289,6 +289,7 @@ transformations.
 \item y: the original outcome variable.
 \item x: the final transformed input matrix used to fit the final model.
 \item call_mfp: the call to the \code{mfp2()} function.
+\item family: the family stored as either character string or function.
 \item family_string: the family stored as character string.
 \item zero: named logical vector indicating, for each variable, whether only
 positive values were transformed.
@@ -357,14 +358,14 @@ For the effects of influential points on FP functions, see Sauerbrei et al. (202
 \section{Details on \code{family} option}{
 
 
-\code{mfp2()} supports the \code{family} argument as used by \code{\link[stats:glm]{stats::glm()}}. Built-in
+\code{mfp2()} supports the \code{family} argument as used by \code{stats::glm()}. Built-in
 families can be specified via a character string. For example,
 \code{mfp2(..., family = "binomial")} fits a logistic regression model, whereas
 \code{mfp2(..., family = "gaussian")} fits a linear regression model using ordinary
 least squares.
 
 For Cox proportional hazards models, the response should preferably be a
-\code{Surv} object, created with \code{\link[survival:Surv]{survival::Surv()}}, and the \code{family} argument
+\code{Surv} object, created with \code{survival::Surv()}, and the \code{family} argument
 should be set to \code{"cox"}. Only right-censored data are currently supported.
 Stratified Cox models can be specified using the \code{strata} argument, or by
 including \code{strata} terms in the model formula when using the formula interface
@@ -413,7 +414,7 @@ ensures that variables for which transformations are unnecessary like linear
 are not artificially shifted.
 
 Centering before estimating the FP powers may result in different powers and
-should be avoided. Also see \code{\link[=transform_vector_fp]{transform_vector_fp()}} for some more details.
+should be avoided. Also see \code{transform_vector_fp()} for some more details.
 }
 
 \section{Details on the \code{subset} argument}{
@@ -650,11 +651,11 @@ Users may override these thresholds using the \code{min_prop} and \code{max_prop
 
 \code{mfp2} supports model specification through two interfaces.
 The first accepts the design matrix \code{x} together with an outcome object \code{y},
-similar to \code{\link[stats:glm]{stats::glm.fit()}} or \code{\link[glmnet:glmnet]{glmnet::glmnet()}}. For generalized linear
+similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized linear
 models this may be a vector, but in the case of Cox regression \code{y} must be a
 two-column survival object (time and event indicator) created using
-\code{\link[survival:Surv]{survival::Surv()}}. The second interface follows the formula style used by
-functions such as \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{survival::coxph()}}.
+\code{survival::Surv()}. The second interface follows the formula style used by
+functions such as \code{stats::glm()} or \code{survival::coxph()}.
 
 Both interfaces are equivalent in functionality; only the details of
 specification differ. In the standard interface all details regarding
@@ -814,5 +815,5 @@ with a spike at zero: simulation study and practical application to survival dat
 Biostatistics & Epidemiology, 3(1), pp.23-37.}
 }
 \seealso{
-\code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=fp]{fp()}}
+\code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
 }

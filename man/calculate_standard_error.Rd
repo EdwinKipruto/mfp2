@@ -19,7 +19,7 @@ values.}
 Standard error.
 }
 \description{
-To be used in \code{\link[=predict.mfp2]{predict.mfp2()}}.
+To be used in \code{predict.mfp2()}.
 }
 \details{
 See pages 91-92 and following in the book by Royston and Sauerbrei 2008

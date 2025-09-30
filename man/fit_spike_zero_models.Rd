@@ -42,7 +42,9 @@ to be estimated in the current step.}
 
 \item{offset}{a vector of length nobs of offsets.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
 
 \item{method}{a character string specifying the method for tie handling in
 Cox regression.}
@@ -87,7 +89,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}

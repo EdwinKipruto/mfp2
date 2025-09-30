@@ -13,6 +13,7 @@ find_best_fp_step(
   df,
   powers_current,
   family,
+  family_string,
   criterion,
   select,
   alpha,
@@ -56,7 +57,12 @@ variable of interest \code{xi}.}
 indicating the fp powers to be used in the current step for all variables
 (except \code{xi}).}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}
@@ -111,7 +117,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -129,8 +135,8 @@ requested, but otherwise is either a vector with all numeric entries, or a
 single \code{NA}.
 }
 \description{
-See \code{\link[=mfp2]{mfp2()}} for a brief summary on the notation used here and
-\code{\link[=fit_mfp]{fit_mfp()}} for an overview of the fitting procedure.
+See \code{mfp2()} for a brief summary on the notation used here and
+\code{fit_mfp()} for an overview of the fitting procedure.
 }
 \details{
 The function selection procedure (FSP) is used if the p-value criterion is
@@ -141,20 +147,20 @@ It uses transformations for all other variables to assess the FP form of
 the current variable of interest. This function covers three main use cases:
 \itemize{
 \item the linear case (\code{df = 1}) to test between null and linear models (see
-\code{\link[=select_linear]{select_linear()}}). This step differs from the mfp case because
+\code{select_linear()}). This step differs from the mfp case because
 linear models only use 1 df, while estimation of (every) fp power adds
 another df. This is also the case applied for categorical variables for
 which \code{df} are set to 1.
 \item the case that an acd transformation is requested (\code{acdx} is \code{TRUE}
-for \code{xi}) for the variable of interest (see \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
+for \code{xi}) for the variable of interest (see \code{find_best_fpm_step()}).
 \item the (usual) case of the normal mfp algorithm to assess non-linear
-functional forms (see \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}).
+functional forms (see \code{find_best_fpm_step()}).
 }
 
 Note that these cases do not encompass the setting that a variable is not
 selected, because the evaluation is done for each variable in each cycle.
 A variable which was de-selected in earlier cycles may be added to the
-working model again. Also see \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}.
+working model again. Also see \code{find_best_fp_cycle()}.
 
 The adjustment in each step uses the current fp powers given in
 \code{powers_current} for all other variables to determine the adjustment set
@@ -171,13 +177,13 @@ continuous variable.
 The first option for \code{criterion = "pvalue"} is the function selection
 procedure as outlined in e.g. Chapters 4 and 6 of Royston and
 Sauerbrei (2008), also abbreviated as "RA2".
-It is a closed testing procedure and is implemented in \code{\link[=select_ra2]{select_ra2()}} and
-extended for ACD transformation in \code{\link[=select_ra2_acd]{select_ra2_acd()}} according to
+It is a closed testing procedure and is implemented in \code{select_ra2()} and
+extended for ACD transformation in \code{select_ra2_acd()} according to
 Royston and Sauerbrei (2016).
 
 For the other criteria \code{aic} and \code{bic} all FP models up to the desired degree
 are fitted and the model with the lowest value for the information criteria
-is chosen as the final one. This is implemented in \code{\link[=select_ic]{select_ic()}}.
+is chosen as the final one. This is implemented in \code{select_ic()}.
 }
 
 \references{

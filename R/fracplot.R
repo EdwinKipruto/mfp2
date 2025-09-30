@@ -1,25 +1,25 @@
 #' Plot response functions from a fitted `mfp2` object
 #'
 #' Produces partial predictor plots (or contrasts) with confidence intervals
-#' against selected covariates from a fitted [`mfp2`] model. If requested, 
+#' against selected covariates from a fitted \code{`mfp2`} model. If requested, 
 #' component-plus-residual plots are also supported. 
 #'
-#' @param model A fitted [`mfp2`] model.
+#' @param model A fitted \code{`mfp2`} model.
 #' @param terms Character vector with variable names to be plotted.  If `NULL`,
 #' all fractional polynomial terms in the model are plotted.
 #' @param partial_only Logical. If `TRUE`, only the partial predictor (model
 #' component) is plotted. If `FALSE` (default), component-plus-residual plots
 #' are drawn. Only used if `type = "terms"`. See below for details. 
 #' @param type Character, one of `"terms"` or `"contrasts"`. Passed to
-#' [predict.mfp2()]. `"terms"` plots partial predictors (with or without
+#' \code{predict.mfp2()}. `"terms"` plots partial predictors (with or without
 #' residuals), while `"contrasts"` plots contrasts relative to a reference
 #' value. 
-#' @param ref Reference list passed to [predict.mfp2()] when `type =
+#' @param ref Reference list passed to \code{predict.mfp2()} when `type =
 #'  "contrasts"`. Ignored otherwise.
 #' @param terms_seq Character, one of `"data"` or `"equidistant"`. Passed to
-#'  [predict.mfp2()]. `"data"` uses the observed values, `"equidistant"` creates
+#'  \code{predict.mfp2()}. `"data"` uses the observed values, `"equidistant"` creates
 #' a grid over the covariate range.
-#' @param alpha Confidence level for intervals. Passed to [predict.mfp2()].
+#' @param alpha Confidence level for intervals. Passed to \code{predict.mfp2()}.
 #' @param shape Numeric value. Shape of points used when residuals 
 #' are displayed.
 #' @param size_points Numeric value. Size of points used when residuals 
@@ -88,7 +88,7 @@
 #' `patchwork::wrap_plots` and further customized. 
 #' 
 #' @seealso 
-#' [predict.mfp2()]
+#' \code{predict.mfp2()}
 #' 
 #' @import ggplot2
 #' @importFrom ggplot2 .data

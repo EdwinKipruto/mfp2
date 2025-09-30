@@ -8,7 +8,7 @@ find_scale_factor(x)
 }
 \arguments{
 \item{x}{a numeric vector already shifted to positive values (see
-\code{\link[=find_shift_factor]{find_shift_factor()}}). This function requires at least 2 distinct values to
+\code{find_shift_factor()}). This function requires at least 2 distinct values to
 work.
 
 #' @examples
@@ -24,7 +24,7 @@ Function that calculates an integer used to scale predictor
 }
 \details{
 For details on why scaling is useful see the corresponding section in the
-documentation of \code{\link[=mfp2]{mfp2()}}.
+documentation of \code{mfp2()}.
 
 The determination of the scaling factor is independent (i.e. not affected
 by) shifts in the input data, as it only depends on the range of the

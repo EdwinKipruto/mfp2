@@ -18,7 +18,7 @@ transformation. May be ordered differently than the columns of \code{x}.}
 Logical vector of same length as \code{acdx}.
 }
 \description{
-To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+To be used in \code{fit_mfp()}.
 This function resets the \code{acdx} parameter (logical vector) of variables with
 less than 5 distinct values to \code{FALSE}.
 }

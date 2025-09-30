@@ -31,10 +31,10 @@
 #' @param shift a numeric that is used to shift the values of `x` to positive
 #' values. The default value is 0, meaning no shifting is conducted. 
 #' If `NULL`, then the program will estimate an appropriate shift automatically
-#' (see [find_shift_factor()]).
+#' (see \code{find_shift_factor()}).
 #' @param scale a numeric used to scale `x`. The default value is 1, meaning 
 #' no scaling is conducted. If `NULL`, then the program will estimate 
-#' an appropriate scaling factor automatically (see [find_scale_factor()]).
+#' an appropriate scaling factor automatically (see \code{find_scale_factor()}).
 #' @param zero Logical indicating whether only positive values of the variable 
 #' should be transformed, with nonpositive values (zero or negative) set to zero. 
 #' If \code{TRUE}, transformation is applied only to positive values; nonpositive 
@@ -148,7 +148,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
 #' 
 #' Applies the acd transformation as outlined in Royston (2014) and Royston and 
 #' Sauerbrei (2016). 
-#' Designed to work with the output of [fit_acd()], Please refer to the corresponding
+#' Designed to work with the output of \code{fit_acd()}, Please refer to the corresponding
 #' documentation for more details.
 #' 
 #' @param x a numeric vector.
@@ -186,7 +186,7 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
 
 #' Function to fit univariable FP1 models for acd transformation
 #' 
-#' To be used in [fit_acd()].
+#' To be used in \code{fit_acd()}.
 #' 
 #' @inheritParams fit_acd
 #' @param y normal cdf of rank transform of `x`.

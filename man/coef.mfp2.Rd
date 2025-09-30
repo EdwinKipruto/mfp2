@@ -8,7 +8,7 @@
 }
 \arguments{
 \item{object}{an object of class \code{mfp2}, usually, a result of a call to
-\code{\link[=mfp2]{mfp2()}}.}
+\code{mfp2()}.}
 
 \item{...}{not used.}
 }

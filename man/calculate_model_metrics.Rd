@@ -7,7 +7,7 @@
 calculate_model_metrics(obj, n_obs, df_additional = 0)
 }
 \arguments{
-\item{obj}{a list returned by \code{\link[=fit_model]{fit_model()}} representing a glm or Cox model
+\item{obj}{a list returned by \code{fit_model()} representing a glm or Cox model
 fit.}
 
 \item{n_obs}{a numeric value indicating the number of observations for the
@@ -30,8 +30,8 @@ twice the difference between the log likelihoods of the saturated model
 It is, however, the definition used in Royston and Sauerbrei (2008) and in
 \code{mfp}. For selection of fps this does not really play a role, as the common
 factor would be cancelled anyway when comparing models based on deviances.
-\item \code{sse}: sum of squared residuals as returned by \code{\link[=fit_model]{fit_model()}}.
-\item \code{deviance_gaussian}: deviance computed by \code{\link[=deviance_gaussian]{deviance_gaussian()}},
+\item \code{sse}: sum of squared residuals as returned by \code{fit_model()}.
+\item \code{deviance_gaussian}: deviance computed by \code{deviance_gaussian()},
 applicable to Gaussian models and used for F-test computations.
 \item \code{aic}: Akaike information criterion, defined as
 \verb{-2logL + 2(df + df_additional)}.

@@ -34,15 +34,15 @@ done separately for each individual column of the transformed data matrix.}
 \item{keep_x_order}{a logical indicating whether the order of columns
 should be kept as in the input matrix \code{x}, of if the columns should be
 ordered according to \code{power_list}. The default is \code{FALSE}, since
-the ordering by \code{power_list} reflects the \code{xorder} argument in \code{\link[=mfp2]{mfp2()}}.}
+the ordering by \code{power_list} reflects the \code{xorder} argument in \code{mfp2()}.}
 
 \item{acd_parameter_list}{A named list of ACD parameters. Only required when transformation
 are to be applied to new data. Entries must correspond to the entries where
 \code{acdx} is set to \code{TRUE}. Each components is to be passed to
-\code{\link[=transform_vector_acd]{transform_vector_acd()}}. The default value \code{NULL} indicates that the
+\code{transform_vector_acd()}. The default value \code{NULL} indicates that the
 parameters for the acd transformations are to be estimated.}
 
-\item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
+\item{check_binary}{passed to \code{transform_vector_fp()}.}
 
 \item{zero}{A named logical vector specifying, for each variable, whether only
 positive values should be transformed. If \code{TRUE}, the transformation is applied
@@ -97,7 +97,8 @@ for semi-continuous variables (catzero). Spike-at-zero variables are
 supported via the \code{spike} and \code{spike_decision} arguments.
 }
 \details{
-Transformations are applied via \code{\link[=transform_vector_fp]{transform_vector_fp()}} and \code{\link[=transform_vector_acd]{transform_vector_acd()}}.
+Transformations are applied via \code{transform_vector_fp()} and
+\code{transform_vector_acd()}.
 The resulting \code{x_transformed} matrix contains transformed variables, optionally centered.
 Binary indicators are appended for variables where \code{catzero = TRUE}.
 

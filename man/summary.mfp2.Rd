@@ -8,7 +8,7 @@
 }
 \arguments{
 \item{object}{an object of class \code{mfp2}, usually, a result of a call to
-\code{\link[=mfp2]{mfp2()}}.}
+\code{mfp2()}.}
 
 \item{...}{further arguments passed to the summary functions for \code{glm()}
 (\code{\link[stats:summary.glm]{stats::summary.glm()}}, i.e. families supported by \code{glm()}) or \code{coxph()}
@@ -23,6 +23,6 @@ This function is a method for the generic \code{\link[base:summary]{base::summar
 objects of class \code{mfp2}.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[stats:glm]{stats::glm()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:coxph]{survival::coxph()}},
+\code{mfp2()}, \code{\link[stats:glm]{stats::glm()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:coxph]{survival::coxph()}},
 \code{\link[survival:summary.coxph]{survival::summary.coxph()}}
 }

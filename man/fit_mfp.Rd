@@ -15,6 +15,7 @@ fit_mfp(
   df,
   center,
   family,
+  family_string,
   criterion,
   select,
   alpha,
@@ -60,7 +61,12 @@ but re-ordered to conform to \code{xorder}.}
 \item{center}{a logical vector of length nvars indicating if variables are
 to be centered.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}
@@ -106,7 +112,7 @@ of \code{x}.}
 \item{catzero}{A logical vector similar to \code{zero}, indicating which
 columns of \code{x} should treat nonpositive values as zero and also have a binary
 indicator automatically created and included in the model. Must match the length
-and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
+and order of the columns in \code{x}. See \code{mfp2} for details.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
 a spike at zero. The length and order of \code{spike} must match those of
@@ -123,12 +129,12 @@ during model fitting steps. Useful for understanding internal processing.
 Default is \code{FALSE}.}
 }
 \value{
-See \code{\link[=mfp2]{mfp2()}} for details on the returned object.
+See \code{mfp2()} for details on the returned object.
 }
 \description{
 This internal function implements the Multivariable Fractional Polynomial (MFP),
 MFP with Approximate Cumulative Distribution (MFPA), and spike-at-zero (SAZ)
-algorithms. It is not exported and is intended to be called from \code{\link[=mfp2]{mfp2()}}.
+algorithms. It is not exported and is intended to be called from \code{mfp2()}.
 While most parameters are documented in \code{mfp2()}, their form may differ here.
 The function does not perform argument checks and expects that all inputs
 have been properly prepared by \code{mfp2()}.
@@ -176,6 +182,6 @@ with a spike at zero: simulation study and practical application to survival dat
 \emph{Biostatistics & Epidemiology}, 3(1), 23–37.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=find_best_fp_cycle]{find_best_fp_cycle()}}
+\code{mfp2()}, \code{find_best_fp_cycle()}
 }
 \keyword{internal}

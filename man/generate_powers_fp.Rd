@@ -23,7 +23,7 @@ Default is \code{NULL} and the set \eqn{(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used
 A matrix of powers with degree columns and rows depending on the \code{degree}.
 For ACD powers always a matrix with two columns. For normal fps each row
 will be sorted in increasing order (in alignment with
-how \code{\link[=transform_vector_fp]{transform_vector_fp()}} processes the data).
+how \code{transform_vector_fp()} processes the data).
 }
 \description{
 Function that generates a matrix of FP powers for any degree

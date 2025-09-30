@@ -33,6 +33,6 @@ The transformed input vector \code{x}.
 \description{
 Applies the acd transformation as outlined in Royston (2014) and Royston and
 Sauerbrei (2016).
-Designed to work with the output of \code{\link[=fit_acd]{fit_acd()}}, Please refer to the corresponding
+Designed to work with the output of \code{fit_acd()}, Please refer to the corresponding
 documentation for more details.
 }

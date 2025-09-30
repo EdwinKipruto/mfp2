@@ -34,7 +34,7 @@
 #' A matrix of powers with degree columns and rows depending on the `degree`.
 #' For ACD powers always a matrix with two columns. For normal fps each row
 #' will be sorted in increasing order (in alignment with
-#' how [transform_vector_fp()] processes the data).
+#' how \code{transform_vector_fp()} processes the data).
 #' 
 #' @export
 generate_powers_fp <- function(degree = NULL, 

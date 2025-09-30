@@ -2,7 +2,7 @@
 #' 
 #' @details
 #' For details on why scaling is useful see the corresponding section in the
-#' documentation of [mfp2()].
+#' documentation of \code{mfp2()}.
 #' 
 #' The determination of the scaling factor is independent (i.e. not affected 
 #' by) shifts in the input data, as it only depends on the range of the 
@@ -16,7 +16,7 @@
 #' Stata manual for mfp at https://www.stata.com/manuals/rfp.pdf.
 #'
 #' @param x a numeric vector already shifted to positive values (see 
-#' [find_shift_factor()]). This function requires at least 2 distinct values to 
+#' \code{find_shift_factor()}). This function requires at least 2 distinct values to 
 #' work.
 #' 
 #' #' @examples
@@ -53,7 +53,7 @@ find_scale_factor <- function(x) {
 #' 
 #' @details
 #' For details on why shifting is necessary see the corresponding section in the
-#' documentation of [mfp2()].
+#' documentation of \code{mfp2()}.
 #' 
 #' This function implements the formula in Section 4.7 of Royston and 
 #' Sauerbrei (2008).

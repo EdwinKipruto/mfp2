@@ -2,8 +2,8 @@
 #' 
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
 #' MFP with Approximate Cumulative Distribution (MFPA), and spike-at-zero (SAZ) 
-#' algorithms. It is not exported and is intended to be called from [`mfp2()`]. 
-#' While most parameters are documented in `mfp2()`, their form may differ here. 
+#' algorithms. It is not exported and is intended to be called from \code{mfp2()}. 
+#' While most parameters are documented in \code{mfp2()}, their form may differ here. 
 #' The function does not perform argument checks and expects that all inputs 
 #' have been properly prepared by `mfp2()`.
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
@@ -21,7 +21,11 @@
 #' @param df a numeric vector of length nvars of degrees of freedom.
 #' @param center a logical vector of length nvars indicating if variables are 
 #' to be centered.
-#' @param family a character string representing a family object.
+#' @param family Either a character string naming the family (e.g., "gaussian", "binomial", "cox") 
+#'   or a function that returns a GLM family object (e.g., stats::gaussian). 
+#'   For Cox models, only a character string "cox" is allowed.
+#' @param family_string A character string representing the selected family, 
+#'   e.g., "gaussian".
 #' @param criterion a character string defining the criterion used to select 
 #' variables and FP models of different degrees.
 #' @param select a numeric vector of length nvars indicating significance levels
@@ -53,7 +57,7 @@
 #' @param catzero A logical vector similar to \code{zero}, indicating which 
 #' columns of \code{x} should treat nonpositive values as zero and also have a binary 
 #' indicator automatically created and included in the model. Must match the length 
-#' and order of the columns in \code{x}. See \code{\link{mfp2}} for details.
+#' and order of the columns in \code{x}. See \code{mfp2} for details.
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #' a spike at zero. The length and order of \code{spike} must match those of
 #' the columns in \code{x}.
@@ -88,7 +92,7 @@
 #' acd parameters, and convergence information.
 #'
 #' @return 
-#' See [mfp2()] for details on the returned object.
+#' See \code{mfp2()} for details on the returned object.
 #' 
 #' @references 
 #' Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic 
@@ -108,7 +112,7 @@
 #' *Biostatistics & Epidemiology*, 3(1), 23–37.
 #' 
 #' @seealso 
-#' [mfp2()], [find_best_fp_cycle()]
+#' \code{mfp2()}, \code{find_best_fp_cycle()}
 #' @keywords internal
 fit_mfp <- function(x, 
                     y, 
@@ -120,6 +124,7 @@ fit_mfp <- function(x,
                     df, 
                     center, 
                     family, 
+                    family_string,
                     criterion,
                     select, 
                     alpha, 
@@ -153,8 +158,8 @@ fit_mfp <- function(x,
   # order only variables if they are 2 or more
   if (length(variables_x) > 1) {
   variables_ordered <- order_variables(
-    xorder = xorder, 
-    x = x, y = y, family = family,  weights = weights, offset = offset, 
+    xorder = xorder,  x = x, y = y, family = family,  
+    family_string = family_string, weights = weights, offset = offset, 
     strata = strata, method = method, control = control, nocenter = nocenter
   ) 
   }
@@ -317,6 +322,7 @@ fit_mfp <- function(x,
       weights = weights,
       offset = offset,
       family = family,
+      family_string = family_string,
       criterion = criterion,
       select = select,
       alpha = alpha,
@@ -440,7 +446,7 @@ fit_mfp <- function(x,
 
 #' Helper to order variables for mfp2 algorithm
 #' 
-#' To be used in [fit_mfp()].
+#' To be used in \code{fit_mfp()}.
 #' 
 #' @param xorder a string determining the order of entry of the covariates
 #' into the model-selection algorithm. The default is `ascending`, which enters
@@ -455,6 +461,8 @@ fit_mfp <- function(x,
 #' the [survival::Surv()] function for Cox models. 
 #' @param family a character string naming a family function supported by
 #' `glm()` or "cox" for Cox models.
+#' @param family_string A character string representing the selected family, 
+#'   e.g., "gaussian".
 #' @param weights,offset parameters for both glm and Cox models, see either
 #' [stats::glm()] or [survival::coxph()] depending on family. 
 #' @param strata,method,control,nocenter Cox model specific parameters, see
@@ -483,6 +491,7 @@ order_variables_by_significance <- function(xorder,
                                             x, 
                                             y,
                                             family,
+                                            family_string,
                                             weights, 
                                             offset, 
                                             strata, 
@@ -498,7 +507,7 @@ order_variables_by_significance <- function(xorder,
   # number of rows of x or observations
   n <- dim(x)[1]
   
-  if (family != "cox") {
+  if (family_string != "cox") {
     # glm.fit requires a function as a family not a character name
     if (is.character(family)) {
       family <- get(family, mode = "function", envir = parent.frame())
@@ -515,7 +524,7 @@ order_variables_by_significance <- function(xorder,
     
     # There is an additional scale parameter to estimate in OLS regression. The
     # binomial and Poisson regression models have no scale parameter.
-    if (fam == "gaussian") p1 <- p1 + 1
+    if (family_string == "gaussian") p1 <- p1 + 1
     
     # loglikelihood of the full model calculated based on  aic = -2logL + 2k
     logl.full <- p1 - fit.full$aic / 2 
@@ -541,7 +550,7 @@ order_variables_by_significance <- function(xorder,
       # calculate the deviance of the reduced model-model without the ith variable
       p2 <- fit.reduced$rank
       
-      if (fam == "gaussian") p2 <- p2 + 1
+      if (family_string == "gaussian") p2 <- p2 + 1
       # loglikelihood of the reduced model
       logl.reduced <- p2 - fit.reduced$aic / 2 
       
@@ -628,7 +637,7 @@ order_variables_by_significance <- function(xorder,
 
 #' Helper to reset acd transformation for variables with few values
 #' 
-#' To be used in [fit_mfp()].
+#' To be used in \code{fit_mfp()}.
 #' This function resets the `acdx` parameter (logical vector) of variables with
 #' less than 5 distinct values to `FALSE`.
 #' 
@@ -732,7 +741,7 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' Helper to run cycles of the mfp algorithm 
 #' 
 #' This function estimates the best FP functions for all predictors in the 
-#' current cycle. To be used in [fit_mfp()].
+#' current cycle. To be used in \code{fit_mfp()}.
 #' 
 #' @details 
 #' A cycle is defined as a complete pass through all the predictors in the input
@@ -744,9 +753,9 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' a set of current best fp powers for each variable. In each step, the fp
 #' powers of a single covariate are assessed, while adjusting for other
 #' covariates. Adjustment variables are transformed using their current
-#' fp powers (this is done in [transform_data_step()]) and the fp powers 
+#' fp powers (this is done in \code{transform_data_step()} and the fp powers 
 #' of the variable of interest are tested using the closed test procedure
-#' (conducted in [find_best_fp_step()]).
+#' (conducted in \code{find_best_fp_step()}).
 #' Some of the adjustment variables may have their fp power set to `NA`, 
 #' which means they were not selected from the working model and are not used
 #' in that step. The results from all steps are returned, completing a cycle.
@@ -787,7 +796,7 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 #' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
-#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' @param acd_parameter Named list of ACD parameters produced by `fit_acd()`, 
 #' with length equal to \code{ncol(x)}. Each list element corresponds to a variable; 
 #' if an element is \code{NULL}, the variable was not specified in the 
 #' \code{acdx} argument of \code{fit_mfp}.
@@ -795,7 +804,7 @@ reset_spike <- function(x, spike, min_prop = 0.05, max_prop = 0.95) {
 #' variables are handled. Each element corresponds to a variable and encodes 
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ, 
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
-#' @param rownames passed to [survival::coxph.fit()].
+#' @param rownames passed to \code{survival::coxph.fit()}.
 #' @param prev_adj_params Named list used to store previously computed adjustment 
 #' variable transformations. This is updated at each step and reused in the next 
 #' cycle to avoid recomputation.
@@ -812,6 +821,7 @@ find_best_fp_cycle <- function(x,
                                weights, 
                                offset, 
                                family, 
+                               family_string, 
                                criterion,
                                select, 
                                alpha, 
@@ -854,6 +864,7 @@ find_best_fp_cycle <- function(x,
       alpha = alpha[xi],
       keep = keep,
       family = family,
+      family_string = family_string,
       criterion = criterion,
       powers = powers,
       method = method,
@@ -884,7 +895,7 @@ find_best_fp_cycle <- function(x,
 
 #' Calculate degrees of freedom for a transformed variable
 #' 
-#' Helper function used in [fit_mfp()] to determine the final number of 
+#' Helper function used in `fit_mfp()` to determine the final number of 
 #' degrees of freedom (df) contributed by a variable, depending on its powers 
 #' and the spike-at-zero decision.
 #' 
@@ -964,7 +975,7 @@ calculate_df <- function(powers, spike_decision) {
 
 #' Helper to convert a nested list with same or different length into a matrix
 #' 
-#' To be used in [fit_mfp()].
+#' To be used in \code{fit_mfp()}.
 #' 
 #' @param power_list list of powers created in `fit_mfp()`.
 #' 
@@ -990,7 +1001,7 @@ convert_powers_list_to_matrix <- function(power_list) {
 
 #' Helper to create overview table of fp terms
 #' 
-#' To be used in [fit_mfp()].
+#' To be used in \code{fit_mfp()}.
 #' 
 #' @param spike_decision Integer vector indicating the modeling decision for
 #' spike-at-zero variables.

@@ -41,7 +41,7 @@
 #' An important note on data processing. Variables are shifted and scaled 
 #' before being transformed by any powers. That is to ensure positive values
 #' and reasonable scales. Note that scaling does not change the estimated 
-#' powers, see also [find_scale_factor()].
+#' powers, see also \code{find_scale_factor()}.
 #' 
 #' However, they may be centered after transformation. This is not done by
 #' these functions.
@@ -71,8 +71,8 @@
 #' @param shift shift required for shifting x to positive values. Default is 0, 
 #' meaning no shift is applied. If `NULL` then the shift is estimated 
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
-#' @param powers passed to [fit_acd()].
-#' @param acd_parameter a list usually returned by [fit_acd()]. In particular, 
+#' @param powers passed to \code{fit_acd()}.
+#' @param acd_parameter a list usually returned by \code{fit_acd()}. In particular, 
 #' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
 #' `scale` which are to be applied when using the acd transformation in 
 #' new data.
@@ -256,13 +256,13 @@ transform_vector_acd <- function(x,
 #' @param keep_x_order a logical indicating whether the order of columns
 #' should be kept as in the input matrix `x`, of if the columns should be 
 #' ordered according to `power_list`. The default is `FALSE`, since 
-#' the ordering by `power_list` reflects the `xorder` argument in [mfp2()].
+#' the ordering by `power_list` reflects the `xorder` argument in \code{mfp2()}.
 #' @param acd_parameter_list A named list of ACD parameters. Only required when transformation
 #' are to be applied to new data. Entries must correspond to the entries where
 #' `acdx` is set to `TRUE`. Each components is to be passed to 
-#' [transform_vector_acd()]. The default value `NULL` indicates that the
+#' \code{transform_vector_acd()}. The default value `NULL` indicates that the
 #' parameters for the acd transformations are to be estimated.
-#' @param check_binary passed to [transform_vector_fp()].
+#' @param check_binary passed to \code{transform_vector_fp()}.
 #' @param zero A named logical vector specifying, for each variable, whether only 
 #' positive values should be transformed. If \code{TRUE}, the transformation is applied 
 #' only to positive values; nonpositive values (zero or negative) are replaced with zero. 
@@ -285,7 +285,8 @@ transform_vector_acd <- function(x,
 #' as `zero = TRUE` but containing only positive values are reset to `FALSE`.
 #' 
 #' @details 
-#' Transformations are applied via [transform_vector_fp()] and [transform_vector_acd()]. 
+#' Transformations are applied via \code{transform_vector_fp()} and 
+#' \code{transform_vector_acd()}. 
 #' The resulting `x_transformed` matrix contains transformed variables, optionally centered. 
 #' Binary indicators are appended for variables where `catzero = TRUE`.
 #'

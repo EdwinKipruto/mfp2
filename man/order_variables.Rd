@@ -12,6 +12,7 @@ order_variables_by_significance(
   x,
   y,
   family,
+  family_string,
   weights,
   offset,
   strata,
@@ -40,6 +41,9 @@ the \code{\link[survival:Surv]{survival::Surv()}} function for Cox models.}
 \item{family}{a character string naming a family function supported by
 \code{glm()} or "cox" for Cox models.}
 
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
+
 \item{weights, offset}{parameters for both glm and Cox models, see either
 \code{\link[stats:glm]{stats::glm()}} or \code{\link[survival:coxph]{survival::coxph()}} depending on family.}
 
@@ -50,7 +54,7 @@ the \code{\link[survival:Surv]{survival::Surv()}} function for Cox models.}
 A vector of the variable names in \code{x}, ordered according to \code{xorder}.
 }
 \description{
-To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+To be used in \code{fit_mfp()}.
 }
 \section{Functions}{
 \itemize{

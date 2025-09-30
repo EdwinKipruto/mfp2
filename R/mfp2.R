@@ -42,14 +42,14 @@
 #'
 #' @section Details on `family` option:
 #'
-#' `mfp2()` supports the `family` argument as used by [stats::glm()]. Built-in
+#' `mfp2()` supports the `family` argument as used by \code{stats::glm()}. Built-in
 #' families can be specified via a character string. For example,
 #' `mfp2(..., family = "binomial")` fits a logistic regression model, whereas
 #' `mfp2(..., family = "gaussian")` fits a linear regression model using ordinary
 #' least squares.
 #'
 #' For Cox proportional hazards models, the response should preferably be a
-#' `Surv` object, created with [survival::Surv()], and the `family` argument
+#' `Surv` object, created with \code{survival::Surv()}, and the `family` argument
 #' should be set to `"cox"`. Only right-censored data are currently supported. 
 #' Stratified Cox models can be specified using the `strata` argument, or by 
 #' including `strata` terms in the model formula when using the formula interface
@@ -96,7 +96,7 @@
 #' are not artificially shifted. 
 #' 
 #' Centering before estimating the FP powers may result in different powers and
-#' should be avoided. Also see [transform_vector_fp()] for some more details.
+#' should be avoided. Also see \code{transform_vector_fp()} for some more details.
 #' 
 #' @section Details on the `subset` argument: 
 #' Subsetting in `mfp2()` occurs after data pre-processing (shifting, scaling, 
@@ -320,11 +320,11 @@
 #' @section Details on model specification using a `formula`:
 #' `mfp2` supports model specification through two interfaces. 
 #' The first accepts the design matrix `x` together with an outcome object `y`, 
-#' similar to [stats::glm.fit()] or [glmnet::glmnet()]. For generalized linear 
+#' similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized linear 
 #' models this may be a vector, but in the case of Cox regression `y` must be a
 #' two-column survival object (time and event indicator) created using 
-#' [survival::Surv()]. The second interface follows the formula style used by 
-#' functions such as [stats::glm()] or [survival::coxph()].
+#' \code{survival::Surv()}. The second interface follows the formula style used by 
+#' functions such as \code{stats::glm()} or \code{survival::coxph()}.
 #' 
 #' Both interfaces are equivalent in functionality; only the details of 
 #' specification differ. In the standard interface all details regarding 
@@ -517,14 +517,14 @@
 #' Cox regression. If there are no tied death times all the methods are 
 #' equivalent. Default is the Breslow method. This argument is used for Cox 
 #' models only and has no effect on other model families. 
-#' See [survival::coxph()] for details.
+#' See \code{survival::coxph()} for details.
 #' @param strata a numeric vector or matrix of variables that define strata
 #' to be used for stratification in a Cox model. A new factor, whose levels are 
 #' all possible combinations of the variables supplied will be created. 
 #' Default is `NULL` and a Cox model without stratification would be fitted. 
-#' See [survival::coxph()] for details. 
+#' See \code{survival::coxph()} for details. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
-#' models. See [survival::coxph()] for details.
+#' models. See \code{survival::coxph()} for details.
 #' @param acdx a character vector giving the names of continuous variables to 
 #' undergo the approximate cumulative distribution (ACD) transformation. Using 
 #' this also triggers the function-selection procedure for ACD to determine the 
@@ -602,7 +602,7 @@
 #' `mfp2()` returns an object of class inheriting from `glm` or `copxh`, 
 #' depending on the `family` parameter. 
 #' 
-#' The function `summary()` (i.e. [summary.mfp2()]) can be used to obtain or
+#' The function `summary()` (i.e. \code{summary.mfp2()}) can be used to obtain or
 #' print a summary of the results.  
 #' The generic accessor function `coef()` can be used to extract the vector of 
 #' coefficients from the fitted model object. 
@@ -627,6 +627,7 @@
 #' \item y: the original outcome variable.
 #' \item x: the final transformed input matrix used to fit the final model.
 #' \item call_mfp: the call to the `mfp2()` function.
+#' \item family: the family stored as either character string or function.
 #' \item family_string: the family stored as character string.
 #' \item zero: named logical vector indicating, for each variable, whether only
 #'  positive values were transformed.  
@@ -677,7 +678,7 @@
 #' Biostatistics & Epidemiology, 3(1), pp.23-37.}
 #' 
 #' @seealso 
-#' [summary.mfp2()], [coef.mfp2()], [predict.mfp2()], [fp()]
+#' \code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
 #' 
 #' @export
 mfp2 <- function(x, ...){
@@ -696,7 +697,7 @@ mfp2.default <- function(x,
                          df = 4, 
                          center = TRUE,
                          subset = NULL,
-                         family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
+                         family = "gaussian",
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
                          alpha = 0.05,
@@ -724,10 +725,110 @@ mfp2.default <- function(x,
   # match arguments ------------------------------------------------------------
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
-  family <- match.arg(family)
+  #family <- match.arg(family)
   ties <- match.arg(ties)
   
   # assertions -----------------------------------------------------------------
+  # ----Family
+  # Allowed families
+  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
+  
+  # TODO: Extend to Gamma and inverse.gaussian families that glm.fit allow 
+  # computation of AIC. Standard families (gaussian, binomial, poisson, Gamma,
+  # inverse.gaussian) have aic methods, so AIC is defined. Quasi-families 
+  # (quasi, quasibinomial, quasipoisson) do not have a true likelihood, so 
+  # glm can't compute AIC meaningfully. Attempting AIC(fit_quasi) will return 
+  # NA or a warning.
+  
+  if (is.character(family)) {
+    if (!family %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family, paste(allowed_families, collapse = ", ")),
+        call. = FALSE
+      )
+    }
+    
+    family_string <- family
+    
+    if (family != "cox") {
+      # Convert to GLM family object
+      family <- tryCatch(
+        get(family, mode = "function", envir = parent.frame())(),
+        error = function(e) {
+          stop(
+            sprintf("! Cannot construct family object from character '%s'. %s", 
+                    family, conditionMessage(e)),
+            call. = FALSE
+          )
+        }
+      )
+    }
+    
+  } else if (is.function(family)) {
+    # Get the function name for better error messages
+    family_name <- deparse(substitute(family))
+    
+    # Try to call the function to get family object
+    family_obj <- tryCatch(
+      family(), 
+      error = function(e) {
+        stop(
+          sprintf("! Could not create a family object from the provided function '%s'. Error: %s", 
+                  family_name, conditionMessage(e)),
+          call. = FALSE
+        )
+      }
+    )
+    
+    if (!inherits(family_obj, "family")) {
+      stop(
+        sprintf("! The provided function '%s' did not return a valid GLM family object.", 
+                family_name),
+        call. = FALSE
+      )
+    }
+    
+    family <- family_obj
+    family_string <- family$family
+    
+    if (family_string == "cox") {
+      stop("! 'cox' must be specified as a character string, not as a function.", 
+           call. = FALSE)
+    }
+    
+    # Check if family is allowed (for function input)
+    if (!family_string %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family_string, paste(allowed_families, collapse = ", ")), 
+        call. = FALSE
+      )
+    }
+    
+  } else if (inherits(family, "family")) {
+    # Family object directly
+    family_string <- family$family
+    
+    if (family_string == "cox") {
+      stop("! 'cox' must be specified as a character string, not as a family object.", 
+           call. = FALSE)
+    }
+    
+    # Check if family is allowed (for family object input)
+    if (!family_string %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family_string, paste(allowed_families, collapse = ", ")), 
+        call. = FALSE
+      )
+    }
+    
+  } else {
+    stop("! The 'family' argument must be a character string, a function, or a GLM family object.", 
+         call. = FALSE)
+  }
+  
   # assert that x is a matrix
   if (!is.matrix(x)) {
     stop("! x must be a matrix", call. = FALSE)
@@ -936,12 +1037,12 @@ mfp2.default <- function(x,
   }
   
   # assert ftest and family are compatible
-  if (ftest && family != "gaussian") {
-      warning(sprintf("i F-test not suitable for family = %s.\n", family),
+  if (ftest && family_string != "gaussian") {
+      warning(sprintf("i F-test not suitable for family = %s.\n", family_string),
               "i mfp2() reverts to use Chi-square instead.")
   }
   
-  if (family == "cox") {
+  if (family_string == "cox") {
       # assert y is a Surv object
       if (!survival::is.Surv(y)) {
           stop("! Response y must be a survival::Surv object.")
@@ -1089,13 +1190,13 @@ mfp2.default <- function(x,
   }
   
   # Revert to Chi-square when family is not Gaussian
-  if (ftest && family != "gaussian") {
+  if (ftest && family_string != "gaussian") {
       ftest <- FALSE
   }
   
   # Set default control parameters for model fitting if not provided
   if (is.null(control)) {
-    if (family == "cox") {
+    if (family_string == "cox") {
       control = survival::coxph.control()
     } else {
       control = stats::glm.control()
@@ -1289,7 +1390,7 @@ mfp2.default <- function(x,
   
   # stratification for cox model
   istrata <- strata
-  if (family == "cox" && !is.null(strata)) {
+  if (family_string == "cox" && !is.null(strata)) {
     # TODO: Replace strata with interaction()
     # survival::strata: When used outside of a coxph formula the result of the
     # function is essentially identical to the interaction function, though the
@@ -1308,7 +1409,7 @@ mfp2.default <- function(x,
            call. = FALSE)
     
     x <- x[subset, , drop = FALSE]
-    y <- if (family != "cox") {
+    y <- if (family_string != "cox") {
       y[subset]
     } else y[subset, , drop = FALSE]
     
@@ -1322,9 +1423,10 @@ mfp2.default <- function(x,
       x = x, y = y, 
       weights = weights, offset = offset, cycles = cycles,
       scale = scale, shift = shift, df = df.list, center = center, 
-      family = family, criterion = criterion, select = select, alpha = alpha, 
-      keep = keep, xorder = xorder, powers = power_list, method = ties, 
-      strata = istrata, nocenter = nocenter, acdx = acdx, ftest = ftest, 
+      family = family, family_string = family_string, criterion = criterion, 
+      select = select, alpha = alpha, keep = keep, xorder = xorder, 
+      powers = power_list, method = ties, strata = istrata, nocenter = nocenter, 
+      acdx = acdx, ftest = ftest, 
       control = control, zero = zero, catzero = catzero,spike = spike,
       min_prop = min_prop, max_prop = max_prop, verbose = verbose
   )
@@ -1332,7 +1434,8 @@ mfp2.default <- function(x,
   # add additional information to fitted object
   # original mfp2 call
   fit$call_mfp <- cl
-  fit$family_string <- family
+  fit$family <- family
+  fit$family_string <- family_string
   fit$offset <- offset
   
   fit
@@ -1350,7 +1453,7 @@ mfp2.formula <- function(formula,
                          df = 4, 
                          center = TRUE,
                          subset = NULL,
-                         family = c("gaussian", "poisson", "binomial", "Gamma", "cox"),
+                         family = "gaussian",
                          criterion = c("pvalue", "aic", "bic"),
                          select = 0.05, 
                          alpha = 0.05,
@@ -1368,7 +1471,106 @@ mfp2.formula <- function(formula,
                          ...) {
   # capture the call
   call <- match.call()
-  family <- match.arg(family)
+  #family <- match.arg(family)
+  
+  # Allowed families
+  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
+  
+  # TODO: Extend to Gamma and inverse.gaussian families that glm.fit allow 
+  # computation of AIC. Standard families (gaussian, binomial, poisson, Gamma,
+  # inverse.gaussian) have aic methods, so AIC is defined. Quasi-families 
+  # (quasi, quasibinomial, quasipoisson) do not have a true likelihood, so 
+  # glm can't compute AIC meaningfully. Attempting AIC(fit_quasi) will return 
+  # NA or a warning.
+  
+  if (is.character(family)) {
+    if (!family %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family, paste(allowed_families, collapse = ", ")),
+        call. = FALSE
+      )
+    }
+    
+    family_string <- family
+    
+    if (family != "cox") {
+      # Convert to GLM family object
+      family <- tryCatch(
+        get(family, mode = "function", envir = parent.frame())(),
+        error = function(e) {
+          stop(
+            sprintf("! Cannot construct family object from character '%s'. %s", 
+                    family, conditionMessage(e)),
+            call. = FALSE
+          )
+        }
+      )
+    }
+    
+  } else if (is.function(family)) {
+    # Get the function name for better error messages
+    family_name <- deparse(substitute(family))
+    
+    # Try to call the function to get family object
+    family_obj <- tryCatch(
+      family(), 
+      error = function(e) {
+        stop(
+          sprintf("! Could not create a family object from the provided function '%s'. Error: %s", 
+                  family_name, conditionMessage(e)),
+          call. = FALSE
+        )
+      }
+    )
+    
+    if (!inherits(family_obj, "family")) {
+      stop(
+        sprintf("! The provided function '%s' did not return a valid GLM family object.", 
+                family_name),
+        call. = FALSE
+      )
+    }
+    
+    family <- family_obj
+    family_string <- family$family
+    
+    if (family_string == "cox") {
+      stop("! 'cox' must be specified as a character string, not as a function.", 
+           call. = FALSE)
+    }
+    
+    # Check if family is allowed (for function input)
+    if (!family_string %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family_string, paste(allowed_families, collapse = ", ")), 
+        call. = FALSE
+      )
+    }
+    
+  } else if (inherits(family, "family")) {
+    # Family object directly
+    family_string <- family$family
+    
+    if (family_string == "cox") {
+      stop("! 'cox' must be specified as a character string, not as a family object.", 
+           call. = FALSE)
+    }
+    
+    # Check if family is allowed (for family object input)
+    if (!family_string %in% allowed_families) {
+      stop(
+        sprintf("! Invalid family: '%s'. Allowed families are: %s",
+                family_string, paste(allowed_families, collapse = ", ")), 
+        call. = FALSE
+      )
+    }
+    
+  } else {
+    stop("! The 'family' argument must be a character string, a function, or a GLM family object.", 
+         call. = FALSE)
+  }
  
   # assert that data must be provided
   if (missing(data)) {
@@ -1452,7 +1654,7 @@ mfp2.formula <- function(formula,
   # remember position of strata variables to drop from input data if necessary
   terms_drop <- NULL
   if (!is.null(attr(terms_formula,"specials")$strata)) {
-    if (family == "cox") {
+    if (family_string == "cox") {
       
       # check whether strata is both in the formula and in the argument
       if (!is.null(call$strata))
@@ -1508,7 +1710,7 @@ mfp2.formula <- function(formula,
   # data preparation -----------------------------------------------------------
   
   y <- model.extract(mf, "response")
-  if (family != "cox") {
+  if (family_string != "cox") {
     y <- as.numeric(y)
   }
   
@@ -1710,7 +1912,7 @@ mfp2.formula <- function(formula,
 #' objects of class `mfp2`. 
 #' 
 #' @param object an object of class `mfp2`, usually, a result of a call to
-#' [mfp2()].
+#' \code{mfp2()}.
 #' @param ... not used.
 #' 
 #' @return 
@@ -1727,7 +1929,7 @@ coef.mfp2 <- function(object, ...) {
 #' objects of class `mfp2`.
 #' 
 #' @param object an object of class `mfp2`, usually, a result of a call to
-#' [mfp2()].
+#' \code{mfp2()}.
 #' @param ... further arguments passed to the summary functions for `glm()` 
 #' ([stats::summary.glm()], i.e. families supported by `glm()`) or `coxph()` 
 #' ([survival::summary.coxph()], if `object$family = "cox"`).
@@ -1737,7 +1939,7 @@ coef.mfp2 <- function(object, ...) {
 #' [survival::summary.coxph()], depending on the family parameter of `object`.
 #' 
 #' @seealso 
-#' [mfp2()], [stats::glm()], [stats::summary.glm()], [survival::coxph()],
+#' \code{mfp2()}, [stats::glm()], [stats::summary.glm()], [survival::coxph()],
 #' [survival::summary.coxph()]
 #' 
 #' @export
@@ -1867,7 +2069,7 @@ fp2 <- function(...) {
 #' get_selected_variable_names(fit)
 #' 
 #' @return 
-#' Character vector of names, ordered as defined by `xorder` in [mfp2()].
+#' Character vector of names, ordered as defined by `xorder` in \code{mfp2()}.
 #' 
 #' @export
 get_selected_variable_names <- function(object) {
@@ -1877,7 +2079,7 @@ get_selected_variable_names <- function(object) {
 
 #' Helper to assign degrees of freedom
 #' 
-#' Determine the number of unique values in a variable. To be used in [mfp2()].
+#' Determine the number of unique values in a variable. To be used in \code{mfp2()}.
 #' 
 #' @details 
 #' Variables with fewer than or equal to three unique values, for example,

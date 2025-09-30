@@ -10,7 +10,7 @@ get_selected_variable_names(object)
 \item{object}{fitted \code{mfp2} object.}
 }
 \value{
-Character vector of names, ordered as defined by \code{xorder} in \code{\link[=mfp2]{mfp2()}}.
+Character vector of names, ordered as defined by \code{xorder} in \code{mfp2()}.
 }
 \description{
 Simply extracts all variables for which not all powers are estimated to

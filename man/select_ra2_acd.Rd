@@ -18,6 +18,7 @@ select_ra2_acd(
   select,
   alpha,
   family,
+  family_string,
   zero,
   catzero,
   spike,
@@ -64,7 +65,12 @@ for backward elimination of \code{xi}.}
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{zero}{A named logical vector indicating, which columns of
 \code{x} should treat nonpositive values (zero or negative) as zero before
@@ -86,7 +92,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -118,16 +124,16 @@ Same number of rows as, and indexed by, \code{powers}.
 }
 }
 \description{
-Used in \code{\link[=find_best_fp_step]{find_best_fp_step()}} when \code{criterion = "pvalue"} and an
+Used in \code{find_best_fp_step()} when \code{criterion = "pvalue"} and an
 ACD transformation is requested for \code{xi}.
-For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+For parameter explanations, see \code{find_best_fp_step()}. All parameters
+captured by \code{...} are passed on to \code{fit_model()}.
 }
 \details{
-This function extends the algorithm used in \code{\link[=select_ra2]{select_ra2()}} to allow the
+This function extends the algorithm used in \code{select_ra2()} to allow the
 usage of ACD transformations. The implementation follows the description
 in Royston and Sauerbrei (2016). The procedure is outlined in detail in
-the corresponding section in the documentation of \code{\link[=mfp2]{mfp2()}}.
+the corresponding section in the documentation of \code{mfp2()}.
 
 When a variable is forced into the model by including it in \code{keep}, then
 this function will not exclude it from the model (by setting its power to
@@ -139,5 +145,5 @@ ACD covariate transformation for enhanced parametric multivariable modeling.
 The Stata Journal, 16(1), pp.72-87.}
 }
 \seealso{
-\code{\link[=select_ra2]{select_ra2()}}
+\code{select_ra2()}
 }

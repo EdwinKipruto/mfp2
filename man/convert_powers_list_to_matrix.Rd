@@ -13,5 +13,5 @@ convert_powers_list_to_matrix(power_list)
 a matrix.
 }
 \description{
-To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+To be used in \code{fit_mfp()}.
 }

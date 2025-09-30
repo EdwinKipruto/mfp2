@@ -1,7 +1,7 @@
 #' Function to estimate the best FP functions for a single variable
 #' 
-#' See [mfp2()] for a brief summary on the notation used here and 
-#' [fit_mfp()] for an overview of the fitting procedure.  
+#' See \code{mfp2()} for a brief summary on the notation used here and 
+#' \code{fit_mfp()} for an overview of the fitting procedure.  
 #' 
 #' @param x an input matrix of dimensions nobs x nvars. Does not contain 
 #' intercept, but columns are already expanded into dummy variables as 
@@ -17,7 +17,11 @@
 #' @param powers_current a list of length equal to the number of variables, 
 #' indicating the fp powers to be used in the current step for all variables 
 #' (except `xi`). 
-#' @param family a character string representing a family object.
+#' @param family Either a character string naming the family (e.g., "gaussian", "binomial", "cox") 
+#'   or a function that returns a GLM family object (e.g., stats::gaussian). 
+#'   For Cox models, only a character string "cox" is allowed.
+#' @param family_string A character string representing the selected family, 
+#'   e.g., "gaussian".
 #' @param criterion a character string defining the criterion used to select 
 #' variables and FP models of different degrees.
 #' @param select a numeric value indicating the significance level
@@ -53,7 +57,7 @@
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #' a spike at zero. The length and order of \code{spike} must match those of
 #' the columns in \code{x}.
-#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()}, 
 #' with length equal to \code{ncol(x)}. Each list element corresponds to a variable; 
 #' if an element is \code{NULL}, the variable was not specified in the 
 #' \code{acdx} argument of \code{fit_mfp}.
@@ -74,19 +78,19 @@
 #' the current variable of interest. This function covers three main use cases: 
 #' 
 #' * the linear case (`df = 1`) to test between null and linear models (see
-#' [select_linear()]). This step differs from the mfp case because
+#' \code{select_linear()}). This step differs from the mfp case because
 #' linear models only use 1 df, while estimation of (every) fp power adds 
 #' another df. This is also the case applied for categorical variables for 
 #' which `df` are set to 1.
 #' * the case that an acd transformation is requested (`acdx` is `TRUE` 
-#' for `xi`) for the variable of interest (see [find_best_fpm_step()]).
+#' for `xi`) for the variable of interest (see \code{find_best_fpm_step()}).
 #' * the (usual) case of the normal mfp algorithm to assess non-linear 
-#' functional forms (see [find_best_fpm_step()]). 
+#' functional forms (see \code{find_best_fpm_step()}). 
 #' 
 #' Note that these cases do not encompass the setting that a variable is not
 #' selected, because the evaluation is done for each variable in each cycle.
 #' A variable which was de-selected in earlier cycles may be added to the 
-#' working model again. Also see [find_best_fp_cycle()].
+#' working model again. Also see \code{find_best_fp_cycle()}.
 #' 
 #' The adjustment in each step uses the current fp powers given in 
 #' `powers_current` for all other variables to determine the adjustment set 
@@ -102,13 +106,13 @@
 #' The first option for `criterion = "pvalue"` is the function selection 
 #' procedure as outlined in e.g. Chapters 4 and 6 of Royston and 
 #' Sauerbrei (2008), also abbreviated as "RA2".
-#' It is a closed testing procedure and is implemented in [select_ra2()] and
-#' extended for ACD transformation in [select_ra2_acd()] according to 
+#' It is a closed testing procedure and is implemented in \code{select_ra2()} and
+#' extended for ACD transformation in \code{select_ra2_acd()} according to 
 #' Royston and Sauerbrei (2016). 
 #' 
 #' For the other criteria `aic` and `bic` all FP models up to the desired degree
 #' are fitted and the model with the lowest value for the information criteria 
-#' is chosen as the final one. This is implemented in [select_ic()].
+#' is chosen as the final one. This is implemented in \code{select_ic()}.
 #'  
 #' @return 
 #' A numeric vector indicating the best powers for `xi`. Entries can be 
@@ -133,6 +137,7 @@ find_best_fp_step <- function(x,
                               df, 
                               powers_current, 
                               family,
+                              family_string,
                               criterion, 
                               select, 
                               alpha,
@@ -173,7 +178,8 @@ find_best_fp_step <- function(x,
   
   fit1 <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
-    y = y, family = family, weights = weights, offset = offset, 
+    y = y, family = family, family_string = family_string, 
+    weights = weights, offset = offset, 
     powers_current = powers_current, powers = powers,  
     criterion = criterion, ftest = ftest, select = select, alpha = alpha,
     method = method, strata = strata, nocenter = nocenter, 
@@ -222,7 +228,7 @@ find_best_fp_step <- function(x,
             acd_parameter = acd_parameter)
   
   # compute metrics for the three models to decide on SAZ models
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   metrics <- compute_metrics(fit1, models$fit2, models$fit3, n_obs,
             power_best)
   
@@ -548,7 +554,7 @@ compute_decision <- function(metrics, criterion, select, n_obs, ftest = FALSE) {
 #' Function to find the best FP functions of given degree for a single variable
 #' 
 #' Handles the FP1 and the higher order FP cases. For parameter definitions, see
-#' [find_best_fp_step()].
+#' \code{find_best_fp_step()}.
 #' 
 #' @details 
 #' The "best" model is determined by the highest likelihood (or smallest 
@@ -604,6 +610,7 @@ find_best_fpm_step <- function(x,
                                powers,  
                                acdx, 
                                family,
+                               family_string,
                                zero,
                                catzero, # a list of binary variables or null
                                spike_decision, # a numeric vector
@@ -611,7 +618,7 @@ find_best_fpm_step <- function(x,
                                prev_adj_params,
                                ...) {
   # Number of events
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   if (degree == 1) {
     # remove linear model for normal data, but keep for acd transformation
@@ -673,8 +680,8 @@ find_best_fpm_step <- function(x,
 #' 
 #' "Null" model here refers to a model which does not include the variable 
 #' of interest `xi`. 
-#' For parameter definitions, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' For parameter definitions, see \code{find_best_fp_step()}. All parameters 
+#' captured by `...` are passed on to \code{fit_model()}.
 #' 
 #' @return 
 #' A list with two entries: 
@@ -691,6 +698,7 @@ fit_null_step <- function(x,
                           powers,
                           acdx, 
                           family,
+                          family_string,
                           zero,
                           catzero,
                           spike_decision,
@@ -699,7 +707,7 @@ fit_null_step <- function(x,
                           ...) {
   
   # Number of events
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
@@ -731,8 +739,8 @@ fit_null_step <- function(x,
 #' If the variable was passed through the \code{catzero} argument in \code{mfp2()}, 
 #' both the continuous variable and its corresponding binary indicator 
 #' will be included in the model as linear terms.
-#' For parameter definitions, see \code{\link{find_best_fp_step}}. 
-#' All parameters captured by \code{...} are passed to \code{\link{fit_model}}.
+#' For parameter definitions, see \code{find_best_fp_step}. 
+#' All parameters captured by \code{...} are passed to \code{fit_model}.
 #' 
 #' @return 
 #' A list with two entries: 
@@ -749,6 +757,7 @@ fit_linear_step <- function(x,
                             powers,
                             acdx, 
                             family,
+                            family_string,
                             zero,
                             catzero, 
                             spike_decision,
@@ -756,7 +765,7 @@ fit_linear_step <- function(x,
                             prev_adj_params,
                             ...) {
   # Number of events in survival models or observation in GLM 
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   # transform all data as given by current working model
   # set variable of interest to linear term only
@@ -786,13 +795,12 @@ fit_linear_step <- function(x,
   )
 }
 
-
 #' Helper function to select between null and linear term for a single variable
 #' 
-#' To be used in [find_best_fp_step()]. Only used if `df = 1` for a variable.
+#' To be used in \code{find_best_fp_step()}. Only used if `df = 1` for a variable.
 #' Handles all criteria for selection.
-#' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed to [fit_model()].
+#' For parameter explanations, see \code{find_best_fp_step()}. All parameters 
+#' captured by `...` are passed to \code{fit_model()}.
 #' 
 #' @details 
 #' This function assesses a single variable of interest `xi` regarding its
@@ -846,6 +854,7 @@ select_linear <- function(x,
                           select, 
                           alpha,
                           family,
+                          family_string,
                           zero,
                           catzero,
                           spike,
@@ -854,13 +863,13 @@ select_linear <- function(x,
                           prev_adj_params,
                           ...) {
   
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   # Model 1: Null model
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
@@ -869,7 +878,7 @@ select_linear <- function(x,
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero, spike_decision = spike_decision,
+    family = family, family_string = family_string, zero = zero, catzero = catzero, spike_decision = spike_decision,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
   
@@ -926,9 +935,9 @@ select_linear <- function(x,
 
 #' Function selection procedure based on closed testing procedure
 #' 
-#' Used in [find_best_fp_step()] when `criterion = "pvalue"`.
-#' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed to [fit_model()].
+#' Used in \code{find_best_fp_step()} when `criterion = "pvalue"`.
+#' For parameter explanations, see \code{find_best_fp_step()}. All parameters 
+#' captured by `...` are passed to \code{fit_model()}.
 #' 
 #' @details  
 #' In case `criterion = "pvalue"` the function selection procedure as outlined 
@@ -955,7 +964,7 @@ select_linear <- function(x,
 #' achieves the highest likelihood among all such models, given the current 
 #' power transformations for all other variables. This procedure is described 
 #' in Section 4.8 of Royston and Sauerbrei (2008). The best FP\emph{x} models 
-#' are computed by \code{\link{find_best_fpm_step}}.
+#' are computed by \code{find_best_fpm_step}.
 #' 
 #' When a variable is forced into the model by including it in the \code{keep} 
 #' argument of \code{mfp2()}, this function will not exclude it (i.e., will not 
@@ -986,10 +995,10 @@ select_linear <- function(x,
 #' for Modelling Continuous Variables. John Wiley & Sons.}
 #' 
 #' @seealso 
-#' [select_ra2_acd()]
+#' \code{select_ra2_acd()}
 #'  
 #' @param degree integer > 0 giving the degree for the FP transformation. 
-#' @param ... passed to fitting functions [fit_model()]. 
+#' @param ... passed to fitting functions \code{fit_model()}. 
 #' @inheritParams find_best_fp_step
 select_ra2 <- function(x, 
                        xi,
@@ -1004,6 +1013,7 @@ select_ra2 <- function(x,
                        select, 
                        alpha, 
                        family,
+                       family_string,
                        zero,
                        catzero,
                        spike,
@@ -1017,7 +1027,7 @@ select_ra2 <- function(x,
   }
   
   # Number of events in survival models or observations in GLM
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   # simplify testing by defining test helper function
   if (ftest) {
@@ -1058,14 +1068,14 @@ select_ra2 <- function(x,
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1099,7 +1109,7 @@ select_ra2 <- function(x,
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero,
+    family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1145,7 +1155,7 @@ select_ra2 <- function(x,
       fit_fpm <- find_best_fpm_step(
         x = x, xi = xi, degree = current_degree, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx,
-        family = family, zero = zero, catzero = catzero,
+        family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter,
         prev_adj_params = prev_adj_params, ...
       )
@@ -1191,16 +1201,16 @@ select_ra2 <- function(x,
 
 #' Function selection procedure for ACD based on closed testing procedure
 #' 
-#' Used in [find_best_fp_step()] when `criterion = "pvalue"` and an 
+#' Used in \code{find_best_fp_step()} when `criterion = "pvalue"` and an 
 #' ACD transformation is requested for `xi`.
-#' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' For parameter explanations, see \code{find_best_fp_step()}. All parameters 
+#' captured by `...` are passed on to \code{fit_model()}.
 #' 
 #' @details  
-#' This function extends the algorithm used in [select_ra2()] to allow the 
+#' This function extends the algorithm used in \code{select_ra2()} to allow the 
 #' usage of ACD transformations. The implementation follows the description 
 #' in Royston and Sauerbrei (2016). The procedure is outlined in detail in 
-#' the corresponding section in the documentation of [mfp2()].
+#' the corresponding section in the documentation of \code{mfp2()}.
 #' 
 #' When a variable is forced into the model by including it in `keep`, then 
 #' this function will not exclude it from the model (by setting its power to 
@@ -1232,7 +1242,7 @@ select_ra2 <- function(x,
 #' The Stata Journal, 16(1), pp.72-87.}
 #' 
 #' @seealso 
-#' [select_ra2()]
+#' \code{select_ra2()}
 #'
 #' @param degree integer > 0 giving the degree for the FP transformation. 
 #' @param ... passed to fitting functions. 
@@ -1250,6 +1260,7 @@ select_ra2_acd <- function(x,
                            select, 
                            alpha, 
                            family,
+                           family_string,
                            zero,
                            catzero,
                            spike,
@@ -1277,7 +1288,7 @@ select_ra2_acd <- function(x,
   }
   
   #n_obs <- nrow(x)
-  n_obs <- ifelse(family == "cox", sum(y[, 2]), nrow(x))
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   #fpmax <- "FP1(x, A(x))"
   fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  "FP1(x, A(x)) +  Binary", "FP1(x, A(x))")
@@ -1303,14 +1314,14 @@ select_ra2_acd <- function(x,
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = 2, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family,zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1343,7 +1354,7 @@ select_ra2_acd <- function(x,
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family,zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1377,7 +1388,7 @@ select_ra2_acd <- function(x,
   fit <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family,zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1409,7 +1420,7 @@ select_ra2_acd <- function(x,
   fit_fp1a <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1443,7 +1454,7 @@ select_ra2_acd <- function(x,
   fit_lineara <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1482,9 +1493,9 @@ select_ra2_acd <- function(x,
 
 #' Function selection procedure based on information criteria
 #' 
-#' Used in [find_best_fp_step()] when `criterion = "aic"` or `"bic"`.
-#' For parameter explanations, see [find_best_fp_step()]. All parameters 
-#' captured by `...` are passed on to [fit_model()].
+#' Used in \code{find_best_fp_step()} when `criterion = "aic"` or `"bic"`.
+#' For parameter explanations, see \code{find_best_fp_step()}. All parameters 
+#' captured by `...` are passed on to \code{fit_model()}.
 #' 
 #' @details  
 #' In case an information criterion is used to select the best model the 
@@ -1503,7 +1514,7 @@ select_ra2_acd <- function(x,
 #' using a FPx transformation for the variable of interest and having the 
 #' highest likelihood of all such models given the current powers for all other
 #' variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-#' These best FPx models are computed in [find_best_fpm_step()].
+#' These best FPx models are computed in \code{find_best_fpm_step()}.
 #' Keep in mind that for a fixed number of degrees of freedom (i.e. fixed m),
 #' the model with the highest likelihood is the same as the model with the best
 #' information criterion of any kind since all the models share the same 
@@ -1537,7 +1548,7 @@ select_ra2_acd <- function(x,
 #' * `prev_adj_params`: Previously adjusted parameters.
 #' 
 #' @seealso 
-#' [select_ra2()]
+#' \code{select_ra2()}
 #' 
 #' @param degree integer > 0 giving the degree for the FP transformation. 
 #' @param ... passed to fitting functions. 
@@ -1555,6 +1566,7 @@ select_ic <- function(x,
                       select, 
                       alpha, 
                       family,
+                      family_string,
                       zero,
                       catzero,
                       spike,
@@ -1563,8 +1575,9 @@ select_ic <- function(x,
                       prev_adj_params,
                       ...) {
   
-  if (degree < 1)
+  if (degree < 1) {
     return(NULL)
+  }
   
   #fpmax <- paste0("FP", degree)
   fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
@@ -1588,7 +1601,7 @@ select_ic <- function(x,
   fit_null <- fit_null_step(
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family,zero = zero, catzero = catzero,
+      family = family,family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision, acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     )
@@ -1596,7 +1609,7 @@ select_ic <- function(x,
   fit_lin <- fit_linear_step(
       x = x, xi = xi, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family, zero = zero, catzero = catzero, 
+      family = family, family_string = family_string, zero = zero, catzero = catzero, 
       spike_decision = spike_decision, acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     )
@@ -1611,7 +1624,7 @@ select_ic <- function(x,
     fits_fpm[[m]] <- find_best_fpm_step(
       x = x, xi = xi, degree = m, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family,zero = zero, catzero = catzero,
+      family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     )
@@ -1688,6 +1701,7 @@ select_ic_acd <- function(x,
                           select, 
                           alpha, 
                           family,
+                          family_string,
                           zero,
                           catzero,
                           spike,
@@ -1717,21 +1731,21 @@ select_ic_acd <- function(x,
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero, 
+    family = family, family_string = family_string, zero = zero, catzero = catzero, 
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
-    family = family, zero = zero, catzero = catzero,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params, ...
   )
@@ -1744,21 +1758,21 @@ select_ic_acd <- function(x,
      find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
-      family = family, zero = zero, catzero = catzero,
+      family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family,zero = zero, catzero = catzero, 
+      family = family, family_string = family_string, zero = zero, catzero = catzero, 
       spike_decision = spike_decision, acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
-      family = family,zero = zero, catzero = catzero,
+      family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params, ...
     )
@@ -1770,7 +1784,6 @@ select_ic_acd <- function(x,
   )
   )
 
-  
   # output summary - only output best fpm models
   len_max <- 2
   
@@ -1850,7 +1863,7 @@ select_ic_acd <- function(x,
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 #' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
-#' @param acd_parameter Named list of ACD parameters produced by [fit_acd()], 
+#' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()}, 
 #' with length equal to \code{ncol(x)}.
 #' @param spike_decision a named numeric vector with the same names as the 
 #' `x` matrix. Each element controls how the corresponding adjustment 

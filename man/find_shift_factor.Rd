@@ -18,7 +18,7 @@ Function that calculates a value used to shift predictor
 }
 \details{
 For details on why shifting is necessary see the corresponding section in the
-documentation of \code{\link[=mfp2]{mfp2()}}.
+documentation of \code{mfp2()}.
 
 This function implements the formula in Section 4.7 of Royston and
 Sauerbrei (2008).

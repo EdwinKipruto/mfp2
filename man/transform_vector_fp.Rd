@@ -58,9 +58,9 @@ if it is a binary variable (i.e. has only two distinct values). The default
 \code{TRUE} usually only needs to changed when this function is to be used to
 transform data for predictions. See Details.}
 
-\item{powers}{passed to \code{\link[=fit_acd]{fit_acd()}}.}
+\item{powers}{passed to \code{fit_acd()}.}
 
-\item{acd_parameter}{a list usually returned by \code{\link[=fit_acd]{fit_acd()}}. In particular,
+\item{acd_parameter}{a list usually returned by \code{fit_acd()}. In particular,
 it must have components that define \code{beta0}, \code{beta1}, \code{power}, \code{shift} and
 \code{scale} which are to be applied when using the acd transformation in
 new data.}
@@ -126,7 +126,7 @@ be transformed as desired by the fitted transformations. For model fit,
 An important note on data processing. Variables are shifted and scaled
 before being transformed by any powers. That is to ensure positive values
 and reasonable scales. Note that scaling does not change the estimated
-powers, see also \code{\link[=find_scale_factor]{find_scale_factor()}}.
+powers, see also \code{find_scale_factor()}.
 
 However, they may be centered after transformation. This is not done by
 these functions.

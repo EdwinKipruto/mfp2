@@ -23,7 +23,7 @@
 
 \item{newdata}{optionally, a matrix with column names in which to look for
 variables with which to predict. If provided, the variables are internally
-shifted using the shifting values stored in \code{object}. See \code{\link[=mfp2]{mfp2()}} for
+shifted using the shifting values stored in \code{object}. See \code{mfp2()} for
 further details.}
 
 \item{type}{the type of prediction required.  The default is on the scale of
@@ -56,7 +56,7 @@ list (or if the entry is \code{NULL}) then the mean value of shifted data
 (or minimum for binary variables) will be used as reference. Values should be
 specified on the original scale of the variable since the program will
 internally scale it using the scaling factors obtained from
-\code{\link[=find_scale_factor]{find_scale_factor()}}. By default, this function uses the means
+\code{find_scale_factor()}. By default, this function uses the means
 (for continuous variables) and minimum (for binary variables) as
 reference values.}
 
@@ -201,5 +201,5 @@ predict(fit1) # make predictions
 
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}}, \code{\link[survival:predict.coxph]{survival::predict.coxph()}}
+\code{mfp2()}, \code{\link[stats:predict.glm]{stats::predict.glm()}}, \code{\link[survival:predict.coxph]{survival::predict.coxph()}}
 }

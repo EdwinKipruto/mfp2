@@ -7,7 +7,7 @@
 fit_model(
   x,
   y,
-  family = "gaussian",
+  family,
   weights = NULL,
   offset = NULL,
   method = NULL,
@@ -35,7 +35,7 @@ See \code{\link[survival:coxph]{survival::coxph()}}.}
 \item{strata, control, weights, offset, rownames, nocenter}{parameters for Cox
 or glm. See \code{\link[survival:coxph]{survival::coxph()}} or \code{\link[stats:glm]{stats::glm()}} for details.}
 
-\item{fast}{passed to \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
+\item{fast}{passed to \code{fit_glm()} and \code{fit_cox()}.
 
 @return
 A list with the following components:
@@ -51,5 +51,5 @@ A list with the following components:
 Fits generalized linear models and Cox proportional hazard models.
 }
 \details{
-Computations rely on \code{\link[=fit_glm]{fit_glm()}} and \code{\link[=fit_cox]{fit_cox()}}.
+Computations rely on \code{fit_glm()} and \code{fit_cox()}.
 }

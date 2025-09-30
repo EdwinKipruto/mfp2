@@ -19,6 +19,7 @@ select_ic(
   select,
   alpha,
   family,
+  family_string,
   zero,
   catzero,
   spike,
@@ -42,6 +43,7 @@ select_ic_acd(
   select,
   alpha,
   family,
+  family_string,
   zero,
   catzero,
   spike,
@@ -88,7 +90,12 @@ for backward elimination of \code{xi}.}
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{zero}{A named logical vector indicating, which columns of
 \code{x} should treat nonpositive values (zero or negative) as zero before
@@ -110,7 +117,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -145,9 +152,9 @@ case.
 }
 }
 \description{
-Used in \code{\link[=find_best_fp_step]{find_best_fp_step()}} when \code{criterion = "aic"} or \code{"bic"}.
-For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed on to \code{\link[=fit_model]{fit_model()}}.
+Used in \code{find_best_fp_step()} when \code{criterion = "aic"} or \code{"bic"}.
+For parameter explanations, see \code{find_best_fp_step()}. All parameters
+captured by \code{...} are passed on to \code{fit_model()}.
 }
 \details{
 In case an information criterion is used to select the best model the
@@ -166,7 +173,7 @@ Note that the "best" FPx model used in this function are given by the models
 using a FPx transformation for the variable of interest and having the
 highest likelihood of all such models given the current powers for all other
 variables, as outlined in Section 4.8 of Royston and Sauerbrei (2008).
-These best FPx models are computed in \code{\link[=find_best_fpm_step]{find_best_fpm_step()}}.
+These best FPx models are computed in \code{find_best_fpm_step()}.
 Keep in mind that for a fixed number of degrees of freedom (i.e. fixed m),
 the model with the highest likelihood is the same as the model with the best
 information criterion of any kind since all the models share the same
@@ -182,5 +189,5 @@ this function will not exclude it from the model (by setting its power to
 
 }}
 \seealso{
-\code{\link[=select_ra2]{select_ra2()}}
+\code{select_ra2()}
 }

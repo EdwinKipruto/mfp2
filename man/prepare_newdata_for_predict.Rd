@@ -21,7 +21,7 @@ prepare_newdata_for_predict(
 \item{newdata}{dataset to be prepared for predictions. Its columns can be
 a subset of the columns used for fitting the model.}
 
-\item{strata, offset}{passed from \code{\link[=predict.mfp2]{predict.mfp2()}}.}
+\item{strata, offset}{passed from \code{predict.mfp2()}.}
 
 \item{apply_pre}{logical indicating whether the fitted pre-transformation
 is applied or not.}
@@ -29,15 +29,15 @@ is applied or not.}
 \item{apply_center}{logical indicating whether the fitted centers are applied
 after transformation or not.}
 
-\item{check_binary}{passed to \code{\link[=transform_vector_fp]{transform_vector_fp()}}.}
+\item{check_binary}{passed to \code{transform_vector_fp()}.}
 
 \item{reset_zero}{Logical. If \code{TRUE} (default), variables incorrectly flagged
 as \code{zero = TRUE} but containing only positive values are reset to \code{FALSE}.
-Parameter of \code{\link[=transform_matrix]{transform_matrix()}}}
+Parameter of \code{transform_matrix()}}
 }
 \value{
 A dataframe of transformed newdata
 }
 \description{
-To be used in \code{\link[=predict.mfp2]{predict.mfp2()}}.
+To be used in \code{predict.mfp2()}.
 }

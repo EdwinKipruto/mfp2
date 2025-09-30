@@ -15,11 +15,11 @@ meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.}
 \item{shift}{a numeric that is used to shift the values of \code{x} to positive
 values. The default value is 0, meaning no shifting is conducted.
 If \code{NULL}, then the program will estimate an appropriate shift automatically
-(see \code{\link[=find_shift_factor]{find_shift_factor()}}).}
+(see \code{find_shift_factor()}).}
 
 \item{scale}{a numeric used to scale \code{x}. The default value is 1, meaning
 no scaling is conducted. If \code{NULL}, then the program will estimate
-an appropriate scaling factor automatically (see \code{\link[=find_scale_factor]{find_scale_factor()}}).}
+an appropriate scaling factor automatically (see \code{find_scale_factor()}).}
 
 \item{zero}{Logical indicating whether only positive values of the variable
 should be transformed, with nonpositive values (zero or negative) set to zero.

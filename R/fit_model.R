@@ -3,7 +3,7 @@
 #' Fits generalized linear models and Cox proportional hazard models. 
 #' 
 #' @details 
-#' Computations rely on [fit_glm()] and [fit_cox()].
+#' Computations rely on \code{fit_glm()} and \code{fit_cox()}.
 #'
 #' @param x a matrix of predictors (excluding intercept) with column names.
 #' If column names are not provided they are set according to
@@ -16,7 +16,7 @@
 #' for Cox models. The default family is set to 'Gaussian'.
 #' @param strata,control,weights,offset,rownames,nocenter parameters for Cox 
 #' or glm. See [survival::coxph()] or [stats::glm()] for details.
-#' @param fast passed to [fit_glm()] and [fit_cox()].
+#' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
 #' 
 #'  @return 
 #' A list with the following components: 
@@ -30,7 +30,7 @@
 #' @importFrom stats family
 fit_model <- function(x,
                       y, 
-                      family = "gaussian", 
+                      family, 
                       weights = NULL,
                       offset = NULL, 
                       method = NULL, 
@@ -45,7 +45,21 @@ fit_model <- function(x,
     colnames(x) <- colnames(x, do.NULL = FALSE)
   }
   
-  if (family == "cox") {
+  # Extract family string and convert to family object if needed
+  if (is.character(family)) {
+    family_string <- family
+    if (family != "cox") {
+      family <- get(family, mode = "function", envir = parent.frame())()
+    }
+  } else if (is.function(family)) {
+    family <- family()
+    family_string <- family$family
+  } else {
+    # Already a family object
+    family_string <- family$family
+  }
+  
+  if (family_string == "cox") {
     # cox needs more work especially on how to handle strata
     fit <- fit_cox(
       x = x, 
@@ -60,11 +74,6 @@ fit_model <- function(x,
       fast = fast
     )
   } else {
-    if (is.character(family)) {
-      family <- get(family, mode = "function", envir = parent.frame())
-    }
-    if (is.function(family)) family <- family()
-  
     fit <- fit_glm(
       y = y, x = x, family = family, weights = weights, offset = offset, 
       fast = fast

@@ -99,7 +99,7 @@
 #' @param object a fitted object of class `mfp2`.
 #' @param newdata optionally, a matrix with column names in which to look for 
 #' variables with which to predict. If provided, the variables are internally 
-#' shifted using the shifting values stored in `object`. See [mfp2()] for 
+#' shifted using the shifting values stored in `object`. See \code{mfp2()} for 
 #' further details.
 #' @param type the type of prediction required.  The default is on the scale of
 #' the linear predictors. See `predict.glm()` or `predict.coxph()` for details. 
@@ -127,7 +127,7 @@
 #' (or minimum for binary variables) will be used as reference. Values should be 
 #' specified on the original scale of the variable since the program will 
 #' internally scale it using the scaling factors obtained from 
-#' [find_scale_factor()]. By default, this function uses the means 
+#' \code{find_scale_factor()}. By default, this function uses the means 
 #' (for continuous variables) and minimum (for binary variables) as
 #' reference values. 
 #' @param strata stratum levels used for predictions. 
@@ -165,7 +165,7 @@
 #' * `upper`: upper limit of confidence interval.
 #' 
 #' @seealso 
-#' [mfp2()], [stats::predict.glm()], [survival::predict.coxph()]
+#' \code{mfp2()}, [stats::predict.glm()], [survival::predict.coxph()]
 #' 
 #' @method predict mfp2
 #' @export
@@ -392,7 +392,9 @@ predict.mfp2 <- function(object,
     }
     
     # return predictions based on family and type
-    pred <- transform_linear_predictor(nfit, object$family_string, type)
+    pred <- transform_linear_predictor(
+      nfit, object$family_string,object$family$link, type
+      )
     return(pred)
     
   }
@@ -407,45 +409,124 @@ predict.mfp2 <- function(object,
   }
 }
 
-#' Transform linear predictor to response/risk
+#' Transform Linear Predictor to Response or Risk
 #' 
-#' Internal helper to convert linear predictors to the appropriate scale
-#' depending on the model family and `type`.
+#' Converts linear predictors (`nfit`) from a model to the appropriate scale
+#' for interpretation or prediction, depending on the model family, link function,
+#' and type of prediction. This is an internal helper function for GLMs, survival models,
+#' and other regression frameworks.
 #' 
-#' @param nfit Numeric vector of linear predictors.
-#' @param family Character string specifying model family: "gaussian", "binomial", "poisson", "cox", etc.
-#' @param type Type of prediction; e.g., "response", "risk", or NULL.
+#' @param nfit Numeric vector of linear predictors (Xβ).
+#' @param family Character string specifying the model family. Supported families include:
+#'   - `"gaussian"`: linear regression
+#'   - `"binomial"`: binary outcomes or proportions
+#'   - `"poisson"`: count data
+#'   - `"cox"`: proportional hazards model
+#'   - other families fallback to returning `nfit`
+#' @param link Character string specifying the link function. Defaults:
+#'   - Gaussian: `"identity"`  
+#'   - Binomial: `"logit"`  
+#'   - Poisson: `"log"`  
+#'   Supported links:
+#'   - Gaussian: `"identity"`, `"log"`, `"inverse"`  
+#'   - Binomial: `"logit"`, `"probit"`, `"cloglog"`, `"cauchit"`, `"identity"`, `"log"`  
+#'   - Poisson: `"log"`, `"identity"`, `"sqrt"`
+#' @param type Character string specifying the type of prediction:
+#'   - `"response"` or `"risk"`: returns predictions on the response/probability scale
+#'   - `NULL` (default): returns the linear predictor itself
 #' 
-#' @return Numeric vector of predictions on the scale requested.
+#' @return Numeric vector of predictions on the requested scale.
 #' 
+#' @examples
+#' \dontrun{
+#' # Binomial example
+#' lp_bin <- c(-1, 0, 1)
+#' transform_linear_predictor(lp_bin, family = "binomial", link = "logit", type = "response")
+#' 
+#' # Poisson example
+#' lp_pois <- c(0.5, 1, 1.5)
+#' transform_linear_predictor(lp_pois, family = "poisson", link = "log", type = "response")
+#' 
+#' # Gaussian example
+#' lp_gauss <- c(1, 2, 3)
+#' transform_linear_predictor(lp_gauss, family = "gaussian", link = "log", type = "response")
+#' }
 #' @keywords internal
-transform_linear_predictor  <- function(nfit, family, type = NULL) {
+transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
+  
+  # Set default links if not provided
+  if (is.null(link)) {
+    link <- switch(family,
+                   gaussian = "identity",
+                   binomial = "logit",
+                   poisson  = "log",
+                   NULL)
+  }
+  
   switch(family,
-         gaussian = nfit,
-         binomial = if (!is.null(type) && type == "response") 1 / (1 + exp(-nfit)) else nfit,
-         poisson = if (!is.null(type) && type == "response") exp(nfit) else nfit,
-         cox = if (!is.null(type) && type %in% c("response", "risk")) exp(nfit) else nfit,
-         nfit # default fallback for other families
+         
+         # Gaussian family with multiple links
+         gaussian = {
+           if (!is.null(type) && type == "response") {
+             switch(link,
+                    identity = nfit,
+                    log      = exp(nfit),
+                    inverse  = 1 / nfit,
+                    stop("Unknown Gaussian link"))
+           } else nfit
+         },
+         
+         # Binomial family with multiple links
+         binomial = {
+           if (!is.null(type) && type == "response") {
+             switch(link,
+                    logit   = 1 / (1 + exp(-nfit)),
+                    probit  = pnorm(nfit),
+                    cloglog = 1 - exp(-exp(nfit)),
+                    cauchit = pcauchy(nfit),
+                    identity = nfit,
+                    log     = exp(nfit),
+                    stop("Unknown binomial link"))
+           } else nfit
+         },
+         
+         # Poisson family with multiple links
+         poisson = {
+           if (!is.null(type) && type == "response") {
+             switch(link,
+                    log      = exp(nfit),
+                    identity = nfit,
+                    sqrt     = nfit^2,
+                    stop("Unknown Poisson link"))
+           } else nfit
+         },
+         
+         # Cox proportional hazards: exponentiate for risk
+         cox = {
+           if (!is.null(type) && type %in% c("response", "risk")) exp(nfit) else nfit
+         },
+         
+         # Default fallback: return linear predictor
+         nfit
   )
 }
 
-
 #' Helper function to prepare newdata for predict function
 #' 
-#' To be used in [predict.mfp2()].
+#' To be used in \code{predict.mfp2()}.
 #' 
 #' @param object fitted `mfp2` model object.
 #' @param newdata dataset to be prepared for predictions. Its columns can be
 #' a subset of the columns used for fitting the model. 
-#' @param strata,offset passed from [predict.mfp2()].
+#' @param strata,offset passed from \code{predict.mfp2()}.
 #' @param apply_pre logical indicating whether the fitted pre-transformation
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
-#' @param check_binary passed to [transform_vector_fp()].
+#' @param check_binary passed to \code{transform_vector_fp()}.
 #' @param reset_zero Logical. If `TRUE` (default), variables incorrectly flagged 
 #' as `zero = TRUE` but containing only positive values are reset to `FALSE`. 
-#' Parameter of [transform_matrix()]
+#' Parameter of \code{transform_matrix()}
 #' @return A dataframe of transformed newdata
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
@@ -530,7 +611,7 @@ prepare_newdata_for_predict <- function(object,
 
 #' Helper function to compute standard error of a partial predictor
 #' 
-#' To be used in [predict.mfp2()].
+#' To be used in \code{predict.mfp2()}.
 #' 
 #' @param model fitted `mfp2` object.
 #' @param X transformed input matrix with variables of interest for partial predictor.

@@ -43,7 +43,7 @@ of \code{x}.}
 \item{catzero}{A logical vector similar to \code{zero}, indicating which
 columns of \code{x} should treat nonpositive values as zero and also have a binary
 indicator automatically created and included in the model. Must match the length
-and order of the columns in \code{x}. See \code{\link{mfp2}} for details.}
+and order of the columns in \code{x}. See \code{mfp2} for details.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
 a spike at zero. The length and order of \code{spike} must match those of
@@ -74,5 +74,5 @@ values greater than zero).
 }
 }
 \description{
-To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+To be used in \code{fit_mfp()}.
 }

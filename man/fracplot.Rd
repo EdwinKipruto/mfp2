@@ -28,7 +28,7 @@ fracplot(
 plot_mfp(...)
 }
 \arguments{
-\item{model}{A fitted \code{\link{mfp2}} model.}
+\item{model}{A fitted \code{`mfp2`} model.}
 
 \item{terms}{Character vector with variable names to be plotted.  If \code{NULL},
 all fractional polynomial terms in the model are plotted.}
@@ -38,17 +38,17 @@ component) is plotted. If \code{FALSE} (default), component-plus-residual plots
 are drawn. Only used if \code{type = "terms"}. See below for details.}
 
 \item{type}{Character, one of \code{"terms"} or \code{"contrasts"}. Passed to
-\code{\link[=predict.mfp2]{predict.mfp2()}}. \code{"terms"} plots partial predictors (with or without
+\code{predict.mfp2()}. \code{"terms"} plots partial predictors (with or without
 residuals), while \code{"contrasts"} plots contrasts relative to a reference
 value.}
 
-\item{ref}{Reference list passed to \code{\link[=predict.mfp2]{predict.mfp2()}} when \code{type = "contrasts"}. Ignored otherwise.}
+\item{ref}{Reference list passed to \code{predict.mfp2()} when \code{type = "contrasts"}. Ignored otherwise.}
 
 \item{terms_seq}{Character, one of \code{"data"} or \code{"equidistant"}. Passed to
-\code{\link[=predict.mfp2]{predict.mfp2()}}. \code{"data"} uses the observed values, \code{"equidistant"} creates
+\code{predict.mfp2()}. \code{"data"} uses the observed values, \code{"equidistant"} creates
 a grid over the covariate range.}
 
-\item{alpha}{Confidence level for intervals. Passed to \code{\link[=predict.mfp2]{predict.mfp2()}}.}
+\item{alpha}{Confidence level for intervals. Passed to \code{predict.mfp2()}.}
 
 \item{color_points}{Character value. Color of points used when residuals
 are displayed.}
@@ -88,7 +88,7 @@ drawn as individual plots or facetted / combined easily using e.g.
 }
 \description{
 Produces partial predictor plots (or contrasts) with confidence intervals
-against selected covariates from a fitted \code{\link{mfp2}} model. If requested,
+against selected covariates from a fitted \code{`mfp2`} model. If requested,
 component-plus-residual plots are also supported.
 }
 \details{
@@ -144,5 +144,5 @@ fracplot(fit) # generate plots
 
 }
 \seealso{
-\code{\link[=predict.mfp2]{predict.mfp2()}}
+\code{predict.mfp2()}
 }

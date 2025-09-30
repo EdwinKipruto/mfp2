@@ -36,7 +36,7 @@ deviance_gaussian <- function(rss, weights, n) {
 #' Mostly used within an mfp step to compare between the different fp models
 #' of a variable. 
 #' 
-#' @param obj a list returned by [fit_model()] representing a glm or Cox model
+#' @param obj a list returned by \code{fit_model()} representing a glm or Cox model
 #' fit.
 #' @param n_obs a numeric value indicating the number of observations for the
 #' data used to fit `obj`.
@@ -57,8 +57,8 @@ deviance_gaussian <- function(rss, weights, n) {
 #' It is, however, the definition used in Royston and Sauerbrei (2008) and in 
 #' `mfp`. For selection of fps this does not really play a role, as the common 
 #' factor would be cancelled anyway when comparing models based on deviances. 
-#' * `sse`: sum of squared residuals as returned by [fit_model()].
-#' * `deviance_gaussian`: deviance computed by [deviance_gaussian()], 
+#' * `sse`: sum of squared residuals as returned by \code{fit_model()}.
+#' * `deviance_gaussian`: deviance computed by \code{deviance_gaussian()}, 
 #' applicable to Gaussian models and used for F-test computations.
 #' * `aic`: Akaike information criterion, defined as
 #' `-2logL + 2(df + df_additional)`.

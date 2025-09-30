@@ -18,6 +18,7 @@ select_linear(
   select,
   alpha,
   family,
+  family_string,
   zero,
   catzero,
   spike,
@@ -64,7 +65,12 @@ for backward elimination of \code{xi}.}
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{zero}{A named logical vector indicating, which columns of
 \code{x} should treat nonpositive values (zero or negative) as zero before
@@ -86,7 +92,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -123,10 +129,10 @@ whether \code{xi} was positive or nonpositive.
 }
 }
 \description{
-To be used in \code{\link[=find_best_fp_step]{find_best_fp_step()}}. Only used if \code{df = 1} for a variable.
+To be used in \code{find_best_fp_step()}. Only used if \code{df = 1} for a variable.
 Handles all criteria for selection.
-For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed to \code{\link[=fit_model]{fit_model()}}.
+For parameter explanations, see \code{find_best_fp_step()}. All parameters
+captured by \code{...} are passed to \code{fit_model()}.
 }
 \details{
 This function assesses a single variable of interest \code{xi} regarding its

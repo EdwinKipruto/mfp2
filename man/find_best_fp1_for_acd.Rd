@@ -24,5 +24,5 @@ all values are shifted (if needed) to ensure positivity before transformation.}
 The best FP power with smallest deviance and the fitted model.
 }
 \description{
-To be used in \code{\link[=fit_acd]{fit_acd()}}.
+To be used in \code{fit_acd()}.
 }

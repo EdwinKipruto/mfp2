@@ -24,7 +24,7 @@ spike-at-zero indicator.
 Integer scalar giving the degrees of freedom for the variable.
 }
 \description{
-Helper function used in \code{\link[=fit_mfp]{fit_mfp()}} to determine the final number of
+Helper function used in \code{fit_mfp()} to determine the final number of
 degrees of freedom (df) contributed by a variable, depending on its powers
 and the spike-at-zero decision.
 }

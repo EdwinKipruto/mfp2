@@ -2,22 +2,61 @@
 % Please edit documentation in R/predict.mfp2.R
 \name{transform_linear_predictor}
 \alias{transform_linear_predictor}
-\title{Transform linear predictor to response/risk}
+\title{Transform Linear Predictor to Response or Risk}
 \usage{
-transform_linear_predictor(nfit, family, type = NULL)
+transform_linear_predictor(nfit, family, link = NULL, type = NULL)
 }
 \arguments{
-\item{nfit}{Numeric vector of linear predictors.}
+\item{nfit}{Numeric vector of linear predictors (Xβ).}
 
-\item{family}{Character string specifying model family: "gaussian", "binomial", "poisson", "cox", etc.}
+\item{family}{Character string specifying the model family. Supported families include:
+\itemize{
+\item \code{"gaussian"}: linear regression
+\item \code{"binomial"}: binary outcomes or proportions
+\item \code{"poisson"}: count data
+\item \code{"cox"}: proportional hazards model
+\item other families fallback to returning \code{nfit}
+}}
 
-\item{type}{Type of prediction; e.g., "response", "risk", or NULL.}
+\item{link}{Character string specifying the link function. Defaults:
+\itemize{
+\item Gaussian: \code{"identity"}
+\item Binomial: \code{"logit"}
+\item Poisson: \code{"log"}
+Supported links:
+\item Gaussian: \code{"identity"}, \code{"log"}, \code{"inverse"}
+\item Binomial: \code{"logit"}, \code{"probit"}, \code{"cloglog"}, \code{"cauchit"}, \code{"identity"}, \code{"log"}
+\item Poisson: \code{"log"}, \code{"identity"}, \code{"sqrt"}
+}}
+
+\item{type}{Character string specifying the type of prediction:
+\itemize{
+\item \code{"response"} or \code{"risk"}: returns predictions on the response/probability scale
+\item \code{NULL} (default): returns the linear predictor itself
+}}
 }
 \value{
-Numeric vector of predictions on the scale requested.
+Numeric vector of predictions on the requested scale.
 }
 \description{
-Internal helper to convert linear predictors to the appropriate scale
-depending on the model family and \code{type}.
+Converts linear predictors (\code{nfit}) from a model to the appropriate scale
+for interpretation or prediction, depending on the model family, link function,
+and type of prediction. This is an internal helper function for GLMs, survival models,
+and other regression frameworks.
+}
+\examples{
+\dontrun{
+# Binomial example
+lp_bin <- c(-1, 0, 1)
+transform_linear_predictor(lp_bin, family = "binomial", link = "logit", type = "response")
+
+# Poisson example
+lp_pois <- c(0.5, 1, 1.5)
+transform_linear_predictor(lp_pois, family = "poisson", link = "log", type = "response")
+
+# Gaussian example
+lp_gauss <- c(1, 2, 3)
+transform_linear_predictor(lp_gauss, family = "gaussian", link = "log", type = "response")
+}
 }
 \keyword{internal}

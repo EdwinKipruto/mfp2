@@ -15,7 +15,7 @@ assign_df(x, df_default = 4)
 Vector of length \code{ncol(x)} with degrees of freedom for each variable in \code{x}.
 }
 \description{
-Determine the number of unique values in a variable. To be used in \code{\link[=mfp2]{mfp2()}}.
+Determine the number of unique values in a variable. To be used in \code{mfp2()}.
 }
 \details{
 Variables with fewer than or equal to three unique values, for example,

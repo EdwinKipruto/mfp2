@@ -12,6 +12,7 @@ find_best_fp_cycle(
   weights,
   offset,
   family,
+  family_string,
   criterion,
   select,
   alpha,
@@ -50,7 +51,12 @@ indicating the fp powers to be used in the current step for all variables
 
 \item{offset}{a vector of length nobs of offsets.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{criterion}{a character string defining the criterion used to select
 variables and FP models of different degrees.}
@@ -82,7 +88,7 @@ Default is \code{FALSE}.}
 \item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
 or \code{\link[stats:glm]{stats::glm()}} for details.}
 
-\item{rownames}{passed to \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.}
+\item{rownames}{passed to \code{survival::coxph.fit()}.}
 
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
@@ -108,7 +114,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -129,7 +135,7 @@ cycle).
 }
 \description{
 This function estimates the best FP functions for all predictors in the
-current cycle. To be used in \code{\link[=fit_mfp]{fit_mfp()}}.
+current cycle. To be used in \code{fit_mfp()}.
 }
 \details{
 A cycle is defined as a complete pass through all the predictors in the input
@@ -141,9 +147,9 @@ Briefly, a cycle works as follows: it takes as input the data matrix along with
 a set of current best fp powers for each variable. In each step, the fp
 powers of a single covariate are assessed, while adjusting for other
 covariates. Adjustment variables are transformed using their current
-fp powers (this is done in \code{\link[=transform_data_step]{transform_data_step()}}) and the fp powers
+fp powers (this is done in \code{transform_data_step()} and the fp powers
 of the variable of interest are tested using the closed test procedure
-(conducted in \code{\link[=find_best_fp_step]{find_best_fp_step()}}).
+(conducted in \code{find_best_fp_step()}).
 Some of the adjustment variables may have their fp power set to \code{NA},
 which means they were not selected from the working model and are not used
 in that step. The results from all steps are returned, completing a cycle.

@@ -18,6 +18,7 @@ select_ra2(
   select,
   alpha,
   family,
+  family_string,
   zero,
   catzero,
   spike,
@@ -64,7 +65,12 @@ for backward elimination of \code{xi}.}
 \item{alpha}{a numeric value indicating the significance level
 for tests between FP models of different degrees for \code{xi}.}
 
-\item{family}{a character string representing a family object.}
+\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
+or a function that returns a GLM family object (e.g., stats::gaussian).
+For Cox models, only a character string "cox" is allowed.}
+
+\item{family_string}{A character string representing the selected family,
+e.g., "gaussian".}
 
 \item{zero}{A named logical vector indicating, which columns of
 \code{x} should treat nonpositive values (zero or negative) as zero before
@@ -86,7 +92,7 @@ variables are handled. Each element corresponds to a variable and encodes
 the selected strategy: \code{1} = include FP for positive values plus binary SAZ,
 \code{2} = treat as continuous FP only, \code{3} = include binary SAZ only.}
 
-\item{acd_parameter}{Named list of ACD parameters produced by \code{\link[=fit_acd]{fit_acd()}},
+\item{acd_parameter}{Named list of ACD parameters produced by \code{fit_acd()},
 with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
@@ -94,7 +100,7 @@ if an element is \code{NULL}, the variable was not specified in the
 \item{prev_adj_params}{Named list storing adjustment variable transformations
 from previous steps for each variable.}
 
-\item{...}{passed to fitting functions \code{\link[=fit_model]{fit_model()}}.}
+\item{...}{passed to fitting functions \code{fit_model()}.}
 }
 \value{
 A list with several components:
@@ -118,9 +124,9 @@ Same number of rows as, and indexed by, \code{powers}.
 }
 }
 \description{
-Used in \code{\link[=find_best_fp_step]{find_best_fp_step()}} when \code{criterion = "pvalue"}.
-For parameter explanations, see \code{\link[=find_best_fp_step]{find_best_fp_step()}}. All parameters
-captured by \code{...} are passed to \code{\link[=fit_model]{fit_model()}}.
+Used in \code{find_best_fp_step()} when \code{criterion = "pvalue"}.
+For parameter explanations, see \code{find_best_fp_step()}. All parameters
+captured by \code{...} are passed to \code{fit_model()}.
 }
 \details{
 In case \code{criterion = "pvalue"} the function selection procedure as outlined
@@ -148,7 +154,7 @@ that applies an FP\emph{x} transformation to the variable of interest and
 achieves the highest likelihood among all such models, given the current
 power transformations for all other variables. This procedure is described
 in Section 4.8 of Royston and Sauerbrei (2008). The best FP\emph{x} models
-are computed by \code{\link{find_best_fpm_step}}.
+are computed by \code{find_best_fpm_step}.
 
 When a variable is forced into the model by including it in the \code{keep}
 argument of \code{mfp2()}, this function will not exclude it (i.e., will not
@@ -160,5 +166,5 @@ A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}
 }
 \seealso{
-\code{\link[=select_ra2_acd]{select_ra2_acd()}}
+\code{select_ra2_acd()}
 }

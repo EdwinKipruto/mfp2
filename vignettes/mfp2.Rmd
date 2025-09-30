@@ -1642,6 +1642,164 @@ figurex <- patchwork::wrap_plots(p1, p2,
 figurex
 ```
 
+# Spike-at-Zero Modeling with Positive-Only FP Transformation
+
+
+In epidemiological and clinical studies, a continuous covariate `x` may have a mixture of zeros and positive values. Such semi-continuous variables are said to have a “spike” at zero in an otherwise continuous distribution. Examples include alcohol or tobacco consumption, where some individuals have no exposure while others have positive values. When `x = 0` defines a distinct subpopulation, the outcome for these individuals can be represented with a binary variable `Z`, while positive values are modeled using a continuous fractional polynomial (FP) function.
+
+Assume that \(x \ge 0\) for all individuals. In this approach, fractional polynomial (FP) transformations are applied **only when \(x > 0\)**, so there is no need to shift the origin of \(x\). The spike at zero is modeled using a binary indicator \(z\).
+
+Consider a model with index \(\eta\) defined as:
+
+\[
+\eta =
+\begin{cases}
+\beta_0 + \beta, & x = 0 \\
+\beta_0 + \phi_2(x; p), & x > 0
+\end{cases}
+\]
+
+so that \(\eta\) is, for example an FP2 function when \(x > 0\), and when \(x = 0\), it equals the intercept plus the spike effect (\(\beta_0 + \beta\)). This makes \(\eta\) a **discontinuous function** of \(x\) with a possible jump at \(x = 0\).
+
+Equivalently, \(\eta\) can be expressed as:
+
+\[
+\eta = \beta_0 + \beta z + \phi_2^+(x; p),
+\]
+
+where
+
+\[
+z =
+\begin{cases}
+1, & x = 0 \\
+0, & x > 0
+\end{cases}
+\]
+
+and
+
+\[
+\phi_2^+(x; p) =
+\begin{cases}
+0, & x = 0 \\
+\phi_2(x; p), & x > 0
+\end{cases}
+\]
+
+To select a model, a two-stage procedure has been proposed and implemented in the `mfp2()` function as described below.
+
+## Two-Stage Model Selection Procedure
+
+**Stage 1: Functional Form Selection**
+
+The first stage of the SAZ algorithm is analogous to the FSP of MFP, except that `Z` is always forced into the model and FP transformations are applied only to the positive values of `x`. Therefore, the analyst must choose a significance level (`select`) if the criterion is `"pvalue"` for variable selection. For function selection, a significance level (`alpha`) must also be specified. Other options include `"aic"` or `"bic"` if an information criterion is desired. Additionally, the maximum complexity of the FP function must be specified, with FP2 as the default. In this example, FP2 is considered the maximum complexity allowed.
+
+The model selection procedure is sequential. Starting with the most complex model (best FP2 + Z), it is compared to the null model on 5 degrees of freedom. If the test is significant, the steps of the FSP for selecting an FP function are followed, with `Z` always included in the model; otherwise, the null model is selected. Subsequent comparisons evaluate the best FP2 + Z model against a simpler linear + Z model on 3 degrees of freedom, and then against the best FP1 + Z model on 2 degrees of freedom. At each stage, only models that improve the fit significantly are retained, and the binary indicator `Z` is always included. To ensure the spike-at-zero variable remains in the model regardless of significance, `select` can be set to 1, or the `keep` argument can be used.
+
+**Stage 2: Component Assessment**
+
+Once a functional form is selected, the contribution of each component is evaluated. If the null model was chosen in Stage 1, Stage 2 is skipped. Otherwise, the selected model (e.g., best FP2 + Z) is assessed by comparing it to two simpler models: best FP2 alone, to assess the contribution of `Z`, and Z alone, to assess the contribution of the FP term.
+
+Decisions are made as follows:
+
+- If both comparisons are significant, both `Z` and the FP2 term are retained in the final model.  
+- If only the comparison with FP2 alone is significant, only `Z` is retained, as the functional form adds no additional information.  
+- If only the comparison with Z alone is significant, the FP2 term is retained while `Z` is excluded.  
+- If neither comparison is significant, the final model is chosen based on deviance, selecting the simpler model that better fits the data.
+
+When `"aic"` or `"bic"` is used as the criterion, the information criteria for the
+best FP2 + Z, best FP2 alone, and Z alone models are compared, and the model with 
+the minimum value is selected. If `Z` is removed, the spike at zero plays no specific role, and a standard FP function is used for the positive values of `x`. If the FP function is removed, leaving only `Z`, the effect of the covariate is entirely captured by the binary indicator. Since `Z` is always included in Stage 1, its presence may influence the selection of FP powers for positive values, resulting in final FP powers that differ from those obtained in a standard FP analysis where argument `zero` is set to TRUE. In other words, including `Z` can alter the shape of the fitted FP function for positive values, because some of the variation that would otherwise be modeled by the FP function is now captured by the spike indicator.
+
+
+## Example: Simulation of Spike-at-Zero Data
+
+Below is a simple simulation demonstrating SAZ modeling with a small dataset.
+
+## Simulation of Spike-at-Zero (SAZ) Data
+
+In this section, we simulate a covariate `x` from a Gamma distribution with a mixture of zeros (spike) and positive values. We also generate an outcome variable `y` that depends on both the spike indicator `Z` and the positive values of `x`. Specifically, the outcome `y` combines the spike effect (`beta1 * Z`), the effect of positive `x` values (`beta2 * log(x)`), and random noise (`epsilon`).
+
+
+```{r simulation, echo=TRUE, eval=TRUE}
+#================================================================
+# SIMPLE SIMULATION OF SPIKE-AT-ZERO (SAZ) MODELING
+#================================================================
+
+set.seed(123)               # For reproducibility
+n <- 500                    # Total sample size
+prop_zero <- 0.25           # Proportion of zeros (spike)
+
+# Initialize covariate 'x' and assign zeros
+x <- numeric(n)
+zero_indices <- sample(1:n, size = round(n * prop_zero))
+x[zero_indices] <- 0
+
+# Assign positive values to the remaining observations
+x_pos <- rgamma(n - length(zero_indices), shape = 2, rate = 0.5)
+x[-zero_indices] <- x_pos
+
+# Create spike indicator Z
+Z <- ifelse(x == 0, 1, 0)
+
+# Outcome parameters
+intercept <- 1
+beta1 <- 1.5  # effect of the spike
+beta2 <- 2    # effect of positive x values
+sigma <- 1    # standard deviation of random noise
+
+# Generate outcome
+epsilon <- rnorm(n, mean = 0, sd = sigma)
+y <- beta1 * Z + beta2 * log(ifelse(x > 0, x, 1)) + epsilon
+
+# Combine into a data frame
+df1 <- data.frame(y = y, x = x, Z = Z)
+
+# Check the number of spike vs non-spike observations
+table(df1$Z)
+```
+## Fractional Polynomial Analysis with SAZ
+
+Next, we fit a fractional polynomial (FP) model using the `mfp2()` function, which accounts for the spike at zero while modeling the positive values of `x` with an FP function. Setting `fp(x, spike = TRUE)` ensures that FP transformations are applied only to positive values of `x`, while also assessing whether the spike indicator `Z` is needed. Specifying `spike = TRUE` triggers the two-stage SAZ algorithm.
+
+The argument `criterion = "pvalue"` selects the FP powers using sequential testing. The maximum complexity of the FP function allowed is FP2, indicated by `df = 4`. The argument `alpha` sets the significance level for function selection, while `select` sets the significance level for variable selection in Stages 1 and 2 of the algorithm.
+
+We can visualize the fitted FP function using `fracplot()`:
+
+- `partial_only = FALSE` shows the partial predictor plus residuals, including the effect of the spike.  
+- `partial_only = TRUE` shows only the FP function for positive `x` values along with the estimated contribution of the spike, \(\hat{\beta}_0 + \hat{\beta}\), from `Z`.
+
+```{r, echo=TRUE, eval=TRUE}
+# Fit a fractional polynomial (FP) model with spike-at-zero
+fit1 <- mfp2(
+  y ~ fp(x, spike = TRUE, center = FALSE), 
+  data = df1, 
+  criterion = "pvalue", 
+  df = 4, 
+  select = 0.05,
+  alpha = 0.05
+)
+
+# Histogram of x including spike at zero
+ggplot(df1, aes(x = x)) +
+  geom_histogram(binwidth = 0.5, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "Histogram of Covariate x",
+    x = "x values",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+# Visualize the fitted model
+# Full fit including spike effect
+fracplot(fit1, partial_only = FALSE, color_line = "red", linewidth = 1)
+
+# FP effect only (positive x values)
+fracplot(fit1, partial_only = TRUE, color_line = "red", linewidth = 1)
+```
+
 \newpage
 # References
 

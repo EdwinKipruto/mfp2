@@ -42,18 +42,30 @@
 #'
 #' @section Details on `family` option:
 #'
-#' `mfp2()` supports the `family` argument as used by \code{stats::glm()}. Built-in
-#' families can be specified via a character string. For example,
-#' `mfp2(..., family = "binomial")` fits a logistic regression model, whereas
-#' `mfp2(..., family = "gaussian")` fits a linear regression model using ordinary
-#' least squares.
-#'
-#' For Cox proportional hazards models, the response should preferably be a
-#' `Surv` object, created with \code{survival::Surv()}, and the `family` argument
-#' should be set to `"cox"`. Only right-censored data are currently supported. 
+#' `mfp2()` supports the `family` argument as used by \code{stats::glm()}. 
+#' Families can be specified either as a character string or as a function 
+#' returning a GLM family object (e.g., `stats::gaussian(link = "identity")` 
+#' or `stats::binomial(link = "logit")`).  
+#' 
+#' Only the following families are supported at the moment: `"gaussian"`, 
+#' `"binomial"`, `"poisson"`, and `"cox"`.  
+#' 
+#' Examples with character strings:  
+#' `mfp2(..., family = "binomial")` fits a logistic regression model.  
+#' `mfp2(..., family = "gaussian")` fits a linear regression model using ordinary least squares.  
+#' 
+#' Examples with family functions and custom links:  
+#' `mfp2(..., family = gaussian(link = "log"))` fits a linear model with a log 
+#' link. `mfp2(..., family = binomial(link = "probit"))` fits a logistic 
+#' regression model with a probit link.  
+#' 
+#' For Cox proportional hazards models, the response should be a `Surv` object 
+#' (created with `survival::Surv()`), and the `family` argument should be set to 
+#' `"cox"`. Only right-censored data are currently supported.  
 #' Stratified Cox models can be specified using the `strata` argument, or by 
-#' including `strata` terms in the model formula when using the formula interface
+#' including `strata` terms in the model formula when using the formula interface 
 #' `mfp2.formula`.
+
 #'
 #' @section Details on shifting, scaling, centering:
 #' 
@@ -228,11 +240,11 @@
 #' The result is the selection of one of the six models. For details see 
 #' Royston and Sauerbrei (2016).
 #' 
-#' **Sigmoid shapes and the M1–M6 model hierarchy**
+#' **Information criteria**
 #'
-#' Sigmoid-shaped relationships between \eqn{X} and \eqn{Y} occur only when 
-#' \eqn{\text{ACD}(X)} is included linearly (power of one). Among the M1–M6 models, 
-#' this condition is met by model M5.
+#' As an alternative criterion, the fit of models M1–M6 can be evaluated using 
+#' AIC or BIC. The model with the smallest AIC or BIC is selected.
+#' 
 #' 
 #' @section Details on  spike-at-zero (SAZ) modeling:
 #' In epidemiological and clinical studies, a continuous covariate `x` may have a 
@@ -242,7 +254,9 @@
 #' where some individuals have no exposure while others have positive values. When 
 #' `x = 0` defines a distinct subpopulation, the outcome for these individuals can 
 #' be modeled using a binary variable `Z`, while positive values are modeled with a 
-#' continuous FP function.
+#' continuous FP function or ACD transformation. To select a model, a two-stage 
+#' procedure has been proposed and implemented in the `mfp2()` function as
+#' described below.
 #'
 #' **Stage 1: Functional form selection**
 #'
@@ -297,18 +311,17 @@
 #' if the FP function is removed, leaving only \eqn{Z} in the model, the
 #' covariate's effect is entirely captured by the binary indicator. It should 
 #' be noted that the presence of \eqn{Z} in Stage 1 may influence the selection
-#' of FP powers; consequently, the final powers may differ from those obtained
-#' in a standard FP analysis where both \code{spike = FALSE} and 
-#' \code{catzero = FALSE} are applied.
+#' of FP powers; consequently, the final FP powers may differ from those obtained
+#' in a standard FP analysis where \code{zero = TRUE} and \code{spike = FALSE}.
 #' 
-#' @section Handling extreme proportions of zeros in spike-at-zero (SAZ) modeling:
-#' The spike-at-zero (SAZ) approach is meaningful only when the proportion of zeros
-#' in a covariate is moderate, typically ranging from 5% to 95%. Covariates with
-#' fewer than 5% zeros may not contain sufficient information to justify a 
-#' separate binary indicator, particularly in small samples where estimation of 
-#' separate FP terms could be unstable. Conversely, covariates with more than 95% 
-#' zeros are dominated by the zero values, leaving the positive portion too sparse 
-#' for reliable estimation.
+#' @section Handling Extreme Proportions of Zeros in Spike-at-Zero Modeling:
+#' The spike-at-zero (SAZ) approach is meaningful only when the proportion of 
+#' zeros in a covariate is moderate. Covariates with fewer than 5% zeros may 
+#' not contain sufficient information to justify a separate binary indicator, 
+#' particularly in small samples where estimation of separate FP terms could be
+#' unstable. Conversely, covariates with more than 95% zeros are dominated by
+#' the zero values, leaving the positive portion too sparse 
+#' for reliable functional form estimation.
 #'
 #' In the implementation, the `reset_spike` function automatically addresses such 
 #' extreme cases. By default, if the proportion of zeros is below 5% or above 95%, 
@@ -353,29 +366,31 @@
 #' functional forms, along with the selection algorithm with a significance 
 #' level of 0.05 for all variables. 
 #' 
-#' @section Handling nonpositive values (\code{zero} and \code{catzero}):
+#' @section Handling Nonpositive Values (\code{zero} and \code{catzero}):
 #'
 #' The \code{zero} and \code{catzero} options provide mechanisms for handling 
 #' covariates with nonpositive values in fractional polynomial (FP) models, 
 #' especially when those values have a qualitatively different interpretation
 #' than positive ones.
 #'
-#' The \code{zero} argument allows fitting FP models using only the positive 
+#' The \code{zero} argument enables fitting FP models using only the positive 
 #' values of a covariate, while treating nonpositive values (e.g., zero or 
-#' negative) as exactly zero. This is useful when the relationship between the
-#' covariate and the outcome is expected to begin only above zero. For example,
-#' in modeling the effect of cigarette consumption, nonsmokers (zero cigarettes)
-#' may be fundamentally different from smokers. Instead of applying a constant
-#' shift (e.g., adding 1) to all values before transformation, the \code{zero} 
-#' argument allows the model to treat zero values as a separate baseline and 
-#' apply FP transformations only to the positive values.
+#' negative) as exactly zero. In other words, only the positive values of \eqn{x} 
+#' are transformed, and the nonpositive values are set to zero. This approach is 
+#' useful when the relationship between the covariate and the outcome is expected 
+#' to start above zero. For example, in modeling the effect of cigarette 
+#' consumption, nonsmokers (zero cigarettes) may be fundamentally different from
+#' smokers. Instead of applying a constant shift (e.g., adding 1) to all values 
+#' before transformation, the \code{zero} argument allows the model to treat 
+#' zero values as a separate baseline and apply FP transformations only to the
+#' positive values.
 #'
 #' The \code{catzero} argument extends this idea by automatically creating a 
 #' binary indicator for whether the covariate is positive. Specifically, for 
 #' each covariate where \code{catzero = TRUE}, a binary variable \code{Z} is 
 #' created such that:
 #'  
-#' \code{Z = 1} if the covariate value is zero (x = 0)  
+#' \code{Z = 1} if the covariate value is zero (x = 0)  and 
 #' \code{Z = 0} if the covariate value is positive (x > 0)
 #' 
 #' This indicator is  included in the model alongside the transformed version 
@@ -465,8 +480,11 @@
 #' @param subset an optional vector specifying a subset of observations
 #' to be used in the fitting process. Default is `NULL` and all observations are 
 #' used. See Details below. 
-#' @param family a character string representing a `glm()` family object as well
-#' as Cox models. For more information, see details section below.
+#' @param family Either a character string specifying the model family 
+#'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
+#'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
+#'   or `stats::binomial(link = "logit")`. For Cox models, only the character 
+#'   string `"cox"` is allowed.
 #' @param criterion a character string specifying the criterion used to select 
 #' variables and FP models of different degrees. 
 #' Default is to use p-values in which case the user can specify
@@ -497,9 +515,9 @@
 #' However, this option also keeps the specified variables in the model when 
 #' using the BIC or AIC criteria. 
 #' @param xorder a string determining the order of entry of the covariates
-#' into the model-selection algorithm. The default is `ascending`, which enters
-#' them by ascending p-values, or decreasing order of significance in a
-#' multiple regression (i.e. most significant first).
+#' into the model-selection algorithm (backfitting algorithm). The default is 
+#' `ascending`, which enters them by ascending p-values, or decreasing order of 
+#' significance in a multiple regression (i.e. most significant first).
 #' `descending` places them in reverse significance order, whereas 
 #' `original` respects the original order in `x`.
 #' @param powers a named list of numeric values specifying the set of candidate 
@@ -527,12 +545,12 @@
 #' models. See \code{survival::coxph()} for details.
 #' @param acdx a character vector giving the names of continuous variables to 
 #' undergo the approximate cumulative distribution (ACD) transformation. Using 
-#' this also triggers the function-selection procedure for ACD to determine the 
-#' best-fitting FP1(p1, p2) model (see Details). This argument is not available 
-#' in the formula interface (`mfp2.formula`), where the user should instead use 
-#' `fp()`. Within `fp()` terms, the ACD transformation is specified via the 
-#' logical argument `acdx` rather than by listing variable names. The variable
-#' representing the ACD transformation of `x` is named `A_x`.
+#' this also triggers the function-selection procedure for ACD (FSPA) to 
+#' determine the best-fitting FP1(p1, p2) model (see Details). This argument is 
+#' not available in the formula interface (`mfp2.formula`), where the user
+#' should instead use `fp()`. Within `fp()` terms, the ACD transformation is 
+#' specified via the logical argument `acdx` rather than by listing variable 
+#' names. The variable representing the ACD transformation of `x` is named `A_x`.
 #' @param ftest a logical indicating whether `mfp2` should use critical values 
 #' from the F-distribution instead of the Chi-Square distribution for small-sample 
 #' normal error models. This affects variable selection, functional form selection, 
@@ -564,7 +582,7 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
-#' @param verbose a logical; run in verbose mode.
+#' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
 #' @param \dots Not used.
 #' @examples
 #'

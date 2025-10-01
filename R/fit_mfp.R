@@ -21,9 +21,11 @@
 #' @param df a numeric vector of length nvars of degrees of freedom.
 #' @param center a logical vector of length nvars indicating if variables are 
 #' to be centered.
-#' @param family Either a character string naming the family (e.g., "gaussian", "binomial", "cox") 
-#'   or a function that returns a GLM family object (e.g., stats::gaussian). 
-#'   For Cox models, only a character string "cox" is allowed.
+#' @param family Either a character string specifying the model family 
+#'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
+#'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
+#'   or `stats::binomial(link = "logit")`. For Cox models, only the character 
+#'   string `"cox"` is allowed.
 #' @param family_string A character string representing the selected family, 
 #'   e.g., "gaussian".
 #' @param criterion a character string defining the criterion used to select 

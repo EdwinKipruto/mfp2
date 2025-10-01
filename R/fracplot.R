@@ -62,8 +62,9 @@
 #'
 #' Plot behavior for each decision:
 #' * If `spike_decision == 1`, the plot shows the FP function for positive values 
-#'   and includes the binary spike-at-zero indicator. The mean value for observations 
-#'   at zero is also displayed with a vertical error bar. The plot title includes 
+#'   and includes the binary spike-at-zero indicator. The term 
+#'   \eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also 
+#'   displayed with a vertical error bar. The plot title includes 
 #'   `+ z` to indicate the presence of the spike-at-zero component. The FP power 
 #'   for the positive part is enclosed in parentheses. For example, `FP(0) + z` 
 #'   indicates an FP power of 0 (log) for the positive values.
@@ -72,6 +73,7 @@
 #'   confidence intervals is displayed.
 #' * If `spike_decision == 2` (or not specified), the covariate is plotted as a 
 #'   continuous FP function in the usual way.
+#'  See \code{fracplot} for details on partial predictors
 #' @examples
 #'
 #' # Gaussian response

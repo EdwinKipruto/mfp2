@@ -115,8 +115,9 @@ spike-at-zero indicator.
 Plot behavior for each decision:
 \itemize{
 \item If \code{spike_decision == 1}, the plot shows the FP function for positive values
-and includes the binary spike-at-zero indicator. The mean value for observations
-at zero is also displayed with a vertical error bar. The plot title includes
+and includes the binary spike-at-zero indicator. The term
+\eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also
+displayed with a vertical error bar. The plot title includes
 \code{+ z} to indicate the presence of the spike-at-zero component. The FP power
 for the positive part is enclosed in parentheses. For example, \code{FP(0) + z}
 indicates an FP power of 0 (log) for the positive values.
@@ -125,6 +126,7 @@ the title). Mean values at 0 and 1 are connected with a line, and a ribbon showi
 confidence intervals is displayed.
 \item If \code{spike_decision == 2} (or not specified), the covariate is plotted as a
 continuous FP function in the usual way.
+See \code{fracplot} for details on partial predictors
 }
 }
 \section{Functions}{

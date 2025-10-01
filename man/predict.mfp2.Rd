@@ -129,9 +129,17 @@ where \eqn{x_j^*} is the transformed variable (centered if \code{center = TRUE})
 
 If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
 partial predictor becomes
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
-where \eqn{z_j^*} is the binary indicator for nonpositive values and
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
+where \eqn{(x_j^*)^+ = \max(x_j^*,0)} denotes the positive-part transformation,
+\eqn{z_j^*} is the binary indicator for nonpositive values and
 \eqn{\hat{\beta}_{z_j}} is its corresponding coefficient.
+
+Explicitly:
+When \eqn{x_j = 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + 0 \cdot \hat{\beta}_j + \hat{\beta}_{z_j} = \hat{\beta}_0 + \hat{\beta}_{z_j}}.
+When \eqn{x_j > 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + 0 \cdot \hat{\beta}_{z_j} = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
+
+If only \code{zero = TRUE} (and \code{catzero = FALSE}), the partial predictor becomes
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j}.
 
 For a second-degree fractional polynomial (FP2), the partial predictor
 takes the form
@@ -140,7 +148,10 @@ where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components
 of the original variable (centered if \code{center = TRUE}).
 
 If \code{catzero = TRUE}, the FP2 partial predictor extends to
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
+
+If only \code{zero = TRUE} (and \code{catzero = FALSE}), the FP2 partial predictor extends to
+\eqn{\hat{\eta}_j = (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
 
 This functionality is particularly useful for visualizing the functional
 relationship of a continuous variable, or for assessing model fit when
@@ -159,10 +170,10 @@ transformed reference value \eqn{x_j^{*(\mathrm{ref})}}, i.e.,
 \eqn{f(x_j^*) - f(x_j^{*(\mathrm{ref})})}.
 
 For a first-degree fractional polynomial (FP1), the partial predictor is
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
-If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}. If a spike-at-zero
+binary indicator is included (\code{catzero = TRUE}), the
 partial predictor becomes
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
 where \eqn{z_j^*} is the binary indicator for nonpositive values.
 The contrast is then computed as the difference between the partial predictor
 evaluated at \eqn{x_j^*} (and \eqn{z_j^*} if \code{catzero = TRUE}) and the
@@ -173,7 +184,7 @@ For a second-degree fractional polynomial (FP2), the partial predictor is
 \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}.
 If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
 partial predictor becomes
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
+\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
 The contrast is then computed in the same conditional manner as for FP1.
 
 Here, \eqn{x_j^*}, \eqn{x_{j1}^*}, \eqn{x_{j2}^*}, and \eqn{z_j^*} are the

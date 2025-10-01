@@ -51,9 +51,11 @@ indicating the fp powers to be used in the current step for all variables
 
 \item{offset}{a vector of length nobs of offsets.}
 
-\item{family}{Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
-or a function that returns a GLM family object (e.g., stats::gaussian).
-For Cox models, only a character string "cox" is allowed.}
+\item{family}{Either a character string specifying the model family
+(e.g., "gaussian", "binomial", "poisson", "cox") or a function that
+returns a GLM family object, such as \code{stats::gaussian(link = "identity")}
+or \code{stats::binomial(link = "logit")}. For Cox models, only the character
+string \code{"cox"} is allowed.}
 
 \item{family_string}{A character string representing the selected family,
 e.g., "gaussian".}

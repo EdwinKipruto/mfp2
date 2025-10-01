@@ -2,8 +2,9 @@
 
 0 errors | 0 warnings | 1 note
 
-* This update removes `NeedsCompilation: yes` from DESCRIPTION, fixes a bug in
-`predict.mfp2()` related to `type = "terms"`, adds a new `nseq` argument, 
-improves documentation, and addresses an issue with the `keep` argument in 
-`mfp2()` when using AIC/BIC criteria.
+* This update adds support for modeling semicontinuous covariates with the spike-at-zero algorithm, 
+introduces `zero` and `catzero` options in `mfp2()`, extends the `family` argument to accept GLM family 
+functions and link specifications, fixes a bug in `predict.mfp2()` for `type = "response"` in the binomial family, 
+improves efficiency in `transform_data_step()`, and updates `fracplot()` to allow plotting variables with a spike at zero.
+
 

@@ -3,21 +3,28 @@
 #' Obtains predictions from an `mfp2` object.
 #' 
 #' @details 
-#' To prepare the `newdata` for prediction, this function applies any 
-#' necessary shifting based on factors obtained from the training data. 
-#' It is important to note that if the shifting factors estimated from the 
-#' training data are not sufficiently large, variables in `newdata` may end up
-#' being non-positive, which can cause prediction errors when non-linear 
-#' functional forms such as logarithms are used. In such cases, the function
-#' issues a warning. 
-#' The next step involves transforming the data using the selected
-#' fractional polynomial (FP) powers. After transformation, variables are
-#' centered if `center` was set to TRUE in `mfp2()`. Once transformation 
-#' (and centering) is complete, the transformed data is passed 
-#' to either `predict.glm()` or `predict.coxph()`, depending on the model 
-#' family used, provided that `type` is neither `terms` nor `contrasts` (see the
-#' section handling `terms` and `contrasts` for details).
-#'
+#' When `newdata` is supplied, it is first shifted using the factors obtained 
+#' from the training data, then transformed using the selected fractional 
+#' polynomial powers, and optionally centered if `center = TRUE` was used in 
+#' the original `mfp2()` fit. If the shifting factors from the training data 
+#' are not large enough, some variables may remain non-positive, which can 
+#' cause errors when non-linear transformations (e.g., logarithms) are applied; 
+#' in such cases, a warning is issued.  
+#' 
+#' After transformation (and centering), the prepared `newdata` is passed 
+#' directly to `predict.glm()` or `predict.coxph()` depending on the model family, 
+#' including proper handling of offsets. This replaces manual linear predictor 
+#' computation in previous implementations and allows computation of `se.fit` 
+#' when requested.
+#' 
+#' **Terms predictions** (`type = "terms"`) compute partial linear predictors 
+#' for selected variables, accounting for fractional polynomial transformations 
+#' and spike-at-zero indicators.  
+#' 
+#' **Contrasts** (`type = "contrasts"`) compute differences relative to reference 
+#' values. Reference values are shifted, transformed, and centered consistently 
+#' with the model. If `ref = NULL`, the mean (continuous) or minimum (binary) 
+#' of shifted values is used. 
 #' @section Terms prediction:
 #' If `type = "terms"`, this function computes the partial linear predictors 
 #' for each variable included in the final model. Unlike `predict.glm()` and 
@@ -147,6 +154,13 @@
 #' # default interface
 #' fit1 = mfp2(x, y, verbose = FALSE)
 #' predict(fit1) # make predictions
+#' 
+#' # Binomial model
+#' data("pima")
+#' x2 <- as.matrix(pima[,2:9])
+#' y2 <- as.vector(pima$y)
+#' fit2 <- mfp2(x2, y2, family = binomial(link = "logit"), verbose = FALSE)
+#' predict(fit2, newdata = x2, type = "response") # make predictions on response scale
 #' 
 #' @return 
 #' For any `type` other than `"terms"` the output conforms to the output
@@ -360,43 +374,74 @@ predict.mfp2 <- function(object,
   
   # usual predicted values
   # transform newdata using the FP powers from the training model
+  # if (!is.null(newdata)) {
+  #   
+  #   newdata <- prepare_newdata_for_predict(object, newdata, strata = strata,
+  #               check_binary = FALSE)
+  #   betas <- object$coefficients
+  # 
+  #   # check whether offset was used in the model
+  #   is_offset <- all(object$offset == 0)
+  #   
+  #   if (object$family_string == "cox") {
+  #     # subset newdata based on names of coefficients in the model
+  #     newdata <- as.matrix(newdata[,names(betas),drop = FALSE])
+  #     nfit <- newdata %*% betas
+  #   } else {
+  #     # remove intercept before subsetting 
+  #     newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
+  #     nfit <- cbind(1,newdata) %*% betas
+  # 
+  #   } 
+  # 
+  #   if (!is_offset) {
+  #     if (is.null(newoffset)) {
+  #       stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
+  #     }
+  #      nr <- dim(newdata)[1]
+  #      if (nr != length(newoffset)) {
+  #        stop("The length of newoffset must be equal to the number of rows of newdata", call. = FALSE)
+  #      }
+  #     nfit <- nfit + newoffset
+  #   }
+  #   
+  #   # return predictions based on family and type
+  #   pred <- transform_linear_predictor(
+  #     nfit, object$family_string,object$family$link, type
+  #     )
+  #   return(pred)
+  #   
+  # }
+  
+  # usual predicted values
+  # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
     
-    newdata <- prepare_newdata_for_predict(object, newdata, strata = strata,
-                check_binary = FALSE)
-    betas <- object$coefficients
-  
-    # check whether offset was used in the model
-    is_offset <- all(object$offset == 0)
+    newdata <- prepare_newdata_for_predict(
+      object, newdata, strata = strata, check_binary = FALSE
+    )
     
-    if (object$family_string == "cox") {
-      # subset newdata based on names of coefficients in the model
-      newdata <- as.matrix(newdata[,names(betas),drop = FALSE])
-      nfit <- newdata %*% betas
-    } else {
-      # remove intercept before subsetting 
-      newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
-      nfit <- cbind(1,newdata) %*% betas
-
-    } 
-  
-    if (!is_offset) {
-      if (is.null(newoffset)) {
-        stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
-      }
-       nr <- dim(newdata)[1]
-       if (nr != length(newoffset)) {
-         stop("The length of newoffset must be equal to the number of rows of newdata", call. = FALSE)
-       }
-      nfit <- nfit + newoffset
+    # check whether offset was used in the model
+    has_offset <- any(object$offset != 0)
+    
+    if (has_offset && is.null(newoffset)) {
+      stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
     }
     
-    # return predictions based on family and type
-    pred <- transform_linear_predictor(
-      nfit, object$family_string,object$family$link, type
+    # dispatch based on family
+    if (object$family_string == "cox") {
+      # survival models
+      pred <- getFromNamespace("predict.coxph", "survival")(
+        object, newdata = newdata, type = type, offset = newoffset, ...
       )
-    return(pred)
+    } else {
+      # glm models
+      pred <- stats::predict.glm(
+        object, newdata = newdata, type = type, offset = newoffset, ...
+      )
+    }
     
+    return(pred)
   }
   
   # no newdata supplied

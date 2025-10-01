@@ -74,7 +74,7 @@ mfp2(x, ...)
 \item{x}{for \code{mfp2.default}: \code{x} is an input matrix of dimensions
 nobs x nvars. Each row is an observation vector.}
 
-\item{...}{not used.}
+\item{\dots}{Not used.}
 
 \item{y}{for \code{mfp2.default}: \code{y} is a vector for the response variable.
 For \code{family = "binomial"} it should be  a vector with two levels (see

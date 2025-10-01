@@ -92,20 +92,28 @@ Each entry is a \code{data.frame} with the following columns:
 Obtains predictions from an \code{mfp2} object.
 }
 \details{
-To prepare the \code{newdata} for prediction, this function applies any
-necessary shifting based on factors obtained from the training data.
-It is important to note that if the shifting factors estimated from the
-training data are not sufficiently large, variables in \code{newdata} may end up
-being non-positive, which can cause prediction errors when non-linear
-functional forms such as logarithms are used. In such cases, the function
-issues a warning.
-The next step involves transforming the data using the selected
-fractional polynomial (FP) powers. After transformation, variables are
-centered if \code{center} was set to TRUE in \code{mfp2()}. Once transformation
-(and centering) is complete, the transformed data is passed
-to either \code{predict.glm()} or \code{predict.coxph()}, depending on the model
-family used, provided that \code{type} is neither \code{terms} nor \code{contrasts} (see the
-section handling \code{terms} and \code{contrasts} for details).
+When \code{newdata} is supplied, it is first shifted using the factors obtained
+from the training data, then transformed using the selected fractional
+polynomial powers, and optionally centered if \code{center = TRUE} was used in
+the original \code{mfp2()} fit. If the shifting factors from the training data
+are not large enough, some variables may remain non-positive, which can
+cause errors when non-linear transformations (e.g., logarithms) are applied;
+in such cases, a warning is issued.
+
+After transformation (and centering), the prepared \code{newdata} is passed
+directly to \code{predict.glm()} or \code{predict.coxph()} depending on the model family,
+including proper handling of offsets. This replaces manual linear predictor
+computation in previous implementations and allows computation of \code{se.fit}
+when requested.
+
+\strong{Terms predictions} (\code{type = "terms"}) compute partial linear predictors
+for selected variables, accounting for fractional polynomial transformations
+and spike-at-zero indicators.
+
+\strong{Contrasts} (\code{type = "contrasts"}) compute differences relative to reference
+values. Reference values are shifted, transformed, and centered consistently
+with the model. If \code{ref = NULL}, the mean (continuous) or minimum (binary)
+of shifted values is used.
 }
 \section{Terms prediction}{
 
@@ -198,6 +206,13 @@ y = as.numeric(prostate$lpsa)
 # default interface
 fit1 = mfp2(x, y, verbose = FALSE)
 predict(fit1) # make predictions
+
+# Binomial model
+data("pima")
+x2 <- as.matrix(pima[,2:9])
+y2 <- as.vector(pima$y)
+fit2 <- mfp2(x2, y2, family = binomial(link = "logit"), verbose = FALSE)
+predict(fit2, newdata = x2, type = "response") # make predictions on response scale
 
 }
 \seealso{

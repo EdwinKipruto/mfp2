@@ -565,7 +565,7 @@
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
 #' @param verbose a logical; run in verbose mode.
-#' @param ... not used.
+#' @param \dots Not used.
 #' @examples
 #'
 #' # Gaussian model

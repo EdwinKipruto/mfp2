@@ -901,4 +901,57 @@ create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL
     }
     return(data)
   }
+#' Cumulative (Threshold) Contrast Coding for Ordered Factors
+#'
+#' @description
+#' Generates a contrast matrix for ordered factors in which each column
+#' represents a cumulative comparison: level k versus all lower levels.
+#' This is sometimes called cumulative or sequential dummy coding.
+#'
+#' @param n Integer or character vector. If an integer, specifies the number
+#'   of levels. If a character vector, its elements are used as factor levels.
+#'
+#' @return A numeric matrix with \code{length(n)} rows and \code{length(n)-1} columns.
+#'   Each column is a dummy variable encoding the cumulative comparison of
+#'   higher levels against lower levels. Row names correspond to factor levels.
+#'
+#' @details
+#' For an ordered factor with levels A < B < C < D, the resulting matrix
+#' produces three columns:
+#' Column 1 compares B, C, D versus A; 
+#' Column 2 compares C, D versus A and B; 
+#' Column 3 compares D versus A, B, and C.
+#' Each element of the matrix is 0 or 1, with 1 indicating that the observation
+#' belongs to the "higher" category for that threshold.
+#'
+#' **Column Names:** Column names are formatted as \code{varname_1}, \code{varname_2}, etc.
+#' These names are syntactically valid, unique, and correspond to thresholds in order:
+#' \code{varname_1} represents the first threshold (level 2 vs level 1),
+#' \code{varname_2} represents the second threshold (level 3 vs levels 1 and 2), etc.
+#'
+#' This contrast matrix can be assigned to an ordered factor via
+#' \code{contrasts()} before fitting a model, e.g., in \code{mfp2.formula()}.
+#' This approach preserves ordinal information while allowing threshold-type
+#' interpretation of regression coefficients.
+#'
+#' @examples
+#' # Create a data frame
+#' data <- data.frame(grade = c("A", "B", "C", "D", "A"))
+#' # Convert the column to an ordered factor
+#' data$grade <- factor(data$grade, levels = c("A", "B", "C", "D"), ordered = TRUE)
+#' # Assign the cumulative contrasts to the ordered factor
+#' contrasts(data$grade) <- contr.cumulative(levels(data$grade))
+#'
+#' @export
+contr.cumulative <- function(n) {
+  if (is.numeric(n)) nlev <- n else nlev <- length(n)
+  mat <- matrix(0, nrow = nlev, ncol = nlev - 1)
+  for (j in 1:(nlev - 1)) {
+    mat[(j + 1):nlev, j] <- 1
+  }
+  rownames(mat) <- if (is.numeric(n)) as.character(seq_len(n)) else n
+  # Safe column names without special characters
+  colnames(mat) <- paste0("_", seq_len(nlev - 1))
+  mat
+}
 

@@ -1308,78 +1308,50 @@ matter knowledge you may also decide to combine some of the categories,
 resulting in a smaller number of dummy variables and decide to include these
 dummy variables in the model, not allowing their elimination. In principle, this
 would be an important decision from the initial data analysis process (Huebner
-et al 2018).
+et al. 2018).
 
-Categorical variables can be measured using an ordinal scale or a nominal scale.
-An ordinal variable indicates that the levels of the variable are ordered in
-some way, such as the levels of income (e.g., low income, medium income, and
-high income). On the other hand, a nominal variable has no intrinsic ordering
-among its categories. When variable selection is involved in the model building
-process, it is important to consider different approaches for coding ordinal and
-nominal variables in order to facilitate interpretation. This is because, during
-variable selection, certain dummy variables may be eliminated, which is
-analogous to combining some levels of variables. For more details on handling
-categorical variables, refer to Royston and Sauerbrei (2008, Chapter 3).
+Categorical variables can be measured using an **ordinal scale** or a **nominal scale**. An ordinal variable has levels that follow a meaningful order, such as 
+income categories (low, medium, high). A nominal variable has categories with no intrinsic order, such as blood type or gender.  
 
-The `model.matrix()` function in **R** automatically generates dummy variables
-using a dummy coding for categorical variables. This will ignore any ordinal
-structure of the variables. The `mfp2` package offers a function called
-`create_dummy_variables()` that provides an alternative to the `model.matrix()`
-specifically designed for creating dummy variables for both ordinal and nominal
-variables.
+During variable selection, some dummy variables may be eliminated, which is 
+effectively equivalent to combining levels of a variable. For more details on 
+handling categorical variables in regression modeling, see Royston and Sauerbrei
+(2008, Chapter 3).  
 
-Before using the `create_dummy_variables()` function, we recommend converting
-the variable of interest to a factor using the `factor()` function in base R. If
-necessary, you can specify the levels of the variable. Otherwise, the first
-level will be used as the reference. We will illustrate how to handle
-categorical variables using the `art` data. The outcome variable is continuous,
-and there are 10 covariates.
+In R, the `model.matrix()` function automatically generates dummy variables for factors. For ordinal variables, users should assign an appropriate contrast matrix to preserve order information. The `mfp2` package provides the `contr.cumulative()` function for creating cumulative contrasts. Nominal variables can remain as standard factors.  
 
-The R code below demonstrates how to convert the ordinal variable `x4`, which
-has 3 levels (1 as the reference, 2, and 3), to dummy variables using ordinal
-coding. Similarly, it demonstrates how to convert the nominal variable `x9`,
-which also has 3 levels (1 as the reference, 2, and 3), to dummy variables using
-categorical coding. The final data will contain the dummy variables, which can
-be supplied to the `mfp2()` function.
+Before fitting a model, convert the variable to a factor using `factor()` and set `ordered = TRUE` for ordinal variables. Levels can be specified explicitly; otherwise, the first level is the reference.
 
-```{r out.lines = 103}
-# load art data
+```{r categorical-variables-combined, message=TRUE, warning=TRUE}
+# Load the art data
 data("art")
 
-# order the levels of the variable such that Levels: 1 < 2 < 3
+# --- Ordinal variable x4 ---
 art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
+contrasts(art$x4) <- contr.cumulative(levels(art$x4))
 
-# convert x9 to factor and assign level 1 as reference group
+# --- Nominal variable x9 ---
 art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
 
-# create dummy variables for x4 and x9 based on ordinal an categorical coding and drop 
-# the original variable
-art <- create_dummy_variables(art, 
-                              var_ordinal = c("x4"),
-                              var_nominal = c("x9"),
-                              drop_variables = TRUE)
-
-# display the first 20 observations
+# Display the first 10 rows to check
 head(art, 10)
-```
 
-After creating the dummy variables (`x4_1` and `x4_2` for `x4`, and `x92` and
-`x93` for `x9`), we fit the MFP model using the `mfp2()` function with default
-parameters. If a categorical variable is not an important predictor of the
-outcome, all the dummy variables will be eliminated, as in the case of variable
-`x9.` On the other hand, variable `x4` is an important predictor, and only one
-dummy (`x4_2`) out of the two was eliminated. Elimination of `x4_2` means that
-the two categories  2 and 3 are collapsed as a result of the selection
-process.
+# -- Formula interface example--
+# Dummy variables for x4 and x9 are generated internally
+# Other numeric variables remain unchanged
+fit_formula <- mfp2(y ~ fp(x1) + x2 + fp(x3) + x4 + fp(x5) + fp(x6) + fp(x7) + x8 + x9 + fp(x10), data = art, verbose = FALSE)
 
-```{r out.lines = 103}
-# create matrix x and outcome y
-x <- as.matrix(art[,-1])
+# --Matrix interface example--
+# Manually create model matrix for all predictors
+x <- model.matrix(y ~ . , data = art)[,-1]  # exclude intercept
+head(x)
 y <- as.numeric(art$y)
 
-# fit mfp using default interface with default parameters
-fit <- mfp2(x,y, verbose = FALSE)
-fit
+# Fit the model using matrix interface
+fit_matrix <- mfp2(x = x, y = y, verbose = FALSE)
+
+# Display the fitted object
+fit_matrix
 ```
 
 ## Logistic regression

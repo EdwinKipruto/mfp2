@@ -509,19 +509,10 @@ produce orthogonal contrasts representing trend effects across ordered levels
 If the analysis requires dummy coding that reflects ordinal thresholds—
 for instance, comparing level A versus the rest, or levels A and B versus
 the rest—the user must define and assign an appropriate contrast matrix
-before calling \code{mfp2.formula()}. A simple cumulative contrast can be
-created as follows:
+before calling \code{mfp2.formula()}. This can be done using the
+\code{contr.cumulative()} function provided in this package:
 
 \preformatted{
-contr.cumulative <- function(n) {
-  if (is.numeric(n)) nlev <- n else nlev <- length(n)
-  mat <- matrix(0, nrow = nlev, ncol = nlev - 1)
-  for (j in 1:(nlev - 1)) mat[(j + 1):nlev, j] <- 1
-  rownames(mat) <- if (is.numeric(n)) as.character(seq_len(n)) else n
-  colnames(mat) <- paste0("≥", rownames(mat)[2:nlev])
-  mat
-}
-
 data$x <- ordered(data$x, levels = c("A", "B", "C", "D"))
 contrasts(data$x) <- contr.cumulative(levels(data$x))
 fit <- mfp2(y ~ x, data = data)

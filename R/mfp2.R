@@ -65,7 +65,6 @@
 #' Stratified Cox models can be specified using the `strata` argument, or by 
 #' including `strata` terms in the model formula when using the formula interface 
 #' `mfp2.formula`.
-
 #'
 #' @section Details on shifting, scaling, centering:
 #' 
@@ -127,6 +126,90 @@
 #' data pre-processing (e.g., centering or scaling) across both subsets. In 
 #' this case, `subset` can restrict model selection to the chosen group while 
 #' retaining consistent pre-processing parameters. 
+#' 
+#' @section mfp2 formula interface:
+#' 
+#' The \code{mfp2.formula()} constructs a model frame from the supplied formula
+#' and data, processes all predictor variables, and fits a multivariable fractional
+#' polynomial model by calling \code{mfp2.default()} internally.
+#'
+#' The formula interface automatically handles several tasks:
+#' * detection and transformation of variables wrapped in \code{fp()};
+#' * creation of dummy variables for factors using \code{model.matrix()};
+#' * synchronization of arguments such as \code{select} and \code{keep} with 
+#' the expanded model matrix.
+#'
+#' When the user specifies a variable name in \code{keep}, all corresponding
+#' dummy variables generated from that variable are automatically included
+#' and protected from exclusion during model selection.
+#' 
+#' @section Handling of Categorical Variables:
+#'
+#' The \code{mfp2.formula()} method expands categorical variables through
+#' \code{\link[stats]{model.matrix}}, ensuring that the model is fitted on
+#' a fully numeric design matrix. This affects how predictors are represented
+#' internally and how arguments such as \code{keep} and \code{select} are
+#' interpreted.
+#'
+#' ## Unordered Factors
+#'
+#' Unordered categorical variables (created using \code{factor()}) are encoded
+#' using the default treatment contrasts (\code{\link[stats]{contr.treatment}}).
+#' The first level of the factor is treated as the reference category, and a
+#' dummy variable is created for each of the remaining levels. For example:
+#'
+#' \preformatted{
+#' x <- factor(c("A", "B", "C"))
+#' model.matrix(~ x)
+#' # (Intercept) xB xC
+#' }
+#'
+#' When the argument \code{keep} includes the name of a categorical variable,
+#' all dummy variables derived from that factor (e.g., \code{xB}, \code{xC})
+#' are automatically retained in the model. The corresponding entries in
+#' \code{select} are internally set to 1 to prevent their removal during
+#' variable selection.
+#'
+#' ## Ordered Factors
+#'
+#' Ordered categorical variables (created using \code{ordered()}) are, by default,
+#' encoded using polynomial contrasts (\code{\link[stats]{contr.poly}}), which
+#' produce orthogonal contrasts representing trend effects across ordered levels
+#' (e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
+#'
+#' If the analysis requires dummy coding that reflects ordinal thresholds—
+#' for instance, comparing level A versus the rest, or levels A and B versus
+#' the rest—the user must define and assign an appropriate contrast matrix
+#' before calling \code{mfp2.formula()}. A simple cumulative contrast can be
+#' created as follows:
+#'
+#' \preformatted{
+#' contr.cumulative <- function(n) {
+#'   if (is.numeric(n)) nlev <- n else nlev <- length(n)
+#'   mat <- matrix(0, nrow = nlev, ncol = nlev - 1)
+#'   for (j in 1:(nlev - 1)) mat[(j + 1):nlev, j] <- 1
+#'   rownames(mat) <- if (is.numeric(n)) as.character(seq_len(n)) else n
+#'   colnames(mat) <- paste0("≥", rownames(mat)[2:nlev])
+#'   mat
+#' }
+#'
+#' data$x <- ordered(data$x, levels = c("A", "B", "C", "D"))
+#' contrasts(data$x) <- contr.cumulative(levels(data$x))
+#' fit <- mfp2(y ~ x, data = data)
+#' }
+#'
+#' This approach generates cumulative dummy variables that preserve the
+#' ordinal nature of the variable while allowing for interpretable
+#' threshold-type effects. Users should ensure that the contrast specification
+#' reflects the intended interpretation prior to fitting the model.
+#'
+#' ## The \code{mfp2.default()} Method
+#'
+#' The default method \code{mfp2.default()} does not perform any automatic
+#' expansion of factor variables. It assumes that the input design matrix
+#' \code{x} consists solely of numeric predictors. Therefore, when calling
+#' \code{mfp2.default()} directly, the user must create any required dummy or
+#' contrast-coded variables manually before model fitting.
 #'
 #' @section Details on  approximate cumulative distribution transformation:
 #' 
@@ -697,6 +780,8 @@
 #' 
 #' @seealso 
 #' \code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
+#' \code{\link[stats]{model.matrix}}, \code{\link[stats]{contr.treatment}},
+#' \code{\link[stats]{contr.poly}}
 #' 
 #' @export
 mfp2 <- function(x, ...){
@@ -1732,7 +1817,9 @@ mfp2.formula <- function(formula,
     y <- as.numeric(y)
   }
   
+  # Factor variables will be expanded in case they exist
   x <- model.matrix(terms_model, mf)
+  
   # remove intercept if necessary
   # intercept is coded as entry 0 in attribute assigned by model.matrix
   # intercept is always the first column
@@ -1890,6 +1977,27 @@ mfp2.formula <- function(formula,
       spike <- names(spike[spike])
     }
     
+  }
+  
+  # --- handle factor variables when keep is used ---
+  if (!is.null(keep)) {
+    vars <- colnames(x)
+    
+    # Expand keep: include dummy variables for categorical predictors
+    expanded_keep <- unique(unlist(lapply(keep, function(k) vars[startsWith(vars, paste0(k))])))
+    
+    # If no matches, preserve original names
+    expanded_keep <- if (length(expanded_keep) > 0) expanded_keep else keep
+    
+    # Update select_list: assign select = 1 for all columns in expanded_keep
+    for (ek in expanded_keep) {
+      if (ek %in% names(select_list)) {
+        select_list[[ek]] <- 1
+      }
+    }
+    
+    # Update 'keep' before passing to mfp2.default
+    keep <- expanded_keep
   }
   
   mfp2.default(x = x, 

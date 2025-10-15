@@ -33,6 +33,7 @@ fit_mfp(
   spike,
   min_prop,
   max_prop,
+  parallel,
   verbose
 )
 }
@@ -125,6 +126,10 @@ zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
 
 \item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
 zeros for which SAZ modeling is applied. Defaults to 0.95.}
+
+\item{parallel}{Logical; if TRUE, perform computations in parallel using the
+\code{future} package. You should set up a parallel plan beforehand using
+\code{future::plan()}, for example with \code{multisession} or \code{multicore}.}
 
 \item{verbose}{Logical; if \code{TRUE}, additional information will be printed
 during model fitting steps. Useful for understanding internal processing.

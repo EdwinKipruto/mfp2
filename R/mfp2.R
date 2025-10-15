@@ -656,6 +656,11 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
+#' @param parallel Logical; if TRUE, computations are performed in parallel using
+#' the `foreach` package. You must register a parallel backend
+#' before calling this function, for example with 
+#' `doParallel::registerDoParallel(cores = parallel::detectCores() - 1)`.
+#'   See the examples below for usage.
 #' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
 #' @param \dots Not used.
 #' @examples
@@ -809,6 +814,7 @@ mfp2.default <- function(x,
                          spike = NULL,
                          min_prop = 0.05,
                          max_prop = 0.95,
+                         parallel = FALSE,
                          verbose = TRUE,
                          ...) {
   
@@ -1522,7 +1528,8 @@ mfp2.default <- function(x,
       powers = power_list, method = ties, strata = istrata, nocenter = nocenter, 
       acdx = acdx, ftest = ftest, 
       control = control, zero = zero, catzero = catzero,spike = spike,
-      min_prop = min_prop, max_prop = max_prop, verbose = verbose
+      min_prop = min_prop, max_prop = max_prop, parallel = parallel,
+      verbose = verbose
   )
   
   # add additional information to fitted object
@@ -1561,6 +1568,7 @@ mfp2.formula <- function(formula,
                          control = NULL,
                          min_prop = 0.05,
                          max_prop = 0.95,
+                         parallel = FALSE,
                          verbose = TRUE,
                          ...) {
   # capture the call
@@ -2019,6 +2027,7 @@ mfp2.formula <- function(formula,
                spike = spike,
                min_prop = min_prop,
                max_prop = max_prop,
+               parallel = parallel,
                verbose = verbose
   )
 }

@@ -67,8 +67,6 @@
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param prev_adj_params Named list storing adjustment variable transformations 
 #' from previous steps for each variable.
-#' @param parallel Logical; if TRUE, perform computations in parallel using the
-#' `foreach` package.
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -158,7 +156,6 @@ find_best_fp_step <- function(x,
                               spike_decision,
                               acd_parameter,
                               prev_adj_params,
-                              parallel,
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -188,8 +185,7 @@ find_best_fp_step <- function(x,
     method = method, strata = strata, nocenter = nocenter, 
     control = control, rownames = rownames, zero = zero, catzero = catzero,
     spike = spike, spike_decision = spike_decision,
-    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    parallel = parallel
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params
   )
   
   if (verbose) {
@@ -606,7 +602,6 @@ compute_decision <- function(metrics, criterion, select, n_obs, ftest = FALSE) {
 #' @inheritParams find_best_fp_step
 #' @param degree degrees of freedom for fp transformation of `xi`.
 #' @param ... parameters passed to `fit_model()`.
-#' @importFrom foreach foreach %dopar%
 find_best_fpm_step <- function(x, 
                                xi,
                                degree,
@@ -621,7 +616,6 @@ find_best_fpm_step <- function(x,
                                spike_decision, # a numeric vector
                                acd_parameter,
                                prev_adj_params,
-                               parallel,
                                ...) {
   # Number of events
   n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
@@ -642,37 +636,37 @@ find_best_fpm_step <- function(x,
     prev_adj_params = prev_adj_params
   )
   
-  if (parallel) {
-    metrics_list <- foreach(i = seq_along(x_transformed$data_fp),
-                           .packages = "mfp2",
-                           .export = c("fit_model", "calculate_model_metrics")) %dopar% {
-    # combine FP variables for x of interest with adjustment variables
-    fit <- fit_model(
-      x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj),
-      y = y,
-      family = family, ...
-    )
-
-    # use degree many additional degrees of freedom
-    p <- sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
-
-    # respect acd
-    if (acdx[xi]) {
-      p[length(p)] <- sprintf("A(%s)", p[length(p)])
-    }
-    
-    # compute metrics
-    metric_val <- calculate_model_metrics(fit, n_obs, degree)
-
-    # return named list element
-    list(name = paste(p, collapse = " "), value = metric_val)
-
-  }
-
-  # Convert list to named data.table
-  metrics <- do.call(rbind, lapply(metrics_list, `[[`, "value"))
-  rownames(metrics) <- sapply(metrics_list, `[[`, "name")
-  } else {
+  # if (parallel) { # VERY SLOW. NO NEED FOR PARALLEL
+  #   metrics_list <- foreach(i = seq_along(x_transformed$data_fp),
+  #                          .packages = "mfp2",
+  #                          .export = c("fit_model", "calculate_model_metrics")) %dopar% {
+  #   # combine FP variables for x of interest with adjustment variables
+  #   fit <- fit_model(
+  #     x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj),
+  #     y = y,
+  #     family = family, ...
+  #   )
+  # 
+  #   # use degree many additional degrees of freedom
+  #   p <- sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
+  # 
+  #   # respect acd
+  #   if (acdx[xi]) {
+  #     p[length(p)] <- sprintf("A(%s)", p[length(p)])
+  #   }
+  #   
+  #   # compute metrics
+  #   metric_val <- calculate_model_metrics(fit, n_obs, degree)
+  # 
+  #   # return named list element
+  #   list(name = paste(p, collapse = " "), value = metric_val)
+  # 
+  # }
+  # 
+  # # Convert list to named data.table
+  # metrics <- do.call(rbind, lapply(metrics_list, `[[`, "value"))
+  # rownames(metrics) <- sapply(metrics_list, `[[`, "name")
+  # } else {
   # Sequential approach
   metrics <- list()
   for (i in seq_along(x_transformed$data_fp)) {
@@ -700,7 +694,7 @@ find_best_fpm_step <- function(x,
   }
   
   metrics <- do.call(rbind, metrics) 
-  }
+  #}
   model_best <- as.numeric(which.max(metrics[, "logl"]))
   
   list(
@@ -900,7 +894,6 @@ select_linear <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
-                          parallel,
                           ...) {
   
   n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
@@ -1060,7 +1053,6 @@ select_ra2 <- function(x,
                        spike_decision,
                        acd_parameter,
                        prev_adj_params,
-                       parallel,
                        ...) {
   
   if (degree < 1) {
@@ -1111,7 +1103,7 @@ select_ra2 <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -1198,7 +1190,7 @@ select_ra2 <- function(x,
         powers_current = powers_current, powers = powers, acdx = acdx,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter,
-        prev_adj_params = prev_adj_params, parallel = parallel, ...
+        prev_adj_params = prev_adj_params, ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1308,7 +1300,6 @@ select_ra2_acd <- function(x,
                            spike_decision,
                            acd_parameter,
                            prev_adj_params,
-                           parallel,
                            ...) {
   
   # simplify testing by defining test helper function
@@ -1358,7 +1349,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -1432,7 +1423,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1464,7 +1455,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1615,7 +1606,6 @@ select_ic <- function(x,
                       spike_decision,
                       acd_parameter,
                       prev_adj_params,
-                      parallel,
                       ...) {
   
   if (degree < 1) {
@@ -1669,7 +1659,7 @@ select_ic <- function(x,
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     )
   }
 
@@ -1751,7 +1741,6 @@ select_ic_acd <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
-                          parallel,
                           ...) {
   
   acdx_reset_xi <- acdx
@@ -1804,21 +1793,21 @@ select_ic_acd <- function(x,
       powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
       family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 1, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family, family_string = family_string, zero = zero, catzero = catzero, 
       spike_decision = spike_decision, acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     ), 
      find_best_fpm_step(
       x = x, xi = xi, degree = 2, y = y, 
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     )
   ),
   c(
@@ -1961,7 +1950,6 @@ select_ic_acd <- function(x,
 #' \item{current_params}{Named list containing adjustment variable parameters 
 #'  for reuse in later steps, including \code{powers_adj}, 
 #'   \code{spike_decision_adj}, \code{data_adj_list}, and \code{data_adj}.}
-#' @importFrom foreach foreach %dopar%
 #' @keywords internal
 transform_data_step <- function(x,
                                 xi,

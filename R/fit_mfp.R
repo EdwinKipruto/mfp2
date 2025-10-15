@@ -67,9 +67,6 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
-#' @param parallel Logical; if TRUE, perform computations in parallel using the
-#' `future` package. You should set up a parallel plan beforehand using
-#' `future::plan()`, for example with `multisession` or `multicore`.
 #' @param verbose Logical; if \code{TRUE}, additional information will be printed
 #' during model fitting steps. Useful for understanding internal processing. 
 #' Default is \code{FALSE}.
@@ -147,7 +144,6 @@ fit_mfp <- function(x,
                     spike,
                     min_prop, 
                     max_prop,
-                    parallel,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -347,7 +343,6 @@ fit_mfp <- function(x,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
-      parallel = parallel,
       verbose = verbose
     )
     
@@ -847,8 +842,8 @@ find_best_fp_cycle <- function(x,
                                spike_decision,
                                acd_parameter,
                                acdx,
-                               prev_adj_params,
-                               parallel) {
+                               prev_adj_params
+                               ) {
   
   # order of names of powers does not change
   names_x <- names(powers_current)
@@ -888,7 +883,6 @@ find_best_fp_cycle <- function(x,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
-      parallel = parallel,
       verbose = verbose
     )
     # Update parameters

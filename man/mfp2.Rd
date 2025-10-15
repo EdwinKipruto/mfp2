@@ -37,7 +37,6 @@ mfp2(x, ...)
   spike = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
-  parallel = FALSE,
   verbose = TRUE,
   ...
 )
@@ -67,7 +66,6 @@ mfp2(x, ...)
   control = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
-  parallel = FALSE,
   verbose = TRUE,
   ...
 )
@@ -253,13 +251,8 @@ interface (\code{mfp2.formula}), where spike is specified as a logical value wit
 zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
 
 \item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
-zeros for which SAZ modeling is applied. Defaults to 0.95.}
-
-\item{parallel}{Logical; if TRUE, computations are performed in parallel using
-the \code{foreach} package. You must register a parallel backend
-before calling this function, for example with
-\code{doParallel::registerDoParallel(cores = parallel::detectCores() - 1)}.
-See the examples below for usage.}
+zeros for which SAZ modeling is applied. Defaults to 0.95.
+before calling this function, for example with}
 
 \item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
 

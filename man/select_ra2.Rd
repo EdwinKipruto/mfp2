@@ -25,7 +25,6 @@ select_ra2(
   spike_decision,
   acd_parameter,
   prev_adj_params,
-  parallel,
   ...
 )
 }
@@ -100,9 +99,6 @@ if an element is \code{NULL}, the variable was not specified in the
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
 from previous steps for each variable.}
-
-\item{parallel}{Logical; if TRUE, perform computations in parallel using the
-\code{foreach} package.}
 
 \item{...}{passed to fitting functions \code{fit_model()}.}
 }

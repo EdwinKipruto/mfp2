@@ -31,8 +31,7 @@ find_best_fp_cycle(
   spike_decision,
   acd_parameter,
   acdx,
-  prev_adj_params,
-  parallel
+  prev_adj_params
 )
 }
 \arguments{
@@ -129,10 +128,6 @@ transformation.}
 \item{prev_adj_params}{Named list used to store previously computed adjustment
 variable transformations. This is updated at each step and reused in the next
 cycle to avoid recomputation.}
-
-\item{parallel}{Logical; if TRUE, perform computations in parallel using the
-\code{future} package. You should set up a parallel plan beforehand using
-\code{future::plan()}, for example with \code{multisession} or \code{multicore}.}
 }
 \value{
 A list with updated components \code{powers_current} (current FP powers for all

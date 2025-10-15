@@ -639,8 +639,9 @@ find_best_fpm_step <- function(x,
     x = x, xi = xi, df = 2 * degree, powers_current = powers_current, 
     powers = powers, acdx = acdx, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel
+    prev_adj_params = prev_adj_params
   )
+  
   if (parallel) {
     metrics_list <- foreach(i = seq_along(x_transformed$data_fp),
                            .packages = "mfp2",
@@ -742,7 +743,6 @@ fit_null_step <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
-                          parallel,
                           ...) {
   
   # Number of events
@@ -754,7 +754,7 @@ fit_null_step <- function(x,
     x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx, 
     powers = powers, zero = zero, catzero = catzero, 
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel
+    prev_adj_params = prev_adj_params
   ) 
   
   # fit null model
@@ -802,7 +802,6 @@ fit_linear_step <- function(x,
                             spike_decision,
                             acd_parameter,
                             prev_adj_params,
-                            parallel,
                             ...) {
   # Number of events in survival models or observation in GLM 
   n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
@@ -813,7 +812,7 @@ fit_linear_step <- function(x,
     x = x, xi = xi, df = 1, powers_current = powers_current, acdx = acdx,
     powers = powers, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel
+    prev_adj_params = prev_adj_params
   ) 
   
   # fit a model based on the assumption that xi is linear. If catzero, its
@@ -912,8 +911,7 @@ select_linear <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision,
-    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    parallel = parallel, ...
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
   
   # Model 2: Linear model
@@ -921,8 +919,7 @@ select_linear <- function(x,
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, family_string = family_string, zero = zero, catzero = catzero, spike_decision = spike_decision,
-    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    parallel = parallel, ...
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params, ...
   )
   
   # Extract powers and metrics of interest
@@ -1121,7 +1118,7 @@ select_ra2 <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -1155,7 +1152,7 @@ select_ra2 <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx, 
     family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -1368,7 +1365,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -1401,7 +1398,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1501,7 +1498,7 @@ select_ra2_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1649,7 +1646,7 @@ select_ic <- function(x,
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family,family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision, acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     )
   # Linear model
   fit_lin <- fit_linear_step(
@@ -1657,7 +1654,7 @@ select_ic <- function(x,
       powers_current = powers_current, powers = powers, acdx = acdx,
       family = family, family_string = family_string, zero = zero, catzero = catzero, 
       spike_decision = spike_decision, acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params, parallel = parallel, ...
+      prev_adj_params = prev_adj_params, ...
     )
   
   res$current_adj_params <- fit_null$current_adj_params
@@ -1780,21 +1777,21 @@ select_ic_acd <- function(x,
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, family_string = family_string, zero = zero, catzero = catzero, 
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params,parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params, parallel = parallel, ...
+    prev_adj_params = prev_adj_params, ...
   )
   
   res$current_adj_params <- fit_null$current_adj_params
@@ -1976,8 +1973,8 @@ transform_data_step <- function(x,
                                 catzero,
                                 spike_decision,
                                 acd_parameter,
-                                prev_adj_params,
-                                parallel) { 
+                                prev_adj_params
+                                ) { 
   # sort x based on the names of the powers
   names_powers_current <- names(powers_current)
   x <- x[, names_powers_current, drop = FALSE]
@@ -2000,109 +1997,10 @@ transform_data_step <- function(x,
     zero_adj <- zero[vars_adj]
     acd_parameter_adj <- acd_parameter[vars_adj]
     spike_decision_adj <- spike_decision[vars_adj]
-    # -----------------------
-    # Parallel branch
-    # -----------------------
-    if (parallel) {
-      # see here for instructions: https://cran.r-project.org/web/packages/future/vignettes/future-7-for-package-developers.html
-      # plan(multisession, workers = parallel::detectCores() - 1) # this is not needed
-      #  the user should call it outside
-      i <- NULL       # to satisfy R CMD check
-      data_adj_list <- foreach(i = seq_along(vars_adj),
-                              .packages = "mfp2",
-                              .export = c("transform_vector_fp", "transform_vector_acd")) %dopar% {
-        varname <- vars_adj[i]                        
-        xvec <- x_adj[, varname, drop = TRUE]
-        power_current <- as.numeric(powers_adj[[varname]])
-        spike_current <- as.numeric(spike_decision[varname])
-        
-        # retrieve previous transformations if available
-        prev_for_var <- NULL
-        if (!is.null(prev_adj_params[[xi]])) {
-          prev_xi <- prev_adj_params[[xi]]
-          prev_data_adj <- prev_xi$data_adj_list[[varname]]
-          prev_power <- as.numeric(prev_xi$powers_adj[[varname]])
-          prev_spike <- as.numeric(prev_xi$spike_decision_adj[[varname]])
 
-          if (!is.null(prev_data_adj)) {
-            prev_for_var <- list(
-              data_adj = prev_data_adj,
-              powers = prev_power,
-              spike_decision = prev_spike
-            )
-          }
-        }
-        
-        # determine whether recomputation is needed
-        recompute <- TRUE
-        if (!is.null(prev_for_var)) {
-          powers_same <- identical(prev_for_var$powers, power_current)
-          spike_same <- identical(prev_for_var$spike_decision, spike_current)
-          recompute <- !(powers_same && spike_same)
-        }
-
-        # Transform if needed
-        if (all(is.na(power_current))) {
-          adj_mat <- matrix(nrow = nrow(x), ncol = 0)
-        } else if (!recompute) {
-          adj_mat <- prev_for_var$data_adj
-          if (is.vector(adj_mat)) adj_mat <- matrix(adj_mat, ncol = 1)
-        } else {
-          # perform transformation
-          if (acdx_adj[varname]) {
-            transformed <- transform_vector_acd(
-              x = xvec,
-              power = power_current,
-              zero = zero_adj[varname],
-              acd_parameter = acd_parameter_adj[[varname]],
-              powers = powers[[varname]]
-            )$acd
-          } else {
-            transformed <- transform_vector_fp(
-              x = xvec,
-              power = power_current,
-              zero = zero_adj[varname]
-            )
-          }
-
-          if (is.null(transformed)) {
-            adj_mat <- matrix(nrow = nrow(x), ncol = 0)
-          } else if (is.null(dim(transformed))) {
-            adj_mat <- matrix(transformed, ncol = 1)
-          } else {
-            adj_mat <- as.matrix(transformed)
-          }
-
-          cz <- catzero[[varname]]
-          cz_mat <- if (!is.null(cz)) as.matrix(cz) else NULL
-
-          spike_val <- spike_decision[[varname]]
-          if (spike_val == 1L) {
-            adj_mat <- cbind(cz_mat, transformed)
-          } else if (spike_val == 2L) {
-            adj_mat <- transformed
-          } else if (spike_val == 3L) {
-            adj_mat <- cz_mat
-          }
-        }
-
-        if (!is.null(adj_mat) && ncol(adj_mat) > 0) {
-          colnames(adj_mat) <- paste0(varname, "_adj", seq_len(ncol(adj_mat)))
-        }
-
-        # Return named list element
-        adj_mat
-      }
-
-      # Name the list by variable names
-      names(data_adj_list) <- vars_adj
-    } else {
-      # -----------------------
-      # Sequential branch
-      # -----------------------
     # For each adjustment variable, check if recomputation is needed. This is
     # only done if FP powers and spike decision change
-    for (varname in vars_adj) { # RUN IN PARALLEL HERE TO SPEED UP COMPUTATION
+    for (varname in vars_adj) {
       xvec <- x_adj[, varname, drop = TRUE]
       power_current <- as.numeric(powers_adj[[varname]])
       spike_current <- as.numeric(spike_decision[varname])
@@ -2199,7 +2097,6 @@ transform_data_step <- function(x,
 
     }
     }
-  }
  
   # combine all adjustment columns into a single matrix (or NULL)
   data_adj <- if (length(data_adj_list) > 0) do.call(cbind, data_adj_list) else NULL

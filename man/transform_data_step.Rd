@@ -15,8 +15,7 @@ transform_data_step(
   catzero,
   spike_decision,
   acd_parameter,
-  prev_adj_params,
-  parallel
+  prev_adj_params
 )
 }
 \arguments{

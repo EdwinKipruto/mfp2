@@ -751,10 +751,17 @@ fit_null_step <- function(x,
     prev_adj_params = prev_adj_params
   ) 
   
+  # An empty matrix can be returned which creates problem for cox model
+  # convert it to NULL 
+  x_tran <- x_transformed$data_adj
+  if (ncol(x_tran) == 0) {
+    x_tran <- NULL
+  }
+  
   # fit null model
   # i.e. a model that does not contain xi but only adjustment variables
   # In addition, adjustment model can be NULL, so we have intercept only
-  model_null <- fit_model(x = x_transformed$data_adj, y = y,
+  model_null <- fit_model(x = x_tran, y = y,
                           family = family, ...) 
   
   list(
@@ -1130,7 +1137,10 @@ select_ra2 <- function(x,
   res$pvalue <- stats$pvalue
   names(res$pvalue) <- names(res$statistic)
   
-  if (stats$pvalue >= select && !(xi %in% keep)) {
+  # Ensure keep is not NULL
+  current_keep <- if (is.null(keep)) character(0) else keep
+  
+  if (stats$pvalue >= select && !(xi %in% current_keep)) {
     # not selected and not forced into model
     res$power_best = NA
     res$model_best = 2
@@ -1375,7 +1385,10 @@ select_ra2_acd <- function(x,
   res$pvalue <- stats$pvalue
   names(res$pvalue) <- names(res$statistic)
   
-  if (stats$pvalue >= select && !(xi %in% keep)) {
+  # Ensure keep is not NULL
+  current_keep <- if (is.null(keep)) character(0) else keep
+  
+  if (stats$pvalue >= select && !(xi %in% current_keep)) {
     # not selected and not forced into model
     res$power_best = matrix(c(NA, NA), ncol = 2)
     res$model_best = 2

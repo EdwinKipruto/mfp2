@@ -754,7 +754,7 @@ fit_null_step <- function(x,
   # An empty matrix can be returned which creates problem for cox model
   # convert it to NULL 
   x_tran <- x_transformed$data_adj
-  if (ncol(x_tran) == 0) {
+  if (is.null(x_tran) || ncol(x_tran) == 0L) {
     x_tran <- NULL
   }
   

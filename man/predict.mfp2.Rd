@@ -15,6 +15,7 @@
   strata = NULL,
   newoffset = NULL,
   nseq = 100,
+  add_intercept = TRUE,
   ...
 )
 }
@@ -68,6 +69,9 @@ linear predictor without any transformations.}
 
 \item{nseq}{Integer specifying how many values to generate when
 \code{terms_seq = "equidistant"}. Default is 100.}
+
+\item{add_intercept}{Logical indicating whether to include an intercept in
+the linear predictor when \code{type = "terms"}. The default is \code{TRUE}.}
 
 \item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
 }

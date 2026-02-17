@@ -153,6 +153,8 @@
 #' linear predictor without any transformations.
 #' @param nseq Integer specifying how many values to generate when 
 #' `terms_seq = "equidistant"`. Default is 100.
+#' @param add_intercept Logical indicating whether to include an intercept in  
+#' the linear predictor when `type = "terms"`. The default is `TRUE`. 
 #' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
 #' 
 #' @examples
@@ -203,6 +205,7 @@ predict.mfp2 <- function(object,
                          strata = NULL, 
                          newoffset = NULL, 
                          nseq = 100,
+                         add_intercept = TRUE,
                          ...) {
  
   terms_seq <- match.arg(terms_seq)
@@ -267,7 +270,24 @@ predict.mfp2 <- function(object,
     if (!all(sapply(ref, is.null)) && any(!names(ref) %in% terms))
       warning("i Some of names of reference values are not in terms.\n", 
               "i predict() continues but does not consider them.", call. = FALSE)
-   # 
+    
+    # Extract intercept if present
+    cf <- coef(object)
+    if ("(Intercept)" %in% names(cf)) {
+      intercept <- cf["(Intercept)"]
+    } else {
+      intercept <- 0
+    }
+    
+    # Remove intercept if NA or not requested
+    if (is.na(intercept) || !add_intercept) {
+      intercept <- 0
+    }
+    
+    # Intercept does not apply for contrasts
+    if (type == "contrasts") {
+      intercept <- 0
+    }
     res_list <- list()
     for (t in terms) {
       # define sequence of variable data as named list
@@ -309,17 +329,6 @@ predict.mfp2 <- function(object,
       term_coef <- coef(object)[colnames(x_trafo)]
       
       # create output data.frame
-    
-      # Check if the intercept is actually in the model. Intercepts is zero for 
-      # Cox model
-      intercept <- ifelse("(Intercept)" %in% names(coef(object)), 
-                           coef(object)["(Intercept)"],
-                           0)
-      # Intercept do not play a role for type = "contrasts"
-      if (type == "contrasts") {
-        intercept <- 0
-      }
-      
       # backtransform variable to original scale
       variable = (as.numeric(x_seq)) - object$transformations[t,"shift"]
       variable_pre = as.numeric(x_seq)

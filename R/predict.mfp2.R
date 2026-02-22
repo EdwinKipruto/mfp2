@@ -443,8 +443,11 @@ predict.mfp2 <- function(object,
     # check whether offset was used in the model
     has_offset <- any(object$offset != 0)
     
-    if (has_offset && is.null(newoffset)) {
+    if (has_offset) {
+      if (is.null(newoffset))
       stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
+    } else {
+      newoffset <- rep(0, nrow(newdata))
     }
     
     # dispatch based on family

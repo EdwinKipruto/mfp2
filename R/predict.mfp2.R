@@ -431,7 +431,6 @@ predict.mfp2 <- function(object,
   #   return(pred)
   #   
   # }
-  
   # usual predicted values
   # transform newdata using the FP powers from the training model
   if (!is.null(newdata)) {
@@ -448,6 +447,7 @@ predict.mfp2 <- function(object,
       stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
     } else {
       newoffset <- NULL
+      object$offset <- NULL
     }
     
     # dispatch based on family
@@ -458,6 +458,8 @@ predict.mfp2 <- function(object,
       )
     } else {
       # glm models
+      # TODO: AT THE MOMENT OFFSET IS NOT USED IN FITTING THE FINAL MODEL
+      # SO IT IS IGNORED HERE AS WELL. ALSO predict.glm() does not have offset
       pred <- stats::predict.glm(
         object, newdata = newdata, type = type, offset = newoffset, ...
       )

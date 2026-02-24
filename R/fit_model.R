@@ -135,9 +135,9 @@ fit_glm <- function(x,
   } else {
     # important to cbind in case x is null otherwise it will return an error
     data <- data.frame(cbind(x, y))
+    # TODO: implement offset and check predict.glm
     fit <- glm(y ~ ., 
-               data = data, family = family, weights = weights,
-               offset = offset, x = TRUE, y = TRUE)
+               data = data, family = family, weights = weights, x = TRUE, y = TRUE)
   }
 
   # account for estimation of variance parameter in gaussian models

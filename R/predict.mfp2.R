@@ -447,7 +447,7 @@ predict.mfp2 <- function(object,
       if (is.null(newoffset))
       stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
     } else {
-      newoffset <- rep(0, nrow(newdata))
+      newoffset <- NULL
     }
     
     # dispatch based on family

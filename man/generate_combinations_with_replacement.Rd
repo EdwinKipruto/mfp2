@@ -7,25 +7,32 @@
 generate_combinations_with_replacement(x, k)
 }
 \arguments{
-\item{x}{vector of elements to choose from.}
+\item{x}{Vector of elements to choose from.}
 
-\item{k}{number of elements to choose.}
+\item{k}{Number of elements to choose.}
 }
 \value{
-A m x k matrix, where m is the number of combinations.
+A matrix with one row per combination and k columns.
 }
 \description{
-This very simple helper generates combinations with replacement.
+This helper generates combinations with replacement.
 }
 \details{
-This is replicating the functionality from \code{arrangements::combinations} with
-\code{replace = TRUE}. Note that base R function \code{utils::combn} only returns
-combinations without replacement, thus pairs like (0, 0) are not in the
-output.
+This function replicates the functionality of
+arrangements::combinations(x, k, replace = TRUE). Unlike
+utils::combn(x, k), which returns combinations without replacement, this
+function allows repeated elements, so combinations such as (0, 0) are
+included in the output.
 
-Note that this function is extremely inefficient and only intended to be
-used with small use cases, i.e. small k. This is typically the case in the
-context of MFP, but a warning is given if this is not the case since the
-algorithm may take a while to compute the combinations, and even longer
-to do model selection.
+Internally, the function uses a stars-and-bars indexing construction. It
+first applies utils::combn() to the sequence 1:(length(x) + k - 1) and
+then shifts the resulting indices by 1:k. This produces the indices needed
+to select nondecreasing combinations from the sorted input vector x.
+
+This avoids generating all ordered tuples with expand.grid() and then
+removing duplicates. However, the number of combinations can still grow
+quickly with increasing k. In the MFP context, high FP degrees correspond
+to a large number of possible FP power combinations, and the subsequent model
+selection step may therefore be computationally intensive. A warning is
+issued for k > 5.
 }

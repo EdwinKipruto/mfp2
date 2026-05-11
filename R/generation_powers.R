@@ -81,38 +81,57 @@ generate_powers_acd <- function(degree = NULL,
 }
 
 #' Helper function to generate combinations with replacement
-#' 
-#' This very simple helper generates combinations with replacement. 
-#' 
-#' @param x vector of elements to choose from.
-#' @param k number of elements to choose. 
-#' 
-#' @details 
-#' This is replicating the functionality from `arrangements::combinations` with
-#' `replace = TRUE`. Note that base R function `utils::combn` only returns
-#' combinations without replacement, thus pairs like (0, 0) are not in the 
-#' output. 
-#' 
-#' Note that this function is extremely inefficient and only intended to be
-#' used with small use cases, i.e. small k. This is typically the case in the
-#' context of MFP, but a warning is given if this is not the case since the 
-#' algorithm may take a while to compute the combinations, and even longer
-#' to do model selection.
-#' 
-#' @return 
-#' A m x k matrix, where m is the number of combinations.
-generate_combinations_with_replacement <- function(x, 
+#'
+#' This helper generates combinations with replacement.
+#'
+#' @param x Vector of elements to choose from.
+#' @param k Number of elements to choose.
+#'
+#' @details
+#' This function replicates the functionality of
+#' arrangements::combinations(x, k, replace = TRUE). Unlike
+#' utils::combn(x, k), which returns combinations without replacement, this
+#' function allows repeated elements, so combinations such as (0, 0) are
+#' included in the output.
+#'
+#' Internally, the function uses a stars-and-bars indexing construction. It
+#' first applies utils::combn() to the sequence 1:(length(x) + k - 1) and
+#' then shifts the resulting indices by 1:k. This produces the indices needed
+#' to select nondecreasing combinations from the sorted input vector x.
+#'
+#' This avoids generating all ordered tuples with expand.grid() and then
+#' removing duplicates. However, the number of combinations can still grow
+#' quickly with increasing k. In the MFP context, high FP degrees correspond
+#' to a large number of possible FP power combinations, and the subsequent model
+#' selection step may therefore be computationally intensive. A warning is
+#' issued for k > 5.
+#'
+#' @return
+#' A matrix with one row per combination and k columns.
+generate_combinations_with_replacement <- function(x,
                                                    k) {
   
   if (k > 5) {
-    warning("i FP degree higher than 5, the MFP algorithm may take a while to do model selection.")
+    warning("FP degree higher than 5; the MFP algorithm may take a while to do model selection.")
   }
   
-  # generate all possible pairs
-  pairs <- expand.grid(rep(list(x), k))
+  # Sort input so that returned combinations are ordered consistently.
+  x <- sort(x)
+  n <- length(x)
   
-  # and remove duplicates
-  # reverse column order to conform with ordering of arrangements::combinations
-  # i.e. we have identical results
-  unname(as.matrix(pairs[!duplicated(t(apply(pairs, 1, sort))), rev(1:k)]))
+  # Generate combinations of positions using the stars-and-bars representation.
+  # This gives combinations with replacement without constructing all ordered
+  # tuples first.
+  idx <- utils::combn(seq_len(n + k - 1), k)
+  
+  # Shift the indices by 1:k to map stars-and-bars positions back to indices
+  # of the original sorted vector x.
+  idx <- idx - seq_len(k)
+  
+  # Extract the selected elements. The matrix is first formed with one
+  # combination per column, then transposed so that each row is one combination.
+  out <- matrix(x[idx + 1], nrow = k)
+  
+  t(out)
+  
 }

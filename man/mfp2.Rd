@@ -251,8 +251,7 @@ interface (\code{mfp2.formula}), where spike is specified as a logical value wit
 zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
 
 \item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
-zeros for which SAZ modeling is applied. Defaults to 0.95.
-before calling this function, for example with}
+zeros for which SAZ modeling is applied. Defaults to 0.95.}
 
 \item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
 

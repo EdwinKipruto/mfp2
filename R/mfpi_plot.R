@@ -66,10 +66,10 @@
 #' @param ... Currently unused. Reserved for future extensions.
 #'
 #' @return A nested named list of [ggplot2::ggplot()] objects (see *Return
-#'   structure*). Invisibly returned; call [print()] or
+#'   structure*). Invisibly returned; call `print()` or
 #'   [ggplot2::ggsave()] on individual elements.
 #'
-#' @seealso [mfp2::mfpi()], `gen_fitted_values_per_group()`
+#' @seealso [mfp2::mfpi()], \code{gen_fitted_values_per_group()}
 #'
 #' @import ggplot2
 #' @importFrom ggplot2 .data
@@ -112,10 +112,10 @@ plot.mfpi <- function(x,
   # The `type` column in model_evaluation_metrics records which interaction
   # type was selected for each variable; we filter to the requested type.
   # ---------------------------------------------------------------------------
-  all_fitted <- model$univariable_interactions$fitted_functions
+  all_fitted <- model$fitted_functions
   
   # Determine which variables had the requested interaction type selected
-  metrics <- model$univariable_interactions$model_evaluation_metrics
+  metrics <- model$model_evaluation_metrics
   
   if (is.null(all_fitted) || length(all_fitted) == 0L) {
     stop(
@@ -165,8 +165,8 @@ plot.mfpi <- function(x,
   }
   
   # Group-level metadata -------------------------------------------------------
-  group_levels <- model$univariable_interactions$group_levels_original
-  group_label  <- model$univariable_interactions$group_var
+  group_levels <- model$group_levels_original
+  group_label  <- model$group_var
   ref_level    <- group_levels[1L]
   non_ref      <- group_levels[-1L]
   
@@ -289,6 +289,6 @@ plot.mfpi <- function(x,
     
     plots[[var]] <- grp_plots
   }
-  
-  invisible(plots)
+  plots
+  #invisible(plots)
 }

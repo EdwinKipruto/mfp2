@@ -38,6 +38,10 @@ mfpi(x, ...)
   nocenter = NULL,
   acd_vars = NULL,
   zero_vars = NULL,
+  catzero_vars = NULL,
+  spike_vars = NULL,
+  min_prop = 0.05,
+  max_prop = 0.95,
   use_ftest = FALSE,
   control = NULL,
   verbose = TRUE,
@@ -98,7 +102,7 @@ the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical (grouping) variable in
 \code{x}. Interactions between \code{group_var} and each variable in \code{cont_vars} are
-the primary estimands. Internally, values are remapped to 0, 1, 2, … in
+the primary estimands. Internally, values are remapped to 0, 1, 2, ... in
 ascending order; the group with the lowest original value is the reference
 category. Must have at least two distinct non-missing values.}
 
@@ -110,21 +114,37 @@ variables must exist as columns of \code{x}.}
 across groups. One of \code{"flex1"} (default), \code{"flex2"}, \code{"flex3"}, or
 \code{"flex4"}. See the \emph{Flexibility levels} section for details.}
 
-\item{p_interact}{Numeric. The nominal significance level used as the default threshold when
-testing for interaction under \code{criterion = "pvalue"}. Default is \code{0.05}.
-Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.}
+\item{p_interact}{Numeric in \eqn{(0, 1]}. Nominal significance level for the interaction
+test when \code{criterion = "pvalue"}. A candidate interaction model is
+retained only if its p-value is strictly below \code{p_interact}. Default is
+\code{0.05}. Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.
 
-\item{min_improvement}{Numeric. The minimum improvement in the selection criterion required to
-include an interaction term. When \code{criterion = "pvalue"} this is a p-value
-threshold (e.g. \code{0.05}); when \code{criterion = "aic"} or \code{"bic"} it is the
-minimum decrease in the information criterion (must be positive; typical
-values are \code{1} or \code{2}). Defaults to \code{p_interact} for p-value selection and
-\code{2} for AIC/BIC selection.}
+Among the three candidates (linear, FP1, FP2) that clear the threshold,
+the one with the \strong{smallest p-value} is chosen as the final functional
+form. When two candidates have identical p-values (which can occur due to
+numerical precision or rounding), the tie is broken by selecting the
+candidate with the \strong{larger \code{AIC_diff}} (i.e. the greater improvement in
+AIC over the main-effects model), favouring the more parsimonious fit.}
 
-\item{include_group_var}{Logical. Whether \code{group_var} should be passed to \code{\link[=mfp2]{mfp2()}} alongside
-the other adjustment variables when selecting the adjustment model in stage
-one. Default is \code{FALSE}. When \code{TRUE}, the nominal significance level for
-\code{group_var} is set to 1, forcing it into the adjustment model.}
+\item{min_improvement}{Numeric. Minimum improvement in the selection criterion required to retain
+an interaction term. Interpretation depends on \code{criterion}:
+\itemize{
+\item \code{"pvalue"}: not used directly (the threshold is \code{p_interact});
+\code{min_improvement} defaults to \code{p_interact} for consistency.
+\item \code{"aic"}: minimum required \code{AIC_diff}
+(\eqn{= \mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{int}}).
+Must be positive. Typical values: \code{1} or \code{2}. Default is \code{2}.
+\item \code{"bic"}: same as \code{"aic"} using \code{BIC_diff}. Default is \code{2}.
+}
+Among candidates that clear \code{min_improvement}, the one with the
+\strong{largest improvement} (largest \code{AIC_diff} or \code{BIC_diff}) is chosen as
+the final functional form.}
+
+\item{include_group_var}{Logical. Whether \code{group_var} should be passed to the MFP algorithm
+alongside the other adjustment variables when selecting the adjustment
+model in stage one. Default is \code{FALSE}. When \code{TRUE}, the nominal
+significance level for \code{group_var} is set to 1, forcing it into the
+adjustment model.}
 
 \item{show_models}{Logical. Whether to print regression coefficients and standard errors for
 the final interaction models. Default is \code{FALSE}, which prints only the
@@ -142,21 +162,18 @@ algorithm. Default is \code{10}.}
 
 \item{scale}{A numeric vector of length \eqn{p} or a single numeric giving scaling
 factors for the columns of \code{x}. Default is \code{NULL}, which lets the program
-estimate scaling factors automatically (see \code{\link[=mfp2]{mfp2()}}). Set
-\code{scale = 1} to disable scaling.}
+estimate scaling factors automatically. Set \code{scale = 1} to disable scaling.}
 
 \item{shift}{A numeric vector of length \eqn{p} or a single numeric giving shift terms
 added to columns of \code{x} before scaling. Default is \code{NULL}, which estimates
-shift factors automatically (see \code{\link[=mfp2]{mfp2()}}). Set \code{shift = 0} to
-disable shifting. Shifting is applied to the data used in the final
-interaction model.}
+shift factors automatically. Set \code{shift = 0} to disable shifting.}
 
 \item{df}{A numeric vector of length \eqn{p} or a single positive integer setting
 the default degrees of freedom for each predictor. Degrees of freedom
 equal twice the FP degree (e.g. \code{df = 2} for FP1, \code{df = 4} for FP2).
 The program overrides user-supplied values based on the number of unique
-values: variables with 2–3 unique values are set to \code{df = 1} (linear);
-4–5 unique values to \code{df = min(2, default)}; and 6 or more unique values
+values: variables with 2--3 unique values are set to \code{df = 1} (linear);
+4--5 unique values to \code{df = min(2, default)}; and 6 or more unique values
 retain the default. Default is \code{4}.}
 
 \item{center}{Logical or a logical vector of length \eqn{p}. Whether to mean-centre
@@ -171,11 +188,18 @@ observations. Default is \code{NULL} (all observations used).}
 \code{"gaussian"} (default), \code{"binomial"}, \code{"poisson"}, or \code{"cox"}. See the
 \emph{Regression families} section for details.}
 
-\item{criterion}{A character string specifying the criterion used by \code{\link[=mfp2]{mfp2()}} to
-select adjustment variables and FP degrees. One of \code{"pvalue"} (default),
-\code{"aic"}, or \code{"bic"}. Note that this criterion governs adjustment-variable
-selection only; the interaction test always reports p-values, AIC
-differences, and BIC differences regardless of this setting.}
+\item{criterion}{A character string specifying the criterion used in two distinct places:
+\enumerate{
+\item \strong{Adjustment-variable selection} (Step 2): governs which
+predictors and FP degrees survive MFP backfitting.
+\item \strong{Functional form selection for the interaction} (Step 3): for
+each variable in \code{cont_vars}, three candidate interaction models are
+fitted — linear, FP1, and FP2 — and the criterion selects among them.
+}
+One of \code{"pvalue"} (default), \code{"aic"}, or \code{"bic"}.
+The interaction test always reports p-values, AIC differences, and BIC
+differences regardless of this setting; \code{criterion} controls only which
+quantity is used to make the final selection.}
 
 \item{select}{A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
 giving the nominal significance level for backward elimination of each
@@ -195,7 +219,7 @@ under AIC and BIC criteria.}
 enter the MFP selection algorithm. \code{"ascending"} (default) enters
 variables from most to least significant in a full multiple regression;
 \code{"descending"} reverses this order; \code{"original"} uses the column order of
-\code{x}. See \code{\link[=mfp2]{mfp2()}} for details.}
+\code{x}.}
 
 \item{fp_powers}{A named list of numeric vectors giving the candidate FP powers for each
 variable. Default is \code{NULL}, which uses the standard set proposed by
@@ -221,11 +245,28 @@ selection. The transformed variable is named \code{A(x)}. ACD transformation is
 disabled for variables listed in \code{cont_vars}. See \code{\link[=mfp2]{mfp2()}} for
 details.}
 
-\item{zero_vars}{An optional character vector naming variables that may contain zeros or
-negative values, for which the standard positivity check before log or
-negative-power transformation is suppressed. Variables in \code{zero_vars} that
-contain only positive values are silently reset to standard processing with
-a warning.}
+\item{zero_vars}{An optional character vector naming variables for which non-positive values
+should be treated as zero. FP transformations are applied only to strictly
+positive values; non-positive values are set to zero. See the
+\emph{Handling non-positive values} section for details.}
+
+\item{catzero_vars}{An optional character vector naming variables for which non-positive values
+should be treated as zero and a binary indicator variable automatically
+created and included in the adjustment model. Implies \code{zero_vars} for the
+named variables. A variable may not appear in both \code{zero_vars} and
+\code{catzero_vars}.}
+
+\item{spike_vars}{An optional character vector naming variables to be assessed for a spike
+at zero using the SAZ algorithm. Implies \code{catzero_vars} (and therefore
+\code{zero_vars}) for the named variables.}
+
+\item{min_prop}{Numeric in \eqn{[0, 1]}. Minimum proportion of zeros required for the
+SAZ algorithm to be applied. Default is \code{0.05}. Variables with fewer zeros
+are treated as standard continuous predictors.}
+
+\item{max_prop}{Numeric in \eqn{[0, 1]}. Maximum proportion of zeros for SAZ modeling.
+Default is \code{0.95}. Variables with more zeros are also treated as standard
+continuous predictors.}
 
 \item{use_ftest}{Logical. Whether to use an F-test rather than a chi-square test when
 computing p-values for Gaussian models. Recommended when the sample size
@@ -248,36 +289,37 @@ printing interaction-test results. Default is \code{3}.}
 already be expanded to dummy columns.}
 }
 \value{
-An object of class \code{"mfpi"}. Use \code{summary.mfpi()} for a formatted summary.
-The object is a list with the following components:
+An object of class \code{"mfpi"}. Use \code{summary.mfpi()} for a formatted
+summary. The object is a list with the following components:
 
 \describe{
-\item{\code{model_evaluation_metrics}}{A data frame of evaluation metrics for
-the main-effects and interaction models for each variable in \code{cont_vars}.
-Columns include: \code{pow_main} and \code{pow_int} (selected FP powers);
-\code{dev_int} (deviance of the interaction model); \code{dev_diff} (deviance of
-main-effects model minus deviance of interaction model); \code{pvalue}
-(likelihood-ratio p-value); \code{AIC_int} and \code{BIC_int} (information
-criteria for the interaction model); \code{AIC_diff} and \code{BIC_diff}
+\item{\code{model_evaluation_metrics}}{A data frame of evaluation metrics
+for the main-effects and interaction models for each variable in
+\code{cont_vars}. Columns include: \code{pow_main} and \code{pow_int}
+(selected FP powers); \code{dev_int} (deviance of the interaction
+model); \code{dev_diff} (deviance of main-effects model minus deviance
+of interaction model); \code{pvalue} (likelihood-ratio p-value);
+\code{AIC_int} and \code{BIC_int} (information criteria for the
+interaction model); \code{AIC_diff} and \code{BIC_diff}
 (main-effects minus interaction model for each criterion).}
-\item{\code{adjust_terms}}{A data frame describing the FP terms selected for
-the adjustment model; see \code{\link[=mfp2]{mfp2()}} for the column definitions.}
-\item{\code{interaction_models}}{A named list of fitted model objects, one per
-variable in \code{cont_vars}.}
-\item{\code{fitted_functions}}{A named list of data frames, one per variable in
-\code{cont_vars}. Each data frame contains the estimated FP function
-\eqn{f_j} and its pointwise standard error \eqn{\text{se}(f_j)} at each
-level \eqn{j} of \code{group_var}, together with 95\\% confidence intervals
-(\code{fj_lower}, \code{fj_upper}). Columns \code{fj - f0} and \code{se(fj - f0)} give the
-difference relative to the reference group, with corresponding confidence
-bounds.}
-\item{\code{group_var}}{The name of the grouping variable, as a character
-string.}
+\item{\code{adjust_terms}}{A data frame describing the FP terms selected
+for the adjustment model.}
+\item{\code{interaction_models}}{A named list of fitted model objects, one
+per variable in \code{cont_vars}.}
+\item{\code{fitted_functions}}{A named list of data frames, one per
+variable in \code{cont_vars}. Each data frame contains the estimated FP
+function \eqn{f_j} and its pointwise standard error \eqn{se(f_j)} at
+each level \eqn{j} of \code{group_var}, together with 95\\% confidence
+intervals (\code{fj_lower}, \code{fj_upper}). Columns \code{fj - f0}
+and \code{se(fj - f0)} give the difference relative to the reference
+group, with corresponding confidence bounds.}
+\item{\code{group_var}}{The name of the grouping variable.}
 \item{\code{show_models}}{The value of the \code{show_models} argument.}
-\item{\code{flex}}{The chosen flexibility level, as a character string.}
-\item{\code{group_levels_new}}{The remapped levels of \code{group_var} (0, 1, 2,
-…).}
-\item{\code{group_levels_original}}{The original levels of \code{group_var}.}
+\item{\code{flex}}{The chosen flexibility level.}
+\item{\code{group_levels_new}}{The remapped levels of \code{group_var}
+(0, 1, 2, ...).}
+\item{\code{group_levels_original}}{The original levels of
+\code{group_var}.}
 \item{\code{family}}{The regression family, as a character string.}
 \item{\code{nobs}}{The number of observations used in model fitting.}
 }
@@ -289,12 +331,13 @@ polynomial (FP) transformations to capture nonlinear effects. The categorical
 variable is treated as a factor internally; in a typical randomised controlled
 trial it represents treatment allocation, with the lowest value as the control
 arm. Confounders and other prognostic variables are adjusted for via FP
-transformations selected by \code{\link[=mfp2]{mfp2()}}.
+transformations selected by the MFP algorithm implemented in the
+\pkg{mfp2} package.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{mfpi(default)}: Default method accepting a numeric matrix \code{x} and response
-vector \code{y}.
+\item \code{mfpi(default)}: Default method accepting a numeric matrix \code{x} and
+response vector \code{y}.
 
 \item \code{mfpi(formula)}: Provides formula interface for \code{mfpi}.
 
@@ -350,7 +393,7 @@ present.
 
 \strong{\code{flex4} (most flexible).} Like \code{flex3}, but the within-group powers are
 allowed to differ between groups. The additional degrees of freedom reduce
-power to detect interaction compared with \code{flex1}–\code{flex3}.
+power to detect interaction compared with \code{flex1}--\code{flex3}.
 
 \strong{Practical guidance.} FP2 functions are more flexible and reduce the risk
 of misspecification bias, but they are sensitive to influential extreme
@@ -388,7 +431,7 @@ response \code{y}; only right-censored data are currently supported.
 
 \section{Adjustment variables}{
 
-MFPI operates in two stages. In the first stage, \code{\link[=mfp2]{mfp2()}} selects
+MFPI operates in two stages. In the first stage, the MFP algorithm selects
 adjustment variables and their functional forms from all columns of \code{x}
 except the current continuous variable of interest. If no adjustment
 variables survive selection, the interaction is tested without adjustment. In
@@ -398,44 +441,81 @@ interaction models for each continuous variable listed in \code{cont_vars}.
 
 To force adjustment variables into the model without selection or
 transformation, set \code{select = 1} and \code{alpha = 0}, or pass variable names via
-\code{force_keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}} for
-further details.
+\code{force_keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}}
+for further details.
+}
+
+\section{Shifting, scaling, and centering}{
+
+Fractional polynomials require strictly positive input values. \code{mfpi()}
+estimates a shift for each variable to ensure positivity, then scales the
+shifted values to a convenient range, following the same procedure as
+\code{\link[=mfp2]{mfp2()}}. Centering is applied after FP powers are estimated.
+Variables marked with \code{zero_vars} or \code{catzero_vars}, and linear terms
+(\code{df = 1}), have their shift automatically set to zero because only the
+positive values are transformed.
+}
+
+\section{Handling non-positive values}{
+
+When a continuous predictor has a mixture of zeros (or negative values) and
+positive values, standard shifting and FP transformation may be
+inappropriate. Three options are available, matching those in
+\code{\link[=mfp2]{mfp2()}}:
+\itemize{
+\item \strong{\code{zero_vars}} — FP transformations are applied only to strictly positive
+values; non-positive values are set to zero in the transformed variable.
+\item \strong{\code{catzero_vars}} — as \code{zero_vars}, but a binary indicator
+(\eqn{Z = 1} if \eqn{x = 0}, \eqn{Z = 0} if \eqn{x > 0}) is
+automatically created and included in the adjustment model alongside the
+transformed variable.
+\item \strong{\code{spike_vars}} — triggers the spike-at-zero (SAZ) algorithm, which
+formally evaluates whether the binary indicator and the FP function each
+contribute explanatory value beyond the other.
+}
+
+Note that \code{spike_vars} and \code{catzero_vars} are mutually exclusive per
+variable. Setting \code{spike_vars} for a variable implicitly sets
+\code{catzero_vars}, which in turn implies \code{zero_vars}.
 }
 
 \references{
 Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
 interactions between treatment and continuous covariates in clinical trials
-by using fractional polynomials. \emph{Statistics in Medicine}, 23, 2509–2525.
+by using fractional polynomials. \emph{Statistics in Medicine}, 23,
+2509--2525.
 
 Royston, P. and Sauerbrei, W. (2008). Interactions between treatment and
-continuous covariates — a step towards individualising therapy (Editorial).
-\emph{Journal of Clinical Oncology}, 26, 1397–1399.
+continuous covariates -- a step towards individualising therapy (Editorial).
+\emph{Journal of Clinical Oncology}, 26, 1397--1399.
 
 Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
 continuous variable: simulation study of significance level for several
-methods of analysis. \emph{Statistics in Medicine}, 32, 3788–3803.
+methods of analysis. \emph{Statistics in Medicine}, 32, 3788--3803.
 
 Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a
 continuous variable: simulation study of power for several methods of
-analysis. \emph{Statistics in Medicine}, 33, 4695–4708.
+analysis. \emph{Statistics in Medicine}, 33, 4695--4708.
 
 Royston, P., Sauerbrei, W. and Ritchie, A. (2004). Is treatment with
 interferon-alpha effective in all patients with metastatic renal carcinoma?
-A new approach to the investigation of interactions. \emph{British Journal of
-Cancer}, 90, 794–799.
+A new approach to the investigation of interactions. \emph{British Journal
+of Cancer}, 90, 794--799.
 
 Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
 between treatment and a continuous covariate: a comparison of two
-approaches. \emph{Computational Statistics and Data Analysis}, 51, 4054–4063.
+approaches. \emph{Computational Statistics and Data Analysis}, 51,
+4054--4063.
 
 Sauerbrei, W. and Royston, P. (2022). Investigating treatment-effect
 modification by a continuous covariate in IPD meta-analysis: an approach
-using fractional polynomials. \emph{BMC Medical Research Methodology}, 22, 1–13.
+using fractional polynomials. \emph{BMC Medical Research Methodology}, 22,
+1--13.
 
 Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
 Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
 for Modelling Continuous Variables}. John Wiley & Sons.
 }
 \seealso{
-\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=mfp2]{mfp2()}}
+\code{summary.mfpi()}, \code{\link[=mfp2]{mfp2()}}
 }

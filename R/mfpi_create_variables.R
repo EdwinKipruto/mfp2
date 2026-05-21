@@ -150,7 +150,7 @@ create_dummies <- function(x, levels = NULL) {
 #'     centred) version of `cont_var`, \eqn{n \times J}.}
 #' }
 #'
-#' @seealso [mfp2::transform_vector_fp()], [mfp2::transform_z_variables()]
+#' @seealso [mfp2::transform_vector_fp()], \code{transform_z_variables()}
 #'
 #' @examples
 #' cont <- matrix(1:6, ncol = 1); colnames(cont) <- "age"
@@ -195,7 +195,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   
   # Apply FP transformation to cont_var ----------------------------------------
   if (!identical(power, 1) && !identical(power, 1L)) {
-    x_fp <- transform_vector_fp(
+    x_fp <- mfp2::transform_vector_fp(
       cont_var,
       power        = power,
       shift        = shift,
@@ -205,8 +205,8 @@ create_z_variables <- function(cont_var, group_var, power = 1,
     )
   } else {
     # Linear: apply shift and scale manually to stay consistent with mfp2
-    s    <- if (!is.null(shift)) shift else find_shift_factor(cont_var)
-    sc   <- if (!is.null(scale)) scale else find_scale_factor(cont_var + s)
+    s    <- if (!is.null(shift)) shift else mfp2::find_shift_factor(cont_var)
+    sc   <- if (!is.null(scale)) scale else mfp2::find_scale_factor(cont_var + s)
     x_fp <- (cont_var + s) / sc
   }
   
@@ -289,7 +289,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
 #'     variables.}
 #' }
 #'
-#' @seealso [mfp2::create_z_variables()], [mfp2::generate_powers_fp()],
+#' @seealso \code{create_z_variables()}, [mfp2::generate_powers_fp()],
 #'   [mfp2::transform_matrix()]
 #'
 #' @examples
@@ -360,7 +360,7 @@ transform_z_variables <- function(cont_var, group_var,
       znames
     )
     
-    transformed <- transform_matrix(
+    transformed <- mfp2::transform_matrix(
       x          = z_untrans,
       power_list = power_set,
       center     = center_map,
@@ -394,7 +394,7 @@ transform_z_variables <- function(cont_var, group_var,
 #' belonging to one group. Group identity is read from the single digit
 #' immediately following the prefix.
 #'
-#' This is a lookup helper used after [mfp2::create_z_variables()] to recover which
+#' This is a lookup helper used after \code{create_z_variables()} to recover which
 #' columns belong to each level of `group_var`.
 #'
 #' @param var_prefix Character string. The common prefix of the variable names

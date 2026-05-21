@@ -123,7 +123,7 @@ group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
 #'
 #' Iterates over the \eqn{K - 1} non-reference groups, assembles the relevant
 #' coefficient sub-vector and covariance sub-matrix for each group pair
-#' \eqn{(0, j)}, and delegates to `compute_standard_errors()` to obtain
+#' \eqn{(0, j)}, and delegates to \code{compute_standard_errors()} to obtain
 #' pointwise standard errors for \eqn{\hat{D}_j(x) = \hat{f}_j(x) -
 #' \hat{f}_0(x)}.
 #'
@@ -145,7 +145,7 @@ group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
 #'   = \frac{\partial D_j(x_i)}{\partial \boldsymbol{\theta}_j}
 #'   \bigg|_{\boldsymbol{\theta}_j = \hat{\boldsymbol{\theta}}_j}
 #' }
-#' is the gradient vector of `group_diff_function()` with respect to
+#' is the gradient vector of \code{group_diff_function()} with respect to
 #' \eqn{\boldsymbol{\theta}_j}, evaluated numerically by
 #' [numDeriv::jacobian()].
 #'
@@ -169,16 +169,16 @@ group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
 #' @param groups List of character vectors of length \eqn{K}, one per group.
 #'   Each element gives the coefficient names of the FP terms belonging to
 #'   that group, in ascending group order (reference group first). As returned
-#'   by `var_group()`.
+#'   by \code{var_group()}.
 #' @param group_name Character string. Column name of the grouping variable in
 #'   the original data. Used to identify the group dummy coefficients
 #'   \eqn{\hat{\gamma}_j} in `coefx` via a regex pattern
 #'   `"^<group_name>\d+"`.
 #' @param xtransformed Numeric matrix of FP-transformed predictor columns for
-#'   all groups, as produced by `gen_fitted_values_per_group()`. Columns for
+#'   all groups, as produced by \code{gen_fitted_values_per_group()}. Columns for
 #'   every group are present side by side in the same order as `groups`.
 #' @param group_fp_powers Named list of FP power vectors, one per group.
-#'   Passed through to `group_diff_function()` to determine \eqn{m}.
+#'   Passed through to \code{group_diff_function()} to determine \eqn{m}.
 #'
 #' @return Numeric matrix with \eqn{n} rows and \eqn{K - 1} columns. Column
 #'   \eqn{j} contains
@@ -253,7 +253,7 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 #'
 #' Given the coefficient sub-vector \eqn{\hat{\boldsymbol{\theta}}_j} and its
 #' covariance \eqn{\hat{V}_j}, evaluates the Jacobian of
-#' `group_diff_function()` numerically and returns the pointwise standard error
+#' \code{group_diff_function()} numerically and returns the pointwise standard error
 #' of \eqn{\hat{D}_j(x) = \hat{f}_j(x) - \hat{f}_0(x)}.
 #'
 #' @section Delta-method computation:
@@ -265,7 +265,7 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 #'   J_{ik} = \frac{\partial D_j(x_i)}{\partial \theta_{j,k}},
 #' }
 #' where \eqn{\mathbf{D}_j = \bigl(D_j(x_1), \ldots, D_j(x_n)\bigr)^{\top}}
-#' is the vector of pointwise differences. Because `group_diff_function()` is
+#' is the vector of pointwise differences. Because \code{group_diff_function()} is
 #' linear in \eqn{\boldsymbol{\theta}_j} the Jacobian rows have a closed form,
 #' but it is evaluated numerically via [numDeriv::jacobian()] for generality.
 #'
@@ -300,16 +300,16 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 #'   length \eqn{2m + 1}, arranged as group-0 FP coefficients
 #'   \eqn{\hat{\boldsymbol{\beta}}_0}, then group-\eqn{j} FP coefficients
 #'   \eqn{\hat{\boldsymbol{\beta}}_j}, then the group-\eqn{j} offset
-#'   \eqn{\hat{\gamma}_j}. See `group_diff_function()` for the full layout.
+#'   \eqn{\hat{\gamma}_j}. See \code{group_diff_function()} for the full layout.
 #' @param cov_final Named square matrix \eqn{\hat{V}_j} of dimension
 #'   \eqn{(2m+1) \times (2m+1)}. The estimated covariance sub-matrix for
 #'   exactly the coefficients in `coef_final`, extracted from the full model
-#'   covariance by `compute_std_errors_diff()`.
+#'   covariance by \code{compute_std_errors_diff()}.
 #' @param xtransformed Numeric matrix with \eqn{n} rows and \eqn{2m} columns.
 #'   The first \eqn{m} columns contain \eqn{\phi(x_i)} for group 0; the next
 #'   \eqn{m} columns contain \eqn{\phi(x_i)} for group \eqn{j}.
 #' @param group_fp_powers Named list of FP power vectors passed to
-#'   `group_diff_function()` to determine \eqn{m}.
+#'   \code{group_diff_function()} to determine \eqn{m}.
 #'
 #' @return Numeric vector of length \eqn{n}:
 #'   \deqn{
@@ -320,7 +320,7 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 #'     \Bigr)^{\top}.
 #'   }
 #'
-#' @seealso [numDeriv::jacobian()], `compute_std_errors_diff()`
+#' @seealso [numDeriv::jacobian()], \code{compute_std_errors_diff()}
 #'
 #' @keywords internal
 #' @noRd

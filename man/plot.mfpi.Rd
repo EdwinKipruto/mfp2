@@ -46,7 +46,7 @@ x-axis. Default \code{"black"}.}
 }
 \value{
 A nested named list of \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} objects (see \emph{Return
-structure}). Invisibly returned; call \code{\link[=print]{print()}} or
+structure}). Invisibly returned; call \code{print()} or
 \code{\link[ggplot2:ggsave]{ggplot2::ggsave()}} on individual elements.
 }
 \description{

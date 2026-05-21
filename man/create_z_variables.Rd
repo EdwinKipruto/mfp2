@@ -77,5 +77,5 @@ head(res$z)
 
 }
 \seealso{
-\code{\link[=transform_vector_fp]{transform_vector_fp()}}, \code{\link[=transform_z_variables]{transform_z_variables()}}
+\code{\link[=transform_vector_fp]{transform_vector_fp()}}, \code{transform_z_variables()}
 }

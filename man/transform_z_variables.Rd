@@ -84,6 +84,6 @@ str(res$z_transformed[[1]])
 
 }
 \seealso{
-\code{\link[=create_z_variables]{create_z_variables()}}, \code{\link[=generate_powers_fp]{generate_powers_fp()}},
+\code{create_z_variables()}, \code{\link[=generate_powers_fp]{generate_powers_fp()}},
 \code{\link[=transform_matrix]{transform_matrix()}}
 }

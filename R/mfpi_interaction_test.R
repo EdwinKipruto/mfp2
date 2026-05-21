@@ -168,8 +168,9 @@
 #' @noRd
 test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
-                             flex, use_ftest, family, weights, offset,
-                             ties, strata, control, nocenter, digits) {
+                             flex, use_ftest, family, family_string,
+                             weights, offset, ties, strata, control,
+                             nocenter, digits) {
   
   cont_name  <- colnames(cont_var)
   n_groups   <- length(unique(as.vector(group_var)))
@@ -225,7 +226,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   # P-value: chi-square LRT (F-test not yet implemented for interaction term)
   # ---------------------------------------------------------------------------
-  if (use_ftest && family == "gaussian") {
+  if (use_ftest && family_string == "gaussian") {
     warning(
       "! F-test for the interaction term is not yet implemented; ",
       "reverting to chi-square test.",
@@ -239,7 +240,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # AIC = -2l + 2p;  BIC = -2l + p * log(n*)
   # n* = number of events for Cox; n otherwise
   # ---------------------------------------------------------------------------
-  n_eff   <- if (family == "cox") sum(y[, "status"]) else length(y)
+  n_eff   <- if (family_string == "cox") sum(y[, "status"]) else length(y)
   AIC_main <- dev_main        + 2          * df_main
   AIC_int  <- dev_interaction + 2          * df_total
   BIC_main <- dev_main        + log(n_eff) * df_main
@@ -322,7 +323,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #' }
 #'
 #' @param x An object of class `"model_evaluation_metrics"`, as returned by
-#'   `test_interaction()`.
+#'   \code{test_interaction()}.
 #' @param ... Additional arguments passed to [print.data.frame()].
 #'
 #' @return Invisibly returns `x`.
@@ -344,5 +345,134 @@ print.model_evaluation_metrics <- function(x, ...) {
   }, character(1L))
   
   print.data.frame(as.data.frame(x), row.names = FALSE, ...)
+  invisible(x)
+}
+
+
+# -----------------------------------------------------------------------------
+# print.mfpi() ----------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Print an \code{mfpi} Object
+#'
+#' Displays a structured summary of an \code{"mfpi"} object, including the
+#' adjustment variables selected by the MFP algorithm and the interaction test
+#' results for each continuous variable in \code{cont_vars}. Optionally prints
+#' the full regression output for each final interaction model when
+#' \code{show_models = TRUE} was set in \code{mfpi()}.
+#'
+#' @param x An object of class \code{"mfpi"}, as returned by \code{mfpi()}.
+#' @param ... Currently unused.
+#'
+#' @return \code{x} invisibly.
+#'
+#' @section Output sections:
+#' \enumerate{
+#'   \item **Adjustment model** — the \code{fp_terms} table from the MFP
+#'     algorithm, showing which variables were selected and their estimated FP
+#'     powers.
+#'   \item **Interaction test** — for each variable in \code{cont_vars}, the
+#'     best-selected functional form (linear, FP1, or FP2) and its evaluation
+#'     metrics: deviance, degrees of freedom, p-value, AIC, and BIC. Columns:
+#'     \itemize{
+#'       \item \code{type}: selected functional form (\code{linear}, \code{fp1},
+#'         or \code{fp2}).
+#'       \item \code{pow_main}: FP powers in the main-effects model.
+#'       \item \code{pow_int}: FP powers in the interaction model, one set per
+#'         group. For \code{flex4} these may differ across groups.
+#'       \item \code{dev_diff}: likelihood-ratio test statistic
+#'         \eqn{T = -2\ell_\text{main} - (-2\ell_\text{int})}.
+#'       \item \code{df}: degrees of freedom for the LRT
+#'         (\eqn{= (K-1)m} for flex1/2/3; \eqn{= 2(K-1)m} for flex4).
+#'       \item \code{pvalue}: \eqn{\Pr[\chi^2(df) > T]}.
+#'       \item \code{AIC_diff}, \code{BIC_diff}: improvement of interaction
+#'         model over main-effects model; positive values favour interaction.
+#'     }
+#'   \item **Interaction model coefficients** (only when
+#'     \code{show_models = TRUE}) — the regression summary for the final
+#'     interaction model for each variable.
+#' }
+#'
+#' @method print mfpi
+#' @export
+print.mfpi <- function(x, ...) {
+  
+  # ---------------------------------------------------------------------------
+  # Section 1: Adjustment model
+  # ---------------------------------------------------------------------------
+  cat("Adjustment Variables Selected by MFP Algorithm:\n")
+  cat(strrep("-", 65), "\n")
+  print(x$adjust_terms)
+  
+  # ---------------------------------------------------------------------------
+  # Section 2: Interaction test results
+  # ---------------------------------------------------------------------------
+  cat("\n", strrep("-", 65), "\n", sep = "")
+  cat("Interaction Test\n")
+  cat(strrep("-", 65), "\n")
+  cat(sprintf(
+    "\nInteraction with '%s'  |  %d observations  |  %s strategy\n\n",
+    x$group_var, x$nobs, x$flex
+  ))
+  
+  print(x$model_evaluation_metrics)
+  
+  cat(
+    "\nNote: df = LRT degrees of freedom for interaction;",
+    "tdf = total df in interaction model.\n"
+  )
+  
+  # For flex4, each group has its own FP powers so pow_int shows K power sets
+  if (identical(x$flex, "flex4") && !is.null(x$group_levels_original)) {
+    cat(sprintf(
+      "\nFor flex4, 'pow_int' shows separate FP powers for each level of '%s': %s.\n",
+      x$group_var,
+      paste(x$group_levels_original, collapse = ", ")
+    ))
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Section 3: Interaction model summaries (optional)
+  # ---------------------------------------------------------------------------
+  if (isTRUE(x$show_models) && length(x$interaction_models) > 0L) {
+    
+    cat("\n", strrep("-", 65), "\n", sep = "")
+    cat("Regression Output for Final Interaction Models:\n")
+    cat(strrep("-", 65), "\n")
+    
+    # model_evaluation_metrics has one row per variable with a 'type' column
+    # (the selected functional form) — use it to label the output
+    metrics <- x$model_evaluation_metrics
+    type_lookup <- if (!is.null(metrics) && "type" %in% names(metrics)) {
+      setNames(
+        toupper(gsub("fp", "FP", metrics$type)),  # "linear"->"LINEAR" / "fp1"->"FP1"
+        metrics$variable
+      )
+    } else {
+      setNames(rep("", length(x$interaction_models)),
+               names(x$interaction_models))
+    }
+    
+    for (var_name in names(x$interaction_models)) {
+      fit_obj  <- x$interaction_models[[var_name]]
+      form_lbl <- if (!is.null(type_lookup[[var_name]])) type_lookup[[var_name]] else ""
+      
+      cat(sprintf(
+        "\n'%s' x '%s'  [%s]\n",
+        x$group_var, var_name, form_lbl
+      ))
+      cat(strrep("-", 45), "\n")
+      
+      # fit_obj is the object returned by mfp2:::fit_model (fast = FALSE).
+      # It carries a $fit component holding the raw glm / coxph object.
+      if (!is.null(fit_obj$fit)) {
+        print(summary(fit_obj$fit))
+      } else {
+        # Fallback: print whatever is available
+        print(fit_obj)
+      }
+    }
+  }
+  
   invisible(x)
 }

@@ -80,24 +80,25 @@
 #'
 #' @return A list with two components:
 #' \describe{
-#'   \item{`adjustment_model`}{Fitted MFP adjustment model from \code{mfp2()},
+#'   \item{`adjustment_model`}{Fitted MFP adjustment model from [mfp2::mfp2()],
 #'     including selected variables and their FP terms.}
 #'   \item{`univariable_interactions`}{List of results from the univariable
 #'     interaction evaluation; see \code{evaluate_interactions()} for structure.}
 #' }
 #'
 #' @section Algorithm:
-#' **Step 1 — Pre-processing.** The levels of `group_var` are remapped to
+#' **Pre-processing (internal).** The levels of `group_var` are remapped to
 #' consecutive integers starting at 0. Dummy variables are appended to `x`
-#' when `include_group_var = TRUE`. All modeling-parameter vectors are
-#' synchronised with the modified column set.
+#' when `include_group_var = TRUE`. All modelling-parameter vectors are
+#' synchronised with the modified column set. This step is silent.
 #'
-#' **Step 2 — Adjustment model.** \code{fit_mfp()} selects adjustment
+#' **Step 1 — Adjustment model.** \code{mfp2:::fit_mfp()} selects adjustment
 #' variables and their FP transformations. If `criterion = "pvalue"`, variables
 #' may be dropped by backward elimination; if `alpha > 0` and `df > 1`,
-#' nonlinear transforms may be estimated.
+#' nonlinear transforms may be estimated. Selected variables and their FP
+#' powers are fixed for the remainder of the algorithm.
 #'
-#' **Step 3 — Univariable interactions.** For each variable in `cont_vars`,
+#' **Step 2 — Univariable interactions.** For each variable in `cont_vars`,
 #' linear, FP1, and FP2 interaction models are fitted and compared to their
 #' respective main-effects models. The best functional form is selected
 #' according to `criterion` and `min_improvement`; variables whose best model
@@ -108,36 +109,39 @@
 #'
 #' @keywords internal
 #' @noRd
-fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
-                     select, alpha, force_keep, df, xorder, fp_powers, ties,
-                     strata, nocenter, acd_vars, zero_vars, use_ftest, control,
-                     group_var, include_group_var, flex, cont_vars,
-                     p_interact, min_improvement,
-                     show_models, verbose, digits) {
+fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
+                     center, criterion, select, alpha, force_keep, df, xorder,
+                     fp_powers, ties, strata, nocenter, acd_vars, zero_vars,
+                     catzero_vars, spike_vars, min_prop, max_prop, use_ftest,
+                     control, group_var, include_group_var, flex, cont_vars,
+                     p_interact, min_improvement, show_models, verbose,
+                     digits) {
   
   # ---------------------------------------------------------------------------
-  # Step 1: Pre-process data and synchronise parameter vectors
+  # Pre-processing: synchronise parameter vectors and remap group levels
   # ---------------------------------------------------------------------------
   processed_data <- preprocess_data(
-    x                = x,
-    group_var        = group_var,
+    x                 = x,
+    group_var         = group_var,
     include_group_var = include_group_var,
-    select           = select,
-    alpha            = alpha,
-    df               = df,
-    center           = center,
-    acd_vars         = acd_vars,
-    fp_powers        = fp_powers,
-    zero_vars        = zero_vars,
-    force_keep       = force_keep
+    select            = select,
+    alpha             = alpha,
+    df                = df,
+    center            = center,
+    acd_vars          = acd_vars,
+    fp_powers         = fp_powers,
+    zero_vars         = zero_vars,
+    catzero_vars      = catzero_vars,
+    spike_vars        = spike_vars,
+    force_keep        = force_keep
   )
   
   # ---------------------------------------------------------------------------
-  # Step 2: Fit adjustment model via MFP
+  # Step 1: Fit adjustment model via MFP
   # ---------------------------------------------------------------------------
   if (verbose) {
     cat("\ni === Fitting Adjustment Model via MFP ===\n")
-    cat("\ni Step 2: Adjustment model\n")
+    cat("i Step 1: Adjustment model\n")
   }
   
   adjustment_model <- fit_adjustment_model(
@@ -147,18 +151,23 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
     offset         = offset,
     cycles         = cycles,
     family         = family,
+    family_string  = family_string,
     criterion      = criterion,
     updated_params = processed_data$updated_params,
     xorder         = xorder,
     ties           = ties,
     strata         = strata,
     nocenter       = nocenter,
+    min_prop       = min_prop,
+    max_prop       = max_prop,
     use_ftest      = use_ftest,
     control        = control,
     verbose        = FALSE
   )
   
-  if (verbose) print(adjustment_model$fp_terms)
+  if (verbose) {
+    print(adjustment_model$fp_terms)
+  }
   
   # Identify variables retained by the adjustment model
   selected_vars <- get_selected_variables(adjustment_model)
@@ -172,7 +181,7 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
   )
   
   # ---------------------------------------------------------------------------
-  # Step 3: Evaluate univariable interactions
+  # Step 2: Evaluate univariable interactions
   # ---------------------------------------------------------------------------
   univ_results <- evaluate_interactions(
     y                  = y,
@@ -190,6 +199,7 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
     control            = control,
     nocenter           = nocenter,
     family             = family,
+    family_string      = family_string,
     fp_powers          = fp_powers,
     cycles             = cycles,
     criterion          = criterion,
@@ -206,6 +216,20 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
   }
   
   list(
+    # Top-level fields: directly accessible as fit$field by print/summary methods
+    model_evaluation_metrics = univ_results$model_evaluation_metrics,
+    all_model_metrics        = univ_results$all_model_metrics,
+    interaction_models       = univ_results$interaction_models,
+    fitted_functions         = univ_results$fitted_functions,
+    adjust_terms             = adjustment_model$fp_terms,
+    group_var                = univ_results$group_var,
+    show_models              = univ_results$show_models,
+    flex                     = univ_results$flex,
+    group_levels_new         = univ_results$group_levels_new,
+    group_levels_original    = univ_results$group_levels_original,
+    family                   = univ_results$family,
+    nobs                     = univ_results$nobs,
+    # Full sub-objects retained for programmatic access
     adjustment_model         = adjustment_model,
     univariable_interactions = univ_results
   )
@@ -224,7 +248,7 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
 #' synchronised with the modified column set so that every downstream function
 #' receives consistently aligned inputs.
 #'
-#' This function is called at the start of \code{fit_mfp()} and its output is
+#' This function is called at the start of \code{fit_mfpi()} and its output is
 #' threaded through the entire algorithm. It does not perform argument checking.
 #'
 #' @param x Numeric matrix of predictors including `group_var`.
@@ -264,7 +288,8 @@ fit_mfpi <- function(x, y, family, weights, offset, cycles, center, criterion,
 #' @noRd
 preprocess_data <- function(x, group_var, include_group_var,
                             select, alpha, df, center, acd_vars,
-                            fp_powers, zero_vars, force_keep) {
+                            fp_powers, zero_vars, catzero_vars, spike_vars,
+                            force_keep) {
   
   original_x     <- x
   original_names <- colnames(x)
@@ -279,18 +304,20 @@ preprocess_data <- function(x, group_var, include_group_var,
   x_filtered      <- x[, predictor_names, drop = FALSE]
   
   # Helper: extract and rename a parameter vector to match the filtered columns
-  pred_idx   <- which(original_names %in% predictor_names)
+  pred_idx    <- which(original_names %in% predictor_names)
   slice_param <- function(v) setNames(v[pred_idx], predictor_names)
   
   updated_params <- list(
-    select     = slice_param(select),
-    alpha      = slice_param(alpha),
-    df         = slice_param(df),
-    center     = slice_param(center),
-    acd_vars   = slice_param(acd_vars),
-    fp_powers  = slice_param(fp_powers),
-    zero_vars  = slice_param(zero_vars),
-    force_keep = force_keep
+    select       = slice_param(select),
+    alpha        = slice_param(alpha),
+    df           = slice_param(df),
+    center       = slice_param(center),
+    acd_vars     = slice_param(acd_vars),
+    fp_powers    = slice_param(fp_powers),
+    zero_vars    = slice_param(zero_vars),
+    catzero_vars = slice_param(catzero_vars),
+    spike_vars   = slice_param(spike_vars),
+    force_keep   = force_keep
   )
   
   dummy_names <- NULL
@@ -305,13 +332,15 @@ preprocess_data <- function(x, group_var, include_group_var,
     make_dummy_param <- function(val) setNames(rep(val, n_dummies), dummy_names)
     
     dummy_params <- list(
-      select    = make_dummy_param(1),           # always selected
-      alpha     = make_dummy_param(0),           # no FP transformation
-      df        = make_dummy_param(1L),          # linear (binary)
-      center    = make_dummy_param(FALSE),
-      acd_vars  = make_dummy_param(FALSE),
-      zero_vars = make_dummy_param(FALSE),
-      fp_powers = as.list(setNames(rep(1, n_dummies), dummy_names))
+      select       = make_dummy_param(1),    # always selected
+      alpha        = make_dummy_param(0),    # no FP transformation
+      df           = make_dummy_param(1L),   # linear (binary)
+      center       = make_dummy_param(FALSE),
+      acd_vars     = make_dummy_param(FALSE),
+      zero_vars    = make_dummy_param(FALSE),
+      catzero_vars = make_dummy_param(FALSE),
+      spike_vars   = make_dummy_param(FALSE),
+      fp_powers    = as.list(setNames(rep(1, n_dummies), dummy_names))
     )
     
     for (param in names(dummy_params)) {
@@ -341,7 +370,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 
 #' Fit the MFP Adjustment Model
 #'
-#' A thin wrapper around \code{fit_mfp()} that selects adjustment variables
+#' A thin wrapper around `mfp2:::fit_mfp()` that selects adjustment variables
 #' and their FP transformations. Scale and shift are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to `x`.
 #'
@@ -351,62 +380,79 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @param weights Numeric vector of observation weights.
 #' @param offset Numeric vector of linear-predictor offsets.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param family Character string; regression family.
-#' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param updated_params Named list of per-variable modeling parameters as
-#'   returned by \code{preprocess_data()}. Must contain `df`, `center`, `select`,
-#'   `alpha`, `force_keep`, `fp_powers`, `acd_vars`, `zero_vars`, and a
-#'   `catzero` element (currently always `FALSE` for all variables).
+#' @param family GLM family object (e.g. \code{gaussian()}) or the character
+#'   string \code{"cox"}. Passed directly to \code{mfp2:::fit_mfp()} as its
+#'   \code{family} argument.
+#' @param family_string Character string of the family name (e.g.
+#'   \code{"gaussian"}, \code{"cox"}). Required separately by
+#'   \code{mfp2:::fit_mfp()} for internal branching.
+#' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
+#'   \code{"bic"}.
+#' @param updated_params Named list of per-variable modelling parameters as
+#'   returned by \code{preprocess_data()}. Must contain \code{df},
+#'   \code{center}, \code{select}, \code{alpha}, \code{force_keep},
+#'   \code{fp_powers}, \code{acd_vars}, \code{zero_vars},
+#'   \code{catzero_vars}, and \code{spike_vars}.
 #' @param xorder Character string; entry order for MFP backfitting.
 #' @param ties Character string; tie-handling for Cox models.
-#' @param strata Integer stratum vector for stratified Cox models, or `NULL`.
-#' @param nocenter Numeric vector passed to [survival::coxph()].
+#' @param strata Integer stratum vector for stratified Cox models, or
+#'   \code{NULL}.
+#' @param nocenter Numeric vector passed to \code{survival::coxph()}.
+#' @param min_prop Numeric. Minimum proportion of zeros for SAZ modelling.
+#' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
 #' @param use_ftest Logical. Use F-test for Gaussian models.
 #' @param control Fitting control list.
-#' @param verbose Logical. Passed directly to \code{fit_mfp()}.
+#' @param verbose Logical. Passed directly to \code{mfp2:::fit_mfp()}.
 #'
-#' @return The fitted model object returned by \code{fit_mfp()}, which
-#'   includes `fp_terms` (a data frame of selected variables and their FP
+#' @return The fitted model object returned by \code{mfp2:::fit_mfp()}, which
+#'   includes \code{fp_terms} (a data frame of selected variables and their FP
 #'   powers) and the underlying model fit.
 #'
+#' @details
+#' This function calls \code{mfp2:::fit_mfp()} directly via \code{:::} because
+#' \code{fit_mfp()} is not currently exported by the \pkg{mfp2} package. Once
+#' \pkg{mfp2} exports \code{fit_mfp()}, this call should be updated to use
+#' \code{::}. The \code{scale} and \code{shift} arguments are set to 1 and 0
+#' respectively because \code{mfpi()} has already applied them to \code{x}.
 #' @keywords internal
 #' @noRd
 fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
-                                 criterion, updated_params, xorder, ties,
-                                 strata, nocenter, use_ftest, control,
+                                 family_string, criterion, updated_params,
+                                 xorder, ties, strata, nocenter, min_prop,
+                                 max_prop, use_ftest, control,
                                  verbose = FALSE) {
   n_vars <- ncol(x)
   
-  # catzero is an mfp2 internal concept; always FALSE here as mfpi() handles
-  # zero/non-positive values via zero_vars before this point.
-  catzero <- setNames(rep(FALSE, n_vars), colnames(x))
-  
-  fit_mfp(
-    x        = x,
-    y        = y,
-    weights  = weights,
-    offset   = offset,
-    cycles   = cycles,
-    method   = ties,
-    strata   = strata,
-    nocenter = nocenter,
-    scale    = rep(1, n_vars),   # already applied by mfpi()
-    shift    = rep(0, n_vars),   # already applied by mfpi()
-    ftest    = use_ftest,
-    control  = control,
-    family   = family,
-    criterion = criterion,
-    xorder   = xorder,
-    df       = updated_params$df,
-    center   = updated_params$center,
-    select   = updated_params$select,
-    alpha    = updated_params$alpha,
-    keep     = updated_params$force_keep,
-    powers   = updated_params$fp_powers,
-    acdx     = updated_params$acd_vars,
-    zero     = updated_params$zero_vars,
-    catzero  = catzero,
-    verbose  = verbose
+  mfp2:::fit_mfp(
+    x             = x,
+    y             = y,
+    weights       = weights,
+    offset        = offset,
+    cycles        = cycles,
+    method        = ties,
+    strata        = strata,
+    nocenter      = nocenter,
+    scale         = rep(1, n_vars),   # already applied by mfpi()
+    shift         = rep(0, n_vars),   # already applied by mfpi()
+    ftest         = use_ftest,
+    control       = control,
+    family        = family,
+    family_string = family_string,
+    criterion     = criterion,
+    xorder        = xorder,
+    df            = updated_params$df,
+    center        = updated_params$center,
+    select        = updated_params$select,
+    alpha         = updated_params$alpha,
+    keep          = updated_params$force_keep,
+    powers        = updated_params$fp_powers,
+    acdx          = updated_params$acd_vars,
+    zero          = updated_params$zero_vars,
+    catzero       = updated_params$catzero_vars,
+    spike         = updated_params$spike_vars,
+    min_prop      = min_prop,
+    max_prop      = max_prop,
+    verbose       = verbose
   )
 }
 
@@ -482,16 +528,30 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #' }
 #'
 #' @section Selection logic:
-#' For each variable, three models are fitted (linear, FP1, FP2). Among those
-#' that meet the selection threshold, the one with the strongest evidence is
-#' retained:
-#' - `"pvalue"`: smallest p-value below `p_interact`.
-#' - `"aic"`: largest `AIC_diff` (= AIC_main − AIC_interaction) above
-#'   `min_improvement`.
-#' - `"bic"`: largest `BIC_diff` above `min_improvement`.
+#' For each variable in \code{cont_vars}, three candidate interaction models
+#' are fitted in order: linear (degree 0), FP1 (degree 1), FP2 (degree 2).
+#' The models are evaluated using \code{criterion}:
 #'
-#' A positive AIC/BIC difference means the interaction model has lower
-#' information criterion than the main-effects model, i.e. better fit.
+#' \describe{
+#'   \item{\code{"pvalue"}}{Retain candidates with p-value strictly below
+#'     \code{p_interact}. Among retained candidates, select the one with the
+#'     **smallest p-value**. Ties in p-value (e.g. both rounded to the same
+#'     value) are broken by selecting the candidate with the **largest
+#'     \code{AIC_diff}**, favouring the more parsimonious fit.}
+#'   \item{\code{"aic"}}{Retain candidates with \code{AIC_diff} strictly above
+#'     \code{min_improvement}. Among retained candidates, select the one with
+#'     the **largest \code{AIC_diff}}.}
+#'   \item{\code{"bic"}}{Same as \code{"aic"} using \code{BIC_diff}.}
+#' }
+#'
+#' \code{AIC_diff} and \code{BIC_diff} are defined as
+#' \eqn{\mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{int}} and
+#' \eqn{\mathrm{BIC}_\text{main} - \mathrm{BIC}_\text{int}} respectively.
+#' A **positive** value indicates that the interaction model fits better
+#' (lower information criterion) than the main-effects model.
+#'
+#' If no candidate clears its threshold, no interaction is retained for that
+#' variable and it is excluded from \code{model_evaluation_metrics}.
 #'
 #' @keywords internal
 #' @importFrom dplyr bind_rows relocate
@@ -501,8 +561,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   adj_fp_powers, cont_vars, flex,
                                   weights, offset, xorder, ties, strata,
                                   use_ftest, control, nocenter, family,
-                                  fp_powers, cycles, criterion, digits,
-                                  group_var, show_models, p_interact,
+                                  family_string, fp_powers, cycles, criterion,
+                                  digits, group_var, show_models, p_interact,
                                   min_improvement,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   quiet = FALSE) {
@@ -550,7 +610,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         adj_vars <- setdiff(selected_vars, var_name)
         xadj_current <- NULL
         if (length(adj_vars) > 0L) {
-          xadj_current <- transform_matrix(
+          xadj_current <- mfp2::transform_matrix(
             x             = x[, adj_vars, drop = FALSE],
             power_list    = adj_fp_powers[adj_vars],
             center        = processed_data$updated_params$center[adj_vars],
@@ -568,28 +628,30 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       
       # Fit and test the interaction model -----------------------------------
       fit_result <- flex_fit(
-        x         = x,
-        y         = y,
-        cont_var  = var_name,
-        group_var = cat_info$group_var,
-        xadj      = xadj_current,
-        criterion = criterion,
-        ties      = ties,
-        degree    = degree,
-        family    = family,
-        fp_cand   = processed_data$updated_params$fp_powers[[var_name]],
-        use_ftest = use_ftest,
-        center    = processed_data$updated_params$center[var_name],
-        xorder    = xorder,
-        weights   = weights,
-        offset    = offset,
-        strata    = strata,
-        control   = control,
-        nocenter  = nocenter,
-        cycles    = cycles,
-        zero_var  = processed_data$updated_params$zero_vars[var_name],
-        flex      = flex,
-        digits    = digits
+        x             = x,
+        y             = y,
+        cont_var      = var_name,
+        group_var     = cat_info$group_var,
+        xadj          = xadj_current,
+        criterion     = criterion,
+        ties          = ties,
+        degree        = degree,
+        family        = family,
+        family_string = family_string,
+        fp_cand       = processed_data$updated_params$fp_powers[[var_name]],
+        use_ftest     = use_ftest,
+        center        = processed_data$updated_params$center[var_name],
+        xorder        = xorder,
+        weights       = weights,
+        offset        = offset,
+        strata        = strata,
+        control       = control,
+        nocenter      = nocenter,
+        cycles        = cycles,
+        zero_var      = processed_data$updated_params$zero_vars[var_name],
+        spike_var     = FALSE,
+        flex          = flex,
+        digits        = digits
       )
       
       # Annotate metrics with variable and interaction type ------------------
@@ -601,12 +663,20 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       
       # Select best model according to criterion ----------------------------
       if (criterion == "pvalue") {
-        pval <- metrics$pvalue[1L]
-        if (!is.na(pval) && pval < p_interact && pval < best_score) {
-          best_fit    <- fit_result
-          best_metric <- metrics
-          best_type   <- interaction_type
-          best_score  <- pval
+        pval      <- metrics$pvalue[1L]
+        aic_delta <- metrics$AIC_diff[1L]
+        if (!is.na(pval) && pval < p_interact) {
+          # Primary: smallest p-value. Tie-break: largest AIC_diff.
+          best_aic <- if (!is.null(best_fit))
+            best_fit$test_results$evaluation_metrics$AIC_diff[1L]
+          else -Inf
+          if (pval < best_score ||
+              (pval == best_score && !is.na(aic_delta) && aic_delta > best_aic)) {
+            best_fit    <- fit_result
+            best_metric <- metrics
+            best_type   <- interaction_type
+            best_score  <- pval
+          }
         }
       } else if (criterion == "aic") {
         delta <- metrics$AIC_diff[1L]

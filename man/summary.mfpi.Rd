@@ -2,27 +2,52 @@
 % Please edit documentation in R/mfpi.R
 \name{summary.mfpi}
 \alias{summary.mfpi}
-\title{Summarizing \code{mfpi} model fits}
+\title{Summarise an \code{"mfpi"} Object}
 \usage{
 \method{summary}{mfpi}(object, ...)
 }
 \arguments{
-\item{object}{an object of class \code{mfpi}, usually, a result of a call to
+\item{object}{An object of class \code{"mfpi"}, as returned by
 \code{mfpi()}.}
 
-\item{...}{further arguments passed to the summary functions for \code{glm()}
-(\code{\link[stats:summary.glm]{stats::summary.glm()}}, i.e. families supported by \code{glm()}) or \code{coxph()}
-(\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, if \code{object$family = "cox"}).}
+\item{...}{Currently unused.}
 }
 \value{
-An object returned from \code{\link[stats:summary.glm]{stats::summary.glm()}} or
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, depending on the family parameter of \code{object}.
+An object of class \code{"summary.mfpi"}, which is a named list
+with the following components:
+\describe{
+\item{\code{group_var}}{Name of the grouping variable.}
+\item{\code{nobs}}{Number of observations.}
+\item{\code{family}}{Regression family (GLM object or \code{"cox"}).}
+\item{\code{flex}}{Flexibility level used (\code{"flex1"} to
+\code{"flex4"}).}
+\item{\code{group_levels_original}}{Original levels of \code{group_var}.}
+\item{\code{adjust_terms}}{The full \code{fp_terms} data frame from the
+MFP adjustment model, as returned by \code{mfp2:::fit_mfp()}.}
+\item{\code{model_evaluation_metrics}}{Tibble of interaction test results
+(one row per significant variable): functional form selected, FP powers,
+deviance, df, p-value, AIC, and BIC. These p-values correctly account
+for the degrees of freedom of the interaction test.}
+\item{\code{all_model_metrics}}{Tibble of metrics for all three candidate
+models (linear, FP1, FP2) for every variable tested, regardless of
+significance.}
+\item{\code{model_summaries}}{Named list of regression summaries, one per
+variable in \code{cont_vars} that had a significant interaction. Each
+element is the output of \code{summary(fit$fit)}, where \code{fit} is
+the raw \code{glm} or \code{coxph} object. \strong{Note:} p-values in
+these summaries are from the standard \code{glm}/\code{coxph} machinery
+and do not account for the degrees of freedom used to estimate FP
+powers; use \code{model_evaluation_metrics$pvalue} for the correct
+interaction test p-values.}
+}
 }
 \description{
-This function is a method for the generic \code{\link[base:summary]{base::summary()}} function for
-objects of class \code{mfpi}.
+Produces a structured summary of an \code{"mfpi"} model fit, including the
+adjustment model, interaction test metrics, and the regression output for
+each final interaction model. The returned object has its own print method
+for formatted console display.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[stats:glm]{stats::glm()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:coxph]{survival::coxph()}},
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}}
+\code{print.summary.mfpi()}, \code{mfpi()},
+\code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:summary.coxph]{survival::summary.coxph()}}
 }

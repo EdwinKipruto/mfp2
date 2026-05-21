@@ -43,7 +43,7 @@
 #'   non-positive values.
 #' @param group_fp_powers Named list of FP power vectors, one per group of
 #'   `group_var`. The names must follow the `<varname><group><power_index>`
-#'   convention produced by [mfp2::create_z_variables()].
+#'   convention produced by \code{create_z_variables()}.
 #' @param interaction_model The fitted interaction model object returned by
 #'   `test_interaction()`. Must expose `$coefficients` and support [vcov()].
 #' @param group_var A one-column numeric matrix of the grouping variable.
@@ -74,8 +74,8 @@
 #'   \item{`(f1-f0)_lower`, `(f1-f0)_upper`, …}{95% CI bounds for differences.}
 #' }
 #'
-#' @seealso [mfp2::create_z_variables()], [mfp2::compute_std_errors_diff()],
-#'   `var_group()`
+#' @seealso \code{create_z_variables()}, \code{compute_std_errors_diff()},
+#'   \code{var_group()}
 #'
 #' @keywords internal
 #' @noRd
@@ -84,6 +84,7 @@ gen_fitted_values_per_group <- function(cont_var,
                                         interaction_model,
                                         group_var,
                                         family,
+                                        family_string,
                                         transform  = TRUE,
                                         center     = FALSE,
                                         use_grid   = FALSE) {
@@ -109,7 +110,7 @@ gen_fitted_values_per_group <- function(cont_var,
   coef_names <- names(coef_vec)
   
   # Cox models have no intercept; all others include one
-  intercept <- if (family == "cox") 0 else coef_vec["(Intercept)"]
+  intercept <- if (family_string == "cox") 0 else coef_vec["(Intercept)"]
   
   # Identify which coefficient blocks belong to each group --------------------
   groups     <- var_group(cont_name, coef_names)
@@ -250,7 +251,7 @@ gen_fitted_values_per_group <- function(cont_var,
     groups       = groups,
     group_name   = group_name,
     xtransformed = x_split,
-    powers       = group_fp_powers
+    group_fp_powers = group_fp_powers
   )
   colnames(diff_se) <- sprintf("se(f%d-f%d)", grp_levels[-1L], grp_levels[1L])
   

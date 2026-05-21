@@ -93,9 +93,10 @@
 #' @keywords internal
 #' @noRd
 flex_fit <- function(x, y, cont_var, group_var, xadj, criterion, ties,
-                     degree, family, fp_cand, use_ftest, center, xorder,
-                     weights, offset, strata, control, nocenter, cycles,
-                     zero_var, flex, digits,
+                     degree, family, family_string, fp_cand, use_ftest,
+                     center, xorder, weights, offset, strata, control,
+                     nocenter, cycles, zero_var, spike_var = FALSE,
+                     flex, digits,
                      run_test = TRUE, compute_fitted = TRUE) {
   
   # Input validation -----------------------------------------------------------
@@ -132,6 +133,7 @@ flex_fit <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     ties           = ties,
     degree         = degree,
     family         = family,
+    family_string  = family_string,
     fp_cand        = fp_cand,
     use_ftest      = use_ftest,
     center         = center,
@@ -143,6 +145,7 @@ flex_fit <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     nocenter       = nocenter,
     cycles         = cycles,
     zero_var       = zero_var,
+    spike_var      = spike_var,
     digits         = digits,
     run_test       = run_test,
     compute_fitted = compute_fitted
@@ -169,7 +172,7 @@ flex_fit <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' @noRd
 flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
                   family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, digits,
+                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, family_string, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -190,12 +193,12 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   group_dummies <- create_dummies(groupvar_vec)
   
   z_vars <- create_z_variables(
-    x      = contvar_vec,
-    group_var      = groupvar_vec,
-    power  = 1L,
-    scale  = 1,
-    shift  = 0,
-    center = center
+    cont_var  = contvar_vec,
+    group_var = groupvar_vec,
+    power     = 1L,
+    scale     = 1,
+    shift     = 0,
+    center    = center
   )
   
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
@@ -227,6 +230,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
       strata             = strata,
       control            = control,
       nocenter           = nocenter,
+      family_string      = family_string,
       digits             = digits
     )
   }
@@ -236,10 +240,11 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   if (compute_fitted) {
     fitted_functions <- gen_fitted_values_per_group(
       cont_var       = contvar_vec,
-      powers            = bestfp_interaction,
+      group_fp_powers   = bestfp_interaction,
       interaction_model = test_results$interaction_model,
       group_var      = groupvar_vec,
-      family            = family
+      family            = family,
+      family_string     = family_string
     )
   }
   
@@ -276,7 +281,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @noRd
 flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
                   family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, digits,
+                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, family_string, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -313,37 +318,42 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   pw_list[[cont_var]] <- fp_cand
   
   n_total    <- length(vnames)
-  center_vec <- c(center, rep(FALSE, n_total - 1L))
-  zero_vec   <- c(zero_var, rep(FALSE, n_total - 1L))
+  center_vec <- c(center,    rep(FALSE, n_total - 1L))
+  zero_vec   <- c(zero_var,  rep(FALSE, n_total - 1L))
+  spike_vec  <- c(spike_var, rep(FALSE, n_total - 1L))
   acd_vec    <- setNames(rep(FALSE, n_total), vnames)
   catzero    <- setNames(rep(FALSE, n_total), vnames)
   
   fit_main_pool <- mfp2:::fit_mfp(
-    x        = xnew,
-    y        = y,
-    df       = df_vec,
-    criterion = criterion,
-    select   = rep(1, n_total),
-    alpha    = rep(1, n_total),
-    keep     = vnames,
-    method   = ties,
-    family   = family,
-    powers   = pw_list,
-    ftest    = use_ftest,
-    center   = center_vec,
-    shift    = rep(0, n_total),
-    scale    = rep(1, n_total),
-    acdx     = acd_vec,
-    xorder   = xorder,
-    weights  = weights,
-    offset   = offset,
-    strata   = strata,
-    control  = control,
-    nocenter = nocenter,
-    cycles   = cycles,
-    catzero  = catzero,
-    zero     = zero_vec,
-    verbose  = FALSE
+    x             = xnew,
+    y             = y,
+    df            = df_vec,
+    criterion     = criterion,
+    select        = rep(1, n_total),
+    alpha         = rep(1, n_total),
+    keep          = vnames,
+    method        = ties,
+    family        = family,
+    family_string = family_string,
+    powers        = pw_list,
+    ftest         = use_ftest,
+    center        = center_vec,
+    shift         = rep(0, n_total),
+    scale         = rep(1, n_total),
+    acdx          = acd_vec,
+    xorder        = xorder,
+    weights       = weights,
+    offset        = offset,
+    strata        = strata,
+    control       = control,
+    nocenter      = nocenter,
+    cycles        = cycles,
+    catzero       = catzero,
+    zero          = zero_vec,
+    spike         = spike_vec,
+    min_prop      = 0.05,
+    max_prop      = 0.95,
+    verbose       = FALSE
   )
   
   # Step 2: Extract best FP powers for cont_var --------------------------------
@@ -356,12 +366,12 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   )
   
   z_vars <- create_z_variables(
-    x      = contvar_vec,
-    group_var      = groupvar_vec,
-    power  = bestfp,
-    shift  = 0,
-    scale  = 1,
-    center = center
+    cont_var  = contvar_vec,
+    group_var = groupvar_vec,
+    power     = bestfp,
+    shift     = 0,
+    scale     = 1,
+    center    = center
   )
   
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
@@ -388,6 +398,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
       strata             = strata,
       control            = control,
       nocenter           = nocenter,
+      family_string      = family_string,
       digits             = digits
     )
   }
@@ -397,10 +408,11 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   if (compute_fitted) {
     fitted_functions <- gen_fitted_values_per_group(
       cont_var       = contvar_vec,
-      powers            = bestfp_interaction,
+      group_fp_powers   = bestfp_interaction,
       interaction_model = test_results$interaction_model,
       group_var      = groupvar_vec,
-      family            = family
+      family            = family,
+      family_string     = family_string
     )
   }
   
@@ -436,7 +448,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @noRd
 flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
                   family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, digits,
+                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, family_string, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -452,18 +464,18 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   # transform_z_variables() tries every combination of powers from fp_cand
   # and returns a named list of matrices plus a power matrix.
   transformed <- transform_z_variables(
-    cont_var       = contvar_vec,
-    group_var      = groupvar_vec,
+    cont_var   = contvar_vec,
+    group_var  = groupvar_vec,
     shift      = 0,
     scale      = 1,
-    powers     = fp_cand,
-    degree     = degree,
+    fp_cand    = fp_cand,
+    fp_degree  = degree,
     acdx       = FALSE,
     center     = FALSE,   # centering deferred to Step 3
     na_replace = "NA"
   )
   
-  power_matrix      <- transformed$powers
+  power_matrix      <- transformed$powers_matrix
   transformed_groups <- transformed$z_transformed
   znames            <- transformed$znames
   
@@ -539,6 +551,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
       strata             = strata,
       control            = control,
       nocenter           = nocenter,
+      family_string      = family_string,
       digits             = digits
     )
   }
@@ -548,10 +561,11 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   if (compute_fitted) {
     fitted_functions <- gen_fitted_values_per_group(
       cont_var       = contvar_vec,
-      powers            = bestfp_interaction,
+      group_fp_powers   = bestfp_interaction,
       interaction_model = test_results$interaction_model,
       group_var      = groupvar_vec,
-      family            = family
+      family            = family,
+      family_string     = family_string
     )
   }
   
@@ -588,7 +602,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @noRd
 flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
                   family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, digits,
+                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, family_string, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -597,13 +611,14 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   
   # Shared arguments for flex1 and flex2 calls ---------------------------------
   shared <- list(
-    x         = x, y = y, cont_var = cont_var, group_var = group_var,
-    xadj      = xadj, criterion = criterion, ties = ties, degree = degree,
-    family    = family, fp_cand = fp_cand, use_ftest = use_ftest,
-    center    = center, xorder = xorder, weights = weights, offset = offset,
-    strata    = strata, control = control, nocenter = nocenter,
-    cycles    = cycles, zero_var = zero_var, digits = digits,
-    run_test  = FALSE, compute_fitted = FALSE   # test performed below
+    x             = x, y = y, cont_var = cont_var, group_var = group_var,
+    xadj          = xadj, criterion = criterion, ties = ties, degree = degree,
+    family        = family, family_string = family_string, fp_cand = fp_cand,
+    use_ftest     = use_ftest, center = center, xorder = xorder,
+    weights       = weights, offset = offset, strata = strata,
+    control       = control, nocenter = nocenter, cycles = cycles,
+    zero_var      = zero_var, spike_var = spike_var, digits = digits,
+    run_test      = FALSE, compute_fitted = FALSE
   )
   
   # Step 1: Main-effects design matrix from flex1 (pooled FP powers) ----------
@@ -641,6 +656,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
       strata             = strata,
       control            = control,
       nocenter           = nocenter,
+      family_string      = family_string,
       digits             = digits
     )
   }
@@ -650,10 +666,11 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   if (compute_fitted) {
     fitted_functions <- gen_fitted_values_per_group(
       cont_var       = contvar_vec,
-      powers            = bestfp_interaction,
+      group_fp_powers   = bestfp_interaction,
       interaction_model = test_results$interaction_model,
       group_var      = groupvar_vec,
-      family            = family
+      family            = family,
+      family_string     = family_string
     )
   }
   
@@ -687,7 +704,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @noRd
 flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
                   family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, digits,
+                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, family_string, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -704,8 +721,12 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   # create_z_variables() with power = 1 produces one column per group;
   # these will be replaced by the FP-transformed versions in Step 3.
   z_linear <- create_z_variables(
-    x = contvar_vec, group_var      = groupvar_vec,
-    power = 1L, shift = 0, scale = 1, center = FALSE
+    cont_var  = contvar_vec,
+    group_var = groupvar_vec,
+    power     = 1L,
+    shift     = 0,
+    scale     = 1,
+    center    = FALSE
   )$z
   znames <- colnames(z_linear)
   
@@ -728,37 +749,42 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   pw_list[znames] <- replicate(k, fp_cand, simplify = FALSE)
   
   # Centre only the within-group cont_var columns; adjustment already centred
-  center_vec  <- c(rep(center,  k), rep(FALSE, n_total - k))
-  zero_vec    <- c(rep(TRUE,    k), rep(FALSE, n_total - k))
+  center_vec  <- c(rep(center,    k), rep(FALSE, n_total - k))
+  zero_vec    <- c(rep(TRUE,      k), rep(FALSE, n_total - k))
+  spike_vec   <- c(rep(spike_var, k), rep(FALSE, n_total - k))
   acd_vec     <- setNames(rep(FALSE, n_total), vnames)
   catzero_vec <- setNames(rep(FALSE, n_total), vnames)
   
   fit_int <- mfp2:::fit_mfp(
-    x        = xnew,
-    y        = y,
-    df       = df_vec,
-    criterion = criterion,
-    select   = rep(1, n_total),
-    alpha    = rep(1, n_total),
-    keep     = vnames,
-    method   = ties,
-    family   = family,
-    powers   = pw_list,
-    shift    = rep(0, n_total),
-    scale    = rep(1, n_total),
-    ftest    = use_ftest,
-    acdx     = acd_vec,
-    center   = center_vec,
-    xorder   = xorder,
-    weights  = weights,
-    offset   = offset,
-    strata   = strata,
-    control  = control,
-    nocenter = nocenter,
-    cycles   = cycles,
-    zero     = zero_vec,
-    catzero  = catzero_vec,
-    verbose  = FALSE
+    x             = xnew,
+    y             = y,
+    df            = df_vec,
+    criterion     = criterion,
+    select        = rep(1, n_total),
+    alpha         = rep(1, n_total),
+    keep          = vnames,
+    method        = ties,
+    family        = family,
+    family_string = family_string,
+    powers        = pw_list,
+    shift         = rep(0, n_total),
+    scale         = rep(1, n_total),
+    ftest         = use_ftest,
+    acdx          = acd_vec,
+    center        = center_vec,
+    xorder        = xorder,
+    weights       = weights,
+    offset        = offset,
+    strata        = strata,
+    control       = control,
+    nocenter      = nocenter,
+    cycles        = cycles,
+    zero          = zero_vec,
+    catzero       = catzero_vec,
+    spike         = spike_vec,
+    min_prop      = 0.05,
+    max_prop      = 0.95,
+    verbose       = FALSE
   )
   
   bestfp_interaction <- get_fp_powers(znames, fit_int$fp_terms)
@@ -821,6 +847,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
       strata             = strata,
       control            = control,
       nocenter           = nocenter,
+      family_string      = family_string,
       digits             = digits
     )
   }
@@ -830,10 +857,11 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
   if (compute_fitted) {
     fitted_functions <- gen_fitted_values_per_group(
       cont_var       = contvar_vec,
-      powers            = bestfp_interaction,
+      group_fp_powers   = bestfp_interaction,
       interaction_model = test_results$interaction_model,
       group_var      = groupvar_vec,
-      family            = family
+      family            = family,
+      family_string     = family_string
     )
   }
   

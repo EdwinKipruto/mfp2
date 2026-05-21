@@ -656,7 +656,6 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
-#' before calling this function, for example with 
 #' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
 #' @param \dots Not used.
 #' @examples

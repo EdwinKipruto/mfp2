@@ -23,7 +23,7 @@ belonging to one group. Group identity is read from the single digit
 immediately following the prefix.
 }
 \details{
-This is a lookup helper used after \code{\link[=create_z_variables]{create_z_variables()}} to recover which
+This is a lookup helper used after \code{create_z_variables()} to recover which
 columns belong to each level of \code{group_var}.
 }
 \examples{

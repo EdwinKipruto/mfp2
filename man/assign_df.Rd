@@ -2,29 +2,54 @@
 % Please edit documentation in R/mfp2.R
 \name{assign_df}
 \alias{assign_df}
-\title{Helper to assign degrees of freedom}
+\title{Assign Degrees of Freedom Based on Variable Cardinality}
 \usage{
-assign_df(x, df_default = 4)
+assign_df(x, df_default = 4L)
 }
 \arguments{
-\item{x}{input matrix.}
+\item{x}{A numeric matrix. Each column is a predictor variable.}
 
-\item{df_default}{default df to be used. Default is 4.}
+\item{df_default}{A single positive integer giving the default df to assign
+to variables with six or more unique values. Must be 1 or a positive even
+number (\eqn{2m} for FP degree \eqn{m}). Default is \code{4} (FP2).}
 }
 \value{
-Vector of length \code{ncol(x)} with degrees of freedom for each variable in \code{x}.
+An integer vector of length \code{ncol(x)} giving the assigned df
+for each column, in the same order as the columns of \code{x}.
 }
 \description{
-Determine the number of unique values in a variable. To be used in \code{mfp2()}.
+For each column of a predictor matrix, determines an appropriate degree of
+freedom (df) for fractional polynomial (FP) modelling based on the number
+of distinct values in that column. Variables with very few unique values
+cannot support a high-degree FP transformation, so their df is reduced
+automatically. This function is called internally by \code{mfpi()} and
+\code{mfp2::mfp2()} after the user-supplied default df has been validated.
 }
-\details{
-Variables with fewer than or equal to three unique values, for example,
-will be assigned df = 1. df = 2 will be assigned to variables with 4-5
-unique values, and df = 4 will be assigned to variables with unique values
-greater than or equal to 6.
+\section{Assignment rules}{
+
+Let \eqn{u} denote the number of distinct non-missing values in a column
+and \eqn{d} the user-supplied \code{df_default}. The assigned df is:
+
+\tabular{lll}{
+\strong{Unique values} \tab \strong{Assigned df} \tab \strong{Rationale} \cr
+\eqn{u \le 3}          \tab \code{1} (linear)    \tab Too few values to estimate a
+curve; effectively binary or
+ternary. \cr
+\eqn{4 \le u \le 5}    \tab \code{min(2, d)}     \tab Enough variation for FP1 but
+not FP2; capped at 2. \cr
+\eqn{u \ge 6}          \tab \code{d}             \tab Sufficient variation; retain
+the requested default. \cr
 }
+}
+
 \examples{
-x <- matrix(1:100, nrow = 10)
-assign_df(x)
+# Binary variable gets df = 1; continuous variables get df_default
+x <- cbind(
+  binary     = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1),
+  few_levels = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
+  continuous = 1:10
+)
+assign_df(x, df_default = 4)
+# binary -> 1, few_levels -> 2, continuous -> 4
 
 }

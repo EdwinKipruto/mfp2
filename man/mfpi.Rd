@@ -96,13 +96,13 @@ missing values.}
 \item{...}{Currently unused. Reserved for future extensions.}
 
 \item{y}{The response vector (or matrix for survival data). For Gaussian, binomial,
-and Poisson families, supply a numeric or factor vector of length \eqn{n}.
+and Poisson families, supply a numeric vector of length \eqn{n}.
 For Cox models, supply a two-column \code{\link[survival:Surv]{survival::Surv()}} object. Must have
 the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical (grouping) variable in
 \code{x}. Interactions between \code{group_var} and each variable in \code{cont_vars} are
-the primary estimands. Internally, values are remapped to 0, 1, 2, ... in
+the primary interest. Internally, values are remapped to 0, 1, 2, ... in
 ascending order; the group with the lowest original value is the reference
 category. Must have at least two distinct non-missing values.}
 
@@ -162,27 +162,36 @@ algorithm. Default is \code{10}.}
 
 \item{scale}{A numeric vector of length \eqn{p} or a single numeric giving scaling
 factors for the columns of \code{x}. Default is \code{NULL}, which lets the program
-estimate scaling factors automatically. Set \code{scale = 1} to disable scaling.}
+estimate scaling factors automatically. Set \code{scale = 1} to disable scaling.
+See \code{\link[=mfp2]{mfp2()}} for more details.}
 
 \item{shift}{A numeric vector of length \eqn{p} or a single numeric giving shift terms
 added to columns of \code{x} before scaling. Default is \code{NULL}, which estimates
-shift factors automatically. Set \code{shift = 0} to disable shifting.}
+shift factors automatically. Set \code{shift = 0} to disable shifting. See
+\code{\link[=mfp2]{mfp2()}} for more details.}
 
 \item{df}{A numeric vector of length \eqn{p} or a single positive integer setting
 the default degrees of freedom for each predictor. Degrees of freedom
 equal twice the FP degree (e.g. \code{df = 2} for FP1, \code{df = 4} for FP2).
-The program overrides user-supplied values based on the number of unique
-values: variables with 2--3 unique values are set to \code{df = 1} (linear);
-4--5 unique values to \code{df = min(2, default)}; and 6 or more unique values
-retain the default. Default is \code{4}.}
+Regardless of the supplied value, the program overrides \code{df} per variable
+based on the number of distinct values \eqn{u}:
+\itemize{
+\item \eqn{u \le 3}: \code{df} is set to \code{1} (linear). Too few values to
+estimate a curve.
+\item \eqn{4 \le u \le 5}: \code{df} is capped at \code{min(2, df)} (FP1 at
+most). Enough variation for a simple curve but not for FP2.
+\item \eqn{u \ge 6}: \code{df} is retained as supplied.
+}
+Default is \code{4}.}
 
 \item{center}{Logical or a logical vector of length \eqn{p}. Whether to mean-centre
 predictors before fitting the final interaction model. Binary covariates
 are centred at the lower of their two values rather than the mean. Default
-is \code{TRUE}.}
+is \code{TRUE}. See \code{\link[=mfp2]{mfp2()}} for more details.}
 
 \item{subset}{An optional integer vector of positive row indices selecting a subset of
-observations. Default is \code{NULL} (all observations used).}
+observations. Default is \code{NULL} (all observations used).See
+\code{\link[=mfp2]{mfp2()}} for more details.}
 
 \item{family}{A character string specifying the error distribution. One of
 \code{"gaussian"} (default), \code{"binomial"}, \code{"poisson"}, or \code{"cox"}. See the
@@ -190,9 +199,9 @@ observations. Default is \code{NULL} (all observations used).}
 
 \item{criterion}{A character string specifying the criterion used in two distinct places:
 \enumerate{
-\item \strong{Adjustment-variable selection} (Step 2): governs which
+\item \strong{Adjustment-variable selection} (Step 1): governs which
 predictors and FP degrees survive MFP backfitting.
-\item \strong{Functional form selection for the interaction} (Step 3): for
+\item \strong{Functional form selection for the interaction} (Step 2): for
 each variable in \code{cont_vars}, three candidate interaction models are
 fitted — linear, FP1, and FP2 — and the criterion selects among them.
 }
@@ -254,19 +263,19 @@ positive values; non-positive values are set to zero. See the
 should be treated as zero and a binary indicator variable automatically
 created and included in the adjustment model. Implies \code{zero_vars} for the
 named variables. A variable may not appear in both \code{zero_vars} and
-\code{catzero_vars}.}
+\code{catzero_vars}. See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{spike_vars}{An optional character vector naming variables to be assessed for a spike
 at zero using the SAZ algorithm. Implies \code{catzero_vars} (and therefore
-\code{zero_vars}) for the named variables.}
+\code{zero_vars}) for the named variables. See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{min_prop}{Numeric in \eqn{[0, 1]}. Minimum proportion of zeros required for the
 SAZ algorithm to be applied. Default is \code{0.05}. Variables with fewer zeros
-are treated as standard continuous predictors.}
+are treated as standard continuous predictors. See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{max_prop}{Numeric in \eqn{[0, 1]}. Maximum proportion of zeros for SAZ modeling.
 Default is \code{0.95}. Variables with more zeros are also treated as standard
-continuous predictors.}
+continuous predictors. See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{use_ftest}{Logical. Whether to use an F-test rather than a chi-square test when
 computing p-values for Gaussian models. Recommended when the sample size
@@ -357,17 +366,17 @@ relationship between the continuous predictor and the outcome using FP
 functions within each level of \code{group_var}. The algorithm extends the
 standard MFP variable-selection procedure by simultaneously determining
 functional forms and testing whether those forms differ across groups. For
-full details see Sauerbrei, Royston, and Zapien (2007).
+full details see Royston, and Sauerbrei (2004).
 }
 
 \section{Flexibility levels (\code{flex})}{
 
 Four levels of flexibility control how FP powers are estimated and
-constrained between groups. The appropriate level is chosen by the analyst
+constrained between groups. The appropriate level may be chosen by the analyst
 based on subject-matter knowledge and sample-size considerations.
 
 \strong{\code{flex1} (default — least flexible).} FP powers are estimated once from
-the pooled main-effects model (ignoring interaction), then used unchanged
+the main-effects model (ignoring interaction), then used unchanged
 within each group. A likelihood-ratio test comparing the main-effects and
 interaction models constitutes the interaction test. Because the models are
 nested and no extra degrees of freedom are consumed by power estimation,
@@ -485,10 +494,6 @@ interactions between treatment and continuous covariates in clinical trials
 by using fractional polynomials. \emph{Statistics in Medicine}, 23,
 2509--2525.
 
-Royston, P. and Sauerbrei, W. (2008). Interactions between treatment and
-continuous covariates -- a step towards individualising therapy (Editorial).
-\emph{Journal of Clinical Oncology}, 26, 1397--1399.
-
 Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
 continuous variable: simulation study of significance level for several
 methods of analysis. \emph{Statistics in Medicine}, 32, 3788--3803.
@@ -507,15 +512,10 @@ between treatment and a continuous covariate: a comparison of two
 approaches. \emph{Computational Statistics and Data Analysis}, 51,
 4054--4063.
 
-Sauerbrei, W. and Royston, P. (2022). Investigating treatment-effect
-modification by a continuous covariate in IPD meta-analysis: an approach
-using fractional polynomials. \emph{BMC Medical Research Methodology}, 22,
-1--13.
-
 Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
 Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
 for Modelling Continuous Variables}. John Wiley & Sons.
 }
 \seealso{
-\code{summary.mfpi()}, \code{\link[=mfp2]{mfp2()}}
+\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=mfp2]{mfp2()}}
 }

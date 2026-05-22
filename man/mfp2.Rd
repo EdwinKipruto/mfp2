@@ -37,6 +37,7 @@ mfp2(x, ...)
   spike = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
+  force_max_fp = FALSE,
   verbose = TRUE,
   ...
 )
@@ -252,6 +253,15 @@ zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
 
 \item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
 zeros for which SAZ modeling is applied. Defaults to 0.95.}
+
+\item{force_max_fp}{A logical vector of length \code{nvars}, or a single
+logical value that is internally replicated. If \code{TRUE} for a variable,
+the most complex functional form available, as determined by \code{df}, is
+selected even if it is not significant. This argument is only applicable
+when \code{criterion = "aic"} or \code{criterion = "bic"}, and has no effect
+when \code{criterion = "pvalue"}, since the same behavior can be obtained by
+setting \code{alpha = 1} and \code{select = 1}. The default is
+\code{rep(FALSE, nvars)}.}
 
 \item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
 

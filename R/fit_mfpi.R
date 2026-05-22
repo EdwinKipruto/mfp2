@@ -180,6 +180,15 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     adjustment_model$fp_terms
   )
   
+  # Extract spike decisions from the adjustment model for use when
+  # re-transforming adjustment variables inside evaluate_interactions().
+  # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
+  # 3 = binary only) stored in the mfp2 object by mfp2:::fit_mfp().
+  adj_spike_decision <- if (!is.null(adjustment_model$spike_decision))
+    adjustment_model$spike_decision
+  else
+    setNames(rep(2L, length(selected_vars)), selected_vars)
+  
   # ---------------------------------------------------------------------------
   # Step 2: Evaluate univariable interactions
   # ---------------------------------------------------------------------------
@@ -188,6 +197,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     processed_data     = processed_data,
     selected_vars      = selected_vars,
     adj_fp_powers      = adj_fp_powers,
+    adj_spike_decision = adj_spike_decision,
     cont_vars          = cont_vars,
     flex               = flex,
     weights            = weights,
@@ -207,7 +217,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     group_var          = group_var,
     show_models        = show_models,
     p_interact         = p_interact,
-    min_improvement    = min_improvement
+    min_improvement    = min_improvement,
+    min_prop           = min_prop,
+    max_prop           = max_prop
   )
   
   n_significant <- nrow(univ_results$model_evaluation_metrics)
@@ -322,12 +334,14 @@ preprocess_data <- function(x, group_var, include_group_var,
   
   dummy_names <- NULL
   
+  # Compute group dummies once — reused for cat_info and (if needed) appended
+  # to x_filtered when include_group_var = TRUE.
+  group_dummies_mat <- create_dummies(group_values)
+  
   if (include_group_var) {
-    # Create dummy variables (reference category dropped automatically)
-    catvar_dummies <- create_dummies(group_values)
-    dummy_names    <- colnames(catvar_dummies)
-    x_filtered     <- cbind(x_filtered, catvar_dummies)
-    n_dummies      <- length(dummy_names)
+    dummy_names <- colnames(group_dummies_mat)
+    x_filtered  <- cbind(x_filtered, group_dummies_mat)
+    n_dummies   <- length(dummy_names)
     
     make_dummy_param <- function(val) setNames(rep(val, n_dummies), dummy_names)
     
@@ -356,7 +370,8 @@ preprocess_data <- function(x, group_var, include_group_var,
       values          = group_values,
       original_levels = original_levels,
       new_levels      = new_levels,
-      group_var       = group_var
+      group_var       = group_var,
+      dummies         = group_dummies_mat   # computed once above, reused here
     ),
     dummy_names    = dummy_names,
     updated_params = updated_params
@@ -374,8 +389,21 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' and their FP transformations. Scale and shift are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to `x`.
 #'
-#' @param x Numeric matrix of adjustment predictors (group_var already
-#'   removed).
+#' @param x Numeric matrix of predictor variables passed to
+#'   \code{mfp2:::fit_mfp()} for adjustment-variable selection. It is the
+#'   filtered matrix produced by \code{preprocess_data()}, which means:
+#'   \itemize{
+#'     \item \code{group_var} has been \strong{removed} — it is not adjusted
+#'       for here because it is the variable whose interaction with
+#'       \code{cont_vars} is being tested.
+#'     \item If \code{include_group_var = TRUE} in \code{mfpi()},
+#'       \code{preprocess_data()} has already re-added \code{group_var} as a
+#'       set of binary dummy columns (one per non-reference level), with
+#'       \code{select = 1} to force them into the adjustment model.
+#'     \item All columns have already been shifted and scaled by
+#'       \code{mfpi.default()} — shift and scale are therefore passed as 0
+#'       and 1 respectively to \code{mfp2:::fit_mfp()} inside this function.
+#'   }
 #' @param y Response vector or Surv object.
 #' @param weights Numeric vector of observation weights.
 #' @param offset Numeric vector of linear-predictor offsets.
@@ -477,7 +505,14 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #' @param selected_vars Character vector of variable names retained by the
 #'   adjustment model.
 #' @param adj_fp_powers Named list of FP powers for the selected adjustment
-#'   variables, as returned by `get_fp_powers()`.
+#'   variables, as returned by \code{get_fp_powers()}.
+#' @param adj_spike_decision Named numeric vector of spike-at-zero decisions
+#'   for the adjustment variables, as stored in \code{adjustment_model$spike_decision}
+#'   by \code{mfp2:::fit_mfp()}. Values: \code{1} = FP term + binary indicator,
+#'   \code{2} = FP term only (default), \code{3} = binary indicator only.
+#'   Used when re-transforming adjustment variables via \code{mfp2::transform_matrix()}
+#'   to ensure binary indicators for semi-continuous adjustment variables are
+#'   included or suppressed consistently with the adjustment model.
 #' @param cont_vars Character vector of continuous variables to test.
 #' @param flex Character string; `"flex1"`, `"flex2"`, `"flex3"`, or
 #'   `"flex4"`.
@@ -558,12 +593,13 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #' @importFrom rlang .data
 #' @noRd
 evaluate_interactions <- function(y, processed_data, selected_vars,
-                                  adj_fp_powers, cont_vars, flex,
+                                  adj_fp_powers, adj_spike_decision,
+                                  cont_vars, flex,
                                   weights, offset, xorder, ties, strata,
                                   use_ftest, control, nocenter, family,
                                   family_string, fp_powers, cycles, criterion,
                                   digits, group_var, show_models, p_interact,
-                                  min_improvement,
+                                  min_improvement, min_prop, max_prop,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   quiet = FALSE) {
   
@@ -611,15 +647,17 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         xadj_current <- NULL
         if (length(adj_vars) > 0L) {
           xadj_current <- mfp2::transform_matrix(
-            x             = x[, adj_vars, drop = FALSE],
-            power_list    = adj_fp_powers[adj_vars],
-            center        = processed_data$updated_params$center[adj_vars],
-            acdx          = processed_data$updated_params$acd_vars[adj_vars],
-            zero          = processed_data$updated_params$zero_vars[adj_vars],
-            catzero       = setNames(rep(FALSE, length(adj_vars)), adj_vars),
-            keep_x_order  = FALSE,
+            x                  = x[, adj_vars, drop = FALSE],
+            power_list         = adj_fp_powers[adj_vars],
+            center             = processed_data$updated_params$center[adj_vars],
+            acdx               = processed_data$updated_params$acd_vars[adj_vars],
+            zero               = processed_data$updated_params$zero_vars[adj_vars],
+            catzero            = processed_data$updated_params$catzero_vars[adj_vars],
+            spike              = processed_data$updated_params$spike_vars[adj_vars],
+            spike_decision     = adj_spike_decision[adj_vars],
+            keep_x_order       = FALSE,
             acd_parameter_list = NULL,
-            check_binary  = TRUE
+            check_binary       = TRUE
           )$x_transformed
         }
       } else {
@@ -632,6 +670,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         y             = y,
         cont_var      = var_name,
         group_var     = cat_info$group_var,
+        group_dummies = cat_info$dummies,
         xadj          = xadj_current,
         criterion     = criterion,
         ties          = ties,
@@ -650,6 +689,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         cycles        = cycles,
         zero_var      = processed_data$updated_params$zero_vars[var_name],
         spike_var     = FALSE,
+        min_prop      = min_prop,
+        max_prop      = max_prop,
         flex          = flex,
         digits        = digits
       )

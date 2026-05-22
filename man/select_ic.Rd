@@ -26,6 +26,7 @@ select_ic(
   spike_decision,
   acd_parameter,
   prev_adj_params,
+  force_max_fp,
   ...
 )
 
@@ -50,6 +51,7 @@ select_ic_acd(
   spike_decision,
   acd_parameter,
   prev_adj_params,
+  force_max_fp,
   ...
 )
 }
@@ -124,6 +126,19 @@ if an element is \code{NULL}, the variable was not specified in the
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
 from previous steps for each variable.}
+
+\item{force_max_fp}{A logical vector of length \code{nvars}, named by
+variable name. If \code{TRUE} for variable \code{xi}, forces
+\code{select_ic()} and \code{select_ic_acd()} to select the most complex
+functional form available — the highest-likelihood FP model at the degree
+specified by \code{df} for non-ACD variables, or \code{FP1(x, A(x))} for
+ACD variables — without competing it against simpler forms (null, linear,
+or lower-degree FP) under AIC/BIC. The best power combination within the
+selected form is still determined by \code{find_best_fpm_step()} via
+deviance minimisation, which is equivalent to AIC/BIC minimisation at
+fixed degrees of freedom. Has no effect when \code{criterion = "pvalue"}
+since \code{select_ra2()} is used in that case and \code{alpha = 1}
+already guarantees acceptance of the most complex form.}
 
 \item{...}{passed to fitting functions.}
 }

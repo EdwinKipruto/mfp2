@@ -67,6 +67,18 @@
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param prev_adj_params Named list storing adjustment variable transformations 
 #' from previous steps for each variable.
+#' @param force_max_fp A logical vector of length \code{nvars}, named by
+#'  variable name. If \code{TRUE} for variable \code{xi}, forces
+#' \code{select_ic()} and \code{select_ic_acd()} to select the most complex
+#' functional form available — the highest-likelihood FP model at the degree
+#'   specified by \code{df} for non-ACD variables, or \code{FP1(x, A(x))} for
+#'   ACD variables — without competing it against simpler forms (null, linear,
+#'   or lower-degree FP) under AIC/BIC. The best power combination within the
+#'   selected form is still determined by \code{find_best_fpm_step()} via
+#'   deviance minimisation, which is equivalent to AIC/BIC minimisation at
+#'   fixed degrees of freedom. Has no effect when \code{criterion = "pvalue"}
+#'   since \code{select_ra2()} is used in that case and \code{alpha = 1}
+#'   already guarantees acceptance of the most complex form. 
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -156,6 +168,7 @@ find_best_fp_step <- function(x,
                               spike_decision,
                               acd_parameter,
                               prev_adj_params,
+                              force_max_fp,
                               verbose) {
 
   degree <- as.numeric(df / 2)
@@ -179,7 +192,7 @@ find_best_fp_step <- function(x,
   fit1 <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
     y = y, family = family, family_string = family_string, 
-    weights = weights, offset = offset, 
+    weights = weights, offset = offset, force_max_fp = force_max_fp,
     powers_current = powers_current, powers = powers,  
     criterion = criterion, ftest = ftest, select = select, alpha = alpha,
     method = method, strata = strata, nocenter = nocenter, 
@@ -1619,6 +1632,7 @@ select_ic <- function(x,
                       spike_decision,
                       acd_parameter,
                       prev_adj_params,
+                      force_max_fp,
                       ...) {
   
   if (degree < 1) {
@@ -1626,7 +1640,11 @@ select_ic <- function(x,
   }
   
   #fpmax <- paste0("FP", degree)
-  fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
+  fpmax <- ifelse(
+    spike[xi] || !is.null(catzero[[xi]]), 
+    paste0("FP", degree, " + Binary"), 
+    paste0("FP", degree)
+    )
   
   # output list
   res <- list(
@@ -1642,7 +1660,7 @@ select_ic <- function(x,
     current_adj_params = NULL
   )
   
-  # fit all relevant models
+  # Fit all relevant models ----------------------------------------------------
   # Null Model
   fit_null <- fit_null_step(
       x = x, xi = xi, y = y, 
@@ -1681,7 +1699,7 @@ select_ic <- function(x,
   } else {
     names(fits_fpm) <- sprintf("FP%g", seq_len(degree))
   }
-  
+  # Assemble output summary ----------------------------------------------------
   # output summary - only output best fpm models
   len_max <- ncol(fits_fpm[[fpmax]]$powers)
   
@@ -1708,24 +1726,40 @@ select_ic <- function(x,
   res$metrics <- lapply(fits_fpm, function(x) {
     x$metrics[x$model_best, , drop = FALSE] 
   })
+  
   res$metrics <- do.call(
     rbind, 
     c(list(null = fit_null$metrics, linear = fit_lin$metrics), res$metrics)
   )
-  rownames(res$metrics) <- c("null", ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear + Binary", "linear"), 
-                             names(fits_fpm))
   
-  if (xi %in% keep) { 
-    # prevent selection of null model
+  rownames(res$metrics) <- c(
+    "null",
+    ifelse(spike[xi] || !is.null(catzero[[xi]]),"linear + Binary", "linear"), 
+    names(fits_fpm)
+    )
+  
+  # Select best model ----------------------------------------------------------
+  if (isTRUE(force_max_fp[xi])) {
+    # Skip functional form competition: always select the most complex FP model
+    # at the requested degree (last row of res$metrics = FPm or FPm + Binary).
+    # The best power combination within that degree was already found by
+    # find_best_fpm_step() via deviance minimisation, which is equivalent to
+    # AIC/BIC minimisation at fixed df (same penalty for all power combinations).
+    res$model_best <- nrow(res$metrics)
+  } else if (xi %in% keep) { 
+    # Prevent selection of null model; choose best among linear through FPm.
     ind_select <- 2:nrow(res$metrics)
-    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
-                                           drop = TRUE])
-    # shift the positions by 1 since null was omitted when finding the index
+    res$model_best <- which.min(
+      res$metrics[ind_select, tolower(criterion), drop = TRUE]
+      )
+    # shift by 1 since null row was excluded
     res$model_best <- res$model_best + 1
   }else{
+    # Unrestricted: choose best among null through FPm.
     ind_select <- 1:nrow(res$metrics)
-    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
-                                            drop = TRUE])
+    res$model_best <- which.min(
+      res$metrics[ind_select, tolower(criterion), drop = TRUE]
+      )
   }
 
   res$power_best <- res$powers[res$model_best, , drop = FALSE]
@@ -1754,6 +1788,7 @@ select_ic_acd <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
+                          force_max_fp,
                           ...) {
   
   acdx_reset_xi <- acdx
@@ -1829,9 +1864,9 @@ select_ic_acd <- function(x,
   paste0("FP1(x, A(x))", suffix)
   )
   )
-
+  # Assemble output summary ----------------------------------------------------
   # output summary - only output best fpm models
-  len_max <- 2
+  len_max <- 2L
   
   res$powers <- lapply(fits, function(x) {
     ensure_length(x$powers[x$model_best, , drop = FALSE], len_max)
@@ -1864,19 +1899,27 @@ select_ic_acd <- function(x,
     paste0("linear(., A(x))", suffix), 
     names(fits)
     )
-  
-  ind_select = 1:nrow(res$metrics)
-  if (xi %in% keep) {
-    # prevent selection of null model
+  # Select best model ---------------------------------------------------------- 
+  if (isTRUE(force_max_fp[xi])) {
+    # Skip functional form competition: always select the most complex ACD
+    # model — FP1(x, A(x)) — which is the last row of res$metrics.
+    # The best power combination within it was already found by
+    # find_best_fpm_step() via deviance minimisation.
+    res$model_best <- nrow(res$metrics)
+  } else if (xi %in% keep) {
+    # Prevent selection of null model; choose best among linear through FP1(x, A(x)).
     ind_select <- 2:nrow(res$metrics)
-    res$model_best <- which.min(res$metrics[ind_select, tolower(criterion), 
-                                           drop = TRUE])
-    res$model_best <- res$model_best + 1
+    res$model_best <- which.min(
+      res$metrics[ind_select, tolower(criterion), drop = TRUE]
+      )
+    res$model_best <- res$model_best + 1L
   }else{
-    res$model_best = which.min(res$metrics[ind_select, tolower(criterion), 
-                                           drop = TRUE])
+    # Unrestricted: choose best among null through FP1(x, A(x))
+    ind_select = 1:nrow(res$metrics)
+    res$model_best <- which.min(
+      res$metrics[ind_select, tolower(criterion), drop = TRUE]
+      )
   }
-  
 
   res$power_best = res$powers[res$model_best, , drop = FALSE]
   

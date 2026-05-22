@@ -656,6 +656,14 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
+#' @param force_max_fp A logical vector of length \code{nvars}, or a single
+#' logical value that is internally replicated. If \code{TRUE} for a variable,
+#' the most complex functional form available, as determined by \code{df}, is
+#' selected even if it is not significant. This argument is only applicable
+#' when \code{criterion = "aic"} or \code{criterion = "bic"}, and has no effect
+#' when \code{criterion = "pvalue"}, since the same behavior can be obtained by
+#' setting \code{alpha = 1} and \code{select = 1}. The default is
+#' \code{rep(FALSE, nvars)}.
 #' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
 #' @param \dots Not used.
 #' @examples
@@ -809,6 +817,7 @@ mfp2.default <- function(x,
                          spike = NULL,
                          min_prop = 0.05,
                          max_prop = 0.95,
+                         force_max_fp = FALSE,
                          verbose = TRUE,
                          ...) {
   
@@ -1026,6 +1035,12 @@ mfp2.default <- function(x,
                   "i mfp2() continues with the intersection of keep and colnames(x).", 
                   call. = FALSE)
       }
+  }
+  
+  # Validate force_max_fp-------------------------------------------------------
+  if (length(force_max_fp) != 1L && length(force_max_fp) != nvars) {
+    stop(paste0("! `force_max_fp` must be a single logical or a logical vector of length ",
+                nvars, "; got length ", length(force_max_fp), "."), call. = FALSE)
   }
   
   # assert that zero is a subset of x
@@ -1283,6 +1298,12 @@ mfp2.default <- function(x,
       center <- rep(center, nvars)    
   }
   
+  # Default force_max_fp
+  if (length(force_max_fp) == 1L) {
+      force_max_fp <- rep(force_max_fp, nvars)
+  }
+    force_max_fp <- setNames(force_max_fp, vnames)
+    
   # Revert to Chi-square when family is not Gaussian
   if (ftest && family_string != "gaussian") {
       ftest <- FALSE
@@ -1515,12 +1536,12 @@ mfp2.default <- function(x,
   # fit model ------------------------------------------------------------------
   fit <- fit_mfp(
       x = x, y = y, 
-      weights = weights, offset = offset, cycles = cycles,
+      weights = weights, offset = offset, cycles = cycles, 
       scale = scale, shift = shift, df = df.list, center = center, 
       family = family, family_string = family_string, criterion = criterion, 
       select = select, alpha = alpha, keep = keep, xorder = xorder, 
       powers = power_list, method = ties, strata = istrata, nocenter = nocenter, 
-      acdx = acdx, ftest = ftest, 
+      acdx = acdx, ftest = ftest, force_max_fp = force_max_fp,
       control = control, zero = zero, catzero = catzero,spike = spike,
       min_prop = min_prop, max_prop = max_prop, verbose = verbose
   )
@@ -2194,43 +2215,74 @@ get_selected_variable_names <- function(object) {
   nms[object$fp_terms[, "selected"]]
 }
 
-#' Helper to assign degrees of freedom
-#' 
-#' Determine the number of unique values in a variable. To be used in \code{mfp2()}.
-#' 
-#' @details 
-#' Variables with fewer than or equal to three unique values, for example,
-#' will be assigned df = 1. df = 2 will be assigned to variables with 4-5 
-#' unique values, and df = 4 will be assigned to variables with unique values 
-#' greater than or equal to 6.
-#' 
-#' @param x input matrix.
-#' @param df_default default df to be used. Default is 4.
-#' 
-#' @examples
-#' x <- matrix(1:100, nrow = 10)
-#' assign_df(x)
+#' Assign Degrees of Freedom Based on Variable Cardinality
 #'
-#' @return 
-#' Vector of length `ncol(x)` with degrees of freedom for each variable in `x`.
-#' 
+#' For each column of a predictor matrix, determines an appropriate degree of
+#' freedom (df) for fractional polynomial (FP) modelling based on the number
+#' of distinct values in that column. Variables with very few unique values
+#' cannot support a high-degree FP transformation, so their df is reduced
+#' automatically. This function is called internally by \code{mfpi()} and
+#' \code{mfp2::mfp2()} after the user-supplied default df has been validated.
+#'
+#' @section Assignment rules:
+#' Let \eqn{u} denote the number of distinct non-missing values in a column
+#' and \eqn{d} the user-supplied \code{df_default}. The assigned df is:
+#'
+#' \tabular{lll}{
+#'   \strong{Unique values} \tab \strong{Assigned df} \tab \strong{Rationale} \cr
+#'   \eqn{u \le 3}          \tab \code{1} (linear)    \tab Too few values to estimate a
+#'                                                          curve; effectively binary or
+#'                                                          ternary. \cr
+#'   \eqn{4 \le u \le 5}    \tab \code{min(2, d)}     \tab Enough variation for FP1 but
+#'                                                          not FP2; capped at 2. \cr
+#'   \eqn{u \ge 6}          \tab \code{d}             \tab Sufficient variation; retain
+#'                                                          the requested default. \cr
+#' }
+#'
+#' @param x A numeric matrix. Each column is a predictor variable.
+#' @param df_default A single positive integer giving the default df to assign
+#'   to variables with six or more unique values. Must be 1 or a positive even
+#'   number (\eqn{2m} for FP degree \eqn{m}). Default is \code{4} (FP2).
+#'
+#' @return An integer vector of length \code{ncol(x)} giving the assigned df
+#'   for each column, in the same order as the columns of \code{x}.
+#'
+#' @examples
+#' # Binary variable gets df = 1; continuous variables get df_default
+#' x <- cbind(
+#'   binary     = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1),
+#'   few_levels = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
+#'   continuous = 1:10
+#' )
+#' assign_df(x, df_default = 4)
+#' # binary -> 1, few_levels -> 2, continuous -> 4
+#'
 #' @export
-assign_df <- function(x, df_default = 4) {
+assign_df <- function(x, df_default = 4L) {
   
-  # default degrees of freedom for each variable
+  if (!is.matrix(x))
+    stop("`x` must be a matrix.", call. = FALSE)
+  if (!is.numeric(df_default) || length(df_default) != 1L || df_default < 1L)
+    stop("`df_default` must be a single positive integer.", call. = FALSE)
+  
+  df_default <- as.integer(df_default)
+  
+  # Count distinct values per column
+  nu <- apply(x, 2L, function(col) length(unique(col)))
+  
+  # Start from df_default for all variables
   df <- rep(df_default, ncol(x))
-  # unique values of each column of x
-  nu <- apply(x, 2, function(x) length(unique(x)))
   
-  index1 <- which(nu <= 3)
-  index2 <- which(nu >= 4 & nu <= 5)
-  # set df to 1
-  if (length(index1) != 0) {
-    df[index1] <- 1
-  }
-  if (length(index2) != 0) {
-    df[index2] <- 2
-  }
+  # <= 3 unique values: force linear (df = 1)
+  idx_low <- which(nu <= 3L)
+  if (length(idx_low) > 0L)
+    df[idx_low] <- 1L
   
-  return(df)
+  # 4-5 unique values: cap at FP1 (df = min(2, df_default))
+  # Uses min() so that df_default = 1 is respected rather than overridden.
+  idx_mid <- which(nu >= 4L & nu <= 5L)
+  if (length(idx_mid) > 0L)
+    df[idx_mid] <- min(2L, df_default)
+  
+  df
 }

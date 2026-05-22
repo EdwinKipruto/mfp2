@@ -31,7 +31,8 @@ find_best_fp_cycle(
   spike_decision,
   acd_parameter,
   acdx,
-  prev_adj_params
+  prev_adj_params,
+  force_max_fp
 )
 }
 \arguments{
@@ -128,6 +129,12 @@ transformation.}
 \item{prev_adj_params}{Named list used to store previously computed adjustment
 variable transformations. This is updated at each step and reused in the next
 cycle to avoid recomputation.}
+
+\item{force_max_fp}{A logical vector of length \code{nvars}. If \code{TRUE}
+for a variable, forces selection of the most complex functional form at
+the degree specified by \code{df} for that variable, bypassing AIC/BIC
+comparison against simpler forms in \code{select_ic()}. Has no effect
+when \code{criterion = "pvalue"}.}
 }
 \value{
 A list with updated components \code{powers_current} (current FP powers for all

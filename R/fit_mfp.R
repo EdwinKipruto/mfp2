@@ -67,6 +67,11 @@
 #' zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.
 #' @param max_prop A numeric value between 0 and 1; the maximum proportion of 
 #' zeros for which SAZ modeling is applied. Defaults to 0.95.
+#' @param force_max_fp A logical vector of length \code{nvars}. If \code{TRUE}
+#'   for a variable, forces selection of the most complex functional form at
+#'   the degree specified by \code{df} for that variable, bypassing AIC/BIC
+#'   comparison against simpler forms in \code{select_ic()}. Has no effect
+#'   when \code{criterion = "pvalue"}. 
 #' @param verbose Logical; if \code{TRUE}, additional information will be printed
 #' during model fitting steps. Useful for understanding internal processing. 
 #' Default is \code{FALSE}.
@@ -144,6 +149,7 @@ fit_mfp <- function(x,
                     spike,
                     min_prop, 
                     max_prop,
+                    force_max_fp,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -187,6 +193,9 @@ fit_mfp <- function(x,
   zero <- setNames(zero, variables_x)[variables_ordered]
   catzero <- setNames(catzero, variables_x)[variables_ordered]
   spike <- setNames(spike, variables_x)[variables_ordered]
+  
+  # force_max_fp already has names
+  force_max_fp <- force_max_fp[variables_ordered]
   
   # powers is already named. so we need to sort it based on variables_ordered
   powers <- powers[variables_ordered]
@@ -343,6 +352,7 @@ fit_mfp <- function(x,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
+      force_max_fp = force_max_fp,
       verbose = verbose
     )
     
@@ -842,7 +852,8 @@ find_best_fp_cycle <- function(x,
                                spike_decision,
                                acd_parameter,
                                acdx,
-                               prev_adj_params
+                               prev_adj_params,
+                               force_max_fp
                                ) {
   
   # order of names of powers does not change
@@ -883,6 +894,7 @@ find_best_fp_cycle <- function(x,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
+      force_max_fp = force_max_fp,
       verbose = verbose
     )
     # Update parameters

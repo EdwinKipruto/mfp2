@@ -23,15 +23,15 @@
 #' functions within each level of `group_var`. The algorithm extends the
 #' standard MFP variable-selection procedure by simultaneously determining
 #' functional forms and testing whether those forms differ across groups. For
-#' full details see Sauerbrei, Royston, and Zapien (2007).
+#' full details see Royston, and Sauerbrei (2004).
 #'
 #' @section Flexibility levels (`flex`):
 #' Four levels of flexibility control how FP powers are estimated and
-#' constrained between groups. The appropriate level is chosen by the analyst
+#' constrained between groups. The appropriate level may be chosen by the analyst
 #' based on subject-matter knowledge and sample-size considerations.
 #'
 #' **`flex1` (default — least flexible).** FP powers are estimated once from
-#' the pooled main-effects model (ignoring interaction), then used unchanged
+#' the main-effects model (ignoring interaction), then used unchanged
 #' within each group. A likelihood-ratio test comparing the main-effects and
 #' interaction models constitutes the interaction test. Because the models are
 #' nested and no extra degrees of freedom are consumed by power estimation,
@@ -140,13 +140,13 @@
 #'   missing values.
 #' @param y
 #'   The response vector (or matrix for survival data). For Gaussian, binomial,
-#'   and Poisson families, supply a numeric or factor vector of length \eqn{n}.
+#'   and Poisson families, supply a numeric vector of length \eqn{n}.
 #'   For Cox models, supply a two-column [survival::Surv()] object. Must have
 #'   the same number of observations as `x`.
 #' @param group_var
 #'   A single character string naming the categorical (grouping) variable in
 #'   `x`. Interactions between `group_var` and each variable in `cont_vars` are
-#'   the primary estimands. Internally, values are remapped to 0, 1, 2, ... in
+#'   the primary interest. Internally, values are remapped to 0, 1, 2, ... in
 #'   ascending order; the group with the lowest original value is the reference
 #'   category. Must have at least two distinct non-missing values.
 #' @param cont_vars
@@ -207,26 +207,35 @@
 #'   A numeric vector of length \eqn{p} or a single numeric giving scaling
 #'   factors for the columns of `x`. Default is `NULL`, which lets the program
 #'   estimate scaling factors automatically. Set `scale = 1` to disable scaling.
+#'   See [mfp2::mfp2()] for more details.
 #' @param shift
 #'   A numeric vector of length \eqn{p} or a single numeric giving shift terms
 #'   added to columns of `x` before scaling. Default is `NULL`, which estimates
-#'   shift factors automatically. Set `shift = 0` to disable shifting.
+#'   shift factors automatically. Set `shift = 0` to disable shifting. See
+#'   [mfp2::mfp2()] for more details.
 #' @param df
 #'   A numeric vector of length \eqn{p} or a single positive integer setting
 #'   the default degrees of freedom for each predictor. Degrees of freedom
 #'   equal twice the FP degree (e.g. `df = 2` for FP1, `df = 4` for FP2).
-#'   The program overrides user-supplied values based on the number of unique
-#'   values: variables with 2--3 unique values are set to `df = 1` (linear);
-#'   4--5 unique values to `df = min(2, default)`; and 6 or more unique values
-#'   retain the default. Default is `4`.
+#'   Regardless of the supplied value, the program overrides `df` per variable
+#'   based on the number of distinct values \eqn{u}:
+#'   \itemize{
+#'     \item \eqn{u \le 3}: `df` is set to `1` (linear). Too few values to
+#'       estimate a curve.
+#'     \item \eqn{4 \le u \le 5}: `df` is capped at `min(2, df)` (FP1 at
+#'       most). Enough variation for a simple curve but not for FP2.
+#'     \item \eqn{u \ge 6}: `df` is retained as supplied.
+#'   }
+#'   Default is `4`.
 #' @param center
 #'   Logical or a logical vector of length \eqn{p}. Whether to mean-centre
 #'   predictors before fitting the final interaction model. Binary covariates
 #'   are centred at the lower of their two values rather than the mean. Default
-#'   is `TRUE`.
+#'   is `TRUE`. See [mfp2::mfp2()] for more details.
 #' @param subset
 #'   An optional integer vector of positive row indices selecting a subset of
-#'   observations. Default is `NULL` (all observations used).
+#'   observations. Default is `NULL` (all observations used).See 
+#'   [mfp2::mfp2()] for more details.
 #' @param family
 #'   A character string specifying the error distribution. One of
 #'   `"gaussian"` (default), `"binomial"`, `"poisson"`, or `"cox"`. See the
@@ -234,9 +243,9 @@
 #' @param criterion
 #'   A character string specifying the criterion used in two distinct places:
 #'   \enumerate{
-#'     \item **Adjustment-variable selection** (Step 2): governs which
+#'     \item **Adjustment-variable selection** (Step 1): governs which
 #'       predictors and FP degrees survive MFP backfitting.
-#'     \item **Functional form selection for the interaction** (Step 3): for
+#'     \item **Functional form selection for the interaction** (Step 2): for
 #'       each variable in `cont_vars`, three candidate interaction models are
 #'       fitted — linear, FP1, and FP2 — and the criterion selects among them.
 #'   }
@@ -298,19 +307,19 @@
 #'   should be treated as zero and a binary indicator variable automatically
 #'   created and included in the adjustment model. Implies `zero_vars` for the
 #'   named variables. A variable may not appear in both `zero_vars` and
-#'   `catzero_vars`.
+#'   `catzero_vars`. See [mfp2::mfp2()] for details.
 #' @param spike_vars
 #'   An optional character vector naming variables to be assessed for a spike
 #'   at zero using the SAZ algorithm. Implies `catzero_vars` (and therefore
-#'   `zero_vars`) for the named variables.
+#'   `zero_vars`) for the named variables. See [mfp2::mfp2()] for details.
 #' @param min_prop
 #'   Numeric in \eqn{[0, 1]}. Minimum proportion of zeros required for the
 #'   SAZ algorithm to be applied. Default is `0.05`. Variables with fewer zeros
-#'   are treated as standard continuous predictors.
+#'   are treated as standard continuous predictors. See [mfp2::mfp2()] for details.
 #' @param max_prop
 #'   Numeric in \eqn{[0, 1]}. Maximum proportion of zeros for SAZ modeling.
 #'   Default is `0.95`. Variables with more zeros are also treated as standard
-#'   continuous predictors.
+#'   continuous predictors. See [mfp2::mfp2()] for details.
 #' @param use_ftest
 #'   Logical. Whether to use an F-test rather than a chi-square test when
 #'   computing p-values for Gaussian models. Recommended when the sample size
@@ -376,10 +385,6 @@
 #' by using fractional polynomials. \emph{Statistics in Medicine}, 23,
 #' 2509--2525.
 #'
-#' Royston, P. and Sauerbrei, W. (2008). Interactions between treatment and
-#' continuous covariates -- a step towards individualising therapy (Editorial).
-#' \emph{Journal of Clinical Oncology}, 26, 1397--1399.
-#'
 #' Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
 #' continuous variable: simulation study of significance level for several
 #' methods of analysis. \emph{Statistics in Medicine}, 32, 3788--3803.
@@ -398,16 +403,11 @@
 #' approaches. \emph{Computational Statistics and Data Analysis}, 51,
 #' 4054--4063.
 #'
-#' Sauerbrei, W. and Royston, P. (2022). Investigating treatment-effect
-#' modification by a continuous covariate in IPD meta-analysis: an approach
-#' using fractional polynomials. \emph{BMC Medical Research Methodology}, 22,
-#' 1--13.
-#'
 #' Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
 #' Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
 #' for Modelling Continuous Variables}. John Wiley & Sons.
 #'
-#' @seealso `summary.mfpi()`, [mfp2::mfp2()]
+#' @seealso [mfp2::summary.mfpi()], [mfp2::mfp2()]
 #'
 #' @export
 mfpi <- function(x, ...) {
@@ -478,6 +478,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   family_string <- family   # keep string for branching (== "cox", == "gaussian")
   if (family != "cox") {
     family <- tryCatch(
@@ -502,9 +503,11 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (!is.matrix(x)) {
     stop("! `x` must be a matrix.", call. = FALSE)
   }
+  
   vnames <- colnames(x)
   if (is.null(vnames)) {
     stop(
@@ -513,6 +516,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (any(is.character(x))) {
     stop(
       "! `x` contains character values.\n",
@@ -520,6 +524,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (anyNA(x)) {
     stop(
       "! `x` must not contain missing values (NA).\n",
@@ -536,6 +541,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (length(group_var) != 1L) {
     stop(
       paste0("! `group_var` must name exactly one variable; ",
@@ -543,10 +549,12 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (!group_var %in% vnames) {
     stop(paste0("! `group_var = '", group_var, "'` is not a column of `x`."),
          call. = FALSE)
   }
+  
   nlev <- length(unique(x[, group_var]))
   if (nlev < 2L) {
     stop(
@@ -565,6 +573,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   missing_cont <- setdiff(cont_vars, vnames)
   if (length(missing_cont) > 0L) {
     stop(
@@ -589,7 +598,7 @@ mfpi.default <- function(
                   "`y` has censoring type '", attr(y, "type"), "'."),
            call. = FALSE)
     }
-    if (is.factor(strata)) strata <- as.numeric(strata)
+    if (is.factor(strata)) strata <- as.numeric(strata) # is this the right way?
     if (!is.null(strata)) {
       strata_len <- if (is.vector(strata)) length(strata) else nrow(strata)
       if (strata_len != nobs) {
@@ -620,6 +629,7 @@ mfpi.default <- function(
       stop(paste0("! Length of `weights` (", length(weights), ") must equal ",
                   "the number of rows in `x` (", nobs, ")."), call. = FALSE)
   }
+  
   if (!is.null(offset) && length(offset) != nobs) {
     stop(paste0("! Length of `offset` (", length(offset), ") must equal ",
                 "the number of rows in `x` (", nobs, ")."), call. = FALSE)
@@ -652,14 +662,17 @@ mfpi.default <- function(
     warning("i Some variables in `zero_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(catzero_vars) && !all(catzero_vars %in% vnames)) {
     warning("i Some variables in `catzero_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(spike_vars) && !all(spike_vars %in% vnames)) {
     warning("i Some variables in `spike_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(zero_vars) && !is.null(catzero_vars)) {
     overlap <- intersect(zero_vars, catzero_vars)
     if (length(overlap) > 0L) {
@@ -680,10 +693,12 @@ mfpi.default <- function(
     stop(paste0("! `shift` must be NULL, a single number, or a vector of length ",
                 nvars, "; got length ", length(shift), "."), call. = FALSE)
   }
+  
   if (!is.null(scale) && length(scale) != 1L && length(scale) != nvars) {
     stop(paste0("! `scale` must be NULL, a single number, or a vector of length ",
                 nvars, "; got length ", length(scale), "."), call. = FALSE)
   }
+  
   if (!is.null(scale) && any(scale <= 0 | is.na(scale))) {
     stop("! All values of `scale` must be positive and non-missing.", call. = FALSE)
   }
@@ -699,6 +714,7 @@ mfpi.default <- function(
     stop("! All values of `df` must be positive (1 for linear, 2m for FP degree m).",
          call. = FALSE)
   }
+  
   if (length(df) == 1L) {
     if (df != 1L && df %% 2L != 0L)
       stop(paste0("! `df = ", df, "` is invalid. `df` must be 1 (linear) or an even ",
@@ -767,31 +783,39 @@ mfpi.default <- function(
                   paste(class(subset), collapse = ", "), "."), call. = FALSE)
     if (any(subset < 0L))
       stop("! `subset` must not contain negative indices.", call. = FALSE)
-    if (length(subset) < 5L)
+    if (length(subset) < 10L)
       stop(paste0("! After subsetting, only ", length(subset),
-                  " observations remain; at least 5 are required."), call. = FALSE)
+                  " observations remain; at least 10 are required."), call. = FALSE)
   }
   
   # Set scalar/vector defaults -------------------------------------------------
   if (is.null(min_improvement)) {
     min_improvement <- switch(criterion, pvalue = p_interact, aic = 2, bic = 2)
   }
+  
   if (is.null(weights)) weights <- rep.int(1, nobs)
   if (is.null(offset))  offset  <- rep.int(0, nobs)
   if (length(select) == 1L) select <- rep(select, nvars)
   if (length(alpha)  == 1L) alpha  <- rep(alpha,  nvars)
   if (length(center) == 1L) center <- setNames(rep(center, nvars), vnames)
+  select <- setNames(select, vnames)
+  alpha  <- setNames(alpha,  vnames)
+  center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, mfp2::find_shift_factor)
+    shift <- apply(x, 2L, find_shift_factor)
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
+  shift <- setNames(shift, vnames) 
+  
   if (is.null(scale)) {
-    scale <- apply(x, 2L, mfp2::find_scale_factor)
+    scale <- apply(x, 2L, find_scale_factor)
   } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
+  scale <- setNames(scale, vnames)
+  
   if (is.null(control)) {
     control <- if (family_string == "cox") survival::coxph.control() else
       stats::glm.control()
@@ -815,6 +839,7 @@ mfpi.default <- function(
     spike_flag[spike_vars] <- TRUE
     catzero_flag[spike_vars] <- TRUE   # spike implies catzero
   }
+  
   catzero_flag[spike_flag]  <- TRUE   # redundant but explicit
   zero_flag[catzero_flag]   <- TRUE   # catzero implies zero
   
@@ -862,33 +887,49 @@ mfpi.default <- function(
   acd_flag <- setNames(rep(FALSE, nvars), vnames)
   if (!is.null(acd_vars)) {
     acd_vars <- unique(intersect(acd_vars, vnames))
-    # ACD transformation is not supported for cont_vars
+    # ACD transformation is not supported for cont_vars at the moment
     acd_vars <- setdiff(acd_vars, cont_vars)
     acd_flag[acd_vars] <- TRUE
   }
   
   # Set degrees of freedom per variable ----------------------------------------
+  # Scalar branch: delegate entirely to assign_df() which applies all three rules.
+  # Vector branch: apply the same three rules manually, since assign_df() only
+  # accepts a single df_default. Each variable may have a different user-supplied df.
   if (length(df) == 1L) {
-    df_list <- if (df != 1L) mfp2::assign_df(x = x, df_default = df) else
+    df_list <- if (df != 1L) assign_df(x = x, df_default = df) else
       rep(df, nvars)
   } else {
-    nux   <- apply(x, 2L, function(v) length(unique(v)))
-    small <- nux <= 3L & df != 1L
-    if (any(small)) {
+    nux <- apply(x, 2L, function(v) length(unique(v)))
+    
+    # Rule 1: <= 3 unique values -> force linear (df = 1)
+    low  <- nux <= 3L & df != 1L
+    # Rule 2: 4-5 unique values -> cap at min(2, user-supplied df)
+    mid  <- nux >= 4L & nux <= 5L & df > 2L
+    
+    if (any(low)) {
       warning(
-        paste0("i `df` has been overridden to 1 (linear) for variables with fewer ",
-               "than 4 unique values: ",
-               paste(vnames[small], collapse = ", "), "."),
+        paste0("i `df` overridden to 1 (linear) for variables with <= 3 unique values: ",
+               paste(vnames[low], collapse = ", "), "."),
         call. = FALSE
       )
-      df[small] <- 1L
+      df[low] <- 1L
+    }
+    if (any(mid)) {
+      warning(
+        paste0("i `df` capped at 2 (FP1) for variables with 4-5 unique values: ",
+               paste(vnames[mid], collapse = ", "), "."),
+        call. = FALSE
+      )
+      df[mid] <- pmin(2L, df[mid])
     }
     df_list <- df
   }
+  df_list <- setNames(df_list, vnames)
   
   # Reset shift to 0 for zero/catzero variables and linear terms ---------------
   # Only the positive part of these variables is FP-transformed so no shift
-  # is needed (matching the logic in mfp2.default()).
+  # is needed (matching the logic in mfp2()).
   shift_to_zero <- rep(FALSE, nvars)
   names(shift_to_zero) <- vnames
   shift_to_zero[names(zero_flag)[zero_flag]]       <- TRUE

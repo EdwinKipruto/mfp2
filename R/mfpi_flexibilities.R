@@ -187,9 +187,12 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
 #'   elements of `bestfp_interaction` are set to `1` (i.e. linear power).
 #' @keywords internal
 #' @noRd
-flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
-                  family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, min_prop = 0.05, max_prop = 0.95, family_string, group_dummies, digits,
+flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
+                  degree, family, family_string, fp_cand, use_ftest,
+                  center, xorder, weights, offset, strata, control,
+                  nocenter, cycles, zero_var, spike_var = FALSE,
+                  min_prop = 0.05, max_prop = 0.95,
+                  group_dummies, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -295,9 +298,12 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @return See \code{flex_fit()} for the return structure.
 #' @keywords internal
 #' @noRd
-flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
-                  family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, min_prop = 0.05, max_prop = 0.95, family_string, group_dummies, digits,
+flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
+                  degree, family, family_string, fp_cand, use_ftest,
+                  center, xorder, weights, offset, strata, control,
+                  nocenter, cycles, zero_var, spike_var = FALSE,
+                  min_prop = 0.05, max_prop = 0.95,
+                  group_dummies, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -471,9 +477,12 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @return See \code{flex_fit()} for the return structure.
 #' @keywords internal
 #' @noRd
-flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
-                  family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, min_prop = 0.05, max_prop = 0.95, family_string, group_dummies, digits,
+flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
+                  degree, family, family_string, fp_cand, use_ftest,
+                  center, xorder, weights, offset, strata, control,
+                  nocenter, cycles, zero_var, spike_var = FALSE,
+                  min_prop = 0.05, max_prop = 0.95,
+                  group_dummies, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -624,9 +633,12 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @return See \code{flex_fit()} for the return structure.
 #' @keywords internal
 #' @noRd
-flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
-                  family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, min_prop = 0.05, max_prop = 0.95, family_string, group_dummies, digits,
+flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
+                  degree, family, family_string, fp_cand, use_ftest,
+                  center, xorder, weights, offset, strata, control,
+                  nocenter, cycles, zero_var, spike_var = FALSE,
+                  min_prop = 0.05, max_prop = 0.95,
+                  group_dummies, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {
@@ -729,9 +741,12 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
 #' @return See \code{flex_fit()} for the return structure.
 #' @keywords internal
 #' @noRd
-flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties, degree,
-                  family, fp_cand, use_ftest, center, xorder, weights, offset,
-                  strata, control, nocenter, cycles, zero_var, spike_var = FALSE, min_prop = 0.05, max_prop = 0.95, family_string, group_dummies, digits,
+flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
+                  degree, family, family_string, fp_cand, use_ftest,
+                  center, xorder, weights, offset, strata, control,
+                  nocenter, cycles, zero_var, spike_var = FALSE,
+                  min_prop = 0.05, max_prop = 0.95,
+                  group_dummies, digits,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   if (compute_fitted && !run_test) {

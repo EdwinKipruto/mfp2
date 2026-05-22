@@ -25,6 +25,7 @@ select_linear(
   spike_decision,
   acd_parameter,
   prev_adj_params,
+  force_max_fp,
   ...
 )
 }
@@ -99,6 +100,8 @@ if an element is \code{NULL}, the variable was not specified in the
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
 from previous steps for each variable.}
+
+\item{force_max_fp}{not used}
 
 \item{...}{passed to fitting functions.}
 }

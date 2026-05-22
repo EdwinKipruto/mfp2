@@ -447,7 +447,7 @@ fit_mfp <- function(x,
       zero = zero,
       catzero = catzero,
       catzero_list = catzero_list,
-      spike_decision = spike_decision
+      spike_dec = spike_decision
     )
   )
 
@@ -1064,7 +1064,7 @@ create_fp_terms <- function(fp_powers,
     catzero = catzero,
     spike = spike,
     # Spike decision
-    spike_decision = spike_decision,
+    spike_dec = spike_decision,
     # presence / absence in final model encoded by NAs in fp_powers
     selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     # final degrees of freedom

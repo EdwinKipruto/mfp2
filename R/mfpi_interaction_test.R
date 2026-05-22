@@ -147,11 +147,15 @@
 #' \describe{
 #'   \item{`evaluation_metrics`}{A tibble of class
 #'     `"model_evaluation_metrics"` with one row per call, containing:
-#'     `variable`, `pow_main`, `pow_int`, `dev_int` (\eqn{-2\ell_{\text{int}}}),
-#'     `dev_diff` (\eqn{T}), `df` (\eqn{df_{\text{int}}}), `pvalue`,
-#'     `tdf` (total df of the interaction model), `AIC_int`, `BIC_int`,
-#'     `AIC_diff` (\eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}}),
-#'     `BIC_diff` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
+#'     `variable`, `fp_powers_main`, `fp_powers_int`,
+#'     `deviance_int` (\eqn{-2\ell_{\text{int}}}),
+#'     `deviance_diff` (\eqn{T}),
+#'     `df_interaction` (\eqn{df_{\text{int}}}),
+#'     `pvalue`,
+#'     `df_total` (total df of the interaction model),
+#'     `AIC_interaction`, `BIC_interaction`,
+#'     `AIC_main_minus_int` (\eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}}),
+#'     `BIC_main_minus_int` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
 #'     `mfp2:::fit_model()`, with `fast = FALSE` so that the full coefficient
 #'     vector and covariance matrix are available.}
@@ -211,7 +215,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   dev_main        <- -2 * fit_main$logl
   dev_interaction <- -2 * fit_interaction$logl
-  dev_diff        <- dev_main - dev_interaction   # T = -2(l_main - l_int) >= 0
+  deviance_diff        <- dev_main - dev_interaction   # T = -2(l_main - l_int) >= 0
   
   # ---------------------------------------------------------------------------
   # Degrees of freedom
@@ -233,7 +237,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
       call. = FALSE
     )
   }
-  pvalue <- stats::pchisq(dev_diff, df = df_int, lower.tail = FALSE)
+  pvalue <- stats::pchisq(deviance_diff, df = df_int, lower.tail = FALSE)
   
   # ---------------------------------------------------------------------------
   # AIC and BIC
@@ -242,31 +246,31 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   n_eff   <- if (family_string == "cox") sum(y[, "status"]) else length(y)
   AIC_main <- dev_main        + 2          * df_main
-  AIC_int  <- dev_interaction + 2          * df_total
+  AIC_interaction  <- dev_interaction + 2          * df_total
   BIC_main <- dev_main        + log(n_eff) * df_main
-  BIC_int  <- dev_interaction + log(n_eff) * df_total
+  BIC_interaction  <- dev_interaction + log(n_eff) * df_total
   
   # ---------------------------------------------------------------------------
   # Assemble evaluation metrics tibble
   # ---------------------------------------------------------------------------
   # Store powers as list-columns so the structure is losslessly preserved;
   # print.model_evaluation_metrics() formats them as readable strings.
-  pow_main <- setNames(list(bestfp_main), cont_name)
-  pow_int  <- bestfp_interaction
+  fp_powers_main <- setNames(list(bestfp_main), cont_name)
+  fp_powers_int  <- bestfp_interaction
   
   metrics <- tibble::tibble(
-    variable = cont_name,
-    pow_main = pow_main,
-    pow_int  = list(pow_int),
-    dev_int  = round(dev_interaction, digits),
-    dev_diff = round(dev_diff,        digits),
-    df       = df_int,
-    pvalue   = round(pvalue,          digits),
-    tdf      = df_total,
-    AIC_int  = round(AIC_int,         digits),
-    BIC_int  = round(BIC_int,         digits),
-    AIC_diff = round(AIC_main - AIC_int, digits),
-    BIC_diff = round(BIC_main - BIC_int, digits)
+    variable           = cont_name,
+    fp_powers_main     = fp_powers_main,
+    fp_powers_int      = list(fp_powers_int),
+    deviance_int       = round(dev_interaction,           digits),
+    deviance_diff      = round(deviance_diff,                  digits),
+    df_interaction     = df_int,
+    pvalue             = round(pvalue,                    digits),
+    df_total           = df_total,
+    AIC_interaction    = round(AIC_interaction,                   digits),
+    BIC_interaction    = round(BIC_interaction,                   digits),
+    AIC_main_minus_int = round(AIC_main - AIC_interaction,        digits),
+    BIC_main_minus_int = round(BIC_main - BIC_interaction,        digits)
   )
   class(metrics) <- c("model_evaluation_metrics", class(metrics))
   
@@ -289,7 +293,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 
 #' Print Method for Model Evaluation Metrics
 #'
-#' Formats the list-columns `pow_main` and `pow_int` of a
+#' Formats the list-columns `fp_powers_main` and `fp_powers_int` of a
 #' `"model_evaluation_metrics"` tibble as human-readable strings, then
 #' delegates to [print.data.frame()].
 #'
@@ -297,27 +301,27 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #' The printed table contains the following columns:
 #' \describe{
 #'   \item{`variable`}{Name of the continuous variable tested.}
-#'   \item{`pow_main`}{FP powers in the main-effects model, formatted as
+#'   \item{`fp_powers_main`}{FP powers in the main-effects model, formatted as
 #'     `"(p1)"` (FP1) or `"(p1, p2)"` (FP2).}
-#'   \item{`pow_int`}{FP powers in the interaction model, formatted as one
+#'   \item{`fp_powers_int`}{FP powers in the interaction model, formatted as one
 #'     parenthesised tuple per group, comma-separated.}
-#'   \item{`dev_int`}{\eqn{-2\ell_{\text{int}}}: deviance of the interaction
+#'   \item{`deviance_int`}{\eqn{-2\ell_{\text{int}}}: deviance of the interaction
 #'     model.}
-#'   \item{`dev_diff`}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
+#'   \item{`deviance_diff`}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
 #'     \geq 0}: likelihood-ratio test statistic.}
-#'   \item{`df`}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
+#'   \item{`df_interaction`}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
 #'     LRT (may differ for `flex3`/`flex4`).}
 #'   \item{`pvalue`}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
-#'   \item{`tdf`}{Total parameters in the interaction model (excluding
+#'   \item{`df_total`}{Total parameters in the interaction model (excluding
 #'     intercept and adjustment terms).}
-#'   \item{`AIC_int`}{\eqn{\mathrm{AIC}_{\text{int}} =
+#'   \item{`AIC_interaction`}{\eqn{\mathrm{AIC}_{\text{int}} =
 #'     -2\ell_{\text{int}} + 2\,p_{\text{int}}}.}
-#'   \item{`BIC_int`}{\eqn{\mathrm{BIC}_{\text{int}} =
+#'   \item{`BIC_interaction`}{\eqn{\mathrm{BIC}_{\text{int}} =
 #'     -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
-#'   \item{`AIC_diff`}{\eqn{\mathrm{AIC}_{\text{main}} -
+#'   \item{`AIC_main_minus_int`}{\eqn{\mathrm{AIC}_{\text{main}} -
 #'     \mathrm{AIC}_{\text{int}}}. Positive values favour the interaction
 #'     model.}
-#'   \item{`BIC_diff`}{\eqn{\mathrm{BIC}_{\text{main}} -
+#'   \item{`BIC_main_minus_int`}{\eqn{\mathrm{BIC}_{\text{main}} -
 #'     \mathrm{BIC}_{\text{int}}}. Positive values favour the interaction
 #'     model.}
 #' }
@@ -330,11 +334,11 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'
 #' @export
 print.model_evaluation_metrics <- function(x, ...) {
-  x$pow_main <- vapply(x$pow_main, function(p) {
+  x$fp_powers_main <- vapply(x$fp_powers_main, function(p) {
     paste0("(", paste(p, collapse = ", "), ")")
   }, character(1L))
   
-  x$pow_int <- vapply(x$pow_int, function(p_list) {
+  x$fp_powers_int <- vapply(x$fp_powers_int, function(p_list) {
     paste(
       vapply(p_list, function(p)
         paste0("(", paste(p, collapse = ", "), ")"),
@@ -345,134 +349,5 @@ print.model_evaluation_metrics <- function(x, ...) {
   }, character(1L))
   
   print.data.frame(as.data.frame(x), row.names = FALSE, ...)
-  invisible(x)
-}
-
-
-# -----------------------------------------------------------------------------
-# print.mfpi() ----------------------------------------------------------------
-# -----------------------------------------------------------------------------
-
-#' Print an \code{mfpi} Object
-#'
-#' Displays a structured summary of an \code{"mfpi"} object, including the
-#' adjustment variables selected by the MFP algorithm and the interaction test
-#' results for each continuous variable in \code{cont_vars}. Optionally prints
-#' the full regression output for each final interaction model when
-#' \code{show_models = TRUE} was set in \code{mfpi()}.
-#'
-#' @param x An object of class \code{"mfpi"}, as returned by \code{mfpi()}.
-#' @param ... Currently unused.
-#'
-#' @return \code{x} invisibly.
-#'
-#' @section Output sections:
-#' \enumerate{
-#'   \item **Adjustment model** — the \code{fp_terms} table from the MFP
-#'     algorithm, showing which variables were selected and their estimated FP
-#'     powers.
-#'   \item **Interaction test** — for each variable in \code{cont_vars}, the
-#'     best-selected functional form (linear, FP1, or FP2) and its evaluation
-#'     metrics: deviance, degrees of freedom, p-value, AIC, and BIC. Columns:
-#'     \itemize{
-#'       \item \code{type}: selected functional form (\code{linear}, \code{fp1},
-#'         or \code{fp2}).
-#'       \item \code{pow_main}: FP powers in the main-effects model.
-#'       \item \code{pow_int}: FP powers in the interaction model, one set per
-#'         group. For \code{flex4} these may differ across groups.
-#'       \item \code{dev_diff}: likelihood-ratio test statistic
-#'         \eqn{T = -2\ell_\text{main} - (-2\ell_\text{int})}.
-#'       \item \code{df}: degrees of freedom for the LRT
-#'         (\eqn{= (K-1)m} for flex1/2/3; \eqn{= 2(K-1)m} for flex4).
-#'       \item \code{pvalue}: \eqn{\Pr[\chi^2(df) > T]}.
-#'       \item \code{AIC_diff}, \code{BIC_diff}: improvement of interaction
-#'         model over main-effects model; positive values favour interaction.
-#'     }
-#'   \item **Interaction model coefficients** (only when
-#'     \code{show_models = TRUE}) — the regression summary for the final
-#'     interaction model for each variable.
-#' }
-#'
-#' @method print mfpi
-#' @export
-print.mfpi <- function(x, ...) {
-  
-  # ---------------------------------------------------------------------------
-  # Section 1: Adjustment model
-  # ---------------------------------------------------------------------------
-  cat("Adjustment Variables Selected by MFP Algorithm:\n")
-  cat(strrep("-", 65), "\n")
-  print(x$adjust_terms)
-  
-  # ---------------------------------------------------------------------------
-  # Section 2: Interaction test results
-  # ---------------------------------------------------------------------------
-  cat("\n", strrep("-", 65), "\n", sep = "")
-  cat("Interaction Test\n")
-  cat(strrep("-", 65), "\n")
-  cat(sprintf(
-    "\nInteraction with '%s'  |  %d observations  |  %s strategy\n\n",
-    x$group_var, x$nobs, x$flex
-  ))
-  
-  print(x$model_evaluation_metrics)
-  
-  cat(
-    "\nNote: df = LRT degrees of freedom for interaction;",
-    "tdf = total df in interaction model.\n"
-  )
-  
-  # For flex4, each group has its own FP powers so pow_int shows K power sets
-  if (identical(x$flex, "flex4") && !is.null(x$group_levels_original)) {
-    cat(sprintf(
-      "\nFor flex4, 'pow_int' shows separate FP powers for each level of '%s': %s.\n",
-      x$group_var,
-      paste(x$group_levels_original, collapse = ", ")
-    ))
-  }
-  
-  # ---------------------------------------------------------------------------
-  # Section 3: Interaction model summaries (optional)
-  # ---------------------------------------------------------------------------
-  if (isTRUE(x$show_models) && length(x$interaction_models) > 0L) {
-    
-    cat("\n", strrep("-", 65), "\n", sep = "")
-    cat("Regression Output for Final Interaction Models:\n")
-    cat(strrep("-", 65), "\n")
-    
-    # model_evaluation_metrics has one row per variable with a 'type' column
-    # (the selected functional form) — use it to label the output
-    metrics <- x$model_evaluation_metrics
-    type_lookup <- if (!is.null(metrics) && "type" %in% names(metrics)) {
-      setNames(
-        toupper(gsub("fp", "FP", metrics$type)),  # "linear"->"LINEAR" / "fp1"->"FP1"
-        metrics$variable
-      )
-    } else {
-      setNames(rep("", length(x$interaction_models)),
-               names(x$interaction_models))
-    }
-    
-    for (var_name in names(x$interaction_models)) {
-      fit_obj  <- x$interaction_models[[var_name]]
-      form_lbl <- if (!is.null(type_lookup[[var_name]])) type_lookup[[var_name]] else ""
-      
-      cat(sprintf(
-        "\n'%s' x '%s'  [%s]\n",
-        x$group_var, var_name, form_lbl
-      ))
-      cat(strrep("-", 45), "\n")
-      
-      # fit_obj is the object returned by mfp2:::fit_model (fast = FALSE).
-      # It carries a $fit component holding the raw glm / coxph object.
-      if (!is.null(fit_obj$fit)) {
-        print(summary(fit_obj$fit))
-      } else {
-        # Fallback: print whatever is available
-        print(fit_obj)
-      }
-    }
-  }
-  
   invisible(x)
 }

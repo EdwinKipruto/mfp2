@@ -57,7 +57,7 @@ are displayed.}
 the partial predictor.}
 
 \item{color_line_spike}{Character value. Color of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
+when the covariate includes a spike-at-zero component (\code{spike_dec = 1}).}
 
 \item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
 
@@ -68,7 +68,7 @@ are displayed.}
 are displayed.}
 
 \item{size_points_spike}{Numeric value. Size of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_decision = 1}).}
+when the covariate includes a spike-at-zero component (\code{spike_dec = 1}).}
 
 \item{linetype}{Character value. Line type for the partial predictor.
 See \code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} for options.}
@@ -104,7 +104,7 @@ residuals are used for generalized linear models, while martingale residuals
 are used for Cox regression. This matches the behavior of the Stata \code{mfp}
 program.
 
-Spike-at-zero covariates are handled according to the \code{spike_decision} code:
+Spike-at-zero covariates are handled according to the \code{spike_dec} code:
 \itemize{
 \item \code{1} – Include both the transformed FP function for positive values and the binary
 spike-at-zero indicator.
@@ -114,17 +114,17 @@ spike-at-zero indicator.
 
 Plot behavior for each decision:
 \itemize{
-\item If \code{spike_decision == 1}, the plot shows the FP function for positive values
+\item If \code{spike_dec == 1}, the plot shows the FP function for positive values
 and includes the binary spike-at-zero indicator. The term
 \eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also
 displayed with a vertical error bar. The plot title includes
 \code{+ z} to indicate the presence of the spike-at-zero component. The FP power
 for the positive part is enclosed in parentheses. For example, \code{FP(0) + z}
 indicates an FP power of 0 (log) for the positive values.
-\item If \code{spike_decision == 3}, the plot shows the binary indicator alone (\verb{z only} in
+\item If \code{spike_dec == 3}, the plot shows the binary indicator alone (\verb{z only} in
 the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing
 confidence intervals is displayed.
-\item If \code{spike_decision == 2} (or not specified), the covariate is plotted as a
+\item If \code{spike_dec == 2} (or not specified), the covariate is plotted as a
 continuous FP function in the usual way.
 See \code{fracplot} for details on partial predictors
 }

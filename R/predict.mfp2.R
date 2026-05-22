@@ -333,7 +333,7 @@ predict.mfp2 <- function(object,
       variable = (as.numeric(x_seq)) - object$transformations[t,"shift"]
       variable_pre = as.numeric(x_seq)
       
-      if (object$spike_decision[t] == 3) {
+      if (object$spike_dec[t] == 3) {
         variable <- object$catzero_list[[t]]
         variable_pre <- variable
       }
@@ -649,7 +649,7 @@ prepare_newdata_for_predict <- function(object,
     check_binary = check_binary,
     zero = object$zero[vnames],
     catzero = object$catzero[vnames],
-    spike_decision = object$spike_decision[vnames],
+    spike_decision = object$spike_dec[vnames],
     reset_zero = reset_zero
   )
   

@@ -16,7 +16,7 @@
 Invisibly returns \code{x}.
 }
 \description{
-Formats the list-columns \code{pow_main} and \code{pow_int} of a
+Formats the list-columns \code{fp_powers_main} and \code{fp_powers_int} of a
 \code{"model_evaluation_metrics"} tibble as human-readable strings, then
 delegates to \code{\link[=print.data.frame]{print.data.frame()}}.
 }
@@ -25,27 +25,27 @@ delegates to \code{\link[=print.data.frame]{print.data.frame()}}.
 The printed table contains the following columns:
 \describe{
 \item{\code{variable}}{Name of the continuous variable tested.}
-\item{\code{pow_main}}{FP powers in the main-effects model, formatted as
+\item{\code{fp_powers_main}}{FP powers in the main-effects model, formatted as
 \code{"(p1)"} (FP1) or \code{"(p1, p2)"} (FP2).}
-\item{\code{pow_int}}{FP powers in the interaction model, formatted as one
+\item{\code{fp_powers_int}}{FP powers in the interaction model, formatted as one
 parenthesised tuple per group, comma-separated.}
-\item{\code{dev_int}}{\eqn{-2\ell_{\text{int}}}: deviance of the interaction
+\item{\code{deviance_int}}{\eqn{-2\ell_{\text{int}}}: deviance of the interaction
 model.}
-\item{\code{dev_diff}}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
+\item{\code{deviance_diff}}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
     \geq 0}: likelihood-ratio test statistic.}
-\item{\code{df}}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
+\item{\code{df_interaction}}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
 LRT (may differ for \code{flex3}/\code{flex4}).}
 \item{\code{pvalue}}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
-\item{\code{tdf}}{Total parameters in the interaction model (excluding
+\item{\code{df_total}}{Total parameters in the interaction model (excluding
 intercept and adjustment terms).}
-\item{\code{AIC_int}}{\eqn{\mathrm{AIC}_{\text{int}} =
+\item{\code{AIC_interaction}}{\eqn{\mathrm{AIC}_{\text{int}} =
     -2\ell_{\text{int}} + 2\,p_{\text{int}}}.}
-\item{\code{BIC_int}}{\eqn{\mathrm{BIC}_{\text{int}} =
+\item{\code{BIC_interaction}}{\eqn{\mathrm{BIC}_{\text{int}} =
     -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
-\item{\code{AIC_diff}}{\eqn{\mathrm{AIC}_{\text{main}} -
+\item{\code{AIC_main_minus_int}}{\eqn{\mathrm{AIC}_{\text{main}} -
     \mathrm{AIC}_{\text{int}}}. Positive values favour the interaction
 model.}
-\item{\code{BIC_diff}}{\eqn{\mathrm{BIC}_{\text{main}} -
+\item{\code{BIC_main_minus_int}}{\eqn{\mathrm{BIC}_{\text{main}} -
     \mathrm{BIC}_{\text{int}}}. Positive values favour the interaction
 model.}
 }

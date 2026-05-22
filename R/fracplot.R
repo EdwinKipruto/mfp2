@@ -25,13 +25,13 @@
 #' @param size_points Numeric value. Size of points used when residuals 
 #' are displayed.
 #' @param size_points_spike Numeric value. Size of the point drawn at zero 
-#' when the covariate includes a spike-at-zero component (`spike_decision = 1`).
+#' when the covariate includes a spike-at-zero component (`spike_dec = 1`).
 #' @param color_points Character value. Color of points used when residuals 
 #'   are displayed.
 #' @param color_line Character value. Color of the line representing 
 #'   the partial predictor.
 #' @param color_line_spike Character value. Color of the point drawn at zero 
-#'   when the covariate includes a spike-at-zero component (`spike_decision = 1`).
+#'   when the covariate includes a spike-at-zero component (`spike_dec = 1`).
 #' @param linetype Character value. Line type for the partial predictor. 
 #'   See [ggplot2::geom_line()] for options.
 #' @param linewidth Numeric value. Width of the line representing 
@@ -54,24 +54,24 @@
 #' are used for Cox regression. This matches the behavior of the Stata `mfp` 
 #' program.
 #' 
-#' Spike-at-zero covariates are handled according to the `spike_decision` code:
+#' Spike-at-zero covariates are handled according to the `spike_dec` code:
 #' * `1` – Include both the transformed FP function for positive values and the binary 
 #'       spike-at-zero indicator.
 #' * `2` – Ignore the spike; treat the variable as continuous (usual FP plot).
 #' * `3` – Show only the binary spike-at-zero indicator.
 #'
 #' Plot behavior for each decision:
-#' * If `spike_decision == 1`, the plot shows the FP function for positive values 
+#' * If `spike_dec == 1`, the plot shows the FP function for positive values 
 #'   and includes the binary spike-at-zero indicator. The term 
 #'   \eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also 
 #'   displayed with a vertical error bar. The plot title includes 
 #'   `+ z` to indicate the presence of the spike-at-zero component. The FP power 
 #'   for the positive part is enclosed in parentheses. For example, `FP(0) + z` 
 #'   indicates an FP power of 0 (log) for the positive values.
-#' * If `spike_decision == 3`, the plot shows the binary indicator alone (`z only` in 
+#' * If `spike_dec == 3`, the plot shows the binary indicator alone (`z only` in 
 #'   the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing 
 #'   confidence intervals is displayed.
-#' * If `spike_decision == 2` (or not specified), the covariate is plotted as a 
+#' * If `spike_dec == 2` (or not specified), the covariate is plotted as a 
 #'   continuous FP function in the usual way.
 #'  See \code{fracplot} for details on partial predictors
 #' @examples
@@ -190,8 +190,8 @@ fracplot <- function(model,
     is_spike <- !is.null(model$catzero_list[[v]])
     
     # Title with FP powers and spike label
-    title_spike <- ifelse(model$spike_decision[v] == 1, " + z",
-                          ifelse(model$spike_decision[v] == 3, " (z only)", ""))
+    title_spike <- ifelse(model$spike_dec[v] == 1, " + z",
+                          ifelse(model$spike_dec[v] == 3, " (z only)", ""))
     
     p <- ggplot2::ggplot(data = df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::ggtitle(sprintf("FP%s(%s)%s%s", 
@@ -214,11 +214,11 @@ fracplot <- function(model,
     
     # Then fitted line/ribbon on top
     # Add line for positive values only if spike-at-zero exists
-    if (is_spike && model$spike_decision[v] != 2) {
+    if (is_spike && model$spike_dec[v] != 2) {
       pos_df <- df[df$variable > 0, , drop = FALSE]
       zero_df <- df[df$variable == 0, , drop = FALSE]
       
-      if (model$spike_decision[v] == 3) {
+      if (model$spike_dec[v] == 3) {
         # Expect df to have two rows: one for 0 and one for 1
         p <- p + ggplot2::geom_line(linewidth = linewidth,
                                     linetype = linetype,

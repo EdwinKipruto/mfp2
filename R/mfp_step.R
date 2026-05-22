@@ -892,6 +892,7 @@ fit_linear_step <- function(x,
 #' * `spike_decision`: Spike decision flag for xi.
 #' * `prev_adj_params`: Previously adjusted parameters.
 #' @param degree not used.
+#' @param force_max_fp not used
 #' @param ... passed to fitting functions. 
 #' @inheritParams find_best_fp_step 
 select_linear <- function(x, 
@@ -914,6 +915,7 @@ select_linear <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
+                          force_max_fp,
                           ...) {
   
   n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
@@ -1073,6 +1075,7 @@ select_ra2 <- function(x,
                        spike_decision,
                        acd_parameter,
                        prev_adj_params,
+                       force_max_fp,
                        ...) {
   
   if (degree < 1) {
@@ -1323,6 +1326,7 @@ select_ra2_acd <- function(x,
                            spike_decision,
                            acd_parameter,
                            prev_adj_params,
+                           force_max_fp,
                            ...) {
   
   # simplify testing by defining test helper function

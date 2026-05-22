@@ -311,7 +311,7 @@ nonpositive values as zero and included an additional binary indicator in
 the model.
 \item catzero_list: A list of binary variables created when \code{catzero} is set to
 TRUE. Returns \code{NULL} if \code{catzero} is FALSE.
-\item spike_decision: named numeric vector with values 1, 2, or 3 specifying
+\item spike_dec: named numeric vector with values 1, 2, or 3 specifying
 spike-at-zero handling for each variable. Value 1 includes both the
 transformed variable and a binary indicator, 2 disables the spike and binary
 indicator, and 3 retains only the binary indicator.

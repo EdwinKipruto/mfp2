@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfpi_print.R
 \name{print.mfpi}
 \alias{print.mfpi}
-\title{Print an \code{mfpi} Object}
+\title{Print an \code{"mfpi"} Object}
 \usage{
 \method{print}{mfpi}(x, ...)
 }
@@ -15,38 +15,19 @@
 \code{x} invisibly.
 }
 \description{
-Displays a structured summary of an \code{"mfpi"} object, including the
-adjustment variables selected by the MFP algorithm and the interaction test
-results for each continuous variable in \code{cont_vars}. Optionally prints
-the full regression output for each final interaction model when
-\code{show_models = TRUE} was set in \code{mfpi()}.
-}
-\section{Output sections}{
-
+Displays a structured three-step summary of an \code{"mfpi"} fit:
 \enumerate{
-\item \strong{Adjustment model} — the \code{fp_terms} table from the MFP
-algorithm, showing which variables were selected and their estimated FP
-powers.
-\item \strong{Interaction test} — for each variable in \code{cont_vars}, the
-best-selected functional form (linear, FP1, or FP2) and its evaluation
-metrics: deviance, degrees of freedom, p-value, AIC, and BIC. Columns:
-\itemize{
-\item \code{type}: selected functional form (\code{linear}, \code{fp1},
-or \code{fp2}).
-\item \code{fp_powers_main}: FP powers in the main-effects model.
-\item \code{fp_powers_int}: FP powers in the interaction model, one set per
-group. For \code{flex4} these may differ across groups.
-\item \code{deviance_diff}: likelihood-ratio test statistic
-\eqn{T = -2\ell_\text{main} - (-2\ell_\text{int})}.
-\item \code{df_interaction}: degrees of freedom for the LRT
-(\eqn{= (K-1)m} for flex1/2/3; \eqn{= 2(K-1)m} for flex4).
-\item \code{pvalue}: \eqn{\Pr[\chi^2(\text{df\_interaction}) > T]}.
-\item \code{AIC_main_minus_int}, \code{BIC_main_minus_int}: improvement of interaction
-model over main-effects model; positive values favour interaction.
-}
-\item \strong{Interaction model coefficients} (only when
-\code{show_models = TRUE}) — the regression summary for the final
-interaction model for each variable.
+\item The adjustment model selected by MFP, showing all \code{fp_terms}
+columns for retained variables and a compact list of dropped variables.
+\item All interaction candidates (linear, FP1, FP2) for every variable in
+\code{cont_vars}, with the selected model flagged by \code{*}. This
+allows the user to judge whether the evidence is consistent across
+functional forms or driven by a single degree.
+\item The final selected interactions — one row per variable that cleared
+the selection threshold — or a message if none were found.
 }
 }
-
+\details{
+Regression output for the winning models is available via
+\code{summary.mfpi()}.
+}

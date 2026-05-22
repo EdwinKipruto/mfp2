@@ -15,6 +15,6 @@
 \code{x} invisibly.
 }
 \description{
-Formats and prints the structured summary produced by
-\code{summary.mfpi()}.
+Displays a four-step structured summary. Steps 1–3 match \code{print.mfpi()};
+Step 4 adds regression output for each final interaction model.
 }

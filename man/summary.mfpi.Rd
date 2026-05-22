@@ -13,39 +13,36 @@
 \item{...}{Currently unused.}
 }
 \value{
-An object of class \code{"summary.mfpi"}, which is a named list
-with the following components:
+An object of class \code{"summary.mfpi"} — a named list with:
 \describe{
 \item{\code{group_var}}{Name of the grouping variable.}
 \item{\code{nobs}}{Number of observations.}
-\item{\code{family}}{Regression family (GLM object or \code{"cox"}).}
-\item{\code{flex}}{Flexibility level used (\code{"flex1"} to
-\code{"flex4"}).}
+\item{\code{family}}{Regression family.}
+\item{\code{flex}}{Flexibility level used.}
 \item{\code{group_levels_original}}{Original levels of \code{group_var}.}
-\item{\code{adjust_terms}}{The full \code{fp_terms} data frame from the
-MFP adjustment model, as returned by \code{mfp2:::fit_mfp()}.}
-\item{\code{model_evaluation_metrics}}{Tibble of interaction test results
-(one row per significant variable): functional form selected, FP powers,
-deviance, df, p-value, AIC, and BIC. These p-values correctly account
-for the degrees of freedom of the interaction test.}
-\item{\code{all_model_metrics}}{Tibble of metrics for all three candidate
-models (linear, FP1, FP2) for every variable tested, regardless of
-significance.}
-\item{\code{model_summaries}}{Named list of regression summaries, one per
-variable in \code{cont_vars} that had a significant interaction. Each
-element is the output of \code{summary(fit$fit)}, where \code{fit} is
-the raw \code{glm} or \code{coxph} object. \strong{Note:} p-values in
-these summaries are from the standard \code{glm}/\code{coxph} machinery
-and do not account for the degrees of freedom used to estimate FP
-powers; use \code{model_evaluation_metrics$pvalue} for the correct
-interaction test p-values.}
+\item{\code{adjust_terms}}{Full \code{fp_terms} table from the MFP
+adjustment model.}
+\item{\code{all_model_metrics}}{All three candidates (linear, FP1, FP2)
+for every variable in \code{cont_vars}.}
+\item{\code{model_evaluation_metrics}}{Best model per significant
+variable.}
+\item{\code{model_summaries}}{Named list of \code{summary(fit$fit)}
+objects, one per significant variable. \strong{Note:} p-values here
+are from \code{glm}/\code{coxph} and do not account for FP power
+estimation df. Use \code{model_evaluation_metrics$pvalue} for the
+correct interaction test p-values.}
 }
 }
 \description{
-Produces a structured summary of an \code{"mfpi"} model fit, including the
-adjustment model, interaction test metrics, and the regression output for
-each final interaction model. The returned object has its own print method
-for formatted console display.
+Returns a structured summary of an \code{"mfpi"} fit. The returned object
+has a dedicated print method that displays four sections:
+\enumerate{
+\item Adjustment model selected by MFP.
+\item All interaction candidates (linear, FP1, FP2) with the winner
+flagged.
+\item Final selected interactions.
+\item Regression output (coefficients) for each winning model.
+}
 }
 \seealso{
 \code{print.summary.mfpi()}, \code{mfpi()},

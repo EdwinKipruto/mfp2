@@ -837,19 +837,11 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     }
   }  # end cont_vars loop
   
-  # Trim pre-allocated lists to actual fill level and restore names ----------
+  # Trim pre-allocated lists to actual fill level
   best_metrics_list <- best_metrics_list[seq_len(best_idx)]
   all_metrics_list  <- all_metrics_list[seq_len(all_idx)]
   
-  # Restore var_model names for all_model_metrics (used as the .id in bind_rows)
-  all_names <- paste(
-    rep(cont_vars, each = n_types),
-    rep(names(degree_lookup), times = n_vars),
-    sep = "_"
-  )
-  names(all_metrics_list) <- all_names[seq_len(all_idx)]
-  
-  # Drop NULL slots from pre-allocated interaction_models and fitted_functions
+  # Drop NULL slots from interaction_models and fitted_functions
   interaction_models <- Filter(Negate(is.null), interaction_models)
   fitted_functions   <- Filter(Negate(is.null), fitted_functions)
   
@@ -861,7 +853,14 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     combined_metrics <- data.frame()
   }
   
-  all_model_metrics <- dplyr::bind_rows(all_metrics_list, .id = "var_model")
+  all_model_metrics <- dplyr::bind_rows(all_metrics_list)
+  
+  # type first, variable second, then remaining metric columns
+  if (nrow(all_model_metrics) > 0L) {
+    metric_cols       <- setdiff(names(all_model_metrics), c("variable", "type"))
+    all_model_metrics <- all_model_metrics[, c("type", "variable", metric_cols),
+                                           drop = FALSE]
+  }
   
   list(
     model_evaluation_metrics = combined_metrics,

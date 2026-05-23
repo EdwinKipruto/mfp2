@@ -15,7 +15,10 @@ Imports:
   ggplot2 (>= 3.4.0),
   stats,
   survival,
-  utils
+  utils,
+  dplyr,
+  tibble,
+  numDeriv
 Suggests: 
     knitr,
     testthat (>= 3.0.0),

@@ -6,9 +6,9 @@
 # model coefficients.
 #
 # Call chain (external -> internal):
-#   compute_std_errors_diff()      -- iterates over non-reference groups
-#     +-- compute_standard_errors() -- applies delta method for one group pair
-#           +-- group_diff_function() -- evaluates fj(x) - f0(x) given coefs
+#   compute_fitted_standard_errors()      -- iterates over non-reference groups
+#     +-- compute_fitted_standard_errors() -- applies delta method for one group pair
+#           +-- compute_group_difference() -- evaluates fj(x) - f0(x) given coefs
 #
 # Naming conventions match the rest of the package:
 #   group_fp_powers  -- named list of per-group FP powers (was `powers`)
@@ -18,7 +18,7 @@
 
 
 # -----------------------------------------------------------------------------
-# group_diff_function() -------------------------------------------------------
+# compute_group_difference() --------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Evaluate the Pointwise Group-Difference Function \eqn{f_j(x) - f_0(x)}
@@ -94,7 +94,7 @@
 #'
 #' @keywords internal
 #' @noRd
-group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
+compute_group_difference <- function(coef_vec, xtransformed, group_fp_powers) {
   
   n_fp_terms <- length(group_fp_powers[[1L]])   # m: 1 for FP1, 2 for FP2
   
@@ -116,7 +116,7 @@ group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
 
 
 # -----------------------------------------------------------------------------
-# compute_std_errors_diff() ---------------------------------------------------
+# compute_diff_standard_errors() ----------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Compute Delta-Method Standard Errors for All Group Differences
@@ -193,7 +193,7 @@ group_diff_function <- function(coef_vec, xtransformed, group_fp_powers) {
 #'
 #' @keywords internal
 #' @noRd
-compute_std_errors_diff <- function(coefx, cov_betas, groups,
+compute_diff_standard_errors <- function(coefx, cov_betas, groups,
                                     group_name, xtransformed, group_fp_powers) {
   
   coef_names <- names(coefx)
@@ -233,7 +233,7 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
     # Predictor columns for groups 0 and j only (2m columns)
     x_sub <- xtransformed[, c(names(coef_base), names(coef_grpj)), drop = FALSE]
     
-    se_list[[i]] <- compute_standard_errors(
+    se_list[[i]] <- compute_fitted_standard_errors(
       coef_final      = coef_final,
       cov_final       = cov_final,
       xtransformed    = x_sub,
@@ -246,7 +246,7 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 
 
 # -----------------------------------------------------------------------------
-# compute_standard_errors() ---------------------------------------------------
+# compute_fitted_standard_errors() ---------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Apply the Delta Method to Compute Pointwise Standard Errors for One Group Pair
@@ -324,12 +324,12 @@ compute_std_errors_diff <- function(coefx, cov_betas, groups,
 #'
 #' @keywords internal
 #' @noRd
-compute_standard_errors <- function(coef_final, cov_final,
+compute_fitted_standard_errors <- function(coef_final, cov_final,
                                     xtransformed, group_fp_powers) {
   
   # Fix xtransformed and group_fp_powers; let numDeriv vary only coef_final
   diff_fn <- function(coef_vec) {
-    group_diff_function(
+    compute_group_difference(
       coef_vec        = coef_vec,
       xtransformed    = xtransformed,
       group_fp_powers = group_fp_powers

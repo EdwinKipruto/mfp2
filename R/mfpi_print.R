@@ -49,7 +49,7 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 1: Adjustment model
   # ---------------------------------------------------------------------------
-  cat("\nStep 1 — Adjustment Model (MFP):\n")
+  cat("\nStep 1: Adjustment Model (MFP):\n")
   cat(ruler, "\n")
   
   fp <- x$adjust_terms
@@ -76,7 +76,7 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 2: All interaction candidates with winner flagged
   # ---------------------------------------------------------------------------
-  cat("\nStep 2 — All Interaction Candidates:\n")
+  cat("\nStep 2: All Interaction Candidates:\n")
   cat(ruler, "\n")
   
   all_m <- x$all_model_metrics
@@ -84,7 +84,7 @@ print.mfpi <- function(x, ...) {
   if (!is.null(all_m) && nrow(all_m) > 0L) {
     
     # Identify winners: match on type + variable
-    best_m <- x$model_evaluation_metrics
+    best_m <- x$best_model_metrics
     if (!is.null(best_m) && nrow(best_m) > 0L) {
       winner_keys <- paste(best_m$type, best_m$variable, sep = "__")
     } else {
@@ -117,10 +117,10 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 3: Selected interactions
   # ---------------------------------------------------------------------------
-  cat("\nStep 3 — Selected Interactions:\n")
+  cat("\nStep 3: Selected Interactions:\n")
   cat(ruler, "\n")
   
-  best_m <- x$model_evaluation_metrics
+  best_m <- x$best_model_metrics
   
   if (!is.null(best_m) && nrow(best_m) > 0L) {
     
@@ -197,12 +197,12 @@ print.mfpi <- function(x, ...) {
 #'     adjustment model.}
 #'   \item{\code{all_model_metrics}}{All three candidates (linear, FP1, FP2)
 #'     for every variable in \code{cont_vars}.}
-#'   \item{\code{model_evaluation_metrics}}{Best model per significant
+#'   \item{\code{best_model_metrics}}{Best model per significant
 #'     variable.}
 #'   \item{\code{model_summaries}}{Named list of \code{summary(fit$fit)}
 #'     objects, one per significant variable. \strong{Note:} p-values here
 #'     are from \code{glm}/\code{coxph} and do not account for FP power
-#'     estimation df. Use \code{model_evaluation_metrics$pvalue} for the
+#'     estimation df. Use \code{best_model_metrics$pvalue} for the
 #'     correct interaction test p-values.}
 #' }
 #'
@@ -213,7 +213,7 @@ print.mfpi <- function(x, ...) {
 #' @export
 summary.mfpi <- function(object, ...) {
   
-  model_summaries <- lapply(object$interaction_models, function(fit_obj) {
+  model_summaries <- lapply(object$best_interaction_model, function(fit_obj) {
     if (!is.null(fit_obj$fit)) summary(fit_obj$fit) else NULL
   })
   
@@ -226,7 +226,11 @@ summary.mfpi <- function(object, ...) {
       group_levels_original    = object$group_levels_original,
       adjust_terms             = object$adjust_terms,
       all_model_metrics        = object$all_model_metrics,
-      model_evaluation_metrics = object$model_evaluation_metrics,
+      best_model_metrics = object$best_model_metrics,
+      best_interaction_model       = object$best_interaction_model,
+      all_interaction_models   = object$all_interaction_models,
+      best_fitted_functions         = object$best_fitted_functions,
+      all_fitted_functions     = object$all_fitted_functions,
       model_summaries          = model_summaries
     ),
     class = "summary.mfpi"
@@ -265,7 +269,7 @@ print.summary.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 1: Adjustment model
   # ---------------------------------------------------------------------------
-  cat("\nStep 1 — Adjustment Model (MFP):\n")
+  cat("\nStep 1: Adjustment Model (MFP):\n")
   cat(ruler, "\n")
   
   fp <- x$adjust_terms
@@ -292,7 +296,7 @@ print.summary.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 2: All interaction candidates with winner flagged
   # ---------------------------------------------------------------------------
-  cat("\nStep 2 — All Interaction Candidates:\n")
+  cat("\nStep 2: All Interaction Candidates:\n")
   cat(ruler, "\n")
   
   all_m <- x$all_model_metrics
@@ -300,7 +304,7 @@ print.summary.mfpi <- function(x, ...) {
   if (!is.null(all_m) && nrow(all_m) > 0L) {
     
     # Identify winners: match on type + variable
-    best_m <- x$model_evaluation_metrics
+    best_m <- x$best_model_metrics
     if (!is.null(best_m) && nrow(best_m) > 0L) {
       winner_keys <- paste(best_m$type, best_m$variable, sep = "__")
     } else {
@@ -332,10 +336,10 @@ print.summary.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 3: Selected interactions
   # ---------------------------------------------------------------------------
-  cat("\nStep 3 — Selected Interactions:\n")
+  cat("\nStep 3: Selected Interactions:\n")
   cat(ruler, "\n")
   
-  best_m <- x$model_evaluation_metrics
+  best_m <- x$best_model_metrics
   
   if (!is.null(best_m) && nrow(best_m) > 0L) {
     
@@ -371,13 +375,13 @@ print.summary.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   if (length(x$model_summaries) > 0L) {
     
-    cat("\nStep 4 — Regression Output (Winning Interaction Models):\n")
+    cat("\nStep 4: Regression Output (Winning Interaction Models):\n")
     cat(ruler, "\n")
     cat("  Note: p-values below are from glm/coxph and do not account for\n")
     cat("        FP power estimation df. Use Step 3 pvalues for the correct\n")
     cat("        interaction test p-values.\n")
     
-    best_m <- x$model_evaluation_metrics
+    best_m <- x$best_model_metrics
     type_lookup <- if (!is.null(best_m) && "type" %in% names(best_m)) {
       setNames(toupper(gsub("fp", "FP", best_m$type)), best_m$variable)
     } else {

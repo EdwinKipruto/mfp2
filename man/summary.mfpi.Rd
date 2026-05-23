@@ -24,12 +24,12 @@ An object of class \code{"summary.mfpi"} — a named list with:
 adjustment model.}
 \item{\code{all_model_metrics}}{All three candidates (linear, FP1, FP2)
 for every variable in \code{cont_vars}.}
-\item{\code{model_evaluation_metrics}}{Best model per significant
+\item{\code{best_model_metrics}}{Best model per significant
 variable.}
 \item{\code{model_summaries}}{Named list of \code{summary(fit$fit)}
 objects, one per significant variable. \strong{Note:} p-values here
 are from \code{glm}/\code{coxph} and do not account for FP power
-estimation df. Use \code{model_evaluation_metrics$pvalue} for the
+estimation df. Use \code{best_model_metrics$pvalue} for the
 correct interaction test p-values.}
 }
 }

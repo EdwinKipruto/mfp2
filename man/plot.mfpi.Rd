@@ -7,98 +7,101 @@
 \method{plot}{mfpi}(
   x,
   terms = NULL,
-  interaction_type = c("linear", "fp1", "fp2"),
-  plot_type = c("fitted", "difference"),
-  linewidth = 1,
-  linetype = 1,
-  line_colour = "black",
-  rug_colour = "black",
+  type = NULL,
+  plot_type = c("fitted", "difference", "both"),
+  auto_print = TRUE,
+  colour_ref = "#2166AC",
+  colour_grp = "#D6604D",
+  colour_diff = "#1B7837",
+  linewidth = 0.8,
+  ribbon_alpha = 0.2,
+  rug_alpha = 0.4,
   ...
 )
 }
 \arguments{
-\item{x}{An object of class \code{"mfpi"}, as returned by \code{\link[=mfpi]{mfpi()}}.}
+\item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
 \item{terms}{Character vector of variable names to plot. Default \code{NULL}
-plots all variables with significant interactions in \code{x$fitted_functions}.}
+plots all variables with significant interactions.}
 
-\item{interaction_type}{Character string; \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.
-Selects which interaction type to visualise. The function checks that the
-requested type was actually fitted for each variable and warns if it was
-not.}
+\item{type}{Character string or \code{NULL}. Controls which functional form
+to plot: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Default
+\code{NULL} plots the \strong{best selected} form for each variable (from
+\code{model$best_fitted_functions}). Setting \code{type} explicitly plots
+that specific candidate from \code{model$all_fitted_functions} for all
+variables in \code{terms}, allowing direct comparison of functional forms
+regardless of which was selected.}
 
-\item{plot_type}{Character string; \code{"fitted"} (default) or \code{"difference"}.
-See the \emph{Plot types} section.}
+\item{plot_type}{Character string; \code{"fitted"} (default),
+\code{"difference"}, or \code{"both"}. See the \emph{Plot types} section.}
 
-\item{linewidth}{Positive numeric. Line width passed to
-\code{\link[ggplot2:geom_path]{ggplot2::geom_line()}}. Default \code{1}.}
+\item{auto_print}{Logical. If \code{TRUE} (default), each plot is printed
+to the active graphics device as it is created.}
 
-\item{linetype}{Integer or character. Line type passed to
-\code{\link[ggplot2:geom_path]{ggplot2::geom_line()}}. Default \code{1} (solid).}
+\item{colour_ref}{Character. Colour for the reference group curve and CI.
+Default \code{"#2166AC"} (blue).}
 
-\item{line_colour}{Character string. Colour of the difference curve (used
-only when \code{plot_type = "difference"}). Default \code{"black"}.}
+\item{colour_grp}{Character. Colour for the non-reference group curve and
+CI. Default \code{"#D6604D"} (red-orange).}
 
-\item{rug_colour}{Character string. Colour of the rug marks along the
-x-axis. Default \code{"black"}.}
+\item{colour_diff}{Character. Colour for the difference curve and CI band.
+Default \code{"#1B7837"} (green).}
 
-\item{...}{Currently unused. Reserved for future extensions.}
+\item{linewidth}{Positive numeric. Line width. Default \code{0.8}.}
+
+\item{ribbon_alpha}{Numeric in \eqn{[0,1]}. Transparency of CI ribbon.
+Default \code{0.2}.}
+
+\item{rug_alpha}{Numeric in \eqn{[0,1]}. Transparency of rug marks.
+Default \code{0.4}.}
+
+\item{...}{Currently unused.}
 }
 \value{
-A nested named list of \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} objects (see \emph{Return
-structure}). Invisibly returned; call \code{print()} or
-\code{\link[ggplot2:ggsave]{ggplot2::ggsave()}} on individual elements.
+A nested named list of \code{ggplot} (or \code{patchwork}) objects,
+returned invisibly.
 }
 \description{
-Produces group-specific fitted-function plots or treatment-effect difference
-plots for each continuous variable in an \code{"mfpi"} object. For each
-continuous variable and each non-reference group, one \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}}
-object is created and returned in a named list.
+Produces group-specific fitted-function plots, treatment-effect difference
+plots, or both for each significant continuous variable in an
+\code{"mfpi"} object. Each plot includes 95\\% confidence bands and rug
+marks. All plots are printed automatically and returned invisibly as a
+nested named list.
 }
 \section{Plot types}{
 
-\strong{\code{"fitted"}} overlays the fitted linear predictor \eqn{\hat{f}_j(x)} for
-the reference group \eqn{j = 0} and one non-reference group \eqn{j} on a
-shared set of axes. The two curves are distinguished by colour.
-
-\strong{\code{"difference"}} plots the pointwise treatment-effect function
-\deqn{
-  \hat{D}_j(x) = \hat{f}_j(x) - \hat{f}_0(x)
-}
-together with a pointwise 95\% confidence band
-\deqn{
-  \hat{D}_j(x) \;\pm\; 1.96\;\widehat{\mathrm{SE}}\!\bigl[\hat{D}_j(x)\bigr].
-}
-A horizontal reference line at zero is included; deviations from zero
-indicate effect modification by the continuous covariate.
+Three plot types are available via the \code{plot_type} argument.
+\code{"fitted"} overlays the fitted linear predictor for the reference
+group and one non-reference group on shared axes with 95\\% CI bands.
+\code{"difference"} plots the pointwise treatment-effect function
+\eqn{D_j(x) = f_j(x) - f_0(x)} with a 95\\% CI band and a horizontal
+reference line at zero; deviations from zero indicate effect modification.
+\code{"both"} shows fitted and difference plots side by side (requires
+\pkg{patchwork}).
 }
 
 \section{Return structure}{
 
-The return value is a nested named list:
-\itemize{
-\item Outer names: variable names from \code{terms}.
-\item Inner names: \code{"grp<j>_vs_grp<0>"} for each non-reference group
-level \eqn{j}.
-\item Each leaf is a \code{\link[ggplot2:ggplot]{ggplot2::ggplot()}} object.
-}
-To display a specific plot:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{plots <- plot(model)
-print(plots$age$grp1_vs_grp0)
-}\if{html}{\out{</div>}}
+The return value is a nested named list. Outer names are variable names
+from \code{terms}. Inner names are of the form
+\code{"grp<j>_vs_grp<0>"} for each non-reference group level \eqn{j}.
+Each leaf is a \code{ggplot} object (\code{plot_type = "fitted"} or
+\code{"difference"}) or a \code{patchwork} object
+(\code{plot_type = "both"}).
 }
 
 \examples{
 \dontrun{
-fit    <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
-plots  <- plot(fit)
-print(plots$age$grp1_vs_grp0)
-
-# Difference plots only for one variable
-plot(fit, terms = "age", plot_type = "difference")
+fit   <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
+plots <- plot(fit)                        # all variables, fitted + printed
+plots <- plot(fit, plot_type = "both")    # fitted + difference side by side
+plots <- plot(fit, terms = "age",
+              plot_type = "difference")   # difference only for age
+# Save a specific plot
+ggplot2::ggsave("age_diff.pdf", plots$age$grp1_vs_grp0, width = 7, height = 5)
 }
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{gen_fitted_values_per_group()}
+\code{mfpi()}, \code{gen_fitted_values_per_group()}
 }

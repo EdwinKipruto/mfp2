@@ -217,7 +217,8 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     power     = 1L,
     scale     = 1,
     shift     = 0,
-    center    = center
+    center    = center,
+    zero      = zero_var
   )
   
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
@@ -336,7 +337,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   df_vec <- c(
     2L * degree,               # cont_var: FP of requested degree
     rep(1L, k - 1L),           # group dummies: linear
-    if (n_adj > 0L) rep(1L, n_adj)
+    if (n_adj > 0L) rep(1L, n_adj) 
   )
   
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -354,7 +355,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # so there is no simpler form to downgrade to.
   force_max_fp <- setNames(c(TRUE, rep(FALSE, n_total - 1L)), vnames)
   
-  fit_main_pool <- mfp2:::fit_mfp(
+  fit_main_pool <- fit_mfp(
     x             = xnew,
     y             = y,
     df            = df_vec,
@@ -402,7 +403,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     power     = bestfp,
     shift     = 0,
     scale     = 1,
-    center    = center
+    center    = center,
+    zero      = zero_var
   )
   
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
@@ -458,7 +460,6 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   )
 }
 
-
 # -----------------------------------------------------------------------------
 # flex2() — within-group FP powers, constrained equal across groups -----------
 # -----------------------------------------------------------------------------
@@ -497,15 +498,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # transform_z_variables() tries every combination of powers from fp_cand
   # and returns a named list of matrices plus a power matrix.
   transformed <- transform_z_variables(
-    cont_var   = contvar_vec,
-    group_var  = groupvar_vec,
-    shift      = 0,
-    scale      = 1,
-    fp_cand    = fp_cand,
-    fp_degree  = degree,
-    acdx       = FALSE,
-    center     = FALSE,   # centering deferred to Step 3
-    na_replace = "NA"
+    cont_var  = contvar_vec,
+    group_var = groupvar_vec,
+    shift     = 0,
+    scale     = 1,
+    fp_cand   = fp_cand,
+    fp_degree = degree,
+    acdx      = FALSE,
+    center    = FALSE    # centering deferred to Step 3
   )
   
   power_matrix      <- transformed$powers_matrix
@@ -519,7 +519,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   
   deviance_vec <- vapply(transformed_groups, function(z) {
     z[is.na(z)] <- 0    # structural zeros
-    fit <- mfp2:::fit_model(
+    fit <- fit_model(
       x        = cbind(z, fixed_x),
       y        = y,
       family   = family,
@@ -536,7 +536,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   }, numeric(1L))
   
   best_idx <- which.min(deviance_vec)
-  bestfp   <- power_matrix[best_idx, ]
+  bestfp <- power_matrix[best_idx, ]
   
   # Step 3: Transform cont_var using best powers; optionally centre -----------
   contvar_transformed <- mfp2::transform_vector_fp(
@@ -549,10 +549,25 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   z_best <- transformed_groups[[best_idx]]
   
   if (center) {
-    contvar_transformed <- sweep(contvar_transformed, 2L,
-                                 colMeans(contvar_transformed, na.rm = TRUE), "-")
-    z_best <- sweep(z_best, 2L, colMeans(z_best, na.rm = TRUE), "-")
-    z_best[is.na(z_best)] <- 0    # restore structural zeros after centring
+    # contvar_transformed: use mean of positive values only when zero_var = TRUE
+    # (spike at zero); grand mean otherwise. center_matrix() handles both cases.
+    ct_names <- colnames(contvar_transformed)
+    if (is.null(ct_names))
+      ct_names <- paste0(cont_var, seq_len(ncol(contvar_transformed)))
+    contvar_transformed <- mfp2::center_matrix(
+      mat    = contvar_transformed,
+      centers = NULL,
+      zero   = setNames(rep(zero_var, ncol(contvar_transformed)), ct_names)
+    )
+    
+    # z_best: each column is non-zero only for one group (structural zeros
+    # elsewhere). zero = TRUE tells center_matrix() to compute the mean only
+    # over non-zero rows, leaving structural zeros at zero.
+    z_best <- mfp2::center_matrix(
+      mat    = z_best,
+      centers = NULL,
+      zero   = setNames(rep(TRUE, ncol(z_best)), colnames(z_best))
+    )
   }
   
   # Step 4: Assemble design matrices -------------------------------------------
@@ -801,7 +816,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   force_max_fp <- setNames(c(rep(TRUE, k), rep(FALSE, n_total - k)), vnames)
   
   
-  fit_int <- mfp2:::fit_mfp(
+  fit_int <-fit_mfp(
     x             = xnew,
     y             = y,
     df            = df_vec,
@@ -847,15 +862,20 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   )$x_transformed
   
   # Infinite values arise when zero is log- or negative-power transformed;
-  # treat them as missing so they do not distort column means, then restore
-  # to structural zero after optional centring.
+  # Non-finite values arise from structural zeros transformed by log/negative
+  # powers. Mark as NA temporarily so they do not distort centering.
   transformed[!is.finite(transformed)] <- NA
   
   if (center) {
-    transformed <- sweep(transformed, 2L,
-                         colMeans(transformed, na.rm = TRUE), "-")
+    # zero = TRUE: center_matrix computes means only over non-NA (non-zero)
+    # rows per column, leaving structural zeros (NA) unaffected.
+    transformed <- mfp2::center_matrix(
+      mat    = transformed,
+      centers = NULL,
+      zero   = setNames(rep(TRUE, ncol(transformed)), colnames(transformed))
+    )
   }
-  transformed[is.na(transformed)] <- 0    # restore structural zeros
+  transformed[is.na(transformed)] <- 0    # restore structural zeros though already handled
   
   x_interaction <- cbind(group_dummies, transformed, xadj)
   

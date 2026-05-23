@@ -1,7 +1,7 @@
 # Utility functions for MFPI
 #
 # These functions handle dummy variable creation, group-specific FP variable
-# construction, and related data-preparation tasks. `create_dummies()`,
+# construction, and related data-preparation tasks. `create_group_dummies()`,
 # `create_z_variables()`, and `transform_z_variables()` are exported because
 # they may be useful to callers building custom interaction models.
 # `var_group()` and `adjust_reference_category()` are small helpers that are
@@ -16,7 +16,7 @@
 
 
 # -----------------------------------------------------------------------------
-# create_dummies() ------------------------------------------------------------
+# create_group_dummies() ------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Create Dummy Variables from a Single-Column Numeric Matrix
@@ -42,15 +42,15 @@
 #' @examples
 #' x <- matrix(c(3, 1, 2, 1, 3, 2), ncol = 1)
 #' colnames(x) <- "group"
-#' create_dummies(x)
+#' create_group_dummies(x)
 #'
 #' # Enforce a fixed set of levels (e.g. for prediction on a subset)
 #' x2 <- matrix(c(1, 1, 1), ncol = 1)
 #' colnames(x2) <- "trt"
-#' create_dummies(x2, levels = 1:3)   # trt2 and trt3 columns are all-zero
+#' create_group_dummies(x2, levels = 1:3)   # trt2 and trt3 columns are all-zero
 #'
 #' @export
-create_dummies <- function(x, levels = NULL) {
+create_group_dummies <- function(x, levels = NULL) {
   
   if (!is.matrix(x))         stop("`x` must be a matrix.",                  call. = FALSE)
   if (ncol(x) != 1L)         stop("`x` must have exactly one column.",      call. = FALSE)
@@ -99,58 +99,88 @@ create_dummies <- function(x, levels = NULL) {
   mat
 }
 
+# Utility functions for MFPI interaction design matrices
+#
+# create_z_variables()    — group-specific FP-transformed block matrix
+# transform_z_variables() — enumerate all FP power combinations for flex2/flex4
+
 
 # -----------------------------------------------------------------------------
 # create_z_variables() --------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Build Group-Specific FP-Transformed Variables for Interaction Modeling
+#' Build Group-Specific FP-Transformed Variables for Interaction Modelling
 #'
-#' For each level of `group_var`, constructs a copy of `cont_var` that retains
-#' the (optionally transformed) covariate values only for observations in that
-#' group and is zero elsewhere. The resulting block matrix \eqn{Z \in
-#' \mathbb{R}^{n \times KJ}} is used as the interaction design matrix in MFPI,
-#' where \eqn{K} is the number of groups and \eqn{J} is the number of FP
-#' columns implied by `power`.
+#' For each level of \code{group_var}, constructs a copy of \code{cont_var}
+#' that retains the (optionally FP-transformed) covariate values only for
+#' observations in that group and is zero elsewhere. The resulting block matrix
+#' \eqn{Z \in \mathbb{R}^{n \times KJ}} is used as the interaction design
+#' matrix in MFPI, where \eqn{K} is the number of groups and \eqn{J} is the
+#' number of FP columns implied by \code{power}.
 #'
 #' @section Mathematical definition:
 #' Let \eqn{f_j(x_i)} denote the \eqn{j}-th FP transformation of observation
-#' \eqn{i} under the supplied `power` vector. For group \eqn{k}, the
-#' interaction variable is
+#' \eqn{i} under the supplied \code{power} vector. For group \eqn{k}:
 #' \deqn{z_{ijk} = \begin{cases} f_j(x_i) & \text{if } g_i = k \\ 0 &
-#' \text{otherwise,} \end{cases}}
-#' producing \eqn{K \times J} columns in total.
+#' \text{otherwise.} \end{cases}}
 #'
 #' @section Column naming:
-#' Columns are named `<varname><group><power_index>`, where `<group>` is the
-#' numeric group level and `<power_index>` is 1-based. For example, if
-#' `cont_var = "age"`, groups are 0 and 1, and `power = c(1, 0.5)`, the
-#' columns are `age01`, `age02`, `age11`, `age12`.
+#' Columns are named \code{<varname><group><power_index>}, e.g. for
+#' \code{cont_var = "age"}, groups 0/1, and \code{power = c(1, 0.5)}: \code{age01},
+#' \code{age02}, \code{age11}, \code{age12}.
 #'
-#' @param cont_var A one-column numeric matrix representing the continuous
-#'   covariate. Must have a column name and no missing or non-finite values.
-#' @param group_var A one-column numeric matrix representing group membership.
-#'   Must have at least two distinct values and the same number of rows as
-#'   `cont_var`.
-#' @param power Numeric vector of FP powers applied to `cont_var`. Default is
-#'   `1` (linear, no transformation beyond optional shift/scale). A length-2
-#'   vector (e.g. `c(0.5, 2)`) produces two columns per group.
-#' @param shift Numeric scalar. Added to `cont_var` before transformation. If
-#'   `NULL`, estimated automatically by [mfp2::find_shift_factor()].
-#' @param scale Numeric scalar. Divides `cont_var` after shifting. If `NULL`,
-#'   estimated automatically by [mfp2::find_scale_factor()].
-#' @param center Logical. If `TRUE`, each transformed column is mean-centred
-#'   (using the column mean of the transformed values across all observations).
+#' @param cont_var A one-column numeric matrix of the continuous covariate,
+#'   with a column name and no missing or non-finite values.
+#' @param group_var A one-column numeric matrix of group membership with at
+#'   least two distinct values and the same number of rows as \code{cont_var}.
+#' @param power Numeric vector of FP powers. Default \code{1} (linear).
+#' @param shift Numeric scalar added to \code{cont_var} before transformation.
+#'   If \code{NULL}, estimated by \code{mfp2::find_shift_factor()}.
+#' @param scale Numeric scalar dividing \code{cont_var} after shifting.
+#'   If \code{NULL}, estimated by \code{mfp2::find_scale_factor()}.
+#' @param center Logical. If \code{TRUE}, centres both return matrices using
+#'   different strategies — see the \emph{Centering} section. Default
+#'   \code{FALSE}.
+#' @param zero Logical. If \code{TRUE}, non-positive values in \code{cont_var}
+#'   are treated as structural zeros: excluded from mean computation when
+#'   \code{center = TRUE} and reset to zero after centering. Default
+#'   \code{FALSE}.
+#'
+#' @section Centering:
+#' Two distinct strategies are used depending on the return component:
+#'
+#' \describe{
+#'   \item{\code{z} (group-specific interaction matrix)}{Each column belongs
+#'     to one group and contains structural zeros for all out-of-group
+#'     observations. When \code{center = TRUE}, each column is centred by its
+#'     \strong{within-group mean} — the mean of the non-zero (in-group) values
+#'     only, via \code{mfp2::center_matrix(zero = TRUE)}.
+#'     This ensures group 0\'s column is centred around group 0\'s mean and
+#'     group 1\'s column around group 1\'s mean, which is the correct reference
+#'     for each group-specific FP curve. Using the pooled mean would be wrong
+#'     because the two groups may have different covariate distributions.}
+#'   \item{\code{xtransformed} (pooled FP-transformed \code{cont_var})}{Used in
+#'     the main-effects model to represent the overall trend. When
+#'     \code{center = TRUE}, centred by the \strong{grand mean} across all
+#'     transformed values. No structural-zero special-casing is applied here
+#'     because \code{xtransformed} is a standard continuous column — any zeros
+#'     that may exist after FP transformation are valid transformed values,
+#'     not indicators of group absence.}
+#' }
 #'
 #' @return A list with two elements:
 #' \describe{
-#'   \item{`z`}{Numeric matrix of group-specific transformed variables,
-#'     \eqn{n \times KJ}.}
-#'   \item{`xtransformed`}{Numeric matrix of the FP-transformed (and optionally
-#'     centred) version of `cont_var`, \eqn{n \times J}.}
+#'   \item{\code{z}}{Numeric matrix of group-specific FP-transformed variables,
+#'     \eqn{n \times KJ}. Each column is non-zero only for its own group.
+#'     When \code{center = TRUE}, each column is centred by its within-group
+#'     mean.}
+#'   \item{\code{xtransformed}}{FP-transformed \code{cont_var} pooled across
+#'     all observations, \eqn{n \times J}. When \code{center = TRUE}, centred
+#'     by the grand mean of all transformed values (standard centering, no
+#'     structural-zero adjustment).}
 #' }
 #'
-#' @seealso [mfp2::transform_vector_fp()], \code{transform_z_variables()}
+#' @seealso \code{mfp2::transform_vector_fp()}, \code{transform_z_variables()}
 #'
 #' @examples
 #' cont <- matrix(1:6, ncol = 1); colnames(cont) <- "age"
@@ -160,7 +190,8 @@ create_dummies <- function(x, levels = NULL) {
 #'
 #' @export
 create_z_variables <- function(cont_var, group_var, power = 1,
-                               shift = NULL, scale = NULL, center = FALSE) {
+                               shift = NULL, scale = NULL,
+                               center = FALSE, zero = FALSE) {
   
   # Input validation -----------------------------------------------------------
   if (!is.matrix(cont_var) || ncol(cont_var) != 1L)
@@ -171,20 +202,16 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   if (!is.matrix(group_var) || ncol(group_var) != 1L || !is.numeric(group_var))
     stop("`group_var` must be a one-column numeric matrix.", call. = FALSE)
   if (nrow(cont_var) != nrow(group_var))
-    stop("`cont_var` and `group_var` must have the same number of rows.", call. = FALSE)
-  if (anyNA(cont_var) || !all(is.finite(cont_var)))
+    stop("`cont_var` and `group_var` must have the same number of rows.",
+         call. = FALSE)
+  if (!all(is.finite(cont_var)))
     stop("`cont_var` must not contain NA, NaN, or infinite values.", call. = FALSE)
   if (anyNA(group_var))
     stop("`group_var` must not contain NA values.", call. = FALSE)
   if (!is.numeric(power) || length(power) == 0L)
     stop("`power` must be a non-empty numeric vector.", call. = FALSE)
-  if (var(as.vector(cont_var)) == 0)
+  if (diff(range(cont_var)) == 0)
     warning("`cont_var` has zero variance; all values are identical.", call. = FALSE)
-  if (any(power <= 0) && any(cont_var <= 0))
-    stop(
-      "`cont_var` must be strictly positive when `power` includes 0 or negative values.",
-      call. = FALSE
-    )
   
   group_vec    <- as.vector(group_var)
   group_levels <- sort(unique(group_vec))
@@ -193,34 +220,32 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   if (k < 2L)
     stop("`group_var` must have at least two distinct levels.", call. = FALSE)
   
-  # Apply FP transformation to cont_var ----------------------------------------
-  if (!identical(power, 1) && !identical(power, 1L)) {
-    x_fp <- mfp2::transform_vector_fp(
-      cont_var,
-      power        = power,
-      shift        = shift,
-      scale        = scale,
-      check_binary = TRUE,
-      name         = xname
-    )
-  } else {
-    # Linear: apply shift and scale manually to stay consistent with mfp2
-    s    <- if (!is.null(shift)) shift else mfp2::find_shift_factor(cont_var)
-    sc   <- if (!is.null(scale)) scale else mfp2::find_scale_factor(cont_var + s)
-    x_fp <- (cont_var + s) / sc
-  }
+  # FP-transform cont_var (handles linear and non-linear uniformly) -----------
+  # zero = zero ensures non-positive values are set to 0 before transformation,
+  # consistent with how mfp2:::fit_mfp() estimated the FP powers when zero = TRUE.
+  x_fp <- mfp2::transform_vector_fp(
+    x            = cont_var,
+    power        = power,
+    shift        = shift,
+    scale        = scale,
+    zero         = zero,
+    check_binary = TRUE,
+    name         = xname
+  )
   
-  if (center) {
-    x_fp <- sweep(x_fp, 2L, colMeans(x_fp, na.rm = TRUE), "-")
-  }
+  # Build group-specific block matrix via vectorised index assignment ---------
+  # Always built from uncentred x_fp so each column of z can be centred by
+  # its own within-group mean (not the pooled mean across all groups).
+  n <- nrow(x_fp)
+  j <- ncol(x_fp)
+  z <- matrix(0, nrow = n, ncol = j * k)
   
-  # Build group-specific block matrix ------------------------------------------
-  n   <- nrow(x_fp)
-  j   <- ncol(x_fp)
-  z   <- matrix(0, nrow = n, ncol = j * k)
+  # group_idx maps each observation to its group position (1-based)
+  group_idx <- match(group_vec, group_levels)
   
-  for (i in seq_along(group_levels)) {
-    rows <- which(group_vec == group_levels[i])
+  # Fill all groups at once: for group position i, columns (i-1)*j+1 : i*j
+  for (i in seq_len(k)) {
+    rows <- group_idx == i
     cols <- seq.int((i - 1L) * j + 1L, i * j)
     z[rows, cols] <- x_fp[rows, , drop = FALSE]
   }
@@ -232,7 +257,33 @@ create_z_variables <- function(cont_var, group_var, power = 1,
     rep(seq_len(j),   times = k)
   )
   
-  list(z = z, xtransformed = x_fp)
+  # Centre each column of z by its within-group mean (mean of non-zero values).
+  # zero = TRUE tells center_matrix to compute the mean only over non-zero rows,
+  # leaving structural zeros (out-of-group observations) at zero.
+  if (center) {
+    z <- mfp2::center_matrix(
+      mat     = z,
+      centers = NULL,
+      zero    = setNames(rep(TRUE, ncol(z)), colnames(z))
+    )
+  }
+  
+  # xtransformed: pooled FP-transformed cont_var used in the main-effects model.
+  # Centred by the grand mean of all transformed values — no structural zero
+  # special-casing needed here since this is the pooled continuous term.
+  xtransformed <- x_fp
+  if (center) {
+    fp_colnames <- colnames(x_fp)
+    if (is.null(fp_colnames))
+      fp_colnames <- paste0(xname, seq_len(ncol(x_fp)))
+    xtransformed <- mfp2::center_matrix(
+      mat     = x_fp,
+      centers = NULL,
+      zero    = setNames(rep(FALSE, ncol(x_fp)), fp_colnames)
+    )
+  }
+  
+  list(z = z, xtransformed = xtransformed)
 }
 
 
@@ -242,55 +293,51 @@ create_z_variables <- function(cont_var, group_var, power = 1,
 
 #' Enumerate All FP Power Combinations for Group-Specific Interaction Variables
 #'
-#' For each combination of FP powers generated by [mfp2::generate_powers_fp()],
-#' constructs the full group-specific interaction matrix via
-#' [mfp2::transform_matrix()] and collects the results in a list. This is the
-#' engine behind `flex2` and `flex4`, where the best power combination is
-#' selected by comparing model deviances.
+#' For each combination of FP powers generated by
+#' \code{mfp2::generate_powers_fp()}, constructs the full group-specific
+#' interaction matrix and collects the results in a list. Used by
+#' \code{flex2()} to find the best power combination by deviance minimisation.
 #'
-#' @section Structural zeros and non-finite values:
+#' @section Structural zeros:
 #' Group-specific variables contain structural zeros for observations outside
-#' the relevant group. Applying log or negative-power FP transforms to zero
-#' produces `-Inf` or `Inf`. These are not data errors; they arise purely from
-#' the construction of the group indicator. The `na_replace` argument controls
-#' how they are handled: `"NA"` (default) marks them as missing so they can be
-#' distinguished from valid zeros such as `log(1) = 0`; `"zero"` replaces them
-#' with 0 for fitting routines that cannot tolerate `NA`.
+#' each group. Applying log or negative-power FP transforms to zero produces
+#' \code{-Inf}/\code{Inf}. The \code{na_replace} argument controls handling:
+#' \code{"NA"} (default) marks them missing; \code{"zero"} replaces with 0.
 #'
-#' @param cont_var A one-column numeric matrix of the continuous covariate.
-#'   Must have a column name; no missing or non-finite values permitted.
-#' @param group_var A one-column numeric matrix of group membership with at
-#'   least two distinct values and the same row count as `cont_var`.
-#' @param shift Optional numeric scalar. Shift applied to `cont_var` before
-#'   transformation. `NULL` triggers automatic estimation.
-#' @param scale Optional numeric scalar. Scale divisor applied after shifting.
-#'   `NULL` triggers automatic estimation.
-#' @param center Logical. Whether to mean-centre each transformed column.
-#' @param acdx Logical. Whether `cont_var` undergoes the ACD transformation.
-#'   Default `FALSE`.
+#' @param cont_var One-column numeric matrix of the continuous covariate with
+#'   column name; no missing or non-finite values.
+#' @param group_var One-column numeric matrix of group membership with at
+#'   least two distinct values and the same row count as \code{cont_var}.
+#' @param shift,scale Optional numeric scalars for shifting and scaling
+#'   \code{cont_var}. \code{NULL} triggers automatic estimation.
+#' @param center Logical. Mean-centre transformed columns. Default
+#'   \code{FALSE}.
+#' @param acdx Logical. Whether to apply the ACD transformation. Default
+#'   \code{FALSE}.
 #' @param fp_cand Numeric vector of candidate FP powers. Default is the
-#'   standard Royston-Altman set `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`.
+#'   standard Royston-Altman set \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}.
 #' @param fp_degree Positive integer. FP degree (1 = FP1, 2 = FP2). Default
-#'   `2`.
-#' @param na_replace Character string; `"NA"` (default) or `"zero"`. Controls
-#'   replacement of non-finite values arising from structural zeros.
+#'   \code{2}.
+#' @param na_replace Character; \code{"zero"} (default) or \code{"NA"}.
+#'   Controls replacement of non-finite values arising from structural zeros.
+#'   \code{"zero"} produces a matrix ready for model fitting. \code{"NA"}
+#'   preserves the distinction between structural zeros and valid zeros such
+#'   as \code{log(1) = 0}.
 #'
 #' @return A named list with four elements:
 #' \describe{
-#'   \item{`z_transformed`}{List of numeric matrices, one per power
-#'     combination. Each matrix has \eqn{n} rows and \eqn{K \times J} columns,
-#'     where \eqn{K} is the number of groups and \eqn{J} is `fp_degree`.}
-#'   \item{`z_untransformed`}{Numeric matrix of group-specific linear (power =
-#'     1) variables before FP transformation, used for downstream power
-#'     application.}
-#'   \item{`powers_matrix`}{Numeric matrix where each row is one FP power
-#'     combination tried.}
-#'   \item{`znames`}{Character vector of column names for the group-specific
-#'     variables.}
+#'   \item{\code{z_transformed}}{List of matrices, one per power combination,
+#'     each \eqn{n \times KJ}.}
+#'   \item{\code{z_untransformed}}{Numeric matrix of group-specific linear
+#'     (power = 1) variables before FP transformation. Useful for inspecting
+#'     the pre-transformation group indicator columns.}
+#'   \item{\code{powers_matrix}}{Numeric matrix; each row is one power
+#'     combination.}
+#'   \item{\code{znames}}{Column names for the group-specific variables.}
 #' }
 #'
-#' @seealso \code{create_z_variables()}, [mfp2::generate_powers_fp()],
-#'   [mfp2::transform_matrix()]
+#' @seealso \code{create_z_variables()}, \code{mfp2::generate_powers_fp()},
+#'   \code{mfp2::transform_matrix()}
 #'
 #' @examples
 #' cont <- matrix(1:6, ncol = 1); colnames(cont) <- "age"
@@ -304,7 +351,7 @@ transform_z_variables <- function(cont_var, group_var,
                                   shift = NULL, scale = NULL,
                                   center = FALSE, acdx = FALSE,
                                   fp_cand = NULL, fp_degree = 2L,
-                                  na_replace = c("NA", "zero")) {
+                                  na_replace = c("zero", "NA")) {
   
   na_replace <- match.arg(na_replace)
   
@@ -315,74 +362,74 @@ transform_z_variables <- function(cont_var, group_var,
     stop("`group_var` must be a one-column numeric matrix.", call. = FALSE)
   if (nrow(cont_var) != nrow(group_var))
     stop("`cont_var` and `group_var` must have the same number of rows.", call. = FALSE)
-  if (anyNA(cont_var) || !all(is.finite(cont_var)))
+  if (!all(is.finite(cont_var)))
     stop("`cont_var` must not contain NA, NaN, or infinite values.", call. = FALSE)
   if (anyNA(group_var))
     stop("`group_var` must not contain NA values.", call. = FALSE)
   if (length(unique(as.vector(group_var))) < 2L)
     stop("`group_var` must have at least two distinct values.", call. = FALSE)
-  
-  if (is.null(fp_cand)) {
+  if (is.null(fp_cand))
     fp_cand <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  }
   if (!is.numeric(fp_cand) || anyNA(fp_cand))
     stop("`fp_cand` must be a numeric vector with no missing values.", call. = FALSE)
-  if (!is.numeric(fp_degree) || length(fp_degree) != 1L || fp_degree < 1L)
+  fp_degree <- as.integer(fp_degree)
+  if (length(fp_degree) != 1L || fp_degree < 1L)
     stop("`fp_degree` must be a positive integer (1 or 2).", call. = FALSE)
   
-  # Build untransformed group-specific variables (linear placeholder) ----------
+  # Build untransformed group-specific linear placeholder --------------------
   z_untrans <- create_z_variables(
     cont_var  = cont_var,
     group_var = group_var,
     power     = 1L,
     scale     = scale,
     shift     = shift,
-    center    = FALSE   # centering applied below, after FP transform
+    center    = FALSE   # centering applied after FP transform
   )$z
   
   znames   <- colnames(z_untrans)
   n_groups <- length(znames)
   
-  # Generate all power combinations for this degree ---------------------------
-  powers_matrix    <- mfp2::generate_powers_fp(degree = fp_degree, powers = fp_cand)
-  n_combinations   <- nrow(powers_matrix)
+  # Generate all power combinations -------------------------------------------
+  powers_matrix  <- mfp2::generate_powers_fp(degree = fp_degree, powers = fp_cand)
+  n_combinations <- nrow(powers_matrix)
   
-  # Per-variable transform control vectors ------------------------------------
+  # Per-variable control vectors ----------------------------------------------
   acd_map    <- setNames(rep(acdx,   n_groups), znames)
   center_map <- setNames(rep(center, n_groups), znames)
+  zero_map   <- setNames(rep(TRUE,   n_groups), znames)  # structural zeros
   
-  # Enumerate transformations --------------------------------------------------
-  z_trans_list <- vector("list", length = n_combinations)
-  
-  for (i in seq_len(n_combinations)) {
+  # Enumerate transformations with lapply (cleaner than for-loop) -------------
+  z_transformed <- lapply(seq_len(n_combinations), function(i) {
     power_set <- setNames(
       replicate(n_groups, powers_matrix[i, ], simplify = FALSE),
       znames
     )
-    
+    # Pass zero = TRUE so transform_matrix handles structural zeros correctly,
+    # avoiding manual non-finite replacement after the fact.
     transformed <- mfp2::transform_matrix(
       x          = z_untrans,
       power_list = power_set,
       center     = center_map,
-      acdx       = acd_map
+      acdx       = acd_map,
+      zero       = zero_map
     )$x_transformed
     
-    # Handle non-finite values from structural zeros -------------------------
-    non_finite <- !is.finite(transformed)
-    transformed[non_finite] <- if (na_replace == "NA") NA_real_ else 0
+    if (na_replace == "NA") {
+      transformed[!is.finite(transformed)] <- NA_real_
+    } else {
+      transformed[!is.finite(transformed)] <- 0
+    }
     
-    z_trans_list[[i]] <- transformed
-  }
+    transformed
+  })
   
   list(
-    z_transformed   = z_trans_list,
+    z_transformed   = z_transformed,
     z_untransformed = z_untrans,
     powers_matrix   = powers_matrix,
     znames          = znames
   )
 }
-
-
 # -----------------------------------------------------------------------------
 # var_group() -----------------------------------------------------------------
 # -----------------------------------------------------------------------------

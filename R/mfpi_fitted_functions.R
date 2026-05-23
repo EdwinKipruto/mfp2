@@ -245,7 +245,7 @@ gen_fitted_values_per_group <- function(cont_var,
   colnames(diff_cols) <- sprintf("f%d-f%d", grp_levels[-1L], grp_levels[1L])
   
   # Standard errors of differences via delta method ---------------------------
-  diff_se <- compute_std_errors_diff(
+  diff_se <- compute_diff_standard_errors(
     coefx        = coef_vec,
     cov_betas    = vcov_mat,
     groups       = groups,

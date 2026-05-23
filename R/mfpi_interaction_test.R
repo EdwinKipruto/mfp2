@@ -5,7 +5,7 @@
 # metrics (deviance, df, p-value, AIC, BIC).  It is called by every flex
 # function (flex0–flex4) after the design matrices have been built.
 #
-# print.model_evaluation_metrics() provides a readable console representation
+# print.best_model_metrics() provides a readable console representation
 # of the tibble returned inside the list.
 #
 # Naming conventions match the rest of the package:
@@ -146,7 +146,7 @@
 #' @return A list with four components:
 #' \describe{
 #'   \item{`evaluation_metrics`}{A tibble of class
-#'     `"model_evaluation_metrics"` with one row per call, containing:
+#'     `"best_model_metrics"` with one row per call, containing:
 #'     `variable`, `fp_powers_main`, `fp_powers_int`,
 #'     `deviance_int` (\eqn{-2\ell_{\text{int}}}),
 #'     `deviance_diff` (\eqn{T}),
@@ -157,7 +157,7 @@
 #'     `AIC_main_minus_int` (\eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}}),
 #'     `BIC_main_minus_int` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
-#'     `mfp2:::fit_model()`, with `fast = FALSE` so that the full coefficient
+#'     `fit_model()`, with `fast = FALSE` so that the full coefficient
 #'     vector and covariance matrix are available.}
 #'   \item{`deviance_models`}{Named list with elements `main`
 #'     (\eqn{-2\ell_{\text{main}}}) and `interaction`
@@ -182,7 +182,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   # Fit main-effects and interaction models
   # ---------------------------------------------------------------------------
-  fit_main <- mfp2:::fit_model(
+  fit_main <- fit_model(
     x        = xmain,
     y        = y,
     family   = family,
@@ -196,7 +196,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     fast     = TRUE    # log-likelihood only; no vcov needed
   )
   
-  fit_interaction <- mfp2:::fit_model(
+  fit_interaction <- fit_model(
     x        = xinteraction,
     y        = y,
     family   = family,
@@ -228,6 +228,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   df_int      <- deg_freedom$dfint        # df_total - df_main = (K-1)*m
   
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   # P-value: chi-square LRT (F-test not yet implemented for interaction term)
   # ---------------------------------------------------------------------------
   if (use_ftest && family_string == "gaussian") {
@@ -244,17 +245,15 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # AIC = -2l + 2p;  BIC = -2l + p * log(n*)
   # n* = number of events for Cox; n otherwise
   # ---------------------------------------------------------------------------
-  n_eff   <- if (family_string == "cox") sum(y[, "status"]) else length(y)
-  AIC_main <- dev_main        + 2          * df_main
-  AIC_interaction  <- dev_interaction + 2          * df_total
-  BIC_main <- dev_main        + log(n_eff) * df_main
-  BIC_interaction  <- dev_interaction + log(n_eff) * df_total
+  n_eff              <- if (family_string == "cox") sum(y[, "status"]) else length(y)
+  AIC_main           <- dev_main        + 2          * df_main
+  AIC_interaction    <- dev_interaction + 2          * df_total
+  BIC_main           <- dev_main        + log(n_eff) * df_main
+  BIC_interaction    <- dev_interaction + log(n_eff) * df_total
   
   # ---------------------------------------------------------------------------
   # Assemble evaluation metrics tibble
   # ---------------------------------------------------------------------------
-  # Store powers as list-columns so the structure is losslessly preserved;
-  # print.model_evaluation_metrics() formats them as readable strings.
   fp_powers_main <- setNames(list(bestfp_main), cont_name)
   fp_powers_int  <- bestfp_interaction
   
@@ -262,17 +261,17 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     variable           = cont_name,
     fp_powers_main     = fp_powers_main,
     fp_powers_int      = list(fp_powers_int),
-    deviance_int       = round(dev_interaction,           digits),
-    deviance_diff      = round(deviance_diff,                  digits),
+    deviance_int       = round(dev_interaction,            digits),
+    deviance_diff      = round(deviance_diff,              digits),
     df_interaction     = df_int,
-    pvalue             = round(pvalue,                    digits),
+    pvalue             = round(pvalue,                     digits),
     df_total           = df_total,
-    AIC_interaction    = round(AIC_interaction,                   digits),
-    BIC_interaction    = round(BIC_interaction,                   digits),
-    AIC_main_minus_int = round(AIC_main - AIC_interaction,        digits),
-    BIC_main_minus_int = round(BIC_main - BIC_interaction,        digits)
+    AIC_interaction    = round(AIC_interaction,            digits),
+    BIC_interaction    = round(BIC_interaction,            digits),
+    AIC_main_minus_int = round(AIC_main - AIC_interaction, digits),
+    BIC_main_minus_int = round(BIC_main - BIC_interaction, digits)
   )
-  class(metrics) <- c("model_evaluation_metrics", class(metrics))
+  class(metrics) <- c("best_model_metrics", class(metrics))
   
   list(
     evaluation_metrics = metrics,
@@ -288,13 +287,13 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 
 
 # -----------------------------------------------------------------------------
-# print.model_evaluation_metrics() --------------------------------------------
+# print.best_model_metrics() --------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Print Method for Model Evaluation Metrics
 #'
 #' Formats the list-columns `fp_powers_main` and `fp_powers_int` of a
-#' `"model_evaluation_metrics"` tibble as human-readable strings, then
+#' `"best_model_metrics"` tibble as human-readable strings, then
 #' delegates to [print.data.frame()].
 #'
 #' @section Output columns:
@@ -326,14 +325,14 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'     model.}
 #' }
 #'
-#' @param x An object of class `"model_evaluation_metrics"`, as returned by
+#' @param x An object of class `"best_model_metrics"`, as returned by
 #'   \code{test_interaction()}.
 #' @param ... Additional arguments passed to [print.data.frame()].
 #'
 #' @return Invisibly returns `x`.
 #'
 #' @export
-print.model_evaluation_metrics <- function(x, ...) {
+print.best_model_metrics <- function(x, ...) {
   x$fp_powers_main <- vapply(x$fp_powers_main, function(p) {
     paste0("(", paste(p, collapse = ", "), ")")
   }, character(1L))

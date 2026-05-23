@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfpi_create_variables.R
 \name{create_z_variables}
 \alias{create_z_variables}
-\title{Build Group-Specific FP-Transformed Variables for Interaction Modeling}
+\title{Build Group-Specific FP-Transformed Variables for Interaction Modelling}
 \usage{
 create_z_variables(
   cont_var,
@@ -10,63 +10,92 @@ create_z_variables(
   power = 1,
   shift = NULL,
   scale = NULL,
-  center = FALSE
+  center = FALSE,
+  zero = FALSE
 )
 }
 \arguments{
-\item{cont_var}{A one-column numeric matrix representing the continuous
-covariate. Must have a column name and no missing or non-finite values.}
+\item{cont_var}{A one-column numeric matrix of the continuous covariate,
+with a column name and no missing or non-finite values.}
 
-\item{group_var}{A one-column numeric matrix representing group membership.
-Must have at least two distinct values and the same number of rows as
-\code{cont_var}.}
+\item{group_var}{A one-column numeric matrix of group membership with at
+least two distinct values and the same number of rows as \code{cont_var}.}
 
-\item{power}{Numeric vector of FP powers applied to \code{cont_var}. Default is
-\code{1} (linear, no transformation beyond optional shift/scale). A length-2
-vector (e.g. \code{c(0.5, 2)}) produces two columns per group.}
+\item{power}{Numeric vector of FP powers. Default \code{1} (linear).}
 
-\item{shift}{Numeric scalar. Added to \code{cont_var} before transformation. If
-\code{NULL}, estimated automatically by \code{\link[=find_shift_factor]{find_shift_factor()}}.}
+\item{shift}{Numeric scalar added to \code{cont_var} before transformation.
+If \code{NULL}, estimated by \code{mfp2::find_shift_factor()}.}
 
-\item{scale}{Numeric scalar. Divides \code{cont_var} after shifting. If \code{NULL},
-estimated automatically by \code{\link[=find_scale_factor]{find_scale_factor()}}.}
+\item{scale}{Numeric scalar dividing \code{cont_var} after shifting.
+If \code{NULL}, estimated by \code{mfp2::find_scale_factor()}.}
 
-\item{center}{Logical. If \code{TRUE}, each transformed column is mean-centred
-(using the column mean of the transformed values across all observations).}
+\item{center}{Logical. If \code{TRUE}, centres both return matrices using
+different strategies — see the \emph{Centering} section. Default
+\code{FALSE}.}
+
+\item{zero}{Logical. If \code{TRUE}, non-positive values in \code{cont_var}
+are treated as structural zeros: excluded from mean computation when
+\code{center = TRUE} and reset to zero after centering. Default
+\code{FALSE}.}
 }
 \value{
 A list with two elements:
 \describe{
-\item{\code{z}}{Numeric matrix of group-specific transformed variables,
-\eqn{n \times KJ}.}
-\item{\code{xtransformed}}{Numeric matrix of the FP-transformed (and optionally
-centred) version of \code{cont_var}, \eqn{n \times J}.}
+\item{\code{z}}{Numeric matrix of group-specific FP-transformed variables,
+\eqn{n \times KJ}. Each column is non-zero only for its own group.
+When \code{center = TRUE}, each column is centred by its within-group
+mean.}
+\item{\code{xtransformed}}{FP-transformed \code{cont_var} pooled across
+all observations, \eqn{n \times J}. When \code{center = TRUE}, centred
+by the grand mean of all transformed values (standard centering, no
+structural-zero adjustment).}
 }
 }
 \description{
-For each level of \code{group_var}, constructs a copy of \code{cont_var} that retains
-the (optionally transformed) covariate values only for observations in that
-group and is zero elsewhere. The resulting block matrix \eqn{Z \in
-\mathbb{R}^{n \times KJ}} is used as the interaction design matrix in MFPI,
-where \eqn{K} is the number of groups and \eqn{J} is the number of FP
-columns implied by \code{power}.
+For each level of \code{group_var}, constructs a copy of \code{cont_var}
+that retains the (optionally FP-transformed) covariate values only for
+observations in that group and is zero elsewhere. The resulting block matrix
+\eqn{Z \in \mathbb{R}^{n \times KJ}} is used as the interaction design
+matrix in MFPI, where \eqn{K} is the number of groups and \eqn{J} is the
+number of FP columns implied by \code{power}.
 }
 \section{Mathematical definition}{
 
 Let \eqn{f_j(x_i)} denote the \eqn{j}-th FP transformation of observation
-\eqn{i} under the supplied \code{power} vector. For group \eqn{k}, the
-interaction variable is
+\eqn{i} under the supplied \code{power} vector. For group \eqn{k}:
 \deqn{z_{ijk} = \begin{cases} f_j(x_i) & \text{if } g_i = k \\ 0 &
-\text{otherwise,} \end{cases}}
-producing \eqn{K \times J} columns in total.
+\text{otherwise.} \end{cases}}
 }
 
 \section{Column naming}{
 
-Columns are named \verb{<varname><group><power_index>}, where \verb{<group>} is the
-numeric group level and \verb{<power_index>} is 1-based. For example, if
-\code{cont_var = "age"}, groups are 0 and 1, and \code{power = c(1, 0.5)}, the
-columns are \code{age01}, \code{age02}, \code{age11}, \code{age12}.
+Columns are named \code{<varname><group><power_index>}, e.g. for
+\code{cont_var = "age"}, groups 0/1, and \code{power = c(1, 0.5)}: \code{age01},
+\code{age02}, \code{age11}, \code{age12}.
+}
+
+\section{Centering}{
+
+Two distinct strategies are used depending on the return component:
+
+\describe{
+\item{\code{z} (group-specific interaction matrix)}{Each column belongs
+to one group and contains structural zeros for all out-of-group
+observations. When \code{center = TRUE}, each column is centred by its
+\strong{within-group mean} — the mean of the non-zero (in-group) values
+only, via \code{mfp2::center_matrix(zero = TRUE)}.
+This ensures group 0\'s column is centred around group 0\'s mean and
+group 1\'s column around group 1\'s mean, which is the correct reference
+for each group-specific FP curve. Using the pooled mean would be wrong
+because the two groups may have different covariate distributions.}
+\item{\code{xtransformed} (pooled FP-transformed \code{cont_var})}{Used in
+the main-effects model to represent the overall trend. When
+\code{center = TRUE}, centred by the \strong{grand mean} across all
+transformed values. No structural-zero special-casing is applied here
+because \code{xtransformed} is a standard continuous column — any zeros
+that may exist after FP transformation are valid transformed values,
+not indicators of group absence.}
+}
 }
 
 \examples{
@@ -77,5 +106,5 @@ head(res$z)
 
 }
 \seealso{
-\code{\link[=transform_vector_fp]{transform_vector_fp()}}, \code{transform_z_variables()}
+\code{mfp2::transform_vector_fp()}, \code{transform_z_variables()}
 }

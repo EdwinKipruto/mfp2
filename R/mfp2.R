@@ -2221,12 +2221,13 @@ get_selected_variable_names <- function(object) {
 #' freedom (df) for fractional polynomial (FP) modelling based on the number
 #' of distinct values in that column. Variables with very few unique values
 #' cannot support a high-degree FP transformation, so their df is reduced
-#' automatically. This function is called internally by \code{mfpi()} and
-#' \code{mfp2::mfp2()} after the user-supplied default df has been validated.
+#' automatically. Accepts either a single scalar default or a per-variable
+#' vector, making it suitable for both the scalar and vector branches of
+#' \code{mfpi()}'s df handling.
 #'
 #' @section Assignment rules:
 #' Let \eqn{u} denote the number of distinct non-missing values in a column
-#' and \eqn{d} the user-supplied \code{df_default}. The assigned df is:
+#' and \eqn{d} the user-supplied df for that column. The assigned df is:
 #'
 #' \tabular{lll}{
 #'   \strong{Unique values} \tab \strong{Assigned df} \tab \strong{Rationale} \cr
@@ -2240,49 +2241,67 @@ get_selected_variable_names <- function(object) {
 #' }
 #'
 #' @param x A numeric matrix. Each column is a predictor variable.
-#' @param df_default A single positive integer giving the default df to assign
-#'   to variables with six or more unique values. Must be 1 or a positive even
-#'   number (\eqn{2m} for FP degree \eqn{m}). Default is \code{4} (FP2).
+#' @param df_default Either a single positive integer, or an integer vector of
+#'   length \code{ncol(x)}, giving the desired df for each column. Must contain
+#'   only \code{1} or positive even numbers (\eqn{2m} for FP degree \eqn{m}).
+#'   Default is \code{4} (FP2).
 #'
 #' @return An integer vector of length \code{ncol(x)} giving the assigned df
-#'   for each column, in the same order as the columns of \code{x}.
+#'   for each column, in the same order as the columns of \code{x}. Values may
+#'   be lower than the corresponding element of \code{df_default} when
+#'   cardinality rules override the user-supplied value.
 #'
 #' @examples
-#' # Binary variable gets df = 1; continuous variables get df_default
 #' x <- cbind(
 #'   binary     = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1),
 #'   few_levels = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
 #'   continuous = 1:10
 #' )
+#'
+#' # Scalar default: same starting df for all columns
 #' assign_df(x, df_default = 4)
 #' # binary -> 1, few_levels -> 2, continuous -> 4
+#'
+#' # Per-variable vector: different starting df per column
+#' assign_df(x, df_default = c(1, 4, 2))
+#' # binary -> 1 (cardinality), few_levels -> 2 (cap), continuous -> 2
 #'
 #' @export
 assign_df <- function(x, df_default = 4L) {
   
   if (!is.matrix(x))
     stop("`x` must be a matrix.", call. = FALSE)
-  if (!is.numeric(df_default) || length(df_default) != 1L || df_default < 1L)
-    stop("`df_default` must be a single positive integer.", call. = FALSE)
   
-  df_default <- as.integer(df_default)
+  n_vars <- ncol(x)
+  
+  # Expand scalar to per-variable vector; validate length
+  if (length(df_default) == 1L) {
+    df_default <- rep(as.integer(df_default), n_vars)
+  } else if (length(df_default) == n_vars) {
+    df_default <- as.integer(df_default)
+  } else {
+    stop(paste0("`df_default` must be a single integer or a vector of length ",
+                n_vars, " (ncol(x)); got length ", length(df_default), "."),
+         call. = FALSE)
+  }
+  
+  if (any(df_default < 1L))
+    stop("`df_default` must contain only positive integers.", call. = FALSE)
   
   # Count distinct values per column
   nu <- apply(x, 2L, function(col) length(unique(col)))
   
-  # Start from df_default for all variables
-  df <- rep(df_default, ncol(x))
+  df <- df_default
   
-  # <= 3 unique values: force linear (df = 1)
+  # Rule 1: <= 3 unique values -> force linear (df = 1)
   idx_low <- which(nu <= 3L)
   if (length(idx_low) > 0L)
     df[idx_low] <- 1L
   
-  # 4-5 unique values: cap at FP1 (df = min(2, df_default))
-  # Uses min() so that df_default = 1 is respected rather than overridden.
+  # Rule 2: 4-5 unique values -> cap at min(2, requested df per variable)
   idx_mid <- which(nu >= 4L & nu <= 5L)
   if (length(idx_mid) > 0L)
-    df[idx_mid] <- min(2L, df_default)
+    df[idx_mid] <- pmin(2L, df_default[idx_mid])
   
   df
 }

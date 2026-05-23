@@ -3,6 +3,7 @@
 \name{mfpi}
 \alias{mfpi}
 \alias{mfpi.default}
+\alias{mfpi.formula}
 \title{Model Interactions Between a Categorical and Continuous Covariates}
 \usage{
 mfpi(x, ...)
@@ -48,21 +49,63 @@ mfpi(x, ...)
   digits = 3,
   ...
 )
+
+\method{mfpi}{formula}(
+  formula,
+  data,
+  group_var = NULL,
+  cont_vars = NULL,
+  flex = c("flex1", "flex2", "flex3", "flex4"),
+  p_interact = 0.05,
+  min_improvement = NULL,
+  include_group_var = FALSE,
+  show_models = FALSE,
+  weights = NULL,
+  offset = NULL,
+  cycles = 10,
+  scale = NULL,
+  shift = NULL,
+  df = 4,
+  center = TRUE,
+  subset = NULL,
+  family = c("gaussian", "poisson", "binomial", "cox"),
+  criterion = c("pvalue", "aic", "bic"),
+  select = 0.05,
+  alpha = 0.05,
+  force_keep = NULL,
+  force_max_fp = FALSE,
+  xorder = c("ascending", "descending", "original"),
+  fp_powers = NULL,
+  ties = c("breslow", "efron", "exact"),
+  strata = NULL,
+  nocenter = NULL,
+  zero_vars = NULL,
+  catzero_vars = NULL,
+  spike_vars = NULL,
+  min_prop = 0.05,
+  max_prop = 0.95,
+  use_ftest = FALSE,
+  control = NULL,
+  verbose = TRUE,
+  digits = 3,
+  ...
+)
 }
 \arguments{
-\item{x}{A numeric matrix of dimension \eqn{n \times p}, where rows are
-observations and columns are variables. Column names are required. The
-matrix must not contain an intercept column; binary variables should be
-coded as 0/1; multi-level categorical variables (other than \code{group_var})
-should be expanded into dummy variables beforehand. \code{x} must be free of
-missing values.}
+\item{x}{For \code{mfpi.default()} only. A numeric matrix of dimension
+\eqn{n \times p}, where rows are observations and columns are variables.
+Column names are required. The matrix must not contain an intercept
+column; binary variables should be coded as 0/1; multi-level categorical
+variables (other than \code{group_var}) should be expanded into dummy
+variables beforehand. Must be free of missing values.}
 
 \item{...}{Currently unused. Reserved for future extensions.}
 
-\item{y}{The response vector (or matrix for survival data). For Gaussian, binomial,
-and Poisson families, supply a numeric or factor vector of length \eqn{n}.
-For Cox models, supply a two-column \code{\link[survival:Surv]{survival::Surv()}} object. Must have
-the same number of observations as \code{x}.}
+\item{y}{For \code{mfpi.default()} only. The response vector (or matrix for
+survival data). For Gaussian, binomial, and Poisson families, supply a
+numeric or factor vector of length \eqn{n}. For Cox models, supply a
+two-column \code{survival::Surv()} object. Must have the same number of
+observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical (grouping) variable in
 \code{x}. Interactions between \code{group_var} and each variable in \code{cont_vars} are
@@ -164,7 +207,7 @@ observations. Default is \code{NULL} (all observations used).}
 predictors and FP degrees survive MFP backfitting.
 \item \strong{Functional form selection for the interaction} (Step 3): for
 each variable in \code{cont_vars}, three candidate interaction models are
-fitted — linear, FP1, and FP2 — and the criterion selects among them.
+fitted - linear, FP1, and FP2 - and the criterion selects among them.
 }
 One of \code{"pvalue"} (default), \code{"aic"}, or \code{"bic"}.
 The interaction test always reports p-values, AIC differences, and BIC
@@ -269,16 +312,25 @@ Default is \code{TRUE}.}
 \item{digits}{A positive integer. Minimum number of significant digits displayed when
 printing interaction-test results. Default is \code{3}.}
 
-\item{data}{For \code{mfpi.formula()}: a data frame containing all variables named in
-\code{formula}. Multi-level categorical variables other than \code{group_var} must
-already be expanded to dummy columns.}
+\item{formula}{For \code{mfpi.formula()} only. A formula object describing the model.
+Continuous predictors to be FP-transformed should be wrapped in
+\code{fp()}, e.g. \code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
+Variables not wrapped in \code{fp()} receive the global scalar defaults
+for \code{df}, \code{alpha}, \code{select}, \code{center}, \code{shift},
+and \code{scale}. See the \emph{Argument precedence} section in
+\code{mfpi.formula()} for full rules.}
+
+\item{data}{For \code{mfpi.formula()} only. A data frame containing all variables
+named in \code{formula}. Multi-level categorical variables other than
+\code{group_var} must already be expanded to dummy columns, or encoded
+as factors which \code{model.matrix()} will expand automatically.}
 }
 \value{
 An object of class \code{"mfpi"}. Use \code{\link[=summary.mfpi]{summary.mfpi()}} for a formatted
 summary. The object is a list with the following components:
 
 \describe{
-\item{\code{model_evaluation_metrics}}{A data frame of evaluation metrics
+\item{\code{best_model_metrics}}{A data frame of evaluation metrics
 for the main-effects and interaction models for each variable in
 \code{cont_vars}. Columns include: \code{fp_powers_main} and \code{fp_powers_int}
 (selected FP powers); \code{deviance_int} (deviance of the interaction
@@ -324,6 +376,12 @@ transformations selected by the MFP algorithm implemented in the
 \item \code{mfpi(default)}: Default method accepting a numeric matrix \code{x} and
 response vector \code{y}.
 
+\item \code{mfpi(formula)}: Formula interface for \code{mfpi()}.
+
+Constructs a model frame from the supplied formula and data, processes
+predictor variables (including any \code{fp()} terms), and fits an MFPI
+model by calling \code{mfpi.default()} internally.
+
 }}
 \section{The MFPI approach}{
 
@@ -349,7 +407,7 @@ Four levels of flexibility control how FP powers are estimated and
 constrained between groups. The appropriate level is chosen by the analyst
 based on subject-matter knowledge and sample-size considerations.
 
-\strong{\code{flex1} (default — least flexible).} FP powers are estimated once from
+\strong{\code{flex1} (default - least flexible).} FP powers are estimated once from
 the pooled main-effects model (ignoring interaction), then used unchanged
 within each group. A likelihood-ratio test comparing the main-effects and
 interaction models constitutes the interaction test. Because the models are
@@ -446,13 +504,13 @@ positive values, standard shifting and FP transformation may be
 inappropriate. Three options are available, matching those in
 \code{\link[=mfp2]{mfp2()}}:
 \itemize{
-\item \strong{\code{zero_vars}} — FP transformations are applied only to strictly positive
+\item \strong{\code{zero_vars}} - FP transformations are applied only to strictly positive
 values; non-positive values are set to zero in the transformed variable.
-\item \strong{\code{catzero_vars}} — as \code{zero_vars}, but a binary indicator
+\item \strong{\code{catzero_vars}} - as \code{zero_vars}, but a binary indicator
 (\eqn{Z = 1} if \eqn{x = 0}, \eqn{Z = 0} if \eqn{x > 0}) is
 automatically created and included in the adjustment model alongside the
 transformed variable.
-\item \strong{\code{spike_vars}} — triggers the spike-at-zero (SAZ) algorithm, which
+\item \strong{\code{spike_vars}} - triggers the spike-at-zero (SAZ) algorithm, which
 formally evaluates whether the binary indicator and the FP function each
 contribute explanatory value beyond the other.
 }
@@ -460,6 +518,66 @@ contribute explanatory value beyond the other.
 Note that \code{spike_vars} and \code{catzero_vars} are mutually exclusive per
 variable. Setting \code{spike_vars} for a variable implicitly sets
 \code{catzero_vars}, which in turn implies \code{zero_vars}.
+}
+
+\section{Argument precedence (fp() vs global)}{
+
+Each argument can be set at two levels: globally as a scalar argument to
+\code{mfpi.formula()}, or per-variable inside \code{fp()} in the formula.
+The rules are:
+
+\describe{
+\item{Variables wrapped in \code{fp()}}{Receive the value specified inside
+\code{fp()}, which always takes precedence over the global argument. For
+example, \code{fp(age, df = 2)} uses \code{df = 2} for \code{age}
+regardless of the global \code{df} argument.}
+\item{Variables NOT wrapped in \code{fp()}}{Receive the global scalar
+argument value for all parameters (\code{df}, \code{alpha},
+\code{select}, \code{center}). For \code{shift} and \code{scale},
+the global value is used if supplied; otherwise they are estimated
+automatically per variable.}
+\item{\code{shift} and \code{scale} inside \code{fp()}}{If not explicitly
+set inside \code{fp()} (i.e. left at their \code{NULL} default), the
+auto-estimated value for that variable is retained. The global
+\code{shift}/\code{scale} argument is used only for variables not in
+any \code{fp()} term.}
+\item{\code{fp_powers} argument vs \code{fp(powers = ...)}}{The
+\code{fp_powers} argument sets candidate power sets for named variables.
+If a variable also appears in an \code{fp(powers = ...)} term, the
+\code{fp()} specification takes precedence and a warning is issued.}
+\item{\code{zero_vars}, \code{catzero_vars}, \code{spike_vars} arguments}{
+These argument-level character vectors are merged with the corresponding
+per-variable settings from \code{fp(zero = TRUE)},
+\code{fp(catzero = TRUE)}, and \code{fp(spike = TRUE)}. A variable
+is flagged if it appears in either source; there is no conflict.}
+\item{\code{df} and cardinality overrides}{The per-variable \code{df}
+values (from \code{fp()} or global) are passed to
+\code{mfpi.default()}, which then applies cardinality-based overrides
+via \code{assign_df()} internally. This means a variable with fewer
+than 6 unique values may receive a lower \code{df} than requested,
+even if explicitly set in \code{fp()}.}
+}
+}
+
+\section{Parameters not available in the formula interface}{
+
+The following \code{mfpi.default()} parameters must be supplied as scalar
+arguments only; per-variable specification via \code{fp()} is not
+supported: \code{group_var}, \code{cont_vars}, \code{flex},
+\code{p_interact}, \code{min_improvement}, \code{include_group_var},
+\code{show_models}, \code{cycles}, \code{criterion}, \code{force_keep},
+\code{force_max_fp}, \code{xorder}, \code{ties}, \code{strata},
+\code{nocenter}, \code{min_prop}, \code{max_prop}, \code{use_ftest},
+\code{control}, \code{verbose}, \code{digits}.
+}
+
+\section{Strata and offset in the formula}{
+
+For Cox models, \code{strata()} terms may be included directly in the
+formula (e.g. \code{Surv(t, d) ~ fp(age) + strata(centre)}). If
+\code{strata} is also supplied as an argument, the formula value is used
+and a warning is issued. Similarly, an \code{offset()} term in the formula
+takes precedence over the \code{offset} argument.
 }
 
 \references{

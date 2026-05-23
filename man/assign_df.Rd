@@ -9,26 +9,30 @@ assign_df(x, df_default = 4L)
 \arguments{
 \item{x}{A numeric matrix. Each column is a predictor variable.}
 
-\item{df_default}{A single positive integer giving the default df to assign
-to variables with six or more unique values. Must be 1 or a positive even
-number (\eqn{2m} for FP degree \eqn{m}). Default is \code{4} (FP2).}
+\item{df_default}{Either a single positive integer, or an integer vector of
+length \code{ncol(x)}, giving the desired df for each column. Must contain
+only \code{1} or positive even numbers (\eqn{2m} for FP degree \eqn{m}).
+Default is \code{4} (FP2).}
 }
 \value{
 An integer vector of length \code{ncol(x)} giving the assigned df
-for each column, in the same order as the columns of \code{x}.
+for each column, in the same order as the columns of \code{x}. Values may
+be lower than the corresponding element of \code{df_default} when
+cardinality rules override the user-supplied value.
 }
 \description{
 For each column of a predictor matrix, determines an appropriate degree of
 freedom (df) for fractional polynomial (FP) modelling based on the number
 of distinct values in that column. Variables with very few unique values
 cannot support a high-degree FP transformation, so their df is reduced
-automatically. This function is called internally by \code{mfpi()} and
-\code{mfp2::mfp2()} after the user-supplied default df has been validated.
+automatically. Accepts either a single scalar default or a per-variable
+vector, making it suitable for both the scalar and vector branches of
+\code{mfpi()}'s df handling.
 }
 \section{Assignment rules}{
 
 Let \eqn{u} denote the number of distinct non-missing values in a column
-and \eqn{d} the user-supplied \code{df_default}. The assigned df is:
+and \eqn{d} the user-supplied df for that column. The assigned df is:
 
 \tabular{lll}{
 \strong{Unique values} \tab \strong{Assigned df} \tab \strong{Rationale} \cr
@@ -43,13 +47,18 @@ the requested default. \cr
 }
 
 \examples{
-# Binary variable gets df = 1; continuous variables get df_default
 x <- cbind(
   binary     = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1),
   few_levels = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
   continuous = 1:10
 )
+
+# Scalar default: same starting df for all columns
 assign_df(x, df_default = 4)
 # binary -> 1, few_levels -> 2, continuous -> 4
+
+# Per-variable vector: different starting df per column
+assign_df(x, df_default = c(1, 4, 2))
+# binary -> 1 (cardinality), few_levels -> 2 (cap), continuous -> 2
 
 }

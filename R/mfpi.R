@@ -30,7 +30,7 @@
 #' constrained between groups. The appropriate level is chosen by the analyst
 #' based on subject-matter knowledge and sample-size considerations.
 #'
-#' **`flex1` (default — least flexible).** FP powers are estimated once from
+#' **`flex1` (default - least flexible).** FP powers are estimated once from
 #' the pooled main-effects model (ignoring interaction), then used unchanged
 #' within each group. A likelihood-ratio test comparing the main-effects and
 #' interaction models constitutes the interaction test. Because the models are
@@ -117,13 +117,13 @@
 #' inappropriate. Three options are available, matching those in
 #' [mfp2::mfp2()]:
 #'
-#' * **`zero_vars`** — FP transformations are applied only to strictly positive
+#' * **`zero_vars`** - FP transformations are applied only to strictly positive
 #'   values; non-positive values are set to zero in the transformed variable.
-#' * **`catzero_vars`** — as `zero_vars`, but a binary indicator
+#' * **`catzero_vars`** - as `zero_vars`, but a binary indicator
 #'   (\eqn{Z = 1} if \eqn{x = 0}, \eqn{Z = 0} if \eqn{x > 0}) is
 #'   automatically created and included in the adjustment model alongside the
 #'   transformed variable.
-#' * **`spike_vars`** — triggers the spike-at-zero (SAZ) algorithm, which
+#' * **`spike_vars`** - triggers the spike-at-zero (SAZ) algorithm, which
 #'   formally evaluates whether the binary indicator and the FP function each
 #'   contribute explanatory value beyond the other.
 #'
@@ -132,17 +132,31 @@
 #' `catzero_vars`, which in turn implies `zero_vars`.
 #'
 #' @param x
-#'   A numeric matrix of dimension \eqn{n \times p}, where rows are
-#'   observations and columns are variables. Column names are required. The
-#'   matrix must not contain an intercept column; binary variables should be
-#'   coded as 0/1; multi-level categorical variables (other than `group_var`)
-#'   should be expanded into dummy variables beforehand. `x` must be free of
-#'   missing values.
+#'   For \code{mfpi.default()} only. A numeric matrix of dimension
+#'   \eqn{n \times p}, where rows are observations and columns are variables.
+#'   Column names are required. The matrix must not contain an intercept
+#'   column; binary variables should be coded as 0/1; multi-level categorical
+#'   variables (other than \code{group_var}) should be expanded into dummy
+#'   variables beforehand. Must be free of missing values.
 #' @param y
-#'   The response vector (or matrix for survival data). For Gaussian, binomial,
-#'   and Poisson families, supply a numeric or factor vector of length \eqn{n}.
-#'   For Cox models, supply a two-column [survival::Surv()] object. Must have
-#'   the same number of observations as `x`.
+#'   For \code{mfpi.default()} only. The response vector (or matrix for
+#'   survival data). For Gaussian, binomial, and Poisson families, supply a
+#'   numeric or factor vector of length \eqn{n}. For Cox models, supply a
+#'   two-column \code{survival::Surv()} object. Must have the same number of
+#'   observations as \code{x}.
+#' @param formula
+#'   For \code{mfpi.formula()} only. A formula object describing the model.
+#'   Continuous predictors to be FP-transformed should be wrapped in
+#'   \code{fp()}, e.g. \code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
+#'   Variables not wrapped in \code{fp()} receive the global scalar defaults
+#'   for \code{df}, \code{alpha}, \code{select}, \code{center}, \code{shift},
+#'   and \code{scale}. See the \emph{Argument precedence} section in
+#'   \code{mfpi.formula()} for full rules.
+#' @param data
+#'   For \code{mfpi.formula()} only. A data frame containing all variables
+#'   named in \code{formula}. Multi-level categorical variables other than
+#'   \code{group_var} must already be expanded to dummy columns, or encoded
+#'   as factors which \code{model.matrix()} will expand automatically.
 #' @param group_var
 #'   A single character string naming the categorical (grouping) variable in
 #'   `x`. Interactions between `group_var` and each variable in `cont_vars` are
@@ -244,7 +258,7 @@
 #'       predictors and FP degrees survive MFP backfitting.
 #'     \item **Functional form selection for the interaction** (Step 3): for
 #'       each variable in `cont_vars`, three candidate interaction models are
-#'       fitted — linear, FP1, and FP2 — and the criterion selects among them.
+#'       fitted - linear, FP1, and FP2 - and the criterion selects among them.
 #'   }
 #'   One of `"pvalue"` (default), `"aic"`, or `"bic"`.
 #'   The interaction test always reports p-values, AIC differences, and BIC
@@ -348,10 +362,6 @@
 #' @param digits
 #'   A positive integer. Minimum number of significant digits displayed when
 #'   printing interaction-test results. Default is `3`.
-#' @param data
-#'   For `mfpi.formula()`: a data frame containing all variables named in
-#'   `formula`. Multi-level categorical variables other than `group_var` must
-#'   already be expanded to dummy columns.
 #' @param ...
 #'   Currently unused. Reserved for future extensions.
 #'
@@ -360,7 +370,7 @@
 #' summary. The object is a list with the following components:
 #'
 #' \describe{
-#'   \item{\code{model_evaluation_metrics}}{A data frame of evaluation metrics
+#'   \item{\code{best_model_metrics}}{A data frame of evaluation metrics
 #'     for the main-effects and interaction models for each variable in
 #'     \code{cont_vars}. Columns include: \code{fp_powers_main} and \code{fp_powers_int}
 #'     (selected FP powers); \code{deviance_int} (deviance of the interaction
@@ -1014,4 +1024,440 @@ mfpi.default <- function(
   
   class(fit) <- "mfpi"
   fit
+}
+
+#' @describeIn mfpi Formula interface for \code{mfpi()}.
+#'
+#' Constructs a model frame from the supplied formula and data, processes
+#' predictor variables (including any \code{fp()} terms), and fits an MFPI
+#' model by calling \code{mfpi.default()} internally.
+#'
+#' @section Argument precedence (fp() vs global):
+#' Each argument can be set at two levels: globally as a scalar argument to
+#' \code{mfpi.formula()}, or per-variable inside \code{fp()} in the formula.
+#' The rules are:
+#'
+#' \describe{
+#'   \item{Variables wrapped in \code{fp()}}{Receive the value specified inside
+#'     \code{fp()}, which always takes precedence over the global argument. For
+#'     example, \code{fp(age, df = 2)} uses \code{df = 2} for \code{age}
+#'     regardless of the global \code{df} argument.}
+#'   \item{Variables NOT wrapped in \code{fp()}}{Receive the global scalar
+#'     argument value for all parameters (\code{df}, \code{alpha},
+#'     \code{select}, \code{center}). For \code{shift} and \code{scale},
+#'     the global value is used if supplied; otherwise they are estimated
+#'     automatically per variable.}
+#'   \item{\code{shift} and \code{scale} inside \code{fp()}}{If not explicitly
+#'     set inside \code{fp()} (i.e. left at their \code{NULL} default), the
+#'     auto-estimated value for that variable is retained. The global
+#'     \code{shift}/\code{scale} argument is used only for variables not in
+#'     any \code{fp()} term.}
+#'   \item{\code{fp_powers} argument vs \code{fp(powers = ...)}}{The
+#'     \code{fp_powers} argument sets candidate power sets for named variables.
+#'     If a variable also appears in an \code{fp(powers = ...)} term, the
+#'     \code{fp()} specification takes precedence and a warning is issued.}
+#'   \item{\code{zero_vars}, \code{catzero_vars}, \code{spike_vars} arguments}{
+#'     These argument-level character vectors are merged with the corresponding
+#'     per-variable settings from \code{fp(zero = TRUE)},
+#'     \code{fp(catzero = TRUE)}, and \code{fp(spike = TRUE)}. A variable
+#'     is flagged if it appears in either source; there is no conflict.}
+#'   \item{\code{df} and cardinality overrides}{The per-variable \code{df}
+#'     values (from \code{fp()} or global) are passed to
+#'     \code{mfpi.default()}, which then applies cardinality-based overrides
+#'     via \code{assign_df()} internally. This means a variable with fewer
+#'     than 6 unique values may receive a lower \code{df} than requested,
+#'     even if explicitly set in \code{fp()}.}
+#' }
+#'
+#' @section Parameters not available in the formula interface:
+#' The following \code{mfpi.default()} parameters must be supplied as scalar
+#' arguments only; per-variable specification via \code{fp()} is not
+#' supported: \code{group_var}, \code{cont_vars}, \code{flex},
+#' \code{p_interact}, \code{min_improvement}, \code{include_group_var},
+#' \code{show_models}, \code{cycles}, \code{criterion}, \code{force_keep},
+#' \code{force_max_fp}, \code{xorder}, \code{ties}, \code{strata},
+#' \code{nocenter}, \code{min_prop}, \code{max_prop}, \code{use_ftest},
+#' \code{control}, \code{verbose}, \code{digits}.
+#'
+#' @section Strata and offset in the formula:
+#' For Cox models, \code{strata()} terms may be included directly in the
+#' formula (e.g. \code{Surv(t, d) ~ fp(age) + strata(centre)}). If
+#' \code{strata} is also supplied as an argument, the formula value is used
+#' and a warning is issued. Similarly, an \code{offset()} term in the formula
+#' takes precedence over the \code{offset} argument.
+#'
+#' @export
+mfpi.formula <- function(formula,
+                         data,
+                         group_var         = NULL,
+                         cont_vars         = NULL,
+                         flex              = c("flex1", "flex2", "flex3", "flex4"),
+                         p_interact        = 0.05,
+                         min_improvement   = NULL,
+                         include_group_var = FALSE,
+                         show_models       = FALSE,
+                         weights           = NULL,
+                         offset            = NULL,
+                         cycles            = 10,
+                         scale             = NULL,
+                         shift             = NULL,
+                         df                = 4,
+                         center            = TRUE,
+                         subset            = NULL,
+                         family            = c("gaussian", "poisson", "binomial", "cox"),
+                         criterion         = c("pvalue", "aic", "bic"),
+                         select            = 0.05,
+                         alpha             = 0.05,
+                         force_keep        = NULL,
+                         force_max_fp      = FALSE,
+                         xorder            = c("ascending", "descending", "original"),
+                         fp_powers         = NULL,
+                         ties              = c("breslow", "efron", "exact"),
+                         strata            = NULL,
+                         nocenter          = NULL,
+                         zero_vars         = NULL,
+                         catzero_vars      = NULL,
+                         spike_vars        = NULL,
+                         min_prop          = 0.05,
+                         max_prop          = 0.95,
+                         use_ftest         = FALSE,
+                         control           = NULL,
+                         verbose           = TRUE,
+                         digits            = 3,
+                         ...) {
+  
+  call <- match.call()
+  family    <- match.arg(family)
+  xorder    <- match.arg(xorder)
+  criterion <- match.arg(criterion)
+  flex      <- match.arg(flex)
+  ties      <- match.arg(ties)
+  
+  # ---------------------------------------------------------------------------
+  # Input validation (formula-specific constraints)
+  # ---------------------------------------------------------------------------
+  if (missing(data))
+    stop("! data argument is missing.\n",
+         "i An input data.frame is required for the formula interface.",
+         call. = FALSE)
+  
+  if (is.null(colnames(data)))
+    stop("! data must have column names.", call. = FALSE)
+  
+  if (missing(formula))
+    stop("! formula is missing.", call. = FALSE)
+  
+  if (!inherits(formula, "formula"))
+    stop("! method is only for formula objects.", call. = FALSE)
+  
+  # The formula interface only supports scalar defaults; per-variable settings
+  # must be supplied via fp() terms in the formula.
+  if (length(df) != 1L)
+    stop("! df must be a single numeric.\n",
+         "i Use fp() in the formula to set per-variable df values.", call. = FALSE)
+  
+  if (length(alpha) != 1L)
+    stop("! alpha must be a single numeric.\n",
+         "i Use fp() in the formula to set per-variable alpha values.", call. = FALSE)
+  
+  if (length(select) != 1L)
+    stop("! select must be a single numeric.\n",
+         "i Use fp() in the formula to set per-variable select values.", call. = FALSE)
+  
+  if (!is.null(scale) && length(scale) != 1L)
+    stop("! scale must be a single numeric or NULL.\n",
+         "i Use fp() in the formula to set per-variable scale values.", call. = FALSE)
+  
+  if (length(center) != 1L)
+    stop("! center must be a single logical value.\n",
+         "i Use fp() in the formula to set per-variable center values.", call. = FALSE)
+  
+  if (!is.null(shift) && length(shift) != 1L)
+    stop("! shift must be a single numeric or NULL.\n",
+         "i Use fp() in the formula to set per-variable shift values.", call. = FALSE)
+  
+  if (!is.null(fp_powers) && !is.list(fp_powers))
+    stop("! fp_powers must be a named list or NULL.", call. = FALSE)
+  
+  # ---------------------------------------------------------------------------
+  # Build model frame and extract y, x
+  # ---------------------------------------------------------------------------
+  mf     <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  labels <- attr(terms(mf), "term.labels")
+  if (length(labels) == 0L)
+    stop("! No predictors found in formula. At least one predictor is required.",
+         call. = FALSE)
+  
+  # ---------------------------------------------------------------------------
+  # Handle strata terms for Cox models
+  # ---------------------------------------------------------------------------
+  specials      <- "strata"
+  terms_formula <- terms(formula, specials = specials, data = data)
+  terms_drop    <- NULL
+  
+  if (!is.null(attr(terms_formula, "specials")$strata)) {
+    if (family == "cox") {
+      if (!is.null(call$strata))
+        warning("i strata appear in both the formula and as an argument.\n",
+                "i Formula strata are used; the argument is ignored.",
+                call. = FALSE)
+      
+      stemp      <- survival::untangle.specials(terms_formula,
+                                                special = "strata", order = 1)
+      strata     <- if (length(stemp$vars) == 1L) mf[[stemp$vars]]
+      else mf[, stemp$vars]
+      terms_drop <- stemp$terms
+    } else {
+      stop("! strata are only allowed for Cox models.\n",
+           "i Please remove strata terms from the formula.", call. = FALSE)
+    }
+  }
+  
+  terms_model <- if (!is.null(terms_drop)) terms_formula[-terms_drop]
+  else terms_formula
+  
+  # ---------------------------------------------------------------------------
+  # Handle offset
+  # ---------------------------------------------------------------------------
+  term_offset <- attr(terms_formula, "offset")
+  if (!is.null(term_offset) && length(term_offset) > 1L)
+    stop("! Only one offset term is allowed in the formula.", call. = FALSE)
+  
+  if (!is.null(term_offset)) {
+    if (!is.null(call$offset))
+      warning("i Offset appears in both the formula and as an argument.\n",
+              "i Formula offset is used; the argument is ignored.", call. = FALSE)
+    # Always extract offset from model frame when formula contains offset()
+    offset <- as.vector(stats::model.offset(mf))
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Extract y and x
+  # ---------------------------------------------------------------------------
+  y <- stats::model.extract(mf, "response")
+  
+  if (family != "cox" && survival::is.Surv(y))
+    stop(sprintf(
+      "! Response is a Surv object but family = '%s'. Set family = 'cox'.",
+      family), call. = FALSE)
+  
+  if (family != "cox")
+    y <- as.numeric(y)
+  
+  x <- stats::model.matrix(terms_model, mf)
+  
+  # Remove intercept column (entry 0 in model.matrix "assign" attribute)
+  if (0L %in% attr(x, "assign"))
+    x <- x[, -1L, drop = FALSE]
+  
+  nx      <- ncol(x)
+  names_x <- colnames(x)
+  
+  # ---------------------------------------------------------------------------
+  # Detect fp() terms in the model frame and extract their attributes
+  # ---------------------------------------------------------------------------
+  fp_pos <- grep("fp(", colnames(mf), fixed = TRUE)
+  
+  # ---------------------------------------------------------------------------
+  # Resolve final variable names: fp() renames "fp(age)" -> "age" in x.
+  # We do the rename now so all parameter lists use the correct final names.
+  # ---------------------------------------------------------------------------
+  if (length(fp_pos) > 0L) {
+    fp_data_pre <- mf[, fp_pos, drop = FALSE]
+    fp_vars_pre <- unname(sapply(fp_data_pre, function(v) attr(v, "name")))
+    names_x     <- replace(names_x, grep("fp(", names_x, fixed = TRUE), fp_vars_pre)
+    colnames(x) <- names_x
+  }
+  
+  # Initialise per-variable parameter lists from global defaults.
+  # scale and shift are estimated from x (now with correct names).
+  # df is replicated as-is; mfpi.default() applies assign_df() internally.
+  df_list     <- setNames(rep(list(df), nx), names_x)
+  scale_list  <- if (is.null(scale))
+    setNames(as.list(apply(x, 2L, mfp2::find_scale_factor)), names_x)
+  else
+    setNames(rep(list(scale), nx), names_x)
+  shift_list  <- if (is.null(shift))
+    setNames(as.list(apply(x, 2L, mfp2::find_shift_factor)), names_x)
+  else
+    setNames(rep(list(shift), nx), names_x)
+  center_list <- setNames(rep(list(center), nx), names_x)
+  alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
+  select_list <- setNames(rep(list(select), nx), names_x)
+  
+  # acdx, zero, catzero, spike: initialise to FALSE for all variables.
+  # Overridden below only for variables wrapped in fp(). Argument-level
+  # zero_vars / catzero_vars / spike_vars are merged separately after.
+  acdx_list    <- setNames(rep(list(FALSE), nx), names_x)
+  zero_list    <- setNames(rep(list(FALSE), nx), names_x)
+  catzero_list <- setNames(rep(list(FALSE), nx), names_x)
+  spike_list   <- setNames(rep(list(FALSE), nx), names_x)
+  
+  # Default FP candidate powers (Royston and Altman, 1994)
+  powx        <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+  power_list  <- setNames(replicate(nx, powx, simplify = FALSE), names_x)
+  
+  # Override with user-supplied fp_powers argument (before fp() overrides)
+  if (!is.null(fp_powers)) {
+    if (is.null(names(fp_powers)) ||
+        length(fp_powers) != sum(nchar(names(fp_powers)) > 0L, na.rm = TRUE))
+      stop("! All elements of fp_powers must have names.", call. = FALSE)
+    bad <- setdiff(names(fp_powers), names_x)
+    if (length(bad) > 0L)
+      stop(paste0("! fp_powers names not found in x: ",
+                  paste(bad, collapse = ", "), "."), call. = FALSE)
+    fp_powers  <- lapply(fp_powers, sort)
+    power_list <- modifyList(power_list, Filter(Negate(is.null), fp_powers))
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Apply fp() term overrides
+  # ---------------------------------------------------------------------------
+  if (length(fp_pos) > 0L) {
+    fp_data <- mf[, fp_pos, drop = FALSE]
+    # fp_vars already computed as fp_vars_pre in the rename block above;
+    # reuse here under the canonical name fp_vars.
+    fp_vars <- fp_vars_pre
+    
+    # Guard against duplicated fp() usage
+    dups <- fp_vars[duplicated(fp_vars)]
+    if (length(dups) > 0L)
+      stop(paste0("! Variables used more than once in fp(): ",
+                  paste(dups, collapse = ", "), "."), call. = FALSE)
+    
+    # Guard against variables appearing both inside fp() and as plain terms.
+    # colnames(mf) contains "fp(age)" for fp() terms and the response variable.
+    # Exclude the response (first column when LHS is present) and fp() columns;
+    # check remaining predictor names against fp_vars.
+    response_col <- deparse(formula[[2L]])
+    pred_cols    <- setdiff(colnames(mf), response_col)
+    plain_cols   <- pred_cols[!grepl("fp(", pred_cols, fixed = TRUE)]
+    also_plain   <- intersect(plain_cols, fp_vars)
+    if (length(also_plain) > 0L)
+      stop(paste0("! Variables in fp() must not appear elsewhere in the formula: ",
+                  paste(also_plain, collapse = ", "), "."), call. = FALSE)
+    
+    # Note: fp() column names were already renamed above (before list init)
+    # so names_x and colnames(x) already use the real variable names.
+    
+    # Helper: apply fp() attribute overrides to a named default list.
+    # attr_name: the fp() attribute to extract.
+    # drop_null: if TRUE, entries where fp() returned NULL are dropped so
+    #   the estimated default (e.g. auto shift/scale) is not overwritten.
+    apply_fp_override <- function(base_list, attr_name, drop_null = FALSE) {
+      overrides <- setNames(lapply(fp_data, attr, attr_name), fp_vars)
+      if (drop_null)
+        overrides <- Filter(Negate(is.null), overrides)
+      modifyList(base_list, overrides)
+    }
+    
+    df_list      <- apply_fp_override(df_list,      "df")
+    scale_list   <- apply_fp_override(scale_list,   "scale",   drop_null = TRUE)
+    shift_list   <- apply_fp_override(shift_list,   "shift",   drop_null = TRUE)
+    center_list  <- apply_fp_override(center_list,  "center")
+    alpha_list   <- apply_fp_override(alpha_list,   "alpha")
+    select_list  <- apply_fp_override(select_list,  "select")
+    acdx_list    <- apply_fp_override(acdx_list,    "acd")
+    zero_list    <- apply_fp_override(zero_list,    "zero")
+    catzero_list <- apply_fp_override(catzero_list, "catzero")
+    spike_list   <- apply_fp_override(spike_list,   "spike")
+    
+    # fp() powers take precedence over fp_powers argument
+    fp_pow_override <- Filter(Negate(is.null),
+                              setNames(lapply(fp_data, attr, "powers"), fp_vars))
+    conflict <- intersect(names(fp_pow_override), names(fp_powers))
+    if (length(conflict) > 0L)
+      warning(paste0("i Powers specified in both fp() and fp_powers argument; ",
+                     "fp() values take precedence for: ",
+                     paste(conflict, collapse = ", "), "."), call. = FALSE)
+    power_list <- modifyList(power_list, fp_pow_override)
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Convert list-form parameters to vectors / character vectors for mfpi.default
+  # ---------------------------------------------------------------------------
+  
+  # Per-variable numeric vectors. vapply extracts the first (and only) element
+  # of each list slot, producing a clean named numeric vector regardless of
+  # whether the slot holds an auto-estimated scalar or a user override.
+  scale_vec  <- vapply(scale_list, function(v) as.numeric(v[[1L]]), numeric(1L))
+  shift_vec  <- vapply(shift_list, function(v) as.numeric(v[[1L]]), numeric(1L))
+  
+  # df: unlist gives a named numeric vector. mfpi.default() will apply
+  # assign_df() cardinality overrides on top of these values.
+  df_vec     <- unlist(df_list)
+  
+  # center: unlist gives a named logical vector.
+  center_vec <- unlist(center_list)
+  
+  # select and alpha: unlist gives named numeric vectors.
+  select_vec <- unlist(select_list)
+  alpha_vec  <- unlist(alpha_list)
+  
+  # acd_vars: character vector of variable names with acd = TRUE, or NULL
+  acdx_vec  <- unlist(acdx_list)
+  acd_vars  <- if (any(acdx_vec)) names(acdx_vec[acdx_vec]) else NULL
+  
+  # zero_vars from fp(): merge with argument zero_vars
+  zero_fp         <- unlist(zero_list)
+  zero_from_fp    <- if (any(zero_fp)) names(zero_fp[zero_fp]) else character(0L)
+  zero_vars_final <- union(zero_from_fp, zero_vars)
+  zero_vars_final <- if (length(zero_vars_final) == 0L) NULL else zero_vars_final
+  
+  # catzero_vars from fp(): merge with argument catzero_vars
+  catzero_fp         <- unlist(catzero_list)
+  catzero_from_fp    <- if (any(catzero_fp)) names(catzero_fp[catzero_fp]) else character(0L)
+  catzero_vars_final <- union(catzero_from_fp, catzero_vars)
+  catzero_vars_final <- if (length(catzero_vars_final) == 0L) NULL else catzero_vars_final
+  
+  # spike_vars from fp(): merge with argument spike_vars
+  spike_fp         <- unlist(spike_list)
+  spike_from_fp    <- if (any(spike_fp)) names(spike_fp[spike_fp]) else character(0L)
+  spike_vars_final <- union(spike_from_fp, spike_vars)
+  spike_vars_final <- if (length(spike_vars_final) == 0L) NULL else spike_vars_final
+  
+  # ---------------------------------------------------------------------------
+  # Delegate to mfpi.default
+  # ---------------------------------------------------------------------------
+  mfpi.default(
+    x                 = x,
+    y                 = y,
+    group_var         = group_var,
+    cont_vars         = cont_vars,
+    flex              = flex,
+    p_interact        = p_interact,
+    min_improvement   = min_improvement,
+    include_group_var = include_group_var,
+    show_models       = show_models,
+    weights           = weights,
+    offset            = offset,
+    cycles            = cycles,
+    scale             = scale_vec,
+    shift             = shift_vec,
+    df                = df_vec,
+    center            = center_vec,
+    subset            = subset,
+    family            = family,
+    criterion         = criterion,
+    select            = select_vec,
+    alpha             = alpha_vec,
+    force_keep        = force_keep,
+    force_max_fp      = force_max_fp,
+    xorder            = xorder,
+    fp_powers         = power_list,
+    ties              = ties,
+    strata            = strata,
+    nocenter          = nocenter,
+    acd_vars          = acd_vars,
+    zero_vars         = zero_vars_final,
+    catzero_vars      = catzero_vars_final,
+    spike_vars        = spike_vars_final,
+    min_prop          = min_prop,
+    max_prop          = max_prop,
+    use_ftest         = use_ftest,
+    control           = control,
+    verbose           = verbose,
+    digits            = digits,
+    ...
+  )
 }

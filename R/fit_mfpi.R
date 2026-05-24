@@ -43,7 +43,7 @@
 #'       \code{evaluate_interactions()}.
 #'   }
 #'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
-#'   \code{flex4()} — used only to estimate FP powers for \code{cont_var} —
+#'   \code{flex4()} - used only to estimate FP powers for \code{cont_var} -
 #'   the user criterion is passed alongside \code{force_max_fp = TRUE}, which
 #'   prevents AIC/BIC from simplifying the functional form below the requested
 #'   degree. The best power combination within that degree is still selected by
@@ -68,7 +68,7 @@
 #'   predictor (1 = linear, 2m = FP of degree m), after cardinality-based
 #'   overrides by \code{assign_df()}.
 #' @param xorder Character string; order of covariate entry into MFP
-#'   backfitting — \code{"ascending"}, \code{"descending"}, or
+#'   backfitting - \code{"ascending"}, \code{"descending"}, or
 #'   \code{"original"}.
 #' @param fp_powers Named list of candidate FP power sets, one per predictor.
 #' @param ties Character string; tie-handling method for Cox models.
@@ -141,12 +141,12 @@
 #' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
 #' appended to \code{x}. All parameter vectors are synchronised. Silent.
 #'
-#' \strong{Step 1 — Adjustment model.} \code{fit_mfp()} selects
+#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
 #' adjustment variables and FP transformations using \code{criterion}.
 #' Selected variables, their FP powers, and spike decisions are fixed for
 #' the remainder of the algorithm.
 #'
-#' \strong{Step 2 — Univariable interactions.} For each variable in
+#' \strong{Step 2 - Univariable interactions.} For each variable in
 #' \code{cont_vars}, linear, FP1, and FP2 interaction models are fitted and
 #' compared to their main-effects models via \code{evaluate_interactions()}.
 #' Within \code{flex1()} and \code{flex4()}, FP powers are estimated using
@@ -194,8 +194,11 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # Step 1: Fit adjustment model via MFP
   # ---------------------------------------------------------------------------
   if (verbose) {
-    cat("\ni === Fitting Adjustment Model via MFP ===\n")
-    cat("i Step 1: Adjustment model\n")
+    rule_thick <- strrep("=", 70)
+    rule_thin  <- strrep("-", 70)
+    cat("\n", rule_thick, "\n", sep = "")
+    cat("  STEP 1: Adjustment Model (MFP selection)\n")
+    cat(rule_thick, "\n", sep = "")
   }
   
   adjustment_model <- fit_adjustment_model(
@@ -220,14 +223,29 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     verbose        = FALSE
   )
   
-  if (verbose) {
-    print(adjustment_model$fp_terms)
-  }
-  
   # Identify variables retained by the adjustment model
   selected_vars <- get_selected_variables(adjustment_model)
   if (include_group_var) {
     selected_vars <- setdiff(selected_vars, processed_data$dummy_names)
+  }
+  
+  if (verbose) {
+    print(adjustment_model$fp_terms)
+    
+    # Print the names of selected adjustment variables for quick reference,
+    # excluding the group dummies (which are structural, not adjustment).
+    group_dummy_names <- colnames(processed_data$cat_info$dummies)
+    adj_selected     <- setdiff(selected_vars, group_dummy_names)
+    cat("\n")
+    if (length(adj_selected) > 0L) {
+      cat(sprintf(
+        "  Selected adjustment variables (%d): %s\n",
+        length(adj_selected),
+        paste(adj_selected, collapse = ", ")
+      ))
+    } else {
+      cat("  Selected adjustment variables: (none)\n")
+    }
   }
   
   adj_fp_powers <- get_fp_powers(
@@ -239,14 +257,34 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # re-transforming adjustment variables inside evaluate_interactions().
   # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
   # 3 = binary only) stored in the mfp2 object by fit_mfp().
-  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec))
+  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec)) {
     adjustment_model$spike_decision
-  else
+   } else {
     setNames(rep(2L, length(selected_vars)), selected_vars)
+   }
   
   # ---------------------------------------------------------------------------
   # Step 2: Evaluate univariable interactions
   # ---------------------------------------------------------------------------
+  if (verbose) {
+    rule_thick <- strrep("=", 70)
+    cat("\n", rule_thick, "\n", sep = "")
+    cat(sprintf(
+      "  STEP 2: Evaluating Interactions  (flex = %s, criterion = '%s')\n",
+      flex, criterion
+    ))
+    cat(rule_thick, "\n", sep = "")
+    cat(sprintf(
+      "  Testing %d continuous variable(s) against group '%s'\n",
+      length(cont_vars), group_var
+    ))
+    if (criterion == "pvalue") {
+      cat(sprintf("  Threshold: p_interact = %g\n", p_interact))
+    } else {
+      cat(sprintf("  Threshold: min_improvement = %g\n", min_improvement))
+    }
+  }
+  
   univ_results <- evaluate_interactions(
     y                  = y,
     processed_data     = processed_data,
@@ -274,12 +312,23 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     p_interact         = p_interact,
     min_improvement    = min_improvement,
     min_prop           = min_prop,
-    max_prop           = max_prop
+    max_prop           = max_prop,
+    verbose            = verbose
   )
   
   n_significant <- nrow(univ_results$best_model_metrics)
   if (n_significant == 0L) {
     warning("! No significant interactions were found.", call. = FALSE)
+  }
+  
+  if (verbose) {
+    rule_thick <- strrep("=", 70)
+    cat("\n", rule_thick, "\n", sep = "")
+    cat(sprintf(
+      "  DONE: %d of %d variable(s) show significant interaction\n",
+      n_significant, length(cont_vars)
+    ))
+    cat(rule_thick, "\n\n", sep = "")
   }
   
   list(
@@ -396,7 +445,7 @@ preprocess_data <- function(x, group_var, include_group_var,
   
   dummy_names <- NULL
   
-  # Compute group dummies once — reused for cat_info and (if needed) appended
+  # Compute group dummies once - reused for cat_info and (if needed) appended
   # to x_filtered when include_group_var = TRUE.
   group_dummies_mat <- create_group_dummies(group_values)
   
@@ -456,7 +505,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   \code{fit_mfp()} for adjustment-variable selection. It is the
 #'   filtered matrix produced by \code{preprocess_data()}, which means:
 #'   \itemize{
-#'     \item \code{group_var} has been \strong{removed} — it is not adjusted
+#'     \item \code{group_var} has been \strong{removed} - it is not adjusted
 #'       for here because it is the variable whose interaction with
 #'       \code{cont_vars} is being tested.
 #'     \item If \code{include_group_var = TRUE} in \code{mfpi()},
@@ -464,7 +513,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'       set of binary dummy columns (one per non-reference level), with
 #'       \code{select = 1} to force them into the adjustment model.
 #'     \item All columns have already been shifted and scaled by
-#'       \code{mfpi.default()} — shift and scale are therefore passed as 0
+#'       \code{mfpi.default()} - shift and scale are therefore passed as 0
 #'       and 1 respectively to \code{fit_mfp()} inside this function.
 #'   }
 #' @param y Response vector or Surv object.
@@ -481,7 +530,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   \code{"bic"}. Governs full MFP selection: variable elimination, FP
 #'   degree selection, and functional form for adjustment variables. Unlike
 #'   the internal \code{fit_mfp()} calls in \code{flex1()} and
-#'   \code{flex4()}, \code{force_max_fp} is not passed here — it defaults to
+#'   \code{flex4()}, \code{force_max_fp} is not passed here - it defaults to
 #'   \code{FALSE} so the user criterion fully controls degree selection, which
 #'   is the correct behaviour for adjustment-model fitting.
 #' @param updated_params Named list of per-variable modelling parameters as
@@ -515,7 +564,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' \code{fit_mfpi()} to match the columns of \code{x} (i.e. with
 #' \code{group_var} removed). When the user supplies \code{force_max_fp = FALSE}
 #' (the default), all elements are \code{FALSE} and \code{select_ic()} runs its
-#' normal degree competition — correct behaviour for full adjustment-model
+#' normal degree competition - correct behaviour for full adjustment-model
 #' selection. \code{force_max_fp = TRUE} for specific variables forces the most
 #' complex functional form for those variables in the adjustment model.
 #' @keywords internal
@@ -560,6 +609,119 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     force_max_fp  = force_max_fp,
     verbose       = verbose
   )
+}
+
+
+# -----------------------------------------------------------------------------
+# format_candidate_table() ----------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Format and Print a Table of Interaction Candidates for One Variable
+#'
+#' Assembles a compact summary table from the per-candidate metric rows
+#' collected during the interaction evaluation loop and prints it to the
+#' console. Column selection adapts to the active criterion: pvalue-based
+#' selection shows the pvalue column; AIC/BIC selection omits it.
+#'
+#' The table includes two power columns to help the user distinguish the
+#' FP powers from the pooled main-effects model (\code{main_power}) and the
+#' FP powers used in the interaction model (\code{int_power}). For flex1-3,
+#' interaction powers are shown as a single tuple, e.g. \code{(1, 2)}. For
+#' flex4, per-group powers are shown separately, e.g. \code{(1, 2), (0.5)}.
+#'
+#' @param rows Named list of one-row data frames, one per candidate type
+#'   (linear, fp1, fp2). Each row must contain fields \code{pvalue},
+#'   \code{AIC_main_minus_int}, \code{BIC_main_minus_int},
+#'   \code{fp_powers_main}, and \code{fp_powers_int}.
+#' @param criterion Character string: \code{"pvalue"}, \code{"aic"}, or
+#'   \code{"bic"}.
+#' @param digits Integer; number of significant digits for p-values.
+#'
+#' @return Invisible `NULL`. The function prints to the console as a side
+#'   effect.
+#'
+#' @keywords internal
+#' @noRd
+format_candidate_table <- function(rows, criterion, digits) {
+  
+  # Format a single power entry as a parenthesised string. Always returns a
+  # length-1 character string ("." for missing/empty).
+  # For flex1-3, `pow` is a numeric vector e.g. c(1, 2).
+  # For flex4, `pow` is a list of per-group vectors e.g. list(c(1, 2), c(0.5)).
+  format_powers <- function(pow) {
+    if (is.null(pow) || length(pow) == 0L) return(".")
+    if (is.atomic(pow) && all(is.na(pow))) return(".")
+    if (is.list(pow)) {
+      paste(
+        vapply(pow, function(p) {
+          if (is.null(p) || length(p) == 0L) "()"
+          else paste0("(", paste(p, collapse = ", "), ")")
+        }, character(1L)),
+        collapse = ", "
+      )
+    } else {
+      paste0("(", paste(pow, collapse = ", "), ")")
+    }
+  }
+  
+  format_row <- function(metrics) {
+    # Safe extraction helpers
+    safe_fmt <- function(val, fmt = "g", digits = 3) {
+      if (is.null(val) || length(val) == 0L || is.na(val[1L])) return("NA")
+      formatC(val[1L], format = fmt, digits = digits)
+    }
+    safe_chr <- function(val) {
+      if (is.null(val) || length(val) == 0L) return("")
+      as.character(val[1L])
+    }
+    
+    type_raw   <- safe_chr(metrics$type)
+    type_label <- if (nzchar(type_raw)) toupper(gsub("fp", "FP", type_raw)) else "?"
+    
+    main_pow <- if (length(metrics$fp_powers_main) > 0L)
+      metrics$fp_powers_main[[1L]] else NULL
+    int_pow  <- if (length(metrics$fp_powers_int)  > 0L)
+      metrics$fp_powers_int[[1L]]  else NULL
+    
+    # Base columns: Type and powers always shown
+    base_cols <- data.frame(
+      Type       = type_label,
+      main_power = format_powers(main_pow),
+      int_power  = format_powers(int_pow),
+      stringsAsFactors = FALSE
+    )
+    
+    # Criterion-specific columns inserted between Type and powers
+    crit_cols <- switch(
+      criterion,
+      "pvalue" = data.frame(
+        pvalue = safe_fmt(metrics$pvalue,             fmt = "g", digits = digits),
+        dAIC   = safe_fmt(metrics$AIC_main_minus_int, fmt = "f", digits = 2),
+        stringsAsFactors = FALSE
+      ),
+      "aic"    = data.frame(
+        AIC_main        = safe_fmt(metrics$AIC_main,           fmt = "f", digits = 2),
+        AIC_interaction = safe_fmt(metrics$AIC_interaction,    fmt = "f", digits = 2),
+        dAIC            = safe_fmt(metrics$AIC_main_minus_int, fmt = "f", digits = 2),
+        stringsAsFactors = FALSE
+      ),
+      "bic"    = data.frame(
+        BIC_main        = safe_fmt(metrics$BIC_main,           fmt = "f", digits = 2),
+        BIC_interaction = safe_fmt(metrics$BIC_interaction,    fmt = "f", digits = 2),
+        dBIC            = safe_fmt(metrics$BIC_main_minus_int, fmt = "f", digits = 2),
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    # Final column order: Type, criterion metrics, then powers
+    cbind(base_cols[, "Type", drop = FALSE],
+          crit_cols,
+          base_cols[, c("main_power", "int_power"), drop = FALSE])
+  }
+  
+  tbl <- do.call(rbind, lapply(rows, format_row))
+  print(tbl, row.names = FALSE, right = FALSE)
+  invisible(NULL)
 }
 
 
@@ -677,7 +839,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   digits, group_var, show_models, p_interact,
                                   min_improvement, min_prop, max_prop,
                                   xadj = NULL, skip_adjustment = FALSE,
-                                  quiet = FALSE) {
+                                  quiet = FALSE, verbose = FALSE) {
   
   # Input validation for skip_adjustment / xadj --------------------------------
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
@@ -719,6 +881,28 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   
   for (var_name in cont_vars) {
     
+    if (verbose) {
+      var_idx <- match(var_name, cont_vars)
+      rule_thin <- strrep("-", 70)
+      cat("\n", rule_thin, "\n", sep = "")
+      cat(sprintf(
+        "  [%d/%d] Variable: '%s' x '%s'\n",
+        var_idx, n_vars, var_name, processed_data$cat_info$group_var
+      ))
+      # Adjustment variables for this evaluation: selected adjustment set
+      # minus the current variable (main effect of the interaction) and
+      # minus the group dummies (structural part of the interaction model).
+      group_dummy_names <- colnames(processed_data$cat_info$dummies)
+      adj_vars <- setdiff(selected_vars, c(var_name, group_dummy_names))
+      if (length(adj_vars) > 0L) {
+        cat(sprintf("        Adjusting for: %s\n",
+                    paste(adj_vars, collapse = ", ")))
+      } else {
+        cat("        Adjusting for: (none)\n")
+      }
+      cat(rule_thin, "\n", sep = "")
+    }
+    
     best_fit    <- NULL
     best_metric <- NULL
     best_type   <- NULL
@@ -730,6 +914,13 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     names(candidate_models) <- names(degree_lookup)
     names(candidate_fitted) <- names(degree_lookup)
     
+    # Verbose: collect one row per candidate, printed as table after inner loop.
+    # Names required so format_candidate_table can preserve the type ordering.
+    if (verbose) {
+      verbose_rows <- vector("list", n_types)
+      names(verbose_rows) <- names(degree_lookup)
+    }
+    
     # Build adjustment matrix once per cont_var, reused across all three
     # degrees (linear / FP1 / FP2). The adjustment set changes only by
     # removing var_name from selected_vars, so it is identical for all
@@ -738,7 +929,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       adj_vars     <- setdiff(selected_vars, var_name)
       xadj_current <- NULL
       if (length(adj_vars) > 0L) {
-        xadj_current <- mfp2::transform_matrix(
+        xadj_current <- transform_matrix(
           x                  = x[, adj_vars, drop = FALSE],
           power_list         = adj_fp_powers[adj_vars],
           center             = processed_data$updated_params$center[adj_vars],
@@ -797,6 +988,11 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       metrics$variable  <- var_name
       metrics$type      <- interaction_type
       
+      # Collect verbose row for this candidate (printed as table after inner loop)
+      if (verbose) {
+        verbose_rows[[interaction_type]] <- metrics
+      }
+      
       all_idx <- all_idx + 1L
       all_metrics_list[[all_idx]] <- metrics
       
@@ -845,15 +1041,43 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }  # end interaction_type loop
     
+    # Print the candidate table for this variable
+    if (verbose) {
+      format_candidate_table(verbose_rows, criterion = criterion, digits = digits)
+    }
+    
     if (!is.null(best_fit)) {
       best_idx <- best_idx + 1L
       best_metrics_list[[best_idx]]    <- best_metric
       best_interaction_model[[var_name]]   <- best_fit$test_results$interaction_model
       best_fitted_functions[[var_name]]     <- best_fit$fitted_functions
-    } else if (!quiet) {
-      message(sprintf(
-        "i No significant interaction retained for '%s'.", var_name
-      ))
+      
+      if (verbose) {
+        type_label <- toupper(gsub("fp", "FP", best_type))
+        if (criterion == "pvalue") {
+          cat(sprintf(
+            "        >> SELECTED: %s  (p = %s)\n",
+            type_label,
+            formatC(best_metric$pvalue[1L], format = "g", digits = digits)
+          ))
+        } else {
+          ic_col <- if (criterion == "aic") "AIC_main_minus_int" else "BIC_main_minus_int"
+          cat(sprintf(
+            "        >> SELECTED: %s  (d%s = %s)\n",
+            type_label, toupper(criterion),
+            formatC(best_metric[[ic_col]][1L], format = "f", digits = 2)
+          ))
+        }
+      }
+    } else {
+      if (verbose) {
+        cat("        >> NOT SELECTED: no candidate met the threshold.\n")
+      }
+      if (!quiet) {
+        message(sprintf(
+          "i No significant interaction retained for '%s'.", var_name
+        ))
+      }
     }
     
     # Store all three candidates for every variable regardless of significance
@@ -872,7 +1096,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   # Combine results -----------------------------------------------------------
   if (length(best_metrics_list) > 0L) {
     combined_metrics <- dplyr::bind_rows(best_metrics_list)
-    # Move type to first column using base R subsetting — avoids rlang dependency
+    # Move type to first column using base R subsetting - avoids rlang dependency
     combined_metrics <- combined_metrics[, c("type", setdiff(names(combined_metrics), "type")),
                                          drop = FALSE]
   } else {

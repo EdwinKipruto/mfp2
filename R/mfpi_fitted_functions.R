@@ -149,7 +149,7 @@ gen_fitted_values_per_group <- function(cont_var,
     center_map <- stats::setNames(rep(FALSE, n_groups), znames)
     acd_map    <- stats::setNames(rep(FALSE, n_groups), znames)
     
-    x_split <- mfp2::transform_matrix(
+    x_split <- transform_matrix(
       x          = x_split,
       power_list = group_fp_powers,
       center     = center_map,

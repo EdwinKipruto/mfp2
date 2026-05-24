@@ -89,17 +89,41 @@
 #' response `y`; only right-censored data are currently supported.
 #'
 #' @section Adjustment variables:
-#' MFPI operates in two stages. In the first stage, the MFP algorithm selects
-#' adjustment variables and their functional forms from all columns of `x`
-#' except the current continuous variable of interest. If no adjustment
-#' variables survive selection, the interaction is tested without adjustment. In
-#' the second stage, the selected (and possibly transformed) adjustment
-#' variables are included as covariates when fitting the main-effects and
-#' interaction models for each continuous variable listed in `cont_vars`.
+#' MFPI operates in two stages. In the first stage, the MFP algorithm is run
+#' \strong{once} on the full predictor matrix `x` to select a base set of
+#' adjustment variables and estimate their functional forms. This base
+#' selection considers all columns of `x` simultaneously, including the
+#' variables that will later be tested for interaction in `cont_vars`. If no
+#' adjustment variables survive selection, interactions are tested without
+#' adjustment. In the second stage, the selected (and possibly transformed)
+#' adjustment variables are included as covariates when fitting the
+#' main-effects and interaction models for each continuous variable listed
+#' in `cont_vars`.
+#'
+#' \strong{Dynamic adjustment set per `cont_var`.} Although the base MFP
+#' selection is performed once, the actual adjustment set used in stage two
+#' \strong{changes per `cont_var`}: for each continuous variable under
+#' evaluation, that variable is \strong{excluded} from its own adjustment
+#' set because it appears in the interaction model as the main effect being
+#' tested, not as a confounder. The group variable (and its dummy columns
+#' when the grouping has more than two levels) is also excluded, since it
+#' serves a structural role in defining the interaction. Concretely, for
+#' variable \eqn{x_k} in `cont_vars` the adjustment set in stage two is
+#' \deqn{
+#'   A_k \;=\; (\text{MFP-selected variables}) \setminus
+#'   \bigl(\{x_k\} \cup \{\text{group dummies}\}\bigr).
+#' }
+#' This means two `cont_vars` from the same `mfpi()` call may be adjusted
+#' for slightly different sets of covariates: variable `sz` is adjusted for
+#' the selected variables minus `sz`, while variable `wt` is adjusted for
+#' the selected variables minus `wt`. When `verbose = TRUE`, the
+#' per-variable adjustment set is printed in full before each candidate
+#' table is evaluated, so the user can verify which covariates are being
+#' controlled for at every step.
 #'
 #' To force adjustment variables into the model without selection or
-#' transformation, set `select = 1` and `alpha = 0`, or pass variable names via
-#' `force_keep` and set `df = 1` for those variables. See [mfp2::mfp2()]
+#' transformation, set `select = 1` and `alpha = 0`, or pass variable names
+#' via `force_keep` and set `df = 1` for those variables. See [mfp2::mfp2()]
 #' for further details.
 #'
 #' @section Shifting, scaling, and centering:
@@ -837,14 +861,14 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, mfp2::find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
   shift <- setNames(shift, vnames)
   
   if (is.null(scale)) {
-    scale <- apply(x, 2L, mfp2::find_scale_factor)   # already named by apply
+    scale <- apply(x, 2L, find_scale_factor)   # already named by apply
   } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
@@ -1273,14 +1297,18 @@ mfpi.formula <- function(formula,
   # scale and shift are estimated from x (now with correct names).
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
-  scale_list  <- if (is.null(scale))
-    setNames(as.list(apply(x, 2L, mfp2::find_scale_factor)), names_x)
-  else
+  scale_list  <- if (is.null(scale)) {
+    setNames(as.list(apply(x, 2L, find_scale_factor)), names_x)
+   } else {
     setNames(rep(list(scale), nx), names_x)
-  shift_list  <- if (is.null(shift))
-    setNames(as.list(apply(x, 2L, mfp2::find_shift_factor)), names_x)
-  else
+   }
+  
+  shift_list  <- if (is.null(shift)) {
+    setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
+   } else {
     setNames(rep(list(shift), nx), names_x)
+   }
+  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)

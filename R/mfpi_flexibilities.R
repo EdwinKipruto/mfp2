@@ -6,17 +6,17 @@
 # exported; they are called exclusively via `flex_fit()`.
 #
 # Naming convention used throughout:
-#   cont_var   — the continuous variable being tested for interaction
-#   group_var  — the categorical grouping variable (e.g. treatment)
-#   xadj       — pre-transformed, pre-centered adjustment matrix (or NULL)
-#   ties       — Cox tie-handling method (was `method` in original)
-#   use_ftest  — F-test flag for Gaussian models (was `ftest`)
-#   zero_var   — logical; treat non-positive values of cont_var as zero
-#   fp_cand    — candidate FP powers for cont_var (was `powers`)
+#   cont_var   - the continuous variable being tested for interaction
+#   group_var  - the categorical grouping variable (e.g. treatment)
+#   xadj       - pre-transformed, pre-centered adjustment matrix (or NULL)
+#   ties       - Cox tie-handling method (was `method` in original)
+#   use_ftest  - F-test flag for Gaussian models (was `ftest`)
+#   zero_var   - logical; treat non-positive values of cont_var as zero
+#   fp_cand    - candidate FP powers for cont_var (was `powers`)
 
 
 # -----------------------------------------------------------------------------
-# flex_fit() — dispatcher -----------------------------------------------------
+# flex_fit() - dispatcher -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Dispatch to the Appropriate Flex Implementation
@@ -40,20 +40,25 @@
 #' @param xadj Numeric matrix of pre-transformed, pre-centered adjustment
 #'   predictors, or `NULL` if there are no adjustment variables.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param ties Character string; Cox tie-handling — `"breslow"`, `"efron"`,
+#' @param ties Character string; Cox tie-handling - `"breslow"`, `"efron"`,
 #'   or `"exact"`. Ignored for non-Cox families.
-#' @param degree Integer; FP degree — `0` (linear), `1` (FP1), or `2` (FP2).
+#' @param degree Integer; FP degree - `0` (linear), `1` (FP1), or `2` (FP2).
 #'   Values below 1 are silently treated as `0` and routed to `flex0`.
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
 #'   or `"cox"`.
 #' @param fp_cand Numeric vector of candidate FP powers for `cont_var`.
-#'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()].
+#'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()]. When
+#'   `degree == 1` (FP1), power = 1 is automatically excluded from `fp_cand`
+#'   inside `flex_fit()` because linear is handled separately by `flex0`;
+#'   keeping power = 1 in the FP1 candidate set would allow FP1 to collapse
+#'   to a duplicate linear fit. Higher degrees retain power = 1 since
+#'   combinations such as `(1, 2)` are distinct from linear.
 #' @param use_ftest Logical. Use F-test rather than chi-square for Gaussian
 #'   models. Currently applied only to adjustment-variable selection; not yet
 #'   implemented for the interaction test itself.
 #' @param center Logical scalar. Whether to centre `cont_var` before fitting.
 #'   Adjustment variables are assumed already centred.
-#' @param xorder Character string; entry order for MFP backfitting —
+#' @param xorder Character string; entry order for MFP backfitting -
 #'   `"ascending"`, `"descending"`, or `"original"`. Retained for API
 #'   compatibility; has no effect when variable selection is disabled.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
@@ -81,7 +86,7 @@
 #'   functions. Requires `run_test = TRUE`. Default `TRUE`.
 #'
 #' @note \code{force_max_fp} is constructed internally inside \code{flex1()}
-#'   and \code{flex4()} and passed to \code{mfp2:::fit_mfp()}. It is a named
+#'   and \code{flex4()} and passed to \code{fit_mfp()}. It is a named
 #'   logical vector of length \code{nvars} that is \code{TRUE} only for the
 #'   \code{cont_var} columns, telling \code{select_ic()} to use the most
 #'   complex functional form at the requested degree without AIC/BIC
@@ -136,6 +141,23 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
   # Linear degree always uses flex0, regardless of the flex setting
   if (degree < 1L) flex <- "flex0"
   
+  # For FP1 (degree = 1), exclude power = 1 from the candidate set so that
+  # the FP1 search cannot collapse to a linear fit. Linear is already handled
+  # separately by flex0 (degree = 0), so testing it again as FP1 with power 1
+  # would produce a vacuous duplicate of the LINEAR candidate.
+  # Higher degrees (FP2+) retain power 1 since combinations like (1, 2),
+  # (1, 3) etc. are genuinely distinct from linear.
+  if (degree == 1L) {
+    fp_cand <- setdiff(fp_cand, 1)
+    if (length(fp_cand) < 1L) {
+      stop(
+        "! `fp_cand` is empty for FP1 after excluding power = 1. ",
+        "Provide a candidate set containing at least one non-unity power.",
+        call. = FALSE
+      )
+    }
+  }
+  
   # Build shared argument list and dispatch ------------------------------------
   common_args <- list(
     x              = x,
@@ -173,7 +195,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
 
 
 # -----------------------------------------------------------------------------
-# flex0() — linear interaction ------------------------------------------------
+# flex0() - linear interaction ------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Linear Interaction Model (flex0)
@@ -281,7 +303,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 
 
 # -----------------------------------------------------------------------------
-# flex1() — main-effect FP powers applied within groups ----------------------
+# flex1() - main-effect FP powers applied within groups ----------------------
 # -----------------------------------------------------------------------------
 
 #' FP Powers from the Pooled Main-Effects Model (flex1)
@@ -337,7 +359,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   df_vec <- c(
     2L * degree,               # cont_var: FP of requested degree
     rep(1L, k - 1L),           # group dummies: linear
-    if (n_adj > 0L) rep(1L, n_adj) 
+    if (n_adj > 0L) rep(1L, n_adj)
   )
   
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -390,6 +412,55 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   
   # Step 2: Extract best FP powers for cont_var --------------------------------
   bestfp <- unlist(get_fp_powers(cont_var, fit_main_pool$fp_terms))
+  
+  # Defensive guard: if mfp2 returned an unexpected linear or empty result for
+  # an FP1 search (despite force_max_fp = TRUE and power = 1 excluded from
+  # fp_cand by flex_fit()), perform a direct deviance-minimisation search over
+  # the non-unity candidates. This ensures FP1 is always a non-linear functional
+  # form, since linear is handled separately by flex0.
+  needs_fallback <- degree == 1L && (
+    length(bestfp) == 0L ||
+      (length(bestfp) == 1L && isTRUE(bestfp == 1))
+  )
+  if (needs_fallback) {
+    nonunit_cand <- setdiff(fp_cand, 1)
+    if (length(nonunit_cand) == 0L) {
+      stop(
+        "! FP1 fallback failed: `fp_cand` contains no non-unity powers.",
+        call. = FALSE
+      )
+    }
+    # Fit a one-term FP transformation at each candidate power and choose
+    # the lowest-deviance fit. Adjustment columns and group dummies are
+    # included as covariates so the comparison is on equal footing with the
+    # MFP-fitted model.
+    fixed_x <- cbind(group_dummies, xadj)
+    dev_vec <- vapply(nonunit_cand, function(p) {
+      z_p <- transform_vector_fp(
+        x     = contvar_vec,
+        power = p,
+        shift = 0,
+        scale = 1,
+        zero  = zero_var,
+        name  = cont_var
+      )
+      fit_p <- fit_model(
+        x        = cbind(z_p, fixed_x),
+        y        = y,
+        family   = family,
+        weights  = weights,
+        offset   = offset,
+        method   = ties,
+        strata   = strata,
+        control  = control,
+        nocenter = nocenter,
+        rownames = NULL,
+        fast     = TRUE
+      )
+      -2 * fit_p$logl
+    }, numeric(1L))
+    bestfp <- nonunit_cand[which.min(dev_vec)]
+  }
   
   # Step 3: Build interaction terms using the pooled FP powers ----------------
   znames             <- sprintf("%s%d1", cont_var, group_levels)
@@ -460,8 +531,9 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   )
 }
 
+
 # -----------------------------------------------------------------------------
-# flex2() — within-group FP powers, constrained equal across groups -----------
+# flex2() - within-group FP powers, constrained equal across groups -----------
 # -----------------------------------------------------------------------------
 
 #' FP Powers Estimated Within Groups, Constrained Equal (flex2)
@@ -554,7 +626,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     ct_names <- colnames(contvar_transformed)
     if (is.null(ct_names))
       ct_names <- paste0(cont_var, seq_len(ncol(contvar_transformed)))
-    contvar_transformed <- mfp2::center_matrix(
+    contvar_transformed <- center_matrix(
       mat    = contvar_transformed,
       centers = NULL,
       zero   = setNames(rep(zero_var, ncol(contvar_transformed)), ct_names)
@@ -563,7 +635,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     # z_best: each column is non-zero only for one group (structural zeros
     # elsewhere). zero = TRUE tells center_matrix() to compute the mean only
     # over non-zero rows, leaving structural zeros at zero.
-    z_best <- mfp2::center_matrix(
+    z_best <- center_matrix(
       mat    = z_best,
       centers = NULL,
       zero   = setNames(rep(TRUE, ncol(z_best)), colnames(z_best))
@@ -630,7 +702,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 
 
 # -----------------------------------------------------------------------------
-# flex3() — separate FP powers for main and interaction, equal across groups --
+# flex3() - separate FP powers for main and interaction, equal across groups --
 # -----------------------------------------------------------------------------
 
 #' Separate FP Powers for Main-Effects and Interaction Models (flex3)
@@ -741,7 +813,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 
 
 # -----------------------------------------------------------------------------
-# flex4() — group-specific FP powers (most flexible) -------------------------
+# flex4() - group-specific FP powers (most flexible) -------------------------
 # -----------------------------------------------------------------------------
 
 #' Group-Specific FP Powers for Main-Effects and Interaction Models (flex4)
@@ -750,7 +822,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' estimated independently within each group, so the functional form of
 #' `cont_var` can differ across groups. The main-effects model uses pooled
 #' powers estimated by `flex1`. The additional degrees of freedom reduce power
-#' to detect interaction relative to `flex1`–`flex3`.
+#' to detect interaction relative to `flex1`-`flex3`.
 #'
 #' @inheritParams flex_fit
 #' @return See \code{flex_fit()} for the return structure.
@@ -816,7 +888,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   force_max_fp <- setNames(c(rep(TRUE, k), rep(FALSE, n_total - k)), vnames)
   
   
-  fit_int <-fit_mfp(
+  fit_int <- fit_mfp(
     x             = xnew,
     y             = y,
     df            = df_vec,
@@ -852,7 +924,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   bestfp_interaction <- get_fp_powers(znames, fit_int$fp_terms)
   
   # Step 3: Apply group-specific FP powers to build the interaction matrix -----
-  transformed <- mfp2::transform_matrix(
+  transformed <- transform_matrix(
     x          = z_linear,
     power_list = bestfp_interaction,
     acdx       = setNames(rep(FALSE, k), znames),
@@ -869,13 +941,13 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   if (center) {
     # zero = TRUE: center_matrix computes means only over non-NA (non-zero)
     # rows per column, leaving structural zeros (NA) unaffected.
-    transformed <- mfp2::center_matrix(
+    transformed <- center_matrix(
       mat    = transformed,
       centers = NULL,
       zero   = setNames(rep(TRUE, ncol(transformed)), colnames(transformed))
     )
   }
-  transformed[is.na(transformed)] <- 0    # restore structural zeros though already handled
+  transformed[is.na(transformed)] <- 0    # restore structural zeros
   
   x_interaction <- cbind(group_dummies, transformed, xadj)
   

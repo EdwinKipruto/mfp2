@@ -38,13 +38,19 @@ LRT (may differ for \code{flex3}/\code{flex4}).}
 \item{\code{pvalue}}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
 \item{\code{df_total}}{Total parameters in the interaction model (excluding
 intercept and adjustment terms).}
+\item{\code{AIC_main}}{\eqn{\mathrm{AIC}_{\text{main}} =
+    -2\ell_{\text{main}} + 2\,p_{\text{main}}}: AIC of the main-effects
+model (no interaction).}
 \item{\code{AIC_interaction}}{\eqn{\mathrm{AIC}_{\text{int}} =
     -2\ell_{\text{int}} + 2\,p_{\text{int}}}.}
-\item{\code{BIC_interaction}}{\eqn{\mathrm{BIC}_{\text{int}} =
-    -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
 \item{\code{AIC_main_minus_int}}{\eqn{\mathrm{AIC}_{\text{main}} -
     \mathrm{AIC}_{\text{int}}}. Positive values favour the interaction
 model.}
+\item{\code{BIC_main}}{\eqn{\mathrm{BIC}_{\text{main}} =
+    -2\ell_{\text{main}} + p_{\text{main}}\log(n^*)}: BIC of the main-effects
+model (no interaction).}
+\item{\code{BIC_interaction}}{\eqn{\mathrm{BIC}_{\text{int}} =
+    -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
 \item{\code{BIC_main_minus_int}}{\eqn{\mathrm{BIC}_{\text{main}} -
     \mathrm{BIC}_{\text{int}}}. Positive values favour the interaction
 model.}

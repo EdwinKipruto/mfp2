@@ -3,18 +3,18 @@
 # test_interaction() fits the main-effects and interaction models, computes
 # the likelihood-ratio statistic, and assembles the full table of evaluation
 # metrics (deviance, df, p-value, AIC, BIC).  It is called by every flex
-# function (flex0–flex4) after the design matrices have been built.
+# function (flex0-flex4) after the design matrices have been built.
 #
 # print.best_model_metrics() provides a readable console representation
 # of the tibble returned inside the list.
 #
 # Naming conventions match the rest of the package:
-#   cont_var            — continuous variable matrix (was `contvar`)
-#   group_var           — grouping variable matrix   (was `catvar`)
-#   ties                — Cox tie-handling            (was `method`)
-#   use_ftest           — F-test flag                 (was `ftest`)
-#   bestfp_main         — FP powers for main model
-#   bestfp_interaction  — per-group FP powers for interaction model
+#   cont_var            - continuous variable matrix (was `contvar`)
+#   group_var           - grouping variable matrix   (was `catvar`)
+#   ties                - Cox tie-handling            (was `method`)
+#   use_ftest           - F-test flag                 (was `ftest`)
+#   bestfp_main         - FP powers for main model
+#   bestfp_interaction  - per-group FP powers for interaction model
 
 
 # -----------------------------------------------------------------------------
@@ -26,7 +26,7 @@
 #' Fits the main-effects model and the interaction model using pre-built design
 #' matrices, then compares them via a likelihood-ratio test. AIC and BIC for
 #' both models are also computed. The function is called by every flex
-#' implementation (flex0–flex4) and is not exported.
+#' implementation (flex0-flex4) and is not exported.
 #'
 #' @section Model specification:
 #' Both models share the same adjustment terms (included as columns of `xmain`
@@ -133,7 +133,7 @@
 #'   or `"cox"`.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param ties Character string; Cox tie-handling method — `"breslow"`,
+#' @param ties Character string; Cox tie-handling method - `"breslow"`,
 #'   `"efron"`, or `"exact"`. Ignored for non-Cox families.
 #' @param strata Integer stratum vector for stratified Cox models, or `NULL`.
 #' @param control Fitting control list from [stats::glm.control()] or
@@ -153,8 +153,9 @@
 #'     `df_interaction` (\eqn{df_{\text{int}}}),
 #'     `pvalue`,
 #'     `df_total` (total df of the interaction model),
-#'     `AIC_interaction`, `BIC_interaction`,
+#'     `AIC_main`, `AIC_interaction`,
 #'     `AIC_main_minus_int` (\eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}}),
+#'     `BIC_main`, `BIC_interaction`,
 #'     `BIC_main_minus_int` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
 #'     `fit_model()`, with `fast = FALSE` so that the full coefficient
@@ -266,9 +267,11 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     df_interaction     = df_int,
     pvalue             = round(pvalue,                     digits),
     df_total           = df_total,
+    AIC_main           = round(AIC_main,                   digits),
     AIC_interaction    = round(AIC_interaction,            digits),
-    BIC_interaction    = round(BIC_interaction,            digits),
     AIC_main_minus_int = round(AIC_main - AIC_interaction, digits),
+    BIC_main           = round(BIC_main,                   digits),
+    BIC_interaction    = round(BIC_interaction,            digits),
     BIC_main_minus_int = round(BIC_main - BIC_interaction, digits)
   )
   class(metrics) <- c("best_model_metrics", class(metrics))
@@ -313,13 +316,19 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'   \item{`pvalue`}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
 #'   \item{`df_total`}{Total parameters in the interaction model (excluding
 #'     intercept and adjustment terms).}
+#'   \item{`AIC_main`}{\eqn{\mathrm{AIC}_{\text{main}} =
+#'     -2\ell_{\text{main}} + 2\,p_{\text{main}}}: AIC of the main-effects
+#'     model (no interaction).}
 #'   \item{`AIC_interaction`}{\eqn{\mathrm{AIC}_{\text{int}} =
 #'     -2\ell_{\text{int}} + 2\,p_{\text{int}}}.}
-#'   \item{`BIC_interaction`}{\eqn{\mathrm{BIC}_{\text{int}} =
-#'     -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
 #'   \item{`AIC_main_minus_int`}{\eqn{\mathrm{AIC}_{\text{main}} -
 #'     \mathrm{AIC}_{\text{int}}}. Positive values favour the interaction
 #'     model.}
+#'   \item{`BIC_main`}{\eqn{\mathrm{BIC}_{\text{main}} =
+#'     -2\ell_{\text{main}} + p_{\text{main}}\log(n^*)}: BIC of the main-effects
+#'     model (no interaction).}
+#'   \item{`BIC_interaction`}{\eqn{\mathrm{BIC}_{\text{int}} =
+#'     -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
 #'   \item{`BIC_main_minus_int`}{\eqn{\mathrm{BIC}_{\text{main}} -
 #'     \mathrm{BIC}_{\text{int}}}. Positive values favour the interaction
 #'     model.}

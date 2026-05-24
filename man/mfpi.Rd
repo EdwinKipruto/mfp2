@@ -472,17 +472,41 @@ response \code{y}; only right-censored data are currently supported.
 
 \section{Adjustment variables}{
 
-MFPI operates in two stages. In the first stage, the MFP algorithm selects
-adjustment variables and their functional forms from all columns of \code{x}
-except the current continuous variable of interest. If no adjustment
-variables survive selection, the interaction is tested without adjustment. In
-the second stage, the selected (and possibly transformed) adjustment
-variables are included as covariates when fitting the main-effects and
-interaction models for each continuous variable listed in \code{cont_vars}.
+MFPI operates in two stages. In the first stage, the MFP algorithm is run
+\strong{once} on the full predictor matrix \code{x} to select a base set of
+adjustment variables and estimate their functional forms. This base
+selection considers all columns of \code{x} simultaneously, including the
+variables that will later be tested for interaction in \code{cont_vars}. If no
+adjustment variables survive selection, interactions are tested without
+adjustment. In the second stage, the selected (and possibly transformed)
+adjustment variables are included as covariates when fitting the
+main-effects and interaction models for each continuous variable listed
+in \code{cont_vars}.
+
+\strong{Dynamic adjustment set per \code{cont_var}.} Although the base MFP
+selection is performed once, the actual adjustment set used in stage two
+\strong{changes per \code{cont_var}}: for each continuous variable under
+evaluation, that variable is \strong{excluded} from its own adjustment
+set because it appears in the interaction model as the main effect being
+tested, not as a confounder. The group variable (and its dummy columns
+when the grouping has more than two levels) is also excluded, since it
+serves a structural role in defining the interaction. Concretely, for
+variable \eqn{x_k} in \code{cont_vars} the adjustment set in stage two is
+\deqn{
+  A_k \;=\; (\text{MFP-selected variables}) \setminus
+  \bigl(\{x_k\} \cup \{\text{group dummies}\}\bigr).
+}
+This means two \code{cont_vars} from the same \code{mfpi()} call may be adjusted
+for slightly different sets of covariates: variable \code{sz} is adjusted for
+the selected variables minus \code{sz}, while variable \code{wt} is adjusted for
+the selected variables minus \code{wt}. When \code{verbose = TRUE}, the
+per-variable adjustment set is printed in full before each candidate
+table is evaluated, so the user can verify which covariates are being
+controlled for at every step.
 
 To force adjustment variables into the model without selection or
-transformation, set \code{select = 1} and \code{alpha = 0}, or pass variable names via
-\code{force_keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}}
+transformation, set \code{select = 1} and \code{alpha = 0}, or pass variable names
+via \code{force_keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}}
 for further details.
 }
 

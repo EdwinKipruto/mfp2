@@ -223,7 +223,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   # FP-transform cont_var (handles linear and non-linear uniformly) -----------
   # zero = zero ensures non-positive values are set to 0 before transformation,
   # consistent with how mfp2:::fit_mfp() estimated the FP powers when zero = TRUE.
-  x_fp <- mfp2::transform_vector_fp(
+  x_fp <- transform_vector_fp(
     x            = cont_var,
     power        = power,
     shift        = shift,
@@ -261,7 +261,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   # zero = TRUE tells center_matrix to compute the mean only over non-zero rows,
   # leaving structural zeros (out-of-group observations) at zero.
   if (center) {
-    z <- mfp2::center_matrix(
+    z <- center_matrix(
       mat     = z,
       centers = NULL,
       zero    = setNames(rep(TRUE, ncol(z)), colnames(z))
@@ -276,7 +276,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
     fp_colnames <- colnames(x_fp)
     if (is.null(fp_colnames))
       fp_colnames <- paste0(xname, seq_len(ncol(x_fp)))
-    xtransformed <- mfp2::center_matrix(
+    xtransformed <- center_matrix(
       mat     = x_fp,
       centers = NULL,
       zero    = setNames(rep(FALSE, ncol(x_fp)), fp_colnames)
@@ -390,7 +390,7 @@ transform_z_variables <- function(cont_var, group_var,
   n_groups <- length(znames)
   
   # Generate all power combinations -------------------------------------------
-  powers_matrix  <- mfp2::generate_powers_fp(degree = fp_degree, powers = fp_cand)
+  powers_matrix  <- generate_powers_fp(degree = fp_degree, powers = fp_cand)
   n_combinations <- nrow(powers_matrix)
   
   # Per-variable control vectors ----------------------------------------------
@@ -406,7 +406,7 @@ transform_z_variables <- function(cont_var, group_var,
     )
     # Pass zero = TRUE so transform_matrix handles structural zeros correctly,
     # avoiding manual non-finite replacement after the fact.
-    transformed <- mfp2::transform_matrix(
+    transformed <- transform_matrix(
       x          = z_untrans,
       power_list = power_set,
       center     = center_map,
@@ -474,7 +474,6 @@ var_group <- function(var_prefix, var_names) {
     grep(paste0("^", var_prefix, g), matched, value = TRUE)
   })
 }
-
 
 # -----------------------------------------------------------------------------
 # adjust_reference_category() -------------------------------------------------

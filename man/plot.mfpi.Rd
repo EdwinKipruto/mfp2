@@ -10,6 +10,7 @@
   type = NULL,
   plot_type = c("fitted", "difference", "both"),
   auto_print = TRUE,
+  show_title = TRUE,
   colour_ref = "#2166AC",
   colour_grp = "#D6604D",
   colour_diff = "#1B7837",
@@ -22,22 +23,39 @@
 \arguments{
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
-\item{terms}{Character vector of variable names to plot. Default \code{NULL}
-plots all variables with significant interactions.}
+\item{terms}{Character vector of variable names to plot. Default
+\code{NULL} plots all variables that have a fitted curve available
+under the current \code{type} setting:
+when \code{type = NULL}, that is all variables with a significant
+interaction (i.e. those retained in \code{best_fitted_functions});
+when \code{type} is explicit, that is all variables with that
+candidate fit (typically all of \code{cont_vars}). If you name
+variables that have no fit under the current \code{type}, you get
+a clear message explaining why (see \emph{Plotting non-selected
+variables}).}
 
-\item{type}{Character string or \code{NULL}. Controls which functional form
-to plot: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Default
-\code{NULL} plots the \strong{best selected} form for each variable (from
-\code{model$best_fitted_functions}). Setting \code{type} explicitly plots
-that specific candidate from \code{model$all_fitted_functions} for all
-variables in \code{terms}, allowing direct comparison of functional forms
-regardless of which was selected.}
+\item{type}{Character string or \code{NULL}. Controls which functional
+form to plot: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Default
+\code{NULL} plots the \strong{best selected} form for each variable
+(from \code{model$best_fitted_functions}); variables whose interaction
+was not retained are silently skipped under this default. Setting
+\code{type} explicitly plots that specific candidate from
+\code{model$all_fitted_functions} for every variable in
+\code{cont_vars}, allowing the user to inspect a candidate curve
+regardless of whether it was the winner.}
 
 \item{plot_type}{Character string; \code{"fitted"} (default),
 \code{"difference"}, or \code{"both"}. See the \emph{Plot types} section.}
 
 \item{auto_print}{Logical. If \code{TRUE} (default), each plot is printed
 to the active graphics device as it is created.}
+
+\item{show_title}{Logical. If \code{TRUE} (default), each plot is
+annotated with a title and subtitle as described in the
+\emph{Title and subtitle annotations} section. Set to \code{FALSE}
+for clean plots without text annotations, useful when embedding in
+reports or manuscripts where the caption already describes the
+figure.}
 
 \item{colour_ref}{Character. Colour for the reference group curve and CI.
 Default \code{"#2166AC"} (blue).}
@@ -89,6 +107,64 @@ from \code{terms}. Inner names are of the form
 Each leaf is a \code{ggplot} object (\code{plot_type = "fitted"} or
 \code{"difference"}) or a \code{patchwork} object
 (\code{plot_type = "both"}).
+}
+
+\section{Title and subtitle annotations}{
+
+Each plot is annotated by default with two text lines:
+
+The \strong{title} describes the structural comparison being plotted:
+\itemize{
+\item Fitted plots: \code{"<group_var>: group <j> (red) vs group <0> (blue)"}.
+\item Difference plots: \code{"<group_var>: treatment effect (group <j> - group <0>)"}.
+}
+
+The \strong{subtitle} summarises the variable, the functional form being
+shown, and the selection metric for that form, in the format
+\code{"<variable>  |  <type>  |  <metric> = <value>"}. The metric shown
+depends on the \code{criterion} used to fit the model:
+\itemize{
+\item \code{criterion = "pvalue"} (default): shows \code{p = <pvalue>},
+the p-value of the interaction test.
+\item \code{criterion = "aic"}: shows \code{dAIC = <diff>}, where
+\code{dAIC} is \eqn{\mathrm{AIC}_{\mathrm{main}} -
+    \mathrm{AIC}_{\mathrm{interaction}}}. Positive values favour the
+interaction model.
+\item \code{criterion = "bic"}: shows \code{dBIC = <diff>}, defined
+analogously.
+}
+
+When \code{type = NULL} (default), the subtitle reports the metric of
+the \strong{selected} (winning) functional form. When \code{type} is
+explicit, the subtitle reports the metric of the \strong{requested}
+candidate (linear, FP1, or FP2), even if a different form was the
+winner. This keeps the printed metric consistent with the curve being
+shown.
+
+To suppress both title and subtitle for cleaner plots in reports or
+manuscripts, set \code{show_title = FALSE}. Axis labels (\code{xlab},
+\code{ylab}) are unaffected; they always describe what the axes mean.
+}
+
+\section{Plotting non-selected variables}{
+
+Whether a variable can be plotted depends on \code{type}:
+
+Under \code{type = NULL} (the default), only variables whose interaction
+was retained as significant have a "winner" curve stored in
+\code{best_fitted_functions}. If you call \code{plot(model)} with no
+\code{terms}, those non-selected variables are silently dropped and you
+see plots only for the variables that survived selection. If you name a
+non-selected variable explicitly in \code{terms}, you get an informative
+error pointing you to set \code{type} to a specific candidate.
+
+Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, every
+variable in \code{cont_vars} has a candidate curve in
+\code{all_fitted_functions} (provided the model was fitted with
+\code{compute_fitted = TRUE}), so you can plot the candidate fit even
+for variables that were not selected. This is useful for diagnostic
+inspection: you can see what each functional form looked like before
+the selection step and judge whether the rejection was supported.
 }
 
 \examples{

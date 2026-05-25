@@ -342,19 +342,33 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'
 #' @export
 print.best_model_metrics <- function(x, ...) {
-  x$fp_powers_main <- vapply(x$fp_powers_main, function(p) {
-    paste0("(", paste(p, collapse = ", "), ")")
-  }, character(1L))
+  # Guard: power columns may be absent if the user subset the data frame
+  # (e.g. `x[, c("type", "pvalue")]` drops fp_powers_main / fp_powers_int).
+  # Only format columns that exist and are non-empty.
+  if (!is.null(x$fp_powers_main) && length(x$fp_powers_main) > 0L) {
+    x$fp_powers_main <- vapply(x$fp_powers_main, function(p) {
+      if (is.null(p) || length(p) == 0L) "()"
+      else paste0("(", paste(p, collapse = ", "), ")")
+    }, character(1L))
+  }
   
-  x$fp_powers_int <- vapply(x$fp_powers_int, function(p_list) {
-    paste(
-      vapply(p_list, function(p)
-        paste0("(", paste(p, collapse = ", "), ")"),
-        character(1L)
-      ),
-      collapse = ", "
-    )
-  }, character(1L))
+  if (!is.null(x$fp_powers_int) && length(x$fp_powers_int) > 0L) {
+    x$fp_powers_int <- vapply(x$fp_powers_int, function(p_list) {
+      if (is.null(p_list) || length(p_list) == 0L) return("()")
+      # Flex1-3: p_list is an atomic vector; flex4: list of per-group vectors
+      if (is.list(p_list)) {
+        paste(
+          vapply(p_list, function(p) {
+            if (is.null(p) || length(p) == 0L) "()"
+            else paste0("(", paste(p, collapse = ", "), ")")
+          }, character(1L)),
+          collapse = ", "
+        )
+      } else {
+        paste0("(", paste(p_list, collapse = ", "), ")")
+      }
+    }, character(1L))
+  }
   
   print.data.frame(as.data.frame(x), row.names = FALSE, ...)
   invisible(x)

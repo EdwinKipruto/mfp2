@@ -73,12 +73,34 @@
 #'
 #' @section Influential observations:
 #' Unlike categorisation, FP-based methods are sensitive to extreme values of
-#' the continuous predictor. Before running `mfpi()`, examine the data for
-#' influential points and consider whether a small number of extreme values
-#' unduly determine the chosen functional form. Trimming or Winsorising a
-#' handful of extreme observations is an acceptable pre-processing step and
-#' should be reported transparently as part of the initial data analysis
-#' (Royston and Sauerbrei 2014).
+#' the continuous predictor. A small number of influential observations in the
+#' tails of \code{cont_vars} can disproportionately determine the chosen
+#' functional form and may produce \strong{spuriously significant
+#' interactions} that do not generalise to new data
+#' (Royston and Sauerbrei, 2014; Sauerbrei, Kipruto and Balmford, 2023). Before
+#' running \code{mfpi()}, examine the data for influential points using
+#' standard diagnostics (e.g. univariable plots, leverage statistics) and
+#' consider whether extreme values are genuine signal or measurement artefact.
+#'
+#' To mitigate this, \code{mfpi()} applies \strong{Winsorisation} to each
+#' variable in \code{cont_vars} \strong{by default} (\code{winsorize = TRUE}).
+#' Values below the lower percentile and above the upper percentile (set by
+#' \code{winsorize_probs}, default \code{c(0.01, 0.99)}) are replaced by the
+#' percentile cutoff value. Winsorisation preserves the number of
+#' observations (no rows are dropped) and only truncates extreme values; the
+#' bulk of the distribution is unaffected. Variables flagged as
+#' \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} are
+#' \strong{excluded from Winsorisation} so that both the zero spike and the
+#' positive distribution are preserved exactly; the user has indicated they
+#' carry substantive modelling meaning.
+#'
+#' The Winsorisation cutoffs actually applied are returned in the
+#' \code{winsorize_limits} component of the fitted object for transparency.
+#' To disable Winsorisation entirely, set \code{winsorize = FALSE}. To apply
+#' a heavier trim, pass e.g. \code{winsorize_probs = c(0.025, 0.975)} for a
+#' 5\\% trim or \code{c(0.05, 0.95)} for a 10\\% trim. Trimming or
+#' Winsorising should be reported transparently as part of the initial data
+#' analysis.
 #'
 #' @section Regression families (`family`):
 #' `mfpi()` accepts the same family strings as [stats::glm()]. Use
@@ -154,6 +176,21 @@
 #' Note that `spike_vars` and `catzero_vars` are mutually exclusive per
 #' variable. Setting `spike_vars` for a variable implicitly sets
 #' `catzero_vars`, which in turn implies `zero_vars`.
+#'
+#' \strong{Limitation in the interaction stage.} `zero_vars`, `catzero_vars`,
+#' and `spike_vars` are fully respected when fitting the \strong{adjustment
+#' model} (Stage 1): the MFP algorithm applies FP transformations only to
+#' positive values, includes the binary indicator where requested, and runs
+#' the SAZ selection procedure as documented in [mfp2::mfp2()]. However, in
+#' the \strong{interaction stage} (Stage 2), the current implementation
+#' tests only the \strong{FP-on-positives by group} interaction. The binary
+#' zero indicator \eqn{Z} is not crossed with the grouping variable; that is,
+#' no \eqn{Z \times \text{group}} interaction term is added or tested. This
+#' means \code{mfpi()} can detect whether the \emph{shape} of the FP
+#' relationship differs across groups among observations with strictly
+#' positive `cont_var` values, but it cannot detect whether the
+#' \emph{discrete} zero-vs-positive contrast varies across groups. A formal
+#' test for the latter is a planned direction for future development.
 #'
 #' @param x
 #'   For \code{mfpi.default()} only. A numeric matrix of dimension
@@ -380,6 +417,16 @@
 #'   returned by [stats::glm.control()] (non-Cox families) or
 #'   [survival::coxph.control()] (Cox). Default is `NULL`, which uses the
 #'   default control parameters for the chosen family.
+#' @param winsorize
+#'   Logical. Whether to Winsorise the continuous variables in `cont_vars`
+#'   before fitting, to reduce the influence of extreme observations on the
+#'   selected FP functional form. Default is `TRUE`. See the
+#'   \emph{Influential observations} section.
+#' @param winsorize_probs
+#'   Numeric vector of length 2 giving the lower and upper percentile
+#'   cutoffs used for Winsorisation. Default is `c(0.01, 0.99)`, which
+#'   truncates approximately the bottom and top 1\% of values for each
+#'   `cont_var`. Ignored when `winsorize = FALSE`.
 #' @param verbose
 #'   Logical. Whether to print progress information during model fitting.
 #'   Default is `TRUE`.
@@ -510,6 +557,8 @@ mfpi.default <- function(
     max_prop          = 0.95,
     use_ftest         = FALSE,
     control           = NULL,
+    winsorize         = TRUE,
+    winsorize_probs   = c(0.01, 0.99),
     verbose           = TRUE,
     digits            = 3,
     ...
@@ -861,14 +910,14 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, mfp2::find_shift_factor)   # already named by apply
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
   shift <- setNames(shift, vnames)
   
   if (is.null(scale)) {
-    scale <- apply(x, 2L, find_scale_factor)   # already named by apply
+    scale <- apply(x, 2L, mfp2::find_scale_factor)   # already named by apply
   } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
@@ -1006,6 +1055,38 @@ mfpi.default <- function(
     if (!is.null(istrata)) istrata <- istrata[subset]
   }
   
+  # Winsorise cont_vars to reduce influence of extreme values ------------------
+  # Variables marked as zero / catzero / spike are excluded from Winsorisation
+  # so that the zero spike and the positive distribution are both preserved.
+  winsorize_limits <- NULL
+  if (isTRUE(winsorize) && length(cont_vars) > 0L) {
+    exclude_from_win <- unique(c(zero_vars, catzero_vars, spike_vars))
+    win <- winsorize_cont_vars(
+      x         = x,
+      cont_vars = cont_vars,
+      probs     = winsorize_probs,
+      zero_vars = exclude_from_win
+    )
+    x                <- win$x
+    winsorize_limits <- win$limits
+    if (verbose) {
+      cat(sprintf(
+        "\ni Winsorising %d cont_var(s) at percentiles (%g, %g):\n",
+        length(cont_vars), winsorize_probs[1L], winsorize_probs[2L]
+      ))
+      if (length(exclude_from_win) > 0L) {
+        excluded <- intersect(exclude_from_win, cont_vars)
+        if (length(excluded) > 0L) {
+          cat(sprintf(
+            "i Excluded from Winsorisation (zero/catzero/spike): %s\n",
+            paste(excluded, collapse = ", ")
+          ))
+        }
+      }
+      print(winsorize_limits)
+    }
+  }
+  
   # Fit the MFPI model ---------------------------------------------------------
   fit <- fit_mfpi(
     x                 = x,
@@ -1045,6 +1126,11 @@ mfpi.default <- function(
     min_improvement   = min_improvement,
     digits            = digits
   )
+  
+  # Attach Winsorisation metadata for transparency in the returned object
+  fit$winsorize       <- isTRUE(winsorize)
+  fit$winsorize_probs <- if (isTRUE(winsorize)) winsorize_probs else NULL
+  fit$winsorize_limits <- winsorize_limits
   
   class(fit) <- "mfpi"
   fit
@@ -1146,6 +1232,8 @@ mfpi.formula <- function(formula,
                          max_prop          = 0.95,
                          use_ftest         = FALSE,
                          control           = NULL,
+                         winsorize         = TRUE,
+                         winsorize_probs   = c(0.01, 0.99),
                          verbose           = TRUE,
                          digits            = 3,
                          ...) {
@@ -1297,18 +1385,14 @@ mfpi.formula <- function(formula,
   # scale and shift are estimated from x (now with correct names).
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
-  scale_list  <- if (is.null(scale)) {
-    setNames(as.list(apply(x, 2L, find_scale_factor)), names_x)
-   } else {
+  scale_list  <- if (is.null(scale))
+    setNames(as.list(apply(x, 2L, mfp2::find_scale_factor)), names_x)
+  else
     setNames(rep(list(scale), nx), names_x)
-   }
-  
-  shift_list  <- if (is.null(shift)) {
-    setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
-   } else {
+  shift_list  <- if (is.null(shift))
+    setNames(as.list(apply(x, 2L, mfp2::find_shift_factor)), names_x)
+  else
     setNames(rep(list(shift), nx), names_x)
-   }
-  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
@@ -1484,6 +1568,8 @@ mfpi.formula <- function(formula,
     max_prop          = max_prop,
     use_ftest         = use_ftest,
     control           = control,
+    winsorize         = winsorize,
+    winsorize_probs   = winsorize_probs,
     verbose           = verbose,
     digits            = digits,
     ...

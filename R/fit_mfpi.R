@@ -141,7 +141,7 @@
 #' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
 #' appended to \code{x}. All parameter vectors are synchronised. Silent.
 #'
-#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
+#' \strong{Step 1 - Adjustment model.} \code{mfp2:::fit_mfp()} selects
 #' adjustment variables and FP transformations using \code{criterion}.
 #' Selected variables, their FP powers, and spike decisions are fixed for
 #' the remainder of the algorithm.
@@ -257,11 +257,10 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # re-transforming adjustment variables inside evaluate_interactions().
   # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
   # 3 = binary only) stored in the mfp2 object by fit_mfp().
-  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec)) {
+  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec))
     adjustment_model$spike_decision
-   } else {
+  else
     setNames(rep(2L, length(selected_vars)), selected_vars)
-   }
   
   # ---------------------------------------------------------------------------
   # Step 2: Evaluate univariable interactions
@@ -343,6 +342,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     group_var                = univ_results$group_var,
     show_models              = univ_results$show_models,
     flex                     = univ_results$flex,
+    criterion                = univ_results$criterion,
     group_levels_new         = univ_results$group_levels_new,
     group_levels_original    = univ_results$group_levels_original,
     family                   = univ_results$family,
@@ -554,10 +554,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   powers) and the underlying model fit.
 #'
 #' @details
-#' This function calls \code{fit_mfp()} directly via \code{:::} because
-#' \code{fit_mfp()} is not currently exported by the \pkg{mfp2} package. Once
-#' \pkg{mfp2} exports \code{fit_mfp()}, this call should be updated to use
-#' \code{::}. The \code{scale} and \code{shift} arguments are set to 1 and 0
+#' The \code{scale} and \code{shift} arguments are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to \code{x}.
 #'
 #' \code{force_max_fp} is a named logical vector already subsetted by
@@ -620,25 +617,38 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #'
 #' Assembles a compact summary table from the per-candidate metric rows
 #' collected during the interaction evaluation loop and prints it to the
-#' console. Column selection adapts to the active criterion: pvalue-based
-#' selection shows the pvalue column; AIC/BIC selection omits it.
+#' console. The displayed columns adapt to the active \code{criterion}:
 #'
-#' The table includes two power columns to help the user distinguish the
-#' FP powers from the pooled main-effects model (\code{main_power}) and the
-#' FP powers used in the interaction model (\code{int_power}). For flex1-3,
-#' interaction powers are shown as a single tuple, e.g. \code{(1, 2)}. For
-#' flex4, per-group powers are shown separately, e.g. \code{(1, 2), (0.5)}.
+#' \itemize{
+#'   \item \code{criterion = "pvalue"}: shows \code{pvalue} and \code{dBIC}.
+#'     \code{dBIC} (\eqn{\mathrm{BIC}_{\mathrm{main}} -
+#'     \mathrm{BIC}_{\mathrm{int}}}) is the tiebreaker when two candidates
+#'     have identical p-values; the candidate with the larger \code{dBIC}
+#'     wins, favouring the simpler functional form.
+#'   \item \code{criterion = "aic"}: shows \code{AIC_main},
+#'     \code{AIC_interaction}, and \code{dAIC}.
+#'   \item \code{criterion = "bic"}: shows \code{BIC_main},
+#'     \code{BIC_interaction}, and \code{dBIC}.
+#' }
+#'
+#' The table also includes two power columns to help the user distinguish
+#' the FP powers from the pooled main-effects model (\code{main_power}) and
+#' the FP powers used in the interaction model (\code{int_power}). For
+#' flex1-3, interaction powers are shown as a single tuple, e.g.
+#' \code{(1, 2)}. For flex4, per-group powers are shown separately, e.g.
+#' \code{(1, 2), (0.5)}.
 #'
 #' @param rows Named list of one-row data frames, one per candidate type
 #'   (linear, fp1, fp2). Each row must contain fields \code{pvalue},
-#'   \code{AIC_main_minus_int}, \code{BIC_main_minus_int},
+#'   \code{AIC_main}, \code{AIC_interaction}, \code{AIC_main_minus_int},
+#'   \code{BIC_main}, \code{BIC_interaction}, \code{BIC_main_minus_int},
 #'   \code{fp_powers_main}, and \code{fp_powers_int}.
 #' @param criterion Character string: \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}.
 #' @param digits Integer; number of significant digits for p-values.
 #'
-#' @return Invisible `NULL`. The function prints to the console as a side
-#'   effect.
+#' @return Invisible \code{NULL}. The function prints to the console as a
+#'   side effect.
 #'
 #' @keywords internal
 #' @noRd
@@ -696,7 +706,7 @@ format_candidate_table <- function(rows, criterion, digits) {
       criterion,
       "pvalue" = data.frame(
         pvalue = safe_fmt(metrics$pvalue,             fmt = "g", digits = digits),
-        dAIC   = safe_fmt(metrics$AIC_main_minus_int, fmt = "f", digits = 2),
+        dBIC   = safe_fmt(metrics$BIC_main_minus_int, fmt = "f", digits = 2),
         stringsAsFactors = FALSE
       ),
       "aic"    = data.frame(
@@ -750,7 +760,7 @@ format_candidate_table <- function(rows, criterion, digits) {
 #'   for the adjustment variables, as stored in \code{adjustment_model$spike_decision}
 #'   by \code{fit_mfp()}. Values: \code{1} = FP term + binary indicator,
 #'   \code{2} = FP term only (default), \code{3} = binary indicator only.
-#'   Used when re-transforming adjustment variables via \code{mfp2::transform_matrix()}
+#'   Used when re-transforming adjustment variables via \code{transform_matrix()}
 #'   to ensure binary indicators for semi-continuous adjustment variables are
 #'   included or suppressed consistently with the adjustment model.
 #' @param cont_vars Character vector of continuous variables to test.
@@ -810,19 +820,25 @@ format_candidate_table <- function(rows, criterion, digits) {
 #' \describe{
 #'   \item{\code{"pvalue"}}{Retain candidates with p-value strictly below
 #'     \code{p_interact}. Among retained candidates, select the one with the
-#'     **smallest p-value**. Ties are broken by the **largest
-#'     \code{AIC_main_minus_int}**, favouring the more parsimonious fit.}
+#'     \strong{smallest p-value}. Ties are broken by the \strong{largest
+#'     \code{BIC_main_minus_int}}: when two candidates achieve identical
+#'     p-values, the one with the larger BIC improvement wins. BIC penalises
+#'     complexity more heavily than AIC (penalty grows as
+#'     \eqn{k\log n} rather than \eqn{2k}), so this rule favours the
+#'     \strong{simpler} functional form when statistical evidence is equally
+#'     strong - aligning with the parsimony principle of FP selection.}
 #'   \item{\code{"aic"}}{Retain candidates with \code{AIC_main_minus_int}
 #'     strictly above \code{min_improvement}. Select the one with the
-#'     **largest \code{AIC_main_minus_int}}.}
+#'     \strong{largest \code{AIC_main_minus_int}}.}
 #'   \item{\code{"bic"}}{Same as \code{"aic"} using \code{BIC_main_minus_int}.}
 #' }
 #'
 #' \code{AIC_main_minus_int} and \code{BIC_main_minus_int} are defined as
 #' \eqn{\mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{interaction}} and
 #' \eqn{\mathrm{BIC}_\text{main} - \mathrm{BIC}_\text{interaction}}
-#' respectively. A **positive** value indicates that the interaction model
-#' fits better (lower information criterion) than the main-effects model.
+#' respectively. A \strong{positive} value indicates that the interaction
+#' model fits better (lower information criterion) than the main-effects
+#' model.
 #'
 #' If no candidate clears its threshold, no interaction is retained for that
 #' variable and it is excluded from \code{best_model_metrics}.
@@ -1003,13 +1019,17 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       # Select best model according to criterion --------------------------------
       if (criterion == "pvalue") {
         pval      <- metrics$pvalue[1L]
-        aic_delta <- metrics$AIC_main_minus_int[1L]
+        # Tiebreaker: when two candidates have identical p-values, prefer the
+        # one with the larger BIC improvement (dBIC = BIC_main - BIC_int).
+        # BIC penalises complexity more heavily than AIC, so it favours the
+        # simpler functional form when both are equally significant.
+        bic_delta <- metrics$BIC_main_minus_int[1L]
         if (!is.na(pval) && pval < p_interact) {
-          best_aic <- if (!is.null(best_fit))
-            best_fit$test_results$evaluation_metrics$AIC_main_minus_int[1L]
+          best_bic <- if (!is.null(best_fit))
+            best_fit$test_results$evaluation_metrics$BIC_main_minus_int[1L]
           else -Inf
           if (pval < best_score ||
-              (pval == best_score && !is.na(aic_delta) && aic_delta > best_aic)) {
+              (pval == best_score && !is.na(bic_delta) && bic_delta > best_bic)) {
             best_fit    <- fit_result
             best_metric <- metrics
             best_type   <- interaction_type
@@ -1124,6 +1144,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     group_levels_new         = cat_info$new_levels,
     group_levels_original    = cat_info$original_levels,
     flex                     = flex,
+    criterion                = criterion,
     family                   = family,
     nobs                     = nobs
   )

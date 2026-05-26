@@ -2,7 +2,7 @@
 #
 # gen_fitted_values_per_group() computes group-specific FP fitted functions,
 # their pointwise standard errors, and 95% confidence intervals from a fitted
-# interaction model. It is called by flex0–flex4 whenever compute_fitted = TRUE
+# interaction model. It is called by flex0-flex4 whenever compute_fitted = TRUE
 # and is intended to feed the plotting layer and, eventually, predict.mfpi().
 #
 # The `data_input` argument (original vs. equidistant grid) belongs in
@@ -10,10 +10,10 @@
 # backward compatibility but marked clearly in the documentation.
 #
 # Naming conventions match the rest of the package:
-#   cont_var          — the continuous variable matrix
-#   group_var         — the grouping variable matrix
-#   group_fp_powers   — named list of per-group FP powers (was `powers`)
-#   interaction_model — fitted model object from test_interaction()
+#   cont_var          - the continuous variable matrix
+#   group_var         - the grouping variable matrix
+#   group_fp_powers   - named list of per-group FP powers (was `powers`)
+#   interaction_model - fitted model object from test_interaction()
 
 
 # -----------------------------------------------------------------------------
@@ -49,12 +49,23 @@
 #' @param group_var A one-column numeric matrix of the grouping variable.
 #'   Must have a column name.
 #' @param family Character string; the regression family used to fit the
-#'   interaction model — `"gaussian"`, `"binomial"`, `"poisson"`, or `"cox"`.
+#'   interaction model - `"gaussian"`, `"binomial"`, `"poisson"`, or `"cox"`.
 #'   For Cox models the intercept is set to zero.
 #' @param transform Logical. Whether to FP-transform `cont_var` using
 #'   `group_fp_powers` before computing fitted values. Default `TRUE`.
 #' @param center Logical. Whether to mean-centre the transformed variables.
 #'   Should match the `center` setting used in [mfp2::mfpi()]. Default `FALSE`.
+#' @param center_vals Named numeric vector of centering constants, one per
+#'   column of the FP-transformed group-specific block matrix. When supplied
+#'   (as returned by \code{create_z_variables()$center_vals} and threaded
+#'   through the flex functions), these exact values are subtracted from
+#'   \code{x_split} so that the evaluation is consistent with how the model
+#'   was fitted. If \code{NULL} and \code{center = TRUE}, falls back to
+#'   \code{colMeans(x_split)}.
+#' @param center_type Character string; \code{"grand"} or \code{"group"}.
+#'   Only used in the fallback path (when \code{center_vals = NULL}).
+#'   Controls whether the fallback centering uses the grand mean of all
+#'   observations or within-group means. Default \code{"grand"}.
 #' @param use_grid Logical. If `TRUE`, replaces `cont_var` with a 200-point
 #'   equidistant sequence spanning its observed range before computing fitted
 #'   values. Useful for smooth plotting curves. Default `FALSE`.
@@ -66,15 +77,15 @@
 #'   over all group levels:
 #' \describe{
 #'   \item{`<varname>`}{The (possibly grid-replaced) values of `cont_var`.}
-#'   \item{`f0`, `f1`, …}{Fitted linear predictor for each group.}
-#'   \item{`se(f0)`, `se(f1)`, …}{Pointwise standard errors.}
-#'   \item{`f0_lower`, `f0_upper`, …}{95% confidence interval bounds.}
-#'   \item{`f1-f0`, `f2-f0`, …}{Pointwise difference relative to group 0.}
-#'   \item{`se(f1-f0)`, …}{Standard errors of the differences.}
-#'   \item{`(f1-f0)_lower`, `(f1-f0)_upper`, …}{95% CI bounds for differences.}
+#'   \item{`f0`, `f1`, ...}{Fitted linear predictor for each group.}
+#'   \item{`se(f0)`, `se(f1)`, ...}{Pointwise standard errors.}
+#'   \item{`f0_lower`, `f0_upper`, ...}{95% confidence interval bounds.}
+#'   \item{`f1-f0`, `f2-f0`, ...}{Pointwise difference relative to group 0.}
+#'   \item{`se(f1-f0)`, ...}{Standard errors of the differences.}
+#'   \item{`(f1-f0)_lower`, `(f1-f0)_upper`, ...}{95% CI bounds for differences.}
 #' }
 #'
-#' @seealso \code{create_z_variables()}, \code{compute_std_errors_diff()},
+#' @seealso \code{create_z_variables()}, \code{compute_diff_standard_errors()},
 #'   \code{var_group()}
 #'
 #' @keywords internal
@@ -85,9 +96,13 @@ gen_fitted_values_per_group <- function(cont_var,
                                         group_var,
                                         family,
                                         family_string,
-                                        transform  = TRUE,
-                                        center     = FALSE,
-                                        use_grid   = FALSE) {
+                                        transform   = TRUE,
+                                        center      = FALSE,
+                                        center_vals = NULL,
+                                        center_type = c("grand", "group"),
+                                        use_grid    = FALSE) {
+  
+  center_type <- match.arg(center_type)
   
   # Input validation -----------------------------------------------------------
   if (!is.matrix(cont_var) || ncol(cont_var) != 1L)
@@ -109,8 +124,11 @@ gen_fitted_values_per_group <- function(cont_var,
   coef_vec   <- interaction_model$coefficients
   coef_names <- names(coef_vec)
   
-  # Cox models have no intercept; all others include one
-  intercept <- if (family_string == "cox") 0 else coef_vec["(Intercept)"]
+  # Cox models have no intercept; all others include one.
+  # Use an explicit flag rather than extracting the intercept value, so that
+  # downstream checks are not affected by named-vector comparison issues.
+  has_intercept <- family_string != "cox" && "(Intercept)" %in% names(coef_vec)
+  intercept     <- if (has_intercept) unname(coef_vec["(Intercept)"]) else 0
   
   # Identify which coefficient blocks belong to each group --------------------
   groups     <- var_group(cont_name, coef_names)
@@ -149,7 +167,7 @@ gen_fitted_values_per_group <- function(cont_var,
     center_map <- stats::setNames(rep(FALSE, n_groups), znames)
     acd_map    <- stats::setNames(rep(FALSE, n_groups), znames)
     
-    x_split <- transform_matrix(
+    x_split <- mfp2::transform_matrix(
       x          = x_split,
       power_list = group_fp_powers,
       center     = center_map,
@@ -162,9 +180,24 @@ gen_fitted_values_per_group <- function(cont_var,
   }
   
   # Optional mean-centring of transformed variables ---------------------------
+  # When center_vals is supplied (from fit time), reuse those exact constants.
+  # Fallback: recompute from x_split using the requested center_type strategy.
   if (center) {
-    col_means <- colMeans(x_split, na.rm = TRUE)
-    x_split   <- sweep(x_split, 2L, col_means, "-", check.margin = FALSE)
+    if (!is.null(center_vals)) {
+      col_means <- center_vals
+    } else if (center_type == "grand") {
+      col_means <- colMeans(x_split, na.rm = TRUE)
+    } else {
+      # Within-group means: mean over in-group rows only (mirroring create_z_variables)
+      col_means <- vapply(seq_len(n_groups), function(gi) {
+        grp_cols <- seq.int((gi - 1L) * (ncol(x_split) %/% n_groups) + 1L,
+                            gi       * (ncol(x_split) %/% n_groups))
+        in_grp   <- as.vector(group_var) == grp_levels[gi]
+        colMeans(x_split[in_grp, grp_cols, drop = FALSE], na.rm = TRUE)
+      }, numeric(ncol(x_split) %/% n_groups))
+      col_means <- as.vector(col_means)
+    }
+    x_split <- sweep(x_split, 2L, col_means, "-", check.margin = FALSE)
   }
   
   # Dummy-variable names for the grouping variable (non-reference levels) -----
@@ -200,14 +233,14 @@ gen_fitted_values_per_group <- function(cont_var,
     x_var       <- x_grp
     x_var_names <- grp_coef_names
     
-    if (!identical(intercept, 0)) {
+    if (has_intercept) {
       x_var       <- cbind(1, x_var)
       x_var_names <- c("(Intercept)", x_var_names)
     }
     
     group_coef_offset <- 0
     if (i > 1L) {
-      group_coef_offset <- coef_vec[group_dummy_names[i - 1L]]
+      group_coef_offset <- unname(coef_vec[group_dummy_names[i - 1L]])
       x_var             <- cbind(x_var, 1)
       x_var_names       <- c(x_var_names, group_dummy_names[i - 1L])
     }

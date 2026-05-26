@@ -108,6 +108,10 @@
 #' @param verbose Logical. Whether to print progress messages.
 #' @param quiet Logical. Suppresses per-variable messages when no significant
 #'   interaction is found.
+#' @param center_type Character string; \code{"grand"} (default) or
+#'   \code{"group"}. Passed to \code{create_z_variables()} to control the
+#'   centering strategy when \code{center = TRUE}. The constants are stored
+#'   in \code{center_vals_list} on the returned list.
 #' @param digits Positive integer. Significant digits for printed output.
 #'
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
@@ -141,7 +145,7 @@
 #' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
 #' appended to \code{x}. All parameter vectors are synchronised. Silent.
 #'
-#' \strong{Step 1 - Adjustment model.} \code{mfp2:::fit_mfp()} selects
+#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
 #' adjustment variables and FP transformations using \code{criterion}.
 #' Selected variables, their FP powers, and spike decisions are fixed for
 #' the remainder of the algorithm.
@@ -168,7 +172,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      catzero_vars, spike_vars, min_prop, max_prop, use_ftest,
                      control, group_var, include_group_var, flex, cont_vars,
                      p_interact, min_improvement, show_models, verbose,
-                     digits) {
+                     digits,
+                     center_type) {
+  
   
   # ---------------------------------------------------------------------------
   # Pre-processing: synchronise parameter vectors and remap group levels
@@ -312,6 +318,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     min_improvement    = min_improvement,
     min_prop           = min_prop,
     max_prop           = max_prop,
+    center_type        = center_type,
     verbose            = verbose
   )
   
@@ -331,13 +338,13 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   }
   
   list(
-    # Top-level fields: directly accessible as fit$field by print/summary methods
-    best_model_metrics = univ_results$best_model_metrics,
+    best_model_metrics       = univ_results$best_model_metrics,
     all_model_metrics        = univ_results$all_model_metrics,
-    best_interaction_model       = univ_results$best_interaction_model,
+    best_interaction_model   = univ_results$best_interaction_model,
     all_interaction_models   = univ_results$all_interaction_models,
-    best_fitted_functions         = univ_results$best_fitted_functions,
+    best_fitted_functions    = univ_results$best_fitted_functions,
     all_fitted_functions     = univ_results$all_fitted_functions,
+    center_vals_list         = univ_results$center_vals_list,
     adjust_terms             = adjustment_model$fp_terms,
     group_var                = univ_results$group_var,
     show_models              = univ_results$show_models,
@@ -347,7 +354,6 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     group_levels_original    = univ_results$group_levels_original,
     family                   = univ_results$family,
     nobs                     = univ_results$nobs,
-    # Full sub-objects retained for programmatic access
     adjustment_model         = adjustment_model,
     univariable_interactions = univ_results
   )
@@ -620,8 +626,12 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #' console. The displayed columns adapt to the active \code{criterion}:
 #'
 #' \itemize{
-#'   \item \code{criterion = "pvalue"}: shows \code{pvalue} and \code{dBIC}.
-#'     \code{dBIC} (\eqn{\mathrm{BIC}_{\mathrm{main}} -
+#'   \item \code{criterion = "pvalue"}: shows \code{deviance_int}
+#'     (deviance of the interaction model, \eqn{-2\ell_{\mathrm{int}}}),
+#'     \code{deviance_diff} (likelihood-ratio statistic
+#'     \eqn{-2\ell_{\mathrm{main}} + 2\ell_{\mathrm{int}}}),
+#'     \code{df} (interaction degrees of freedom), \code{pvalue}, and
+#'     \code{dBIC}. \code{dBIC} (\eqn{\mathrm{BIC}_{\mathrm{main}} -
 #'     \mathrm{BIC}_{\mathrm{int}}}) is the tiebreaker when two candidates
 #'     have identical p-values; the candidate with the larger \code{dBIC}
 #'     wins, favouring the simpler functional form.
@@ -705,8 +715,11 @@ format_candidate_table <- function(rows, criterion, digits) {
     crit_cols <- switch(
       criterion,
       "pvalue" = data.frame(
-        pvalue = safe_fmt(metrics$pvalue,             fmt = "g", digits = digits),
-        dBIC   = safe_fmt(metrics$BIC_main_minus_int, fmt = "f", digits = 2),
+        deviance_int  = safe_fmt(metrics$deviance_int,        fmt = "f", digits = 2),
+        deviance_diff = safe_fmt(metrics$deviance_diff,       fmt = "f", digits = 2),
+        df            = safe_fmt(metrics$df_interaction,      fmt = "d", digits = 0),
+        pvalue        = safe_fmt(metrics$pvalue,              fmt = "g", digits = digits),
+        dBIC          = safe_fmt(metrics$BIC_main_minus_int,  fmt = "f", digits = 2),
         stringsAsFactors = FALSE
       ),
       "aic"    = data.frame(
@@ -779,6 +792,9 @@ format_candidate_table <- function(rows, criterion, digits) {
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
 #' @param digits Positive integer. Significant digits for printed output.
+#' @param center_type Character string; \code{"grand"} (default) or
+#'   \code{"group"}. Centering strategy for FP-transformed interaction
+#'   variables. Passed through to \code{create_z_variables()}.
 #' @param group_var Character string. Name of the grouping variable.
 #' @param show_models Logical. Whether to print model summaries.
 #' @param p_interact Numeric. Significance threshold for `criterion = "pvalue"`.
@@ -854,8 +870,10 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   family_string, fp_powers, cycles, criterion,
                                   digits, group_var, show_models, p_interact,
                                   min_improvement, min_prop, max_prop,
+                                  center_type,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   quiet = FALSE, verbose = FALSE) {
+  
   
   # Input validation for skip_adjustment / xadj --------------------------------
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
@@ -886,11 +904,13 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   all_interaction_models <- vector("list", n_vars)   # all three candidates
   best_fitted_functions       <- vector("list", n_vars)   # winner fitted values
   all_fitted_functions   <- vector("list", n_vars)   # all three candidates
+  center_vals_list       <- vector("list", n_vars)   # centering constants per var
   
   names(best_interaction_model) <- cont_vars
   names(all_interaction_models) <- cont_vars
   names(best_fitted_functions)       <- cont_vars
   names(all_fitted_functions)   <- cont_vars
+  names(center_vals_list)       <- cont_vars
   
   best_idx     <- 0L   # counter for significant variables
   all_idx      <- 0L   # counter for all models
@@ -982,6 +1002,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         fp_cand       = processed_data$updated_params$fp_powers[[var_name]],
         use_ftest     = use_ftest,
         center        = processed_data$updated_params$center[var_name],
+        center_type   = center_type,
         xorder        = xorder,
         weights       = weights,
         offset        = offset,
@@ -1068,9 +1089,10 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     
     if (!is.null(best_fit)) {
       best_idx <- best_idx + 1L
-      best_metrics_list[[best_idx]]    <- best_metric
-      best_interaction_model[[var_name]]   <- best_fit$test_results$interaction_model
+      best_metrics_list[[best_idx]]         <- best_metric
+      best_interaction_model[[var_name]]    <- best_fit$test_results$interaction_model
       best_fitted_functions[[var_name]]     <- best_fit$fitted_functions
+      center_vals_list[[var_name]]          <- best_fit$center_vals
       
       if (verbose) {
         type_label <- toupper(gsub("fp", "FP", best_type))
@@ -1133,12 +1155,13 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   }
   
   list(
-    best_model_metrics = combined_metrics,
+    best_model_metrics       = combined_metrics,
     all_model_metrics        = all_model_metrics,
     best_interaction_model   = best_interaction_model,
     all_interaction_models   = all_interaction_models,
-    best_fitted_functions         = best_fitted_functions,
+    best_fitted_functions    = best_fitted_functions,
     all_fitted_functions     = all_fitted_functions,
+    center_vals_list         = center_vals_list,
     group_var                = group_var,
     show_models              = show_models,
     group_levels_new         = cat_info$new_levels,

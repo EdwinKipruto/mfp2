@@ -427,6 +427,24 @@
 #'   cutoffs used for Winsorisation. Default is `c(0.01, 0.99)`, which
 #'   truncates approximately the bottom and top 1\% of values for each
 #'   `cont_var`. Ignored when `winsorize = FALSE`.
+#' @param center_type
+#'   Character string controlling how the FP-transformed continuous variables
+#'   are centred when \code{center = TRUE}. One of:
+#'   \describe{
+#'     \item{\code{"grand"} (default)}{Centre each column of the
+#'       group-specific block matrix by the grand mean of the
+#'       FP-transformed \code{cont_var} across all observations. Matches
+#'       the original MFPI implementation (Royston and Sauerbrei, 2008).}
+#'     \item{\code{"group"}}{Centre each group's columns by the
+#'       within-group mean, i.e. the mean of in-group observations only.
+#'       This removes group-specific location effects from the
+#'       FP-transformed variable before fitting.}
+#'   }
+#'   The centering constants computed at fit time are stored in
+#'   \code{center_vals_list} on the returned object and reused exactly
+#'   during evaluation of fitted functions and future prediction, so
+#'   the absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)}
+#'   are always consistent with the fitted model coefficients.
 #' @param verbose
 #'   Logical. Whether to print progress information during model fitting.
 #'   Default is `TRUE`.
@@ -559,6 +577,7 @@ mfpi.default <- function(
     control           = NULL,
     winsorize         = TRUE,
     winsorize_probs   = c(0.01, 0.99),
+    center_type       = c("grand", "group"),
     verbose           = TRUE,
     digits            = 3,
     ...
@@ -566,11 +585,12 @@ mfpi.default <- function(
   cl <- match.call()
   
   # Match enumerated arguments -------------------------------------------------
-  family    <- match.arg(family)
-  xorder    <- match.arg(xorder)
-  criterion <- match.arg(criterion)
-  flex      <- match.arg(flex)
-  ties      <- match.arg(ties)
+  family      <- match.arg(family)
+  xorder      <- match.arg(xorder)
+  criterion   <- match.arg(criterion)
+  flex        <- match.arg(flex)
+  ties        <- match.arg(ties)
+  center_type <- match.arg(center_type)
   
   # Resolve family: convert string to GLM object for non-Cox families ----------
   # mfp2:::fit_mfp() and mfp2:::fit_model() expect a GLM family object for
@@ -910,14 +930,14 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, mfp2::find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
   shift <- setNames(shift, vnames)
   
   if (is.null(scale)) {
-    scale <- apply(x, 2L, mfp2::find_scale_factor)   # already named by apply
+    scale <- apply(x, 2L, find_scale_factor)   # already named by apply
   } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
@@ -1124,7 +1144,8 @@ mfpi.default <- function(
     p_interact        = p_interact,
     show_models       = show_models,
     min_improvement   = min_improvement,
-    digits            = digits
+    digits            = digits,
+    center_type       = center_type
   )
   
   # Attach Winsorisation metadata for transparency in the returned object
@@ -1234,6 +1255,7 @@ mfpi.formula <- function(formula,
                          control           = NULL,
                          winsorize         = TRUE,
                          winsorize_probs   = c(0.01, 0.99),
+                         center_type       = c("grand", "group"),
                          verbose           = TRUE,
                          digits            = 3,
                          ...) {
@@ -1386,11 +1408,11 @@ mfpi.formula <- function(formula,
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
   scale_list  <- if (is.null(scale))
-    setNames(as.list(apply(x, 2L, mfp2::find_scale_factor)), names_x)
+    setNames(as.list(apply(x, 2L, find_scale_factor)), names_x)
   else
     setNames(rep(list(scale), nx), names_x)
   shift_list  <- if (is.null(shift))
-    setNames(as.list(apply(x, 2L, mfp2::find_shift_factor)), names_x)
+    setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
   else
     setNames(rep(list(shift), nx), names_x)
   center_list <- setNames(rep(list(center), nx), names_x)
@@ -1570,6 +1592,7 @@ mfpi.formula <- function(formula,
     control           = control,
     winsorize         = winsorize,
     winsorize_probs   = winsorize_probs,
+    center_type       = center_type,
     verbose           = verbose,
     digits            = digits,
     ...

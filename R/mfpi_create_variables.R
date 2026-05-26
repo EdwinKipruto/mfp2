@@ -101,8 +101,8 @@ create_group_dummies <- function(x, levels = NULL) {
 
 # Utility functions for MFPI interaction design matrices
 #
-# create_z_variables()    — group-specific FP-transformed block matrix
-# transform_z_variables() — enumerate all FP power combinations for flex2/flex4
+# create_z_variables()    - group-specific FP-transformed block matrix
+# transform_z_variables() - enumerate all FP power combinations for flex2/flex4
 
 
 # -----------------------------------------------------------------------------
@@ -139,45 +139,49 @@ create_group_dummies <- function(x, levels = NULL) {
 #' @param scale Numeric scalar dividing \code{cont_var} after shifting.
 #'   If \code{NULL}, estimated by \code{mfp2::find_scale_factor()}.
 #' @param center Logical. If \code{TRUE}, centres both return matrices using
-#'   different strategies — see the \emph{Centering} section. Default
+#'   different strategies - see the \emph{Centering} section. Default
 #'   \code{FALSE}.
 #' @param zero Logical. If \code{TRUE}, non-positive values in \code{cont_var}
 #'   are treated as structural zeros: excluded from mean computation when
 #'   \code{center = TRUE} and reset to zero after centering. Default
 #'   \code{FALSE}.
+#' @param center_type Character string. Controls the centering strategy when
+#'   \code{center = TRUE}. One of \code{"grand"} (default) or \code{"group"}.
+#'   See the \emph{Centering} section.
 #'
 #' @section Centering:
-#' Two distinct strategies are used depending on the return component:
-#'
+#' When \code{center = TRUE}, the centering strategy is controlled by
+#' \code{center_type}:
 #' \describe{
-#'   \item{\code{z} (group-specific interaction matrix)}{Each column belongs
-#'     to one group and contains structural zeros for all out-of-group
-#'     observations. When \code{center = TRUE}, each column is centred by its
-#'     \strong{within-group mean} — the mean of the non-zero (in-group) values
-#'     only, via \code{mfp2::center_matrix(zero = TRUE)}.
-#'     This ensures group 0\'s column is centred around group 0\'s mean and
-#'     group 1\'s column around group 1\'s mean, which is the correct reference
-#'     for each group-specific FP curve. Using the pooled mean would be wrong
-#'     because the two groups may have different covariate distributions.}
-#'   \item{\code{xtransformed} (pooled FP-transformed \code{cont_var})}{Used in
-#'     the main-effects model to represent the overall trend. When
-#'     \code{center = TRUE}, centred by the \strong{grand mean} across all
-#'     transformed values. No structural-zero special-casing is applied here
-#'     because \code{xtransformed} is a standard continuous column — any zeros
-#'     that may exist after FP transformation are valid transformed values,
-#'     not indicators of group absence.}
+#'   \item{\code{"grand"} (default)}{Both \code{z} and \code{xtransformed}
+#'     are centred by the \strong{grand mean} of the full FP-transformed
+#'     \code{cont_var} across all observations. Each group's columns in
+#'     \code{z} share the same constants as \code{xtransformed}. This
+#'     matches the original MFPI implementation.}
+#'   \item{\code{"group"}}{Each group's columns in \code{z} are centred by
+#'     the \strong{within-group mean} -- the mean of in-group observations
+#'     only (structural zeros excluded). Useful when groups have very
+#'     different covariate distributions.}
 #' }
+#' The centering constants actually applied are returned as \code{center_vals}
+#' and must be reused during evaluation of fitted functions to ensure the
+#' absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)} are
+#' consistent with the fitted model coefficients.
 #'
-#' @return A list with two elements:
+#' @return A list with three elements:
 #' \describe{
 #'   \item{\code{z}}{Numeric matrix of group-specific FP-transformed variables,
 #'     \eqn{n \times KJ}. Each column is non-zero only for its own group.
-#'     When \code{center = TRUE}, each column is centred by its within-group
-#'     mean.}
+#'     When \code{center = TRUE}, each column is centred by the grand mean
+#'     of the corresponding FP-transformed \code{cont_var} column.}
 #'   \item{\code{xtransformed}}{FP-transformed \code{cont_var} pooled across
 #'     all observations, \eqn{n \times J}. When \code{center = TRUE}, centred
-#'     by the grand mean of all transformed values (standard centering, no
-#'     structural-zero adjustment).}
+#'     by the same grand-mean constants as \code{z}.}
+#'   \item{\code{center_vals}}{Named numeric vector of centering constants
+#'     (one per column of \code{z}) reflecting the chosen \code{center_type}
+#'     strategy, or \code{NULL} when \code{center = FALSE}. These are the
+#'     exact values subtracted from \code{z} during fitting and must be
+#'     reused when evaluating fitted functions for new data.}
 #' }
 #'
 #' @seealso \code{mfp2::transform_vector_fp()}, \code{transform_z_variables()}
@@ -191,7 +195,10 @@ create_group_dummies <- function(x, levels = NULL) {
 #' @export
 create_z_variables <- function(cont_var, group_var, power = 1,
                                shift = NULL, scale = NULL,
-                               center = FALSE, zero = FALSE) {
+                               center = FALSE, zero = FALSE,
+                               center_type = c("grand", "group")) {
+  
+  center_type <- match.arg(center_type)
   
   # Input validation -----------------------------------------------------------
   if (!is.matrix(cont_var) || ncol(cont_var) != 1L)
@@ -223,7 +230,7 @@ create_z_variables <- function(cont_var, group_var, power = 1,
   # FP-transform cont_var (handles linear and non-linear uniformly) -----------
   # zero = zero ensures non-positive values are set to 0 before transformation,
   # consistent with how mfp2:::fit_mfp() estimated the FP powers when zero = TRUE.
-  x_fp <- transform_vector_fp(
+  x_fp <- mfp2::transform_vector_fp(
     x            = cont_var,
     power        = power,
     shift        = shift,
@@ -257,33 +264,40 @@ create_z_variables <- function(cont_var, group_var, power = 1,
     rep(seq_len(j),   times = k)
   )
   
-  # Centre each column of z by its within-group mean (mean of non-zero values).
-  # zero = TRUE tells center_matrix to compute the mean only over non-zero rows,
-  # leaving structural zeros (out-of-group observations) at zero.
+  # Centre z using the strategy selected by center_type:
+  #   "grand" - grand mean of the full FP-transformed x (all observations).
+  #             Matches the original MFPI implementation.
+  #   "group" - within-group mean (mean of in-group observations only).
+  #             Each group's column is centred around its own distribution.
   if (center) {
-    z <- center_matrix(
-      mat     = z,
-      centers = NULL,
-      zero    = setNames(rep(TRUE, ncol(z)), colnames(z))
-    )
+    if (center_type == "grand") {
+      fp_means    <- colMeans(x_fp, na.rm = TRUE)
+      center_vals <- rep(fp_means, times = k)
+    } else {
+      # Within-group means: for each group column, compute mean over in-group
+      # rows only (out-of-group rows are structural zeros and excluded).
+      center_vals <- vapply(seq_len(ncol(z)), function(col_i) {
+        vals <- z[, col_i]
+        mean(vals[vals != 0], na.rm = TRUE)
+      }, numeric(1L))
+      names(center_vals) <- colnames(z)
+    }
+    z <- sweep(z, 2L, center_vals, "-", check.margin = FALSE)
   }
   
   # xtransformed: pooled FP-transformed cont_var used in the main-effects model.
-  # Centred by the grand mean of all transformed values — no structural zero
-  # special-casing needed here since this is the pooled continuous term.
+  # Centred by the grand mean of all transformed values.
   xtransformed <- x_fp
   if (center) {
-    fp_colnames <- colnames(x_fp)
-    if (is.null(fp_colnames))
-      fp_colnames <- paste0(xname, seq_len(ncol(x_fp)))
-    xtransformed <- center_matrix(
-      mat     = x_fp,
-      centers = NULL,
-      zero    = setNames(rep(FALSE, ncol(x_fp)), fp_colnames)
-    )
+
+    xtransformed <- sweep(x_fp, 2L, fp_means, "-", check.margin = FALSE)
   }
   
-  list(z = z, xtransformed = xtransformed)
+  list(
+    z            = z,
+    xtransformed = xtransformed,
+    center_vals  = if (center) center_vals else NULL
+  )
 }
 
 
@@ -390,7 +404,7 @@ transform_z_variables <- function(cont_var, group_var,
   n_groups <- length(znames)
   
   # Generate all power combinations -------------------------------------------
-  powers_matrix  <- generate_powers_fp(degree = fp_degree, powers = fp_cand)
+  powers_matrix  <- mfp2::generate_powers_fp(degree = fp_degree, powers = fp_cand)
   n_combinations <- nrow(powers_matrix)
   
   # Per-variable control vectors ----------------------------------------------
@@ -406,7 +420,7 @@ transform_z_variables <- function(cont_var, group_var,
     )
     # Pass zero = TRUE so transform_matrix handles structural zeros correctly,
     # avoiding manual non-finite replacement after the fact.
-    transformed <- transform_matrix(
+    transformed <- mfp2::transform_matrix(
       x          = z_untrans,
       power_list = power_set,
       center     = center_map,

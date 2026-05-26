@@ -11,7 +11,8 @@ create_z_variables(
   shift = NULL,
   scale = NULL,
   center = FALSE,
-  zero = FALSE
+  zero = FALSE,
+  center_type = c("grand", "group")
 )
 }
 \arguments{
@@ -30,25 +31,33 @@ If \code{NULL}, estimated by \code{mfp2::find_shift_factor()}.}
 If \code{NULL}, estimated by \code{mfp2::find_scale_factor()}.}
 
 \item{center}{Logical. If \code{TRUE}, centres both return matrices using
-different strategies — see the \emph{Centering} section. Default
+different strategies - see the \emph{Centering} section. Default
 \code{FALSE}.}
 
 \item{zero}{Logical. If \code{TRUE}, non-positive values in \code{cont_var}
 are treated as structural zeros: excluded from mean computation when
 \code{center = TRUE} and reset to zero after centering. Default
 \code{FALSE}.}
+
+\item{center_type}{Character string. Controls the centering strategy when
+\code{center = TRUE}. One of \code{"grand"} (default) or \code{"group"}.
+See the \emph{Centering} section.}
 }
 \value{
-A list with two elements:
+A list with three elements:
 \describe{
 \item{\code{z}}{Numeric matrix of group-specific FP-transformed variables,
 \eqn{n \times KJ}. Each column is non-zero only for its own group.
-When \code{center = TRUE}, each column is centred by its within-group
-mean.}
+When \code{center = TRUE}, each column is centred by the grand mean
+of the corresponding FP-transformed \code{cont_var} column.}
 \item{\code{xtransformed}}{FP-transformed \code{cont_var} pooled across
 all observations, \eqn{n \times J}. When \code{center = TRUE}, centred
-by the grand mean of all transformed values (standard centering, no
-structural-zero adjustment).}
+by the same grand-mean constants as \code{z}.}
+\item{\code{center_vals}}{Named numeric vector of centering constants
+(one per column of \code{z}) reflecting the chosen \code{center_type}
+strategy, or \code{NULL} when \code{center = FALSE}. These are the
+exact values subtracted from \code{z} during fitting and must be
+reused when evaluating fitted functions for new data.}
 }
 }
 \description{
@@ -76,26 +85,23 @@ Columns are named \code{<varname><group><power_index>}, e.g. for
 
 \section{Centering}{
 
-Two distinct strategies are used depending on the return component:
-
+When \code{center = TRUE}, the centering strategy is controlled by
+\code{center_type}:
 \describe{
-\item{\code{z} (group-specific interaction matrix)}{Each column belongs
-to one group and contains structural zeros for all out-of-group
-observations. When \code{center = TRUE}, each column is centred by its
-\strong{within-group mean} — the mean of the non-zero (in-group) values
-only, via \code{mfp2::center_matrix(zero = TRUE)}.
-This ensures group 0\'s column is centred around group 0\'s mean and
-group 1\'s column around group 1\'s mean, which is the correct reference
-for each group-specific FP curve. Using the pooled mean would be wrong
-because the two groups may have different covariate distributions.}
-\item{\code{xtransformed} (pooled FP-transformed \code{cont_var})}{Used in
-the main-effects model to represent the overall trend. When
-\code{center = TRUE}, centred by the \strong{grand mean} across all
-transformed values. No structural-zero special-casing is applied here
-because \code{xtransformed} is a standard continuous column — any zeros
-that may exist after FP transformation are valid transformed values,
-not indicators of group absence.}
+\item{\code{"grand"} (default)}{Both \code{z} and \code{xtransformed}
+are centred by the \strong{grand mean} of the full FP-transformed
+\code{cont_var} across all observations. Each group's columns in
+\code{z} share the same constants as \code{xtransformed}. This
+matches the original MFPI implementation.}
+\item{\code{"group"}}{Each group's columns in \code{z} are centred by
+the \strong{within-group mean} -- the mean of in-group observations
+only (structural zeros excluded). Useful when groups have very
+different covariate distributions.}
 }
+The centering constants actually applied are returned as \code{center_vals}
+and must be reused during evaluation of fitted functions to ensure the
+absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)} are
+consistent with the fitted model coefficients.
 }
 
 \examples{

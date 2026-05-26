@@ -47,6 +47,7 @@ mfpi(x, ...)
   control = NULL,
   winsorize = TRUE,
   winsorize_probs = c(0.01, 0.99),
+  center_type = c("grand", "group"),
   verbose = TRUE,
   digits = 3,
   ...
@@ -90,6 +91,7 @@ mfpi(x, ...)
   control = NULL,
   winsorize = TRUE,
   winsorize_probs = c(0.01, 0.99),
+  center_type = c("grand", "group"),
   verbose = TRUE,
   digits = 3,
   ...
@@ -319,6 +321,24 @@ selected FP functional form. Default is \code{TRUE}. See the
 cutoffs used for Winsorisation. Default is \code{c(0.01, 0.99)}, which
 truncates approximately the bottom and top 1\\% of values for each
 \code{cont_var}. Ignored when \code{winsorize = FALSE}.}
+
+\item{center_type}{Character string controlling how the FP-transformed continuous variables
+are centred when \code{center = TRUE}. One of:
+\describe{
+\item{\code{"grand"} (default)}{Centre each column of the
+group-specific block matrix by the grand mean of the
+FP-transformed \code{cont_var} across all observations. Matches
+the original MFPI implementation (Royston and Sauerbrei, 2008).}
+\item{\code{"group"}}{Centre each group's columns by the
+within-group mean, i.e. the mean of in-group observations only.
+This removes group-specific location effects from the
+FP-transformed variable before fitting.}
+}
+The centering constants computed at fit time are stored in
+\code{center_vals_list} on the returned object and reused exactly
+during evaluation of fitted functions and future prediction, so
+the absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)}
+are always consistent with the fitted model coefficients.}
 
 \item{verbose}{Logical. Whether to print progress information during model fitting.
 Default is \code{TRUE}.}

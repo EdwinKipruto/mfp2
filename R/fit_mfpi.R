@@ -90,8 +90,11 @@
 #'   required for SAZ modelling.
 #' @param max_prop Numeric in \eqn{[0,1]}. Maximum proportion of zeros for
 #'   SAZ modelling.
-#' @param use_ftest Logical. Use F-test rather than chi-square for Gaussian
-#'   models.
+#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
+#'   use an F-test (via \code{mfp2:::calculate_f_test()}) rather than a
+#'   chi-square likelihood-ratio test for the interaction p-value. Also
+#'   passed to \code{fit_mfp()} for adjustment-variable selection.
+#'   Ignored for non-Gaussian families.
 #' @param control List of fitting control parameters.
 #' @param group_var Character string. Name of the grouping variable in \code{x}.
 #' @param include_group_var Logical. Whether \code{group_var} is included as a
@@ -173,8 +176,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      control, group_var, include_group_var, flex, cont_vars,
                      p_interact, min_improvement, show_models, verbose,
                      digits,
-                     center_type) {
+                     center_type = c("grand", "group")) {
   
+  center_type <- match.arg(center_type)
   
   # ---------------------------------------------------------------------------
   # Pre-processing: synchronise parameter vectors and remap group levels
@@ -551,7 +555,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @param nocenter Numeric vector passed to \code{survival::coxph()}.
 #' @param min_prop Numeric. Minimum proportion of zeros for SAZ modelling.
 #' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
-#' @param use_ftest Logical. Use F-test for Gaussian models.
+#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
 #' @param verbose Logical. Passed directly to \code{fit_mfp()}.
 #'
@@ -560,7 +564,10 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   powers) and the underlying model fit.
 #'
 #' @details
-#' The \code{scale} and \code{shift} arguments are set to 1 and 0
+#' This function calls \code{fit_mfp()} directly via \code{:::} because
+#' \code{fit_mfp()} is not currently exported by the \pkg{mfp2} package. Once
+#' \pkg{mfp2} exports \code{fit_mfp()}, this call should be updated to use
+#' \code{::}. The \code{scale} and \code{shift} arguments are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to \code{x}.
 #'
 #' \code{force_max_fp} is a named logical vector already subsetted by
@@ -773,7 +780,7 @@ format_candidate_table <- function(rows, criterion, digits) {
 #'   for the adjustment variables, as stored in \code{adjustment_model$spike_decision}
 #'   by \code{fit_mfp()}. Values: \code{1} = FP term + binary indicator,
 #'   \code{2} = FP term only (default), \code{3} = binary indicator only.
-#'   Used when re-transforming adjustment variables via \code{transform_matrix()}
+#'   Used when re-transforming adjustment variables via \code{mfp2::transform_matrix()}
 #'   to ensure binary indicators for semi-continuous adjustment variables are
 #'   included or suppressed consistently with the adjustment model.
 #' @param cont_vars Character vector of continuous variables to test.
@@ -784,7 +791,7 @@ format_candidate_table <- function(rows, criterion, digits) {
 #' @param xorder Character string; entry order for MFP backfitting.
 #' @param ties Character string; tie-handling for Cox models.
 #' @param strata Integer stratum vector, or `NULL`.
-#' @param use_ftest Logical. Use F-test for Gaussian models.
+#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
 #' @param nocenter Numeric vector for Cox centring suppression.
 #' @param family Character string; regression family.
@@ -870,10 +877,11 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   family_string, fp_powers, cycles, criterion,
                                   digits, group_var, show_models, p_interact,
                                   min_improvement, min_prop, max_prop,
-                                  center_type,
+                                  center_type = c("grand", "group"),
                                   xadj = NULL, skip_adjustment = FALSE,
                                   quiet = FALSE, verbose = FALSE) {
   
+  center_type <- match.arg(center_type)
   
   # Input validation for skip_adjustment / xadj --------------------------------
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
@@ -965,7 +973,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       adj_vars     <- setdiff(selected_vars, var_name)
       xadj_current <- NULL
       if (length(adj_vars) > 0L) {
-        xadj_current <- transform_matrix(
+        xadj_current <- mfp2::transform_matrix(
           x                  = x[, adj_vars, drop = FALSE],
           power_list         = adj_fp_powers[adj_vars],
           center             = processed_data$updated_params$center[adj_vars],

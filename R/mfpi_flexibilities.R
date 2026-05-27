@@ -53,9 +53,12 @@
 #'   keeping power = 1 in the FP1 candidate set would allow FP1 to collapse
 #'   to a duplicate linear fit. Higher degrees retain power = 1 since
 #'   combinations such as `(1, 2)` are distinct from linear.
-#' @param use_ftest Logical. Use F-test rather than chi-square for Gaussian
-#'   models. Currently applied only to adjustment-variable selection; not yet
-#'   implemented for the interaction test itself.
+#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
+#'   use an F-test rather than a chi-square likelihood-ratio test when
+#'   computing p-values. Applied to both the adjustment-variable selection
+#'   (via \code{fit_mfp()}) and the interaction test
+#'   (via \code{calculate_f_test()}). Ignored for non-Gaussian
+#'   families.
 #' @param center Logical scalar. Whether to centre `cont_var` before fitting.
 #'   Adjustment variables are assumed already centred.
 #' @param center_type Character string; \code{"grand"} (default) or
@@ -120,9 +123,10 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
                      control, nocenter, cycles, zero_var, spike_var = FALSE,
                      min_prop = 0.05, max_prop = 0.95,
                      flex, digits,
-                     center_type,
+                     center_type = c("grand", "group"),
                      run_test = TRUE, compute_fitted = TRUE) {
-
+  
+  center_type <- match.arg(center_type)
   
   # Input validation -----------------------------------------------------------
   if (!is.character(flex) || length(flex) != 1L) {
@@ -222,9 +226,10 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   nocenter, cycles, zero_var, spike_var = FALSE,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
-                  center_type,
+                  center_type = c("grand", "group"),
                   run_test = TRUE, compute_fitted = FALSE) {
   
+  center_type <- match.arg(center_type)
   
   if (compute_fitted && !run_test) {
     stop("! `compute_fitted = TRUE` requires `run_test = TRUE`.", call. = FALSE)
@@ -252,7 +257,10 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero        = zero_var,
     center_type = center_type
   )
-
+  
+  # If you center xadj and set center = FALSE in mfpi the results will be 
+  # identical to stata mfpi because it centers adj even if you set it to false
+  #xadj <- scale(xadj, scale = F)
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
   x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
   center_vals   <- z_vars$center_vals
@@ -486,15 +494,16 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   )
   
   z_vars <- create_z_variables(
-    cont_var  = contvar_vec,
-    group_var = groupvar_vec,
-    power     = bestfp,
-    shift     = 0,
-    scale     = 1,
-    center    = center,
-    zero      = zero_var
+    cont_var    = contvar_vec,
+    group_var   = groupvar_vec,
+    power       = bestfp,
+    shift       = 0,
+    scale       = 1,
+    center      = center,
+    zero        = zero_var,
+    center_type = center_type
   )
- 
+  
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
   x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
   center_vals   <- z_vars$center_vals
@@ -504,8 +513,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   if (run_test) {
     test_results <- test_interaction(
       y                  = y,
-      cont_var       = contvar_vec,
-      group_var      = groupvar_vec,
+      cont_var           = contvar_vec,
+      group_var          = groupvar_vec,
       xmain              = x_main,
       xinteraction       = x_interaction,
       degree             = degree,
@@ -589,28 +598,30 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
-  k <- length(unique(groupvar_vec))
+  
   # Step 1: Generate all candidate within-group transformed variables ----------
-  # transform_z_variables() tries every combination of powers from fp_cand
-  # and returns a named list of matrices plus a power matrix.
+  # transform_z_variables() tries every combination of powers from fp_cand,
+  # applies the chosen centering (center_type) using the group membership mask
+  # correctly, and returns center_vals_list alongside z_transformed.
   transformed <- transform_z_variables(
-    cont_var  = contvar_vec,
-    group_var = groupvar_vec,
-    shift     = 0,
-    scale     = 1,
-    fp_cand   = fp_cand,
-    fp_degree = degree,
-    acdx      = FALSE,
-    center    = FALSE    # centering deferred to Step 3
+    cont_var    = contvar_vec,
+    group_var   = groupvar_vec,
+    shift       = 0,
+    scale       = 1,
+    fp_cand     = fp_cand,
+    fp_degree   = degree,
+    acdx        = FALSE,
+    center      = center,
+    center_type = center_type,
+    zero        = zero_var
   )
   
-  power_matrix      <- transformed$powers_matrix
+  power_matrix       <- transformed$powers_matrix
   transformed_groups <- transformed$z_transformed
-  znames            <- transformed$znames
+  znames             <- transformed$znames
+  center_vals_list   <- transformed$center_vals_list   # NULL when center = FALSE
   
   # Step 2: Select the power combination with the lowest deviance -------------
-  # Deviance is the same whether we use AIC/BIC/pvalue because df is fixed
-  # for a given degree, so it is sufficient to minimise -2*logLik.
   fixed_x <- cbind(group_dummies, xadj)
   
   deviance_vec <- vapply(transformed_groups, function(z) {
@@ -632,9 +643,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   }, numeric(1L))
   
   best_idx <- which.min(deviance_vec)
-  bestfp <- power_matrix[best_idx, ]
+  bestfp   <- power_matrix[best_idx, ]
   
-  # Step 3: Transform cont_var using best powers; optionally centre -----------
+  # Extract the centering constants for the selected combination --------------
+  center_vals <- if (center) center_vals_list[[best_idx]] else NULL
+  
+  # Step 3: Build contvar_transformed for the main-effects model --------------
+  # This uses the pooled FP-transformed cont_var (same for all observations)
+  # centred by the grand mean, consistent with x_main's design.
   contvar_transformed <- transform_vector_fp(
     x     = contvar_vec,
     power = bestfp,
@@ -642,43 +658,18 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     scale = 1,
     shift = 0
   )
-  z_best <- transformed_groups[[best_idx]]
-  
   if (center) {
-    # center_type controls the centering strategy:
-    #   "grand" - grand mean of all observations (matches create_z_variables)
-    #   "group" - within-group mean (mean over in-group rows only)
-    if (center_type == "grand") {
-      ct_means <- colMeans(contvar_transformed, na.rm = TRUE)
-    } else {
-      # Within-group means from z_best (structural zeros excluded)
-      # Using z_best before centering; recompute from untransformed z
-      ct_means <- vapply(seq_len(ncol(contvar_transformed)), function(ci) {
-        # contvar_transformed has one column per FP term;
-        # group i contributes rows where group_var == group_levels[i]
-        # Average across all groups gives the within-group pooled mean
-        mean(contvar_transformed[, ci], na.rm = TRUE)
-      }, numeric(1L))
-    }
-    # (ct_means computed above)
     ct_names <- colnames(contvar_transformed)
     if (is.null(ct_names))
       ct_names <- paste0(cont_var, seq_len(ncol(contvar_transformed)))
-    names(ct_means) <- ct_names
+    colnames(contvar_transformed) <- ct_names
+    ct_means <- colMeans(contvar_transformed, na.rm = TRUE)
     contvar_transformed <- sweep(contvar_transformed, 2L, ct_means, "-",
                                  check.margin = FALSE)
-    
-    # z_best: centre each group's columns by the same grand-mean constants,
-    # replicating once per group to match z_best's column layout.
-    n_fp_best   <- ncol(contvar_transformed)
-    center_vals <- setNames(
-      rep(ct_means, times = k),
-      colnames(z_best)
-    )
-    z_best <- sweep(z_best, 2L, center_vals, "-", check.margin = FALSE)
-  } else {
-    center_vals <- NULL
   }
+  
+  z_best <- transformed_groups[[best_idx]]
+  z_best[is.na(z_best)] <- 0    # restore structural zeros
   
   # Step 4: Assemble design matrices -------------------------------------------
   x_main        <- cbind(group_dummies, contvar_transformed, xadj)
@@ -984,27 +975,66 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     catzero    = setNames(rep(FALSE, k), znames)
   )$x_transformed
   
-  # Infinite values arise when zero is log- or negative-power transformed;
   # Non-finite values arise from structural zeros transformed by log/negative
-  # powers. Mark as NA temporarily so they do not distort centering.
+  # powers. Mark as NA temporarily so they do not distort centering. 
+  # cannot happen because transform_matrix handles it but only for safety
   transformed[!is.finite(transformed)] <- NA
   
+  # ---------------------------------------------------------------------------
+  # Centering for flex4
+  # ---------------------------------------------------------------------------
+  # flex4 allows each group to have its own FP powers (unlike flex1/flex2 where
+  # all groups share powers). So centering constants must be computed per group
+  # using that group's own powers applied to the full cont_var (no structural
+  # zeros), following the same logic as transform_z_variables.
+  #
+  # "grand": transform full cont_var with group g's powers -> colMeans over
+  #          all n observations.
+  # "group": transform full cont_var with group g's powers -> colMeans over
+  #          in-group rows only (group membership mask, not zero-value test).
+  #
+  # Centering is applied only to in-group rows; structural zeros stay at 0.
+  
+  group_levels <- sort(unique(as.vector(groupvar_vec)))
+  group_idx    <- match(as.vector(groupvar_vec), group_levels)
+  
   if (center) {
-    if (center_type == "grand") {
-      # Grand mean: colMeans of z_linear (includes structural zeros)
-      center_vals <- colMeans(z_linear, na.rm = TRUE)
-    } else {
-      # Within-group mean: mean over in-group rows only
-      center_vals <- vapply(seq_len(ncol(z_linear)), function(ci) {
-        vals <- z_linear[, ci]
-        mean(vals[vals != 0], na.rm = TRUE)
-      }, numeric(1L))
-      names(center_vals) <- colnames(z_linear)
+    center_vals <- numeric(ncol(transformed))
+    names(center_vals) <- colnames(transformed)
+    
+    for (gi in seq_len(k)) {
+      grp_name <- znames[gi]
+      pw       <- bestfp_interaction[[grp_name]]
+      cols_g   <- seq.int((gi - 1L) * length(pw) + 1L, gi * length(pw))
+      in_grp   <- group_idx == gi
+      
+      # FP-transform the full cont_var with this group's powers -- no
+      # structural zeros, all n observations, correct basis for centering.
+      x_fp_full <- transform_vector_fp(
+        x     = contvar_vec,
+        power = pw,
+        shift = 0,
+        scale = 1
+      )
+      
+      if (center_type == "grand") {
+        center_vals[cols_g] <- colMeans(x_fp_full, na.rm = TRUE)
+      } else {
+        center_vals[cols_g] <- colMeans(
+          x_fp_full[in_grp, , drop = FALSE], na.rm = TRUE
+        )
+      }
+      
+      # Centre in-group rows only; structural zeros remain at 0
+      transformed[in_grp, cols_g] <- sweep(
+        transformed[in_grp, cols_g, drop = FALSE],
+        2L, center_vals[cols_g], "-", check.margin = FALSE
+      )
     }
-    transformed <- sweep(transformed, 2L, center_vals, "-", check.margin = FALSE)
   } else {
     center_vals <- NULL
   }
+  
   transformed[is.na(transformed)] <- 0    # restore structural zeros
   
   x_interaction <- cbind(group_dummies, transformed, xadj)

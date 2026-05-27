@@ -76,18 +76,28 @@
 #' FP families, so the models are non-nested and the degrees of freedom
 #' calculation differs; see `interaction_model_df()` for details.
 #'
-#' @section Likelihood-ratio statistic:
+#' @section Likelihood-ratio and F-test statistics:
 #' Let \eqn{\ell_{\text{main}}} and \eqn{\ell_{\text{int}}} denote the
-#' maximised log-likelihoods of the two models. The test statistic is
+#' maximised log-likelihoods of the two models. The deviance difference is
 #' \deqn{
 #'   T = -2\ell_{\text{main}} - \bigl(-2\ell_{\text{int}}\bigr)
-#'     = -2\bigl(\ell_{\text{main}} - \ell_{\text{int}}\bigr) \;\geq\; 0,
+#'     = -2\bigl(\ell_{\text{main}} - \ell_{\text{int}}\bigr) \;\geq\; 0.
 #' }
-#' which under \eqn{H_0} (no interaction) is approximately
-#' \eqn{\chi^2(df_{\text{int}})}. The p-value is
-#' \deqn{
-#'   p = \Pr\!\bigl[\chi^2(df_{\text{int}}) > T\bigr].
-#' }
+#' When \code{use_ftest = FALSE} (default, or for non-Gaussian families),
+#' the p-value uses the chi-square approximation:
+#' \deqn{p = \Pr\!\bigl[\chi^2(df_{\text{int}}) > T\bigr].}
+#' When \code{use_ftest = TRUE} and \code{family = "gaussian"}, the F-test
+#' of Royston and Sauerbrei (see \code{calculate_f_test()}) is used
+#' instead:
+#' \deqn{F = \frac{d_2}{d_1}
+#'   \left(\exp\!\left(\frac{T}{n}\right) - 1\right),}
+#' where \eqn{d_1 = df_{\text{resid,main}} - df_{\text{resid,int}}} is the
+#' difference in residual degrees of freedom between the main-effects and
+#' interaction models, and \eqn{d_2 = df_{\text{resid,int}}} is the residual
+#' degrees of freedom of the interaction model. Both are taken directly from
+#' the fitted model objects to correctly account for all parameters including
+#' adjustment variables. The p-value is
+#' \eqn{\Pr[F(d_1, d_2) > F_{\text{obs}}]}.
 #'
 #' @section Information criteria:
 #' AIC and BIC penalise model complexity differently:
@@ -125,10 +135,12 @@
 #'   used in the interaction model.
 #' @param flex Character string; `"flex0"`, `"flex1"`, `"flex2"`, `"flex3"`,
 #'   or `"flex4"`. Passed to `interaction_model_df()`.
-#' @param use_ftest Logical. If `TRUE` and `family = "gaussian"`, use an
-#'   F-test rather than a chi-square test for the interaction p-value.
-#'   **Not yet implemented for the interaction test**; currently falls back to
-#'   the chi-square test with a warning.
+#' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
+#'   use an F-test rather than a chi-square likelihood-ratio test for the
+#'   interaction p-value. The F-statistic uses the formula from the Stata FP
+#'   manual (Royston and Sauerbrei), with residual df taken directly from the
+#'   fitted interaction model to correctly account for adjustment variables.
+#'   Ignored (chi-square used) for non-Gaussian families. Default \code{FALSE}.
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
 #'   or `"cox"`.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
@@ -158,7 +170,7 @@
 #'     `BIC_main`, `BIC_interaction`,
 #'     `BIC_main_minus_int` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
-#'     `fit_model()`, with `fast = FALSE` so that the full coefficient
+#'     `mfp2:::fit_model()`, with `fast = FALSE` so that the full coefficient
 #'     vector and covariance matrix are available.}
 #'   \item{`deviance_models`}{Named list with elements `main`
 #'     (\eqn{-2\ell_{\text{main}}}) and `interaction`
@@ -229,17 +241,25 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   df_int      <- deg_freedom$dfint        # df_total - df_main = (K-1)*m
   
   # ---------------------------------------------------------------------------
-  # ---------------------------------------------------------------------------
-  # P-value: chi-square LRT (F-test not yet implemented for interaction term)
+  # P-value: F-test (Gaussian only) or chi-square LRT
   # ---------------------------------------------------------------------------
   if (use_ftest && family_string == "gaussian") {
-    warning(
-      "! F-test for the interaction term is not yet implemented; ",
-      "reverting to chi-square test.",
-      call. = FALSE
+    # Use calculate_f_test with convention 1: pass both residual dfs
+    # as a vector and let the function compute d1 = dfs_resid[1] - dfs_resid[2].
+    # Residual dfs are taken from the fitted objects to correctly account for
+    # all parameters including adjustment variables.
+    df_resid_main <- fit_main$fit$df.residual
+    df_resid_int  <- fit_interaction$fit$df.residual
+    n_obs         <- nrow(xinteraction)
+    ftest_result  <- calculate_f_test(
+      deviances = c(dev_main, dev_interaction),
+      dfs_resid = c(df_resid_main, df_resid_int),
+      n_obs     = n_obs
     )
+    pvalue <- ftest_result$pvalue
+  } else {
+    pvalue <- stats::pchisq(deviance_diff, df = df_int, lower.tail = FALSE)
   }
-  pvalue <- stats::pchisq(deviance_diff, df = df_int, lower.tail = FALSE)
   
   # ---------------------------------------------------------------------------
   # AIC and BIC

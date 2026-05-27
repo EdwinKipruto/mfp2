@@ -15,6 +15,6 @@
 \code{x} invisibly.
 }
 \description{
-Displays a four-step structured summary. Steps 1–3 match \code{print.mfpi()};
+Displays a four-step structured summary. Steps 1-3 match \code{print.mfpi()};
 Step 4 adds regression output for each final interaction model.
 }

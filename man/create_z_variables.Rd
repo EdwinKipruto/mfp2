@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfpi_create_variables.R
 \name{create_z_variables}
 \alias{create_z_variables}
-\title{Build Group-Specific FP-Transformed Variables for Interaction Modelling}
+\title{Build Group-Specific Fractional-Polynomial Interaction Variables}
 \usage{
 create_z_variables(
   cont_var,
@@ -12,105 +12,264 @@ create_z_variables(
   scale = NULL,
   center = FALSE,
   zero = FALSE,
-  center_type = c("grand", "group")
+  center_type = c("grand", "group"),
+  return_eval = FALSE
 )
 }
 \arguments{
-\item{cont_var}{A one-column numeric matrix of the continuous covariate,
-with a column name and no missing or non-finite values.}
+\item{cont_var}{A one-column numeric matrix containing the continuous
+covariate. It must have a column name and contain only finite values.}
 
-\item{group_var}{A one-column numeric matrix of group membership with at
-least two distinct values and the same number of rows as \code{cont_var}.}
+\item{group_var}{A one-column numeric matrix containing group membership. It
+must have the same number of rows as \code{cont_var}, contain no missing
+values, and have at least two distinct values.}
 
-\item{power}{Numeric vector of FP powers. Default \code{1} (linear).}
+\item{power}{Numeric vector of FP powers. Length one gives an FP1 basis;
+length two gives an FP2 basis. Repeated powers are handled by
+\code{transform_vector_fp()}.}
 
-\item{shift}{Numeric scalar added to \code{cont_var} before transformation.
-If \code{NULL}, estimated by \code{mfp2::find_shift_factor()}.}
+\item{shift}{Optional numeric shift applied before FP transformation. Passed
+to \code{transform_vector_fp()}.}
 
-\item{scale}{Numeric scalar dividing \code{cont_var} after shifting.
-If \code{NULL}, estimated by \code{mfp2::find_scale_factor()}.}
+\item{scale}{Optional numeric scale applied before FP transformation. Passed
+to \code{transform_vector_fp()}.}
 
-\item{center}{Logical. If \code{TRUE}, centres both return matrices using
-different strategies - see the \emph{Centering} section. Default
-\code{FALSE}.}
+\item{center}{Logical. If \code{TRUE}, center the FP basis columns before
+constructing the group-specific design matrix. Default is \code{FALSE}.}
 
-\item{zero}{Logical. If \code{TRUE}, non-positive values in \code{cont_var}
-are treated as structural zeros: excluded from mean computation when
-\code{center = TRUE} and reset to zero after centering. Default
-\code{FALSE}.}
+\item{zero}{Logical. If \code{TRUE}, non-positive values of \code{cont_var}
+are treated as structural zeros: they are excluded from centering means and
+reset to zero after centering. Default is \code{FALSE}.}
 
-\item{center_type}{Character string. Controls the centering strategy when
-\code{center = TRUE}. One of \code{"grand"} (default) or \code{"group"}.
-See the \emph{Centering} section.}
+\item{center_type}{Character string controlling centering when
+\code{center = TRUE}. Either \code{"grand"} or \code{"group"}. Default is
+\code{"grand"}.}
+
+\item{return_eval}{Logical. If \code{TRUE}, also return an evaluation matrix
+in which every group-specific function is evaluated for every observed
+\code{x} value. Default is \code{FALSE}.}
 }
 \value{
-A list with three elements:
+A list with the following elements:
+
 \describe{
-\item{\code{z}}{Numeric matrix of group-specific FP-transformed variables,
-\eqn{n \times KJ}. Each column is non-zero only for its own group.
-When \code{center = TRUE}, each column is centred by the grand mean
-of the corresponding FP-transformed \code{cont_var} column.}
-\item{\code{xtransformed}}{FP-transformed \code{cont_var} pooled across
-all observations, \eqn{n \times J}. When \code{center = TRUE}, centred
-by the same grand-mean constants as \code{z}.}
-\item{\code{center_vals}}{Named numeric vector of centering constants
-(one per column of \code{z}) reflecting the chosen \code{center_type}
-strategy, or \code{NULL} when \code{center = FALSE}. These are the
-exact values subtracted from \code{z} during fitting and must be
-reused when evaluating fitted functions for new data.}
+\item{\code{z}}{Group-specific fitting design matrix. Rows outside the
+corresponding group are structural zeros.}
+\item{\code{xtransformed}}{Pooled FP-transformed version of
+\code{cont_var}. If \code{center = TRUE}, this is centered using grand
+means.}
+\item{\code{x_eval}}{Group-specific evaluation matrix if
+\code{return_eval = TRUE}; otherwise \code{NULL}.}
+\item{\code{center_vals}}{Named numeric vector of centering constants, or
+\code{NULL} when \code{center = FALSE}.}
+\item{\code{x_fp}}{Full FP-transformed continuous variable before group
+masking and before centering.}
 }
 }
 \description{
-For each level of \code{group_var}, constructs a copy of \code{cont_var}
-that retains the (optionally FP-transformed) covariate values only for
-observations in that group and is zero elsewhere. The resulting block matrix
-\eqn{Z \in \mathbb{R}^{n \times KJ}} is used as the interaction design
-matrix in MFPI, where \eqn{K} is the number of groups and \eqn{J} is the
-number of FP columns implied by \code{power}.
+Constructs a group-specific fractional-polynomial design matrix for modelling
+interactions between a continuous covariate and a categorical or treatment
+grouping variable.
+}
+\details{
+The function first transforms the full continuous variable using the supplied
+fractional-polynomial powers. It then inserts the transformed values into
+group-specific blocks of the design matrix. Values outside the corresponding
+group are kept as structural zeros.
+
+This implementation deliberately avoids transforming a zero-padded
+group-specific matrix. Instead, the full continuous variable is transformed
+before group masking. This is important for log and negative FP powers because
+artificial out-of-group zeros would otherwise generate invalid values such as
+\code{Inf}, \code{-Inf}, or \code{NaN}.
 }
 \section{Mathematical definition}{
 
-Let \eqn{f_j(x_i)} denote the \eqn{j}-th FP transformation of observation
-\eqn{i} under the supplied \code{power} vector. For group \eqn{k}:
-\deqn{z_{ijk} = \begin{cases} f_j(x_i) & \text{if } g_i = k \\ 0 &
-\text{otherwise.} \end{cases}}
+
+Let \eqn{x_i} denote the continuous covariate for observation \eqn{i}, and let
+\eqn{G_i \in \{g_1, \ldots, g_K\}} denote its group membership.
+
+Let \eqn{B(x_i)} be the FP basis generated from \eqn{x_i}. For FP1,
+\eqn{B(x_i)} has one column. For FP2, it has two columns. For example, for
+powers \eqn{p_1} and \eqn{p_2},
+
+\deqn{
+B(x_i) =
+\begin{cases}
+\left(x_i^{p_1}, x_i^{p_2}\right), & p_1 \ne p_2, \\
+\left(x_i^{p_1}, x_i^{p_1}\log(x_i)\right), & p_1 = p_2 \ne 0, \\
+\left(\log(x_i), \log(x_i)^2\right), & p_1 = p_2 = 0.
+\end{cases}
 }
 
-\section{Column naming}{
+The group-specific design block for group \eqn{g} is
 
-Columns are named \code{<varname><group><power_index>}, e.g. for
-\code{cont_var = "age"}, groups 0/1, and \code{power = c(1, 0.5)}: \code{age01},
-\code{age02}, \code{age11}, \code{age12}.
+\deqn{
+Z_g(x_i) = \{B(x_i) - c_g\} I(G_i = g),
+}
+
+where \eqn{c_g} is the centering vector for group \eqn{g}. The final design
+matrix is obtained by concatenating all group-specific blocks:
+
+\deqn{
+Z = \left[Z_{g_1}, Z_{g_2}, \ldots, Z_{g_K}\right].
+}
+
+Rows outside a given group remain structural zeros in that group's block.
+}
+
+\section{FP transformations}{
+
+
+FP transformations are delegated to \code{transform_vector_fp()}.
+The power convention is:
+
+\describe{
+\item{\code{p = 1}}{Linear term, \eqn{x}.}
+\item{\code{p = 0}}{Log term, \eqn{\log(x)}.}
+\item{\code{p != 0}}{Power term, \eqn{x^p}.}
+\item{Repeated powers}{For repeated powers, the second and later terms are
+multiplied by powers of \eqn{\log(x)} according to the standard FP rule.}
+}
+
+If the continuous variable contains non-positive values, it should usually be
+shifted before calling this function unless \code{zero = TRUE} is intended.
 }
 
 \section{Centering}{
 
-When \code{center = TRUE}, the centering strategy is controlled by
-\code{center_type}:
+
+If \code{center = FALSE}, no centering is applied and \code{center_vals} is
+returned as \code{NULL}.
+
+If \code{center = TRUE}, centering is applied to the FP basis before insertion
+into the active group rows. The inactive rows of each group-specific block
+remain structural zeros.
+
+The centering strategy is controlled by \code{center_type}:
+
 \describe{
-\item{\code{"grand"} (default)}{Both \code{z} and \code{xtransformed}
-are centred by the \strong{grand mean} of the full FP-transformed
-\code{cont_var} across all observations. Each group's columns in
-\code{z} share the same constants as \code{xtransformed}. This
-matches the original MFPI implementation.}
-\item{\code{"group"}}{Each group's columns in \code{z} are centred by
-the \strong{within-group mean} -- the mean of in-group observations
-only (structural zeros excluded). Useful when groups have very
-different covariate distributions.}
+\item{\code{"grand"}}{
+Each FP basis column is centered by its empirical mean over all valid
+observations:
+
+\deqn{
+  c_g = n^{-1}\sum_i B(x_i).
+  }
+
+The same centering vector is used for every group. This is useful when all
+group-specific functions should be centered against the same empirical
+covariate distribution.
 }
-The centering constants actually applied are returned as \code{center_vals}
-and must be reused during evaluation of fitted functions to ensure the
-absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)} are
-consistent with the fitted model coefficients.
+
+\item{\code{"group"}}{
+Each group-specific FP basis is centered by its empirical mean within that
+group:
+
+\deqn{
+  c_g = n_g^{-1}\sum_{i:G_i=g} B(x_i).
+  }
+
+This makes each group-specific function centered relative to its own group
+covariate distribution.
+}
+}
+
+When \code{zero = TRUE}, non-positive values of \code{cont_var} are excluded
+from the centering means and reset to zero after centering.
+}
+
+\section{Fitting matrix versus evaluation matrix}{
+
+
+The returned \code{z} matrix is a model-fitting design matrix. It contains
+structural zeros outside each group:
+
+\deqn{
+Z_g(x_i) = 0 \quad \text{if } G_i \ne g.
+}
+
+If \code{return_eval = TRUE}, the function also returns \code{x_eval}. This
+matrix evaluates every group-specific function for every observed value of
+\code{cont_var}:
+
+\deqn{
+X_{\mathrm{eval},g}(x_i) = B(x_i) - c_g.
+}
+
+Unlike \code{z}, \code{x_eval} does not contain out-of-group structural zeros.
+It is therefore the appropriate matrix for fitted-function evaluation,
+plotting, and prediction over a common set of \eqn{x} values.
+}
+
+\section{Column naming}{
+
+
+Columns are named using the convention:
+
+\deqn{
+\texttt{<varname><group><power_index>}.
+}
+
+For example, if \code{cont_var} is named \code{"age"}, the group levels are
+\code{0} and \code{1}, and \code{power = c(1, 0.5)}, the generated column
+names are:
+
+\preformatted{
+age01 age02 age11 age12
+}
+}
+
+\section{Stored metadata}{
+
+
+The returned design matrices contain attributes used by downstream fitted
+function and prediction code:
+
+\describe{
+\item{\code{fp_centers}}{The centering constants used for each
+group-specific FP column.}
+\item{\code{center}}{Whether centering was applied.}
+\item{\code{center_type}}{The centering strategy.}
+\item{\code{group_levels}}{The observed group levels.}
+\item{\code{group_fp_powers}}{A named list of powers, one element per
+group.}
+\item{\code{power}}{The FP power vector supplied to the function.}
+}
+
+These constants should be reused during prediction. They should not be
+recomputed on new prediction data.
 }
 
 \examples{
-cont <- matrix(1:6, ncol = 1); colnames(cont) <- "age"
-grp  <- matrix(c(0, 1, 0, 1, 0, 1), ncol = 1); colnames(grp) <- "trt"
-res  <- create_z_variables(cont, grp, power = c(1, 0.5))
-head(res$z)
+\dontrun{
+cont <- matrix(1:6, ncol = 1)
+colnames(cont) <- "age"
+
+grp <- matrix(c(0, 1, 0, 1, 0, 1), ncol = 1)
+colnames(grp) <- "trt"
+
+# FP2 group-specific design, grand centered
+create_z_variables(
+  cont_var = cont,
+  group_var = grp,
+  power = c(1, 0.5),
+  center = TRUE,
+  center_type = "grand"
+)
+
+# Also return an evaluation matrix for fitted-function plotting
+create_z_variables(
+  cont_var = cont,
+  group_var = grp,
+  power = c(1, 0.5),
+  center = TRUE,
+  return_eval = TRUE
+)
+}
 
 }
 \seealso{
-\code{mfp2::transform_vector_fp()}, \code{transform_z_variables()}
+\code{\link{transform_z_variables}},
+\code{transform_vector_fp}
 }

@@ -24,9 +24,10 @@
 #'
 #' Given a fitted interaction model and the estimated FP powers for each group,
 #' computes the fitted linear predictor \eqn{\hat{f}_j(x)} for each level
-#' \eqn{j} of `group_var`, together with pointwise standard errors and 95%
-#' confidence intervals. The function-difference \eqn{\hat{f}_j - \hat{f}_0}
-#' (relative to the reference group) and its standard error are also returned.
+#' \eqn{j} of \code{group_var}, together with pointwise standard errors and
+#' 95\% confidence intervals. The function-difference
+#' \eqn{\hat{f}_j - \hat{f}_0} (relative to the reference group) and its
+#' standard error are also returned.
 #'
 #' Standard errors for the differences are computed via the delta method:
 #' \deqn{\text{Var}(\hat{f}_j - \hat{f}_0) =
@@ -34,56 +35,92 @@
 #' where \eqn{\mathbf{d}} is the vector of partial derivatives of the
 #' difference with respect to the model coefficients.
 #'
-#' @note The `use_grid` argument (equidistant evaluation grid) is a temporary
-#'   placeholder. Once `predict.mfpi()` is implemented, grid-based prediction
-#'   should be handled there and this argument should be removed.
+#' @note The \code{use_grid} argument (equidistant evaluation grid) is a
+#'   temporary placeholder. Once \code{predict.mfpi()} is implemented,
+#'   grid-based prediction should be handled there and this argument will
+#'   be removed.
 #'
 #' @param cont_var A one-column numeric matrix of the continuous variable.
-#'   Must have a column name and have been shifted if it contains
-#'   non-positive values.
-#' @param group_fp_powers Named list of FP power vectors, one per group of
-#'   `group_var`. The names must follow the `<varname><group><power_index>`
-#'   convention produced by \code{create_z_variables()}.
+#'   Must have a column name. Should already be shifted and scaled as it
+#'   was at model fitting time (i.e. the same \code{x[, cont_var]} matrix
+#'   passed to the flex functions).
+#' @param group_fp_powers Named list of FP power vectors, one element per
+#'   group. Names are the group-specific column names following the
+#'   \code{<varname><group>1} convention (e.g. \code{cavol01}, \code{cavol11}
+#'   for variable \code{cavol} with groups 0 and 1). Each element is a
+#'   numeric vector of FP powers for that group. For flex0-flex3, all groups
+#'   share the same powers; for flex4, each group may have its own powers.
 #' @param interaction_model The fitted interaction model object returned by
-#'   `test_interaction()`. Must expose `$coefficients` and support [vcov()].
+#'   \code{test_interaction()}. Must expose \code{$coefficients} and support
+#'   \code{vcov()}.
 #' @param group_var A one-column numeric matrix of the grouping variable.
 #'   Must have a column name.
-#' @param family Character string; the regression family used to fit the
-#'   interaction model - `"gaussian"`, `"binomial"`, `"poisson"`, or `"cox"`.
-#'   For Cox models the intercept is set to zero.
-#' @param transform Logical. Whether to FP-transform `cont_var` using
-#'   `group_fp_powers` before computing fitted values. Default `TRUE`.
-#' @param center Logical. Whether to mean-centre the transformed variables.
-#'   Should match the `center` setting used in [mfp2::mfpi()]. Default `FALSE`.
+#' @param family The regression family object used to fit the interaction
+#'   model (a \code{glm} family object for non-Cox families, or the
+#'   character string \code{"cox"} for Cox models). Used internally by the
+#'   fitting routines.
+#' @param family_string Character string identifying the family:
+#'   \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
+#'   \code{"cox"}. Used to determine whether to include an intercept
+#'   (Cox models have no intercept; the intercept is set to zero).
+#' @param transform Logical. Whether to FP-transform \code{cont_var} using
+#'   \code{group_fp_powers} before computing fitted values. Default
+#'   \code{TRUE}. Set to \code{FALSE} only if \code{cont_var} has already
+#'   been transformed.
+#' @param center Logical. Whether to mean-centre the FP-transformed
+#'   variables before computing fitted values. Must match the \code{center}
+#'   setting used when fitting the interaction model. Default \code{FALSE}.
 #' @param center_vals Named numeric vector of centering constants, one per
-#'   column of the FP-transformed group-specific block matrix. When supplied
-#'   (as returned by \code{create_z_variables()$center_vals} and threaded
-#'   through the flex functions), these exact values are subtracted from
-#'   \code{x_split} so that the evaluation is consistent with how the model
-#'   was fitted. If \code{NULL} and \code{center = TRUE}, falls back to
-#'   \code{colMeans(x_split)}.
-#' @param center_type Character string; \code{"grand"} or \code{"group"}.
-#'   Only used in the fallback path (when \code{center_vals = NULL}).
-#'   Controls whether the fallback centering uses the grand mean of all
-#'   observations or within-group means. Default \code{"grand"}.
-#' @param use_grid Logical. If `TRUE`, replaces `cont_var` with a 200-point
-#'   equidistant sequence spanning its observed range before computing fitted
-#'   values. Useful for smooth plotting curves. Default `FALSE`.
-#'   **This argument is provisional and will move to `predict.mfpi()` in a
-#'   future release.**
+#'   column of the FP-transformed evaluation matrix. When supplied (as
+#'   returned by the flex functions via \code{create_z_variables()$center_vals}
+#'   or the flex4 per-group centering block), these exact fit-time constants
+#'   are subtracted from \code{x_split}. This is the recommended path: it
+#'   guarantees that \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)} are on the
+#'   same scale as the fitted model coefficients regardless of whether a grid
+#'   is used. If \code{NULL} and \code{center = TRUE}, falls back to
+#'   recomputing from \code{x_split} using \code{center_type}; note that
+#'   the fallback may diverge from fit-time centering when
+#'   \code{use_grid = TRUE} because the grid replaces the original
+#'   observations.
+#' @param center_type Character string; \code{"grand"} (default) or
+#'   \code{"group"}. Used only in the fallback path when
+#'   \code{center_vals = NULL}. \code{"grand"} subtracts the grand mean
+#'   of \code{x_split} (all observations); \code{"group"} subtracts the
+#'   within-group mean using the group membership mask.
+#' @param use_grid Logical. If \code{TRUE}, replaces \code{cont_var} with a
+#'   200-point equidistant sequence spanning its observed range before
+#'   computing fitted values, producing smooth curves for plotting. Default
+#'   \code{FALSE}. \strong{This argument is provisional and will move to
+#'   \code{predict.mfpi()} in a future release.} Note that when
+#'   \code{use_grid = TRUE} and \code{center_vals = NULL}, the fallback
+#'   centering is computed on the grid rather than the original sample,
+#'   which may differ from fit-time centering; supply \code{center_vals}
+#'   to avoid this.
 #'
 #' @return A numeric matrix with one row per observation (or per grid point
-#'   when `use_grid = TRUE`) and the following columns, where \eqn{j} ranges
-#'   over all group levels:
+#'   when \code{use_grid = TRUE}) and the following columns, where \eqn{j}
+#'   ranges over the non-reference group levels and group 0 is the reference:
 #' \describe{
-#'   \item{`<varname>`}{The (possibly grid-replaced) values of `cont_var`.}
-#'   \item{`f0`, `f1`, ...}{Fitted linear predictor for each group.}
-#'   \item{`se(f0)`, `se(f1)`, ...}{Pointwise standard errors.}
-#'   \item{`f0_lower`, `f0_upper`, ...}{95% confidence interval bounds.}
-#'   \item{`f1-f0`, `f2-f0`, ...}{Pointwise difference relative to group 0.}
-#'   \item{`se(f1-f0)`, ...}{Standard errors of the differences.}
-#'   \item{`(f1-f0)_lower`, `(f1-f0)_upper`, ...}{95% CI bounds for differences.}
+#'   \item{\code{<varname>}}{The (possibly grid-replaced) values of
+#'     \code{cont_var} as supplied (shifted/scaled).}
+#'   \item{\code{f0}, \code{f1}, \ldots}{Fitted linear predictor for each
+#'     group level.}
+#'   \item{\code{se(f0)}, \code{se(f1)}, \ldots}{Pointwise standard errors
+#'     of the fitted values.}
+#'   \item{\code{f0_lower}, \code{f0_upper}, \ldots}{Lower and upper bounds
+#'     of the 95\% confidence interval for each group's fitted curve.}
+#'   \item{\code{f1-f0}, \code{f2-f0}, \ldots}{Pointwise difference of each
+#'     non-reference group's curve relative to group 0.}
+#'   \item{\code{se(f1-f0)}, \ldots}{Standard errors of the differences,
+#'     computed via the delta method.}
+#'   \item{\code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots}{95\% CI
+#'     bounds for each difference curve.}
 #' }
+#'   Three attributes are attached to the returned matrix for use in
+#'   \code{predict.mfpi()}: \code{fp_centers} (the centering constants
+#'   applied, or \code{NULL} if \code{center = FALSE}); \code{center_type}
+#'   (the centering strategy used, or \code{NULL} if \code{center = FALSE});
+#'   and \code{group_fp_powers} (the \code{group_fp_powers} list as passed in).
 #'
 #' @seealso \code{create_z_variables()}, \code{compute_diff_standard_errors()},
 #'   \code{var_group()}
@@ -179,23 +216,42 @@ gen_fitted_values_per_group <- function(cont_var,
     colnames(x_split) <- x_split_names
   }
   
-  # Optional mean-centring of transformed variables ---------------------------
-  # When center_vals is supplied (from fit time), reuse those exact constants.
-  # Fallback: recompute from x_split using the requested center_type strategy.
+  # Initialise col_means so it is always defined for the attribute assignment
+  col_means <- NULL
+  
+  # ---------------------------------------------------------------------------
+  # Centering of x_split
+  # ---------------------------------------------------------------------------
+  # When center_vals is supplied (from fit time via create_z_variables), reuse
+  # the exact constants so that f0(x) and f1(x) are on the same scale as the
+  # fitted model coefficients.
+  #
+  # Fallback (center_vals = NULL): recompute from x_split using center_type.
+  # x_split has n_obs rows and n_groups * n_fp columns. The group membership
+  # mask is used for "group" centering -- NOT a zero-value test -- to correctly
+  # handle valid FP values of zero (e.g. log(1) = 0).
   if (center) {
     if (!is.null(center_vals)) {
+      # Primary path: reuse exact fit-time constants
       col_means <- center_vals
-    } else if (center_type == "grand") {
-      col_means <- colMeans(x_split, na.rm = TRUE)
     } else {
-      # Within-group means: mean over in-group rows only (mirroring create_z_variables)
-      col_means <- vapply(seq_len(n_groups), function(gi) {
-        grp_cols <- seq.int((gi - 1L) * (ncol(x_split) %/% n_groups) + 1L,
-                            gi       * (ncol(x_split) %/% n_groups))
-        in_grp   <- as.vector(group_var) == grp_levels[gi]
-        colMeans(x_split[in_grp, grp_cols, drop = FALSE], na.rm = TRUE)
-      }, numeric(ncol(x_split) %/% n_groups))
-      col_means <- as.vector(col_means)
+      n_fp      <- ncol(x_split) %/% n_groups
+      col_means <- numeric(ncol(x_split))
+      names(col_means) <- colnames(x_split)
+      grp_vec   <- as.vector(group_var)
+      
+      for (gi in seq_len(n_groups)) {
+        grp_cols <- seq.int((gi - 1L) * n_fp + 1L, gi * n_fp)
+        if (center_type == "grand") {
+          col_means[grp_cols] <- colMeans(x_split[, grp_cols, drop = FALSE],
+                                          na.rm = TRUE)
+        } else {
+          in_grp              <- grp_vec == grp_levels[gi]
+          col_means[grp_cols] <- colMeans(
+            x_split[in_grp, grp_cols, drop = FALSE], na.rm = TRUE
+          )
+        }
+      }
     }
     x_split <- sweep(x_split, 2L, col_means, "-", check.margin = FALSE)
   }
@@ -296,7 +352,7 @@ gen_fitted_values_per_group <- function(cont_var,
   colnames(diff_upper) <- sprintf("(f%d-f%d)_upper", grp_levels[-1L], grp_levels[1L])
   
   # Assemble and return --------------------------------------------------------
-  cbind(
+  fitted <- cbind(
     cont_var,
     fitted_vals,
     fitted_se,
@@ -307,4 +363,11 @@ gen_fitted_values_per_group <- function(cont_var,
     diff_lower,
     diff_upper
   )
+  
+  # Attach centering metadata as attributes for reuse in predict.mfpi()
+  attr(fitted, "fp_centers")      <- if (center) col_means else NULL
+  attr(fitted, "center_type")     <- if (center) center_type else NULL
+  attr(fitted, "group_fp_powers") <- group_fp_powers
+  
+  fitted
 }

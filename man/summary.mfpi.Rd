@@ -13,7 +13,7 @@
 \item{...}{Currently unused.}
 }
 \value{
-An object of class \code{"summary.mfpi"} — a named list with:
+An object of class \code{"summary.mfpi"} - a named list with:
 \describe{
 \item{\code{group_var}}{Name of the grouping variable.}
 \item{\code{nobs}}{Number of observations.}
@@ -22,10 +22,19 @@ An object of class \code{"summary.mfpi"} — a named list with:
 \item{\code{group_levels_original}}{Original levels of \code{group_var}.}
 \item{\code{adjust_terms}}{Full \code{fp_terms} table from the MFP
 adjustment model.}
-\item{\code{all_model_metrics}}{All three candidates (linear, FP1, FP2)
-for every variable in \code{cont_vars}.}
-\item{\code{best_model_metrics}}{Best model per significant
-variable.}
+\item{\code{all_model_metrics}}{Metrics for all three candidates (linear,
+FP1, FP2) for every variable in \code{cont_vars}.}
+\item{\code{best_model_metrics}}{Metrics for the selected (winning) model
+per significant variable.}
+\item{\code{best_interaction_model}}{Named list of fitted interaction model
+objects, one per significant variable.}
+\item{\code{all_interaction_models}}{Named list of all candidate interaction
+model objects, one element per variable.}
+\item{\code{best_fitted_functions}}{Named list of fitted-function matrices
+for the winning model per significant variable. See \code{mfpi()} for
+column definitions.}
+\item{\code{all_fitted_functions}}{Named list of fitted-function matrices
+for all candidates, one element per variable.}
 \item{\code{model_summaries}}{Named list of \code{summary(fit$fit)}
 objects, one per significant variable. \strong{Note:} p-values here
 are from \code{glm}/\code{coxph} and do not account for FP power

@@ -103,7 +103,7 @@ get_selected_variables <- function(object) {
 #'
 #' @examples
 #' \dontrun{
-#' fit    <- mfp2::mfp2(y ~ fp(age) + fp(bmi), data = mydata)
+#' fit    <- mfp2(y ~ fp(age) + fp(bmi), data = mydata)
 #' powers <- get_fp_powers(c("age", "bmi"), fit$fp_terms)
 #'
 #' # Warn when a variable was not selected

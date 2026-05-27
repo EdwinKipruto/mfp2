@@ -129,6 +129,7 @@ formulas as \code{flex1}/\code{flex2} for \code{flex3}, and the \code{flex4} for
 }
 
 \examples{
+\dontrun{
 # FP1, two groups (K=2): dfint = (K-1)*m = 1
 interaction_model_df(n_groups = 2, degree = 1, flex = "flex1")
 
@@ -137,7 +138,7 @@ interaction_model_df(n_groups = 3, degree = 2, flex = "flex1")
 
 # flex4, FP1, two groups: dfint = 2*(K-1)*m = 2
 interaction_model_df(n_groups = 2, degree = 1, flex = "flex4")
-
+}
 }
 \references{
 Royston, P. and Sauerbrei, W. (2009). Two techniques for investigating

@@ -119,6 +119,7 @@
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' # FP1, two groups (K=2): dfint = (K-1)*m = 1
 #' interaction_model_df(n_groups = 2, degree = 1, flex = "flex1")
 #'
@@ -127,7 +128,7 @@
 #'
 #' # flex4, FP1, two groups: dfint = 2*(K-1)*m = 2
 #' interaction_model_df(n_groups = 2, degree = 1, flex = "flex4")
-#'
+#'}
 #' @references
 #' Royston, P. and Sauerbrei, W. (2009). Two techniques for investigating
 #' interactions between treatment and continuous covariates in clinical trials.
@@ -137,7 +138,7 @@
 #' continuous variable: simulation study of power for several methods of
 #' analysis. *Statistics in Medicine*, 33, 4695–4708.
 #'
-#' @export
+# @export
 interaction_model_df <- function(n_groups,
                                  degree,
                                  flex = c("flex0", "flex1", "flex2",

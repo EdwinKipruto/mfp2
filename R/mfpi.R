@@ -163,34 +163,48 @@
 #' inappropriate. Three options are available, matching those in
 #' [mfp2::mfp2()]:
 #'
-#' * **`zero_vars`** - FP transformations are applied only to strictly positive
-#'   values; non-positive values are set to zero in the transformed variable.
-#' * **`catzero_vars`** - as `zero_vars`, but a binary indicator
-#'   (\eqn{Z = 1} if \eqn{x = 0}, \eqn{Z = 0} if \eqn{x > 0}) is
-#'   automatically created and included in the adjustment model alongside the
-#'   transformed variable.
-#' * **`spike_vars`** - triggers the spike-at-zero (SAZ) algorithm, which
-#'   formally evaluates whether the binary indicator and the FP function each
-#'   contribute explanatory value beyond the other.
+#' \describe{
+#'   \item{\code{zero_vars}}{FP transformations are applied only to strictly
+#'     positive values; non-positive values are set to zero in the transformed
+#'     variable. No structural indicator is added to the model.}
+#'   \item{\code{catzero_vars}}{As \code{zero_vars}, but a binary indicator
+#'     (\eqn{Z = 1} if \eqn{x = 0}, \eqn{Z = 0} if \eqn{x > 0}) is
+#'     automatically created and included in the model alongside the FP terms
+#'     for the positive part.}
+#'   \item{\code{spike_vars}}{Triggers the spike-at-zero (SAZ) algorithm,
+#'     which formally evaluates whether the binary indicator and the FP
+#'     function each contribute explanatory value beyond the other. Implies
+#'     \code{catzero_vars} (and therefore \code{zero_vars}).}
+#' }
 #'
-#' Note that `spike_vars` and `catzero_vars` are mutually exclusive per
-#' variable. Setting `spike_vars` for a variable implicitly sets
-#' `catzero_vars`, which in turn implies `zero_vars`.
+#' Note that \code{spike_vars} and \code{catzero_vars} are mutually exclusive
+#' per variable.
 #'
-#' \strong{Limitation in the interaction stage.} `zero_vars`, `catzero_vars`,
-#' and `spike_vars` are fully respected when fitting the \strong{adjustment
-#' model} (Stage 1): the MFP algorithm applies FP transformations only to
-#' positive values, includes the binary indicator where requested, and runs
-#' the SAZ selection procedure as documented in [mfp2::mfp2()]. However, in
-#' the \strong{interaction stage} (Stage 2), the current implementation
-#' tests only the \strong{FP-on-positives by group} interaction. The binary
-#' zero indicator \eqn{Z} is not crossed with the grouping variable; that is,
-#' no \eqn{Z \times \text{group}} interaction term is added or tested. This
-#' means \code{mfpi()} can detect whether the \emph{shape} of the FP
-#' relationship differs across groups among observations with strictly
-#' positive `cont_var` values, but it cannot detect whether the
-#' \emph{discrete} zero-vs-positive contrast varies across groups. A formal
-#' test for the latter is a planned direction for future development.
+#' \strong{Interaction variables (\code{cont_vars}).}
+#' The structural \eqn{I(x = 0)} indicator added by \code{catzero_vars} and
+#' \code{spike_vars} cannot be used for variables in \code{cont_vars}. To
+#' include a group-specific spike indicator in the interaction model would
+#' require fitting separate group-specific \eqn{Z \times \text{group}} terms,
+#' which is not currently supported and would create an inconsistency between
+#' the adjustment model and the interaction model.
+#'
+#' Therefore, if a variable appears in both \code{cont_vars} and
+#' \code{spike_vars} or \code{catzero_vars}, the following happens
+#' automatically (with a warning):
+#' \enumerate{
+#'   \item The \code{spike} and \code{catzero} flags are set to \code{FALSE}
+#'     for that variable in both the adjustment model and the interaction
+#'     stage.
+#'   \item The \code{zero} flag is preserved: if the variable has non-positive
+#'     values, they are still recoded to zero before FP transformation.
+#'   \item The variable is treated as an ordinary continuous variable, with
+#'     the FP curve fitted to the full distribution (positive values only if
+#'     \code{zero = TRUE} applies).
+#' }
+#'
+#' Variables in \code{spike_vars} or \code{catzero_vars} that are
+#' \strong{not} in \code{cont_vars} are fully respected in the adjustment
+#' model as documented in [mfp2::mfp2()].
 #'
 #' @param x
 #'   For \code{mfpi.default()} only. A numeric matrix of dimension
@@ -387,18 +401,27 @@
 #' @param zero_vars
 #'   An optional character vector naming variables for which non-positive values
 #'   should be treated as zero. FP transformations are applied only to strictly
-#'   positive values; non-positive values are set to zero. See the
-#'   *Handling non-positive values* section for details.
+#'   positive values; non-positive values are set to zero. This treatment is
+#'   compatible with \code{cont_vars} and is preserved for interaction
+#'   variables. See the \emph{Handling non-positive values} section for details.
 #' @param catzero_vars
-#'   An optional character vector naming variables for which non-positive values
-#'   should be treated as zero and a binary indicator variable automatically
-#'   created and included in the adjustment model. Implies `zero_vars` for the
-#'   named variables. A variable may not appear in both `zero_vars` and
-#'   `catzero_vars`.
+#'   An optional character vector naming variables for which a binary indicator
+#'   \eqn{I(x = 0)} should be added to the adjustment model alongside the FP
+#'   terms for the positive part. Implies \code{zero_vars} for the named
+#'   variables. A variable may not appear in both \code{zero_vars} and
+#'   \code{catzero_vars}. \strong{Note:} if a variable also appears in
+#'   \code{cont_vars}, the \eqn{I(x = 0)} indicator is dropped and the variable
+#'   is treated as an ordinary continuous variable in both the adjustment model
+#'   and the interaction stage (with a warning). The \code{zero_vars} recoding
+#'   of non-positive values is still applied.
 #' @param spike_vars
 #'   An optional character vector naming variables to be assessed for a spike
-#'   at zero using the SAZ algorithm. Implies `catzero_vars` (and therefore
-#'   `zero_vars`) for the named variables.
+#'   at zero using the SAZ algorithm. Implies \code{catzero_vars} (and
+#'   therefore \code{zero_vars}) for the named variables. \strong{Note:} if a
+#'   variable also appears in \code{cont_vars}, the spike-at-zero treatment is
+#'   dropped and the variable is treated as an ordinary continuous variable in
+#'   both the adjustment model and the interaction stage (with a warning). The
+#'   \code{zero_vars} recoding of non-positive values is still applied.
 #' @param min_prop
 #'   Numeric in \eqn{[0, 1]}. Minimum proportion of zeros required for the
 #'   SAZ algorithm to be applied. Default is `0.05`. Variables with fewer zeros
@@ -408,10 +431,15 @@
 #'   Default is `0.95`. Variables with more zeros are also treated as standard
 #'   continuous predictors.
 #' @param use_ftest
-#'   Logical. Whether to use an F-test rather than a chi-square test when
-#'   computing p-values for Gaussian models. Recommended when the sample size
-#'   is small. Default is `FALSE`. Has no effect for non-Gaussian families or
-#'   when `criterion` is not `"pvalue"`.
+#'   Logical. Whether to use an F-test rather than a chi-square
+#'   likelihood-ratio test when computing p-values for Gaussian models.
+#'   When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
+#'   to both the adjustment-variable selection step (via
+#'   \code{mfp2:::fit_mfp()}) and the interaction test for each variable in
+#'   \code{cont_vars} (via \code{mfp2:::calculate_f_test()}). Recommended
+#'   when the sample size is small. Default \code{FALSE}. Has no effect for
+#'   non-Gaussian families or when \code{criterion} is not
+#'   \code{"pvalue"}.
 #' @param control
 #'   A list of control parameters for the underlying fitting routine, as
 #'   returned by [stats::glm.control()] (non-Cox families) or
@@ -455,39 +483,75 @@
 #'   Currently unused. Reserved for future extensions.
 #'
 #' @return
-#' An object of class `"mfpi"`. Use [mfp2::summary.mfpi()] for a formatted
-#' summary. The object is a list with the following components:
+#' An object of class \code{"mfpi"}. The object is a list with the following
+#' components:
 #'
 #' \describe{
-#'   \item{\code{best_model_metrics}}{A data frame of evaluation metrics
-#'     for the main-effects and interaction models for each variable in
-#'     \code{cont_vars}. Columns include: \code{fp_powers_main} and \code{fp_powers_int}
-#'     (selected FP powers); \code{deviance_int} (deviance of the interaction
-#'     model); \code{deviance_diff} (deviance of main-effects model minus deviance
-#'     of interaction model); \code{pvalue} (likelihood-ratio p-value);
-#'     \code{AIC_interaction} and \code{BIC_interaction} (information criteria for the
-#'     interaction model); \code{AIC_main_minus_int} and \code{BIC_main_minus_int}
-#'     (main-effects minus interaction model for each criterion).}
-#'   \item{\code{adjust_terms}}{A data frame describing the FP terms selected
-#'     for the adjustment model.}
-#'   \item{\code{interaction_models}}{A named list of fitted model objects, one
-#'     per variable in \code{cont_vars}.}
-#'   \item{\code{fitted_functions}}{A named list of data frames, one per
-#'     variable in \code{cont_vars}. Each data frame contains the estimated FP
-#'     function \eqn{f_j} and its pointwise standard error \eqn{se(f_j)} at
-#'     each level \eqn{j} of \code{group_var}, together with 95\% confidence
-#'     intervals (\code{fj_lower}, \code{fj_upper}). Columns \code{fj - f0}
-#'     and \code{se(fj - f0)} give the difference relative to the reference
-#'     group, with corresponding confidence bounds.}
+#'   \item{\code{best_model_metrics}}{A data frame of evaluation metrics for
+#'     the selected (best) interaction model for each variable in
+#'     \code{cont_vars}. Columns include \code{variable}, \code{type} (flex
+#'     type used), \code{fp_powers_main} and \code{fp_powers_int} (selected
+#'     FP powers for the main-effects and interaction models),
+#'     \code{deviance_int}, \code{deviance_diff}, \code{df}, \code{pvalue},
+#'     \code{AIC_main}, \code{AIC_interaction}, \code{AIC_main_minus_int},
+#'     \code{BIC_main}, \code{BIC_interaction}, and
+#'     \code{BIC_main_minus_int}.}
+#'   \item{\code{all_model_metrics}}{A data frame with the same columns as
+#'     \code{best_model_metrics} but containing metrics for every candidate
+#'     model evaluated (all flex types for all variables).}
+#'   \item{\code{best_interaction_model}}{A named list of fitted model
+#'     objects (one per variable in \code{cont_vars} that showed a
+#'     significant interaction). These are the winning interaction models
+#'     used to compute fitted functions.}
+#'   \item{\code{all_interaction_models}}{A named list (one element per
+#'     \code{cont_var}) of candidate model objects across all flex types.}
+#'   \item{\code{best_fitted_functions}}{A named list (one element per
+#'     \code{cont_var} with a significant interaction) of numeric matrices.
+#'     Each matrix has one row per observation (or grid point) and columns:
+#'     the continuous variable itself; \code{f0}, \code{f1}, \ldots
+#'     (group-specific fitted FP functions); \code{se(f0)}, \code{se(f1)},
+#'     \ldots (pointwise standard errors); \code{f0_lower},
+#'     \code{f0_upper}, \ldots (95\% confidence bounds);
+#'     \code{f1-f0}, \code{f2-f0}, \ldots (differences relative to the
+#'     reference group); \code{se(f1-f0)}, \ldots (standard errors of
+#'     differences); and \code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots
+#'     (confidence bounds for differences). Attributes \code{fp_centers},
+#'     \code{center_type}, and \code{group_fp_powers} are attached for use
+#'     by \code{predict.mfpi()}.}
+#'   \item{\code{all_fitted_functions}}{A named list (one element per
+#'     \code{cont_var}) of fitted-function matrices for all candidate models,
+#'     in the same format as \code{best_fitted_functions}.}
+#'   \item{\code{center_vals_list}}{A named list (one element per
+#'     \code{cont_var}) of centering constants used when fitting the
+#'     interaction model. These are the exact values subtracted from the
+#'     FP-transformed variables during model fitting and must be reused
+#'     (not recomputed) during prediction. \code{NULL} when
+#'     \code{center = FALSE}.}
+#'   \item{\code{adjust_terms}}{A data frame describing the FP terms
+#'     selected for the adjustment model.}
+#'   \item{\code{adjustment_model}}{The full adjustment model object
+#'     returned by \code{mfp2()}.}
+#'   \item{\code{univariable_interactions}}{The full return value of the
+#'     internal \code{evaluate_interactions()} call. Contains all
+#'     intermediate results and is useful for programmatic access.}
 #'   \item{\code{group_var}}{The name of the grouping variable.}
-#'   \item{\code{show_models}}{The value of the \code{show_models} argument.}
-#'   \item{\code{flex}}{The chosen flexibility level.}
-#'   \item{\code{group_levels_new}}{The remapped levels of \code{group_var}
-#'     (0, 1, 2, ...).}
+#'   \item{\code{group_levels_new}}{The remapped (integer) levels of
+#'     \code{group_var} used internally (0, 1, 2, \ldots).}
 #'   \item{\code{group_levels_original}}{The original levels of
-#'     \code{group_var}.}
-#'   \item{\code{family}}{The regression family, as a character string.}
-#'   \item{\code{nobs}}{The number of observations used in model fitting.}
+#'     \code{group_var} as they appear in the data.}
+#'   \item{\code{flex}}{The flexibility level used (\code{"flex0"} through
+#'     \code{"flex4"}).}
+#'   \item{\code{criterion}}{The selection criterion used
+#'     (\code{"pvalue"}, \code{"aic"}, or \code{"bic"}).}
+#'   \item{\code{family}}{The regression family as a character string.}
+#'   \item{\code{nobs}}{Number of observations used in model fitting.}
+#'   \item{\code{show_models}}{Value of the \code{show_models} argument.}
+#'   \item{\code{winsorize}}{Logical; whether Winsorisation was applied.}
+#'   \item{\code{winsorize_probs}}{The probability cutoffs used for
+#'     Winsorisation, or \code{NULL} when \code{winsorize = FALSE}.}
+#'   \item{\code{winsorize_limits}}{A named list of the actual lower and
+#'     upper limits applied to each \code{cont_var} during Winsorisation,
+#'     or \code{NULL} when \code{winsorize = FALSE}.}
 #' }
 #'
 #' @references
@@ -930,14 +994,14 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, mfp2::find_shift_factor)   # already named by apply
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
   shift <- setNames(shift, vnames)
   
   if (is.null(scale)) {
-    scale <- apply(x, 2L, find_scale_factor)   # already named by apply
+    scale <- apply(x, 2L, mfp2::find_scale_factor)   # already named by apply
   } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
@@ -962,9 +1026,63 @@ mfpi.default <- function(
   if (length(zero_vars)    > 0L) zero_flag[zero_vars]       <- TRUE
   if (length(catzero_vars) > 0L) catzero_flag[catzero_vars] <- TRUE
   if (length(spike_vars)   > 0L) {
-    spike_flag[spike_vars] <- TRUE
+    spike_flag[spike_vars]   <- TRUE
     catzero_flag[spike_vars] <- TRUE   # spike implies catzero
   }
+  
+  # Override spike/catzero for cont_vars ----------------------------------------
+  # Check BEFORE the cascade (zero_flag[catzero_flag] <- TRUE) so that
+  # zero_flag at this point reflects only what the user explicitly put in
+  # zero_vars, not what would be cascaded from spike/catzero. This lets the
+  # warning message accurately tell the user whether zero recoding applies.
+  #
+  # spike = TRUE: runs the SAZ algorithm AND adds I(x=0) indicator.
+  # catzero = TRUE: adds I(x=0) indicator only, no SAZ algorithm.
+  # Neither can be used for cont_vars because the interaction design matrix
+  # does not include group-specific I(x=0) indicators. The flags are reset
+  # to FALSE here; the cascade below then runs on the corrected flags.
+  
+  spike_in_cont   <- intersect(spike_vars,   cont_vars)
+  catzero_in_cont <- intersect(catzero_vars, cont_vars)  # excludes spike vars
+  
+  if (length(spike_in_cont) > 0L) {
+    for (v in spike_in_cont) {
+      zero_note <- if (zero_flag[v])
+        " Non-positive values will still be recoded to zero before FP transformation."
+      else
+        ""
+      warning(
+        "Variable '", v, "' is in both 'cont_vars' and 'spike_vars'. ",
+        "The SAZ algorithm and the I(x=0) binary indicator have been dropped ",
+        "for this variable in both the adjustment model and the interaction ",
+        "stage. It will be treated as an ordinary continuous variable.",
+        zero_note,
+        call. = FALSE
+      )
+    }
+    spike_flag[spike_in_cont]   <- FALSE
+    catzero_flag[spike_in_cont] <- FALSE
+  }
+  
+  if (length(catzero_in_cont) > 0L) {
+    for (v in catzero_in_cont) {
+      zero_note <- if (zero_flag[v])
+        " Non-positive values will still be recoded to zero before FP transformation."
+      else
+        ""
+      warning(
+        "Variable '", v, "' is in both 'cont_vars' and 'catzero_vars'. ",
+        "The I(x=0) binary indicator has been dropped for this variable in ",
+        "both the adjustment model and the interaction stage. It will be ",
+        "treated as an ordinary continuous variable.",
+        zero_note,
+        call. = FALSE
+      )
+    }
+    catzero_flag[catzero_in_cont] <- FALSE
+  }
+  
+  # Cascade: spike implies catzero implies zero ---------------------------------
   catzero_flag[spike_flag]  <- TRUE   # redundant but explicit
   zero_flag[catzero_flag]   <- TRUE   # catzero implies zero
   
@@ -1008,7 +1126,6 @@ mfpi.default <- function(
     }
   }
   
-  # Process acd_vars to a named logical vector ---------------------------------
   acd_flag <- setNames(rep(FALSE, nvars), vnames)
   if (!is.null(acd_vars)) {
     acd_vars <- unique(intersect(acd_vars, vnames))

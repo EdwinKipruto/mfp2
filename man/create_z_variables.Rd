@@ -13,7 +13,8 @@ create_z_variables(
   center = FALSE,
   zero = FALSE,
   center_type = c("grand", "group"),
-  return_eval = FALSE
+  return_eval = FALSE,
+  scale_var = 1
 )
 }
 \arguments{
@@ -26,13 +27,13 @@ values, and have at least two distinct values.}
 
 \item{power}{Numeric vector of FP powers. Length one gives an FP1 basis;
 length two gives an FP2 basis. Repeated powers are handled by
-\code{transform_vector_fp()}.}
+\code{mfp2::transform_vector_fp()}.}
 
 \item{shift}{Optional numeric shift applied before FP transformation. Passed
-to \code{transform_vector_fp()}.}
+to \code{mfp2::transform_vector_fp()}.}
 
 \item{scale}{Optional numeric scale applied before FP transformation. Passed
-to \code{transform_vector_fp()}.}
+to \code{mfp2::transform_vector_fp()}.}
 
 \item{center}{Logical. If \code{TRUE}, center the FP basis columns before
 constructing the group-specific design matrix. Default is \code{FALSE}.}
@@ -48,6 +49,17 @@ reset to zero after centering. Default is \code{FALSE}.}
 \item{return_eval}{Logical. If \code{TRUE}, also return an evaluation matrix
 in which every group-specific function is evaluated for every observed
 \code{x} value. Default is \code{FALSE}.}
+
+\item{scale_var}{Numeric scalar. The scale factor for \code{cont_var},
+as computed in \code{mfpi.default()}. Before any FP transformation,
+\code{cont_var} is multiplied by \code{scale_var} to restore the
+variable before scaling was applied. For standard variables this gives
+\eqn{x + \text{shift}}; for \code{zero_var = TRUE} variables (where
+shift is forced to 0) this gives the original \eqn{x}, and the
+\code{zero} argument then correctly handles non-positive values.
+This ensures model coefficients match the \eqn{\phi(x + \text{shift})}
+scale of the adjustment model and standalone \pkg{mfp2}. Default
+\code{1} (no backscaling).}
 }
 \value{
 A list with the following elements:
@@ -121,7 +133,7 @@ Rows outside a given group remain structural zeros in that group's block.
 \section{FP transformations}{
 
 
-FP transformations are delegated to \code{transform_vector_fp()}.
+FP transformations are delegated to \code{mfp2::transform_vector_fp()}.
 The power convention is:
 
 \describe{
@@ -241,8 +253,45 @@ These constants should be reused during prediction. They should not be
 recomputed on new prediction data.
 }
 
+\section{Usage with raw vs pre-shifted/scaled data}{
+
+This function supports two calling conventions depending on whether
+\code{cont_var} has been pre-processed upstream:
+
+\describe{
+\item{Raw data (direct user call)}{Pass the original unscaled,
+unshifted \code{cont_var} and let \code{shift}, \code{scale}, and
+\code{zero} control the FP transformation:
+\preformatted{
+create_z_variables(
+  cont_var  = x_raw,
+  group_var = grp,
+  power     = c(0.5, 1),
+  shift     = NULL,   # estimated automatically
+  scale     = NULL,   # estimated automatically
+  scale_var = 1       # default: no backscaling
+)}}
+\item{Pre-shifted and scaled data (internal mfpi use)}{When called
+from the flex functions inside \code{mfpi()}, \code{cont_var} has
+already been shifted and scaled in \code{mfpi.default()}:
+\eqn{x_{\text{scaled}} = (x + \text{shift}) / \text{scale\_var}}.
+Pass \code{shift = 0}, \code{scale = 1}, and the real
+\code{scale_var} so that the function backscales before FP
+transformation and coefficients are on the
+\eqn{\phi(x + \text{shift})} scale:
+\preformatted{
+create_z_variables(
+  cont_var  = x_scaled,   # (x + shift) / scale_var
+  group_var = grp,
+  power     = bestfp,
+  shift     = 0,
+  scale     = 1,
+  scale_var = scale_var   # real scale factor: x_scaled * scale_var = x + shift
+)}}
+}
+}
+
 \examples{
-\dontrun{
 cont <- matrix(1:6, ncol = 1)
 colnames(cont) <- "age"
 
@@ -266,10 +315,9 @@ create_z_variables(
   center = TRUE,
   return_eval = TRUE
 )
-}
 
 }
 \seealso{
 \code{\link{transform_z_variables}},
-\code{transform_vector_fp}
+\code{mfp2::transform_vector_fp}
 }

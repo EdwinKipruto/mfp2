@@ -96,13 +96,22 @@
 #'   centering is computed on the grid rather than the original sample,
 #'   which may differ from fit-time centering; supply \code{center_vals}
 #'   to avoid this.
+#' @param scale_var Numeric scalar. The scale factor for \code{cont_var},
+#'   as computed in \code{mfpi.default()}. Before FP transformation,
+#'   \code{cont_var} is multiplied by \code{scale_var} to restore the
+#'   shifted-but-not-scaled variable \eqn{x + \text{shift}}, ensuring
+#'   the evaluation matrix is on the same scale as the interaction model
+#'   coefficients (which were fitted on the backscaled variable). Without
+#'   this backscaling, fitted values and standard errors would be
+#'   incorrect whenever \code{scale != 1}. Default \code{1} (no
+#'   backscaling).
 #'
 #' @return A numeric matrix with one row per observation (or per grid point
 #'   when \code{use_grid = TRUE}) and the following columns, where \eqn{j}
 #'   ranges over the non-reference group levels and group 0 is the reference:
 #' \describe{
-#'   \item{\code{<varname>}}{The (possibly grid-replaced) values of
-#'     \code{cont_var} as supplied (shifted/scaled).}
+#'   \item{\code{<varname>}}{The (possibly grid-replaced, backscaled) values
+#'     of \code{cont_var}.}
 #'   \item{\code{f0}, \code{f1}, \ldots}{Fitted linear predictor for each
 #'     group level.}
 #'   \item{\code{se(f0)}, \code{se(f1)}, \ldots}{Pointwise standard errors
@@ -137,7 +146,8 @@ gen_fitted_values_per_group <- function(cont_var,
                                         center      = FALSE,
                                         center_vals = NULL,
                                         center_type = c("grand", "group"),
-                                        use_grid    = FALSE) {
+                                        use_grid    = FALSE,
+                                        scale_var   = 1) {
   
   center_type <- match.arg(center_type)
   
@@ -180,6 +190,16 @@ gen_fitted_values_per_group <- function(cont_var,
     )
   }
   
+  # Backscale cont_var to match the scale of the fitted model coefficients -----
+  # cont_var arrives as (x + shift) / scale from the flex functions. The
+  # interaction model coefficients are on the phi(x + shift) scale (backscaled
+  # before fitting). To compute fitted values correctly as x_eval %*% beta,
+  # x_eval must be FP-transformed from the same backscaled variable.
+  # Multiplying by scale_var restores x + shift.
+  if (!is.null(scale_var) && any(scale_var != 1)) {
+    cont_var <- cont_var * scale_var
+  }
+  
   # Optionally replace cont_var with an equidistant grid ----------------------
   # TODO: move this block to predict.mfpi() once that method is implemented.
   if (use_grid) {
@@ -204,7 +224,7 @@ gen_fitted_values_per_group <- function(cont_var,
     center_map <- stats::setNames(rep(FALSE, n_groups), znames)
     acd_map    <- stats::setNames(rep(FALSE, n_groups), znames)
     
-    x_split <- mfp2::transform_matrix(
+    x_split <- transform_matrix(
       x          = x_split,
       power_list = group_fp_powers,
       center     = center_map,

@@ -36,70 +36,69 @@ find_best_fp_cycle(
 )
 }
 \arguments{
-\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+\item{x}{A numeric matrix of dimensions nobs x nvars. Does not contain an
 intercept, but columns are already expanded into dummy variables as
 necessary. Data are assumed to be shifted and scaled.}
 
-\item{y}{a vector for the response variable or a \code{Surv} object.}
+\item{y}{A vector for the response variable or a \code{Surv} object.}
 
 \item{powers_current}{a list of length equal to the number of variables,
 indicating the fp powers to be used in the current step for all variables
 (except \code{xi}).}
 
-\item{df}{a numeric vector of length nvars of degrees of freedom.}
+\item{df}{A numeric vector of length nvars of degrees of freedom.}
 
-\item{weights}{a vector of observation weights of length nobs.}
+\item{weights}{A vector of observation weights of length nobs.}
 
-\item{offset}{a vector of length nobs of offsets.}
+\item{offset}{A vector of length nobs of offsets.}
 
 \item{family}{Either a character string specifying the model family
-(e.g., "gaussian", "binomial", "poisson", "cox") or a function that
-returns a GLM family object, such as \code{stats::gaussian(link = "identity")}
-or \code{stats::binomial(link = "logit")}. For Cox models, only the character
-string \code{"cox"} is allowed.}
+(e.g., \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
+\code{"cox"}) or a function that returns a GLM family object such as
+\code{stats::gaussian(link = "identity")}. For Cox models, only the
+character string \code{"cox"} is allowed.}
 
 \item{family_string}{A character string representing the selected family,
-e.g., "gaussian".}
+e.g., \code{"gaussian"}.}
 
-\item{criterion}{a character string defining the criterion used to select
+\item{criterion}{A character string defining the criterion used to select
 variables and FP models of different degrees.}
 
-\item{select}{a numeric vector of length nvars indicating significance levels
-for backward elimination.}
+\item{select}{A numeric vector of length nvars indicating significance levels
+used during MFP backfitting to decide whether each predictor is retained.}
 
-\item{alpha}{a numeric vector of length nvars indicating significance levels
+\item{alpha}{A numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{keep}{a character vector with names of variables to be kept
-in the model.}
+\item{keep}{A character vector with names of variables to be kept in the
+model regardless of selection criteria.}
 
-\item{powers}{a named list of numeric values that sets the permitted FP
-powers for each covariate.}
+\item{powers}{A named list of numeric values setting the permitted FP powers
+for each covariate.}
 
-\item{method}{a character string specifying the method for tie handling in
-Cox regression model.}
+\item{method}{A character string specifying the method for tie handling in
+Cox regression.}
 
-\item{strata}{a factor of all possible combinations of stratification
-variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
+\item{strata}{A factor of all possible combinations of stratification
+variables. Returned from \code{survival::strata()}.}
 
-\item{verbose}{Logical; if \code{TRUE}, additional information will be printed
-during model fitting steps. Useful for understanding internal processing.
-Default is \code{FALSE}.}
+\item{verbose}{Logical. If \code{TRUE}, progress information is printed
+during fitting. Default \code{FALSE}.}
 
-\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+\item{ftest}{Logical. If \code{TRUE} and \code{family = "gaussian"}, use an
+F-test rather than a chi-square likelihood-ratio test.}
 
-\item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
-or \code{\link[stats:glm]{stats::glm()}} for details.}
+\item{control}{A list with parameters for model fit. See
+\code{survival::coxph()} or \code{stats::glm()} for details.}
 
 \item{rownames}{passed to \code{survival::coxph.fit()}.}
 
-\item{nocenter}{a numeric vector with a list of values for fitting Cox
-models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+\item{nocenter}{A numeric vector with a list of values for fitting Cox
+models. See \code{survival::coxph()} for details.}
 
-\item{zero}{A logical vector indicating, by position, which columns of
-\code{x} should treat nonpositive values (zero or negative) as zero before
-transformation. Must be the same length and in the same order as the columns
-of \code{x}.}
+\item{zero}{A logical vector indicating which columns of \code{x} should
+treat non-positive values as zero before FP transformation. Must match
+the length and order of the columns of \code{x}.}
 
 \item{catzero}{A named list of binary indicator variables of length \code{ncol(x)}
 for nonpositive values, created when specific variables are passed to the
@@ -109,8 +108,8 @@ the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
 is a list of binary variables, not a named logical vector as in \code{fit_mfp}.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
-a spike at zero. The length and order of \code{spike} must match those of
-the columns in \code{x}.}
+a spike at zero and should be assessed using the SAZ algorithm. Must
+match the length and order of the columns of \code{x}.}
 
 \item{spike_decision}{Named vector indicating how spike-at-zero (SAZ)
 variables are handled. Each element corresponds to a variable and encodes
@@ -122,7 +121,7 @@ with length equal to \code{ncol(x)}. Each list element corresponds to a variable
 if an element is \code{NULL}, the variable was not specified in the
 \code{acdx} argument of \code{fit_mfp}.}
 
-\item{acdx}{a logical vector of length nvars indicating which continuous
+\item{acdx}{A logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
 
@@ -130,11 +129,10 @@ transformation.}
 variable transformations. This is updated at each step and reused in the next
 cycle to avoid recomputation.}
 
-\item{force_max_fp}{A logical vector of length \code{nvars}. If \code{TRUE}
-for a variable, forces selection of the most complex functional form at
-the degree specified by \code{df} for that variable, bypassing AIC/BIC
-comparison against simpler forms in \code{select_ic()}. Has no effect
-when \code{criterion = "pvalue"}.}
+\item{force_max_fp}{A logical vector of length nvars. If \code{TRUE} for a
+variable, forces selection of the most complex functional form at the
+degree specified by \code{df}, bypassing AIC/BIC comparison against
+simpler forms. Has no effect when \code{criterion = "pvalue"}.}
 }
 \value{
 A list with updated components \code{powers_current} (current FP powers for all

@@ -2,38 +2,122 @@
 % Please edit documentation in R/fit_mfp.R
 \name{reset_spike}
 \alias{reset_spike}
-\title{Reset spike indicators for variables without enough zeros}
+\title{Reset Spike-at-Zero Indicators and Undo Cascade for Ineligible Variables}
 \usage{
-reset_spike(x, spike, min_prop = 0.05, max_prop = 0.95)
+reset_spike(
+  x,
+  spike,
+  user_catzero,
+  user_zero,
+  min_prop = 0.05,
+  max_prop = 0.95
+)
 }
 \arguments{
-\item{x}{A data frame or matrix.}
+\item{x}{A numeric matrix or data frame with column names. Only columns
+named in \code{spike} are examined.}
 
-\item{spike}{A logical vector indicating which columns of \code{x} are
-expected to contain a spike at zero. Its length and order must match
-the columns of \code{x}.}
+\item{spike}{A named logical vector. \code{TRUE} indicates the column was
+flagged as a spike-at-zero variable. Should be the post-cascade version
+(after \code{catzero[spike] <- TRUE} has been applied in
+\code{fit_mfp()}).}
 
-\item{min_prop}{Numeric between 0 and 0.5 specifying the minimum proportion
-of zeros required to keep the spike indicator. Default is 0.05 (5\%).}
+\item{user_catzero}{A named logical vector of the user's original
+\code{catzero} specification \strong{before} the cascade
+\code{catzero[spike] <- TRUE} was applied. Must have the same names as
+\code{spike}.}
 
-\item{max_prop}{Numeric between 0.5 and 1 specifying the maximum proportion
-of zeros allowed to keep the spike indicator. Default is 0.95 (95\%).}
+\item{user_zero}{A named logical vector of the user's original \code{zero}
+specification \strong{before} the cascade \code{zero[catzero] <- TRUE}
+was applied. Must have the same names as \code{spike}.}
+
+\item{min_prop}{Numeric in \eqn{(0, 0.5)}. Minimum proportion of zeros
+required to retain the spike indicator. If the observed zero proportion
+is below \code{min_prop}, the variable has too few zeros for a meaningful
+spike model. Default \code{0.05}.}
+
+\item{max_prop}{Numeric in \eqn{(0.5, 1)}. Maximum proportion of zeros
+allowed to retain the spike indicator. If the observed zero proportion
+exceeds \code{max_prop}, the positive part is too sparse for reliable FP
+fitting. Default \code{0.95}.}
 }
 \value{
-A logical vector of the same length as \code{spike}, with entries
-reset to \code{FALSE} where the corresponding variable in \code{x}
-contains too few or too many zeros.
+A named list with three elements, each a named logical vector of
+the same length as \code{spike}:
+\describe{
+\item{\code{spike}}{Updated spike vector. Entries for ineligible
+variables are set to \code{FALSE}; all other entries are unchanged.}
+\item{\code{catzero}}{Updated catzero vector. For ineligible variables
+(where \code{spike} was just reset), restored to \code{user_catzero}.
+All other entries retain their post-cascade values, i.e. \code{TRUE}
+for variables that remain eligible spike variables.}
+\item{\code{zero}}{Updated zero vector. For ineligible variables,
+restored to \code{user_zero}. All other entries retain their
+post-cascade values.}
+}
 }
 \description{
-This function resets elements of a logical vector \code{spike} to \code{FALSE}
-if the corresponding variables in \code{x} contain too few or too many zero values
-based on a specified threshold, or if the variable is binary (has exactly two
-unique values).
+Evaluates whether each variable flagged as a spike-at-zero (\code{spike})
+is eligible for the SAZ algorithm based on its zero proportion and
+cardinality. For ineligible variables, \code{spike} is reset to
+\code{FALSE} and the \code{catzero} and \code{zero} flags are restored to
+the user's original pre-cascade values. This correctly undoes the implicit
+cascade (\code{catzero[spike] <- TRUE}, \code{zero[catzero] <- TRUE}) that
+\code{fit_mfp()} applies before calling this function, ensuring that only
+what the user explicitly requested is preserved.
 }
 \details{
-A warning is issued listing the variables for which the spike option
-has been reset. Variables with zero proportions outside \code{[min_prop, max_prop]}
-or variables that are binary (two unique values) are considered uninformative
-for the spike-at-zero indicator.
+Three conditions cause a variable's spike indicator to be reset:
+\enumerate{
+\item \strong{Too few zeros} -- zero proportion below \code{min_prop}.
+There are not enough zero observations to reliably model a spike at
+zero or to estimate its contribution separately from the FP function.
+\item \strong{Too many zeros} -- zero proportion above \code{max_prop}.
+The positive part has too few observations for reliable FP power
+selection and fitting.
+\item \strong{Binary variable} -- exactly two unique finite values.
+The positive part would contain a single unique value, making FP
+transformation degenerate.
 }
+A warning is issued for each reset, identifying the affected variables and
+the reason. Variables reset for both proportion and binary reasons receive
+two separate warnings.
+}
+\section{Background -- the cascade problem}{
+
+In \code{fit_mfp()}, the following cascade is applied before calling
+\code{reset_spike()}:
+\preformatted{
+  catzero[spike]  <- TRUE   # spike implies catzero
+  zero[catzero]   <- TRUE   # catzero implies zero
+}
+If \code{reset_spike()} only resets \code{spike} (as in the original
+implementation), \code{catzero} and \code{zero} remain \code{TRUE} for
+ineligible variables even though the user never asked for them. This
+function corrects that by accepting the pre-cascade user values and
+restoring them for any variable where \code{spike} is reset.
+}
+
+\section{Cascade restoration examples}{
+
+For a variable whose \code{spike} is reset, the outcome depends on what
+the user originally specified:
+\describe{
+\item{User specified \code{spike} only (not \code{catzero} or
+\code{zero})}{After reset: \code{spike = FALSE},
+\code{catzero = FALSE}, \code{zero = FALSE}. The variable is treated
+as a standard continuous predictor -- no binary indicator, no zero
+recoding.}
+\item{User specified \code{spike} and \code{zero = TRUE}}{After reset:
+\code{spike = FALSE}, \code{catzero = FALSE}, \code{zero = TRUE}.
+Non-positive values are still recoded to zero before FP transformation,
+but no binary indicator is added and the SAZ algorithm is not run.}
+\item{User specified \code{spike} and \code{catzero = TRUE}}{After
+reset: \code{spike = FALSE}, \code{catzero = TRUE},
+\code{zero = TRUE}. The binary indicator \eqn{I(x = 0)} is still
+added (as explicitly requested via \code{catzero}), but the SAZ
+selection algorithm is not run.}
+}
+}
+
 \keyword{internal}

@@ -38,107 +38,108 @@ fit_mfp(
 )
 }
 \arguments{
-\item{x}{an input matrix of dimensions nobs x nvars. Does not contain
+\item{x}{A numeric matrix of dimensions nobs x nvars. Does not contain an
 intercept, but columns are already expanded into dummy variables as
 necessary. Data are assumed to be shifted and scaled.}
 
-\item{y}{a vector for the response variable or a \code{Surv} object.}
+\item{y}{A vector for the response variable or a \code{Surv} object.}
 
-\item{weights}{a vector of observation weights of length nobs.}
+\item{weights}{A vector of observation weights of length nobs.}
 
-\item{offset}{a vector of length nobs of offsets.}
+\item{offset}{A vector of length nobs of offsets.}
 
-\item{cycles}{an integer representing the maximum number of
-iteration cycles during which FP powers for all predictor are updated.}
+\item{cycles}{An integer representing the maximum number of iteration cycles
+during which FP powers for all predictors are updated.}
 
-\item{scale}{a numeric vector of length nvars of scaling factors. Not applied,
-but re-ordered to conform to \code{xorder}.}
+\item{scale}{A named numeric vector of length nvars of scaling factors. Not
+applied during power selection cycles, but used in step 4 to backscale
+\code{x} before the final model fit so that coefficients are on the
+\eqn{\phi(x + \text{shift})} scale.}
 
-\item{shift}{a numeric vector of length nvars of shifts. Not applied,
-but re-ordered to conform to \code{xorder}.}
+\item{shift}{A named numeric vector of length nvars of shift terms. Not
+applied (shifting was done upstream), but re-ordered to conform to
+\code{xorder} and stored in the returned object.}
 
-\item{df}{a numeric vector of length nvars of degrees of freedom.}
+\item{df}{A numeric vector of length nvars of degrees of freedom.}
 
-\item{center}{a logical vector of length nvars indicating if variables are
-to be centered.}
+\item{center}{A logical vector of length nvars indicating if variables are
+to be centred.}
 
 \item{family}{Either a character string specifying the model family
-(e.g., "gaussian", "binomial", "poisson", "cox") or a function that
-returns a GLM family object, such as \code{stats::gaussian(link = "identity")}
-or \code{stats::binomial(link = "logit")}. For Cox models, only the character
-string \code{"cox"} is allowed.}
+(e.g., \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
+\code{"cox"}) or a function that returns a GLM family object such as
+\code{stats::gaussian(link = "identity")}. For Cox models, only the
+character string \code{"cox"} is allowed.}
 
 \item{family_string}{A character string representing the selected family,
-e.g., "gaussian".}
+e.g., \code{"gaussian"}.}
 
-\item{criterion}{a character string defining the criterion used to select
+\item{criterion}{A character string defining the criterion used to select
 variables and FP models of different degrees.}
 
-\item{select}{a numeric vector of length nvars indicating significance levels
-for backward elimination.}
+\item{select}{A numeric vector of length nvars indicating significance levels
+used during MFP backfitting to decide whether each predictor is retained.}
 
-\item{alpha}{a numeric vector of length nvars indicating significance levels
+\item{alpha}{A numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{keep}{a character vector with names of variables to be kept
-in the model.}
+\item{keep}{A character vector with names of variables to be kept in the
+model regardless of selection criteria.}
 
-\item{xorder}{a string determining the order of entry of the covariates
-into the model-selection algorithm.}
+\item{xorder}{A string determining the order of entry of the covariates into
+the model-selection algorithm.}
 
-\item{powers}{a named list of numeric values that sets the permitted FP
-powers for each covariate.}
+\item{powers}{A named list of numeric values setting the permitted FP powers
+for each covariate.}
 
-\item{method}{a character string specifying the method for tie handling in
-Cox regression model.}
+\item{method}{A character string specifying the method for tie handling in
+Cox regression.}
 
-\item{strata}{a factor of all possible combinations of stratification
-variables. Returned from \code{\link[survival:strata]{survival::strata()}}.}
+\item{strata}{A factor of all possible combinations of stratification
+variables. Returned from \code{survival::strata()}.}
 
-\item{nocenter}{a numeric vector with a list of values for fitting Cox
-models. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+\item{nocenter}{A numeric vector with a list of values for fitting Cox
+models. See \code{survival::coxph()} for details.}
 
-\item{acdx}{a logical vector of length nvars indicating which continuous
+\item{acdx}{A logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
 
-\item{ftest}{a logical indicating the use of the F-test for Gaussian models.}
+\item{ftest}{Logical. If \code{TRUE} and \code{family = "gaussian"}, use an
+F-test rather than a chi-square likelihood-ratio test.}
 
-\item{control}{a list with parameters for model fit. See \code{\link[survival:coxph]{survival::coxph()}}
-or \code{\link[stats:glm]{stats::glm()}} for details.}
+\item{control}{A list with parameters for model fit. See
+\code{survival::coxph()} or \code{stats::glm()} for details.}
 
-\item{zero}{A logical vector indicating, by position, which columns of
-\code{x} should treat nonpositive values (zero or negative) as zero before
-transformation. Must be the same length and in the same order as the columns
-of \code{x}.}
+\item{zero}{A logical vector indicating which columns of \code{x} should
+treat non-positive values as zero before FP transformation. Must match
+the length and order of the columns of \code{x}.}
 
-\item{catzero}{A logical vector similar to \code{zero}, indicating which
-columns of \code{x} should treat nonpositive values as zero and also have a binary
-indicator automatically created and included in the model. Must match the length
-and order of the columns in \code{x}. See \code{mfp2} for details.}
+\item{catzero}{A logical vector indicating which columns of \code{x} should
+treat non-positive values as zero AND have a binary indicator
+\eqn{I(x = 0)} automatically created and included in the model. Must
+match the length and order of the columns of \code{x}.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
-a spike at zero. The length and order of \code{spike} must match those of
-the columns in \code{x}.}
+a spike at zero and should be assessed using the SAZ algorithm. Must
+match the length and order of the columns of \code{x}.}
 
-\item{min_prop}{A numeric value between 0 and 1; the minimum proportion of
-zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
+\item{min_prop}{Numeric in \eqn{(0, 0.5)}. Minimum proportion of zeros
+required for the SAZ algorithm to be applied. Default \code{0.05}.}
 
-\item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
-zeros for which SAZ modeling is applied. Defaults to 0.95.}
+\item{max_prop}{Numeric in \eqn{(0.5, 1)}. Maximum proportion of zeros
+allowed for the SAZ algorithm to be applied. Default \code{0.95}.}
 
-\item{force_max_fp}{A logical vector of length \code{nvars}. If \code{TRUE}
-for a variable, forces selection of the most complex functional form at
-the degree specified by \code{df} for that variable, bypassing AIC/BIC
-comparison against simpler forms in \code{select_ic()}. Has no effect
-when \code{criterion = "pvalue"}.}
+\item{force_max_fp}{A logical vector of length nvars. If \code{TRUE} for a
+variable, forces selection of the most complex functional form at the
+degree specified by \code{df}, bypassing AIC/BIC comparison against
+simpler forms. Has no effect when \code{criterion = "pvalue"}.}
 
-\item{verbose}{Logical; if \code{TRUE}, additional information will be printed
-during model fitting steps. Useful for understanding internal processing.
-Default is \code{FALSE}.}
+\item{verbose}{Logical. If \code{TRUE}, progress information is printed
+during fitting. Default \code{FALSE}.}
 }
 \value{
-See \code{mfp2()} for details on the returned object.
+See \code{mfp2()} for details on the returned \code{mfp2} object.
 }
 \description{
 This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -150,47 +151,62 @@ have been properly prepared by \code{mfp2()}.
 }
 \section{Algorithm}{
 
-\itemize{
-\item Step 1: variable ordering. Variables are ordered according to \code{xorder}. This
-may involve fitting a regression model to determine entry order.
-\item Step 2 preprocessing: Initial powers for fractional  polynomial terms are
-set, checking if acd transformation is required and allowed, and
-zero and catzero variables are handled, spike variables are marked.
-Note that the initial powers of all variables are always set to 1, and higher
-FPs are only evaluated in turn for each variables in the first cycle of the
-algorithm. See e.g. Sauerbrei and Royston (1999).
-\item Step 3: MFP cycles.Iteratively updates FP powers and spike decisions using
-\code{find_best_fp_cycle()} until convergence or maximum cycles are reached.
-During cycles, \code{prev_adj_params} stores previously computed transformations
-for adjustment variables to avoid recomputation. It is updated at the end of
-each cycle and reused in the next.
-\item Step 4: Final transformation. Applies final FP powers to \code{x}, generates
-binary variables for catzero, handles centering, and applies backscaling if
-required.
-\item Step 5: Model fitting. Fits the final model using the transformed \code{x} and
-returns an \code{mfp2} object with transformed data, centers, FP powers,
-acd parameters, and convergence information.
+\enumerate{
+\item \strong{Variable ordering.} Variables are ordered according to
+\code{xorder}. This may involve fitting a preliminary regression model.
+\item \strong{Pre-processing.} Initial FP powers are set to 1. ACD
+transformation setup, zero/catzero/spike handling, and spike eligibility
+checks are performed. See the \emph{Spike-at-zero handling} section.
+\item \strong{MFP backfitting cycles.} FP powers and spike decisions are
+updated iteratively via \code{find_best_fp_cycle()} until convergence or
+the maximum number of cycles is reached. Previously computed adjustment
+transformations are cached in \code{prev_adj_params} to avoid
+recomputation across cycles.
+\item \strong{Final transformation.} After convergence, \code{x} is
+backscaled (if \code{scale != 1}) to restore the shifted-but-not-scaled
+variable, then FP-transformed using the selected powers. Centering and
+binary indicator creation for \code{catzero} variables are applied.
+\item \strong{Model fitting.} The final model is fitted on the transformed
+design matrix and returned as an \code{mfp2} object.
+}
+}
+
+\section{Spike-at-zero handling}{
+
+In step 2, the following operations are applied in order:
+\enumerate{
+\item The pre-cascade user values of \code{catzero} and \code{zero} are
+saved.
+\item The cascade is applied: \code{catzero[spike] <- TRUE} and
+\code{zero[catzero] <- TRUE}.
+\item \code{reset_spike()} is called for variables where spike eligibility
+criteria are not met (zero proportion outside \code{[min_prop, max_prop]}
+or binary variables). For reset variables, \code{spike} is set to
+\code{FALSE} and \code{catzero}/\code{zero} are restored to the
+user-specified pre-cascade values -- so only what the user explicitly
+requested is preserved.
 }
 }
 
 \references{
 Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic
 and diagnostic models: transformation of the predictors by using fractional
-polynomials. \emph{Journal of the Royal Statistical Society: Series A (Statistics in Society)}, 162, 71–94.
+polynomials. \emph{Journal of the Royal Statistical Society: Series A},
+162, 71--94.
 
-Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate
-transformation for enhanced parametric multivariable modeling. \emph{The Stata Journal},
-16(1), 72–87.
+Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
+covariate transformation for enhanced parametric multivariable modeling.
+\emph{The Stata Journal}, 16(1), 72--87.
 
-Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2017). Modeling variables
-with a spike at zero: examples and practical recommendations. \emph{American Journal of Epidemiology},
-185(8), 650–660.
+Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2017). Modeling
+variables with a spike at zero: examples and practical recommendations.
+\emph{American Journal of Epidemiology}, 185(8), 650--660.
 
-Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2019). Modeling exposures
-with a spike at zero: simulation study and practical application to survival data.
-\emph{Biostatistics & Epidemiology}, 3(1), 23–37.
+Lorenz, E., Jenkner, C., Sauerbrei, W., and Becher, H. (2019). Modeling
+exposures with a spike at zero: simulation study and practical application
+to survival data. \emph{Biostatistics & Epidemiology}, 3(1), 23--37.
 }
 \seealso{
-\code{mfp2()}, \code{find_best_fp_cycle()}
+\code{mfp2()}, \code{find_best_fp_cycle()}, \code{reset_spike()}
 }
 \keyword{internal}

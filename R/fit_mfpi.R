@@ -26,7 +26,7 @@
 #' @param family Character string; one of \code{"gaussian"}, \code{"binomial"},
 #'   \code{"poisson"}, or \code{"cox"}.
 #' @param family_string Same as \code{family} but always a plain character
-#'   string. Required separately by \code{fit_mfp()} for internal
+#'   string. Required separately by \code{mfp2:::fit_mfp()} for internal
 #'   branching.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
@@ -37,12 +37,12 @@
 #'   \code{"bic"}. Governs two distinct selection steps:
 #'   \enumerate{
 #'     \item \strong{Adjustment-model selection} (Step 1): controls variable
-#'       elimination and FP degree selection in \code{fit_mfp()}.
+#'       elimination and FP degree selection in \code{mfp2:::fit_mfp()}.
 #'     \item \strong{Interaction functional form selection} (Step 2): selects
 #'       among linear, FP1, and FP2 interaction candidates in
 #'       \code{evaluate_interactions()}.
 #'   }
-#'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
+#'   In the internal \code{mfp2:::fit_mfp()} calls within \code{flex1()} and
 #'   \code{flex4()} - used only to estimate FP powers for \code{cont_var} -
 #'   the user criterion is passed alongside \code{force_max_fp = TRUE}, which
 #'   prevents AIC/BIC from simplifying the functional form below the requested
@@ -93,7 +93,7 @@
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
 #'   use an F-test (via \code{mfp2:::calculate_f_test()}) rather than a
 #'   chi-square likelihood-ratio test for the interaction p-value. Also
-#'   passed to \code{fit_mfp()} for adjustment-variable selection.
+#'   passed to \code{mfp2:::fit_mfp()} for adjustment-variable selection.
 #'   Ignored for non-Gaussian families.
 #' @param control List of fitting control parameters.
 #' @param group_var Character string. Name of the grouping variable in \code{x}.
@@ -107,7 +107,10 @@
 #'   \code{criterion = "pvalue"}.
 #' @param min_improvement Numeric. Minimum criterion improvement required to
 #'   retain an interaction.
-#' @param show_models Logical. Whether to print model summaries.
+#' @param show_models Logical. If \code{TRUE} and \code{verbose = TRUE},
+#'   prints the full regression coefficient table for each selected
+#'   interaction model. Has no effect when \code{verbose = FALSE}.
+#'   Nothing is printed when no variable is selected.
 #' @param verbose Logical. Whether to print progress messages.
 #' @param quiet Logical. Suppresses per-variable messages when no significant
 #'   interaction is found.
@@ -115,6 +118,14 @@
 #'   \code{"group"}. Passed to \code{create_z_variables()} to control the
 #'   centering strategy when \code{center = TRUE}. The constants are stored
 #'   in \code{center_vals_list} on the returned list.
+#' @param scale Named numeric vector of per-variable scale factors (one per
+#'   column of \code{x}), as computed and applied in \code{mfpi.default()}.
+#'   Passed to \code{flex_fit()} as \code{scale_var} so that
+#'   \code{create_z_variables()} and \code{transform_z_variables()} can
+#'   backscale \code{cont_var} (multiply by the scale factor) before FP
+#'   transformation. This ensures interaction model coefficients are on the
+#'   \eqn{\phi(x + \text{shift})} scale, matching the adjustment model and
+#'   standalone \pkg{mfp2}. \code{NULL} or 1 means no backscaling.
 #' @param digits Positive integer. Significant digits for printed output.
 #'
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
@@ -148,7 +159,7 @@
 #' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
 #' appended to \code{x}. All parameter vectors are synchronised. Silent.
 #'
-#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
+#' \strong{Step 1 - Adjustment model.} \code{mfp2:::fit_mfp()} selects
 #' adjustment variables and FP transformations using \code{criterion}.
 #' Selected variables, their FP powers, and spike decisions are fixed for
 #' the remainder of the algorithm.
@@ -157,7 +168,7 @@
 #' \code{cont_vars}, linear, FP1, and FP2 interaction models are fitted and
 #' compared to their main-effects models via \code{evaluate_interactions()}.
 #' Within \code{flex1()} and \code{flex4()}, FP powers are estimated using
-#' \code{fit_mfp()} with \code{force_max_fp = TRUE} to prevent AIC/BIC
+#' \code{mfp2:::fit_mfp()} with \code{force_max_fp = TRUE} to prevent AIC/BIC
 #' from simplifying the functional form below the requested degree. Functional
 #' form selection (linear/FP1/FP2) is performed by \code{evaluate_interactions()}
 #' using the user \code{criterion}.
@@ -175,7 +186,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      catzero_vars, spike_vars, min_prop, max_prop, use_ftest,
                      control, group_var, include_group_var, flex, cont_vars,
                      p_interact, min_improvement, show_models, verbose,
-                     digits,
+                     digits, scale,
                      center_type = c("grand", "group")) {
   
   center_type <- match.arg(center_type)
@@ -230,6 +241,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     use_ftest      = use_ftest,
     control        = control,
     force_max_fp   = processed_data$updated_params$force_max_fp,
+    scale          = scale,
     verbose        = FALSE
   )
   
@@ -266,7 +278,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # Extract spike decisions from the adjustment model for use when
   # re-transforming adjustment variables inside evaluate_interactions().
   # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
-  # 3 = binary only) stored in the mfp2 object by fit_mfp().
+  # 3 = binary only) stored in the mfp2 object by mfp2:::fit_mfp().
   adj_spike_decision <- if (!is.null(adjustment_model$spike_dec))
     adjustment_model$spike_decision
   else
@@ -323,6 +335,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     min_prop           = min_prop,
     max_prop           = max_prop,
     center_type        = center_type,
+    scale              = scale,
     verbose            = verbose
   )
   
@@ -507,12 +520,12 @@ preprocess_data <- function(x, group_var, include_group_var,
 
 #' Fit the MFP Adjustment Model
 #'
-#' A thin wrapper around `fit_mfp()` that selects adjustment variables
+#' A thin wrapper around `mfp2:::fit_mfp()` that selects adjustment variables
 #' and their FP transformations. Scale and shift are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to `x`.
 #'
 #' @param x Numeric matrix of predictor variables passed to
-#'   \code{fit_mfp()} for adjustment-variable selection. It is the
+#'   \code{mfp2:::fit_mfp()} for adjustment-variable selection. It is the
 #'   filtered matrix produced by \code{preprocess_data()}, which means:
 #'   \itemize{
 #'     \item \code{group_var} has been \strong{removed} - it is not adjusted
@@ -524,22 +537,22 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'       \code{select = 1} to force them into the adjustment model.
 #'     \item All columns have already been shifted and scaled by
 #'       \code{mfpi.default()} - shift and scale are therefore passed as 0
-#'       and 1 respectively to \code{fit_mfp()} inside this function.
+#'       and 1 respectively to \code{mfp2:::fit_mfp()} inside this function.
 #'   }
 #' @param y Response vector or Surv object.
 #' @param weights Numeric vector of observation weights.
 #' @param offset Numeric vector of linear-predictor offsets.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param family GLM family object (e.g. \code{gaussian()}) or the character
-#'   string \code{"cox"}. Passed directly to \code{fit_mfp()} as its
+#'   string \code{"cox"}. Passed directly to \code{mfp2:::fit_mfp()} as its
 #'   \code{family} argument.
 #' @param family_string Character string of the family name (e.g.
 #'   \code{"gaussian"}, \code{"cox"}). Required separately by
-#'   \code{fit_mfp()} for internal branching.
+#'   \code{mfp2:::fit_mfp()} for internal branching.
 #' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}. Governs full MFP selection: variable elimination, FP
 #'   degree selection, and functional form for adjustment variables. Unlike
-#'   the internal \code{fit_mfp()} calls in \code{flex1()} and
+#'   the internal \code{mfp2:::fit_mfp()} calls in \code{flex1()} and
 #'   \code{flex4()}, \code{force_max_fp} is not passed here - it defaults to
 #'   \code{FALSE} so the user criterion fully controls degree selection, which
 #'   is the correct behaviour for adjustment-model fitting.
@@ -557,18 +570,22 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
-#' @param verbose Logical. Passed directly to \code{fit_mfp()}.
+#' @param verbose Logical. Passed directly to \code{mfp2:::fit_mfp()}.
 #'
-#' @return The fitted model object returned by \code{fit_mfp()}, which
+#' @return The fitted model object returned by \code{mfp2:::fit_mfp()}, which
 #'   includes \code{fp_terms} (a data frame of selected variables and their FP
 #'   powers) and the underlying model fit.
 #'
 #' @details
-#' This function calls \code{fit_mfp()} directly via \code{:::} because
+#' This function calls \code{mfp2:::fit_mfp()} directly via \code{:::} because
 #' \code{fit_mfp()} is not currently exported by the \pkg{mfp2} package. Once
 #' \pkg{mfp2} exports \code{fit_mfp()}, this call should be updated to use
-#' \code{::}. The \code{scale} and \code{shift} arguments are set to 1 and 0
-#' respectively because \code{mfpi()} has already applied them to \code{x}.
+#' \code{::}. The real per-variable \code{scale} factors are now passed to
+#' \code{fit_mfp()} so that it can backscale \code{x} before the final model
+#' fit (step 4 of \code{fit_mfp()}), giving adjustment model coefficients on
+#' the \eqn{\phi(x + \text{shift})} scale, matching standalone \pkg{mfp2}.
+#' \code{shift} is set to 0 because shifting was already applied upstream in
+#' \code{mfpi.default()}.
 #'
 #' \code{force_max_fp} is a named logical vector already subsetted by
 #' \code{fit_mfpi()} to match the columns of \code{x} (i.e. with
@@ -583,9 +600,21 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
                                  family_string, criterion, updated_params,
                                  xorder, ties, strata, nocenter, min_prop,
                                  max_prop, use_ftest, control,
-                                 force_max_fp,
+                                 force_max_fp, scale,
                                  verbose = FALSE) {
-  n_vars <- ncol(x)
+  n_vars    <- ncol(x)
+  x_names   <- colnames(x)
+  
+  # Build scale_vec: real scale factor for predictor columns, 1 for group
+  # dummy columns. Dummy column names (e.g. "rx1", "svi1") are not present
+  # in names(scale) since scale is keyed by the original variable names from
+  # mfpi.default. The intersect() therefore naturally assigns scale = 1 to
+  # dummies, which is correct -- dummies are binary and should not be scaled.
+  scale_vec <- setNames(rep(1, n_vars), x_names)
+  if (!is.null(scale)) {
+    shared <- intersect(x_names, names(scale))
+    scale_vec[shared] <- scale[shared]
+  }
   
   fit_mfp(
     x             = x,
@@ -596,7 +625,7 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     method        = ties,
     strata        = strata,
     nocenter      = nocenter,
-    scale         = rep(1, n_vars),
+    scale         = scale_vec,
     shift         = rep(0, n_vars),
     ftest         = use_ftest,
     control       = control,
@@ -778,7 +807,7 @@ format_candidate_table <- function(rows, criterion, digits) {
 #'   variables, as returned by \code{get_fp_powers()}.
 #' @param adj_spike_decision Named numeric vector of spike-at-zero decisions
 #'   for the adjustment variables, as stored in \code{adjustment_model$spike_decision}
-#'   by \code{fit_mfp()}. Values: \code{1} = FP term + binary indicator,
+#'   by \code{mfp2:::fit_mfp()}. Values: \code{1} = FP term + binary indicator,
 #'   \code{2} = FP term only (default), \code{3} = binary indicator only.
 #'   Used when re-transforming adjustment variables via \code{mfp2::transform_matrix()}
 #'   to ensure binary indicators for semi-continuous adjustment variables are
@@ -799,11 +828,20 @@ format_candidate_table <- function(rows, criterion, digits) {
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
 #' @param digits Positive integer. Significant digits for printed output.
+#' @param scale Named numeric vector of per-variable scale factors. These are
+#'   the same scale factors applied to \code{x} upstream in
+#'   \code{mfpi.default()}. Passed to \code{fit_adjustment_model()} so that
+#'   \code{fit_mfp()} can backscale before the final model fit (giving
+#'   coefficients on the \eqn{\phi(x + \text{shift})} scale), and to
+#'   \code{evaluate_interactions()} for the same purpose in the interaction
+#'   model. Default \code{NULL} (no backscaling).
 #' @param center_type Character string; \code{"grand"} (default) or
 #'   \code{"group"}. Centering strategy for FP-transformed interaction
-#'   variables. Passed through to \code{create_z_variables()}.
+#' @param show_models Logical. If \code{TRUE} and \code{verbose = TRUE},
+#'   prints the full regression coefficient table for each selected
+#'   interaction model. Has no effect when \code{verbose = FALSE}.
+#'   Nothing is printed when no variable is selected.
 #' @param group_var Character string. Name of the grouping variable.
-#' @param show_models Logical. Whether to print model summaries.
 #' @param p_interact Numeric. Significance threshold for `criterion = "pvalue"`.
 #' @param min_improvement Numeric. Minimum criterion improvement to retain an
 #'   interaction.
@@ -878,6 +916,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   digits, group_var, show_models, p_interact,
                                   min_improvement, min_prop, max_prop,
                                   center_type = c("grand", "group"),
+                                  scale = NULL,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   quiet = FALSE, verbose = FALSE) {
   
@@ -973,8 +1012,24 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       adj_vars     <- setdiff(selected_vars, var_name)
       xadj_current <- NULL
       if (length(adj_vars) > 0L) {
-        xadj_current <- mfp2::transform_matrix(
-          x                  = x[, adj_vars, drop = FALSE],
+        # Backscale adj_vars to match fit_mfp convention: x was pre-scaled in
+        # mfpi.default. Multiplying by scale restores x + shift so that
+        # adjustment variable columns are on the phi(x + shift) scale,
+        # consistent with the interaction variable and the adjustment model.
+        x_adj <- x[, adj_vars, drop = FALSE]
+        if (!is.null(scale)) {
+          shared_adj <- intersect(adj_vars, names(scale))
+          if (length(shared_adj) > 0L) {
+            scale_adj <- scale[shared_adj]
+            if (any(scale_adj != 1)) {
+              x_adj[, shared_adj] <- sweep(
+                x_adj[, shared_adj, drop = FALSE], 2L, scale_adj, "*"
+              )
+            }
+          }
+        }
+        xadj_current <- transform_matrix(
+          x                  = x_adj,
           power_list         = adj_fp_powers[adj_vars],
           center             = processed_data$updated_params$center[adj_vars],
           acdx               = processed_data$updated_params$acd_vars[adj_vars],
@@ -1024,6 +1079,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         max_prop      = max_prop,
         flex          = flex,
         digits        = digits,
+        scale_var     = if (!is.null(scale)) unname(scale[var_name]) else 1,
         run_test      = TRUE,
         compute_fitted = TRUE
       )
@@ -1119,6 +1175,25 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
           ))
         }
       }
+      
+      # Print regression table for the winning interaction model when requested.
+      # show_models = TRUE only has effect when verbose = TRUE; suppressing
+      # verbose output means suppressing all output including model summaries.
+      # When no variable is selected, nothing is printed (best_fit is NULL).
+      if (verbose && show_models) {
+        fit_obj <- best_fit$test_results$interaction_model$fit
+        if (!is.null(fit_obj)) {
+          type_label <- toupper(gsub("fp", "FP", best_type))
+          cat(sprintf(
+            "\n  Interaction model (%s, %s):\n",
+            var_name, type_label
+          ))
+          cat(strrep("-", 50), "\n")
+          print(summary(fit_obj))
+          cat("\n")
+        }
+      }
+      
     } else {
       if (verbose) {
         cat("        >> NOT SELECTED: no candidate met the threshold.\n")

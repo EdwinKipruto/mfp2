@@ -7,23 +7,31 @@
 #' trial it represents treatment allocation, with the lowest value as the control
 #' arm. Confounders and other prognostic variables are adjusted for via FP
 #' transformations selected by the MFP algorithm implemented in the
-#' \pkg{mfp2} package.
+#' `mfp2()`.
 #'
 #' @section The MFPI approach:
-#' Modelling interactions between continuous predictors with nonlinear effects
-#' and a grouping variable (e.g. treatment) has traditionally relied on
-#' categorising the continuous variable and applying standard interaction tests.
-#' Categorisation is statistically inefficient and results can be sensitive to
-#' the choice of cut-point, which in data-driven approaches introduces serious
-#' bias (Royston, Altman, and Sauerbrei 2006).
+#' Investigating interactions between a treatment (or other grouping variable)
+#' and a continuous covariate is of central importance in clinical trials, where
+#' the question is whether the treatment effect varies with the level of a
+#' prognostic factor. Standard approaches either categorise the continuous
+#' variable into subgroups defined by cutpoints, or assume that the interaction
+#' is linear. Both strategies have well-known limitations. Categorisation is
+#' statistically inefficient, sensitive to the number and placement of
+#' cutpoints, and prone to false-positive findings when cutpoints are chosen
+#' post hoc (Royston and Sauerbrei, 2004; Altman et al., 1994). A linear
+#' assumption may miss genuinely non-linear relationships, and misspecifying
+#' the main effect can generate spurious interactions (Royston and Sauerbrei,
+#' 2008, pp. 173--174).
 #'
-#' Multivariable Fractional Polynomials for Interaction (MFPI), proposed by
-#' Royston and Sauerbrei (2004), avoids categorisation by modelling the
-#' relationship between the continuous predictor and the outcome using FP
-#' functions within each level of `group_var`. The algorithm extends the
-#' standard MFP variable-selection procedure by simultaneously determining
-#' functional forms and testing whether those forms differ across groups. For
-#' full details see Sauerbrei, Royston, and Zapien (2007).
+#' The Multivariable Fractional Polynomial Interaction (MFPI) procedure,
+#' proposed by Royston and Sauerbrei (2004), avoids these pitfalls by
+#' modelling the relationship between the continuous covariate \eqn{Z} and the
+#' outcome using fractional polynomial (FP) functions within each level of the
+#' grouping variable \eqn{T}. Four variants (FLEX1--FLEX4) control how FP
+#' powers are estimated and constrained across groups; see the
+#' \emph{Flexibility levels} section below. For full methodological details
+#' see Royston and Sauerbrei (2004, 2008, 2013) and Sauerbrei, Royston, and
+#' Zapien (2007).
 #'
 #' @section Flexibility levels (`flex`):
 #' Four levels of flexibility control how FP powers are estimated and
@@ -216,7 +224,7 @@
 #' @param y
 #'   For \code{mfpi.default()} only. The response vector (or matrix for
 #'   survival data). For Gaussian, binomial, and Poisson families, supply a
-#'   numeric or factor vector of length \eqn{n}. For Cox models, supply a
+#'   numeric vector of length \eqn{n}. For Cox models, supply a
 #'   two-column \code{survival::Surv()} object. Must have the same number of
 #'   observations as \code{x}.
 #' @param formula
@@ -234,30 +242,39 @@
 #'   as factors which \code{model.matrix()} will expand automatically.
 #' @param group_var
 #'   A single character string naming the categorical (grouping) variable in
-#'   `x`. Interactions between `group_var` and each variable in `cont_vars` are
-#'   the primary estimands. Internally, values are remapped to 0, 1, 2, ... in
-#'   ascending order; the group with the lowest original value is the reference
-#'   category. Must have at least two distinct non-missing values.
+#'   \code{x} (e.g. a treatment or exposure indicator). The analysis tests
+#'   whether the relationship between each variable in \code{cont_vars} and
+#'   the outcome differs across levels of \code{group_var}. Internally, values
+#'   are remapped to 0, 1, 2, \ldots in ascending order; the group with the
+#'   lowest original value is the reference category. Must have at least two
+#'   distinct non-missing values.
 #' @param cont_vars
-#'   A non-empty character vector naming the continuous variables in `x` for
-#'   which interactions with `group_var` are to be investigated. All named
-#'   variables must exist as columns of `x`.
+#'   A non-empty character vector naming the continuous variables in \code{x}
+#'   for which interactions with \code{group_var} are to be investigated. All
+#'   named variables must exist as columns of \code{x} and must be numeric.
+#'   Binary variables (2 or fewer unique values) are not permitted and will
+#'   cause an error. Variables with 5 or fewer unique values will trigger a
+#'   warning, as FP transformation may be unreliable for near-categorical
+#'   variables.
 #' @param flex
 #'   A character string controlling how FP powers are estimated and constrained
 #'   across groups. One of `"flex1"` (default), `"flex2"`, `"flex3"`, or
 #'   `"flex4"`. See the *Flexibility levels* section for details.
 #' @param p_interact
 #'   Numeric in \eqn{(0, 1]}. Nominal significance level for the interaction
-#'   test when `criterion = "pvalue"`. A candidate interaction model is
-#'   retained only if its p-value is strictly below `p_interact`. Default is
-#'   `0.05`. Ignored when `criterion` is `"aic"` or `"bic"`.
+#'   test when \code{criterion = "pvalue"}. A candidate interaction model is
+#'   retained only if its p-value is strictly below \code{p_interact}. Default
+#'   is \code{0.05}. Ignored when \code{criterion} is \code{"aic"} or
+#'   \code{"bic"}.
 #'
 #'   Among the three candidates (linear, FP1, FP2) that clear the threshold,
-#'   the one with the **smallest p-value** is chosen as the final functional
-#'   form. When two candidates have identical p-values (which can occur due to
-#'   numerical precision or rounding), the tie is broken by selecting the
-#'   candidate with the **larger `AIC_main_minus_int`** (i.e. the greater improvement in
-#'   AIC over the main-effects model), favouring the more parsimonious fit.
+#'   the one with the \strong{smallest p-value} is selected as the final
+#'   functional form. When two candidates have identical p-values (e.g. due to
+#'   numerical precision), the tie is broken by the \strong{largest
+#'   \code{BIC_main_minus_int}} (i.e. the greater BIC improvement over the
+#'   main-effects model). BIC is used as the tiebreaker rather than AIC because
+#'   it penalises complexity more heavily, favouring the simpler functional form
+#'   when both are equally significant.
 #' @param min_improvement
 #'   Numeric. Minimum improvement in the selection criterion required to retain
 #'   an interaction term. Interpretation depends on `criterion`:
@@ -279,33 +296,48 @@
 #'   significance level for `group_var` is set to 1, forcing it into the
 #'   adjustment model.
 #' @param show_models
-#'   Logical. Whether to print regression coefficients and standard errors for
-#'   the final interaction models. Default is `FALSE`, which prints only the
-#'   selected adjustment variables and model-evaluation metrics.
+#'   Logical. If \code{TRUE} and \code{verbose = TRUE}, prints the full
+#'   regression coefficient table (via \code{summary()}) for the winning
+#'   interaction model of each variable in \code{cont_vars} that cleared the
+#'   selection threshold. Has no effect when \code{verbose = FALSE}. When no
+#'   variable is selected nothing is printed. Default \code{FALSE}.
 #' @param weights
 #'   An optional numeric vector of non-negative observation weights of length
-#'   \eqn{n}. Default is `NULL` (all weights equal to 1).
+#'   \eqn{n}. Applied to both the adjustment model (MFP step) and the
+#'   interaction model fitting step. Default \code{NULL} (all weights equal
+#'   to 1).
 #' @param offset
 #'   An optional numeric vector of length \eqn{n} to be added to the linear
-#'   predictor. Useful for Poisson models (e.g. log of exposure time). Default
-#'   is `NULL` (zero offset for all observations).
+#'   predictor. Applied to both the adjustment model (MFP step) and the
+#'   interaction model fitting step. Useful for Poisson models (e.g. log of
+#'   exposure time). Default \code{NULL} (zero offset for all observations).
 #' @param cycles
 #'   A positive integer. Maximum number of iteration cycles for the MFP
 #'   algorithm. Default is `10`.
-#' @param scale
-#'   A numeric vector of length \eqn{p} or a single numeric giving scaling
-#'   factors for the columns of `x`. Default is `NULL`, which lets the program
-#'   estimate scaling factors automatically. Set `scale = 1` to disable scaling.
 #' @param shift
 #'   A numeric vector of length \eqn{p} or a single numeric giving shift terms
-#'   added to columns of `x` before scaling. Default is `NULL`, which estimates
-#'   shift factors automatically. Set `shift = 0` to disable shifting.
+#'   added to columns of \code{x} before scaling. Default is \code{NULL}, which lets
+#'   the program estimate shifting factors automatically via
+#'   [mfp2::find_shift_factor()]. Set \code{shift = 0} to disable
+#'   shifting. For \code{zero_vars}, \code{catzero_vars}, and linear variables
+#'   (\code{df = 1}), shift is forced to 0.
+#' @param scale
+#'   A numeric vector of length \eqn{p} or a single numeric giving scaling
+#'   factors for the columns of \code{x}. Default is \code{NULL}, which lets
+#'   the program estimate scaling factors automatically via
+#'   [mfp2::find_scale_factor()]. Set \code{scale = 1} to disable scaling.
+#'
+#'   Internally, \code{x} is divided by \code{scale} before model fitting for
+#'   numerical stability during FP power selection. The scale factors are then
+#'   passed through the call chain so that both the adjustment model and the
+#'   interaction model backscale before their final fit. This ensures all
+#'   returned model coefficients are on the \eqn{\phi(x + \text{shift})} scale.
 #' @param df
 #'   A numeric vector of length \eqn{p} or a single positive integer setting
 #'   the default degrees of freedom for each predictor. Degrees of freedom
-#'   equal twice the FP degree (e.g. `df = 2` for FP1, `df = 4` for FP2).
-#'   Regardless of the supplied value, the program overrides `df` per variable
-#'   based on the number of distinct values \eqn{u}:
+#'   equal twice the FP degree (e.g. `df = 1` for linear, `df = 2` for FP1, 
+#'   `df = 4` for FP2). Regardless of the supplied value, the program overrides
+#'   `df` per variable based on the number of distinct values \eqn{u}:
 #'   \itemize{
 #'     \item \eqn{u \le 3}: `df` is set to `1` (linear). Too few values to
 #'       estimate a curve.
@@ -316,12 +348,13 @@
 #'   Default is `4`.
 #' @param center
 #'   Logical or a logical vector of length \eqn{p}. Whether to mean-centre
-#'   predictors before fitting the final interaction model. Binary covariates
-#'   are centred at the lower of their two values rather than the mean. Default
-#'   is `TRUE`.
+#'   predictors before fitting the final interaction model and adjustment model.
+#'   Binary covariates are centered at the lower of their two values rather than
+#'   the mean. Default is `TRUE`.
 #' @param subset
 #'   An optional integer vector of positive row indices selecting a subset of
-#'   observations. Default is `NULL` (all observations used).
+#'   observations. Default is `NULL` (all observations used). see [mfp2::mfp2()]
+#'   for details
 #' @param family
 #'   A character string specifying the error distribution. One of
 #'   `"gaussian"` (default), `"binomial"`, `"poisson"`, or `"cox"`. See the
@@ -329,21 +362,21 @@
 #' @param criterion
 #'   A character string specifying the criterion used in two distinct places:
 #'   \enumerate{
-#'     \item **Adjustment-variable selection** (Step 2): governs which
+#'     \item **Adjustment-variable selection** (Step 1): governs which
 #'       predictors and FP degrees survive MFP backfitting.
-#'     \item **Functional form selection for the interaction** (Step 3): for
+#'     \item **Functional form selection for the interaction** (Step 2): for
 #'       each variable in `cont_vars`, three candidate interaction models are
 #'       fitted - linear, FP1, and FP2 - and the criterion selects among them.
 #'   }
 #'   One of `"pvalue"` (default), `"aic"`, or `"bic"`.
-#'   The interaction test always reports p-values, AIC differences, and BIC
-#'   differences regardless of this setting; `criterion` controls only which
-#'   quantity is used to make the final selection.
 #' @param select
 #'   A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
-#'   giving the nominal significance level for backward elimination of each
-#'   predictor in the adjustment model. Setting a variable's level to `1`
-#'   forces it into the model. Default is `0.05`.
+#'   giving the nominal significance level used during MFP backfitting to
+#'   decide whether each predictor is retained in the adjustment model.
+#'   At each cycle, a variable is kept only if its contribution is significant
+#'   at this level; otherwise it is set to zero (excluded). Setting a
+#'   variable's level to \code{1} forces it into the model. Default is 
+#'   \code{0.05}.
 #' @param alpha
 #'   A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
 #'   giving the significance level for choosing between FP degrees for each
@@ -355,10 +388,10 @@
 #'   under AIC and BIC criteria.
 #' @param force_max_fp
 #'   A logical scalar or named logical vector of length \eqn{p}. If \code{TRUE}
-#'   for a variable, forces \code{select_ic()} to select the most complex
+#'   for a variable, forces the algorithm to select the most complex
 #'   functional form at the degree specified by \code{df} for that variable,
 #'   bypassing AIC/BIC comparison against simpler forms. Specifically, when
-#'   \code{criterion = "aic"} or \code{"bic"}, \code{select_ic()} would
+#'   \code{criterion = "aic"} or \code{"bic"}, \code{mfp2:::select_ic()} would
 #'   normally compete null, linear, FP1, and FP2 against each other and may
 #'   simplify the functional form; \code{force_max_fp = TRUE} suppresses this
 #'   and always selects the most complex FP model at the requested degree.
@@ -390,8 +423,8 @@
 #'   `NULL` (no stratification). Currently only a single stratification factor
 #'   is supported.
 #' @param nocenter
-#'   A numeric vector of values passed to [survival::coxph()] to suppress
-#'   centring for specified predictors. Cox models only; ignored otherwise.
+#'   A numeric vector of values passed to [survival::coxph()]. Cox models only;
+#'   ignored otherwise.
 #' @param acd_vars
 #'   An optional character vector naming continuous variables to be transformed
 #'   via the approximate cumulative distribution (ACD) transformation before FP
@@ -412,8 +445,8 @@
 #'   \code{catzero_vars}. \strong{Note:} if a variable also appears in
 #'   \code{cont_vars}, the \eqn{I(x = 0)} indicator is dropped and the variable
 #'   is treated as an ordinary continuous variable in both the adjustment model
-#'   and the interaction stage (with a warning). The \code{zero_vars} recoding
-#'   of non-positive values is still applied.
+#'   and the interaction stage (with a warning). However, the \code{zero_vars}
+#'   recoding of non-positive values is still applied.
 #' @param spike_vars
 #'   An optional character vector naming variables to be assessed for a spike
 #'   at zero using the SAZ algorithm. Implies \code{catzero_vars} (and
@@ -423,23 +456,36 @@
 #'   both the adjustment model and the interaction stage (with a warning). The
 #'   \code{zero_vars} recoding of non-positive values is still applied.
 #' @param min_prop
-#'   Numeric in \eqn{[0, 1]}. Minimum proportion of zeros required for the
-#'   SAZ algorithm to be applied. Default is `0.05`. Variables with fewer zeros
-#'   are treated as standard continuous predictors.
+#'   Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
+#'   SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
+#'   \code{0.05}. Must be less than \code{max_prop}. If the observed zero
+#'   proportion is below \code{min_prop} (too few zeros to model a spike
+#'   meaningfully), the spike flag is reset to \code{FALSE} for that variable.
+#'   The resulting treatment depends on what the user originally specified
+#'   alongside \code{spike_vars}: if \code{catzero_vars} or \code{zero_vars}
+#'   were also specified for that variable, those flags are preserved;
+#'   otherwise the variable reverts to a standard continuous predictor.
+#'   Only affects variables in the adjustment model since \code{spike_vars}
+#'   is always suppressed for \code{cont_vars}.
 #' @param max_prop
-#'   Numeric in \eqn{[0, 1]}. Maximum proportion of zeros for SAZ modeling.
-#'   Default is `0.95`. Variables with more zeros are also treated as standard
-#'   continuous predictors.
+#'   Numeric in \eqn{(0, 1)}. Maximum proportion of zeros allowed for the
+#'   SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
+#'   \code{0.95}. Must be greater than \code{min_prop}. If the observed zero
+#'   proportion exceeds \code{max_prop} (too many zeros; the positive part is
+#'   too sparse for reliable FP fitting), the spike flag is reset to
+#'   \code{FALSE}. As with \code{min_prop}, the resulting treatment of
+#'   \code{catzero} and \code{zero} depends on the user's original
+#'   specification. Variables that are binary (exactly two unique values) are
+#'   also reset regardless of their zero proportion. Only affects variables
+#'   in the adjustment model.
 #' @param use_ftest
 #'   Logical. Whether to use an F-test rather than a chi-square
 #'   likelihood-ratio test when computing p-values for Gaussian models.
 #'   When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
-#'   to both the adjustment-variable selection step (via
-#'   \code{mfp2:::fit_mfp()}) and the interaction test for each variable in
-#'   \code{cont_vars} (via \code{mfp2:::calculate_f_test()}). Recommended
-#'   when the sample size is small. Default \code{FALSE}. Has no effect for
-#'   non-Gaussian families or when \code{criterion} is not
-#'   \code{"pvalue"}.
+#'   to both the adjustment-variable selection step and the interaction test 
+#'   for each variable in \code{cont_vars}. Recommended when the sample size is
+#'   small. Default \code{FALSE}. Has no effect for non-Gaussian families or 
+#'   when \code{criterion} is not \code{"pvalue"}.
 #' @param control
 #'   A list of control parameters for the underlying fitting routine, as
 #'   returned by [stats::glm.control()] (non-Cox families) or
@@ -457,22 +503,21 @@
 #'   `cont_var`. Ignored when `winsorize = FALSE`.
 #' @param center_type
 #'   Character string controlling how the FP-transformed continuous variables
-#'   are centred when \code{center = TRUE}. One of:
+#'   are centered in the \strong{interaction model} when \code{center = TRUE}.
+#'   Has no effect on the adjustment model, which uses standard per-variable
+#'   centering via \code{fit_mfp()}. One of:
 #'   \describe{
-#'     \item{\code{"grand"} (default)}{Centre each column of the
-#'       group-specific block matrix by the grand mean of the
-#'       FP-transformed \code{cont_var} across all observations. Matches
-#'       the original MFPI implementation (Royston and Sauerbrei, 2008).}
-#'     \item{\code{"group"}}{Centre each group's columns by the
-#'       within-group mean, i.e. the mean of in-group observations only.
-#'       This removes group-specific location effects from the
-#'       FP-transformed variable before fitting.}
+#'     \item{\code{"grand"} (default)}{For each variable in \code{cont_vars},
+#'       center each column of the group-specific block matrix by the grand
+#'       mean of the FP-transformed variable across all observations.}
+#'     \item{\code{"group"}}{Center each group's columns by the within-group
+#'       mean, the mean of in-group observations only. Removes
+#'       group-specific location effects from the FP-transformed variable
+#'       before fitting the interaction model.}
 #'   }
 #'   The centering constants computed at fit time are stored in
 #'   \code{center_vals_list} on the returned object and reused exactly
-#'   during evaluation of fitted functions and future prediction, so
-#'   the absolute levels of \eqn{\hat{f}_0(x)} and \eqn{\hat{f}_j(x)}
-#'   are always consistent with the fitted model coefficients.
+#'   during evaluation of fitted functions.
 #' @param verbose
 #'   Logical. Whether to print progress information during model fitting.
 #'   Default is `TRUE`.
@@ -600,8 +645,8 @@ mfpi <- function(x, ...) {
 
 #' @describeIn mfpi Default method accepting a numeric matrix \code{x} and
 #'   response vector \code{y}.
-#' @import mfp2
 #' @export
+
 mfpi.default <- function(
     x,
     y,
@@ -759,6 +804,52 @@ mfpi.default <- function(
     stop(
       paste0("! The following variables in `cont_vars` are not columns of `x`: ",
              paste(missing_cont, collapse = ", "), "."),
+      call. = FALSE
+    )
+  }
+  
+  # Check cont_vars are numeric -------------------------------------------------
+  non_numeric <- cont_vars[!vapply(cont_vars, function(v)
+    is.numeric(x[, v, drop = TRUE]), logical(1L))]
+  if (length(non_numeric) > 0L) {
+    stop(
+      paste0(
+        "! The following variable(s) in `cont_vars` are not numeric: ",
+        paste(non_numeric, collapse = ", "), ".\n",
+        "  FP transformation requires continuous numeric variables. ",
+        "Convert categorical variables to numeric dummy columns before ",
+        "calling `mfpi()`."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  # Check cont_vars have sufficient unique values --------------------------------
+  # Binary or near-categorical variables produce degenerate FP transformations.
+  n_unique <- vapply(cont_vars, function(v)
+    length(unique(x[!is.na(x[, v, drop = TRUE]), v, drop = TRUE])), integer(1L))
+  binary_cont <- cont_vars[n_unique <= 2L]
+  few_unique  <- cont_vars[n_unique > 2L & n_unique <= 5L]
+  
+  if (length(binary_cont) > 0L) {
+    stop(
+      paste0(
+        "! The following variable(s) in `cont_vars` are binary (<=2 unique ",
+        "values): ", paste(binary_cont, collapse = ", "), ".\n",
+        "  Binary variables cannot be FP-transformed. Use `group_var` for ",
+        "binary treatment indicators, or omit these variables from `cont_vars`."
+      ),
+      call. = FALSE
+    )
+  }
+  if (length(few_unique) > 0L) {
+    warning(
+      paste0(
+        "! The following variable(s) in `cont_vars` have 5 or fewer unique ",
+        "values: ", paste(few_unique, collapse = ", "), ".\n",
+        "  FP transformation may be unreliable for near-categorical variables. ",
+        "Consider whether these variables are truly continuous."
+      ),
       call. = FALSE
     )
   }
@@ -994,18 +1085,23 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, mfp2::find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
   shift <- setNames(shift, vnames)
   
-  if (is.null(scale)) {
-    scale <- apply(x, 2L, mfp2::find_scale_factor)   # already named by apply
-  } else if (length(scale) == 1L) {
+  # NOTE: scale is computed AFTER the shift has been applied to x (see below),
+  # because find_scale_factor() must operate on the shifted variable to match
+  # standalone mfp2. Here we only normalise a user-supplied scale; automatic
+  # computation is deferred until after shifting.
+  user_supplied_scale <- !is.null(scale)
+  if (user_supplied_scale && length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
-  scale <- setNames(scale, vnames)
+  if (user_supplied_scale) {
+    scale <- setNames(scale, vnames)
+  }
   if (is.null(control)) {
     control <- if (family_string == "cox") survival::coxph.control() else
       stats::glm.control()
@@ -1152,6 +1248,14 @@ mfpi.default <- function(
   # Apply shift and scale to x -------------------------------------------------
   x <- sweep(x, 2L, shift, "+")
   
+  # Compute scale on the SHIFTED x, matching standalone mfp2. find_scale_factor()
+  # must operate on the shifted variable; computing it on the raw (unshifted) x
+  # would give a different scaling factor for any variable with a non-zero shift.
+  # User-supplied scale (normalised earlier) is left untouched.
+  if (!user_supplied_scale) {
+    scale <- setNames(apply(x, 2L, find_scale_factor), vnames)
+  }
+  
   # Positivity check for variables that undergo nonlinear FP transformation ----
   nonlinear_names <- vnames[df_list != 1L]
   all_zero_names  <- union(names(zero_flag)[zero_flag],
@@ -1262,7 +1366,8 @@ mfpi.default <- function(
     show_models       = show_models,
     min_improvement   = min_improvement,
     digits            = digits,
-    center_type       = center_type
+    center_type       = center_type,
+    scale             = scale
   )
   
   # Attach Winsorisation metadata for transparency in the returned object
@@ -1431,6 +1536,47 @@ mfpi.formula <- function(formula,
     stop("! fp_powers must be a named list or NULL.", call. = FALSE)
   
   # ---------------------------------------------------------------------------
+  # Validate cont_vars against original data types (before model.matrix)
+  # ---------------------------------------------------------------------------
+  # Check here using original data types because model.matrix dummy-codes
+  # factors, which would cause a misleading "variable not found" error later
+  # rather than a clear "this is categorical" message.
+  if (!is.null(cont_vars)) {
+    # Factor or character columns cannot be FP-transformed
+    factor_in_cont <- cont_vars[vapply(cont_vars, function(v)
+      v %in% names(data) && (is.factor(data[[v]]) || is.character(data[[v]])),
+      logical(1L))]
+    if (length(factor_in_cont) > 0L) {
+      stop(
+        "! The following variable(s) in `cont_vars` are categorical ",
+        "(factor or character) in `data`: ",
+        paste(factor_in_cont, collapse = ", "), ".\n",
+        "  FP transformation requires continuous numeric variables. ",
+        "Categorical variables cannot be tested for interaction via MFPI.",
+        call. = FALSE
+      )
+    }
+    
+    # Numeric binary columns (0/1 or two unique values) in the original data
+    binary_in_cont <- cont_vars[vapply(cont_vars, function(v)
+      v %in% names(data) &&
+        is.numeric(data[[v]]) &&
+        length(unique(stats::na.omit(data[[v]]))) <= 2L,
+      logical(1L))]
+    if (length(binary_in_cont) > 0L) {
+      stop(
+        "! The following variable(s) in `cont_vars` are binary ",
+        "(2 or fewer unique values) in `data`: ",
+        paste(binary_in_cont, collapse = ", "), ".\n",
+        "  Binary variables cannot be FP-transformed. ",
+        "Use `group_var` for binary treatment indicators, or omit these ",
+        "variables from `cont_vars`.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  # ---------------------------------------------------------------------------
   # Build model frame and extract y, x
   # ---------------------------------------------------------------------------
   mf     <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
@@ -1521,17 +1667,27 @@ mfpi.formula <- function(formula,
   }
   
   # Initialise per-variable parameter lists from global defaults.
-  # scale and shift are estimated from x (now with correct names).
+  # shift and scale are estimated from x (now with correct names). Crucially,
+  # scale must be computed on the SHIFTED x to match standalone mfp2, so we
+  # compute shift first, form a shifted copy of x, and compute scale on that.
+  # The shifted copy is used only for find_scale_factor(); the actual shift and
+  # scale application happens later in mfpi.default().
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
-  scale_list  <- if (is.null(scale))
-    setNames(as.list(apply(x, 2L, find_scale_factor)), names_x)
-  else
-    setNames(rep(list(scale), nx), names_x)
+  
   shift_list  <- if (is.null(shift))
     setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
   else
     setNames(rep(list(shift), nx), names_x)
+  
+  if (is.null(scale)) {
+    shift_now <- vapply(shift_list, function(v) as.numeric(v[[1L]]), numeric(1L))
+    x_shifted <- sweep(x, 2L, shift_now[names_x], "+")
+    scale_list <- setNames(as.list(apply(x_shifted, 2L, find_scale_factor)),
+                           names_x)
+  } else {
+    scale_list <- setNames(rep(list(scale), nx), names_x)
+  }
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)

@@ -20,34 +20,33 @@ create_fp_terms(
 \arguments{
 \item{fp_powers}{powers of the created FP terms.}
 
-\item{acdx}{a logical vector of length nvars indicating which continuous
+\item{acdx}{A logical vector of length nvars indicating which continuous
 variables should undergo the approximate cumulative distribution (ACD)
 transformation.}
 
-\item{df}{a numeric vector of length nvars of degrees of freedom.}
+\item{df}{A numeric vector of length nvars of degrees of freedom.}
 
-\item{select}{a numeric vector of length nvars indicating significance levels
-for backward elimination.}
+\item{select}{A numeric vector of length nvars indicating significance levels
+used during MFP backfitting to decide whether each predictor is retained.}
 
-\item{alpha}{a numeric vector of length nvars indicating significance levels
+\item{alpha}{A numeric vector of length nvars indicating significance levels
 for tests between FP models of different degrees.}
 
-\item{criterion}{a character string defining the criterion used to select
+\item{criterion}{A character string defining the criterion used to select
 variables and FP models of different degrees.}
 
-\item{zero}{A logical vector indicating, by position, which columns of
-\code{x} should treat nonpositive values (zero or negative) as zero before
-transformation. Must be the same length and in the same order as the columns
-of \code{x}.}
+\item{zero}{A logical vector indicating which columns of \code{x} should
+treat non-positive values as zero before FP transformation. Must match
+the length and order of the columns of \code{x}.}
 
-\item{catzero}{A logical vector similar to \code{zero}, indicating which
-columns of \code{x} should treat nonpositive values as zero and also have a binary
-indicator automatically created and included in the model. Must match the length
-and order of the columns in \code{x}. See \code{mfp2} for details.}
+\item{catzero}{A logical vector indicating which columns of \code{x} should
+treat non-positive values as zero AND have a binary indicator
+\eqn{I(x = 0)} automatically created and included in the model. Must
+match the length and order of the columns of \code{x}.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
-a spike at zero. The length and order of \code{spike} must match those of
-the columns in \code{x}.}
+a spike at zero and should be assessed using the SAZ algorithm. Must
+match the length and order of the columns of \code{x}.}
 
 \item{spike_decision}{Integer vector indicating the modeling decision for
 spike-at-zero variables.}

@@ -1,9 +1,9 @@
 # S3 print method for mfpi objects
 #
 # print.mfpi() gives a structured three-section output:
-#   Step 1 — Adjustment model (all fp_terms columns for selected variables)
-#   Step 2 — All interaction candidates (linear/FP1/FP2) with winner flagged
-#   Step 3 — Selected interactions (variables that cleared the threshold)
+#   Step 1 - Adjustment model (all fp_terms columns for selected variables)
+#   Step 2 - All interaction candidates (linear/FP1/FP2) with winner flagged
+#   Step 3 - Selected interactions (variables that cleared the threshold)
 
 
 # -----------------------------------------------------------------------------
@@ -20,8 +20,8 @@
 #'     \code{cont_vars}, with the selected model flagged by \code{*}. This
 #'     allows the user to judge whether the evidence is consistent across
 #'     functional forms or driven by a single degree.
-#'   \item The final selected interactions — one row per variable that cleared
-#'     the selection threshold — or a message if none were found.
+#'   \item The final selected interactions - one row per variable that cleared
+#'     the selection threshold - or a message if none were found.
 #' }
 #'
 #' Regression output for the winning models is available via
@@ -49,7 +49,7 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 1: Adjustment model
   # ---------------------------------------------------------------------------
-  cat("\nStep 1: Adjustment Model (MFP):\n")
+  cat("\nStep 1 - Adjustment Model (MFP):\n")
   cat(ruler, "\n")
   
   fp <- x$adjust_terms
@@ -76,7 +76,7 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 2: All interaction candidates with winner flagged
   # ---------------------------------------------------------------------------
-  cat("\nStep 2: All Interaction Candidates:\n")
+  cat("\nStep 2 - All Interaction Candidates:\n")
   cat(ruler, "\n")
   
   all_m <- x$all_model_metrics
@@ -117,7 +117,7 @@ print.mfpi <- function(x, ...) {
   # ---------------------------------------------------------------------------
   # Step 3: Selected interactions
   # ---------------------------------------------------------------------------
-  cat("\nStep 3: Selected Interactions:\n")
+  cat("\nStep 3 - Selected Interactions:\n")
   cat(ruler, "\n")
   
   best_m <- x$best_model_metrics
@@ -145,9 +145,16 @@ print.mfpi <- function(x, ...) {
         paste(x$group_levels_original, collapse = ", ")
       ))
     }
-    cat(sprintf(
-      "\n  Note: df_interaction = LRT df; df_total = total df in interaction model.\n"
-    ))
+    cat(
+      paste0(
+        "\n  df_interaction: degrees of freedom for the likelihood-ratio test\n",
+        "    (extra parameters in interaction model vs main-effects model;\n",
+        "    used for the p-value or information-criterion comparison).\n",
+        "  df_total: total parameters in the interaction model excluding\n",
+        "    the intercept and adjustment variables; includes group dummies\n",
+        "    and all group-specific FP terms.\n"
+      )
+    )
     
   } else {
     cat("  No significant interactions found.\n")
@@ -155,7 +162,6 @@ print.mfpi <- function(x, ...) {
   
   invisible(x)
 }
-
 # S3 summary method for mfpi objects
 #
 # summary.mfpi()       - collects all results into a "summary.mfpi" list
@@ -246,6 +252,177 @@ summary.mfpi <- function(object, ...) {
   )
 }
 
+
+# -----------------------------------------------------------------------------
+# print.summary.mfpi() --------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Print a \code{"summary.mfpi"} Object
+#'
+#' Displays a four-step structured summary. Steps 1-3 match \code{print.mfpi()};
+#' Step 4 adds regression output for each final interaction model.
+#'
+#' @param x An object of class \code{"summary.mfpi"}.
+#' @param ... Currently unused.
+#'
+#' @return \code{x} invisibly.
+#'
+#' @method print summary.mfpi
+#' @export
+print.summary.mfpi <- function(x, ...) {
+  
+  ruler  <- strrep("-", 65)
+  header <- strrep("=", 65)
+  
+  cat(header, "\n")
+  cat(sprintf(
+    "MFPI Summary  |  group: '%s'  |  n = %d  |  %s\n",
+    x$group_var, x$nobs, x$flex
+  ))
+  cat(header, "\n")
+  
+  # ---------------------------------------------------------------------------
+  # Step 1: Adjustment model
+  # ---------------------------------------------------------------------------
+  cat("\nStep 1 - Adjustment Model (MFP):\n")
+  cat(ruler, "\n")
+  
+  fp <- x$adjust_terms
+  if (!is.null(fp)) {
+    selected_rows <- fp[!is.na(fp$selected) &  fp$selected, , drop = FALSE]
+    dropped_rows  <- fp[!is.na(fp$selected) & !fp$selected, , drop = FALSE]
+    
+    if (nrow(selected_rows) > 0L) {
+      print(selected_rows)
+    } else {
+      cat("  No adjustment variables selected.\n")
+    }
+    if (nrow(dropped_rows) > 0L) {
+      cat(sprintf(
+        "\n  Dropped (%d variables eliminated by MFP): %s\n",
+        nrow(dropped_rows),
+        paste(rownames(dropped_rows), collapse = ", ")
+      ))
+    }
+  } else {
+    cat("  No adjustment model fitted.\n")
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Step 2: All interaction candidates with winner flagged
+  # ---------------------------------------------------------------------------
+  cat("\nStep 2 - All Interaction Candidates:\n")
+  cat(ruler, "\n")
+  
+  all_m <- x$all_model_metrics
+  
+  if (!is.null(all_m) && nrow(all_m) > 0L) {
+    
+    # Identify winners: match on type + variable
+    best_m <- x$best_model_metrics
+    if (!is.null(best_m) && nrow(best_m) > 0L) {
+      winner_keys <- paste(best_m$type, best_m$variable, sep = "__")
+    } else {
+      winner_keys <- character(0L)
+    }
+    
+    if ("fp_powers_main" %in% names(all_m)) {
+      all_m$fp_powers_main <- vapply(all_m$fp_powers_main, function(p)
+        paste0("(", paste(p, collapse = ", "), ")"), character(1L))
+    }
+    if ("fp_powers_int" %in% names(all_m)) {
+      all_m$fp_powers_int <- vapply(all_m$fp_powers_int, function(p_list)
+        paste(vapply(p_list, function(p)
+          paste0("(", paste(p, collapse = ", "), ")"),
+          character(1L)), collapse = ", "), character(1L))
+    }
+    
+    # Add winner flag as last column; type is already first from assembly
+    row_keys       <- paste(all_m$type, all_m$variable, sep = "__")
+    all_m$winner   <- ifelse(row_keys %in% winner_keys, "*", "")
+    
+    print(as.data.frame(all_m), row.names = FALSE)
+    cat("\n  * = selected as best functional form for that variable\n")
+    
+  } else {
+    cat("  No interaction candidates computed.\n")
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Step 3: Selected interactions
+  # ---------------------------------------------------------------------------
+  cat("\nStep 3 - Selected Interactions:\n")
+  cat(ruler, "\n")
+  
+  best_m <- x$best_model_metrics
+  
+  if (!is.null(best_m) && nrow(best_m) > 0L) {
+    
+    disp <- best_m
+    if ("fp_powers_main" %in% names(disp)) {
+      disp$fp_powers_main <- vapply(disp$fp_powers_main, function(p)
+        paste0("(", paste(p, collapse = ", "), ")"), character(1L))
+    }
+    if ("fp_powers_int" %in% names(disp)) {
+      disp$fp_powers_int <- vapply(disp$fp_powers_int, function(p_list)
+        paste(vapply(p_list, function(p)
+          paste0("(", paste(p, collapse = ", "), ")"),
+          character(1L)), collapse = ", "), character(1L))
+    }
+    
+    print(as.data.frame(disp), row.names = FALSE)
+    
+    if (identical(x$flex, "flex4") && !is.null(x$group_levels_original)) {
+      cat(sprintf(
+        "\n  For flex4, 'fp_powers_int' shows per-group FP powers (levels: %s).\n",
+        paste(x$group_levels_original, collapse = ", ")
+      ))
+    }
+    cat(
+      paste0(
+        "\n  df_interaction: degrees of freedom for the likelihood-ratio test\n",
+        "    (extra parameters in interaction model vs main-effects model;\n",
+        "    used for the p-value or information-criterion comparison).\n",
+        "  df_total: total parameters in the interaction model excluding\n",
+        "    the intercept and adjustment variables; includes group dummies\n",
+        "    and all group-specific FP terms.\n"
+      )
+    )
+    cat("        p-values correctly account for interaction test degrees of freedom.\n")
+    
+  } else {
+    cat("  No significant interactions found.\n")
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Step 4: Regression output for winning models
+  # ---------------------------------------------------------------------------
+  if (length(x$model_summaries) > 0L) {
+    
+    cat("\nStep 4 - Regression Output (Winning Interaction Models):\n")
+    cat(ruler, "\n")
+    cat("  Note: p-values below are from glm/coxph and do not account for\n")
+    cat("        FP power estimation df. Use Step 3 pvalues for the correct\n")
+    cat("        interaction test p-values.\n")
+    
+    best_m <- x$best_model_metrics
+    type_lookup <- if (!is.null(best_m) && "type" %in% names(best_m)) {
+      setNames(toupper(gsub("fp", "FP", best_m$type)), best_m$variable)
+    } else {
+      setNames(rep("", length(x$model_summaries)), names(x$model_summaries))
+    }
+    
+    for (var_name in names(x$model_summaries)) {
+      sm       <- x$model_summaries[[var_name]]
+      form_lbl <- if (!is.null(type_lookup[[var_name]])) type_lookup[[var_name]] else ""
+      cat(sprintf("\n  '%s' x '%s'  [%s]\n", x$group_var, var_name, form_lbl))
+      cat(strrep("-", 45), "\n")
+      if (!is.null(sm)) print(sm) else cat("  (model summary unavailable)\n")
+    }
+  }
+  
+  invisible(x)
+}
 
 # -----------------------------------------------------------------------------
 # print.summary.mfpi() --------------------------------------------------------

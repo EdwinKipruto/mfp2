@@ -5,6 +5,8 @@
 \title{Print a \code{"summary.mfpi"} Object}
 \usage{
 \method{print}{summary.mfpi}(x, ...)
+
+\method{print}{summary.mfpi}(x, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"summary.mfpi"}.}
@@ -13,8 +15,13 @@
 }
 \value{
 \code{x} invisibly.
+
+\code{x} invisibly.
 }
 \description{
+Displays a four-step structured summary. Steps 1-3 match \code{print.mfpi()};
+Step 4 adds regression output for each final interaction model.
+
 Displays a four-step structured summary. Steps 1-3 match \code{print.mfpi()};
 Step 4 adds regression output for each final interaction model.
 }

@@ -1,106 +1,3 @@
-# Utility functions for MFPI
-#
-# These functions handle dummy variable creation, group-specific FP variable
-# construction, and related data-preparation tasks. `create_group_dummies()`,
-# `create_z_variables()`, and `transform_z_variables()` are exported because
-# they may be useful to callers building custom interaction models.
-# `var_group()` and `adjust_reference_category()` are small helpers that are
-# also exported for convenience.
-#
-# Naming conventions (shared with flex_functions.R and fit_mfpi.R):
-#   group_var  — the categorical grouping variable (column name or matrix)
-#   cont_var   — the continuous variable being transformed
-#   fp_cand    — candidate FP powers for a single variable
-#   fp_degree  — degree of the FP (1 = FP1, 2 = FP2)
-#   na_replace — how to handle non-finite values from structural zeros
-
-
-# -----------------------------------------------------------------------------
-# create_group_dummies() ------------------------------------------------------------
-# -----------------------------------------------------------------------------
-
-#' Create Dummy Variables from a Single-Column Numeric Matrix
-#'
-#' Encodes a categorical variable held in a one-column numeric matrix as a set
-#' of binary dummy columns. The lowest numeric level is the reference category
-#' and is omitted from the output, consistent with the default treatment
-#' contrasts used in R's [stats::model.matrix()].
-#'
-#' @param x A numeric matrix with exactly one column and a column name. Each
-#'   distinct numeric value is treated as a category.
-#' @param levels Optional numeric vector specifying all expected levels of `x`.
-#'   Useful when some levels may be absent from `x` (e.g. in a subset) but
-#'   dummy columns are still required for model-matrix consistency. When
-#'   supplied, the values in `x` must be a subset of `levels`; any extra values
-#'   in `x` not listed in `levels` raise an error.
-#'
-#' @return A numeric matrix with `nrow(x)` rows and \eqn{K - 1} columns, where
-#'   \eqn{K} is the number of unique levels (from `x` or from `levels`). Column
-#'   names follow the pattern `<varname><level>`, e.g. `"trt2"`, `"trt3"` when
-#'   the input column is named `"trt"` and the non-reference levels are 2 and 3.
-#' 
-#' @examples
-#' \dontrun{
-#' x <- matrix(c(3, 1, 2, 1, 3, 2), ncol = 1)
-#' colnames(x) <- "group"
-#' create_group_dummies(x)
-#'
-#' # Enforce a fixed set of levels (e.g. for prediction on a subset)
-#' x2 <- matrix(c(1, 1, 1), ncol = 1)
-#' colnames(x2) <- "trt"
-#' create_group_dummies(x2, levels = 1:3)   # trt2 and trt3 columns are all-zero
-#'}
-#' @keywords internal
-#' @noRd
-create_group_dummies <- function(x, levels = NULL) {
-  
-  if (!is.matrix(x))         stop("`x` must be a matrix.",                  call. = FALSE)
-  if (ncol(x) != 1L)         stop("`x` must have exactly one column.",      call. = FALSE)
-  if (!is.numeric(x))        stop("`x` must be numeric.",                   call. = FALSE)
-  if (is.null(colnames(x)))  stop("`x` must have a column name.",           call. = FALSE)
-  if (nrow(x) == 0L)         stop("`x` must not be empty.",                 call. = FALSE)
-  
-  xname <- colnames(x)[1L]
-  xvec  <- drop(x)
-  
-  observed_levels <- sort(unique(xvec))
-  
-  if (is.null(levels)) {
-    all_levels <- observed_levels
-  } else {
-    if (!is.numeric(levels) || anyNA(levels) || !all(is.finite(levels))) {
-      stop("`levels` must be a finite numeric vector with no missing values.",
-           call. = FALSE)
-    }
-    all_levels <- sort(unique(levels))
-    
-    extra_in_data   <- setdiff(observed_levels, all_levels)
-    missing_in_data <- setdiff(all_levels, observed_levels)
-    
-    msgs <- character(0L)
-    if (length(extra_in_data) > 0L)
-      msgs <- c(msgs, paste0("Values in `x` not listed in `levels`: ",
-                             paste(extra_in_data, collapse = ", "), "."))
-    if (length(missing_in_data) > 0L)
-      msgs <- c(msgs, paste0("Levels not present in `x` (will produce all-zero columns): ",
-                             paste(missing_in_data, collapse = ", "), "."))
-    if (length(extra_in_data) > 0L)
-      stop(paste(msgs, collapse = "\n"), call. = FALSE)
-    if (length(missing_in_data) > 0L)
-      message(paste(msgs, collapse = "\n"))
-  }
-  
-  if (length(all_levels) < 2L) {
-    stop("At least two distinct levels are required to create dummy variables.",
-         call. = FALSE)
-  }
-  
-  f   <- factor(xvec, levels = all_levels)
-  mat <- model.matrix(~ f)[, -1L, drop = FALSE]
-  colnames(mat) <- paste0(xname, all_levels[-1L])
-  mat
-}
-
 # -----------------------------------------------------------------------------
 # create_z_variables() ---------------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -157,7 +54,7 @@ create_group_dummies <- function(x, levels = NULL) {
 #'
 #' @section FP transformations:
 #'
-#' FP transformations are delegated to \code{transform_vector_fp()}.
+#' FP transformations are delegated to \code{mfp2::transform_vector_fp()}.
 #' The power convention is:
 #'
 #' \describe{
@@ -275,11 +172,11 @@ create_group_dummies <- function(x, levels = NULL) {
 #'   values, and have at least two distinct values.
 #' @param power Numeric vector of FP powers. Length one gives an FP1 basis;
 #'   length two gives an FP2 basis. Repeated powers are handled by
-#'   \code{transform_vector_fp()}.
+#'   \code{mfp2::transform_vector_fp()}.
 #' @param shift Optional numeric shift applied before FP transformation. Passed
-#'   to \code{transform_vector_fp()}.
+#'   to \code{mfp2::transform_vector_fp()}.
 #' @param scale Optional numeric scale applied before FP transformation. Passed
-#'   to \code{transform_vector_fp()}.
+#'   to \code{mfp2::transform_vector_fp()}.
 #' @param center Logical. If \code{TRUE}, center the FP basis columns before
 #'   constructing the group-specific design matrix. Default is \code{FALSE}.
 #' @param zero Logical. If \code{TRUE}, non-positive values of \code{cont_var}
@@ -291,6 +188,16 @@ create_group_dummies <- function(x, levels = NULL) {
 #' @param return_eval Logical. If \code{TRUE}, also return an evaluation matrix
 #'   in which every group-specific function is evaluated for every observed
 #'   \code{x} value. Default is \code{FALSE}.
+#' @param scale_var Numeric scalar. The scale factor for \code{cont_var},
+#'   as computed in \code{mfpi.default()}. Before any FP transformation,
+#'   \code{cont_var} is multiplied by \code{scale_var} to restore the
+#'   variable before scaling was applied. For standard variables this gives
+#'   \eqn{x + \text{shift}}; for \code{zero_var = TRUE} variables (where
+#'   shift is forced to 0) this gives the original \eqn{x}, and the
+#'   \code{zero} argument then correctly handles non-positive values.
+#'   This ensures model coefficients match the \eqn{\phi(x + \text{shift})}
+#'   scale of the adjustment model and standalone \pkg{mfp2}. Default
+#'   \code{1} (no backscaling).
 #'
 #' @return A list with the following elements:
 #'
@@ -308,11 +215,46 @@ create_group_dummies <- function(x, levels = NULL) {
 #'   masking and before centering.}
 #' }
 #'
+#' @section Usage with raw vs pre-shifted/scaled data:
+#' This function supports two calling conventions depending on whether
+#' \code{cont_var} has been pre-processed upstream:
+#'
+#' \describe{
+#'   \item{Raw data (direct user call)}{Pass the original unscaled,
+#'     unshifted \code{cont_var} and let \code{shift}, \code{scale}, and
+#'     \code{zero} control the FP transformation:
+#'     \preformatted{
+#' create_z_variables(
+#'   cont_var  = x_raw,
+#'   group_var = grp,
+#'   power     = c(0.5, 1),
+#'   shift     = NULL,   # estimated automatically
+#'   scale     = NULL,   # estimated automatically
+#'   scale_var = 1       # default: no backscaling
+#' )}}
+#'   \item{Pre-shifted and scaled data (internal mfpi use)}{When called
+#'     from the flex functions inside \code{mfpi()}, \code{cont_var} has
+#'     already been shifted and scaled in \code{mfpi.default()}:
+#'     \eqn{x_{\text{scaled}} = (x + \text{shift}) / \text{scale\_var}}.
+#'     Pass \code{shift = 0}, \code{scale = 1}, and the real
+#'     \code{scale_var} so that the function backscales before FP
+#'     transformation and coefficients are on the
+#'     \eqn{\phi(x + \text{shift})} scale:
+#'     \preformatted{
+#' create_z_variables(
+#'   cont_var  = x_scaled,   # (x + shift) / scale_var
+#'   group_var = grp,
+#'   power     = bestfp,
+#'   shift     = 0,
+#'   scale     = 1,
+#'   scale_var = scale_var   # real scale factor: x_scaled * scale_var = x + shift
+#' )}}
+#' }
+#'
 #' @seealso \code{\link{transform_z_variables}},
-#'   \code{transform_vector_fp}
+#'   \code{mfp2::transform_vector_fp}
 #'
 #' @examples
-#' \dontrun{
 #' cont <- matrix(1:6, ncol = 1)
 #' colnames(cont) <- "age"
 #'
@@ -336,11 +278,10 @@ create_group_dummies <- function(x, levels = NULL) {
 #'   center = TRUE,
 #'   return_eval = TRUE
 #' )
-#' }
 #'
 #' @importFrom stats setNames
-# @keywords internal
-# @noRd
+#' @export
+
 create_z_variables <- function(cont_var,
                                group_var,
                                power = 1,
@@ -349,7 +290,8 @@ create_z_variables <- function(cont_var,
                                center = FALSE,
                                zero = FALSE,
                                center_type = c("grand", "group"),
-                               return_eval = FALSE) {
+                               return_eval = FALSE,
+                               scale_var = 1) {
   
   center_type <- match.arg(center_type)
   
@@ -402,6 +344,25 @@ create_z_variables <- function(cont_var,
             call. = FALSE)
   }
   
+  # Backscale cont_var to match mfp2 convention --------------------------------
+  # x was divided by scale_var upstream in mfpi.default for numerical stability
+  # during power selection. Multiplying by scale_var here restores the
+  # scaled-but-not-shifted variable: cont_var_scaled * scale_var = x + shift.
+  #
+  # This function is always called from the flex functions with shift = 0 and
+  # scale = 1 (no further shift or scale applied by transform_vector_fp below),
+  # so the backscaled cont_var is passed directly to transform_vector_fp and
+  # coefficients are on the phi(x + shift) scale, matching standalone mfp2.
+  #
+  # For zero_var variables (shift forced to 0 in mfpi.default), backscaling
+  # restores the original x. The zero argument then correctly handles
+  # non-positive values in that restored x.
+  #
+  # Applied AFTER validation so checks run on the pre-backscaled (scaled) values.
+  if (!is.null(scale_var) && any(scale_var != 1)) {
+    cont_var <- cont_var * scale_var
+  }
+  
   # Structural-zero rows from the original continuous variable.
   zero_rows  <- if (zero) as.vector(cont_var) <= 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
@@ -413,7 +374,7 @@ create_z_variables <- function(cont_var,
   
   # Transform full continuous variable first ----------------------------------
   # This avoids applying FP transformations to artificial out-of-group zeros.
-  x_fp <- transform_vector_fp(
+  x_fp <- mfp2::transform_vector_fp(
     x            = cont_var,
     power        = power,
     shift        = shift,
@@ -635,7 +596,7 @@ create_z_variables <- function(cont_var,
 #'
 #' @section Candidate FP powers:
 #'
-#' Candidate powers are generated by \code{generate_powers_fp()} using
+#' Candidate powers are generated by \code{mfp2::generate_powers_fp()} using
 #' \code{fp_cand} and \code{fp_degree}.
 #'
 #' For FP1, each candidate power vector has length one. For FP2, each candidate
@@ -764,9 +725,9 @@ create_z_variables <- function(cont_var,
 #'   must have the same number of rows as \code{cont_var}, contain no missing
 #'   values, and have at least two distinct values.
 #' @param shift Optional numeric shift applied before FP transformation. Passed
-#'   to \code{transform_vector_fp()}.
+#'   to \code{mfp2::transform_vector_fp()}.
 #' @param scale Optional numeric scale applied before FP transformation. Passed
-#'   to \code{transform_vector_fp()}.
+#'   to \code{mfp2::transform_vector_fp()}.
 #' @param center Logical. If \code{TRUE}, center each candidate FP basis before
 #'   constructing the group-specific design matrices. Default is \code{FALSE}.
 #' @param acdx Logical. Whether to apply the ACD transformation. Currently,
@@ -788,6 +749,16 @@ create_z_variables <- function(cont_var,
 #'   zero after centering.
 #' @param return_eval Logical. If \code{TRUE}, also return evaluation matrices
 #'   in \code{x_eval_transformed}. Default is \code{FALSE}.
+#' @param scale_var Numeric scalar. The scale factor for \code{cont_var},
+#'   as computed in \code{mfpi.default()}. Before any FP transformation,
+#'   \code{cont_var} is multiplied by \code{scale_var} to restore the
+#'   variable before scaling was applied. For standard variables this gives
+#'   \eqn{x + \text{shift}}; for \code{zero_var = TRUE} variables (where
+#'   shift is forced to 0) this gives the original \eqn{x}, and the
+#'   \code{zero} argument then correctly handles non-positive values.
+#'   This ensures model coefficients match the \eqn{\phi(x + \text{shift})}
+#'   scale of the adjustment model and standalone \pkg{mfp2}. Default
+#'   \code{1} (no backscaling).
 #'
 #' @return A list with the following elements:
 #'
@@ -807,12 +778,49 @@ create_z_variables <- function(cont_var,
 #'   \code{center = FALSE}.}
 #' }
 #'
+#' @section Usage with raw vs pre-shifted/scaled data:
+#' This function supports two calling conventions depending on whether
+#' \code{cont_var} has been pre-processed upstream:
+#'
+#' \describe{
+#'   \item{Raw data (direct user call)}{Pass the original unscaled,
+#'     unshifted \code{cont_var} and let \code{shift}, \code{scale}, and
+#'     \code{zero} control the FP transformation:
+#'     \preformatted{
+#' transform_z_variables(
+#'   cont_var  = x_raw,
+#'   group_var = grp,
+#'   fp_cand   = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3),
+#'   fp_degree = 2,
+#'   shift     = NULL,   # estimated automatically
+#'   scale     = NULL,   # estimated automatically
+#'   scale_var = 1       # default: no backscaling
+#' )}}
+#'   \item{Pre-shifted and scaled data (internal mfpi use)}{When called
+#'     from flex2 inside \code{mfpi()}, \code{cont_var} has already been
+#'     shifted and scaled:
+#'     \eqn{x_{\text{scaled}} = (x + \text{shift}) / \text{scale\_var}}.
+#'     Pass \code{shift = 0}, \code{scale = 1}, and the real
+#'     \code{scale_var} so that the function backscales before FP
+#'     transformation and coefficients are on the
+#'     \eqn{\phi(x + \text{shift})} scale:
+#'     \preformatted{
+#' transform_z_variables(
+#'   cont_var  = x_scaled,   # (x + shift) / scale_var
+#'   group_var = grp,
+#'   fp_cand   = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3),
+#'   fp_degree = 2,
+#'   shift     = 0,
+#'   scale     = 1,
+#'   scale_var = scale_var   # real scale factor: x_scaled * scale_var = x + shift
+#' )}}
+#' }
+#'
 #' @seealso \code{\link{create_z_variables}},
-#'   \code{generate_powers_fp},
-#'   \code{transform_vector_fp}
+#'   \code{mfp2::generate_powers_fp},
+#'   \code{mfp2::transform_vector_fp}
 #'
 #' @examples
-#' \dontrun{
 #' cont <- matrix(1:6, ncol = 1)
 #' colnames(cont) <- "age"
 #'
@@ -838,10 +846,10 @@ create_z_variables <- function(cont_var,
 #'   center = TRUE,
 #'   return_eval = TRUE
 #' )
-#'}
+#'
 #' @importFrom stats setNames
-# @keywords internal
-# @noRd
+#' @importFrom mfp2 generate_powers_fp transform_vector_fp
+#' @export
 transform_z_variables <- function(cont_var,
                                   group_var,
                                   shift = NULL,
@@ -853,7 +861,8 @@ transform_z_variables <- function(cont_var,
                                   center_type = c("grand", "group"),
                                   na_replace = c("zero", "NA"),
                                   zero = FALSE,
-                                  return_eval = FALSE) {
+                                  return_eval = FALSE,
+                                  scale_var = 1) {
   
   center_type <- match.arg(center_type)
   na_replace  <- match.arg(na_replace)
@@ -903,6 +912,25 @@ transform_z_variables <- function(cont_var,
     )
   }
   
+  # Backscale cont_var to match mfp2 convention --------------------------------
+  # x was divided by scale_var upstream in mfpi.default for numerical stability
+  # during power selection. Multiplying by scale_var here restores the
+  # shifted-but-not-scaled variable: cont_var_scaled * scale_var = x + shift.
+  #
+  # This function is always called from flex2 with shift = 0 and scale = 1
+  # (no further shift or scale applied by transform_vector_fp below), so the
+  # backscaled cont_var is passed directly to transform_vector_fp and
+  # coefficients are on the phi(x + shift) scale, matching standalone mfp2.
+  #
+  # For zero_var variables (shift forced to 0 in mfpi.default), backscaling
+  # restores the original x. The zero argument then correctly handles
+  # non-positive values in that restored x.
+  #
+  # Applied AFTER validation so checks run on the pre-backscaled (scaled) values.
+  if (!is.null(scale_var) && any(scale_var != 1)) {
+    cont_var <- cont_var * scale_var
+  }
+  
   if (is.null(fp_cand)) {
     fp_cand <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
@@ -929,7 +957,7 @@ transform_z_variables <- function(cont_var,
   }
   
   # Candidate powers -----------------------------------------------------------
-  powers_matrix <- generate_powers_fp(
+  powers_matrix <- mfp2::generate_powers_fp(
     degree = fp_degree,
     powers = fp_cand
   )
@@ -971,7 +999,7 @@ transform_z_variables <- function(cont_var,
     
     # Transform full continuous variable first.
     # Do not transform zero-padded group variables.
-    x_fp <- transform_vector_fp(
+    x_fp <- mfp2::transform_vector_fp(
       x            = cont_var,
       power        = power_i,
       shift        = shift,
@@ -1161,6 +1189,109 @@ transform_z_variables <- function(cont_var,
   )
   
   return(out)
+}
+
+# Utility functions for MFPI
+#
+# These functions handle dummy variable creation, group-specific FP variable
+# construction, and related data-preparation tasks. `create_group_dummies()`,
+# `create_z_variables()`, and `transform_z_variables()` are exported because
+# they may be useful to callers building custom interaction models.
+# `var_group()` and `adjust_reference_category()` are small helpers that are
+# also exported for convenience.
+#
+# Naming conventions (shared with flex_functions.R and fit_mfpi.R):
+#   group_var  — the categorical grouping variable (column name or matrix)
+#   cont_var   — the continuous variable being transformed
+#   fp_cand    — candidate FP powers for a single variable
+#   fp_degree  — degree of the FP (1 = FP1, 2 = FP2)
+#   na_replace — how to handle non-finite values from structural zeros
+
+
+# -----------------------------------------------------------------------------
+# create_group_dummies() ------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Create Dummy Variables from a Single-Column Numeric Matrix
+#'
+#' Encodes a categorical variable held in a one-column numeric matrix as a set
+#' of binary dummy columns. The lowest numeric level is the reference category
+#' and is omitted from the output, consistent with the default treatment
+#' contrasts used in R's [stats::model.matrix()].
+#'
+#' @param x A numeric matrix with exactly one column and a column name. Each
+#'   distinct numeric value is treated as a category.
+#' @param levels Optional numeric vector specifying all expected levels of `x`.
+#'   Useful when some levels may be absent from `x` (e.g. in a subset) but
+#'   dummy columns are still required for model-matrix consistency. When
+#'   supplied, the values in `x` must be a subset of `levels`; any extra values
+#'   in `x` not listed in `levels` raise an error.
+#'
+#' @return A numeric matrix with `nrow(x)` rows and \eqn{K - 1} columns, where
+#'   \eqn{K} is the number of unique levels (from `x` or from `levels`). Column
+#'   names follow the pattern `<varname><level>`, e.g. `"trt2"`, `"trt3"` when
+#'   the input column is named `"trt"` and the non-reference levels are 2 and 3.
+#' 
+#' @examples
+#' \dontrun{
+#' x <- matrix(c(3, 1, 2, 1, 3, 2), ncol = 1)
+#' colnames(x) <- "group"
+#' create_group_dummies(x)
+#'
+#' # Enforce a fixed set of levels (e.g. for prediction on a subset)
+#' x2 <- matrix(c(1, 1, 1), ncol = 1)
+#' colnames(x2) <- "trt"
+#' create_group_dummies(x2, levels = 1:3)   # trt2 and trt3 columns are all-zero
+#'}
+#' @keywords internal
+#' @noRd
+create_group_dummies <- function(x, levels = NULL) {
+  
+  if (!is.matrix(x))         stop("`x` must be a matrix.",                  call. = FALSE)
+  if (ncol(x) != 1L)         stop("`x` must have exactly one column.",      call. = FALSE)
+  if (!is.numeric(x))        stop("`x` must be numeric.",                   call. = FALSE)
+  if (is.null(colnames(x)))  stop("`x` must have a column name.",           call. = FALSE)
+  if (nrow(x) == 0L)         stop("`x` must not be empty.",                 call. = FALSE)
+  
+  xname <- colnames(x)[1L]
+  xvec  <- drop(x)
+  
+  observed_levels <- sort(unique(xvec))
+  
+  if (is.null(levels)) {
+    all_levels <- observed_levels
+  } else {
+    if (!is.numeric(levels) || anyNA(levels) || !all(is.finite(levels))) {
+      stop("`levels` must be a finite numeric vector with no missing values.",
+           call. = FALSE)
+    }
+    all_levels <- sort(unique(levels))
+    
+    extra_in_data   <- setdiff(observed_levels, all_levels)
+    missing_in_data <- setdiff(all_levels, observed_levels)
+    
+    msgs <- character(0L)
+    if (length(extra_in_data) > 0L)
+      msgs <- c(msgs, paste0("Values in `x` not listed in `levels`: ",
+                             paste(extra_in_data, collapse = ", "), "."))
+    if (length(missing_in_data) > 0L)
+      msgs <- c(msgs, paste0("Levels not present in `x` (will produce all-zero columns): ",
+                             paste(missing_in_data, collapse = ", "), "."))
+    if (length(extra_in_data) > 0L)
+      stop(paste(msgs, collapse = "\n"), call. = FALSE)
+    if (length(missing_in_data) > 0L)
+      message(paste(msgs, collapse = "\n"))
+  }
+  
+  if (length(all_levels) < 2L) {
+    stop("At least two distinct levels are required to create dummy variables.",
+         call. = FALSE)
+  }
+  
+  f   <- factor(xvec, levels = all_levels)
+  mat <- model.matrix(~ f)[, -1L, drop = FALSE]
+  colnames(mat) <- paste0(xname, all_levels[-1L])
+  mat
 }
 
 # -----------------------------------------------------------------------------

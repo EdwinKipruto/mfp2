@@ -229,30 +229,85 @@ is \code{NULL}, in which case \code{mfp2} uses the default settings for the spec
 model family.}
 
 \item{zero}{A character vector specifying the names of continuous variables
-for which nonpositive values should be treated as zero. This enables fitting a
-fractional polynomial (FP) model using only the positive values of the
-covariate, while setting nonpositive values to zero during transformation.
-In \code{fp()} terms, \code{zero} is a logical value indicating whether the adjustment
-should be applied to the variable. See the \strong{Details} section.}
+for which non-positive values should be treated as zero. This enables
+fitting a fractional polynomial (FP) model using only the positive values
+of the covariate, while setting non-positive values to zero during
+transformation. In \code{fp()} terms, \code{zero} is a logical value
+indicating whether this adjustment should be applied to the variable.
+\code{zero} is also implied automatically for any variable in
+\code{catzero} or \code{spike} via the cascade
+\code{zero[catzero] <- TRUE}. However, if a variable is in \code{spike}
+and the spike flag is subsequently reset (because the zero proportion is
+outside \code{[min_prop, max_prop]} or the variable is binary), the
+\code{zero} flag is restored to this user-specified value. This means
+that specifying a variable in both \code{spike} and \code{zero} ensures
+that non-positive recoding is preserved even when the SAZ algorithm is
+not applied. See the \strong{Details} section.}
 
-\item{catzero}{A character vector specifying the names of continuous variables
-for which nonpositive values should be treated as zero, similar to \code{zero}. In
-addition, \code{mfp2} automatically creates a binary indicator variable and
-includes it in the model alongside the transformed variable.
-In \code{fp()} terms, \code{catzero} is a logical value indicating whether the adjustment
-and indicator should be applied. See the \strong{Details} section.}
+\item{catzero}{A character vector specifying the names of continuous
+variables for which non-positive values should be treated as zero and a
+binary indicator \eqn{I(x = 0)} automatically created and included in
+the model alongside the FP terms for the positive part. In \code{fp()}
+terms, \code{catzero} is a logical value indicating whether this
+adjustment and indicator should be applied.
+\code{catzero} is also implied automatically for any variable in
+\code{spike} via the cascade \code{catzero[spike] <- TRUE}. However,
+if a variable is in \code{spike} and the spike flag is subsequently
+reset, the \code{catzero} flag is restored to this user-specified value.
+This means that specifying a variable in both \code{spike} and
+\code{catzero} ensures that the binary indicator is preserved even when
+the SAZ algorithm is not applied -- the variable is treated as a
+\code{catzero} variable without the SAZ selection step. See the
+\strong{Details} section. See the \strong{Details} section.}
 
 \item{spike}{A character vector specifying the names of continuous variables
-to be assessed for a spike at zero. Supplying this triggers the spike-at-zero
-(SAZ) algorithm (see Details). This argument is not available in the formula
-interface (\code{mfp2.formula}), where spike is specified as a logical value within
+to be assessed for a spike at zero using the SAZ algorithm. Supplying a
+variable here implies \code{catzero} (binary indicator \eqn{I(x=0)} added)
+and \code{zero} (non-positive values recoded to zero) for that variable,
+via the cascade \code{catzero[spike] <- TRUE} and
+\code{zero[catzero] <- TRUE}.
+
+Before the SAZ algorithm runs, each spike variable is checked for
+eligibility. If the observed zero proportion is outside
+\code{[min_prop, max_prop]} or the variable is binary, the spike flag
+is reset to \code{FALSE}. The \code{catzero} and \code{zero} flags are
+also restored to whatever the user originally specified -- not the values
+implied by the cascade. This means:
+\itemize{
+\item If only \code{spike} was specified (not \code{catzero} or
+\code{zero}), the variable reverts to a standard continuous predictor
+when the spike is reset.
+\item If \code{catzero} was also specified, the binary indicator is
+still added after the reset.
+\item If \code{zero} was also specified, non-positive values are still
+recoded to zero after the reset.
+}
+This argument is not available in the formula interface
+(\code{mfp2.formula}), where spike is specified as a logical value within
 \code{fp()} terms for each variable.}
 
-\item{min_prop}{A numeric value between 0 and 1; the minimum proportion of
-zeros for which the spike-at-zero (SAZ) modeling is applied. Defaults to 0.05.}
+\item{min_prop}{Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
+SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
+\code{0.05}. Must be less than \code{max_prop}. If the observed zero
+proportion is below \code{min_prop} (too few zeros to model a spike
+meaningfully), the spike flag is reset to \code{FALSE} for that variable.
+The resulting treatment depends on what the user originally specified
+alongside \code{spike_vars}: if \code{catzero_vars} or \code{zero_vars}
+were also specified for that variable, those flags are preserved;
+otherwise the variable reverts to a standard continuous predictor.
+Only affects variables in the adjustment model since \code{spike_vars}
+is always suppressed for \code{cont_vars}.}
 
-\item{max_prop}{A numeric value between 0 and 1; the maximum proportion of
-zeros for which SAZ modeling is applied. Defaults to 0.95.}
+\item{max_prop}{Numeric in \eqn{(0, 1)}. Maximum proportion of zeros allowed for the
+SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
+\code{0.95}. Must be greater than \code{min_prop}. If the observed zero
+proportion exceeds \code{max_prop} (too many zeros; the positive part is
+too sparse for reliable FP fitting), the spike flag is reset to
+\code{FALSE}. As with \code{min_prop}, the resulting treatment of
+\code{catzero} and \code{zero} depends on the user's original
+specification. Variables that are binary (exactly two unique values) are
+also reset regardless of their zero proportion. Only affects variables
+in the adjustment model.}
 
 \item{force_max_fp}{A logical vector of length \code{nvars}, or a single
 logical value that is internally replicated. If \code{TRUE} for a variable,

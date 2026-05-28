@@ -23,8 +23,8 @@ columns for retained variables and a compact list of dropped variables.
 \code{cont_vars}, with the selected model flagged by \code{*}. This
 allows the user to judge whether the evidence is consistent across
 functional forms or driven by a single degree.
-\item The final selected interactions — one row per variable that cleared
-the selection threshold — or a message if none were found.
+\item The final selected interactions - one row per variable that cleared
+the selection threshold - or a message if none were found.
 }
 }
 \details{

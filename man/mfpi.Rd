@@ -45,7 +45,7 @@ mfpi(x, ...)
   max_prop = 0.95,
   use_ftest = FALSE,
   control = NULL,
-  winsorize = TRUE,
+  winsorize = FALSE,
   winsorize_probs = c(0.01, 0.99),
   center_type = c("grand", "group"),
   verbose = TRUE,
@@ -89,7 +89,7 @@ mfpi(x, ...)
   max_prop = 0.95,
   use_ftest = FALSE,
   control = NULL,
-  winsorize = TRUE,
+  winsorize = FALSE,
   winsorize_probs = c(0.01, 0.99),
   center_type = c("grand", "group"),
   verbose = TRUE,
@@ -490,7 +490,7 @@ variable is treated as a factor internally; in a typical randomised controlled
 trial it represents treatment allocation, with the lowest value as the control
 arm. Confounders and other prognostic variables are adjusted for via FP
 transformations selected by the MFP algorithm implemented in the
-\code{mfp2()}.
+\code{\link[=mfp2]{mfp2()}}.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -506,109 +506,137 @@ model by calling \code{mfpi.default()} internally.
 }}
 \section{The MFPI approach}{
 
-Investigating interactions between a treatment (or other grouping variable)
-and a continuous covariate is of central importance in clinical trials, where
-the question is whether the treatment effect varies with the level of a
-prognostic factor. Standard approaches either categorise the continuous
-variable into subgroups defined by cutpoints, or assume that the interaction
-is linear. Both strategies have well-known limitations. Categorisation is
-statistically inefficient, sensitive to the number and placement of
-cutpoints, and prone to false-positive findings when cutpoints are chosen
-post hoc (Royston and Sauerbrei, 2004; Altman et al., 1994). A linear
-assumption may miss genuinely non-linear relationships, and misspecifying
-the main effect can generate spurious interactions (Royston and Sauerbrei,
-2008, pp. 173--174).
+Investigating interactions between a treatment or other grouping variable
+and a continuous covariate is of central importance in clinical and
+epidemiological studies, where the aim is often to assess whether the effect
+of one variable changes across the values of another. When both variables are
+binary, interaction modelling is straightforward. Greater challenges arise
+when at least one variable is continuous. A common approach is to categorise
+the continuous covariate using one or more cutpoints and then fit a model
+containing the resulting groups, the grouping variable (treatment groups), and
+their multiplicative interaction terms. When the resulting categories are
+ordered, a trend test can be used to assess whether the effect of the grouping
+variable changes systematically across categories. This can be more powerful
+than a general unordered test when the assumed trend is appropriate.
+
+These strategies have important limitations. Evidence for interaction may
+depend strongly on the number and placement of cutpoints, and models with too
+many categories can be unstable and difficult to interpret. Trend tests can
+also be misleading if the assigned category scores do not reflect the true
+shape of the relationship, especially when the relationship is nonlinear.
+Avoiding categorisation by assuming linear effects of the continuous
+covariate within each level of the grouping variable is also restrictive,
+because the main effects, the interaction, or both may be nonlinear. Most
+studies are powered primarily for main effects, so even moderately large
+interactions may be detected with low power. Efficiency results show that
+retaining a covariate on its continuous scale can improve the power of
+interaction tests compared with dichotomising it, but adequate sample size
+remains essential for reliable interaction analyses.
 
 The Multivariable Fractional Polynomial Interaction (MFPI) procedure,
-proposed by Royston and Sauerbrei (2004), avoids these pitfalls by
-modelling the relationship between the continuous covariate \eqn{Z} and the
-outcome using fractional polynomial (FP) functions within each level of the
-grouping variable \eqn{T}. Four variants (FLEX1--FLEX4) control how FP
-powers are estimated and constrained across groups; see the
-\emph{Flexibility levels} section below. For full methodological details
-see Royston and Sauerbrei (2004, 2008, 2013) and Sauerbrei, Royston, and
-Zapien (2007).
+proposed by Royston and Sauerbrei (2004), addresses these issues by modelling
+the relationship between a continuous covariate \eqn{z} and the outcome using
+fractional polynomial (FP) functions within levels of a grouping variable
+\eqn{t}, rather than relying on arbitrary cutpoints or simple linear product
+terms. Four variants (FLEX1--FLEX4) differ in how FP powers are selected and
+constrained across groups; see the \emph{Flexibility levels} section below.
+For full methodological details, see Royston and Sauerbrei (2004, 2008,
+2013) and Sauerbrei, Royston, and Zapien (2007).
 }
 
 \section{Flexibility levels (\code{flex})}{
 
-Four levels of flexibility control how FP powers are estimated and
-constrained between groups. The appropriate level is chosen by the analyst
-based on subject-matter knowledge and sample-size considerations.
+The MFPI procedure allows four levels of flexibility in how FP powers are
+selected and constrained across levels of the treatment variable. These
+variants are available for both FP1 and FP2 functions. The appropriate level
+is chosen by the analyst based on subject-matter knowledge and sample-size
+considerations. Depending on the nature of the study, the analyst must decide
+whether to use an FP1 or FP2 model with MFPI, although the results for linear,
+FP1, and FP2 models are all presented to aid this decision.
 
-\strong{\code{flex1} (default - least flexible).} FP powers are estimated once from
-the pooled main-effects model (ignoring interaction), then used unchanged
-within each group. A likelihood-ratio test comparing the main-effects and
-interaction models constitutes the interaction test. Because the models are
-nested and no extra degrees of freedom are consumed by power estimation,
-simulation studies confirm that the type-I error rate is close to its nominal
-value (Royston and Sauerbrei 2014). This is the recommended starting point.
+\strong{\code{flex1} (default; least flexible).} FP powers are selected for the main
+effect of the continuous covariate \eqn{z} in a model that excludes the
+treatment-by-covariate interaction. The same selected powers are then used at
+each level of the treatment variable \eqn{t}. The interaction is assessed by
+a likelihood ratio test comparing the main-effect model with the interaction
+model. For FP1, the interaction model has 3 degrees of freedom: one power
+and two regression coefficients, \eqn{\beta}. For FP2, it has 6
+degrees of freedom: two powers and four regression coefficients. The
+corresponding main-effect models have 2 and 4 degrees of freedom,
+respectively. Therefore, the interaction test has \eqn{3-2 = 1} degree of
+freedom for FP1 and \eqn{6-4 = 2} degrees of freedom for FP2.
 
-\strong{\code{flex2}.} FP powers are estimated jointly across groups (constrained to be
-equal), then used for both the main-effects and interaction models. The
-selected powers may differ from those under \code{flex1}, potentially altering the
-test outcome. Degrees of freedom are the same as for \code{flex1}, but no
-correction is made for the degrees of freedom consumed during power
-estimation, so p-values are slightly anti-conservative and should be treated
-as indicative.
+\strong{\code{flex2}.} FP powers are selected in a model that includes the interaction,
+with the powers of \eqn{z} constrained to be the same at each level of the
+treatment variable \eqn{t}. These same powers are then also used for the
+main-effect model. Because the selected powers may differ from those obtained
+under flex1, the interaction test result may also differ. The degrees of
+freedom for the interaction test are the same as for flex1: 1 for FP1 and 2
+for FP2.
 
 \strong{\code{flex3}.} Separate FP powers are estimated for the main-effects model and
 for the within-group functions, though the within-group powers are still
 constrained to be equal across groups. Because the main-effects and
-interaction models may use different FP families, they are non-nested and the
-likelihood-ratio p-value is again indicative rather than definitive.
-Simulation evidence suggests \code{flex3} with FP1 recovers within-group
-functional forms more accurately than \code{flex1} when a true interaction is
-present.
+interaction models may use different FP families, they are non-nested. The
+interaction test has 1 degree of freedom for FP1 and 2 degrees of freedom for
+FP2.
 
-\strong{\code{flex4} (most flexible).} Like \code{flex3}, but the within-group powers are
-allowed to differ between groups. The additional degrees of freedom reduce
-power to detect interaction compared with \code{flex1}--\code{flex3}.
+\strong{\code{flex4} (most flexible).} FP powers are selected for the main effect and
+separately at each level of the treatment variable. Unlike \code{flex3}, the FP
+powers for \eqn{z} are allowed to differ between treatment groups. The
+interaction test has 2 degrees of freedom for FP1 and 4 degrees of freedom
+for FP2.
 
-\strong{Practical guidance.} FP2 functions are more flexible and reduce the risk
-of misspecification bias, but they are sensitive to influential extreme
-values and lose power when the true function is monotone. If subject-matter
-knowledge supports a non-monotone treatment-effect function, use \code{flex1} with
-FP2. Otherwise, \code{flex3} with FP1 is preferred: it includes the linear
-function as a special case and tends to produce simple, interpretable, and
-transferable results (Royston and Sauerbrei 2014).
-
-To guard against overfitting, consider examining results within a small
-number of clinically defined subgroups, and seek independent validation
-before drawing firm conclusions.
+For flex2, flex3, and flex4, significance tests for interaction are
+based on a chi-square distribution with the stated degrees of freedom.
+However, because these tests are non-nested, the resulting P-values lack a
+theoretical underpinning and the significance levels may be liberal or
+conservative. As an alternative, information criteria such as AIC
+or BIC may be used to compare the fitted main-effects and interaction models.
+Smaller values indicate a better balance between model fit and complexity,
+although small differences should not be over-interpreted. In practice, a
+difference of less than about 2 provides little support for preferring one
+model over the other. Larger differences provide stronger evidence that the
+model with the smaller AIC or BIC is better supported by the data. Thus, if
+the main-effects model has a clearly smaller AIC or BIC, this suggests that
+the additional interaction structure is not justified by the improvement in
+fit. Conversely, if the interaction model has a clearly smaller AIC or BIC,
+this suggests that allowing for interaction improves the balance between fit
+and model complexity.
 }
 
-\section{Influential observations}{
+\section{Influential observations or Outliers}{
 
-Unlike categorisation, FP-based methods are sensitive to extreme values of
-the continuous predictor. A small number of influential observations in the
-tails of \code{cont_vars} can disproportionately determine the chosen
-functional form and may produce \strong{spuriously significant
-interactions} that do not generalise to new data
-(Royston and Sauerbrei, 2014; Sauerbrei, Kipruto and Balmford, 2023). Before
-running \code{mfpi()}, examine the data for influential points using
-standard diagnostics (e.g. univariable plots, leverage statistics) and
-consider whether extreme values are genuine signal or measurement artefact.
+FP models are sensitive to outliers or influential observations in the
+continuous predictor. A small number of influential observations in the tails
+of \code{cont_vars} can disproportionately determine the chosen functional
+form and may produce \strong{spuriously significant interactions}. It is
+therefore important to assess whether extreme values may influence the
+results before fitting the model. Before running \code{mfpi()}, examine the
+data for influential points using standard diagnostic approaches
+(e.g. univariable plots).
 
-To mitigate this, \code{mfpi()} applies \strong{Winsorisation} to each
-variable in \code{cont_vars} \strong{by default} (\code{winsorize = TRUE}).
-Values below the lower percentile and above the upper percentile (set by
-\code{winsorize_probs}, default \code{c(0.01, 0.99)}) are replaced by the
-percentile cutoff value. Winsorisation preserves the number of
-observations (no rows are dropped) and only truncates extreme values; the
-bulk of the distribution is unaffected. Variables flagged as
-\code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} are
-\strong{excluded from Winsorisation} so that both the zero spike and the
-positive distribution are preserved exactly; the user has indicated they
-carry substantive modelling meaning.
+To reduce the potential influence of outliers, \code{mfpi()} provides the
+option \code{winsorize = TRUE} to apply
+\strong{Winsorisation} to each variable in \code{cont_vars}. Values below
+the lower percentile and above the upper percentile (specified by
+\code{winsorize_probs}, with default \code{c(0.01, 0.99)}) are replaced by
+the corresponding percentile cutoff values. Winsorisation preserves the
+number of observations (i.e. no rows are removed) and only truncates extreme
+values; the bulk of the distribution remains unaffected.
+
+Variables flagged as \code{zero_vars}, \code{catzero_vars}, or
+\code{spike_vars} are \strong{excluded from Winsorisation} so that both the
+zero spike and the positive distribution are preserved exactly, as these
+features are assumed to carry substantive modelling meaning.
 
 The Winsorisation cutoffs actually applied are returned in the
 \code{winsorize_limits} component of the fitted object for transparency.
 To disable Winsorisation entirely, set \code{winsorize = FALSE}. To apply
-a heavier trim, pass e.g. \code{winsorize_probs = c(0.025, 0.975)} for a
-5\\\% trim or \code{c(0.05, 0.95)} for a 10\\\% trim. Trimming or
-Winsorising should be reported transparently as part of the initial data
-analysis.
+more aggressive truncation, for example, use
+\code{winsorize_probs = c(0.025, 0.975)} for a 5\\\% trim or
+\code{c(0.05, 0.95)} for a 10\\\% trim. Any trimming or Winsorisation applied
+should be reported transparently as part of the initial data analysis.
 }
 
 \section{Regression families (\code{family})}{
@@ -630,7 +658,7 @@ selection considers all columns of \code{x} simultaneously, including the
 variables that will later be tested for interaction in \code{cont_vars}. If no
 adjustment variables survive selection, interactions are tested without
 adjustment. In the second stage, the selected (and possibly transformed)
-adjustment variables are included as covariates when fitting the
+adjustment variables are linearly included as covariates when fitting the
 main-effects and interaction models for each continuous variable listed
 in \code{cont_vars}.
 
@@ -648,9 +676,9 @@ variable \eqn{x_k} in \code{cont_vars} the adjustment set in stage two is
   \bigl(\{x_k\} \cup \{\text{group dummies}\}\bigr).
 }
 This means two \code{cont_vars} from the same \code{mfpi()} call may be adjusted
-for slightly different sets of covariates: variable \code{sz} is adjusted for
-the selected variables minus \code{sz}, while variable \code{wt} is adjusted for
-the selected variables minus \code{wt}. When \code{verbose = TRUE}, the
+for slightly different sets of covariates. For example variable \code{sz} is
+adjusted for the selected variables minus \code{sz}, while variable \code{wt} is
+adjusted for the selected variables minus \code{wt}. When \code{verbose = TRUE}, the
 per-variable adjustment set is printed in full before each candidate
 table is evaluated, so the user can verify which covariates are being
 controlled for at every step.
@@ -669,7 +697,8 @@ shifted values to a convenient range, following the same procedure as
 \code{\link[=mfp2]{mfp2()}}. Centering is applied after FP powers are estimated.
 Variables marked with \code{zero_vars} or \code{catzero_vars}, and linear terms
 (\code{df = 1}), have their shift automatically set to zero because only the
-positive values are transformed.
+positive values are transformed in these cases, or because no nonlinear
+transformation is applied.
 }
 
 \section{Handling non-positive values}{
@@ -692,9 +721,6 @@ which formally evaluates whether the binary indicator and the FP
 function each contribute explanatory value beyond the other. Implies
 \code{catzero_vars} (and therefore \code{zero_vars}).}
 }
-
-Note that \code{spike_vars} and \code{catzero_vars} are mutually exclusive
-per variable.
 
 \strong{Interaction variables (\code{cont_vars}).}
 The structural \eqn{I(x = 0)} indicator added by \code{catzero_vars} and
@@ -783,6 +809,73 @@ and a warning is issued. Similarly, an \code{offset()} term in the formula
 takes precedence over the \code{offset} argument.
 }
 
+\examples{
+data("prostate")
+# Flexibility level 1: simplest interaction structure
+flex_1 <- mfpi(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+    fp(bph) + fp(cp),
+  data = prostate,
+  cont_vars = c("cavol", "age"),
+  group_var = "svi",
+  center = FALSE,
+  flex = "flex1",
+  include_group_var = TRUE,
+  show_models = TRUE,
+  verbose = TRUE
+)
+
+# Plot both treatment-specific curves and treatment effects
+plot(flex_1, terms = "cavol", plot_type = "both")
+
+# Flexibility level 2:
+flex_2 <- mfpi(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+    fp(bph) + fp(cp),
+  data = prostate,
+  cont_vars = c("cavol", "age"),
+  group_var = "svi",
+  center = FALSE,
+  flex = "flex2",
+  include_group_var = TRUE,
+  show_models = TRUE,
+  verbose = TRUE
+)
+
+plot(flex_2, terms = "cavol", plot_type = "both")
+
+# Flexibility level 3: 
+flex_3 <- mfpi(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+    fp(bph) + fp(cp),
+  data = prostate,
+  cont_vars = c("cavol", "age"),
+  group_var = "svi",
+  center = FALSE,
+  flex = "flex3",
+  include_group_var = TRUE,
+  show_models = TRUE,
+  verbose = TRUE
+)
+
+plot(flex_3, terms = "cavol", plot_type = "both")
+
+# Flexibility level 4: most flexible specification 
+flex_4 <- mfpi(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+    fp(bph) + fp(cp),
+  data = prostate,
+  cont_vars = c("cavol", "age"),
+  group_var = "svi",
+  center = FALSE,
+  flex = "flex4",
+  include_group_var = TRUE,
+  show_models = TRUE,
+  verbose = TRUE
+)
+
+plot(flex_4, terms = "cavol", plot_type = "both")
+}
 \references{
 Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
 interactions between treatment and continuous covariates in clinical trials
@@ -810,11 +903,6 @@ Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
 between treatment and a continuous covariate: a comparison of two
 approaches. \emph{Computational Statistics and Data Analysis}, 51,
 4054--4063.
-
-Sauerbrei, W. and Royston, P. (2022). Investigating treatment-effect
-modification by a continuous covariate in IPD meta-analysis: an approach
-using fractional polynomials. \emph{BMC Medical Research Methodology}, 22,
-1--13.
 
 Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
 Pragmatic Approach to Regression Analysis Based on Fractional Polynomials

@@ -26,28 +26,28 @@
 #' @param family Character string; one of \code{"gaussian"}, \code{"binomial"},
 #'   \code{"poisson"}, or \code{"cox"}.
 #' @param family_string Same as \code{family} but always a plain character
-#'   string. Required separately by \code{mfp2:::fit_mfp()} for internal
+#'   string. Required separately by \code{fit_mfp()} for internal
 #'   branching.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param center Named logical vector of length \eqn{p}. Whether to centre
+#' @param center Named logical vector of length \eqn{p}. Whether to center
 #'   each predictor before fitting.
 #' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}. Governs two distinct selection steps:
 #'   \enumerate{
 #'     \item \strong{Adjustment-model selection} (Step 1): controls variable
-#'       elimination and FP degree selection in \code{mfp2:::fit_mfp()}.
+#'       elimination and FP degree selection in \code{fit_mfp()}.
 #'     \item \strong{Interaction functional form selection} (Step 2): selects
 #'       among linear, FP1, and FP2 interaction candidates in
 #'       \code{evaluate_interactions()}.
 #'   }
-#'   In the internal \code{mfp2:::fit_mfp()} calls within \code{flex1()} and
+#'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
 #'   \code{flex4()} - used only to estimate FP powers for \code{cont_var} -
 #'   the user criterion is passed alongside \code{force_max_fp = TRUE}, which
 #'   prevents AIC/BIC from simplifying the functional form below the requested
 #'   degree. The best power combination within that degree is still selected by
-#'   the criterion (equivalently, by deviance minimisation at fixed df).
+#'   the criterion (equivalently, by deviance minimization at fixed df).
 #' @param select Named numeric vector of length \eqn{p}. Nominal significance
 #'   levels for backward elimination of each predictor.
 #' @param alpha Named numeric vector of length \eqn{p}. Significance levels
@@ -91,9 +91,9 @@
 #' @param max_prop Numeric in \eqn{[0,1]}. Maximum proportion of zeros for
 #'   SAZ modelling.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
-#'   use an F-test (via \code{mfp2:::calculate_f_test()}) rather than a
+#'   use an F-test (via \code{calculate_f_test()}) rather than a
 #'   chi-square likelihood-ratio test for the interaction p-value. Also
-#'   passed to \code{mfp2:::fit_mfp()} for adjustment-variable selection.
+#'   passed to \code{fit_mfp()} for adjustment-variable selection.
 #'   Ignored for non-Gaussian families.
 #' @param control List of fitting control parameters.
 #' @param group_var Character string. Name of the grouping variable in \code{x}.
@@ -157,9 +157,9 @@
 #' \strong{Pre-processing.} Levels of \code{group_var} are remapped to
 #' consecutive integers. Group dummies are computed once and stored in
 #' \code{cat_info$dummies}. When \code{include_group_var = TRUE}, dummies are
-#' appended to \code{x}. All parameter vectors are synchronised. Silent.
+#' appended to \code{x}. All parameter vectors are synchronized Silently.
 #'
-#' \strong{Step 1 - Adjustment model.} \code{mfp2:::fit_mfp()} selects
+#' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
 #' adjustment variables and FP transformations using \code{criterion}.
 #' Selected variables, their FP powers, and spike decisions are fixed for
 #' the remainder of the algorithm.
@@ -168,7 +168,7 @@
 #' \code{cont_vars}, linear, FP1, and FP2 interaction models are fitted and
 #' compared to their main-effects models via \code{evaluate_interactions()}.
 #' Within \code{flex1()} and \code{flex4()}, FP powers are estimated using
-#' \code{mfp2:::fit_mfp()} with \code{force_max_fp = TRUE} to prevent AIC/BIC
+#' \code{fit_mfp()} with \code{force_max_fp = TRUE} to prevent AIC/BIC
 #' from simplifying the functional form below the requested degree. Functional
 #' form selection (linear/FP1/FP2) is performed by \code{evaluate_interactions()}
 #' using the user \code{criterion}.
@@ -216,7 +216,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # ---------------------------------------------------------------------------
   if (verbose) {
     rule_thick <- strrep("=", 70)
-    rule_thin  <- strrep("-", 70)
+    #rule_thin  <- strrep("-", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat("  STEP 1: Adjustment Model (MFP selection)\n")
     cat(rule_thick, "\n", sep = "")
@@ -279,16 +279,17 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # re-transforming adjustment variables inside evaluate_interactions().
   # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
   # 3 = binary only) stored in the mfp2 object by mfp2:::fit_mfp().
-  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec))
+  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec)) {
     adjustment_model$spike_decision
-  else
+   } else {
     setNames(rep(2L, length(selected_vars)), selected_vars)
+   }
   
   # ---------------------------------------------------------------------------
   # Step 2: Evaluate univariable interactions
   # ---------------------------------------------------------------------------
   if (verbose) {
-    rule_thick <- strrep("=", 70)
+    #rule_thick <- strrep("=", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat(sprintf(
       "  STEP 2: Evaluating Interactions  (flex = %s, criterion = '%s')\n",
@@ -345,7 +346,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   }
   
   if (verbose) {
-    rule_thick <- strrep("=", 70)
+    #rule_thick <- strrep("=", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat(sprintf(
       "  DONE: %d of %d variable(s) show significant interaction\n",
@@ -520,12 +521,12 @@ preprocess_data <- function(x, group_var, include_group_var,
 
 #' Fit the MFP Adjustment Model
 #'
-#' A thin wrapper around `mfp2:::fit_mfp()` that selects adjustment variables
+#' A thin wrapper around `fit_mfp()` that selects adjustment variables
 #' and their FP transformations. Scale and shift are set to 1 and 0
 #' respectively because \code{mfpi()} has already applied them to `x`.
 #'
 #' @param x Numeric matrix of predictor variables passed to
-#'   \code{mfp2:::fit_mfp()} for adjustment-variable selection. It is the
+#'   \code{fit_mfp()} for adjustment-variable selection. It is the
 #'   filtered matrix produced by \code{preprocess_data()}, which means:
 #'   \itemize{
 #'     \item \code{group_var} has been \strong{removed} - it is not adjusted
@@ -537,22 +538,22 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'       \code{select = 1} to force them into the adjustment model.
 #'     \item All columns have already been shifted and scaled by
 #'       \code{mfpi.default()} - shift and scale are therefore passed as 0
-#'       and 1 respectively to \code{mfp2:::fit_mfp()} inside this function.
+#'       and 1 respectively to \code{fit_mfp()} inside this function.
 #'   }
 #' @param y Response vector or Surv object.
 #' @param weights Numeric vector of observation weights.
 #' @param offset Numeric vector of linear-predictor offsets.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param family GLM family object (e.g. \code{gaussian()}) or the character
-#'   string \code{"cox"}. Passed directly to \code{mfp2:::fit_mfp()} as its
+#'   string \code{"cox"}. Passed directly to \code{fit_mfp()} as its
 #'   \code{family} argument.
 #' @param family_string Character string of the family name (e.g.
 #'   \code{"gaussian"}, \code{"cox"}). Required separately by
-#'   \code{mfp2:::fit_mfp()} for internal branching.
+#'   \code{fit_mfp()} for internal branching.
 #' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}. Governs full MFP selection: variable elimination, FP
 #'   degree selection, and functional form for adjustment variables. Unlike
-#'   the internal \code{mfp2:::fit_mfp()} calls in \code{flex1()} and
+#'   the internal \code{fit_mfp()} calls in \code{flex1()} and
 #'   \code{flex4()}, \code{force_max_fp} is not passed here - it defaults to
 #'   \code{FALSE} so the user criterion fully controls degree selection, which
 #'   is the correct behaviour for adjustment-model fitting.
@@ -570,20 +571,17 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
-#' @param verbose Logical. Passed directly to \code{mfp2:::fit_mfp()}.
+#' @param verbose Logical. Passed directly to \code{fit_mfp()}.
 #'
-#' @return The fitted model object returned by \code{mfp2:::fit_mfp()}, which
+#' @return The fitted model object returned by \code{fit_mfp()}, which
 #'   includes \code{fp_terms} (a data frame of selected variables and their FP
 #'   powers) and the underlying model fit.
 #'
 #' @details
-#' This function calls \code{mfp2:::fit_mfp()} directly via \code{:::} because
-#' \code{fit_mfp()} is not currently exported by the \pkg{mfp2} package. Once
-#' \pkg{mfp2} exports \code{fit_mfp()}, this call should be updated to use
-#' \code{::}. The real per-variable \code{scale} factors are now passed to
+#' The real per-variable \code{scale} factors are now passed to
 #' \code{fit_mfp()} so that it can backscale \code{x} before the final model
 #' fit (step 4 of \code{fit_mfp()}), giving adjustment model coefficients on
-#' the \eqn{\phi(x + \text{shift})} scale, matching standalone \pkg{mfp2}.
+#' the \eqn{\phi(x + \text{shift})} scale, matching standalone \code{mfp2()}.
 #' \code{shift} is set to 0 because shifting was already applied upstream in
 #' \code{mfpi.default()}.
 #'
@@ -883,7 +881,7 @@ format_candidate_table <- function(rows, criterion, digits) {
 #'     \code{p_interact}. Among retained candidates, select the one with the
 #'     \strong{smallest p-value}. Ties are broken by the \strong{largest
 #'     \code{BIC_main_minus_int}}: when two candidates achieve identical
-#'     p-values, the one with the larger BIC improvement wins. BIC penalises
+#'     p-values, the one with the larger BIC improvement wins. BIC penalizes
 #'     complexity more heavily than AIC (penalty grows as
 #'     \eqn{k\log n} rather than \eqn{2k}), so this rule favours the
 #'     \strong{simpler} functional form when statistical evidence is equally

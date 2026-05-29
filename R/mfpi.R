@@ -7,108 +7,136 @@
 #' trial it represents treatment allocation, with the lowest value as the control
 #' arm. Confounders and other prognostic variables are adjusted for via FP
 #' transformations selected by the MFP algorithm implemented in the
-#' `mfp2()`.
+#' [mfp2::mfp2()].
 #'
 #' @section The MFPI approach:
-#' Investigating interactions between a treatment (or other grouping variable)
-#' and a continuous covariate is of central importance in clinical trials, where
-#' the question is whether the treatment effect varies with the level of a
-#' prognostic factor. Standard approaches either categorise the continuous
-#' variable into subgroups defined by cutpoints, or assume that the interaction
-#' is linear. Both strategies have well-known limitations. Categorisation is
-#' statistically inefficient, sensitive to the number and placement of
-#' cutpoints, and prone to false-positive findings when cutpoints are chosen
-#' post hoc (Royston and Sauerbrei, 2004; Altman et al., 1994). A linear
-#' assumption may miss genuinely non-linear relationships, and misspecifying
-#' the main effect can generate spurious interactions (Royston and Sauerbrei,
-#' 2008, pp. 173--174).
+#' Investigating interactions between a treatment or other grouping variable
+#' and a continuous covariate is of central importance in clinical and
+#' epidemiological studies, where the aim is often to assess whether the effect
+#' of one variable changes across the values of another. When both variables are
+#' binary, interaction modelling is straightforward. Greater challenges arise
+#' when at least one variable is continuous. A common approach is to categorise
+#' the continuous covariate using one or more cutpoints and then fit a model
+#' containing the resulting groups, the grouping variable (treatment groups), and
+#' their multiplicative interaction terms. When the resulting categories are 
+#' ordered, a trend test can be used to assess whether the effect of the grouping
+#' variable changes systematically across categories. This can be more powerful
+#' than a general unordered test when the assumed trend is appropriate.
+#'
+#' These strategies have important limitations. Evidence for interaction may
+#' depend strongly on the number and placement of cutpoints, and models with too
+#' many categories can be unstable and difficult to interpret. Trend tests can
+#' also be misleading if the assigned category scores do not reflect the true
+#' shape of the relationship, especially when the relationship is nonlinear.
+#' Avoiding categorisation by assuming linear effects of the continuous
+#' covariate within each level of the grouping variable is also restrictive,
+#' because the main effects, the interaction, or both may be nonlinear. Most
+#' studies are powered primarily for main effects, so even moderately large
+#' interactions may be detected with low power. Efficiency results show that
+#' retaining a covariate on its continuous scale can improve the power of
+#' interaction tests compared with dichotomising it, but adequate sample size
+#' remains essential for reliable interaction analyses.
 #'
 #' The Multivariable Fractional Polynomial Interaction (MFPI) procedure,
-#' proposed by Royston and Sauerbrei (2004), avoids these pitfalls by
-#' modelling the relationship between the continuous covariate \eqn{Z} and the
-#' outcome using fractional polynomial (FP) functions within each level of the
-#' grouping variable \eqn{T}. Four variants (FLEX1--FLEX4) control how FP
-#' powers are estimated and constrained across groups; see the
-#' \emph{Flexibility levels} section below. For full methodological details
-#' see Royston and Sauerbrei (2004, 2008, 2013) and Sauerbrei, Royston, and
-#' Zapien (2007).
+#' proposed by Royston and Sauerbrei (2004), addresses these issues by modelling
+#' the relationship between a continuous covariate \eqn{z} and the outcome using
+#' fractional polynomial (FP) functions within levels of a grouping variable
+#' \eqn{t}, rather than relying on arbitrary cutpoints or simple linear product
+#' terms. Four variants (FLEX1--FLEX4) differ in how FP powers are selected and
+#' constrained across groups; see the \emph{Flexibility levels} section below.
+#' For full methodological details, see Royston and Sauerbrei (2004, 2008,
+#' 2013) and Sauerbrei, Royston, and Zapien (2007).
 #'
 #' @section Flexibility levels (`flex`):
-#' Four levels of flexibility control how FP powers are estimated and
-#' constrained between groups. The appropriate level is chosen by the analyst
-#' based on subject-matter knowledge and sample-size considerations.
+#' The MFPI procedure allows four levels of flexibility in how FP powers are
+#' selected and constrained across levels of the treatment variable. These
+#' variants are available for both FP1 and FP2 functions. The appropriate level
+#' is chosen by the analyst based on subject-matter knowledge and sample-size
+#' considerations. Depending on the nature of the study, the analyst must decide
+#' whether to use an FP1 or FP2 model with MFPI, although the results for linear,
+#' FP1, and FP2 models are all presented to aid this decision.
 #'
-#' **`flex1` (default - least flexible).** FP powers are estimated once from
-#' the pooled main-effects model (ignoring interaction), then used unchanged
-#' within each group. A likelihood-ratio test comparing the main-effects and
-#' interaction models constitutes the interaction test. Because the models are
-#' nested and no extra degrees of freedom are consumed by power estimation,
-#' simulation studies confirm that the type-I error rate is close to its nominal
-#' value (Royston and Sauerbrei 2014). This is the recommended starting point.
+#' **`flex1` (default; least flexible).** FP powers are selected for the main
+#' effect of the continuous covariate \eqn{z} in a model that excludes the
+#' treatment-by-covariate interaction. The same selected powers are then used at
+#' each level of the treatment variable \eqn{t}. The interaction is assessed by
+#' a likelihood ratio test comparing the main-effect model with the interaction
+#' model. For FP1, the interaction model has 3 degrees of freedom: one power 
+#' and two regression coefficients, \eqn{\beta}. For FP2, it has 6
+#' degrees of freedom: two powers and four regression coefficients. The
+#' corresponding main-effect models have 2 and 4 degrees of freedom,
+#' respectively. Therefore, the interaction test has \eqn{3-2 = 1} degree of 
+#' freedom for FP1 and \eqn{6-4 = 2} degrees of freedom for FP2.
 #'
-#' **`flex2`.** FP powers are estimated jointly across groups (constrained to be
-#' equal), then used for both the main-effects and interaction models. The
-#' selected powers may differ from those under `flex1`, potentially altering the
-#' test outcome. Degrees of freedom are the same as for `flex1`, but no
-#' correction is made for the degrees of freedom consumed during power
-#' estimation, so p-values are slightly anti-conservative and should be treated
-#' as indicative.
+#' **`flex2`.** FP powers are selected in a model that includes the interaction,
+#' with the powers of \eqn{z} constrained to be the same at each level of the
+#' treatment variable \eqn{t}. These same powers are then also used for the 
+#' main-effect model. Because the selected powers may differ from those obtained 
+#' under flex1, the interaction test result may also differ. The degrees of 
+#' freedom for the interaction test are the same as for flex1: 1 for FP1 and 2 
+#' for FP2.
 #'
 #' **`flex3`.** Separate FP powers are estimated for the main-effects model and
 #' for the within-group functions, though the within-group powers are still
 #' constrained to be equal across groups. Because the main-effects and
-#' interaction models may use different FP families, they are non-nested and the
-#' likelihood-ratio p-value is again indicative rather than definitive.
-#' Simulation evidence suggests `flex3` with FP1 recovers within-group
-#' functional forms more accurately than `flex1` when a true interaction is
-#' present.
+#' interaction models may use different FP families, they are non-nested. The 
+#' interaction test has 1 degree of freedom for FP1 and 2 degrees of freedom for
+#' FP2.
 #'
-#' **`flex4` (most flexible).** Like `flex3`, but the within-group powers are
-#' allowed to differ between groups. The additional degrees of freedom reduce
-#' power to detect interaction compared with `flex1`--`flex3`.
+#' **`flex4` (most flexible).** FP powers are selected for the main effect and
+#' separately at each level of the treatment variable. Unlike `flex3`, the FP
+#' powers for \eqn{z} are allowed to differ between treatment groups. The
+#' interaction test has 2 degrees of freedom for FP1 and 4 degrees of freedom
+#' for FP2.
 #'
-#' **Practical guidance.** FP2 functions are more flexible and reduce the risk
-#' of misspecification bias, but they are sensitive to influential extreme
-#' values and lose power when the true function is monotone. If subject-matter
-#' knowledge supports a non-monotone treatment-effect function, use `flex1` with
-#' FP2. Otherwise, `flex3` with FP1 is preferred: it includes the linear
-#' function as a special case and tends to produce simple, interpretable, and
-#' transferable results (Royston and Sauerbrei 2014).
+#' For flex2, flex3, and flex4, significance tests for interaction are
+#' based on a chi-square distribution with the stated degrees of freedom.
+#' However, because these tests are non-nested, the resulting P-values lack a
+#' theoretical underpinning and the significance levels may be liberal or
+#' conservative. As an alternative, information criteria such as AIC
+#' or BIC may be used to compare the fitted main-effects and interaction models.
+#' Smaller values indicate a better balance between model fit and complexity,
+#' although small differences should not be over-interpreted. In practice, a
+#' difference of less than about 2 provides little support for preferring one
+#' model over the other. Larger differences provide stronger evidence that the
+#' model with the smaller AIC or BIC is better supported by the data. Thus, if
+#' the main-effects model has a clearly smaller AIC or BIC, this suggests that
+#' the additional interaction structure is not justified by the improvement in
+#' fit. Conversely, if the interaction model has a clearly smaller AIC or BIC,
+#' this suggests that allowing for interaction improves the balance between fit
+#' and model complexity.
 #'
-#' To guard against overfitting, consider examining results within a small
-#' number of clinically defined subgroups, and seek independent validation
-#' before drawing firm conclusions.
+#' @section Influential observations or Outliers:
+#' FP models are sensitive to outliers or influential observations in the
+#' continuous predictor. A small number of influential observations in the tails
+#' of \code{cont_vars} can disproportionately determine the chosen functional
+#' form and may produce \strong{spuriously significant interactions}. It is
+#' therefore important to assess whether extreme values may influence the
+#' results before fitting the model. Before running \code{mfpi()}, examine the
+#' data for influential points using standard diagnostic approaches
+#' (e.g. univariable plots).
 #'
-#' @section Influential observations:
-#' Unlike categorisation, FP-based methods are sensitive to extreme values of
-#' the continuous predictor. A small number of influential observations in the
-#' tails of \code{cont_vars} can disproportionately determine the chosen
-#' functional form and may produce \strong{spuriously significant
-#' interactions} that do not generalise to new data
-#' (Royston and Sauerbrei, 2014; Sauerbrei, Kipruto and Balmford, 2023). Before
-#' running \code{mfpi()}, examine the data for influential points using
-#' standard diagnostics (e.g. univariable plots, leverage statistics) and
-#' consider whether extreme values are genuine signal or measurement artefact.
+#' To reduce the potential influence of outliers, \code{mfpi()} provides the
+#' option \code{winsorize = TRUE} to apply
+#' \strong{Winsorisation} to each variable in \code{cont_vars}. Values below 
+#' the lower percentile and above the upper percentile (specified by 
+#' \code{winsorize_probs}, with default \code{c(0.01, 0.99)}) are replaced by 
+#' the corresponding percentile cutoff values. Winsorisation preserves the 
+#' number of observations (i.e. no rows are removed) and only truncates extreme
+#' values; the bulk of the distribution remains unaffected.
 #'
-#' To mitigate this, \code{mfpi()} applies \strong{Winsorisation} to each
-#' variable in \code{cont_vars} \strong{by default} (\code{winsorize = TRUE}).
-#' Values below the lower percentile and above the upper percentile (set by
-#' \code{winsorize_probs}, default \code{c(0.01, 0.99)}) are replaced by the
-#' percentile cutoff value. Winsorisation preserves the number of
-#' observations (no rows are dropped) and only truncates extreme values; the
-#' bulk of the distribution is unaffected. Variables flagged as
-#' \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} are
-#' \strong{excluded from Winsorisation} so that both the zero spike and the
-#' positive distribution are preserved exactly; the user has indicated they
-#' carry substantive modelling meaning.
+#' Variables flagged as \code{zero_vars}, \code{catzero_vars}, or
+#' \code{spike_vars} are \strong{excluded from Winsorisation} so that both the
+#' zero spike and the positive distribution are preserved exactly, as these
+#' features are assumed to carry substantive modelling meaning.
 #'
 #' The Winsorisation cutoffs actually applied are returned in the
 #' \code{winsorize_limits} component of the fitted object for transparency.
 #' To disable Winsorisation entirely, set \code{winsorize = FALSE}. To apply
-#' a heavier trim, pass e.g. \code{winsorize_probs = c(0.025, 0.975)} for a
-#' 5\\% trim or \code{c(0.05, 0.95)} for a 10\\% trim. Trimming or
-#' Winsorising should be reported transparently as part of the initial data
-#' analysis.
+#' more aggressive truncation, for example, use
+#' \code{winsorize_probs = c(0.025, 0.975)} for a 5\\% trim or
+#' \code{c(0.05, 0.95)} for a 10\\% trim. Any trimming or Winsorisation applied
+#' should be reported transparently as part of the initial data analysis.
 #'
 #' @section Regression families (`family`):
 #' `mfpi()` accepts the same family strings as [stats::glm()]. Use
@@ -126,7 +154,7 @@
 #' variables that will later be tested for interaction in `cont_vars`. If no
 #' adjustment variables survive selection, interactions are tested without
 #' adjustment. In the second stage, the selected (and possibly transformed)
-#' adjustment variables are included as covariates when fitting the
+#' adjustment variables are linearly included as covariates when fitting the
 #' main-effects and interaction models for each continuous variable listed
 #' in `cont_vars`.
 #'
@@ -144,9 +172,9 @@
 #'   \bigl(\{x_k\} \cup \{\text{group dummies}\}\bigr).
 #' }
 #' This means two `cont_vars` from the same `mfpi()` call may be adjusted
-#' for slightly different sets of covariates: variable `sz` is adjusted for
-#' the selected variables minus `sz`, while variable `wt` is adjusted for
-#' the selected variables minus `wt`. When `verbose = TRUE`, the
+#' for slightly different sets of covariates. For example variable `sz` is 
+#' adjusted for the selected variables minus `sz`, while variable `wt` is 
+#' adjusted for the selected variables minus `wt`. When `verbose = TRUE`, the
 #' per-variable adjustment set is printed in full before each candidate
 #' table is evaluated, so the user can verify which covariates are being
 #' controlled for at every step.
@@ -163,7 +191,8 @@
 #' [mfp2::mfp2()]. Centering is applied after FP powers are estimated.
 #' Variables marked with `zero_vars` or `catzero_vars`, and linear terms
 #' (`df = 1`), have their shift automatically set to zero because only the
-#' positive values are transformed.
+#' positive values are transformed in these cases, or because no nonlinear
+#' transformation is applied.
 #'
 #' @section Handling non-positive values:
 #' When a continuous predictor has a mixture of zeros (or negative values) and
@@ -185,8 +214,6 @@
 #'     \code{catzero_vars} (and therefore \code{zero_vars}).}
 #' }
 #'
-#' Note that \code{spike_vars} and \code{catzero_vars} are mutually exclusive
-#' per variable.
 #'
 #' \strong{Interaction variables (\code{cont_vars}).}
 #' The structural \eqn{I(x = 0)} indicator added by \code{catzero_vars} and
@@ -627,17 +654,77 @@
 #' approaches. \emph{Computational Statistics and Data Analysis}, 51,
 #' 4054--4063.
 #'
-#' Sauerbrei, W. and Royston, P. (2022). Investigating treatment-effect
-#' modification by a continuous covariate in IPD meta-analysis: an approach
-#' using fractional polynomials. \emph{BMC Medical Research Methodology}, 22,
-#' 1--13.
-#'
 #' Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
 #' Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
 #' for Modelling Continuous Variables}. John Wiley & Sons.
 #'
 #' @seealso [mfp2::summary.mfpi()], [mfp2::mfp2()]
+#' @examples
+#' data("prostate")
+#' # Flexibility level 1: simplest interaction structure
+#' flex_1 <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   cont_vars = c("cavol", "age"),
+#'   group_var = "svi",
+#'   center = FALSE,
+#'   flex = "flex1",
+#'   include_group_var = TRUE,
+#'   show_models = TRUE,
+#'   verbose = TRUE
+#' )
 #'
+#' # Plot both treatment-specific curves and treatment effects
+#' plot(flex_1, terms = "cavol", plot_type = "both")
+#'
+#' # Flexibility level 2:
+#' flex_2 <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   cont_vars = c("cavol", "age"),
+#'   group_var = "svi",
+#'   center = FALSE,
+#'   flex = "flex2",
+#'   include_group_var = TRUE,
+#'   show_models = TRUE,
+#'   verbose = TRUE
+#' )
+#'
+#' plot(flex_2, terms = "cavol", plot_type = "both")
+#'
+#' # Flexibility level 3: 
+#' flex_3 <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   cont_vars = c("cavol", "age"),
+#'   group_var = "svi",
+#'   center = FALSE,
+#'   flex = "flex3",
+#'   include_group_var = TRUE,
+#'   show_models = TRUE,
+#'   verbose = TRUE
+#' )
+#'
+#' plot(flex_3, terms = "cavol", plot_type = "both")
+#'
+#' # Flexibility level 4: most flexible specification 
+#' flex_4 <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   cont_vars = c("cavol", "age"),
+#'   group_var = "svi",
+#'   center = FALSE,
+#'   flex = "flex4",
+#'   include_group_var = TRUE,
+#'   show_models = TRUE,
+#'   verbose = TRUE
+#' )
+#'
+#' plot(flex_4, terms = "cavol", plot_type = "both")
 #' @export
 mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
@@ -684,7 +771,7 @@ mfpi.default <- function(
     max_prop          = 0.95,
     use_ftest         = FALSE,
     control           = NULL,
-    winsorize         = TRUE,
+    winsorize         = FALSE,
     winsorize_probs   = c(0.01, 0.99),
     center_type       = c("grand", "group"),
     verbose           = TRUE,
@@ -712,6 +799,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   family_string <- family   # keep string for branching (== "cox", == "gaussian")
   if (family != "cox") {
     family <- tryCatch(
@@ -736,9 +824,11 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (!is.matrix(x)) {
     stop("! `x` must be a matrix.", call. = FALSE)
   }
+  
   vnames <- colnames(x)
   if (is.null(vnames)) {
     stop(
@@ -747,6 +837,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (any(is.character(x))) {
     stop(
       "! `x` contains character values.\n",
@@ -754,6 +845,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (anyNA(x)) {
     stop(
       "! `x` must not contain missing values (NA).\n",
@@ -770,6 +862,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (length(group_var) != 1L) {
     stop(
       paste0("! `group_var` must name exactly one variable; ",
@@ -777,10 +870,12 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (!group_var %in% vnames) {
     stop(paste0("! `group_var = '", group_var, "'` is not a column of `x`."),
          call. = FALSE)
   }
+  
   nlev <- length(unique(x[, group_var]))
   if (nlev < 2L) {
     stop(
@@ -799,6 +894,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   missing_cont <- setdiff(cont_vars, vnames)
   if (length(missing_cont) > 0L) {
     stop(
@@ -842,6 +938,7 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+  
   if (length(few_unique) > 0L) {
     warning(
       paste0(
@@ -900,23 +997,30 @@ mfpi.default <- function(
       stop(paste0("! Length of `weights` (", length(weights), ") must equal ",
                   "the number of rows in `x` (", nobs, ")."), call. = FALSE)
   }
+  
   if (!is.null(offset) && length(offset) != nobs) {
     stop(paste0("! Length of `offset` (", length(offset), ") must equal ",
                 "the number of rows in `x` (", nobs, ")."), call. = FALSE)
   }
   
   # Validate alpha and select --------------------------------------------------
-  if (any(alpha < 0) || any(alpha > 1))
+  if (any(alpha < 0) || any(alpha > 1)) {
     stop("! All values of `alpha` must be in [0, 1].", call. = FALSE)
-  if (length(alpha) != 1L && length(alpha) != nvars)
+  }
+  
+  if (length(alpha) != 1L && length(alpha) != nvars) {
     stop(paste0("! `alpha` must be a single number or a vector of length ", nvars,
                 "; got length ", length(alpha), "."), call. = FALSE)
+  }
   
-  if (any(select < 0) || any(select > 1))
+  if (any(select < 0) || any(select > 1)) {
     stop("! All values of `select` must be in [0, 1].", call. = FALSE)
-  if (length(select) != 1L && length(select) != nvars)
+  }
+  
+  if (length(select) != 1L && length(select) != nvars) {
     stop(paste0("! `select` must be a single number or a vector of length ", nvars,
                 "; got length ", length(select), "."), call. = FALSE)
+  }
   
   # Validate force_keep --------------------------------------------------------
   if (!is.null(force_keep) && !all(force_keep %in% vnames)) {
@@ -931,6 +1035,7 @@ mfpi.default <- function(
   if (!is.logical(force_max_fp)) {
     stop("! `force_max_fp` must be logical.", call. = FALSE)
   }
+  
   if (length(force_max_fp) == 1L) {
     force_max_fp <- setNames(rep(force_max_fp, nvars), vnames)
   } else if (length(force_max_fp) != nvars) {
@@ -947,14 +1052,17 @@ mfpi.default <- function(
     warning("i Some variables in `zero_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(catzero_vars) && !all(catzero_vars %in% vnames)) {
     warning("i Some variables in `catzero_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(spike_vars) && !all(spike_vars %in% vnames)) {
     warning("i Some variables in `spike_vars` are not columns of `x`; they will be ignored.",
             call. = FALSE)
   }
+  
   if (!is.null(zero_vars) && !is.null(catzero_vars)) {
     overlap <- intersect(zero_vars, catzero_vars)
     if (length(overlap) > 0L) {
@@ -975,10 +1083,12 @@ mfpi.default <- function(
     stop(paste0("! `shift` must be NULL, a single number, or a vector of length ",
                 nvars, "; got length ", length(shift), "."), call. = FALSE)
   }
+  
   if (!is.null(scale) && length(scale) != 1L && length(scale) != nvars) {
     stop(paste0("! `scale` must be NULL, a single number, or a vector of length ",
                 nvars, "; got length ", length(scale), "."), call. = FALSE)
   }
+  
   if (!is.null(scale) && any(scale <= 0 | is.na(scale))) {
     stop("! All values of `scale` must be positive and non-missing.", call. = FALSE)
   }
@@ -994,6 +1104,7 @@ mfpi.default <- function(
     stop("! All values of `df` must be positive (1 for linear, 2m for FP degree m).",
          call. = FALSE)
   }
+  
   if (length(df) == 1L) {
     if (df != 1L && df %% 2L != 0L)
       stop(paste0("! `df = ", df, "` is invalid. `df` must be 1 (linear) or an even ",
@@ -1007,17 +1118,21 @@ mfpi.default <- function(
       stop(paste0("! Each element of `df` must be 1 (linear) or an even number 2m. ",
                   "Invalid values at positions: ",
                   paste(which(invalid_df), collapse = ", "), "."), call. = FALSE)
-  }
+   }
   
   # Validate spike proportions -------------------------------------------------
-  if (!is.numeric(min_prop) || length(min_prop) != 1L ||
-      min_prop < 0 || min_prop > 1)
+  if (!is.numeric(min_prop) || length(min_prop) != 1L || min_prop < 0 || min_prop > 1) {
     stop("! `min_prop` must be a single numeric value in [0, 1].", call. = FALSE)
+   }
+  
   if (!is.numeric(max_prop) || length(max_prop) != 1L ||
-      max_prop < 0 || max_prop > 1)
+      max_prop < 0 || max_prop > 1) {
     stop("! `max_prop` must be a single numeric value in [0, 1].", call. = FALSE)
-  if (min_prop > max_prop)
+   }
+  
+  if (min_prop > max_prop) {
     stop("! `min_prop` cannot be greater than `max_prop`.", call. = FALSE)
+   }
   
   # Warn if use_ftest is incompatible with family ------------------------------
   if (use_ftest && family_string != "gaussian") {
@@ -1030,52 +1145,61 @@ mfpi.default <- function(
   }
   
   # Validate and build fp_powers list ------------------------------------------
-  if (!is.null(fp_powers) && !is.list(fp_powers))
+  if (!is.null(fp_powers) && !is.list(fp_powers)) {
     stop("! `fp_powers` must be a named list.", call. = FALSE)
+  }
   
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   power_list <- setNames(replicate(nvars, default_powers, simplify = FALSE), vnames)
   
   if (!is.null(fp_powers)) {
-    if (length(fp_powers) != sum(nchar(names(fp_powers)) > 0L, na.rm = TRUE))
+    if (length(fp_powers) != sum(nchar(names(fp_powers)) > 0L, na.rm = TRUE)) {
       stop("! Every element of `fp_powers` must have a name.", call. = FALSE)
+    }
     unknown_names <- setdiff(names(fp_powers), vnames)
-    if (length(unknown_names) > 0L)
+    if (length(unknown_names) > 0L) {
       stop(paste0("! The following names in `fp_powers` do not match any column of `x`: ",
                   paste(unknown_names, collapse = ", "), "."), call. = FALSE)
-    if (!all(sapply(fp_powers, is.numeric)))
+    }
+    if (!all(sapply(fp_powers, is.numeric))) {
       stop("! All elements of `fp_powers` must be numeric vectors.", call. = FALSE)
+    }
     fp_powers  <- lapply(fp_powers, sort)
     pw_lengths <- sapply(fp_powers, length)
     too_short  <- names(pw_lengths[pw_lengths < 2L])
-    if (length(too_short) > 0L)
+    if (length(too_short) > 0L) {
       stop(paste0("! Each element of `fp_powers` must contain at least two values. ",
                   "Insufficient values for: ", paste(too_short, collapse = ", "), "."),
            call. = FALSE)
+    }
     power_list <- modifyList(power_list, Filter(Negate(is.null), fp_powers))
   }
   
   # Validate subset ------------------------------------------------------------
   if (!is.null(subset)) {
-    if (!is.vector(subset))
+    if (!is.vector(subset)) {
       stop(paste0("! `subset` must be a vector; got class ",
                   paste(class(subset), collapse = ", "), "."), call. = FALSE)
-    if (any(subset < 0L))
+    }
+    if (any(subset < 0L)) {
       stop("! `subset` must not contain negative indices.", call. = FALSE)
-    if (length(subset) < 5L)
+    }
+    if (length(subset) < 5L) {
       stop(paste0("! After subsetting, only ", length(subset),
                   " observations remain; at least 5 are required."), call. = FALSE)
+    }
   }
   
   # Set scalar/vector defaults -------------------------------------------------
   if (is.null(min_improvement)) {
     min_improvement <- switch(criterion, pvalue = p_interact, aic = 2, bic = 2)
   }
+  
   if (is.null(weights)) weights <- rep.int(1, nobs)
   if (is.null(offset))  offset  <- rep.int(0, nobs)
   
   # Expand scalars and guarantee names on all per-variable vectors.
-  # mfp2:::fit_mfp() and preprocess_data() rely on named vectors for
+  # fit_mfp() and preprocess_data() rely on named vectors for
   # correct alignment after group_var is removed.
   if (length(select) == 1L) select <- rep(select, nvars)
   if (length(alpha)  == 1L) alpha  <- rep(alpha,  nvars)
@@ -1085,7 +1209,7 @@ mfpi.default <- function(
   center <- setNames(center, vnames)
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, find_shift_factor)   # already named by apply
+    shift <- apply(x, 2L, find_shift_factor)
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
@@ -1099,9 +1223,11 @@ mfpi.default <- function(
   if (user_supplied_scale && length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
+  
   if (user_supplied_scale) {
     scale <- setNames(scale, vnames)
   }
+  
   if (is.null(control)) {
     control <- if (family_string == "cox") survival::coxph.control() else
       stats::glm.control()
@@ -1475,14 +1601,14 @@ mfpi.formula <- function(formula,
                          max_prop          = 0.95,
                          use_ftest         = FALSE,
                          control           = NULL,
-                         winsorize         = TRUE,
+                         winsorize         = FALSE,
                          winsorize_probs   = c(0.01, 0.99),
                          center_type       = c("grand", "group"),
                          verbose           = TRUE,
                          digits            = 3,
                          ...) {
   
-  call <- match.call()
+  call      <- match.call()
   family    <- match.arg(family)
   xorder    <- match.arg(xorder)
   criterion <- match.arg(criterion)
@@ -1492,48 +1618,59 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   # Input validation (formula-specific constraints)
   # ---------------------------------------------------------------------------
-  if (missing(data))
+  if (missing(data)) {
     stop("! data argument is missing.\n",
          "i An input data.frame is required for the formula interface.",
          call. = FALSE)
+  }
   
-  if (is.null(colnames(data)))
+  if (is.null(colnames(data))) {
     stop("! data must have column names.", call. = FALSE)
+  }
   
-  if (missing(formula))
+  if (missing(formula)) {
     stop("! formula is missing.", call. = FALSE)
+  }
   
-  if (!inherits(formula, "formula"))
+  if (!inherits(formula, "formula")) {
     stop("! method is only for formula objects.", call. = FALSE)
+  }
   
   # The formula interface only supports scalar defaults; per-variable settings
   # must be supplied via fp() terms in the formula.
-  if (length(df) != 1L)
+  if (length(df) != 1L) {
     stop("! df must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable df values.", call. = FALSE)
+  }
   
-  if (length(alpha) != 1L)
+  if (length(alpha) != 1L) {
     stop("! alpha must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable alpha values.", call. = FALSE)
+  }
   
-  if (length(select) != 1L)
+  if (length(select) != 1L) {
     stop("! select must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable select values.", call. = FALSE)
+  }
   
-  if (!is.null(scale) && length(scale) != 1L)
+  if (!is.null(scale) && length(scale) != 1L) {
     stop("! scale must be a single numeric or NULL.\n",
          "i Use fp() in the formula to set per-variable scale values.", call. = FALSE)
+  }
   
-  if (length(center) != 1L)
+  if (length(center) != 1L) {
     stop("! center must be a single logical value.\n",
          "i Use fp() in the formula to set per-variable center values.", call. = FALSE)
+  }
   
-  if (!is.null(shift) && length(shift) != 1L)
+  if (!is.null(shift) && length(shift) != 1L) {
     stop("! shift must be a single numeric or NULL.\n",
          "i Use fp() in the formula to set per-variable shift values.", call. = FALSE)
+  }
   
-  if (!is.null(fp_powers) && !is.list(fp_powers))
+  if (!is.null(fp_powers) && !is.list(fp_powers)) {
     stop("! fp_powers must be a named list or NULL.", call. = FALSE)
+  }
   
   # ---------------------------------------------------------------------------
   # Validate cont_vars against original data types (before model.matrix)
@@ -1581,9 +1718,10 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   mf     <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   labels <- attr(terms(mf), "term.labels")
-  if (length(labels) == 0L)
+  if (length(labels) == 0L) {
     stop("! No predictors found in formula. At least one predictor is required.",
          call. = FALSE)
+  }
   
   # ---------------------------------------------------------------------------
   # Handle strata terms for Cox models
@@ -1638,14 +1776,16 @@ mfpi.formula <- function(formula,
       "! Response is a Surv object but family = '%s'. Set family = 'cox'.",
       family), call. = FALSE)
   
-  if (family != "cox")
+  if (family != "cox") {
     y <- as.numeric(y)
+  }
   
   x <- stats::model.matrix(terms_model, mf)
   
   # Remove intercept column (entry 0 in model.matrix "assign" attribute)
-  if (0L %in% attr(x, "assign"))
+  if (0L %in% attr(x, "assign")) {
     x <- x[, -1L, drop = FALSE]
+  }
   
   nx      <- ncol(x)
   names_x <- colnames(x)
@@ -1675,10 +1815,11 @@ mfpi.formula <- function(formula,
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
   
-  shift_list  <- if (is.null(shift))
+  shift_list  <- if (is.null(shift)) {
     setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
-  else
+   } else {
     setNames(rep(list(shift), nx), names_x)
+   }
   
   if (is.null(scale)) {
     shift_now <- vapply(shift_list, function(v) as.numeric(v[[1L]]), numeric(1L))
@@ -1688,6 +1829,7 @@ mfpi.formula <- function(formula,
   } else {
     scale_list <- setNames(rep(list(scale), nx), names_x)
   }
+  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)

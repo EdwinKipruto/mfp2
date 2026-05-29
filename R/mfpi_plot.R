@@ -197,9 +197,12 @@ plot.mfpi <- function(x,
   if (is.null(type)) {
     # Default: use the selected (best) functional form per variable
     all_fitted <- model$best_fitted_functions
-    if (is.null(all_fitted) || length(all_fitted) == 0L)
+    if (is.null(all_fitted))
       stop("! No fitted functions found. Re-fit with compute_fitted = TRUE.",
            call. = FALSE)
+    # If all_fitted is an empty list, no variable was selected -- this is
+    # handled below (line "if (length(terms) == 0L)") with a more informative
+    # message that suggests using type = "linear"/"fp1"/"fp2".
   } else {
     type <- match.arg(type, valid_types)
     if (is.null(model$all_fitted_functions) || length(model$all_fitted_functions) == 0L)
@@ -223,34 +226,59 @@ plot.mfpi <- function(x,
                       logical(1L))
     terms <- names(all_fitted)[has_fit]
     if (length(terms) == 0L) {
-      msg <- if (is.null(type)) {
-        paste0(
-          "! Nothing to plot: no variables in `cont_vars` were selected as\n",
-          "  having a significant interaction with the group variable.\n",
-          "  To inspect the fitted candidate curves anyway, pass\n",
-          "  `type = \"linear\"`, `\"fp1\"`, or `\"fp2\"`."
+      if (is.null(type)) {
+        message(
+          "Nothing to plot: no variables in `cont_vars` were selected as\n",
+          "having a significant interaction with the group variable.\n",
+          "To inspect the fitted candidate curves, pass\n",
+          "type = \"linear\", \"fp1\", or \"fp2\"."
         )
       } else {
-        paste0(
-          "! Nothing to plot: no variables have a '", type,
-          "' candidate fit.\n  This can happen for flex levels that skip\n",
-          "  certain degrees, or when `compute_fitted = FALSE`."
+        message(
+          "Nothing to plot: no variables have a '", type,
+          "' candidate fit.\n",
+          "This can happen for flex levels that skip certain degrees,\n",
+          "or when compute_fitted = FALSE."
         )
       }
-      stop(msg, call. = FALSE)
+      return(invisible(x))
     }
   } else {
-    # User asked for specific variables: validate names first
+    # User asked for specific variables: validate names first.
+    # When type = NULL, all_fitted is best_fitted_functions (winners only).
+    # A variable may be missing because it was not selected (not significant)
+    # rather than because it does not exist. Distinguish the two cases.
     missing_terms <- setdiff(terms, names(all_fitted))
-    if (length(missing_terms) > 0L)
-      stop(
-        paste0(
+    
+    if (length(missing_terms) > 0L) {
+      # Check if the missing terms exist in all_fitted_functions (candidates)
+      all_candidates <- model$all_fitted_functions
+      not_selected   <- intersect(missing_terms,  names(all_candidates))
+      truly_missing  <- setdiff(missing_terms, names(all_candidates))
+      
+      if (length(truly_missing) > 0L) {
+        stop(
           "! The following `terms` are not variables in this model:\n  ",
-          paste(missing_terms, collapse = ", "), ".\n",
-          "  Available variables: ", paste(names(all_fitted), collapse = ", "), "."
-        ),
-        call. = FALSE
-      )
+          paste(truly_missing, collapse = ", "), ".\n",
+          "  Available variables: ",
+          paste(names(all_candidates), collapse = ", "), ".",
+          call. = FALSE
+        )
+      }
+      
+      if (length(not_selected) > 0L) {
+        message(
+          "The following variable(s) were not selected as having a\n",
+          "significant interaction: ",
+          paste(not_selected, collapse = ", "), ".\n",
+          "To plot the candidate curves anyway, pass\n",
+          "type = \"linear\", \"fp1\", or \"fp2\"."
+        )
+        # Remove non-selected terms and continue with any remaining
+        terms <- setdiff(terms, not_selected)
+        if (length(terms) == 0L) return(invisible(x))
+      }
+    }
     
     # Then check which (if any) lack fitted values for the chosen type
     no_fit <- vapply(terms, function(v) {

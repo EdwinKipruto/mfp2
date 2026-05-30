@@ -56,8 +56,8 @@
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
 #'   use an F-test rather than a chi-square likelihood-ratio test when
 #'   computing p-values. Applied to both the adjustment-variable selection
-#'   (via \code{mfp2:::fit_mfp()}) and the interaction test
-#'   (via \code{mfp2:::calculate_f_test()}). Ignored for non-Gaussian
+#'   (via \code{fit_mfp()}) and the interaction test
+#'   (via \code{calculate_f_test()}). Ignored for non-Gaussian
 #'   families. Default \code{FALSE}.
 #' @param center Logical scalar. Whether to centre `cont_var` before fitting.
 #'   Adjustment variables are assumed already centred.
@@ -140,6 +140,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
   if (!is.character(flex) || length(flex) != 1L) {
     stop("`flex` must be a single character string.", call. = FALSE)
   }
+  
   valid_flex <- c("flex0", "flex1", "flex2", "flex3", "flex4")
   if (!flex %in% valid_flex) {
     stop(
@@ -147,10 +148,12 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
       call. = FALSE
     )
   }
+  
   if (!is.character(cont_var) || length(cont_var) != 1L || !cont_var %in% colnames(x)) {
     stop("`cont_var` must be a single character string naming a column of `x`.",
          call. = FALSE)
   }
+  
   if (!is.character(group_var) || length(group_var) != 1L || !group_var %in% colnames(x)) {
     stop("`group_var` must be a single character string naming a column of `x`.",
          call. = FALSE)
@@ -244,6 +247,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   if (compute_fitted && !run_test) {
     stop("! `compute_fitted = TRUE` requires `run_test = TRUE`.", call. = FALSE)
   }
+  
   if (!is.null(xadj)) {
     if (!is.matrix(xadj)) stop("`xadj` must be a matrix.", call. = FALSE)
     if (is.null(colnames(xadj))) stop("`xadj` must have column names.", call. = FALSE)
@@ -367,6 +371,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   if (compute_fitted && !run_test) {
     stop("! `compute_fitted = TRUE` requires `run_test = TRUE`.", call. = FALSE)
   }
+  
   if (degree < 1L) {
     stop("! `degree` must be >= 1 for flex1; use flex0 for linear models.",
          call. = FALSE)
@@ -412,6 +417,12 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # so there is no simpler form to downgrade to.
   force_max_fp <- setNames(c(TRUE, rep(FALSE, n_total - 1L)), vnames)
   
+  # x is already shifted upstream so shift is
+  # intentionally set to 1. This call is for power
+  # selection only; coefficients are not used.
+  # Scaling does not affect FP power selection.
+  # The final model with correct backscaling is
+  # fitted later in test_interaction via fit_model.
   fit_main_pool <- fit_mfp(
     x             = xnew,
     y             = y,
@@ -427,12 +438,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     powers        = pw_list,
     ftest         = use_ftest,
     center        = center_vec,
-    shift         = rep(0, n_total),   # x already shifted upstream
-    scale         = rep(1, n_total),   # intentionally 1: this call is for power
-    # selection only; coefficients are not used.
-    # Scaling does not affect FP power selection.
-    # The final model with correct backscaling is
-    # fitted later in test_interaction via fit_model.
+    shift         = rep(0, n_total),   
+    scale         = rep(1, n_total),  
     acdx          = acd_vec,
     xorder        = xorder,
     weights       = weights,
@@ -452,15 +459,16 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # Step 2: Extract best FP powers for cont_var --------------------------------
   bestfp <- unlist(get_fp_powers(cont_var, fit_main_pool$fp_terms))
   
-  # Defensive guard: if mfp2 returned an unexpected linear or empty result for
+  # Defensive guard: if fit_mfp returned an unexpected linear or empty result for
   # an FP1 search (despite force_max_fp = TRUE and power = 1 excluded from
-  # fp_cand by flex_fit()), perform a direct deviance-minimisation search over
+  # fp_cand by flex_fit()), perform a direct deviance-minimization search over
   # the non-unity candidates. This ensures FP1 is always a non-linear functional
   # form, since linear is handled separately by flex0.
   needs_fallback <- degree == 1L && (
     length(bestfp) == 0L ||
       (length(bestfp) == 1L && isTRUE(bestfp == 1))
   )
+  
   if (needs_fallback) {
     nonunit_cand <- setdiff(fp_cand, 1)
     if (length(nonunit_cand) == 0L) {
@@ -469,6 +477,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         call. = FALSE
       )
     }
+    
     # Fit a one-term FP transformation at each candidate power and choose
     # the lowest-deviance fit. Adjustment columns and group dummies are
     # included as covariates so the comparison is on equal footing with the
@@ -883,8 +892,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' The most flexible strategy. FP powers for the interaction model are
 #' estimated independently within each group, so the functional form of
 #' `cont_var` can differ across groups. The main-effects model uses pooled
-#' powers estimated by `flex1`. The additional degrees of freedom reduce power
-#' to detect interaction relative to `flex1`-`flex3`.
+#' powers estimated by `flex1`. 
 #'
 #' @inheritParams flex_fit
 #' @return See \code{flex_fit()} for the return structure.

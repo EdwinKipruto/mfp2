@@ -25,17 +25,22 @@
 #' Given a fitted interaction model and the estimated FP powers for each group,
 #' computes the fitted linear predictor \eqn{\hat{f}_j(x)} for each level
 #' \eqn{j} of \code{group_var}, together with pointwise standard errors and
-#' 95\% confidence intervals. The function-difference
-#' \eqn{\hat{f}_j - \hat{f}_0} (relative to the reference group) and its
+#' 95\\% confidence intervals. The function difference
+#' \eqn{\hat{f}_j(x) - \hat{f}_0(x)} (relative to the reference group) and its
 #' standard error are also returned.
 #'
-#' Standard errors for the differences are computed via the delta method:
-#' \deqn{\text{Var}(\hat{f}_j - \hat{f}_0) =
-#'   \mathbf{d}^\top \, \text{Cov}(\hat{\boldsymbol{\beta}}) \, \mathbf{d},}
-#' where \eqn{\mathbf{d}} is the vector of partial derivatives of the
-#' difference with respect to the model coefficients.
-#'
-#' @note The \code{use_grid} argument (equidistant evaluation grid) is a
+#' @section Standard errors:
+#' Standard errors for differences between fitted curves are computed using the
+#' delta method. Let
+#' \eqn{g(x) = \hat{f}_j(x) - \hat{f}_0(x)}.
+#' Then
+#' \deqn{
+#' \mathrm{Var}\{g(x)\} = d^\top \mathrm{Cov}(\hat{\beta}) d,
+#' }
+#' where \eqn{d} is the vector of partial derivatives of \eqn{g(x)} with
+#' respect to the model coefficients and \eqn{\mathrm{Cov}(\hat{\beta})} is the
+#' covariance matrix of the estimates.
+#' The \code{use_grid} argument (equidistant evaluation grid) is a
 #'   temporary placeholder. Once \code{predict.mfpi()} is implemented,
 #'   grid-based prediction should be handled there and this argument will
 #'   be removed.
@@ -109,22 +114,25 @@
 #' @return A numeric matrix with one row per observation (or per grid point
 #'   when \code{use_grid = TRUE}) and the following columns, where \eqn{j}
 #'   ranges over the non-reference group levels and group 0 is the reference:
-#' \describe{
-#'   \item{\code{<varname>}}{The (possibly grid-replaced, backscaled) values
-#'     of \code{cont_var}.}
-#'   \item{\code{f0}, \code{f1}, \ldots}{Fitted linear predictor for each
-#'     group level.}
-#'   \item{\code{se(f0)}, \code{se(f1)}, \ldots}{Pointwise standard errors
-#'     of the fitted values.}
-#'   \item{\code{f0_lower}, \code{f0_upper}, \ldots}{Lower and upper bounds
-#'     of the 95\% confidence interval for each group's fitted curve.}
-#'   \item{\code{f1-f0}, \code{f2-f0}, \ldots}{Pointwise difference of each
-#'     non-reference group's curve relative to group 0.}
-#'   \item{\code{se(f1-f0)}, \ldots}{Standard errors of the differences,
-#'     computed via the delta method.}
-#'   \item{\code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots}{95\% CI
-#'     bounds for each difference curve.}
-#' }
+#'
+#'   \describe{
+#'     \item{\code{<varname>}}{The (possibly grid-replaced, backscaled)
+#'       values of \code{cont_var}.}
+#'     \item{\code{f0}, \code{f1}, \ldots}{Fitted linear predictors for each
+#'       group level.}
+#'     \item{\code{se(f0)}, \code{se(f1)}, \ldots}{Pointwise standard errors
+#'       of the fitted values.}
+#'     \item{\code{f0_lower}, \code{f0_upper}, \ldots}{Lower and upper
+#'       bounds of the 95\\% confidence interval for each group's fitted
+#'       curve.}
+#'     \item{\code{f1-f0}, \code{f2-f0}, \ldots}{Pointwise differences
+#'       between each non-reference group's curve and the reference group
+#'       (group 0).}
+#'     \item{\code{se(f1-f0)}, \ldots}{Standard errors of the differences,
+#'       computed using the delta method.}
+#'     \item{\code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots}{Lower and
+#'       upper 95\\% confidence interval bounds for each difference curve.}
+#'   }
 #'   Three attributes are attached to the returned matrix for use in
 #'   \code{predict.mfpi()}: \code{fp_centers} (the centering constants
 #'   applied, or \code{NULL} if \code{center = FALSE}); \code{center_type}
@@ -134,8 +142,9 @@
 #' @seealso \code{create_z_variables()}, \code{compute_diff_standard_errors()},
 #'   \code{var_group()}
 #'
-#' @keywords internal
-#' @noRd
+# @keywords internal
+# @noRd
+#' @export
 gen_fitted_values_per_group <- function(cont_var,
                                         group_fp_powers,
                                         interaction_model,

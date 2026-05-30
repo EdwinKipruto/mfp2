@@ -804,10 +804,10 @@ format_candidate_table <- function(rows, criterion, digits) {
 #' @param adj_fp_powers Named list of FP powers for the selected adjustment
 #'   variables, as returned by \code{get_fp_powers()}.
 #' @param adj_spike_decision Named numeric vector of spike-at-zero decisions
-#'   for the adjustment variables, as stored in \code{adjustment_model$spike_decision}
-#'   by \code{mfp2:::fit_mfp()}. Values: \code{1} = FP term + binary indicator,
+#'   for the adjustment variables, as stored in \code{adjustment_model$spike_dec}
+#'   by \code{fit_mfp()}. Values: \code{1} = FP term + binary indicator,
 #'   \code{2} = FP term only (default), \code{3} = binary indicator only.
-#'   Used when re-transforming adjustment variables via \code{mfp2::transform_matrix()}
+#'   Used when re-transforming adjustment variables via \code{transform_matrix()}
 #'   to ensure binary indicators for semi-continuous adjustment variables are
 #'   included or suppressed consistently with the adjustment model.
 #' @param cont_vars Character vector of continuous variables to test.
@@ -924,6 +924,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
     stop("`skip_adjustment` must be a single logical value.", call. = FALSE)
   }
+  
   if (skip_adjustment && !is.null(xadj)) {
     if (!is.matrix(xadj) || !is.numeric(xadj)) {
       stop("`xadj` must be a numeric matrix when `skip_adjustment = TRUE`.",

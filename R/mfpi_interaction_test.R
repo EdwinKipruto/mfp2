@@ -105,10 +105,11 @@
 #'   \mathrm{AIC} = -2\ell + 2p, \qquad
 #'   \mathrm{BIC} = -2\ell + p\log(n^*),
 #' }
-#' where \eqn{p} is the total number of parameters in the model
-#' (including intercept and adjustment terms) and \eqn{n^*} is the
-#' effective sample size (\eqn{n^* =} number of events for Cox models,
-#' \eqn{n^* = n} otherwise). Positive values of
+#' where \eqn{p} is the number of model parameters (excluding intercepts and
+#' adjustment terms, as these are common across models and do not affect
+#' comparisons), and \eqn{n^*} is the effective sample size
+#' (\eqn{n^* =} number of events for Cox models; \eqn{n^* = n} otherwise).
+#' Positive values of
 #' \eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}} and
 #' \eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}} indicate
 #' that the interaction model fits better.
@@ -170,7 +171,7 @@
 #'     `BIC_main`, `BIC_interaction`,
 #'     `BIC_main_minus_int` (\eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}}).}
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
-#'     `mfp2:::fit_model()`, with `fast = FALSE` so that the full coefficient
+#'     `fit_model()`, with `fast = FALSE` so that the full coefficient
 #'     vector and covariance matrix are available.}
 #'   \item{`deviance_models`}{Named list with elements `main`
 #'     (\eqn{-2\ell_{\text{main}}}) and `interaction`
@@ -301,9 +302,9 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     interaction_model  = fit_interaction,
     deviance_models    = list(main = dev_main, interaction = dev_interaction),
     df                 = list(
-      main             = df_main,
-      interaction      = df_total,
-      interaction_only = df_int
+    main               = df_main,
+    interaction        = df_total,
+    interaction_only   = df_int
     )
   )
 }

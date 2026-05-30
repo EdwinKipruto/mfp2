@@ -1601,76 +1601,65 @@ mfpi.formula <- function(formula,
                          max_prop          = 0.95,
                          use_ftest         = FALSE,
                          control           = NULL,
-                         winsorize         = FALSE,
+                         winsorize         = TRUE,
                          winsorize_probs   = c(0.01, 0.99),
                          center_type       = c("grand", "group"),
                          verbose           = TRUE,
                          digits            = 3,
                          ...) {
   
-  call      <- match.call()
+  call <- match.call()
   family    <- match.arg(family)
   xorder    <- match.arg(xorder)
   criterion <- match.arg(criterion)
   flex      <- match.arg(flex)
   ties      <- match.arg(ties)
-  
+  center_type <- match.arg(center_type)
   # ---------------------------------------------------------------------------
   # Input validation (formula-specific constraints)
   # ---------------------------------------------------------------------------
-  if (missing(data)) {
+  if (missing(data))
     stop("! data argument is missing.\n",
          "i An input data.frame is required for the formula interface.",
          call. = FALSE)
-  }
   
-  if (is.null(colnames(data))) {
+  if (is.null(colnames(data)))
     stop("! data must have column names.", call. = FALSE)
-  }
   
-  if (missing(formula)) {
+  if (missing(formula))
     stop("! formula is missing.", call. = FALSE)
-  }
   
-  if (!inherits(formula, "formula")) {
+  if (!inherits(formula, "formula"))
     stop("! method is only for formula objects.", call. = FALSE)
-  }
   
   # The formula interface only supports scalar defaults; per-variable settings
   # must be supplied via fp() terms in the formula.
-  if (length(df) != 1L) {
+  if (length(df) != 1L)
     stop("! df must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable df values.", call. = FALSE)
-  }
   
-  if (length(alpha) != 1L) {
+  if (length(alpha) != 1L)
     stop("! alpha must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable alpha values.", call. = FALSE)
-  }
   
-  if (length(select) != 1L) {
+  if (length(select) != 1L)
     stop("! select must be a single numeric.\n",
          "i Use fp() in the formula to set per-variable select values.", call. = FALSE)
-  }
   
-  if (!is.null(scale) && length(scale) != 1L) {
+  if (!is.null(scale) && length(scale) != 1L)
     stop("! scale must be a single numeric or NULL.\n",
          "i Use fp() in the formula to set per-variable scale values.", call. = FALSE)
-  }
   
-  if (length(center) != 1L) {
+  if (length(center) != 1L)
     stop("! center must be a single logical value.\n",
          "i Use fp() in the formula to set per-variable center values.", call. = FALSE)
-  }
   
-  if (!is.null(shift) && length(shift) != 1L) {
+  if (!is.null(shift) && length(shift) != 1L)
     stop("! shift must be a single numeric or NULL.\n",
          "i Use fp() in the formula to set per-variable shift values.", call. = FALSE)
-  }
   
-  if (!is.null(fp_powers) && !is.list(fp_powers)) {
+  if (!is.null(fp_powers) && !is.list(fp_powers))
     stop("! fp_powers must be a named list or NULL.", call. = FALSE)
-  }
   
   # ---------------------------------------------------------------------------
   # Validate cont_vars against original data types (before model.matrix)
@@ -1718,10 +1707,9 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   mf     <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
   labels <- attr(terms(mf), "term.labels")
-  if (length(labels) == 0L) {
+  if (length(labels) == 0L)
     stop("! No predictors found in formula. At least one predictor is required.",
          call. = FALSE)
-  }
   
   # ---------------------------------------------------------------------------
   # Handle strata terms for Cox models
@@ -1776,15 +1764,55 @@ mfpi.formula <- function(formula,
       "! Response is a Surv object but family = '%s'. Set family = 'cox'.",
       family), call. = FALSE)
   
-  if (family != "cox") {
+  if (family != "cox")
     y <- as.numeric(y)
-  }
   
   x <- stats::model.matrix(terms_model, mf)
   
+  # Save the assign attribute before subsetting (matrix subsetting drops it)
+  x_assign <- attr(x, "assign")
+  
   # Remove intercept column (entry 0 in model.matrix "assign" attribute)
-  if (0L %in% attr(x, "assign")) {
-    x <- x[, -1L, drop = FALSE]
+  if (0L %in% x_assign) {
+    intercept_col <- which(x_assign == 0L)
+    x        <- x[, -intercept_col, drop = FALSE]
+    x_assign <- x_assign[-intercept_col]
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Handle group_var that was a factor in the original data.
+  # model.matrix() expands factors into dummy columns, so the original column
+  # name disappears. mfpi.default() expects group_var as a single numeric
+  # column. Fix: remove the dummy columns and add back the raw integer codes.
+  # ---------------------------------------------------------------------------
+  if (!is.null(group_var) && !group_var %in% colnames(x)) {
+    # group_var was expanded by model.matrix. Identify and remove its dummies
+    # using the saved assign attribute.
+    term_labels <- attr(terms_model, "term.labels")
+    gv_term_idx <- which(term_labels == group_var)
+    if (length(gv_term_idx) == 1L) {
+      gv_cols <- which(x_assign == gv_term_idx)
+      if (length(gv_cols) > 0L) {
+        x        <- x[, -gv_cols, drop = FALSE]
+        x_assign <- x_assign[-gv_cols]
+      }
+    }
+    # Add back the raw group_var values as a single numeric column.
+    # For factors, use integer codes (preprocess_data remaps to 0-based).
+    gv_raw <- mf[[group_var]]
+    if (is.factor(gv_raw)) {
+      # Try to recover original numeric levels; fall back to integer codes
+      num_levels <- suppressWarnings(as.numeric(levels(gv_raw)))
+      if (anyNA(num_levels)) {
+        gv_numeric <- as.integer(gv_raw)
+      } else {
+        gv_numeric <- num_levels[as.integer(gv_raw)]
+      }
+    } else {
+      gv_numeric <- as.numeric(gv_raw)
+    }
+    x <- cbind(x, gv_numeric)
+    colnames(x)[ncol(x)] <- group_var
   }
   
   nx      <- ncol(x)
@@ -1815,11 +1843,10 @@ mfpi.formula <- function(formula,
   # df is replicated as-is; mfpi.default() applies assign_df() internally.
   df_list     <- setNames(rep(list(df), nx), names_x)
   
-  shift_list  <- if (is.null(shift)) {
+  shift_list  <- if (is.null(shift))
     setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
-   } else {
+  else
     setNames(rep(list(shift), nx), names_x)
-   }
   
   if (is.null(scale)) {
     shift_now <- vapply(shift_list, function(v) as.numeric(v[[1L]]), numeric(1L))
@@ -1829,7 +1856,6 @@ mfpi.formula <- function(formula,
   } else {
     scale_list <- setNames(rep(list(scale), nx), names_x)
   }
-  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)

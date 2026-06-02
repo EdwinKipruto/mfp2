@@ -17,7 +17,8 @@ fp(
   powers = NULL,
   zero = FALSE,
   catzero = FALSE,
-  spike = FALSE
+  spike = FALSE,
+  force_max_fp = FALSE
 )
 
 fp2(...)
@@ -26,11 +27,33 @@ fp2(...)
 \item{x}{a vector representing a continuous variable undergoing
 fp-transformation.}
 
-\item{df, alpha, select, shift, scale, center, acdx, zero, catzero, spike}{See
-\code{\link[=mfp2]{mfp2()}}) for details.}
+\item{df, alpha, select, shift, scale, center, acdx}{See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{powers}{a vector of powers to be evaluated for \code{x}. Default is \code{NULL}
 and \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} will be used.}
+
+\item{zero}{Logical. If \code{TRUE}, nonpositive values of this variable are
+treated as zero and FP transformations are applied only to positive values.
+This is the formula-interface equivalent of listing the variable in
+\code{zero_vars} in \code{mfp2.default()}.}
+
+\item{catzero}{Logical. If \code{TRUE}, nonpositive values of this variable
+are treated as zero and an additional binary indicator is created. This
+implies \code{zero = TRUE}. This is the formula-interface equivalent of
+listing the variable in \code{catzero_vars} in \code{mfp2.default()}.}
+
+\item{spike}{Logical. If \code{TRUE}, this variable is assessed for a spike
+at zero using the SAZ algorithm. This implies \code{catzero = TRUE} and
+\code{zero = TRUE} while the SAZ algorithm is active. This is the
+formula-interface equivalent of listing the variable in \code{spike_vars}
+in \code{mfp2.default()}.}
+
+\item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
+allowed by \code{df} is selected for this variable. This argument is only
+used when \code{criterion = "aic"} or \code{criterion = "bic"} in
+\code{mfp2()}. It has no effect when \code{criterion = "pvalue"}, because
+the same behaviour can be obtained by setting \code{select = 1} and
+\code{alpha = 1}. Default is \code{FALSE}.}
 
 \item{...}{used in alias \code{fp2} to pass arguments.}
 }

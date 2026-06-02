@@ -142,9 +142,8 @@
 #' @seealso \code{create_z_variables()}, \code{compute_diff_standard_errors()},
 #'   \code{var_group()}
 #'
-# @keywords internal
-# @noRd
-#' @export
+#' @keywords internal
+#' @noRd
 gen_fitted_values_per_group <- function(cont_var,
                                         group_fp_powers,
                                         interaction_model,

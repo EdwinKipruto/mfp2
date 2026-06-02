@@ -545,6 +545,18 @@
 #'   The centering constants computed at fit time are stored in
 #'   \code{center_vals_list} on the returned object and reused exactly
 #'   during evaluation of fitted functions.
+#' @param p_adjust_method
+#'   Character string specifying the method for adjusting p-values across
+#'   multiple \code{cont_vars} to account for multiplicity. Passed to
+#'   \code{\link[stats]{p.adjust}}. Accepted values include \code{"none"}
+#'   (default, no adjustment), \code{"holm"} (Bonferroni--Holm step-down,
+#'   recommended by Royston and Sauerbrei 2004), \code{"bonferroni"},
+#'   \code{"hochberg"}, \code{"BH"} (Benjamini--Hochberg), and \code{"BY"}.
+#'   Adjustment is applied only when \code{criterion = "pvalue"}; for AIC/BIC
+#'   selection, adjusted p-values are computed for reporting but do not affect
+#'   the selection decision. When \code{length(cont_vars) == 1} (prespecified
+#'   hypothesis), adjustment has no effect. See the
+#'   \emph{Prespecified and exploratory interaction analyses} section.
 #' @param verbose
 #'   Logical. Whether to print progress information during model fitting.
 #'   Default is `TRUE`.
@@ -774,6 +786,7 @@ mfpi.default <- function(
     winsorize         = FALSE,
     winsorize_probs   = c(0.01, 0.99),
     center_type       = c("grand", "group"),
+    p_adjust_method   = "none",
     verbose           = TRUE,
     digits            = 3,
     ...
@@ -1493,14 +1506,15 @@ mfpi.default <- function(
     min_improvement   = min_improvement,
     digits            = digits,
     center_type       = center_type,
-    scale             = scale
+    scale             = scale,
+    p_adjust_method   = p_adjust_method
   )
   
   # Attach Winsorisation metadata for transparency in the returned object
   fit$winsorize       <- isTRUE(winsorize)
   fit$winsorize_probs <- if (isTRUE(winsorize)) winsorize_probs else NULL
   fit$winsorize_limits <- winsorize_limits
-  
+  fit$p_adjust_method   <- p_adjust_method
   class(fit) <- "mfpi"
   fit
 }
@@ -1604,6 +1618,7 @@ mfpi.formula <- function(formula,
                          winsorize         = TRUE,
                          winsorize_probs   = c(0.01, 0.99),
                          center_type       = c("grand", "group"),
+                         p_adjust_method   = "none",
                          verbose           = TRUE,
                          digits            = 3,
                          ...) {

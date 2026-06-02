@@ -20,7 +20,7 @@ header-includes:
 vignette: >
   %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
   %\VignetteEngine{knitr::rmarkdown}
-  \usepackage[utf8]{inputenc}
+  %\VignetteEncoding{UTF-8}
 ---
 
 
@@ -602,7 +602,7 @@ shifting factors for each continuous variables. The formula used to estimate the
 shifting factor for a continuous variable, say $x1$, is given by:
 
 \[
-shift_{x1} = \gamma - \min(x1)
+\text{shift}_{x_1} = \gamma - \min(x_1)
 \]
 
 where $\min(x1)$ is the smallest observed value of $x1$, while $\gamma$ is the 

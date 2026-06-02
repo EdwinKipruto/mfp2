@@ -187,7 +187,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      control, group_var, include_group_var, flex, cont_vars,
                      p_interact, min_improvement, show_models, verbose,
                      digits, scale,
-                     center_type = c("grand", "group")) {
+                     center_type = c("grand", "group"),
+                     p_adjust_method = "none") {
   
   center_type <- match.arg(center_type)
   

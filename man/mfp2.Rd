@@ -32,9 +32,9 @@ mfp2(x, ...)
   acdx = NULL,
   ftest = FALSE,
   control = NULL,
-  zero = NULL,
-  catzero = NULL,
-  spike = NULL,
+  zero_vars = NULL,
+  catzero_vars = NULL,
+  spike_vars = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
   force_max_fp = FALSE,
@@ -228,44 +228,46 @@ returned by \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link
 is \code{NULL}, in which case \code{mfp2} uses the default settings for the specified
 model family.}
 
-\item{zero}{A character vector specifying the names of continuous variables
-for which non-positive values should be treated as zero. This enables
-fitting a fractional polynomial (FP) model using only the positive values
-of the covariate, while setting non-positive values to zero during
-transformation. In \code{fp()} terms, \code{zero} is a logical value
-indicating whether this adjustment should be applied to the variable.
-\code{zero} is also implied automatically for any variable in
-\code{catzero} or \code{spike} via the cascade
-\code{zero[catzero] <- TRUE}. However, if a variable is in \code{spike}
-and the spike flag is subsequently reset (because the zero proportion is
-outside \code{[min_prop, max_prop]} or the variable is binary), the
-\code{zero} flag is restored to this user-specified value. This means
-that specifying a variable in both \code{spike} and \code{zero} ensures
-that non-positive recoding is preserved even when the SAZ algorithm is
-not applied. See the \strong{Details} section.}
+\item{zero_vars}{A character vector specifying the names of continuous
+variables for which non-positive values should be treated as zero. This
+enables fitting a fractional polynomial (FP) model using only the positive
+values of the covariate, while setting non-positive values to zero during
+transformation. Internally, this argument is converted to a named logical
+vector over the columns of \code{x}. In \code{fp()} terms, use the logical
+argument \code{zero = TRUE} instead.
 
-\item{catzero}{A character vector specifying the names of continuous
+\code{zero_vars} is also implied automatically for any variable in
+\code{catzero_vars} or \code{spike_vars}, via the cascade
+\code{zero[catzero] <- TRUE}. Because \code{catzero_vars} implies
+\code{zero_vars}, a variable may appear in both arguments without error.
+See the \strong{Details} section.}
+
+\item{catzero_vars}{A character vector specifying the names of continuous
 variables for which non-positive values should be treated as zero and a
-binary indicator \eqn{I(x = 0)} automatically created and included in
-the model alongside the FP terms for the positive part. In \code{fp()}
-terms, \code{catzero} is a logical value indicating whether this
-adjustment and indicator should be applied.
-\code{catzero} is also implied automatically for any variable in
-\code{spike} via the cascade \code{catzero[spike] <- TRUE}. However,
-if a variable is in \code{spike} and the spike flag is subsequently
-reset, the \code{catzero} flag is restored to this user-specified value.
-This means that specifying a variable in both \code{spike} and
-\code{catzero} ensures that the binary indicator is preserved even when
-the SAZ algorithm is not applied -- the variable is treated as a
-\code{catzero} variable without the SAZ selection step. See the
-\strong{Details} section. See the \strong{Details} section.}
+binary indicator \eqn{I(x = 0)} automatically created and included in the
+model alongside the FP terms for the positive part. Internally, this
+argument is converted to a named logical vector over the columns of
+\code{x}. In \code{fp()} terms, use the logical argument
+\code{catzero = TRUE} instead.
 
-\item{spike}{A character vector specifying the names of continuous variables
-to be assessed for a spike at zero using the SAZ algorithm. Supplying a
-variable here implies \code{catzero} (binary indicator \eqn{I(x=0)} added)
-and \code{zero} (non-positive values recoded to zero) for that variable,
-via the cascade \code{catzero[spike] <- TRUE} and
-\code{zero[catzero] <- TRUE}.
+\code{catzero_vars} implies \code{zero_vars}. Therefore, a variable may
+appear in both \code{zero_vars} and \code{catzero_vars} without error.
+\code{catzero_vars} is also implied automatically for any variable in
+\code{spike_vars}, via the cascade \code{catzero[spike] <- TRUE}. See the
+\strong{Details} section.}
+
+\item{spike_vars}{A character vector specifying the names of continuous
+variables to be assessed for a spike at zero using the SAZ algorithm.
+Internally, this argument is converted to a named logical vector over the
+columns of \code{x}. In \code{fp()} terms, use the logical argument
+\code{spike = TRUE} instead.
+
+\code{spike_vars} implies both \code{catzero_vars} and \code{zero_vars}
+while the SAZ algorithm is active, via the cascade
+\code{catzero[spike] <- TRUE} and \code{zero[catzero] <- TRUE}. Thus, a
+variable may appear in \code{spike_vars} together with
+\code{catzero_vars}, \code{zero_vars}, or both, without error. See the
+\strong{Details} section.
 
 Before the SAZ algorithm runs, each spike variable is checked for
 eligibility. If the observed zero proportion is outside
@@ -289,34 +291,30 @@ This argument is not available in the formula interface
 \item{min_prop}{Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
 SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
 \code{0.05}. Must be less than \code{max_prop}. If the observed zero
-proportion is below \code{min_prop} (too few zeros to model a spike
-meaningfully), the spike flag is reset to \code{FALSE} for that variable.
-The resulting treatment depends on what the user originally specified
-alongside \code{spike_vars}: if \code{catzero_vars} or \code{zero_vars}
-were also specified for that variable, those flags are preserved;
-otherwise the variable reverts to a standard continuous predictor.
-Only affects variables in the adjustment model since \code{spike_vars}
-is always suppressed for \code{cont_vars}.}
+proportion is below \code{min_prop}, the spike flag is reset to
+\code{FALSE} for that variable because there are too few zeros to model
+a spike meaningfully. The resulting treatment depends on what the user
+specified through \code{zero_vars} and \code{catzero_vars}.}
 
 \item{max_prop}{Numeric in \eqn{(0, 1)}. Maximum proportion of zeros allowed for the
 SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
 \code{0.95}. Must be greater than \code{min_prop}. If the observed zero
-proportion exceeds \code{max_prop} (too many zeros; the positive part is
-too sparse for reliable FP fitting), the spike flag is reset to
-\code{FALSE}. As with \code{min_prop}, the resulting treatment of
-\code{catzero} and \code{zero} depends on the user's original
-specification. Variables that are binary (exactly two unique values) are
-also reset regardless of their zero proportion. Only affects variables
-in the adjustment model.}
+proportion exceeds \code{max_prop}, the spike flag is reset to
+\code{FALSE} because the positive part is too sparse for reliable FP
+fitting. Variables that are binary, defined as having exactly two unique
+values, are also reset regardless of their zero proportion. The resulting
+treatment depends on what the user specified through \code{zero_vars} and
+\code{catzero_vars}.}
 
-\item{force_max_fp}{A logical vector of length \code{nvars}, or a single
-logical value that is internally replicated. If \code{TRUE} for a variable,
-the most complex functional form available, as determined by \code{df}, is
-selected even if it is not significant. This argument is only applicable
-when \code{criterion = "aic"} or \code{criterion = "bic"}, and has no effect
-when \code{criterion = "pvalue"}, since the same behavior can be obtained by
-setting \code{alpha = 1} and \code{select = 1}. The default is
-\code{rep(FALSE, nvars)}.}
+\item{force_max_fp}{For \code{mfp2.default()}, either a logical vector of
+length \code{nvars} or a single logical value that is internally replicated.
+If \code{TRUE} for a variable, the most complex functional form allowed by
+\code{df} is selected for that variable. This argument is only applicable
+when \code{criterion = "aic"} or \code{criterion = "bic"}. It has no effect
+when \code{criterion = "pvalue"}, because the same behaviour can be obtained
+by setting \code{select = 1} and \code{alpha = 1}. The default is
+\code{rep(FALSE, nvars)}. For \code{mfp2.formula()}, \code{force_max_fp}
+is specified for individual variables through the \code{fp()} function.}
 
 \item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
 
@@ -813,22 +811,25 @@ Users may override these thresholds using the \code{min_prop} and \code{max_prop
 
 \code{mfp2} supports model specification through two interfaces.
 The first accepts the design matrix \code{x} together with an outcome object \code{y},
-similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized linear
-models this may be a vector, but in the case of Cox regression \code{y} must be a
-two-column survival object (time and event indicator) created using
-\code{survival::Surv()}. The second interface follows the formula style used by
-functions such as \code{stats::glm()} or \code{survival::coxph()}.
+similar to \code{stats::glm.fit()} or \code{glmnet::glmnet()}. For generalized
+linear models this may be a vector, but in the case of Cox regression \code{y}
+must be a two-column survival object (time and event indicator) created using
+\code{survival::Surv()}. The second interface follows the formula style used
+by functions such as \code{stats::glm()} or \code{survival::coxph()}.
 
 Both interfaces are equivalent in functionality; only the details of
 specification differ. In the standard interface all details regarding
 FP-transformations are given as vectors, while in the formula interface
-they are specified using the special \code{fp()} function. The following options
-can be set: degrees of freedom (\code{df}), nominal significance level for
+they are specified using the special \code{fp()} function. #' The following
+options can be set: degrees of freedom (\code{df}), nominal significance level for
 variable selection (\code{select}), nominal significance level for functional form
 selection (\code{alpha}), shift values (\code{shift}), scale values (\code{scale}),
-centering (\code{center}), ACD-transformation (\code{acd}), handling of nonpositive
-values (\code{zero}), automatic creation of binary indicators for nonpositive
-values (\code{catzero}), and assessment of a potential spike at zero (\code{spike}).
+centering (\code{center}), ACD-transformation (\code{acd}), handling
+of nonpositive values, automatic creation of binary indicators for
+nonpositive values, and assessment of a potential spike at zero. In the
+default matrix interface these are specified using \code{zero_vars},
+\code{catzero_vars}, and \code{spike_vars}. In the formula interface they are specified
+as logical options inside \code{fp()} using \code{zero}, \code{catzero}, and \code{spike}.
 When arguments are supplied both inside \code{fp()} and as global defaults in
 \code{mfp2()}, the specifications inside \code{fp()} take precedence. For example, in
 \code{mfp2(y ~ fp(x, df = 2), df = 4, data = data)}, the fractional polynomial for
@@ -847,45 +848,40 @@ functional forms, along with the selection algorithm with a significance
 level of 0.05 for all variables.
 }
 
-\section{Handling Nonpositive Values (\code{zero} and \code{catzero})}{
+\section{Handling Nonpositive Values (\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars})}{
 
 
-The \code{zero} and \code{catzero} options provide mechanisms for handling
-covariates with nonpositive values in fractional polynomial (FP) models,
-especially when those values have a qualitatively different interpretation
-than positive ones.
+The \code{zero_vars} and \code{catzero_vars} options provide mechanisms for
+handling covariates with nonpositive values in fractional polynomial (FP)
+models, especially when those values have a qualitatively different
+interpretation than positive ones.
 
-The \code{zero} argument enables fitting FP models using only the positive
-values of a covariate, while treating nonpositive values (e.g., zero or
-negative) as exactly zero. In other words, only the positive values of \eqn{x}
-are transformed, and the nonpositive values are set to zero. This approach is
-useful when the relationship between the covariate and the outcome is expected
-to start above zero. For example, in modeling the effect of cigarette
-consumption, nonsmokers (zero cigarettes) may be fundamentally different from
-smokers. Instead of applying a constant shift (e.g., adding 1) to all values
-before transformation, the \code{zero} argument allows the model to treat
-zero values as a separate baseline and apply FP transformations only to the
-positive values.
+The \code{zero_vars} argument is used in the default matrix interface and
+specifies the names of variables for which FP transformations should be
+applied only to positive values, while nonpositive values are treated as
+zero. In the formula interface, the corresponding option is specified inside
+\code{fp()} as \code{zero = TRUE}.
 
-The \code{catzero} argument extends this idea by automatically creating a
-binary indicator for whether the covariate is positive. Specifically, for
-each covariate where \code{catzero = TRUE}, a binary variable \code{Z} is
-created such that:
+The \code{catzero_vars} argument extends this idea by automatically creating
+a binary indicator for whether the covariate is zero. Specifically, for each
+covariate listed in \code{catzero_vars}, a binary variable \code{Z} is created
+such that:
 
-\code{Z = 1} if the covariate value is zero (x = 0)  and
-\code{Z = 0} if the covariate value is positive (x > 0)
+\code{Z = 1} if the covariate value is zero \code{(x = 0)} and
+\code{Z = 0} if the covariate value is positive \code{(x > 0)}.
 
-This indicator is  included in the model alongside the transformed version
-of the covariate. Both are treated as a single predictor during model
-selection (if applicable). This approach captures the potential difference
-between having a value of zero and having any positive value, while still
-allowing flexible modeling of the positive range.
+This indicator is included in the model alongside the transformed version of
+the covariate. Both are treated as a single predictor during model selection
+where applicable. Since \code{catzero_vars} implies \code{zero_vars}, a
+variable may be supplied in both arguments without error.
 
-The \code{spike} argument triggers the spike-at-zero (SAZ) algorithm. When
-\code{spike = TRUE}, the binary indicator created by \code{catzero} is
-formally evaluated together with the FP terms during model selection. When
-\code{spike = FALSE} but \code{catzero = TRUE}, the binary indicator is
-included in the model without SAZ testing.
+The \code{spike_vars} argument triggers the spike-at-zero (SAZ) algorithm.
+When a variable is listed in \code{spike_vars}, the binary indicator created
+by \code{catzero_vars} is formally evaluated together with the FP terms
+during model selection. Thus, \code{spike_vars} implies both
+\code{catzero_vars} and \code{zero_vars} while the SAZ algorithm is active.
+In the formula interface, the corresponding option is specified inside
+\code{fp()} as \code{spike = TRUE}.
 
 This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
 and is particularly relevant in epidemiological contexts where exposure may
@@ -942,6 +938,16 @@ yd <- survival::Surv(gbsg$rectime, gbsg$censrec)
 # fit mfp and keep hormon in the model
 fit3 <- mfp2(xd, yd, family = "cox", keep = "hormon", verbose = FALSE)
 fit3$fp_terms
+
+# Handling semi-continuous variables in the default interface
+# Here, "exposure" is treated as a spike-at-zero variable.
+# This implies catzero_vars and zero_vars while SAZ is active.
+# fit_saz <- mfp2(x, y, spike_vars = "exposure")
+# Formula interface: use logical flags inside fp()
+# fit_saz_f <- mfp2(y ~ fp(exposure, spike = TRUE), data = dat)
+
+# catzero_vars implies zero_vars, so overlap is allowed
+# fit_cz <- mfp2(x, y, zero_vars = "exposure", catzero_vars = "exposure")
 
 }
 \references{

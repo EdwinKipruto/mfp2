@@ -127,7 +127,11 @@
 #'   \eqn{\phi(x + \text{shift})} scale, matching the adjustment model and
 #'   standalone \pkg{mfp2}. \code{NULL} or 1 means no backscaling.
 #' @param digits Positive integer. Significant digits for printed output.
-#'
+#' @param p_adjust_method Character string. Method for adjusting p-values
+#'   across multiple \code{cont_vars}, passed to [stats::p.adjust()]. Only
+#'   applied when \code{criterion = "pvalue"}. Default \code{"none"}.
+#' @return A list with top-level fields (accessible as \code{fit$field}) and
+#'   two retained sub-objects. Top-level fields:
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
 #'   two retained sub-objects. Top-level fields:
 #' \describe{
@@ -149,6 +153,9 @@
 #'     \code{show_models}, \code{group_levels_new},
 #'     \code{group_levels_original}}{Metadata fields.}
 #'   \item{\code{adjustment_model}}{Full adjustment model object.}
+#'   \item{\code{p_adjust_method}}{The multiplicity adjustment method used.}
+#'   \item{\code{var_winners}}{Named list of per-variable best candidates
+#'     (regardless of selection). See \code{evaluate_interactions()}.}
 #'   \item{\code{univariable_interactions}}{Full list from
 #'     \code{evaluate_interactions()}.}
 #' }
@@ -217,7 +224,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # ---------------------------------------------------------------------------
   if (verbose) {
     rule_thick <- strrep("=", 70)
-    #rule_thin  <- strrep("-", 70)
+    rule_thin  <- strrep("-", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat("  STEP 1: Adjustment Model (MFP selection)\n")
     cat(rule_thick, "\n", sep = "")
@@ -279,18 +286,17 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # Extract spike decisions from the adjustment model for use when
   # re-transforming adjustment variables inside evaluate_interactions().
   # spike_decision is a named numeric vector (1 = FP+binary, 2 = FP only,
-  # 3 = binary only) stored in the mfp2 object by mfp2:::fit_mfp().
-  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec)) {
+  # 3 = binary only) stored in the mfp2 object by fit_mfp().
+  adj_spike_decision <- if (!is.null(adjustment_model$spike_dec))
     adjustment_model$spike_decision
-   } else {
+  else
     setNames(rep(2L, length(selected_vars)), selected_vars)
-   }
   
   # ---------------------------------------------------------------------------
   # Step 2: Evaluate univariable interactions
   # ---------------------------------------------------------------------------
   if (verbose) {
-    #rule_thick <- strrep("=", 70)
+    rule_thick <- strrep("=", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat(sprintf(
       "  STEP 2: Evaluating Interactions  (flex = %s, criterion = '%s')\n",
@@ -338,6 +344,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     max_prop           = max_prop,
     center_type        = center_type,
     scale              = scale,
+    p_adjust_method    = p_adjust_method,
     verbose            = verbose
   )
   
@@ -347,7 +354,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   }
   
   if (verbose) {
-    #rule_thick <- strrep("=", 70)
+    rule_thick <- strrep("=", 70)
     cat("\n", rule_thick, "\n", sep = "")
     cat(sprintf(
       "  DONE: %d of %d variable(s) show significant interaction\n",
@@ -373,6 +380,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     group_levels_original    = univ_results$group_levels_original,
     family                   = univ_results$family,
     nobs                     = univ_results$nobs,
+    p_adjust_method          = univ_results$p_adjust_method,
+    var_winners              = univ_results$var_winners,
     adjustment_model         = adjustment_model,
     univariable_interactions = univ_results
   )
@@ -649,7 +658,6 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
   )
 }
 
-
 # -----------------------------------------------------------------------------
 # format_candidate_table() ----------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -697,7 +705,7 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
 #'
 #' @keywords internal
 #' @noRd
-format_candidate_table <- function(rows, criterion, digits) {
+format_candidate_table <- function(rows, criterion, digits, best_type = NULL) {
   
   # Format a single power entry as a parenthesised string. Always returns a
   # length-1 character string ("." for missing/empty).
@@ -778,10 +786,22 @@ format_candidate_table <- function(rows, criterion, digits) {
   }
   
   tbl <- do.call(rbind, lapply(rows, format_row))
+  if (!is.null(best_type)) {
+    tbl$best <- ifelse(tolower(tbl$Type) == best_type, "+", "")
+    # Reorder: place best immediately after criterion columns, before powers
+    cols <- names(tbl)
+    power_idx <- min(which(cols %in% c("main_power", "int_power")))
+    best_idx  <- which(cols == "best")
+    cols_no_best <- cols[-best_idx]
+    insert_at <- min(which(cols_no_best %in% c("main_power", "int_power"))) - 1L
+    tbl <- tbl[, append(cols_no_best, "best", after = insert_at), drop = FALSE]
+  }
   print(tbl, row.names = FALSE, right = FALSE)
+  if (!is.null(best_type) && criterion == "pvalue") {
+    cat("\n        + = best candidate (by pvalue)\n")
+  }
   invisible(NULL)
 }
-
 
 # -----------------------------------------------------------------------------
 # evaluate_interactions() -----------------------------------------------------
@@ -848,60 +868,68 @@ format_candidate_table <- function(rows, criterion, digits) {
 #'   Used when `skip_adjustment = TRUE`.
 #' @param skip_adjustment Logical. If `TRUE`, `xadj` is used directly and
 #'   adjustment variables are not re-transformed. Default is `FALSE`.
+#' @param p_adjust_method Character string. Method for adjusting p-values
+#'   across multiple `cont_vars`, passed to [stats::p.adjust()]. Only
+#'   applied when `criterion = "pvalue"`. Default `"none"`.
 #' @param quiet Logical. If `TRUE`, suppresses the per-variable message when no
 #'   significant interaction is found. Default is `FALSE`.
 #'
 #' @return A list with the following components:
 #' \describe{
 #'   \item{`best_model_metrics`}{Data frame of evaluation metrics for the
-#'     best interaction model per variable. Empty if no interactions are
-#'     significant.}
-#'   \item{`all_model_metrics`}{Data frame of metrics for all models tested
-#'     (linear, FP1, FP2) for every variable in `cont_vars`, regardless of
-#'     significance.}
-#'   \item{`best_interaction_model`}{Named list of fitted model objects for the best
-#'     interaction type per significant variable.}
-#'   \item{`best_fitted_functions`}{Named list of fitted FP function values per
-#'     significant variable, structured for plotting.}
+#'     best interaction model per selected variable. Empty if none selected.}
+#'   \item{`all_model_metrics`}{Data frame of metrics for all candidates
+#'     (linear, FP1, FP2) for every variable in `cont_vars`.}
+#'   \item{`best_interaction_model`}{Named list of fitted model objects for
+#'     the best interaction type per selected variable.}
+#'   \item{`all_interaction_models`}{Named list (one element per `cont_var`)
+#'     of candidate model objects across all flex types.}
+#'   \item{`best_fitted_functions`}{Named list of fitted FP function values
+#'     per selected variable.}
+#'   \item{`all_fitted_functions`}{Named list of fitted FP function values
+#'     for all candidates, one element per variable.}
+#'   \item{`center_vals_list`}{Named list of centering constants per
+#'     selected variable.}
+#'   \item{`var_winners`}{Named list (one element per `cont_var`) storing
+#'     the best candidate for each variable regardless of selection.}
 #'   \item{`group_var`}{Name of the grouping variable.}
 #'   \item{`show_models`}{Value of the `show_models` argument.}
 #'   \item{`group_levels_new`}{Integer-coded levels used internally.}
 #'   \item{`group_levels_original`}{Original levels of `group_var`.}
 #'   \item{`flex`}{The chosen flexibility level.}
+#'   \item{`criterion`}{The selection criterion used.}
 #'   \item{`family`}{The regression family.}
 #'   \item{`nobs`}{Number of observations.}
+#'   \item{`p_adjust_method`}{The multiplicity adjustment method used.}
 #' }
 #'
 #' @section Selection logic:
 #' For each variable in \code{cont_vars}, three candidate interaction models
-#' are fitted in order: linear (degree 0), FP1 (degree 1), FP2 (degree 2).
-#' The models are evaluated using \code{criterion}:
+#' are fitted: linear (degree 0), FP1 (degree 1), FP2 (degree 2). The best
+#' candidate per variable is always identified regardless of threshold:
 #'
 #' \describe{
-#'   \item{\code{"pvalue"}}{Retain candidates with p-value strictly below
-#'     \code{p_interact}. Among retained candidates, select the one with the
-#'     \strong{smallest p-value}. Ties are broken by the \strong{largest
-#'     \code{BIC_main_minus_int}}: when two candidates achieve identical
-#'     p-values, the one with the larger BIC improvement wins. BIC penalizes
-#'     complexity more heavily than AIC (penalty grows as
-#'     \eqn{k\log n} rather than \eqn{2k}), so this rule favours the
-#'     \strong{simpler} functional form when statistical evidence is equally
-#'     strong - aligning with the parsimony principle of FP selection.}
-#'   \item{\code{"aic"}}{Retain candidates with \code{AIC_main_minus_int}
-#'     strictly above \code{min_improvement}. Select the one with the
-#'     \strong{largest \code{AIC_main_minus_int}}.}
-#'   \item{\code{"bic"}}{Same as \code{"aic"} using \code{BIC_main_minus_int}.}
+#'   \item{\code{"pvalue"}}{Best = smallest p-value. Ties broken by largest
+#'     \code{BIC_main_minus_int} (favouring the simpler form). A candidate
+#'     is selected if its (possibly adjusted) p-value is strictly below
+#'     \code{p_interact}.}
+#'   \item{\code{"aic"}}{Best = largest \code{AIC_main_minus_int}, defined as
+#'     \eqn{\mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{interaction}}.
+#'     A positive value means the interaction model fits better. A candidate
+#'     is selected if \code{AIC_main_minus_int > min_improvement}.}
+#'   \item{\code{"bic"}}{Best = largest \code{BIC_main_minus_int}, defined as
+#'     \eqn{\mathrm{BIC}_\text{main} - \mathrm{BIC}_\text{interaction}}.
+#'     A positive value means the interaction model fits better. A candidate
+#'     is selected if \code{BIC_main_minus_int > min_improvement}. BIC
+#'     penalises complexity more heavily than AIC (penalty \eqn{k \log n}
+#'     vs \eqn{2k}), so it favours simpler functional forms.}
 #' }
 #'
-#' \code{AIC_main_minus_int} and \code{BIC_main_minus_int} are defined as
-#' \eqn{\mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{interaction}} and
-#' \eqn{\mathrm{BIC}_\text{main} - \mathrm{BIC}_\text{interaction}}
-#' respectively. A \strong{positive} value indicates that the interaction
-#' model fits better (lower information criterion) than the main-effects
-#' model.
-#'
-#' If no candidate clears its threshold, no interaction is retained for that
-#' variable and it is excluded from \code{best_model_metrics}.
+#' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
+#' selection is deferred until all variables are processed: raw p-values are
+#' collected, adjusted via \code{\link[stats]{p.adjust}}, and the adjusted
+#' p-values are compared to \code{p_interact}. For AIC/BIC criteria,
+#' multiplicity adjustment does not affect the selection decision.
 #'
 #' @keywords internal
 #' @importFrom dplyr bind_rows
@@ -917,6 +945,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   center_type = c("grand", "group"),
                                   scale = NULL,
                                   xadj = NULL, skip_adjustment = FALSE,
+                                  p_adjust_method = "none",
                                   quiet = FALSE, verbose = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -925,7 +954,6 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
     stop("`skip_adjustment` must be a single logical value.", call. = FALSE)
   }
-  
   if (skip_adjustment && !is.null(xadj)) {
     if (!is.matrix(xadj) || !is.numeric(xadj)) {
       stop("`xadj` must be a numeric matrix when `skip_adjustment = TRUE`.",
@@ -958,6 +986,13 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   names(best_fitted_functions)       <- cont_vars
   names(all_fitted_functions)   <- cont_vars
   names(center_vals_list)       <- cont_vars
+  
+  # Per-variable winners: stores the best candidate for EVERY variable
+  # (regardless of significance) for use in phase-2 multiplicity adjustment.
+  var_winners <- vector("list", n_vars)
+  names(var_winners) <- cont_vars
+  
+  adjusting_pvals <- p_adjust_method != "none" && criterion == "pvalue"
   
   best_idx     <- 0L   # counter for significant variables
   all_idx      <- 0L   # counter for all models
@@ -1101,15 +1136,15 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       candidate_models[[interaction_type]]  <- fit_result$test_results$interaction_model
       candidate_fitted[[interaction_type]]  <- fit_result$fitted_functions
       
-      # Select best model according to criterion --------------------------------
+      # Find best candidate per variable (regardless of threshold) -------------
+      # The best candidate is the one with the smallest p-value (pvalue
+      # criterion) or largest information criterion difference (AIC/BIC).
+      # The threshold check (p_interact or min_improvement) is applied
+      # separately below, either immediately or after multiplicity adjustment.
       if (criterion == "pvalue") {
         pval      <- metrics$pvalue[1L]
-        # Tiebreaker: when two candidates have identical p-values, prefer the
-        # one with the larger BIC improvement (dBIC = BIC_main - BIC_int).
-        # BIC penalises complexity more heavily than AIC, so it favours the
-        # simpler functional form when both are equally significant.
         bic_delta <- metrics$BIC_main_minus_int[1L]
-        if (!is.na(pval) && pval < p_interact) {
+        if (!is.na(pval)) {
           best_bic <- if (!is.null(best_fit))
             best_fit$test_results$evaluation_metrics$BIC_main_minus_int[1L]
           else -Inf
@@ -1123,7 +1158,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         }
       } else if (criterion == "aic") {
         delta <- metrics$AIC_main_minus_int[1L]
-        if (!is.na(delta) && delta > min_improvement && delta > best_score) {
+        if (!is.na(delta) && delta > best_score) {
           best_fit    <- fit_result
           best_metric <- metrics
           best_type   <- interaction_type
@@ -1131,7 +1166,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         }
       } else if (criterion == "bic") {
         delta <- metrics$BIC_main_minus_int[1L]
-        if (!is.na(delta) && delta > min_improvement && delta > best_score) {
+        if (!is.na(delta) && delta > best_score) {
           best_fit    <- fit_result
           best_metric <- metrics
           best_type   <- interaction_type
@@ -1146,57 +1181,84 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }  # end interaction_type loop
     
-    # Print the candidate table for this variable
+    # Print the candidate table with + on the best candidate
     if (verbose) {
-      format_candidate_table(verbose_rows, criterion = criterion, digits = digits)
+      format_candidate_table(verbose_rows, criterion = criterion,
+                             digits = digits, best_type = best_type)
     }
     
-    if (!is.null(best_fit)) {
-      best_idx <- best_idx + 1L
-      best_metrics_list[[best_idx]]         <- best_metric
-      best_interaction_model[[var_name]]    <- best_fit$test_results$interaction_model
-      best_fitted_functions[[var_name]]     <- best_fit$fitted_functions
-      center_vals_list[[var_name]]          <- best_fit$center_vals
-      
-      if (verbose) {
-        type_label <- toupper(gsub("fp", "FP", best_type))
-        if (criterion == "pvalue") {
-          cat(sprintf(
-            "        >> SELECTED: %s  (p = %s)\n",
-            type_label,
-            formatC(best_metric$pvalue[1L], format = "g", digits = digits)
-          ))
-        } else {
-          ic_col <- if (criterion == "aic") "AIC_main_minus_int" else "BIC_main_minus_int"
-          cat(sprintf(
-            "        >> SELECTED: %s  (d%s = %s)\n",
-            type_label, toupper(criterion),
-            formatC(best_metric[[ic_col]][1L], format = "f", digits = 2)
-          ))
-        }
+    # Store the per-variable winner (may be NULL if all candidates failed)
+    var_winners[[var_name]] <- list(
+      fit         = best_fit,
+      metric      = best_metric,
+      type        = best_type,
+      score       = best_score,
+      center_vals = if (!is.null(best_fit)) best_fit$center_vals else NULL
+    )
+    
+    # ------------------------------------------------------------------
+    # Selection decision (when NOT deferring to Phase 2)
+    # ------------------------------------------------------------------
+    if (!adjusting_pvals && !is.null(best_fit)) {
+      # Check whether the best candidate passes the threshold
+      passes_threshold <- if (criterion == "pvalue") {
+        best_score < p_interact
+      } else {
+        best_score > min_improvement
       }
       
-      # Print regression table for the winning interaction model when requested.
-      # show_models = TRUE only has effect when verbose = TRUE; suppressing
-      # verbose output means suppressing all output including model summaries.
-      # When no variable is selected, nothing is printed (best_fit is NULL).
-      if (verbose && show_models) {
-        fit_obj <- best_fit$test_results$interaction_model$fit
-        if (!is.null(fit_obj)) {
+      if (passes_threshold) {
+        best_idx <- best_idx + 1L
+        best_metrics_list[[best_idx]]      <- best_metric
+        best_interaction_model[[var_name]] <- best_fit$test_results$interaction_model
+        best_fitted_functions[[var_name]]  <- best_fit$fitted_functions
+        center_vals_list[[var_name]]       <- best_fit$center_vals
+        
+        if (verbose) {
           type_label <- toupper(gsub("fp", "FP", best_type))
-          cat(sprintf(
-            "\n  Interaction model (%s, %s):\n",
-            var_name, type_label
+          if (criterion == "pvalue") {
+            cat(sprintf(
+              "        >> SELECTED: %s  (p = %s)\n",
+              type_label,
+              formatC(best_metric$pvalue[1L], format = "g", digits = digits)
+            ))
+          } else {
+            ic_col <- if (criterion == "aic") "AIC_main_minus_int"
+            else "BIC_main_minus_int"
+            cat(sprintf(
+              "        >> SELECTED: %s  (d%s = %s)\n",
+              type_label, toupper(criterion),
+              formatC(best_metric[[ic_col]][1L], format = "f", digits = 2)
+            ))
+          }
+        }
+        
+        if (verbose && show_models) {
+          fit_obj <- best_fit$test_results$interaction_model$fit
+          if (!is.null(fit_obj)) {
+            type_label <- toupper(gsub("fp", "FP", best_type))
+            cat(sprintf(
+              "\n  Interaction model (%s, %s):\n",
+              var_name, type_label
+            ))
+            cat(strrep("-", 50), "\n")
+            print(summary(fit_obj))
+            cat("\n")
+          }
+        }
+      } else {
+        if (verbose) {
+          cat("        >> NOT SELECTED: no candidate met the threshold.\n")
+        }
+        if (!quiet) {
+          message(sprintf(
+            "i No significant interaction retained for '%s'.", var_name
           ))
-          cat(strrep("-", 50), "\n")
-          print(summary(fit_obj))
-          cat("\n")
         }
       }
-      
-    } else {
+    } else if (!adjusting_pvals && is.null(best_fit)) {
       if (verbose) {
-        cat("        >> NOT SELECTED: no candidate met the threshold.\n")
+        cat("        >> NOT SELECTED: all candidates failed to fit.\n")
       }
       if (!quiet) {
         message(sprintf(
@@ -1209,6 +1271,95 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     all_interaction_models[[var_name]] <- candidate_models
     all_fitted_functions[[var_name]]   <- candidate_fitted
   }  # end cont_vars loop
+  
+  # ============================================================================
+  # Phase 2: multiplicity adjustment (only when adjusting_pvals = TRUE)
+  # ============================================================================
+  if (adjusting_pvals) {
+    # Collect raw p-values from per-variable winners
+    raw_pvals <- vapply(var_winners, function(w) {
+      if (is.null(w$fit)) NA_real_ else w$metric$pvalue[1L]
+    }, numeric(1L))
+    
+    adjusted_pvals <- stats::p.adjust(raw_pvals, method = p_adjust_method)
+    
+    # Make selection decisions based on adjusted p-values
+    for (i in seq_along(cont_vars)) {
+      vn <- cont_vars[i]
+      w  <- var_winners[[vn]]
+      if (is.null(w$fit)) next
+      
+      if (!is.na(adjusted_pvals[i]) && adjusted_pvals[i] < p_interact) {
+        best_idx <- best_idx + 1L
+        best_metrics_list[[best_idx]]      <- w$metric
+        best_interaction_model[[vn]]       <- w$fit$test_results$interaction_model
+        best_fitted_functions[[vn]]        <- w$fit$fitted_functions
+        center_vals_list[[vn]]             <- w$center_vals
+      }
+    }
+    
+    # Verbose: print selection summary table
+    if (verbose) {
+      cat("\n")
+      cat(strrep("=", 70), "\n")
+      cat(sprintf("  Interaction Summary (p-values adjusted by %s):\n",
+                  p_adjust_method))
+      cat(strrep("=", 70), "\n")
+      cat(sprintf("  %-12s %-8s %12s %12s  %s\n",
+                  "Variable", "Type", "p_raw", "p_adjusted", ""))
+      cat(strrep("-", 55), "\n")
+      for (i in seq_along(cont_vars)) {
+        vn <- cont_vars[i]
+        w  <- var_winners[[vn]]
+        if (is.null(w$fit)) {
+          cat(sprintf("  %-12s %-8s %12s %12s\n", vn, "---", "NA", "NA"))
+        } else {
+          type_label <- toupper(gsub("fp", "FP", w$type))
+          sel_flag <- if (!is.na(adjusted_pvals[i]) &&
+                          adjusted_pvals[i] < p_interact) " *" else ""
+          cat(sprintf("  %-12s %-8s %12s %12s%s\n",
+                      vn, type_label,
+                      formatC(raw_pvals[i], format = "g", digits = digits),
+                      formatC(adjusted_pvals[i], format = "g", digits = digits),
+                      sel_flag))
+        }
+      }
+      cat(strrep("-", 55), "\n")
+      cat(sprintf("  * = selected at p_interact = %g\n\n", p_interact))
+      
+      # Print model summaries for selected variables
+      if (show_models) {
+        for (vn in names(Filter(Negate(is.null), best_interaction_model))) {
+          w <- var_winners[[vn]]
+          fit_obj <- w$fit$test_results$interaction_model$fit
+          if (!is.null(fit_obj)) {
+            type_label <- toupper(gsub("fp", "FP", w$type))
+            cat(sprintf("  Interaction model (%s, %s):\n", vn, type_label))
+            cat(strrep("-", 50), "\n")
+            print(summary(fit_obj))
+            cat("\n")
+          }
+        }
+      }
+    }
+    
+    # Messages for non-selected variables
+    if (!quiet) {
+      for (i in seq_along(cont_vars)) {
+        vn <- cont_vars[i]
+        w  <- var_winners[[vn]]
+        sel <- !is.null(w$fit) && !is.na(adjusted_pvals[i]) &&
+          adjusted_pvals[i] < p_interact
+        if (!sel) {
+          message(sprintf(
+            "i No significant interaction retained for '%s' (adjusted p = %s).",
+            vn, if (is.na(adjusted_pvals[i])) "NA"
+            else formatC(adjusted_pvals[i], format = "g", digits = digits)
+          ))
+        }
+      }
+    }
+  }
   
   # Trim pre-allocated lists to actual fill level
   best_metrics_list <- best_metrics_list[seq_len(best_idx)]
@@ -1252,6 +1403,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     flex                     = flex,
     criterion                = criterion,
     family                   = family,
-    nobs                     = nobs
+    nobs                     = nobs,
+    p_adjust_method          = p_adjust_method,
+    var_winners              = var_winners
   )
 }

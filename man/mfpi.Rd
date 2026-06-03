@@ -157,12 +157,14 @@ an interaction term. Interpretation depends on \code{criterion}:
 \code{min_improvement} defaults to \code{p_interact} for consistency.
 \item \code{"aic"}: minimum required \code{AIC_main_minus_int}
 (\eqn{= \mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{int}}).
-Must be positive. Typical values: \code{1} or \code{2}. Default is \code{2}.
+Must be positive. Default is \code{2}.
 \item \code{"bic"}: same as \code{"aic"} using \code{BIC_main_minus_int}. Default is \code{2}.
 }
 Among candidates that clear \code{min_improvement}, the one with the
-\strong{largest improvement} (largest \code{AIC_main_minus_int} or \code{BIC_main_minus_int}) is chosen as
-the final functional form.}
+\strong{largest improvement} (largest \code{AIC_main_minus_int} or \code{BIC_main_minus_int})
+is chosen as the final functional form. Small differences in AIC or BIC
+provide little evidence for preferring one model over another; values
+around 2 are often used as a rough guide rather than a strict cutoff.}
 
 \item{include_group_var}{Logical. Whether \code{group_var} should be passed to the MFP algorithm
 alongside the other adjustment variables when selecting the adjustment
@@ -428,6 +430,9 @@ as factors which \code{model.matrix()} will expand automatically.}
 An object of class \code{"mfpi"}. The object is a list with the following
 components:
 
+An object of class \code{"mfpi"}. The object is a list with the following
+components:
+
 \describe{
 \item{\code{best_model_metrics}}{A data frame of evaluation metrics for
 the selected (best) interaction model for each variable in
@@ -494,6 +499,19 @@ Winsorisation, or \code{NULL} when \code{winsorize = FALSE}.}
 \item{\code{winsorize_limits}}{A named list of the actual lower and
 upper limits applied to each \code{cont_var} during Winsorisation,
 or \code{NULL} when \code{winsorize = FALSE}.}
+\item{\code{p_adjust_method}}{Character string: the multiplicity
+adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
+\item{\code{p_interact}}{Numeric: the significance threshold for
+interaction selection.}
+\item{\code{min_improvement}}{Numeric: the threshold for AIC/BIC
+selection. Only relevant when \code{criterion = "aic"} or
+\code{"bic"}.}
+\item{\code{var_winners}}{A named list (one element per \code{cont_var})
+storing the best candidate for each variable regardless of whether
+it was selected. Each element contains \code{fit} (the fitted model),
+\code{metric} (evaluation metrics), \code{type} (winning functional
+form), \code{score} (the decisive metric value), and
+\code{center_vals} (centering constants).}
 }
 }
 \description{
@@ -617,6 +635,25 @@ the additional interaction structure is not justified by the improvement in
 fit. Conversely, if the interaction model has a clearly smaller AIC or BIC,
 this suggests that allowing for interaction improves the balance between fit
 and model complexity.
+}
+
+\section{Prespecified and exploratory interaction analyses}{
+
+Royston and Sauerbrei (2008) distinguished two settings for investigating
+interactions. In the first, a specific covariate has been identified in
+advance as a candidate effect modifier, for example based on prior studies
+or a trial protocol. Because only one interaction is being tested, the
+p-value from \code{mfpi()} can be interpreted directly.
+
+In the second setting, the analyst screens several covariates for possible
+interaction with the grouping variable without a prior hypothesis. This is
+common in practice but requires care: with multiple tests, some will appear
+significant by chance alone. Note that p-values reported by \code{mfpi()}
+are not adjusted for multiplicity unless \code{p_adjust_method} is set.
+When several covariates are screened, the analyst should consider applying
+a correction such as Bonferroni--Holm via \code{p_adjust_method = "holm"}.
+Any identified interaction should be treated as a candidate finding that
+needs confirmation in independent data.
 }
 
 \section{Influential observations or Outliers}{
@@ -924,4 +961,7 @@ for Modelling Continuous Variables}. John Wiley & Sons.
 }
 \seealso{
 \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=mfp2]{mfp2()}}
+
+\code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}},
+\code{\link[=mfp2]{mfp2()}}
 }

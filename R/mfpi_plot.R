@@ -9,9 +9,10 @@
 #   "both"       - fitted and difference plots side by side (requires patchwork)
 #
 # All plots include rug marks for the observed values of the continuous
-# variable, a subtitle showing the variable name / functional form / p-value,
-# and are returned as a nested named list that can be printed, saved, or
-# assembled externally.
+# variable, a subtitle showing the variable name / functional form / p-value
+# (or p_raw and p_adj when multiplicity adjustment is active), and are
+# returned as a nested named list that can be printed, saved, or assembled
+# externally.
 
 
 # -----------------------------------------------------------------------------
@@ -68,6 +69,23 @@
 #'     analogously.
 #' }
 #'
+#' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
+#' the p-value label adapts to avoid ambiguity:
+#' \itemize{
+#'   \item \code{type = NULL} (selected variables): the subtitle shows
+#'     both the raw and adjusted p-values, e.g.
+#'     \code{"cavol | FP1 | p = 0.016 (p_adj = 0.031)"}. The raw p-value
+#'     is from the per-variable interaction test; the adjusted p-value is
+#'     from \code{\link[stats]{p.adjust}} and was used for the selection
+#'     decision.
+#'   \item \code{type} specified (exploring candidates): the subtitle shows
+#'     \code{p_raw = <value>} to make clear that the displayed value is the
+#'     unadjusted per-candidate p-value, e.g.
+#'     \code{"cavol | FP1 | p_raw = 0.016"}. The adjusted p-value is not
+#'     shown because it applies to the winning candidate, not to the
+#'     specific candidate being plotted.
+#' }
+#'
 #' When \code{type = NULL} (default), the subtitle reports the metric of
 #' the \strong{selected} (winning) functional form. When \code{type} is
 #' explicit, the subtitle reports the metric of the \strong{requested}
@@ -86,9 +104,11 @@
 #' was retained as significant have a "winner" curve stored in
 #' \code{best_fitted_functions}. If you call \code{plot(model)} with no
 #' \code{terms}, those non-selected variables are silently dropped and you
-#' see plots only for the variables that survived selection. If you name a
-#' non-selected variable explicitly in \code{terms}, you get an informative
-#' error pointing you to set \code{type} to a specific candidate.
+#' see plots only for the variables that survived selection. If no variable
+#' was selected, a message is printed and the function returns invisibly.
+#' If you name a non-selected variable explicitly in \code{terms}, you get
+#' an informative message explaining that the variable was not selected and
+#' suggesting that you set \code{type} to a specific candidate.
 #'
 #' Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, every
 #' variable in \code{cont_vars} has a candidate curve in
@@ -333,13 +353,21 @@ plot.mfpi <- function(x,
                         list(col = "pvalue", label = "p")   # fallback
   )
   
-  # Build a lookup: variable -> (type, metric_value) for subtitle.
+  # Build a lookup: variable -> (type, metric_value, metric_adj) for subtitle.
   # - When `type` is NULL: use the per-variable winner from best_model_metrics
-  #   so the subtitle reflects what was selected.
+  #   so the subtitle reflects what was selected. If p-values were adjusted,
+  #   include the adjusted p-value.
   # - When `type` is explicit: pull from all_model_metrics matched on
-  #   (variable, type), so the subtitle matches the curve being plotted.
+  #   (variable, type). Always raw p-value (adjustment applies to the winner,
+  #   not to a specific candidate).
+  padj <- if (!is.null(model$p_adjust_method)) model$p_adjust_method else "none"
+  adjusting <- padj != "none" && crit_used == "pvalue"
+  
   subtitle_lookup <- list()
   if (!is.null(type)) {
+    # Exploring candidates: always raw p-value, no adjustment.
+    # Label as p_raw when adjustment is active to avoid ambiguity.
+    explore_label <- if (adjusting) "p_raw" else metric_spec$label
     all_metrics <- model$all_model_metrics
     if (!is.null(all_metrics) && nrow(all_metrics) > 0L) {
       type_rows <- all_metrics[!is.na(all_metrics$type) &
@@ -347,17 +375,34 @@ plot.mfpi <- function(x,
       for (i in seq_len(nrow(type_rows))) {
         v <- type_rows$variable[i]
         subtitle_lookup[[v]] <- list(
-          type     = type,
-          metric   = type_rows[[metric_spec$col]][i]
+          type       = type,
+          metric     = type_rows[[metric_spec$col]][i],
+          label      = explore_label,
+          metric_adj = NULL
         )
       }
     }
   } else if (!is.null(metrics) && nrow(metrics) > 0L) {
+    # Selected variables: include adjusted p-value when adjustment is active
+    adj_pvals <- NULL
+    if (adjusting) {
+      vw <- model$var_winners
+      if (!is.null(vw)) {
+        raw_pvals <- vapply(vw, function(w) {
+          if (is.null(w$fit)) NA_real_ else w$metric$pvalue[1L]
+        }, numeric(1L))
+        adj_pvals <- stats::p.adjust(raw_pvals, method = padj)
+        names(adj_pvals) <- names(vw)
+      }
+    }
     for (i in seq_len(nrow(metrics))) {
       v <- metrics$variable[i]
       subtitle_lookup[[v]] <- list(
-        type     = metrics$type[i],
-        metric   = metrics[[metric_spec$col]][i]
+        type       = metrics$type[i],
+        metric     = metrics[[metric_spec$col]][i],
+        label      = metric_spec$label,
+        metric_adj = if (!is.null(adj_pvals) && v %in% names(adj_pvals))
+          adj_pvals[[v]] else NULL
       )
     }
   }
@@ -380,14 +425,22 @@ plot.mfpi <- function(x,
                        fp2    = "FP2",
                        info$type
     )
+    lbl <- if (!is.null(info$label)) info$label else metric_spec$label
     val_str <- if (is.null(info$metric) || is.na(info$metric))
       "NA"
-    else if (metric_spec$label == "p")
+    else if (lbl %in% c("p", "p_raw"))
       formatC(info$metric, format = "g", digits = 3)
     else
       formatC(info$metric, format = "f", digits = 2)
-    sprintf("%s  |  %s  |  %s = %s",
-            var, type_str, metric_spec$label, val_str)
+    
+    base <- sprintf("%s  |  %s  |  %s = %s", var, type_str, lbl, val_str)
+    
+    # Append adjusted p-value when available
+    if (!is.null(info$metric_adj) && !is.na(info$metric_adj)) {
+      adj_str <- formatC(info$metric_adj, format = "g", digits = 3)
+      base <- sprintf("%s (p_adj = %s)", base, adj_str)
+    }
+    base
   }
   
   # ---------------------------------------------------------------------------

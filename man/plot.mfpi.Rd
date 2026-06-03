@@ -134,6 +134,23 @@ interaction model.
 analogously.
 }
 
+When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
+the p-value label adapts to avoid ambiguity:
+\itemize{
+\item \code{type = NULL} (selected variables): the subtitle shows
+both the raw and adjusted p-values, e.g.
+\code{"cavol | FP1 | p = 0.016 (p_adj = 0.031)"}. The raw p-value
+is from the per-variable interaction test; the adjusted p-value is
+from \code{\link[stats]{p.adjust}} and was used for the selection
+decision.
+\item \code{type} specified (exploring candidates): the subtitle shows
+\code{p_raw = <value>} to make clear that the displayed value is the
+unadjusted per-candidate p-value, e.g.
+\code{"cavol | FP1 | p_raw = 0.016"}. The adjusted p-value is not
+shown because it applies to the winning candidate, not to the
+specific candidate being plotted.
+}
+
 When \code{type = NULL} (default), the subtitle reports the metric of
 the \strong{selected} (winning) functional form. When \code{type} is
 explicit, the subtitle reports the metric of the \strong{requested}
@@ -154,9 +171,11 @@ Under \code{type = NULL} (the default), only variables whose interaction
 was retained as significant have a "winner" curve stored in
 \code{best_fitted_functions}. If you call \code{plot(model)} with no
 \code{terms}, those non-selected variables are silently dropped and you
-see plots only for the variables that survived selection. If you name a
-non-selected variable explicitly in \code{terms}, you get an informative
-error pointing you to set \code{type} to a specific candidate.
+see plots only for the variables that survived selection. If no variable
+was selected, a message is printed and the function returns invisibly.
+If you name a non-selected variable explicitly in \code{terms}, you get
+an informative message explaining that the variable was not selected and
+suggesting that you set \code{type} to a specific candidate.
 
 Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, every
 variable in \code{cont_vars} has a candidate curve in

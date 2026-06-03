@@ -105,6 +105,23 @@
 #' fit. Conversely, if the interaction model has a clearly smaller AIC or BIC,
 #' this suggests that allowing for interaction improves the balance between fit
 #' and model complexity.
+#' 
+#' @section Prespecified and exploratory interaction analyses:
+#' Royston and Sauerbrei (2008) distinguished two settings for investigating
+#' interactions. In the first, a specific covariate has been identified in
+#' advance as a candidate effect modifier, for example based on prior studies
+#' or a trial protocol. Because only one interaction is being tested, the
+#' p-value from \code{mfpi()} can be interpreted directly.
+#'
+#' In the second setting, the analyst screens several covariates for possible
+#' interaction with the grouping variable without a prior hypothesis. This is
+#' common in practice but requires care: with multiple tests, some will appear
+#' significant by chance alone. Note that p-values reported by \code{mfpi()}
+#' are not adjusted for multiplicity unless \code{p_adjust_method} is set.
+#' When several covariates are screened, the analyst should consider applying
+#' a correction such as Bonferroni--Holm via \code{p_adjust_method = "holm"}.
+#' Any identified interaction should be treated as a candidate finding that
+#' needs confirmation in independent data.
 #'
 #' @section Influential observations or Outliers:
 #' FP models are sensitive to outliers or influential observations in the
@@ -310,12 +327,14 @@
 #'       `min_improvement` defaults to `p_interact` for consistency.
 #'     \item `"aic"`: minimum required `AIC_main_minus_int`
 #'       (\eqn{= \mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{int}}).
-#'       Must be positive. Typical values: `1` or `2`. Default is `2`.
+#'       Must be positive. Default is `2`.
 #'     \item `"bic"`: same as `"aic"` using `BIC_main_minus_int`. Default is `2`.
 #'   }
 #'   Among candidates that clear `min_improvement`, the one with the
-#'   **largest improvement** (largest `AIC_main_minus_int` or `BIC_main_minus_int`) is chosen as
-#'   the final functional form.
+#'   **largest improvement** (largest `AIC_main_minus_int` or `BIC_main_minus_int`)
+#'   is chosen as the final functional form. Small differences in AIC or BIC 
+#'   provide little evidence for preferring one model over another; values 
+#'   around 2 are often used as a rough guide rather than a strict cutoff.
 #' @param include_group_var
 #'   Logical. Whether `group_var` should be passed to the MFP algorithm
 #'   alongside the other adjustment variables when selecting the adjustment
@@ -570,6 +589,10 @@
 #' An object of class \code{"mfpi"}. The object is a list with the following
 #' components:
 #'
+#' @return
+#' An object of class \code{"mfpi"}. The object is a list with the following
+#' components:
+#'
 #' \describe{
 #'   \item{\code{best_model_metrics}}{A data frame of evaluation metrics for
 #'     the selected (best) interaction model for each variable in
@@ -636,6 +659,19 @@
 #'   \item{\code{winsorize_limits}}{A named list of the actual lower and
 #'     upper limits applied to each \code{cont_var} during Winsorisation,
 #'     or \code{NULL} when \code{winsorize = FALSE}.}
+#'   \item{\code{p_adjust_method}}{Character string: the multiplicity
+#'     adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
+#'   \item{\code{p_interact}}{Numeric: the significance threshold for
+#'     interaction selection.}
+#'   \item{\code{min_improvement}}{Numeric: the threshold for AIC/BIC
+#'     selection. Only relevant when \code{criterion = "aic"} or
+#'     \code{"bic"}.}
+#'   \item{\code{var_winners}}{A named list (one element per \code{cont_var})
+#'     storing the best candidate for each variable regardless of whether
+#'     it was selected. Each element contains \code{fit} (the fitted model),
+#'     \code{metric} (evaluation metrics), \code{type} (winning functional
+#'     form), \code{score} (the decisive metric value), and
+#'     \code{center_vals} (centering constants).}
 #' }
 #'
 #' @references
@@ -1511,10 +1547,15 @@ mfpi.default <- function(
   )
   
   # Attach Winsorisation metadata for transparency in the returned object
-  fit$winsorize       <- isTRUE(winsorize)
-  fit$winsorize_probs <- if (isTRUE(winsorize)) winsorize_probs else NULL
-  fit$winsorize_limits <- winsorize_limits
+  # Attach metadata for transparency in the returned object
+  fit$winsorize         <- isTRUE(winsorize)
+  fit$winsorize_probs   <- if (isTRUE(winsorize)) winsorize_probs else NULL
+  fit$winsorize_limits  <- winsorize_limits
   fit$p_adjust_method   <- p_adjust_method
+  fit$p_interact        <- p_interact
+  fit$min_improvement   <- min_improvement
+  
+  
   class(fit) <- "mfpi"
   fit
 }
@@ -1579,6 +1620,8 @@ mfpi.default <- function(
 #' and a warning is issued. Similarly, an \code{offset()} term in the formula
 #' takes precedence over the \code{offset} argument.
 #'
+#' @seealso [mfp2::print.mfpi()], [mfp2::summary.mfpi()], [mfp2::plot.mfpi()], 
+#' [mfp2::mfp2()]
 #' @export
 mfpi.formula <- function(formula,
                          data,
@@ -2049,6 +2092,7 @@ mfpi.formula <- function(formula,
     winsorize         = winsorize,
     winsorize_probs   = winsorize_probs,
     center_type       = center_type,
+    p_adjust_method   = p_adjust_method,
     verbose           = verbose,
     digits            = digits,
     ...

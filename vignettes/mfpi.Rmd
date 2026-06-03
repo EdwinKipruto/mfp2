@@ -125,14 +125,16 @@ The `mfpi()` function supports both settings. For a prespecified analysis,
 `cont_vars` contains a single continuous covariate. For an exploratory analysis,
 `cont_vars` lists several continuous covariates, each assessed in turn. For each
 variable under test, the adjustment covariates consist of the remaining selected
-variables, i.e. the variable being tested is excluded from the adjustment set.
+variables, i.e., the variable being tested is excluded from the adjustment set.
 
 When several covariates are screened and `criterion = "pvalue"`, interaction
 p-values can be adjusted across `cont_vars` using the `p_adjust_method`
 argument. For example, `p_adjust_method = "holm"` applies Holm's step-down
 correction. The default is `p_adjust_method = "none"`, meaning that no
-multiplicity adjustment is applied. This correction applies across the variables screened in `cont_vars`, not across the internal candidate models fitted by MFPI,
-such as linear, FP1, and FP2. Those internal comparisons are part of the MFPI selection procedure.
+multiplicity adjustment is applied. This correction applies across the variables
+screened in `cont_vars`, not across the internal candidate models fitted by MFPI,
+such as linear, FP1, and FP2. Those internal comparisons are part of the MFPI
+selection procedure.
 
 # The MFPI approach
 
@@ -163,7 +165,8 @@ linear, FP1, and FP2 functions. The selection criterion, specified by
 criteria are `"pvalue"`, `"aic"`, and `"bic"`.
 
 For a binary grouping variable, let $t = 0$ denote the reference group and 
-$t = 1$ denote the comparison group. Let $z$ be the continuous covariate under investigation. Prior to FP transformation, $z$ is shifted when it contains 
+$t = 1$ denote the comparison group. Let $z$ be the continuous covariate under
+investigation. Prior to FP transformation, $z$ is shifted when it contains 
 negative or zero values to ensure positivity, and optionally scaled for 
 numerical stability.
 
@@ -198,8 +201,7 @@ varies with $z$, this suggests that the effect of the grouping variable on the
 outcome depends on the value of the continuous covariate. Pointwise standard 
 errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$ 
 are estimated using the delta method applied to the variance-covariance matrix 
-of
-the fitted interaction model.
+of the fitted interaction model.
 
 The treatment-effect plot should be interpreted as a model-based visual summary.
 The confidence interval is pointwise and depends on the selected model.
@@ -219,12 +221,12 @@ it also increases the risk of instability, especially in small samples or when
 the continuous covariate has a skewed distribution, influential observations, 
 or sparse data in parts of its range.
 
-The appropriate flexibility level should therefore be chosen using subject-matter
+The appropriate flexibility level should therefore be chosen using subject matter
 knowledge, the expected shape of the interaction, and sample-size considerations. 
 More flexible models may be useful when there is a strong scientific rationale 
 for different functional forms across groups, but simpler models are often 
-preferable when the goal is stable estimation and interpretable treatment-effect
-functions. For further details, see Royston and Sauerbrei (2004), 
+preferable when the goal is stable estimation and an interpretable treatment effect
+function. For further details, see Royston and Sauerbrei (2004), 
 Royston and Sauerbrei (2013), and Royston and Sauerbrei (2014).
 
 ## `flex1`
@@ -233,7 +235,7 @@ Royston and Sauerbrei (2013), and Royston and Sauerbrei (2014).
 covariate are estimated once from the pooled main-effects model. This model 
 includes the FP terms for the continuous covariate and the group indicators, but
 no group-by-covariate interaction, while adjusting for the selected covariates 
-in the adjustment model. The FP powers selected from this pooled main-effects 
+in the adjustment model. The FP powers selected from this pooled main effects 
 model are then held fixed and used at each level of the grouping variable. Thus,
 the same FP basis functions are used in all groups, and only the regression 
 coefficients of these basis functions are allowed to differ between groups.
@@ -298,7 +300,7 @@ FP1 with `flex3` had significance levels close to nominal in the well-behaved
 case and in scenarios 1–6 of the badly behaved case, but FP1 models showed 
 inflated significance levels in scenarios 7–9. FP2 with `flex3` showed some 
 inflation: less than FP2 with `flex2`, but still large enough for Royston and 
-Sauerbrei (2014) to judge it unsuitable as a candidate method because of 
+Sauerbrei (2014) judged it unsuitable as a candidate method because of 
 inflated type I error.
 
 In the power study, FP1 with `flex3` performed well. Royston and Sauerbrei (2014) 
@@ -311,7 +313,7 @@ functions that are simple, understandable, and transferable.
 
 ## `flex4`
 
-`flex4` is the most flexible option. Like `flex3`, it allows the main-effects 
+`flex4` is the most flexible option. Like `flex3`, it allows the main effects 
 and interaction models to use separately selected FP powers. Its distinguishing
 feature is that the FP powers in the interaction model are also allowed to differ
 across the levels of the grouping variable. Thus, each group may have its own FP
@@ -335,9 +337,9 @@ that FP2 with `flex4` had significance levels below the target level and low
 power. For this reason, FP2 with `flex4` was not considered a suitable candidate
 method in their recommendations.
 
-`flex4` may be useful when there is strong subject-matter reason to believe that
+`flex4` may be useful when there is a strong subject matter reason to believe that
 the functional form of the covariate effect differs between groups. However, 
-this may require sufficient large samples.
+this may require sufficiently large samples.
 
 The four MFPI variants are summarized in the table below. The table shows how
 the FP powers are selected and constrained, and gives the degrees of freedom
@@ -360,7 +362,8 @@ flex_table <- data.frame(
 knitr::kable(
   flex_table,
   align = c("l", "l", "c", "c"),
-caption = "Variants of MFPI with degrees of freedom for the tests of interaction from Royston and Sauerbrei (2013)."
+caption = "Variants of MFPI with degrees of freedom for the tests of interaction 
+from Royston and Sauerbrei (2013)."
 )
 ```
 
@@ -375,7 +378,7 @@ FP2. Each candidate is evaluated using its corresponding interaction test, and
 the `criterion` parameter determines which candidate is selected. In the 
 candidate table, the selected candidate is marked with `+`.
 
-This allows users to prespecify a preferred degree based on subject-matter 
+This allows users to prespecify a preferred degree based on subject matter 
 reasoning while still using the other candidates for comparison and sensitivity 
 assessment. For example, a user following the recommendation of Royston and 
 Sauerbrei (2014) might focus on FP1 with `flex3` when there is no strong reason 
@@ -389,7 +392,7 @@ and Sauerbrei (2014) recommended FP2 with `flex1`.
 For `flex2`, `flex3`, and `flex4`, significance tests for interaction are based
 on chi-square distributions with the stated degrees of freedom. However, these
 tests are non-nested, and the resulting p-values lack a firm theoretical
-underpinning. The signficance levels may therefore be liberal
+underpinning. The significance levels may therefore be liberal
 or conservative (Royston and Sauerbrei, 2013).
 
 As an alternative, AIC or BIC may be used to compare the fitted main-effects and
@@ -404,7 +407,7 @@ FP models can be sensitive to outliers or influential observations in the
 continuous predictor. A small number of influential observations in the tails of
 a variable in `cont_vars` may strongly affect the selected functional form and
 may produce spuriously significant interactions. Therefore, it is important to
-inspect the data before fitting an MFPI model, for example using univariable
+inspect the data before fitting an MFPI model, for example, using univariable
 plots.
 
 In `mfpi()`, Winsorisation is provided as an optional pre-processing step to
@@ -428,7 +431,7 @@ with a warning.
 
 Variables in `cont_vars` that are also listed in `zero_vars` are excluded from
 Winsorisation, because the zero structure of these variables carries substantive
-modelling meaning and truncating the lower tail could distort it. Excluded
+modelling meaning, and truncating the lower tail could distort it. Excluded
 variables are recorded with `NA` limits in `winsorize_limits` for transparency.
 
 Winsorisation is applied after shifting and scaling, so the percentile cutoffs
@@ -453,7 +456,7 @@ the initial data analysis.
 
 # Checking selected interactions
 
-A selected MFPI interaction should not be accepted solely on the basis of a
+A selected MFPI interaction should not be accepted solely based on a
 p-value. The fitted curves should be checked graphically and interpreted in the
 light of subject-matter knowledge.
 

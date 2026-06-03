@@ -1,0 +1,550 @@
+---
+title: "ACD Transformations with mfp2"
+author: "Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    highlight: tango
+vignette: >
+  %\VignetteIndexEntry{ACD Transformations with mfp2}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style>
+body {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Colour section headings in the main text only */
+h1, h2, h3, h4 {
+  margin-top: 1.4em;
+  margin-bottom: 0.6em;
+  color: #1f77b4;
+}
+
+/* Keep TOC links unchanged */
+#TOC a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Style ordinary links in the document body */
+body > p a,
+body > div:not(#TOC) a,
+.main-container a {
+  color: #1f77b4;
+  text-decoration: none;
+}
+
+body > p a:hover,
+body > div:not(#TOC) a:hover,
+.main-container a:hover {
+  color: #0b4f8a;
+  text-decoration: underline;
+}
+
+pre {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+
+code {
+  font-size: 90%;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.figure {
+  margin-top: 1.2em;
+  margin-bottom: 1.2em;
+}
+
+.caption {
+  font-size: 90%;
+  color: #555555;
+}
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 5,
+  out.width = "100%",
+  fig.align = "center"
+)
+
+oldwidth <- getOption("width")
+options(width = 100)
+
+library(mfp2)
+library(ggplot2)
+library(patchwork)
+library(survival)
+library(formatR)
+```
+
+# Overview
+
+Royston (2014) proposed the approximate cumulative distribution (ACD)
+transformation as a smooth covariate-rank transformation for use in regression
+models with sigmoid dose-response functions. The transformation was motivated by
+the need to represent relationships that are singly or doubly asymptotic, or
+that contain a sigmoid-shaped component.
+
+Standard flexible functions, such as fractional polynomials (FPs) and restricted
+cubic splines, can be useful for many nonlinear relationships. However, they may
+struggle to represent curves with one or two asymptotes. The ACD transformation
+addresses this problem by first compressing the tails of the observed covariate
+distribution through a scaled-rank transformation and then approximating the
+empirical cumulative distribution function (ECDF) by a smooth function.
+
+The `mfp2` package implements ACD transformations for continuous covariates. In
+`mfp2`, ACD modelling corresponds to the MFPA extension of the standard MFP
+algorithm for variables selected by the user. This extension allows the original
+covariate `x` and its ACD transformation to be considered together within a
+fractional polynomial model-selection framework:
+
+$$
+A_x = \operatorname{ACD}(x).
+$$
+
+In the multivariable setting, the ACD extension follows the same backfitting
+principle as MFP. For variables selected for ACD assessment, the usual function
+selection procedure (FSP) is replaced by a function-selection procedure with ACD
+transformation (FSPA). Variables not selected for ACD assessment are handled by
+the standard MFP procedure.
+
+The ACD transformation can be used in both interfaces of `mfp2()`:
+
+- in the matrix interface, by specifying the variable name in the `acdx`
+  argument;
+- in the formula interface, by setting `acdx = TRUE` inside `fp()`.
+
+The variable representing the ACD transformation of a covariate `x` is named
+`A_x` internally in `mfp2`.
+
+# Definition of the ACD transformation
+
+Let the observed values of a continuous covariate `X` be denoted by
+
+$$
+x_1, \ldots, x_n.
+$$
+
+The ACD transformation proceeds in three steps.
+
+## Inverse normal transformation of ranks
+
+First, the rank of each observation is transformed to an approximately standard
+normal scale:
+
+$$
+z_i =
+\Phi^{-1}
+\left(
+\frac{\operatorname{rank}(x_i) - 0.5}{n}
+\right),
+$$
+
+where
+
+$$
+\Phi^{-1}
+$$
+
+is the inverse standard normal cumulative distribution function. If all `x_i`
+values are distinct, the transformed values `z_i` resemble expected standard
+normal order statistics.
+
+## Power-linear approximation
+
+Second, a one-term fractional polynomial regression is fitted to approximate
+`z_i` as a smooth function of `x_i`:
+
+$$
+\hat{z}_i =
+\hat{\beta}_0 +
+\hat{\beta}_1 (x_i + \text{shift})^p.
+$$
+
+Here, `p` is the best-fitting FP1 power. The power `p` is selected from the usual
+FP power set:
+
+$$
+S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}.
+$$
+
+Ordinary least squares is used to estimate
+
+$$
+\hat{\beta}_0
+\quad \text{and} \quad
+\hat{\beta}_1.
+$$
+
+A power of 0 corresponds to the natural logarithm. If all observed `x_i` values
+are positive, the shift is zero. If some values are nonpositive, a shift is
+used to ensure that all transformed values are positive:
+
+$$
+x_i + \text{shift} > 0.
+$$
+
+## Back-transformation to the interval `(0, 1)`
+
+Third, the fitted values are transformed back to the interval `(0, 1)` using the
+standard normal cumulative distribution function:
+
+$$
+\operatorname{ACD}(x_i)
+=
+a_i
+=
+\Phi(\hat{z}_i)
+=
+\Phi
+\left[
+\hat{\beta}_0 +
+\hat{\beta}_1 (x_i + \text{shift})^p
+\right].
+$$
+
+The result is a smooth approximation to the ECDF of `X`. Importantly, after this
+smoothing step, the transformed value $\operatorname{ACD}(x_i)$ is a smooth 
+function of the original covariate value $x_i$ and no longer depends directly on
+its observed rank.
+
+# Interpretation
+
+The ACD transformation maps `X` to an approximately uniform scale on `(0, 1)`.
+When a regression model includes a linear effect of `ACD(X)`, the expected
+outcome changes smoothly from its value at the lower end of the distribution of
+`X` to its value at the upper end.
+
+For example, in a model of the form
+
+$$
+E(Y) = \beta_0 + \beta_1 \operatorname{ACD}(X),
+$$
+
+the ACD transformation maps the observed distribution of `X` approximately onto
+the interval `(0, 1)`. At the lower end of the observed distribution,
+$\operatorname{ACD}(X) \approx 0$,
+
+so that
+
+$$
+E(Y \mid \operatorname{ACD}(X) \approx 0)
+\approx
+\beta_0 + \beta_1 \times 0
+=
+\beta_0.
+$$
+
+At the upper end of the observed distribution, $\operatorname{ACD}(X) \approx 1$,
+
+so that
+
+$$
+E(Y \mid \operatorname{ACD}(X) \approx 1)
+\approx
+\beta_0 + \beta_1 \times 1
+=
+\beta_0 + \beta_1.
+$$
+
+Therefore, the difference between the predicted values at the upper and lower
+ends of the observed distribution is
+
+$$
+(\beta_0 + \beta_1) - \beta_0 = \beta_1.
+$$
+
+Thus, $\beta_1$ represents the range of predicted values across the observed
+distribution of `X`.
+
+Because the mapping from `X` to `ACD(X)` is S-shaped, it changes slowly in the
+tails of the distribution and more rapidly in the central range. Consequently, a
+linear effect of `ACD(X)` typically produces a sigmoid-shaped relationship
+between `X` and `Y`.
+
+This type of relationship may be difficult to represent adequately using
+standard FP functions alone, particularly when the curve is singly or doubly
+asymptotic.
+
+The ACD transformation may also reduce the influence of extreme covariate values.
+By construction, `ACD(X)` has an approximately uniform distribution on `(0, 1)`.
+Extreme values on the original scale of `X` are therefore compressed into the
+tails of the ACD scale.
+
+# ACD in the fractional polynomial family
+
+Royston and Sauerbrei (2016) extended the MFP approach by considering both the
+original covariate `x` and its ACD transformation simultaneously:
+
+$$
+A_x = \operatorname{ACD}(x).
+$$
+
+To reduce instability and overfitting, the most complex model is restricted to 
+one-term FP functions of $x$ and $A_x$. Specifically, the most complex
+ACD-extended model has the form
+
+$$
+\beta_1 x^{p_1}
++
+\beta_2 A_x^{p_2}.
+$$
+
+This model is denoted
+
+$$
+FP1(p_1, p_2).
+$$
+
+The powers `p1` and `p2` are selected from the usual FP power set:
+
+$$
+S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\},
+$$
+
+where a power of 0 denotes the natural logarithm. All 64 ($8 \times 8 = 64$) 
+combinations of the two powers are considered during model selection.
+
+This family provides a flexible way to model sigmoid-like effects while
+remaining within the general framework of fractional polynomial model selection.
+It also permits standard FP1 or linear functions when the ACD component is not
+needed.
+
+# Function-selection procedure for ACD (FSPA)
+
+When a variable is selected for ACD assessment, `mfp2()` uses the FSPA. The
+procedure starts from the most complex candidate ACD-extended model,
+
+$$
+FP1(p_1, p_2),
+$$
+
+and compares it with a set of simpler nested models, as described in the
+[closed test procedure](#FSPA). The aim is to select the simplest function that
+is adequately supported by the data. The procedure considers six nested model 
+families as shown below:
+
+```{r acd-model-table, echo=FALSE, results='asis'}
+acd_models <- data.frame(
+  Model = c("M1", "M2", "M3", "M4", "M5", "M6"),
+  Notation = c(
+    "$FP1(p_1, p_2)$",
+    "$FP1(p_1, \\cdot)$",
+    "$FP1(\\cdot, p_2)$",
+    "$FP1(1, \\cdot)$",
+    "$FP1(\\cdot, 1)$",
+    "$FP1(\\cdot, \\cdot)$"
+  ),
+  Function = c(
+    "$\\beta_1 x^{p_1} + \\beta_2 A_x^{p_2}$",
+    "$\\beta_1 x^{p_1}$",
+    "$\\beta_2 A_x^{p_2}$",
+    "$\\beta_1 x$",
+    "$\\beta_2 A_x$",
+    "Null model"
+  ),
+  Interpretation = c(
+    "Most complex allowed ACD-extended function",
+    "Standard FP1 function of x",
+    "FP1 function of ACD(x)",
+    "Linear function of x",
+    "Linear function of ACD(x)",
+    "x omitted"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  acd_models,
+  align = c("l", "l", "l", "l"),
+  escape = FALSE,
+  caption = "Six nested model families considered by the FSPA."
+)
+```
+The dot $\cdot$ indicates that the corresponding term is omitted.
+
+## Closed test procedure {#FSA}
+
+Selection among the six sub-models is performed using a closed test procedure.
+The first test is performed at the significance level specified by `select`,
+whereas the remaining tests are performed at the significance level specified by
+`alpha`.
+
+The sequence of tests is as follows:
+
+1. Compare model M1 with model M6 on 4 degrees of freedom. If the test is not
+   significant, omit `x`. Otherwise, continue to Step 2.
+
+2. Compare model M1 with model M4 on 3 degrees of freedom. If the test is not
+   significant, select model M4 and stop. Otherwise, continue to Step 3.
+
+3. Compare model M1 with model M2 on 2 degrees of freedom. If the test is not
+   significant, select model M2 and stop. Otherwise, continue to Step 4.
+
+4. Compare model M1 with model M3 on 2 degrees of freedom. If the test is
+   significant, model M1 cannot be simplified; select model M1 and stop.
+   Otherwise, continue to Step 5.
+
+5. Compare model M3 with model M5 on 1 degree of freedom. If the test is
+   significant, select model M3. Otherwise, select model M5.
+
+The result is the selection of one of the six models. The ordering of these tests
+is intentional. The FSPA favours a linear or standard FP1 function when such a
+function provides an adequate fit. ACD-based models are selected only when the
+simpler standard functions do not fit sufficiently well relative to the full
+ACD-extended model.
+
+This follows the general philosophy of MFP: the selected model should be as
+simple as possible, and additional complexity should be supported by improved
+fit.
+
+## Information criteria
+
+As an alternative to p-value-based selection, the candidate models M1 to M6 can
+be compared using AIC or BIC. When `criterion = "aic"` or `criterion = "bic"`,
+the model with the smallest information criterion is selected.
+
+# Simulation example
+
+The following simulation creates a sigmoid relationship between a continuous
+covariate `x` and a continuous outcome `y`.
+
+```{r simulate-acd}
+set.seed(54)
+
+n <- 500
+x <- matrix(rnorm(n), ncol = 1, dimnames = list(NULL, "x"))
+
+sigmoid <- function(x) {
+  1 / (1 + exp(-1.7 * x))
+}
+
+y <- as.numeric(20 * sigmoid(x) + rnorm(n, mean = 0, sd = 0.5))
+```
+
+The true relationship between `x` and `y` is sigmoid-shaped. This provides a
+simple setting in which the ACD extension is expected to be useful.
+
+# Fitting an ACD model
+
+## Matrix interface
+
+We first fit the model using the matrix interface. The variable `x` is specified
+in the `acdx` argument, indicating that the ACD extension should be considered
+for this covariate.
+
+```{r fit-acd-matrix}
+fit_acd_matrix <- mfp2(
+  x, y,
+  acdx = "x",
+  verbose = FALSE
+)
+
+fit_acd_matrix$fp_terms
+```
+
+## Formula interface
+
+The same model can be fitted using the formula interface by setting
+`acdx = TRUE` inside `fp()`.
+
+```{r fit-acd-formula}
+dat <- data.frame(y = y, x = as.numeric(x))
+
+fit_acd_formula <- mfp2(
+  y ~ fp(x, acdx = TRUE),
+  data = dat,
+  verbose = FALSE
+)
+
+fit_acd_formula$fp_terms
+```
+
+# Comparison with standard MFP
+
+For comparison, we fit a standard MFP model without the ACD extension.
+
+```{r fit-standard-mfp}
+fit_standard <- mfp2(
+  y ~ fp(x, acdx = FALSE),
+  data = dat,
+  verbose = FALSE
+)
+
+fit_standard$fp_terms
+```
+
+A standard FP function may select a flexible FP2 model, but it may still be less
+suitable for representing a clearly sigmoid-shaped relationship. The ACD
+extension is designed for situations where such shapes are scientifically
+plausible and supported by the data.
+
+# Plotting the fitted functions
+
+The fitted functions can be inspected using `fracplot()`.
+
+```{r plot-acd, fig.cap="ACD model compared with a standard MFP model.", fig.width=8, fig.height=4}
+p1 <- fracplot(fit_acd_matrix, terms = "x")[[1]] +
+  ggplot2::ylab("Partial predictor + residuals") +
+  ggplot2::ggtitle("ACD model")
+
+p2 <- fracplot(fit_standard, terms = "x")[[1]] +
+  ggplot2::ylab("Partial predictor + residuals") +
+  ggplot2::ggtitle("Standard MFP model")
+
+patchwork::wrap_plots(p1, p2, ncol = 2)
+```
+
+In this simulated example, the ACD model is expected to follow the sigmoid shape
+more naturally than the standard MFP model.
+
+# Practical remarks
+
+ACD transformations are useful when a sigmoid-shaped relationship is
+scientifically plausible. They may also reduce the influence of extreme
+covariate values, because the observed covariate distribution is mapped to an
+approximately uniform scale on `(0, 1)`.
+
+The ACD extension should be regarded as an additional modelling option within the
+MFP framework, not as a replacement for standard MFP modelling.
+
+# References
+
+Royston, P. (2014). A smooth covariate rank transformation for use in regression
+models with a sigmoid dose-response function. *Stata Journal*, 14, 329--341.
+
+Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
+covariate transformation for enhanced parametric multivariable modeling.
+*Stata Journal*, 16, 72--87.
+
+Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A
+Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for
+Modelling Continuous Variables*. John Wiley & Sons.
+
+```{r cleanup, include=FALSE}
+options(width = oldwidth)
+```

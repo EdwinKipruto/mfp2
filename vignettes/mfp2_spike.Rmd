@@ -1,0 +1,242 @@
+---
+title: "Spike-at-Zero Modeling with mfp2"
+author:
+  - Edwin Kipruto
+  - Willi Sauerbrei
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Spike-at-Zero Modeling with mfp2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE
+)
+oldwidth <- getOption("width")
+options(width = 100)
+
+library(mfp2)
+```
+
+# Overview
+
+In epidemiological and clinical studies, a continuous covariate may have a mixture of zero values and positive values. Such variables are often called semi-continuous variables. There is a spike at zero in an otherwise continuous distribution.
+
+Examples include alcohol consumption, tobacco exposure, occupational exposure, and medication dose. When `x = 0` identifies a distinct subpopulation, the outcome for these individuals may be modelled with a binary indicator, while positive values are modelled with a continuous fractional polynomial function.
+
+The `mfp2` package implements spike-at-zero (SAZ) modelling using a two-stage procedure. FP transformations are applied only to positive values, and a binary indicator represents the spike at zero.
+
+# Model formulation
+
+Assume \(x \ge 0\). Define
+
+\[
+z =
+\begin{cases}
+1, & x = 0, \\
+0, & x > 0.
+\end{cases}
+\]
+
+A spike-at-zero model can be written as
+
+\[
+\eta = \beta_0 + \beta z + \phi^+(x; p),
+\]
+
+where
+
+\[
+\phi^+(x; p) =
+\begin{cases}
+0, & x = 0, \\
+\phi(x; p), & x > 0.
+\end{cases}
+\]
+
+The function \(\phi(x; p)\) is an FP function fitted only to the positive part of the covariate distribution. The coefficient \(\beta\) captures the difference between the zero group and the positive group, conditional on the FP function.
+
+# Interfaces
+
+The matrix interface uses character vectors of variable names:
+
+```{r matrix-interface, eval=FALSE}
+mfp2(x, y, zero_vars = "exposure")
+mfp2(x, y, catzero_vars = "exposure")
+mfp2(x, y, spike_vars = "exposure")
+```
+
+The formula interface uses logical flags inside `fp()`:
+
+```{r formula-interface, eval=FALSE}
+mfp2(y ~ fp(exposure, zero = TRUE), data = dat)
+mfp2(y ~ fp(exposure, catzero = TRUE), data = dat)
+mfp2(y ~ fp(exposure, spike = TRUE), data = dat)
+```
+
+The implications are:
+
+- `catzero_vars` implies `zero_vars`;
+- `spike_vars` implies `catzero_vars` and `zero_vars` while the SAZ algorithm is active;
+- overlap between `zero_vars`, `catzero_vars`, and `spike_vars` is allowed.
+
+In the formula interface, `catzero = TRUE` implies `zero = TRUE`, and `spike = TRUE` implies both `catzero = TRUE` and `zero = TRUE` while the SAZ algorithm is active.
+
+# Difference between zero, catzero, and spike
+
+`zero_vars` applies FP transformations only to the positive part of a covariate and sets nonpositive values to zero during transformation. No additional binary indicator is added.
+
+`catzero_vars` also creates a binary indicator for zero values and includes it together with the transformed positive part.
+
+`spike_vars` triggers the two-stage SAZ algorithm, which evaluates whether the binary indicator, the FP function, or both are required.
+
+# Two-stage selection procedure
+
+## Stage 1: Functional form selection
+
+A binary indicator \(Z\) is created for zero values and is forced into the model during Stage 1. FP transformations are applied only to positive values of `x`. The usual function selection procedure is then applied to the positive part, with \(Z\) included.
+
+For a maximum complexity of FP2 and `criterion = "pvalue"`, the procedure compares:
+
+1. best FP2 + \(Z\) versus the null model;
+2. best FP2 + \(Z\) versus linear + \(Z\);
+3. best FP2 + \(Z\) versus best FP1 + \(Z\).
+
+## Stage 2: Component assessment
+
+If Stage 1 selects a non-null model, Stage 2 assesses whether the spike indicator and the FP function are both needed.
+
+For example, if Stage 1 selects best FP2 + \(Z\), Stage 2 compares:
+
+- best FP2 + \(Z\) versus best FP2 alone;
+- best FP2 + \(Z\) versus \(Z\) alone.
+
+If both comparisons are significant, both components are retained. If only one component contributes, the final model retains only that component. If neither comparison is significant, the final model is chosen by deviance or by the selected information criterion.
+
+# Extreme proportions of zeros
+
+SAZ modelling is meaningful only when the proportion of zeros is moderate. By default, `mfp2()` applies the SAZ algorithm only if the zero proportion lies between `min_prop = 0.05` and `max_prop = 0.95`. If the proportion is outside this interval, or if the variable is binary, the spike flag is reset.
+
+When a spike flag is reset, the final handling of `zero` and `catzero` depends on what the user explicitly requested through `zero_vars` and `catzero_vars` in the matrix interface, or through `zero = TRUE` and `catzero = TRUE` inside `fp()` in the formula interface.
+
+# Simulation example
+
+The following simulation creates a semi-continuous covariate with a spike at zero.
+
+```{r simulate-spike}
+set.seed(123)
+n <- 500
+prop_zero <- 0.25
+
+x <- numeric(n)
+zero_indices <- sample(seq_len(n), size = round(n * prop_zero))
+x[zero_indices] <- 0
+x[-zero_indices] <- rgamma(n - length(zero_indices), shape = 2, rate = 0.5)
+
+Z <- ifelse(x == 0, 1, 0)
+
+y <- 1.5 * Z + 2 * log(ifelse(x > 0, x, 1)) + rnorm(n, mean = 0, sd = 1)
+
+dat <- data.frame(y = y, x = x, Z = Z)
+table(dat$Z)
+```
+
+# Formula interface
+
+```{r fit-spike-formula}
+fit_spike_formula <- mfp2(
+  y ~ fp(x, spike = TRUE, center = FALSE),
+  data = dat,
+  criterion = "pvalue",
+  df = 4,
+  select = 0.05,
+  alpha = 0.05,
+  verbose = FALSE
+)
+fit_spike_formula$fp_terms
+```
+
+# Matrix interface
+
+```{r fit-spike-matrix}
+x_mat <- as.matrix(dat[, "x", drop = FALSE])
+y_vec <- dat$y
+
+fit_spike_matrix <- mfp2(
+  x_mat, y_vec,
+  spike_vars = "x",
+  criterion = "pvalue",
+  df = 4,
+  select = 0.05,
+  alpha = 0.05,
+  verbose = FALSE
+)
+fit_spike_matrix$fp_terms
+```
+
+# Plotting
+
+```{r plot-spike-histogram, fig.cap="Histogram of the simulated semi-continuous covariate.", fig.width=7, fig.height=4}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ggplot2::ggplot(dat, ggplot2::aes(x = x)) +
+    ggplot2::geom_histogram(binwidth = 0.5, fill = "grey80", color = "black") +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed") +
+    ggplot2::labs(x = "x", y = "Frequency") +
+    ggplot2::theme_minimal()
+}
+```
+
+```{r plot-spike-fit, fig.cap="Fitted spike-at-zero model.", fig.width=7, fig.height=4}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  fracplot(fit_spike_formula, partial_only = FALSE, linewidth = 1)
+}
+```
+
+```{r plot-spike-partial, fig.cap="Positive-part FP function and spike contribution.", fig.width=7, fig.height=4}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  fracplot(fit_spike_formula, partial_only = TRUE, linewidth = 1)
+}
+```
+
+# Preserving zero or catzero behaviour if spike is reset
+
+A variable listed only in `spike_vars` reverts to an ordinary continuous predictor if the spike flag is reset. To preserve positive-only FP transformation or the binary indicator when the spike flag is reset, explicitly include the variable in `zero_vars` or `catzero_vars`.
+
+```{r preserve-behaviour, eval=FALSE}
+# If spike is reset, positive-only handling is still preserved
+mfp2(x, y, zero_vars = "exposure", spike_vars = "exposure")
+
+# If spike is reset, the binary indicator is still preserved
+mfp2(x, y, catzero_vars = "exposure", spike_vars = "exposure")
+```
+
+Formula-interface equivalents are:
+
+```{r preserve-behaviour-formula, eval=FALSE}
+mfp2(y ~ fp(exposure, zero = TRUE, spike = TRUE), data = dat)
+mfp2(y ~ fp(exposure, catzero = TRUE, spike = TRUE), data = dat)
+```
+
+# References
+
+Becher, H., Lorenz, E., Royston, P. and Sauerbrei, W. (2012). Analysing covariates with spike at zero: a modified FP procedure and conceptual issues. *Biometrical Journal*, 54, 686-700.
+
+Lorenz, E., Jenkner, C., Sauerbrei, W. and Becher, H. (2019). Modeling exposures with a spike at zero: simulation study and practical application to survival data. *Biostatistics and Epidemiology*, 3, 23-37.
+
+Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables*. John Wiley & Sons.
+
+Royston, P., Sauerbrei, W. and Becher, H. (2010). Modelling continuous exposures with a spike at zero: a new procedure based on fractional polynomials. *Statistics in Medicine*, 29, 1219-1227.
+
+```{r cleanup, include=FALSE}
+options(width = oldwidth)
+```

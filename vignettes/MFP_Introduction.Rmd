@@ -1,0 +1,481 @@
+---
+title: "Introduction to Multivariable Fractional Polynomials"
+author:
+  - Edwin Kipruto
+  - Michael Kammer
+  - Patrick Royston
+  - Willi Sauerbrei
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+    highlight: tango
+vignette: >
+  %\VignetteIndexEntry{Introduction to Multivariable Fractional Polynomials}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 7,
+  fig.height = 4.5,
+  out.width = "100%"
+)
+
+oldwidth <- getOption("width")
+options(width = 100)
+
+library(ggplot2)
+library(patchwork)
+```
+
+# Introduction to Multivariable Fractional Polynomials (MFP)
+
+## Overview of MFP
+
+Multivariable regression models are widely used across various fields of science
+where empirical data is analyzed. In model building, many researchers often
+assume a linear function for continuous variables, sometimes after applying
+“standard” transformations such as logarithms, or dividing the variable into
+several categories. Assuming linearity without considering non-linear
+relationships may hinder the detection of effects or cause the effects to be
+mismodeled. Categorizing continuous variables, which results in modelling
+implausible step functions, is a common practice but widely criticized (Royston
+et al. 2006; Sauerbrei et al. 2020).
+
+When building a descriptive model with the aim of capturing the data structure
+parsimoniously, two components should be considered: first, variable selection
+to identify the subset of "important" covariates that have a significant impact
+on the outcome and second, whether non-linear relationships of continuous
+covariates fit the data (substantially) better.
+
+The MFP approach has been proposed as a pragmatic method that combines variable
+and function selection simultaneously in multivariable  regression modelling.
+This approach identifies non-linear functions for continuous variables if
+sufficiently supported by the data, and eliminates covariates with no or weak
+effects by backward elimination (BE). Despite its relative simplicity, the
+selected models often capture the essential information from the data. The MFP
+models are relatively straightforward to interpret and report, which is
+important for transportability and practical usability.
+
+In detail, the MFP procedure combines:
+- variable selection through backward elimination with
+- selection of fractional polynomial (FP) functions for continuous variables.
+
+The analyst must decide on nominal significance levels $(\alpha_1, \alpha_2)$
+for both components. This choice has a strong influence on the complexity of the
+final model. Often, the same significance levels $(\alpha_1 = \alpha_2)$ are
+used for both components, but they can also differ. The decision regarding these
+significance levels strongly depends on the specific aim of the analysis.
+
+The rest of the paper is organized as follows. Section 1.2 provides an overview
+of fractional polynomial functions for a single continuous covariate in the
+model, including the function selection procedure (FSP). Section 1.3 describes
+the MFP approach, focusing on models involving two or more covariates.
+
+Section 2 is an introduction to the `mfp2` package. It covers the
+installation process and provides instructions for utilizing the package in
+various linear regression models. The package functionality is predominantly
+demonstrated using Gaussian linear models (Subsection 2.3), while other models,
+such as logistic (Subsection 2.4),and Cox (Subsection
+2.5), are briefly explained.
+
+Section 3 introduces an extension of MFP using the approximate cumulative
+distribution (ACD) transformation of a continuous covariate. This extension
+allows for modelling a sigmoid relationship between covariates and an outcome
+variable (subsection 3.1).
+
+For more comprehensive information about MFP and its extensions, please refer to
+Royston and Sauerbrei 2008 or visit [MFP website (click here)](https://mfp.imbi.uni-freiburg.de/) 
+and explore the references given there.
+
+## Fractional polynomial models for a continuous variable
+
+Suppose that we have an outcome variable, a single continuous covariate $x$, and
+a regression model relating them. A starting point is the straight-line model
+$\beta_1x$ (for simplicity, we suppress the constant term, $\beta_0$). Often, a
+straight line is an adequate description of the relationship, but other models
+should be investigated for possible improvements in ﬁt. A simple extension of
+the straight line is a power transformation model, $\beta_1x^{p}$. The latter
+model has often been used by practitioners in an ad hoc way, utilizing different
+choices of $p$. Royston and Altman (1994) formalized the model by calling it a
+ﬁrst-degree fractional polynomial or FP1 function. The power $p$ is chosen from
+a pragmatically restricted set of eight elements: $S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}$, 
+where $x^0$ denotes the natural logarithm $\log(x)$.
+
+As with polynomial regression, extension from one-term FP1 functions to more
+complex and ﬂexible two-term FP2 functions is straightforward. The quadratic
+function $\beta_1x^1 + \beta_2x^2$ is written as $\beta_1x^{p1} + \beta_2x^{p2}$
+in FP terminology. The powers $p1=1$ and $p2=2$ are members of set $S$. Royston
+and Altman extended the class of FP2 functions with different powers to cases
+with equal powers ($p1=p2=p$) by defining them as $\beta_1x^p + \beta_2x^p \log(x)$.
+These are known as repeated-powers functions. Detailed definitions of FP
+functions are given in Section 4.3.1 of Royston and Sauerbrei (2008). For formal deﬁnitions, we use their notation.
+
+FP1 functions are always monotonic and those with power $p < 0$ have an asymptote
+as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e., 
+have one maximum or one minimum for positive values of $x$), and they have an
+asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
+For more details, see Royston and Sauerbrei (2008), Section 4.4.
+
+Extension to FPm is straightforward but $m>2$ is hardly needed when modelling
+health research data with MFP. For $m = 2$, there are 44 models available within
+the set of FP powers ($S$), consisting of 8 FP1 models and 36 FP2 models. Although
+the allowed class of FP functions may seem limited, it encompasses a wide range
+of diverse shapes. This is illustrated in the Figure below, with the left panel
+displaying eight FP1 powers and the right panel depicting a subset of FP2
+powers.
+
+```{r, eval=TRUE, echo=FALSE}
+#==============================================================================
+# 8 FP1 FUNCTIONS 
+#===============================================================================
+x <- seq(0.05, 1.05, length.out = 1000)
+funx <- function(x, power){
+  ifelse(power == rep(0, length(x)), log(x), x^power)
+}
+s <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+# transform x using the powers in s
+outx <- lapply(s, function(s) funx(x = x, power = s))
+
+# multiply the first 3 with -1 so that the function increase rather than decrease
+# due to negative powers. these are betas i,e y = beta*x^p
+k <- c(-1, -1, -1, 1, 1, 1, 1, 1)
+datx <- matrix(unlist(outx), ncol = length(s))
+datax <- datx %*% diag(k)
+# standardize the data so that y is in the same range
+dataxx <- apply(datax, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+colnames(dataxx) <- c(paste0("x", 1:length(s)))
+dataxx <- as.data.frame(dataxx)
+dataxx$x <- x
+width <- 0.5
+fig1 <- ggplot(dataxx, aes(x)) + 
+  geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
+  geom_line(aes(y = x2, colour = "x2"), linewidth = width, color ="#ff0000") + 
+  geom_line(aes(y = x3, colour = "x3"), linewidth = width, color ="#ffd700") +
+  geom_line(aes(y = x4, colour = "x4"), linewidth = width, color ="#ff00ff") +
+  geom_line(aes(y = x5, colour = "x5"), linewidth = width, color ="#ffb6c1") +
+  geom_line(aes(y = x6, colour = "x6"), linewidth = width, color ="#00ff00") +
+  geom_line(aes(y = x7, colour = "x7"), linewidth = width, color ="#0000ff") +
+  geom_line(aes(y = x8, colour = "x8"), linewidth = width, color ="#000000") +
+  geom_text(aes(x = 0.175, y = 1,size = 5, label = "-2"), color = "#006400") +
+  geom_text(aes(x = 0.25, y = 0.9,size = 5, label = "-1"), color = "#ff0000") +
+  geom_text(aes(x = 0.33, y = 0.83,size = 5, label = "-0.5"), color = "#ffd700") +
+  geom_text(aes(x = 0.4, y = 0.725,size = 5, label = "0"), color = "#ff00ff") +
+  geom_text(aes(x = 0.5, y = 0.65,size = 5, label = "0.5"), color = "#ffb6c1") +
+  geom_text(aes(x = 0.59, y = 0.575,size = 5, label = "1"), color = "#00ff00") +
+  geom_text(aes(x = 0.7, y = 0.475,size = 5, label = "2"), color = "#0000ff") +
+  geom_text(aes(x = 0.75, y = 0.4,size = 5, label = "3"), color = "#000000") +
+  labs(x="x", y="Fractional polynomial f(x)") +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title=element_text(size=18),
+    axis.text.x = element_blank()) 
+
+# Define functions
+f1 <- function(x) 3 - 10*x^2 + 4*x^3
+f2 <- function(x) 20 - 15.4*x^2 + 4*x^3
+f3 <- function(x) -20 + 6*log(x) + 6*log(x)*log(x)
+f4 <- function(x) 20 + 0.3*(x^-2) - 4*(x^-1)
+f5 <- function(x) -10 + 5*(x^0.5) + 14*(x^-0.5)
+f6 <- function(x) 33 + 19*log(x) - 7*(x^2)
+f7 <- function(x) -10 + 10*(x - 1.5) + 10*(x - 1.5)^2
+
+# Create data frames for each function
+x <- seq(0.1, 3, by = 0.01)
+df1 <- data.frame(x = x, y = f1(x))
+df2 <- data.frame(x = x, y = f2(x))
+df3 <- data.frame(x = x, y = f3(x))
+df4 <- data.frame(x = x, y = f4(x))
+df5 <- data.frame(x = x, y = f5(x))
+df6 <- data.frame(x = x, y = f6(x))
+df7 <- data.frame(x = x, y = f7(x))
+
+# Plot functions
+fig2 <- ggplot() +
+    geom_line(data = df1, aes(x = x, y = y), color = "#e41a1c") +
+    geom_line(data = df2, aes(x = x, y = y), color = "#377eb8") +
+    geom_line(data = df3, aes(x = x, y = y), color = "#4daf4a") +
+    geom_line(data = df4, aes(x = x, y = y), color = "#984ea3") +
+    geom_line(data = df5, aes(x = x, y = y), color = "#ff7f00") +
+    geom_line(data = df6, aes(x = x, y = y), color = "#FF00FF") +
+    geom_line(data = df7, aes(x = x, y = y), color = "#a65628") +
+    scale_x_continuous(limits = c(0, 3)) +
+    scale_y_continuous(expand = c(0, 0), limits = c(-25,40)) + theme_classic() +
+    geom_text(aes(x = 0.75, y = 2.4,size = 5, label = "(2, 3)"), color = "#e41a1c") +
+    geom_text(aes(x = 1.6, y =1.95,size = 5, label = "(2, 3)"), color = "#377eb8")+
+    geom_text(aes(x = 0.7, y = -18,size = 5, label = "(0, 0)"), color = "#4daf4a") +
+    geom_text(aes(x = 1.25, y = 20,size = 5, label = "(-2, -1)"), color = "#984ea3") +
+    geom_text(aes(x = 1.3, y = 12,size = 5, label = "(-0.5, 0.5)"), color = "#ff7f00") +
+    geom_text(aes(x = 1.25, y = 29.5,size = 5, label = "(0, 2)"), color = "#FF00FF") +
+    geom_text(aes(x = 1, y = -9.5,size = 5, label = "(1, 2)"), color = "#a65628") +
+    ylab(" ") +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+      axis.title = element_text(size=18),
+      axis.ticks = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_blank()
+    )
+
+figure <- patchwork::wrap_plots(fig1, fig2, 
+                               ncol = 2, nrow = 1, 
+                               widths = 8, heights = 2)
+
+```
+
+
+```{r fig1, echo=FALSE, fig.cap="Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height=4.5, fig.width=7, out.width="100%", fig.align="center"}
+figure
+```
+
+
+Based on extensive experience with real data and several simulation studies, FP1
+and FP2 are generally considered adequate in the context of multivariable model
+building, particularly when the selection of variable and functional forms are required
+(Royston and Sauerbrei 2008; Sauerbrei et al. 2007a).
+
+## Function selection procedure (FSP)
+
+This short description of the MFP methodology content is based on previously
+published encyclopedia articles (Sauerbrei and Royston, 2011; Sauerbrei and
+Royston, 2016).
+
+Choosing the best fitting FP1, FP2, or linear function for a given dataset is
+conducted by grid search, computing the deviance (minus twice the maximized
+log-likelihood) and making a decision for the best function based on a suitable
+algorithm (e.g. via pre-defined significance levels). 
+
+The default function in most implementations of MFP is a linear function.
+Therefore, unless the data support a more complex FP function, a straight line
+model is chosen. Concerning the default, there are occasional exceptions. For example, to model
+time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007b)
+chose a default time ($t$) transformation of $\log (t)$ rather than $t$.
+
+It can be assumed that deviance diﬀerence between an FPm and an FP(m-1) model is
+distributed approximately as central $\chi^2$ on 2 degrees of freedom (d.f.)
+(Royston and Sauerbrei 2008, Chapter 4.9; Ambler and Royston (2001)). To select a
+speciﬁc function, a closed test procedure was proposed (Royston and Sauerbrei
+2008, Section 4.10). The complexity of the ﬁnally chosen function requires
+pre-definition of the nominal significance level $(\alpha)$ and the degree ($m$)
+of the most complex FP model allowed. Typical choices are $\alpha = 0.05$ and
+FP2 ($m = 2$).  We illustrate the strategy for $m = 2$, which runs as follows:
+
+ 1. Use the deviance difference to test the best FP2 model for $x$ at the
+ $(\alpha)$ signiﬁcance level against the null model using 4 d.f. If the test is
+ not signiﬁcant, stop and conclude that the eﬀect of $x$ is "not signiﬁcant" at
+ the $\alpha$ level. Otherwise continue. 
+ 2. Test the best FP2 for $x$ against a straight line at the $\alpha$ level
+ using 3 d.f. If the test is not signiﬁcant, stop, the ﬁnal model being a
+ straight line. Otherwise continue.
+ 3. Test the best FP2 for $x$ against the best FP1 at the $\alpha$ level using 2
+ d.f. If the test is not signiﬁcant, the ﬁnal model is FP1, otherwise, the ﬁnal
+ model is FP2. This marks the end of procedure.
+
+Step 1 is a test of the overall association of the outcome with $x$. 
+Step 2 examines the evidence for nonlinearity. Step 3 chooses between a simpler 
+or a more complex non-linear model.
+ 
+# MFP procedure
+
+When developing a multivariable model with a relatively large number of
+candidate covariates (say between 10 and 30, we are not envisaging the case of
+high-dimensional data), an important distinction is between descriptive,
+predictive and explanatory modelling (Shmueli, 2010). MFP was mainly developed
+for descriptive modelling, aiming to capture the data structure parsimoniously.
+Nevertheless, a suitable descriptive model often has a fit similar to a model
+whose aim is good prediction (Sauerbrei et al. 2007a). In some fields, the term
+explanatory modelling is used exclusively for testing causal theory.
+
+In many areas of science, the main interest often lies in the identification of
+inﬂuential variables and determination of appropriate functional forms for
+continuous variables. Often, linearity is presumed without checking this
+important assumption. The MFP procedure was proposed as a pragmatic strategy to
+investigate whether nonlinear functions can improve the model ﬁt (Royston and
+Sauerbrei, 2008; Sauerbrei and Royston, 1999). MFP combines backward elimination
+for the selection of variables with a systematic search for possible
+nonlinearity by the function selection procedure (FSP). The extension is
+feasible with any type of regression model to which BE is applicable. The
+philosophy behind MFP modeling is to create interpretable and relatively simple
+models (Sauerbrei et al. 2007a). Consequently, an analyst using MFP should be
+less concerned about failing to include variables with a weak eﬀect or failing
+to identify minor curvature in a functional form of a continuous covariate.
+Modiﬁcations that may improve MFP models are combination with post-estimation
+shrinkage (Dunkler et al., 2016, R-package shrink) and a more systematic check
+for overlooked local features (Binder and Sauerbrei, 2010, currently not
+implemented in the `mfp2` package). Successful use of MFP requires only general
+knowledge about building regression models.
+
+Two nominal signiﬁcance level values are the main tuning parameters: $\alpha_1$
+for selecting variables with BE (in the ﬁrst step of the FSP) and $\alpha_2$ for
+comparing the ﬁt of functions within the FSP. Often, $\alpha_1=\alpha_2$ is a
+good choice. If available, subject-matter knowledge should replace or at least
+guide data-dependent model choice. Only minor modiﬁcations are required to
+incorporate various types of subject-matter knowledge into MFP modeling. For a
+detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
+modeling in practice are given in Sauerbrei et al. (2007a) and in Royston and
+Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
+$\alpha_1$ and $\alpha_2$ by AIC-P or BIC-P.
+
+# MFP -- Key issues and approaches to handling them
+
+Mainly focusing on the FP component, we brieﬂy mention key issues of MFP
+modeling and refer to the literature for further reading. A brief overview is
+also given on the MFP website (https://mfp.imbi.uni-freiburg.de/fp). Regarding
+variable selection, we have summarized relevant issues and provided arguments
+for backward elimination as our preferred strategy (Royston and Sauerbrei 2008,
+Chapter 2). Even when a search for model improvement using a nonlinear function
+is not considered, that is, all functions are assumed linear, it is infeasible
+to derive a suitable and stable model for description in small datasets. Below
+we provide some information about sample size needed, but implicitly we assume
+that the sample size is "suﬃcient".
+
+## The variable has to be positive
+
+The class of FP1 and FP2 functions includes a log and other transformations
+which require that the continuous variable must be positive. A preliminary
+origin-shift transformation can be applied as shown in section 2.3.2.
+
+Sometimes, there are variables that exhibit a spike at zero. This means that a
+certain proportion of individuals have zero values, while among those with
+positive values, the variable has a continuous distribution. In epidemiology,
+typical examples are cigarette consumption or alcohol intake. There are
+different approaches to modeling such variables. Royston and Sauerbrei
+(2008, chapter 4.15) and Royston et al. (2010) proposed a method that involves
+adding a small constant (to have positive values) and a binary indicator (for
+zero or positive values) to the regression model. Additionally, they utilized
+fractional polynomials to determine the functional form of the variable. In
+a two-stage procedure, they assessed whether the binary variable and/or the
+continuous function is required for a good fit to the data. Becher et al. (2012)
+proposed a slight modification of this approach. These two approaches are currently not
+implemented in the `mfp2` package.
+
+## Sample size and influential observations
+
+All statistical models are potentially adversely aﬀected by inﬂuential
+observations or "outliers". However, compared with models that comprise only
+linear functions, the situation may be more critical for FP functions because
+logarithmic or negative power transformations may produce extreme functional
+estimates at small values of $x$. Conversely, the same may happen with large
+positive powers at large values of $x$. Such transformations may create inﬂuential
+observations that may affect parts of the FSP. To mitigate the impact of
+influential observations, it is important to assess the robustness of FP
+functions. Some suggestions for investigating inﬂuential points (IPs) and
+handling such issues in MFP modeling can be found in Royston and Sauerbrei
+(2008, Chapters 5 and 10) and their paper on improving the robustness of FP
+models (Royston and Sauerbrei, 2007). Using synthetic data, a more detailed
+investigation of IPs is given in Sauerbrei et al. (2023). The authors conclude
+that for smaller sample sizes, IPs and low power are important reasons that the
+MFP approach may not be able to identify underlying functional relationships for
+continuous variables and selected models might differ substantially from the
+true model. However, for larger sample sizes (about 50 or more observations per
+variable) a carefully conducted MFP analysis (which includes checks for IPs and
+other aspects of model criticism) is often a suitable way to select a
+multivariable regression model which includes continuous variables.
+
+## Lack of fit
+
+Based on experience we argue that FP1 or FP2 functions are sufficient to derive
+a good fitting model. Occasionally, higher order FP functions (with $m = 3$ or 
+$m = 4$) are useful in data analysis. Negative exponential or other types of
+pre-transformations may help to improve the fit of a complex function or may
+allow to incorporate subject specific knowledge. An example is discussed in
+section 3.1.3 in Sauerbrei and Royston (1999).
+
+## Local features
+
+Unlike splines which have a local interpretation of the fitted function, FPs
+provide a curve with a global interpretation. To investigate possible
+"overlooked" local features of an FP function, Binder and Sauerbrei (2010)
+conducted a systematic analysis of residuals from a model obtained by MFP. If
+local features are detected by their MFP + L procedure, statistically signiﬁcant
+local polynomials are then parsimoniously added to the FP function. This enables the
+identification and incorporation of local features that may have been missed by
+the global FP function. This approach is not currently implemented in the `mfp2`
+package, but it is a potential area for future extensions.
+
+
+# References
+
+Ambler, G. and Royston, P. (2001). Fractional polynomial model selection procedures: investigation of type I error rate. *Journal of Statistical Computation and Simulation*, 69, 89–108.
+
+Binder, H. and Sauerbrei, W. (2010). Adding local components to global functions for continuous covariates in multivariable regression modeling. *Statistics in Medicine*, 29, 808–817.
+
+Binder, H., Sauerbrei, W. and Royston, P. (2013). Comparison between splines and fractional polynomials for multivariable model building with continuous covariates: a simulation study with continuous response. *Statistics in Medicine*, 32, 2262–2277.
+
+Buchholz, A. and Sauerbrei, W. (2011). Comparison of procedures to assess non-linear and time-varying effects in multivariable models for survival data. *Biometrical Journal*, 53, 308–331. DOI: 10.1002/bimj.201000159.
+
+Draper, D. (1995). Assessment and propagation of model selection uncertainty (with discussion). *Journal of the Royal Statistical Society: Series B*, 57, 45–97.
+
+Dunkler, D., Sauerbrei, W. and Heinze, G. (2016). Global, parameterwise and joint post-estimation shrinkage. *Journal of Statistical Software*.
+
+Faes, C., Aerts, M., Geys, H. and Molenberghs, G. (2007). Model averaging using fractional polynomials to estimate a safe level of exposure. *Risk Analysis*, 27, 111–123.
+
+Huebner, M., le Cessie, S., Schmidt, C. O. and Vach, W. (2018). A contemporary conceptual framework for initial data analysis. *Observational Studies*, 4(1), 171–192.
+
+Royston, P. (2014). A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. *The Stata Journal*, 14, 329–341.
+
+Royston, P. and Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates: parsimonious parametric modelling. *Applied Statistics*, 43(3), 429–467.
+
+Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomials. *Statistics in Medicine*, 23, 2509–2525.
+
+Royston, P. and Sauerbrei, W. (2007). Improving the robustness of fractional polynomial models by preliminary covariate transformation. *Computational Statistics and Data Analysis*, 51, 4240–4253.
+
+Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables*. John Wiley & Sons, Chichester, UK.
+
+Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a continuous variable: simulation study of significance level for several methods of analysis. *Statistics in Medicine*, 32(22), 3788–3803.
+
+Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. *Statistics in Medicine*, 33, 4695–4708.
+
+Royston, P., Altman, D. G. and Sauerbrei, W. (2006). Dichotomizing continuous predictors in multiple regression: a bad idea. *Statistics in Medicine*, 25, 127–141.
+
+Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. *The Stata Journal*, 16(1), 72–87.
+
+Royston, P., Sauerbrei, W. and Becher, H. (2010). Modelling continuous exposures with a ‘spike’ at zero: a new procedure based on fractional polynomials. *Statistics in Medicine*, 29, 1219–1227.
+
+Sauerbrei, W. (1999). The use of resampling methods to simplify regression models in medical statistics. *Applied Statistics*, 48, 313–329.
+
+Sauerbrei, W., Abrahamowicz, M., Altman, D. G., et al. (2014). STrengthening Analytical Thinking for Observational Studies: the STRATOS initiative. *Statistics in Medicine*, 33(30), 5413–5432.
+
+Sauerbrei, W., Kipruto, E. and Balmford, J. (2022). Effects of influential points and sample size on the selection and replicability of multivariable fractional polynomial models. *Diagnostic and Prognostic Research*, 7(1), 7.
+
+Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P. (2006). Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. *Computational Statistics and Data Analysis*, 50, 3464–3485.
+
+Sauerbrei, W., Perperoglou, A., Schmid, M., Abrahamowicz, M., Becher, H., Binder, H., Dunkler, D., Harrell Jr., F. E., Royston, P. and Heinze, G. for TG2 of the STRATOS initiative (2020). State of the art in selection of variables and functional forms in multivariable analysis: outstanding issues. *Diagnostic and Prognostic Research*, 4, 3, 1–18. DOI: 10.1186/s41512-020-00074-3.
+
+Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: transformation of the predictors using fractional polynomials. *Journal of the Royal Statistical Society: Series A*, 162, 71–94.
+
+Sauerbrei, W. and Royston, P. (2011). Multivariable fractional polynomial models. In Lovric, M. (ed.), *International Encyclopedia of Statistical Science*. Springer, Berlin, pp. 899–902.
+
+Sauerbrei, W. and Royston, P. (2016). Multivariable fractional polynomial models. *Wiley StatsRef: Statistics Reference Online*, 1–8. DOI: 10.1002/9781118445112.stat07861.
+
+Sauerbrei, W., Royston, P. and Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. *Statistics in Medicine*, 26, 5512–5528.
+
+Sauerbrei, W., Royston, P. and Look, M. (2007a). A new proposal for multivariable modelling of time-varying effects in survival data based on fractional polynomial time-transformation. *Biometrical Journal*, 49, 453–473.
+
+Sauerbrei, W. and Royston, P. (2007). Modelling to extract more information from clinical trials data: on some roles for the bootstrap. *Statistics in Medicine*, 26, 4989–5001.
+
+Shmueli, G. (2010). To explain or to predict? *Statistical Science*, 3, 289–310.
+
+Stamey, T. A., Kabalin, J. N., McNeal, J. E., Johnstone, I. M., Freiha, F., Redwine, E. A. and Yang, N. (1989). Prostate specific antigen in the diagnosis and treatment of adenocarcinoma of the prostate. II. Radical prostatectomy treated patients. *The Journal of Urology*, 141(5), 1076–1083.
+
+StataCorp. (2023). *Stata: Release 18. Statistical Software*. StataCorp LLC, College Station, TX.
+
+Therneau, T. M. and Grambsch, P. M. (2000). *Modeling Survival Data: Extending the Cox Model*. Springer, New York, pp. 39–77.
+
+```{r cleanup, include=FALSE}
+options(width = oldwidth)
+```

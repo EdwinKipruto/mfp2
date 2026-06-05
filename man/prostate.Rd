@@ -3,7 +3,7 @@
 \docType{data}
 \name{prostate}
 \alias{prostate}
-\title{Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.}
+\title{Prostate cancer dataset used in Royston and Sauerbrei (2008) book.}
 \format{
 A dataset with 97 observations and 8 variables.
 \describe{
@@ -22,6 +22,6 @@ A dataset with 97 observations and 8 variables.
 data(prostate)
 }
 \description{
-Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.
+Prostate cancer dataset used in Royston and Sauerbrei (2008) book.
 }
 \keyword{data}

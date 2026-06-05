@@ -1278,7 +1278,7 @@ mfpi.default <- function(
   }
   
   if (is.null(control)) {
-    control <- if (family_string == "cox") survival::coxph.control() else
+    control <- if (family_string == "cox") survival::coxph.control(iter.max = 100) else
       stats::glm.control()
   }
   
@@ -1658,7 +1658,7 @@ mfpi.formula <- function(formula,
                          max_prop          = 0.95,
                          use_ftest         = FALSE,
                          control           = NULL,
-                         winsorize         = TRUE,
+                         winsorize         = FALSE,
                          winsorize_probs   = c(0.01, 0.99),
                          center_type       = c("grand", "group"),
                          p_adjust_method   = "none",

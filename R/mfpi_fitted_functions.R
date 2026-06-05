@@ -175,6 +175,14 @@ gen_fitted_values_per_group <- function(cont_var,
   if (!is.list(group_fp_powers) || length(group_fp_powers) == 0L)
     stop("`group_fp_powers` must be a non-empty named list.", call. = FALSE)
   
+  if (!center && !is.null(center_vals)) {
+    warning(
+      "`center_vals` was supplied but `center = FALSE`; ",
+      "centering constants will be ignored. Did you forget to pass `center = TRUE`?",
+      call. = FALSE
+    )
+  }
+  
   # Extract model coefficients -------------------------------------------------
   coef_vec   <- interaction_model$coefficients
   coef_names <- names(coef_vec)

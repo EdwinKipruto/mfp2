@@ -486,7 +486,7 @@ A useful workflow is:
 
 # Shifting, scaling, and centering
 
-## Shifting
+## Shifting {-}
 
 Fractional polynomials require strictly positive input values. As in `mfp2()`,
 `mfpi()` estimates shift terms to ensure all values of the continuous covariates
@@ -494,7 +494,7 @@ are positive before FP transformation. For a variable $z$ with minimum value
 $z_{\min}$, the shift is chosen so that $z + \text{shift} > 0$ for all
 observations.
 
-## Scaling
+## Scaling {-}
 
 After shifting, `mfpi()` estimates a scale factor for each variable. Scaling
 places the shifted covariates on a convenient numerical range for FP power
@@ -504,10 +504,10 @@ precision of the fitting algorithm.
 
 After FP powers have been selected, the variables are backscaled before the
 final model is fitted. This means the regression coefficients in the returned
-model are on the $\phi(z + \text{shift})$ scale, matching what standalone
-`mfp2()` would produce. The user does not need to undo the scaling manually.
+model are on the $\phi(z + \text{shift})$ scale, matching what `mfp2()` would 
+produce. The user does not need to undo the scaling manually.
 
-## Centering
+## Centering {-}
 
 When `center = TRUE`, centering is applied in both the adjustment model and
 the interaction model, but the two models are centered differently.
@@ -515,8 +515,7 @@ the interaction model, but the two models are centered differently.
 **Adjustment model.** Standard `mfp2()` centering is applied: each
 FP-transformed column is centered by subtracting its column mean. For binary
 covariates, centering uses the lower of the two distinct values rather than
-the mean. This is the same centering that `mfp2()` applies when called
-standalone.
+the mean, the same idea of `mfp2()`.
 
 **Interaction model.** The argument `center_type` controls how the
 group-specific FP columns are centered:
@@ -549,773 +548,427 @@ whether the variable is zero. This indicator is included in the adjustment model
 alongside the FP terms for the positive part. The `catzero_vars` option implies
 `zero_vars`.
 
-The `spike_vars` option triggers spike-at-zero modelling using the SAZ
-algorithm. This formally evaluates whether the binary zero indicator and the FP
-function each contribute explanatory value. The `spike_vars` option implies
-`catzero_vars` and `zero_vars`.
+The `spike_vars` option triggers the spike-at-zero (SAZ) algorithm. This
+evaluates whether the binary zero indicator and the FP function each contribute
+explanatory value. The `spike_vars` option implies both `catzero_vars` and
+`zero_vars`. For more details about SAZ, see the corresponding vignette in the
+`mfp2` package.
 
-## Restrictions for interaction variables
+## Interaction-tested variables cannot use `catzero_vars` or `spike_vars` {-}
 
-Variables listed in `cont_vars` cannot currently use the structural zero
-indicator created by `catzero_vars` or `spike_vars`. Including a group-specific
-spike indicator would require fitting separate group-specific zero-indicator
-terms, which is not currently supported.
+Variables listed in `cont_vars` are tested for interaction with the grouping
+variable. These variables cannot currently use the `catzero_vars` or
+`spike_vars` options, because the methodology for combining these options with
+interaction testing is not yet available.
 
-Therefore, if a variable appears in both `cont_vars` and `catzero_vars` or
-`spike_vars`, the spike or categorical-zero treatment is automatically
-suppressed for that variable, with a warning. However, the `zero_vars` treatment
-is preserved: non-positive values can still be recoded to zero before FP
-transformation.
+Therefore, if a variable appears in both `cont_vars` and either `catzero_vars`
+or `spike_vars`, it will be automatically removed from `catzero_vars` or
+`spike_vars`, with a warning.
+
+However, `zero_vars` can be used with variables in `cont_vars`. In this case,
+only the positive part undergoes FP transformation, while the remaining values
+are set to zero.
 
 Variables listed in `catzero_vars` or `spike_vars` that are not in `cont_vars`
 are handled in the adjustment model as described in the `mfp2()` documentation.
 
-# Data example: prostate data
+# Worked example: Advanced prostate cancer data
 
-We illustrate `mfpi()` using the `prostate` dataset included in the `mfp2`
-package. The outcome is `lpsa`, and the variable `svi` is used as the grouping
-variable. We investigate whether the relationship between selected continuous
-covariates and `lpsa` differs by `svi`.
+We illustrate `mfpi()` using the `advanced_prostate_cancer` dataset included in
+the `mfp2` package. The outcome is time to death (overall survival), defined by
+`survtime` and the censoring indicator `cens`. The binary variable `rx`
+(treatment allocation) is the grouping variable. For a full description of the
+data, see Royston and Sauerbrei (2008). The dataset contains 475 observations 
+with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`, `hg`,
+`sg`) and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`).
 
 ```{r data}
-data("prostate", package = "mfp2")
-head(prostate)
+data("advanced_prostate_cancer", package = "mfp2")
+head(advanced_prostate_cancer)
 ```
 
-A quick look at the outcome and grouping variable:
 
-```{r data-summary}
-summary(prostate$lpsa)
-table(prostate$svi)
-```
 
-# Formula interface
+## Formula interface
 
-The formula interface is usually the most convenient way to call `mfpi()`.
-Continuous variables can be wrapped in `fp()` to control FP-specific settings.
-The arguments `group_var` and `cont_vars` specify the grouping variable and the
-continuous variables to be assessed for interaction.
+The formula interface is the most convenient way to call `mfpi()`. Continuous
+variables can be wrapped in `fp()` to control FP-specific settings such as
+degrees of freedom or candidate power sets. The key arguments are:
 
-## Basic call
+- `group_var`: the name of the grouping (treatment) variable.
+- `cont_vars`: a character vector naming the continuous variables to be assessed
+  for interaction with `group_var`.
+- `flex`: the flexibility level for FP power selection across groups.
+- `family`: the regression family (`"cox"` for survival data).
+- `select` and `alpha`: significance levels for variable selection and FP degree
+  selection in the adjustment model.
 
-```{r formula-basic}
-fit_formula <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  flex              = "flex1",
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
-```
+## Prespecified interaction analysis
 
-## Printing results
+Suppose that, based on prior evidence, we have identified `age` as the single
+covariate to investigate for interaction with treatment. Because only one
+interaction is tested, the resulting p-value can be interpreted directly without
+multiplicity adjustment.
 
-The `print()` method provides a concise summary of the interaction tests:
-
-```{r formula-print}
-print(fit_formula)
-```
-
-## Detailed summary
-
-The `summary()` method gives more detail, including the adjustment model,
-candidate model comparisons, and selected functional forms:
-
-```{r formula-summary}
-summary(fit_formula)
-```
-
-## Plotting
-
-The `plot()` method can display the fitted group-specific functions and the
-difference functions relative to the reference group.
-
-```{r formula-plot, fig.height=8}
-plot(fit_formula, plot_type = "both")
-```
-
-If no interaction is significant, the function prints a message suggesting that
-candidate curves can be inspected using the `type` argument. For example:
-
-```{r formula-plot-type, eval=TRUE}
-# Plot linear candidate curves for all cont_vars
-plot(fit_formula, type = "linear", plot_type = "both")
-
-# Plot FP2 candidate curves
-plot(fit_formula, type = "fp2", plot_type = "both")
-```
-
-To plot a specific variable:
-
-```{r formula-plot-terms, eval=FALSE}
-plot(fit_formula, terms = "cavol", plot_type = "both")
-```
-
-# Matrix interface
-
-The matrix interface accepts a numeric matrix `x` and a response vector `y`. It
-is useful when the data have already been preprocessed or when finer control over
-the design matrix is needed.
-
-The matrix must not contain an intercept column. Column names are required.
-Binary variables should be coded as 0/1, and multi-level categorical variables
-other than `group_var` should be expanded into dummy variables before fitting,
-or handled through the formula interface.
-
-## Preparing the data
-
-```{r matrix-prep}
-# Response
-y <- prostate$lpsa
-
-# Predictor matrix
-x <- as.matrix(
-  prostate[, c("age", "svi", "pgg45", "cavol", "weight", "bph", "cp")]
+```{r prespecified}
+fit_pre <- mfpi(
+  Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var  = "rx",
+  cont_vars  = "age",
+  data       = advanced_prostate_cancer,
+  flex       = "flex1",
+  family     = "cox",
+  select     = 0.05,
+  alpha      = 0.05,
+  verbose = FALSE
 )
 ```
 
-## Fitting
+### Understanding the output
 
-```{r matrix-fit}
-fit_matrix <- mfpi(
-  x                 = x,
-  y                 = y,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  family            = "gaussian",
-  flex              = "flex1",
-  include_group_var = TRUE,
-  verbose           = FALSE
+Calling `print()` on the fitted object displays a structured three-step summary.
+
+```{r print-pre}
+print(fit_pre)
+```
+
+**Step 1: Adjustment model (MFP).** This section shows the results of running
+the MFP algorithm on the full set of predictors. Variables that remain after
+selection at `select = 0.05` are shown with their final FP powers and degrees of
+freedom. Variables eliminated by MFP are listed under `"Dropped"`. Because
+`include_group_var = TRUE` by default, the grouping variable `rx` is included in
+the MFP algorithm but forced into the model: its nominal significance level is
+set to 1, so it is never eliminated during backfitting. The retained covariates,
+in their selected transformed or untransformed forms, are then used for adjustment
+in the interaction models for `age`.
+
+**Step 2: All interaction candidates.** For `age`, three candidate interaction
+models are fitted: linear, FP1, and FP2. Each row shows the candidate type, the
+deviance of the main-effects model, the deviance of the interaction model, the
+likelihood ratio test statistic, the p-value, and the information-criterion
+differences. AIC and BIC differences are computed as main-effects minus
+interaction, so positive values favour the interaction model. The best
+candidate, defined as the one with the smallest p-value, is flagged with `+`.
+
+**Step 3: Interaction summary.** This compact table shows the selected
+functional form for `age` and its p-value. If the p-value is below
+`p_interact = 0.05`, the variable is marked with `*`, indicating a statistically
+significant interaction.
+
+### Regression output {-}
+
+The `summary()` method adds a fourth section with the full regression
+coefficients of the winning interaction model.
+
+```{r summary-pre}
+summary(fit_pre)
+```
+
+**Step 4: Regression Output.** For each variable with a significant interaction,
+the regression table from the fitted `coxph()` model is displayed. This table 
+includes coefficient estimates, standard errors, z-values, and p-values for all
+terms in the model. The interaction model uses the naming convention
+`<varname><group><power_index>` for the group-specific FP terms. For example,
+if `age` is modelled as FP1 with groups 0 and 1, the coefficients `age01` and
+`age11` represent the FP term for group 0 and group 1, respectively. For FP2,
+two terms per group are shown, for example `age01` and `age02` for group 0, and
+`age11` and `age12` for group 1.
+
+The group dummy coefficient, for example `rx1`, represents the main effect of
+the grouping variable. The p-values in Step 4 are the standard Wald-test p-values
+reported by `summary.coxph()`. These p-values do not account for the degrees of 
+freedom used during FP power selection. Therefore, the appropriate p-value for
+testing the interaction is the one reported in Step 3.
+
+### Visualising the interaction
+
+The `plot()` method produces graphical displays of the fitted interaction. Its
+main arguments are:
+
+- `terms`: a character vector of variable names to plot. By default (`NULL`),
+  all variables with a significant interaction are plotted. Specifying a
+  variable name restricts the output to that variable.
+- `type`: controls which functional form is shown. The default (`NULL`) plots
+  the selected candidate for each variable. Setting `type` to `"linear"`,
+  `"fp1"`, or `"fp2"` plots that specific candidate from the full set of fitted
+  models, regardless of whether it was selected. This is useful for inspecting
+  non-selected candidates or comparing functional forms.
+- `plot_type`: one of `"fitted"`, `"difference"`, or `"both"`. `"fitted"`
+  overlays the group-specific fitted curves; `"difference"` shows the pointwise
+  treatment-effect function; and `"both"` places both plots side by side
+  (requires the `patchwork` package).
+- `show_title`: logical, default `TRUE`. Each plot is annotated with a title
+  describing the group comparison and a subtitle showing the variable name, the
+  functional form, and the selection metric. Set this to `FALSE` to produce
+  cleaner plots for reports or manuscripts.
+
+The subtitle adapts to the selection criterion used when fitting the model. When
+`criterion = "pvalue"`, the subtitle shows `p = <value>`. When
+`criterion = "aic"` or `criterion = "bic"`, it shows `dAIC = <value>` or
+`dBIC = <value>`, respectively.
+
+When multiplicity adjustment is active (`p_adjust_method != "none"`), the
+subtitle shows both the raw and adjusted p-values for selected variables, for
+example: `age | FP1 | p = 0.016 (p_adj = 0.031)`. When `type` is set explicitly
+to inspect a specific candidate, the subtitle shows `p_raw = <value>` to signal
+that the displayed value is the unadjusted per-candidate p-value, not the
+adjusted p-value used for the selection decision.
+
+#### Fitted functions
+The fitted plot overlays the estimated linear predictor as a function of `age`
+for each treatment group, with 95% pointwise confidence bands and rug marks
+showing the observed values. If the two curves are roughly parallel, there is
+little evidence for interaction.
+
+```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age × rx interaction."}
+plot(fit_pre, plot_type = "fitted", show_ci_fitted = TRUE, show_rug = TRUE)
+```
+
+
+
+#### Treatment-effect difference
+The difference plot shows the pointwise treatment-effect function
+$\hat{d}(\text{age}) = \hat{f}_1(\text{age}) - \hat{f}_0(\text{age})$ with a
+95% confidence band and a horizontal reference line at zero. Regions where the
+band excludes zero suggest that the treatment effect differs from the overall
+average at those values of `age`. If the confidence band is approximately
+horizontal and includes zero throughout, this supports the conclusion that
+treatment benefit does not depend on `age`.
+
+```{r plot-diff-pre, fig.cap = "Treatment-effect difference for the age × rx interaction."}
+plot(fit_pre, plot_type = "difference")
+```
+
+
+
+#### Side-by-side display
+The `"both"` option places the fitted and difference plots side by side using
+the `patchwork` package.
+
+```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference for the age × rx interaction."}
+plot(fit_pre, plot_type = "both")
+```
+
+## Exploratory interaction analysis
+
+In the second setting, we screen all eight continuous covariates for possible
+interaction with treatment. Because multiple interactions are tested, we apply
+the Holm step-down correction to control the family-wise error rate across the
+tested variables.
+
+```{r exploratory}
+fit_exp <- mfpi(
+  Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var       = "rx",
+  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg"),
+  data            = advanced_prostate_cancer,
+  flex            = "flex1",
+  family          = "cox",
+  select          = 0.05,
+  alpha           = 0.05,
+  p_adjust_method = "holm"
 )
 ```
 
-## Results
+### Understanding the output
 
-```{r matrix-results}
-print(fit_matrix)
+```{r print-exp}
+print(fit_exp)
 ```
 
-The matrix and formula interfaces should give the same results when supplied
-with the same data and settings.
+**Step 1** is identical to the prespecified analysis because the same predictors
+and the same MFP settings are used.
 
-# Exploring flexibility levels
+**Step 2** now shows three candidate rows (linear, FP1, FP2) for each of the
+eight continuous variables, with the best candidate per variable marked by `+`.
 
-Different values of `flex` allow different degrees of flexibility in modelling
-the interaction. Here we compare `flex1` and `flex3` for the same set of
-continuous variables.
+**Step 3** is the key table for the exploratory analysis. It shows one row per
+variable with the winning functional form, the raw p-value from the
+per-variable interaction test, and the Holm-adjusted p-value. Variables whose
+adjusted p-value falls below `p_interact = 0.05` are marked with `*`. In an
+exploratory analysis, the adjusted p-value is the one that should be used for
+the selection decision. Variables marked `*` are candidates for genuine
+treatment-by-covariate interaction; variables without `*` do not provide
+sufficient evidence of interaction after accounting for the number of tests
+performed.
 
-```{r flex-compare}
-fit_flex1 <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  flex              = "flex1",
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
+### Regression output for selected variables
 
-fit_flex3 <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  flex              = "flex3",
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
+```{r summary-exp}
+summary(fit_exp)
 ```
 
-Compare the selected powers and p-values:
+Step 4 prints the regression output only for variables whose interaction was
+selected (those marked with `*` in Step 3). As before, the correct interaction
+test p-values are those from Step 3, not the Wald p-values in the regression
+table.
 
-```{r flex-compare-results}
-print(fit_flex1)
-print(fit_flex3)
+### Plotting selected variables
+
+By default, `plot()` shows results only for variables with a significant
+interaction.
+
+```{r plot-exp-fitted, fig.cap = "Fitted functions for variables with significant interactions."}
+plot(fit_exp, plot_type = "fitted")
 ```
 
-# Selection criteria
-
-By default, `criterion = "pvalue"` is used for both adjustment-variable
-selection and interaction assessment. In this case, the argument `p_interact`
-controls the nominal significance level for retaining an interaction.
-
-When `criterion = "aic"` or `criterion = "bic"`, candidate interaction models
-are compared using information criteria. The argument `min_improvement` controls
-the minimum required improvement over the corresponding main-effects model.
-
-## AIC example
-
-```{r criterion-aic}
-fit_aic <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  criterion         = "aic",
-  min_improvement   = 2,
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
-
-print(fit_aic)
+```{r plot-exp-diff, fig.cap = "Treatment-effect differences for variables with significant interactions."}
+plot(fit_exp, plot_type = "difference")
 ```
 
-## Interaction significance threshold
+### Plotting non-selected variables
 
-A more lenient threshold may be useful in exploratory analyses:
+To inspect a candidate fit for a variable that was not selected, specify the
+`terms` and `type` arguments. For example, to see the FP1 candidate for `wt`:
 
-```{r p-interact}
-fit_lenient <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  p_interact        = 0.10,
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
-
-print(fit_lenient)
+```{r plot-nonsig, fig.cap = "FP1 candidate for the wt × rx interaction (not selected)."}
+plot(fit_exp, terms = "wt", type = "fp1", plot_type = "both")
 ```
 
-# Centering options
+This is useful for diagnostic inspection: it shows what the candidate functional
+form looked like before selection and helps assess whether the non-selection
+decision is supported by the data.
 
-The `center_type` argument controls how FP-transformed continuous variables are
-centered in the interaction model:
+## Alternative selection criteria: AIC and BIC
 
-- `"grand"`: center by the grand mean across all observations;
-- `"group"`: center by the within-group mean.
+In all examples above, the default `criterion = "pvalue"` was used. This
+selects the candidate interaction model (linear, FP1, or FP2) with the smallest
+p-value, and retains the interaction only if the p-value is below
+`p_interact`. For `flex2`, `flex3`, and `flex4`, however, the main-effects and
+interaction models are non-nested, and the p-values from the likelihood ratio
+test lack a firm theoretical underpinning (see the
+[Note on non-nested comparisons](#note-on-non-nested-comparisons) section).
 
-Centering affects the absolute level of the fitted group-specific functions, but
-the same centering constants are stored and reused when fitted functions are
-evaluated.
+As an alternative, `mfpi()` supports model selection based on information
+criteria via `criterion = "aic"` or `criterion = "bic"`. Under these criteria,
+models are compared by the difference
+$$
+\Delta\text{IC}
+= \text{IC}_{\text{main}} - \text{IC}_{\text{interaction}},
+$$
+where IC is AIC or BIC. A positive value means the interaction model has a
+smaller information criterion and is therefore preferred. The candidate with the
+largest $\Delta\text{IC}$ is selected, and the interaction is retained only if
+this difference exceeds `min_improvement` (default 2). Small differences in AIC
+or BIC provide little evidence for preferring one model over the other; a
+threshold of 2 is a commonly used rough guide.
 
-```{r centering, eval=FALSE}
-fit_group_center <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  center_type       = "group",
-  include_group_var = TRUE,
-  verbose           = FALSE
-)
-```
+The `criterion` argument affects two stages of the analysis. In Step 1, it
+governs the MFP adjustment model: variable elimination and FP degree selection
+are based on the chosen criterion rather than on significance levels. In Step 2,
+the same criterion determines which candidate interaction model is preferred
+and whether the interaction is retained.
 
-# Winsorisation options
+BIC penalises model complexity more heavily than AIC (the penalty per parameter
+is $\log n$ rather than 2), so it tends to favour simpler functional forms and
+is more conservative in declaring interactions.
 
-By default, `mfpi()` Winsorises the continuous variables listed in `cont_vars`.
-This can be disabled if the user wants to analyse the original data without
-truncating extreme values.
+Note that when `criterion = "aic"` or `"bic"`, the `p_adjust_method` argument
+has no effect, because multiplicity adjustment applies to p-values, not to
+information criteria.
 
-```{r winsorize-example, eval=FALSE}
-fit_no_winsor <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  winsorize         = FALSE,
-  include_group_var = TRUE,
-  verbose           = FALSE
+### Example: BIC-based selection
+
+We repeat the exploratory analysis using BIC as the selection criterion. The
+`min_improvement` threshold is set to 2, meaning that the interaction model must
+improve BIC by at least 2 units relative to the main-effects model.
+
+```{r bic-exploratory}
+fit_bic <- mfpi(
+  Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var       = "rx",
+  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg"),
+  data            = advanced_prostate_cancer,
+  flex            = "flex1",
+  family          = "cox",
+  criterion       = "bic",
+  min_improvement = 2
 )
 ```
 
-The Winsorisation limits applied to each variable are stored in the fitted
-object:
+### Understanding the output
 
-```{r winsorize-limits, eval=FALSE}
-fit_formula$winsorize_limits
+```{r print-bic}
+print(fit_bic)
 ```
 
-# Simulation examples: comparing flexibility levels
+**Step 1** may differ from the p-value-based analyses. Because the MFP algorithm
+now uses BIC for variable selection and FP degree choice, it may retain a
+different set of adjustment variables or select different functional forms. BIC's
+heavier complexity penalty means that simpler models (linear terms, fewer
+retained variables) are favoured compared to the p-value-based analysis.
 
-This section provides four simple simulation examples to illustrate how the
-different flexibility levels, `flex1` to `flex4`, behave under different
-interaction structures. These examples are intended for learning and visual
-comparison. They are not intended as a formal simulation study.
+**Step 2** shows the same three candidates (linear, FP1, FP2) per variable, but
+the decisive column is now `BIC_main_minus_int` rather than `pvalue`. The `+`
+marker flags the candidate with the largest BIC improvement for each variable.
+The p-values and AIC differences are still shown for comparison, but BIC
+governs the selection.
 
-Each example uses a binary grouping variable, `rx`, and a continuous covariate,
-`age`. The outcome is continuous, so we use `family = "gaussian"`. The examples
-should be run one at a time. After fitting the models for one example, compare
-the printed results and the plots before moving to the next example.
+**Step 3** now displays one row per variable with the column `dBIC` instead of
+`pvalue`. Variables whose dBIC exceeds `min_improvement = 2` are marked with
+`*`. A positive dBIC means the interaction model is preferred by BIC; a negative
+or small positive value means the main-effects model is adequate. Because BIC
+penalises complexity more heavily, it is common for BIC-based selection to retain
+fewer interactions than p-value-based selection.
 
-```{r mfpi-simulation-setup, eval=FALSE}
-set.seed(2025)
+### Regression output and plots
 
-n <- 1000
-
-age <- runif(n, 40, 80)
-rx  <- rbinom(n, 1, 0.5)
-
-# Standardised age is used only to generate the simulated outcomes.
-age_s <- as.numeric(scale(age))
+```{r summary-bic}
+summary(fit_bic)
 ```
 
-## Example 1: linear interaction
+Step 4 shows the regression output for variables selected under the BIC
+criterion. The plot subtitles adapt automatically to show `dBIC` rather than
+p-values.
 
-In this example, the true interaction between `rx` and `age` is linear. The
-difference function is linear in the standardised age variable.
-
-```{r mfpi-example-1-linear, eval=FALSE}
-y1 <- 2 + 0.5 * age_s + 0.3 * rx + 0.7 * age_s * rx +
-  rnorm(n, sd = 1)
-
-data1 <- data.frame(
-  y   = y1,
-  age = age,
-  rx  = rx
-)
-
-fit1_flex1 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data1,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex1",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit1_flex2 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data1,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex2",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit1_flex3 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data1,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex3",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit1_flex4 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data1,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex4",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-print(fit1_flex1)
-print(fit1_flex2)
-print(fit1_flex3)
-print(fit1_flex4)
-
-plot(fit1_flex1, plot_type = "both", show_title = TRUE)
-plot(fit1_flex2, plot_type = "both", show_title = TRUE)
-plot(fit1_flex3, plot_type = "both", show_title = TRUE)
-plot(fit1_flex4, plot_type = "both", show_title = TRUE)
+```{r plot-bic-fitted, fig.cap = "Fitted functions for variables selected by BIC."}
+plot(fit_bic, plot_type = "fitted")
 ```
 
-In this example, the linear candidate is expected to describe the interaction
-well. More flexible FP1 or FP2 candidates may also show evidence of interaction,
-but the simpler linear form should usually be adequate.
-
-## Example 2: FP1-type interaction
-
-In this example, the true interaction is nonlinear but can be represented by a
-single FP term. The interaction contains a logarithmic component.
-
-```{r mfpi-example-2-fp1, eval=FALSE}
-y2 <- 2 + 0.5 * age_s + 0.5 * rx +
-  1.2 * log(age / 60) * rx +
-  rnorm(n, sd = 0.8)
-
-data2 <- data.frame(
-  y   = y2,
-  age = age,
-  rx  = rx
-)
-
-fit2_flex1 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data2,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex1",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit2_flex2 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data2,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex2",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit2_flex3 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data2,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex3",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit2_flex4 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data2,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex4",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-print(fit2_flex1)
-print(fit2_flex2)
-print(fit2_flex3)
-print(fit2_flex4)
-
-plot(fit2_flex1, plot_type = "both", show_title = TRUE)
-plot(fit2_flex2, plot_type = "both", show_title = TRUE)
-plot(fit2_flex3, plot_type = "both", show_title = TRUE)
-plot(fit2_flex4, plot_type = "both", show_title = TRUE)
+```{r plot-bic-diff, fig.cap = "Treatment-effect differences for variables selected by BIC."}
+plot(fit_bic, plot_type = "difference")
 ```
 
-In this example, an FP1 function is expected to capture the interaction better
-than a purely linear interaction. The selected FP power may be close to 0,
-corresponding to a logarithmic transformation.
+### Comparing p-value and BIC results
 
-## Example 3: FP2-type interaction
-
-In this example, the true interaction is more complex and is generated from two
-FP terms.
-
-```{r mfpi-example-3-fp2, eval=FALSE}
-interaction_fp2 <- -2 +
-  5 * (age / 100)^(-1) -
-  3 * (age / 100)^(-0.5)
-
-y3 <- 2 + 0.3 * age_s + 0.4 * rx +
-  rx * interaction_fp2 +
-  rnorm(n, sd = 1)
-
-data3 <- data.frame(
-  y   = y3,
-  age = age,
-  rx  = rx
-)
-
-fit3_flex1 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data3,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex1",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit3_flex2 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data3,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex2",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit3_flex3 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data3,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex3",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit3_flex4 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data3,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex4",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-print(fit3_flex1)
-print(fit3_flex2)
-print(fit3_flex3)
-print(fit3_flex4)
-
-plot(fit3_flex1, plot_type = "both", show_title = TRUE)
-plot(fit3_flex2, plot_type = "both", show_title = TRUE)
-plot(fit3_flex3, plot_type = "both", show_title = TRUE)
-plot(fit3_flex4, plot_type = "both", show_title = TRUE)
+It can be instructive to compare the results from the p-value-based and
+BIC-based analyses. A variable that is selected under both criteria provides
+stronger evidence for a genuine interaction than one that is selected under only
+one. Conversely, a variable selected by p-value but not by BIC may reflect a
+statistically detectable but small interaction that does not substantially
+improve model fit. Variables selected by neither criterion can be set aside with
+greater confidence.
+```{r restore-options, include=FALSE}
+options(width = oldwidth)
 ```
-
-In this example, the FP2 candidate is expected to perform better than the linear
-or FP1 candidates. The fitted curves should still be inspected carefully because
-more flexible models may be less stable.
-
-## Example 4: nonlinear main effect with linear interaction
-
-In this example, the main effect of `age` is nonlinear, but the interaction is
-linear. This setting illustrates that the shape of the main effect and the shape
-of the interaction need not be the same.
-
-```{r mfpi-example-4-mixed, eval=FALSE}
-y4 <- 2 + 1.5 * log(age) + 0.5 * rx + 0.7 * age_s * rx +
-  rnorm(n, sd = 1)
-
-data4 <- data.frame(
-  y   = y4,
-  age = age,
-  rx  = rx
-)
-
-fit4_flex1 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data4,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex1",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit4_flex2 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data4,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex2",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit4_flex3 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data4,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex3",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-fit4_flex4 <- mfpi(
-  y ~ fp(age) + rx,
-  data              = data4,
-  group_var         = "rx",
-  cont_vars         = "age",
-  family            = "gaussian",
-  flex              = "flex4",
-  criterion         = "pvalue",
-  p_interact        = 0.05,
-  include_group_var = TRUE,
-  winsorize         = FALSE,
-  verbose           = FALSE
-)
-
-print(fit4_flex1)
-print(fit4_flex2)
-print(fit4_flex3)
-print(fit4_flex4)
-
-plot(fit4_flex1, plot_type = "both", show_title = TRUE)
-plot(fit4_flex2, plot_type = "both", show_title = TRUE)
-plot(fit4_flex3, plot_type = "both", show_title = TRUE)
-plot(fit4_flex4, plot_type = "both", show_title = TRUE)
-```
-
-In this example, the pooled main-effect function is nonlinear, whereas the true
-interaction is linear. This setting is useful for comparing the flexibility
-levels because the shape of the main effect and the shape of the interaction
-need not be the same.
-
-`flex1` selects powers from the main-effects model and uses them in the
-interaction model. `flex2` selects powers from the interaction model and uses
-those same powers in the main-effects model. `flex3` allows the main-effects
-model and interaction model to use different powers, while still constraining
-the interaction powers to be equal across groups. `flex4` is the most flexible
-option and allows group-specific powers.
-
-The fitted curves should be inspected visually, not only compared by p-values.
-
-## Notes on interpreting the simulation examples
-
-These examples are designed to show how the four flexibility levels behave under
-known data-generating mechanisms.
-
-In general:
-
-- `flex1` is the least flexible and is often a useful starting point;
-- `flex2` estimates powers from the interaction model while keeping powers equal
-  across groups;
-- `flex3` allows the main-effect and interaction models to use different powers,
-  while still constraining the within-group powers to be equal across groups;
-- `flex4` is the most flexible option and allows group-specific FP powers.
-
-More flexible models can capture more complex patterns, but they may also be
-less stable. Therefore, the selected interaction should always be assessed using
-the fitted functions, the difference function, and subject-matter knowledge.
-
-# Verbose output
-
-Setting `verbose = TRUE` prints detailed information during fitting, including
-MFP cycle updates, per-variable adjustment sets, candidate model comparisons,
-and, if `show_models = TRUE`, the summary of the selected interaction model.
-
-```{r verbose, eval=FALSE}
-fit_verbose <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data              = prostate,
-  group_var         = "svi",
-  cont_vars         = c("cavol", "age"),
-  include_group_var = TRUE,
-  verbose           = TRUE,
-  show_models       = TRUE
-)
-```
-
-# Summary
-
-The `mfpi()` function provides a systematic approach to investigating
-interactions between a categorical grouping variable and continuous covariates.
-Its main features include:
-
-- flexible modelling of continuous covariates using fractional polynomials;
-- avoidance of arbitrary categorisation of continuous variables;
-- four flexibility levels controlling how FP powers are selected across groups;
-- MFP-based adjustment for confounders and prognostic variables;
-- support for Gaussian, binomial, Poisson, and Cox regression models;
-- p-value, AIC, and BIC selection criteria;
-- optional Winsorisation to reduce the influence of extreme covariate values;
-- plots of group-specific fitted functions and difference functions.
-
-MFPI is most useful when the aim is to investigate whether the effect of a
-categorical grouping variable varies continuously with a covariate. Apparent
-interactions should be interpreted cautiously, especially in exploratory
-analyses. Graphical checks, sensitivity analyses, and subject-matter knowledge
-remain essential.
-
-For methodological details, see Royston and Sauerbrei (2004, 2008, 2013, 2014)
-and Sauerbrei, Royston, and Zapien (2007).
 
 # References
 
-Altman, D. G., Lausen, B., Sauerbrei, W. and Schumacher, M. (1994). The dangers
-of using 'optimal' cutpoints in the evaluation of prognostic factors. *Journal
-of the National Cancer Institute*, 86, 829--835.
+- Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions
+  between treatment and continuous covariates in clinical trials by using
+  fractional polynomial submodels. *Statistics in Medicine*, 23(16), 2509–2525.
 
-Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions
-between treatment and continuous covariates in clinical trials by using
-fractional polynomials. *Statistics in Medicine*, 23, 2509--2525.
+- Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A
+  Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for
+  Modelling Continuous Variables.* Wiley.
 
-Royston, P. and Sauerbrei, W. (2008). Interactions between treatment and
-continuous covariates -- a step towards individualising therapy. *Journal of
-Clinical Oncology*, 26, 1397--1399.
+- Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
+  continuous variable: simulation study of significance level for several methods
+  of analysis. *Statistics in Medicine*, 32(22), 3788–3803.
 
-Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A
-Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for
-Modelling Continuous Variables*. John Wiley & Sons.
+- Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a
+  continuous variable: simulation study of power for several methods of analysis.
+  *Statistics in Medicine*, 33(27), 4695–4708.
 
-Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a continuous
-variable: simulation study of significance level for several methods of
-analysis. *Statistics in Medicine*, 32, 3788--3803.
-
-Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a continuous
-variable: simulation study of power for several methods of analysis.
-*Statistics in Medicine*, 33, 4695--4708.
-
-Royston, P., Sauerbrei, W. and Ritchie, A. (2004). Is treatment with
-interferon-alpha effective in all patients with metastatic renal carcinoma? A
-new approach to the investigation of interactions. *British Journal of Cancer*,
-90, 794--799.
-
-Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
-between treatment and a continuous covariate: a comparison of two approaches.
-*Computational Statistics and Data Analysis*, 51, 4054--4063.
+- Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
+  between treatment and a continuous covariate: a comparison of two approaches.
+  *Computational Statistics & Data Analysis*, 51(8), 4054–4063.
 
 ```{r cleanup, include=FALSE}
 options(width = oldwidth)

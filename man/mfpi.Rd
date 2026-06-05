@@ -90,7 +90,7 @@ mfpi(x, ...)
   max_prop = 0.95,
   use_ftest = FALSE,
   control = NULL,
-  winsorize = TRUE,
+  winsorize = FALSE,
   winsorize_probs = c(0.01, 0.99),
   center_type = c("grand", "group"),
   p_adjust_method = "none",

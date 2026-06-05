@@ -159,6 +159,8 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
          call. = FALSE)
   }
   
+  
+  
   # Linear degree always uses flex0, regardless of the flex setting
   if (degree < 1L) flex <- "flex0"
   
@@ -318,6 +320,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_var         = groupvar_vec,
       family            = family,
       family_string     = family_string,
+      center = center,
       center_vals       = center_vals,
       center_type       = center_type,
       scale_var         = scale_var
@@ -568,6 +571,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_var         = groupvar_vec,
       family            = family,
       family_string     = family_string,
+      center = center,
       center_vals       = center_vals,
       center_type       = center_type,
       scale_var         = scale_var
@@ -742,6 +746,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_var         = groupvar_vec,
       family            = family,
       family_string     = family_string,
+      center = center,
       center_vals       = center_vals,
       center_type       = center_type,
       scale_var         = scale_var
@@ -864,6 +869,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_var         = groupvar_vec,
       family            = family,
       family_string     = family_string,
+      center = center,
       center_vals       = center_vals,
       center_type       = center_type,
       scale_var         = scale_var
@@ -1145,6 +1151,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       group_var         = groupvar_vec,
       family            = family,
       family_string     = family_string,
+      center = center,
       center_vals       = center_vals,
       center_type       = center_type,
       scale_var         = scale_var

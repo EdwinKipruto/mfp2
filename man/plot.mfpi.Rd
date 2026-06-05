@@ -11,6 +11,9 @@
   plot_type = c("fitted", "difference", "both"),
   auto_print = TRUE,
   show_title = TRUE,
+  show_rug = FALSE,
+  show_ci_fitted = FALSE,
+  show_ci_diff = TRUE,
   colour_ref = "#2166AC",
   colour_grp = "#D6604D",
   colour_diff = "#1B7837",
@@ -24,177 +27,234 @@
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
 \item{terms}{Character vector of variable names to plot. Default
-\code{NULL} plots all variables that have a fitted curve available
-under the current \code{type} setting:
-when \code{type = NULL}, that is all variables with a significant
-interaction (i.e. those retained in \code{best_fitted_functions});
-when \code{type} is explicit, that is all variables with that
-candidate fit (typically all of \code{cont_vars}). If you name
-variables that have no fit under the current \code{type}, you get
-a clear message explaining why (see \emph{Plotting non-selected
-variables}).}
+\code{NULL} plots all variables with fitted values available under the
+current \code{type} setting.}
 
-\item{type}{Character string or \code{NULL}. Controls which functional
-form to plot: \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Default
-\code{NULL} plots the \strong{best selected} form for each variable
-(from \code{model$best_fitted_functions}); variables whose interaction
-was not retained are silently skipped under this default. Setting
-\code{type} explicitly plots that specific candidate from
-\code{model$all_fitted_functions} for every variable in
-\code{cont_vars}, allowing the user to inspect a candidate curve
-regardless of whether it was the winner.}
+\item{type}{Character string or \code{NULL}. Controls which functional form
+is plotted. One of \code{"linear"}, \code{"fp1"}, \code{"fp2"}, or
+\code{NULL}. Default \code{NULL} plots the selected functional form for
+each retained variable.}
 
-\item{plot_type}{Character string; \code{"fitted"} (default),
-\code{"difference"}, or \code{"both"}. See the \emph{Plot types} section.}
+\item{plot_type}{Character string specifying the plot to produce. One of
+\code{"fitted"}, \code{"difference"}, or \code{"both"}. Default is
+\code{"fitted"}.}
 
-\item{auto_print}{Logical. If \code{TRUE} (default), each plot is printed
-to the active graphics device as it is created.}
+\item{auto_print}{Logical. If \code{TRUE}, each plot is printed as it is
+created. Default is \code{TRUE}. With FALSE, plots are returned
+invisibly and can be printed, saved, or assembled manually.}
 
-\item{show_title}{Logical. If \code{TRUE} (default), each plot is
-annotated with a title and subtitle as described in the
-\emph{Title and subtitle annotations} section. Set to \code{FALSE}
-for clean plots without text annotations, useful when embedding in
-reports or manuscripts where the caption already describes the
-figure.}
+\item{show_title}{Logical. If \code{TRUE}, titles and subtitles are added.
+Default is \code{TRUE}.}
 
-\item{colour_ref}{Character. Colour for the reference group curve and CI.
-Default \code{"#2166AC"} (blue).}
+\item{show_rug}{Logical. If \code{TRUE}, rug marks for the observed values
+of the continuous variable are added at the bottom of each plot. Default is
+\code{FALSE} for faster rendering with large datasets.}
 
-\item{colour_grp}{Character. Colour for the non-reference group curve and
-CI. Default \code{"#D6604D"} (red-orange).}
+\item{show_ci_fitted}{Logical. If \code{TRUE}, 95\\% confidence bands are
+shown around the group-specific fitted curves. Default is \code{FALSE},
+which gives cleaner and faster fitted-function plots.}
 
-\item{colour_diff}{Character. Colour for the difference curve and CI band.
-Default \code{"#1B7837"} (green).}
+\item{show_ci_diff}{Logical. If \code{TRUE}, a 95\\% confidence band is shown
+around the treatment-effect difference curve. Default is \code{TRUE}.}
 
-\item{linewidth}{Positive numeric. Line width. Default \code{0.8}.}
+\item{colour_ref}{Character. Colour for the reference-group curve and
+confidence band. Default is \code{"#2166AC"}.}
 
-\item{ribbon_alpha}{Numeric in \eqn{[0,1]}. Transparency of CI ribbon.
-Default \code{0.2}.}
+\item{colour_grp}{Character. Colour for the non-reference-group curve and
+confidence band. Default is \code{"#D6604D"}.}
 
-\item{rug_alpha}{Numeric in \eqn{[0,1]}. Transparency of rug marks.
-Default \code{0.4}.}
+\item{colour_diff}{Character. Colour for the difference curve and confidence
+band. Default is \code{"#1B7837"}.}
+
+\item{linewidth}{Positive numeric. Line width for fitted and difference
+curves. Default is \code{0.8}.}
+
+\item{ribbon_alpha}{Numeric in \eqn{[0, 1]}. Transparency of confidence
+bands. Default is \code{0.2}.}
+
+\item{rug_alpha}{Numeric in \eqn{[0, 1]}. Transparency of rug marks. Ignored
+when \code{show_rug = FALSE}. Default is \code{0.4}.}
 
 \item{...}{Currently unused.}
 }
 \value{
-A nested named list of \code{ggplot} (or \code{patchwork}) objects,
+A nested named list of \code{ggplot} or \code{patchwork} objects,
 returned invisibly.
 }
 \description{
 Produces group-specific fitted-function plots, treatment-effect difference
 plots, or both for each significant continuous variable in an
-\code{"mfpi"} object. Each plot includes 95\\% confidence bands and rug
-marks. All plots are printed automatically and returned invisibly as a
+\code{"mfpi"} object. Fitted-function plots and difference plots have
+separate confidence-band controls, allowing the user to suppress uncertainty
+bands for group-specific fitted curves while retaining the confidence band
+for the treatment-effect difference curve. Plots are returned invisibly as a
 nested named list.
 }
 \section{Plot types}{
 
 Three plot types are available via the \code{plot_type} argument.
+
 \code{"fitted"} overlays the fitted linear predictor for the reference
-group and one non-reference group on shared axes with 95\\% CI bands.
+group and one non-reference group on shared axes. Confidence bands for these
+group-specific curves are controlled by \code{show_ci_fitted}.
+
 \code{"difference"} plots the pointwise treatment-effect function
-\eqn{D_j(x) = f_j(x) - f_0(x)} with a 95\\% CI band and a horizontal
-reference line at zero; deviations from zero indicate effect modification.
-\code{"both"} shows fitted and difference plots side by side (requires
-\pkg{patchwork}).
+\eqn{D_j(x) = f_j(x) - f_0(x)} with a horizontal reference line at zero.
+The confidence band for the difference curve is controlled by
+\code{show_ci_diff}. Deviations from zero indicate effect modification.
+
+\code{"both"} shows fitted and difference plots side by side and requires
+the \pkg{patchwork} package.
+}
+
+\section{Confidence bands}{
+
+The two confidence-band controls are deliberately separate because the
+inferential roles of the plots differ.
+
+\itemize{
+\item \code{show_ci_fitted} controls confidence bands around the
+group-specific fitted curves. The default is \code{FALSE}, which gives
+cleaner and faster fitted-function plots.
+\item \code{show_ci_diff} controls the confidence band around the
+treatment-effect difference curve. The default is \code{TRUE}, because
+the difference curve is usually the main inferential display for
+interaction.
+}
+
+When a confidence band is suppressed, the corresponding lower and upper
+confidence-limit columns are not required for plotting.
+}
+
+\section{Performance}{
+
+The function constructs only the plot type requested by \code{plot_type}.
+For example, when \code{plot_type = "difference"}, fitted-function plots are
+not built internally. This avoids unnecessary \pkg{ggplot2} object creation.
+
+Line and ribbon data are sorted by the continuous variable before plotting.
+This avoids zig-zag paths when fitted values are stored in observation order
+and improves rendering behaviour for \code{geom_line()} and
+\code{geom_ribbon()}.
+
+Rug marks can be expensive for large datasets because each observation is
+drawn as a graphical object. The default is \code{show_rug = FALSE} for
+faster rendering. Set \code{show_rug = TRUE} to display rug marks.
+
+Plot printing can also be slow, especially when many variables or group
+comparisons are plotted. The default is \code{auto_print = FALSE}, so plots
+are returned invisibly and can be printed manually.
 }
 
 \section{Return structure}{
 
-The return value is a nested named list. Outer names are variable names
-from \code{terms}. Inner names are of the form
+The return value is a nested named list. Outer names are variable names from
+\code{terms}. Inner names are of the form
 \code{"grp<j>_vs_grp<0>"} for each non-reference group level \eqn{j}.
-Each leaf is a \code{ggplot} object (\code{plot_type = "fitted"} or
-\code{"difference"}) or a \code{patchwork} object
-(\code{plot_type = "both"}).
+Each leaf is a \code{ggplot} object when \code{plot_type = "fitted"} or
+\code{"difference"}, or a \code{patchwork} object when
+\code{plot_type = "both"}.
 }
 
 \section{Title and subtitle annotations}{
 
-Each plot is annotated by default with two text lines:
+Each plot is annotated by default with two text lines.
 
-The \strong{title} describes the structural comparison being plotted:
+The title describes the structural comparison being plotted:
 \itemize{
-\item Fitted plots: \code{"<group_var>: group <j> (red) vs group <0> (blue)"}.
-\item Difference plots: \code{"<group_var>: treatment effect (group <j> - group <0>)"}.
+\item Fitted plots:
+\code{"<group_var>: group <j> (red) vs group <0> (blue)"}.
+\item Difference plots:
+\code{"<group_var>: treatment effect (group <j> - group <0>)"}.
 }
 
-The \strong{subtitle} summarises the variable, the functional form being
-shown, and the selection metric for that form, in the format
-\code{"<variable>  |  <type>  |  <metric> = <value>"}. The metric shown
-depends on the \code{criterion} used to fit the model:
+The subtitle summarises the variable, the functional form being shown, and
+the selection metric for that form, in the format
+\code{"<variable> | <type> | <metric> = <value>"}.
+
+The metric shown depends on the criterion used to fit the model:
 \itemize{
-\item \code{criterion = "pvalue"} (default): shows \code{p = <pvalue>},
-the p-value of the interaction test.
-\item \code{criterion = "aic"}: shows \code{dAIC = <diff>}, where
-\code{dAIC} is \eqn{\mathrm{AIC}_{\mathrm{main}} -
+\item \code{criterion = "pvalue"}: shows the interaction-test p-value.
+\item \code{criterion = "aic"}: shows \code{dAIC}, defined as
+\eqn{\mathrm{AIC}_{\mathrm{main}} -
     \mathrm{AIC}_{\mathrm{interaction}}}. Positive values favour the
 interaction model.
-\item \code{criterion = "bic"}: shows \code{dBIC = <diff>}, defined
-analogously.
+\item \code{criterion = "bic"}: shows \code{dBIC}, defined analogously.
 }
 
-When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
-the p-value label adapts to avoid ambiguity:
+When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"}, the
+p-value label adapts to avoid ambiguity:
 \itemize{
-\item \code{type = NULL} (selected variables): the subtitle shows
-both the raw and adjusted p-values, e.g.
-\code{"cavol | FP1 | p = 0.016 (p_adj = 0.031)"}. The raw p-value
-is from the per-variable interaction test; the adjusted p-value is
-from \code{\link[stats]{p.adjust}} and was used for the selection
-decision.
-\item \code{type} specified (exploring candidates): the subtitle shows
-\code{p_raw = <value>} to make clear that the displayed value is the
-unadjusted per-candidate p-value, e.g.
-\code{"cavol | FP1 | p_raw = 0.016"}. The adjusted p-value is not
-shown because it applies to the winning candidate, not to the
-specific candidate being plotted.
+\item If \code{type = NULL}, selected variables are plotted and the
+subtitle shows both the raw and adjusted p-values.
+\item If \code{type} is specified, candidate curves are plotted and the
+subtitle shows \code{p_raw}; the adjusted p-value is not shown because
+it applies to the winning candidate, not necessarily to the specific
+candidate being displayed.
 }
 
-When \code{type = NULL} (default), the subtitle reports the metric of
-the \strong{selected} (winning) functional form. When \code{type} is
-explicit, the subtitle reports the metric of the \strong{requested}
-candidate (linear, FP1, or FP2), even if a different form was the
-winner. This keeps the printed metric consistent with the curve being
-shown.
-
-To suppress both title and subtitle for cleaner plots in reports or
-manuscripts, set \code{show_title = FALSE}. Axis labels (\code{xlab},
-\code{ylab}) are unaffected; they always describe what the axes mean.
+To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
+are still shown.
 }
 
 \section{Plotting non-selected variables}{
 
-Whether a variable can be plotted depends on \code{type}:
+Whether a variable can be plotted depends on \code{type}.
 
-Under \code{type = NULL} (the default), only variables whose interaction
-was retained as significant have a "winner" curve stored in
-\code{best_fitted_functions}. If you call \code{plot(model)} with no
-\code{terms}, those non-selected variables are silently dropped and you
-see plots only for the variables that survived selection. If no variable
-was selected, a message is printed and the function returns invisibly.
-If you name a non-selected variable explicitly in \code{terms}, you get
-an informative message explaining that the variable was not selected and
-suggesting that you set \code{type} to a specific candidate.
+Under \code{type = NULL}, only variables whose interaction was retained as
+significant have a selected curve stored in
+\code{model$best_fitted_functions}. If no variables were selected, the
+function prints an informative message and returns invisibly.
 
-Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, every
-variable in \code{cont_vars} has a candidate curve in
-\code{all_fitted_functions} (provided the model was fitted with
-\code{compute_fitted = TRUE}), so you can plot the candidate fit even
-for variables that were not selected. This is useful for diagnostic
-inspection: you can see what each functional form looked like before
-the selection step and judge whether the rejection was supported.
+Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, the function
+plots the requested candidate curve from \code{model$all_fitted_functions},
+provided the model was fitted with \code{compute_fitted = TRUE}. This allows
+inspection of candidate curves even for variables that were not selected.
 }
 
 \examples{
 \dontrun{
-fit   <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
-plots <- plot(fit)                        # all variables, fitted + printed
-plots <- plot(fit, plot_type = "both")    # fitted + difference side by side
-plots <- plot(fit, terms = "age",
-              plot_type = "difference")   # difference only for age
+fit <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
+
+# Return selected fitted-function plots without printing
+plots <- plot(fit)
+
+# Print one plot manually
+plots$age$grp1_vs_grp0
+
+# Difference plot with confidence band, returned without printing
+plots <- plot(fit, plot_type = "difference")
+
+# Print difference plots immediately
+plot(fit, plot_type = "difference", auto_print = TRUE)
+
+# Add confidence bands to group-specific fitted curves
+plot(fit, plot_type = "fitted",
+     show_ci_fitted = TRUE,
+     auto_print = TRUE)
+
+# Suppress all confidence bands
+plots <- plot(fit, plot_type = "both",
+              show_ci_fitted = FALSE,
+              show_ci_diff = FALSE)
+
+# Show rug marks if desired
+plot(fit, plot_type = "difference",
+     show_rug = TRUE,
+     auto_print = TRUE)
+
+# Inspect candidate FP2 curve for age, even if not selected
+plot(fit, terms = "age", type = "fp2",
+     plot_type = "difference",
+     auto_print = TRUE)
+
 # Save a specific plot
-ggplot2::ggsave("age_diff.pdf", plots$age$grp1_vs_grp0, width = 7, height = 5)
+ggplot2::ggsave(
+  "age_difference.pdf",
+  plots$age$grp1_vs_grp0,
+  width = 7,
+  height = 5
+)
 }
 }
 \seealso{

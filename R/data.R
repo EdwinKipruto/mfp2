@@ -18,7 +18,7 @@
 #' }
 "art"
 
-#' Breast cancer dataset used in the Royston and Sauerbrei (2008) book.
+#' Breast cancer dataset used in Royston and Sauerbrei (2008) book.
 #'
 #' @name gbsg
 #' @docType data
@@ -42,7 +42,7 @@
 "gbsg"
 
 
-#' Pima Indians dataset used in the Royston and Sauerbrei (2008) book.
+#' Pima Indians dataset used in Royston and Sauerbrei (2008) book.
 #'
 #' The dataset arises from an investigation of potential predictors of
 #' the onset of diabetes in a cohort of 768 female Pima Indians of whom 268
@@ -69,7 +69,7 @@
 "pima"
 
 
-#' Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.
+#' Prostate cancer dataset used in Royston and Sauerbrei (2008) book.
 #'
 #' @name prostate
 #' @docType data
@@ -88,3 +88,29 @@
 #'   \item{lpsa}{Log PSA concentration (outcome variable).}
 #' }
 "prostate"
+
+#' Advanced prostate cancer dataset used in Royston and Sauerbrei (2008) book.
+#'
+#' @name advanced_prostate_cancer
+#' @docType data
+#' @usage data(advanced_prostate_cancer)
+#' @keywords data
+#' @format A dataset with 475 observations (338 deaths) and 13 variables.
+#' \describe{
+#'   \item{patnr }{Patient number.}
+#'   \item{age}{Age at diagnosis in years (continuous).}
+#'   \item{wt}{Standardized weight (continuous).}
+#'   \item{sbp}{Systolic blood pressure (continuous).}
+#'   \item{dbp}{Diastolic blood pressure (continuous).}
+#'   \item{sz}{Size of primary tumour (continuous).}
+#'   \item{ap}{Serum acid phosphatase (continuous).}
+#'   \item{hg}{Haemoglobin (g/100 ml) (continuous).}
+#'   \item{pf}{Performance status (binary).}
+#'   \item{hx}{HHistory of cardiovascular disease (binary).}
+#'   \item{bm}{Presence of bone metastases (binary).}
+#'   \item{stage}{Stage 4 vs stage 3 (binary).}
+#'   \item{ekg}{Abnormal electrocardiogram (binary).}  
+#'   \item{survtime}{Time to death (overall survival).}
+#'   \item{cens}{Censoring (0 = censored, 1 = event).}
+#'   }
+"advanced_prostate_cancer"

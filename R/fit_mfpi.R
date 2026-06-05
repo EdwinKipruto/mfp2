@@ -1044,7 +1044,14 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     # removing var_name from selected_vars, so it is identical for all
     # three flex_fit calls for this variable.
     if (!skip_adjustment) {
-      adj_vars     <- setdiff(selected_vars, var_name)
+      #adj_vars     <- setdiff(selected_vars, var_name)
+      group_dummy_names <- colnames(processed_data$cat_info$dummies)
+      
+      adj_vars <- setdiff(
+        selected_vars,
+        c(var_name, group_dummy_names)
+      )
+      
       xadj_current <- NULL
       if (length(adj_vars) > 0L) {
         # Backscale adj_vars to match fit_mfp convention: x was pre-scaled in

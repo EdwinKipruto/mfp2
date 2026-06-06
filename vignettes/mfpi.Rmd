@@ -7,11 +7,85 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
+    highlight: tango
 vignette: >
   %\VignetteIndexEntry{MFPI: Multivariable Fractional Polynomial Interaction}
-  %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
+
+```{=html}
+<style>
+body {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Justify normal prose, but not code, tables, headings, or captions */
+.main-container p,
+.main-container li {
+  text-align: justify;
+  line-height: 1.5;
+}
+
+/* Colour section headings in the main text only */
+h1, h2, h3, h4 {
+  margin-top: 1.4em;
+  margin-bottom: 0.6em;
+  color: #1f77b4;
+}
+
+/* Keep TOC links unchanged */
+#TOC a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Style ordinary links in the document body */
+body > p a,
+body > div:not(#TOC) a,
+.main-container a {
+  color: #1f77b4;
+  text-decoration: none;
+}
+
+body > p a:hover,
+body > div:not(#TOC) a:hover,
+.main-container a:hover {
+  color: #0b4f8a;
+  text-decoration: underline;
+}
+
+pre {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+
+code {
+  font-size: 90%;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.figure {
+  margin-top: 1.2em;
+  margin-bottom: 1.2em;
+}
+
+.caption {
+  font-size: 90%;
+  color: #555555;
+  text-align: left;
+}
+</style>
+```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -22,14 +96,21 @@ knitr::opts_chunk$set(
   fig.width = 7,
   fig.height = 5,
   out.width = "100%",
-  fig.align = "center"
+  fig.align = "center",
+  dev = "png",
+  dpi = 300
 )
 
 oldwidth <- getOption("width")
 options(width = 100)
 
 library(mfp2)
+library(ggplot2)
+library(patchwork)
+library(survival)
+library(formatR)
 ```
+
 
 # Introduction
 
@@ -454,36 +535,6 @@ winsorize_probs = (0.05, 0.95)
 Any Winsorisation or trimming applied should be reported transparently as part of
 the initial data analysis.
 
-# Checking selected interactions
-
-A selected MFPI interaction should not be accepted solely based on a
-p-value. The fitted curves should be checked graphically and interpreted in the
-light of subject-matter knowledge.
-
-For survival outcomes, Royston and Sauerbrei recommended checking selected
-interactions using Kaplan--Meier curves in subgroups defined by the continuous
-covariate. The subgroup curves should provide a rough visual confirmation of the
-pattern suggested by the continuous treatment-effect plot. For example, if the
-treatment-effect function suggests that treatment benefit decreases as `z`
-increases, subgroup estimates should show a similar trend.
-
-For other regression models, analogous checks can be made using grouped summaries
-or subgroup-specific estimates. These checks are not substitutes for the MFPI
-analysis, because they require categorising the continuous covariate, but they
-can help detect obvious artefacts from flexible modelling.
-
-A useful workflow is:
-
-1. inspect the distribution of each variable in `cont_vars`;
-2. fit the MFPI model;
-3. inspect the fitted group-specific functions;
-4. inspect the treatment-effect or difference function;
-5. check whether the pattern is plausible and supported by subgroup summaries;
-6. consider sensitivity analyses if the result depends strongly on a few
-   observations or on the adjustment model.
-
-
-
 # Shifting, scaling, and centering
 
 ## Shifting {-}
@@ -684,79 +735,126 @@ testing the interaction is the one reported in Step 3.
 
 ### Visualising the interaction
 
-The `plot()` method produces graphical displays of the fitted interaction. Its
-main arguments are:
+The `plot()` method displays the fitted interaction for continuous variables in an
+`mfpi` model. By default, it plots the selected functional form for each
+variable retained by the MFPI procedure.
 
-- `terms`: a character vector of variable names to plot. By default (`NULL`),
-  all variables with a significant interaction are plotted. Specifying a
-  variable name restricts the output to that variable.
-- `type`: controls which functional form is shown. The default (`NULL`) plots
-  the selected candidate for each variable. Setting `type` to `"linear"`,
-  `"fp1"`, or `"fp2"` plots that specific candidate from the full set of fitted
-  models, regardless of whether it was selected. This is useful for inspecting
-  non-selected candidates or comparing functional forms.
-- `plot_type`: one of `"fitted"`, `"difference"`, or `"both"`. `"fitted"`
-  overlays the group-specific fitted curves; `"difference"` shows the pointwise
-  treatment-effect function; and `"both"` places both plots side by side
-  (requires the `patchwork` package).
-- `show_title`: logical, default `TRUE`. Each plot is annotated with a title
-  describing the group comparison and a subtitle showing the variable name, the
-  functional form, and the selection metric. Set this to `FALSE` to produce
-  cleaner plots for reports or manuscripts.
+The main argument is `plot_type`, which controls the display:
 
-The subtitle adapts to the selection criterion used when fitting the model. When
-`criterion = "pvalue"`, the subtitle shows `p = <value>`. When
-`criterion = "aic"` or `criterion = "bic"`, it shows `dAIC = <value>` or
-`dBIC = <value>`, respectively.
+- `"fitted"` overlays the group-specific fitted functions.
+- `"difference"` plots the pointwise treatment-effect difference,
+  $\hat f_1(x) - \hat f_0(x)$.
+- `"both"` places the fitted and difference plots side by side; this requires
+  the `patchwork` package.
 
-When multiplicity adjustment is active (`p_adjust_method != "none"`), the
-subtitle shows both the raw and adjusted p-values for selected variables, for
-example: `age | FP1 | p = 0.016 (p_adj = 0.031)`. When `type` is set explicitly
-to inspect a specific candidate, the subtitle shows `p_raw = <value>` to signal
-that the displayed value is the unadjusted per-candidate p-value, not the
-adjusted p-value used for the selection decision.
+Two additional arguments are useful for controlling the graphical output.
+`show_ci_fitted` adds 95% pointwise confidence bands to the group-specific
+fitted curves, while `show_ci_diff` controls the confidence band for the
+treatment-effect difference curve. By default, fitted-function confidence bands
+are suppressed and the difference-curve confidence band is shown. The argument
+`show_rug = TRUE` adds rug marks showing the observed values of the continuous
+variable.
+
+Each plot includes a title describing the group comparison and a subtitle giving
+the variable name, selected functional form, and selection metric. For models
+selected by p-value, the subtitle shows the interaction-test p-value. For models
+selected by AIC or BIC, it shows `dAIC` or `dBIC`, respectively, where positive
+values favour the interaction model. If multiplicity adjustment was used, plots
+of selected variables show both the raw and adjusted p-values.
 
 #### Fitted functions
-The fitted plot overlays the estimated linear predictor as a function of `age`
-for each treatment group, with 95% pointwise confidence bands and rug marks
-showing the observed values. If the two curves are roughly parallel, there is
-little evidence for interaction.
+
+The fitted-function plot overlays the estimated linear predictor for the two
+treatment groups as a function of `age`. Confidence bands and rug marks are
+added here to show uncertainty and the distribution of the observed age values.
+If the two fitted curves are approximately parallel, this suggests little
+evidence that the treatment effect varies with age.
 
 ```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age × rx interaction."}
-plot(fit_pre, plot_type = "fitted", show_ci_fitted = TRUE, show_rug = TRUE)
+plot(fit_pre,
+     plot_type = "fitted",
+     show_ci_fitted = TRUE,
+     show_rug = TRUE)
 ```
 
-
-
 #### Treatment-effect difference
+
 The difference plot shows the pointwise treatment-effect function
-$\hat{d}(\text{age}) = \hat{f}_1(\text{age}) - \hat{f}_0(\text{age})$ with a
-95% confidence band and a horizontal reference line at zero. Regions where the
-band excludes zero suggest that the treatment effect differs from the overall
-average at those values of `age`. If the confidence band is approximately
-horizontal and includes zero throughout, this supports the conclusion that
-treatment benefit does not depend on `age`.
+$\hat d(\text{age}) = \hat f_1(\text{age}) - \hat f_0(\text{age})$ with a
+horizontal reference line at zero. The confidence band is shown by default.
+Values above or below zero indicate how the fitted treatment contrast changes
+with age. Regions where the confidence band excludes zero suggest age ranges in
+which the fitted treatment effect differs from zero.
 
 ```{r plot-diff-pre, fig.cap = "Treatment-effect difference for the age × rx interaction."}
 plot(fit_pre, plot_type = "difference")
 ```
 
-
-
 #### Side-by-side display
-The `"both"` option places the fitted and difference plots side by side using
-the `patchwork` package.
+
+The `"both"` option combines the fitted-function plot and the treatment-effect
+difference plot in a single display. This side-by-side view makes it easier to
+see how differences between the group-specific fitted functions change across
+the range of the continuous variable.
 
 ```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference for the age × rx interaction."}
 plot(fit_pre, plot_type = "both")
 ```
 
+#### Inspecting alternative candidate forms
+
+By default, `plot()` displays the selected functional form for each retained
+variable-specific interaction. The fitted candidate forms for the same variable
+can also be inspected by setting `type` explicitly to one of `"linear"`,
+`"fp1"`, or `"fp2"`, provided that the requested candidate form was fitted and
+stored.
+
+This does not compare different variables, nor does it imply that the displayed
+candidate form was non-significant. Rather, it compares alternative functional
+forms for the same variable-by-group interaction. For example, the interaction
+involving `age` may be selected with a linear or FP1 form, while the FP2
+candidate may also show evidence of interaction. In this example, the FP2
+candidate has a raw p-value of 0.027, but it was not the selected functional
+form.
+
+Inspecting alternative candidate forms can be useful for assessing how sensitive
+the fitted interaction is to the chosen functional form, whether different forms
+lead to similar substantive conclusions, or whether a more flexible form appears
+unstable. Such comparisons should be interpreted using subject-matter knowledge,
+ideally with the set of candidate functional forms specified before the
+analysis.
+
+The following example displays the FP2 candidate fitted functions and
+treatment-effect difference for `age`, regardless of whether FP2 was the
+selected functional form:
+
+```{r plot-candidate-fp2-pre, fig.width = 10, fig.cap = "FP2 candidate fitted functions and treatment-effect difference for the age × rx interaction."}
+plot(fit_pre,
+     terms = "age",
+     type = "fp2",
+     plot_type = "both")
+```
+
+When `type` is specified explicitly, the subtitle refers to the displayed
+candidate form. If p-value selection with multiplicity adjustment is used, the
+subtitle shows the raw candidate p-value, labelled as `p_raw`; the adjusted
+p-value is not shown because it applies to the selected winner, not necessarily
+to the displayed candidate form. In this example, multiplicity adjustment was
+not used, so the reported candidate p-value is unchanged by adjustment:
+`p_raw = p_adj = 0.027`.
+
 ## Exploratory interaction analysis
 
-In the second setting, we screen all eight continuous covariates for possible
-interaction with treatment. Because multiple interactions are tested, we apply
-the Holm step-down correction to control the family-wise error rate across the
-tested variables.
+Suppose the analyst wants to screen several continuous covariates for possible
+interaction with the grouping variable. Because multiple interaction tests are
+performed, some small p-values may occur by chance. The interaction p-values may
+therefore need to be adjusted for multiplicity.
+
+In this example, we screen seven continuous covariates for possible interaction
+with treatment. The model also includes `sg` as an adjustment covariate, but
+`sg` is not included in `cont_vars` and is therefore not tested for interaction.
+Because multiple interactions are tested, we apply the Holm step-down correction
+to control the family-wise error rate across the tested interaction variables.
 
 ```{r exploratory}
 fit_exp <- mfpi(
@@ -764,7 +862,7 @@ fit_exp <- mfpi(
     fp(sz) + fp(ap) + fp(hg) + fp(sg) +
     pf + hx + bm + stage + ekg + rx,
   group_var       = "rx",
-  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg"),
+  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
   data            = advanced_prostate_cancer,
   flex            = "flex1",
   family          = "cox",
@@ -783,18 +881,19 @@ print(fit_exp)
 **Step 1** is identical to the prespecified analysis because the same predictors
 and the same MFP settings are used.
 
-**Step 2** now shows three candidate rows (linear, FP1, FP2) for each of the
-eight continuous variables, with the best candidate per variable marked by `+`.
+**Step 2** shows the fitted interaction candidates for each variable in
+`cont_vars`. The best candidate form for each variable is marked by `+`.
 
 **Step 3** is the key table for the exploratory analysis. It shows one row per
-variable with the winning functional form, the raw p-value from the
-per-variable interaction test, and the Holm-adjusted p-value. Variables whose
-adjusted p-value falls below `p_interact = 0.05` are marked with `*`. In an
-exploratory analysis, the adjusted p-value is the one that should be used for
-the selection decision. Variables marked `*` are candidates for genuine
-treatment-by-covariate interaction; variables without `*` do not provide
-sufficient evidence of interaction after accounting for the number of tests
-performed.
+tested interaction variable, giving the winning functional form, the raw
+interaction p-value, and the Holm-adjusted p-value. Variables whose adjusted
+p-value falls below `p_interact = 0.05` are marked with `*`.
+
+In an exploratory analysis, the adjusted p-value is the one used for the
+selection decision. Variables marked with `*` are candidates for genuine
+treatment-by-covariate interaction after accounting for the number of
+interaction tests performed. Variables without `*` do not provide sufficient
+evidence of interaction after multiplicity adjustment.
 
 ### Regression output for selected variables
 
@@ -813,11 +912,7 @@ By default, `plot()` shows results only for variables with a significant
 interaction.
 
 ```{r plot-exp-fitted, fig.cap = "Fitted functions for variables with significant interactions."}
-plot(fit_exp, plot_type = "fitted")
-```
-
-```{r plot-exp-diff, fig.cap = "Treatment-effect differences for variables with significant interactions."}
-plot(fit_exp, plot_type = "difference")
+plot(fit_exp, plot_type = "both")
 ```
 
 ### Plotting non-selected variables
@@ -863,8 +958,8 @@ are based on the chosen criterion rather than on significance levels. In Step 2,
 the same criterion determines which candidate interaction model is preferred
 and whether the interaction is retained.
 
-BIC penalises model complexity more heavily than AIC (the penalty per parameter
-is $\log n$ rather than 2), so it tends to favour simpler functional forms and
+BIC penalizes model complexity more heavily than AIC (the penalty is is 
+$\log (n)$ rather than 2), so it tends to favour simpler functional forms and
 is more conservative in declaring interactions.
 
 Note that when `criterion = "aic"` or `"bic"`, the `p_adjust_method` argument
@@ -883,7 +978,7 @@ fit_bic <- mfpi(
     fp(sz) + fp(ap) + fp(hg) + fp(sg) +
     pf + hx + bm + stage + ekg + rx,
   group_var       = "rx",
-  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg", "sg"),
+  cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
   data            = advanced_prostate_cancer,
   flex            = "flex1",
   family          = "cox",
@@ -900,9 +995,7 @@ print(fit_bic)
 
 **Step 1** may differ from the p-value-based analyses. Because the MFP algorithm
 now uses BIC for variable selection and FP degree choice, it may retain a
-different set of adjustment variables or select different functional forms. BIC's
-heavier complexity penalty means that simpler models (linear terms, fewer
-retained variables) are favoured compared to the p-value-based analysis.
+different set of adjustment variables or select different functional forms. 
 
 **Step 2** shows the same three candidates (linear, FP1, FP2) per variable, but
 the decisive column is now `BIC_main_minus_int` rather than `pvalue`. The `+`
@@ -914,8 +1007,8 @@ governs the selection.
 `pvalue`. Variables whose dBIC exceeds `min_improvement = 2` are marked with
 `*`. A positive dBIC means the interaction model is preferred by BIC; a negative
 or small positive value means the main-effects model is adequate. Because BIC
-penalises complexity more heavily, it is common for BIC-based selection to retain
-fewer interactions than p-value-based selection.
+penalizes complexity more heavily, it is common for BIC-based selection to retain
+fewer interactions than AIC-based selection.
 
 ### Regression output and plots
 
@@ -928,22 +1021,9 @@ criterion. The plot subtitles adapt automatically to show `dBIC` rather than
 p-values.
 
 ```{r plot-bic-fitted, fig.cap = "Fitted functions for variables selected by BIC."}
-plot(fit_bic, plot_type = "fitted")
+plot(fit_bic, plot_type = "both")
 ```
 
-```{r plot-bic-diff, fig.cap = "Treatment-effect differences for variables selected by BIC."}
-plot(fit_bic, plot_type = "difference")
-```
-
-### Comparing p-value and BIC results
-
-It can be instructive to compare the results from the p-value-based and
-BIC-based analyses. A variable that is selected under both criteria provides
-stronger evidence for a genuine interaction than one that is selected under only
-one. Conversely, a variable selected by p-value but not by BIC may reflect a
-statistically detectable but small interaction that does not substantially
-improve model fit. Variables selected by neither criterion can be set aside with
-greater confidence.
 ```{r restore-options, include=FALSE}
 options(width = oldwidth)
 ```

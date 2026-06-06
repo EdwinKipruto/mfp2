@@ -17,7 +17,7 @@
   colour_ref = "#2166AC",
   colour_grp = "#D6604D",
   colour_diff = "#1B7837",
-  linewidth = 0.8,
+  linewidth = 1,
   ribbon_alpha = 0.2,
   rug_alpha = 0.4,
   ...
@@ -67,7 +67,7 @@ confidence band. Default is \code{"#D6604D"}.}
 band. Default is \code{"#1B7837"}.}
 
 \item{linewidth}{Positive numeric. Line width for fitted and difference
-curves. Default is \code{0.8}.}
+curves. Default is \code{1}.}
 
 \item{ribbon_alpha}{Numeric in \eqn{[0, 1]}. Transparency of confidence
 bands. Default is \code{0.2}.}

@@ -25,38 +25,20 @@ body {
 }
 
 /* Justify normal prose, but not code, tables, headings, or captions */
-.main-container p,
-.main-container li {
+p, li {
   text-align: justify;
   line-height: 1.5;
 }
 
-/* Colour section headings in the main text only */
 h1, h2, h3, h4 {
   margin-top: 1.4em;
   margin-bottom: 0.6em;
   color: #1f77b4;
 }
 
-/* Keep TOC links unchanged */
 #TOC a {
   color: inherit;
   text-decoration: none;
-}
-
-/* Style ordinary links in the document body */
-body > p a,
-body > div:not(#TOC) a,
-.main-container a {
-  color: #1f77b4;
-  text-decoration: none;
-}
-
-body > p a:hover,
-body > div:not(#TOC) a:hover,
-.main-container a:hover {
-  color: #0b4f8a;
-  text-decoration: underline;
 }
 
 pre {
@@ -98,7 +80,7 @@ knitr::opts_chunk$set(
   out.width = "100%",
   fig.align = "center",
   dev = "png",
-  dpi = 300
+  dpi = 150
 )
 
 oldwidth <- getOption("width")
@@ -108,7 +90,6 @@ library(mfp2)
 library(ggplot2)
 library(patchwork)
 library(survival)
-library(formatR)
 ```
 
 
@@ -116,81 +97,82 @@ library(formatR)
 
 Investigating whether the effect of a treatment or other grouping variable
 changes across the values of a continuous covariate is a common and important
-problem in clinical and epidemiological studies. In randomised clinical trials,
-the question is often whether the treatment effect depends on the value of a
-prognostic factor. Such dependence is represented statistically as an interaction
-between treatment and the covariate; when present, it may help identify patients
-who benefit more or less from treatment (Royston and Sauerbrei, 2004).
+problem in clinical and epidemiological studies. A common approach is to
+categorise the continuous variable using cutpoints, but this discards
+information, may reduce power, and can make the evidence for interaction depend
+strongly on the number and location of the cutpoints (Royston and Sauerbrei,
+2013). Assuming a linear interaction avoids arbitrary cutpoints but may still be
+restrictive: the main effect, the interaction function, or both may be
+nonlinear. Misspecifying a nonlinear main effect can even generate a spurious
+interaction (Royston and Sauerbrei, 2013).
 
-When both variables are binary or categorical, interaction modelling is
-relatively straightforward. The problem is more difficult when one variable is
-continuous. A common approach is to categorise the continuous variable using one
-or more cutpoints and then fit a model containing the resulting categories, the
-grouping variable, and their interaction terms. However, this strategy has
-important limitations: it discards information, may reduce power, and can make
-the evidence for interaction depend strongly on the number and location of the
-cutpoints. Depending on the chosen cutpoints, categorisation may even
-erroneously indicate an interaction with treatment, illustrating the danger of
-cutpoint-based methods (Royston and Sauerbrei, 2013).
+The Multivariable Fractional Polynomial Interaction (MFPI) procedure (Royston
+and Sauerbrei, 2004) addresses these issues by modelling covariate effects
+using fractional polynomial (FP) functions within levels of a grouping
+variable. Four flexibility variants (`flex1` to `flex4`) control how FP powers
+are selected and constrained across groups (Royston and Sauerbrei, 2013, 2014).
+The procedure first constructs an adjustment model using the MFP algorithm,
+then tests whether group-specific functions are parallel on the scale of the
+linear predictor.
 
-An alternative is to keep the covariate continuous but assume that its effect,
-and its interaction with the grouping variable, is linear. This avoids arbitrary
-cutpoints, but it may still be restrictive. The main effect of the continuous
-covariate, the interaction function, or both may be nonlinear. Royston and
-Sauerbrei (2013) note that misspecifying a nonlinear main effect can generate a
-spurious interaction. For this reason, continuous variables should preferably be
-analysed on their continuous scale, with nonlinear relationships evaluated where
-appropriate.
+This vignette describes `mfpi()` in the `mfp2` package. The function supports
+Gaussian, binomial, Poisson, and Cox regression models, and provides both
+formula and matrix interfaces (see `?mfpi` for the matrix interface). It
+investigates interactions between a categorical grouping variable (`group_var`)
+and one or more continuous covariates (`cont_vars`). The grouping variable is
+treated as a factor internally, with the lowest value used as the reference
+group.
 
-The Multivariable Fractional Polynomial Interaction (MFPI) procedure was
-proposed by Royston and Sauerbrei (2004) to address these issues. In the
-original procedure, corresponding to what is now called `flex1`, the FP powers
-are selected from the main-effects model and then held fixed when fitting the
-interaction model. The interaction test assesses whether the resulting
-group-specific functions are parallel on the scale of the linear predictor. If
-the functions are parallel, the difference between groups is constant across
-covariate values, indicating no interaction. If the difference varies with the
-covariate, this suggests that the effect of the grouping variable depends on the
-covariate. Royston and Sauerbrei (2013) later proposed additional MFPI variants,
-now implemented as `flex2`, `flex3`, and `flex4`. These variants relax different
-constraints on how FP powers are selected and constrained across groups, allowing
-progressively more flexible interaction functions. The ordinary linear
-interaction model remains the simplest special case, while nonlinear FP
-functions can be selected when supported by the data.
+# Quick start
 
-MFPI was developed primarily for treatment-by-covariate interactions in
-randomised trials, but the same approach can also be used to investigate
-interactions between a categorical grouping variable and a continuous covariate
-in other regression settings. In observational studies, adjustment for
-confounders and other prognostic variables is usually important. The MFPI
-procedure first constructs an adjustment model using the MFP algorithm, which can
-select both variables and FP transformations for continuous covariates. These
-selected variables and functional forms are then kept fixed while the interaction
-between the grouping variable and each covariate of interest is investigated in
-turn. Therefore, if the MFP algorithm selects a non-linear function for an
-adjustment variable, that variable enters the interaction model as a transformed
-FP function rather than in its original linear form (Royston and Sauerbrei,
-2004, 2013).
+We begin with a complete working example before describing the methodology in
+detail. The `advanced_prostate_cancer` dataset from `mfp2` contains 475
+observations with survival outcome (`survtime`, `cens`), a binary treatment
+variable (`rx`), eight continuous covariates, and five categorical covariates.
 
-This vignette describes the implementation of MFPI in the `mfp2` package for R.
-The `mfpi()` function investigates interactions between a categorical grouping
-variable, specified by `group_var`, and one or more continuous covariates,
-specified by `cont_vars`. The grouping variable is treated as a factor
-internally, with the lowest value used as the reference group.
+```{r data}
+data("advanced_prostate_cancer", package = "mfp2")
+head(advanced_prostate_cancer)
+```
 
-The function supports Gaussian, binomial, Poisson, and Cox regression models,
-and provides both formula and matrix interfaces. It implements the four MFPI
-flexibility levels, `flex1` to `flex4`, which differ in how FP powers are
-selected and constrained across groups. These levels are described in detail in
-the [Flexibility levels](#Flex) section.
+The following call tests whether the treatment effect on survival differs
+across values of `age`, adjusting for all other predictors:
+
+```{r quickstart}
+fit_quick <- mfpi(
+  Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var  = "rx",
+  cont_vars  = "age",
+  data       = advanced_prostate_cancer,
+  flex       = "flex1",
+  family     = "cox",
+  p_interact = 0.05,
+  criterion = "pvalue",
+  verbose    = FALSE
+)
+print(fit_quick)
+```
+
+```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference for the age × rx interaction."}
+plot(fit_quick, plot_type = "both")
+```
+
+The output is organised in three steps: the adjustment model selected by MFP
+(Step 1), the candidate interaction models (Step 2), and the interaction
+summary (Step 3). The `summary()` method adds a fourth step with the
+regression coefficients. The `plot()` method displays the group-specific fitted
+functions and the treatment-effect difference. The rest of this vignette
+explains each component in detail.
 
 # Prespecified and exploratory interaction analyses
 
-Royston and Sauerbrei (2008) distinguished between two settings for investigating
-interactions:
+Royston and Sauerbrei (2008) distinguished between two settings for
+investigating interactions:
 
 1. **Prespecified analysis.** This evaluates an interaction defined before
-   looking at the data, usually based on prior evidence or the trial protocol. 
+   looking at the data, usually based on prior evidence or the trial protocol.
    Because the analysis focuses on a single interaction, multiplicity adjustment
    across several covariates is not required.
 
@@ -200,7 +182,6 @@ interactions:
    p-values may therefore need to be adjusted for multiplicity. Any interaction
    identified in such an exploratory analysis should be regarded as a candidate
    finding that requires confirmation in independent data.
-   
 
 The `mfpi()` function supports both settings. For a prespecified analysis,
 `cont_vars` contains a single continuous covariate. For an exploratory analysis,
@@ -210,12 +191,7 @@ variables, i.e., the variable being tested is excluded from the adjustment set.
 
 When several covariates are screened and `criterion = "pvalue"`, interaction
 p-values can be adjusted across `cont_vars` using the `p_adjust_method`
-argument. For example, `p_adjust_method = "holm"` applies Holm's step-down
-correction. The default is `p_adjust_method = "none"`, meaning that no
-multiplicity adjustment is applied. This correction applies across the variables
-screened in `cont_vars`, not across the internal candidate models fitted by MFPI,
-such as linear, FP1, and FP2. Those internal comparisons are part of the MFPI
-selection procedure.
+argument. Available methods include `"holm"` (Bonferroni--Holm step-down), `"bonferroni"`, `"hochberg"`, `"BH"` (Benjamini--Hochberg), and `"BY"`. The default is `p_adjust_method = "none"`. This correction applies across the variables screened in `cont_vars`, not across the internal candidate models (linear, FP1, FP2) fitted by MFPI, which are part of the selection procedure.
 
 # The MFPI approach
 
@@ -245,10 +221,10 @@ linear, FP1, and FP2 functions. The selection criterion, specified by
 `criterion`, determines how these candidate models are compared. The available
 criteria are `"pvalue"`, `"aic"`, and `"bic"`.
 
-For a binary grouping variable, let $t = 0$ denote the reference group and 
+For a binary grouping variable, let $t = 0$ denote the reference group and
 $t = 1$ denote the comparison group. Let $z$ be the continuous covariate under
-investigation. Prior to FP transformation, $z$ is shifted when it contains 
-negative or zero values to ensure positivity, and optionally scaled for 
+investigation. Prior to FP transformation, $z$ is shifted when it contains
+negative or zero values to ensure positivity, and optionally scaled for
 numerical stability.
 
 If an FP2 function with powers $p_1$ and $p_2$ is selected, the group-specific
@@ -278,10 +254,10 @@ $$
 $$
 together with a pointwise 95% confidence interval. If the two functions are
 parallel, the difference is approximately constant over $z$. If the difference
-varies with $z$, this suggests that the effect of the grouping variable on the 
-outcome depends on the value of the continuous covariate. Pointwise standard 
-errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$ 
-are estimated using the delta method applied to the variance-covariance matrix 
+varies with $z$, this suggests that the effect of the grouping variable on the
+outcome depends on the value of the continuous covariate. Pointwise standard
+errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$
+are estimated using the delta method applied to the variance-covariance matrix
 of the fitted interaction model.
 
 The treatment-effect plot should be interpreted as a model-based visual summary.
@@ -289,142 +265,116 @@ The confidence interval is pointwise and depends on the selected model.
 
 # Flexibility levels {#Flex}
 
-The argument `flex` controls how FP powers are selected and constrained across 
-the levels of the grouping variable. Four flexibility levels are available: 
-`"flex1"`, `"flex2"`, `"flex3"`, and `"flex4"`. These variants are available 
+The argument `flex` controls how FP powers are selected and constrained across
+the levels of the grouping variable. Four flexibility levels are available:
+`"flex1"`, `"flex2"`, `"flex3"`, and `"flex4"`. These variants are available
 for both FP1 and FP2 functions.
 
-The flexibility levels differ in where the FP powers are selected and whether 
-the same powers are imposed across the levels of the grouping variable. In 
-general, `flex1` is the least flexible and `flex4` is the most flexible option. 
-Increasing flexibility allows more complex group-specific functional forms, but 
-it also increases the risk of instability, especially in small samples or when 
-the continuous covariate has a skewed distribution, influential observations, 
-or sparse data in parts of its range.
-
-The appropriate flexibility level should therefore be chosen using subject matter
-knowledge, the expected shape of the interaction, and sample-size considerations. 
-More flexible models may be useful when there is a strong scientific rationale 
-for different functional forms across groups, but simpler models are often 
-preferable when the goal is stable estimation and an interpretable treatment effect
-function. For further details, see Royston and Sauerbrei (2004), 
-Royston and Sauerbrei (2013), and Royston and Sauerbrei (2014).
+In general, `flex1` is the least flexible and `flex4` is the most flexible
+option. Increasing flexibility allows more complex group-specific functional
+forms, but it also increases the risk of instability, especially in small
+samples or when the continuous covariate has a skewed distribution, influential
+observations, or sparse data in parts of its range. The appropriate flexibility
+level should therefore be chosen using subject matter knowledge, the expected
+shape of the interaction, and sample-size considerations. For further details,
+see Royston and Sauerbrei (2004, 2013, 2014).
 
 ## `flex1`
 
-`flex1` is the default and least flexible option. FP powers for the continuous 
-covariate are estimated once from the pooled main-effects model. This model 
+`flex1` is the default and least flexible option. FP powers for the continuous
+covariate are estimated once from the pooled main-effects model. This model
 includes the FP terms for the continuous covariate and the group indicators, but
-no group-by-covariate interaction, while adjusting for the selected covariates 
-in the adjustment model. The FP powers selected from this pooled main effects 
+no group-by-covariate interaction, while adjusting for the selected covariates
+in the adjustment model. The FP powers selected from this pooled main-effects
 model are then held fixed and used at each level of the grouping variable. Thus,
-the same FP basis functions are used in all groups, and only the regression 
+the same FP basis functions are used in all groups, and only the regression
 coefficients of these basis functions are allowed to differ between groups.
 
-Because the main-effects and interaction models share the same FP powers, they 
+Because the main-effects and interaction models share the same FP powers, they
 are nested. The interaction test is therefore a standard likelihood-ratio test
-comparing the two models, with $(K - 1) \times m$ degrees of freedom, where $K$ 
+comparing the two models, with $(K - 1) \times m$ degrees of freedom, where $K$
 is the number of groups and $m$ is the number of FP terms. Thus, $m = 1$ for FP1
-and $m = 2$ for FP2. For the common case of two groups, this gives 1 df for FP1 
+and $m = 2$ for FP2. For the common case of two groups, this gives 1 df for FP1
 and 2 df for FP2.
 
-`flex1` corresponds to the original MFPI procedure proposed by Royston and 
-Sauerbrei (2004). In the significance-level simulation study, Royston and 
-Sauerbrei (2013) found that FP2 with `flex1` maintained significance levels 
-close to nominal, whereas the other FP2 flexibility variants showed larger 
-departures from the nominal level. In the later power study, Royston and 
-Sauerbrei (2014) recommended FP1 with `flex3` as the general practical choice 
-when there is no strong subject-matter reason to expect a non-monotone 
-treatment-effect function. When subject-matter knowledge gives good reasons to
-expect a non-monotone treatment-effect function, they instead proposed using 
-FP2 with `flex1`.
+`flex1` corresponds to the original MFPI procedure proposed by Royston and
+Sauerbrei (2004). In the significance-level simulation study, Royston and
+Sauerbrei (2013) found that FP2 with `flex1` maintained significance levels
+close to nominal, whereas the other FP2 flexibility variants showed larger
+departures from the nominal level. When subject-matter knowledge gives good
+reasons to expect a non-monotone treatment-effect function, Royston and
+Sauerbrei (2014) recommended FP2 with `flex1`.
 
 ## `flex2`
 
-`flex2` estimates FP powers from an interaction model rather than from the 
-pooled main-effects model used by `flex1`. The powers are optimized over the 
-levels of the grouping variable, but are constrained to be the same across 
+`flex2` estimates FP powers from an interaction model rather than from the
+pooled main-effects model used by `flex1`. The powers are optimized over the
+levels of the grouping variable, but are constrained to be the same across
 groups. These same powers are then also used in the main-effects model.
 
-Thus, `flex2` may select powers different from those selected by `flex1`, 
-because power selection is informed by group-specific effects. However, the 
-fitted interaction model still uses a common FP power set across groups; the 
+Thus, `flex2` may select powers different from those selected by `flex1`,
+because power selection is informed by group-specific effects. However, the
+fitted interaction model still uses a common FP power set across groups; the
 group-specific functions differ through their regression coefficients.
 
-The models are non-nested, and the interaction test has the same nominal degrees
-of freedom as `flex1`. The resulting chi-square-based P-values should therefore
-be regarded as approximate.
+The models are non-nested (see [Note on non-nested comparisons](#note-on-non-nested-comparisons)),
+and the interaction test has the same nominal degrees of freedom as `flex1`.
 
-In the simulations, FP1 with `flex2` had high power but slightly inflated 
+In the simulations, FP1 with `flex2` had high power but slightly inflated
 significance levels. FP2 with `flex2` showed clearly inflated type I error and
 was therefore not recommended as a routine choice.
 
-
 ## `flex3`
 
-`flex3` estimates FP powers separately for the main-effects model and the 
-interaction model. The main-effects powers are selected from the pooled 
-main-effects model, as in `flex1`, while the interaction powers are selected 
-from a model allowing group-by-covariate interaction, as in `flex2`. These 
-interaction powers are still constrained to be the same across groups, so 
-group-specific functions differ through their regression coefficients rather 
+`flex3` estimates FP powers separately for the main-effects model and the
+interaction model. The main-effects powers are selected from the pooled
+main-effects model, as in `flex1`, while the interaction powers are selected
+from a model allowing group-by-covariate interaction, as in `flex2`. These
+interaction powers are still constrained to be the same across groups, so
+group-specific functions differ through their regression coefficients rather
 than through group-specific FP powers.
 
 Because the main-effects and interaction models can use different FP power sets,
-the models are generally non-nested. The likelihood-ratio statistic is still 
-computed and compared with a chi-square distribution using the nominal degrees
-of freedom: $(K - 1) \times m$. The resulting chi-square-based P-value should 
-therefore be regarded as approximate.
+the models are generally non-nested (see
+[Note on non-nested comparisons](#note-on-non-nested-comparisons)).
+The likelihood-ratio statistic is still computed and compared with a chi-square
+distribution using the nominal degrees of freedom: $(K - 1) \times m$.
 
-In the significance-level simulation study of Royston and Sauerbrei (2013), 
-FP1 with `flex3` had significance levels close to nominal in the well-behaved
-case and in scenarios 1–6 of the badly behaved case, but FP1 models showed 
-inflated significance levels in scenarios 7–9. FP2 with `flex3` showed some 
-inflation: less than FP2 with `flex2`, but still large enough for Royston and 
-Sauerbrei (2014) judged it unsuitable as a candidate method because of 
-inflated type I error.
-
-In the power study, FP1 with `flex3` performed well. Royston and Sauerbrei (2014) 
-considered FP1 with `flex1`–`flex3` to have the largest power among methods with
-acceptable significance levels and recommended FP1 with `flex3` as the preferred
-practical choice. They recommended this option when there is no strong 
-subject-matter reason to expect a non-monotone treatment-effect function, 
-noting that the FP1 class includes the linear function and tends to yield 
-functions that are simple, understandable, and transferable.
+In the significance-level simulation study of Royston and Sauerbrei (2013),
+FP1 with `flex3` had significance levels close to nominal. In the power study,
+FP1 with `flex3` performed well. Royston and Sauerbrei (2014) considered FP1
+with `flex1`--`flex3` to have the largest power among methods with acceptable
+significance levels and recommended FP1 with `flex3` as the preferred practical
+choice when there is no strong subject-matter reason to expect a non-monotone
+treatment-effect function, noting that the FP1 class includes the linear
+function and tends to yield functions that are simple, understandable, and
+transferable. FP2 with `flex3` showed some type I error inflation and was not
+recommended as a routine choice.
 
 ## `flex4`
 
-`flex4` is the most flexible option. Like `flex3`, it allows the main effects 
+`flex4` is the most flexible option. Like `flex3`, it allows the main-effects
 and interaction models to use separately selected FP powers. Its distinguishing
 feature is that the FP powers in the interaction model are also allowed to differ
 across the levels of the grouping variable. Thus, each group may have its own FP
-power set and its own regression coefficients. The models are non-nested. The 
-interaction test uses $2(K - 1) \times m$ degrees of freedom, which is twice as
-many as `flex1`–`flex3` to account for the additional flexibility from allowing 
-group-specific powers. The chi-square-based P-value is approximate.
+power set and its own regression coefficients. The models are non-nested (see
+[Note on non-nested comparisons](#note-on-non-nested-comparisons)).
+The interaction test uses $2(K - 1) \times m$ degrees of freedom, which is
+twice as many as `flex1`--`flex3` to account for the additional flexibility from
+allowing group-specific powers.
 
-In the significance-level simulation study of Royston and Sauerbrei (2013), FP2
-with `flex4` was conservative, with empirical significance levels around 2–3% 
-rather than the nominal 5%. In the subsequent power study, Royston and 
-Sauerbrei (2014) reported that FP2 with `flex4` had a rejection rate below the
-target significance level and low power. They therefore did not recommend it as
-a routine choice.
+In the simulation studies of Royston and Sauerbrei (2013, 2014), FP2 with
+`flex4` was conservative, with empirical significance levels around 2--3%
+rather than the nominal 5%, and had low power. It was therefore not recommended
+as a routine choice.
 
-In the significance-level simulation study of Royston and Sauerbrei (2013), FP2 
-with `flex4` was conservative: the empirical significance level was about 2% in
-the well-behaved case and about 3% in the badly behaved case, rather than the 
-nominal 5%. In the subsequent power study, Royston and Sauerbrei (2014) reported
-that FP2 with `flex4` had significance levels below the target level and low 
-power. For this reason, FP2 with `flex4` was not considered a suitable candidate
-method in their recommendations.
+`flex4` may be useful when there is a strong subject-matter reason to believe
+that the functional form of the covariate effect differs between groups.
+However, this may require sufficiently large samples.
 
-`flex4` may be useful when there is a strong subject matter reason to believe that
-the functional form of the covariate effect differs between groups. However, 
-this may require sufficiently large samples.
+## Summary table
 
-The four MFPI variants are summarized in the table below. The table shows how
-the FP powers are selected and constrained, and gives the degrees of freedom
-used for the interaction test.
+The four MFPI variants are summarized in the table below.
 
 ```{r flex-table, echo=FALSE}
 flex_table <- data.frame(
@@ -443,46 +393,38 @@ flex_table <- data.frame(
 knitr::kable(
   flex_table,
   align = c("l", "l", "c", "c"),
-caption = "Variants of MFPI with degrees of freedom for the tests of interaction 
-from Royston and Sauerbrei (2013)."
+  caption = "Variants of MFPI with degrees of freedom for the tests of
+  interaction from Royston and Sauerbrei (2013)."
 )
 ```
 
-## Summary of flexibility levels
+Our implementation of `mfpi()` evaluates three functional-form candidates for
+each variable in `cont_vars`: linear, FP1, and FP2. Each candidate is evaluated
+using its corresponding interaction test, and the `criterion` parameter
+determines which candidate is selected. In the candidate table, the selected
+candidate is marked with `+`. This allows users to prespecify a preferred degree
+based on subject-matter reasoning while still using the other candidates for
+comparison and sensitivity assessment. For example, a user following the
+recommendation of Royston and Sauerbrei (2014) might focus on FP1 with `flex3`
+when there is no strong reason to expect a non-monotone treatment-effect
+function, while treating the linear and FP2 results as sensitivity checks.
 
-In the original MFPI papers, the analyst typically specifies the FP degree, FP1
-or FP2, and the flexibility level (`flex`) in advance. The four flexibility
-levels control how FP powers are selected and constrained across the levels of
-the grouping variable. Our implementation of `mfpi()` evaluates three 
-functional-form candidates for each variable in `cont_vars`: linear, FP1, and 
-FP2. Each candidate is evaluated using its corresponding interaction test, and 
-the `criterion` parameter determines which candidate is selected. In the 
-candidate table, the selected candidate is marked with `+`.
+## Note on non-nested comparisons {#note-on-non-nested-comparisons}
 
-This allows users to prespecify a preferred degree based on subject matter 
-reasoning while still using the other candidates for comparison and sensitivity 
-assessment. For example, a user following the recommendation of Royston and 
-Sauerbrei (2014) might focus on FP1 with `flex3` when there is no strong reason 
-to expect a non-monotone treatment-effect function, while treating the linear 
-and FP2 results as comparison or sensitivity checks. When subject-matter knowledge
-gives good reasons to expect a non-monotone treatment-effect function, Royston 
-and Sauerbrei (2014) recommended FP2 with `flex1`.
+For `flex2`, `flex3`, and `flex4`, the main-effects and interaction models may
+use different FP power sets and are therefore non-nested. The likelihood-ratio
+test statistic is still computed and compared with a chi-square distribution
+using the nominal degrees of freedom, but the resulting p-values lack a firm
+theoretical underpinning. The significance levels may therefore be liberal or
+conservative (Royston and Sauerbrei, 2013).
 
-## Note on non-nested comparisons
+As an alternative, AIC or BIC may be used to compare models without requiring
+nestedness. See the [Alternative selection criteria: AIC and BIC](#aic-bic)
+section for details.
 
-For `flex2`, `flex3`, and `flex4`, significance tests for interaction are based
-on chi-square distributions with the stated degrees of freedom. However, these
-tests are non-nested, and the resulting p-values lack a firm theoretical
-underpinning. The significance levels may therefore be liberal
-or conservative (Royston and Sauerbrei, 2013).
+# Practical considerations
 
-As an alternative, AIC or BIC may be used to compare the fitted main-effects and
-interaction models. Smaller values indicate a better balance between model fit
-and complexity. Small differences in AIC or BIC provide little evidence for 
-preferring one model over another; values around 2 are often used as a rough 
-guide rather than a strict cutoff.
-
-# Influential observations and Winsorisation
+## Influential observations and Winsorisation
 
 FP models can be sensitive to outliers or influential observations in the
 continuous predictor. A small number of influential observations in the tails of
@@ -495,16 +437,12 @@ In `mfpi()`, Winsorisation is provided as an optional pre-processing step to
 reduce the influence of extreme values in variables listed in `cont_vars`.
 Values below the lower percentile and above the upper percentile specified by
 `winsorize_probs` are replaced by the corresponding percentile cutoffs. The
-default is
-$$
-\texttt{winsorize_probs} = (0.01, 0.99).
-$$
-Winsorisation preserves the number of observations because no rows are removed.
-Only the extreme values are truncated, while the main part of the distribution
-remains unchanged.
+default is `winsorize_probs = c(0.01, 0.99)`. Winsorisation preserves the
+number of observations because no rows are removed. Only the extreme values are
+truncated, while the main part of the distribution remains unchanged.
 
 Note that variables in `cont_vars` cannot be listed in `spike_vars` or
-`catzero_vars` — these options are only available for adjustment variables,
+`catzero_vars` --- these options are only available for adjustment variables,
 because the interaction design matrix does not include group-specific
 $I(x = 0)$ indicators. If a variable appears in both `cont_vars` and
 `spike_vars` or `catzero_vars`, the spike or catzero treatment is dropped
@@ -520,42 +458,29 @@ and the limits stored in `winsorize_limits` are on the transformed scale. The
 actual cutoffs applied are returned in the fitted object and can be inspected
 via `fit$winsorize_limits`.
 
-To disable Winsorisation, use
-
-```{r winsorize-disable, eval=FALSE}
-winsorize = FALSE
-```
-
-More aggressive truncation can be requested, for example, by using
+To disable Winsorisation, set `winsorize = FALSE`. More aggressive truncation
+can be requested, for example:
 
 ```{r winsorize-prob, eval=FALSE}
-winsorize_probs = (0.05, 0.95)
+winsorize_probs = c(0.05, 0.95)
 ```
 
-Any Winsorisation or trimming applied should be reported transparently as part of
-the initial data analysis.
+Any Winsorisation or trimming applied should be reported transparently as part
+of the initial data analysis.
 
-# Shifting, scaling, and centering
-
-## Shifting {-}
+## Shifting and scaling {-}
 
 Fractional polynomials require strictly positive input values. As in `mfp2()`,
 `mfpi()` estimates shift terms to ensure all values of the continuous covariates
-are positive before FP transformation. For a variable $z$ with minimum value
-$z_{\min}$, the shift is chosen so that $z + \text{shift} > 0$ for all
-observations.
-
-## Scaling {-}
-
-After shifting, `mfpi()` estimates a scale factor for each variable. Scaling
-places the shifted covariates on a convenient numerical range for FP power
-selection. This improves numerical stability during the MFP backfitting cycles.
-Scaling does not affect which FP powers are selected, only the numerical
-precision of the fitting algorithm.
+are positive before FP transformation. After shifting, `mfpi()` estimates a
+scale factor for each variable, placing the shifted covariates on a convenient
+numerical range for FP power selection. This improves numerical stability
+during the MFP backfitting cycles. Scaling does not affect which FP powers are
+selected, only the numerical precision of the fitting algorithm.
 
 After FP powers have been selected, the variables are backscaled before the
 final model is fitted. This means the regression coefficients in the returned
-model are on the $\phi(z + \text{shift})$ scale, matching what `mfp2()` would 
+model are on the $\phi(z + \text{shift})$ scale, matching what `mfp2()` would
 produce. The user does not need to undo the scaling manually.
 
 ## Centering {-}
@@ -566,25 +491,25 @@ the interaction model, but the two models are centered differently.
 **Adjustment model.** Standard `mfp2()` centering is applied: each
 FP-transformed column is centered by subtracting its column mean. For binary
 covariates, centering uses the lower of the two distinct values rather than
-the mean, the same idea of `mfp2()`.
+the mean, following the same convention as `mfp2()`.
 
 **Interaction model.** The argument `center_type` controls how the
 group-specific FP columns are centered:
 
-- `center_type = "grand"` (default): the grand mean of the FP-transformed 
+- `center_type = "grand"` (default): the grand mean of the FP-transformed
   variable, computed across all observations regardless of group membership, is
   subtracted from each group's columns. All groups share the same centering
-  constant. 
-- `center_type = "group"`: each group's columns are centered by the mean computed
-   from in-group observations only. Different groups may use different centering
-  constants.
+  constant.
+- `center_type = "group"`: each group's columns are centered by the mean
+  computed from in-group observations only. Different groups may use different
+  centering constants.
 
-In both cases, Centering affects the intercept and, when an interaction is 
+In both cases, centering affects the intercept and, when an interaction is
 present, the group dummy coefficients. It does not affect the interaction test,
 the treatment-effect function $\hat{f}_1(z) - \hat{f}_0(z)$, or the fitted
 values.
 
-# Handling non-positive values
+## Handling non-positive values
 
 When a continuous predictor contains a mixture of non-positive and positive
 values, standard shifting and FP transformation may not be appropriate. The
@@ -605,54 +530,44 @@ explanatory value. The `spike_vars` option implies both `catzero_vars` and
 `zero_vars`. For more details about SAZ, see the corresponding vignette in the
 `mfp2` package.
 
-## Interaction-tested variables cannot use `catzero_vars` or `spike_vars` {-}
-
-Variables listed in `cont_vars` are tested for interaction with the grouping
-variable. These variables cannot currently use the `catzero_vars` or
+Variables listed in `cont_vars` cannot currently use the `catzero_vars` or
 `spike_vars` options, because the methodology for combining these options with
-interaction testing is not yet available.
-
-Therefore, if a variable appears in both `cont_vars` and either `catzero_vars`
-or `spike_vars`, it will be automatically removed from `catzero_vars` or
-`spike_vars`, with a warning.
-
-However, `zero_vars` can be used with variables in `cont_vars`. In this case,
-only the positive part undergoes FP transformation, while the remaining values
-are set to zero.
-
+interaction testing is not yet available. If a variable appears in both
+`cont_vars` and either `catzero_vars` or `spike_vars`, it will be automatically
+removed from `catzero_vars` or `spike_vars`, with a warning. However,
+`zero_vars` can be used with variables in `cont_vars`: only the positive part
+undergoes FP transformation, while the remaining values are set to zero.
 Variables listed in `catzero_vars` or `spike_vars` that are not in `cont_vars`
 are handled in the adjustment model as described in the `mfp2()` documentation.
 
-# Worked example: Advanced prostate cancer data
+## F-test for Gaussian models
 
-We illustrate `mfpi()` using the `advanced_prostate_cancer` dataset included in
-the `mfp2` package. The outcome is time to death (overall survival), defined by
-`survtime` and the censoring indicator `cens`. The binary variable `rx`
+When `family = "gaussian"` and the sample size is small, the chi-square
+approximation to the likelihood-ratio test may be unreliable. Setting
+`use_ftest = TRUE` replaces the chi-square test with an F-test for both the
+adjustment-variable selection step and the interaction test. This option is
+ignored for non-Gaussian families and when `criterion` is not `"pvalue"`.
+
+## Forcing variables and functional forms
+
+Two arguments provide additional control over the adjustment model. The
+`force_keep` argument accepts a character vector of variable names that are
+forced into the adjustment model regardless of selection criteria. The
+`force_max_fp` argument, when set to `TRUE` for a variable, forces the
+algorithm to select the most complex FP functional form at the degree specified
+by `df`, bypassing AIC/BIC simplification.
+
+# Worked examples
+
+## Data: Advanced prostate cancer
+
+All survival-model examples use the `advanced_prostate_cancer` dataset included
+in the `mfp2` package. The outcome is time to death (overall survival), defined
+by `survtime` and the censoring indicator `cens`. The binary variable `rx`
 (treatment allocation) is the grouping variable. For a full description of the
-data, see Royston and Sauerbrei (2008). The dataset contains 475 observations 
-with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`, `hg`,
-`sg`) and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`).
-
-```{r data}
-data("advanced_prostate_cancer", package = "mfp2")
-head(advanced_prostate_cancer)
-```
-
-
-
-## Formula interface
-
-The formula interface is the most convenient way to call `mfpi()`. Continuous
-variables can be wrapped in `fp()` to control FP-specific settings such as
-degrees of freedom or candidate power sets. The key arguments are:
-
-- `group_var`: the name of the grouping (treatment) variable.
-- `cont_vars`: a character vector naming the continuous variables to be assessed
-  for interaction with `group_var`.
-- `flex`: the flexibility level for FP power selection across groups.
-- `family`: the regression family (`"cox"` for survival data).
-- `select` and `alpha`: significance levels for variable selection and FP degree
-  selection in the adjustment model.
+data, see Royston and Sauerbrei (2008). The dataset contains 475 observations
+with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,
+`hg`, `sg`) and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`).
 
 ## Prespecified interaction analysis
 
@@ -660,6 +575,12 @@ Suppose that, based on prior evidence, we have identified `age` as the single
 covariate to investigate for interaction with treatment. Because only one
 interaction is tested, the resulting p-value can be interpreted directly without
 multiplicity adjustment.
+
+The formula interface is the most convenient way to call `mfpi()`. Continuous
+variables can be wrapped in `fp()` to control FP-specific settings such as
+degrees of freedom or candidate power sets. For example, `fp(age, df = 2)`
+would restrict `age` to FP1, while `fp(age, select = 1)` would force `age`
+into the adjustment model. Here we use the defaults for all variables:
 
 ```{r prespecified}
 fit_pre <- mfpi(
@@ -673,11 +594,11 @@ fit_pre <- mfpi(
   family     = "cox",
   select     = 0.05,
   alpha      = 0.05,
-  verbose = FALSE
+  verbose    = FALSE
 )
 ```
 
-### Understanding the output
+### Output: prespecified analysis
 
 Calling `print()` on the fitted object displays a structured three-step summary.
 
@@ -692,8 +613,8 @@ freedom. Variables eliminated by MFP are listed under `"Dropped"`. Because
 `include_group_var = TRUE` by default, the grouping variable `rx` is included in
 the MFP algorithm but forced into the model: its nominal significance level is
 set to 1, so it is never eliminated during backfitting. The retained covariates,
-in their selected transformed or untransformed forms, are then used for adjustment
-in the interaction models for `age`.
+in their selected transformed or untransformed forms, are then used for
+adjustment in the interaction models for `age`.
 
 **Step 2: All interaction candidates.** For `age`, three candidate interaction
 models are fitted: linear, FP1, and FP2. Each row shows the candidate type, the
@@ -717,8 +638,8 @@ coefficients of the winning interaction model.
 summary(fit_pre)
 ```
 
-**Step 4: Regression Output.** For each variable with a significant interaction,
-the regression table from the fitted `coxph()` model is displayed. This table 
+**Step 4: Regression output.** For each variable with a significant interaction,
+the regression table from the fitted `coxph()` model is displayed. This table
 includes coefficient estimates, standard errors, z-values, and p-values for all
 terms in the model. The interaction model uses the naming convention
 `<varname><group><power_index>` for the group-specific FP terms. For example,
@@ -728,15 +649,15 @@ two terms per group are shown, for example `age01` and `age02` for group 0, and
 `age11` and `age12` for group 1.
 
 The group dummy coefficient, for example `rx1`, represents the main effect of
-the grouping variable. The p-values in Step 4 are the standard Wald-test p-values
-reported by `summary.coxph()`. These p-values do not account for the degrees of 
-freedom used during FP power selection. Therefore, the appropriate p-value for
-testing the interaction is the one reported in Step 3.
+the grouping variable. The p-values in Step 4 are the standard Wald-test
+p-values reported by `summary.coxph()`. These p-values do not account for the
+degrees of freedom used during FP power selection. Therefore, the appropriate
+p-value for testing the interaction is the one reported in Step 3.
 
 ### Visualising the interaction
 
-The `plot()` method displays the fitted interaction for continuous variables in an
-`mfpi` model. By default, it plots the selected functional form for each
+The `plot()` method displays the fitted interaction for continuous variables in
+an `mfpi` model. By default, it plots the selected functional form for each
 variable retained by the MFPI procedure.
 
 The main argument is `plot_type`, which controls the display:
@@ -747,13 +668,12 @@ The main argument is `plot_type`, which controls the display:
 - `"both"` places the fitted and difference plots side by side; this requires
   the `patchwork` package.
 
-Two additional arguments are useful for controlling the graphical output.
-`show_ci_fitted` adds 95% pointwise confidence bands to the group-specific
-fitted curves, while `show_ci_diff` controls the confidence band for the
-treatment-effect difference curve. By default, fitted-function confidence bands
-are suppressed and the difference-curve confidence band is shown. The argument
-`show_rug = TRUE` adds rug marks showing the observed values of the continuous
-variable.
+Two additional arguments control the graphical output. `show_ci_fitted` adds
+95% pointwise confidence bands to the group-specific fitted curves, while
+`show_ci_diff` controls the confidence band for the treatment-effect difference
+curve. By default, fitted-function confidence bands are suppressed and the
+difference-curve confidence band is shown. The argument `show_rug = TRUE` adds
+rug marks showing the observed values of the continuous variable.
 
 Each plot includes a title describing the group comparison and a subtitle giving
 the variable name, selected functional form, and selection metric. For models
@@ -821,8 +741,7 @@ Inspecting alternative candidate forms can be useful for assessing how sensitive
 the fitted interaction is to the chosen functional form, whether different forms
 lead to similar substantive conclusions, or whether a more flexible form appears
 unstable. Such comparisons should be interpreted using subject-matter knowledge,
-ideally with the set of candidate functional forms specified before the
-analysis.
+ideally with the set of candidate functional forms specified before the analysis.
 
 The following example displays the FP2 candidate fitted functions and
 treatment-effect difference for `age`, regardless of whether FP2 was the
@@ -842,6 +761,47 @@ p-value is not shown because it applies to the selected winner, not necessarily
 to the displayed candidate form. In this example, multiplicity adjustment was
 not used, so the reported candidate p-value is unchanged by adjustment:
 `p_raw = p_adj = 0.027`.
+
+## Using `flex3`: the recommended practical choice
+
+Royston and Sauerbrei (2014) recommended FP1 with `flex3` as the preferred
+practical choice when there is no strong subject-matter reason to expect a
+non-monotone treatment-effect function. In `flex3`, the main-effects model and
+the interaction model may use different FP power sets, allowing more flexibility
+than `flex1` while still constraining the interaction powers to be the same
+across groups.
+
+We refit the prespecified analysis for `age` using `flex3`:
+
+```{r flex3-pre}
+fit_flex3 <- mfpi(
+  Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var  = "rx",
+  cont_vars  = "age",
+  data       = advanced_prostate_cancer,
+  flex       = "flex3",
+  family     = "cox",
+  select     = 0.05,
+  alpha      = 0.05,
+  verbose    = FALSE
+)
+print(fit_flex3)
+```
+
+Comparing with the `flex1` results, the adjustment model in Step 1 is the same
+because it depends only on MFP selection, not on the flex level. However, the
+interaction candidates in Step 2 may differ because `flex3` allows separately
+estimated FP powers for the main-effects and interaction models.
+
+```{r flex3-plot, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference using flex3."}
+plot(fit_flex3, plot_type = "both")
+```
+
+Note that `flex3` uses a non-nested comparison, so the reported p-values should
+be regarded as approximate (see
+[Note on non-nested comparisons](#note-on-non-nested-comparisons)).
 
 ## Exploratory interaction analysis
 
@@ -872,7 +832,7 @@ fit_exp <- mfpi(
 )
 ```
 
-### Understanding the output
+### Output: exploratory analysis
 
 ```{r print-exp}
 print(fit_exp)
@@ -928,7 +888,7 @@ This is useful for diagnostic inspection: it shows what the candidate functional
 form looked like before selection and helps assess whether the non-selection
 decision is supported by the data.
 
-## Alternative selection criteria: AIC and BIC
+## Alternative selection criteria: AIC and BIC {#aic-bic}
 
 In all examples above, the default `criterion = "pvalue"` was used. This
 selects the candidate interaction model (linear, FP1, or FP2) with the smallest
@@ -958,13 +918,13 @@ are based on the chosen criterion rather than on significance levels. In Step 2,
 the same criterion determines which candidate interaction model is preferred
 and whether the interaction is retained.
 
-BIC penalizes model complexity more heavily than AIC (the penalty is is 
-$\log (n)$ rather than 2), so it tends to favour simpler functional forms and
+BIC penalizes model complexity more heavily than AIC (the penalty is
+$\log(n)$ rather than 2), so it tends to favour simpler functional forms and
 is more conservative in declaring interactions.
 
 Note that when `criterion = "aic"` or `"bic"`, the `p_adjust_method` argument
-has no effect, because multiplicity adjustment applies to p-values, not to
-information criteria.
+has no effect on the selection decision, because multiplicity adjustment applies
+to p-values, not to information criteria.
 
 ### Example: BIC-based selection
 
@@ -987,7 +947,7 @@ fit_bic <- mfpi(
 )
 ```
 
-### Understanding the output
+### Output: BIC-based selection
 
 ```{r print-bic}
 print(fit_bic)
@@ -995,7 +955,7 @@ print(fit_bic)
 
 **Step 1** may differ from the p-value-based analyses. Because the MFP algorithm
 now uses BIC for variable selection and FP degree choice, it may retain a
-different set of adjustment variables or select different functional forms. 
+different set of adjustment variables or select different functional forms.
 
 **Step 2** shows the same three candidates (linear, FP1, FP2) per variable, but
 the decisive column is now `BIC_main_minus_int` rather than `pvalue`. The `+`
@@ -1024,15 +984,103 @@ p-values.
 plot(fit_bic, plot_type = "both")
 ```
 
+## Logistic regression example
+
+`mfpi()` is not limited to survival models. The following example demonstrates
+its use with logistic regression (`family = "binomial"`). We create a binary
+outcome from the prostate cancer data by defining death within 36 months as
+the event:
+
+```{r logistic-data}
+prostate <- advanced_prostate_cancer
+prostate$death36 <- as.integer(prostate$survtime <= 36 & prostate$cens == 1)
+```
+
+We test whether the effect of treatment on 36-month mortality depends on `age`,
+using `flex1`:
+
+```{r logistic-fit}
+fit_logistic <- mfpi(
+  death36 ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
+    fp(sz) + fp(ap) + fp(hg) + fp(sg) +
+    pf + hx + bm + stage + ekg + rx,
+  group_var  = "rx",
+  cont_vars  = "age",
+  data       = prostate,
+  flex       = "flex1",
+  family     = "binomial",
+  select     = 0.05,
+  alpha      = 0.05,
+  verbose    = FALSE
+)
+print(fit_logistic)
+```
+
+The output follows the same three-step structure as the Cox model. The
+interaction test and treatment-effect function are now on the log-odds scale.
+Plotting works identically:
+
+```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and treatment-effect difference for age × rx."}
+plot(fit_logistic, plot_type = "both")
+```
+
+# Accessing model components
+
+The object returned by `mfpi()` is a list of class `"mfpi"`. Its components
+can be accessed with `$` for programmatic post-processing.
+
+```{r components}
+names(fit_pre)
+```
+
+Key components include:
+
+- `adjustment_model`: the full `mfp2` object from the MFP adjustment step.
+- `all_model_metrics`: a data frame of evaluation metrics for all candidates
+  (linear, FP1, FP2) for every variable in `cont_vars`.
+- `best_model_metrics`: metrics for the selected (winning) interaction model
+  per variable.
+- `best_interaction_model`: a named list of fitted model objects for selected
+  variables.
+- `all_interaction_models`: a named list of lists containing all three
+  candidate model objects for every variable, regardless of selection.
+- `best_fitted_functions` and `all_fitted_functions`: group-specific fitted
+  values used by `plot()`.
+- `winsorize_limits`: the actual Winsorisation cutoffs applied.
+- `group_levels_original` and `group_levels_new`: the original and remapped
+  factor levels of `group_var`.
+- `var_winners`: a named list of per-variable best candidates, including those
+  that did not reach significance.
+
+For example, to extract the metrics table for all candidates:
+
+```{r all-metrics}
+fit_pre$all_model_metrics
+```
+
+To extract the fitted model object for a selected variable:
+
+```{r extract-model, eval=FALSE}
+fit_pre$best_interaction_model[["age"]]
+```
+
+
 ```{r restore-options, include=FALSE}
 options(width = oldwidth)
 ```
 
 # References
 
-- Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions
-  between treatment and continuous covariates in clinical trials by using
-  fractional polynomial submodels. *Statistics in Medicine*, 23(16), 2509–2525.
+- Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
+  interactions between treatment and continuous covariates in clinical trials by
+  using fractional polynomial submodels. *Statistics in Medicine*, 23(16),
+  2509--2525. doi:
+  [10.1002/sim.1815](https://doi.org/10.1002/sim.1815)
+
+- Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
+  between treatment and a continuous covariate: a comparison of two approaches.
+  *Computational Statistics & Data Analysis*, 51(8), 4054--4063. doi:
+  [10.1016/j.csda.2006.12.041](https://doi.org/10.1016/j.csda.2006.12.041)
 
 - Royston, P. and Sauerbrei, W. (2008). *Multivariable Model-Building: A
   Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for
@@ -1040,15 +1088,13 @@ options(width = oldwidth)
 
 - Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
   continuous variable: simulation study of significance level for several methods
-  of analysis. *Statistics in Medicine*, 32(22), 3788–3803.
+  of analysis. *Statistics in Medicine*, 32(22), 3788--3803. doi:
+  [10.1002/sim.5813](https://doi.org/10.1002/sim.5813)
 
 - Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a
   continuous variable: simulation study of power for several methods of analysis.
-  *Statistics in Medicine*, 33(27), 4695–4708.
-
-- Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
-  between treatment and a continuous covariate: a comparison of two approaches.
-  *Computational Statistics & Data Analysis*, 51(8), 4054–4063.
+  *Statistics in Medicine*, 33(27), 4695--4708. doi:
+  [10.1002/sim.6245](https://doi.org/10.1002/sim.6245)
 
 ```{r cleanup, include=FALSE}
 options(width = oldwidth)

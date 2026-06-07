@@ -30,10 +30,10 @@ mfpi(x, ...)
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
-  force_keep = NULL,
-  force_max_fp = FALSE,
+  keep = NULL,
+  force_max_fp_vars = NULL,
   xorder = c("ascending", "descending", "original"),
-  fp_powers = NULL,
+  powers = NULL,
   ties = c("breslow", "efron", "exact"),
   strata = NULL,
   nocenter = NULL,
@@ -43,7 +43,7 @@ mfpi(x, ...)
   spike_vars = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
-  use_ftest = FALSE,
+  ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
   winsorize_probs = c(0.01, 0.99),
@@ -76,10 +76,10 @@ mfpi(x, ...)
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
-  force_keep = NULL,
-  force_max_fp = FALSE,
+  keep = NULL,
+  force_max_fp_vars = NULL,
   xorder = c("ascending", "descending", "original"),
-  fp_powers = NULL,
+  powers = NULL,
   ties = c("breslow", "efron", "exact"),
   strata = NULL,
   nocenter = NULL,
@@ -88,7 +88,7 @@ mfpi(x, ...)
   spike_vars = NULL,
   min_prop = 0.05,
   max_prop = 0.95,
-  use_ftest = FALSE,
+  ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
   winsorize_probs = c(0.01, 0.99),
@@ -258,25 +258,29 @@ variable's level to \code{1} forces it into the model. Default is
 giving the significance level for choosing between FP degrees for each
 predictor. Default is \code{0.05}.}
 
-\item{force_keep}{An optional character vector of variable names to retain in the adjustment
+\item{keep}{An optional character vector of variable names to retain in the adjustment
 model regardless of selection criteria. When \code{criterion = "pvalue"},
 equivalent to setting \code{select = 1} for those variables; also effective
 under AIC and BIC criteria.}
 
-\item{force_max_fp}{A logical scalar or named logical vector of length \eqn{p}. If \code{TRUE}
-for a variable, forces the algorithm to select the most complex
-functional form at the degree specified by \code{df} for that variable,
-bypassing AIC/BIC comparison against simpler forms. Specifically, when
-\code{criterion = "aic"} or \code{"bic"}, \code{mfp2:::select_ic()} would
-normally compete null, linear, FP1, and FP2 against each other and may
-simplify the functional form; \code{force_max_fp = TRUE} suppresses this
-and always selects the most complex FP model at the requested degree.
-The best power combination within that degree is still selected by the
-criterion (equivalently, by deviance minimisation at fixed df). Has no
-effect when \code{criterion = "pvalue"} since \code{alpha = 1} already
-guarantees the most complex form is accepted. A scalar \code{FALSE}
-(default) applies to all variables. A named vector allows per-variable
-control.}
+\item{force_max_fp_vars}{An optional character vector naming variables for which the algorithm
+should select the most complex FP functional form at the degree specified
+by \code{df}, preventing simplification to a lower degree. The best power
+combination within that degree is still selected by the criterion
+(equivalently, by deviance minimisation at fixed df).
+
+The mechanism depends on the selection criterion:
+\itemize{
+\item \code{criterion = "pvalue"}: \code{alpha} is automatically set
+to 1 for the named variables, so the significance test always
+accepts the most complex form.
+\item \code{criterion = "aic"} or \code{"bic"}:
+\code{select_ic()} normally competes null, linear, FP1, and
+FP2 against each other and may simplify the functional form;
+listing a variable here suppresses this simplification.
+}
+Default \code{NULL} (no variables forced). In the formula interface,
+per-variable control is also available via \code{fp(force_max_fp = TRUE)}.}
 
 \item{xorder}{A character string controlling the order in which adjustment covariates
 enter the MFP selection algorithm. \code{"ascending"} (default) enters
@@ -284,7 +288,7 @@ variables from most to least significant in a full multiple regression;
 \code{"descending"} reverses this order; \code{"original"} uses the column order of
 \code{x}.}
 
-\item{fp_powers}{A named list of numeric vectors giving the candidate FP powers for each
+\item{powers}{A named list of numeric vectors giving the candidate FP powers for each
 variable. Default is \code{NULL}, which uses the standard set proposed by
 Royston and Altman (1994): \eqn{\{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where
 0 denotes the natural logarithm. Each element must be named after the
@@ -355,7 +359,7 @@ specification. Variables that are binary (exactly two unique values) are
 also reset regardless of their zero proportion. Only affects variables
 in the adjustment model.}
 
-\item{use_ftest}{Logical. Whether to use an F-test rather than a chi-square
+\item{ftest}{Logical. Whether to use an F-test rather than a chi-square
 likelihood-ratio test when computing p-values for Gaussian models.
 When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
 to both the adjustment-variable selection step and the interaction test
@@ -524,11 +528,12 @@ arm. Confounders and other prognostic variables are adjusted for via FP
 transformations selected by the MFP algorithm implemented in the
 \code{\link[=mfp2]{mfp2()}}.
 }
+\details{
+The default method accepts a numeric matrix \code{x} and response vector
+\code{y}.
+}
 \section{Methods (by class)}{
 \itemize{
-\item \code{mfpi(default)}: Default method accepting a numeric matrix \code{x} and
-response vector \code{y}.
-
 \item \code{mfpi(formula)}: Formula interface for \code{mfpi()}.
 
 Constructs a model frame from the supplied formula and data, processes
@@ -736,7 +741,7 @@ controlled for at every step.
 
 To force adjustment variables into the model without selection or
 transformation, set \code{select = 1} and \code{alpha = 0}, or pass variable names
-via \code{force_keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}}
+via \code{keep} and set \code{df = 1} for those variables. See \code{\link[=mfp2]{mfp2()}}
 for further details.
 }
 
@@ -821,8 +826,8 @@ set inside \code{fp()} (i.e. left at their \code{NULL} default), the
 auto-estimated value for that variable is retained. The global
 \code{shift}/\code{scale} argument is used only for variables not in
 any \code{fp()} term.}
-\item{\code{fp_powers} argument vs \code{fp(powers = ...)}}{The
-\code{fp_powers} argument sets candidate power sets for named variables.
+\item{\code{powers} argument vs \code{fp(powers = ...)}}{The
+\code{powers} argument sets candidate power sets for named variables.
 If a variable also appears in an \code{fp(powers = ...)} term, the
 \code{fp()} specification takes precedence and a warning is issued.}
 \item{\code{zero_vars}, \code{catzero_vars}, \code{spike_vars} arguments}{
@@ -830,6 +835,10 @@ These argument-level character vectors are merged with the corresponding
 per-variable settings from \code{fp(zero = TRUE)},
 \code{fp(catzero = TRUE)}, and \code{fp(spike = TRUE)}. A variable
 is flagged if it appears in either source; there is no conflict.}
+\item{\code{force_max_fp_vars} argument}{
+This argument-level character vector is merged with per-variable
+settings from \code{fp(force_max_fp = TRUE)}. A variable is flagged
+if it appears in either source; there is no conflict.}
 \item{\code{df} and cardinality overrides}{The per-variable \code{df}
 values (from \code{fp()} or global) are passed to
 \code{mfpi.default()}, which then applies cardinality-based overrides
@@ -845,9 +854,9 @@ The following \code{mfpi.default()} parameters must be supplied as scalar
 arguments only; per-variable specification via \code{fp()} is not
 supported: \code{group_var}, \code{cont_vars}, \code{flex},
 \code{p_interact}, \code{min_improvement}, \code{include_group_var},
-\code{show_models}, \code{cycles}, \code{criterion}, \code{force_keep},
-\code{force_max_fp}, \code{xorder}, \code{ties}, \code{strata},
-\code{nocenter}, \code{min_prop}, \code{max_prop}, \code{use_ftest},
+\code{show_models}, \code{cycles}, \code{criterion}, \code{keep},
+\code{xorder}, \code{ties}, \code{strata},
+\code{nocenter}, \code{min_prop}, \code{max_prop}, \code{ftest},
 \code{control}, \code{verbose}, \code{digits}.
 }
 

@@ -198,7 +198,7 @@
 #'
 #' To force adjustment variables into the model without selection or
 #' transformation, set `select = 1` and `alpha = 0`, or pass variable names
-#' via `force_keep` and set `df = 1` for those variables. See [mfp2::mfp2()]
+#' via `keep` and set `df = 1` for those variables. See [mfp2::mfp2()]
 #' for further details.
 #'
 #' @section Shifting, scaling, and centering:
@@ -427,33 +427,37 @@
 #'   A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
 #'   giving the significance level for choosing between FP degrees for each
 #'   predictor. Default is `0.05`.
-#' @param force_keep
+#' @param keep
 #'   An optional character vector of variable names to retain in the adjustment
 #'   model regardless of selection criteria. When `criterion = "pvalue"`,
 #'   equivalent to setting `select = 1` for those variables; also effective
 #'   under AIC and BIC criteria.
-#' @param force_max_fp
-#'   A logical scalar or named logical vector of length \eqn{p}. If \code{TRUE}
-#'   for a variable, forces the algorithm to select the most complex
-#'   functional form at the degree specified by \code{df} for that variable,
-#'   bypassing AIC/BIC comparison against simpler forms. Specifically, when
-#'   \code{criterion = "aic"} or \code{"bic"}, \code{mfp2:::select_ic()} would
-#'   normally compete null, linear, FP1, and FP2 against each other and may
-#'   simplify the functional form; \code{force_max_fp = TRUE} suppresses this
-#'   and always selects the most complex FP model at the requested degree.
-#'   The best power combination within that degree is still selected by the
-#'   criterion (equivalently, by deviance minimisation at fixed df). Has no
-#'   effect when \code{criterion = "pvalue"} since \code{alpha = 1} already
-#'   guarantees the most complex form is accepted. A scalar \code{FALSE}
-#'   (default) applies to all variables. A named vector allows per-variable
-#'   control.
+#' @param force_max_fp_vars
+#'   An optional character vector naming variables for which the algorithm
+#'   should select the most complex FP functional form at the degree specified
+#'   by \code{df}, preventing simplification to a lower degree. The best power
+#'   combination within that degree is still selected by the criterion
+#'   (equivalently, by deviance minimisation at fixed df).
+#'
+#'   The mechanism depends on the selection criterion:
+#'   \itemize{
+#'     \item \code{criterion = "pvalue"}: \code{alpha} is automatically set
+#'       to 1 for the named variables, so the significance test always
+#'       accepts the most complex form.
+#'     \item \code{criterion = "aic"} or \code{"bic"}:
+#'       \code{select_ic()} normally competes null, linear, FP1, and
+#'       FP2 against each other and may simplify the functional form;
+#'       listing a variable here suppresses this simplification.
+#'   }
+#'   Default \code{NULL} (no variables forced). In the formula interface,
+#'   per-variable control is also available via \code{fp(force_max_fp = TRUE)}.
 #' @param xorder
 #'   A character string controlling the order in which adjustment covariates
 #'   enter the MFP selection algorithm. `"ascending"` (default) enters
 #'   variables from most to least significant in a full multiple regression;
 #'   `"descending"` reverses this order; `"original"` uses the column order of
 #'   `x`.
-#' @param fp_powers
+#' @param powers
 #'   A named list of numeric vectors giving the candidate FP powers for each
 #'   variable. Default is `NULL`, which uses the standard set proposed by
 #'   Royston and Altman (1994): \eqn{\{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where
@@ -524,7 +528,7 @@
 #'   specification. Variables that are binary (exactly two unique values) are
 #'   also reset regardless of their zero proportion. Only affects variables
 #'   in the adjustment model.
-#' @param use_ftest
+#' @param ftest
 #'   Logical. Whether to use an F-test rather than a chi-square
 #'   likelihood-ratio test when computing p-values for Gaussian models.
 #'   When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
@@ -707,6 +711,7 @@
 #' for Modelling Continuous Variables}. John Wiley & Sons.
 #'
 #' @seealso [mfp2::summary.mfpi()], [mfp2::mfp2()]
+#' 
 #' @examples
 #' data("prostate")
 #' # Flexibility level 1: simplest interaction structure
@@ -778,8 +783,12 @@ mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
 }
 
-#' @describeIn mfpi Default method accepting a numeric matrix \code{x} and
-#'   response vector \code{y}.
+#' @rdname mfpi
+#'
+#' @details
+#' The default method accepts a numeric matrix \code{x} and response vector
+#' \code{y}.
+#'
 #' @export
 
 mfpi.default <- function(
@@ -804,10 +813,10 @@ mfpi.default <- function(
     criterion         = c("pvalue", "aic", "bic"),
     select            = 0.05,
     alpha             = 0.05,
-    force_keep        = NULL,
-    force_max_fp      = FALSE,
+    keep              = NULL,
+    force_max_fp_vars = NULL,
     xorder            = c("ascending", "descending", "original"),
-    fp_powers         = NULL,
+    powers         = NULL,
     ties              = c("breslow", "efron", "exact"),
     strata            = NULL,
     nocenter          = NULL,
@@ -817,7 +826,7 @@ mfpi.default <- function(
     spike_vars        = NULL,
     min_prop          = 0.05,
     max_prop          = 0.95,
-    use_ftest         = FALSE,
+    ftest             = FALSE,
     control           = NULL,
     winsorize         = FALSE,
     winsorize_probs   = c(0.01, 0.99),
@@ -1071,29 +1080,34 @@ mfpi.default <- function(
                 "; got length ", length(select), "."), call. = FALSE)
   }
   
-  # Validate force_keep --------------------------------------------------------
-  if (!is.null(force_keep) && !all(force_keep %in% vnames)) {
+  # Validate keep --------------------------------------------------------
+  if (!is.null(keep) && !all(keep %in% vnames)) {
     warning(
-      "i Some variables in `force_keep` are not columns of `x`; ",
+      "i Some variables in `keep` are not columns of `x`; ",
       "continuing with the intersection.",
       call. = FALSE
     )
   }
   
-  # Validate force_max_fp ------------------------------------------------------
-  if (!is.logical(force_max_fp)) {
-    stop("! `force_max_fp` must be logical.", call. = FALSE)
-  }
-  
-  if (length(force_max_fp) == 1L) {
-    force_max_fp <- setNames(rep(force_max_fp, nvars), vnames)
-  } else if (length(force_max_fp) != nvars) {
-    stop(paste0("! `force_max_fp` must be a single logical or a named logical ",
-                "vector of length ", nvars, " (ncol(x)); got length ",
-                length(force_max_fp), "."),
-         call. = FALSE)
-  } else {
-    force_max_fp <- setNames(as.logical(force_max_fp), vnames)
+  # Validate force_max_fp_vars ------------------------------------------------
+  # Convert character vector of variable names to named logical vector
+  # (the internal format expected by fit_mfpi and flex functions).
+  force_max_fp <- setNames(rep(FALSE, nvars), vnames)
+  if (!is.null(force_max_fp_vars)) {
+    if (!is.character(force_max_fp_vars)) {
+      stop("! `force_max_fp_vars` must be a character vector or NULL.",
+           call. = FALSE)
+    }
+    bad_names <- setdiff(force_max_fp_vars, vnames)
+    if (length(bad_names) > 0L) {
+      warning("i Some variables in `force_max_fp_vars` are not columns of `x`; ",
+              "they will be ignored: ", paste(bad_names, collapse = ", "), ".",
+              call. = FALSE)
+    }
+    force_max_fp_vars <- intersect(force_max_fp_vars, vnames)
+    if (length(force_max_fp_vars) > 0L) {
+      force_max_fp[force_max_fp_vars] <- TRUE
+    }
   }
   
   # Validate zero_vars / catzero_vars / spike_vars -----------------------------
@@ -1167,61 +1181,61 @@ mfpi.default <- function(
       stop(paste0("! Each element of `df` must be 1 (linear) or an even number 2m. ",
                   "Invalid values at positions: ",
                   paste(which(invalid_df), collapse = ", "), "."), call. = FALSE)
-   }
+  }
   
   # Validate spike proportions -------------------------------------------------
   if (!is.numeric(min_prop) || length(min_prop) != 1L || min_prop < 0 || min_prop > 1) {
     stop("! `min_prop` must be a single numeric value in [0, 1].", call. = FALSE)
-   }
+  }
   
   if (!is.numeric(max_prop) || length(max_prop) != 1L ||
       max_prop < 0 || max_prop > 1) {
     stop("! `max_prop` must be a single numeric value in [0, 1].", call. = FALSE)
-   }
+  }
   
   if (min_prop > max_prop) {
     stop("! `min_prop` cannot be greater than `max_prop`.", call. = FALSE)
-   }
+  }
   
-  # Warn if use_ftest is incompatible with family ------------------------------
-  if (use_ftest && family_string != "gaussian") {
+  # Warn if ftest is incompatible with family ------------------------------
+  if (ftest && family_string != "gaussian") {
     warning(
-      paste0("i `use_ftest = TRUE` is only applicable to Gaussian models; ",
+      paste0("i `ftest = TRUE` is only applicable to Gaussian models; ",
              "reverting to chi-square test for family = '", family_string, "'."),
       call. = FALSE
     )
-    use_ftest <- FALSE
+    ftest <- FALSE
   }
   
-  # Validate and build fp_powers list ------------------------------------------
-  if (!is.null(fp_powers) && !is.list(fp_powers)) {
-    stop("! `fp_powers` must be a named list.", call. = FALSE)
+  # Validate and build powers list ------------------------------------------
+  if (!is.null(powers) && !is.list(powers)) {
+    stop("! `powers` must be a named list.", call. = FALSE)
   }
   
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   power_list <- setNames(replicate(nvars, default_powers, simplify = FALSE), vnames)
   
-  if (!is.null(fp_powers)) {
-    if (length(fp_powers) != sum(nchar(names(fp_powers)) > 0L, na.rm = TRUE)) {
-      stop("! Every element of `fp_powers` must have a name.", call. = FALSE)
+  if (!is.null(powers)) {
+    if (length(powers) != sum(nchar(names(powers)) > 0L, na.rm = TRUE)) {
+      stop("! Every element of `powers` must have a name.", call. = FALSE)
     }
-    unknown_names <- setdiff(names(fp_powers), vnames)
+    unknown_names <- setdiff(names(powers), vnames)
     if (length(unknown_names) > 0L) {
-      stop(paste0("! The following names in `fp_powers` do not match any column of `x`: ",
+      stop(paste0("! The following names in `powers` do not match any column of `x`: ",
                   paste(unknown_names, collapse = ", "), "."), call. = FALSE)
     }
-    if (!all(sapply(fp_powers, is.numeric))) {
-      stop("! All elements of `fp_powers` must be numeric vectors.", call. = FALSE)
+    if (!all(sapply(powers, is.numeric))) {
+      stop("! All elements of `powers` must be numeric vectors.", call. = FALSE)
     }
-    fp_powers  <- lapply(fp_powers, sort)
-    pw_lengths <- sapply(fp_powers, length)
+    powers  <- lapply(powers, sort)
+    pw_lengths <- sapply(powers, length)
     too_short  <- names(pw_lengths[pw_lengths < 2L])
     if (length(too_short) > 0L) {
-      stop(paste0("! Each element of `fp_powers` must contain at least two values. ",
+      stop(paste0("! Each element of `powers` must contain at least two values. ",
                   "Insufficient values for: ", paste(too_short, collapse = ", "), "."),
            call. = FALSE)
     }
-    power_list <- modifyList(power_list, Filter(Negate(is.null), fp_powers))
+    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
   }
   
   # Validate subset ------------------------------------------------------------
@@ -1257,6 +1271,13 @@ mfpi.default <- function(
   alpha  <- setNames(alpha,  vnames)
   center <- setNames(center, vnames)
   
+  # When criterion = "pvalue", force_max_fp is achieved by setting alpha = 1,
+  # which ensures the significance test always accepts the most complex FP form.
+  # This gives force_max_fp a consistent interface across all criteria.
+  if (criterion == "pvalue" && any(force_max_fp)) {
+    alpha[force_max_fp] <- 1
+  }
+  
   if (is.null(shift)) {
     shift <- apply(x, 2L, find_shift_factor)
   } else if (length(shift) == 1L) {
@@ -1278,12 +1299,12 @@ mfpi.default <- function(
   }
   
   if (is.null(control)) {
-    control <- if (family_string == "cox") survival::coxph.control(iter.max = 100) else
+    control <- if (family_string == "cox") survival::coxph.control() else
       stats::glm.control()
   }
   
-  # Retain only valid force_keep entries ---------------------------------------
-  force_keep <- intersect(force_keep, vnames)
+  # Retain only valid keep entries ---------------------------------------
+  keep <- intersect(keep, vnames)
   
   # Process zero_vars / catzero_vars / spike_vars to named logical vectors -----
   zero_vars    <- intersect(zero_vars,    vnames)
@@ -1517,7 +1538,7 @@ mfpi.default <- function(
     select            = select,
     alpha             = alpha,
     df                = df_list,
-    force_keep        = force_keep,
+    keep        = keep,
     force_max_fp      = force_max_fp,
     xorder            = xorder,
     fp_powers         = power_list,
@@ -1530,7 +1551,7 @@ mfpi.default <- function(
     spike_vars        = spike_flag,
     min_prop          = min_prop,
     max_prop          = max_prop,
-    use_ftest         = use_ftest,
+    use_ftest         = ftest,
     control           = control,
     verbose           = verbose,
     group_var         = group_var,
@@ -1586,8 +1607,8 @@ mfpi.default <- function(
 #'     auto-estimated value for that variable is retained. The global
 #'     \code{shift}/\code{scale} argument is used only for variables not in
 #'     any \code{fp()} term.}
-#'   \item{\code{fp_powers} argument vs \code{fp(powers = ...)}}{The
-#'     \code{fp_powers} argument sets candidate power sets for named variables.
+#'   \item{\code{powers} argument vs \code{fp(powers = ...)}}{The
+#'     \code{powers} argument sets candidate power sets for named variables.
 #'     If a variable also appears in an \code{fp(powers = ...)} term, the
 #'     \code{fp()} specification takes precedence and a warning is issued.}
 #'   \item{\code{zero_vars}, \code{catzero_vars}, \code{spike_vars} arguments}{
@@ -1595,6 +1616,10 @@ mfpi.default <- function(
 #'     per-variable settings from \code{fp(zero = TRUE)},
 #'     \code{fp(catzero = TRUE)}, and \code{fp(spike = TRUE)}. A variable
 #'     is flagged if it appears in either source; there is no conflict.}
+#'   \item{\code{force_max_fp_vars} argument}{
+#'     This argument-level character vector is merged with per-variable
+#'     settings from \code{fp(force_max_fp = TRUE)}. A variable is flagged
+#'     if it appears in either source; there is no conflict.}
 #'   \item{\code{df} and cardinality overrides}{The per-variable \code{df}
 #'     values (from \code{fp()} or global) are passed to
 #'     \code{mfpi.default()}, which then applies cardinality-based overrides
@@ -1608,9 +1633,9 @@ mfpi.default <- function(
 #' arguments only; per-variable specification via \code{fp()} is not
 #' supported: \code{group_var}, \code{cont_vars}, \code{flex},
 #' \code{p_interact}, \code{min_improvement}, \code{include_group_var},
-#' \code{show_models}, \code{cycles}, \code{criterion}, \code{force_keep},
-#' \code{force_max_fp}, \code{xorder}, \code{ties}, \code{strata},
-#' \code{nocenter}, \code{min_prop}, \code{max_prop}, \code{use_ftest},
+#' \code{show_models}, \code{cycles}, \code{criterion}, \code{keep},
+#' \code{xorder}, \code{ties}, \code{strata},
+#' \code{nocenter}, \code{min_prop}, \code{max_prop}, \code{ftest},
 #' \code{control}, \code{verbose}, \code{digits}.
 #'
 #' @section Strata and offset in the formula:
@@ -1644,10 +1669,10 @@ mfpi.formula <- function(formula,
                          criterion         = c("pvalue", "aic", "bic"),
                          select            = 0.05,
                          alpha             = 0.05,
-                         force_keep        = NULL,
-                         force_max_fp      = FALSE,
+                         keep        = NULL,
+                         force_max_fp_vars = NULL,
                          xorder            = c("ascending", "descending", "original"),
-                         fp_powers         = NULL,
+                         powers         = NULL,
                          ties              = c("breslow", "efron", "exact"),
                          strata            = NULL,
                          nocenter          = NULL,
@@ -1656,7 +1681,7 @@ mfpi.formula <- function(formula,
                          spike_vars        = NULL,
                          min_prop          = 0.05,
                          max_prop          = 0.95,
-                         use_ftest         = FALSE,
+                         ftest         = FALSE,
                          control           = NULL,
                          winsorize         = FALSE,
                          winsorize_probs   = c(0.01, 0.99),
@@ -1716,8 +1741,8 @@ mfpi.formula <- function(formula,
     stop("! shift must be a single numeric or NULL.\n",
          "i Use fp() in the formula to set per-variable shift values.", call. = FALSE)
   
-  if (!is.null(fp_powers) && !is.list(fp_powers))
-    stop("! fp_powers must be a named list or NULL.", call. = FALSE)
+  if (!is.null(powers) && !is.list(powers))
+    stop("! powers must be a named list or NULL.", call. = FALSE)
   
   # ---------------------------------------------------------------------------
   # Validate cont_vars against original data types (before model.matrix)
@@ -1925,21 +1950,22 @@ mfpi.formula <- function(formula,
   zero_list    <- setNames(rep(list(FALSE), nx), names_x)
   catzero_list <- setNames(rep(list(FALSE), nx), names_x)
   spike_list   <- setNames(rep(list(FALSE), nx), names_x)
+  force_max_fp_list <- setNames(rep(list(FALSE), nx), names_x)
   
   # Default FP candidate powers (Royston and Altman, 1994)
   powx        <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   power_list  <- setNames(replicate(nx, powx, simplify = FALSE), names_x)
   
-  # Override with user-supplied fp_powers argument (before fp() overrides)
-  if (!is.null(fp_powers)) {
-    if (is.null(names(fp_powers)) ||
-        length(fp_powers) != sum(nchar(names(fp_powers)) > 0L, na.rm = TRUE))
-      stop("! All elements of fp_powers must have names.", call. = FALSE)
-    bad <- setdiff(names(fp_powers), names_x)
+  # Override with user-supplied powers argument (before fp() overrides)
+  if (!is.null(powers)) {
+    if (is.null(names(powers)) ||
+        length(powers) != sum(nchar(names(powers)) > 0L, na.rm = TRUE))
+      stop("! All elements of powers must have names.", call. = FALSE)
+    bad <- setdiff(names(powers), names_x)
     if (length(bad) > 0L)
-      stop(paste0("! fp_powers names not found in x: ",
+      stop(paste0("! powers names not found in x: ",
                   paste(bad, collapse = ", "), "."), call. = FALSE)
-    fp_powers  <- lapply(fp_powers, sort)
+    fp_powers  <- lapply(powers, sort)
     power_list <- modifyList(power_list, Filter(Negate(is.null), fp_powers))
   }
   
@@ -1994,13 +2020,19 @@ mfpi.formula <- function(formula,
     zero_list    <- apply_fp_override(zero_list,    "zero")
     catzero_list <- apply_fp_override(catzero_list, "catzero")
     spike_list   <- apply_fp_override(spike_list,   "spike")
+    force_max_fp_list <- apply_fp_override(force_max_fp_list, "force_max_fp")
     
     # fp() powers take precedence over fp_powers argument
     fp_pow_override <- Filter(Negate(is.null),
                               setNames(lapply(fp_data, attr, "powers"), fp_vars))
-    conflict <- intersect(names(fp_pow_override), names(fp_powers))
+    conflict <- if (!is.null(powers)) {
+      intersect(names(fp_pow_override), names(powers))
+    } else {
+      character(0L)
+    }
+    
     if (length(conflict) > 0L)
-      warning(paste0("i Powers specified in both fp() and fp_powers argument; ",
+      warning(paste0("i Powers specified in both fp() and powers argument; ",
                      "fp() values take precedence for: ",
                      paste(conflict, collapse = ", "), "."), call. = FALSE)
     power_list <- modifyList(power_list, fp_pow_override)
@@ -2049,6 +2081,12 @@ mfpi.formula <- function(formula,
   spike_vars_final <- union(spike_from_fp, spike_vars)
   spike_vars_final <- if (length(spike_vars_final) == 0L) NULL else spike_vars_final
   
+  # force_max_fp_vars from fp(): merge with argument force_max_fp_vars
+  fmfp_fp         <- unlist(force_max_fp_list)
+  fmfp_from_fp    <- if (any(fmfp_fp)) names(fmfp_fp[fmfp_fp]) else character(0L)
+  force_max_fp_vars_final <- union(fmfp_from_fp, force_max_fp_vars)
+  force_max_fp_vars_final <- if (length(force_max_fp_vars_final) == 0L) NULL else force_max_fp_vars_final
+  
   # ---------------------------------------------------------------------------
   # Delegate to mfpi.default
   # ---------------------------------------------------------------------------
@@ -2074,10 +2112,10 @@ mfpi.formula <- function(formula,
     criterion         = criterion,
     select            = select_vec,
     alpha             = alpha_vec,
-    force_keep        = force_keep,
-    force_max_fp      = force_max_fp,
+    keep        = keep,
+    force_max_fp_vars = force_max_fp_vars_final,
     xorder            = xorder,
-    fp_powers         = power_list,
+    powers         = power_list,
     ties              = ties,
     strata            = strata,
     nocenter          = nocenter,
@@ -2087,7 +2125,7 @@ mfpi.formula <- function(formula,
     spike_vars        = spike_vars_final,
     min_prop          = min_prop,
     max_prop          = max_prop,
-    use_ftest         = use_ftest,
+    ftest         = ftest,
     control           = control,
     winsorize         = winsorize,
     winsorize_probs   = winsorize_probs,

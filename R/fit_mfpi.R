@@ -54,7 +54,7 @@
 #'   for FP degree selection. Under \code{criterion = "pvalue"}, \code{alpha = 1}
 #'   guarantees the most complex FP degree is always accepted. Ignored under
 #'   \code{criterion = "aic"} or \code{"bic"}.
-#' @param force_keep Character vector of variable names forced into the
+#' @param keep Character vector of variable names forced into the
 #'   adjustment model regardless of selection.
 #' @param force_max_fp Named logical vector of length \eqn{p}. For each
 #'   variable, if \code{TRUE}, forces \code{select_ic()} to select the most
@@ -186,7 +186,7 @@
 #' @keywords internal
 #' @noRd
 fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
-                     center, criterion, select, alpha, force_keep,
+                     center, criterion, select, alpha, keep,
                      force_max_fp,
                      df, xorder,
                      fp_powers, ties, strata, nocenter, acd_vars, zero_vars,
@@ -215,7 +215,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     zero_vars         = zero_vars,
     catzero_vars      = catzero_vars,
     spike_vars        = spike_vars,
-    force_keep        = force_keep,
+    keep        = keep,
     force_max_fp      = force_max_fp
   )
   
@@ -419,7 +419,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 #' @param fp_powers Named list of candidate FP power sets, one per predictor.
 #' @param zero_vars Named logical vector. Whether each predictor should treat
 #'   non-positive values as zero.
-#' @param force_keep Character vector of variable names always retained in the
+#' @param keep Character vector of variable names always retained in the
 #'   adjustment model.
 #' @param force_max_fp Named logical vector of length \eqn{p}. Sliced to
 #'   adjustment columns and stored in \code{updated_params$force_max_fp}.
@@ -445,7 +445,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 preprocess_data <- function(x, group_var, include_group_var,
                             select, alpha, df, center, acd_vars,
                             fp_powers, zero_vars, catzero_vars, spike_vars,
-                            force_keep, force_max_fp) {
+                            keep, force_max_fp) {
   
   original_x     <- x
   original_names <- colnames(x)
@@ -474,7 +474,7 @@ preprocess_data <- function(x, group_var, include_group_var,
     catzero_vars = slice_param(catzero_vars),
     spike_vars   = slice_param(spike_vars),
     force_max_fp = slice_param(force_max_fp),
-    force_keep   = force_keep
+    keep   = keep
   )
   
   dummy_names <- NULL
@@ -506,7 +506,7 @@ preprocess_data <- function(x, group_var, include_group_var,
     for (param in names(dummy_params)) {
       updated_params[[param]] <- c(updated_params[[param]], dummy_params[[param]])
     }
-    updated_params$force_keep <- c(force_keep, dummy_names)
+    updated_params$keep <- c(keep, dummy_names)
   }
   
   list(
@@ -569,7 +569,7 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   is the correct behaviour for adjustment-model fitting.
 #' @param updated_params Named list of per-variable modelling parameters as
 #'   returned by \code{preprocess_data()}. Must contain \code{df},
-#'   \code{center}, \code{select}, \code{alpha}, \code{force_keep},
+#'   \code{center}, \code{select}, \code{alpha}, \code{keep},
 #'   \code{fp_powers}, \code{acd_vars}, \code{zero_vars},
 #'   \code{catzero_vars}, and \code{spike_vars}.
 #' @param xorder Character string; entry order for MFP backfitting.
@@ -645,7 +645,7 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     center        = updated_params$center,
     select        = updated_params$select,
     alpha         = updated_params$alpha,
-    keep          = updated_params$force_keep,
+    keep          = updated_params$keep,
     powers        = updated_params$fp_powers,
     acdx          = updated_params$acd_vars,
     zero          = updated_params$zero_vars,

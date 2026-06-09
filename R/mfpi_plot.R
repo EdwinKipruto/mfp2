@@ -1,15 +1,15 @@
 # S3 plot method for mfpi objects
 #
-# plot.mfpi() produces three types of plots for each significant continuous
-# variable in an mfpi fit:
+# plot.mfpi() produces three types of plots for each continuous variable
+# in an mfpi fit (selected or explicitly requested via `terms`):
 #
-#   "fitted"      - group-specific fitted curves, optionally with 95% CI bands
+#   "fitted"     - group-specific fitted curves, optionally with 95% CI bands
 #   "difference" - pointwise fitted-function difference f_j(x) - f_0(x),
 #                  optionally with 95% CI band and reference line at zero
-#   "both"        - fitted and difference plots side by side (requires patchwork)
+#   "both"       - fitted and difference plots side by side (requires patchwork)
 #
 # Plots can optionally include rug marks for the observed values of the
-# continuous variable. Each plot can include a subtitle showing the variable
+# continuous variable. Each plot includes a subtitle showing the variable
 # name, functional form, and p-value or information-criterion improvement.
 
 
@@ -17,11 +17,13 @@
 # plot.mfpi() -----------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Plot Fitted Functions and Treatment-Effect Differences from an MFPI Model
+#' Plot Group-Specific Fitted Functions and Fitted-Function Differences from an MFPI Model
 #'
 #' Produces group-specific fitted-function plots, fitted-function difference
-#' plots, or both for each significant continuous variable in an
-#' \code{"mfpi"} object. Fitted-function plots and difference plots have
+#' plots, or both for continuous variables in an \code{"mfpi"} object. By
+#' default, only variables whose interaction was retained as significant are
+#' plotted; any variable in \code{cont_vars} can also be plotted by passing
+#' its name via \code{terms}. Fitted-function plots and difference plots have
 #' separate confidence-band controls, allowing the user to suppress uncertainty
 #' bands for group-specific fitted curves while retaining the confidence band
 #' for the fitted-function difference curve. Plots are returned invisibly as a
@@ -64,18 +66,14 @@
 #' For example, when \code{plot_type = "difference"}, fitted-function plots are
 #' not built internally. This avoids unnecessary \pkg{ggplot2} object creation.
 #'
-#' Line and ribbon data are sorted by the continuous variable before plotting.
-#' This avoids zig-zag paths when fitted values are stored in observation order
-#' and improves rendering behaviour for \code{geom_line()} and
-#' \code{geom_ribbon()}.
-#'
 #' Rug marks can be expensive for large datasets because each observation is
 #' drawn as a graphical object. The default is \code{show_rug = FALSE} for
 #' faster rendering. Set \code{show_rug = TRUE} to display rug marks.
 #'
 #' Plot printing can also be slow, especially when many variables or group
-#' comparisons are plotted. The default is \code{auto_print = FALSE}, so plots
-#' are returned invisibly and can be printed manually.
+#' comparisons are plotted. The default is \code{auto_print = TRUE}, so plots
+#' are printed as they are created. Set \code{auto_print = FALSE} to return
+#' them invisibly for manual printing or saving.
 #'
 #' @section Return structure:
 #' The return value is a nested named list. Outer names are variable names from
@@ -98,57 +96,39 @@
 #'
 #' The subtitle summarises the functional form being shown, the displayed
 #' group contrast, and the selection metric, for example
-#' \code{"type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
+#' \code{"type = Linear; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
 #' The continuous variable is not repeated in the subtitle because it is shown
 #' on the x-axis.
 #'
 #' The metric shown depends on the criterion used to fit the model:
 #' \itemize{
-#'   \item \code{criterion = "pvalue"}: selected plots show the selected
-#'     candidate raw p-value and, when available, the stored adjusted p-value.
-#'   \item \code{criterion = "aic"}: selected plots show the global
-#'     \code{dAIC} used for the final interaction decision when available;
-#'     explicit candidate plots show within-form \code{dAIC}.
-#'   \item \code{criterion = "bic"}: selected plots show the global
-#'     \code{dBIC} used for the final interaction decision when available;
-#'     explicit candidate plots show within-form \code{dBIC}.
-#' }
-#'
-#' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"}, the
-#' p-value label adapts to avoid ambiguity:
-#' \itemize{
-#'   \item If \code{type = NULL}, selected variables are plotted and the
-#'     subtitle shows both the raw and stored adjusted p-values.
-#'   \item If \code{type} is specified, candidate curves are plotted and the
-#'     subtitle shows \code{p_raw}. It also shows \code{p_adj} when an adjusted
-#'     p-value is stored for that candidate, as occurs under candidate-level
-#'     p-value adjustment.
+#'   \item \code{criterion = "pvalue"}: the subtitle shows \code{p_raw} and,
+#'     when \code{p_adjust_method != "none"} and the variable was selected,
+#'     also the stored adjusted p-value \code{p_adj}.
+#'   \item \code{criterion = "aic"}: the subtitle shows \code{dAIC}.
+#'   \item \code{criterion = "bic"}: the subtitle shows \code{dBIC}.
 #' }
 #'
 #' To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
 #' are still shown.
 #'
 #' @section Plotting non-selected variables:
-#' Whether a variable can be plotted depends on \code{type}.
+#' By default (\code{terms = NULL}), only variables whose interaction was
+#' retained as significant are plotted. If no variables were selected, an
+#' informative message is printed and the function returns invisibly.
 #'
-#' Under \code{type = NULL}, only variables whose interaction was retained as
-#' significant have a selected curve stored in
-#' \code{model$best_fitted_functions}. If no variables were selected, the
-#' function prints an informative message and returns invisibly.
-#'
-#' Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, the function
-#' plots the requested candidate curve from \code{model$all_fitted_functions},
-#' provided the model was fitted with \code{compute_fitted = TRUE}. This allows
-#' inspection of candidate curves even for variables that were not selected.
+#' Any variable in \code{cont_vars} can be plotted regardless of whether its
+#' interaction was selected, by passing its name via \code{terms}:
+#' \preformatted{plot(fit, terms = "age")}
+#' This plots the fitted curve using the functional form pre-specified for that
+#' variable in \code{cont_var_forms}, with the same subtitle showing the
+#' interaction test metric.
 #'
 #' @param x An object of class \code{"mfpi"}, as returned by \code{mfpi()}.
 #' @param terms Character vector of variable names to plot. Default
-#'   \code{NULL} plots all variables with fitted values available under the
-#'   current \code{type} setting.
-#' @param type Character string or \code{NULL}. Controls which functional form
-#'   is plotted. One of \code{"linear"}, \code{"fp1"}, \code{"fp2"}, or
-#'   \code{NULL}. Default \code{NULL} plots the selected functional form for
-#'   each retained variable.
+#'   \code{NULL} plots all variables whose interaction was selected as
+#'   significant. Pass one or more variable names to plot specific variables
+#'   regardless of selection status.
 #' @param plot_type Character string specifying the plot to produce. One of
 #'   \code{"fitted"}, \code{"difference"}, or \code{"both"}. Default is
 #'   \code{"fitted"}.
@@ -170,11 +150,11 @@
 #' @param colour_grp Character. Colour for the non-reference-group curve and
 #'   confidence band. Default is \code{"#D6604D"}.
 #' @param line_types Optional character vector specifying linetypes for the
-#'   group-specific fitted-function curves. If \code{NULL}, solid lines
-#'   are used by default for both the reference and comparison groups. The vector may be unnamed with length 2, in which case values
-#'   are matched to the reference and comparison groups in order, or named using
-#'   the original group labels, for example
-#'   \code{c("placebo" = "solid", "standard" = "dashed")}.
+#'   group-specific fitted-function curves. If \code{NULL}, solid lines are
+#'   used for both the reference and comparison groups. The vector may be
+#'   unnamed with length 2, in which case values are matched to the reference
+#'   and comparison groups in order, or named using the original group labels,
+#'   for example \code{c("placebo" = "solid", "standard" = "dashed")}.
 #' @param colour_diff Character. Colour for the difference curve and confidence
 #'   band. Default is \code{"#1B7837"}.
 #' @param linewidth Positive numeric. Line width for fitted and difference
@@ -194,10 +174,6 @@
 #' @param legend_justification Numeric vector of length 2 giving the legend
 #'   justification when `legend_position = "inside"`. The default is `c(0, 1)`,
 #'   which anchors the top-left corner of the legend at `legend_inside`.
-#'   #' @param line_types Optional character vector specifying linetypes for the
-#'   group-specific fitted functions. If `NULL`, solid lines are used for all
-#'   groups. The vector may be unnamed, in which case values are matched to the
-#'   original group levels in order, or named using the original group labels.
 #' @param ... Currently unused.
 #'
 #' @return A nested named list of \code{ggplot} or \code{patchwork} objects,
@@ -244,10 +220,8 @@
 #'      show_rug = TRUE,
 #'      auto_print = TRUE)
 #'
-#' # Inspect candidate FP2 curve for age, even if not selected
-#' plot(fit, terms = "age", type = "fp2",
-#'      plot_type = "difference",
-#'      auto_print = TRUE)
+#' # Plot a non-selected variable by name
+#' plot(fit, terms = "age", plot_type = "difference", auto_print = TRUE)
 #'
 #' # Save a specific plot
 #' ggplot2::ggsave(
@@ -259,7 +233,6 @@
 #' }
 plot.mfpi <- function(x,
                       terms          = NULL,
-                      type           = NULL,
                       plot_type      = c("fitted", "difference", "both"),
                       auto_print     = TRUE,
                       show_title     = TRUE,
@@ -362,80 +335,54 @@ plot.mfpi <- function(x,
   # ---------------------------------------------------------------------------
   metrics <- model$best_model_metrics
   
-  valid_types <- c("linear", "fp1", "fp2")
+  # Use best_fitted_functions for selected variables (already unwrapped matrices)
+  # and all_fitted_functions for non-selected variables (need to unwrap the
+  # single-element named list to get the matrix directly).
+  best_ff <- model$best_fitted_functions
+  all_ff  <- model$all_fitted_functions
   
-  if (is.null(type)) {
-    all_fitted <- model$best_fitted_functions
-    
-    if (is.null(all_fitted)) {
-      stop(
-        "! No fitted functions found. Re-fit with compute_fitted = TRUE.",
-        call. = FALSE
-      )
-    }
-  } else {
-    type <- match.arg(type, valid_types)
-    
-    if (is.null(model$all_fitted_functions) ||
-        length(model$all_fitted_functions) == 0L) {
-      stop(
-        "! No candidate fitted functions found. ",
-        "Re-fit with compute_fitted = TRUE.",
-        call. = FALSE
-      )
-    }
-    
-    all_fitted <- lapply(model$all_fitted_functions, function(v) {
-      if (is.null(v)) {
-        NULL
-      } else {
-        v[[type]]
-      }
-    })
-    
-    has_any_type_fit <- vapply(
-      all_fitted,
-      function(v) !is.null(v) && length(v) > 0L,
-      logical(1L)
+  if (is.null(all_ff) || length(all_ff) == 0L) {
+    stop(
+      "! No fitted functions found in this model object.",
+      call. = FALSE
     )
-    
-    if (!any(has_any_type_fit)) {
-      stop(
-        paste0("! No fitted functions found for type = '", type, "'."),
-        call. = FALSE
-      )
-    }
   }
+  
+  all_fitted <- stats::setNames(
+    lapply(names(all_ff), function(v) {
+      # Prefer best_fitted_functions (already a matrix) for selected variables
+      if (length(best_ff) > 0L && !is.null(best_ff[[v]])) {
+        return(best_ff[[v]])
+      }
+      # For non-selected variables, unwrap the single-element named list
+      inner <- all_ff[[v]]
+      if (is.null(inner) || length(inner) == 0L) return(NULL)
+      if (is.matrix(inner)) return(inner)          # already unwrapped
+      inner[[1L]]                                   # unwrap list(form = matrix)
+    }),
+    names(all_ff)
+  )
   
   # ---------------------------------------------------------------------------
   # Resolve terms
   # ---------------------------------------------------------------------------
   if (is.null(terms)) {
-    has_fit <- vapply(
-      all_fitted,
-      function(v) !is.null(v) && length(v) > 0L,
-      logical(1L)
-    )
+    # Default: plot only selected variables
+    selected_vars <- if (!is.null(metrics) && nrow(metrics) > 0L) {
+      metrics$variable
+    } else {
+      character(0L)
+    }
     
-    terms <- names(all_fitted)[has_fit]
+    terms <- intersect(selected_vars, names(all_fitted))
     
     if (length(terms) == 0L) {
-      if (is.null(type)) {
-        message(
-          "Nothing to plot: no variables in `cont_vars` were selected as\n",
-          "having a significant interaction with the group variable.\n",
-          "To inspect the fitted candidate curves, pass\n",
-          "type = \"linear\", \"fp1\", or \"fp2\"."
-        )
-      } else {
-        message(
-          "Nothing to plot: no variables have a '", type,
-          "' candidate fit.\n",
-          "This can happen for flex levels that skip certain degrees,\n",
-          "or when compute_fitted = FALSE."
-        )
-      }
-      
+      message(
+        "Nothing to plot: no variables in `cont_vars` were selected as\n",
+        "having a significant interaction with the group variable.\n",
+        "To inspect a variable's fitted curve anyway, pass its name via\n",
+        "the `terms` argument, e.g. terms = \"age\"."
+      )
       return(invisible(x))
     }
   } else {
@@ -444,102 +391,31 @@ plot.mfpi <- function(x,
            call. = FALSE)
     }
     
-    missing_terms <- setdiff(terms, names(all_fitted))
-    
-    if (length(missing_terms) > 0L) {
-      all_candidates <- model$all_fitted_functions
-      
-      not_selected <- if (!is.null(all_candidates)) {
-        intersect(missing_terms, names(all_candidates))
-      } else {
-        character(0L)
-      }
-      
-      truly_missing <- if (!is.null(all_candidates)) {
-        setdiff(missing_terms, names(all_candidates))
-      } else {
-        missing_terms
-      }
-      
-      if (length(truly_missing) > 0L) {
-        available <- if (!is.null(all_candidates)) {
-          paste(names(all_candidates), collapse = ", ")
-        } else {
-          "(none)"
-        }
-        
-        stop(
-          "! The following `terms` are not variables in this model:\n  ",
-          paste(truly_missing, collapse = ", "), ".\n",
-          "  Available variables: ",
-          available,
-          ".",
-          call. = FALSE
-        )
-      }
-      
-      if (length(not_selected) > 0L) {
-        message(
-          "The following variable(s) were not selected as having a\n",
-          "significant interaction: ",
-          paste(not_selected, collapse = ", "), ".\n",
-          "To plot the candidate curves anyway, pass\n",
-          "type = \"linear\", \"fp1\", or \"fp2\"."
-        )
-        
-        terms <- setdiff(terms, not_selected)
-        
-        if (length(terms) == 0L) {
-          return(invisible(x))
-        }
-      }
+    # Error only for variables not in cont_vars at all
+    truly_missing <- setdiff(terms, names(all_fitted))
+    if (length(truly_missing) > 0L) {
+      stop(
+        "! The following `terms` are not variables in this model:\n  ",
+        paste(truly_missing, collapse = ", "), ".\n",
+        "  Available variables: ",
+        paste(names(all_fitted), collapse = ", "), ".",
+        call. = FALSE
+      )
     }
     
-    no_fit <- vapply(
-      terms,
-      function(v) {
-        fv <- all_fitted[[v]]
-        is.null(fv) || length(fv) == 0L
-      },
-      logical(1L)
-    )
+    # Remove any terms with no fitted function (e.g. compute_fitted = FALSE)
+    no_fit <- vapply(terms, function(v) {
+      fv <- all_fitted[[v]]
+      is.null(fv) || length(fv) == 0L
+    }, logical(1L))
     
     if (any(no_fit)) {
-      bad_vars <- terms[no_fit]
-      
-      msg <- if (is.null(type)) {
-        paste0(
-          "! The following variables have no selected interaction fit:\n  ",
-          paste(bad_vars, collapse = ", "), ".\n",
-          "  Their interaction with the group variable did not meet the\n",
-          "  selection threshold, so no winner curve was retained.\n",
-          "  To plot the candidate fits anyway, pass `type = \"linear\"`,\n",
-          "  `\"fp1\"`, or `\"fp2\"`."
-        )
-      } else {
-        paste0(
-          "! The following variables have no '", type, "' candidate fit:\n  ",
-          paste(bad_vars, collapse = ", "), ".\n",
-          "  This can happen for flex levels that skip certain degrees, or\n",
-          "  when `compute_fitted = FALSE`."
-        )
-      }
-      
-      if (all(no_fit)) {
-        stop(msg, call. = FALSE)
-      } else {
-        warning(
-          paste0(
-            msg,
-            "\n  Continuing with the remaining variable(s): ",
-            paste(terms[!no_fit], collapse = ", "),
-            "."
-          ),
-          call. = FALSE
-        )
-        
-        terms <- terms[!no_fit]
-      }
+      stop(
+        "! The following variable(s) have no fitted function available:\n  ",
+        paste(terms[no_fit], collapse = ", "), ".\n",
+        "  Re-fit with compute_fitted = TRUE.",
+        call. = FALSE
+      )
     }
   }
   
@@ -549,7 +425,6 @@ plot.mfpi <- function(x,
   crit_used <- if (is.null(model$criterion)) "pvalue" else model$criterion
   padj      <- if (!is.null(model$p_adjust_method)) model$p_adjust_method else "none"
   adjusting <- padj != "none" && crit_used == "pvalue"
-  p_scope   <- if (!is.null(model$p_adjust_scope)) model$p_adjust_scope else "variables"
   
   subtitle_lookup <- list()
   
@@ -562,95 +437,38 @@ plot.mfpi <- function(x,
     )
   }
   
-  if (!is.null(type)) {
-    # Explicit candidate plots show candidate-specific metrics. For p-values,
-    # show p_raw and, when the selected adjustment scope produced a stored
-    # adjusted p-value for that candidate, also p_adj.
-    all_metrics <- model$all_model_metrics
-    
-    if (!is.null(all_metrics) && nrow(all_metrics) > 0L) {
-      type_rows <- all_metrics[
-        !is.na(all_metrics$type) & all_metrics$type == type,
-        ,
-        drop = FALSE
-      ]
-      
-      for (i in seq_len(nrow(type_rows))) {
-        v <- type_rows$variable[i]
-        
-        if (crit_used == "pvalue") {
-          metric <- if ("pvalue" %in% names(type_rows)) {
-            type_rows$pvalue[i]
-          } else {
-            NA_real_
-          }
-          metric_adj <- if (adjusting && "p_adjusted" %in% names(type_rows) &&
-                            !is.na(type_rows$p_adjusted[i])) {
-            type_rows$p_adjusted[i]
-          } else {
-            NULL
-          }
-          add_subtitle_info(v, type, metric, "p_raw", metric_adj)
-        } else if (crit_used == "aic") {
-          metric <- if ("AIC_main_minus_int" %in% names(type_rows)) {
-            type_rows$AIC_main_minus_int[i]
-          } else {
-            NA_real_
-          }
-          add_subtitle_info(v, type, metric, "dAIC", NULL)
-        } else if (crit_used == "bic") {
-          metric <- if ("BIC_main_minus_int" %in% names(type_rows)) {
-            type_rows$BIC_main_minus_int[i]
-          } else {
-            NA_real_
-          }
-          add_subtitle_info(v, type, metric, "dBIC", NULL)
-        }
-      }
-    }
-  } else if (!is.null(metrics) && nrow(metrics) > 0L) {
-    # Selected/final plots use the final decision metric. For AIC/BIC this is
-    # the global model-class improvement when available. For p-values this is
-    # the selected candidate's raw and stored adjusted p-value when available.
-    for (i in seq_len(nrow(metrics))) {
-      v <- metrics$variable[i]
-      form <- metrics$type[i]
+  # Build subtitle info from all_model_metrics so all terms (selected or not)
+  # get a subtitle. For selected variables, also pick up adjusted p-values
+  # from best_model_metrics where available.
+  all_metrics <- model$all_model_metrics
+  
+  if (!is.null(all_metrics) && nrow(all_metrics) > 0L) {
+    for (i in seq_len(nrow(all_metrics))) {
+      v    <- all_metrics$variable[i]
+      form <- all_metrics$type[i]
       
       if (crit_used == "pvalue") {
-        metric <- if ("pvalue" %in% names(metrics)) metrics$pvalue[i] else NA_real_
-        metric_adj <- if (adjusting && "p_adjusted" %in% names(metrics) &&
-                          !is.na(metrics$p_adjusted[i])) {
-          metrics$p_adjusted[i]
+        metric <- if ("pvalue" %in% names(all_metrics)) all_metrics$pvalue[i] else NA_real_
+        # p_adjusted is available in all_metrics for all variables when
+        # p_adjust_method != "none", regardless of selection status.
+        metric_adj <- if (adjusting &&
+                          "p_adjusted" %in% names(all_metrics) &&
+                          !is.na(all_metrics$p_adjusted[i])) {
+          all_metrics$p_adjusted[i]
         } else {
           NULL
         }
         add_subtitle_info(v, form, metric, "p_raw", metric_adj)
       } else if (crit_used == "aic") {
-        if ("AIC_global_improvement" %in% names(metrics)) {
-          metric <- metrics$AIC_global_improvement[i]
-          label <- "global dAIC"
-        } else {
-          metric <- if ("AIC_main_minus_int" %in% names(metrics)) {
-            metrics$AIC_main_minus_int[i]
-          } else {
-            NA_real_
-          }
-          label <- "dAIC"
-        }
-        add_subtitle_info(v, form, metric, label, NULL)
+        metric <- if ("dAIC" %in% names(all_metrics)) all_metrics$dAIC[i]
+        else if ("AIC_main_minus_int" %in% names(all_metrics)) all_metrics$AIC_main_minus_int[i]
+        else NA_real_
+        add_subtitle_info(v, form, metric, "dAIC", NULL)
       } else if (crit_used == "bic") {
-        if ("BIC_global_improvement" %in% names(metrics)) {
-          metric <- metrics$BIC_global_improvement[i]
-          label <- "global dBIC"
-        } else {
-          metric <- if ("BIC_main_minus_int" %in% names(metrics)) {
-            metrics$BIC_main_minus_int[i]
-          } else {
-            NA_real_
-          }
-          label <- "dBIC"
-        }
-        add_subtitle_info(v, form, metric, label, NULL)
+        metric <- if ("dBIC" %in% names(all_metrics)) all_metrics$dBIC[i]
+        else if ("BIC_main_minus_int" %in% names(all_metrics)) all_metrics$BIC_main_minus_int[i]
+        else NA_real_
+        add_subtitle_info(v, form, metric, "dBIC", NULL)
       }
     }
   }
@@ -732,9 +550,9 @@ plot.mfpi <- function(x,
     val_str <- if (is.null(info$metric) || is.na(info$metric)) {
       "NA"
     } else if (lbl %in% c("p", "p_raw")) {
-      formatC(info$metric, format = "g", digits = 3)
+      trimws(formatC(info$metric, format = "g", digits = 3))
     } else {
-      formatC(info$metric, format = "f", digits = 2)
+      trimws(formatC(info$metric, format = "f", digits = 2))
     }
     
     contrast_text <- sprintf("%s: %s vs %s", group_label, grp_label_value, ref_label)
@@ -742,7 +560,7 @@ plot.mfpi <- function(x,
     metric_text <- sprintf("%s = %s", lbl, val_str)
     
     if (!is.null(info$metric_adj) && !is.na(info$metric_adj)) {
-      adj_str <- formatC(info$metric_adj, format = "g", digits = 3)
+      adj_str <- trimws(formatC(info$metric_adj, format = "g", digits = 3))
       metric_text <- sprintf("%s (p_adj = %s)", metric_text, adj_str)
     }
     

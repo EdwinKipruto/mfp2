@@ -26,3 +26,4 @@ Royston, P., & Sauerbrei, W. (2008). Multivariable model-building: a pragmatic a
 regression analysis based on fractional polynomials for modelling continuous variables.
 John Wiley & Sons.
 }
+\keyword{internal}

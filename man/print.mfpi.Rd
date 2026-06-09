@@ -15,8 +15,8 @@
 \code{x} invisibly.
 }
 \description{
-Displays the adjustment model, candidate interaction models, and the final
+Displays the adjustment model, interaction model metrics, and the final
 interaction decision summary. For \code{criterion = "pvalue"}, an additional
-candidate p-value table is printed before the final summary so that raw and
+p-value adjustment step is printed before the final summary so that raw and
 adjusted p-values can be inspected separately.
 }

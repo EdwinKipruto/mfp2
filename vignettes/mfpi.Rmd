@@ -137,7 +137,8 @@ head(advanced_prostate_cancer)
 ```
 
 The following call tests whether the treatment effect on survival varies across
-values of `age`, while adjusting for the other selected predictors:
+values of `age`, while adjusting for the other selected predictors. The
+functional form for `age` is pre-specified as FP1 using `cont_var_forms`:
 
 ```{r quickstart}
 fit_quick <- mfpi(
@@ -146,6 +147,7 @@ fit_quick <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
+  cont_var_forms    = c(age = "fp1"),
   data              = advanced_prostate_cancer,
   flex              = "flex1",
   family            = "cox",
@@ -155,17 +157,18 @@ fit_quick <- mfpi(
 )
 print(fit_quick)
 ```
-The output is organised in steps. For p-value-based analyses, Step 1 shows
-the adjustment model selected by MFP, Step 2 shows the candidate interaction
-models, Step 3 shows the candidate p-value table, and Step 4 shows the final
-interaction summary. For AIC- and BIC-based analyses, the output contains the
-adjustment model, the candidate interaction models, and the interaction
-summary. The `summary()` method additionally prints the regression coefficients
-for retained interactions. The `plot()` method displays the group-specific
-fitted functions and the fitted-function difference. The rest of this vignette
-explains each component in detail.
 
-```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age × rx interaction."}
+The output is organised in steps. For p-value-based analyses, Step 1 shows
+the adjustment model selected by MFP, Step 2 shows the interaction model
+metrics, Step 3 shows the p-value adjustment table, and Step 4 shows the final
+interaction summary. For AIC- and BIC-based analyses, the output contains the
+adjustment model, the interaction model metrics, and the interaction summary.
+The `summary()` method additionally prints the regression coefficients for
+retained interactions. The `plot()` method displays the group-specific fitted
+functions and the fitted-function difference. The rest of this vignette explains
+each component in detail.
+
+```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age x rx interaction."}
 plot(fit_quick, plot_type = "both")
 ```
 
@@ -195,49 +198,49 @@ selected variables. Specifically, the continuous variable currently being tested
 and the dummy variables corresponding to the grouping variable are excluded from
 the adjustment set.
 
-When `criterion = "pvalue"`, multiplicity adjustment is controlled by two
-arguments. The argument `p_adjust_method` specifies the adjustment method, such
-as `"holm"`, `"bonferroni"`, `"hochberg"`, `"BH"`, or `"BY"`. The default is
-`p_adjust_method = "none"`, meaning that no multiplicity correction is applied.
-The argument `p_adjust_scope` defines the family of p-values to which that
-adjustment is applied.
+When `criterion = "pvalue"`, multiplicity adjustment is controlled by the
+`p_adjust_method` argument, which specifies the adjustment method, such as
+`"holm"`, `"bonferroni"`, `"hochberg"`, `"BH"`, or `"BY"`. The default is
+`p_adjust_method = "none"`, meaning no multiplicity correction is applied.
+When multiple variables are screened, adjustment is applied across all tested
+variables, one test per variable. The adjusted p-values are shown in Step 3
+and used for the final selection decision in Step 4.
 
-## P-value adjustment scope
+## Pre-specifying the functional form: `cont_var_forms`
 
-The argument `p_adjust_scope` specifies which p-values are included in the
-adjustment set. With the default `p_adjust_scope = "candidates"`, all candidate
-tests are adjusted together. This means that the raw p-values from every tested
-variable and every fitted functional form are put into one adjustment set.
+In both settings, the functional form of the interaction --- linear, FP1, or
+FP2 --- should be pre-specified rather than selected from the data. Choosing
+the functional form by comparing all three candidates on the same data inflates
+the Type I error and introduces selection bias: more flexible forms tend to fit
+the data better by chance, making spurious interactions more likely to be
+detected.
 
-For example, suppose `age` has raw p-values 0.08, 0.03, and 0.06 for the
-linear, FP1, and FP2 candidates, respectively. Suppose also that `wt` has raw
-p-values 0.04, 0.20, and 0.11 for the linear, FP1, and FP2 candidates. With
-`p_adjust_scope = "candidates"`, the multiplicity adjustment is applied to all
-six candidate p-values: 0.08, 0.03, 0.06, 0.04, 0.20, and 0.11.
+The `cont_var_forms` argument specifies the functional form to use for each
+variable in `cont_vars`. It accepts a named character vector whose names are
+variable names from `cont_vars` and whose values are one of `"linear"`,
+`"fp1"`, or `"fp2"`. Variables not named in `cont_var_forms` are assigned
+`"linear"` by default. The argument is `NULL` by default, which assigns
+`"linear"` to all variables.
 
-The adjusted p-values are then placed back into the candidate table. For each
-variable, the candidate with the smallest adjusted p-value is selected as the
-variable-level candidate. The interaction is retained only if this selected
-candidate's adjusted p-value is below `p_interact`. If seven variables are
-screened and all three candidate forms are fitted for each variable, the
-adjustment is applied to up to 21 p-values. This option gives stronger
-protection against false positives because it accounts for searching across both
-variables and functional forms.
+For example, to test `age` as FP1 and leave `wt` as linear (the default):
 
-With `p_adjust_scope = "variables"`, adjustment is done in two steps. First,
-within each variable, `mfpi()` chooses the candidate form with the smallest raw
-p-value. This gives one p-value per variable. Second, `p_adjust_method` is
-applied only to these selected variable-level p-values.
+```{r cont-var-forms-example, eval=FALSE}
+mfpi(
+  ...,
+  cont_vars      = c("age", "wt"),
+  cont_var_forms = c(age = "fp1")
+)
+```
 
-Using the same example, the smallest raw p-value for `age` is 0.03 from the FP1
-candidate, and the smallest raw p-value for `wt` is 0.04 from the linear
-candidate. Therefore, the adjustment is applied only to these two selected
-p-values: 0.03 and 0.04. The non-selected candidate forms are still shown in the candidate table with
-their raw p-values, but they do not receive adjusted p-values because they were
-not included in the adjustment set. This option is less conservative, but it does not adjust for the internal
-functional-form search. It can be ideal when the functional
-form is prespecified.
+Each variable in `cont_vars` is tested using exactly its pre-specified form.
+The functional form should be chosen based on subject-matter knowledge or prior
+evidence, ideally before looking at the data. For guidance on choosing a
+functional form, see the [Flexibility levels](#Flex) section and the
+recommendations of Royston and Sauerbrei (2014).
 
+Unnamed entries and unnamed scalars (e.g. `cont_var_forms = "fp1"`) are not
+accepted; every entry must carry the name of the target variable to ensure the
+specification is unambiguous.
 
 # The MFPI algorithm
 
@@ -246,14 +249,14 @@ The MFPI procedure operates in two broad stages.
 First, an adjustment model is selected using the MFP algorithm. The algorithm is
 run once on the full predictor matrix to select adjustment variables and their
 functional forms. This initial selection also includes variables that may later
-be tested for interaction. By default, the grouping variable is excluded from 
-the MFP step (`include_group_var = FALSE`). If `include_group_var = TRUE`, the 
-grouping variable is represented by dummy variables and forced into the 
+be tested for interaction. By default, the grouping variable is excluded from
+the MFP step (`include_group_var = FALSE`). If `include_group_var = TRUE`, the
+grouping variable is represented by dummy variables and forced into the
 adjustment model. When `criterion = "pvalue"`, these dummy variables are assigned
-`select = 1`, meaning that they are always retained in the model regardless of 
+`select = 1`, meaning that they are always retained in the model regardless of
 their statistical significance. When `criterion = "aic"` or `criterion = "bic"`,
 they are added to the `keep` set and are therefore not eligible for elimination
-during backfitting. The selected adjustment model is then used to control for 
+during backfitting. The selected adjustment model is then used to control for
 confounding in the subsequent interaction analyses.
 
 Second, for each continuous variable listed in `cont_vars`, `mfpi()` evaluates
@@ -267,18 +270,21 @@ different adjustment sets. When `verbose = TRUE`, the adjustment set used for
 each variable is printed so that the user can verify which covariates are being
 controlled for.
 
-For each variable in `cont_vars`, candidate interaction models are fitted using
-linear, FP1, and FP2 functions. The selection criterion, specified by
-`criterion`, determines how these candidate models are compared. The available
+For each variable in `cont_vars`, the interaction model is fitted using the
+functional form pre-specified in `cont_var_forms` (default: `"linear"`). The
+selection criterion, specified by `criterion`, determines how the interaction
+model is compared with the corresponding main-effects model. The available
 criteria are `"pvalue"`, `"aic"`, and `"bic"`.
 
-For `criterion = "pvalue"`, all candidate p-values are collected before the
-final p-value adjustment and variable-level decisions are made. During verbose
-model fitting, the best candidate reported within each variable is therefore
-only provisional and is based on the raw p-value. After all variables and
-candidate forms have been evaluated, p-values are adjusted according to
-`p_adjust_method` and `p_adjust_scope`, and the final selected candidate and
-interaction decision are determined.
+For `criterion = "pvalue"`, each variable yields one p-value from its
+pre-specified interaction test. When `p_adjust_method != "none"`, all p-values
+are collected after the per-variable loop and adjusted together before the
+final selection decisions are made. During verbose model fitting, the p-value
+reported within each variable is therefore provisional when adjustment is
+requested. After all variables have been evaluated and p-values adjusted, the
+final interaction decisions are determined and printed as Step 3 and Step 4.
+When `p_adjust_method = "none"`, the p-value printed during fitting is the
+final result and is shown immediately as `>> p_raw = ... -> Selected/Not selected`.
 
 ## The interaction model
 
@@ -302,12 +308,11 @@ $$
   \bigr],
 $$
 
-where $\mathbf{x}_i^\top \boldsymbol{\gamma}$ denotes the linear predictor 
+where $\mathbf{x}_i^\top \boldsymbol{\gamma}$ denotes the linear predictor
 contribution from the adjustment covariates, $\alpha$ is the main effect of the
-grouping variable, $I(t_i = j)$ is the indicator for group $j$, and 
-$\phi_1(z_i) = z_i^{p_1}$, $\phi_2(z_i) = z_i^{p_2}$ are the FP basis functions 
+grouping variable, $I(t_i = j)$ is the indicator for group $j$, and
+$\phi_1(z_i) = z_i^{p_1}$, $\phi_2(z_i) = z_i^{p_2}$ are the FP basis functions
 (with $z^0 = \log z$ by convention).
-
 
 The group-specific contribution of $z$ for an observation in group $j$ is then
 
@@ -339,7 +344,7 @@ parallel, the difference is approximately constant over $z$. If the difference
 varies with $z$, this suggests that the effect of the grouping variable on the
 outcome depends on the value of the continuous covariate. Pointwise standard
 errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$
-are estimated using the delta method applied to the variance–covariance matrix
+are estimated using the delta method applied to the variance-covariance matrix
 of the fitted interaction model.
 
 The fitted-function difference plot should be interpreted as a model-based
@@ -494,17 +499,21 @@ knitr::kable(
 )
 ```
 
-Our implementation of `mfpi()` evaluates three functional-form candidates for
-each variable in `cont_vars`: linear, FP1, and FP2. Each candidate is evaluated
-using its corresponding interaction test, and the `criterion` parameter
-determines how candidate forms are compared. Candidate tables use `+` to mark
-the candidate selected for the variable-level decision. This allows users to
-prespecify a preferred degree based on subject-matter reasoning while still
-using the other candidates for comparison and sensitivity assessment. For
-example, a user following the recommendation of Royston and Sauerbrei (2014)
-might focus on FP1 with `flex3` when there is no strong reason to expect a
-non-monotone treatment-effect function, while treating the linear and FP2
-results as sensitivity checks.
+The choice of functional form --- linear, FP1, or FP2 --- is made via
+`cont_var_forms` and should be based on subject-matter knowledge before the
+data are examined. Each variable in `cont_vars` is then tested using exactly
+its pre-specified form. For example, following the recommendation of Royston
+and Sauerbrei (2014), a user might specify FP1 with `flex3` when there is no
+strong reason to expect a non-monotone treatment-effect function:
+
+```{r cont-var-forms-flex3, eval=FALSE}
+mfpi(
+  ...,
+  cont_vars      = "age",
+  cont_var_forms = c(age = "fp1"),
+  flex           = "flex3"
+)
+```
 
 ## Note on nested and non-nested comparisons {#note-on-non-nested-comparisons}
 
@@ -690,15 +699,17 @@ with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,
 ## Prespecified interaction analysis
 
 Suppose that, based on prior evidence, we have identified `age` as the single
-covariate to investigate for interaction with treatment. Because only one
-interaction is tested, the resulting p-value can be interpreted directly without
-multiplicity adjustment.
+covariate to investigate for interaction with treatment, and that subject-matter
+knowledge suggests a monotone relationship, motivating an FP1 functional form.
+Because only one interaction is tested, the resulting p-value can be interpreted
+directly without multiplicity adjustment.
 
 The formula interface is the most convenient way to call `mfpi()`. Continuous
 variables can be wrapped in `fp()` to control FP-specific settings, such as the
 degrees of freedom or the candidate power set. For example,
 `fp(age, df = 2, select = 1)` restricts `age` to an FP1 function and forces it
-to remain in the adjustment model. Here we use the defaults for all variables:
+to remain in the adjustment model. Here we use the defaults for all variables
+and pre-specify `age` as FP1 via `cont_var_forms`:
 
 ```{r prespecified}
 fit_pre <- mfpi(
@@ -707,6 +718,7 @@ fit_pre <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
+  cont_var_forms    = c(age = "fp1"),
   data              = advanced_prostate_cancer,
   flex              = "flex1",
   family            = "cox",
@@ -737,26 +749,20 @@ eliminated during backfitting. The retained covariates, in their selected
 transformed or untransformed forms, are then used for adjustment in the
 interaction models for `age`.
 
-**Step 2: All interaction candidates.** For `age`, three candidate interaction
-models are fitted: linear, FP1, and FP2. Each row shows the candidate type, the
-deviance of the main-effects model, the deviance of the interaction model, the
-likelihood-ratio statistic, the raw p-value, and the information-criterion
-differences. During model fitting, the `+` marker denotes the provisional best
-candidate by raw p-value.
+**Step 2: All interaction models.** For `age`, one interaction model is fitted
+using the pre-specified form from `cont_var_forms` (here, FP1). Each row shows
+the functional form, the deviance of the main-effects model, the deviance of the
+interaction model, the likelihood-ratio statistic, and the raw p-value.
 
-**Step 3: Candidate p-value table.** For p-value-based analyses, this table
-shows the raw p-values for all candidate functional forms. If
-`p_adjust_scope = "candidates"`, adjusted p-values are also shown for all
-candidate rows because all candidate tests are included in the adjustment. If
-`p_adjust_scope = "variables"`, only raw p-values are shown in the candidate
-table; adjusted p-values are shown only for the selected candidate in the final
-interaction summary. The `+` marker identifies the selected candidate for each
-variable after applying the relevant p-value selection rule.
+**Step 3: P-value adjustment.** For p-value-based analyses, this table shows the
+raw p-value for each tested variable and, when `p_adjust_method != "none"`, the
+corresponding adjusted p-value. With the default `p_adjust_method = "none"` and
+a single variable, this table simply echoes the raw p-value.
 
 **Step 4: Interaction summary.** This compact table shows one row per tested
-variable. It gives the selected functional form, the raw p-value, and the
-adjusted p-value used for the final decision. Variables whose final p-value is
-below `p_interact` are marked with `*`.
+variable. It gives the functional form, the raw p-value, and the adjusted
+p-value used for the final decision. Variables whose final p-value is below
+`p_interact` are marked with `*`.
 
 ### Regression output {-}
 
@@ -788,8 +794,10 @@ interaction summary.
 ### Visualising the interaction
 
 The `plot()` method displays the fitted interaction for continuous variables in
-an `mfpi` model. By default, it plots the selected functional form for each
-variable retained by the MFPI procedure.
+an `mfpi` model. By default (`terms = NULL`), it plots the selected variables,
+i.e. those whose interaction passed the selection threshold. Any variable in
+`cont_vars` can also be plotted regardless of selection status by passing its
+name via the `terms` argument.
 
 The main argument is `plot_type`, which controls the display:
 
@@ -806,15 +814,10 @@ curve. By default, fitted-function confidence bands are suppressed and the
 difference-curve confidence band is shown. The argument `show_rug = TRUE` adds
 rug marks showing the observed values of the continuous variable.
 
-Each plot includes a compact title and subtitle. The fitted-function plot is
-titled `"Group-specific fitted functions"`, and the difference plot is titled
-`"Difference in fitted functions"`. The subtitle gives the selected or displayed
-functional form, the group contrast using the original group labels, and the
-relevant selection metric. For example, a p-value subtitle may read
-`type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)`. For AIC or BIC,
-selected plots show the global improvement used for the final decision, such as
-`global dAIC`, while explicit candidate plots show the within-form candidate
-difference, such as `dAIC`.
+Each plot includes a compact subtitle summarising the functional form, the group
+contrast, and the selection metric. For example:
+`type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)`.
+For AIC or BIC, the subtitle shows `dAIC` or `dBIC` respectively.
 
 The fitted-function plot distinguishes groups using the legend and line
 aesthetics. Original group labels are used in the legend and plot annotations,
@@ -837,7 +840,7 @@ added here to show uncertainty and the distribution of the observed age values.
 If the two fitted curves are approximately parallel, this suggests little
 evidence that the treatment effect varies with age.
 
-```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age × rx interaction."}
+```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age x rx interaction."}
 plot(fit_pre,
      plot_type = "fitted",
      show_ci_fitted = TRUE,
@@ -848,13 +851,12 @@ plot(fit_pre,
 
 The difference plot shows the fitted-function difference between the comparison
 group and the reference group, using the original group labels. For example, the
-y-axis may be labelled `f(rx = 1) - f(rx = 0)` or
-`f(treatment = standard) - f(treatment = placebo)`. A horizontal reference line
+y-axis may be labelled `f(rx = 1) - f(rx = 0)`. A horizontal reference line
 at zero is added. The confidence band is shown by default. Positive values
 indicate that the fitted function is higher in the comparison group than in the
 reference group at that covariate value.
 
-```{r plot-diff-pre, fig.cap = "Fitted-function difference for the age × rx interaction."}
+```{r plot-diff-pre, fig.cap = "Fitted-function difference for the age x rx interaction."}
 plot(fit_pre, plot_type = "difference")
 ```
 
@@ -865,51 +867,9 @@ difference plot in a single display. This side-by-side view makes it easier to
 see how differences between the group-specific fitted functions change across
 the range of the continuous variable.
 
-```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age × rx interaction."}
+```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age x rx interaction."}
 plot(fit_pre, plot_type = "both")
 ```
-
-#### Inspecting alternative candidate forms
-
-By default, `plot()` displays the selected functional form for each retained
-variable-specific interaction. The fitted candidate forms for the same variable
-can also be inspected by setting `type` explicitly to one of `"linear"`,
-`"fp1"`, or `"fp2"`, provided that the requested candidate form was fitted and
-stored.
-
-This does not compare different variables, nor does it imply that the displayed
-candidate form was non-significant. Rather, it compares alternative functional
-forms for the same variable-by-group interaction. For example, the interaction
-involving `age` may be selected with a linear or FP1 form, while the FP2
-candidate may also show evidence of interaction. In this example, the FP2
-candidate has a raw p-value of 0.027, but it was not the selected functional
-form.
-
-Inspecting alternative candidate forms can be useful for assessing how sensitive
-the fitted interaction is to the chosen functional form, whether different forms
-lead to similar substantive conclusions, or whether a more flexible form appears
-unstable. Such comparisons should be interpreted using subject-matter knowledge,
-ideally with the set of candidate functional forms specified before the analysis.
-
-The following example displays the FP2 candidate fitted functions and
-fitted-function difference for `age`, regardless of whether FP2 was the
-selected functional form:
-
-```{r plot-candidate-fp2-pre, fig.width = 10, fig.cap = "FP2 candidate fitted functions and fitted-function difference for the age × rx interaction."}
-plot(fit_pre,
-     terms = "age",
-     type = "fp2",
-     plot_type = "both")
-```
-
-When `type` is specified explicitly, the subtitle refers to the displayed
-candidate form. For `criterion = "pvalue"`, the subtitle shows the raw candidate
-p-value. If `p_adjust_scope = "candidates"` and candidate-level adjusted
-p-values are available, the candidate adjusted p-value is also shown as
-`p_raw = ... (p_adj = ...)`. If `p_adjust_scope = "variables"`, adjusted
-p-values are shown only for the selected variable-level candidate in the
-interaction summary, because non-selected candidate forms are not part of the
-variable-level adjustment set.
 
 ## Using `flex3`: the recommended practical choice
 
@@ -920,29 +880,32 @@ interaction model may use different FP power sets. This makes `flex3` more
 flexible than `flex1`, while still requiring the same interaction powers to be
 used across treatment groups.
 
-We now refit the prespecified analysis for `age` using `flex3`:
+We now refit the prespecified analysis for `age` using `flex3`, again
+pre-specifying the FP1 functional form:
 
 ```{r flex3-pre}
 fit_flex3 <- mfpi(
   Surv(survtime, cens) ~ fp(age) + fp(wt) + fp(sbp) + fp(dbp) +
     fp(sz) + fp(ap) + fp(hg) + fp(sg) +
     pf + hx + bm + stage + ekg + rx,
-  group_var = "rx",
-  cont_vars = "age",
-  data      = advanced_prostate_cancer,
-  flex      = "flex3",
-  family    = "cox",
-  select    = 0.05,
-  alpha     = 0.05,
-  verbose   = FALSE
+  group_var      = "rx",
+  cont_vars      = "age",
+  cont_var_forms = c(age = "fp1"),
+  data           = advanced_prostate_cancer,
+  flex           = "flex3",
+  family         = "cox",
+  select         = 0.05,
+  alpha          = 0.05,
+  verbose        = FALSE
 )
 
 print(fit_flex3)
 ```
+
 Compared with the `flex1` analysis, the adjustment model selected in Step 1 is
 unchanged because it is determined by the MFP selection step, not by the chosen
-flexibility level. The Step 2 interaction candidates may differ because `flex3`
-allows the main effects and interaction models to use different FP power sets. 
+flexibility level. The Step 2 interaction model may differ because `flex3`
+allows the main-effects and interaction models to use different FP power sets.
 In this example, the `flex1` and `flex3` analyses lead to the same result.
 
 ```{r flex3-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference using flex3."}
@@ -964,11 +927,10 @@ therefore need to be adjusted for multiplicity.
 In this example, we screen seven continuous covariates for possible interaction
 with treatment. The model also includes `sg` as an adjustment covariate, but
 `sg` is not included in `cont_vars` and is therefore not tested for interaction.
-Since multiple variables and candidate functional forms are screened, we apply
-the Holm step-down correction. With the default
-`p_adjust_scope = "candidates"`, the adjustment is applied across all fitted
-candidate interaction tests, that is, across all tested variables and candidate
-functional forms.
+Based on subject-matter knowledge, we pre-specify `age` as FP1 and leave all
+other variables as linear (the default). Since multiple variables are screened,
+we apply the Holm step-down correction via `p_adjust_method`. The adjustment is
+applied across all tested variables, one p-value per variable.
 
 ```{r exploratory}
 fit_exp <- mfpi(
@@ -977,13 +939,13 @@ fit_exp <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
+  cont_var_forms    = c(age = "fp1"),
   data              = advanced_prostate_cancer,
   flex              = "flex1",
   family            = "cox",
   select            = 0.05,
   alpha             = 0.05,
-  p_adjust_method   = "holm",
-  p_adjust_scope    = "candidates"
+  p_adjust_method   = "holm"
 )
 ```
 
@@ -996,25 +958,23 @@ print(fit_exp)
 **Step 1** is identical to the prespecified analysis because the same predictors
 and the same MFP settings are used.
 
-**Step 2** shows the fitted interaction candidates for each variable in
-`cont_vars`. During fitting, the best candidate form by raw p-value is marked by
-`+` only provisionally.
+**Step 2** shows the fitted interaction model for each variable in `cont_vars`,
+using the pre-specified form from `cont_var_forms`. Each row shows the functional
+form, the interaction test statistics, and the raw p-value.
 
-**Step 3** shows the candidate p-value table. With
-`p_adjust_scope = "candidates"`, each candidate row has both a raw and an
-adjusted p-value. The `+` marker identifies the selected candidate form for each
-variable after candidate-level p-value adjustment.
+**Step 3: P-value adjustment.** This table shows the raw p-value and adjusted
+p-value for each tested variable. With `p_adjust_method = "holm"`, adjustment is
+applied across all seven tested variables.
 
-**Step 4** is the final interaction summary. It shows one row per tested
-variable, giving the selected functional form, the raw p-value, and the adjusted
+**Step 4: Interaction summary.** This compact table shows one row per tested
+variable, giving the functional form, the raw p-value, and the adjusted
 p-value used for the final decision. Variables whose adjusted p-value falls
 below `p_interact = 0.05` are marked with `*`.
 
 In an exploratory analysis, the adjusted p-value is the one used for the
 selection decision. Variables marked with `*` are candidates for genuine
-treatment-by-covariate interaction after accounting for the specified p-value
-adjustment family. Variables without `*` do not provide sufficient evidence of
-interaction after multiplicity adjustment.
+treatment-by-covariate interaction after accounting for multiplicity. Variables
+without `*` do not provide sufficient evidence of interaction after adjustment.
 
 ### Regression output for selected variables
 
@@ -1038,25 +998,26 @@ plot(fit_exp, plot_type = "both")
 
 ### Plotting non-selected variables
 
-To inspect a candidate fit for a variable that was not selected, specify the
-`terms` and `type` arguments. For example, to see the FP1 candidate for `wt`:
+Any variable in `cont_vars` can be plotted regardless of whether its interaction
+was selected, by passing its name via `terms`. The fitted curve uses the
+functional form pre-specified in `cont_var_forms` for that variable. For
+example, to inspect the fitted interaction for `wt` (which was not selected):
 
-```{r plot-nonsig, fig.cap = "FP1 candidate for the wt × rx interaction (not selected)."}
-plot(fit_exp, terms = "wt", type = "fp1", plot_type = "both")
+```{r plot-nonsig, fig.cap = "Fitted interaction for the wt x rx interaction (not selected)."}
+plot(fit_exp, terms = "wt", plot_type = "both")
 ```
 
-This is useful for diagnostic inspection: it shows what the candidate functional
-form looked like before selection and helps assess whether the non-selection
-decision is supported by the data.
+This is useful for diagnostic inspection: it shows what the fitted interaction
+looked like and helps assess whether the non-selection decision is supported by
+the data.
 
 ## Alternative selection criteria: AIC and BIC {#aic-bic}
 
 In the examples above, the default `criterion = "pvalue"` was used. With this
-criterion, `mfpi()` evaluates the linear, FP1, and FP2 interaction models for
-each variable under test. Raw candidate p-values are then adjusted according to
-`p_adjust_method` and `p_adjust_scope`. For each variable, the selected
-candidate is the form with the smallest final p-value under the chosen
-adjustment scope. The interaction is retained if that final p-value is below
+criterion, for each variable in `cont_vars`, `mfpi()` fits the interaction model
+using the pre-specified form from `cont_var_forms` and tests it against the
+corresponding main-effects model. The resulting p-value is adjusted according to
+`p_adjust_method` and the interaction is retained if the final p-value is below
 `p_interact`. For `flex3` and `flex4`, the main-effects and interaction models
 may be non-nested, so the likelihood-ratio-test p-values lack a firm theoretical
 underpinning; see the
@@ -1065,43 +1026,35 @@ underpinning; see the
 As an alternative, `mfpi()` supports model selection based on information
 criteria via `criterion = "aic"` or `criterion = "bic"`. Under these criteria,
 information criteria are used in both stages of the analysis: first to select
-the MFP adjustment model, and then to compare the candidate interaction models.
+the MFP adjustment model, and then to compare the interaction model with the
+main-effects model for each variable in `cont_vars`.
 
-For AIC and BIC, the final decision is based on a model-class comparison. For
-each tested variable, `mfpi()` first identifies the best no-interaction model
-among the linear, FP1, and FP2 main-effects candidates, and the best interaction
-model among the corresponding interaction candidates. The global improvement is
+For AIC and BIC, the interaction improvement for each tested variable is
 
-\[
-\Delta \mathrm{IC}_{\mathrm{global}}
-=
-\min_f \mathrm{IC}_{\mathrm{main}, f}
--
-\min_f \mathrm{IC}_{\mathrm{interaction}, f},
-\]
+$$
+\mathrm{dAIC} = \mathrm{AIC}_{\mathrm{main}} - \mathrm{AIC}_{\mathrm{interaction}},
+\qquad
+\mathrm{dBIC} = \mathrm{BIC}_{\mathrm{main}} - \mathrm{BIC}_{\mathrm{interaction}},
+$$
 
-where \(f\) indexes the candidate functional forms. Interaction is retained if
-this global improvement exceeds `min_improvement`.
-
-If interaction is retained, the selected interaction form is the form with the
-smallest absolute interaction-model IC. If interaction is not retained, the best
-no-interaction form is retained. The within-form differences
-`AIC_main_minus_int` and `BIC_main_minus_int` remain useful diagnostics for each
-candidate form but are not used as the final AIC/BIC selection rule.
+where both models use the functional form pre-specified in `cont_var_forms`.
+Interaction is retained if this improvement exceeds `min_improvement`. A
+positive value means the interaction model fits better than the main-effects
+model after penalising for complexity.
 
 The `criterion` argument therefore affects two stages of the analysis. In Step
 1, it controls selection of the MFP adjustment model, including both variable
 selection and functional-form selection. In the interaction analysis, it
-determines how the candidate interaction forms are compared and whether the
-interaction is retained.
+determines how the interaction model is compared with the main-effects model and
+whether the interaction is retained.
 
 BIC usually penalizes model complexity more strongly than AIC. AIC adds a fixed
 penalty of 2 for each model parameter, whereas BIC adds a penalty of
 $\log(n)$ for each parameter, where $n$ is the sample size. Because
 $\log(n)$ is greater than 2 for samples larger than about 7 observations, BIC
 often favours simpler models than AIC. In this context, BIC is therefore
-less likely than AIC to select more complex FP functions or retain interaction
-terms unless they provide a sufficiently large improvement in model fit.
+less likely than AIC to retain interaction terms unless they provide a
+sufficiently large improvement in model fit.
 
 When `criterion = "aic"` or `criterion = "bic"`, the `p_adjust_method` argument
 does not affect the selection decision, because multiplicity adjustment applies
@@ -1110,9 +1063,8 @@ to p-values, not to information criteria.
 ### Example: BIC-based selection
 
 We repeat the exploratory analysis using BIC as the selection criterion. The
-`min_improvement` threshold is set to 2, meaning that the best interaction
-model class must improve BIC by at least 2 units relative to the best
-main-effects model class.
+`min_improvement` threshold is set to 2, meaning that the interaction model must
+improve BIC by at least 2 units relative to the main-effects model.
 
 ```{r bic-exploratory}
 fit_bic <- mfpi(
@@ -1121,6 +1073,7 @@ fit_bic <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var       = "rx",
   cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
+  cont_var_forms  = c(age = "fp1"),
   data            = advanced_prostate_cancer,
   flex            = "flex1",
   family          = "cox",
@@ -1139,19 +1092,15 @@ print(fit_bic)
 now uses BIC for variable selection and FP degree choice, it may retain a
 different set of adjustment variables or select different functional forms.
 
-**Step 2** shows the same three candidates (linear, FP1, FP2) per variable. For
-BIC selection, the candidate table still reports within-form
-`BIC_main_minus_int` values as diagnostics. The final interaction candidate is
-chosen using the absolute `BIC_interaction` among interaction candidates, while
-the final retain/drop decision is based on the global BIC improvement comparing
-the best interaction model class with the best no-interaction model class.
+**Step 2** shows one row per variable with the interaction model metrics: the
+main-effects BIC, the interaction BIC, and the dBIC improvement. Each variable
+is tested using the form specified in `cont_var_forms`.
 
-**Step 3** displays one row per variable with the selected interaction form, the
-best main-effects form, the best main-effects IC, the best interaction IC, and
-the global dBIC. Variables whose global dBIC exceeds `min_improvement = 2` are
-marked with `*`. Because BIC penalizes model complexity more heavily than AIC,
-it is common for BIC-based selection to retain fewer interactions than
-AIC-based selection.
+**Step 3: Interaction summary.** This table shows one row per tested variable
+with the functional form, the dBIC improvement, and the selection decision.
+Variables whose dBIC exceeds `min_improvement = 2` are marked with `*`. Because
+BIC penalizes model complexity more heavily than AIC, it is common for
+BIC-based selection to retain fewer interactions than AIC-based selection.
 
 ### Regression output and plots
 
@@ -1160,10 +1109,7 @@ summary(fit_bic)
 ```
 
 The regression output shows fitted models for variables selected under the BIC
-criterion. Plot subtitles show `global dBIC` for selected BIC plots. When a
-specific candidate form is requested with `type = "linear"`, `"fp1"`, or
-`"fp2"`, the subtitle shows the within-form candidate `dBIC` for that displayed
-form.
+criterion. Plot subtitles show `dBIC` for selected variables.
 
 ```{r plot-bic-fitted, fig.cap = "Fitted functions for variables selected by BIC."}
 plot(fit_bic, plot_type = "both")
@@ -1182,7 +1128,7 @@ prostate$death36 <- as.integer(prostate$survtime <= 36 & prostate$cens == 1)
 ```
 
 We test whether the effect of treatment on 36-month mortality depends on `age`,
-using `flex1`:
+using `flex1` and pre-specifying `age` as FP1:
 
 ```{r logistic-fit}
 fit_logistic <- mfpi(
@@ -1191,6 +1137,7 @@ fit_logistic <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
+  cont_var_forms    = c(age = "fp1"),
   data              = prostate,
   flex              = "flex1",
   family            = "binomial",
@@ -1202,12 +1149,11 @@ print(fit_logistic)
 ```
 
 The output follows the same structure as the Cox model. With
-`criterion = "pvalue"`, the printed output includes the candidate p-value table
+`criterion = "pvalue"`, the printed output includes the p-value adjustment table
 before the final interaction summary. The interaction test and fitted-function
 difference are now on the log-odds scale.
-Plotting works identically:
 
-```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and fitted-function difference for age × rx."}
+```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and fitted-function difference for age x rx."}
 plot(fit_logistic, plot_type = "both")
 ```
 
@@ -1223,28 +1169,28 @@ names(fit_pre)
 Key components include:
 
 - `adjustment_model`: the full `mfp2` object from the MFP adjustment step.
-- `all_model_metrics`: a data frame of evaluation metrics for all candidate
-  models (`linear`, `fp1`, `fp2`) for every variable in `cont_vars`. For
-  p-value-based analyses it includes raw p-values and, when applicable,
-  candidate-level adjusted p-values.
-- `best_model_metrics`: one row per tested variable, containing the selected
-  candidate form and the metric used for the final interaction decision, such as
-  `p_adjusted`, `AIC_global_improvement`, or `BIC_global_improvement`.
+- `all_model_metrics`: a data frame of evaluation metrics for the interaction
+  model fitted for each variable in `cont_vars`, using the form specified in
+  `cont_var_forms`. For p-value-based analyses it includes raw p-values and,
+  when `p_adjust_method != "none"`, adjusted p-values.
+- `best_model_metrics`: one row per selected variable, containing the functional
+  form and the metric used for the final interaction decision, such as
+  `p_adjusted`, `dAIC`, or `dBIC`.
 - `best_interaction_model`: a named list of fitted model objects for selected
   variables.
-- `all_interaction_models`: a named list of lists containing all three
-  candidate model objects for every variable, regardless of selection.
+- `all_interaction_models`: a named list containing the fitted interaction model
+  for every variable in `cont_vars`, regardless of selection.
 - `best_fitted_functions` and `all_fitted_functions`: group-specific fitted
   values used by `plot()`.
 - `winsorize_limits`: the actual Winsorisation cutoffs applied.
 - `group_levels_original` and `group_levels_new`: the original and remapped
   factor levels of `group_var`.
-- `p_adjust_scope`: the p-value adjustment scope used for p-value-based
-  analyses, either `"candidates"` or `"variables"`.
-- `var_winners`: a named list of per-variable best candidates, including those
+- `cont_var_forms`: the named character vector of pre-specified functional forms,
+  one entry per variable in `cont_vars`.
+- `var_winners`: a named list of per-variable fitted results, including those
   that did not reach significance.
 
-For example, to extract the metrics table for all candidates:
+For example, to extract the metrics table for all tested variables:
 
 ```{r all-metrics}
 fit_pre$all_model_metrics

@@ -19,26 +19,30 @@
 #' likelihood-ratio test and in AIC/BIC differences).
 #'
 #' @section Parameter counts:
-#' Let \eqn{K} be the number of groups (`n_groups`), \eqn{m} the FP degree
-#' (`degree`), and define \eqn{J = 2m} as the degrees of freedom per FP term
-#' as used by **mfp2** (so \eqn{J = 2} for FP1, \eqn{J = 4} for FP2).
+#' Let \eqn{K} be the number of groups (`n_groups`) and \eqn{m} the FP degree
+#' (`degree`).
 #'
 #' The **main-effects model** contains:
 #' \itemize{
 #'   \item \eqn{K - 1} group dummy coefficients \eqn{\gamma_1, \ldots,
 #'     \gamma_{K-1}},
-#'   \item \eqn{m} regression coefficients for the shared FP term
-#'     \eqn{\boldsymbol{\beta}},
-#'   \item \eqn{m} estimated FP powers (counted separately in the mfp2
-#'     convention, i.e. the total FP contribution to the df count is
-#'     \eqn{J = 2m}).
+#'   \item \eqn{J} parameters for the continuous variable, where \eqn{J}
+#'     depends on the term type:
+#'     \itemize{
+#'       \item \strong{FP} (\eqn{m \geq 1}): \eqn{J = 2m}, counting \eqn{m}
+#'         regression coefficients and \eqn{m} estimated FP powers (the
+#'         **mfp2** convention of counting both).
+#'       \item \strong{Linear} (\eqn{m = 0}): \eqn{J = 1}, counting the single
+#'         slope. There are no FP powers to estimate, so the general formula
+#'         \eqn{J = 2m} does not apply; the linear term is a special case.
+#'     }
 #' }
 #' Hence
 #' \deqn{
-#'   p_{\text{main}} = (K - 1) + J = (K-1) + 2m.
+#'   p_{\text{main}} = (K - 1) + J,
 #' }
-#' For a linear term (\eqn{m = 0}, `degree = 0`), \eqn{J = 1} (one slope, no
-#' power estimated), giving \eqn{p_{\text{main}} = K}.
+#' giving \eqn{p_{\text{main}} = (K-1) + 2m} for FP terms and
+#' \eqn{p_{\text{main}} = K} for the linear term.
 #'
 #' The **interaction model** adds group-specific FP slopes, and depending on
 #' the `flex` level, may also add group-specific FP powers:
@@ -65,7 +69,7 @@
 #'     \eqn{(K-1)m} extra regression parameters and \eqn{(K-1)m} extra power
 #'     parameters.
 #'     \deqn{df_{\text{int}} = 2\,(K-1)\,m, \quad
-#'           p_{\text{int}} = (K-1) + (K+1)m + (K-1)m.}}
+#'           p_{\text{int}} = (K-1) + 2m + 2\,(K-1)\,m.}}
 #' }
 #'
 #' @section Verification table (K = 2):
@@ -138,7 +142,8 @@
 #' continuous variable: simulation study of power for several methods of
 #' analysis. *Statistics in Medicine*, 33, 4695–4708.
 #'
-# @export
+#' @keywords internal
+#' @noRd
 interaction_model_df <- function(n_groups,
                                  degree,
                                  flex = c("flex0", "flex1", "flex2",

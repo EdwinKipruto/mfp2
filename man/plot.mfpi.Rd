@@ -2,12 +2,11 @@
 % Please edit documentation in R/mfpi_plot.R
 \name{plot.mfpi}
 \alias{plot.mfpi}
-\title{Plot Fitted Functions and Treatment-Effect Differences from an MFPI Model}
+\title{Plot Group-Specific Fitted Functions and Fitted-Function Differences from an MFPI Model}
 \usage{
 \method{plot}{mfpi}(
   x,
   terms = NULL,
-  type = NULL,
   plot_type = c("fitted", "difference", "both"),
   auto_print = TRUE,
   show_title = TRUE,
@@ -31,13 +30,9 @@
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
 \item{terms}{Character vector of variable names to plot. Default
-\code{NULL} plots all variables with fitted values available under the
-current \code{type} setting.}
-
-\item{type}{Character string or \code{NULL}. Controls which functional form
-is plotted. One of \code{"linear"}, \code{"fp1"}, \code{"fp2"}, or
-\code{NULL}. Default \code{NULL} plots the selected functional form for
-each retained variable.}
+\code{NULL} plots all variables whose interaction was selected as
+significant. Pass one or more variable names to plot specific variables
+regardless of selection status.}
 
 \item{plot_type}{Character string specifying the plot to produce. One of
 \code{"fitted"}, \code{"difference"}, or \code{"both"}. Default is
@@ -73,11 +68,7 @@ and \code{c(1, 1)} at the top-right. The default is \code{c(0.02, 0.98)}.}
 
 \item{legend_justification}{Numeric vector of length 2 giving the legend
 justification when \code{legend_position = "inside"}. The default is \code{c(0, 1)},
-which anchors the top-left corner of the legend at \code{legend_inside}.
-#' @param line_types Optional character vector specifying linetypes for the
-group-specific fitted functions. If \code{NULL}, solid lines are used for all
-groups. The vector may be unnamed, in which case values are matched to the
-original group levels in order, or named using the original group labels.}
+which anchors the top-left corner of the legend at \code{legend_inside}.}
 
 \item{colour_ref}{Character. Colour for the reference-group curve and
 confidence band. Default is \code{"#2166AC"}.}
@@ -86,11 +77,11 @@ confidence band. Default is \code{"#2166AC"}.}
 confidence band. Default is \code{"#D6604D"}.}
 
 \item{line_types}{Optional character vector specifying linetypes for the
-group-specific fitted-function curves. If \code{NULL}, solid lines
-are used by default for both the reference and comparison groups. The vector may be unnamed with length 2, in which case values
-are matched to the reference and comparison groups in order, or named using
-the original group labels, for example
-\code{c("placebo" = "solid", "standard" = "dashed")}.}
+group-specific fitted-function curves. If \code{NULL}, solid lines are
+used for both the reference and comparison groups. The vector may be
+unnamed with length 2, in which case values are matched to the reference
+and comparison groups in order, or named using the original group labels,
+for example \code{c("placebo" = "solid", "standard" = "dashed")}.}
 
 \item{colour_diff}{Character. Colour for the difference curve and confidence
 band. Default is \code{"#1B7837"}.}
@@ -112,8 +103,10 @@ returned invisibly.
 }
 \description{
 Produces group-specific fitted-function plots, fitted-function difference
-plots, or both for each significant continuous variable in an
-\code{"mfpi"} object. Fitted-function plots and difference plots have
+plots, or both for continuous variables in an \code{"mfpi"} object. By
+default, only variables whose interaction was retained as significant are
+plotted; any variable in \code{cont_vars} can also be plotted by passing
+its name via \code{terms}. Fitted-function plots and difference plots have
 separate confidence-band controls, allowing the user to suppress uncertainty
 bands for group-specific fitted curves while retaining the confidence band
 for the fitted-function difference curve. Plots are returned invisibly as a
@@ -161,18 +154,14 @@ The function constructs only the plot type requested by \code{plot_type}.
 For example, when \code{plot_type = "difference"}, fitted-function plots are
 not built internally. This avoids unnecessary \pkg{ggplot2} object creation.
 
-Line and ribbon data are sorted by the continuous variable before plotting.
-This avoids zig-zag paths when fitted values are stored in observation order
-and improves rendering behaviour for \code{geom_line()} and
-\code{geom_ribbon()}.
-
 Rug marks can be expensive for large datasets because each observation is
 drawn as a graphical object. The default is \code{show_rug = FALSE} for
 faster rendering. Set \code{show_rug = TRUE} to display rug marks.
 
 Plot printing can also be slow, especially when many variables or group
-comparisons are plotted. The default is \code{auto_print = FALSE}, so plots
-are returned invisibly and can be printed manually.
+comparisons are plotted. The default is \code{auto_print = TRUE}, so plots
+are printed as they are created. Set \code{auto_print = FALSE} to return
+them invisibly for manual printing or saving.
 }
 
 \section{Return structure}{
@@ -199,31 +188,17 @@ through the legend and line aesthetics.
 
 The subtitle summarises the functional form being shown, the displayed
 group contrast, and the selection metric, for example
-\code{"type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
+\code{"type = Linear; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
 The continuous variable is not repeated in the subtitle because it is shown
 on the x-axis.
 
 The metric shown depends on the criterion used to fit the model:
 \itemize{
-\item \code{criterion = "pvalue"}: selected plots show the selected
-candidate raw p-value and, when available, the stored adjusted p-value.
-\item \code{criterion = "aic"}: selected plots show the global
-\code{dAIC} used for the final interaction decision when available;
-explicit candidate plots show within-form \code{dAIC}.
-\item \code{criterion = "bic"}: selected plots show the global
-\code{dBIC} used for the final interaction decision when available;
-explicit candidate plots show within-form \code{dBIC}.
-}
-
-When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"}, the
-p-value label adapts to avoid ambiguity:
-\itemize{
-\item If \code{type = NULL}, selected variables are plotted and the
-subtitle shows both the raw and stored adjusted p-values.
-\item If \code{type} is specified, candidate curves are plotted and the
-subtitle shows \code{p_raw}. It also shows \code{p_adj} when an adjusted
-p-value is stored for that candidate, as occurs under candidate-level
-p-value adjustment.
+\item \code{criterion = "pvalue"}: the subtitle shows \code{p_raw} and,
+when \code{p_adjust_method != "none"} and the variable was selected,
+also the stored adjusted p-value \code{p_adj}.
+\item \code{criterion = "aic"}: the subtitle shows \code{dAIC}.
+\item \code{criterion = "bic"}: the subtitle shows \code{dBIC}.
 }
 
 To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
@@ -232,17 +207,16 @@ are still shown.
 
 \section{Plotting non-selected variables}{
 
-Whether a variable can be plotted depends on \code{type}.
+By default (\code{terms = NULL}), only variables whose interaction was
+retained as significant are plotted. If no variables were selected, an
+informative message is printed and the function returns invisibly.
 
-Under \code{type = NULL}, only variables whose interaction was retained as
-significant have a selected curve stored in
-\code{model$best_fitted_functions}. If no variables were selected, the
-function prints an informative message and returns invisibly.
-
-Under \code{type = "linear"}, \code{"fp1"}, or \code{"fp2"}, the function
-plots the requested candidate curve from \code{model$all_fitted_functions},
-provided the model was fitted with \code{compute_fitted = TRUE}. This allows
-inspection of candidate curves even for variables that were not selected.
+Any variable in \code{cont_vars} can be plotted regardless of whether its
+interaction was selected, by passing its name via \code{terms}:
+\preformatted{plot(fit, terms = "age")}
+This plots the fitted curve using the functional form pre-specified for that
+variable in \code{cont_var_forms}, with the same subtitle showing the
+interaction test metric.
 }
 
 \examples{
@@ -280,10 +254,8 @@ plot(fit, plot_type = "difference",
      show_rug = TRUE,
      auto_print = TRUE)
 
-# Inspect candidate FP2 curve for age, even if not selected
-plot(fit, terms = "age", type = "fp2",
-     plot_type = "difference",
-     auto_print = TRUE)
+# Plot a non-selected variable by name
+plot(fit, terms = "age", plot_type = "difference", auto_print = TRUE)
 
 # Save a specific plot
 ggplot2::ggsave(

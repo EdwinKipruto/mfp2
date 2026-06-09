@@ -9,13 +9,11 @@
 #' @param x a continuous variable in which the mean will be calculated.
 #' @param power a vector of powers to be used to transform the mean of x.
 #' @returns a matrix of centering values of dimension 1 x length(power)
-#' @import mfp2
-#' @export
 #' @references
 #' Royston, P., & Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to
 #' regression analysis based on fractional polynomials for modelling continuous variables.
 #' John Wiley & Sons.
-
+#' @keywords internal
 royston_centering_parameters <- function(x, power = 1) {
   
   # Reference link: https://www.stata.com/manuals/rfp.pdf

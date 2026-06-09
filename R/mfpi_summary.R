@@ -34,7 +34,6 @@ summary.mfpi <- function(object, ...) {
       flex                   = object$flex,
       criterion              = object$criterion,
       p_adjust_method        = object$p_adjust_method,
-      p_adjust_scope         = object$p_adjust_scope,
       p_interact             = object$p_interact,
       min_improvement        = object$min_improvement,
       group_levels_original  = object$group_levels_original,
@@ -91,7 +90,7 @@ print.summary.mfpi <- function(x, ...) {
     sm <- ms[[vn]]
     if (is.null(sm)) next
     w <- if (!is.null(x$var_winners)) x$var_winners[[vn]] else NULL
-    type_label <- if (!is.null(w$type)) toupper(gsub("fp", "FP", w$type)) else "?"
+    type_label <- if (!is.null(w$type)) format_type_label(w$type) else "?"
     cat(sprintf("\n  Interaction model (%s, %s):\n", vn, type_label))
     cat(strrep("-", 50), "\n")
     print(sm)

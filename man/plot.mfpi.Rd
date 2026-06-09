@@ -14,8 +14,12 @@
   show_rug = FALSE,
   show_ci_fitted = FALSE,
   show_ci_diff = TRUE,
+  legend_position = c("inside", "right", "left", "bottom", "top", "none"),
+  legend_inside = c(0.02, 0.98),
+  legend_justification = c(0, 1),
   colour_ref = "#2166AC",
   colour_grp = "#D6604D",
+  line_types = NULL,
   colour_diff = "#1B7837",
   linewidth = 1,
   ribbon_alpha = 0.2,
@@ -55,13 +59,38 @@ shown around the group-specific fitted curves. Default is \code{FALSE},
 which gives cleaner and faster fitted-function plots.}
 
 \item{show_ci_diff}{Logical. If \code{TRUE}, a 95\\% confidence band is shown
-around the treatment-effect difference curve. Default is \code{TRUE}.}
+around the fitted-function difference curve. Default is \code{TRUE}.}
+
+\item{legend_position}{Legend position for the fitted-function plot. May be
+one of \code{"inside"}, \code{"right"}, \code{"left"}, \code{"bottom"}, \code{"top"}, or \code{"none"}.
+The default is \code{"inside"}, which places the legend inside the plotting
+panel.}
+
+\item{legend_inside}{Numeric vector of length 2 giving the legend position
+inside the plotting panel when \code{legend_position = "inside"}. Values are
+given in normalized parent coordinates, with \code{c(0, 0)} at the bottom-left
+and \code{c(1, 1)} at the top-right. The default is \code{c(0.02, 0.98)}.}
+
+\item{legend_justification}{Numeric vector of length 2 giving the legend
+justification when \code{legend_position = "inside"}. The default is \code{c(0, 1)},
+which anchors the top-left corner of the legend at \code{legend_inside}.
+#' @param line_types Optional character vector specifying linetypes for the
+group-specific fitted functions. If \code{NULL}, solid lines are used for all
+groups. The vector may be unnamed, in which case values are matched to the
+original group levels in order, or named using the original group labels.}
 
 \item{colour_ref}{Character. Colour for the reference-group curve and
 confidence band. Default is \code{"#2166AC"}.}
 
 \item{colour_grp}{Character. Colour for the non-reference-group curve and
 confidence band. Default is \code{"#D6604D"}.}
+
+\item{line_types}{Optional character vector specifying linetypes for the
+group-specific fitted-function curves. If \code{NULL}, solid lines
+are used by default for both the reference and comparison groups. The vector may be unnamed with length 2, in which case values
+are matched to the reference and comparison groups in order, or named using
+the original group labels, for example
+\code{c("placebo" = "solid", "standard" = "dashed")}.}
 
 \item{colour_diff}{Character. Colour for the difference curve and confidence
 band. Default is \code{"#1B7837"}.}
@@ -82,12 +111,12 @@ A nested named list of \code{ggplot} or \code{patchwork} objects,
 returned invisibly.
 }
 \description{
-Produces group-specific fitted-function plots, treatment-effect difference
+Produces group-specific fitted-function plots, fitted-function difference
 plots, or both for each significant continuous variable in an
 \code{"mfpi"} object. Fitted-function plots and difference plots have
 separate confidence-band controls, allowing the user to suppress uncertainty
 bands for group-specific fitted curves while retaining the confidence band
-for the treatment-effect difference curve. Plots are returned invisibly as a
+for the fitted-function difference curve. Plots are returned invisibly as a
 nested named list.
 }
 \section{Plot types}{
@@ -98,7 +127,7 @@ Three plot types are available via the \code{plot_type} argument.
 group and one non-reference group on shared axes. Confidence bands for these
 group-specific curves are controlled by \code{show_ci_fitted}.
 
-\code{"difference"} plots the pointwise treatment-effect function
+\code{"difference"} plots the pointwise fitted-function difference
 \eqn{D_j(x) = f_j(x) - f_0(x)} with a horizontal reference line at zero.
 The confidence band for the difference curve is controlled by
 \code{show_ci_diff}. Deviations from zero indicate effect modification.
@@ -117,7 +146,7 @@ inferential roles of the plots differ.
 group-specific fitted curves. The default is \code{FALSE}, which gives
 cleaner and faster fitted-function plots.
 \item \code{show_ci_diff} controls the confidence band around the
-treatment-effect difference curve. The default is \code{TRUE}, because
+fitted-function difference curve. The default is \code{TRUE}, because
 the difference curve is usually the main inferential display for
 interaction.
 }
@@ -160,37 +189,41 @@ Each leaf is a \code{ggplot} object when \code{plot_type = "fitted"} or
 
 Each plot is annotated by default with two text lines.
 
-The title describes the structural comparison being plotted:
+The title describes the structural comparison being plotted without
+hard-coding colour names. Group identity in fitted-function plots is shown
+through the legend and line aesthetics.
 \itemize{
-\item Fitted plots:
-\code{"<group_var>: group <j> (red) vs group <0> (blue)"}.
-\item Difference plots:
-\code{"<group_var>: treatment effect (group <j> - group <0>)"}.
+\item Fitted plots: \code{"Group-specific fitted functions"}.
+\item Difference plots: \code{"Difference in fitted functions"}.
 }
 
-The subtitle summarises the variable, the functional form being shown, and
-the selection metric for that form, in the format
-\code{"<variable> | <type> | <metric> = <value>"}.
+The subtitle summarises the functional form being shown, the displayed
+group contrast, and the selection metric, for example
+\code{"type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
+The continuous variable is not repeated in the subtitle because it is shown
+on the x-axis.
 
 The metric shown depends on the criterion used to fit the model:
 \itemize{
-\item \code{criterion = "pvalue"}: shows the interaction-test p-value.
-\item \code{criterion = "aic"}: shows \code{dAIC}, defined as
-\eqn{\mathrm{AIC}_{\mathrm{main}} -
-    \mathrm{AIC}_{\mathrm{interaction}}}. Positive values favour the
-interaction model.
-\item \code{criterion = "bic"}: shows \code{dBIC}, defined analogously.
+\item \code{criterion = "pvalue"}: selected plots show the selected
+candidate raw p-value and, when available, the stored adjusted p-value.
+\item \code{criterion = "aic"}: selected plots show the global
+\code{dAIC} used for the final interaction decision when available;
+explicit candidate plots show within-form \code{dAIC}.
+\item \code{criterion = "bic"}: selected plots show the global
+\code{dBIC} used for the final interaction decision when available;
+explicit candidate plots show within-form \code{dBIC}.
 }
 
 When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"}, the
 p-value label adapts to avoid ambiguity:
 \itemize{
 \item If \code{type = NULL}, selected variables are plotted and the
-subtitle shows both the raw and adjusted p-values.
+subtitle shows both the raw and stored adjusted p-values.
 \item If \code{type} is specified, candidate curves are plotted and the
-subtitle shows \code{p_raw}; the adjusted p-value is not shown because
-it applies to the winning candidate, not necessarily to the specific
-candidate being displayed.
+subtitle shows \code{p_raw}. It also shows \code{p_adj} when an adjusted
+p-value is stored for that candidate, as occurs under candidate-level
+p-value adjustment.
 }
 
 To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
@@ -232,6 +265,10 @@ plot(fit, plot_type = "difference", auto_print = TRUE)
 plot(fit, plot_type = "fitted",
      show_ci_fitted = TRUE,
      auto_print = TRUE)
+
+# Custom linetypes for the reference and comparison groups
+plot(fit, plot_type = "fitted",
+     line_types = c("solid", "dotdash"))
 
 # Suppress all confidence bands
 plots <- plot(fit, plot_type = "both",

@@ -127,9 +127,13 @@
 #'   \eqn{\phi(x + \text{shift})} scale, matching the adjustment model and
 #'   standalone \pkg{mfp2}. \code{NULL} or 1 means no backscaling.
 #' @param digits Positive integer. Significant digits for printed output.
-#' @param p_adjust_method Character string. Method for adjusting p-values
-#'   across multiple \code{cont_vars}, passed to [stats::p.adjust()]. Only
-#'   applied when \code{criterion = "pvalue"}. Default \code{"none"}.
+#' @param p_adjust_method Character string. Method for adjusting p-values,
+#'   passed to [stats::p.adjust()]. Only applied when
+#'   \code{criterion = "pvalue"}. Default \code{"none"}.
+#' @param p_adjust_scope Character string. If \code{"candidates"}, adjust
+#'   across all variable-by-functional-form candidate tests. If
+#'   \code{"variables"}, first select one raw-p candidate per variable and
+#'   adjust only those selected variable-level p-values.
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
 #'   two retained sub-objects. Top-level fields:
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
@@ -195,9 +199,11 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      p_interact, min_improvement, show_models, verbose,
                      digits, scale,
                      center_type = c("grand", "group"),
-                     p_adjust_method = "none") {
+                     p_adjust_method = "none",
+                     p_adjust_scope = c("candidates", "variables")) {
   
   center_type <- match.arg(center_type)
+  p_adjust_scope <- match.arg(p_adjust_scope)
   
   # ---------------------------------------------------------------------------
   # Pre-processing: synchronise parameter vectors and remap group levels
@@ -345,6 +351,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     center_type        = center_type,
     scale              = scale,
     p_adjust_method    = p_adjust_method,
+    p_adjust_scope     = p_adjust_scope,
     verbose            = verbose
   )
   
@@ -381,6 +388,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     family                   = univ_results$family,
     nobs                     = univ_results$nobs,
     p_adjust_method          = univ_results$p_adjust_method,
+    p_adjust_scope           = univ_results$p_adjust_scope,
     var_winners              = univ_results$var_winners,
     adjustment_model         = adjustment_model,
     univariable_interactions = univ_results
@@ -798,7 +806,7 @@ format_candidate_table <- function(rows, criterion, digits, best_type = NULL) {
   }
   print(tbl, row.names = FALSE, right = FALSE)
   if (!is.null(best_type) && criterion == "pvalue") {
-    cat("\n        + = best candidate (by pvalue)\n")
+    cat("\n        + = provisional best candidate by raw p-value\n")
   }
   invisible(NULL)
 }
@@ -868,9 +876,13 @@ format_candidate_table <- function(rows, criterion, digits, best_type = NULL) {
 #'   Used when `skip_adjustment = TRUE`.
 #' @param skip_adjustment Logical. If `TRUE`, `xadj` is used directly and
 #'   adjustment variables are not re-transformed. Default is `FALSE`.
-#' @param p_adjust_method Character string. Method for adjusting p-values
-#'   across multiple `cont_vars`, passed to [stats::p.adjust()]. Only
-#'   applied when `criterion = "pvalue"`. Default `"none"`.
+#' @param p_adjust_method Character string. Method for adjusting p-values,
+#'   passed to [stats::p.adjust()]. Only applied when `criterion = "pvalue"`.
+#'   Default `"none"`.
+#' @param p_adjust_scope Character string. If `"candidates"`, adjust across
+#'   all variable-by-functional-form candidate tests. If `"variables"`, first
+#'   select one raw-p candidate per variable and adjust only those selected
+#'   variable-level p-values.
 #' @param quiet Logical. If `TRUE`, suppresses the per-variable message when no
 #'   significant interaction is found. Default is `FALSE`.
 #'
@@ -913,16 +925,15 @@ format_candidate_table <- function(rows, criterion, digits, best_type = NULL) {
 #'     \code{BIC_main_minus_int} (favouring the simpler form). A candidate
 #'     is selected if its (possibly adjusted) p-value is strictly below
 #'     \code{p_interact}.}
-#'   \item{\code{"aic"}}{Best = largest \code{AIC_main_minus_int}, defined as
-#'     \eqn{\mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{interaction}}.
-#'     A positive value means the interaction model fits better. A candidate
-#'     is selected if \code{AIC_main_minus_int > min_improvement}.}
-#'   \item{\code{"bic"}}{Best = largest \code{BIC_main_minus_int}, defined as
-#'     \eqn{\mathrm{BIC}_\text{main} - \mathrm{BIC}_\text{interaction}}.
-#'     A positive value means the interaction model fits better. A candidate
-#'     is selected if \code{BIC_main_minus_int > min_improvement}. BIC
-#'     penalises complexity more heavily than AIC (penalty \eqn{k \log n}
-#'     vs \eqn{2k}), so it favours simpler functional forms.}
+#'   \item{\code{"aic"}}{The best no-interaction model is the candidate
+#'     with the smallest \code{AIC_main}; the best interaction model is the
+#'     candidate with the smallest \code{AIC_interaction}. Interaction is
+#'     selected if \code{min(AIC_main) - min(AIC_interaction) >
+#'     min_improvement}.}
+#'   \item{\code{"bic"}}{The same model-class comparison is used with BIC:
+#'     interaction is selected if \code{min(BIC_main) -
+#'     min(BIC_interaction) > min_improvement}. BIC penalises complexity more
+#'     heavily than AIC.}
 #' }
 #'
 #' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"},
@@ -946,9 +957,11 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   scale = NULL,
                                   xadj = NULL, skip_adjustment = FALSE,
                                   p_adjust_method = "none",
+                                  p_adjust_scope = c("candidates", "variables"),
                                   quiet = FALSE, verbose = FALSE) {
   
   center_type <- match.arg(center_type)
+  p_adjust_scope <- match.arg(p_adjust_scope)
   
   # Input validation for skip_adjustment / xadj --------------------------------
   if (!is.logical(skip_adjustment) || length(skip_adjustment) != 1L) {
@@ -992,7 +1005,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   var_winners <- vector("list", n_vars)
   names(var_winners) <- cont_vars
   
-  adjusting_pvals <- p_adjust_method != "none" && criterion == "pvalue"
+  adjusting_pvals <- criterion == "pvalue"
   
   best_idx     <- 0L   # counter for significant variables
   all_idx      <- 0L   # counter for all models
@@ -1024,13 +1037,17 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     best_fit    <- NULL
     best_metric <- NULL
     best_type   <- NULL
-    best_score  <- if (criterion == "pvalue") Inf else -Inf
+    best_score  <- Inf
     
     # Collect all three candidate models and fitted functions for this variable
     candidate_models <- vector("list", n_types)
     candidate_fitted <- vector("list", n_types)
+    candidate_metrics <- vector("list", n_types)
+    candidate_full_fits <- vector("list", n_types)
     names(candidate_models) <- names(degree_lookup)
     names(candidate_fitted) <- names(degree_lookup)
+    names(candidate_metrics) <- names(degree_lookup)
+    names(candidate_full_fits) <- names(degree_lookup)
     
     # Verbose: collect one row per candidate, printed as table after inner loop.
     # Names required so format_candidate_table can preserve the type ordering.
@@ -1130,6 +1147,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       metrics           <- fit_result$test_results$evaluation_metrics
       metrics$variable  <- var_name
       metrics$type      <- interaction_type
+      candidate_metrics[[interaction_type]] <- metrics
+      candidate_full_fits[[interaction_type]] <- fit_result
       
       # Collect verbose row for this candidate (printed as table after inner loop)
       if (verbose) {
@@ -1143,11 +1162,10 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       candidate_models[[interaction_type]]  <- fit_result$test_results$interaction_model
       candidate_fitted[[interaction_type]]  <- fit_result$fitted_functions
       
-      # Find best candidate per variable (regardless of threshold) -------------
-      # The best candidate is the one with the smallest p-value (pvalue
-      # criterion) or largest information criterion difference (AIC/BIC).
-      # The threshold check (p_interact or min_improvement) is applied
-      # separately below, either immediately or after multiplicity adjustment.
+      # Provisional best candidate for p-value output only. For AIC/BIC,
+      # the final per-variable winner is chosen after all three candidate
+      # rows have been collected, because the final decision uses the best
+      # main-effects model versus the best interaction model.
       if (criterion == "pvalue") {
         pval      <- metrics$pvalue[1L]
         bic_delta <- metrics$BIC_main_minus_int[1L]
@@ -1163,23 +1181,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
             best_score  <- pval
           }
         }
-      } else if (criterion == "aic") {
-        delta <- metrics$AIC_main_minus_int[1L]
-        if (!is.na(delta) && delta > best_score) {
-          best_fit    <- fit_result
-          best_metric <- metrics
-          best_type   <- interaction_type
-          best_score  <- delta
-        }
-      } else if (criterion == "bic") {
-        delta <- metrics$BIC_main_minus_int[1L]
-        if (!is.na(delta) && delta > best_score) {
-          best_fit    <- fit_result
-          best_metric <- metrics
-          best_type   <- interaction_type
-          best_score  <- delta
-        }
-      } else {
+      } else if (!criterion %in% c("aic", "bic")) {
         stop(
           paste0("! `criterion` must be one of 'pvalue', 'aic', or 'bic'; got '",
                  criterion, "'."),
@@ -1188,10 +1190,50 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }  # end interaction_type loop
     
+    if (criterion %in% c("aic", "bic")) {
+      candidate_table <- dplyr::bind_rows(candidate_metrics)
+      if (nrow(candidate_table) > 0L) {
+        main_col <- if (criterion == "aic") "AIC_main" else "BIC_main"
+        int_col  <- if (criterion == "aic") "AIC_interaction" else "BIC_interaction"
+        valid_main <- is.finite(candidate_table[[main_col]])
+        valid_int  <- is.finite(candidate_table[[int_col]])
+        if (any(valid_main) && any(valid_int)) {
+          best_main_idx <- which.min(ifelse(valid_main, candidate_table[[main_col]], Inf))
+          best_int_idx  <- which.min(ifelse(valid_int,  candidate_table[[int_col]],  Inf))
+          best_main_ic  <- candidate_table[[main_col]][best_main_idx]
+          best_int_ic   <- candidate_table[[int_col]][best_int_idx]
+          global_dIC    <- best_main_ic - best_int_ic
+          best_type     <- candidate_table$type[best_int_idx]
+          best_fit      <- candidate_full_fits[[best_type]]
+          best_metric   <- candidate_metrics[[best_type]]
+          best_score    <- global_dIC
+          if (criterion == "aic") {
+            best_metric$AIC_best_main_form     <- candidate_table$type[best_main_idx]
+            best_metric$AIC_best_main          <- best_main_ic
+            best_metric$AIC_best_interaction   <- best_int_ic
+            best_metric$AIC_global_improvement <- global_dIC
+          } else {
+            best_metric$BIC_best_main_form     <- candidate_table$type[best_main_idx]
+            best_metric$BIC_best_main          <- best_main_ic
+            best_metric$BIC_best_interaction   <- best_int_ic
+            best_metric$BIC_global_improvement <- global_dIC
+          }
+        }
+      }
+    }
+    
     # Print the candidate table with + on the best candidate
     if (verbose) {
       format_candidate_table(verbose_rows, criterion = criterion,
                              digits = digits, best_type = best_type)
+      if (criterion == "pvalue" && !is.null(best_metric)) {
+        type_label <- toupper(gsub("fp", "FP", best_type))
+        cat(sprintf(
+          "        >> provisional result: %s  (p_raw = %s)\n",
+          type_label,
+          formatC(best_metric$pvalue[1L], format = "g", digits = digits)
+        ))
+      }
     }
     
     # Store the per-variable winner (may be NULL if all candidates failed)
@@ -1225,15 +1267,14 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
           type_label <- toupper(gsub("fp", "FP", best_type))
           if (criterion == "pvalue") {
             cat(sprintf(
-              "        >> SELECTED: %s  (p = %s)\n",
+              "        >> provisional result: %s  (p_raw = %s)\n",
               type_label,
               formatC(best_metric$pvalue[1L], format = "g", digits = digits)
             ))
           } else {
-            ic_col <- if (criterion == "aic") "AIC_main_minus_int"
-            else "BIC_main_minus_int"
+            ic_col <- if (criterion == "aic") "AIC_global_improvement" else "BIC_global_improvement"
             cat(sprintf(
-              "        >> SELECTED: %s  (d%s = %s)\n",
+              "        >> SELECTED: %s  (global d%s = %s)\n",
               type_label, toupper(criterion),
               formatC(best_metric[[ic_col]][1L], format = "f", digits = 2)
             ))
@@ -1280,23 +1321,91 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   }  # end cont_vars loop
   
   # ============================================================================
-  # Phase 2: multiplicity adjustment (only when adjusting_pvals = TRUE)
+  # Phase 2: p-value adjustment and final p-value decisions
   # ============================================================================
   if (adjusting_pvals) {
-    # Collect raw p-values from per-variable winners
-    raw_pvals <- vapply(var_winners, function(w) {
-      if (is.null(w$fit)) NA_real_ else w$metric$pvalue[1L]
-    }, numeric(1L))
+    all_candidate_metrics <- dplyr::bind_rows(all_metrics_list[seq_len(all_idx)])
     
-    adjusted_pvals <- stats::p.adjust(raw_pvals, method = p_adjust_method)
-    
-    # Make selection decisions based on adjusted p-values
-    for (i in seq_along(cont_vars)) {
-      vn <- cont_vars[i]
-      w  <- var_winners[[vn]]
-      if (is.null(w$fit)) next
+    if (nrow(all_candidate_metrics) > 0L && "pvalue" %in% names(all_candidate_metrics)) {
+      all_candidate_metrics$p_adjusted <- NA_real_
+      all_candidate_metrics$candidate_selected <- FALSE
       
-      if (!is.na(adjusted_pvals[i]) && adjusted_pvals[i] < p_interact) {
+      if (p_adjust_scope == "candidates") {
+        valid_p <- is.finite(all_candidate_metrics$pvalue)
+        if (any(valid_p)) {
+          all_candidate_metrics$p_adjusted[valid_p] <- if (p_adjust_method == "none") {
+            all_candidate_metrics$pvalue[valid_p]
+          } else {
+            stats::p.adjust(all_candidate_metrics$pvalue[valid_p], method = p_adjust_method)
+          }
+        }
+        
+        for (vn in cont_vars) {
+          rows_idx <- which(all_candidate_metrics$variable == vn &
+                              is.finite(all_candidate_metrics$p_adjusted))
+          if (length(rows_idx) == 0L) next
+          rows <- all_candidate_metrics[rows_idx, , drop = FALSE]
+          ord <- order(rows$p_adjusted, rows$pvalue, rows$BIC_interaction,
+                       na.last = TRUE)
+          win_idx <- rows_idx[ord[1L]]
+          all_candidate_metrics$candidate_selected[win_idx] <- TRUE
+          
+          selected_type <- all_candidate_metrics$type[win_idx]
+          w <- var_winners[[vn]]
+          if (!is.null(w$fit) && identical(w$type, selected_type)) {
+            w$metric <- all_candidate_metrics[win_idx, , drop = FALSE]
+            w$score  <- all_candidate_metrics$p_adjusted[win_idx]
+            var_winners[[vn]] <- w
+          }
+        }
+      } else {
+        # Variable-level scope: first select the smallest raw p-value within
+        # each variable, then adjust only those selected variable-level p-values.
+        selected_idx <- integer(0L)
+        for (vn in cont_vars) {
+          rows_idx <- which(all_candidate_metrics$variable == vn &
+                              is.finite(all_candidate_metrics$pvalue))
+          if (length(rows_idx) == 0L) next
+          rows <- all_candidate_metrics[rows_idx, , drop = FALSE]
+          ord <- order(rows$pvalue, rows$BIC_interaction, na.last = TRUE)
+          win_idx <- rows_idx[ord[1L]]
+          selected_idx <- c(selected_idx, win_idx)
+          all_candidate_metrics$candidate_selected[win_idx] <- TRUE
+        }
+        if (length(selected_idx) > 0L) {
+          raw_selected <- all_candidate_metrics$pvalue[selected_idx]
+          all_candidate_metrics$p_adjusted[selected_idx] <- if (p_adjust_method == "none") {
+            raw_selected
+          } else {
+            stats::p.adjust(raw_selected, method = p_adjust_method)
+          }
+        }
+        
+        for (win_idx in selected_idx) {
+          vn <- all_candidate_metrics$variable[win_idx]
+          selected_type <- all_candidate_metrics$type[win_idx]
+          w <- var_winners[[vn]]
+          if (!is.null(w$fit) && identical(w$type, selected_type)) {
+            w$metric <- all_candidate_metrics[win_idx, , drop = FALSE]
+            w$score  <- all_candidate_metrics$p_adjusted[win_idx]
+            var_winners[[vn]] <- w
+          }
+        }
+      }
+    }
+    
+    # Reset final selected objects and fill from the adjusted variable winners.
+    best_idx <- 0L
+    best_metrics_list <- vector("list", n_vars)
+    best_interaction_model <- stats::setNames(vector("list", n_vars), cont_vars)
+    best_fitted_functions  <- stats::setNames(vector("list", n_vars), cont_vars)
+    center_vals_list       <- stats::setNames(vector("list", n_vars), cont_vars)
+    
+    for (vn in cont_vars) {
+      w <- var_winners[[vn]]
+      if (is.null(w$fit) || is.null(w$metric)) next
+      padj_val <- w$metric$p_adjusted[1L]
+      if (!is.na(padj_val) && padj_val < p_interact) {
         best_idx <- best_idx + 1L
         best_metrics_list[[best_idx]]      <- w$metric
         best_interaction_model[[vn]]       <- w$fit$test_results$interaction_model
@@ -1305,36 +1414,94 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }
     
-    # Verbose: print selection summary table
+    # Replace all_metrics_list so the returned all_model_metrics contains
+    # p_adjusted and candidate_selected exactly as used for decisions.
+    all_idx <- if (exists("all_candidate_metrics")) nrow(all_candidate_metrics) else all_idx
+    all_metrics_list <- if (exists("all_candidate_metrics") && nrow(all_candidate_metrics) > 0L) {
+      split(all_candidate_metrics, seq_len(nrow(all_candidate_metrics)))
+    } else {
+      list()
+    }
+    
+    # Verbose: after candidate-level or variable-level p-value adjustment,
+    # print the final p-value output as Step 3 and Step 4. The per-variable
+    # output printed during fitting is provisional because adjusted p-values
+    # are only available after all candidate tests have been fitted.
     if (verbose) {
-      cat("\n")
-      cat(strrep("=", 70), "\n")
-      cat(sprintf("  Interaction Summary (p-values adjusted by %s):\n",
-                  p_adjust_method))
-      cat(strrep("=", 70), "\n")
+      rule_thick <- strrep("=", 70)
+      rule_thin  <- strrep("-", 70)
+      
+      cat("\n", rule_thick, "\n", sep = "")
+      cat("  STEP 3: Candidate P-value Table\n")
+      cat(rule_thick, "\n", sep = "")
+      
+      if (exists("all_candidate_metrics") &&
+          nrow(all_candidate_metrics) > 0L) {
+        
+        type_label <- toupper(gsub("fp", "FP", all_candidate_metrics$type))
+        best_flag <- ifelse(!is.na(all_candidate_metrics$candidate_selected) &
+                              all_candidate_metrics$candidate_selected, "+", "")
+        
+        if (p_adjust_scope == "candidates") {
+          step3_tab <- data.frame(
+            Variable   = all_candidate_metrics$variable,
+            Type       = type_label,
+            p_raw      = all_candidate_metrics$pvalue,
+            p_adjusted = all_candidate_metrics$p_adjusted,
+            best       = best_flag,
+            check.names = FALSE
+          )
+          print(step3_tab, row.names = FALSE)
+          cat(sprintf(
+            "\n  p_adjust_method = %s; p_adjust_scope = candidates\n",
+            p_adjust_method
+          ))
+          cat("  + = selected candidate after candidate-level p-value adjustment\n")
+        } else {
+          step3_tab <- data.frame(
+            Variable   = all_candidate_metrics$variable,
+            Type       = type_label,
+            p_raw      = all_candidate_metrics$pvalue,
+            best       = best_flag,
+            check.names = FALSE
+          )
+          print(step3_tab, row.names = FALSE)
+          cat(sprintf(
+            "\n  p_adjust_method = %s; p_adjust_scope = variables\n",
+            p_adjust_method
+          ))
+          cat("  + = selected candidate by raw p-value within each variable\n")
+          cat("  Adjusted p-values are shown only in Step 4 for selected candidates.\n")
+        }
+      } else {
+        cat("  No candidate p-values available.\n")
+      }
+      
+      cat("\n", rule_thick, "\n", sep = "")
+      cat("  STEP 4: Interaction Summary\n")
+      cat(rule_thick, "\n", sep = "")
       cat(sprintf("  %-12s %-8s %12s %12s  %s\n",
                   "Variable", "Type", "p_raw", "p_adjusted", ""))
-      cat(strrep("-", 55), "\n")
-      for (i in seq_along(cont_vars)) {
-        vn <- cont_vars[i]
-        w  <- var_winners[[vn]]
-        if (is.null(w$fit)) {
+      cat(rule_thin, "\n", sep = "")
+      
+      for (vn in cont_vars) {
+        w <- var_winners[[vn]]
+        if (is.null(w$fit) || is.null(w$metric)) {
           cat(sprintf("  %-12s %-8s %12s %12s\n", vn, "---", "NA", "NA"))
         } else {
           type_label <- toupper(gsub("fp", "FP", w$type))
-          sel_flag <- if (!is.na(adjusted_pvals[i]) &&
-                          adjusted_pvals[i] < p_interact) " *" else ""
+          sel_flag <- if (!is.na(w$metric$p_adjusted[1L]) &&
+                          w$metric$p_adjusted[1L] < p_interact) " *" else ""
           cat(sprintf("  %-12s %-8s %12s %12s%s\n",
                       vn, type_label,
-                      formatC(raw_pvals[i], format = "g", digits = digits),
-                      formatC(adjusted_pvals[i], format = "g", digits = digits),
+                      formatC(w$metric$pvalue[1L], format = "g", digits = digits),
+                      formatC(w$metric$p_adjusted[1L], format = "g", digits = digits),
                       sel_flag))
         }
       }
-      cat(strrep("-", 55), "\n")
+      cat(rule_thin, "\n", sep = "")
       cat(sprintf("  * = selected at p_interact = %g\n\n", p_interact))
       
-      # Print model summaries for selected variables
       if (show_models) {
         for (vn in names(Filter(Negate(is.null), best_interaction_model))) {
           w <- var_winners[[vn]]
@@ -1349,23 +1516,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         }
       }
     }
-    
-    # Messages for non-selected variables
-    if (!quiet) {
-      for (i in seq_along(cont_vars)) {
-        vn <- cont_vars[i]
-        w  <- var_winners[[vn]]
-        sel <- !is.null(w$fit) && !is.na(adjusted_pvals[i]) &&
-          adjusted_pvals[i] < p_interact
-        if (!sel) {
-          message(sprintf(
-            "i No significant interaction retained for '%s' (adjusted p = %s).",
-            vn, if (is.na(adjusted_pvals[i])) "NA"
-            else formatC(adjusted_pvals[i], format = "g", digits = digits)
-          ))
-        }
-      }
-    }
+  
   }
   
   # Trim pre-allocated lists to actual fill level
@@ -1412,6 +1563,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     family                   = family,
     nobs                     = nobs,
     p_adjust_method          = p_adjust_method,
+    p_adjust_scope           = p_adjust_scope,
     var_winners              = var_winners
   )
 }

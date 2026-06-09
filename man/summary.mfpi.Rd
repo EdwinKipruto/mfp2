@@ -2,60 +2,20 @@
 % Please edit documentation in R/mfpi_summary.R
 \name{summary.mfpi}
 \alias{summary.mfpi}
-\title{Summarise an \code{"mfpi"} Object}
+\title{Summarize an \code{"mfpi"} Object}
 \usage{
 \method{summary}{mfpi}(object, ...)
 }
 \arguments{
-\item{object}{An object of class \code{"mfpi"}, as returned by
-\code{mfpi()}.}
+\item{object}{An object of class \code{"mfpi"}.}
 
 \item{...}{Currently unused.}
 }
 \value{
-An object of class \code{"summary.mfpi"} - a named list with:
-\describe{
-\item{\code{group_var}}{Name of the grouping variable.}
-\item{\code{nobs}}{Number of observations.}
-\item{\code{family}}{Regression family.}
-\item{\code{flex}}{Flexibility level used.}
-\item{\code{criterion}}{Selection criterion used.}
-\item{\code{p_adjust_method}}{Method used for p-value adjustment.}
-\item{\code{p_interact}}{Significance threshold for interaction selection.}
-\item{\code{min_improvement}}{Threshold for AIC/BIC selection.}
-\item{\code{group_levels_original}}{Original levels of \code{group_var}.}
-\item{\code{adjust_terms}}{Full \code{fp_terms} table from the MFP
-adjustment model.}
-\item{\code{all_model_metrics}}{Metrics for all candidates.}
-\item{\code{best_model_metrics}}{Metrics for selected (winning) models.}
-\item{\code{var_winners}}{Named list of per-variable best candidates
-(regardless of significance).}
-\item{\code{best_interaction_model}}{Named list of fitted interaction
-model objects, one per significant variable.}
-\item{\code{all_interaction_models}}{Named list of all candidate
-interaction model objects.}
-\item{\code{best_fitted_functions}}{Named list of fitted-function
-matrices for the winning model per significant variable.}
-\item{\code{all_fitted_functions}}{Named list of fitted-function
-matrices for all candidates.}
-\item{\code{model_summaries}}{Named list of \code{summary(fit$fit)}
-objects, one per significant variable.}
-}
+An object of class \code{"summary.mfpi"}.
 }
 \description{
-Returns a structured summary of an \code{"mfpi"} fit. The returned object
-has a dedicated print method that displays four sections:
-\enumerate{
-\item Adjustment model selected by MFP.
-\item All interaction candidates (linear, FP1, FP2) with the best
-candidate per variable flagged.
-\item Interaction summary for all tested variables, with p-values
-(raw and adjusted when \code{p_adjust_method != "none"}) or
-information criterion differences.
-\item Regression output (coefficients) for each winning model.
-}
-}
-\seealso{
-\code{print.summary.mfpi()}, \code{mfpi()},
-\code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:summary.coxph]{survival::summary.coxph()}}
+Produces a structured summary of an \code{"mfpi"} fit. The printed summary
+contains the same model-building output as \code{print.mfpi()} and adds
+regression output for retained interaction models.
 }

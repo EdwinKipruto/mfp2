@@ -1,10 +1,201 @@
 # S3 print method for mfpi objects
 #
-# print.mfpi() gives a structured three-section output:
+# print.mfpi() gives a structured output:
 #   Step 1 - Adjustment model (fp_terms for selected variables)
-#   Step 2 - All interaction candidates with best-per-variable flagged (+)
-#   Step 3 - Interaction summary (one row per cont_var, * for selected)
+#   Step 2 - All interaction candidates with selected candidate flagged (+)
+#   Step 3 - Candidate p-value table when criterion = "pvalue"
+#   Step 4 - Interaction summary when criterion = "pvalue"
+# For AIC/BIC, Step 3 remains the interaction summary.
 
+# -----------------------------------------------------------------------------
+# Helpers ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+.format_mfpi_powers <- function(d) {
+  if ("fp_powers_main" %in% names(d)) {
+    d$fp_powers_main <- vapply(d$fp_powers_main, function(p) {
+      if (is.null(p) || length(p) == 0L || all(is.na(p))) "."
+      else paste0("(", paste(p, collapse = ", "), ")")
+    }, character(1L))
+  }
+  if ("fp_powers_int" %in% names(d)) {
+    d$fp_powers_int <- vapply(d$fp_powers_int, function(p_list) {
+      if (is.null(p_list) || length(p_list) == 0L) return(".")
+      if (!is.list(p_list)) return(paste0("(", paste(p_list, collapse = ", "), ")"))
+      paste(vapply(p_list, function(p) {
+        if (is.null(p) || length(p) == 0L || all(is.na(p))) "."
+        else paste0("(", paste(p, collapse = ", "), ")")
+      }, character(1L)), collapse = ", ")
+    }, character(1L))
+  }
+  d
+}
+
+.mfpi_winner_keys <- function(x) {
+  vw <- x$var_winners
+  if (!is.null(vw) && length(vw) > 0L) {
+    keys <- vapply(names(vw), function(vn) {
+      wtype <- vw[[vn]]$type
+      if (is.null(wtype)) NA_character_ else paste(wtype, vn, sep = "__")
+    }, character(1L))
+    return(keys[!is.na(keys)])
+  }
+  best_m <- x$best_model_metrics
+  if (!is.null(best_m) && nrow(best_m) > 0L) {
+    return(paste(best_m$type, best_m$variable, sep = "__"))
+  }
+  character(0L)
+}
+
+.print_adjustment_step <- function(x, ruler) {
+  cat("\nStep 1 - Adjustment Model (MFP):\n")
+  cat(ruler, "\n")
+  fp <- x$adjust_terms
+  if (!is.null(fp)) {
+    selected_rows <- fp[!is.na(fp$selected) &  fp$selected, , drop = FALSE]
+    dropped_rows  <- fp[!is.na(fp$selected) & !fp$selected, , drop = FALSE]
+    if (nrow(selected_rows) > 0L) print(selected_rows) else cat("  No adjustment variables selected.\n")
+    if (nrow(dropped_rows) > 0L) {
+      cat(sprintf("\n  Dropped (%d variables eliminated by MFP): %s\n",
+                  nrow(dropped_rows), paste(rownames(dropped_rows), collapse = ", ")))
+    }
+  } else {
+    cat("  No adjustment model fitted.\n")
+  }
+}
+
+.print_candidates_step <- function(x, ruler) {
+  cat("\nStep 2 - All Interaction Candidates:\n")
+  cat(ruler, "\n")
+  all_m <- x$all_model_metrics
+  if (is.null(all_m) || nrow(all_m) == 0L) {
+    cat("  No interaction candidates computed.\n")
+    return(invisible(NULL))
+  }
+  all_m <- .format_mfpi_powers(all_m)
+  crit <- if (!is.null(x$criterion)) x$criterion else "pvalue"
+  if (crit == "pvalue") {
+    all_m <- all_m[, setdiff(names(all_m), c("p_adjusted", "candidate_selected")), drop = FALSE]
+  }
+  row_keys <- paste(all_m$type, all_m$variable, sep = "__")
+  all_m$best <- ifelse(row_keys %in% .mfpi_winner_keys(x), "+", "")
+  insert_after <- switch(crit,
+                         pvalue = "pvalue",
+                         aic    = "AIC_main_minus_int",
+                         bic    = "BIC_main_minus_int")
+  cols <- names(all_m)
+  best_pos <- which(cols == "best")
+  after_pos <- which(cols == insert_after)
+  if (length(after_pos) == 1L && length(best_pos) == 1L) {
+    cols_no_best <- cols[-best_pos]
+    insert_at <- which(cols_no_best == insert_after)
+    all_m <- all_m[, append(cols_no_best, "best", after = insert_at), drop = FALSE]
+  }
+  print(as.data.frame(all_m), row.names = FALSE)
+  if (crit == "pvalue") {
+    cat("\n  + = selected candidate for each variable\n")
+  } else {
+    cat("\n  + = selected interaction candidate for each variable\n")
+  }
+  invisible(NULL)
+}
+
+.print_candidate_pvalue_step <- function(x, ruler) {
+  cat("\nStep 3 - Candidate P-value Table:\n")
+  cat(ruler, "\n")
+  all_m <- x$all_model_metrics
+  if (is.null(all_m) || nrow(all_m) == 0L) {
+    cat("  No candidate p-values available.\n")
+    return(invisible(NULL))
+  }
+  scope <- if (!is.null(x$p_adjust_scope)) x$p_adjust_scope else "candidates"
+  method <- if (!is.null(x$p_adjust_method)) x$p_adjust_method else "none"
+  row_keys <- paste(all_m$type, all_m$variable, sep = "__")
+  best <- ifelse(row_keys %in% .mfpi_winner_keys(x), "+", "")
+  type_label <- toupper(gsub("fp", "FP", all_m$type))
+  if (scope == "candidates") {
+    padj <- if ("p_adjusted" %in% names(all_m)) all_m$p_adjusted else all_m$pvalue
+    tab <- data.frame(
+      Variable = all_m$variable,
+      Type = type_label,
+      p_raw = all_m$pvalue,
+      p_adjusted = padj,
+      best = best,
+      check.names = FALSE
+    )
+    print(tab, row.names = FALSE)
+    cat(sprintf("\n  p_adjust_method = %s; p_adjust_scope = candidates\n", method))
+    cat("  + = selected candidate after candidate-level p-value adjustment\n")
+  } else {
+    tab <- data.frame(
+      Variable = all_m$variable,
+      Type = type_label,
+      p_raw = all_m$pvalue,
+      best = best,
+      check.names = FALSE
+    )
+    print(tab, row.names = FALSE)
+    cat(sprintf("\n  p_adjust_method = %s; p_adjust_scope = variables\n", method))
+    cat("  + = selected candidate by raw p-value within each variable\n")
+    cat("  Adjusted p-values are shown only in Step 4 for selected candidates.\n")
+  }
+  invisible(NULL)
+}
+
+.print_interaction_summary_step <- function(x, ruler, step_no = 3L) {
+  cat(sprintf("\nStep %d - Interaction Summary:\n", step_no))
+  cat(ruler, "\n")
+  crit <- if (!is.null(x$criterion)) x$criterion else "pvalue"
+  vw <- x$var_winners
+  best_m <- x$best_model_metrics
+  selected_vars <- if (!is.null(best_m) && nrow(best_m) > 0L) best_m$variable else character(0L)
+  if (is.null(vw) || length(vw) == 0L) {
+    if (!is.null(best_m) && nrow(best_m) > 0L) print(best_m, row.names = FALSE) else cat("  No interactions selected.\n")
+    return(invisible(NULL))
+  }
+  cont_names <- names(vw)
+  if (crit == "pvalue") {
+    tab <- do.call(rbind, lapply(cont_names, function(vn) {
+      w <- vw[[vn]]
+      if (is.null(w$fit) || is.null(w$metric)) {
+        data.frame(Variable = vn, Type = "---", p_raw = NA_real_, p_adjusted = NA_real_, Selected = "", check.names = FALSE)
+      } else {
+        data.frame(Variable = vn,
+                   Type = toupper(gsub("fp", "FP", w$type)),
+                   p_raw = w$metric$pvalue[1L],
+                   p_adjusted = if ("p_adjusted" %in% names(w$metric)) w$metric$p_adjusted[1L] else w$metric$pvalue[1L],
+                   Selected = if (vn %in% selected_vars) "*" else "",
+                   check.names = FALSE)
+      }
+    }))
+    print(tab, row.names = FALSE)
+    cat(sprintf("\n  * = selected at p_interact = %g\n", x$p_interact))
+  } else {
+    if (crit == "aic") {
+      ic_col <- "AIC_global_improvement"; ic_label <- "global_dAIC"
+    } else {
+      ic_col <- "BIC_global_improvement"; ic_label <- "global_dBIC"
+    }
+    tab <- do.call(rbind, lapply(cont_names, function(vn) {
+      w <- vw[[vn]]
+      if (is.null(w$fit) || is.null(w$metric)) {
+        data.frame(Variable = vn, Type = "---", score = NA_real_, Selected = "", check.names = FALSE)
+      } else {
+        val <- if (ic_col %in% names(w$metric)) w$metric[[ic_col]][1L] else NA_real_
+        data.frame(Variable = vn,
+                   Type = toupper(gsub("fp", "FP", w$type)),
+                   score = val,
+                   Selected = if (vn %in% selected_vars) "*" else "",
+                   check.names = FALSE)
+      }
+    }))
+    names(tab)[names(tab) == "score"] <- ic_label
+    print(tab, row.names = FALSE)
+    min_imp <- if (!is.null(x$min_improvement)) x$min_improvement else 2
+    cat(sprintf("\n  * = selected (%s > %g)\n", ic_label, min_imp))
+  }
+  invisible(NULL)
+}
 
 # -----------------------------------------------------------------------------
 # print.mfpi() ----------------------------------------------------------------
@@ -12,21 +203,10 @@
 
 #' Print an \code{"mfpi"} Object
 #'
-#' Displays a structured three-step summary of an \code{"mfpi"} fit:
-#' \enumerate{
-#'   \item The adjustment model selected by MFP, showing \code{fp_terms}
-#'     for retained variables and a list of dropped variables.
-#'   \item All interaction candidates (linear, FP1, FP2) for every variable
-#'     in \code{cont_vars}, with the best candidate per variable flagged
-#'     by \code{+}.
-#'   \item A compact interaction summary showing the winning functional form
-#'     and the decisive metric for each tested variable. When
-#'     \code{p_adjust_method != "none"}, both raw and adjusted p-values are
-#'     shown. Selected variables are marked with \code{*}.
-#' }
-#'
-#' Regression output for the winning models is available via
-#' \code{summary.mfpi()}.
+#' Displays the adjustment model, candidate interaction models, and the final
+#' interaction decision summary. For \code{criterion = "pvalue"}, an additional
+#' candidate p-value table is printed before the final summary so that raw and
+#' adjusted p-values can be inspected separately.
 #'
 #' @param x An object of class \code{"mfpi"}, as returned by \code{mfpi()}.
 #' @param ... Currently unused.
@@ -36,230 +216,26 @@
 #' @method print mfpi
 #' @export
 print.mfpi <- function(x, ...) {
-  
   ruler  <- strrep("-", 65)
   header <- strrep("=", 65)
   padj   <- if (!is.null(x$p_adjust_method)) x$p_adjust_method else "none"
+  scope  <- if (!is.null(x$p_adjust_scope)) x$p_adjust_scope else "candidates"
   crit   <- if (!is.null(x$criterion)) x$criterion else "pvalue"
-  adjusting <- padj != "none" && crit == "pvalue"
   
   cat(header, "\n")
-  cat(sprintf(
-    "MFPI  |  group: '%s'  |  n = %d  |  %s  |  p-adjust: %s\n",
-    x$group_var, x$nobs, x$flex, padj
-  ))
+  cat(sprintf("MFPI  |  group: '%s'  |  n = %d  |  %s  |  criterion: %s",
+              x$group_var, x$nobs, x$flex, crit))
+  if (crit == "pvalue") cat(sprintf("  |  p-adjust: %s (%s)", padj, scope))
+  cat("\n")
   cat(header, "\n")
   
-  # ---------------------------------------------------------------------------
-  # Step 1: Adjustment model
-  # ---------------------------------------------------------------------------
-  cat("\nStep 1 - Adjustment Model (MFP):\n")
-  cat(ruler, "\n")
-  
-  fp <- x$adjust_terms
-  if (!is.null(fp)) {
-    selected_rows <- fp[!is.na(fp$selected) &  fp$selected, , drop = FALSE]
-    dropped_rows  <- fp[!is.na(fp$selected) & !fp$selected, , drop = FALSE]
-    
-    if (nrow(selected_rows) > 0L) {
-      print(selected_rows)
-    } else {
-      cat("  No adjustment variables selected.\n")
-    }
-    if (nrow(dropped_rows) > 0L) {
-      cat(sprintf(
-        "\n  Dropped (%d variables eliminated by MFP): %s\n",
-        nrow(dropped_rows),
-        paste(rownames(dropped_rows), collapse = ", ")
-      ))
-    }
+  .print_adjustment_step(x, ruler)
+  .print_candidates_step(x, ruler)
+  if (crit == "pvalue") {
+    .print_candidate_pvalue_step(x, ruler)
+    .print_interaction_summary_step(x, ruler, step_no = 4L)
   } else {
-    cat("  No adjustment model fitted.\n")
+    .print_interaction_summary_step(x, ruler, step_no = 3L)
   }
-  
-  # ---------------------------------------------------------------------------
-  # Step 2: All interaction candidates with best-per-variable flagged
-  # ---------------------------------------------------------------------------
-  cat("\nStep 2 - All Interaction Candidates:\n")
-  cat(ruler, "\n")
-  
-  all_m <- x$all_model_metrics
-  vw    <- x$var_winners
-  
-  if (!is.null(all_m) && nrow(all_m) > 0L) {
-    
-    # Identify the best candidate per variable from var_winners
-    if (!is.null(vw)) {
-      winner_keys <- vapply(names(vw), function(vn) {
-        wtype <- vw[[vn]]$type
-        if (is.null(wtype)) NA_character_
-        else paste(wtype, vn, sep = "__")
-      }, character(1L))
-      winner_keys <- winner_keys[!is.na(winner_keys)]
-    } else {
-      # Fallback for older objects without var_winners
-      best_m <- x$best_model_metrics
-      if (!is.null(best_m) && nrow(best_m) > 0L) {
-        winner_keys <- paste(best_m$type, best_m$variable, sep = "__")
-      } else {
-        winner_keys <- character(0L)
-      }
-    }
-    
-    # Format power list-columns as strings
-    if ("fp_powers_main" %in% names(all_m)) {
-      all_m$fp_powers_main <- vapply(all_m$fp_powers_main, function(p)
-        paste0("(", paste(p, collapse = ", "), ")"), character(1L))
-    }
-    if ("fp_powers_int" %in% names(all_m)) {
-      all_m$fp_powers_int <- vapply(all_m$fp_powers_int, function(p_list)
-        paste(vapply(p_list, function(p)
-          paste0("(", paste(p, collapse = ", "), ")"),
-          character(1L)), collapse = ", "), character(1L))
-    }
-    
-    # Mark the best candidate per variable and place column after decisive metric
-    row_keys    <- paste(all_m$type, all_m$variable, sep = "__")
-    all_m$best  <- ifelse(row_keys %in% winner_keys, "+", "")
-    
-    # Insert best after the last criterion-specific column, before powers
-    insert_after <- switch(crit,
-                           pvalue = "BIC_main_minus_int",
-                           aic    = "AIC_main_minus_int",
-                           bic    = "BIC_main_minus_int"
-    )
-    cols <- names(all_m)
-    best_pos <- which(cols == "best")
-    after_pos <- which(cols == insert_after)
-    if (length(after_pos) == 1L && length(best_pos) == 1L) {
-      cols_no_best <- cols[-best_pos]
-      insert_at <- which(cols_no_best == insert_after)
-      all_m <- all_m[, append(cols_no_best, "best", after = insert_at),
-                     drop = FALSE]
-    }
-    
-    print(as.data.frame(all_m), row.names = FALSE)
-    
-    if (crit == "pvalue") {
-      cat("\n  + = best candidate (by pvalue)\n")
-    }
-    
-  } else {
-    cat("  No interaction candidates computed.\n")
-  }
-  
-  # ---------------------------------------------------------------------------
-  # Step 3: Interaction summary (all cont_vars)
-  # ---------------------------------------------------------------------------
-  cat("\nStep 3 - Interaction Summary:\n")
-  cat(ruler, "\n")
-  
-  # Determine selected variables
-  best_m <- x$best_model_metrics
-  selected_vars <- if (!is.null(best_m) && nrow(best_m) > 0L)
-    best_m$variable else character(0L)
-  
-  if (!is.null(vw) && length(vw) > 0L) {
-    cont_names <- names(vw)
-    
-    # Collect raw p-values / scores from winners
-    raw_pvals <- vapply(vw, function(w) {
-      if (is.null(w$fit)) NA_real_ else w$metric$pvalue[1L]
-    }, numeric(1L))
-    
-    if (crit == "pvalue") {
-      if (adjusting) {
-        adj_pvals <- stats::p.adjust(raw_pvals, method = padj)
-        cat(sprintf("  %-12s %-8s %12s %12s  %s\n",
-                    "Variable", "Type", "p_raw", "p_adjusted", ""))
-        cat(strrep("-", 55), "\n")
-        for (i in seq_along(cont_names)) {
-          vn <- cont_names[i]
-          w  <- vw[[vn]]
-          if (is.null(w$fit)) {
-            cat(sprintf("  %-12s %-8s %12s %12s\n", vn, "---", "NA", "NA"))
-          } else {
-            type_label <- toupper(gsub("fp", "FP", w$type))
-            sel_flag   <- if (vn %in% selected_vars) " *" else ""
-            cat(sprintf("  %-12s %-8s %12s %12s%s\n",
-                        vn, type_label,
-                        formatC(raw_pvals[i], format = "g", digits = 4),
-                        formatC(adj_pvals[i], format = "g", digits = 4),
-                        sel_flag))
-          }
-        }
-        cat(strrep("-", 55), "\n")
-        cat(sprintf("  * = selected at p_interact = %g\n", x$p_interact))
-      } else {
-        cat(sprintf("  %-12s %-8s %12s  %s\n",
-                    "Variable", "Type", "pvalue", ""))
-        cat(strrep("-", 42), "\n")
-        for (i in seq_along(cont_names)) {
-          vn <- cont_names[i]
-          w  <- vw[[vn]]
-          if (is.null(w$fit)) {
-            cat(sprintf("  %-12s %-8s %12s\n", vn, "---", "NA"))
-          } else {
-            type_label <- toupper(gsub("fp", "FP", w$type))
-            sel_flag   <- if (vn %in% selected_vars) " *" else ""
-            cat(sprintf("  %-12s %-8s %12s%s\n",
-                        vn, type_label,
-                        formatC(raw_pvals[i], format = "g", digits = 4),
-                        sel_flag))
-          }
-        }
-        cat(strrep("-", 42), "\n")
-        cat(sprintf("  * = selected at p_interact = %g\n", x$p_interact))
-      }
-    } else {
-      # AIC or BIC criterion
-      ic_col <- if (crit == "aic") "AIC_main_minus_int" else "BIC_main_minus_int"
-      ic_label <- if (crit == "aic") "dAIC" else "dBIC"
-      min_imp <- if (!is.null(x$min_improvement)) x$min_improvement else 2
-      scores <- vapply(vw, function(w) {
-        if (is.null(w$fit)) NA_real_ else w$metric[[ic_col]][1L]
-      }, numeric(1L))
-      
-      cat(sprintf("  %-12s %-8s %12s  %s\n",
-                  "Variable", "Type", ic_label, ""))
-      cat(strrep("-", 42), "\n")
-      for (i in seq_along(cont_names)) {
-        vn <- cont_names[i]
-        w  <- vw[[vn]]
-        if (is.null(w$fit)) {
-          cat(sprintf("  %-12s %-8s %12s\n", vn, "---", "NA"))
-        } else {
-          type_label <- toupper(gsub("fp", "FP", w$type))
-          sel_flag   <- if (vn %in% selected_vars) " *" else ""
-          cat(sprintf("  %-12s %-8s %12s%s\n",
-                      vn, type_label,
-                      formatC(scores[i], format = "f", digits = 2),
-                      sel_flag))
-        }
-      }
-      cat(strrep("-", 42), "\n")
-      cat(sprintf("  * = selected (%s > %g)\n", ic_label, min_imp))
-    }
-    
-  } else {
-    # Fallback for older objects without var_winners
-    if (!is.null(best_m) && nrow(best_m) > 0L) {
-      disp <- best_m
-      if ("fp_powers_main" %in% names(disp)) {
-        disp$fp_powers_main <- vapply(disp$fp_powers_main, function(p)
-          paste0("(", paste(p, collapse = ", "), ")"), character(1L))
-      }
-      if ("fp_powers_int" %in% names(disp)) {
-        disp$fp_powers_int <- vapply(disp$fp_powers_int, function(p_list)
-          paste(vapply(p_list, function(p)
-            paste0("(", paste(p, collapse = ", "), ")"),
-            character(1L)), collapse = ", "), character(1L))
-      }
-      print(as.data.frame(disp), row.names = FALSE)
-    } else {
-      cat("  No significant interactions found.\n")
-    }
-  }
-  
   invisible(x)
 }

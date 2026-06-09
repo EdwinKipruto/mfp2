@@ -15,7 +15,7 @@
 \code{x} invisibly.
 }
 \description{
-Displays a four-step structured summary. Steps 1-3 match
-\code{print.mfpi()}; Step 4 adds regression output for each winning
-interaction model.
+Displays the structured MFPI output and appends regression summaries for
+retained interaction models. For p-value selection, the regression output is
+printed after Step 4; for AIC/BIC selection, it is printed after Step 3.
 }

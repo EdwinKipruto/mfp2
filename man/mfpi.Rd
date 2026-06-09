@@ -49,6 +49,7 @@ mfpi(x, ...)
   winsorize_probs = c(0.01, 0.99),
   center_type = c("grand", "group"),
   p_adjust_method = "none",
+  p_adjust_scope = c("candidates", "variables"),
   verbose = TRUE,
   digits = 3,
   ...
@@ -94,6 +95,7 @@ mfpi(x, ...)
   winsorize_probs = c(0.01, 0.99),
   center_type = c("grand", "group"),
   p_adjust_method = "none",
+  p_adjust_scope = c("candidates", "variables"),
   verbose = TRUE,
   digits = 3,
   ...
@@ -399,17 +401,24 @@ The centering constants computed at fit time are stored in
 \code{center_vals_list} on the returned object and reused exactly
 during evaluation of fitted functions.}
 
-\item{p_adjust_method}{Character string specifying the method for adjusting p-values across
-multiple \code{cont_vars} to account for multiplicity. Passed to
-\code{\link[stats]{p.adjust}}. Accepted values include \code{"none"}
-(default, no adjustment), \code{"holm"} (Bonferroni--Holm step-down,
-recommended by Royston and Sauerbrei 2004), \code{"bonferroni"},
-\code{"hochberg"}, \code{"BH"} (Benjamini--Hochberg), and \code{"BY"}.
-Adjustment is applied only when \code{criterion = "pvalue"}; for AIC/BIC
-selection, adjusted p-values are computed for reporting but do not affect
-the selection decision. When \code{length(cont_vars) == 1} (prespecified
-hypothesis), adjustment has no effect. See the
-\emph{Prespecified and exploratory interaction analyses} section.}
+\item{p_adjust_method}{Character string specifying the method for adjusting p-values when
+\code{criterion = "pvalue"}. Passed to \code{\link[stats]{p.adjust}}.
+Accepted values include \code{"none"} (default, no adjustment),
+\code{"holm"}, \code{"bonferroni"}, \code{"hochberg"}, \code{"BH"},
+and \code{"BY"}. The family of p-values to which the method is applied
+is controlled by \code{p_adjust_scope}. The argument has no effect on
+AIC/BIC-based selection decisions.}
+
+\item{p_adjust_scope}{Character string specifying the family of p-values to which
+\code{p_adjust_method} is applied when \code{criterion = "pvalue"}.
+If \code{"candidates"} (default), p-values are adjusted across all fitted
+candidate interaction tests, i.e. across all combinations of variables in
+\code{cont_vars} and functional forms \code{"linear"}, \code{"fp1"},
+and \code{"fp2"}. If \code{"variables"}, the candidate with the smallest
+raw p-value is first selected within each variable, and
+\code{p_adjust_method} is then applied only to these selected
+variable-level p-values. In this case, candidate-level adjusted p-values
+are not defined for the non-selected functional forms.}
 
 \item{verbose}{Logical. Whether to print progress information during model fitting.
 Default is \code{TRUE}.}
@@ -505,6 +514,9 @@ upper limits applied to each \code{cont_var} during Winsorisation,
 or \code{NULL} when \code{winsorize = FALSE}.}
 \item{\code{p_adjust_method}}{Character string: the multiplicity
 adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
+\item{\code{p_adjust_scope}}{Character string indicating whether
+p-values were adjusted across all candidate tests (\code{"candidates"})
+or across selected variable-level candidates (\code{"variables"}).}
 \item{\code{p_interact}}{Numeric: the significance threshold for
 interaction selection.}
 \item{\code{min_improvement}}{Numeric: the threshold for AIC/BIC

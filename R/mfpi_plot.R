@@ -4,7 +4,7 @@
 # variable in an mfpi fit:
 #
 #   "fitted"      - group-specific fitted curves, optionally with 95% CI bands
-#   "difference" - pointwise treatment-effect difference f_j(x) - f_0(x),
+#   "difference" - pointwise fitted-function difference f_j(x) - f_0(x),
 #                  optionally with 95% CI band and reference line at zero
 #   "both"        - fitted and difference plots side by side (requires patchwork)
 #
@@ -19,12 +19,12 @@
 
 #' Plot Fitted Functions and Treatment-Effect Differences from an MFPI Model
 #'
-#' Produces group-specific fitted-function plots, treatment-effect difference
+#' Produces group-specific fitted-function plots, fitted-function difference
 #' plots, or both for each significant continuous variable in an
 #' \code{"mfpi"} object. Fitted-function plots and difference plots have
 #' separate confidence-band controls, allowing the user to suppress uncertainty
 #' bands for group-specific fitted curves while retaining the confidence band
-#' for the treatment-effect difference curve. Plots are returned invisibly as a
+#' for the fitted-function difference curve. Plots are returned invisibly as a
 #' nested named list.
 #'
 #' @section Plot types:
@@ -34,7 +34,7 @@
 #' group and one non-reference group on shared axes. Confidence bands for these
 #' group-specific curves are controlled by \code{show_ci_fitted}.
 #'
-#' \code{"difference"} plots the pointwise treatment-effect function
+#' \code{"difference"} plots the pointwise fitted-function difference
 #' \eqn{D_j(x) = f_j(x) - f_0(x)} with a horizontal reference line at zero.
 #' The confidence band for the difference curve is controlled by
 #' \code{show_ci_diff}. Deviations from zero indicate effect modification.
@@ -51,7 +51,7 @@
 #'     group-specific fitted curves. The default is \code{FALSE}, which gives
 #'     cleaner and faster fitted-function plots.
 #'   \item \code{show_ci_diff} controls the confidence band around the
-#'     treatment-effect difference curve. The default is \code{TRUE}, because
+#'     fitted-function difference curve. The default is \code{TRUE}, because
 #'     the difference curve is usually the main inferential display for
 #'     interaction.
 #' }
@@ -88,37 +88,41 @@
 #' @section Title and subtitle annotations:
 #' Each plot is annotated by default with two text lines.
 #'
-#' The title describes the structural comparison being plotted:
+#' The title describes the structural comparison being plotted without
+#' hard-coding colour names. Group identity in fitted-function plots is shown
+#' through the legend and line aesthetics.
 #' \itemize{
-#'   \item Fitted plots:
-#'     \code{"<group_var>: group <j> (red) vs group <0> (blue)"}.
-#'   \item Difference plots:
-#'     \code{"<group_var>: treatment effect (group <j> - group <0>)"}.
+#'   \item Fitted plots: \code{"Group-specific fitted functions"}.
+#'   \item Difference plots: \code{"Difference in fitted functions"}.
 #' }
 #'
-#' The subtitle summarises the variable, the functional form being shown, and
-#' the selection metric for that form, in the format
-#' \code{"<variable> | <type> | <metric> = <value>"}.
+#' The subtitle summarises the functional form being shown, the displayed
+#' group contrast, and the selection metric, for example
+#' \code{"type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
+#' The continuous variable is not repeated in the subtitle because it is shown
+#' on the x-axis.
 #'
 #' The metric shown depends on the criterion used to fit the model:
 #' \itemize{
-#'   \item \code{criterion = "pvalue"}: shows the interaction-test p-value.
-#'   \item \code{criterion = "aic"}: shows \code{dAIC}, defined as
-#'     \eqn{\mathrm{AIC}_{\mathrm{main}} -
-#'     \mathrm{AIC}_{\mathrm{interaction}}}. Positive values favour the
-#'     interaction model.
-#'   \item \code{criterion = "bic"}: shows \code{dBIC}, defined analogously.
+#'   \item \code{criterion = "pvalue"}: selected plots show the selected
+#'     candidate raw p-value and, when available, the stored adjusted p-value.
+#'   \item \code{criterion = "aic"}: selected plots show the global
+#'     \code{dAIC} used for the final interaction decision when available;
+#'     explicit candidate plots show within-form \code{dAIC}.
+#'   \item \code{criterion = "bic"}: selected plots show the global
+#'     \code{dBIC} used for the final interaction decision when available;
+#'     explicit candidate plots show within-form \code{dBIC}.
 #' }
 #'
 #' When \code{p_adjust_method != "none"} and \code{criterion = "pvalue"}, the
 #' p-value label adapts to avoid ambiguity:
 #' \itemize{
 #'   \item If \code{type = NULL}, selected variables are plotted and the
-#'     subtitle shows both the raw and adjusted p-values.
+#'     subtitle shows both the raw and stored adjusted p-values.
 #'   \item If \code{type} is specified, candidate curves are plotted and the
-#'     subtitle shows \code{p_raw}; the adjusted p-value is not shown because
-#'     it applies to the winning candidate, not necessarily to the specific
-#'     candidate being displayed.
+#'     subtitle shows \code{p_raw}. It also shows \code{p_adj} when an adjusted
+#'     p-value is stored for that candidate, as occurs under candidate-level
+#'     p-value adjustment.
 #' }
 #'
 #' To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
@@ -160,11 +164,17 @@
 #'   shown around the group-specific fitted curves. Default is \code{FALSE},
 #'   which gives cleaner and faster fitted-function plots.
 #' @param show_ci_diff Logical. If \code{TRUE}, a 95\% confidence band is shown
-#'   around the treatment-effect difference curve. Default is \code{TRUE}.
+#'   around the fitted-function difference curve. Default is \code{TRUE}.
 #' @param colour_ref Character. Colour for the reference-group curve and
 #'   confidence band. Default is \code{"#2166AC"}.
 #' @param colour_grp Character. Colour for the non-reference-group curve and
 #'   confidence band. Default is \code{"#D6604D"}.
+#' @param line_types Optional character vector specifying linetypes for the
+#'   group-specific fitted-function curves. If \code{NULL}, solid lines
+#'   are used by default for both the reference and comparison groups. The vector may be unnamed with length 2, in which case values
+#'   are matched to the reference and comparison groups in order, or named using
+#'   the original group labels, for example
+#'   \code{c("placebo" = "solid", "standard" = "dashed")}.
 #' @param colour_diff Character. Colour for the difference curve and confidence
 #'   band. Default is \code{"#1B7837"}.
 #' @param linewidth Positive numeric. Line width for fitted and difference
@@ -173,6 +183,21 @@
 #'   bands. Default is \code{0.2}.
 #' @param rug_alpha Numeric in \eqn{[0, 1]}. Transparency of rug marks. Ignored
 #'   when \code{show_rug = FALSE}. Default is \code{0.4}.
+#' @param legend_position Legend position for the fitted-function plot. May be
+#'   one of `"inside"`, `"right"`, `"left"`, `"bottom"`, `"top"`, or `"none"`.
+#'   The default is `"inside"`, which places the legend inside the plotting
+#'   panel.
+#' @param legend_inside Numeric vector of length 2 giving the legend position
+#'   inside the plotting panel when `legend_position = "inside"`. Values are
+#'   given in normalized parent coordinates, with `c(0, 0)` at the bottom-left
+#'   and `c(1, 1)` at the top-right. The default is `c(0.02, 0.98)`.
+#' @param legend_justification Numeric vector of length 2 giving the legend
+#'   justification when `legend_position = "inside"`. The default is `c(0, 1)`,
+#'   which anchors the top-left corner of the legend at `legend_inside`.
+#'   #' @param line_types Optional character vector specifying linetypes for the
+#'   group-specific fitted functions. If `NULL`, solid lines are used for all
+#'   groups. The vector may be unnamed, in which case values are matched to the
+#'   original group levels in order, or named using the original group labels.
 #' @param ... Currently unused.
 #'
 #' @return A nested named list of \code{ggplot} or \code{patchwork} objects,
@@ -204,6 +229,10 @@
 #' plot(fit, plot_type = "fitted",
 #'      show_ci_fitted = TRUE,
 #'      auto_print = TRUE)
+#'
+#' # Custom linetypes for the reference and comparison groups
+#' plot(fit, plot_type = "fitted",
+#'      line_types = c("solid", "dotdash"))
 #'
 #' # Suppress all confidence bands
 #' plots <- plot(fit, plot_type = "both",
@@ -237,8 +266,12 @@ plot.mfpi <- function(x,
                       show_rug       = FALSE,
                       show_ci_fitted = FALSE,
                       show_ci_diff   = TRUE,
+                      legend_position = c("inside", "right", "left", "bottom", "top", "none"),
+                      legend_inside  = c(0.02, 0.98),
+                      legend_justification = c(0, 1),
                       colour_ref     = "#2166AC",
                       colour_grp     = "#D6604D",
+                      line_types     = NULL,
                       colour_diff    = "#1B7837",
                       linewidth      = 1,
                       ribbon_alpha   = 0.2,
@@ -247,6 +280,7 @@ plot.mfpi <- function(x,
   
   model     <- x
   plot_type <- match.arg(plot_type)
+  legend_position <- match.arg(legend_position)
   
   if (!inherits(model, "mfpi")) {
     stop("! `x` must be an object of class \"mfpi\".", call. = FALSE)
@@ -273,6 +307,28 @@ plot.mfpi <- function(x,
   if (!is.logical(show_ci_diff) || length(show_ci_diff) != 1L ||
       is.na(show_ci_diff)) {
     stop("! `show_ci_diff` must be a single TRUE or FALSE value.",
+         call. = FALSE)
+  }
+  
+  if (!is.null(line_types) &&
+      (!is.character(line_types) || length(line_types) == 0L ||
+       any(is.na(line_types)))) {
+    stop(
+      "! `line_types` must be NULL or a non-empty character vector without NA values.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.numeric(legend_inside) || length(legend_inside) != 2L ||
+      any(is.na(legend_inside)) || any(legend_inside < 0) ||
+      any(legend_inside > 1)) {
+    stop("! `legend_inside` must be a numeric vector of length 2 with values in [0, 1].",
+         call. = FALSE)
+  }
+  
+  if (!is.numeric(legend_justification) || length(legend_justification) != 2L ||
+      any(is.na(legend_justification))) {
+    stop("! `legend_justification` must be a numeric vector of length 2.",
          call. = FALSE)
   }
   
@@ -329,10 +385,21 @@ plot.mfpi <- function(x,
       )
     }
     
-    all_fitted <- lapply(model$all_fitted_functions, function(v) v[[type]])
-    all_fitted <- Filter(Negate(is.null), all_fitted)
+    all_fitted <- lapply(model$all_fitted_functions, function(v) {
+      if (is.null(v)) {
+        NULL
+      } else {
+        v[[type]]
+      }
+    })
     
-    if (length(all_fitted) == 0L) {
+    has_any_type_fit <- vapply(
+      all_fitted,
+      function(v) !is.null(v) && length(v) > 0L,
+      logical(1L)
+    )
+    
+    if (!any(has_any_type_fit)) {
       stop(
         paste0("! No fitted functions found for type = '", type, "'."),
         call. = FALSE
@@ -480,23 +547,26 @@ plot.mfpi <- function(x,
   # Determine metric display
   # ---------------------------------------------------------------------------
   crit_used <- if (is.null(model$criterion)) "pvalue" else model$criterion
-  
-  metric_spec <- switch(
-    crit_used,
-    pvalue = list(col = "pvalue",             label = "p"),
-    aic    = list(col = "AIC_main_minus_int", label = "dAIC"),
-    bic    = list(col = "BIC_main_minus_int", label = "dBIC"),
-    list(col = "pvalue", label = "p")
-  )
-  
   padj      <- if (!is.null(model$p_adjust_method)) model$p_adjust_method else "none"
   adjusting <- padj != "none" && crit_used == "pvalue"
+  p_scope   <- if (!is.null(model$p_adjust_scope)) model$p_adjust_scope else "variables"
   
   subtitle_lookup <- list()
   
+  add_subtitle_info <- function(var, form, metric, label, metric_adj = NULL) {
+    subtitle_lookup[[var]] <<- list(
+      type       = form,
+      metric     = metric,
+      label      = label,
+      metric_adj = metric_adj
+    )
+  }
+  
   if (!is.null(type)) {
-    explore_label <- if (adjusting) "p_raw" else metric_spec$label
-    all_metrics   <- model$all_model_metrics
+    # Explicit candidate plots show candidate-specific metrics. For p-values,
+    # show p_raw and, when the selected adjustment scope produced a stored
+    # adjusted p-value for that candidate, also p_adj.
+    all_metrics <- model$all_model_metrics
     
     if (!is.null(all_metrics) && nrow(all_metrics) > 0L) {
       type_rows <- all_metrics[
@@ -508,70 +578,141 @@ plot.mfpi <- function(x,
       for (i in seq_len(nrow(type_rows))) {
         v <- type_rows$variable[i]
         
-        subtitle_lookup[[v]] <- list(
-          type       = type,
-          metric     = type_rows[[metric_spec$col]][i],
-          label      = explore_label,
-          metric_adj = NULL
-        )
+        if (crit_used == "pvalue") {
+          metric <- if ("pvalue" %in% names(type_rows)) {
+            type_rows$pvalue[i]
+          } else {
+            NA_real_
+          }
+          metric_adj <- if (adjusting && "p_adjusted" %in% names(type_rows) &&
+                            !is.na(type_rows$p_adjusted[i])) {
+            type_rows$p_adjusted[i]
+          } else {
+            NULL
+          }
+          add_subtitle_info(v, type, metric, "p_raw", metric_adj)
+        } else if (crit_used == "aic") {
+          metric <- if ("AIC_main_minus_int" %in% names(type_rows)) {
+            type_rows$AIC_main_minus_int[i]
+          } else {
+            NA_real_
+          }
+          add_subtitle_info(v, type, metric, "dAIC", NULL)
+        } else if (crit_used == "bic") {
+          metric <- if ("BIC_main_minus_int" %in% names(type_rows)) {
+            type_rows$BIC_main_minus_int[i]
+          } else {
+            NA_real_
+          }
+          add_subtitle_info(v, type, metric, "dBIC", NULL)
+        }
       }
     }
   } else if (!is.null(metrics) && nrow(metrics) > 0L) {
-    adj_pvals <- NULL
-    
-    if (adjusting) {
-      vw <- model$var_winners
-      
-      if (!is.null(vw)) {
-        raw_pvals <- vapply(
-          vw,
-          function(w) {
-            if (is.null(w$fit)) NA_real_ else w$metric$pvalue[1L]
-          },
-          numeric(1L)
-        )
-        
-        adj_pvals <- stats::p.adjust(raw_pvals, method = padj)
-        names(adj_pvals) <- names(vw)
-      }
-    }
-    
+    # Selected/final plots use the final decision metric. For AIC/BIC this is
+    # the global model-class improvement when available. For p-values this is
+    # the selected candidate's raw and stored adjusted p-value when available.
     for (i in seq_len(nrow(metrics))) {
       v <- metrics$variable[i]
+      form <- metrics$type[i]
       
-      subtitle_lookup[[v]] <- list(
-        type       = metrics$type[i],
-        metric     = metrics[[metric_spec$col]][i],
-        label      = metric_spec$label,
-        metric_adj = if (!is.null(adj_pvals) && v %in% names(adj_pvals)) {
-          adj_pvals[[v]]
+      if (crit_used == "pvalue") {
+        metric <- if ("pvalue" %in% names(metrics)) metrics$pvalue[i] else NA_real_
+        metric_adj <- if (adjusting && "p_adjusted" %in% names(metrics) &&
+                          !is.na(metrics$p_adjusted[i])) {
+          metrics$p_adjusted[i]
         } else {
           NULL
         }
-      )
+        add_subtitle_info(v, form, metric, "p_raw", metric_adj)
+      } else if (crit_used == "aic") {
+        if ("AIC_global_improvement" %in% names(metrics)) {
+          metric <- metrics$AIC_global_improvement[i]
+          label <- "global dAIC"
+        } else {
+          metric <- if ("AIC_main_minus_int" %in% names(metrics)) {
+            metrics$AIC_main_minus_int[i]
+          } else {
+            NA_real_
+          }
+          label <- "dAIC"
+        }
+        add_subtitle_info(v, form, metric, label, NULL)
+      } else if (crit_used == "bic") {
+        if ("BIC_global_improvement" %in% names(metrics)) {
+          metric <- metrics$BIC_global_improvement[i]
+          label <- "global dBIC"
+        } else {
+          metric <- if ("BIC_main_minus_int" %in% names(metrics)) {
+            metrics$BIC_main_minus_int[i]
+          } else {
+            NA_real_
+          }
+          label <- "dBIC"
+        }
+        add_subtitle_info(v, form, metric, label, NULL)
+      }
     }
   }
   
   # ---------------------------------------------------------------------------
   # Group-level metadata
   # ---------------------------------------------------------------------------
-  group_levels <- model$group_levels_original
-  group_label  <- model$group_var
+  group_levels_original <- model$group_levels_original
+  group_levels_new      <- model$group_levels_new
+  group_label           <- model$group_var
   
-  if (is.null(group_levels) || length(group_levels) < 2L) {
+  if (is.null(group_levels_original) || length(group_levels_original) < 2L) {
     stop(
       "! `model$group_levels_original` must contain at least two group levels.",
       call. = FALSE
     )
   }
   
-  ref_level <- group_levels[1L]
-  non_ref   <- group_levels[-1L]
+  if (is.null(group_levels_new) || length(group_levels_new) != length(group_levels_original)) {
+    group_levels_new <- seq_along(group_levels_original) - 1L
+  }
+  
+  ref_code  <- group_levels_new[1L]
+  non_ref_code <- group_levels_new[-1L]
+  ref_label <- as.character(group_levels_original[1L])
+  non_ref_label <- as.character(group_levels_original[-1L])
+  
+  resolve_line_types <- function(labels) {
+    if (is.null(line_types)) {
+      return(stats::setNames(rep("solid", length(labels)), labels))
+    }
+    
+    lt_names <- names(line_types)
+    has_names <- !is.null(lt_names) && any(nzchar(lt_names))
+    
+    if (has_names) {
+      missing_labels <- setdiff(labels, lt_names)
+      if (length(missing_labels) > 0L) {
+        stop(
+          "! Named `line_types` must include entries for the original group labels used in the plot: ",
+          paste(missing_labels, collapse = ", "),
+          ".",
+          call. = FALSE
+        )
+      }
+      return(stats::setNames(unname(line_types[labels]), labels))
+    }
+    
+    if (length(line_types) != 2L) {
+      stop(
+        "! Unnamed `line_types` must have length 2: one for the reference group and one for the comparison group.",
+        call. = FALSE
+      )
+    }
+    
+    stats::setNames(line_types, labels)
+  }
   
   # ---------------------------------------------------------------------------
   # Helper: subtitle
   # ---------------------------------------------------------------------------
-  make_subtitle <- function(var) {
+  make_subtitle <- function(var, grp_label_value) {
     info <- subtitle_lookup[[var]]
     
     if (is.null(info)) {
@@ -586,7 +727,7 @@ plot.mfpi <- function(x,
       info$type
     )
     
-    lbl <- if (!is.null(info$label)) info$label else metric_spec$label
+    lbl <- if (!is.null(info$label)) info$label else "metric"
     
     val_str <- if (is.null(info$metric) || is.na(info$metric)) {
       "NA"
@@ -596,26 +737,28 @@ plot.mfpi <- function(x,
       formatC(info$metric, format = "f", digits = 2)
     }
     
-    base <- sprintf("%s  |  %s  |  %s = %s", var, type_str, lbl, val_str)
+    contrast_text <- sprintf("%s: %s vs %s", group_label, grp_label_value, ref_label)
+    
+    metric_text <- sprintf("%s = %s", lbl, val_str)
     
     if (!is.null(info$metric_adj) && !is.na(info$metric_adj)) {
       adj_str <- formatC(info$metric_adj, format = "g", digits = 3)
-      base <- sprintf("%s (p_adj = %s)", base, adj_str)
+      metric_text <- sprintf("%s (p_adj = %s)", metric_text, adj_str)
     }
     
-    base
+    sprintf("type = %s; %s; %s", type_str, contrast_text, metric_text)
   }
   
   # ---------------------------------------------------------------------------
   # Helper: fitted plot for one variable / group comparison
   # ---------------------------------------------------------------------------
-  make_fitted_plot <- function(var, data_mat, grp_j) {
-    col_ref    <- sprintf("f%s", ref_level)
-    col_grp    <- sprintf("f%s", grp_j)
-    col_ref_lo <- sprintf("f%s_lower", ref_level)
-    col_ref_hi <- sprintf("f%s_upper", ref_level)
-    col_grp_lo <- sprintf("f%s_lower", grp_j)
-    col_grp_hi <- sprintf("f%s_upper", grp_j)
+  make_fitted_plot <- function(var, data_mat, grp_code, grp_label_value) {
+    col_ref    <- sprintf("f%s", ref_code)
+    col_grp    <- sprintf("f%s", grp_code)
+    col_ref_lo <- sprintf("f%s_lower", ref_code)
+    col_ref_hi <- sprintf("f%s_upper", ref_code)
+    col_grp_lo <- sprintf("f%s_lower", grp_code)
+    col_grp_hi <- sprintf("f%s_upper", grp_code)
     
     needed <- c(var, col_ref, col_grp)
     
@@ -636,8 +779,8 @@ plot.mfpi <- function(x,
         paste0(
           "! Skipping fitted plot for ",
           var,
-          " (grp ",
-          grp_j,
+          " (group ",
+          grp_label_value,
           "): missing columns: ",
           paste(missing, collapse = ", ")
         ),
@@ -669,6 +812,19 @@ plot.mfpi <- function(x,
     ref_df <- ref_df[order(ref_df$x), , drop = FALSE]
     grp_df <- grp_df[order(grp_df$x), , drop = FALSE]
     
+    ref_df$group <- ref_label
+    grp_df$group <- grp_label_value
+    line_df <- rbind(ref_df[, c("x", "y", "group"), drop = FALSE],
+                     grp_df[, c("x", "y", "group"), drop = FALSE])
+    line_df$group <- factor(
+      line_df$group,
+      levels = c(ref_label, grp_label_value)
+    )
+    
+    group_values <- levels(line_df$group)
+    colour_values <- stats::setNames(c(colour_ref, colour_grp), group_values)
+    linetype_values <- resolve_line_types(group_values)
+    
     p <- ggplot2::ggplot()
     
     if (isTRUE(show_ci_fitted)) {
@@ -677,51 +833,52 @@ plot.mfpi <- function(x,
           data = ref_df,
           ggplot2::aes(x = .data$x, ymin = .data$lo, ymax = .data$hi),
           fill  = colour_ref,
-          alpha = ribbon_alpha
-        )
-    }
-    
-    p <- p +
-      ggplot2::geom_line(
-        data = ref_df,
-        ggplot2::aes(x = .data$x, y = .data$y),
-        colour    = colour_ref,
-        linewidth = linewidth
-      )
-    
-    if (isTRUE(show_ci_fitted)) {
-      p <- p +
+          alpha = ribbon_alpha,
+          show.legend = FALSE
+        ) +
         ggplot2::geom_ribbon(
           data = grp_df,
           ggplot2::aes(x = .data$x, ymin = .data$lo, ymax = .data$hi),
           fill  = colour_grp,
-          alpha = ribbon_alpha
+          alpha = ribbon_alpha,
+          show.legend = FALSE
         )
     }
     
     p <- p +
       ggplot2::geom_line(
-        data = grp_df,
-        ggplot2::aes(x = .data$x, y = .data$y),
-        colour    = colour_grp,
+        data = line_df,
+        ggplot2::aes(x = .data$x, y = .data$y,
+                     colour = .data$group, linetype = .data$group),
         linewidth = linewidth
       ) +
+      ggplot2::scale_colour_manual(values = colour_values, name = group_label) +
+      ggplot2::scale_linetype_manual(values = linetype_values, name = group_label) +
       ggplot2::xlab(var) +
-      ggplot2::ylab("Fitted linear predictor") +
+      ggplot2::ylab("Fitted function") +
       ggplot2::labs(
         title = if (show_title) {
-          sprintf(
-            "%s: group %s (red) vs group %s (blue)",
-            group_label,
-            grp_j,
-            ref_level
-          )
+          "Group-specific fitted functions"
         } else {
           NULL
         },
-        subtitle = if (show_title) make_subtitle(var) else NULL
+        subtitle = if (show_title) make_subtitle(var, grp_label_value) else NULL
       ) +
       ggplot2::theme_bw()
+    
+    if (legend_position == "inside") {
+      p <- p +
+        ggplot2::theme(
+          legend.position = legend_inside,
+          legend.justification = legend_justification,
+          legend.background = ggplot2::element_rect(
+            fill = grDevices::adjustcolor("white", alpha.f = 0.85),
+            colour = "grey80"
+          )
+        )
+    } else {
+      p <- p + ggplot2::theme(legend.position = legend_position)
+    }
     
     if (isTRUE(show_rug)) {
       rug_df <- data.frame(x = xvec)
@@ -741,10 +898,10 @@ plot.mfpi <- function(x,
   # ---------------------------------------------------------------------------
   # Helper: difference plot for one variable / group comparison
   # ---------------------------------------------------------------------------
-  make_diff_plot <- function(var, data_mat, grp_j) {
-    col_diff  <- sprintf("f%s-f%s", grp_j, ref_level)
-    col_lower <- sprintf("(f%s-f%s)_lower", grp_j, ref_level)
-    col_upper <- sprintf("(f%s-f%s)_upper", grp_j, ref_level)
+  make_diff_plot <- function(var, data_mat, grp_code, grp_label_value) {
+    col_diff  <- sprintf("f%s-f%s", grp_code, ref_code)
+    col_lower <- sprintf("(f%s-f%s)_lower", grp_code, ref_code)
+    col_upper <- sprintf("(f%s-f%s)_upper", grp_code, ref_code)
     
     needed <- c(var, col_diff)
     
@@ -759,8 +916,8 @@ plot.mfpi <- function(x,
         paste0(
           "! Skipping difference plot for ",
           var,
-          " (grp ",
-          grp_j,
+          " (group ",
+          grp_label_value,
           "): missing columns: ",
           paste(missing, collapse = ", ")
         ),
@@ -807,19 +964,16 @@ plot.mfpi <- function(x,
         linewidth = linewidth
       ) +
       ggplot2::xlab(var) +
-      ggplot2::ylab(sprintf("f%s(x) - f%s(x)", grp_j, ref_level)) +
+      ggplot2::ylab(sprintf("f(%s = %s) - f(%s = %s)",
+                            group_label, grp_label_value,
+                            group_label, ref_label)) +
       ggplot2::labs(
         title = if (show_title) {
-          sprintf(
-            "%s: treatment effect (group %s - group %s)",
-            group_label,
-            grp_j,
-            ref_level
-          )
+          "Difference in fitted functions"
         } else {
           NULL
         },
-        subtitle = if (show_title) make_subtitle(var) else NULL
+        subtitle = if (show_title) make_subtitle(var, grp_label_value) else NULL
       ) +
       ggplot2::theme_bw()
     
@@ -847,27 +1001,28 @@ plot.mfpi <- function(x,
     data_mat <- as.data.frame(all_fitted[[var]])
     
     grp_plots <- stats::setNames(
-      vector("list", length(non_ref)),
-      sprintf("grp%s_vs_grp%s", non_ref, ref_level)
+      vector("list", length(non_ref_code)),
+      sprintf("grp%s_vs_grp%s", non_ref_code, ref_code)
     )
     
-    for (j in seq_along(non_ref)) {
-      grp_j <- non_ref[j]
+    for (j in seq_along(non_ref_code)) {
+      grp_j <- non_ref_code[j]
+      grp_label_value <- non_ref_label[j]
       
       p_out <- switch(
         plot_type,
         
         fitted = {
-          make_fitted_plot(var, data_mat, grp_j)
+          make_fitted_plot(var, data_mat, grp_j, grp_label_value)
         },
         
         difference = {
-          make_diff_plot(var, data_mat, grp_j)
+          make_diff_plot(var, data_mat, grp_j, grp_label_value)
         },
         
         both = {
-          p_fit  <- make_fitted_plot(var, data_mat, grp_j)
-          p_diff <- make_diff_plot(var, data_mat, grp_j)
+          p_fit  <- make_fitted_plot(var, data_mat, grp_j, grp_label_value)
+          p_diff <- make_diff_plot(var, data_mat, grp_j, grp_label_value)
           
           if (!is.null(p_fit) && !is.null(p_diff)) {
             patchwork::wrap_plots(p_fit, p_diff, ncol = 2L)

@@ -155,14 +155,17 @@ fit_quick <- mfpi(
 )
 print(fit_quick)
 ```
-The output is organised in three steps: the adjustment model selected by MFP
-(Step 1), the candidate interaction models (Step 2), and the interaction
-summary (Step 3). The `summary()` method adds a fourth step with the
-regression coefficients. The `plot()` method displays the group-specific fitted
-functions and the treatment-effect difference. The rest of this vignette
+The output is organised in steps. For p-value-based analyses, Step 1 shows
+the adjustment model selected by MFP, Step 2 shows the candidate interaction
+models, Step 3 shows the candidate p-value table, and Step 4 shows the final
+interaction summary. For AIC- and BIC-based analyses, the output contains the
+adjustment model, the candidate interaction models, and the interaction
+summary. The `summary()` method additionally prints the regression coefficients
+for retained interactions. The `plot()` method displays the group-specific
+fitted functions and the fitted-function difference. The rest of this vignette
 explains each component in detail.
 
-```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference for the age × rx interaction."}
+```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age × rx interaction."}
 plot(fit_quick, plot_type = "both")
 ```
 
@@ -192,21 +195,49 @@ selected variables. Specifically, the continuous variable currently being tested
 and the dummy variables corresponding to the grouping variable are excluded from
 the adjustment set.
 
-When several covariates are screened and `criterion = "pvalue"`, interaction
-p-values can be adjusted across `cont_vars` using the `p_adjust_method`
-argument. Available methods include `"holm"` (Bonferroni--Holm step-down),
-`"bonferroni"`, `"hochberg"`, `"BH"` (Benjamini--Hochberg), and `"BY"`. The
-default is `p_adjust_method = "none"`, meaning that the reported interaction
-p-values are unadjusted.
+When `criterion = "pvalue"`, multiplicity adjustment is controlled by two
+arguments. The argument `p_adjust_method` specifies the adjustment method, such
+as `"holm"`, `"bonferroni"`, `"hochberg"`, `"BH"`, or `"BY"`. The default is
+`p_adjust_method = "none"`, meaning that no multiplicity correction is applied.
+The argument `p_adjust_scope` defines the family of p-values to which that
+adjustment is applied.
 
-This correction is applied across the variables screened in `cont_vars`, not
-across the internal candidate models fitted by MFPI. The linear, FP1, and FP2
-models are treated as part of the functional-form selection procedure. Ideally,
-the analyst should decide in advance whether the interaction will be assessed
-using a linear, FP1, or FP2 functional form. The program returns results for all
-three functional forms; when one form has been prespecified, that form should be
-regarded as the primary analysis, while the remaining forms provide additional
-information for comparison.
+## P-value adjustment scope
+
+The argument `p_adjust_scope` specifies which p-values are included in the
+adjustment set. With the default `p_adjust_scope = "candidates"`, all candidate
+tests are adjusted together. This means that the raw p-values from every tested
+variable and every fitted functional form are put into one adjustment set.
+
+For example, suppose `age` has raw p-values 0.08, 0.03, and 0.06 for the
+linear, FP1, and FP2 candidates, respectively. Suppose also that `wt` has raw
+p-values 0.04, 0.20, and 0.11 for the linear, FP1, and FP2 candidates. With
+`p_adjust_scope = "candidates"`, the multiplicity adjustment is applied to all
+six candidate p-values: 0.08, 0.03, 0.06, 0.04, 0.20, and 0.11.
+
+The adjusted p-values are then placed back into the candidate table. For each
+variable, the candidate with the smallest adjusted p-value is selected as the
+variable-level candidate. The interaction is retained only if this selected
+candidate's adjusted p-value is below `p_interact`. If seven variables are
+screened and all three candidate forms are fitted for each variable, the
+adjustment is applied to up to 21 p-values. This option gives stronger
+protection against false positives because it accounts for searching across both
+variables and functional forms.
+
+With `p_adjust_scope = "variables"`, adjustment is done in two steps. First,
+within each variable, `mfpi()` chooses the candidate form with the smallest raw
+p-value. This gives one p-value per variable. Second, `p_adjust_method` is
+applied only to these selected variable-level p-values.
+
+Using the same example, the smallest raw p-value for `age` is 0.03 from the FP1
+candidate, and the smallest raw p-value for `wt` is 0.04 from the linear
+candidate. Therefore, the adjustment is applied only to these two selected
+p-values: 0.03 and 0.04. The non-selected candidate forms are still shown in the candidate table with
+their raw p-values, but they do not receive adjusted p-values because they were
+not included in the adjustment set. This option is less conservative, but it does not adjust for the internal
+functional-form search. It can be ideal when the functional
+form is prespecified.
+
 
 # The MFPI algorithm
 
@@ -240,6 +271,14 @@ For each variable in `cont_vars`, candidate interaction models are fitted using
 linear, FP1, and FP2 functions. The selection criterion, specified by
 `criterion`, determines how these candidate models are compared. The available
 criteria are `"pvalue"`, `"aic"`, and `"bic"`.
+
+For `criterion = "pvalue"`, all candidate p-values are collected before the
+final p-value adjustment and variable-level decisions are made. During verbose
+model fitting, the best candidate reported within each variable is therefore
+only provisional and is based on the raw p-value. After all variables and
+candidate forms have been evaluated, p-values are adjusted according to
+`p_adjust_method` and `p_adjust_scope`, and the final selected candidate and
+interaction decision are determined.
 
 ## The interaction model
 
@@ -287,7 +326,7 @@ scale. For logistic regression, it is the log-odds scale; for Poisson
 regression, it is the log-rate or log-mean scale; and for Cox models, it is the
 log-hazard scale.
 
-A useful way to display the interaction is the treatment-effect function,
+A useful way to display the interaction is the fitted-function difference,
 
 $$
 \hat{d}(z_i)
@@ -303,8 +342,9 @@ errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$
 are estimated using the delta method applied to the variance–covariance matrix
 of the fitted interaction model.
 
-The treatment-effect plot should be interpreted as a model-based visual summary.
-The confidence interval is pointwise and depends on the selected model.
+The fitted-function difference plot should be interpreted as a model-based
+visual summary. The confidence interval is pointwise and depends on the selected
+model.
 
 # Flexibility levels {#Flex}
 
@@ -318,7 +358,7 @@ option. Increasing flexibility allows more complex group-specific functional
 forms, but it also increases the risk of instability, especially in small
 samples or when the continuous covariate has a skewed distribution, influential
 observations, or sparse data in parts of its range. The appropriate flexibility
-level should therefore be chosen using subject matter knowledge, the expected
+level should therefore be chosen using subject-matter knowledge, the expected
 shape of the interaction, and sample-size considerations. For further details,
 see Royston and Sauerbrei (2004, 2013, 2014).
 
@@ -333,12 +373,13 @@ model are then held fixed and used at each level of the grouping variable. Thus,
 the same FP basis functions are used in all groups, and only the regression
 coefficients of these basis functions are allowed to differ between groups.
 
-Because the main-effects and interaction models share the same FP powers, they
-are nested. The interaction test is therefore a standard likelihood-ratio test
-comparing the two models, with $(K - 1) \times m$ degrees of freedom, where $K$
-is the number of groups and $m$ is the number of FP terms. Thus, $m = 1$ for FP1
-and $m = 2$ for FP2. For the common case of two groups, this gives 1 df for FP1
-and 2 df for FP2.
+Because the main-effects and interaction models use the same FP basis functions,
+the main-effects model is a restricted version of the interaction model. The
+interaction test is therefore a standard likelihood-ratio test comparing the two
+models, with $(K - 1) \times m$ degrees of freedom, where $K$ is the number of
+groups and $m$ is the number of FP terms. Thus, $m = 1$ for FP1 and $m = 2$ for
+FP2. For the common case of two groups, this gives 1 df for FP1 and 2 df for
+FP2.
 
 `flex1` corresponds to the original MFPI procedure proposed by Royston and
 Sauerbrei (2004). In the significance-level simulation study, Royston and
@@ -353,15 +394,18 @@ Sauerbrei (2014) recommended FP2 with `flex1`.
 `flex2` estimates FP powers from an interaction model rather than from the
 pooled main-effects model used by `flex1`. The powers are optimized over the
 levels of the grouping variable, but are constrained to be the same across
-groups. These same powers are then also used in the main-effects model.
+groups. These same powers are then also used in the corresponding main-effects
+model.
 
 Thus, `flex2` may select powers different from those selected by `flex1`,
-because power selection is informed by group-specific effects. However, the
-fitted interaction model still uses a common FP power set across groups; the
-group-specific functions differ through their regression coefficients.
+because power selection is informed by group-specific effects. However, once the
+powers have been selected, the same FP powers are used in both the
+main-effects and interaction models. The main-effects model is therefore nested
+within the interaction model.
 
-The models are non-nested (see [Note on non-nested comparisons](#note-on-non-nested-comparisons)),
-and the interaction test has the same nominal degrees of freedom as `flex1`.
+The interaction test uses the same nominal degrees of freedom as `flex1`,
+namely $(K - 1) \times m$, where $K$ is the number of groups and $m$ is the
+number of FP terms.
 
 In the simulations, FP1 with `flex2` had high power but slightly inflated
 significance levels. FP2 with `flex2` showed clearly inflated type I error and
@@ -373,15 +417,18 @@ was therefore not recommended as a routine choice.
 interaction model. The main-effects powers are selected from the pooled
 main-effects model, as in `flex1`, while the interaction powers are selected
 from a model allowing group-by-covariate interaction, as in `flex2`. These
-interaction powers are still constrained to be the same across groups, so
+interaction powers are constrained to be the same across groups, so
 group-specific functions differ through their regression coefficients rather
 than through group-specific FP powers.
 
-Because the main-effects and interaction models can use different FP power sets,
-the models are generally non-nested (see
-[Note on non-nested comparisons](#note-on-non-nested-comparisons)).
-The likelihood-ratio statistic is still computed and compared with a chi-square
-distribution using the nominal degrees of freedom: $(K - 1) \times m$.
+Because the main-effects and interaction models are allowed to use different FP
+power sets, the two fitted models may be non-nested. If the selected powers
+differ, the main-effects model is not simply obtained by imposing equality
+constraints on the interaction model, because the two models use different
+transformed covariate columns. If the selected powers happen to be the same, the
+usual nested-model interpretation applies. In all cases, the likelihood-ratio
+statistic is computed and compared with a chi-square distribution using the
+nominal degrees of freedom, $(K - 1) \times m$.
 
 In the significance-level simulation study of Royston and Sauerbrei (2013),
 FP1 with `flex3` had significance levels close to nominal. In the power study,
@@ -400,11 +447,18 @@ recommended as a routine choice.
 and interaction models to use separately selected FP powers. Its distinguishing
 feature is that the FP powers in the interaction model are also allowed to differ
 across the levels of the grouping variable. Thus, each group may have its own FP
-power set and its own regression coefficients. The models are non-nested (see
-[Note on non-nested comparisons](#note-on-non-nested-comparisons)).
-The interaction test uses $2(K - 1) \times m$ degrees of freedom, which is
-twice as many as `flex1`--`flex3` to account for the additional flexibility from
-allowing group-specific powers.
+power set and its own regression coefficients.
+
+Because `flex4` allows separate power selection for the main-effects and
+interaction models, and may also allow group-specific powers in the interaction
+model, the comparison may be non-nested. When the FP basis functions used in the
+main-effects and interaction models differ, the main-effects model is not a
+simple restriction of the interaction model. If the same basis functions are used
+in the fitted main-effects and interaction models, the comparison is closer to
+the usual nested-model setting. The interaction test uses
+$2(K - 1) \times m$ degrees of freedom, which is twice as many as
+`flex1`--`flex3` to account for the additional flexibility from allowing
+group-specific powers.
 
 In the simulation studies of Royston and Sauerbrei (2013, 2014), FP2 with
 `flex4` was conservative, with empirical significance levels around 2--3%
@@ -443,29 +497,42 @@ knitr::kable(
 Our implementation of `mfpi()` evaluates three functional-form candidates for
 each variable in `cont_vars`: linear, FP1, and FP2. Each candidate is evaluated
 using its corresponding interaction test, and the `criterion` parameter
-determines which candidate is selected. In the candidate table, the selected
-candidate is marked with `+`. This allows users to prespecify a preferred degree
-based on subject-matter reasoning while still using the other candidates for
-comparison and sensitivity assessment. For example, a user following the
-recommendation of Royston and Sauerbrei (2014) might focus on FP1 with `flex3`
-when there is no strong reason to expect a non-monotone treatment-effect
-function, while treating the linear and FP2 results as sensitivity checks.
+determines how candidate forms are compared. Candidate tables use `+` to mark
+the candidate selected for the variable-level decision. This allows users to
+prespecify a preferred degree based on subject-matter reasoning while still
+using the other candidates for comparison and sensitivity assessment. For
+example, a user following the recommendation of Royston and Sauerbrei (2014)
+might focus on FP1 with `flex3` when there is no strong reason to expect a
+non-monotone treatment-effect function, while treating the linear and FP2
+results as sensitivity checks.
 
-## Note on non-nested comparisons {#note-on-non-nested-comparisons}
+## Note on nested and non-nested comparisons {#note-on-non-nested-comparisons}
 
-For some MFPI specifications, particularly `flex3` and `flex4`, the
-main-effects and interaction models may use different FP power sets. In that
-case, the main-effects model is not simply a restricted version of the
-interaction model. The likelihood-ratio test statistic is still computed and
-compared with a chi-square distribution using the nominal degrees of freedom,
-but the resulting p-values lack a firm theoretical underpinning. The
-significance levels may therefore be liberal or conservative (Royston and
-Sauerbrei, 2013).
+Whether the main-effects and interaction models are nested depends on the FP
+basis functions used in the two models. If the same FP powers, and therefore the
+same transformed covariate columns, are used in both models, the main-effects
+model is nested within the interaction model.
+
+If the FP powers differ between the main-effects and interaction models, the two
+models no longer use the same covariate basis. In that case, the main-effects
+model is not nested within the interaction model. The likelihood-ratio statistic
+may still be computed from the fitted deviances and compared with a chi-square
+distribution using the nominal degrees of freedom, but the resulting p-values
+lack a firm theoretical underpinning. They should therefore be interpreted
+cautiously, because the significance levels may be liberal or conservative
+(Royston and Sauerbrei, 2013).
+
+This issue is most relevant for flexibility variants that allow separate power
+selection for the main-effects and interaction models, such as `flex3` and
+`flex4`. However, the nestedness of a particular fitted comparison should be
+judged from the selected FP basis functions, not only from the flexibility label.
+For example, a `flex3` fit may still give a nested comparison if the selected
+main-effects and interaction powers are the same.
 
 As an alternative, AIC or BIC may be used to compare non-nested models, since
-these criteria do not require one model to be a restricted version of the other.
-See the [Alternative selection criteria: AIC and BIC](#aic-bic) section for
-details.
+these criteria do not require the main-effects model to be nested within the
+interaction model. See the
+[Alternative selection criteria: AIC and BIC](#aic-bic) section for details.
 
 # Practical considerations
 
@@ -551,7 +618,7 @@ group-specific FP columns are centered:
 
 In both cases, centering affects the intercept and, when an interaction is
 present, the group dummy coefficients. It does not affect the interaction test,
-the treatment-effect function $\hat{f}_1(z) - \hat{f}_0(z)$, or the fitted
+the fitted-function difference $\hat{f}_1(z) - \hat{f}_0(z)$, or the fitted
 values.
 
 ## Handling non-positive values
@@ -651,7 +718,8 @@ fit_pre <- mfpi(
 
 ### Output: prespecified analysis
 
-Calling `print()` on the fitted object displays a structured three-step summary.
+Calling `print()` on the fitted object displays a structured summary. With
+`criterion = "pvalue"`, the output has four steps.
 
 ```{r print-pre}
 print(fit_pre)
@@ -672,26 +740,35 @@ interaction models for `age`.
 **Step 2: All interaction candidates.** For `age`, three candidate interaction
 models are fitted: linear, FP1, and FP2. Each row shows the candidate type, the
 deviance of the main-effects model, the deviance of the interaction model, the
-likelihood ratio test statistic, the p-value, and the information-criterion
-differences. AIC and BIC differences are computed as main-effects minus
-interaction, so positive values favour the interaction model. The best
-candidate, defined as the one with the smallest p-value, is flagged with `+`.
+likelihood-ratio statistic, the raw p-value, and the information-criterion
+differences. During model fitting, the `+` marker denotes the provisional best
+candidate by raw p-value.
 
-**Step 3: Interaction summary.** This compact table shows the selected
-functional form for `age` and its p-value. If the p-value is below
-`p_interact = 0.05`, the variable is marked with `*`, indicating a statistically
-significant interaction.
+**Step 3: Candidate p-value table.** For p-value-based analyses, this table
+shows the raw p-values for all candidate functional forms. If
+`p_adjust_scope = "candidates"`, adjusted p-values are also shown for all
+candidate rows because all candidate tests are included in the adjustment. If
+`p_adjust_scope = "variables"`, only raw p-values are shown in the candidate
+table; adjusted p-values are shown only for the selected candidate in the final
+interaction summary. The `+` marker identifies the selected candidate for each
+variable after applying the relevant p-value selection rule.
+
+**Step 4: Interaction summary.** This compact table shows one row per tested
+variable. It gives the selected functional form, the raw p-value, and the
+adjusted p-value used for the final decision. Variables whose final p-value is
+below `p_interact` are marked with `*`.
 
 ### Regression output {-}
 
-The `summary()` method adds a fourth section with the full regression
-coefficients of the winning interaction model.
+For p-value-based fits, the `summary()` method adds a fifth section with the
+full regression coefficients of retained interaction models. For AIC- and
+BIC-based fits, the regression output follows the interaction summary.
 
 ```{r summary-pre}
 summary(fit_pre)
 ```
 
-**Step 4: Regression output.** For each variable with a significant interaction,
+**Regression output.** For each variable with a significant interaction,
 the regression table from the fitted `coxph()` model is displayed. This table
 includes coefficient estimates, standard errors, z-values, and p-values for all
 terms in the model. The interaction model uses the naming convention
@@ -702,10 +779,11 @@ two terms per group are shown, for example `age01` and `age02` for group 0, and
 `age11` and `age12` for group 1.
 
 The group dummy coefficient, for example `rx1`, represents the main effect of
-the grouping variable. The p-values in Step 4 are the standard Wald-test
-p-values reported by `summary.coxph()`. These p-values do not account for the
-degrees of freedom used during FP power selection. Therefore, the appropriate
-p-value for testing the interaction is the one reported in Step 3.
+the grouping variable. The p-values in the regression output are the standard
+Wald-test p-values reported by `summary.coxph()`. These p-values do not account
+for the degrees of freedom used during FP power selection. Therefore, the
+appropriate p-value for testing the interaction is the one reported in the
+interaction summary.
 
 ### Visualising the interaction
 
@@ -716,24 +794,40 @@ variable retained by the MFPI procedure.
 The main argument is `plot_type`, which controls the display:
 
 - `"fitted"` overlays the group-specific fitted functions.
-- `"difference"` plots the pointwise treatment-effect difference,
+- `"difference"` plots the pointwise fitted-function difference,
   $\hat f_1(x) - \hat f_0(x)$.
 - `"both"` places the fitted and difference plots side by side; this requires
   the `patchwork` package.
 
 Two additional arguments control the graphical output. `show_ci_fitted` adds
 95% pointwise confidence bands to the group-specific fitted curves, while
-`show_ci_diff` controls the confidence band for the treatment-effect difference
+`show_ci_diff` controls the confidence band for the fitted-function difference
 curve. By default, fitted-function confidence bands are suppressed and the
 difference-curve confidence band is shown. The argument `show_rug = TRUE` adds
 rug marks showing the observed values of the continuous variable.
 
-Each plot includes a title describing the group comparison and a subtitle giving
-the variable name, selected functional form, and selection metric. For models
-selected by p-value, the subtitle shows the interaction-test p-value. For models
-selected by AIC or BIC, it shows `dAIC` or `dBIC`, respectively, where positive
-values favour the interaction model. If multiplicity adjustment was used, plots
-of selected variables show both the raw and adjusted p-values.
+Each plot includes a compact title and subtitle. The fitted-function plot is
+titled `"Group-specific fitted functions"`, and the difference plot is titled
+`"Difference in fitted functions"`. The subtitle gives the selected or displayed
+functional form, the group contrast using the original group labels, and the
+relevant selection metric. For example, a p-value subtitle may read
+`type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)`. For AIC or BIC,
+selected plots show the global improvement used for the final decision, such as
+`global dAIC`, while explicit candidate plots show the within-form candidate
+difference, such as `dAIC`.
+
+The fitted-function plot distinguishes groups using the legend and line
+aesthetics. Original group labels are used in the legend and plot annotations,
+rather than the internal recoded levels. By default, the legend is placed inside
+the fitted-function panel near the top-left. Its position can be changed using
+`legend_position`, `legend_inside`, and `legend_justification`.
+
+The `line_types` argument controls the linetypes for the group-specific fitted
+curves. If `line_types = NULL`, solid lines are used by default. Users may pass
+an unnamed vector matched to the group order, for example
+`line_types = c("solid", "dashed")`, or a named vector using the original group
+labels, for example
+`line_types = c("placebo" = "solid", "standard" = "dashed")`.
 
 #### Fitted functions
 
@@ -750,28 +844,28 @@ plot(fit_pre,
      show_rug = TRUE)
 ```
 
-#### Treatment effect difference
+#### Fitted-function difference
 
-The difference plot shows the pointwise treatment-effect function
-$\hat d(\text{age}) = \hat f_1(\text{age}) - \hat f_0(\text{age})$ with a
-horizontal reference line at zero. The confidence band is shown by default.
-Values above or below zero indicate how the fitted treatment effect
-differs between the comparison and reference groups at a given age. Regions
-where the confidence band excludes zero suggest age ranges in which this fitted
-difference is distinguishable from zero.
+The difference plot shows the fitted-function difference between the comparison
+group and the reference group, using the original group labels. For example, the
+y-axis may be labelled `f(rx = 1) - f(rx = 0)` or
+`f(treatment = standard) - f(treatment = placebo)`. A horizontal reference line
+at zero is added. The confidence band is shown by default. Positive values
+indicate that the fitted function is higher in the comparison group than in the
+reference group at that covariate value.
 
-```{r plot-diff-pre, fig.cap = "Treatment-effect difference for the age × rx interaction."}
+```{r plot-diff-pre, fig.cap = "Fitted-function difference for the age × rx interaction."}
 plot(fit_pre, plot_type = "difference")
 ```
 
 #### Side-by-side display
 
-The `"both"` option combines the fitted function plot and the treatment effect
+The `"both"` option combines the fitted-function plot and the fitted-function
 difference plot in a single display. This side-by-side view makes it easier to
 see how differences between the group-specific fitted functions change across
 the range of the continuous variable.
 
-```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference for the age × rx interaction."}
+```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age × rx interaction."}
 plot(fit_pre, plot_type = "both")
 ```
 
@@ -798,10 +892,10 @@ unstable. Such comparisons should be interpreted using subject-matter knowledge,
 ideally with the set of candidate functional forms specified before the analysis.
 
 The following example displays the FP2 candidate fitted functions and
-treatment-effect difference for `age`, regardless of whether FP2 was the
+fitted-function difference for `age`, regardless of whether FP2 was the
 selected functional form:
 
-```{r plot-candidate-fp2-pre, fig.width = 10, fig.cap = "FP2 candidate fitted functions and treatment-effect difference for the age × rx interaction."}
+```{r plot-candidate-fp2-pre, fig.width = 10, fig.cap = "FP2 candidate fitted functions and fitted-function difference for the age × rx interaction."}
 plot(fit_pre,
      terms = "age",
      type = "fp2",
@@ -809,12 +903,13 @@ plot(fit_pre,
 ```
 
 When `type` is specified explicitly, the subtitle refers to the displayed
-candidate form. If p-value selection with multiplicity adjustment is used, the
-subtitle shows the raw candidate p-value, labelled as `p_raw`; the adjusted
-p-value is not shown because it applies to the selected winner, not necessarily
-to the displayed candidate form. In this example, multiplicity adjustment was
-not used, so the reported candidate p-value is unchanged by adjustment:
-`p_raw = p_adj = 0.027`.
+candidate form. For `criterion = "pvalue"`, the subtitle shows the raw candidate
+p-value. If `p_adjust_scope = "candidates"` and candidate-level adjusted
+p-values are available, the candidate adjusted p-value is also shown as
+`p_raw = ... (p_adj = ...)`. If `p_adjust_scope = "variables"`, adjusted
+p-values are shown only for the selected variable-level candidate in the
+interaction summary, because non-selected candidate forms are not part of the
+variable-level adjustment set.
 
 ## Using `flex3`: the recommended practical choice
 
@@ -850,7 +945,7 @@ flexibility level. The Step 2 interaction candidates may differ because `flex3`
 allows the main effects and interaction models to use different FP power sets. 
 In this example, the `flex1` and `flex3` analyses lead to the same result.
 
-```{r flex3-plot, fig.width = 10, fig.cap = "Fitted functions and treatment-effect difference using flex3."}
+```{r flex3-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference using flex3."}
 plot(fit_flex3, plot_type = "both")
 ```
 
@@ -869,8 +964,11 @@ therefore need to be adjusted for multiplicity.
 In this example, we screen seven continuous covariates for possible interaction
 with treatment. The model also includes `sg` as an adjustment covariate, but
 `sg` is not included in `cont_vars` and is therefore not tested for interaction.
-Since multiple interactions are tested, we apply the Holm step-down correction
-to control the family-wise error rate across the tested interaction variables.
+Since multiple variables and candidate functional forms are screened, we apply
+the Holm step-down correction. With the default
+`p_adjust_scope = "candidates"`, the adjustment is applied across all fitted
+candidate interaction tests, that is, across all tested variables and candidate
+functional forms.
 
 ```{r exploratory}
 fit_exp <- mfpi(
@@ -884,7 +982,8 @@ fit_exp <- mfpi(
   family            = "cox",
   select            = 0.05,
   alpha             = 0.05,
-  p_adjust_method   = "holm"
+  p_adjust_method   = "holm",
+  p_adjust_scope    = "candidates"
 )
 ```
 
@@ -898,18 +997,24 @@ print(fit_exp)
 and the same MFP settings are used.
 
 **Step 2** shows the fitted interaction candidates for each variable in
-`cont_vars`. The best candidate form for each variable is marked by `+`.
+`cont_vars`. During fitting, the best candidate form by raw p-value is marked by
+`+` only provisionally.
 
-**Step 3** is the key table for the exploratory analysis. It shows one row per
-tested interaction variable, giving the winning functional form, the raw
-interaction p-value, and the Holm-adjusted p-value. Variables whose adjusted
-p-value falls below `p_interact = 0.05` are marked with `*`.
+**Step 3** shows the candidate p-value table. With
+`p_adjust_scope = "candidates"`, each candidate row has both a raw and an
+adjusted p-value. The `+` marker identifies the selected candidate form for each
+variable after candidate-level p-value adjustment.
+
+**Step 4** is the final interaction summary. It shows one row per tested
+variable, giving the selected functional form, the raw p-value, and the adjusted
+p-value used for the final decision. Variables whose adjusted p-value falls
+below `p_interact = 0.05` are marked with `*`.
 
 In an exploratory analysis, the adjusted p-value is the one used for the
 selection decision. Variables marked with `*` are candidates for genuine
-treatment-by-covariate interaction after accounting for the number of
-interaction tests performed. Variables without `*` do not provide sufficient
-evidence of interaction after multiplicity adjustment.
+treatment-by-covariate interaction after accounting for the specified p-value
+adjustment family. Variables without `*` do not provide sufficient evidence of
+interaction after multiplicity adjustment.
 
 ### Regression output for selected variables
 
@@ -917,10 +1022,10 @@ evidence of interaction after multiplicity adjustment.
 summary(fit_exp)
 ```
 
-Step 4 prints the regression output only for variables whose interaction was
-selected (those marked with `*` in Step 3). As before, the correct interaction
-test p-values are those from Step 3, not the Wald p-values in the regression
-table.
+For p-value-based fits, Step 5 prints the regression output only for variables
+whose interaction was selected, that is, variables marked with `*` in Step 4. As
+before, the correct interaction test p-values are those from the interaction
+summary, not the Wald p-values in the regression table.
 
 ### Plotting selected variables
 
@@ -947,14 +1052,14 @@ decision is supported by the data.
 ## Alternative selection criteria: AIC and BIC {#aic-bic}
 
 In the examples above, the default `criterion = "pvalue"` was used. With this
-criterion, `mfpi()` first evaluates the linear, FP1, and FP2 interaction
-models for each variable under test. Candidate models with p-values below
-`p_interact` are considered eligible for selection. If more than one candidate
-meets this threshold, the candidate with the smallest p-value is retained as
-the selected interaction model. If none of the candidates has a p-value below
-`p_interact`, no interaction is retained for that variable. For `flex3` and `flex4`, the main-effects and
-interaction models may be non-nested, so the likelihood-ratio-test p-values lack
-a firm theoretical underpinning; see the
+criterion, `mfpi()` evaluates the linear, FP1, and FP2 interaction models for
+each variable under test. Raw candidate p-values are then adjusted according to
+`p_adjust_method` and `p_adjust_scope`. For each variable, the selected
+candidate is the form with the smallest final p-value under the chosen
+adjustment scope. The interaction is retained if that final p-value is below
+`p_interact`. For `flex3` and `flex4`, the main-effects and interaction models
+may be non-nested, so the likelihood-ratio-test p-values lack a firm theoretical
+underpinning; see the
 [Note on non-nested comparisons](#note-on-non-nested-comparisons) section.
 
 As an alternative, `mfpi()` supports model selection based on information
@@ -962,29 +1067,33 @@ criteria via `criterion = "aic"` or `criterion = "bic"`. Under these criteria,
 information criteria are used in both stages of the analysis: first to select
 the MFP adjustment model, and then to compare the candidate interaction models.
 
-For the interaction comparison, models are compared using the difference
+For AIC and BIC, the final decision is based on a model-class comparison. For
+each tested variable, `mfpi()` first identifies the best no-interaction model
+among the linear, FP1, and FP2 main-effects candidates, and the best interaction
+model among the corresponding interaction candidates. The global improvement is
 
 \[
-\Delta\mathrm{IC}
+\Delta \mathrm{IC}_{\mathrm{global}}
 =
-\mathrm{IC}_{\mathrm{main}}
+\min_f \mathrm{IC}_{\mathrm{main}, f}
 -
-\mathrm{IC}_{\mathrm{interaction}},
+\min_f \mathrm{IC}_{\mathrm{interaction}, f},
 \]
 
-where IC denotes either AIC or BIC. A positive value means that the interaction
-model has the smaller information criterion than the corresponding main-effects
-model. The candidate with the largest \(\Delta\mathrm{IC}\) is selected, and the
-interaction is retained only if this difference exceeds `min_improvement`
-(default `2`). Small positive values of \(\Delta\mathrm{IC}\) provide little
-evidence of a meaningful improvement; a threshold of 2 is commonly used as a
-rough guide.
+where \(f\) indexes the candidate functional forms. Interaction is retained if
+this global improvement exceeds `min_improvement`.
+
+If interaction is retained, the selected interaction form is the form with the
+smallest absolute interaction-model IC. If interaction is not retained, the best
+no-interaction form is retained. The within-form differences
+`AIC_main_minus_int` and `BIC_main_minus_int` remain useful diagnostics for each
+candidate form but are not used as the final AIC/BIC selection rule.
 
 The `criterion` argument therefore affects two stages of the analysis. In Step
 1, it controls selection of the MFP adjustment model, including both variable
-selection and functional-form selection. In Step 2, it determines which
-candidate interaction model is preferred and whether the interaction is
-retained.
+selection and functional-form selection. In the interaction analysis, it
+determines how the candidate interaction forms are compared and whether the
+interaction is retained.
 
 BIC usually penalizes model complexity more strongly than AIC. AIC adds a fixed
 penalty of 2 for each model parameter, whereas BIC adds a penalty of
@@ -1001,8 +1110,9 @@ to p-values, not to information criteria.
 ### Example: BIC-based selection
 
 We repeat the exploratory analysis using BIC as the selection criterion. The
-`min_improvement` threshold is set to 2, meaning that the interaction model must
-improve BIC by at least 2 units relative to the main-effects model.
+`min_improvement` threshold is set to 2, meaning that the best interaction
+model class must improve BIC by at least 2 units relative to the best
+main-effects model class.
 
 ```{r bic-exploratory}
 fit_bic <- mfpi(
@@ -1029,18 +1139,19 @@ print(fit_bic)
 now uses BIC for variable selection and FP degree choice, it may retain a
 different set of adjustment variables or select different functional forms.
 
-**Step 2** shows the same three candidates (linear, FP1, FP2) per variable, but
-the decisive column is now `BIC_main_minus_int` rather than `pvalue`. The `+`
-marker flags the candidate with the largest BIC improvement for each variable.
-The p-values and AIC differences are still shown for comparison, but BIC
-governs the selection.
+**Step 2** shows the same three candidates (linear, FP1, FP2) per variable. For
+BIC selection, the candidate table still reports within-form
+`BIC_main_minus_int` values as diagnostics. The final interaction candidate is
+chosen using the absolute `BIC_interaction` among interaction candidates, while
+the final retain/drop decision is based on the global BIC improvement comparing
+the best interaction model class with the best no-interaction model class.
 
-**Step 3** now displays one row per variable with the column `dBIC` instead of
-`pvalue`. Variables whose dBIC exceeds `min_improvement = 2` are marked with
-`*`. A positive dBIC means the interaction model is preferred by BIC; a negative
-or small positive value means the main-effects model is adequate. Because BIC
-penalizes complexity more heavily, it is common for BIC-based selection to retain
-fewer interactions than AIC-based selection.
+**Step 3** displays one row per variable with the selected interaction form, the
+best main-effects form, the best main-effects IC, the best interaction IC, and
+the global dBIC. Variables whose global dBIC exceeds `min_improvement = 2` are
+marked with `*`. Because BIC penalizes model complexity more heavily than AIC,
+it is common for BIC-based selection to retain fewer interactions than
+AIC-based selection.
 
 ### Regression output and plots
 
@@ -1048,9 +1159,11 @@ fewer interactions than AIC-based selection.
 summary(fit_bic)
 ```
 
-Step 4 shows the regression output for variables selected under the BIC
-criterion. The plot subtitles adapt automatically to show `dBIC` rather than
-p-values.
+The regression output shows fitted models for variables selected under the BIC
+criterion. Plot subtitles show `global dBIC` for selected BIC plots. When a
+specific candidate form is requested with `type = "linear"`, `"fp1"`, or
+`"fp2"`, the subtitle shows the within-form candidate `dBIC` for that displayed
+form.
 
 ```{r plot-bic-fitted, fig.cap = "Fitted functions for variables selected by BIC."}
 plot(fit_bic, plot_type = "both")
@@ -1088,11 +1201,13 @@ fit_logistic <- mfpi(
 print(fit_logistic)
 ```
 
-The output follows the same three-step structure as the Cox model. The
-interaction test and treatment-effect function are now on the log-odds scale.
+The output follows the same structure as the Cox model. With
+`criterion = "pvalue"`, the printed output includes the candidate p-value table
+before the final interaction summary. The interaction test and fitted-function
+difference are now on the log-odds scale.
 Plotting works identically:
 
-```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and treatment-effect difference for age × rx."}
+```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and fitted-function difference for age × rx."}
 plot(fit_logistic, plot_type = "both")
 ```
 
@@ -1108,10 +1223,13 @@ names(fit_pre)
 Key components include:
 
 - `adjustment_model`: the full `mfp2` object from the MFP adjustment step.
-- `all_model_metrics`: a data frame of evaluation metrics for all candidates
-  (linear, FP1, FP2) for every variable in `cont_vars`.
-- `best_model_metrics`: metrics for the selected (winning) interaction model
-  per variable.
+- `all_model_metrics`: a data frame of evaluation metrics for all candidate
+  models (`linear`, `fp1`, `fp2`) for every variable in `cont_vars`. For
+  p-value-based analyses it includes raw p-values and, when applicable,
+  candidate-level adjusted p-values.
+- `best_model_metrics`: one row per tested variable, containing the selected
+  candidate form and the metric used for the final interaction decision, such as
+  `p_adjusted`, `AIC_global_improvement`, or `BIC_global_improvement`.
 - `best_interaction_model`: a named list of fitted model objects for selected
   variables.
 - `all_interaction_models`: a named list of lists containing all three
@@ -1121,6 +1239,8 @@ Key components include:
 - `winsorize_limits`: the actual Winsorisation cutoffs applied.
 - `group_levels_original` and `group_levels_new`: the original and remapped
   factor levels of `group_var`.
+- `p_adjust_scope`: the p-value adjustment scope used for p-value-based
+  analyses, either `"candidates"` or `"variables"`.
 - `var_winners`: a named list of per-variable best candidates, including those
   that did not reach significance.
 

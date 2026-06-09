@@ -15,20 +15,8 @@
 \code{x} invisibly.
 }
 \description{
-Displays a structured three-step summary of an \code{"mfpi"} fit:
-\enumerate{
-\item The adjustment model selected by MFP, showing \code{fp_terms}
-for retained variables and a list of dropped variables.
-\item All interaction candidates (linear, FP1, FP2) for every variable
-in \code{cont_vars}, with the best candidate per variable flagged
-by \code{+}.
-\item A compact interaction summary showing the winning functional form
-and the decisive metric for each tested variable. When
-\code{p_adjust_method != "none"}, both raw and adjusted p-values are
-shown. Selected variables are marked with \code{*}.
-}
-}
-\details{
-Regression output for the winning models is available via
-\code{summary.mfpi()}.
+Displays the adjustment model, candidate interaction models, and the final
+interaction decision summary. For \code{criterion = "pvalue"}, an additional
+candidate p-value table is printed before the final summary so that raw and
+adjusted p-values can be inspected separately.
 }

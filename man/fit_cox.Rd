@@ -22,7 +22,7 @@ fit_cox(
 
 \item{y}{a \code{Surv} object.}
 
-\item{strata, control, rownames, nocenter}{passed to \code{\link[survival:agreg.fit]{survival::coxph.fit()}}.}
+\item{strata, control, rownames, nocenter}{passed to \code{\link[survival:coxph.fit]{survival::coxph.fit()}}.}
 
 \item{weights}{a numeric vector of length nobs of 'prior weights' to be used
 in the fitting process.}
@@ -34,7 +34,7 @@ to be included in the linear predictor during fitting.}
 See \code{\link[survival:coxph]{survival::coxph()}}.}
 
 \item{fast}{a logical which determines how the model is fitted. The default
-\code{TRUE} uses fast fitting routines (i.e. \code{\link[survival:agreg.fit]{survival::coxph.fit()}}), while
+\code{TRUE} uses fast fitting routines (i.e. \code{\link[survival:coxph.fit]{survival::coxph.fit()}}), while
 \code{FALSE}uses the normal fitting routines (\code{\link[survival:coxph]{survival::coxph()}}) (used for
 the final output of \code{mfp2}).}
 }

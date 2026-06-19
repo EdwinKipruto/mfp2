@@ -71,7 +71,7 @@ are displayed.}
 when the covariate includes a spike-at-zero component (\code{spike_dec = 1}).}
 
 \item{linetype}{Character value. Line type for the partial predictor.
-See \code{\link[ggplot2:geom_path]{ggplot2::geom_line()}} for options.}
+See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}} for options.}
 
 \item{linewidth}{Numeric value. Width of the line representing
 the partial predictor.}

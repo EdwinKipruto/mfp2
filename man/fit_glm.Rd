@@ -20,7 +20,7 @@ in the fitting process. see \code{\link[stats:glm]{stats::glm()}} for details.}
 to be included in the linear predictor during fitting.}
 
 \item{fast}{a logical which determines how the model is fitted. The default
-\code{TRUE} uses fast fitting routines (i.e. \code{\link[stats:glm]{stats::glm.fit()}}), while \code{FALSE}
+\code{TRUE} uses fast fitting routines (i.e. \code{\link[stats:glm.fit]{stats::glm.fit()}}), while \code{FALSE}
 uses the normal fitting routines (\code{\link[stats:glm]{stats::glm()}}) (used for the final output
 of \code{mfp2}).
 The difference is mainly due to the fact that normal fitting routines have

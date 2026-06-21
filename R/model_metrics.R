@@ -1,35 +1,99 @@
-#' Deviance computations as used in mfp in stata
-#' 
-#' @param rss residual sum of squares. 
-#' @param weights numeric vector of weights used in computation of `rss`.
-#' @param n number of observations used to compute `rss`.
-#' 
-#' @details 
-#' Note that this is not the usual formula of deviance used in R, but
-#' uses the formula found here https://www.stata.com/manuals/rfp.pdf.
-#' 
-#' It can be applied for normal error models, but should not be used for other
-#' kinds of glms.
-#' @return A numeric value representing the deviance of a Gaussian model.
-deviance_gaussian <- function(rss, weights, n) {
+#' Deviance computation for Gaussian models as used by Stata's `mfp`
+#'
+#' @description
+#' Internal helper for computing the Gaussian-model deviance used in
+#' fractional-polynomial model comparisons.
+#'
+#' @param residuals Numeric vector of model residuals.
+#' @param weights Numeric vector of prior/case weights corresponding to
+#'   `residuals`.
+#'
+#' @details
+#' This is not the usual R Gaussian deviance. It follows the normal-error
+#' deviance formula used by Stata's `fp`/`mfp` implementation:
+#'
+#' `D = n * (1 - l + log((2 * pi * rss) / n))`
+#'
+#' where `rss` is the weighted residual sum of squares:
+#'
+#' `rss = sum(weights * residuals^2)`
+#'
+#' and `l` is the mean of the log-normalized weights:
+#'
+#' `l = mean(log(weights / mean(weights)))`
+#'
+#' If all weights are equal, this term is zero because
+#' `weights / mean(weights) = 1` and `log(1) = 0`.
+#'
+#' Observations with non-finite or missing residuals or weights are excluded
+#' consistently from `rss`, `n`, and the weight-normalization term.
+#'
+#' See the Stata fractional-polynomial reference manual:
+#' <https://www.stata.com/manuals/rfp.pdf>
+#'
+#' This deviance is intended for normal-error models only and should not be used
+#' for other GLM families.
+#'
+#' @return A numeric value representing the Stata-style Gaussian deviance, or
+#'   `NULL` if residuals or weights are unavailable.
+#'
+#' @references
+#' StataCorp. `fp — Fractional polynomial regression`.
+#' <https://www.stata.com/manuals/rfp.pdf>
+#'
+#' @keywords internal
+#' @noRd
+deviance_gaussian <- function(residuals, weights) {
   
-  if (any(is.null(rss), is.null(weights), is.null(n))) return(NULL)
-  
-  # calculate lognormalized weights
-  if (length(unique(weights)) == 1) {
-    meanwts <- 0
-  } else {
-    logwts <- log(weights)
-    mlogwts <- mean(logwts)
-    # lognormalize weights
-    lognormweights <- logwts / mlogwts
-    # average of lognormalized weights
-    meanwts <- mean(lognormweights)
+  if (is.null(residuals) || is.null(weights)) {
+    return(NULL)
   }
+  
+  if (length(residuals) != length(weights)) {
+    stop(
+      "`residuals` and `weights` must have the same length.",
+      call. = FALSE
+    )
+  }
+  
+  ok <- !is.na(residuals) & !is.na(weights) &
+    is.finite(residuals) & is.finite(weights)
+  
+  residuals <- residuals[ok]
+  weights <- weights[ok]
+  
+  if (!length(residuals)) {
+    return(NULL)
+  }
+  
+  if (any(weights < 0)) {
+    stop("`weights` must be non-negative.", call. = FALSE)
+  }
+  
+  if (!any(weights > 0)) {
+    return(NULL)
+  }
+  
+  # Zero-weight observations do not contribute to the weighted RSS and cannot
+  # enter log(weights / mean(weights)); exclude them consistently.
+  positive <- weights > 0
+  residuals <- residuals[positive]
+  weights <- weights[positive]
+  
+  rss <- sum(weights * residuals^2)
+  n <- length(residuals)
+  
+  if (!is.finite(rss) || rss <= 0) {
+    return(NULL)
+  }
+  
+  meanwts <- mean(log(weights / mean(weights)))
   k <- log((2 * pi * rss) / n)
   
   n * (1 - meanwts + k)
 }
+
+
 
 #' Function to compute model metrics to be used within `mfp2`
 #' 
@@ -84,7 +148,8 @@ calculate_model_metrics <- function(obj,
   
   c(res, 
     deviance_gaussian = deviance_gaussian(
-      rss = res[["sse"]], weights = obj$fit$weights, n = n_obs
+      residuals = obj$fit$residuals,
+      weights = obj$weights
     ), 
     aic = res[["deviance_rs"]] + 2 * res[["df"]],
     bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]], 

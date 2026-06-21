@@ -142,8 +142,8 @@ Explicitly:
 When \eqn{x_j = 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + 0 \cdot \hat{\beta}_j + \hat{\beta}_{z_j} = \hat{\beta}_0 + \hat{\beta}_{z_j}}.
 When \eqn{x_j > 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + 0 \cdot \hat{\beta}_{z_j} = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
 
-If only \code{zero = TRUE} (and \code{catzero = FALSE}), the partial predictor becomes
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j}.
+If only \code{zero = TRUE} (and \code{catzero = FALSE}), the FP2 partial predictor is
+\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
 
 For a second-degree fractional polynomial (FP2), the partial predictor
 takes the form

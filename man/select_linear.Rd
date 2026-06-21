@@ -26,6 +26,7 @@ select_linear(
   acd_parameter,
   prev_adj_params,
   force_max_fp,
+  has_offset,
   ...
 )
 }
@@ -102,6 +103,9 @@ if an element is \code{NULL}, the variable was not specified in the
 from previous steps for each variable.}
 
 \item{force_max_fp}{not used}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.}
 
 \item{...}{passed to fitting functions.}
 }

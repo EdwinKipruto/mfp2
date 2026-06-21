@@ -53,7 +53,10 @@ is \code{NULL}, meaning no variables are treated as zero-transformed.}
 
 \item{catzero}{A named logical vector similar to \code{zero}, indicating which
 columns in \code{x} should treat nonpositive values as zero and additionally have a
-binary indicator created and included in the model. The vector must have names matching
+binary structural-zero indicator created and included in the model.
+For zero/catzero/spike variables, non-positive values are first recoded to
+zero; the binary indicator is then computed as \code{I(x == 0)} on the
+recoded scale, equivalent to \code{I(original x <= 0)}. The vector must have names matching
 the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero
 variables are used.}
 

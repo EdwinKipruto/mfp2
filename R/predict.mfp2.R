@@ -47,8 +47,8 @@
 #' When \eqn{x_j = 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + 0 \cdot \hat{\beta}_j + \hat{\beta}_{z_j} = \hat{\beta}_0 + \hat{\beta}_{z_j}}.
 #' When \eqn{x_j > 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + 0 \cdot \hat{\beta}_{z_j} = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
 #' 
-#' If only `zero = TRUE` (and `catzero = FALSE`), the partial predictor becomes 
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j}.
+#' If only `zero = TRUE` (and `catzero = FALSE`), the FP2 partial predictor is
+#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
 #'
 #' For a second-degree fractional polynomial (FP2), the partial predictor 
 #' takes the form 
@@ -249,9 +249,14 @@ predict.mfp2 <- function(object,
   
   # TODO: add checks for missing strata and offset in case they were used in fit
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE)) {
-    warning("i The supplied reference values (ref) must all be named.\n", 
-            "i predict() continues but uses means (if variables are continous) or
-            min (if binary) instead of the reference values.", call. = FALSE)
+    warning(
+      paste0(
+        "i The supplied reference values (ref) must all be named.\n",
+        "i predict() continues but uses means (if variables are continuous) ",
+        "or min (if binary) instead of the reference values."
+      ),
+      call. = FALSE
+    )
   }
   
    if (type %in% c("terms", "contrasts")) {
@@ -263,9 +268,14 @@ predict.mfp2 <- function(object,
       warning("i All the terms supplied are not in the final model.\n", 
               "i predict() continues but returns an empty list.", call. = FALSE) 
     } else if (n_term2 < n_term1)
-      warning("i Some terms supplied are not in the final model.\n", 
-              "i predict() continues but returns an empty list for those terms 
-                 not in the model.", call. = FALSE)
+      warning(
+        paste0(
+          "i Some terms supplied are not in the final model.\n",
+          "i predict() continues but returns an empty list for those terms ",
+          "not in the model."
+        ),
+        call. = FALSE
+      )
     # return warning if the names(ref) != names(terms)
     if (!all(sapply(ref, is.null)) && any(!names(ref) %in% terms))
       warning("i Some of names of reference values are not in terms.\n", 
@@ -307,7 +317,8 @@ predict.mfp2 <- function(object,
         # no need to apply pretransformation (shift), already done
         x_trafo <- prepare_newdata_for_predict(object, 
                                     x_seq, 
-                                    apply_pre = FALSE)
+                                    apply_pre = FALSE,
+                                    allow_missing_predictors = TRUE)
         x_trafo <- as.matrix(x_trafo)
       } else {
         # no equidistant
@@ -320,9 +331,11 @@ predict.mfp2 <- function(object,
         #x_names <- object$fp_powers[[t]]
         # in acd we might have a power and NA so we need to remove NA
         #x_trafo <- object$x[, names(x_names[!is.na(x_names)]), drop = FALSE]
-        x_trafo <- as.matrix(prepare_newdata_for_predict(object, 
-                                                         x_seq, 
-                                                         apply_pre = FALSE))
+        x_trafo <- as.matrix(prepare_newdata_for_predict(
+          object, 
+          x_seq, 
+          apply_pre = FALSE,
+          allow_missing_predictors = TRUE))
       }
       # using colnames(x_trafo) addresses issues of FPm and catzero because
       #  prepare_newdata_for_predict() returns the final correct names
@@ -373,7 +386,7 @@ predict.mfp2 <- function(object,
         # transform x_ref using estimated FP powers
         x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
           object, x_ref, apply_pre = FALSE, check_binary = FALSE,
-          reset_zero = FALSE))
+          reset_zero = FALSE, allow_missing_predictors = TRUE))
         
         # compute contrasts, no intercepts necessary
         res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
@@ -392,76 +405,55 @@ predict.mfp2 <- function(object,
   } 
   
   # usual predicted values
-  # transform newdata using the FP powers from the training model
-  # if (!is.null(newdata)) {
-  #   
-  #   newdata <- prepare_newdata_for_predict(object, newdata, strata = strata,
-  #               check_binary = FALSE)
-  #   betas <- object$coefficients
-  # 
-  #   # check whether offset was used in the model
-  #   is_offset <- all(object$offset == 0)
-  #   
-  #   if (object$family_string == "cox") {
-  #     # subset newdata based on names of coefficients in the model
-  #     newdata <- as.matrix(newdata[,names(betas),drop = FALSE])
-  #     nfit <- newdata %*% betas
-  #   } else {
-  #     # remove intercept before subsetting 
-  #     newdata <- as.matrix(newdata[,names(betas)[-1],drop = FALSE])
-  #     nfit <- cbind(1,newdata) %*% betas
-  # 
-  #   } 
-  # 
-  #   if (!is_offset) {
-  #     if (is.null(newoffset)) {
-  #       stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
-  #     }
-  #      nr <- dim(newdata)[1]
-  #      if (nr != length(newoffset)) {
-  #        stop("The length of newoffset must be equal to the number of rows of newdata", call. = FALSE)
-  #      }
-  #     nfit <- nfit + newoffset
-  #   }
-  #   
-  #   # return predictions based on family and type
-  #   pred <- transform_linear_predictor(
-  #     nfit, object$family_string,object$family$link, type
-  #     )
-  #   return(pred)
-  #   
-  # }
-  # usual predicted values
-  # transform newdata using the FP powers from the training model
+
   if (!is.null(newdata)) {
     
-    newdata <- prepare_newdata_for_predict(
-      object, newdata, strata = strata, check_binary = FALSE
-    )
-    
     # check whether offset was used in the model
-    has_offset <- any(object$offset != 0)
-    
+    has_offset <- isTRUE(object$has_offset)
     if (has_offset) {
-      if (is.null(newoffset))
-      stop("No newoffset provided for prediction, yet offset was used in mfp2", call. = FALSE)
+      if (is.null(newoffset)) {
+        stop(
+          "No newoffset provided for prediction, yet offset was used in mfp2",
+          call. = FALSE
+        )
+      }
+      
+      if (!is.numeric(newoffset)) {
+        stop("! newoffset must be numeric.", call. = FALSE)
+      }
+      
+      if (length(newoffset) != nrow(newdata)) {
+        stop(
+          "The length of newoffset must be equal to the number of rows of newdata",
+          call. = FALSE
+        )
+      }
+      
     } else {
       newoffset <- NULL
-      object$offset <- NULL
     }
     
-    # dispatch based on family
+    newdata <- prepare_newdata_for_predict(
+      object,
+      newdata,
+      strata = strata,
+      offset = newoffset,
+      check_binary = FALSE
+    )
+    
     if (object$family_string == "cox") {
-      # survival models
       pred <- getFromNamespace("predict.coxph", "survival")(
-        object, newdata = newdata, type = type, offset = newoffset, ...
+        object,
+        newdata = newdata,
+        type = type,
+        ...
       )
     } else {
-      # glm models
-      # TODO: AT THE MOMENT OFFSET IS NOT USED IN FITTING THE FINAL MODEL
-      # SO IT IS IGNORED HERE AS WELL. ALSO predict.glm() does not have offset
       pred <- stats::predict.glm(
-        object, newdata = newdata, type = type, offset = newoffset, ...
+        object,
+        newdata = newdata,
+        type = type,
+        ...
       )
     }
     
@@ -470,11 +462,21 @@ predict.mfp2 <- function(object,
   
   # no newdata supplied
   if (object$family_string == "cox") {
-    getFromNamespace("predict.coxph", "survival")(
-      object = object, type = type, ...
+    return(
+      getFromNamespace("predict.coxph", "survival")(
+        object = object,
+        type = type,
+        ...
+      )
     )
   } else {
-    stats::predict.glm(object = object, type = type, ...)
+    return(
+      stats::predict.glm(
+        object = object,
+        type = type,
+        ...
+      )
+    )
   }
 }
 
@@ -593,9 +595,20 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
 #' @param apply_center logical indicating whether the fitted centers are applied
 #' after transformation or not.
 #' @param check_binary passed to \code{transform_vector_fp()}.
-#' @param reset_zero Logical. If `TRUE` (default), variables incorrectly flagged 
-#' as `zero = TRUE` but containing only positive values are reset to `FALSE`. 
-#' Parameter of \code{transform_matrix()}
+#' @param reset_zero Logical. If `TRUE`, variables marked as `zero = TRUE`
+#' but containing only positive values are reset to `FALSE` before transformation.
+#' The prediction helper defaults to `FALSE` because prediction must preserve
+#' the zero/catzero/spike structure learned during model fitting. Adaptive
+#' resetting based on the contents of `newdata` can create a design matrix that
+#' is inconsistent with the fitted coefficients. Parameter of
+#' \code{transform_matrix()}.
+#' @param allow_missing_predictors Logical. If `FALSE`, the default, `newdata`
+#'   must contain all original predictors recorded in `object$transformations`.
+#'   Missing predictors trigger an error before the data are subset or
+#'   transformed. If `TRUE`, missing predictors are allowed and only the
+#'   predictors present in both `newdata` and the fitted object are transformed.
+#'   This is intended for internal partial-prediction or term-specific
+#'   prediction paths, not for ordinary full-model prediction.
 #' @return A dataframe of transformed newdata
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
@@ -604,23 +617,55 @@ prepare_newdata_for_predict <- function(object,
                                         apply_pre = TRUE, 
                                         apply_center = TRUE,
                                         check_binary = TRUE,
-                                        reset_zero = TRUE
-                                        ) {
+                                        reset_zero = FALSE,
+                                        allow_missing_predictors = FALSE
+) {
   newdata <- as.matrix(newdata)
   
-  # subset as appropriate
-  vnames <- intersect(colnames(newdata), rownames(object$transformations))
+  # step 0: check that newdata has column names
+  if (is.null(colnames(newdata)) || any(colnames(newdata) == "")) {
+    stop("! newdata must have non-empty column names.", call. = FALSE)
+  }
+  
+  # step 1: check expected predictors before subsetting
+  # expected predictors are the original variables for which transformations
+  # were stored during model fitting.
+  expected <- rownames(object$transformations)
+  
+  missing <- setdiff(expected, colnames(newdata))
+  if (length(missing) > 0L && !isTRUE(allow_missing_predictors)) {
+    stop(
+      "! Missing required predictor(s) in newdata: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  
+  # step 2: subset as appropriate
+  # keep only predictors known to the fitted object. Extra columns in newdata
+  # are ignored. The order is determined by the intersection and then used
+  # consistently in all downstream metadata lookups through vnames.
+  vnames <- intersect(colnames(newdata), expected)
+  
+  if (length(vnames) == 0L) {
+    stop("! No usable predictors were found in newdata.", call. = FALSE)
+  }
+  
   # sorting is not relevant as we always pass vnames
   newdata <- newdata[, vnames, drop = FALSE]
   
   if (apply_pre) {
-    # step 1: shift and scale data using using shifting and scaling factors 
-    # from the training data 
-    # sort columns of newdata based on the names of shift/scale
+    # step 3: shift data using shifting factors from the training data.
+    # The final model coefficients are already on the original scale after
+    # shifting, so scaling is intentionally not applied here.
     newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
     
-  # exclude binary variables before returning an error
-    continuous_cols <-  colnames(newdata)[apply(newdata, 2, function(x) length(unique(x)) > 2)]
+    # step 4: check positivity after shifting
+    # exclude binary variables before returning an error
+    continuous_cols <- colnames(newdata)[
+      apply(newdata, 2, function(x) length(unique(x)) > 2)
+    ]
+    
     # exclude spike-at-zero columns
     nonzero_cols <- setdiff(continuous_cols, names(which(object$zero)))
     
@@ -633,11 +678,16 @@ prepare_newdata_for_predict <- function(object,
         )
       }
     } 
+    
     # already the coefficients are in original scale after shifting
-    #newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
+    # newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
   }
   
-  # step 2: transform the shifted data
+  # Step 5: transform shifted data using the fitted transformation metadata.
+  # Prediction must preserve the fitted zero/catzero/spike structure. Therefore
+  # reset_zero defaults to FALSE in this helper; otherwise a newdata batch that
+  # contains only positive values could drop a fitted catzero indicator and create
+  # a prediction design matrix inconsistent with the fitted coefficients.
   # do not center in this step
   x_trans <- transform_matrix(
     newdata,
@@ -649,35 +699,52 @@ prepare_newdata_for_predict <- function(object,
     check_binary = check_binary,
     zero = object$zero[vnames],
     catzero = object$catzero[vnames],
+    spike = if (!is.null(object$spike)) {
+      object$spike[vnames]
+    } else {
+      object$fp_terms[vnames, "spike"]
+    },
     spike_decision = object$spike_dec[vnames],
     reset_zero = reset_zero
   )
   
   newdata <- x_trans$x_transformed
-  # step 3: center the transformed data
+  
+  # step 6: center the transformed data
   if (apply_center && !is.null(object$centers)) {
-    newdata <- center_matrix(newdata, 
-              centers = object$centers[colnames(newdata)],
-              zero = x_trans$zero_expanded
-              ) 
+    newdata <- center_matrix(
+      newdata, 
+      centers = object$centers[colnames(newdata)],
+      zero = x_trans$zero_expanded
+    ) 
   }
   
+  # step 7: convert to data frame for downstream predict methods
   newdata <- data.frame(newdata)
   
+  # step 8: add Cox strata column if required
   if (object$family_string == "cox") {
-    # use of NextMethod here does not work as expected
-    
-    # add strata and offset as required
-    if (!is.null(strata))
+    if (!is.null(strata)) {
       newdata$strata_ <- survival::strata(strata, shortlabel = TRUE)
-    
-    if (!is.null(offset))
-      newdata$offset_ <- offset
-  } 
+    }
+  }
   
+  # step 9: add offset column if supplied
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! offset must be numeric.", call. = FALSE)
+    }
+    
+    if (length(offset) != nrow(newdata)) {
+      stop("! offset must have one value per observation.", call. = FALSE)
+    }
+    
+    newdata$offset_ <- offset
+  }
+  
+  # step 10: return prepared prediction data
   newdata
 }
-
 #' Helper function to compute standard error of a partial predictor
 #' 
 #' To be used in \code{predict.mfp2()}.

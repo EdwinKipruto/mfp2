@@ -32,7 +32,8 @@ find_best_fp_cycle(
   acd_parameter,
   acdx,
   prev_adj_params,
-  force_max_fp
+  force_max_fp,
+  has_offset
 )
 }
 \arguments{
@@ -133,6 +134,9 @@ cycle to avoid recomputation.}
 variable, forces selection of the most complex functional form at the
 degree specified by \code{df}, bypassing AIC/BIC comparison against
 simpler forms. Has no effect when \code{criterion = "pvalue"}.}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.}
 }
 \value{
 A list with updated components \code{powers_current} (current FP powers for all

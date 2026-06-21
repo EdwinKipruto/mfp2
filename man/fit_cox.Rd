@@ -14,7 +14,8 @@ fit_cox(
   method,
   rownames,
   nocenter,
-  fast = TRUE
+  fast = TRUE,
+  has_offset = FALSE
 )
 }
 \arguments{
@@ -37,6 +38,9 @@ See \code{\link[survival:coxph]{survival::coxph()}}.}
 \code{TRUE} uses fast fitting routines (i.e. \code{\link[survival:coxph.fit]{survival::coxph.fit()}}), while
 \code{FALSE}uses the normal fitting routines (\code{\link[survival:coxph]{survival::coxph()}}) (used for
 the final output of \code{mfp2}).}
+
+\item{has_offset}{logical indicating whether \code{offset} should be included in
+the final formula-based fit when \code{fast = FALSE}.}
 }
 \value{
 A list with the following components:

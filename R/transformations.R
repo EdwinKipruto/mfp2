@@ -271,7 +271,10 @@ transform_vector_acd <- function(x,
 #' is \code{NULL}, meaning no variables are treated as zero-transformed.
 #' @param catzero A named logical vector similar to \code{zero}, indicating which 
 #' columns in \code{x} should treat nonpositive values as zero and additionally have a 
-#' binary indicator created and included in the model. The vector must have names matching 
+#' binary structural-zero indicator created and included in the model.
+#' For zero/catzero/spike variables, non-positive values are first recoded to
+#' zero; the binary indicator is then computed as \code{I(x == 0)} on the
+#' recoded scale, equivalent to \code{I(original x <= 0)}. The vector must have names matching 
 #' the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero 
 #' variables are used.
 #' @param spike A named logical vector indicating which variables are subject to
@@ -572,14 +575,39 @@ transform_matrix <- function(x,
   cat_vars <- names(catzero)[catzero]
   
   if (length(cat_vars) > 0) {
-    # Build list of binary variables (skip NA-only power entries)
+    # Add binary zero indicators for catzero variables.
+    #
+    # Historically, variables with all powers set to NA were skipped here because
+    # that normally means the variable was eliminated from the selected model.
+    # However, spike-at-zero introduces one important exception: when
+    # spike_decision == 3, the continuous FP/ACD part has been deliberately
+    # removed, but the binary zero indicator is the selected representation.
+    #
+    # Therefore:
+    #   - all powers NA + not binary-only spike  -> skip the variable
+    #   - all powers NA + spike_decision == 3    -> keep the binary indicator
+    #   - powers present                         -> keep the binary indicator
     catzero_list <- lapply(cat_vars, function(v) {
-      if (all(is.na(power_list[[v]]))) {
-        return(NULL)  # skip
-      } else {
-        #as.integer(x[, v] > 0)
-        as.integer(x[, v] == 0)  # 1 if zero, 0 if positive
+      binary_only_spike <- isTRUE(spike[[v]]) &&
+        !is.null(spike_decision) &&
+        v %in% names(spike_decision) &&
+        isTRUE(spike_decision[[v]] == 3)
+      
+      if (all(is.na(power_list[[v]])) && !binary_only_spike) {
+        return(NULL)
       }
+      # Structural-zero indicator.
+      #
+      # transform_matrix() must not assume that the input matrix x has already been
+      # physically recoded. It is used during both fitting and prediction, and
+      # prediction data should not need to be pre-mutated before transformation.
+      #
+      # For catzero/spike variables, the structural-zero group is defined as x <= 0,
+      # consistently with transform_vector_fp(..., zero = TRUE), which recodes
+      # non-positive values before applying FP transformations.
+      #
+      # Therefore the binary indicator is I(x <= 0), not I(x == 0).
+      as.integer(x[, v] <= 0)
     })
     
     # Remove NULLs
@@ -810,97 +838,151 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
 #' A dataframe with new dummy variables.
 #' 
 #' @export
-create_dummy_variables <-  function(data, var_ordinal = NULL, var_nominal = NULL, drop_variables = FALSE) {
-    # assert that data must be provided
-    if (missing(data))
-      stop("! data argument is missing.\n",
-        "i An input data.frame is required for the use of create_dummy_ordinal.",
+create_dummy_variables <- function(data, 
+                                   var_ordinal = NULL, 
+                                   var_nominal = NULL, 
+                                   drop_variables = FALSE) {
+  
+  # assert that data must be provided
+  if (missing(data)) {
+    stop(
+      "! data argument is missing.\n",
+      "i An input data.frame is required for the use of create_dummy_variables.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.data.frame(data)) {
+    stop("The data must be a data.frame.", call. = FALSE)
+  }
+  
+  # colnames of data
+  xnames <- colnames(data)
+  
+  if (is.null(xnames)) {
+    stop("The column names of the provided data are empty.", call. = FALSE)
+  }
+  
+  # assert that either var_ordinal or var_nominal must be provided
+  if (is.null(var_nominal) && is.null(var_ordinal)) {
+    stop("Either var_nominal or var_ordinal must be provided.", call. = FALSE)
+  }
+  
+  # validate ordinal variable names
+  if (!is.null(var_ordinal)) {
+    if (!is.character(var_ordinal)) {
+      stop("var_ordinal must be a character vector.", call. = FALSE)
+    }
+    
+    index1 <- which(!var_ordinal %in% xnames)
+    
+    if (length(index1) != 0L) {
+      stop(
+        paste0(
+          "Variable ",
+          var_ordinal[index1],
+          " is not in column names of data.",
+          collapse = ", "
+        ),
         call. = FALSE
       )
-  
-    if (!is.data.frame(data))
-      stop("The data must be a data.frame")
-  
-    # colnames of data
-    xnames <- colnames(data)
-    
-    if (is.null(xnames))
-      stop("the column names of the provided data are empty")
-    
-    # assert that either var_ordinal or var_nominal must be provided
-    if (is.null(var_nominal) && is.null(var_ordinal))
-      stop("Either var_nominal or var_ordinal must be provided.")
-    
-    # Deal with ordinal variables when provided
-    if (!is.null(var_ordinal)) {
-      if (!is.character(var_ordinal))
-        stop("var_ordinal must be a character name.")
-      
-      index1 <- which(!var_ordinal %in% xnames)
-      
-      if (length(index1) != 0)
-        stop(paste0("Variable ", var_ordinal[index1]," is not in column name of data",
-          collapse = ", "
-        ))
-      
-      if (!is.null(var_nominal)) {
-        
-        if (!is.character(var_nominal))
-          stop("var_nominal must be a character name.")
-        
-        index2 <- which(!var_nominal %in% xnames)
-        
-        if (length(index2) != 0)
-          stop(paste0(
-            "Variable ",
-            var_nominal[index2],
-            " is not in column name of data",
-            collapse = ", "
-          ))
-      }
-      
-      for (col in var_ordinal) {
-        # levels of the variable if it exist: important for reference
-        unique_levels <- levels(data[[col]])
-        
-        # if levels does not exist use unique values
-        if (is.null(unique_levels)) {
-          unique_levels <- sort(unique(data[[col]]))
-        }
-        
-        if (length(unique_levels) == 1) {
-          warning(paste("var_names ", col,
-              "has only one unique level. Skipping dummy variable creation."
-            )
-          )
-          next
-        }
-    
-          levels_list <- lapply(seq_along(unique_levels)[-length(unique_levels)], function(i)
-            unique_levels[seq(i)])
-        
-        for (i in seq_along(levels_list)) {
-          level <- levels_list[[i]]
-         
-          var_name <- paste0(col, "_", paste(i, collapse = "_"))
-          data[[var_name]] <- as.integer(!data[[col]] %in% level)
-        }
-      }
     }
-    
-    # Deal with nominal variables
-    if (!is.null(var_nominal)) {
-      dummies <- model.matrix( ~ ., data = data[, var_nominal, drop = FALSE])[, -1]
-      data <- cbind(data, dummies)
-    }
-    
-    # drop original variables
-    if (drop_variables) {
-    vars_to_drop <- c(var_nominal, var_ordinal)
-    data <- data[, !(colnames(data) %in% vars_to_drop)]
-    }
-    return(data)
   }
+  
+  # validate nominal variable names
+  if (!is.null(var_nominal)) {
+    if (!is.character(var_nominal)) {
+      stop("var_nominal must be a character vector.", call. = FALSE)
+    }
+    
+    index2 <- which(!var_nominal %in% xnames)
+    
+    if (length(index2) != 0L) {
+      stop(
+        paste0(
+          "Variable ",
+          var_nominal[index2],
+          " is not in column names of data.",
+          collapse = ", "
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  
+  # A variable cannot be encoded both as ordinal and nominal.
+  # These encodings are mutually exclusive and would create duplicated or
+  # contradictory dummy variables for the same source variable.
+  if (!is.null(var_ordinal) && !is.null(var_nominal)) {
+    overlap <- intersect(var_ordinal, var_nominal)
+    
+    if (length(overlap) > 0L) {
+      stop(
+        sprintf(
+          "Variables cannot be both ordinal and nominal: %s.",
+          paste(overlap, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  
+  # Deal with ordinal variables when provided
+  if (!is.null(var_ordinal)) {
+    for (col in var_ordinal) {
+      
+      # levels of the variable if it exists; important for reference
+      unique_levels <- levels(data[[col]])
+      
+      # if levels do not exist, use sorted unique values
+      if (is.null(unique_levels)) {
+        unique_levels <- sort(unique(data[[col]]))
+      }
+      
+      if (length(unique_levels) == 1L) {
+        warning(
+          paste(
+            "var_names",
+            col,
+            "has only one unique level. Skipping dummy variable creation."
+          ),
+          call. = FALSE
+        )
+        next
+      }
+      
+      levels_list <- lapply(
+        seq_along(unique_levels)[-length(unique_levels)],
+        function(i) unique_levels[seq_len(i)]
+      )
+      
+      for (i in seq_along(levels_list)) {
+        level <- levels_list[[i]]
+        
+        var_name <- paste0(col, "_", paste(i, collapse = "_"))
+        data[[var_name]] <- as.integer(!data[[col]] %in% level)
+      }
+    }
+  }
+  
+  # Deal with nominal variables when provided
+  if (!is.null(var_nominal)) {
+    dummies <- stats::model.matrix(
+      ~ .,
+      data = data[, var_nominal, drop = FALSE]
+    )[, -1, drop = FALSE]
+    
+    data <- cbind(data, dummies)
+  }
+  
+  # drop original variables
+  if (drop_variables) {
+    vars_to_drop <- c(var_nominal, var_ordinal)
+    data <- data[, !(colnames(data) %in% vars_to_drop), drop = FALSE]
+  }
+  
+  data
+}
 #' Cumulative (Threshold) Contrast Coding for Ordered Factors
 #'
 #' @description

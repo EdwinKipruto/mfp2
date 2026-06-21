@@ -17,6 +17,8 @@
 #' @param strata,control,weights,offset,rownames,nocenter parameters for Cox 
 #' or glm. See [survival::coxph()] or [stats::glm()] for details.
 #' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
+#' @param has_offset logical indicating whether an offset was specified before
+#' missing offsets were replaced by zeros internally.
 #' 
 #'  @return 
 #' A list with the following components: 
@@ -38,7 +40,8 @@ fit_model <- function(x,
                       control = NULL,
                       rownames = NULL,
                       nocenter = NULL, 
-                      fast = TRUE) {
+                      fast = TRUE,
+                      has_offset = FALSE) {
   
   # Set column names if not provided
   if (!is.null(dim(x)) && is.null(colnames(x))) {
@@ -71,12 +74,18 @@ fit_model <- function(x,
       method = method, 
       rownames = rownames,
       nocenter = nocenter, 
-      fast = fast
+      fast = fast,
+      has_offset = has_offset
     )
   } else {
     fit <- fit_glm(
-      y = y, x = x, family = family, weights = weights, offset = offset, 
-      fast = fast
+      y = y,
+      x = x,
+      family = family, 
+      weights = weights, 
+      offset = offset, 
+      fast = fast,
+      has_offset = has_offset
     )
   }
   
@@ -99,6 +108,8 @@ fit_model <- function(x,
 #' The difference is mainly due to the fact that normal fitting routines have
 #' to handle data.frames, which is a lot slower than using the model matrix
 #' and outcome vectors directly. 
+#' @param has_offset logical indicating whether `offset` should be included in
+#' the final formula-based fit when `fast = FALSE`.
 #' 
 #' @return 
 #' A list with the following components: 
@@ -115,34 +126,97 @@ fit_glm <- function(x,
                     family, 
                     weights, 
                     offset, 
-                    fast = TRUE) {
+                    fast = TRUE,
+                    has_offset = FALSE) {
+  
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! offset must be numeric.", call. = FALSE)
+    }
+    
+    if (length(offset) != length(y)) {
+      stop("! offset must have one value per observation.", call. = FALSE)
+    }
+  }
 
   if (fast) {
-    # add column of 1s for intercept
-    xx <- cbind(rep(1, length(y)), x)
-    # Note that x can be NULL when fitting a NULL model
-    # (using only adjustment variable)
-    # when all FP powers estimated are NA-all variables removed
-    colnames(xx) <- if (is.null(ncol(x))) {
-      "(Intercept)"
+    has_predictors <- !is.null(x) && NCOL(x) > 0L
+    
+    if (has_predictors) {
+      
+      xx <- cbind("(Intercept)" = rep(1, length(y)), x)
+      
     } else {
-      c("(Intercept)", colnames(x))
+      xx <- matrix(
+        rep(1, length(y)),
+        ncol = 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
     }
     
     fit <- stats::glm.fit(
-      x = xx, y = y, family = family, weights = weights, offset = offset
-    )  
+      x = xx,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset
+    )
   } else {
-    # important to cbind in case x is null otherwise it will return an error
-    data <- data.frame(cbind(x, y))
-    # TODO: implement offset and check predict.glm
-    fit <- glm(y ~ ., 
-               data = data, family = family, weights = weights, x = TRUE, y = TRUE)
+    if (is.null(x) || NCOL(x) == 0) {
+      data <- data.frame(y = y)
+      
+      if (isTRUE(has_offset)) {
+        data$offset_ <- offset
+        formula <- y ~ offset(offset_)
+      } else {
+        formula <- y ~ 1
+      }
+      
+    } else {
+      if (is.null(colnames(x)) || any(colnames(x) == "")) {
+        stop("! Internal error: x must have non-empty column names.", call. = FALSE)
+      }
+      
+      data <- data.frame(x, y = y, check.names = FALSE)
+      
+      rhs <- paste(sprintf("`%s`", colnames(x)), collapse = " + ")
+      
+      if (isTRUE(has_offset)) {
+        data$offset_ <- offset
+        rhs <- paste(rhs, "+ offset(offset_)")
+      }
+      
+      formula <- stats::as.formula(paste("y ~", rhs))
+    }
+
+    
+    fit <- stats::glm(
+      formula = formula,
+      data = data,
+      family = family,
+      weights = weights,
+      x = TRUE,
+      y = TRUE
+    )
   }
 
   # account for estimation of variance parameter in gaussian models
   # computation as in logLik.glm using rank
   df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
+  
+  
+  # we need weighted rss for gaussian
+  fit_weights <- fit$prior.weights
+  if (is.null(fit_weights)) {
+    fit_weights <- weights
+  }
+  
+  if (length(fit_weights) != length(fit$residuals)) {
+    stop(
+      "Internal error: fitted residuals and weights have different lengths.",
+      call. = FALSE
+    )
+  }
   
   list(
     fit = fit,
@@ -150,7 +224,9 @@ fit_glm <- function(x,
     logl = df - fit$aic / 2,
     coefficients = fit$coefficients,
     df = df,
-    sse = sum(fit$residuals^2, na.rm = TRUE)
+    sse =  sum(fit_weights * fit$residuals^2, na.rm = TRUE),
+    residuals = fit$residuals,
+    weights = fit_weights
   )
 }
 
@@ -168,6 +244,8 @@ fit_glm <- function(x,
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
 #' `FALSE`uses the normal fitting routines ([survival::coxph()]) (used for
 #'  the final output of `mfp2`).
+#' @param has_offset logical indicating whether `offset` should be included in
+#' the final formula-based fit when `fast = FALSE`.
 #' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
 #' 
 #' @return 
@@ -189,16 +267,20 @@ fit_cox <- function(x,
                     method, 
                     rownames, 
                     nocenter, 
-                    fast = TRUE) {
+                    fast = TRUE,
+                    has_offset = FALSE) {
   
   # Set default for control
   if (is.null(control)) { 
     control <- survival::coxph.control()
   }
   
+  has_predictors <- !is.null(x) && NCOL(x) > 0
+  
   if (fast) {
     fit <- survival::coxph.fit(
-      x = x, y = y, 
+      x = x,
+      y = y, 
       strata = strata,
       weights = weights,
       offset = offset,
@@ -211,47 +293,67 @@ fit_cox <- function(x,
   } else {
     # construct appropriate formula incorporating offset and strata terms
     # cbinding y will lead to two variables: time and status
-
-    # it can happen that x is null
-    if (is.null(x)) {
-      d <- data.frame(y)
-      ff <- sprintf("y ~ %s",1)
+    
+    if (!has_predictors) {
+      d <- data.frame(y = y)
+      rhs <- "1"
     } else {
-      d <- data.frame(x,y)
-      varx <- setdiff(colnames(d), "y")
-      ff <- sprintf("y ~ %s", paste(varx, collapse = "+ "))
+      d <- data.frame(x, y = y, check.names = FALSE)
+      
+      if (is.null(colnames(x)) || any(colnames(x) == "")) {
+        stop("! Internal error: x must have non-empty column names.", call. = FALSE)
+      }
+      
+      rhs <- paste(sprintf("`%s`", colnames(x)), collapse = " + ")
     }
-    # add offset and strata
-    if (any(offset != 0)) {
-      ff <- paste(ff, " + offset(offset_)")
+    
+    # Add offset only when the model was structurally specified with one.
+    # This distinguishes no-offset models from all-zero offset models.
+    if (isTRUE(has_offset)) {
       d$offset_ <- offset
+      rhs <- paste(rhs, "+ offset(offset_)")
     }
     
     if (!is.null(strata)) {
-      ff <- paste(ff, " + strata(strata_)")
       d$strata_ <- strata
+      rhs <- paste(rhs, "+ strata(strata_)")
     }
     
-    ff <- as.formula(ff)
+    ff <- stats::as.formula(paste("y ~", rhs))
     
     fit <- survival::coxph(
-      ff, data = d, 
+      ff,
+      data = d, 
       weights = weights, 
-      control = control, method = method, 
+      control = control,
+      method = method, 
       nocenter = nocenter, 
-      x = TRUE, y = TRUE
+      x = TRUE,
+      y = TRUE
     )
+  }
+  
+  logl <- if (length(fit$loglik) >= 2) {
+    fit$loglik[2]
+  } else {
+    fit$loglik[1]
+  }
+  
+  fit_weights <- fit$prior.weights
+  
+  if (is.null(fit_weights)) {
+    fit_weights <- weights
   }
   
   list(
     fit = fit, 
-    # coxph.fit() returns loglikelihood for a null and a model with predictors.
-    # If x is a null matrix, one loglikelihood for the null model is returned.
-    logl = ifelse(!is.null(ncol(x)), fit$loglik[2], fit$loglik), 
+    logl = logl,
     coefficients = fit$coefficients, 
     # sometimes coefficients can be NA
     # for example when including same variables in the model
     df = length(fit$coefficients[!is.na(fit$coefficients)]), 
-    sse = sum(fit$residuals^2)
+    weights = fit_weights,
+    sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
+    residuals = fit$residuals
   )
 }

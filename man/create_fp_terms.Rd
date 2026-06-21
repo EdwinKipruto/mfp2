@@ -40,8 +40,11 @@ treat non-positive values as zero before FP transformation. Must match
 the length and order of the columns of \code{x}.}
 
 \item{catzero}{A logical vector indicating which columns of \code{x} should
-treat non-positive values as zero AND have a binary indicator
-\eqn{I(x = 0)} automatically created and included in the model. Must
+treat non-positive values as zero AND have a binary structural-zero
+indicator automatically created and included in the model. Internally,
+values \code{x <= 0} are first recoded to zero; the indicator is then
+computed as \code{I(x == 0)} on the recoded scale, equivalent to
+\code{I(original x <= 0)}. Must
 match the length and order of the columns of \code{x}.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain

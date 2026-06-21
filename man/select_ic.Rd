@@ -27,6 +27,7 @@ select_ic(
   acd_parameter,
   prev_adj_params,
   force_max_fp,
+  has_offset,
   ...
 )
 
@@ -52,6 +53,7 @@ select_ic_acd(
   acd_parameter,
   prev_adj_params,
   force_max_fp,
+  has_offset,
   ...
 )
 }
@@ -139,6 +141,9 @@ deviance minimisation, which is equivalent to AIC/BIC minimisation at
 fixed degrees of freedom. Has no effect when \code{criterion = "pvalue"}
 since \code{select_ra2()} is used in that case and \code{alpha = 1}
 already guarantees acceptance of the most complex form.}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.}
 
 \item{...}{passed to fitting functions.}
 }

@@ -200,7 +200,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      control, group_var, include_group_var, flex, cont_vars,
                      cont_var_forms,
                      p_interact, min_improvement, show_models, verbose,
-                     digits, scale,quiet = FALSE, 
+                     digits, scale,quiet = FALSE, has_offset,
                      center_type = c("grand", "group"),
                      p_adjust_method = "none") {
     
@@ -257,6 +257,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       control        = control,
       force_max_fp   = processed_data$updated_params$force_max_fp,
       scale          = scale,
+      has_offset     = has_offset,
       verbose        = FALSE
     )
     
@@ -332,6 +333,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       flex               = flex,
       weights            = weights,
       offset             = offset,
+      has_offset         = has_offset,    
       xorder             = xorder,
       ties               = ties,
       strata             = strata,
@@ -617,7 +619,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                                    family_string, criterion, updated_params,
                                    xorder, ties, strata, nocenter, min_prop,
                                    max_prop, use_ftest, control,
-                                   force_max_fp, scale,
+                                   force_max_fp, scale,has_offset,
                                    verbose = FALSE) {
     n_vars    <- ncol(x)
     x_names   <- colnames(x)
@@ -663,6 +665,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       min_prop      = min_prop,
       max_prop      = max_prop,
       force_max_fp  = force_max_fp,
+      has_offset    = has_offset,
       verbose       = verbose
     )
   }
@@ -959,7 +962,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                                     center_type = c("grand", "group"),
                                     scale = NULL,
                                     xadj = NULL, skip_adjustment = FALSE,
-                                    p_adjust_method = "none",
+                                    p_adjust_method = "none",has_offset,
                                     quiet = FALSE, verbose = FALSE) {
     
     center_type <- match.arg(center_type)
@@ -1143,6 +1146,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
           digits        = digits,
           scale_var     = if (!is.null(scale)) unname(scale[var_name]) else 1,
           run_test      = TRUE,
+          has_offset    = has_offset,
           compute_fitted = TRUE
         )
         

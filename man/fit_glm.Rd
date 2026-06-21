@@ -4,7 +4,7 @@
 \alias{fit_glm}
 \title{Function that fits generalized linear models}
 \usage{
-fit_glm(x, y, family, weights, offset, fast = TRUE)
+fit_glm(x, y, family, weights, offset, fast = TRUE, has_offset = FALSE)
 }
 \arguments{
 \item{x}{a matrix of predictors with nobs observations.}
@@ -26,6 +26,9 @@ of \code{mfp2}).
 The difference is mainly due to the fact that normal fitting routines have
 to handle data.frames, which is a lot slower than using the model matrix
 and outcome vectors directly.}
+
+\item{has_offset}{logical indicating whether \code{offset} should be included in
+the final formula-based fit when \code{fast = FALSE}.}
 }
 \value{
 A list with the following components:

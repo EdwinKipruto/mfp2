@@ -131,7 +131,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
                      min_prop = 0.05, max_prop = 0.95,
                      flex, digits,
                      scale_var = 1,
-                     center_type = c("grand", "group"),
+                     center_type = c("grand", "group"),has_offset,
                      run_test = TRUE, compute_fitted = TRUE) {
   
   center_type <- match.arg(center_type)
@@ -212,6 +212,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     max_prop       = max_prop,
     digits         = digits,
     run_test       = run_test,
+    has_offset     = has_offset,
     compute_fitted = compute_fitted
   )
   
@@ -241,7 +242,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
                   center_type = c("grand", "group"),
-                  scale_var = 1,
+                  scale_var = 1, has_offset,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -306,6 +307,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control            = control,
       nocenter           = nocenter,
       family_string      = family_string,
+      has_offset         = has_offset,
       digits             = digits
     )
   }
@@ -366,7 +368,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
                   center_type = c("grand", "group"),
-                  scale_var = 1,
+                  scale_var = 1, has_offset,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -456,6 +458,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     spike         = spike_vec,
     min_prop      = min_prop,
     max_prop      = max_prop,
+    has_offset    = has_offset,
     verbose       = FALSE
   )
   
@@ -557,6 +560,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control            = control,
       nocenter           = nocenter,
       family_string      = family_string,
+      has_offset         = has_offset,
       digits             = digits
     )
   }
@@ -616,7 +620,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
                   center_type = c("grand", "group"),
-                  scale_var = 1,
+                  scale_var = 1, has_offset,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -732,6 +736,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control            = control,
       nocenter           = nocenter,
       family_string      = family_string,
+      has_offset         = has_offset,
       digits             = digits
     )
   }
@@ -792,7 +797,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
                   center_type = c("grand", "group"),
-                  scale_var = 1,
+                  scale_var = 1, has_offset,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -815,6 +820,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero_var      = zero_var, spike_var = spike_var,
     min_prop      = min_prop, max_prop = max_prop,
     digits        = digits,
+    has_offset    = has_offset,
     run_test      = FALSE, compute_fitted = FALSE
   )
   
@@ -855,6 +861,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control            = control,
       nocenter           = nocenter,
       family_string      = family_string,
+      has_offset         = has_offset,
       digits             = digits
     )
   }
@@ -911,7 +918,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   min_prop = 0.05, max_prop = 0.95,
                   group_dummies, digits,
                   center_type = c("grand", "group"),
-                  scale_var = 1,
+                  scale_var = 1, has_offset,
                   run_test = TRUE, compute_fitted = FALSE) {
   
   center_type <- match.arg(center_type)
@@ -1017,6 +1024,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     spike         = spike_vec,
     min_prop      = min_prop,
     max_prop      = max_prop,
+    has_offset    = has_offset,
     verbose       = FALSE
   )
   
@@ -1109,6 +1117,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     strata        = strata, control = control, nocenter = nocenter,
     cycles        = cycles, zero_var = zero_var, spike_var = spike_var,
     min_prop      = min_prop, max_prop = max_prop,
+    has_offset    = has_offset,
     digits        = digits, run_test = FALSE, compute_fitted = FALSE
   )
   
@@ -1137,6 +1146,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control            = control,
       nocenter           = nocenter,
       family_string      = family_string,
+      has_offset         = has_offset,
       digits             = digits
     )
   }

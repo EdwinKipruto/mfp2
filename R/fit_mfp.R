@@ -61,8 +61,11 @@
 #'   treat non-positive values as zero before FP transformation. Must match
 #'   the length and order of the columns of \code{x}.
 #' @param catzero A logical vector indicating which columns of \code{x} should
-#'   treat non-positive values as zero AND have a binary indicator
-#'   \eqn{I(x = 0)} automatically created and included in the model. Must
+#'   treat non-positive values as zero AND have a binary structural-zero
+#'   indicator automatically created and included in the model. Internally,
+#'   values \code{x <= 0} are first recoded to zero; the indicator is then
+#'   computed as \code{I(x == 0)} on the recoded scale, equivalent to
+#'   \code{I(original x <= 0)}. Must
 #'   match the length and order of the columns of \code{x}.
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #'   a spike at zero and should be assessed using the SAZ algorithm. Must
@@ -75,6 +78,8 @@
 #'   variable, forces selection of the most complex functional form at the
 #'   degree specified by \code{df}, bypassing AIC/BIC comparison against
 #'   simpler forms. Has no effect when \code{criterion = "pvalue"}.
+#' @param has_offset logical indicating whether an offset was specified before
+#' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
 #'   during fitting. Default \code{FALSE}.
 #'
@@ -164,6 +169,7 @@ fit_mfp <- function(x,
                     min_prop,
                     max_prop,
                     force_max_fp,
+                    has_offset,
                     verbose) {
   
   variables_x <- colnames(x)
@@ -258,30 +264,82 @@ fit_mfp <- function(x,
   catzero[spike] <- TRUE    # spike implies catzero
   zero[catzero]  <- TRUE    # catzero implies zero
   
+  # Temporary recoded data used only for spike eligibility checks.
+  # Do not mutate the real x here.
+  x_for_spike <- x
+  
+  zero_aligned_for_spike <- zero[colnames(x_for_spike)]
+  cols_to_zero_for_spike <- which(zero_aligned_for_spike)
+  
+  if (length(cols_to_zero_for_spike) > 0L) {
+    for (j in cols_to_zero_for_spike) {
+      x_for_spike[x_for_spike[, j] <= 0, j] <- 0
+    }
+  }
+  
+  # Reset ineligible spike variables.
+  # reset_spike() receives the temporarily recoded data, so its x == 0 check is
+  # equivalent to checking original x <= 0 for effective zero variables.
+  #
+  # For reset variables, catzero and zero are restored to the original
+  # user-specified values saved above. This is why user_catzero and user_zero
+  # must be saved before the cascade.
   if (any(spike)) {
-    result  <- reset_spike(x, spike, user_catzero, user_zero, min_prop, max_prop)
+    result  <- reset_spike(
+      x            = x_for_spike,
+      spike        = spike,
+      user_catzero = user_catzero,
+      user_zero    = user_zero,
+      min_prop     = min_prop,
+      max_prop     = max_prop
+    )
+    
     spike   <- result$spike
     catzero <- result$catzero
     zero    <- result$zero
   }
   
-  # Spike decision initialisation (2 = standard FP algorithm, default)
-  spike_decision       <- rep(2, length(variables_ordered))
+  # Spike decision initialisation.
+  # 2 means standard FP algorithm by default.
+  spike_decision        <- rep(2L, length(variables_ordered))
   names(spike_decision) <- variables_ordered
   
-  # Set non-positive values to 0 for zero/catzero variables ------------------
-  zero_x        <- zero
-  zero_aligned  <- zero[colnames(x)]
-  cols_to_zero  <- which(zero_aligned)
+  # Final zero recoding of the real x ------------------------------------------
+  # Now that reset_spike() has produced the final zero/catzero/spike vectors, we
+  # can safely mutate the actual x used by the MFP cycles.
+  #
+  # Only variables with final zero == TRUE are recoded. Therefore, variables whose
+  # spike request was rejected and whose user-specified zero/catzero status was
+  # FALSE remain untouched.
+  
+  zero_x       <- zero
+  zero_aligned <- zero[colnames(x)]
+  cols_to_zero <- which(zero_aligned)
   
   if (length(cols_to_zero) > 0L) {
     for (j in cols_to_zero) {
       x[x[, j] <= 0, j] <- 0
     }
+    
+    # Once x <= 0 has been physically recoded to 0, downstream transformation
+    # functions no longer need to perform zero recoding again during the MFP
+    # cycles. This avoids double handling of zero variables.
     zero_x <- setNames(rep(FALSE, ncol(x)), variables_ordered)
+    #zero_x[names(cols_to_zero)] <- FALSE
   }
   
-  # Binary indicators Z for catzero variables (Z=1 if x=0, Z=0 if x>0)
+  # Binary structural-zero indicators for catzero variables.
+  #
+  # Because non-positive values have already been recoded to zero above,
+  # x == 0 here means:
+  #
+  #   I(original x <= 0)
+  #
+  # not merely:
+  #
+  #   I(original x == 0)
+  #
+  # This is the intended interpretation of catzero/spike variables.
   catzero_list       <- lapply(names(catzero), function(v) {
     if (catzero[[v]]) as.integer(x[, v] == 0) else NULL
   })
@@ -292,6 +350,8 @@ fit_mfp <- function(x,
     if (acdx[i]) fit_acd(x[, i], powers = powers[[i]], zero = zero[i]) else NULL
   })
   names(acd_parameter) <- colnames(x)
+  
+
   
   # step 3: MFP backfitting cycles --------------------------------------------
   j         <- 1L
@@ -308,33 +368,34 @@ fit_mfp <- function(x,
     }
     
     fit_best_cycle <- find_best_fp_cycle(
-      x              = x,
-      y              = y,
-      powers_current = powers_current,
-      df             = df,
-      weights        = weights,
-      offset         = offset,
-      family         = family,
-      family_string  = family_string,
-      criterion      = criterion,
-      select         = select,
-      alpha          = alpha,
-      keep           = keep,
-      powers         = powers,
-      ftest          = ftest,
-      control        = control,
-      rownames       = rownames(x),
-      strata         = strata,
-      nocenter       = nocenter,
-      method         = method,
-      acdx           = acdx,
-      zero           = zero_x,        # all FALSE after non-positives set to 0
-      catzero        = catzero_list,  # named list of binary indicators
-      spike          = spike,
-      spike_decision = spike_decision,
-      acd_parameter  = acd_parameter,
+      x               = x,
+      y               = y,
+      powers_current  = powers_current,
+      df              = df,
+      weights         = weights,
+      offset          = offset,
+      family          = family,
+      family_string   = family_string,
+      criterion       = criterion,
+      select          = select,
+      alpha           = alpha,
+      keep            = keep,
+      powers          = powers,
+      ftest           = ftest,
+      control         = control,
+      rownames        = rownames(x),
+      strata          = strata,
+      nocenter        = nocenter,
+      method          = method,
+      acdx            = acdx,
+      zero            = zero_x,        # all FALSE after non-positives set to 0
+      catzero         = catzero_list,  # named list of binary indicators
+      spike           = spike,
+      spike_decision  = spike_decision,
+      acd_parameter   = acd_parameter,
       prev_adj_params = prev_adj_params,
-      force_max_fp   = force_max_fp,
+      force_max_fp    = force_max_fp,
+      has_offset      = has_offset,
       verbose        = verbose
     )
     
@@ -373,29 +434,60 @@ fit_mfp <- function(x,
     x <- backscale_matrix(x, scale)
   }
   
+  # ACD parameters are estimated on the scaled working x.
+  # Final fitting and prediction later pass shifted-but-not-scaled x into
+  # transform_matrix(). Store the training scale so apply_acd() reconstructs
+  # the same scaled ACD input before using beta0, beta1, and power.
+  acd_parameter_final <- acd_parameter
+  
+  for (v in names(acd_parameter_final)) {
+    if (!is.null(acd_parameter_final[[v]])) {
+      acd_parameter_final[[v]]$shift <- 0
+      acd_parameter_final[[v]]$scale <- scale[[v]]
+    }
+  }
+  
   data_transformed <- transform_matrix(
-    x              = x,
-    power_list     = powers_current,
-    center         = center,
-    acdx           = acdx,
-    zero           = zero,   # logical needed for centering even after zeroing
-    catzero        = catzero,
-    spike_decision = spike_decision
+    x                  = x,
+    power_list         = powers_current,
+    center             = center,
+    acdx               = acdx,
+    acd_parameter_list = acd_parameter_final,
+    zero               = zero,   # logical needed for centering even after zeroing
+    catzero            = catzero,
+    spike              = spike,
+    reset_zero         = FALSE,
+    spike_decision     = spike_decision
   )
+  
+  # Update catzero for metadata
+  catzero_effective <- catzero
+  for (v in names(spike_decision)) {
+    if (spike[v] && spike_decision[v] == 2L) {
+      catzero_effective[v] <- FALSE
+    }
+  }
+  
+  for (v in names(spike_decision)) {
+    if (spike[v] && spike_decision[v] == 3L) {
+      powers_current[[v]] <- NA
+    }
+  }
   
   # step 5: fit final model ---------------------------------------------------
   modelfit <- fit_model(
-    x        = data_transformed$x_transformed,
-    y        = y,
-    family   = family,
-    weights  = weights,
-    offset   = offset,
-    method   = method,
-    strata   = strata,
-    control  = control,
-    rownames = rownames(data_transformed$x_transformed),
-    nocenter = nocenter,
-    fast     = FALSE
+    x          = data_transformed$x_transformed,
+    y          = y,
+    family     = family,
+    weights    = weights,
+    offset     = offset,
+    method     = method,
+    strata     = strata,
+    control    = control,
+    rownames   = rownames(data_transformed$x_transformed),
+    nocenter   = nocenter,
+    fast       = FALSE,
+    has_offset = has_offset
   )
   
   # Build and return mfp2 object ----------------------------------------------
@@ -410,14 +502,15 @@ fit_mfp <- function(x,
       ]), drop = FALSE],
       y               = y,
       fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
-                                        criterion, zero, catzero, spike,
+                                        criterion, zero, catzero_effective, spike,
                                         spike_decision),
       transformations = data.frame(shift = shift, scale = scale, center = center),
       fp_powers       = powers_current,
       acd             = acdx,
       zero            = zero,
-      catzero         = catzero,
+      catzero         = catzero_effective,
       catzero_list    = catzero_list,
+      spike              = spike,
       spike_dec       = spike_decision
     )
   )
@@ -652,169 +745,6 @@ reset_acd <- function(x, acdx) {
   
   acdx
 }
-#' Reset Spike-at-Zero Indicators and Undo Cascade for Ineligible Variables
-#'
-#' Evaluates whether each variable flagged as a spike-at-zero (\code{spike})
-#' is eligible for the SAZ algorithm based on its zero proportion and
-#' cardinality. For ineligible variables, \code{spike} is reset to
-#' \code{FALSE} and the \code{catzero} and \code{zero} flags are restored to
-#' the user's original pre-cascade values. This correctly undoes the implicit
-#' cascade (\code{catzero[spike] <- TRUE}, \code{zero[catzero] <- TRUE}) that
-#' \code{fit_mfp()} applies before calling this function, ensuring that only
-#' what the user explicitly requested is preserved.
-#'
-#' @section Background -- the cascade problem:
-#' In \code{fit_mfp()}, the following cascade is applied before calling
-#' \code{reset_spike()}:
-#' \preformatted{
-#'   catzero[spike]  <- TRUE   # spike implies catzero
-#'   zero[catzero]   <- TRUE   # catzero implies zero
-#' }
-#' If \code{reset_spike()} only resets \code{spike} (as in the original
-#' implementation), \code{catzero} and \code{zero} remain \code{TRUE} for
-#' ineligible variables even though the user never asked for them. This
-#' function corrects that by accepting the pre-cascade user values and
-#' restoring them for any variable where \code{spike} is reset.
-#'
-#' @param x A numeric matrix or data frame with column names. Only columns
-#'   named in \code{spike} are examined.
-#' @param spike A named logical vector. \code{TRUE} indicates the column was
-#'   flagged as a spike-at-zero variable. Should be the post-cascade version
-#'   (after \code{catzero[spike] <- TRUE} has been applied in
-#'   \code{fit_mfp()}).
-#' @param user_catzero A named logical vector of the user's original
-#'   \code{catzero} specification \strong{before} the cascade
-#'   \code{catzero[spike] <- TRUE} was applied. Must have the same names as
-#'   \code{spike}.
-#' @param user_zero A named logical vector of the user's original \code{zero}
-#'   specification \strong{before} the cascade \code{zero[catzero] <- TRUE}
-#'   was applied. Must have the same names as \code{spike}.
-#' @param min_prop Numeric in \eqn{(0, 0.5)}. Minimum proportion of zeros
-#'   required to retain the spike indicator. If the observed zero proportion
-#'   is below \code{min_prop}, the variable has too few zeros for a meaningful
-#'   spike model. Default \code{0.05}.
-#' @param max_prop Numeric in \eqn{(0.5, 1)}. Maximum proportion of zeros
-#'   allowed to retain the spike indicator. If the observed zero proportion
-#'   exceeds \code{max_prop}, the positive part is too sparse for reliable FP
-#'   fitting. Default \code{0.95}.
-#'
-#' @return A named list with three elements, each a named logical vector of
-#'   the same length as \code{spike}:
-#' \describe{
-#'   \item{\code{spike}}{Updated spike vector. Entries for ineligible
-#'     variables are set to \code{FALSE}; all other entries are unchanged.}
-#'   \item{\code{catzero}}{Updated catzero vector. For ineligible variables
-#'     (where \code{spike} was just reset), restored to \code{user_catzero}.
-#'     All other entries retain their post-cascade values, i.e. \code{TRUE}
-#'     for variables that remain eligible spike variables.}
-#'   \item{\code{zero}}{Updated zero vector. For ineligible variables,
-#'     restored to \code{user_zero}. All other entries retain their
-#'     post-cascade values.}
-#' }
-#'
-#' @section Cascade restoration examples:
-#' For a variable whose \code{spike} is reset, the outcome depends on what
-#' the user originally specified:
-#' \describe{
-#'   \item{User specified \code{spike} only (not \code{catzero} or
-#'     \code{zero})}{After reset: \code{spike = FALSE},
-#'     \code{catzero = FALSE}, \code{zero = FALSE}. The variable is treated
-#'     as a standard continuous predictor -- no binary indicator, no zero
-#'     recoding.}
-#'   \item{User specified \code{spike} and \code{zero = TRUE}}{After reset:
-#'     \code{spike = FALSE}, \code{catzero = FALSE}, \code{zero = TRUE}.
-#'     Non-positive values are still recoded to zero before FP transformation,
-#'     but no binary indicator is added and the SAZ algorithm is not run.}
-#'   \item{User specified \code{spike} and \code{catzero = TRUE}}{After
-#'     reset: \code{spike = FALSE}, \code{catzero = TRUE},
-#'     \code{zero = TRUE}. The binary indicator \eqn{I(x = 0)} is still
-#'     added (as explicitly requested via \code{catzero}), but the SAZ
-#'     selection algorithm is not run.}
-#' }
-#'
-#' @details
-#' Three conditions cause a variable's spike indicator to be reset:
-#' \enumerate{
-#'   \item \strong{Too few zeros} -- zero proportion below \code{min_prop}.
-#'     There are not enough zero observations to reliably model a spike at
-#'     zero or to estimate its contribution separately from the FP function.
-#'   \item \strong{Too many zeros} -- zero proportion above \code{max_prop}.
-#'     The positive part has too few observations for reliable FP power
-#'     selection and fitting.
-#'   \item \strong{Binary variable} -- exactly two unique finite values.
-#'     The positive part would contain a single unique value, making FP
-#'     transformation degenerate.
-#' }
-#' A warning is issued for each reset, identifying the affected variables and
-#' the reason. Variables reset for both proportion and binary reasons receive
-#' two separate warnings.
-#'
-#' @keywords internal
-reset_spike <- function(x, spike, user_catzero, user_zero,
-                        min_prop = 0.05, max_prop = 0.95) {
-  
-  # Early exit: no spike variables to evaluate
-  if (!any(spike)) {
-    return(list(spike = spike, catzero = user_catzero, zero = user_zero))
-  }
-  
-  names_spike <- names(spike)[spike]
-  
-  # Proportion of zeros for each spike variable
-  prop_zero <- colMeans(x[, names_spike, drop = FALSE] == 0, na.rm = TRUE)
-  
-  # Binary: exactly two unique finite values in the column
-  is_binary <- vapply(names_spike, function(v) {
-    length(unique(x[is.finite(x[, v]), v])) == 2L
-  }, logical(1L))
-  
-  # Identify variables to reset by each reason
-  to_reset_prop   <- names_spike[prop_zero < min_prop | prop_zero > max_prop]
-  to_reset_binary <- names_spike[is_binary]
-  to_reset        <- union(to_reset_prop, to_reset_binary)
-  
-  # Warn about proportion resets
-  if (length(to_reset_prop) > 0L) {
-    warning(
-      "The spike-at-zero option has been reset for the following variable(s) ",
-      "because the zero proportion is outside [", min_prop, ", ", max_prop, "]: ",
-      paste(to_reset_prop, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
-  
-  # Warn about binary resets
-  if (length(to_reset_binary) > 0L) {
-    warning(
-      "The spike-at-zero option has been reset for the following variable(s) ",
-      "because they are binary (exactly two unique values): ",
-      paste(to_reset_binary, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
-  
-  # Initialise output vectors from user-supplied pre-cascade originals
-  catzero <- user_catzero
-  zero    <- user_zero
-  
-  if (length(to_reset) > 0L) {
-    # Reset spike
-    spike[to_reset] <- FALSE
-    
-    # Restore catzero and zero to the user's original pre-cascade values for
-    # the reset variables. This undoes the implicit cascade that was applied
-    # in fit_mfp() before this function was called:
-    #   catzero[spike] <- TRUE   (spike implies catzero)
-    #   zero[catzero]  <- TRUE   (catzero implies zero)
-    # After restoration, only what the user explicitly requested remains.
-    # See the @section Cascade restoration examples for the three scenarios.
-    catzero[to_reset] <- user_catzero[to_reset]
-    zero[to_reset]    <- user_zero[to_reset]
-  }
-  
-  list(spike = spike, catzero = catzero, zero = zero)
-}
-
 
 
 #' Helper to run cycles of the mfp algorithm 
@@ -887,6 +817,8 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
 #' @param prev_adj_params Named list used to store previously computed adjustment 
 #' variable transformations. This is updated at each step and reused in the next 
 #' cycle to avoid recomputation.
+#' @param has_offset logical indicating whether an offset was specified before
+#' missing offsets were replaced by zeros internally.
 #' 
 #' @return 
 #' A list with updated components `powers_current` (current FP powers for all 
@@ -920,7 +852,8 @@ find_best_fp_cycle <- function(x,
                                acd_parameter,
                                acdx,
                                prev_adj_params,
-                               force_max_fp
+                               force_max_fp,
+                               has_offset
                                ) {
   
   # order of names of powers does not change
@@ -962,6 +895,7 @@ find_best_fp_cycle <- function(x,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
       force_max_fp = force_max_fp,
+      has_offset   = has_offset,
       verbose = verbose
     )
     # Update parameters
@@ -1132,8 +1066,12 @@ create_fp_terms <- function(fp_powers,
     spike = spike,
     # Spike decision
     spike_dec = spike_decision,
-    # presence / absence in final model encoded by NAs in fp_powers
-    selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
+    
+    #selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
+    selected = mapply(function(p, sd) {
+      if (sd == 3L) TRUE  # binary-only spike is still selected
+      else !all(is.na(p))
+    }, fp_powers, spike_decision),
     # final degrees of freedom
     df_final = mapply(calculate_df, fp_powers, spike_decision), 
     convert_powers_list_to_matrix(fp_powers)

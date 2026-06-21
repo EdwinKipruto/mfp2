@@ -24,14 +24,26 @@
 #' 
 #' * `statistic`: test statistic.
 #' * `pvalue`: p-value
+#' @keywords internal
+#' @noRd
 calculate_lr_test <- function(logl, 
                               dfs) {
+  
+  df_diff <- dfs[2] - dfs[1]
+  
+  if (df_diff <= 0) {
+    stop(
+      "! Internal error: invalid likelihood-ratio test; second model must have more degrees of freedom.",
+      call. = FALSE
+    )
+  }
+  
   statistic <- 2 * (logl[2] - logl[1])
   
   list(
     statistic = statistic, 
     pvalue = pchisq(statistic, 
-                    df = dfs[2] - dfs[1], 
+                    df = df_diff, 
                     lower.tail = FALSE)
   )
 }
@@ -80,12 +92,25 @@ calculate_lr_test <- function(logl,
 #' @references 
 #' Kutner, M.H., et al., 2004. \emph{Applied linear statistical models. 
 #' McGraw-Hill Irwin.}
+#' @keywords internal
+#' @noRd
 calculate_f_test <- function(deviances,
                              dfs_resid,
                              n_obs, 
                              d1 = NULL) {
   
   dev_diff <- deviances[1] - deviances[2]
+  
+  tol <- sqrt(.Machine$double.eps)
+  
+  if (dev_diff < -tol) {
+    stop(
+      "! Internal error: invalid F-test; second model has larger deviance than the first model.",
+      call. = FALSE
+    )
+  }
+  
+  dev_diff <- max(dev_diff, 0)
   
   # number of additional parameters in model 2 compared to model 1
   if (is.null(d1)) {
@@ -96,11 +121,30 @@ calculate_f_test <- function(deviances,
     d2 <- dfs_resid
   }
   
+  if (d1 <= 0) {
+    stop(
+      "! Internal error: invalid F-test; numerator degrees of freedom must be positive.",
+      call. = FALSE
+    )
+  }
+  
+  if (d2 <= 0) {
+    stop(
+      "! Internal error: invalid F-test; denominator degrees of freedom must be positive.",
+      call. = FALSE
+    )
+  }
+  
   statistic <- (d2 / d1) * (exp(dev_diff / n_obs) - 1)
   
   pvalue <- 1
   if (dev_diff != 0) {
-    pvalue <- stats::pf(statistic, df1 = d1, df2 = d2, lower.tail = FALSE)
+    pvalue <- stats::pf(
+      statistic,
+      df1 = d1,
+      df2 = d2,
+      lower.tail = FALSE
+    )
   }
   
   list(

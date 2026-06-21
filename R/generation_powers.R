@@ -71,6 +71,13 @@ generate_powers_acd <- function(degree = NULL,
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
   
+  
+  # Internal contract: ACD supports degree 0, 1, or 2 only.
+  if (length(degree) != 1L || is.na(degree) || degree < 0L || degree > 2L) {
+    stop("Internal error: `degree` for ACD must be 0, 1, or 2.", call. = FALSE)
+  }
+  
+  
   if (degree == 0)
     return(matrix(c(NA, 1), ncol = 2))
   

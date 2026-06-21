@@ -12,7 +12,8 @@ prepare_newdata_for_predict(
   apply_pre = TRUE,
   apply_center = TRUE,
   check_binary = TRUE,
-  reset_zero = TRUE
+  reset_zero = FALSE,
+  allow_missing_predictors = FALSE
 )
 }
 \arguments{
@@ -31,9 +32,21 @@ after transformation or not.}
 
 \item{check_binary}{passed to \code{transform_vector_fp()}.}
 
-\item{reset_zero}{Logical. If \code{TRUE} (default), variables incorrectly flagged
-as \code{zero = TRUE} but containing only positive values are reset to \code{FALSE}.
-Parameter of \code{transform_matrix()}}
+\item{reset_zero}{Logical. If \code{TRUE}, variables marked as \code{zero = TRUE}
+but containing only positive values are reset to \code{FALSE} before transformation.
+The prediction helper defaults to \code{FALSE} because prediction must preserve
+the zero/catzero/spike structure learned during model fitting. Adaptive
+resetting based on the contents of \code{newdata} can create a design matrix that
+is inconsistent with the fitted coefficients. Parameter of
+\code{transform_matrix()}.}
+
+\item{allow_missing_predictors}{Logical. If \code{FALSE}, the default, \code{newdata}
+must contain all original predictors recorded in \code{object$transformations}.
+Missing predictors trigger an error before the data are subset or
+transformed. If \code{TRUE}, missing predictors are allowed and only the
+predictors present in both \code{newdata} and the fitted object are transformed.
+This is intended for internal partial-prediction or term-specific
+prediction paths, not for ordinary full-model prediction.}
 }
 \value{
 A dataframe of transformed newdata

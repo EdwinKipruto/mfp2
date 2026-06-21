@@ -15,7 +15,8 @@ fit_model(
   control = NULL,
   rownames = NULL,
   nocenter = NULL,
-  fast = TRUE
+  fast = TRUE,
+  has_offset = FALSE
 )
 }
 \arguments{
@@ -35,7 +36,10 @@ See \code{\link[survival:coxph]{survival::coxph()}}.}
 \item{strata, control, weights, offset, rownames, nocenter}{parameters for Cox
 or glm. See \code{\link[survival:coxph]{survival::coxph()}} or \code{\link[stats:glm]{stats::glm()}} for details.}
 
-\item{fast}{passed to \code{fit_glm()} and \code{fit_cox()}.
+\item{fast}{passed to \code{fit_glm()} and \code{fit_cox()}.}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.
 
 @return
 A list with the following components:

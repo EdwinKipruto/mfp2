@@ -34,6 +34,7 @@ fit_mfp(
   min_prop,
   max_prop,
   force_max_fp,
+  has_offset,
   verbose
 )
 }
@@ -116,8 +117,11 @@ treat non-positive values as zero before FP transformation. Must match
 the length and order of the columns of \code{x}.}
 
 \item{catzero}{A logical vector indicating which columns of \code{x} should
-treat non-positive values as zero AND have a binary indicator
-\eqn{I(x = 0)} automatically created and included in the model. Must
+treat non-positive values as zero AND have a binary structural-zero
+indicator automatically created and included in the model. Internally,
+values \code{x <= 0} are first recoded to zero; the indicator is then
+computed as \code{I(x == 0)} on the recoded scale, equivalent to
+\code{I(original x <= 0)}. Must
 match the length and order of the columns of \code{x}.}
 
 \item{spike}{A logical vector indicating which columns of \code{x} contain
@@ -134,6 +138,9 @@ allowed for the SAZ algorithm to be applied. Default \code{0.95}.}
 variable, forces selection of the most complex functional form at the
 degree specified by \code{df}, bypassing AIC/BIC comparison against
 simpler forms. Has no effect when \code{criterion = "pvalue"}.}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.}
 
 \item{verbose}{Logical. If \code{TRUE}, progress information is printed
 during fitting. Default \code{FALSE}.}

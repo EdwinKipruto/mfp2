@@ -82,8 +82,10 @@ For \code{family = "binomial"} it should be  a vector with two levels (see
 \code{\link[stats:glm]{stats::glm()}}). For \code{family = "cox"} it must be a \code{\link[survival:Surv]{survival::Surv()}} object
 containing 2 columns.}
 
-\item{weights}{a vector of observation weights of length nobs.
-Default is \code{NULL} which assigns a weight of 1 to each observation.}
+\item{weights}{Optional numeric vector of observation weights.
+Default is \code{NULL} which assigns a weight of 1 to each observation. In the
+formula interface, the vector is supplied directly and is not looked up in
+\code{data}.}
 
 \item{offset}{a vector of length nobs that is included in the linear
 predictor. Useful for the poisson family (e.g. log of exposure time).
@@ -232,8 +234,9 @@ model family.}
 variables for which non-positive values should be treated as zero. This
 enables fitting a fractional polynomial (FP) model using only the positive
 values of the covariate, while setting non-positive values to zero during
-transformation. Internally, this argument is converted to a named logical
-vector over the columns of \code{x}. In \code{fp()} terms, use the logical
+transformation. Internally, values \code{x <= 0} are recoded to zero before
+transformation. This argument is then converted to a named logical vector
+over the columns of \code{x}. In \code{fp()} terms, use the logical
 argument \code{zero = TRUE} instead.
 
 \code{zero_vars} is also implied automatically for any variable in
@@ -244,11 +247,13 @@ See the \strong{Details} section.}
 
 \item{catzero_vars}{A character vector specifying the names of continuous
 variables for which non-positive values should be treated as zero and a
-binary indicator \eqn{I(x = 0)} automatically created and included in the
-model alongside the FP terms for the positive part. Internally, this
-argument is converted to a named logical vector over the columns of
-\code{x}. In \code{fp()} terms, use the logical argument
-\code{catzero = TRUE} instead.
+binary structural-zero indicator automatically created and included in the
+model alongside the FP terms for the positive part. Internally, values
+\code{x <= 0} are first recoded to zero; the indicator is then computed as
+\code{I(x == 0)} on the recoded scale, which is equivalent to
+\code{I(original x <= 0)}. This argument is converted to a named logical
+vector over the columns of \code{x}. In \code{fp()} terms, use the logical
+argument \code{catzero = TRUE} instead.
 
 \code{catzero_vars} implies \code{zero_vars}. Therefore, a variable may
 appear in both \code{zero_vars} and \code{catzero_vars} without error.
@@ -258,9 +263,11 @@ appear in both \code{zero_vars} and \code{catzero_vars} without error.
 
 \item{spike_vars}{A character vector specifying the names of continuous
 variables to be assessed for a spike at zero using the SAZ algorithm.
-Internally, this argument is converted to a named logical vector over the
-columns of \code{x}. In \code{fp()} terms, use the logical argument
-\code{spike = TRUE} instead.
+For these variables, non-positive values are first recoded to zero and the
+zero-spike indicator is computed as \code{I(x == 0)} on the recoded scale,
+equivalent to \code{I(original x <= 0)}. Internally, this argument is
+converted to a named logical vector over the columns of \code{x}. In
+\code{fp()} terms, use the logical argument \code{spike = TRUE} instead.
 
 \code{spike_vars} implies both \code{catzero_vars} and \code{zero_vars}
 while the SAZ algorithm is active, via the cascade
@@ -274,19 +281,18 @@ eligibility. If the observed zero proportion is outside
 \code{[min_prop, max_prop]} or the variable is binary, the spike flag
 is reset to \code{FALSE}. The \code{catzero} and \code{zero} flags are
 also restored to whatever the user originally specified -- not the values
-implied by the cascade. This means:
+implied by the spike cascade. This means:
 \itemize{
-\item If only \code{spike} was specified (not \code{catzero} or
-\code{zero}), the variable reverts to a standard continuous predictor
+\item If only \code{spike} was specified, and not \code{catzero} or
+\code{zero}, the variable reverts to a standard continuous predictor
 when the spike is reset.
-\item If \code{catzero} was also specified, the binary indicator is
-still added after the reset.
+\item If \code{catzero} was also specified, the structural-zero binary
+indicator is still added after the spike reset.
 \item If \code{zero} was also specified, non-positive values are still
-recoded to zero after the reset.
+recoded to zero after the spike reset.
 }
-This argument is not available in the formula interface
-(\code{mfp2.formula}), where spike is specified as a logical value within
-\code{fp()} terms for each variable.}
+In the formula interface, specify this option inside \code{fp()} using
+\code{spike = TRUE}, for example \code{fp(x, spike = TRUE)}.}
 
 \item{min_prop}{Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
 SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
@@ -368,6 +374,8 @@ TRUE. Returns \code{NULL} if \code{catzero} is FALSE.
 spike-at-zero handling for each variable. Value 1 includes both the
 transformed variable and a binary indicator, 2 disables the spike and binary
 indicator, and 3 retains only the binary indicator.
+\item has_offset: logical value indicating whether an offset was specified
+before missing offsets were replaced by zeros internally.
 }
 The \code{mfp2} object may contain further information depending on family.
 }
@@ -485,10 +493,11 @@ conducted before estimating the FP powers for an input variable.
 Centering, however, is done after estimating the FP functions for each
 variable.
 
-Additionally, any variable marked as \code{zero}, \code{catzero}, or with degrees of
-freedom equal to 1 (\code{df = 1}) has its shift automatically set to zero. This
-ensures that variables for which transformations are unnecessary like linear
-are not artificially shifted.
+Additionally, any variable marked as \code{zero}, \code{catzero}, \code{spike}, or with
+degrees of freedom equal to 1 (\code{df = 1}) has its shift automatically set to
+zero. This ensures that variables for which transformations are unnecessary
+like linear are not artificially shifted, and that structural zeros remain at
+zero for variables with spike-at-zero or catzero handling.
 
 Centering before estimating the FP powers may result in different powers and
 should be avoided. Also see \code{transform_vector_fp()} for some more details.
@@ -851,41 +860,45 @@ level of 0.05 for all variables.
 \section{Handling Nonpositive Values (\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars})}{
 
 
-The \code{zero_vars} and \code{catzero_vars} options provide mechanisms for
-handling covariates with nonpositive values in fractional polynomial (FP)
-models, especially when those values have a qualitatively different
-interpretation than positive ones.
+The \code{zero_vars}, \code{catzero_vars}, and \code{spike_vars} options
+provide mechanisms for handling covariates with nonpositive values in
+fractional polynomial (FP) models, especially when those values have a
+qualitatively different interpretation than positive values.
 
 The \code{zero_vars} argument is used in the default matrix interface and
 specifies the names of variables for which FP transformations should be
-applied only to positive values, while nonpositive values are treated as
-zero. In the formula interface, the corresponding option is specified inside
-\code{fp()} as \code{zero = TRUE}.
+applied only to positive values. For these variables, nonpositive values are
+treated as the structural-zero group and are recoded to zero before
+transformation. In the formula interface, the corresponding option is
+specified inside \code{fp()} as \code{zero = TRUE}.
 
 The \code{catzero_vars} argument extends this idea by automatically creating
-a binary indicator for whether the covariate is zero. Specifically, for each
-covariate listed in \code{catzero_vars}, a binary variable \code{Z} is created
-such that:
+a binary structural-zero indicator. Specifically, for each covariate listed
+in \code{catzero_vars}, values \code{x <= 0} are first recoded to zero. A
+binary variable \code{Z} is then created on the recoded scale such that:
 
-\code{Z = 1} if the covariate value is zero \code{(x = 0)} and
-\code{Z = 0} if the covariate value is positive \code{(x > 0)}.
+\code{Z = 1} for the structural-zero group, equivalently original values
+\code{x <= 0}; internally this is computed as \code{I(x == 0)} after
+recoding.
 
-This indicator is included in the model alongside the transformed version of
-the covariate. Both are treated as a single predictor during model selection
-where applicable. Since \code{catzero_vars} implies \code{zero_vars}, a
-variable may be supplied in both arguments without error.
+\code{Z = 0} for positive covariate values \code{(x > 0)}.
+
+This indicator is included in the model alongside the transformed positive
+part of the covariate. Both are treated as a single predictor during model
+selection where applicable. Since \code{catzero_vars} implies
+\code{zero_vars}, a variable may be supplied in both arguments without error.
 
 The \code{spike_vars} argument triggers the spike-at-zero (SAZ) algorithm.
-When a variable is listed in \code{spike_vars}, the binary indicator created
-by \code{catzero_vars} is formally evaluated together with the FP terms
-during model selection. Thus, \code{spike_vars} implies both
-\code{catzero_vars} and \code{zero_vars} while the SAZ algorithm is active.
-In the formula interface, the corresponding option is specified inside
-\code{fp()} as \code{spike = TRUE}.
+When a variable is listed in \code{spike_vars}, nonpositive values are first
+recoded to zero, and the structural-zero indicator is formally evaluated
+together with the FP terms during model selection. Thus, \code{spike_vars}
+implies both \code{catzero_vars} and \code{zero_vars} while the SAZ algorithm
+is active. In the formula interface, the corresponding option is specified
+inside \code{fp()} as \code{spike = TRUE}.
 
-This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
-and is particularly relevant in epidemiological contexts where exposure may
-have a threshold effect.
+This methodology is based on work by Royston and Sauerbrei (2008,
+Section 4.15) and is particularly relevant in epidemiological contexts where
+exposure may have a threshold effect.
 }
 
 \section{Compatibility with \code{mfp} package}{

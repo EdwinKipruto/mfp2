@@ -18,6 +18,7 @@ fit_linear_step(
   spike_decision,
   acd_parameter,
   prev_adj_params,
+  has_offset,
   ...
 )
 }
@@ -72,6 +73,9 @@ if an element is \code{NULL}, the variable was not specified in the
 
 \item{prev_adj_params}{Named list storing adjustment variable transformations
 from previous steps for each variable.}
+
+\item{has_offset}{logical indicating whether an offset was specified before
+missing offsets were replaced by zeros internally.}
 
 \item{...}{Parameters passed to \code{fit_model()}.}
 }

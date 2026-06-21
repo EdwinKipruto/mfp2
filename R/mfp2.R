@@ -101,10 +101,11 @@
 #' Centering, however, is done after estimating the FP functions for each 
 #' variable.
 #' 
-#' Additionally, any variable marked as `zero`, `catzero`, or with degrees of 
-#' freedom equal to 1 (`df = 1`) has its shift automatically set to zero. This
-#' ensures that variables for which transformations are unnecessary like linear
-#' are not artificially shifted. 
+#' Additionally, any variable marked as `zero`, `catzero`, `spike`, or with 
+#' degrees of freedom equal to 1 (`df = 1`) has its shift automatically set to 
+#' zero. This ensures that variables for which transformations are unnecessary 
+#' like linear are not artificially shifted, and that structural zeros remain at 
+#' zero for variables with spike-at-zero or catzero handling.
 #' 
 #' Centering before estimating the FP powers may result in different powers and
 #' should be avoided. Also see \code{transform_vector_fp()} for some more details.
@@ -445,41 +446,45 @@
 #' 
 #' @section Handling Nonpositive Values (\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars}):
 #'
-#' The \code{zero_vars} and \code{catzero_vars} options provide mechanisms for
-#' handling covariates with nonpositive values in fractional polynomial (FP)
-#' models, especially when those values have a qualitatively different
-#' interpretation than positive ones.
+#' The \code{zero_vars}, \code{catzero_vars}, and \code{spike_vars} options
+#' provide mechanisms for handling covariates with nonpositive values in
+#' fractional polynomial (FP) models, especially when those values have a
+#' qualitatively different interpretation than positive values.
 #'
 #' The \code{zero_vars} argument is used in the default matrix interface and
 #' specifies the names of variables for which FP transformations should be
-#' applied only to positive values, while nonpositive values are treated as
-#' zero. In the formula interface, the corresponding option is specified inside
-#' \code{fp()} as \code{zero = TRUE}.
+#' applied only to positive values. For these variables, nonpositive values are
+#' treated as the structural-zero group and are recoded to zero before
+#' transformation. In the formula interface, the corresponding option is
+#' specified inside \code{fp()} as \code{zero = TRUE}.
 #'
 #' The \code{catzero_vars} argument extends this idea by automatically creating
-#' a binary indicator for whether the covariate is zero. Specifically, for each
-#' covariate listed in \code{catzero_vars}, a binary variable \code{Z} is created
-#' such that:
+#' a binary structural-zero indicator. Specifically, for each covariate listed
+#' in \code{catzero_vars}, values \code{x <= 0} are first recoded to zero. A
+#' binary variable \code{Z} is then created on the recoded scale such that:
 #'
-#' \code{Z = 1} if the covariate value is zero \code{(x = 0)} and
-#' \code{Z = 0} if the covariate value is positive \code{(x > 0)}.
+#' \code{Z = 1} for the structural-zero group, equivalently original values
+#' \code{x <= 0}; internally this is computed as \code{I(x == 0)} after
+#' recoding.
 #'
-#' This indicator is included in the model alongside the transformed version of
-#' the covariate. Both are treated as a single predictor during model selection
-#' where applicable. Since \code{catzero_vars} implies \code{zero_vars}, a
-#' variable may be supplied in both arguments without error.
+#' \code{Z = 0} for positive covariate values \code{(x > 0)}.
+#'
+#' This indicator is included in the model alongside the transformed positive
+#' part of the covariate. Both are treated as a single predictor during model
+#' selection where applicable. Since \code{catzero_vars} implies
+#' \code{zero_vars}, a variable may be supplied in both arguments without error.
 #'
 #' The \code{spike_vars} argument triggers the spike-at-zero (SAZ) algorithm.
-#' When a variable is listed in \code{spike_vars}, the binary indicator created
-#' by \code{catzero_vars} is formally evaluated together with the FP terms
-#' during model selection. Thus, \code{spike_vars} implies both
-#' \code{catzero_vars} and \code{zero_vars} while the SAZ algorithm is active.
-#' In the formula interface, the corresponding option is specified inside
-#' \code{fp()} as \code{spike = TRUE}.
+#' When a variable is listed in \code{spike_vars}, nonpositive values are first
+#' recoded to zero, and the structural-zero indicator is formally evaluated
+#' together with the FP terms during model selection. Thus, \code{spike_vars}
+#' implies both \code{catzero_vars} and \code{zero_vars} while the SAZ algorithm
+#' is active. In the formula interface, the corresponding option is specified
+#' inside \code{fp()} as \code{spike = TRUE}.
 #'
-#' This methodology is based on work by Royston and Sauerbrei (2008, Section 4.15)
-#' and is particularly relevant in epidemiological contexts where exposure may 
-#' have a threshold effect.
+#' This methodology is based on work by Royston and Sauerbrei (2008,
+#' Section 4.15) and is particularly relevant in epidemiological contexts where
+#' exposure may have a threshold effect.
 #'
 #' @section Compatibility with `mfp` package: 
 #' `mfp2` is an extension of the `mfp` package and can be used to reproduce
@@ -508,8 +513,10 @@
 #' under ‘Details’.
 #' @param data for `mfp2.formula`: a `data.frame` which contains all variables
 #' specified in `formula`.
-#' @param weights a vector of observation weights of length nobs. 
-#' Default is `NULL` which assigns a weight of 1 to each observation.
+#' @param weights Optional numeric vector of observation weights. 
+#' Default is `NULL` which assigns a weight of 1 to each observation. In the 
+#' formula interface, the vector is supplied directly and is not looked up in 
+#' `data`.
 #' @param offset a vector of length nobs that is included in the linear
 #' predictor. Useful for the poisson family (e.g. log of exposure time).
 #' Default is `NULL` which assigns an offset  of 0 to each observation.
@@ -637,8 +644,9 @@
 #'   variables for which non-positive values should be treated as zero. This
 #'   enables fitting a fractional polynomial (FP) model using only the positive
 #'   values of the covariate, while setting non-positive values to zero during
-#'   transformation. Internally, this argument is converted to a named logical
-#'   vector over the columns of \code{x}. In \code{fp()} terms, use the logical
+#'   transformation. Internally, values \code{x <= 0} are recoded to zero before
+#'   transformation. This argument is then converted to a named logical vector
+#'   over the columns of \code{x}. In \code{fp()} terms, use the logical
 #'   argument \code{zero = TRUE} instead.
 #'
 #'   \code{zero_vars} is also implied automatically for any variable in
@@ -649,11 +657,13 @@
 #'
 #' @param catzero_vars A character vector specifying the names of continuous
 #'   variables for which non-positive values should be treated as zero and a
-#'   binary indicator \eqn{I(x = 0)} automatically created and included in the
-#'   model alongside the FP terms for the positive part. Internally, this
-#'   argument is converted to a named logical vector over the columns of
-#'   \code{x}. In \code{fp()} terms, use the logical argument
-#'   \code{catzero = TRUE} instead.
+#'   binary structural-zero indicator automatically created and included in the
+#'   model alongside the FP terms for the positive part. Internally, values
+#'   \code{x <= 0} are first recoded to zero; the indicator is then computed as
+#'   \code{I(x == 0)} on the recoded scale, which is equivalent to
+#'   \code{I(original x <= 0)}. This argument is converted to a named logical
+#'   vector over the columns of \code{x}. In \code{fp()} terms, use the logical
+#'   argument \code{catzero = TRUE} instead.
 #'
 #'   \code{catzero_vars} implies \code{zero_vars}. Therefore, a variable may
 #'   appear in both \code{zero_vars} and \code{catzero_vars} without error.
@@ -663,9 +673,11 @@
 #'
 #' @param spike_vars A character vector specifying the names of continuous
 #'   variables to be assessed for a spike at zero using the SAZ algorithm.
-#'   Internally, this argument is converted to a named logical vector over the
-#'   columns of \code{x}. In \code{fp()} terms, use the logical argument
-#'   \code{spike = TRUE} instead.
+#'   For these variables, non-positive values are first recoded to zero and the
+#'   zero-spike indicator is computed as \code{I(x == 0)} on the recoded scale,
+#'   equivalent to \code{I(original x <= 0)}. Internally, this argument is
+#'   converted to a named logical vector over the columns of \code{x}. In
+#'   \code{fp()} terms, use the logical argument \code{spike = TRUE} instead.
 #'
 #'   \code{spike_vars} implies both \code{catzero_vars} and \code{zero_vars}
 #'   while the SAZ algorithm is active, via the cascade
@@ -679,19 +691,18 @@
 #'   \code{[min_prop, max_prop]} or the variable is binary, the spike flag
 #'   is reset to \code{FALSE}. The \code{catzero} and \code{zero} flags are
 #'   also restored to whatever the user originally specified -- not the values
-#'   implied by the cascade. This means:
+#'   implied by the spike cascade. This means:
 #'   \itemize{
-#'     \item If only \code{spike} was specified (not \code{catzero} or
-#'       \code{zero}), the variable reverts to a standard continuous predictor
+#'     \item If only \code{spike} was specified, and not \code{catzero} or
+#'       \code{zero}, the variable reverts to a standard continuous predictor
 #'       when the spike is reset.
-#'     \item If \code{catzero} was also specified, the binary indicator is
-#'       still added after the reset.
+#'     \item If \code{catzero} was also specified, the structural-zero binary
+#'       indicator is still added after the spike reset.
 #'     \item If \code{zero} was also specified, non-positive values are still
-#'       recoded to zero after the reset.
+#'       recoded to zero after the spike reset.
 #'   }
-#'   This argument is not available in the formula interface
-#'   (\code{mfp2.formula}), where spike is specified as a logical value within
-#'   \code{fp()} terms for each variable.
+#'   In the formula interface, specify this option inside \code{fp()} using
+#'   \code{spike = TRUE}, for example \code{fp(x, spike = TRUE)}.
 #' @param min_prop
 #'   Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
 #'   SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
@@ -805,6 +816,8 @@
 #' spike-at-zero handling for each variable. Value 1 includes both the 
 #' transformed variable and a binary indicator, 2 disables the spike and binary 
 #' indicator, and 3 retains only the binary indicator. 
+#' \item has_offset: logical value indicating whether an offset was specified
+#' before missing offsets were replaced by zeros internally.
 #' }
 #' The `mfp2` object may contain further information depending on family.
 #' 
@@ -1309,6 +1322,8 @@ mfp2.default <- function(x,
     weights <- rep.int(1, nobs)
   }
   
+  has_offset <- !is.null(offset)
+  
   if (is.null(offset)) {
     offset <- rep.int(0, nobs)
   }
@@ -1414,6 +1429,23 @@ mfp2.default <- function(x,
     }
   }
   
+  if (any(catzero)) {
+    vars_to_check_cz <- vnames[catzero]
+    bad_vars_cz <- vars_to_check_cz[
+      apply(x[, vars_to_check_cz, drop = FALSE], 2, function(col) {
+        all(col > 0, na.rm = TRUE)
+      })
+    ]
+    if (length(bad_vars_cz) > 0) {
+      warning(
+        "The following variables were marked through 'catzero_vars' but contain ",
+        "only positive values. Setting 'catzero' to FALSE for: ",
+        paste(bad_vars_cz, collapse = ", ")
+      )
+      catzero[bad_vars_cz] <- FALSE
+    }
+  }
+  
   #-------- Deal with acdx -----------------------------------------------------
   # Convert acdx to a named logical vector
   if (is.null(acdx)) {
@@ -1440,30 +1472,36 @@ mfp2.default <- function(x,
     spike[spike_input_vars] <- TRUE
   }
   
-  # Ensure that all spike variables also have catzero = TRUE
-  catzero[spike] <- TRUE
-  
-  # Ensure that any variable marked as catzero is also set to zero
-  zero[catzero] <- TRUE
-  
-  # Identify binary columns, exactly two unique values
+  # Identify binary columns, exactly two unique non-missing values.
+  # Binary variables are not eligible for zero/catzero/spike handling here:
+  #   - zero handling is unnecessary because the variable is already discrete;
+  #   - catzero would create a redundant indicator;
+  #   - spike implies catzero and would therefore create the same inconsistency.
   binary_vars <- apply(x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
   binary_names <- vnames[binary_vars]
   
-  # Reset zero and catzero for binary variables, with warnings
+  # Reset zero, catzero, and spike for binary variables, with a single warning.
+  # This must reset spike as well as zero/catzero. Otherwise a binary variable
+  # requested through spike_vars can be left in an inconsistent transient state:
+  #   spike = TRUE, catzero = FALSE, zero = FALSE
+  # until fit_mfp() attempts to repair or further process it.
   if (length(binary_names) > 0) {
-    zero_binary <- intersect(binary_names, names(zero)[zero])
+    zero_binary    <- intersect(binary_names, names(zero)[zero])
     catzero_binary <- intersect(binary_names, names(catzero)[catzero])
+    spike_binary   <- intersect(binary_names, names(spike)[spike])
     
-    vars_to_reset <- union(zero_binary, catzero_binary)
+    vars_to_reset <- Reduce(union, list(zero_binary, catzero_binary, spike_binary))
     
     if (length(vars_to_reset) > 0) {
       warning(
-        "The following binary variables were marked through 'zero_vars' or 'catzero_vars' but are binary and will be reset to FALSE: ",
-        paste(vars_to_reset, collapse = ", "), call. = FALSE
+        "The following binary variables were marked through 'zero_vars', ",
+        "'catzero_vars', or 'spike_vars' but are binary and will be reset to FALSE: ",
+        paste(vars_to_reset, collapse = ", "), ".",
+        call. = FALSE
       )
-      zero[vars_to_reset] <- FALSE
+      zero[vars_to_reset]    <- FALSE
       catzero[vars_to_reset] <- FALSE
+      spike[vars_to_reset]   <- FALSE
     }
   }
   
@@ -1488,13 +1526,25 @@ mfp2.default <- function(x,
     df.list <- df
   }
   
-  # Reset shift = 0 for zero and catzero variables, since only the positive part
-  # is transformed, so no shift is needed. Similar to variables with df = 1.
+  # Compute effective zero/catzero by applying the spike -> catzero -> zero
+  # cascade. This is needed to correctly set shift = 0 for spike variables,
+  # whose structural zeros must remain at zero after shifting. The original
+  # (un-cascaded) zero, catzero, and spike vectors are passed unchanged to
+  # fit_mfp(), which saves user intent before re-applying the cascade internally.
+  effective_catzero <- catzero
+  effective_zero <- zero
+  effective_catzero[spike] <- TRUE        # spike implies catzero
+  effective_zero[effective_catzero] <- TRUE # catzero implies zero
+  
+  # Reset shift = 0 for variables with effective zero or catzero status
+  # (including those implied by spike), since only the positive part is
+  # transformed and the structural-zero group must remain at zero.
+  # Similar logic applies to variables with df = 1.
   shift_to_zero <- rep(FALSE, length(vnames))
   names(shift_to_zero) <- vnames
   
-  shift_to_zero[names(zero)[zero]] <- TRUE
-  shift_to_zero[names(catzero)[catzero]] <- TRUE
+  shift_to_zero[names(effective_zero)[effective_zero]] <- TRUE
+  shift_to_zero[names(effective_catzero)[effective_catzero]] <- TRUE
   shift_to_zero[vnames[df.list == 1]] <- TRUE
   
   shift[shift_to_zero] <- 0
@@ -1507,8 +1557,10 @@ mfp2.default <- function(x,
   nonlinear_variables <- which(df.list != 1)
   nonlinear_names <- vnames[nonlinear_variables]
   
-  # Exclude variables that are in zero or catzero
-  all_zero_vars <- union(names(zero)[zero], names(catzero)[catzero])
+  # Exclude variables that have effective zero or catzero status (including
+  # spike-implied) from the positivity check, as their zeros are intentional
+  all_zero_vars <- union(names(effective_zero)[effective_zero],
+                         names(effective_catzero)[effective_catzero])
   vars_to_check <- setdiff(nonlinear_names, all_zero_vars)
   
   if (length(vars_to_check) > 0) {
@@ -1570,7 +1622,8 @@ mfp2.default <- function(x,
     powers = power_list, method = ties, strata = istrata, nocenter = nocenter, 
     acdx = acdx, ftest = ftest, force_max_fp = force_max_fp,
     control = control, zero = zero, catzero = catzero, spike = spike,
-    min_prop = min_prop, max_prop = max_prop, verbose = verbose
+    min_prop = min_prop, max_prop = max_prop, has_offset = has_offset,
+    verbose = verbose
   )
   
   # add additional information to fitted object
@@ -1578,6 +1631,7 @@ mfp2.default <- function(x,
   fit$family <- family
   fit$family_string <- family_string
   fit$offset <- offset
+  fit$has_offset <- has_offset
   
   fit
 }
@@ -1784,12 +1838,14 @@ mfp2.formula <- function(formula,
          call. = FALSE)
   }
   
-  # stratification for Cox models ---------------------------------------------
-  specials <- "strata"
-  terms_formula <- terms(formula, specials = specials, data = data)
+  # stratification and offset handling -----------------------------------------
+  terms_formula <- stats::terms(formula, specials = "strata", data = data)
   
-  # remember position of strata variables to drop from input data if necessary
-  terms_drop <- NULL
+  # Terms to remove before constructing the model matrix.
+  # offset() and strata() are handled separately and must not enter x.
+  terms_drop <- integer(0L)
+  
+  # stratification for Cox models ---------------------------------------------
   if (!is.null(attr(terms_formula, "specials")$strata)) {
     if (family_string == "cox") {
       
@@ -1801,9 +1857,11 @@ mfp2.formula <- function(formula,
       }
       
       # untangle the terms for strata as in coxph
-      stemp <- survival::untangle.specials(terms_formula,
-                                           special = "strata", 
-                                           order = 1)
+      stemp <- survival::untangle.specials(
+        terms_formula,
+        special = "strata",
+        order = 1
+      )
       
       if (length(stemp$vars) == 1) {
         strata <- mf[[stemp$vars]]
@@ -1811,7 +1869,7 @@ mfp2.formula <- function(formula,
         strata <- mf[, stemp$vars]
       }
       
-      terms_drop <- stemp$terms
+      terms_drop <- c(terms_drop, stemp$terms)
     } else {
       stop("! strata are only allowed for Cox models.\n", 
            "i Please remove any strata terms from the model formula.",
@@ -1819,25 +1877,41 @@ mfp2.formula <- function(formula,
     }
   }
   
-  # drop strata variables if necessary before using model.matrix()
-  if (!is.null(terms_drop)) {
-    terms_model <- terms_formula[-terms_drop]
-  } else {
-    terms_model <- terms_formula
-  }
-  
   # offset ---------------------------------------------------------------------
   term_offset <- attr(terms_formula, "offset")
+  
   if (!is.null(term_offset) && length(term_offset) > 1) {
     stop("! Only one offset in the formula is allowed.", call. = FALSE)
   }
   
-  # check whether offset is both in the formula and as an argument
-  if (!is.null(term_offset) && !is.null(call$offset)) {
-    warning("i Offset appears both in the formula and as an input argument.\n", 
-            "i The information in the model formula is used and the input argument is ignored.", 
-            call. = FALSE)
-    offset <- as.vector(model.offset(mf))
+  if (!is.null(term_offset)) {
+    if (!is.null(call$offset)) {
+      warning(
+        "i Offset appears both in the formula and as an input argument.\n",
+        "i The information in the model formula is used and the input argument is ignored.",
+        call. = FALSE
+      )
+    }
+    
+    offset <- as.vector(stats::model.offset(mf))
+    terms_drop <- c(terms_drop, term_offset)
+  }
+  
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! offset must be numeric.", call. = FALSE)
+    }
+    
+    if (length(offset) != nrow(mf)) {
+      stop("! offset must have one value per observation.", call. = FALSE)
+    }
+  }
+  
+  # Drop strata() and offset() terms before using model.matrix().
+  if (length(terms_drop) > 0L) {
+    terms_model <- terms_formula[-unique(terms_drop)]
+  } else {
+    terms_model <- terms_formula
   }
   
   # data preparation -----------------------------------------------------------
@@ -1846,21 +1920,27 @@ mfp2.formula <- function(formula,
     y <- as.numeric(y)
   }
   
-  # Factor variables will be expanded in case they exist
-  x <- model.matrix(terms_model, mf)
-  
-  # remove intercept if necessary
-  # intercept is coded as entry 0 in attribute assigned by model.matrix
-  # intercept is always the first column
-  if (0 %in% attr(x, "assign")) {
-    x <- x[, -1, drop = FALSE]
-  }
+  mm <- stats::model.matrix(terms_model, mf)
+  assign <- attr(mm, "assign")
+  term_labels <- attr(terms_model, "term.labels")
+
+  # Remove intercept, but keep assign aligned with the remaining columns.
+  keep_cols <- colnames(mm) != "(Intercept)"
+  x <- mm[, keep_cols, drop = FALSE]
+  assign <- assign[keep_cols]
   
   nx <- ncol(x) 
   names_x <- colnames(x)
   
+  # Map each original formula term to the model-matrix columns it generated.
+  # This is used to expand `keep` safely for factor terms without prefix matching.
+  term_to_columns <- split(colnames(x), term_labels[assign])
+  
+  # Remove any empty/NA assignments defensively.
+  term_to_columns <- term_to_columns[!is.na(names(term_to_columns))]
+  
   # select variables that undergo fp transformation and extract their attributes
-  fp_pos <- grep("fp(.*)", colnames(mf))
+  fp_pos <- grep("^fp\\(.*\\)$", colnames(mf))
   
   if (length(fp_pos) > 0) {
     fp_data <- mf[, fp_pos, drop = FALSE]
@@ -1886,9 +1966,30 @@ mfp2.formula <- function(formula,
            call. = FALSE)
     }
     
+    # Capture fp() term labels before renaming them in the model matrix.
+    fp_terms <- grep("^fp\\(.*\\)$", names_x, value = TRUE)
+    
     # replace names such as fp(x1) by real name "x1" in the x matrix
-    names_x <- replace(names_x, grep("fp(.*)", names_x), fp_vars)
+    names_x <- replace(names_x, grep("^fp\\(.*\\)$", names_x), fp_vars)
     colnames(x) <- names_x
+    
+    # Update the formula-term -> model-matrix-column map after renaming fp() columns.
+    # This prevents keep expansion from using unsafe prefix matching.
+    # Both keep = "fp(x1)" and keep = "x1" resolve to the renamed model column "x1".
+    if (length(fp_terms) > 0L) {
+      for (i in seq_along(fp_terms)) {
+        fp_term <- fp_terms[i]
+        fp_var <- fp_vars[i]
+        
+        if (fp_term %in% names(term_to_columns)) {
+          old_cols <- term_to_columns[[fp_term]]
+          new_cols <- ifelse(old_cols %in% fp_terms, fp_var, old_cols)
+          
+          term_to_columns[[fp_term]] <- new_cols
+          term_to_columns[[fp_var]] <- new_cols
+        }
+      }
+    }
   }
   
   # call default method --------------------------------------------------------
@@ -2023,26 +2124,37 @@ mfp2.formula <- function(formula,
   }
   
   # --- handle factor variables when keep is used ------------------------------
+  # Expand keep using exact formula-term and model-matrix-column matching.
+  # This avoids unsafe prefix matching, e.g. keep = "age" matching "age_group".
   if (!is.null(keep)) {
-    vars <- colnames(x)
     
-    # Expand keep: include dummy variables for categorical predictors
-    expanded_keep <- unique(unlist(lapply(keep, function(k) {
-      vars[startsWith(vars, paste0(k))]
-    })))
+    expanded_keep <- character(0)
     
-    # If no matches, preserve original names
-    expanded_keep <- if (length(expanded_keep) > 0) expanded_keep else keep
+    # Valid keep entries are either final model-matrix columns or original formula terms.
+    valid_keep <- unique(c(colnames(x), names(term_to_columns)))
+    bad_keep <- setdiff(keep, valid_keep)
     
-    # Update select_list: assign select = 1 for all columns in expanded_keep
-    for (ek in expanded_keep) {
-      if (ek %in% names(select_list)) {
-        select_list[[ek]] <- 1
+    if (length(bad_keep) > 0L) {
+      stop(
+        sprintf(
+          "! Unknown variable(s) in keep: %s.",
+          paste(bad_keep, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    for (k in keep) {
+      if (k %in% colnames(x)) {
+        # Exact final column match, e.g. keep = "age"
+        expanded_keep <- c(expanded_keep, k)
+      } else if (k %in% names(term_to_columns)) {
+        # Exact formula-term match, e.g. keep = "sex" expanding to factor columns
+        expanded_keep <- c(expanded_keep, term_to_columns[[k]])
       }
     }
     
-    # Update keep before passing to mfp2.default
-    keep <- expanded_keep
+    keep <- unique(expanded_keep)
   }
   
   mfp2.default(x = x, 
@@ -2115,7 +2227,23 @@ coef.mfp2 <- function(object, ...) {
 #' 
 #' @export
 summary.mfp2 <- function(object, ...) {
-  NextMethod("summary", object)
+  if (!inherits(object, "mfp2")) {
+    stop("The object is not an mfp2 object.", call. = FALSE)
+  }
+  
+  if (identical(object$family_string, "cox")) {
+    return(
+      getFromNamespace("summary.coxph", "survival")(
+        object,
+        ...
+      )
+    )
+  }
+  
+  stats::summary.glm(
+    object,
+    ...
+  )
 }
 
 #' Print method for objects of class `mfp2`

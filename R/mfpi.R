@@ -1294,6 +1294,8 @@ mfpi.default <- function(
   }
   
   if (is.null(weights)) weights <- rep.int(1, nobs)
+  has_offset <- !is.null(offset)
+  
   if (is.null(offset))  offset  <- rep.int(0, nobs)
   
   # Expand scalars and guarantee names on all per-variable vectors.
@@ -1600,6 +1602,7 @@ mfpi.default <- function(
     digits            = digits,
     center_type       = center_type,
     scale             = scale,
+    has_offset        = has_offset,
     p_adjust_method   = p_adjust_method
   )
   

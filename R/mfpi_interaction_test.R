@@ -188,7 +188,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
                              flex, use_ftest, family, family_string,
                              weights, offset, ties, strata, control,
-                             nocenter, digits) {
+                             nocenter, has_offset, digits) {
   
   cont_name  <- colnames(cont_var)
   n_groups   <- length(unique(as.vector(group_var)))
@@ -207,6 +207,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     control  = control,
     rownames = NULL,
     nocenter = nocenter,
+    has_offset = has_offset,
     fast     = TRUE    # log-likelihood only; no vcov needed
   )
   
@@ -221,6 +222,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     control  = control,
     rownames = NULL,
     nocenter = nocenter,
+    has_offset = has_offset,
     fast     = FALSE   # full fit: coefficients and vcov required downstream
   )
   

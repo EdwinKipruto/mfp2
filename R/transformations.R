@@ -674,23 +674,39 @@ transform_matrix <- function(x,
     # For each original variable flagged zero=TRUE, mark its transformed
     # columns (FP or ACD) as zero-handled, but exclude *_bin columns.
     orig_zero_vars <- names(zero)[which(zero)]
+
     if (length(orig_zero_vars) > 0) {
       cn <- colnames(x_transformed)
       
       for (nm in orig_zero_vars) {
-        # Match either "nm" or "A_nm" followed by "." or end-of-string.
-        # This is equivalent to the previous regex for ordinary variable names,
-        # but treats names literally, so metacharacters such as "." or "+" do not
-        # create false matches.
-        fp_match <- cn == nm | startsWith(cn, paste0(nm, "."))
-        acd_match <- cn == paste0("A_", nm) | startsWith(cn, paste0("A_", nm, "."))
+        pow <- power_list[[nm]]
+        pow <- pow[!is.na(pow)]
         
-        matches <- cn[fp_match | acd_match]
+        if (length(pow) == 0L) {
+          next
+        }
+        
+        if (isTRUE(acdx[[nm]])) {
+          # transform_vector_acd() produces one FP column for x and one ACD column,
+          # named nm.1 and A_nm.1, when both powers are present. If one component
+          # has NA power, transform_vector_fp() returns NULL for that component.
+          expected_cols <- character(0)
+          
+          if (!is.na(power_list[[nm]][1])) {
+            expected_cols <- c(expected_cols, paste0(nm, ".1"))
+          }
+          
+          if (length(power_list[[nm]]) >= 2L && !is.na(power_list[[nm]][2])) {
+            expected_cols <- c(expected_cols, paste0("A_", nm, ".1"))
+          }
+        } else {
+          expected_cols <- paste0(nm, ".", seq_along(pow))
+        }
+        
+        matches <- intersect(cn, expected_cols)
         
         if (length(matches) > 0) {
-          # Exclude binary indicator columns, matching the previous "_bin$" logic.
-          matches <- matches[!endsWith(matches, "_bin")]
-          if (length(matches) > 0) zero_expanded[matches] <- TRUE
+          zero_expanded[matches] <- TRUE
         }
       }
     }

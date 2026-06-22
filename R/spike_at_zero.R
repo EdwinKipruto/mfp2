@@ -467,7 +467,7 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   metrics1 <- fit1$metrics[fit1$model_best, ]
   
   # Compute Model 2 metrics with degree adjustment
-  deg2 <- if (length(power_best) == 1L && degree == 1L && power_best == 1) {
+  deg2 <- if (length(power_best) == 1L && power_best == 1) {
     0L
   } else {
     degree

@@ -561,7 +561,14 @@ fit_linear_step <- function(x,
   )
   
   # respect acd
-  metrics <- rbind(linear = calculate_model_metrics(model_linear, n_obs))  
+  metrics <- rbind(
+    linear = calculate_model_metrics(
+    obj = model_linear,
+    n_obs = n_obs,
+    df_additional = 0
+    )
+    )
+  
   if (acdx[xi])
     rownames(metrics) <- "linear(., A(x))"
   

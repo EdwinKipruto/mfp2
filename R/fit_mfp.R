@@ -341,7 +341,7 @@ fit_mfp <- function(x,
   #
   # This is the intended interpretation of catzero/spike variables.
   catzero_list       <- lapply(names(catzero), function(v) {
-    if (catzero[[v]]) as.integer(x[, v] == 0) else NULL
+    if (catzero[[v]]) as.integer(x[, v] <= 0) else NULL
   })
   names(catzero_list) <- names(catzero)
   
@@ -404,7 +404,11 @@ fit_mfp <- function(x,
     prev_adj_params       <- fit_best_cycle$prev_adj_params
     
     
-    powers_same <- identical(powers_current, powers_updated)
+    #powers_same <- identical(powers_current, powers_updated)
+    powers_same <- identical(
+      lapply(powers_current, unname),
+      lapply(powers_updated, unname)
+    )
     spike_same <- identical(spike_decision, spike_decision_updated)
     
     
@@ -502,8 +506,9 @@ fit_mfp <- function(x,
       centers         = data_transformed$centers,
       acd_parameter   = data_transformed$acd_parameter,
       convergence_mfp = converged,
-      x_original      = x[, names(powers_current[
-        !sapply(powers_current, function(p) all(is.na(p)))
+      x_original = x[, names(powers_current[
+        !sapply(powers_current, function(p) all(is.na(p))) |
+          (spike & spike_decision == 3L)
       ]), drop = FALSE],
       y               = y,
       fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
@@ -752,7 +757,7 @@ calculate_df <- function(powers, spike_decision) {
   # make sure to drop names by using as.numeric
   p <- as.numeric(powers[!is.na(powers)])
     # df of linear function
-  if (identical(p, 1)) {
+  if (length(p) == 1L && p == 1) {
     df <- 1L
     # df of fpm. Note that df = 2m where m is the degree. if length = 1 then
     # degree = 1 and df = 2 etc

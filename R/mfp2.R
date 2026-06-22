@@ -1337,23 +1337,31 @@ mfp2.default <- function(x,
     alpha <- rep(alpha, nvars)
   } 
   
-  # Default shift and scale values
+  # Default shift values
   if (is.null(shift)) {
     shift <- apply(x, 2, find_shift_factor)
   } else {
     if (length(shift) == 1) {
       shift <- rep(shift, nvars)
     }
-  }
-  
-  if (is.null(scale)) {
-    scale <- apply(x, 2, find_scale_factor)
-  } else {
-    if (length(scale) == 1) {
-      scale <- rep(scale, nvars) 
+    
+    if (length(shift) != nvars) {
+      stop(
+        "! shift must either be NULL, a single number, or the number of variables ",
+        "(columns in x) and shift must match.",
+        call. = FALSE
+      )
     }
-    if (any(scale <= 0 | is.na(scale))) {
-      stop("All scale values must be positive and non-missing.", call. = FALSE)
+    
+    # NA values mean automatic shift for those variables.
+    shift_missing <- is.na(shift)
+    
+    if (any(shift_missing)) {
+      shift[shift_missing] <- apply(
+        x[, shift_missing, drop = FALSE],
+        2,
+        find_shift_factor
+      )
     }
   }
   
@@ -1552,6 +1560,40 @@ mfp2.default <- function(x,
   # data preparation -----------------------------------------------------------
   # Apply shift transformation to the x matrix
   x <- sweep(x, 2, shift, "+")
+  
+  # scaling should be done after shifting
+  if (is.null(scale)) {
+    scale <- apply(x, 2, find_scale_factor)
+  } else {
+    if (length(scale) == 1) {
+      scale <- rep(scale, nvars) 
+    }
+    
+    if (length(scale) != nvars) {
+      stop(
+        "! scale must either be NULL, a single number, or the number of variables ",
+        "(columns in x) and scale must match.",
+        call. = FALSE
+      )
+    }
+    
+    # NA values mean automatic scaling for those variables.
+    # This allows the formula interface to mix global/default automatic scaling
+    # with per-variable scale values from fp(..., scale = ...).
+    scale_missing <- is.na(scale)
+    
+    if (any(!scale_missing & scale <= 0)) {
+      stop("All non-missing scale values must be positive.", call. = FALSE)
+    }
+    
+    if (any(scale_missing)) {
+      scale[scale_missing] <- apply(
+        x[, scale_missing, drop = FALSE],
+        2,
+        find_scale_factor
+      )
+    }
+  }
   
   # Identify variables that require fractional polynomial transformation
   nonlinear_variables <- which(df.list != 1)
@@ -1998,15 +2040,19 @@ mfp2.formula <- function(formula,
   df_list <- setNames(as.list(assign_df(x = x, df_default = df)), names_x)
   
   # scaling
+  # NA means automatic scaling. mfp2.default() will estimate these values
+  # after applying its full shift logic, including zero/catzero/spike/df resets.
   if (is.null(scale)) {
-    scale_list <- setNames(as.list(apply(x, 2, find_scale_factor)), names_x)
+    scale_list <- setNames(rep(list(NA_real_), nx), names_x)
   } else {
     scale_list <- setNames(rep(list(scale), nx), names_x)
   }
   
   # shifting
+  # NA means automatic shift. mfp2.default() will estimate the shift and then
+  # apply its full zero/catzero/spike/df reset logic.
   if (is.null(shift)) {
-    shift_list <- setNames(as.list(apply(x, 2, find_shift_factor)), names_x)
+    shift_list <- setNames(rep(list(NA_real_), nx), names_x)
   } else {
     shift_list <- setNames(rep(list(shift), nx), names_x)
   }
@@ -2157,7 +2203,12 @@ mfp2.formula <- function(formula,
     keep <- unique(expanded_keep)
   }
   
-  mfp2.default(x = x, 
+  # Store the raw model-matrix column names before fp() columns are renamed.
+  # These are needed by predict.mfp2() to rebuild the same expanded design
+  # matrix from ordinary formula-style newdata.
+  formula_column_map <- setNames(names_x, colnames(mm)[keep_cols])
+  
+  fit <- mfp2.default(x = x, 
                y = y, 
                weights = weights, 
                offset = offset, 
@@ -2187,6 +2238,16 @@ mfp2.formula <- function(formula,
                min_prop = min_prop,
                max_prop = max_prop,
                verbose = verbose)
+  fit$formula_interface <- TRUE
+  fit$formula <- formula
+  fit$formula_terms <- stats::delete.response(terms_model)
+  fit$formula_contrasts <- attr(mm, "contrasts")
+  fit$formula_xlevels <- .getXlevels(terms_model, mf)
+  fit$formula_column_map <- formula_column_map
+  fit$formula_model_matrix_columns <- names_x
+  fit$formula_term_to_columns <- term_to_columns
+  
+  fit
 }
 
 #' Extract coefficients from object of class `mfp2`

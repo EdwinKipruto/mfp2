@@ -241,6 +241,10 @@ predict.mfp2 <- function(object,
     stop("Newdata must have column names", call. = FALSE)
   }
   
+  if (!is.null(newdata)) {
+    newdata <- reconstruct_formula_newdata(object, newdata)
+  }
+  
   if (!is.null(newdata) && anyNA(newdata)) {
       stop("! newdata must not contain any NA (missing data).\n", 
            "i Please remove any missing data before passing newdata to this function.",
@@ -347,7 +351,9 @@ predict.mfp2 <- function(object,
       variable_pre = as.numeric(x_seq)
       
       if (object$spike_dec[t] == 3) {
-        variable <- object$catzero_list[[t]]
+        #variable <- object$catzero_list[[t]]
+        #variable_pre <- variable
+        variable <- as.integer(x_seq[, t] <= 0)
         variable_pre <- variable
       }
       
@@ -582,6 +588,73 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
   )
 }
 
+#' Rebuild formula-interface newdata with model.matrix()
+#'
+#' Formula-fitted mfp2 objects are fitted on the expanded numeric design matrix
+#' returned by model.matrix(). This helper lets users pass ordinary newdata with
+#' the original formula variables, including factors, and reconstructs the same
+#' expanded columns used during fitting. If newdata already contains all fitted
+#' design-matrix columns, it is returned unchanged for backwards compatibility.
+#'
+#' @keywords internal
+reconstruct_formula_newdata <- function(object, newdata) {
+  if (!isTRUE(object$formula_interface)) {
+    return(newdata)
+  }
+  
+  expected <- rownames(object$transformations)
+  if (!is.null(expected) && length(expected) > 0L &&
+      all(expected %in% colnames(newdata))) {
+    return(newdata)
+  }
+  
+  if (is.null(object$formula_terms)) {
+    stop(
+      "! This object was fitted using the formula interface, but formula terms ",
+      "needed for prediction were not stored.",
+      call. = FALSE
+    )
+  }
+  
+  newdata_df <- as.data.frame(newdata)
+  
+  mf <- stats::model.frame(
+    object$formula_terms,
+    data = newdata_df,
+    na.action = stats::na.pass,
+    xlev = object$formula_xlevels
+  )
+  
+  mm <- stats::model.matrix(
+    object$formula_terms,
+    data = mf,
+    contrasts.arg = object$formula_contrasts
+  )
+  
+  keep_cols <- colnames(mm) != "(Intercept)"
+  mm <- mm[, keep_cols, drop = FALSE]
+  
+  column_map <- object$formula_column_map
+  if (!is.null(column_map)) {
+    mapped <- unname(column_map[colnames(mm)])
+    colnames(mm) <- ifelse(is.na(mapped), colnames(mm), mapped)
+  }
+  
+  if (!is.null(object$formula_model_matrix_columns)) {
+    missing <- setdiff(object$formula_model_matrix_columns, colnames(mm))
+    if (length(missing) > 0L) {
+      stop(
+        "! Could not reconstruct required model-matrix column(s) from newdata: ",
+        paste(missing, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    mm <- mm[, object$formula_model_matrix_columns, drop = FALSE]
+  }
+  
+  mm
+}
+
 #' Helper function to prepare newdata for predict function
 #' 
 #' To be used in \code{predict.mfp2()}.
@@ -780,6 +853,11 @@ calculate_standard_error <- function(model,
   # get rid of variance and covariance of intercept if any
   xnames <- colnames(X)
   ind <- match(xnames, colnames(vcovx))
+  
+  if (anyNA(ind)) {
+    stop("Cannot compute SE; covariance matrix lacks columns: ",
+         paste(xnames[is.na(ind)], collapse = ", "))
+  }
   
   if (!is.null(xref)) {
     # Subtract the reference value: f(x)-f(xref)

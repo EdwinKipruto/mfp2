@@ -236,20 +236,34 @@ find_best_fp_step <- function(x,
   # ----------------------------------------------------------------------------
   # fit candidate models to evaluate Spike at zero variables
   models <- fit_saz_reduced_models(
-    xi = xi, y = y, weights = weights, offset = offset, family = family,
-    method = method, strata = strata, nocenter = nocenter, control = control,
-    rownames = rownames, has_offset = has_offset,
-    current_adj_params = fit1$current_adj_params
+    stage1_selection = fit1,
+    xi = xi,
+    y = y,
+    weights = weights,
+    offset = offset,
+    family = family,
+    method = method,
+    strata = strata,
+    nocenter = nocenter,
+    control = control,
+    rownames = rownames,
+    has_offset = has_offset
   )
   
   # compute metrics for the three models to decide on SAZ models
   n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
-  metrics <- compute_metrics(fit1, models$fit2, models$fit3, n_obs,
-                             power_best)
+
+  metrics <- compute_saz_stage2_metrics(
+    fit1 = models$fit1,
+    fit2 = models$fit2,
+    fit3 = models$fit3,
+    n_obs = n_obs,
+    power_best = power_best
+  )
   
   # Update spike_decision. That is decision on whether both components,  
   # FPm/linear only, or binary only is needed
-  decision <- compute_decision(metrics, criterion, select, n_obs, ftest)
+  decision <- compute_saz_stage2_decision(metrics, criterion, select, n_obs, ftest)
   spike_decision[xi] <- decision$decision
   
   # add spike metrics to fit1 for printing stage 2
@@ -803,7 +817,7 @@ select_ra2 <- function(x,
   if (ftest) {
     calculate_test <- function(metrics, n_obs) {
       calculate_f_test(
-        deviances = metrics[, "deviance_rs", drop = TRUE],
+        deviances = metrics[, "deviance_gaussian", drop = TRUE],
         dfs_resid = metrics[, "df_resid", drop = TRUE],
         n_obs = n_obs
       )
@@ -1052,7 +1066,7 @@ select_ra2_acd <- function(x,
   if (ftest) {
     calculate_test <- function(metrics, n_obs) {
       calculate_f_test(
-        deviances = metrics[, "deviance_rs", drop = TRUE],
+        deviances = metrics[, "deviance_gaussian", drop = TRUE],
         dfs_resid = metrics[, "df_resid", drop = TRUE],
         n_obs = n_obs
       )
@@ -1904,6 +1918,10 @@ transform_data_step <- function(x,
     
     # add catzero variable if not null; if null cbind will remove it
     data_xi <- cbind(catzero[[xi]], data_xi)
+    
+    if (!is.null(catzero[[xi]])) {
+      colnames(data_xi)[1L] <- "catzero"
+    }
     
     data_fp <- list(data_xi)
     powers_fp <- 1

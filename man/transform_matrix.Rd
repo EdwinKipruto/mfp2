@@ -16,7 +16,7 @@ transform_matrix(
   catzero = NULL,
   spike = NULL,
   spike_decision = NULL,
-  reset_zero = TRUE
+  reset_zero = FALSE
 )
 }
 \arguments{
@@ -25,9 +25,13 @@ transform_matrix(
 \item{power_list}{a named list of FP powers to be applied to the columns of
 \code{x}. Only variables named in this list are transformed.}
 
-\item{center}{a named logical vector specifying whether the columns in \code{x}
-should be centered. Centering will occur after transformations and will be
-done separately for each individual column of the transformed data matrix.}
+\item{center}{Named logical vector indicating whether centering should be
+applied. Centering is currently supported as an all-or-none operation:
+if any element of \code{center} is \code{TRUE}, all columns in the final transformed
+design matrix are centered; if all elements are \code{FALSE}, no centering is
+applied. Mixed per-variable centering is not currently supported. For
+variables expanded into multiple fractional-polynomial columns, each
+transformed column is centered separately.}
 
 \item{acdx}{a named logical vector specifying the use of acd transformation.}
 
@@ -69,8 +73,12 @@ spike-at-zero processing is applied. Value 1 includes both the transformed
 variable and binary indicator, 2 disables the spike/binary indicator, and 3
 keeps only the binary indicator.}
 
-\item{reset_zero}{Logical. If \code{TRUE} (default), variables incorrectly flagged
-as \code{zero = TRUE} but containing only positive values are reset to \code{FALSE}.}
+\item{reset_zero}{Logical. If \code{TRUE}, variables marked as \code{zero = TRUE}
+but containing only positive values in the current data are reset to
+\code{FALSE}, and their \code{catzero} indicators are also suppressed. The default
+is \code{FALSE} because final fitting, and prediction, should preserve the
+zero/catzero/spike structure learned from the fitting process rather than
+adapt it to the contents of a particular data slice.}
 }
 \value{
 If all elements of \code{power_list} are \code{NA}, returns \code{NULL}. Otherwise,

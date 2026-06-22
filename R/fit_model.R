@@ -226,7 +226,8 @@ fit_glm <- function(x,
     df = df,
     sse =  sum(fit_weights * fit$residuals^2, na.rm = TRUE),
     residuals = fit$residuals,
-    weights = fit_weights
+    weights = fit_weights,
+    has_scale_parameter = fit$family$family == "gaussian"
   )
 }
 
@@ -354,6 +355,7 @@ fit_cox <- function(x,
     df = length(fit$coefficients[!is.na(fit$coefficients)]), 
     weights = fit_weights,
     sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
-    residuals = fit$residuals
+    residuals = fit$residuals,
+    has_scale_parameter = FALSE
   )
 }

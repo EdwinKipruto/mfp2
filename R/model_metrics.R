@@ -138,13 +138,33 @@ deviance_gaussian <- function(residuals, weights) {
 calculate_model_metrics <- function(obj, 
                                     n_obs, 
                                     df_additional = 0) {
-
+  # Collect the core model metrics returned by fit_model().
+  #
+  # obj$df is the model degrees of freedom reported by fit_model().
+  # For Gaussian models, fit_model() includes the estimated scale parameter
+  # in obj$df, so obj$df = regression rank + 1.
+  #
+  # For non-Gaussian GLMs and Cox models, there is no estimated scale
+  # parameter included, so obj$df is just the regression-model df.
+  #
+  # df_additional is used to add extra degrees of freedom for FP/ACD
+  # transformations when the fitted model has more transformation parameters
+  # than ordinary linear terms.
   res <- c(
     logl = obj$logl,
     df = obj$df + df_additional, 
     deviance_rs = -2 * obj$logl, 
     sse = obj$sse
   )
+  
+  # Residual df should subtract only model/regression parameters from n_obs.
+  # Gaussian obj$df includes one additional scale parameter, so remove it.
+  # Non-Gaussian and Cox obj$df do not include a scale parameter.
+  df_for_resid <- if (isTRUE(obj$has_scale_parameter)) {
+    res[["df"]] - 1
+  } else {
+    res[["df"]]
+  }
   
   c(res, 
     deviance_gaussian = deviance_gaussian(
@@ -153,6 +173,6 @@ calculate_model_metrics <- function(obj,
     ), 
     aic = res[["deviance_rs"]] + 2 * res[["df"]],
     bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]], 
-    df_resid = n_obs - (res[["df"]] - 1)
+    df_resid = n_obs - df_for_resid
   )
 }

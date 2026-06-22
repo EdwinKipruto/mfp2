@@ -1104,6 +1104,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
             spike_decision     = adj_spike_decision[adj_vars],
             keep_x_order       = FALSE,
             acd_parameter_list = NULL,
+            reset_zero         = FALSE,
             check_binary       = TRUE
           )$x_transformed
         }

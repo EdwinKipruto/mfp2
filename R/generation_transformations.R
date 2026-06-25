@@ -12,8 +12,8 @@
 #' If \code{TRUE}, transformation is applied only to positive values; nonpositive
 #' values are replaced with zero before transformation. If \code{FALSE} (default), 
 #' all values are shifted (if needed) to ensure positivity before transformation.
-#' @param catzero A vector of binary values to be added to the transformed variables.
-#' Default is NULL, meaning no binary variables added.
+#' @param catzero An optional n x 1 numeric/integer matrix containing the
+#' structural-zero binary indicator for the current variable.
 #' @details 
 #' Any fractional polynomial (FP) transformation is defined by a vector of powers, 
 #' such as \code{(p1, p2)} for degree 2. These correspond to the terms \code{x^p1} 
@@ -65,13 +65,16 @@ generate_transformations_fp <- function(x,
   
   # Validate catzero, if provided
   if (!is.null(catzero)) {
-    if (length(catzero) != length(x)) {
-      stop("`catzero` must have the same length as `x`.")
+    if (!is.matrix(catzero) || ncol(catzero) != 1L) {
+      stop("`catzero` must be an n x 1 matrix.")
     }
     
-    # Check type
+    if (nrow(catzero) != length(x)) {
+      stop("`catzero` must have one row per observation in `x`.")
+    }
+    
     if (!is.numeric(catzero)) {
-      stop("`catzero` must be a numeric vector.")
+      stop("`catzero` must be a numeric/integer matrix.")
     }
   }
   
@@ -116,13 +119,16 @@ generate_transformations_acd <- function(x,
   
   # Validate catzero, if provided
   if (!is.null(catzero)) {
-    if (length(catzero) != length(x)) {
-      stop("`catzero` must have the same length as `x`.")
+    if (!is.matrix(catzero) || ncol(catzero) != 1L) {
+      stop("`catzero` must be an n x 1 matrix.")
     }
     
-    # Check type
+    if (nrow(catzero) != length(x)) {
+      stop("`catzero` must have one row per observation in `x`.")
+    }
+    
     if (!is.numeric(catzero)) {
-      stop("`catzero` must be a numeric vector.")
+      stop("`catzero` must be a numeric/integer matrix.")
     }
   }
   

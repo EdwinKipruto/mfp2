@@ -203,16 +203,13 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
 #' \describe{
 #'   \item{Model 1}{
 #'     FP/ACD(\code{xi}) + binary zero indicator(\code{xi}) + adjustment
-#'     variables. This model is already fitted in stage 1 by \code{select_fct()}
-#'     through \code{find_best_fpm_step()} or \code{fit_linear_step()}.
+#'     variables. This model is already fitted in stage 1.
 #'   }
 #'   \item{Model 2}{
-#'     FP/ACD(\code{xi}) only + adjustment variables. This is Model 1 without
-#'     the binary zero-indicator column.
+#'     FP/ACD(\code{xi}) only + adjustment variables.
 #'   }
 #'   \item{Model 3}{
-#'     Binary zero indicator(\code{xi}) only + adjustment variables. This is
-#'     Model 1 without the FP/ACD columns.
+#'     Binary zero indicator(\code{xi}) only + adjustment variables.
 #'   }
 #' }
 #'
@@ -220,180 +217,62 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
 #' already-selected stage-1 object passed via \code{stage1_selection}; it is not
 #' refitted here.
 #'
-#' The function reuses the already transformed stage-1 design data stored in
-#' \code{stage1_selection$current_adj_params[[xi]]$data_xi}. It does not call
-#' FP or ACD transformation helpers. The transformed \code{xi} matrix is split
-#' by the \code{"catzero"} column: all non-\code{"catzero"} columns form the
-#' continuous FP/ACD component, and the \code{"catzero"} column forms the binary
+#' The function reuses the already transformed stage-1 \code{xi} design matrix
+#' and adjustment matrix stored in
+#' \code{stage1_selection$current_adj_params[[xi]]}. The \code{xi} design is
+#' split by the \code{"catzero"} column: non-\code{"catzero"} columns form the
+#' continuous FP/ACD component, and \code{"catzero"} forms the binary
 #' structural-zero component.
-#'
-#' @section Adjustment matrix invariant:
-#' The adjustment matrix must be \strong{identical} across Models 1, 2, and 3.
-#' This function guarantees that invariant for Models 2 and 3 by reusing the
-#' same adjustment matrix that \code{transform_data_step()} built during the
-#' winning stage-1 fit. That matrix is stored in
-#' \code{stage1_selection$current_adj_params[[xi]]$data_adj}.
-#'
-#' The function does not reconstruct adjustment variables. This prevents loss
-#' of spike-at-zero indicators, spike-decision routing, ACD structure, or other
-#' transformation details for adjustment variables.
-#'
-#' For checking and testing, the returned object includes the three design
-#' matrices:
-#'
-#' \describe{
-#'   \item{\code{x$model1}}{
-#'     The reconstructed design matrix corresponding to the already-fitted
-#'     stage-1 Model 1. This matrix is returned for diagnostics only; Model 1 is
-#'     not refitted.
-#'   }
-#'   \item{\code{x$model2}}{
-#'     The design matrix used to fit Model 2.
-#'   }
-#'   \item{\code{x$model3}}{
-#'     The design matrix used to fit Model 3.
-#'   }
-#' }
-#'
-#' @param stage1_selection Result object returned by \code{select_fct()} for the
-#'   current stage-1 selection. Must contain \code{current_adj_params}. The
-#'   element \code{stage1_selection$current_adj_params[[xi]]$data_xi} provides
-#'   the already transformed \code{xi} matrix, and
-#'   \code{stage1_selection$current_adj_params[[xi]]$data_adj} provides the
-#'   adjustment matrix reused across all three SAZ models.
-#' @param xi Character string, the name of the current variable of interest.
-#' @param y Response vector or \code{Surv} object.
-#' @param weights Observation weight vector.
-#' @param offset Offset vector.
-#' @param family Family specification, either character or family object.
-#' @param method Tie-handling method for Cox models.
-#' @param strata Stratification factor for Cox models.
-#' @param nocenter Numeric vector for Cox centering control.
-#' @param control List of fitting control parameters.
-#' @param rownames Row-name vector for Cox models.
-#' @param has_offset Logical; whether an offset was originally specified.
-#'
-#' @return A list with elements:
-#'   \describe{
-#'     \item{\code{stage1_selection}}{
-#'       The original stage-1 selection object representing Model 1.
-#'     }
-#'     \item{\code{fit2}}{
-#'       Fitted model object for Model 2, continuous-only \code{xi} plus
-#'       adjustment, as returned by \code{fit_model()}.
-#'     }
-#'     \item{\code{fit3}}{
-#'       Fitted model object for Model 3, binary-only \code{xi} plus adjustment,
-#'       as returned by \code{fit_model()}.
-#'     }
-#'     \item{\code{x}}{
-#'       List of design matrices \code{model1}, \code{model2}, and
-#'       \code{model3}. \code{model1} is returned for invariant checks only and
-#'       is not refitted.
-#'     }
-#'     \item{\code{adjustment_colnames}}{
-#'       Column names of the shared adjustment matrix.
-#'     }
-#'     \item{\code{data_xi}}{
-#'       Already transformed stage-1 \code{xi} design matrix.
-#'     }
-#'     \item{\code{adjustment_matrix}}{
-#'       Shared adjustment matrix reused across all three SAZ models.
-#'     }
-#'   }
-#'
-#' @seealso \code{compute_saz_stage2_metrics()}, \code{compute_saz_stage2_decision()},
-#'   \code{find_best_fp_step()}, \code{transform_data_step()},
-#'   \code{fit_model()}
 #'
 #' @keywords internal
 #' @noRd
 fit_saz_reduced_models <- function(stage1_selection,
-                                   xi, y, weights, offset, family,
-                                   method, strata, nocenter, control,
-                                   rownames, has_offset) {
-  if (is.null(stage1_selection$current_adj_params)) {
-    stop(
-      "Internal error: stage1_selection$current_adj_params is NULL ",
-      "in fit_saz_reduced_models().",
-      call. = FALSE
-    )
-  }
-  
+                                   xi,
+                                   y,
+                                   weights,
+                                   offset,
+                                   family,
+                                   family_string,
+                                   method,
+                                   strata,
+                                   nocenter,
+                                   control,
+                                   rownames,
+                                   has_offset) {
   params_xi <- stage1_selection$current_adj_params[[xi]]
   
-  if (is.null(params_xi)) {
-    stop(
-      "Internal error: stage1_selection$current_adj_params[[", xi,
-      "]] is NULL in fit_saz_reduced_models().",
-      call. = FALSE
-    )
-  }
-  
   data_xi <- params_xi$data_xi
+  data_xi_colnames <- colnames(data_xi)
   
-  if (is.null(data_xi)) {
+  if (!"catzero" %in% data_xi_colnames) {
     stop(
-      "Internal error: stage1_selection$current_adj_params[[", xi,
-      "]]$data_xi is NULL in fit_saz_reduced_models(). ",
-      "SAZ stage 2 requires the selected stage-1 xi design matrix.",
+      "Internal error: SAZ stage 2 requires a 'catzero' column in the ",
+      "selected xi design matrix.",
       call. = FALSE
     )
   }
   
-  data_xi <- as.matrix(data_xi)
-  
-  if (is.null(colnames(data_xi))) {
-    stop(
-      "Internal error: stage1_selection$current_adj_params[[", xi,
-      "]]$data_xi has no column names.",
-      call. = FALSE
-    )
-  }
-  
-  if (!"catzero" %in% colnames(data_xi)) {
-    stop(
-      "Internal error: stage1_selection$current_adj_params[[", xi,
-      "]]$data_xi must contain a 'catzero' column.",
-      call. = FALSE
-    )
-  }
-  
-  xi_continuous <- data_xi[, colnames(data_xi) != "catzero", drop = FALSE]
+  xi_continuous <- data_xi[, data_xi_colnames != "catzero", drop = FALSE]
   xi_binary <- data_xi[, "catzero", drop = FALSE]
-  
-  if (ncol(xi_continuous) == 0L) {
-    stop(
-      "Internal error: no continuous FP/ACD columns remain after removing ",
-      "'catzero' from stage1_selection$current_adj_params[[", xi,
-      "]]$data_xi.",
-      call. = FALSE
-    )
-  }
   
   adjustment_matrix <- params_xi$data_adj
   
-  if (!is.null(adjustment_matrix)) {
-    adjustment_matrix <- as.matrix(adjustment_matrix)
-    
-    if (ncol(adjustment_matrix) == 0L) {
-      adjustment_matrix <- NULL
-    }
+  if (is.null(adjustment_matrix) || ncol(adjustment_matrix) == 0L) {
+    adjustment_matrix <- NULL
   }
   
-  x_fit1 <- cbind(data_xi, adjustment_matrix)
-  x_fit2 <- cbind(xi_continuous, adjustment_matrix)
-  x_fit3 <- cbind(xi_binary, adjustment_matrix)
-  
-  adjustment_colnames <- if (is.null(adjustment_matrix)) {
-    character(0L)
+  if (is.null(adjustment_matrix)) {
+    x_fit2 <- xi_continuous
+    x_fit3 <- xi_binary
   } else {
-    colnames(adjustment_matrix)
+    x_fit2 <- cbind(xi_continuous, adjustment_matrix)
+    x_fit3 <- cbind(xi_binary, adjustment_matrix)
   }
   
   fit_args <- list(
     y = y,
     family = family,
+    family_string = family_string,
     weights = weights,
     offset = offset,
     method = method,
@@ -413,11 +292,9 @@ fit_saz_reduced_models <- function(stage1_selection,
     fit2 = fit2,
     fit3 = fit3,
     x = list(
-      model1 = x_fit1,
       model2 = x_fit2,
       model3 = x_fit3
     ),
-    adjustment_colnames = adjustment_colnames,
     data_xi = data_xi,
     adjustment_matrix = adjustment_matrix
   )

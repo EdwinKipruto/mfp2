@@ -21,6 +21,8 @@
 #' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
+#' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
+#' `x` as an already-intercepted model matrix. Must be FALSE for Cox models.
 #' 
 #'  @return 
 #' A list with the following components: 
@@ -34,74 +36,62 @@
 #' @importFrom stats family
 #' @keywords internal
 #' @noRd
-fit_model <- function(x,
-                      y, 
-                      family, 
-                      weights = NULL,
-                      offset = NULL, 
-                      method = NULL, 
-                      strata = NULL, 
-                      control = NULL,
-                      rownames = NULL,
-                      nocenter = NULL, 
-                      fast = TRUE,
-                      has_offset = FALSE) {
-  
-  # Set column names if not provided
-  if (!is.null(dim(x)) && is.null(colnames(x))) {
-    colnames(x) <- colnames(x, do.NULL = FALSE)
-  }
-  
-  # Extract family string and convert to family object if needed
-  # Extract family string. `family` is expected to have been validated by
-  # mfp2.default() before reaching this internal fitting helper.
-  if (is.character(family)) {
-    family_string <- family
+ fit_model <- function(x,
+                        y,
+                        family,
+                        family_string,
+                        weights = NULL,
+                        offset = NULL,
+                        method = NULL,
+                        strata = NULL,
+                        control = NULL,
+                        rownames = NULL,
+                        nocenter = NULL,
+                        fast = TRUE,
+                        has_offset = FALSE,
+                        x_has_intercept = FALSE) {
     
-    if (family != "cox") {
-      family <- switch(
-        family,
-        gaussian = stats::gaussian(),
-        binomial = stats::binomial(),
-        poisson  = stats::poisson()
+    # Set column names if not provided
+    if (!is.null(dim(x)) && is.null(colnames(x))) {
+      colnames(x) <- colnames(x, do.NULL = FALSE)
+    }
+    
+    if (identical(family_string, "cox")) {
+      if (isTRUE(x_has_intercept)) {
+        stop(
+          "Internal error: Cox model matrix must not include an intercept.",
+          call. = FALSE
+        )
+      }
+      
+      fit <- fit_cox(
+        x = x,
+        y = y,
+        strata = strata,
+        weights = weights,
+        offset = offset,
+        control = control,
+        method = method,
+        rownames = rownames,
+        nocenter = nocenter,
+        fast = fast,
+        has_offset = has_offset
+      )
+    } else {
+      fit <- fit_glm(
+        y = y,
+        x = x,
+        family = family,
+        weights = weights,
+        offset = offset,
+        fast = fast,
+        has_offset = has_offset,
+        x_has_intercept = x_has_intercept
       )
     }
-  } else if (is.function(family)) {
-    family <- family()
-    family_string <- family$family
-  } else {
-    family_string <- family$family
+    
+    fit
   }
-  
-  if (family_string == "cox") {
-    # cox needs more work especially on how to handle strata
-    fit <- fit_cox(
-      x = x, 
-      y = y, 
-      strata = strata, 
-      weights = weights, 
-      offset = offset,
-      control = control, 
-      method = method, 
-      rownames = rownames,
-      nocenter = nocenter, 
-      fast = fast,
-      has_offset = has_offset
-    )
-  } else {
-    fit <- fit_glm(
-      y = y,
-      x = x,
-      family = family, 
-      weights = weights, 
-      offset = offset, 
-      fast = fast,
-      has_offset = has_offset
-    )
-  }
-  
-  fit
-}
 
 #' Function that fits generalized linear models 
 #'
@@ -123,6 +113,8 @@ fit_model <- function(x,
 #' and outcome vectors directly. 
 #' @param has_offset logical indicating whether `offset` should be included in
 #' the final formula-based fit when `fast = FALSE`.
+#' @param x_has_intercept internal logical. If TRUE, `x` is already the full
+#' model matrix including an intercept column named `"(Intercept)"`.
 #' 
 #' @return 
 #' A list with the following components: 
@@ -142,7 +134,8 @@ fit_glm <- function(x,
                     weights, 
                     offset, 
                     fast = TRUE,
-                    has_offset = FALSE) {
+                    has_offset = FALSE,
+                    x_has_intercept = FALSE) {
   
   nobs <- NROW(y)
   
@@ -158,9 +151,26 @@ fit_glm <- function(x,
   
   has_predictors <- !is.null(x) && NCOL(x) > 0L
   
+  if (isTRUE(x_has_intercept)) {
+    if (!has_predictors) {
+      stop(
+        "Internal error: x_has_intercept = TRUE requires a non-empty matrix.",
+        call. = FALSE
+      )
+    }
+    if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
+      stop(
+        "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
+        call. = FALSE
+      )
+    }
+  }
+  
   if (fast) {
-
-    if (has_predictors) {
+    
+    if (isTRUE(x_has_intercept)) {
+      xx <- x
+    } else if (has_predictors) {
       xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
     } else {
       xx <- matrix(
@@ -179,7 +189,14 @@ fit_glm <- function(x,
     )
   } else {
     
-    if (is.null(x) || NCOL(x) == 0) {
+    x_formula <- if (isTRUE(x_has_intercept)) {
+      x[, -1L, drop = FALSE]
+    } else {
+      x
+    }
+    has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
+    
+    if (!has_formula_predictors) {
       data <- data.frame(y = y)
       
       if (isTRUE(has_offset)) {
@@ -190,13 +207,13 @@ fit_glm <- function(x,
       }
       
     } else {
-      if (is.null(colnames(x)) || any(colnames(x) == "")) {
+      if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
         stop("! Internal error: x must have non-empty column names.", call. = FALSE)
       }
       
-      data <- data.frame(x, y = y, check.names = FALSE)
+      data <- data.frame(x_formula, y = y, check.names = FALSE)
       
-      rhs <- paste(sprintf("`%s`", colnames(x)), collapse = " + ")
+      rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
       
       if (isTRUE(has_offset)) {
         data$offset_ <- offset
@@ -205,7 +222,7 @@ fit_glm <- function(x,
       
       formula <- stats::as.formula(paste("y ~", rhs))
     }
-
+    
     
     fit <- stats::glm(
       formula = formula,
@@ -216,7 +233,7 @@ fit_glm <- function(x,
       y = TRUE
     )
   }
-
+  
   # account for estimation of variance parameter in gaussian models
   # computation as in logLik.glm using rank
   df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank

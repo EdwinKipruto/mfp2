@@ -206,6 +206,12 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     
     center_type <- match.arg(center_type)
     
+    # Resolve GLM family objects once for all repeated internal model fits.
+    # Public mfp2.default() already does this, but keeping it here makes direct
+    # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
+    # poisson() construction as well. Cox remains the character string "cox".
+    family_fit <- resolve_fit_model_family(family)
+    
     # ---------------------------------------------------------------------------
     # Pre-processing: synchronise parameter vectors and remap group levels
     # ---------------------------------------------------------------------------
@@ -243,7 +249,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       weights        = weights,
       offset         = offset,
       cycles         = cycles,
-      family         = family,
+      family         = family_fit,
       family_string  = family_string,
       criterion      = criterion,
       updated_params = processed_data$updated_params,
@@ -340,7 +346,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       use_ftest          = use_ftest,
       control            = control,
       nocenter           = nocenter,
-      family             = family,
+      family             = family_fit,
       family_string      = family_string,
       fp_powers          = fp_powers,
       cycles             = cycles,

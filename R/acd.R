@@ -257,8 +257,8 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
 #' The best FP power with smallest deviance and the fitted model.
 #' @keywords internal
 #' @noRd
-find_best_fp1_for_acd <- function(x, 
-                                  y, 
+find_best_fp1_for_acd <- function(x,
+                                  y,
                                   powers,
                                   zero) {
   
@@ -266,29 +266,62 @@ find_best_fp1_for_acd <- function(x,
     stop("! `x` must be a vector.")
   }
   
-  # generate all possible FP1 transformations
-  trafo <- generate_transformations_fp(x = x, degree = 1, powers = powers, zero = zero)$data
+  # Generate all possible FP1 transformations.
+  trafo <- generate_transformations_fp(
+    x = x,
+    degree = 1L,
+    powers = powers,
+    zero = zero
+  )$data
   
-  # Fit linear models for each FP1 function
+  # Fit linear Gaussian models for each FP1 function.
   n_powers <- length(powers)
+  family_gaussian <- stats::gaussian()
+  family_string_gaussian <- family_gaussian$family
   
-  # store deviance and model object
+  # Reuse one intercept-augmented design matrix across candidate fits.
+  #
+  # Only the intercept name is required by fit_glm(..., x_has_intercept = TRUE).
+  # The FP column does not need candidate-specific names because the selected
+  # power is returned separately. A stable "fp1" name is enough for readable
+  # coefficient names and avoids relying on colnames(trafo[[i]]), which may be
+  # NULL.
+  first_trafo <- trafo[[1L]]
+  
+  design_mat <- cbind(
+    "(Intercept)" = rep.int(1, NROW(first_trafo)),
+    "fp1" = first_trafo[, 1L]
+  )
+  
+  fp_col <- 2L
+  
+  # Store deviance and model object for each candidate power.
   devs <- vector("numeric", n_powers)
   fits <- vector("list", n_powers)
   
   for (i in seq_len(n_powers)) {
-    # fit linear model
-    fit <- fit_model(x = trafo[[i]], y = y, family = "gaussian")
+    data_xi <- trafo[[i]]
+    
+    # Replace only the numeric contents of the FP column.
+    # Do not update the column name: "fp1" is intentionally stable.
+    design_mat[, fp_col] <- data_xi[, 1L]
+    
+    fit <- fit_model(
+      x = design_mat,
+      y = y,
+      family = family_gaussian,
+      family_string = family_string_gaussian,
+      x_has_intercept = TRUE
+    )
     
     devs[i] <- -2 * fit$logl
     fits[[i]] <- fit$fit
   }
   
-  # find best model
   index <- which.min(devs)
   
   list(
-    power = powers[[index]], 
+    power = powers[[index]],
     fit = fits[[index]]
   )
 }

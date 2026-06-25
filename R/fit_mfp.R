@@ -175,6 +175,12 @@ fit_mfp <- function(x,
   
   variables_x <- colnames(x)
   
+  # Resolve GLM family objects once for all repeated internal model fits.
+  # Public mfp2.default() already does this, but keeping it here makes direct
+  # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
+  # poisson() construction as well. Cox remains the character string "cox".
+  family_fit <- resolve_fit_model_family(family)
+  
   if (verbose) {
     cat("\ni Initial degrees of freedom:\n")
     print(matrix(df, nrow = 1, dimnames = list("df", variables_x)),
@@ -186,7 +192,7 @@ fit_mfp <- function(x,
   
   if (length(variables_x) > 1) {
     variables_ordered <- order_variables(
-      xorder        = xorder, x = x, y = y, family = family,
+      xorder        = xorder, x = x, y = y, family = family_fit,
       family_string = family_string, weights = weights, offset = offset,
       strata        = strata, method = method, control = control,
       nocenter      = nocenter
@@ -214,6 +220,17 @@ fit_mfp <- function(x,
   spike        <- setNames(spike,   variables_x)[variables_ordered]
   force_max_fp <- setNames(force_max_fp, variables_x)[variables_ordered]
   powers       <- powers[variables_ordered]
+  
+  # Reorder x once to match the fixed variable order used by powers_current.
+  # Hot-path transformation code can then access columns by name without
+  # defensively copying/reordering the full matrix in every step.
+  if (!identical(colnames(x), variables_ordered)) {
+    x <- x[, variables_ordered, drop = FALSE]
+  }
+  if (!identical(colnames(x), variables_ordered)) {
+    stop("Internal error: x column order does not match variables_ordered.",
+         call. = FALSE)
+  }
   
   # Assert repeated powers of 1 are not supported
   diff_one <- vapply(
@@ -358,10 +375,19 @@ fit_mfp <- function(x,
   #   I(original x == 0)
   #
   # This is the intended interpretation of catzero/spike variables.
-  catzero_list       <- lapply(names(catzero), function(v) {
-    if (catzero[[v]]) as.integer(x[, v] <= 0) else NULL
+  catzero_mat_list <- lapply(names(catzero), function(v) {
+    if (!isTRUE(catzero[[v]])) {
+      return(NULL)
+    }
+    
+    matrix(
+      as.integer(x[, v] <= 0),
+      ncol = 1L,
+      dimnames = list(rownames(x), "catzero")
+    )
   })
-  names(catzero_list) <- names(catzero)
+  
+  names(catzero_mat_list) <- names(catzero)
   
   # ACD parameters (cached for speed)
   acd_parameter <- lapply(names(acdx), function(v) {
@@ -378,7 +404,8 @@ fit_mfp <- function(x,
   
   names(acd_parameter) <- names(acdx)
   
-
+  # Number of events
+  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
   
   # step 3: MFP backfitting cycles --------------------------------------------
   j         <- 1L
@@ -401,7 +428,7 @@ fit_mfp <- function(x,
       df              = df,
       weights         = weights,
       offset          = offset,
-      family          = family,
+      family          = family_fit,
       family_string   = family_string,
       criterion       = criterion,
       select          = select,
@@ -416,13 +443,14 @@ fit_mfp <- function(x,
       method          = method,
       acdx            = acdx,
       zero            = zero_x,        # all FALSE after non-positives set to 0
-      catzero         = catzero_list,  # named list of binary indicators
+      catzero         = catzero_mat_list,  # named list of binary indicators
       spike           = spike,
       spike_decision  = spike_decision,
       acd_parameter   = acd_parameter,
       prev_adj_params = prev_adj_params,
       force_max_fp    = force_max_fp,
       has_offset      = has_offset,
+      n_obs           = n_obs,
       verbose        = verbose
     )
     
@@ -526,7 +554,7 @@ fit_mfp <- function(x,
   # Update catzero_list to match final effective catzero status
   for (v in names(catzero_effective)) {
     if (!isTRUE(catzero_effective[[v]])) {
-      catzero_list[[v]] <- NULL
+      catzero_mat_list[[v]] <- NULL
     }
   }
   
@@ -538,18 +566,19 @@ fit_mfp <- function(x,
   
   # step 5: fit final model ---------------------------------------------------
   modelfit <- fit_model(
-    x          = data_transformed$x_transformed,
-    y          = y,
-    family     = family,
-    weights    = weights,
-    offset     = offset,
-    method     = method,
-    strata     = strata,
-    control    = control,
-    rownames   = rownames(data_transformed$x_transformed),
-    nocenter   = nocenter,
-    fast       = FALSE,
-    has_offset = has_offset
+    x             = data_transformed$x_transformed,
+    y             = y,
+    family        = family_fit,
+    family_string = family_string,
+    weights       = weights,
+    offset        = offset,
+    method        = method,
+    strata        = strata,
+    control       = control,
+    rownames      = rownames(data_transformed$x_transformed),
+    nocenter      = nocenter,
+    fast          = FALSE,
+    has_offset    = has_offset
   )
   
   # Build and return mfp2 object ----------------------------------------------
@@ -572,7 +601,7 @@ fit_mfp <- function(x,
       acd             = acdx,
       zero            = zero,
       catzero         = catzero_effective,
-      catzero_list    = catzero_list,
+      catzero_list = catzero_mat_list,
       spike              = spike,
       spike_dec       = spike_decision
     )
@@ -582,6 +611,32 @@ fit_mfp <- function(x,
   fit
 }
 
+
+#' Resolve a model family once for repeated internal fits
+#'
+#' @param family Character family name, family function, family object, or "cox".
+#' @return A resolved GLM family object, or the character string "cox".
+#' @keywords internal
+#' @noRd
+resolve_fit_model_family <- function(family) {
+  if (is.character(family)) {
+    if (identical(family, "cox")) {
+      return(family)
+    }
+    return(switch(
+      family,
+      gaussian = stats::gaussian(),
+      binomial = stats::binomial(),
+      poisson  = stats::poisson()
+    ))
+  }
+  
+  if (is.function(family)) {
+    return(family())
+  }
+  
+  family
+}
 
 
 #' Helper to run cycles of the mfp algorithm 
@@ -692,7 +747,8 @@ find_best_fp_cycle <- function(x,
                                acdx,
                                prev_adj_params,
                                force_max_fp,
-                               has_offset
+                               has_offset,
+                               n_obs
                                ) {
   
   # order of names of powers does not change
@@ -734,6 +790,7 @@ find_best_fp_cycle <- function(x,
       prev_adj_params = prev_adj_params,
       force_max_fp = force_max_fp,
       has_offset   = has_offset,
+      n_obs        = n_obs,
       verbose = verbose
     )
     # Update parameters

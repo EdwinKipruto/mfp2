@@ -135,6 +135,8 @@ deviance_gaussian <- function(residuals, weights) {
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' @keywords internal
+#' @noRd
 calculate_model_metrics <- function(obj, 
                                     n_obs, 
                                     df_additional = 0) {

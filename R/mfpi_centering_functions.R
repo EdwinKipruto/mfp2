@@ -14,6 +14,7 @@
 #' regression analysis based on fractional polynomials for modelling continuous variables.
 #' John Wiley & Sons.
 #' @keywords internal
+#' @noRd
 royston_centering_parameters <- function(x, power = 1) {
   
   # Reference link: https://www.stata.com/manuals/rfp.pdf

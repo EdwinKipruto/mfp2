@@ -529,6 +529,7 @@ predict.mfp2 <- function(object,
 #' transform_linear_predictor(lp_gauss, family = "gaussian", link = "log", type = "response")
 #' }
 #' @keywords internal
+#' @noRd
 transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
   
   # Set default links if not provided
@@ -597,6 +598,7 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
 #' design-matrix columns, it is returned unchanged for backwards compatibility.
 #'
 #' @keywords internal
+#' @noRd
 reconstruct_formula_newdata <- function(object, newdata) {
   if (!isTRUE(object$formula_interface)) {
     return(newdata)
@@ -683,6 +685,8 @@ reconstruct_formula_newdata <- function(object, newdata) {
 #'   This is intended for internal partial-prediction or term-specific
 #'   prediction paths, not for ordinary full-model prediction.
 #' @return A dataframe of transformed newdata
+#' @keywords internal
+#' @noRd
 prepare_newdata_for_predict <- function(object, 
                                         newdata, 
                                         strata = NULL, 
@@ -754,6 +758,48 @@ prepare_newdata_for_predict <- function(object,
     
     # already the coefficients are in original scale after shifting
     # newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
+  }
+  
+  # Prediction must reuse the ACD parameters estimated on the training data
+  # whenever an ACD-transformed continuous component is active. Otherwise,
+  # transform_vector_acd() could refit the ACD transformation on newdata,
+  # making predictions depend on the prediction batch and hiding upstream
+  # naming/order bugs in object$acd_parameter.
+  #
+  # ACD variables whose powers are all NA are skipped here. Such variables were
+  # either eliminated during model selection or, for spike_decision = 3, retained
+  # only through the binary spike indicator. In both cases, transform_vector_acd()
+  # returns NULL before applying ACD parameters, so no stored parameter object is
+  # needed for prediction.
+    acd_vars <- vnames[
+      vapply(
+        vnames,
+        function(v) {
+          isTRUE(object$fp_terms[v, "acd"]) &&
+            !all(is.na(object$fp_powers[[v]]))
+        },
+        logical(1)
+      )
+    ]
+  
+  missing_acd <- acd_vars[
+    vapply(
+      acd_vars,
+      function(v) {
+        is.null(object$acd_parameter) ||
+          !v %in% names(object$acd_parameter) ||
+          is.null(object$acd_parameter[[v]])
+      },
+      logical(1)
+    )
+  ]
+  
+  if (length(missing_acd) > 0L) {
+    stop(
+      "Missing stored ACD parameters for prediction variable(s): ",
+      paste(missing_acd, collapse = ", "),
+      call. = FALSE
+    )
   }
   
   # Step 5: transform shifted data using the fitted transformation metadata.
@@ -839,6 +885,8 @@ prepare_newdata_for_predict <- function(object,
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#' @keywords internal
+#' @noRd
 calculate_standard_error <- function(model, 
                                      X, 
                                      xref = NULL) { 

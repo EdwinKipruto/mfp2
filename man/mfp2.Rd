@@ -77,10 +77,13 @@ nobs x nvars. Each row is an observation vector.}
 
 \item{\dots}{Not used.}
 
-\item{y}{for \code{mfp2.default}: \code{y} is a vector for the response variable.
-For \code{family = "binomial"} it should be  a vector with two levels (see
-\code{\link[stats:glm]{stats::glm()}}). For \code{family = "cox"} it must be a \code{\link[survival:Surv]{survival::Surv()}} object
-containing 2 columns.}
+\item{y}{Response variable for \code{mfp2.default}.
+For \code{family = "gaussian"} and \code{family = "poisson"}, \code{y} must be a numeric
+vector with one value per observation. For \code{family = "binomial"}, \code{y} may be
+a numeric 0/1 vector, a two-level factor, or a numeric two-column matrix of
+grouped binomial counts of the form \code{cbind(successes, failures)}, as accepted
+by \code{\link[stats:glm]{stats::glm()}} with \code{family = binomial()}. For \code{family = "cox"}, \code{y} must
+be a \code{\link[survival:Surv]{survival::Surv()}} object with two columns.}
 
 \item{weights}{Optional numeric vector of observation weights.
 Default is \code{NULL} which assigns a weight of 1 to each observation. In the
@@ -134,7 +137,8 @@ distinct values of the covariate. See Details section below.}
 
 \item{subset}{an optional vector specifying a subset of observations
 to be used in the fitting process. Default is \code{NULL} and all observations are
-used. See Details below.}
+used. See Details below. weights/offset/strata must be aligned to original
+data rows, even when subset is supplied.}
 
 \item{family}{Either a character string specifying the model family
 (e.g., "gaussian", "binomial", "poisson", "cox") or a function that
@@ -312,28 +316,30 @@ values, are also reset regardless of their zero proportion. The resulting
 treatment depends on what the user specified through \code{zero_vars} and
 \code{catzero_vars}.}
 
-\item{force_max_fp}{For \code{mfp2.default()}, either a logical vector of
-length \code{nvars} or a single logical value that is internally replicated.
-If \code{TRUE} for a variable, the most complex functional form allowed by
-\code{df} is selected for that variable. This argument is only applicable
-when \code{criterion = "aic"} or \code{criterion = "bic"}. It has no effect
-when \code{criterion = "pvalue"}, because the same behaviour can be obtained
-by setting \code{select = 1} and \code{alpha = 1}. The default is
-\code{rep(FALSE, nvars)}. For \code{mfp2.formula()}, \code{force_max_fp}
-is specified for individual variables through the \code{fp()} function.}
+\item{force_max_fp}{For \code{mfp2.default()}, either a single logical value
+or a logical vector of length \code{nvars}. A single value is replicated
+across all predictors. If \code{TRUE} for a predictor, the most complex
+fractional-polynomial function allowed by that predictor's \code{df} is
+forced when using \code{criterion = "aic"} or \code{criterion = "bic"}.
+It has no effect when \code{criterion = "pvalue"}, where similar behavior
+can be obtained by setting \code{select = 1} and \code{alpha = 1}.
+The default is \code{FALSE}. For \code{mfp2.formula()}, set this per
+variable inside \code{fp()}.}
 
 \item{verbose}{Logical specifying whether to print progress messages. Default is FALSE.}
 
 \item{formula}{for \code{mfp2.formula}: an object of class \code{formula}: a symbolic
 description of the model to be fitted. Special \code{fp} terms can be used to
-define fp-transformations. The details of model specification are given
-under ‘Details’.}
+define fp-transformations. For \code{family = binomial()}, the left-hand side may
+be a numeric 0/1 response, a two-level factor response, or a grouped binomial
+response written as \code{cbind(successes, failures)}. The details of model
+specification are given under ‘Details’.}
 
 \item{data}{for \code{mfp2.formula}: a \code{data.frame} which contains all variables
 specified in \code{formula}.}
 }
 \value{
-\code{mfp2()} returns an object of class inheriting from \code{glm} or \code{copxh},
+\code{mfp2()} returns an object of class inheriting from \code{glm} or \code{coxph},
 depending on the \code{family} parameter.
 
 The function \code{summary()} (i.e. \code{summary.mfp2()}) can be used to obtain or
@@ -389,8 +395,9 @@ spike-at-zero (SAZ) modeling, a method for appropriately handling
 semi-continuous predictors with a non-negligible proportion of zero values
 (Becher et al., 2012). The function provides two interfaces for input data:
 one for supplying the data matrix \code{x} and the outcome \code{y} directly, where \code{y}
-may be a numeric vector for continuous or binary outcomes, or a \code{Surv} object
-for Cox proportional hazards models; and another for using a \code{formula} object
+may be a numeric vector for continuous, count, or binary outcomes, a two-level
+factor or a two-column grouped-count matrix for binomial outcomes, or a
+\code{Surv} object for Cox proportional hazards models; and another for using a \code{formula} object
 together with a dataframe \code{data}. Both interfaces are equivalent in functionality.
 }
 \section{Methods (by class)}{
@@ -843,6 +850,11 @@ When arguments are supplied both inside \code{fp()} and as global defaults in
 \code{mfp2()}, the specifications inside \code{fp()} take precedence. For example, in
 \code{mfp2(y ~ fp(x, df = 2), df = 4, data = data)}, the fractional polynomial for
 \code{x} is fitted with \code{df = 2}, and the global setting \code{df = 4} is ignored.
+
+#' Variable-name arguments such as \code{keep}, \code{zero_vars},
+\code{catzero_vars}, \code{spike_vars}, and \code{acdx} must refer to
+existing column names in \code{x}. Unknown names are treated as errors
+to avoid silently ignoring misspelled model specifications.
 
 The formula may also contain \code{strata} terms to fit stratified Cox models, or
 an \code{offset} term to specify a model offset.

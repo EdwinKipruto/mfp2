@@ -2,7 +2,7 @@
 % Please edit documentation in R/transformations.R
 \name{transform_matrix}
 \alias{transform_matrix}
-\title{Transform each column of matrix using final FP powers or ACD transformation}
+\title{Transform each column of a matrix using final FP powers or ACD transformation}
 \usage{
 transform_matrix(
   x,
@@ -20,145 +20,218 @@ transform_matrix(
 )
 }
 \arguments{
-\item{x}{a matrix with all continuous variables shifted and scaled.}
+\item{x}{A matrix with continuous variables, usually already shifted and
+scaled before transformation. The matrix must have column names.}
 
-\item{power_list}{a named list of FP powers to be applied to the columns of
-\code{x}. Only variables named in this list are transformed.}
+\item{power_list}{A named list of FP or ACD powers to be applied to columns
+of \code{x}. Only variables named in this list are transformed.}
 
-\item{center}{Named logical vector indicating whether centering should be
-applied. Centering is currently supported as an all-or-none operation:
-if any element of \code{center} is \code{TRUE}, all columns in the final transformed
-design matrix are centered; if all elements are \code{FALSE}, no centering is
-applied. Mixed per-variable centering is not currently supported. For
-variables expanded into multiple fractional-polynomial columns, each
-transformed column is centered separately.}
+\item{center}{Named logical vector indicating, for each original variable,
+whether centering should be applied to the final transformed columns derived
+from that variable. If all entries are \code{FALSE}, no centering is applied and
+the returned \code{centers} component is \code{NULL}. If all entries are \code{TRUE}, the
+full transformed design matrix is centered in one call to
+\code{center_matrix()}. If values are mixed, only transformed columns derived
+from variables with \code{center = TRUE} are centered. For variables expanded
+into multiple FP or ACD columns, each derived column is centered separately.}
 
-\item{acdx}{a named logical vector specifying the use of acd transformation.}
+\item{acdx}{Named logical vector specifying whether each variable should use
+the ACD transformation.}
 
-\item{keep_x_order}{a logical indicating whether the order of columns
-should be kept as in the input matrix \code{x}, of if the columns should be
-ordered according to \code{power_list}. The default is \code{FALSE}, since
-the ordering by \code{power_list} reflects the \code{xorder} argument in \code{mfp2()}.}
+\item{keep_x_order}{Logical. If \code{TRUE}, transformed variables are ordered
+according to their order in the input matrix \code{x}. If \code{FALSE}, columns are
+ordered according to \code{power_list}. The default is \code{FALSE}, because ordering
+by \code{power_list} reflects the \code{xorder} argument in \code{mfp2()}.}
 
-\item{acd_parameter_list}{A named list of ACD parameters. Only required when transformation
-are to be applied to new data. Entries must correspond to the entries where
-\code{acdx} is set to \code{TRUE}. Each components is to be passed to
-\code{transform_vector_acd()}. The default value \code{NULL} indicates that the
-parameters for the acd transformations are to be estimated.}
+\item{acd_parameter_list}{A named list of ACD parameters. This is only
+required when applying previously estimated transformations to new data,
+for example during prediction. Entries should correspond to variables where
+\code{acdx} is \code{TRUE} and are passed to \code{transform_vector_acd()}. The default
+\code{NULL} means ACD parameters are estimated during transformation.}
 
-\item{check_binary}{passed to \code{transform_vector_fp()}.}
+\item{check_binary}{Passed to \code{transform_vector_fp()}.}
 
-\item{zero}{A named logical vector specifying, for each variable, whether only
-positive values should be transformed. If \code{TRUE}, the transformation is applied
-only to positive values; nonpositive values (zero or negative) are replaced with zero.
-If \code{FALSE}, all values are used (after shifting, if necessary).
-Variable names must match the corresponding column names in \code{x}. The default
-is \code{NULL}, meaning no variables are treated as zero-transformed.}
+\item{zero}{Named logical vector specifying, for each variable, whether
+nonpositive values should be treated as structural zero before FP or ACD
+transformation. If \code{TRUE}, transformations are applied to the positive part
+and nonpositive values are represented as zero in the transformed columns.
+If \code{FALSE}, all values are transformed directly. If \code{NULL}, no variables
+are treated as zero-handled.}
 
-\item{catzero}{A named logical vector similar to \code{zero}, indicating which
-columns in \code{x} should treat nonpositive values as zero and additionally have a
-binary structural-zero indicator created and included in the model.
-For zero/catzero/spike variables, non-positive values are first recoded to
-zero; the binary indicator is then computed as \code{I(x == 0)} on the
-recoded scale, equivalent to \code{I(original x <= 0)}. The vector must have names matching
-the column names in \code{x}. The default is \code{NULL}, meaning no categorical-zero
-variables are used.}
+\item{catzero}{Named logical vector specifying, for each variable, whether a
+structural-zero binary indicator should be added. For these variables, the
+indicator is computed as \code{I(x <= 0)} using the input matrix supplied to this
+function. This is consistent with zero handling, where nonpositive values
+are treated as structural zero before FP or ACD transformation. If \code{NULL},
+no categorical-zero indicators are added.}
 
-\item{spike}{A named logical vector indicating which variables are subject to
-spike-at-zero handling. Default is NULL which is equivalent to setting all \code{FALSE}.}
+\item{spike}{Named logical vector indicating which variables are subject to
+spike-at-zero handling. If \code{NULL}, this is equivalent to setting all entries
+to \code{FALSE}.}
 
-\item{spike_decision}{Named numeric vector with values 1, 2, or 3 specifying
-spike-at-zero handling for each variable. Default is \code{NULL}, meaning no
-spike-at-zero processing is applied. Value 1 includes both the transformed
-variable and binary indicator, 2 disables the spike/binary indicator, and 3
-keeps only the binary indicator.}
+\item{spike_decision}{Optional named numeric vector with values \code{1}, \code{2}, or
+\code{3}, specifying the final spike-at-zero representation for each variable.
+Value \code{1} keeps both the transformed FP/ACD component and the structural-zero
+binary indicator. Value \code{2} keeps only the transformed FP/ACD component and
+suppresses the binary indicator. Value \code{3} keeps only the binary indicator
+and removes the FP/ACD component. If \code{NULL}, no spike-at-zero
+post-processing is applied.}
 
-\item{reset_zero}{Logical. If \code{TRUE}, variables marked as \code{zero = TRUE}
-but containing only positive values in the current data are reset to
-\code{FALSE}, and their \code{catzero} indicators are also suppressed. The default
-is \code{FALSE} because final fitting, and prediction, should preserve the
-zero/catzero/spike structure learned from the fitting process rather than
-adapt it to the contents of a particular data slice.}
+\item{reset_zero}{Logical. If \code{TRUE}, variables marked as \code{zero = TRUE} but
+containing only positive values in the current data are reset to \code{FALSE},
+and their \code{catzero} indicators are also suppressed. The default is \code{FALSE}
+because final fitting and prediction should preserve the zero, catzero, and
+spike structure learned from the fitting process rather than adapt it to a
+particular data slice.}
 }
 \value{
-If all elements of \code{power_list} are \code{NA}, returns \code{NULL}. Otherwise,
-returns with the following components:
+If all elements of \code{power_list} are \code{NA} and there is no binary-only spike
+decision, returns \code{NULL}. Otherwise, returns a list with the following
+components:
 \itemize{
-\item \code{x_transformed}: matrix of transformed (and optionally centered) variables.
-The number of columns may differ from the input matrix due to
-higher-order FP transformations. Binary variables are also added if
-\code{catzero} is not \code{NULL}.
-\item \code{centers}: values used for centering, if \code{center = TRUE} (typically all
-variables are centered, or none of them).
-\item \code{acd_parameter}: a named list of estimated ACD parameters, which may be
-empty if no ACD transformation is applied.
-\item \code{x_trafo}: list of transformed variables before centering and adding
-binary variables when \code{catzero = TRUE}. This is important for the
-spike-at-zero algorithm.
-\item \code{zero_expanded}: logical vector indicating, for each transformed column,
-whether zero-specific centering was applied (this may be \code{TRUE} even when
-no spike-at-zero processing is used). This is important for centering
-transformed variables via \code{center_matrix}.
+\item \code{x_transformed}: matrix of transformed variables, optionally centered.
+The number of columns may differ from the input matrix because FP and ACD
+transformations can create multiple columns per original variable.
+Structural-zero binary indicators are appended when selected through
+\code{catzero} or \code{spike_decision}.
+\item \code{centers}: named numeric vector of centering constants used for the final
+transformed columns. If no centering is requested, this is \code{NULL}. Under
+mixed centering, columns that were not centered have centering constant \code{0}.
+\item \code{acd_parameter}: named list of estimated or reused ACD parameters. This may
+be empty if no ACD transformation is applied.
+\item \code{x_trafo}: list of transformed FP/ACD components before adding
+structural-zero binary indicators and before centering. For binary-only
+spike decisions, the corresponding FP/ACD component is removed from this
+list.
+\item \code{zero_expanded}: named logical vector aligned with the columns of
+\code{x_transformed}, indicating which transformed FP/ACD columns require
+zero-specific centering behavior in \code{center_matrix()}.
 }
 }
 \description{
-This function applies FP and/or ACD transformations to the columns of a matrix,
-optionally centers the transformed variables, and can generate binary indicators
-for semi-continuous variables (catzero). Spike-at-zero variables are
-supported via the \code{spike} and \code{spike_decision} arguments.
+This function applies fractional-polynomial (FP) and/or approximate cumulative
+distribution (ACD) transformations to selected columns of a matrix. It can
+also generate structural-zero binary indicators for semi-continuous variables
+(\code{catzero}) and supports spike-at-zero decisions through \code{spike} and
+\code{spike_decision}.
 }
 \details{
-Transformations are applied via \code{transform_vector_fp()} and
-\code{transform_vector_acd()}.
-The resulting \code{x_transformed} matrix contains transformed variables, optionally centered.
-Binary indicators are appended for variables where \code{catzero = TRUE}.
+Transformations are applied variable by variable. Variables with
+\code{acdx = FALSE} are transformed by \code{transform_vector_fp()}. Variables with
+\code{acdx = TRUE} are transformed by \code{transform_vector_acd()}. The resulting
+transformed columns are combined into \code{x_transformed}.
+
+Structural-zero binary indicators are appended after the FP/ACD transformed
+columns. Binary indicator columns are named with the suffix \code{"_bin"} and are
+computed as \code{I(x <= 0)}.
 
 The interaction of \code{spike}, \code{spike_decision}, and \code{catzero} determines whether
 binary indicators are included:
 \itemize{
 \item If \code{spike = TRUE}:
 \itemize{
-\item \code{spike_decision = 1}: both FP/ACD transformation and binary (if \code{catzero = TRUE})
-\item \code{spike_decision = 2}: FP/ACD only; binary suppressed, regardless of \code{catzero}
-\item \code{spike_decision = 3}: binary only (FP/ACD removed)
+\item \code{spike_decision = 1}: keep both the FP/ACD component and the binary
+indicator.
+\item \code{spike_decision = 2}: keep the FP/ACD component only and suppress the
+binary indicator, regardless of \code{catzero}.
+\item \code{spike_decision = 3}: keep the binary indicator only and remove the
+FP/ACD component.
 }
 \item If \code{spike = FALSE}:
 \itemize{
-\item Binary inclusion depends solely on \code{catzero}
-\item FP/ACD always included if powers are specified
+\item binary inclusion depends only on \code{catzero}.
+\item the FP/ACD component is included whenever powers are specified.
 }
 }
 
-This distinction allows spike-at-zero variables to suppress or isolate the binary
-indicator based on the decision rule, while leaving non-spike variables controlled
-only by \code{catzero}
+If all entries in \code{power_list} are \code{NA}, the function normally returns
+\code{NULL}. The exception is a binary-only spike decision
+(\code{spike_decision = 3}), where the final selected representation is the
+structural-zero binary indicator.
+}
+\section{Centering}{
 
-\strong{Centering:}
+Centering is controlled at the original-variable level through \code{center}, but
+is applied at the final transformed-column level. Internally, the function
+builds a column-to-variable map from the actual columns returned by
+\code{transform_vector_fp()} and \code{transform_vector_acd()}, and from any appended
+\code{"_bin"} columns.
+
+The centering rule is:
 \itemize{
-\item For continuous variables, the mean of the transformed values is subtracted.
-\item For binary variables, centering uses the minimum (typically 0).
-\item If \code{zero = TRUE}, the mean is computed only over the positive transformed values,
-while the original zero entries are left at zero. This preserves the spike-at-zero
-alignment on the original scale.
-\item Columns corresponding to \code{catzero} binary indicators are left as 0/1 in the
-returned matrix; their centering value is \code{0} in the current implementation,
-so the centering step does not change those columns. If you prefer mean-centering
-of the binary indicators (subtracting their sample proportion), supply explicit
-\code{centers} or post-process the returned matrix.
+\item \code{center[v] = TRUE}: center all final columns derived from original variable
+\code{v}.
+\item \code{center[v] = FALSE}: leave all final columns derived from original variable
+\code{v} unchanged.
 }
 
-\strong{Column names:}
-Transformed variable names are based on original names. FP terms are suffixed
-with \code{.i} to indicate the power index. Variables transformed using ACD are
-prefixed with "A_". Binary indicators created for semi-continuous variables
-(catzero) are suffixed with "_bin".
+If all variables have \code{center = TRUE}, the whole transformed design matrix is
+centered in one call to \code{center_matrix()}. If only some variables have
+\code{center = TRUE}, only the corresponding transformed columns are passed to
+\code{center_matrix()}, and all other columns are left unchanged.
+
+The actual centering constants are determined by \code{center_matrix()}:
+\itemize{
+\item ordinary continuous transformed columns are centered by their mean;
+\item binary columns are centered by their minimum, usually \code{0};
+\item zero-handled FP columns are centered using only their nonzero transformed
+values, and transformed zero rows are reset to \code{0} after centering.
 }
+
+For variables transformed with ACD, \code{transform_vector_acd()} returns the FP
+component first and the ACD component afterwards. Only the FP component may
+inherit zero-aware centering from the parent variable. ACD component columns
+represent transformed cumulative probabilities, not structural-zero FP values;
+therefore exact numeric zeros in ACD columns are centered as ordinary
+continuous values rather than excluded from the mean or reset to zero after
+centering.
+
+Binary \code{"_bin"} columns follow the centering decision of their parent
+variable. If they are passed to \code{center_matrix()}, they are treated as binary
+columns and centered by their minimum. Thus ordinary \code{0/1} indicators usually
+remain unchanged.
+}
+
+\section{Zero-expanded centering}{
+
+The input \code{zero} is defined per original variable, while \code{center_matrix()}
+needs one zero flag per final transformed column. Therefore this function
+returns \code{zero_expanded}, a named logical vector aligned with
+\code{colnames(x_transformed)}.
+
+For ordinary FP columns derived from variables with \code{zero = TRUE}, and for
+the first FP component of an ACD transformation when that component is
+present, \code{zero_expanded} is \code{TRUE}. This causes \code{center_matrix()} to compute
+the centering constant from nonzero transformed values and then preserve
+transformed zero rows as exactly zero.
+
+ACD component columns, structurally identified during the ACD transformation
+branch, are forced to \code{zero_expanded = FALSE} even when their parent variable
+has \code{zero = TRUE}. Structural-zero binary indicator columns ending in
+\code{"_bin"} are also always \code{FALSE}, because these columns are binary indicators
+rather than zero-handled FP columns.
+}
+
+\section{Column names}{
+
+Transformed column names are based on the original variable names. FP terms
+are suffixed with \code{".i"} to indicate the transformed-power index. ACD-derived
+columns are prefixed with \code{"A_"}. Structural-zero binary indicators are
+suffixed with \code{"_bin"}.
+}
+
 \examples{
-x = matrix(1:100, nrow = 10)
-colnames(x) = paste0("x", 1:ncol(x))
-powx = setNames(replicate(ncol(x), c(1,2), simplify = FALSE), colnames(x))
-center = setNames(rep(FALSE, ncol(x)), colnames(x))
-acdx = setNames(rep(FALSE, ncol(x)), colnames(x))
+x <- matrix(1:100, nrow = 10)
+colnames(x) <- paste0("x", seq_len(ncol(x)))
+
+powx <- setNames(
+  replicate(ncol(x), c(1, 2), simplify = FALSE),
+  colnames(x)
+)
+
+center <- setNames(rep(FALSE, ncol(x)), colnames(x))
+acdx <- setNames(rep(FALSE, ncol(x)), colnames(x))
+
 transform_matrix(x, powx, center, acdx)
 
 }

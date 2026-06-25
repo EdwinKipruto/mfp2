@@ -280,8 +280,8 @@
 #' )
 #'
 #' @importFrom stats setNames
-#' @export
-
+#' @keywords internal
+#' @noRd
 create_z_variables <- function(cont_var,
                                group_var,
                                power = 1,
@@ -849,7 +849,8 @@ create_z_variables <- function(cont_var,
 #'
 #' @importFrom stats setNames
 #' @importFrom mfp2 generate_powers_fp transform_vector_fp
-#' @export
+#' @keywords internal
+#' @noRd
 transform_z_variables <- function(cont_var,
                                   group_var,
                                   shift = NULL,
@@ -1319,7 +1320,8 @@ create_group_dummies <- function(x, levels = NULL) {
 #' var_group("age", c("age01", "age02", "age11", "age12", "bmi"))
 #' # Returns: list(c("age01", "age02"), c("age11", "age12"))
 #'
-#' @export
+#' @keywords internal
+#' @noRd
 var_group <- function(var_prefix, var_names) {
   if (!is.character(var_prefix) || length(var_prefix) != 1L)
     stop("`var_prefix` must be a single character string.", call. = FALSE)
@@ -1368,7 +1370,8 @@ var_group <- function(var_prefix, var_names) {
 #' adjust_reference_category(x, use_top_as_ref = TRUE)  # reference: "Low" (last after reversal)
 #'
 #' @importFrom utils tail
-#' @export
+#' @keywords internal
+#' @noRd
 adjust_reference_category <- function(x, use_top_as_ref = FALSE) {
   if (!is.factor(x)) return(x)
   

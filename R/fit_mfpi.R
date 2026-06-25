@@ -354,6 +354,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       max_prop           = max_prop,
       center_type        = center_type,
       scale              = scale,
+      adj_acd_parameter = adjustment_model$acd_parameter,
       quiet              = quiet,
       p_adjust_method    = p_adjust_method,
       verbose            = verbose
@@ -961,8 +962,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                                     min_improvement, min_prop, max_prop,
                                     center_type = c("grand", "group"),
                                     scale = NULL,
+                                    adj_acd_parameter = NULL,
                                     xadj = NULL, skip_adjustment = FALSE,
-                                    p_adjust_method = "none",has_offset,
+                                    p_adjust_method = "none", has_offset,
                                     quiet = FALSE, verbose = FALSE) {
     
     center_type <- match.arg(center_type)
@@ -1103,7 +1105,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
             spike              = processed_data$updated_params$spike_vars[adj_vars],
             spike_decision     = adj_spike_decision[adj_vars],
             keep_x_order       = FALSE,
-            acd_parameter_list = NULL,
+            acd_parameter_list = if (!is.null(adj_acd_parameter)) adj_acd_parameter[adj_vars] else NULL,
             reset_zero         = FALSE,
             check_binary       = TRUE
           )$x_transformed

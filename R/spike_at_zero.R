@@ -448,6 +448,7 @@ fit_saz_reduced_models <- function(stage1_selection,
 #'   * `metrics3`: Fit statistics for Model 3.
 #'
 #' @keywords internal
+#' @noRd
 compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   
   # ACD can produce NA like c(NA,1) so degree will reduce to 1 and in this case
@@ -580,6 +581,7 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #'   }
 #'
 #' @keywords internal
+#' @noRd
 compute_saz_stage2_decision <- function(metrics,
                                         criterion,
                                         select,

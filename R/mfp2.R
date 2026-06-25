@@ -9,8 +9,9 @@
 #' semi-continuous predictors with a non-negligible proportion of zero values 
 #' (Becher et al., 2012). The function provides two interfaces for input data: 
 #' one for supplying the data matrix `x` and the outcome `y` directly, where `y` 
-#' may be a numeric vector for continuous or binary outcomes, or a `Surv` object 
-#' for Cox proportional hazards models; and another for using a `formula` object
+#' may be a numeric vector for continuous, count, or binary outcomes, a two-level
+#' factor or a two-column grouped-count matrix for binomial outcomes, or a
+#' `Surv` object for Cox proportional hazards models; and another for using a `formula` object
 #' together with a dataframe `data`. Both interfaces are equivalent in functionality.
 #' 
 #' @section Brief summary of fractional polynomials (FPs):
@@ -432,6 +433,11 @@
 #' `mfp2(y ~ fp(x, df = 2), df = 4, data = data)`, the fractional polynomial for 
 #' `x` is fitted with `df = 2`, and the global setting `df = 4` is ignored.
 #' 
+#' #' Variable-name arguments such as \code{keep}, \code{zero_vars},
+#' \code{catzero_vars}, \code{spike_vars}, and \code{acdx} must refer to
+#' existing column names in \code{x}. Unknown names are treated as errors
+#' to avoid silently ignoring misspelled model specifications.
+#' 
 #' The formula may also contain `strata` terms to fit stratified Cox models, or
 #' an `offset` term to specify a model offset.
 #' 
@@ -503,14 +509,19 @@
 #'
 #' @param x for `mfp2.default`: `x` is an input matrix of dimensions 
 #' nobs x nvars. Each row is an observation vector.
-#' @param y for `mfp2.default`: `y` is a vector for the response variable.
-#' For `family = "binomial"` it should be  a vector with two levels (see 
-#' [stats::glm()]). For `family = "cox"` it must be a [survival::Surv()] object
-#' containing 2 columns.
+#' @param y Response variable for `mfp2.default`.
+#' For `family = "gaussian"` and `family = "poisson"`, `y` must be a numeric
+#' vector with one value per observation. For `family = "binomial"`, `y` may be
+#' a numeric 0/1 vector, a two-level factor, or a numeric two-column matrix of
+#' grouped binomial counts of the form `cbind(successes, failures)`, as accepted
+#' by [stats::glm()] with `family = binomial()`. For `family = "cox"`, `y` must
+#' be a [survival::Surv()] object with two columns.
 #' @param formula for `mfp2.formula`: an object of class `formula`: a symbolic 
 #' description of the model to be fitted. Special `fp` terms can be used to 
-#' define fp-transformations. The details of model specification are given 
-#' under ‘Details’.
+#' define fp-transformations. For `family = binomial()`, the left-hand side may
+#' be a numeric 0/1 response, a two-level factor response, or a grouped binomial
+#' response written as `cbind(successes, failures)`. The details of model
+#' specification are given under ‘Details’.
 #' @param data for `mfp2.formula`: a `data.frame` which contains all variables
 #' specified in `formula`.
 #' @param weights Optional numeric vector of observation weights. 
@@ -558,7 +569,8 @@
 #' distinct values of the covariate. See Details section below.
 #' @param subset an optional vector specifying a subset of observations
 #' to be used in the fitting process. Default is `NULL` and all observations are 
-#' used. See Details below. 
+#' used. See Details below. weights/offset/strata must be aligned to original 
+#' data rows, even when subset is supplied.
 #' @param family Either a character string specifying the model family 
 #'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
 #'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
@@ -721,15 +733,15 @@
 #'   values, are also reset regardless of their zero proportion. The resulting
 #'   treatment depends on what the user specified through \code{zero_vars} and
 #'   \code{catzero_vars}.
-#' @param force_max_fp For \code{mfp2.default()}, either a logical vector of
-#'   length \code{nvars} or a single logical value that is internally replicated.
-#'   If \code{TRUE} for a variable, the most complex functional form allowed by
-#'   \code{df} is selected for that variable. This argument is only applicable
-#'   when \code{criterion = "aic"} or \code{criterion = "bic"}. It has no effect
-#'   when \code{criterion = "pvalue"}, because the same behaviour can be obtained
-#'   by setting \code{select = 1} and \code{alpha = 1}. The default is
-#'   \code{rep(FALSE, nvars)}. For \code{mfp2.formula()}, \code{force_max_fp}
-#'   is specified for individual variables through the \code{fp()} function.
+#' @param force_max_fp For \code{mfp2.default()}, either a single logical value
+#'   or a logical vector of length \code{nvars}. A single value is replicated
+#'   across all predictors. If \code{TRUE} for a predictor, the most complex
+#'   fractional-polynomial function allowed by that predictor's \code{df} is
+#'   forced when using \code{criterion = "aic"} or \code{criterion = "bic"}.
+#'   It has no effect when \code{criterion = "pvalue"}, where similar behavior
+#'   can be obtained by setting \code{select = 1} and \code{alpha = 1}.
+#'   The default is \code{FALSE}. For \code{mfp2.formula()}, set this per
+#'   variable inside \code{fp()}.
 #' @param verbose Logical specifying whether to print progress messages. Default is FALSE.
 #' @param \dots Not used.
 #' @examples
@@ -775,7 +787,7 @@
 #' # fit_cz <- mfp2(x, y, zero_vars = "exposure", catzero_vars = "exposure")
 #' 
 #' @return 
-#' `mfp2()` returns an object of class inheriting from `glm` or `copxh`, 
+#' `mfp2()` returns an object of class inheriting from `glm` or `coxph`, 
 #' depending on the `family` parameter. 
 #' 
 #' The function `summary()` (i.e. \code{summary.mfp2()}) can be used to obtain or
@@ -915,8 +927,8 @@ mfp2.default <- function(x,
   
   # match arguments ------------------------------------------------------------
   criterion <- match.arg(criterion)
-  xorder <- match.arg(xorder)
-  ties <- match.arg(ties)
+  xorder    <- match.arg(xorder)
+  ties      <- match.arg(ties)
   
   # assertions -----------------------------------------------------------------
   # ----Family
@@ -930,26 +942,44 @@ mfp2.default <- function(x,
   # NA or a warning.
   
   if (is.character(family)) {
+    if (length(family) != 1L) {
+      stop(
+        sprintf(
+          "! `family` must be a single character string; got %d values: %s.",
+          length(family),
+          paste(family, collapse = ", ")
+        ),
+        "i Supported character families are: gaussian, binomial, poisson, cox.",
+        call. = FALSE
+      )
+    }
+    
     if (!family %in% allowed_families) {
       stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family, paste(allowed_families, collapse = ", ")),
+        sprintf(
+          "! Invalid family: '%s'.",
+          family
+        ),
+        sprintf(
+          "i Supported character families are: %s.",
+          paste(allowed_families, collapse = ", ")
+        ),
         call. = FALSE
       )
     }
     
     family_string <- family
     
+    # Construct supported character families explicitly from stats::.
+    # Do not use get(..., parent.frame()) here: a user-defined object named
+    # gaussian(), binomial(), or poisson() in the caller environment could
+    # otherwise shadow the intended stats family constructor.
     if (family != "cox") {
-      family <- tryCatch(
-        get(family, mode = "function", envir = parent.frame())(),
-        error = function(e) {
-          stop(
-            sprintf("! Cannot construct family object from character '%s'. %s", 
-                    family, conditionMessage(e)),
-            call. = FALSE
-          )
-        }
+      family <- switch(
+        family,
+        gaussian = stats::gaussian(),
+        binomial = stats::binomial(),
+        poisson  = stats::poisson()
       )
     }
     
@@ -1044,200 +1074,483 @@ mfp2.default <- function(x,
          call. = FALSE)
   }
   
+  if (!is.numeric(x)) {
+    stop(
+      "! `x` must be a numeric matrix.",
+      sprintf("i Current storage mode is: %s.", typeof(x)),
+      call. = FALSE
+    )
+  }
+  
   # assert that x has no missing data
   if (anyNA(x)) {
     stop("! x must not contain any NA (missing data).\n",   
-         "i Please remove any missing data before passing x to this function.")
+         "i Please remove any missing data before passing x to this function.",
+         call. = FALSE)
+  }
+  
+  if (any(!is.finite(x))) {
+    stop(
+      "! `x` must contain only finite, non-missing numeric values.",
+      call. = FALSE
+    )
+  }
+  
+  # Validation helpers ---------------------------------------------------------
+  # These helpers keep public-boundary checks explicit and prevent malformed
+  # scalar/vector arguments from reaching lower-level fitting code.
+  
+  validate_logical_vector <- function(arg, name, allowed_lengths) {
+    if (!is.logical(arg)) {
+      stop(
+        sprintf("! `%s` must be logical.", name),
+        sprintf("i Current type is: %s.", typeof(arg)),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(arg)) {
+      stop(
+        sprintf("! `%s` must not contain NA values.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (!length(arg) %in% allowed_lengths) {
+      stop(
+        sprintf(
+          "! `%s` must have length %s; got length %d.",
+          name,
+          paste(allowed_lengths, collapse = " or "),
+          length(arg)
+        ),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
+  }
+  
+  validate_probability_vector <- function(arg, name, nvars) {
+    if (!is.numeric(arg)) {
+      stop(
+        sprintf("! `%s` must be numeric.", name),
+        sprintf("i Current type is: %s.", typeof(arg)),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(arg)) {
+      stop(
+        sprintf("! `%s` must not contain NA values.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (any(!is.finite(arg))) {
+      stop(
+        sprintf("! `%s` must contain only finite values.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (!length(arg) %in% c(1L, nvars)) {
+      stop(
+        sprintf(
+          "! `%s` must be a single number or a numeric vector of length %d; got length %d.",
+          name, nvars, length(arg)
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (any(arg < 0 | arg > 1)) {
+      stop(
+        sprintf("! `%s` must contain values between 0 and 1.", name),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
+  }
+  
+  validate_numeric_vector <- function(arg,
+                                      name,
+                                      nvars,
+                                      allow_null = TRUE,
+                                      allow_na = FALSE,
+                                      strictly_positive = FALSE) {
+    if (is.null(arg)) {
+      if (allow_null) return(invisible(TRUE))
+      
+      stop(
+        sprintf("! `%s` must not be NULL.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (!is.numeric(arg)) {
+      stop(
+        sprintf("! `%s` must be numeric.", name),
+        sprintf("i Current type is: %s.", typeof(arg)),
+        call. = FALSE
+      )
+    }
+    
+    if (!length(arg) %in% c(1L, nvars)) {
+      stop(
+        sprintf(
+          "! `%s` must be NULL, a single number, or a numeric vector of length %d; got length %d.",
+          name, nvars, length(arg)
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (!allow_na && anyNA(arg)) {
+      stop(
+        sprintf("! `%s` must not contain NA values.", name),
+        call. = FALSE
+      )
+    }
+    
+    finite_values <- if (allow_na) arg[!is.na(arg)] else arg
+    
+    if (length(finite_values) > 0L && any(!is.finite(finite_values))) {
+      stop(
+        sprintf("! `%s` must contain only finite values.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (strictly_positive &&
+        length(finite_values) > 0L &&
+        any(finite_values <= 0)) {
+      stop(
+        sprintf("! `%s` must contain only positive non-missing values.", name),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
+  }
+  
+  validate_positive_integer_scalar <- function(arg, name) {
+    if (!is.numeric(arg) || length(arg) != 1L || anyNA(arg) || !is.finite(arg)) {
+      stop(
+        sprintf("! `%s` must be a single positive integer.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (arg != as.integer(arg) || arg < 1L) {
+      stop(
+        sprintf("! `%s` must be a single positive integer.", name),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
+  }
+  
+  validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
+    if (is.null(arg)) {
+      if (allow_null) return(invisible(TRUE))
+      
+      stop(
+        sprintf("! `%s` must not be NULL.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (!is.character(arg)) {
+      stop(
+        sprintf("! `%s` must be a character vector of column names in `x`.", name),
+        sprintf("i Current type is: %s.", typeof(arg)),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(arg)) {
+      stop(
+        sprintf("! `%s` must not contain NA values.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (any(arg == "")) {
+      stop(
+        sprintf("! `%s` must not contain empty strings.", name),
+        call. = FALSE
+      )
+    }
+    
+    unknown <- setdiff(unique(arg), vnames)
+    
+    if (length(unknown) > 0L) {
+      stop(
+        sprintf(
+          "! Unknown variable name(s) in `%s`: %s.",
+          name,
+          paste(unknown, collapse = ", ")
+        ),
+        sprintf(
+          "i Available column names in `x` are: %s.",
+          paste(vnames, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
   }
   
   # assert that subset must be a vector and does not contain negative values
-  if (!is.null(subset)) {
-    if (!is.vector(subset)) {
-      stop(sprintf("! Subset must not be of class %s.\n", 
-                   paste0(class(subset), collapse = ", ")), 
-           "i Please convert subset to a vector.", 
-           call. = FALSE)
+if (!is.null(subset)) {
+  if (is.logical(subset)) {
+    if (length(subset) != nobs || anyNA(subset)) {
+      stop(
+        "! Logical subset must have length equal to the number of observations in x and contain no NA.",
+        call. = FALSE
+      )
     }
-    
-    if (any(subset < 0)) {
-      stop("! Subset must not contain negative values.", call. = FALSE)
+    subset <- which(subset)
+  } else if (is.numeric(subset)) {
+    if (
+      anyNA(subset) ||
+      any(!is.finite(subset)) ||
+      any(subset != as.integer(subset)) ||
+      any(subset < 1L) ||
+      any(subset > nobs)
+    ) {
+      stop(
+        "! Numeric subset must contain valid positive row indices within the range of x.",
+        call. = FALSE
+      )
     }
-  }  
-  
-  # assert that weights are positive and of appropriate dimensions
-  if (!is.null(weights)) {
-    if (any(weights < 0)) {
-      stop("! Weights must not be negative.", call. = FALSE)
-    }
-    if (length(weights) != nobs) {
-      stop("! The number of observations (rows in x) and weights must match.\n", 
-           sprintf("i The number of rows in x is %d, but the number of elements in weights is %d.", 
-                   nobs, length(weights)), 
-           call. = FALSE)
-    }
-  }
-  
-  # assert that the length of offset must be equal to the number of observations
-  if (!is.null(offset)) {
-    if (length(offset) != nobs) {
-      stop("! The number of observations (rows in x) and offset must match.\n", 
-           sprintf("i The number of rows in x is %d, but the number of elements in offset is %d.", 
-                   nobs, length(offset)), call. = FALSE)
-    }
-  }
-  
-  # assert that alpha must be between 0 and 1
-  if (any(alpha > 1) || any(alpha < 0)) {
-    stop("! alpha must not be < 0 or > 1.", call. = FALSE)
-  }
-  
-  # assert length of alpha 
-  if (length(alpha) != 1 && length(alpha) != nvars) {
-    stop("! alpha must be a single number, or the number of variables (columns in x) and alpha must match.\n", 
-         sprintf("i The number of variables in x is %d, but the number of elements in alpha is %d.", 
-                 nvars, length(alpha)), call. = FALSE)
-  }
-  
-  # assert that select must be between 0 and 1
-  if (any(select > 1) || any(select < 0)) {
-    stop("! select must not be < 0 or > 1.", call. = FALSE)
-  }
-  
-  # assert length of select 
-  if (length(select) != 1 && length(select) != nvars) {
-    stop("! select must be a single number, or the number of variables (columns in x) and select must match.\n", 
-         sprintf("i The number of variables in x is %d, but the number of elements in select is %d.", 
-                 nvars, length(select)), call. = FALSE)
-  }
-  
-  # assert that keep is a subset of x
-  if (!is.null(keep)) {
-    if (!all(keep %in% vnames)) {
-      warning("i The set of variables named in keep is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of keep and colnames(x).", 
-              call. = FALSE)
-    }
-  }
-  
-  # Validate force_max_fp ------------------------------------------------------
-  if (length(force_max_fp) != 1L && length(force_max_fp) != nvars) {
-    stop(paste0("! `force_max_fp` must be a single logical or a logical vector of length ",
-                nvars, "; got length ", length(force_max_fp), "."), call. = FALSE)
-  }
-  
-  # assert that zero_vars is a subset of x
-  if (!is.null(zero)) {
-    if (!all(zero %in% vnames)) {
-      warning("i The set of variables named in 'zero_vars' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of zero_vars and colnames(x).", 
-              call. = FALSE)
-    }
-  }
-  
-  # assert that catzero_vars is a subset of x
-  if (!is.null(catzero)) {
-    if (!all(catzero %in% vnames)) {
-      warning("i The set of variables named in 'catzero_vars' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of catzero_vars and colnames(x).", 
-              call. = FALSE)
-    }
-  }
-  
-  # Overlap between zero_vars and catzero_vars is allowed.
-  # catzero_vars implies zero_vars.
-  
-  # assert shift vector is of correct dimension
-  if (!is.null(shift)) {
-    if (length(shift) != 1 && length(shift) != nvars) {
-      stop("! shift must either be NULL, a single number, or the number of variables (columns in x) and shift must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in shift is %d.", 
-                   nvars, length(shift)), call. = FALSE)
-    }
-  }
-  
-  # assert scale vector is of correct dimension
-  if (!is.null(scale)) {
-    if (length(scale) != 1 && length(scale) != nvars) {
-      stop("! scale must either be NULL, a single number, or the number of variables (columns in x) and scale must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in scale is %d.", 
-                   nvars, length(scale)), call. = FALSE)
-    }
-  }
-  
-  # assert center vector is of correct dimension
-  if (length(center) != 1) {
-    if (length(center) != nvars) {
-      stop("! center must either be of length 1, or the number of variables (columns in x) and center must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in center is %d.", 
-                   nvars, length(center)), call. = FALSE)
-    }
-  }
-  
-  # assert acdx is a subset of x
-  if (!is.null(acdx)) {
-    if (!all(acdx %in% vnames)) {
-      warning("i The set of variables named in acdx is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of acdx and colnames(x).", 
-              call. = FALSE)
-    }
-  }
-  
-  # assert that spike_vars is a subset of x
-  if (!is.null(spike)) {
-    if (!all(spike %in% vnames)) {
-      warning("i The set of variables named in 'spike_vars' is not a subset of the variables in x.\n", 
-              "i mfp2() continues with the intersection of spike_vars and colnames(x).", 
-              call. = FALSE)
-    }
-  }
-  
-  # assert df is positive
-  if (any(df <= 0)) {
-    stop("! df must not be 0 or negative.\n", 
-         "i All df must be either 1 (linear) or 2m, where m is the degree of FP.", call. = FALSE)
-  }
-  
-  if (length(df) == 1) {
-    if (df != 1 && df %% 2 != 0) {
-      stop("! Any df > 1 must not be odd.\n", 
-           sprintf("i df = %d was passed, but df must be either 1 (linear) or 2m, where m is the degree of FP.", 
-                   df), call. = FALSE)
-    } 
+    subset <- as.integer(subset)
   } else {
-    if (length(df) != nvars) {
-      stop("! df must be a single number, or the number of variables (columns in x) and df must match.\n", 
-           sprintf("i The number of variables in x is %d, but the number of elements in df is %d.", 
-                   nvars, length(df)), call. = FALSE)
+    stop(
+      "! subset must be either a logical vector or a numeric/integer vector of row indices.",
+      call. = FALSE
+    )
+  }
+
+  if (length(subset) < 5L) {
+    stop(
+      "! The selected subset is too small (<5) to fit an mfp model.",
+      sprintf("i The number of selected observations is %d.", length(subset)),
+      call. = FALSE
+    )
+  }
+} 
+  
+  # Validate weights -----------------------------------------------------------
+  if (!is.null(weights)) {
+    if (!is.numeric(weights)) {
+      stop(
+        "! `weights` must be numeric.",
+        sprintf("i Current type is: %s.", typeof(weights)),
+        call. = FALSE
+      )
     }
     
-    if (any(df != 1 & df %% 2 != 0)) {
-      stop("! Any df > 1 must not be odd.\n", 
-           "i All df must be either 1 (linear) or 2m, where m is the degree of FP.",
-           call. = FALSE)
+    if (length(weights) != nobs) {
+      stop(
+        "! The number of observations in x and weights must match.",
+        sprintf(
+          "i The number of rows in x is %d, but the number of elements in weights is %d.",
+          nobs, length(weights)
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(weights) || any(!is.finite(weights))) {
+      stop(
+        "! `weights` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+    
+    if (any(weights < 0)) {
+      stop(
+        "! `weights` must not be negative.",
+        call. = FALSE
+      )
     }
   }
   
-  # assert ftest and family are compatible
+  # Validate offset ------------------------------------------------------------
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop(
+        "! `offset` must be numeric.",
+        sprintf("i Current type is: %s.", typeof(offset)),
+        call. = FALSE
+      )
+    }
+    
+    if (length(offset) != nobs) {
+      stop(
+        "! The number of observations in x and offset must match.",
+        sprintf(
+          "i The number of rows in x is %d, but the number of elements in offset is %d.",
+          nobs, length(offset)
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  # Validate scalar and vector options ----------------------------------------
+  
+  # cycles controls the maximum number of MFP backfitting cycles.
+  # It must be a positive integer-like scalar.
+  validate_positive_integer_scalar(cycles, "cycles")
+  cycles <- as.integer(cycles)
+  
+  # verbose and ftest are scalar logical flags.
+  validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
+  validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
+  
+  # alpha and select are probabilities, either scalar or one value per predictor.
+  validate_probability_vector(alpha, "alpha", nvars)
+  validate_probability_vector(select, "select", nvars)
+  
+  # center may be scalar or one logical value per predictor.
+  validate_logical_vector(center, "center", allowed_lengths = c(1L, nvars))
+  
+  # force_max_fp may be scalar or one logical value per predictor.
+  validate_logical_vector(force_max_fp, "force_max_fp", allowed_lengths = c(1L, nvars))
+  
+  # shift may be NULL, scalar, or length nvars.
+  # NA is intentionally allowed because later code interprets NA as automatic
+  # shift estimation for that variable.
+  validate_numeric_vector(
+    arg = shift,
+    name = "shift",
+    nvars = nvars,
+    allow_null = TRUE,
+    allow_na = TRUE,
+    strictly_positive = FALSE
+  )
+  
+  # scale may be NULL, scalar, or length nvars.
+  # NA is intentionally allowed because later code interprets NA as automatic
+  # scale estimation for that variable. Non-missing scale values must be > 0.
+  validate_numeric_vector(
+    arg = scale,
+    name = "scale",
+    nvars = nvars,
+    allow_null = TRUE,
+    allow_na = TRUE,
+    strictly_positive = TRUE
+  )
+  
+  # Validate variable-name arguments ------------------------------------------
+  # These arguments define the model specification. Unknown names are treated as
+  # errors because silently dropping them can hide spelling mistakes, e.g.
+  # zero_vars = "expsoure" instead of "exposure".
+  
+  validate_variable_names(keep, "keep", vnames)
+  validate_variable_names(zero, "zero_vars", vnames)
+  validate_variable_names(catzero, "catzero_vars", vnames)
+  validate_variable_names(acdx, "acdx", vnames)
+  validate_variable_names(spike, "spike_vars", vnames)
+  
+  # Validate df ---------------------------------------------------------------
+  if (!is.numeric(df)) {
+    stop(
+      "! `df` must be numeric.",
+      sprintf("i Current type is: %s.", typeof(df)),
+      call. = FALSE
+    )
+  }
+  
+  if (!length(df) %in% c(1L, nvars)) {
+    stop(
+      sprintf(
+        "! `df` must be a single number or a numeric vector of length %d; got length %d.",
+        nvars, length(df)
+      ),
+      call. = FALSE
+    )
+  }
+  
+  if (anyNA(df) || any(!is.finite(df))) {
+    stop(
+      "! `df` must contain only finite, non-missing values.",
+      call. = FALSE
+    )
+  }
+  
+  if (any(df != as.integer(df))) {
+    stop(
+      "! `df` must contain integer values.",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+  
+  if (any(df <= 0)) {
+    stop(
+      "! `df` must contain only positive values.",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+  
+  if (any(df != 1 & df %% 2 != 0)) {
+    stop(
+      "! Any `df` value greater than 1 must be even.",
+      "i Valid values are 1 for linear terms, or even positive integers 2, 4, 6, ... for fractional polynomials.",
+      call. = FALSE
+    )
+  }
+  
+  # Revert to Chi-square when family is not Gaussian
   if (ftest && family_string != "gaussian") {
-    warning(sprintf("i F-test not suitable for family = %s.\n", family_string),
-            "i mfp2() reverts to use Chi-square instead.")
+    warning(
+      sprintf("i F-test not suitable for family = %s.\n", family_string),
+      "i mfp2() reverts to use Chi-square instead.",
+      call. = FALSE
+    )
+    ftest <- FALSE
   }
   
   if (family_string == "cox") {
+    # Cox models require a survival response. A Surv object is matrix-like,
+    # so use NROW(y) for consistency with vector and matrix responses.
     if (!survival::is.Surv(y)) {
-      stop("! Response y must be a survival::Surv object.")
+      stop("! Response y must be a survival::Surv object.", call. = FALSE)
     }
     
-    if (nrow(y) != nobs) {
-      stop("! Number of observations in y and x must match.", 
-           sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
-                   nrow(y), nobs))
+    if (NROW(y) != nobs) {
+      stop(
+        "! Number of observations in y and x must match.",
+        sprintf(
+          "i The number of observations in y is %d, but the number of observations in x is %d.",
+          NROW(y), nobs
+        ),
+        call. = FALSE
+      )
     }
     
     type <- attr(y, "type")
     if (type != "right") {
-      stop(sprintf("! Type of censoring must not be %s.", type), 
-           "i Currently only right censoring is supported by mfp2().")
+      stop(
+        sprintf("! Type of censoring must not be %s.", type),
+        "i Currently only right censoring is supported by mfp2().",
+        call. = FALSE
+      )
     }
     
     if (!is.null(strata) && is.factor(strata)) {
@@ -1245,41 +1558,151 @@ mfp2.default <- function(x,
     }
     
     if (!is.null(strata)) {
-      strata_len <- ifelse(is.vector(strata), length(strata), nrow(strata))
+      strata_len <- if (is.vector(strata)) length(strata) else NROW(strata)
       
-      if (strata_len != nrow(x)) {
-        stop("! The length of stratification factor(s) and the number of observations in x must match.\n")
+      if (strata_len != nobs) {
+        stop(
+          "! The length of stratification factor(s) and the number of observations in x must match.",
+          sprintf(
+            "i The length of strata is %d, but the number of observations in x is %d.",
+            strata_len, nobs
+          ),
+          call. = FALSE
+        )
       }
     }
   } else {
-    if (is.matrix(y) || is.data.frame(y)) {
-      stop(sprintf("! Outcome y must not be of class %s.", 
-                   paste0(class(y), collapse = ", ")), 
-           "i Please convert y to a vector.", call. = FALSE)
+    # Non-Cox responses must have one response row/value per observation.
+    # Use NROW(y), not length(y) or nrow(y), because y may be:
+    # - a vector,
+    # - a factor,
+    # - or, for binomial models only, a two-column matrix response.
+    if (NROW(y) != nobs) {
+      stop(
+        "! Number of observations in y and x must match.",
+        sprintf(
+          "i The number of observations in y is %d, but the number of observations in x is %d.",
+          NROW(y), nobs
+        ),
+        call. = FALSE
+      )
     }
-    if (length(y) != nobs) {
-      stop("! Number of observations in y and x must match.", 
-           sprintf("i The number of observations in y is %d, but the number of observations in x is %d.", 
-                   length(y), nobs))
+    
+    # Data-frame responses are not supported. This avoids ambiguous handling of
+    # one-column data frames and multi-column non-binomial outcomes.
+    if (is.data.frame(y)) {
+      stop(
+        sprintf(
+          "! Outcome y must not be a data frame. Current class: %s.",
+          paste0(class(y), collapse = ", ")
+        ),
+        "i Please provide y as a vector, factor, or for family = binomial as cbind(successes, failures).",
+        call. = FALSE
+      )
+    }
+    
+    # Matrix responses are allowed only for grouped binomial counts:
+    #   cbind(successes, failures)
+    if (is.matrix(y)) {
+      if (family_string != "binomial") {
+        stop(
+          "! Matrix responses are only supported for family = binomial.",
+          "i For grouped binomial counts, use y = cbind(successes, failures).",
+          call. = FALSE
+        )
+      }
+      
+      if (!is.numeric(y) || ncol(y) != 2L) {
+        stop(
+          "! For family = binomial, matrix y must be a numeric two-column matrix.",
+          "i Use y = cbind(successes, failures), where each row contains grouped binomial counts.",
+          call. = FALSE
+        )
+      }
+      
+      if (anyNA(y) || any(!is.finite(y)) || any(y < 0)) {
+        stop(
+          "! For family = binomial, matrix y counts must be non-missing, finite, and non-negative.",
+          call. = FALSE
+        )
+      }
+      
+      if (any(rowSums(y) <= 0)) {
+        stop(
+          "! For family = binomial, each row of matrix y must contain at least one trial.",
+          "i That means successes + failures must be greater than zero for every row.",
+          call. = FALSE
+        )
+      }
+    } else {
+      # Vector/factor response validation by family.
+      if (family_string %in% c("gaussian", "poisson")) {
+        if (!is.numeric(y)) {
+          stop(
+            sprintf("! For family = %s, y must be a numeric vector.", family_string),
+            call. = FALSE
+          )
+        }
+        
+        if (anyNA(y) || any(!is.finite(y))) {
+          stop(
+            sprintf(
+              "! For family = %s, y must contain only finite, non-missing values.",
+              family_string
+            ),
+            call. = FALSE
+          )
+        }
+      }
+      
+      if (family_string == "binomial") {
+        if (is.factor(y)) {
+          if (nlevels(y) != 2L) {
+            stop(
+              "! For family = binomial, factor y must have exactly two levels.",
+              call. = FALSE
+            )
+          }
+        } else if (is.numeric(y)) {
+          if (anyNA(y) || any(!is.finite(y))) {
+            stop(
+              "! For family = binomial, numeric y must contain only finite, non-missing values.",
+              call. = FALSE
+            )
+          }
+        } else {
+          stop(
+            "! For family = binomial, y must be a numeric vector, a two-level factor, or a numeric two-column matrix.",
+            "i Matrix y is allowed only in the grouped-count form cbind(successes, failures).",
+            call. = FALSE
+          )
+        }
+      }
     }
   }
   
   # validate spike proportions
-  if (!is.numeric(min_prop) || length(min_prop) != 1 || min_prop < 0 || min_prop > 1) {
-    stop("! min_prop must be a single numeric value between 0 and 1.", call. = FALSE)
+  if (!is.numeric(min_prop) || length(min_prop) != 1L ||
+      anyNA(min_prop) || !is.finite(min_prop) ||
+      min_prop <= 0 || min_prop >= 1) {
+    stop("! `min_prop` must be a single finite numeric value in the open interval (0, 1).",
+         call. = FALSE)
   }
   
-  if (!is.numeric(max_prop) || length(max_prop) != 1 || max_prop < 0 || max_prop > 1) {
-    stop("! max_prop must be a single numeric value between 0 and 1.", call. = FALSE)
+  if (!is.numeric(max_prop) || length(max_prop) != 1L ||
+      anyNA(max_prop) || !is.finite(max_prop) ||
+      max_prop <= 0 || max_prop >= 1) {
+    stop("! `max_prop` must be a single finite numeric value in the open interval (0, 1).",
+         call. = FALSE)
   }
   
-  if (min_prop > max_prop) {
-    stop("! min_prop cannot be greater than max_prop.", call. = FALSE)
+  if (min_prop >= max_prop) {
+    stop("! `min_prop` must be less than `max_prop`.", call. = FALSE)
   }
   
   # set defaults ---------------------------------------------------------------
   if (!is.null(powers) && !is.list(powers)) {
-    stop("Powers must be a list", call. = FALSE)
+    stop("! `powers` must be a list.", call. = FALSE)
   }
   
   # default FP powers proposed by Royston and Altman (1994)
@@ -1289,29 +1712,48 @@ mfp2.default <- function(x,
   # deal with user supplied powers
   if (!is.null(powers)) {
     if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
-      stop(" All the powers supplied in the argument must have names",
+      stop("! All elements supplied in `powers` must be named.",
            call. = FALSE)
     }
     
     dd <- which(!names(powers) %in% vnames)
     if (length(dd) != 0) {
-      stop(" The names of all powers must be in the column names of x.\n",
-           sprintf("i This applies to the following powers: %s.", 
-                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+      stop(
+        "! Unknown variable name(s) in `powers`.",
+        sprintf(
+          "\ni This applies to: %s.",
+          paste(names(powers)[dd], collapse = ", ")
+        ),
+        "\ni The names in `powers` must match column names in `x`.",
+        call. = FALSE
+      )
     }
     
     if (!all(sapply(powers, is.numeric))) {
       stop("All elements of powers must be numeric", call. = FALSE)
     }
     
+    bad_power_values <- names(powers)[vapply(
+      powers,
+      function(v) anyNA(v) || any(!is.finite(v)),
+      logical(1L)
+    )]
+    if (length(bad_power_values) != 0) {
+      stop("! All elements of powers must contain only finite, non-missing values.\n",
+           sprintf("i This applies to the following variables: %s.",
+                   paste0(bad_power_values, collapse = ", ")), call. = FALSE)
+    }
+    
     powers <- lapply(powers, function(v) sort(v))
     
-    pow_length <- sapply(powers, function(v) length(v))
-    pow_length_one <- which(pow_length == 1)
-    if (length(pow_length_one) != 0) {
-      stop(" The number of powers for each variable must be at least two.\n",
-           sprintf("i This applies to the following variables: %s.", 
-                   paste0(names(pow_length_one), collapse = ", ")), call. = FALSE)
+    pow_length <- vapply(powers, length, integer(1L))
+    pow_length_invalid <- which(pow_length < 2L)
+    
+    if (length(pow_length_invalid) != 0L) {
+      stop("! Each element of `powers` must contain at least two values.\n",
+           sprintf("i This applies to the following variables: %s.",
+                   paste0(names(pow_length_invalid), collapse = ", ")),
+           call. = FALSE)
     }
     
     power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
@@ -1376,9 +1818,12 @@ mfp2.default <- function(x,
   }
   force_max_fp <- setNames(force_max_fp, vnames)
   
-  # Revert to Chi-square when family is not Gaussian
-  if (ftest && family_string != "gaussian") {
-    ftest <- FALSE
+  if (criterion == "pvalue" && any(force_max_fp)) {
+    warning(
+      "i `force_max_fp` has no effect when criterion = 'pvalue'.",
+      "i Use select = 1 and alpha = 1 to force the most complex FP under p-value selection.",
+      call. = FALSE
+    )
   }
   
   # Set default control parameters for model fitting if not provided
@@ -1389,14 +1834,6 @@ mfp2.default <- function(x,
       control <- stats::glm.control()
     }
   }
-  
-  # Retain only those variables in `keep` that are actually present in `x`
-  keep <- intersect(keep, vnames)
-  
-  #------- Deal with zero_vars and catzero_vars -------------------------------
-  # Ensure that only variables present in x are considered for zero and catzero
-  zero <- intersect(zero, vnames)
-  catzero <- intersect(catzero, vnames)
   
   # Convert zero_vars and catzero_vars to logical vectors
   if (is.null(zero)) {
@@ -1460,8 +1897,7 @@ mfp2.default <- function(x,
     acdx <- setNames(rep(FALSE, nvars), vnames)
   } else {
     acdx <- unique(acdx)
-    acdx <- intersect(acdx, vnames)
-    
+
     acdx_vec <- setNames(rep(FALSE, nvars), vnames)
     acdx_vec[acdx] <- TRUE
     acdx <- acdx_vec
@@ -1473,8 +1909,7 @@ mfp2.default <- function(x,
     spike <- setNames(rep(FALSE, nvars), vnames)
   } else {
     spike <- unique(spike)
-    spike <- intersect(spike, vnames)
-    
+
     spike_input_vars <- spike
     spike <- setNames(rep(FALSE, nvars), vnames)
     spike[spike_input_vars] <- TRUE
@@ -1636,17 +2071,13 @@ mfp2.default <- function(x,
   
   # data subsetting ------------------------------------------------------------
   if (!is.null(subset)) {
-    if (length(subset) < 5) {
-      stop("! The length of subset is too small (<5) to fit an mfp model.", 
-           sprintf("i The number of observations is %d", length(subset)), 
-           call. = FALSE)
-    }
-    
+
     x <- x[subset, , drop = FALSE]
-    y <- if (family_string != "cox") {
-      y[subset]
+    
+    if (is.matrix(y)) {
+      y <- y[subset, , drop = FALSE]
     } else {
-      y[subset, , drop = FALSE]
+      y <- y[subset]
     }
     
     weights <- weights[subset]
@@ -1676,6 +2107,69 @@ mfp2.default <- function(x,
   fit$has_offset <- has_offset
   
   fit
+}
+#' Extract family name for the formula interface
+#'
+#' Internal helper used by `mfp2.formula()` to determine the family name before
+#' calling `mfp2.default()`. This is needed because the formula interface must
+#' know whether Cox-specific formula terms such as `strata()` are allowed, but
+#' family validation and normalization are still handled by `mfp2.default()`.
+#'
+#' @param family A character family name, a GLM family function, or a GLM family
+#'   object.
+#'
+#' @return A single character string giving the family name.
+#'
+#' @keywords internal
+#' @noRd
+get_family_string_formula <- function(family) {
+  if (is.character(family)) {
+    if (length(family) != 1L) {
+      stop(
+        sprintf(
+          "! `family` must be a single character string; got %d values: %s.",
+          length(family),
+          paste(family, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    return(family)
+  }
+  
+  if (is.function(family)) {
+    family_obj <- tryCatch(
+      family(),
+      error = function(e) {
+        stop(
+          sprintf(
+            "! Could not create a family object from the provided function. %s",
+            conditionMessage(e)
+          ),
+          call. = FALSE
+        )
+      }
+    )
+    
+    if (!inherits(family_obj, "family")) {
+      stop(
+        "! `family` function must return a valid GLM family object.",
+        call. = FALSE
+      )
+    }
+    
+    return(family_obj$family)
+  }
+  
+  if (inherits(family, "family")) {
+    return(family$family)
+  }
+  
+  stop(
+    "! `family` must be a character string, a family function, or a GLM family object.",
+    call. = FALSE
+  )
 }
 
 #' @describeIn mfp2 Provides formula interface for `mfp2`.
@@ -1717,94 +2211,27 @@ mfp2.formula <- function(formula,
   # Allowed families
   allowed_families <- c("gaussian", "binomial", "poisson", "cox")
   
-  # TODO: Extend to Gamma and inverse.gaussian families that glm.fit allow 
-  # computation of AIC. Standard families (gaussian, binomial, poisson, Gamma,
-  # inverse.gaussian) have aic methods, so AIC is defined. Quasi-families 
-  # (quasi, quasibinomial, quasipoisson) do not have a true likelihood, so 
-  # glm can't compute AIC meaningfully. Attempting AIC(fit_quasi) will return 
-  # NA or a warning.
+  family_string <- get_family_string_formula(family)
   
-  if (is.character(family)) {
-    if (!family %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family, paste(allowed_families, collapse = ", ")),
-        call. = FALSE
-      )
-    }
-    
-    family_string <- family
-    
-    if (family != "cox") {
-      family <- tryCatch(
-        get(family, mode = "function", envir = parent.frame())(),
-        error = function(e) {
-          stop(
-            sprintf("! Cannot construct family object from character '%s'. %s", 
-                    family, conditionMessage(e)),
-            call. = FALSE
-          )
-        }
-      )
-    }
-    
-  } else if (is.function(family)) {
-    family_name <- deparse(substitute(family))
-    
-    family_obj <- tryCatch(
-      family(), 
-      error = function(e) {
-        stop(
-          sprintf("! Could not create a family object from the provided function '%s'. Error: %s", 
-                  family_name, conditionMessage(e)),
-          call. = FALSE
-        )
-      }
+  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
+  
+  if (!family_string %in% allowed_families) {
+    stop(
+      sprintf(
+        "! Invalid family: '%s'.\ni Supported families are: %s.",
+        family_string,
+        paste(allowed_families, collapse = ", ")
+      ),
+      call. = FALSE
     )
-    
-    if (!inherits(family_obj, "family")) {
-      stop(
-        sprintf("! The provided function '%s' did not return a valid GLM family object.", 
-                family_name),
-        call. = FALSE
-      )
-    }
-    
-    family <- family_obj
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a function.", 
-           call. = FALSE)
-    }
-    
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else if (inherits(family, "family")) {
-    family_string <- family$family
-    
-    if (family_string == "cox") {
-      stop("! 'cox' must be specified as a character string, not as a family object.", 
-           call. = FALSE)
-    }
-    
-    if (!family_string %in% allowed_families) {
-      stop(
-        sprintf("! Invalid family: '%s'. Allowed families are: %s",
-                family_string, paste(allowed_families, collapse = ", ")), 
-        call. = FALSE
-      )
-    }
-    
-  } else {
-    stop("! The 'family' argument must be a character string, a function, or a GLM family object.", 
-         call. = FALSE)
+  }
+  
+  if (!is.null(strata) && family_string != "cox") {
+    stop(
+      "! `strata` is only allowed for Cox models.\n",
+      "i Please use `family = \"cox\"` or remove the `strata` argument.",
+      call. = FALSE
+    )
   }
   
   # assert that data must be provided
@@ -1820,6 +2247,10 @@ mfp2.formula <- function(formula,
          "i Please set column names.", call. = FALSE)
   }
   
+  if (!is.data.frame(data)) {
+    stop("`data` must be a data.frame.", call. = FALSE)
+  }
+  
   # assert that a formula must be provided
   if (missing(formula)) {
     stop("! formula is missing.", call. = FALSE)
@@ -1829,60 +2260,388 @@ mfp2.formula <- function(formula,
     stop("method is only for formula objects", call. = FALSE)
   }
   
-  # assert length of df, alpha, select, center, shift, scale equal to one
-  if (length(df) != 1) {
-    stop("! df must be a single numeric.", 
-         "i Use the fp() function to set different df values in the input formula.",
-         call. = FALSE)
+  # Validate scalar formula-interface defaults ---------------------------------
+  # In the formula interface, df, alpha, select, shift, scale, and center are
+  # global scalar defaults. Per-variable values must be supplied inside fp().
+  
+  validate_formula_scalar <- function(arg,
+                                      arg_name,
+                                      type,
+                                      allow_null = FALSE,
+                                      allow_na = FALSE,
+                                      hint = NULL) {
+    if (is.null(arg)) {
+      if (allow_null) return(invisible(TRUE))
+      
+      msg <- sprintf("! `%s` must not be NULL.", arg_name)
+      if (!is.null(hint)) msg <- paste0(msg, "\n", hint)
+      
+      stop(msg, call. = FALSE)
+    }
+    
+    ok_type <- switch(
+      type,
+      numeric = is.numeric(arg),
+      logical = is.logical(arg),
+      stop("Internal error: unsupported validator type.", call. = FALSE)
+    )
+    
+    if (!ok_type || length(arg) != 1L) {
+      expected <- switch(
+        type,
+        logical = "a single TRUE or FALSE value",
+        numeric = "a single numeric value",
+        type
+      )
+      
+      actual <- paste0(arg, collapse = ", ")
+      
+      msg <- sprintf(
+        "! `%s` must be %s.\ni You supplied: %s.",
+        arg_name, expected, actual
+      )
+      
+      if (!is.null(hint)) msg <- paste0(msg, "\n", hint)
+      
+      stop(msg, call. = FALSE)
+    }
+    
+    if (!allow_na && anyNA(arg)) {
+      expected <- switch(
+        type,
+        logical = "TRUE or FALSE",
+        numeric = "a numeric value",
+        type
+      )
+      
+      msg <- sprintf(
+        "! `%s` must not be NA.\ni Please use %s.",
+        arg_name, expected
+      )
+      
+      if (!is.null(hint)) msg <- paste0(msg, "\n", hint)
+      
+      stop(msg, call. = FALSE)
+    }
+    
+    if (type == "numeric" && !anyNA(arg) && !is.finite(arg)) {
+      msg <- sprintf("! `%s` must be finite.", arg_name)
+      if (!is.null(hint)) msg <- paste0(msg, "\n", hint)
+      
+      stop(msg, call. = FALSE)
+    }
+    
+    invisible(TRUE)
   }
   
-  if (length(alpha) != 1) {
-    stop("! alpha must be a single numeric.", 
-         "i Use the fp() function to set different alpha values in the input formula.",
-         call. = FALSE)
+  validate_formula_probability <- function(arg, arg_name, hint = NULL) {
+    validate_formula_scalar(
+      arg = arg,
+      arg_name = arg_name,
+      type = "numeric",
+      allow_null = FALSE,
+      allow_na = FALSE,
+      hint = hint
+    )
+    
+    if (arg < 0 || arg > 1) {
+      msg <- sprintf(
+        "! `%s` must be between 0 and 1.\ni You supplied: %s.",
+        arg_name, arg
+      )
+      
+      if (!is.null(hint)) msg <- paste0(msg, "\n", hint)
+      
+      stop(msg, call. = FALSE)
+    }
+    
+    invisible(TRUE)
   }
   
-  if (length(select) != 1) {
-    stop("! select must be a single numeric.", 
-         "i Use the fp() function to set different select values in the input formula.",
-         call. = FALSE)
+  validate_formula_scalar(
+    df,
+    "df",
+    "numeric",
+    allow_null = FALSE,
+    allow_na = FALSE,
+    hint = "i Use fp(..., df = value) to set different df values for individual variables."
+  )
+  
+  if (df != as.integer(df)) {
+    stop(
+      sprintf(
+        "! `df` must be an integer value.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
   }
   
-  if (!is.null(scale) && length(scale) != 1) {
-    stop("! scale must be a single numeric or NULL.",
-         "i Use the fp() function to set different scaling factors in the input formula.", 
-         call. = FALSE)
+  if (df <= 0) {
+    stop(
+      sprintf(
+        "! `df` must be positive.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
   }
   
-  if (length(center) != 1) {
-    stop("! center must be a single logical value.", 
-         "i Use the fp() function to set different center values in the input formula.",
-         call. = FALSE)
+  if (df != 1 && df %% 2 != 0) {
+    stop(
+      sprintf(
+        "! `df` must be 1 or an even positive integer.\ni You supplied: %s.\ni Use fp(..., df = value) to set different df values for individual variables.",
+        df
+      ),
+      call. = FALSE
+    )
   }
   
-  if (!is.null(shift) && length(shift) != 1) {
-    stop("! shift must be a single numeric.", 
-         "i Use the fp() function to set different shift values in the input formula.",
-         call. = FALSE)
+  validate_formula_probability(
+    alpha,
+    "alpha",
+    hint = "i Use fp(..., alpha = value) to set different alpha values for individual variables."
+  )
+  
+  validate_formula_probability(
+    select,
+    "select",
+    hint = "i Use fp(..., select = value) to set different select values for individual variables."
+  )
+  
+  validate_formula_scalar(
+    scale,
+    "scale",
+    "numeric",
+    allow_null = TRUE,
+    allow_na = TRUE,
+    hint = "i Use fp(..., scale = value) to set different scaling factors for individual variables."
+  )
+  
+  if (!is.null(scale) && !is.na(scale) && scale <= 0) {
+    stop(
+      sprintf(
+        "! `scale` must be positive, NULL, or NA.\ni You supplied: %s.\ni Use fp(..., scale = value) to set different scaling factors for individual variables.",
+        scale
+      ),
+      call. = FALSE
+    )
   }
   
-  if (!is.null(powers) && !is.list(powers)) {
-    stop(" Powers must be a named list or set it to NULL", call. = FALSE)
+  validate_formula_scalar(
+    shift,
+    "shift",
+    "numeric",
+    allow_null = TRUE,
+    allow_na = TRUE,
+    hint = "i Use fp(..., shift = value) to set different shift values for individual variables."
+  )
+  
+  validate_formula_scalar(
+    center,
+    "center",
+    "logical",
+    allow_null = FALSE,
+    allow_na = FALSE,
+    hint = "i Use fp(..., center = TRUE) or fp(..., center = FALSE) to set different center values for individual variables."
+  )
+
+  # Validate global powers
+  if (!is.null(powers)) {
+    if (!is.list(powers)) {
+      stop(
+        "! `powers` must be NULL or a named list.",
+        call. = FALSE
+      )
+    }
+    
+    if (is.null(names(powers)) || anyNA(names(powers)) || any(names(powers) == "")) {
+      stop(
+        "! `powers` must be a named list.\ni Each element name must match a predictor name in the model matrix.",
+        call. = FALSE
+      )
+    }
+    
+    bad_power_type <- names(powers)[!vapply(powers, is.numeric, logical(1L))]
+    if (length(bad_power_type) > 0L) {
+      stop(
+        sprintf(
+          "! All elements of `powers` must be numeric vectors.\ni Non-numeric powers supplied for: %s.",
+          paste(bad_power_type, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    bad_power_na <- names(powers)[vapply(
+      powers,
+      function(z) anyNA(z) || any(!is.finite(z)),
+      logical(1L)
+    )]
+    
+    if (length(bad_power_na) > 0L) {
+      stop(
+        sprintf(
+          "! `powers` must contain only finite, non-missing values.\ni Problematic entries: %s.",
+          paste(bad_power_na, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
   }
   
-  # model.frame preserves the attributes of the data unlike model.matrix
-  mf <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  n_data <- nrow(data)
+  
+  if (!is.null(weights)) {
+    if (!is.numeric(weights)) {
+      stop("! `weights` must be numeric.", call. = FALSE)
+    }
+    
+    if (length(weights) != n_data) {
+      stop(
+        sprintf(
+          "! `weights` must have one value per row of `data`.\ni `weights` has length %d, but `data` has %d rows.",
+          length(weights), n_data
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(weights) || any(!is.finite(weights))) {
+      stop(
+        "! `weights` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+    
+    if (any(weights < 0)) {
+      stop("! `weights` must not contain negative values.", call. = FALSE)
+    }
+  }
+  
+  if (!is.null(offset)) {
+    if (!is.numeric(offset)) {
+      stop("! `offset` must be numeric.", call. = FALSE)
+    }
+    
+    if (length(offset) != n_data) {
+      stop(
+        sprintf(
+          "! `offset` must have one value per row of `data`.\ni `offset` has length %d, but `data` has %d rows.",
+          length(offset), n_data
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  if (!is.null(subset)) {
+    if (is.logical(subset)) {
+      if (length(subset) != n_data || anyNA(subset)) {
+        stop(
+          "! Logical `subset` must have one TRUE/FALSE value per row of `data` and contain no NA.",
+          call. = FALSE
+        )
+      }
+    } else if (is.numeric(subset)) {
+      if (
+        anyNA(subset) ||
+        any(!is.finite(subset)) ||
+        any(subset != as.integer(subset)) ||
+        any(subset < 1L) ||
+        any(subset > n_data)
+      ) {
+        stop(
+          "! Numeric `subset` must contain valid positive row indices within `data`.",
+          call. = FALSE
+        )
+      }
+    } else {
+      stop(
+        "! `subset` must be either a logical vector or a numeric/integer vector of row indices.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  terms_formula <- stats::terms(
+    formula,
+    specials = "strata",
+    data = data
+  )
+  
+  has_formula_strata <- !is.null(attr(terms_formula, "specials")$strata)
+  
+  if (!is.null(strata) && !has_formula_strata) {
+    strata_n <- if (is.vector(strata) || is.factor(strata)) {
+      length(strata)
+    } else {
+      NROW(strata)
+    }
+    
+    if (strata_n != n_data) {
+      stop(
+        sprintf(
+          "! `strata` must have one value or row per row of `data`.\ni `strata` has %d rows/values, but `data` has %d rows.",
+          strata_n, n_data
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(strata)) {
+      stop("! `strata` must not contain missing values.", call. = FALSE)
+    }
+  }
+  
+  # model.frame preserves the attributes of the data unlike model.matrix.
+  # Use na.pass here so that mfp2.formula() does not silently drop rows through
+  # the global/default na.action option. Missingness is checked explicitly below.
+  
+  mf <- stats::model.frame(
+    terms_formula,
+    data = data,
+    drop.unused.levels = TRUE,
+    na.action = stats::na.pass
+  )
   
   # check whether no predictor exists in the model, i.e. y ~ 1
-  labels <- attr(terms(mf), "term.labels")
+  labels <- attr(terms_formula, "term.labels")
   if (length(labels) == 0) {
-    stop("No predictors are provided for model fitting.\n At least one predictor is required",
-         call. = FALSE)
+    stop(
+      "! No predictors are provided for model fitting.\n",
+      "i At least one predictor is required.",
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(mf)) {
+    na_rows <- which(!stats::complete.cases(mf))
+    
+    msg <- sprintf(
+      "! Missing values are not allowed in variables used by the model formula.\ni Rows with missing values: %s.",
+      paste(utils::head(na_rows, 10L), collapse = ", ")
+    )
+    
+    if (length(na_rows) > 10L) {
+      msg <- paste0(msg, sprintf("\ni Showing first 10 of %d affected rows.", length(na_rows)))
+    }
+    
+    msg <- paste0(msg, "\ni Please remove or impute missing values before calling mfp2().")
+    
+    stop(msg, call. = FALSE)
   }
   
+ 
   # stratification and offset handling -----------------------------------------
-  terms_formula <- stats::terms(formula, specials = "strata", data = data)
-  
+
   # Terms to remove before constructing the model matrix.
   # offset() and strata() are handled separately and must not enter x.
   terms_drop <- integer(0L)
@@ -1904,6 +2663,17 @@ mfp2.formula <- function(formula,
         special = "strata",
         order = 1
       )
+      
+      missing_strata_vars <- setdiff(stemp$vars, names(mf))
+      if (length(missing_strata_vars) > 0L) {
+        stop(
+          sprintf(
+            "! Could not extract strata variable(s) from the model frame: %s.",
+            paste(missing_strata_vars, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
       
       if (length(stemp$vars) == 1) {
         strata <- mf[[stemp$vars]]
@@ -1941,11 +2711,18 @@ mfp2.formula <- function(formula,
   
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
-      stop("! offset must be numeric.", call. = FALSE)
+      stop("! `offset` must be numeric.", call. = FALSE)
     }
     
     if (length(offset) != nrow(mf)) {
-      stop("! offset must have one value per observation.", call. = FALSE)
+      stop("! `offset` must have one value per observation.", call. = FALSE)
+    }
+    
+    if (anyNA(offset) || any(!is.finite(offset))) {
+      stop(
+        "! `offset` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
     }
   }
   
@@ -1956,12 +2733,19 @@ mfp2.formula <- function(formula,
     terms_model <- terms_formula
   }
   
-  # data preparation -----------------------------------------------------------
-  y <- model.extract(mf, "response")
-  if (family_string != "cox") {
-    y <- as.numeric(y)
+  remaining_labels <- attr(terms_model, "term.labels")
+  
+  if (length(remaining_labels) == 0L) {
+    stop(
+      "! No predictors are provided for model fitting after removing strata() and offset() terms.\n",
+      "i At least one non-strata, non-offset predictor is required.",
+      call. = FALSE
+    )
   }
   
+  # data preparation -----------------------------------------------------------
+  y <- model.extract(mf, "response")
+
   mm <- stats::model.matrix(terms_model, mf)
   assign <- attr(mm, "assign")
   term_labels <- attr(terms_model, "term.labels")
@@ -1974,6 +2758,11 @@ mfp2.formula <- function(formula,
   nx <- ncol(x) 
   names_x <- colnames(x)
   
+  # helper function to identify fp terms when fp() or fp2() is used
+  is_fp_term <- function(z) {
+    grepl("^fp2?\\(.*\\)$", z)
+  }
+  
   # Map each original formula term to the model-matrix columns it generated.
   # This is used to expand `keep` safely for factor terms without prefix matching.
   term_to_columns <- split(colnames(x), term_labels[assign])
@@ -1982,7 +2771,7 @@ mfp2.formula <- function(formula,
   term_to_columns <- term_to_columns[!is.na(names(term_to_columns))]
   
   # select variables that undergo fp transformation and extract their attributes
-  fp_pos <- grep("^fp\\(.*\\)$", colnames(mf))
+  fp_pos <- which(is_fp_term(colnames(mf)))
   
   if (length(fp_pos) > 0) {
     fp_data <- mf[, fp_pos, drop = FALSE]
@@ -2009,10 +2798,12 @@ mfp2.formula <- function(formula,
     }
     
     # Capture fp() term labels before renaming them in the model matrix.
-    fp_terms <- grep("^fp\\(.*\\)$", names_x, value = TRUE)
+    fp_terms <- names_x[is_fp_term(names_x)]
     
     # replace names such as fp(x1) by real name "x1" in the x matrix
-    names_x <- replace(names_x, grep("^fp\\(.*\\)$", names_x), fp_vars)
+    #names_x <- replace(names_x, grep("^fp\\(.*\\)$", names_x), fp_vars)
+    names_x <- replace(names_x, which(is_fp_term(names_x)), fp_vars)
+    
     colnames(x) <- names_x
     
     # Update the formula-term -> model-matrix-column map after renaming fp() columns.
@@ -2070,15 +2861,25 @@ mfp2.formula <- function(formula,
   # deal with user supplied powers in the argument, not through fp()
   if (!is.null(powers)) {
     if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
-      stop(" All the powers supplied in the argument must have names",
-           call. = FALSE)
+      stop(
+        "! All elements supplied in `powers` must have names.",
+        call. = FALSE
+      )
     }
     
-    dd <- which(!names(powers) %in% names_x)
-    if (length(dd) != 0) {
-      stop(" The names of all powers must be in the column names of x.\n",
-           sprintf("i This applies to the following powers: %s.", 
-                   paste0(names(powers)[dd], collapse = ", ")), call. = FALSE)
+    valid_power_names <- colnames(x)
+    
+    bad_power <- setdiff(names(powers), valid_power_names)
+    
+    if (length(bad_power) > 0L) {
+      stop(
+        sprintf(
+          "! Unknown or unsupported variable name(s) in `powers`: %s.",
+          paste(bad_power, collapse = ", ")
+        ),
+        "\ni In the formula interface, `powers` must name final numeric model-matrix columns.",
+        call. = FALSE
+      )
     }
     
     powers <- lapply(powers, function(v) sort(v))
@@ -2128,9 +2929,15 @@ mfp2.formula <- function(formula,
     
     nax <- intersect(names(powerx), names(powers))
     if (length(nax) != 0) {
-      warning("i Powers are specified in both the `fp()` function within\n the formula and as an argument. The argument term ignored.\n", 
-              sprintf("i This applies to the following variables: %s.", 
-                      paste0(nax, collapse = ", ")), call. = FALSE)
+      warning(
+        "i Powers are specified both in `fp()` and in the `powers` argument.",
+        "\ni The `fp()`-specific powers take precedence; the corresponding `powers` argument entries are ignored.",
+        sprintf(
+          "\ni This applies to: %s.",
+          paste(nax, collapse = ", ")
+        ),
+        call. = FALSE
+      )
     }
     
     power_list <- modifyList(power_list, powerx)
@@ -2347,12 +3154,13 @@ print.mfp2 <- function(x,
 }
 
 #' Helper to assign attributes to a variable undergoing FP-transformation
-#' 
-#' Used in formula interface to `mfp2()`.
-#' 
-#' @param x a vector representing a continuous variable undergoing 
-#' fp-transformation.
-#' @param df,alpha,select,shift,scale,center,acdx See [mfp2::mfp2()] for details.
+#'
+#' Used in the formula interface to `mfp2()`.
+#'
+#' @param x A vector representing a continuous variable undergoing
+#'   FP-transformation.
+#' @param df,alpha,select,shift,scale,center,acdx See [mfp2::mfp2()] for
+#'   details.
 #' @param zero Logical. If \code{TRUE}, nonpositive values of this variable are
 #'   treated as zero and FP transformations are applied only to positive values.
 #'   This is the formula-interface equivalent of listing the variable in
@@ -2372,19 +3180,19 @@ print.mfp2 <- function(x,
 #'   \code{mfp2()}. It has no effect when \code{criterion = "pvalue"}, because
 #'   the same behaviour can be obtained by setting \code{select = 1} and
 #'   \code{alpha = 1}. Default is \code{FALSE}.
-#' @param powers a vector of powers to be evaluated for `x`. Default is `NULL` 
-#' and `powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` will be used.
-#' @param ... used in alias `fp2` to pass arguments.
-#' 
-#' @examples
+#' @param powers Numeric vector of candidate powers to be evaluated for `x`.
+#'   Must contain at least two values when supplied. If `NULL`, the default
+#'   powers `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` are used.
+#' @param ... Used in alias `fp2()` to pass arguments.
 #'
-#' xr = 1:10
+#' @return The vector `x` with attributes relevant for FP-transformation. All
+#'   arguments passed to this function are stored as attributes.
+#'
+#' @examples
+#' xr <- 1:10
 #' fp(xr)
 #' fp2(xr)
-#' @return 
-#' The vector `x` with new attributes relevant for fp-transformation. All 
-#' arguments passed to this function will be stored as attributes. 
-#' 
+#'
 #' @export
 fp <- function(x, 
                df = 4, 
@@ -2403,9 +3211,124 @@ fp <- function(x,
   
   name <- deparse(substitute(x))
   
-  # Assert that a factor variable must not be subjected to fp transformation
+  # Assert that a factor variable must not be subjected to fp transformation.
   if (is.factor(x)) {
-    stop(name," is a factor variable and should not be passed to the fp() function.")
+    stop(
+      name, " is a factor variable and should not be passed to the fp() function.",
+      call. = FALSE
+    )
+  }
+  
+  # fp() is part of the formula interface. It stores user-supplied options as
+  # attributes that mfp2.formula() later extracts. We validate only shape/type
+  # issues that can corrupt attribute extraction. Full range and semantic
+  # validation is still performed by mfp2.default() after formula options have
+  # been expanded to the final per-variable vectors.
+  
+  validate_scalar_fp <- function(arg, arg_name, var_name, type,
+                                 allow_null = FALSE, allow_na = FALSE) {
+    if (is.null(arg)) {
+      if (allow_null) return(invisible(TRUE))
+      stop(
+        sprintf("! In fp(%s), `%s` must not be NULL.", var_name, arg_name),
+        call. = FALSE
+      )
+    }
+    
+    ok_type <- switch(
+      type,
+      numeric = is.numeric(arg),
+      logical = is.logical(arg),
+      stop("Internal error: unsupported validator type.", call. = FALSE)
+    )
+    
+    if (!ok_type || length(arg) != 1L) {
+      expected <- switch(
+        type,
+        logical = "a single TRUE or FALSE value",
+        numeric = "a single numeric value",
+        type
+      )
+      
+      actual <- paste0(arg, collapse = ", ")
+      
+      stop(
+        sprintf(
+          "! In fp(%s), `%s` must be %s.\ni You supplied: %s.",
+          var_name, arg_name, expected, actual
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (!allow_na && anyNA(arg)) {
+      expected <- switch(
+        type,
+        logical = "TRUE or FALSE",
+        numeric = "a numeric value",
+        type
+      )
+      
+      stop(
+        sprintf(
+          "! In fp(%s), `%s` must not be NA.\ni Please use %s.",
+          var_name, arg_name, expected
+        ),
+        call. = FALSE
+      )
+    }
+    
+    invisible(TRUE)
+  }
+  
+  # Numeric scalar attributes.
+  # shift and scale may be NULL because NULL means "use the global mfp2()
+  # behavior". They may also be NA only if supplied as scalar NA, meaning
+  # automatic shift/scale estimation for this variable.
+  validate_scalar_fp(df, "df", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(alpha, "alpha", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(select, "select", name, "numeric", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(shift, "shift", name, "numeric", allow_null = TRUE, allow_na = TRUE)
+  validate_scalar_fp(scale, "scale", name, "numeric", allow_null = TRUE, allow_na = TRUE)
+  
+  # Logical scalar attributes.
+  validate_scalar_fp(center, "center", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(acdx, "acdx", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(zero, "zero", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(catzero, "catzero", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(spike, "spike", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  validate_scalar_fp(force_max_fp, "force_max_fp", name, "logical", allow_null = FALSE, allow_na = FALSE)
+  
+  # powers is allowed to be NULL or a numeric vector. Candidate-count and other
+  # model-selection checks can remain in mfp2.default(), but malformed powers
+  # should not be stored as attributes.
+  if (!is.null(powers)) {
+    if (!is.numeric(powers)) {
+      stop(
+        sprintf("! In fp(%s), `powers` must be NULL or a numeric vector.", name),
+        call. = FALSE
+      )
+    }
+    
+    if (anyNA(powers) || any(!is.finite(powers))) {
+      stop(
+        sprintf(
+          "! In fp(%s), `powers` must contain only finite, non-missing values.",
+          name
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (length(powers) < 2L) {
+      stop(
+        sprintf(
+          "! In fp(%s), `powers` must contain at least two values.",
+          name
+        ),
+        call. = FALSE
+      )
+    }
   }
   
   attr(x, "df") <- df

@@ -24,13 +24,15 @@ fp(
 fp2(...)
 }
 \arguments{
-\item{x}{a vector representing a continuous variable undergoing
-fp-transformation.}
+\item{x}{A vector representing a continuous variable undergoing
+FP-transformation.}
 
-\item{df, alpha, select, shift, scale, center, acdx}{See \code{\link[=mfp2]{mfp2()}} for details.}
+\item{df, alpha, select, shift, scale, center, acdx}{See \code{\link[=mfp2]{mfp2()}} for
+details.}
 
-\item{powers}{a vector of powers to be evaluated for \code{x}. Default is \code{NULL}
-and \code{powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} will be used.}
+\item{powers}{Numeric vector of candidate powers to be evaluated for \code{x}.
+Must contain at least two values when supplied. If \code{NULL}, the default
+powers \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} are used.}
 
 \item{zero}{Logical. If \code{TRUE}, nonpositive values of this variable are
 treated as zero and FP transformations are applied only to positive values.
@@ -55,14 +57,14 @@ used when \code{criterion = "aic"} or \code{criterion = "bic"} in
 the same behaviour can be obtained by setting \code{select = 1} and
 \code{alpha = 1}. Default is \code{FALSE}.}
 
-\item{...}{used in alias \code{fp2} to pass arguments.}
+\item{...}{Used in alias \code{fp2()} to pass arguments.}
 }
 \value{
-The vector \code{x} with new attributes relevant for fp-transformation. All
-arguments passed to this function will be stored as attributes.
+The vector \code{x} with attributes relevant for FP-transformation. All
+arguments passed to this function are stored as attributes.
 }
 \description{
-Used in formula interface to \code{mfp2()}.
+Used in the formula interface to \code{mfp2()}.
 }
 \section{Functions}{
 \itemize{
@@ -70,8 +72,8 @@ Used in formula interface to \code{mfp2()}.
 
 }}
 \examples{
-
-xr = 1:10
+xr <- 1:10
 fp(xr)
 fp2(xr)
+
 }

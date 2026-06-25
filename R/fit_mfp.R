@@ -140,6 +140,7 @@
 #'
 #' @seealso \code{mfp2()}, \code{find_best_fp_cycle()}, \code{reset_spike()}
 #' @keywords internal
+#' @noRd
 fit_mfp <- function(x,
                     y,
                     weights,
@@ -211,20 +212,37 @@ fit_mfp <- function(x,
   zero         <- setNames(zero,    variables_x)[variables_ordered]
   catzero      <- setNames(catzero, variables_x)[variables_ordered]
   spike        <- setNames(spike,   variables_x)[variables_ordered]
-  force_max_fp <- force_max_fp[variables_ordered]
+  force_max_fp <- setNames(force_max_fp, variables_x)[variables_ordered]
   powers       <- powers[variables_ordered]
   
-  # Assert repeated powers of 1 is not supported
-  diff_one <- unlist(lapply(powers, function(v) all(v %in% 1) && length(v) != 1))
+  # Assert repeated powers of 1 are not supported
+  diff_one <- vapply(
+    powers,
+    function(v) {
+      v <- v[!is.na(v)]
+      length(v) > 1L && all(v == 1)
+    },
+    logical(1L)
+  )
+  
   if (any(diff_one)) {
     dfx <- df[diff_one]
-    if (any(dfx > 1))
+    vars_invalid <- names(dfx)[dfx > 1]
+    
+    if (length(vars_invalid) > 0L) {
       stop(
-        "The powers of some variables are repeated and all equal to 1. ",
-        "Set df for those variables to 1 or change the powers.\n",
-        sprintf("i This applies to: %s.", paste0(names(dfx > 1), collapse = ", ")),
+        paste(
+          "The powers of some variables are repeated and all equal to 1.",
+          "Repeated powers equal to 1 are not supported.",
+          sprintf(
+            "i This applies to: %s.",
+            paste0(vars_invalid, collapse = ", ")
+          ),
+          sep = "\n"
+        ),
         call. = FALSE
       )
+    }
   }
   
   # Force variables into the model by setting p-value threshold to 1
@@ -324,7 +342,7 @@ fit_mfp <- function(x,
     # Once x <= 0 has been physically recoded to 0, downstream transformation
     # functions no longer need to perform zero recoding again during the MFP
     # cycles. This avoids double handling of zero variables.
-    zero_x <- setNames(rep(FALSE, ncol(x)), variables_ordered)
+    zero_x <- setNames(rep(FALSE, length(variables_ordered)), variables_ordered)
     #zero_x[names(cols_to_zero)] <- FALSE
   }
   
@@ -346,10 +364,19 @@ fit_mfp <- function(x,
   names(catzero_list) <- names(catzero)
   
   # ACD parameters (cached for speed)
-  acd_parameter       <- lapply(seq_len(ncol(x)), function(i) {
-    if (acdx[i]) fit_acd(x[, i], powers = powers[[i]], zero = zero[i]) else NULL
+  acd_parameter <- lapply(names(acdx), function(v) {
+    if (isTRUE(acdx[[v]])) {
+      fit_acd(
+        x      = x[, v],
+        powers = powers[[v]],
+        zero   = zero[[v]]
+      )
+    } else {
+      NULL
+    }
   })
-  names(acd_parameter) <- colnames(x)
+  
+  names(acd_parameter) <- names(acdx)
   
 
   
@@ -406,9 +433,10 @@ fit_mfp <- function(x,
     
     #powers_same <- identical(powers_current, powers_updated)
     powers_same <- identical(
-      lapply(powers_current, unname),
-      lapply(powers_updated, unname)
+      normalize_powers_for_convergence(powers_current, spike_decision),
+      normalize_powers_for_convergence(powers_updated, spike_decision_updated)
     )
+    
     spike_same <- identical(spike_decision, spike_decision_updated)
     
     
@@ -450,11 +478,16 @@ fit_mfp <- function(x,
   acd_parameter_final <- acd_parameter
   
   for (v in names(acd_parameter_final)) {
-    if (!is.null(acd_parameter_final[[v]])) {
-      acd_parameter_final[[v]]$shift <- 0
-      acd_parameter_final[[v]]$scale <- scale[[v]]
+      if (!is.null(acd_parameter_final[[v]])) {
+        # Remove training-data ACD values. fit_acd() returns $acd as the
+        # transformed training vector, but only beta0/beta1/power/shift/scale
+        # are needed for apply_acd() during prediction. Keeping $acd wastes
+        # memory and can cause confusion.
+        acd_parameter_final[[v]]$acd <- NULL
+        acd_parameter_final[[v]]$shift <- 0
+        acd_parameter_final[[v]]$scale <- scale[[v]]
+      }
     }
-  }
   
   data_transformed <- transform_matrix(
     x                  = x,
@@ -469,11 +502,31 @@ fit_mfp <- function(x,
     spike_decision     = spike_decision
   )
   
-  # Update catzero for metadata
+  # Update catzero for final metadata.
+  # Final-time `catzero` is logical metadata. It should reflect whether a
+  # *_bin column is present in the final design matrix.
   catzero_effective <- catzero
-  for (v in names(spike_decision)) {
-    if (spike[v] && spike_decision[v] == 2L) {
-      catzero_effective[v] <- FALSE
+  
+  for (v in names(catzero_effective)) {
+    if (isTRUE(spike[[v]])) {
+      if (as.integer(spike_decision[[v]]) == 2L) {
+        # Spike continuous-only or null: no spike *_bin column.
+        catzero_effective[[v]] <- FALSE
+      } else if (as.integer(spike_decision[[v]]) == 3L) {
+        # Spike binary-only: *_bin is the selected term.
+        catzero_effective[[v]] <- TRUE
+      }
+    } else if (all(is.na(powers_current[[v]]))) {
+      # Ordinary catzero is tied to the parent variable.
+      # If the parent is eliminated, its ordinary *_bin column is absent too.
+      catzero_effective[[v]] <- FALSE
+    }
+  }
+  
+  # Update catzero_list to match final effective catzero status
+  for (v in names(catzero_effective)) {
+    if (!isTRUE(catzero_effective[[v]])) {
+      catzero_list[[v]] <- NULL
     }
   }
   
@@ -609,6 +662,8 @@ fit_mfp <- function(x,
 #' variables), `spike_decision` (updated spike-at-zero decisions), and
 #' `prev_adj_params` (adjustment variable transformations to be used in the next
 #' cycle).
+#' @keywords internal
+#' @noRd
 find_best_fp_cycle <- function(x, 
                                y, 
                                powers_current, 
@@ -643,13 +698,12 @@ find_best_fp_cycle <- function(x,
   # order of names of powers does not change
   names_x <- names(powers_current)
   
-  for (i in 1:ncol(x)) {
+  for (xi in names_x) {
     # iterate through all predictors xi and update xi's best FP power
     # in terms of loglikelihood
     # the result can be NA (variable not significant), linear, FP1, FP2, ...
     # note that the adjustment set and powers are given by powers_current
     # which is updated in each step
-    xi <- names_x[i]
     fit_best_fp_step <- find_best_fp_step(
       x = x, # the order of columns does not matter since internal codes uses column names
       y = y,
@@ -683,94 +737,149 @@ find_best_fp_cycle <- function(x,
       verbose = verbose
     )
     # Update parameters
-    powers_current[[i]] <- fit_best_fp_step$power_best
+    powers_current[[xi]] <- fit_best_fp_step$power_best
     spike_decision <- fit_best_fp_step$spike_decision
     # Store the returned adjustments keyed by xi
-    prev_adj_params[[names_x[i]]] <- fit_best_fp_step$current_adj_params[[names_x[i]]]
+    prev_adj_params[[xi]] <- fit_best_fp_step$current_adj_params[[xi]]
   }
   
   list(powers_current = powers_current, spike_decision = spike_decision, 
        prev_adj_params = prev_adj_params)
 }
 
+#' Normalize selected powers before checking convergence
+#'
+#' Helper used during the MFP backfitting cycle to compare selected powers
+#' between successive cycles. For spike-at-zero variables selected as
+#' binary-only (`spike_decision = 3`), the stored continuous power is ignored
+#' because it does not affect the fitted adjustment matrix. Such powers are
+#' normalized to `NA` before comparison.
+#'
+#' This function is only for convergence checking. It should not be used to
+#' mutate `powers_current` during the fitting cycle, because cycle-time
+#' transformation code may still require the stored stage-1 power to route
+#' binary-only spike variables correctly.
+#'
+#' @param powers Named list of selected power vectors, keyed by parent variable
+#'   name.
+#' @param spike_decision Named integer vector/list of spike-at-zero decisions,
+#'   using the same variable namespace as `powers`. Decision `3` means
+#'   binary-only spike.
+#'
+#' @return Named list with the same names as `powers`, where powers for
+#'   `spike_decision = 3` variables are replaced by `NA_real_`, and all other
+#'   power vectors are unnamed.
+#'
+#' @keywords internal
+#' @noRd
+normalize_powers_for_convergence <- function(powers, spike_decision) {
+  out <- Map(
+    function(power, decision) {
+      if (identical(as.integer(decision), 3L)) {
+        NA_real_
+      } else {
+        unname(power)
+      }
+    },
+    powers,
+    spike_decision[names(powers)]
+  )
+  
+  names(out) <- names(powers)
+  out
+}
+
 #' Calculate degrees of freedom for a transformed variable
-#' 
-#' Helper function used in `fit_mfp()` to determine the final number of 
-#' degrees of freedom (df) contributed by a variable, depending on its powers 
-#' and the spike-at-zero decision.
-#' 
-#' @param powers Numeric vector of selected powers for the variable. Can 
-#' contain `NA` values (e.g., for ACD terms). If all values are `NA`, 
-#' the variable is considered unselected.
-#' @param spike_decision Integer scalar (1, 2, or 3) specifying spike-at-zero 
+#'
+#' Helper function used in `fit_mfp()` to determine the final number of
+#' degrees of freedom (df) contributed by a variable, depending on its selected
+#' powers, final/effective catzero status, and spike-at-zero decision.
+#'
+#' @param powers Numeric vector of selected powers for the variable. Can
+#' contain `NA` values, for example for inactive ACD components. If all values
+#' are `NA`, the continuous transformed component is inactive.
+#' @param spike_decision Integer scalar (1, 2, or 3) specifying spike-at-zero
 #'   handling:
-#'   * `1` – include both the continuous transformed term(s) and the binary 
+#'   * `1` – include both the continuous transformed term(s) and the binary
 #'     spike-at-zero indicator.
 #'   * `2` – include only the continuous transformed term(s).
 #'   * `3` – include only the binary spike-at-zero indicator.
-#
-#' @details 
-#' * If all entries in `powers` are `NA`, the df is `0` regardless of 
-#'   `spike_decision`.
-#' * If `spike_decision = 3`, the df is `1` (only the binary indicator).
-#' * If the variable is modeled linearly (exactly `powers = 1`), then df = 1.
-#' * Otherwise, for fractional polynomials of degree *m* (number of 
-#'   non-`NA` powers), df = 2 * m.
-#' * If `spike_decision = 1`, one additional df is added for the binary 
-#'   indicator.
-#' An example calculation: if p is the power(s) and p = c(1,2), then df = 4 
-#' but if p = NA then df = 0.
-#' 
-#' @return 
-#' Integer scalar giving the degrees of freedom for the variable.
+#' @param catzero Logical scalar indicating whether the final/effective
+#'   catzero binary indicator is included for this variable. This should be the
+#'   final metadata after applying spike-at-zero decisions, not the cycle-time
+#'   `catzero` list of binary vectors.
+#'
+#' @details
+#' The package uses the following df convention:
+#' * If `spike_decision = 3`, df = 1 because the variable contributes only the
+#'   binary spike-at-zero indicator.
+#' * Otherwise, if all entries in `powers` are `NA`, df = 0 because the variable
+#'   contributes no continuous component and no binary-only spike component.
+#' * If the variable is modeled linearly, exactly `powers = 1`, df = 1.
+#' * Otherwise, for fractional polynomials of degree *m*, where *m* is the
+#'   number of non-`NA` powers, df = 2 * m.
+#' * If `catzero = TRUE`, one additional df is added for the binary catzero
+#'   indicator. This covers both ordinary non-spike catzero variables and
+#'   spike-at-zero variables with `spike_decision = 1`. Binary-only spike
+#'   variables are handled by the first rule and are not double-counted.
+#'
+#' Examples: if `powers = c(1, 2)` and `spike_decision = 2`, then df = 4.
+#' If `powers = NA` and `spike_decision = 2`, then df = 0. If
+#' `spike_decision = 3`, then df = 1.
+#'
+#' @return Integer scalar giving the degrees of freedom for the variable.
+#'
 #' @examples
-#'\dontrun{
-#' calculate_df(c(1, 2), 2)   # df = 4 (two powers, no spike)
-#' calculate_df(1, 1)         # df = 2 (linear + binary spike)
-#' calculate_df(c(NA, NA), 1) # df = 0 (unselected variable)
-#' calculate_df(2, 3)        # df = 1 (binary spike only)
+#' \dontrun{
+#' calculate_df(c(1, 2), 2, FALSE)  # df = 4
+#' calculate_df(1, 1, TRUE)         # df = 2: linear + binary indicator
+#' calculate_df(c(NA, NA), 2, FALSE)# df = 0: unselected variable
+#' calculate_df(2, 3, TRUE)         # df = 1: binary spike only
+#' calculate_df(0.5, 2, TRUE)       # df = 3: nonlinear FP1 + catzero
 #' }
 #' @keywords internal
-calculate_df <- function(powers, spike_decision) {
+#' @noRd
+calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   
-  #------------------
-  # Input checks
-  #------------------
-  if (length(spike_decision) != 1L || !(spike_decision %in% c(1L, 2L, 3L))) {
+  if (length(spike_decision) != 1L ||
+      is.na(spike_decision) ||
+      !(as.integer(spike_decision) %in% c(1L, 2L, 3L))) {
     stop("`spike_decision` must be a single integer 1, 2, or 3.")
   }
   
-  # Convert to numeric in case powers is logical NA
+  if (length(catzero) != 1L || is.na(catzero) || !is.logical(catzero)) {
+    stop("`catzero` must be a single TRUE/FALSE value.")
+  }
+  
+  spike_decision <- as.integer(spike_decision)
+  
+  # Binary-only spike: exactly one binary indicator column.
+  if (spike_decision == 3L) {
+    return(1L)
+  }
+  
   powers <- as.numeric(powers)
   
-  # unselected variable: no df regardless of spike_decision
+  # Unselected variable.
   if (all(is.na(powers))) {
     return(0L)
   }
   
-  # case: binary only
-  if (spike_decision == 3) {
-    return(1L)
-  }
-  # base df from powers
-  # Remove NAs in powers (2,NA) or (NA,1) etc. Happens because of acd
-  # make sure to drop names by using as.numeric
   p <- as.numeric(powers[!is.na(powers)])
-    # df of linear function
-  if (length(p) == 1L && p == 1) {
-    df <- 1L
-    # df of fpm. Note that df = 2m where m is the degree. if length = 1 then
-    # degree = 1 and df = 2 etc
+  
+  df <- if (length(p) == 1L && p == 1) {
+    1L
   } else {
-    df <- 2L * length(p)
+    2L * length(p)
   }
   
-  # add spike binary if spike_decision = 1
-  if (spike_decision == 1) {
+  # `catzero` is the final/effective binary-indicator flag.
+  # It already covers ordinary catzero variables and spike_decision == 1.
+  if (isTRUE(catzero)) {
     df <- df + 1L
   }
   
-  return(df)
+  df
 }
 
 #' Helper to convert a nested list with same or different length into a matrix
@@ -781,6 +890,8 @@ calculate_df <- function(powers, spike_decision) {
 #' 
 #' @return 
 #' a matrix.
+#' @keywords internal
+#' @noRd
 convert_powers_list_to_matrix <- function(power_list) {
   # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
   psize <- sapply(power_list, length)
@@ -828,6 +939,8 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' 
 #' @inheritParams fit_mfp
 #' @param fp_powers powers of the created FP terms.
+#' @keywords internal
+#' @noRd
 create_fp_terms <- function(fp_powers, 
                             acdx, 
                             df,
@@ -838,6 +951,17 @@ create_fp_terms <- function(fp_powers,
                             catzero,
                             spike, 
                             spike_decision) {
+                              
+  vars <- names(fp_powers)
+  
+  acdx <- acdx[vars]
+  df <- df[vars]
+  select <- select[vars]
+  alpha <- alpha[vars]
+  zero <- zero[vars]
+  catzero <- catzero[vars]
+  spike <- spike[vars]
+  spike_decision <- spike_decision[vars]
   
   fp_terms <- data.frame(
     # initial degrees of freedom
@@ -857,7 +981,13 @@ create_fp_terms <- function(fp_powers,
       else !all(is.na(p))
     }, fp_powers, spike_decision),
     # final degrees of freedom
-    df_final = mapply(calculate_df, fp_powers, spike_decision), 
+    df_final = mapply(
+      calculate_df,
+      fp_powers,
+      spike_decision,
+      catzero,
+      SIMPLIFY = TRUE
+    ), 
     convert_powers_list_to_matrix(fp_powers)
   )
 
@@ -883,7 +1013,8 @@ create_fp_terms <- function(fp_powers,
 #' @param scalex A named numeric vector. Each name must match a column name of `x`.
 #'
 #' @return A matrix with backscaled columns, or `NULL` if `x` is `NULL`.
-#'
+#' @keywords internal
+#' @noRd
 backscale_matrix <- function(x, scalex) {
   # If x is NULL, return NULL
   if (is.null(x)) {

@@ -28,6 +28,8 @@
 #' A vector of the variable names in `x`, ordered according to `xorder`.
 #' 
 #' @import utils
+#' @keywords internal
+#' @noRd
 order_variables <- function(xorder = "ascending",
                             x = NULL, 
                             ...) {
@@ -42,6 +44,8 @@ order_variables <- function(xorder = "ascending",
 
 #' @describeIn order_variables Order by significance in regression model. The 
 #' number of columns of `x` should be greater than 1 for Cox models.
+#' @keywords internal
+#' @noRd
 order_variables_by_significance <- function(xorder, 
                                             x, 
                                             y,

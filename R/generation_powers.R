@@ -115,6 +115,8 @@ generate_powers_acd <- function(degree = NULL,
 #'
 #' @return
 #' A matrix with one row per combination and k columns.
+#' @keywords internal
+#' @noRd
 generate_combinations_with_replacement <- function(x,
                                                    k) {
   

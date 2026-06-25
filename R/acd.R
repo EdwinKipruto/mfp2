@@ -12,23 +12,46 @@
 #' 
 #' @return 
 #' Logical vector of same length as `acdx`.
+#' @keywords internal
+#' @noRd
 reset_acd <- function(x, acdx) {
-  # exit early if all acdx values are FALSE
-  if (!any(acdx)) return(acdx)
   
-  names_acd <- names(acdx)[which(acdx == TRUE)]
+  if (!is.logical(acdx) || is.null(names(acdx))) {
+    stop("`acdx` must be a named logical vector.", call. = FALSE)
+  }
+  
+  if (anyNA(acdx)) {
+    stop("`acdx` must not contain missing values.", call. = FALSE)
+  }
+  
+  # exit early if all acdx values are FALSE
+  if (!any(acdx)) {
+    return(acdx)
+  }
+  
+  names_acd <- names(acdx)[acdx]
   
   # number of unique values of each column in acdx
-  n_unique <- apply(x[, names_acd, drop = FALSE], 2, 
-                    function(col) length(unique(col)))
+  n_unique <- apply(
+    x[, names_acd, drop = FALSE],
+    2,
+    function(col) length(unique(col))
+  )
   
   ind_reset <- which(n_unique < 5)
   
-  if (length(ind_reset) > 0) {
-    acdx[names_acd][ind_reset] <- FALSE
-    warning("i For any variable with fewer than 5 unique values no acd transformation can be performed.\n", 
-            sprintf("i The requested acd transform has been reset to FALSE for the following variables: %s.", 
-                    paste0(names_acd[ind_reset], collapse = ", ")))
+  if (length(ind_reset) > 0L) {
+    vars_reset <- names_acd[ind_reset]
+    acdx[vars_reset] <- FALSE
+    
+    warning(
+      "i For any variable with fewer than 5 unique values no acd transformation can be performed.\n",
+      sprintf(
+        "i The requested acd transform has been reset to FALSE for the following variables: %s.",
+        paste0(vars_reset, collapse = ", ")
+      ),
+      call. = FALSE
+    )
   }
   
   acdx
@@ -204,6 +227,8 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
 #' 
 #' @return 
 #' The transformed input vector `x`.
+#' @keywords internal
+#' @noRd
 apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
   
   if (length(power) != 1) {
@@ -230,6 +255,8 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
 #' 
 #' @return 
 #' The best FP power with smallest deviance and the fitted model.
+#' @keywords internal
+#' @noRd
 find_best_fp1_for_acd <- function(x, 
                                   y, 
                                   powers,

@@ -8,8 +8,10 @@
 #' @param x a matrix of predictors (excluding intercept) with column names.
 #' If column names are not provided they are set according to
 #' `colnames(x, do.NULL = FALSE)`.
-#' @param y a vector for the outcome variable for glms, and a `Surv` object 
-#' for Cox models.
+#' @param y Response variable. For GLMs, this may be a numeric vector, a factor
+#' response accepted by [stats::glm()], or for binomial models a two-column
+#' matrix of grouped counts `cbind(successes, failures)`. For Cox models, this
+#' must be a [survival::Surv()] object.
 #' @param method a character string specifying the method for tie handling. 
 #' See [survival::coxph()].
 #' @param family a character strong specifying glm family to be used, or "cox"
@@ -30,6 +32,8 @@
 #' * `fit`: the object returned by the fitting procedure.
 #' 
 #' @importFrom stats family
+#' @keywords internal
+#' @noRd
 fit_model <- function(x,
                       y, 
                       family, 
@@ -49,16 +53,23 @@ fit_model <- function(x,
   }
   
   # Extract family string and convert to family object if needed
+  # Extract family string. `family` is expected to have been validated by
+  # mfp2.default() before reaching this internal fitting helper.
   if (is.character(family)) {
     family_string <- family
+    
     if (family != "cox") {
-      family <- get(family, mode = "function", envir = parent.frame())()
+      family <- switch(
+        family,
+        gaussian = stats::gaussian(),
+        binomial = stats::binomial(),
+        poisson  = stats::poisson()
+      )
     }
   } else if (is.function(family)) {
     family <- family()
     family_string <- family$family
   } else {
-    # Already a family object
     family_string <- family$family
   }
   
@@ -95,7 +106,9 @@ fit_model <- function(x,
 #' Function that fits generalized linear models 
 #'
 #' @param x a matrix of predictors with nobs observations.
-#' @param y a vector for the outcome variable.
+#' @param y Response variable. For GLMs, this may be a numeric vector, a factor
+#' response accepted by [stats::glm()], or for binomial models a two-column
+#' matrix of grouped counts `cbind(successes, failures)`. 
 #' @param family a family function e.g. `stats::gaussian()`.  
 #' @param weights a numeric vector of length nobs of 'prior weights' to be used 
 #' in the fitting process. see [stats::glm()] for details.
@@ -121,6 +134,8 @@ fit_model <- function(x,
 #' * `fit`: the fitted model object.
 #' 
 #' @import stats
+#' @keywords internal
+#' @noRd
 fit_glm <- function(x,
                     y, 
                     family, 
@@ -129,26 +144,27 @@ fit_glm <- function(x,
                     fast = TRUE,
                     has_offset = FALSE) {
   
+  nobs <- NROW(y)
+  
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
-      stop("! offset must be numeric.", call. = FALSE)
+      stop("! `offset` must be numeric.", call. = FALSE)
     }
     
-    if (length(offset) != length(y)) {
-      stop("! offset must have one value per observation.", call. = FALSE)
+    if (length(offset) != nobs) {
+      stop("! `offset` must have one value per observation.", call. = FALSE)
     }
   }
-
+  
+  has_predictors <- !is.null(x) && NCOL(x) > 0L
+  
   if (fast) {
-    has_predictors <- !is.null(x) && NCOL(x) > 0L
-    
+
     if (has_predictors) {
-      
-      xx <- cbind("(Intercept)" = rep(1, length(y)), x)
-      
+      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
     } else {
       xx <- matrix(
-        rep(1, length(y)),
+        rep.int(1, nobs),
         ncol = 1L,
         dimnames = list(NULL, "(Intercept)")
       )
@@ -162,6 +178,7 @@ fit_glm <- function(x,
       offset = offset
     )
   } else {
+    
     if (is.null(x) || NCOL(x) == 0) {
       data <- data.frame(y = y)
       
@@ -259,6 +276,8 @@ fit_glm <- function(x,
 #' * `fit`: the fitted model object.
 #' 
 #' @import survival
+#' @keywords internal
+#' @noRd
 fit_cox <- function(x, 
                     y, 
                     strata, 

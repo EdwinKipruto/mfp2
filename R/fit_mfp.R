@@ -359,7 +359,7 @@ fit_mfp <- function(x,
     # Once x <= 0 has been physically recoded to 0, downstream transformation
     # functions no longer need to perform zero recoding again during the MFP
     # cycles. This avoids double handling of zero variables.
-    zero_x <- setNames(rep(FALSE, length(variables_ordered)), variables_ordered)
+    #zero_x <- setNames(rep(FALSE, length(variables_ordered)), variables_ordered)
     #zero_x[names(cols_to_zero)] <- FALSE
   }
   
@@ -442,7 +442,7 @@ fit_mfp <- function(x,
       nocenter        = nocenter,
       method          = method,
       acdx            = acdx,
-      zero            = zero_x,        # all FALSE after non-positives set to 0
+      zero            = zero_x,        
       catzero         = catzero_mat_list,  # named list of binary indicators
       spike           = spike,
       spike_decision  = spike_decision,

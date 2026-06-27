@@ -40,3 +40,40 @@ test_that("spike decision 3 keeps z_bin only", {
   expect_identical(colnames(m3), "z_bin")
   expect_identical(as.integer(m3[, "z_bin"]), c(1L, 0L, 0L, 1L, 0L))
 })
+
+
+
+# Formula interface matches default interface
+test_that("formula and default interface produce identical results", {
+  data(prostate, package = "mfp2")
+  fit_formula <- mfpi(
+    lpsa ~ fp(age) + svi + fp(cavol),
+    data = prostate, group_var = "svi", cont_vars = "cavol",
+    center = FALSE, flex = "flex1", verbose = FALSE
+  )
+  x <- model.matrix(~ age + svi + cavol - 1, data = prostate)
+  fit_default <- mfpi.default(
+    x, prostate$lpsa, group_var = "svi", cont_vars = "cavol",
+    center = FALSE, flex = "flex1", verbose = FALSE
+  )
+  expect_equal(
+    fit_formula$all_model_metrics$pvalue,
+    fit_default$all_model_metrics$pvalue,
+    tolerance = 1e-8
+  )
+})
+
+# predict.mfpi reuses fit-time centering constants
+test_that("predict.mfpi reuses fit-time centering constants", {
+  data("prostate")
+  fit <- mfpi(lpsa ~ fp(age) + svi + fp(cavol),
+              data = prostate, group_var = "svi",
+              cont_vars = "cavol", center = TRUE, verbose = FALSE,
+              cont_var_forms = c(cavol = "fp1"))
+  p <- predict(fit, terms = "cavol", type = "function",
+               model = "all", grid = TRUE)
+  # Verify no recomputation occurred
+  stored_centers <- fit$var_winners$cavol$center_vals
+  pred_centers <- p$metadata$center_vals
+  expect_equal(stored_centers, pred_centers)
+})

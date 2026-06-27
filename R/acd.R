@@ -191,7 +191,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-  fit <- find_best_fp1_for_acd(x = x, y = z, powers = powers, zero = zero)
+  fit <- find_best_fp1_for_acd(y = z, x = x, powers = powers, zero = zero)
   
   coefx <- fit$fit$coefficients
   zhat <- fit$fit$fitted.values
@@ -235,13 +235,16 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
     stop("! `power` must be a single numeric value.")
   }
   
-  if (zero) {
-    x[x <= 0] <- 0
-    shift <- 0
-  }
+  x_power <- transform_vector_fp(
+    x            = x,
+    power        = power,
+    shift        = shift,
+    scale        = scale,
+    zero         = zero,
+    check_binary = FALSE
+  )
   
-  x <- (x + shift) / scale
-  zhat <- beta0 + beta1 * transform_vector_power(x = x, power = power, zero = FALSE)
+  zhat <- beta0 + beta1 * x_power[, 1L]
   
   stats::pnorm(zhat)
 }

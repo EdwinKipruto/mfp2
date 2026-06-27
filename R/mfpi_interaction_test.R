@@ -153,8 +153,6 @@
 #'   [survival::coxph.control()].
 #' @param nocenter Numeric vector for Cox centring suppression; see
 #'   [survival::coxph()].
-#' @param digits Positive integer. Number of decimal places to which metrics
-#'   are rounded in the output tibble.
 #'
 #' @return A list with four components:
 #' \describe{
@@ -163,7 +161,7 @@
 #'     `variable`, `fp_powers_main`, `fp_powers_int`,
 #'     `deviance_int` (\eqn{-2\ell_{\text{int}}}),
 #'     `deviance_diff` (\eqn{T}),
-#'     `df_interaction` (\eqn{df_{\text{int}}}),
+#'     `df_int` (\eqn{df_{\text{int}}}),
 #'     `pvalue`,
 #'     `df_total` (total df of the interaction model),
 #'     `AIC_main`, `AIC_interaction`,
@@ -188,7 +186,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
                              flex, use_ftest, family, family_string,
                              weights, offset, ties, strata, control,
-                             nocenter, has_offset, digits) {
+                             nocenter, has_offset) {
   
   cont_name  <- colnames(cont_var)
   n_groups   <- length(unique(as.vector(group_var)))
@@ -271,7 +269,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # AIC = -2l + 2p;  BIC = -2l + p * log(n*)
   # n* = number of events for Cox; n otherwise
   # ---------------------------------------------------------------------------
-  n_eff              <- if (family_string == "cox") sum(y[, "status"]) else length(y)
+  n_eff <- if (family_string == "cox") sum(y[, "status"]) else NROW(y)
+  
   AIC_main           <- dev_main        + 2          * df_main
   AIC_interaction    <- dev_interaction + 2          * df_total
   BIC_main           <- dev_main        + log(n_eff) * df_main
@@ -287,17 +286,17 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     variable           = cont_name,
     fp_powers_main     = fp_powers_main,
     fp_powers_int      = list(fp_powers_int),
-    deviance_int       = round(dev_interaction,            digits),
-    deviance_diff      = round(deviance_diff,              digits),
-    df_interaction     = df_int,
-    pvalue             = round(pvalue,                     digits),
+    deviance_int       = dev_interaction,
+    deviance_diff      = deviance_diff,
+    df_int     = df_int,
+    pvalue             = pvalue,
     df_total           = df_total,
-    AIC_main           = round(AIC_main,                   digits),
-    AIC_interaction    = round(AIC_interaction,            digits),
-    AIC_main_minus_int = round(AIC_main - AIC_interaction, digits),
-    BIC_main           = round(BIC_main,                   digits),
-    BIC_interaction    = round(BIC_interaction,            digits),
-    BIC_main_minus_int = round(BIC_main - BIC_interaction, digits)
+    AIC_main           = AIC_main,                   
+    AIC_interaction    = AIC_interaction,            
+    AIC_main_minus_int = AIC_main - AIC_interaction, 
+    BIC_main           = BIC_main,                   
+    BIC_interaction    = BIC_interaction,            
+    BIC_main_minus_int = BIC_main - BIC_interaction
   )
   class(metrics) <- c("best_model_metrics", class(metrics))
   
@@ -336,7 +335,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'     model.}
 #'   \item{`deviance_diff`}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
 #'     \geq 0}: likelihood-ratio test statistic.}
-#'   \item{`df_interaction`}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
+#'   \item{`df_int`}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
 #'     LRT (may differ for `flex3`/`flex4`).}
 #'   \item{`pvalue`}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
 #'   \item{`df_total`}{Total parameters in the interaction model (excluding

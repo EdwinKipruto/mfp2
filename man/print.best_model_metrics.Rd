@@ -33,7 +33,7 @@ parenthesised tuple per group, comma-separated.}
 model.}
 \item{\code{deviance_diff}}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
     \geq 0}: likelihood-ratio test statistic.}
-\item{\code{df_interaction}}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
+\item{\code{df_int}}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
 LRT (may differ for \code{flex3}/\code{flex4}).}
 \item{\code{pvalue}}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
 \item{\code{df_total}}{Total parameters in the interaction model (excluding

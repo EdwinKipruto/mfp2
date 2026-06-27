@@ -27,7 +27,7 @@ mfpi(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "cox"),
+  family = "gaussian",
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -74,7 +74,7 @@ mfpi(x, ...)
   df = 4,
   center = TRUE,
   subset = NULL,
-  family = c("gaussian", "poisson", "binomial", "cox"),
+  family = "gaussian",
   criterion = c("pvalue", "aic", "bic"),
   select = 0.05,
   alpha = 0.05,
@@ -111,11 +111,13 @@ variables beforehand. Must be free of missing values.}
 
 \item{...}{Currently unused. Reserved for future extensions.}
 
-\item{y}{For \code{mfpi.default()} only. The response vector (or matrix for
-survival data). For Gaussian, binomial, and Poisson families, supply a
-numeric vector of length \eqn{n}. For Cox models, supply a
-two-column \code{survival::Surv()} object. Must have the same number of
-observations as \code{x}.}
+\item{y}{For \code{mfpi.default()} only. The response object. For Gaussian models,
+supply a finite numeric vector of length \eqn{n}. For Poisson models,
+supply a finite non-negative numeric vector of length \eqn{n}. For binomial
+models, supply a numeric vector with values in \eqn{[0, 1]}, a two-level
+factor, or a two-column numeric matrix \code{cbind(successes, failures)}.
+For Cox models, supply a right-censored \code{survival::Surv()} object.
+Must have the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical (grouping) variable in
 \code{x} (e.g. a treatment or exposure indicator). The analysis tests
@@ -247,9 +249,11 @@ the mean. Default is \code{TRUE}.}
 observations. Default is \code{NULL} (all observations used). see \code{\link[=mfp2]{mfp2()}}
 for details}
 
-\item{family}{A character string specifying the error distribution. One of
-\code{"gaussian"} (default), \code{"binomial"}, \code{"poisson"}, or \code{"cox"}. See the
-\emph{Regression families} section for details.}
+\item{family}{Model family specification. May be one of the character strings
+\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or \code{"cox"}; a GLM family function
+such as \code{stats::binomial}; or a GLM family object such as
+\code{stats::binomial(link = "probit")}. Cox models must be specified as
+\code{family = "cox"}.}
 
 \item{criterion}{A character string specifying the criterion used in two distinct places:
 \enumerate{
@@ -295,7 +299,8 @@ FP2 against each other and may simplify the functional form;
 listing a variable here suppresses this simplification.
 }
 Default \code{NULL} (no variables forced). In the formula interface,
-per-variable control is also available via \code{fp(force_max_fp = TRUE)}.}
+per-variable control is also available via
+\code{fp(force_max_fp = TRUE)} or \code{fp2(force_max_fp = TRUE)}.}
 
 \item{xorder}{A character string controlling the order in which adjustment covariates
 enter the MFP selection algorithm. \code{"ascending"} (default) enters
@@ -328,28 +333,36 @@ disabled for variables listed in \code{cont_vars}. See \code{\link[=mfp2]{mfp2()
 details.}
 
 \item{zero_vars}{An optional character vector naming variables for which non-positive values
-should be treated as zero. FP transformations are applied only to strictly
-positive values; non-positive values are set to zero. This treatment is
-compatible with \code{cont_vars} and is preserved for interaction
-variables. See the \emph{Handling non-positive values} section for details.}
+should be treated as structural zero. FP transformations are applied only
+to strictly positive values; non-positive values are represented as zero in
+the transformed columns. This treatment is compatible with
+\code{cont_vars} and is preserved for interaction variables when explicitly
+requested through \code{zero_vars}. See the \emph{Handling non-positive
+values} section for details.}
 
-\item{catzero_vars}{An optional character vector naming variables for which a binary indicator
-\eqn{I(x = 0)} should be added to the adjustment model alongside the FP
-terms for the positive part. Implies \code{zero_vars} for the named
-variables. A variable may not appear in both \code{zero_vars} and
+\item{catzero_vars}{An optional character vector naming variables for which a binary structural
+zero indicator \eqn{I(x \le 0)} should be added to the adjustment model
+alongside the FP terms for the positive part. For adjustment variables,
+\code{catzero_vars} implies \code{zero_vars}. A variable that is not in
+\code{cont_vars} may not appear in both \code{zero_vars} and
 \code{catzero_vars}. \strong{Note:} if a variable also appears in
-\code{cont_vars}, the \eqn{I(x = 0)} indicator is dropped and the variable
-is treated as an ordinary continuous variable in both the adjustment model
-and the interaction stage (with a warning). However, the \code{zero_vars}
-recoding of non-positive values is still applied.}
+\code{cont_vars}, the structural-zero indicator is dropped and
+\code{catzero} is set to \code{FALSE} for that variable in both the
+adjustment model and the interaction stage, with a warning. Explicit
+\code{zero_vars} handling is preserved if the variable was also listed in
+\code{zero_vars}; zero handling implied only by \code{catzero_vars} is not
+retained for variables in \code{cont_vars}.}
 
-\item{spike_vars}{An optional character vector naming variables to be assessed for a spike
-at zero using the SAZ algorithm. Implies \code{catzero_vars} (and
-therefore \code{zero_vars}) for the named variables. \strong{Note:} if a
-variable also appears in \code{cont_vars}, the spike-at-zero treatment is
-dropped and the variable is treated as an ordinary continuous variable in
-both the adjustment model and the interaction stage (with a warning). The
-\code{zero_vars} recoding of non-positive values is still applied.}
+\item{spike_vars}{An optional character vector naming variables to be assessed for a spike at
+zero using the SAZ algorithm. For adjustment variables, \code{spike_vars}
+implies \code{catzero_vars} and therefore \code{zero_vars}. \strong{Note:}
+if a variable also appears in \code{cont_vars}, spike-at-zero handling is
+dropped and both \code{spike} and the implied \code{catzero} indicator are
+set to \code{FALSE} for that variable in both the adjustment model and the
+interaction stage, with a warning. Explicit \code{zero_vars} handling is
+preserved if the variable was also listed in \code{zero_vars}; zero handling
+implied only by \code{spike_vars} is not retained for variables in
+\code{cont_vars}.}
 
 \item{min_prop}{Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
 SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
@@ -430,8 +443,9 @@ printing interaction-test results. Default is \code{3}.}
 
 \item{formula}{For \code{mfpi.formula()} only. A formula object describing the model.
 Continuous predictors to be FP-transformed should be wrapped in
-\code{fp()}, e.g. \code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
-Variables not wrapped in \code{fp()} receive the global scalar defaults
+\code{fp()} or \code{fp2()}, e.g.
+\code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
+Variables not wrapped in \code{fp()} or \code{fp2()} receive the global scalar defaults
 for \code{df}, \code{alpha}, \code{select}, \code{center}, \code{shift},
 and \code{scale}. See the \emph{Argument precedence} section in
 \code{mfpi.formula()} for full rules.}
@@ -450,14 +464,15 @@ components:
 the retained interaction models. Each row corresponds to one selected
 continuous variable. The column \code{type} gives the tested functional
 form, one of \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. The
-metrics include the main and interaction FP powers, interaction deviance,
-deviance difference, interaction degrees of freedom, p-value, total model
-degrees of freedom, AIC and BIC values for the main-effects and
-interaction models, and their differences. When \code{criterion = "aic"}
-or \code{criterion = "bic"}, an additional \code{dAIC} or \code{dBIC}
-column may be present. When p-value adjustment is used, a
-\code{p_adjusted} column may be present. If no interaction is retained,
-this is an empty data frame.}
+metrics include the main and interaction FP powers and the
+criterion-specific interaction evaluation columns. For
+\code{criterion = "pvalue"}, the metrics include \code{pvalue} and,
+when applicable, \code{p_adjusted}. For \code{criterion = "aic"} or
+\code{criterion = "bic"}, p-value columns are omitted and the reported
+interaction metrics are based on AIC/BIC only. If no interaction is
+retained, this is an empty data frame. The reported AIC/BIC columns are
+interaction-specific comparison criteria, not full fitted-model AIC/BIC
+values; see \code{test_interaction()} for details.}
 \item{\code{all_model_metrics}}{A data frame with the same columns as
 \code{best_model_metrics} but containing metrics for the interaction
 model evaluated for each variable in \code{cont_vars}, using the form
@@ -474,24 +489,6 @@ If no interaction is retained, this is an empty list.}
 fitted interaction model for the functional form specified in
 \code{cont_var_forms} for that variable, for example
 \code{object$all_interaction_models$age$fp2}.}
-\item{\code{best_fitted_functions}}{A named list of numeric matrices for
-the continuous variables whose interactions were retained by the
-selection criterion. Each matrix has one row per observation or grid
-point and columns: the continuous variable itself; \code{f0},
-\code{f1}, \ldots (group-specific fitted FP functions);
-\code{se(f0)}, \code{se(f1)}, \ldots (pointwise standard errors);
-\code{f0_lower}, \code{f0_upper}, \ldots (95\\% confidence bounds);
-\code{f1-f0}, \code{f2-f0}, \ldots (differences relative to the
-reference group); \code{se(f1-f0)}, \ldots (standard errors of
-differences); and \code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots
-(confidence bounds for differences). Attributes \code{fp_centers},
-\code{center_type}, and \code{group_fp_powers} are attached for use
-by \code{predict.mfpi()}. If no interaction is retained, this is an
-empty list.}
-\item{\code{all_fitted_functions}}{A named list (one element per
-\code{cont_var}) of fitted-function matrices for each interaction model,
-in the same format as \code{best_fitted_functions}. Each element uses
-the form specified in \code{cont_var_forms} for that variable.}
 \item{\code{center_vals_list}}{A named list (one element per
 \code{cont_var}) of centering constants used when fitting the
 interaction model. These are the exact values subtracted from the
@@ -564,7 +561,7 @@ The default method accepts a numeric matrix \code{x} and response vector
 \item \code{mfpi(formula)}: Formula interface for \code{mfpi()}.
 
 Constructs a model frame from the supplied formula and data, processes
-predictor variables (including any \code{fp()} terms), and fits an MFPI
+predictor variables (including any \code{fp()} or \code{fp2()} terms), and fits an MFPI
 model by calling \code{mfpi.default()} internally.
 
 }}
@@ -676,10 +673,11 @@ the corresponding percentile cutoff values. Winsorisation preserves the
 number of observations (i.e. no rows are removed) and only truncates extreme
 values; the bulk of the distribution remains unaffected.
 
-Variables flagged as \code{zero_vars}, \code{catzero_vars}, or
-\code{spike_vars} are \strong{excluded from Winsorisation} so that both the
-zero spike and the positive distribution are preserved exactly, as these
-features are assumed to carry substantive modelling meaning.
+Variables with final \code{zero_vars} handling are \strong{excluded from
+Winsorisation} so that structural-zero values and the positive distribution
+are preserved. For variables in \code{cont_vars}, \code{catzero_vars} and
+\code{spike_vars} are first suppressed; therefore they exclude a variable
+from Winsorisation only when explicit \code{zero_vars} handling remains.
 
 The Winsorisation cutoffs actually applied are returned in the
 \code{winsorize_limits} component of the fitted object for transparency.
@@ -689,12 +687,14 @@ should be reported transparently as part of the initial data analysis.
 
 \section{Regression families (\code{family})}{
 
-\code{mfpi()} accepts the same family strings as \code{\link[stats:glm]{stats::glm()}}. Use
-\code{family = "gaussian"} for linear regression, \code{family = "binomial"} for
-logistic regression, and \code{family = "poisson"} for Poisson regression with an
-optional offset (e.g. log of exposure time). For Cox proportional-hazards
-models, set \code{family = "cox"} and supply a \code{\link[survival:Surv]{survival::Surv()}} object as the
-response \code{y}; only right-censored data are currently supported.
+\code{mfpi()} accepts family specifications as character strings, GLM family
+functions, or GLM family objects. Use \code{family = "gaussian"} or
+\code{family = stats::gaussian()} for linear regression, \code{family = "binomial"}
+or \code{family = stats::binomial()} for logistic regression, and
+\code{family = "poisson"} or \code{family = stats::poisson()} for Poisson regression.
+Custom links may be supplied through family objects, for example
+\code{stats::binomial(link = "probit")}. For Cox proportional-hazards models,
+set \code{family = "cox"} and supply a \code{survival::Surv()} response.
 }
 
 \section{Adjustment variables}{
@@ -722,10 +722,13 @@ Fractional polynomials require strictly positive input values. \code{mfpi()}
 estimates a shift for each variable to ensure positivity, then scales the
 shifted values to a convenient range, following the same procedure as
 \code{\link[=mfp2]{mfp2()}}. Centering is applied after FP powers are estimated.
-Variables marked with \code{zero_vars} or \code{catzero_vars}, and linear terms
-(\code{df = 1}), have their shift automatically set to zero because only the
-positive values are transformed in these cases, or because no nonlinear
-transformation is applied.
+Variables with final \code{zero_vars} or \code{catzero_vars} handling, and
+linear terms (\code{df = 1}), have their shift automatically set to zero
+because only the positive values are transformed in these cases, or because
+no nonlinear transformation is applied. For variables in \code{cont_vars},
+\code{catzero_vars} and \code{spike_vars} are first suppressed; therefore
+shift is forced to zero only when explicit \code{zero_vars} handling remains
+or the variable is treated as linear.
 }
 
 \section{Handling non-positive values}{
@@ -757,8 +760,11 @@ automatically (with a warning):
 \item The \code{spike} and \code{catzero} flags are set to \code{FALSE}
 for that variable in both the adjustment model and the interaction
 stage.
-\item The \code{zero} flag is preserved: if the variable has non-positive
-values, they are still recoded to zero before FP transformation.
+\item Explicit \code{zero_vars} handling is preserved: if the variable is
+also listed in \code{zero_vars}, non-positive values are still recoded to
+zero before FP transformation. Zero handling implied only by
+\code{catzero_vars} or \code{spike_vars} is not retained for variables in
+\code{cont_vars}.
 }
 
 Variables in \code{spike_vars} or \code{catzero_vars} that are
@@ -766,14 +772,34 @@ Variables in \code{spike_vars} or \code{catzero_vars} that are
 model as documented in \code{\link[=mfp2]{mfp2()}}.
 }
 
-\section{Argument precedence (fp() vs global)}{
+\section{Information criteria}{
 
-Arguments supplied inside \code{fp()} are treated as variable-specific
-settings and take precedence over the corresponding global arguments passed
-to \code{mfpi.formula()}. Variables not wrapped in \code{fp()} use the global
-argument values. For \code{zero_vars}, \code{catzero_vars},
-\code{spike_vars}, and \code{force_max_fp_vars}, global settings are combined
-with the corresponding \code{fp()} flags and then checked by
+The individual \code{AIC_main}, \code{AIC_interaction},
+\code{BIC_main}, and \code{BIC_interaction} values reported here are not
+the actual AIC/BIC values of the fitted models. They are
+interaction-specific comparison criteria computed from the model deviances
+and from the degrees of freedom returned by \code{interaction_model_df()},
+which count only the interaction-related terms and exclude the intercept
+and adjustment-model parameters.
+
+Therefore, these individual AIC/BIC values should not be compared with
+AIC/BIC values returned by \code{stats::AIC()}, \code{stats::BIC()}, or
+other model-fitting functions.
+
+The differences \code{AIC_main_minus_int} and
+\code{BIC_main_minus_int} are correct for comparing the main-effects and
+interaction candidates because the shared model terms cancel.
+}
+
+\section{Argument precedence (fp()/fp2() vs global)}{
+
+Arguments supplied inside \code{fp()} or \code{fp2()} are treated as
+variable-specific settings and take precedence over the corresponding global
+arguments passed to \code{mfpi.formula()}. Variables not wrapped in
+\code{fp()} or \code{fp2()} use the global argument values. For
+\code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, and
+\code{force_max_fp_vars}, global settings are combined with the
+corresponding \code{fp()} or \code{fp2()} flags and then checked by
 \code{mfpi.default()} for unsupported combinations. Cardinality-based
 adjustments to \code{df} may still be applied internally.
 }
@@ -781,7 +807,7 @@ adjustments to \code{df} may still be applied internally.
 \section{Parameters not available in the formula interface}{
 
 The following \code{mfpi.default()} parameters must be supplied as scalar
-arguments only; per-variable specification via \code{fp()} is not
+arguments only; per-variable specification via \code{fp()} or \code{fp2()} is not
 supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 \code{flex}, \code{p_interact}, \code{min_improvement},
 \code{include_group_var}, \code{show_models}, \code{cycles},

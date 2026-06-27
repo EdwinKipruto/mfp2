@@ -138,7 +138,7 @@ transform_vector_fp <- function(x,
   
   # do not transform true binary variables, but not zero-handled continuous variables
   if (!zero && check_binary && length(unique(x)) <= 2) {
-    x <- as.matrix(x)
+    x <- matrix(x, ncol = 1L)
     if (!is.null(name)) {
       colnames(x) <- name_transformed_variables(name, 1)
     }
@@ -163,11 +163,18 @@ transform_vector_fp <- function(x,
   # note that sort removes NAs 
   power <- sort(power)
   
+  # After shift/scale, before the transformation loop:
+  pos <- if (zero) x > 0 else rep(TRUE, length(x))
+  
   # transform data
-  x_trafo <- matrix(NA, nrow = length(x), ncol = length(power))
+  #x_trafo <- matrix(NA, nrow = length(x), ncol = length(power))
+  x_trafo <- matrix(0, nrow = length(x), ncol = length(power))  
   
   # transform using first power
-  x_trafo[, 1] <- transform_vector_power(x, power[1])
+  #x_trafo[, 1] <- transform_vector_power(x, power[1])
+  
+  # First power — positive rows only
+  x_trafo[pos, 1] <- transform_vector_power(x[pos], power[1])
   
   # transform other powers via loop if necessary
   for (j in seq_len(length(power) - 1)) { 
@@ -175,13 +182,15 @@ transform_vector_fp <- function(x,
     if (power[k] == power[j]) {
       # the subsequent power is repeated, e.g. 1, 2, 2
       # repeatedly multiply with log(x), thereby creating powers of log(x)
-      x_trafo[, k] <- x_trafo[, j] * log(x)
+      #x_trafo[, k] <- x_trafo[, j] * log(x)
+      x_trafo[pos, k] <- x_trafo[pos, j] * log(x[pos])
     } else {
       # the subsequent power is not repeated, e.g. 1, 2, 3
-      x_trafo[, k] <- transform_vector_power(x, power[k])
+      #x_trafo[, k] <- transform_vector_power(x, power[k])
+      x_trafo[pos, k] <- transform_vector_power(x[pos], power[k])
     }
-    # Clean up invalid entries; can arise due to zero argument
-    x_trafo[!is.finite(x_trafo[, k]), k] <- 0
+    # Safety net unchanged — catches overflow, not structural-zero artifact
+    #x_trafo[!is.finite(x_trafo[, k]), k] <- 0
   }
   
   if (!is.null(name)) {
@@ -217,10 +226,10 @@ transform_vector_acd <- function(x,
     # no need to store acd further
     acd_parameter$acd <- NULL
   } else {
-    if (zero) {
-      x[x <= 0] <- 0
-    }
-    x_acd <- do.call(apply_acd, modifyList(acd_parameter, list(x = x, zero = FALSE)))
+    x_acd <- do.call(
+      apply_acd,
+      modifyList(acd_parameter, list(x = x, zero = zero))
+    )
   }
   
   name_acd <- NULL
@@ -994,12 +1003,13 @@ transform_vector_power <- function(x, power = 1, zero = FALSE) {
   if (zero) {
     x[x <= 0] <- 0
   }
+  
   if (power == 0) {
     xt <- log(x)
   } else {
   xt <- x ^ power
   }
-  xt[!is.finite(xt)] <- 0
+  #xt[!is.finite(xt)] <- 0
   
   return(xt)
 }

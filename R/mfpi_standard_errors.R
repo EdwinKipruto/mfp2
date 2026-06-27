@@ -179,7 +179,9 @@ compute_group_difference <- function(coef_vec, xtransformed, group_fp_powers) {
 #'   every group are present side by side in the same order as `groups`.
 #' @param group_fp_powers Named list of FP power vectors, one per group.
 #'   Passed through to \code{group_diff_function()} to determine \eqn{m}.
-#'
+#' @param group_dummy_names Character vector of exact group-dummy coefficient
+#'   names, one per non-reference group, in group order. These names must match
+#'   the columns produced by `create_group_dummies()`.
 #' @return Numeric matrix with \eqn{n} rows and \eqn{K - 1} columns. Column
 #'   \eqn{j} contains
 #'   \deqn{
@@ -193,8 +195,14 @@ compute_group_difference <- function(coef_vec, xtransformed, group_fp_powers) {
 #'
 #' @keywords internal
 #' @noRd
-compute_diff_standard_errors <- function(coefx, cov_betas, groups,
-                                    group_name, xtransformed, group_fp_powers) {
+compute_diff_standard_errors <- function(
+    coefx, cov_betas, groups,
+    group_name, group_dummy_names,
+    xtransformed, group_fp_powers
+) {
+  if (!is.character(group_dummy_names)) {
+    stop("`group_dummy_names` must be a character vector.", call. = FALSE)
+  }
   
   coef_names <- names(coefx)
   
@@ -202,7 +210,7 @@ compute_diff_standard_errors <- function(coefx, cov_betas, groups,
   coef_indices <- lapply(groups, function(grp) which(coef_names %in% grp))
   
   # Names of the group dummy coefficients gamma_j (one per non-reference group)
-  dummy_names <- grep(paste0("^", group_name, "\\d+"), coef_names, value = TRUE)
+  dummy_names <- group_dummy_names
   n_dummies   <- length(dummy_names)
   
   if (n_dummies != length(groups) - 1L) {

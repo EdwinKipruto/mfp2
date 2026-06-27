@@ -110,10 +110,11 @@
 #' number of observations (i.e. no rows are removed) and only truncates extreme
 #' values; the bulk of the distribution remains unaffected.
 #'
-#' Variables flagged as \code{zero_vars}, \code{catzero_vars}, or
-#' \code{spike_vars} are \strong{excluded from Winsorisation} so that both the
-#' zero spike and the positive distribution are preserved exactly, as these
-#' features are assumed to carry substantive modelling meaning.
+#' Variables with final \code{zero_vars} handling are \strong{excluded from
+#' Winsorisation} so that structural-zero values and the positive distribution
+#' are preserved. For variables in \code{cont_vars}, \code{catzero_vars} and
+#' \code{spike_vars} are first suppressed; therefore they exclude a variable
+#' from Winsorisation only when explicit \code{zero_vars} handling remains.
 #'
 #' The Winsorisation cutoffs actually applied are returned in the
 #' \code{winsorize_limits} component of the fitted object for transparency.
@@ -121,12 +122,14 @@
 #' should be reported transparently as part of the initial data analysis.
 #'
 #' @section Regression families (`family`):
-#' `mfpi()` accepts the same family strings as [stats::glm()]. Use
-#' `family = "gaussian"` for linear regression, `family = "binomial"` for
-#' logistic regression, and `family = "poisson"` for Poisson regression with an
-#' optional offset (e.g. log of exposure time). For Cox proportional-hazards
-#' models, set `family = "cox"` and supply a [survival::Surv()] object as the
-#' response `y`; only right-censored data are currently supported.
+#' `mfpi()` accepts family specifications as character strings, GLM family
+#' functions, or GLM family objects. Use `family = "gaussian"` or
+#' `family = stats::gaussian()` for linear regression, `family = "binomial"`
+#' or `family = stats::binomial()` for logistic regression, and
+#' `family = "poisson"` or `family = stats::poisson()` for Poisson regression.
+#' Custom links may be supplied through family objects, for example
+#' `stats::binomial(link = "probit")`. For Cox proportional-hazards models,
+#' set `family = "cox"` and supply a `survival::Surv()` response.
 #'
 #' @section Adjustment variables:
 #' Adjustment variables are selected once using \code{mfp2::mfp2()} on
@@ -150,10 +153,13 @@
 #' estimates a shift for each variable to ensure positivity, then scales the
 #' shifted values to a convenient range, following the same procedure as
 #' [mfp2::mfp2()]. Centering is applied after FP powers are estimated.
-#' Variables marked with `zero_vars` or `catzero_vars`, and linear terms
-#' (`df = 1`), have their shift automatically set to zero because only the
-#' positive values are transformed in these cases, or because no nonlinear
-#' transformation is applied.
+#' Variables with final \code{zero_vars} or \code{catzero_vars} handling, and
+#' linear terms (\code{df = 1}), have their shift automatically set to zero
+#' because only the positive values are transformed in these cases, or because
+#' no nonlinear transformation is applied. For variables in \code{cont_vars},
+#' \code{catzero_vars} and \code{spike_vars} are first suppressed; therefore
+#' shift is forced to zero only when explicit \code{zero_vars} handling remains
+#' or the variable is treated as linear.
 #'
 #' @section Handling non-positive values:
 #' Non-positive values in continuous predictors can be handled using the
@@ -183,13 +189,33 @@
 #'   \item The \code{spike} and \code{catzero} flags are set to \code{FALSE}
 #'     for that variable in both the adjustment model and the interaction
 #'     stage.
-#'   \item The \code{zero} flag is preserved: if the variable has non-positive
-#'     values, they are still recoded to zero before FP transformation.
+#'   \item Explicit \code{zero_vars} handling is preserved: if the variable is
+#'     also listed in \code{zero_vars}, non-positive values are still recoded to
+#'     zero before FP transformation. Zero handling implied only by
+#'     \code{catzero_vars} or \code{spike_vars} is not retained for variables in
+#'     \code{cont_vars}.
 #' }
 #'
 #' Variables in \code{spike_vars} or \code{catzero_vars} that are
 #' \strong{not} in \code{cont_vars} are fully respected in the adjustment
 #' model as documented in [mfp2::mfp2()].
+#' 
+#' @section Information criteria:
+#' The individual \code{AIC_main}, \code{AIC_interaction},
+#' \code{BIC_main}, and \code{BIC_interaction} values reported here are not
+#' the actual AIC/BIC values of the fitted models. They are
+#' interaction-specific comparison criteria computed from the model deviances
+#' and from the degrees of freedom returned by \code{interaction_model_df()},
+#' which count only the interaction-related terms and exclude the intercept
+#' and adjustment-model parameters.
+#'
+#' Therefore, these individual AIC/BIC values should not be compared with
+#' AIC/BIC values returned by \code{stats::AIC()}, \code{stats::BIC()}, or
+#' other model-fitting functions.
+#'
+#' The differences \code{AIC_main_minus_int} and
+#' \code{BIC_main_minus_int} are correct for comparing the main-effects and
+#' interaction candidates because the shared model terms cancel.
 #'
 #' @param x
 #'   For \code{mfpi.default()} only. A numeric matrix of dimension
@@ -199,16 +225,19 @@
 #'   variables (other than \code{group_var}) should be expanded into dummy
 #'   variables beforehand. Must be free of missing values.
 #' @param y
-#'   For \code{mfpi.default()} only. The response vector (or matrix for
-#'   survival data). For Gaussian, binomial, and Poisson families, supply a
-#'   numeric vector of length \eqn{n}. For Cox models, supply a
-#'   two-column \code{survival::Surv()} object. Must have the same number of
-#'   observations as \code{x}.
+#'   For \code{mfpi.default()} only. The response object. For Gaussian models,
+#'   supply a finite numeric vector of length \eqn{n}. For Poisson models,
+#'   supply a finite non-negative numeric vector of length \eqn{n}. For binomial
+#'   models, supply a numeric vector with values in \eqn{[0, 1]}, a two-level
+#'   factor, or a two-column numeric matrix \code{cbind(successes, failures)}.
+#'   For Cox models, supply a right-censored \code{survival::Surv()} object.
+#'   Must have the same number of observations as \code{x}.
 #' @param formula
 #'   For \code{mfpi.formula()} only. A formula object describing the model.
 #'   Continuous predictors to be FP-transformed should be wrapped in
-#'   \code{fp()}, e.g. \code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
-#'   Variables not wrapped in \code{fp()} receive the global scalar defaults
+#'   \code{fp()} or \code{fp2()}, e.g.
+#'   \code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
+#'   Variables not wrapped in \code{fp()} or \code{fp2()} receive the global scalar defaults
 #'   for \code{df}, \code{alpha}, \code{select}, \code{center}, \code{shift},
 #'   and \code{scale}. See the \emph{Argument precedence} section in
 #'   \code{mfpi.formula()} for full rules.
@@ -348,9 +377,11 @@
 #'   observations. Default is `NULL` (all observations used). see [mfp2::mfp2()]
 #'   for details
 #' @param family
-#'   A character string specifying the error distribution. One of
-#'   `"gaussian"` (default), `"binomial"`, `"poisson"`, or `"cox"`. See the
-#'   *Regression families* section for details.
+#'   Model family specification. May be one of the character strings
+#'   `"gaussian"`, `"binomial"`, `"poisson"`, or `"cox"`; a GLM family function
+#'   such as `stats::binomial`; or a GLM family object such as
+#'   `stats::binomial(link = "probit")`. Cox models must be specified as
+#'   `family = "cox"`.
 #' @param criterion
 #'   A character string specifying the criterion used in two distinct places:
 #'   \enumerate{
@@ -396,7 +427,8 @@
 #'       listing a variable here suppresses this simplification.
 #'   }
 #'   Default \code{NULL} (no variables forced). In the formula interface,
-#'   per-variable control is also available via \code{fp(force_max_fp = TRUE)}.
+#'   per-variable control is also available via
+#'   \code{fp(force_max_fp = TRUE)} or \code{fp2(force_max_fp = TRUE)}.
 #' @param xorder
 #'   A character string controlling the order in which adjustment covariates
 #'   enter the MFP selection algorithm. `"ascending"` (default) enters
@@ -429,28 +461,36 @@
 #'   details.
 #' @param zero_vars
 #'   An optional character vector naming variables for which non-positive values
-#'   should be treated as zero. FP transformations are applied only to strictly
-#'   positive values; non-positive values are set to zero. This treatment is
-#'   compatible with \code{cont_vars} and is preserved for interaction
-#'   variables. See the \emph{Handling non-positive values} section for details.
+#'   should be treated as structural zero. FP transformations are applied only
+#'   to strictly positive values; non-positive values are represented as zero in
+#'   the transformed columns. This treatment is compatible with
+#'   \code{cont_vars} and is preserved for interaction variables when explicitly
+#'   requested through \code{zero_vars}. See the \emph{Handling non-positive
+#'   values} section for details.
 #' @param catzero_vars
-#'   An optional character vector naming variables for which a binary indicator
-#'   \eqn{I(x = 0)} should be added to the adjustment model alongside the FP
-#'   terms for the positive part. Implies \code{zero_vars} for the named
-#'   variables. A variable may not appear in both \code{zero_vars} and
+#'   An optional character vector naming variables for which a binary structural
+#'   zero indicator \eqn{I(x \le 0)} should be added to the adjustment model
+#'   alongside the FP terms for the positive part. For adjustment variables,
+#'   \code{catzero_vars} implies \code{zero_vars}. A variable that is not in
+#'   \code{cont_vars} may not appear in both \code{zero_vars} and
 #'   \code{catzero_vars}. \strong{Note:} if a variable also appears in
-#'   \code{cont_vars}, the \eqn{I(x = 0)} indicator is dropped and the variable
-#'   is treated as an ordinary continuous variable in both the adjustment model
-#'   and the interaction stage (with a warning). However, the \code{zero_vars}
-#'   recoding of non-positive values is still applied.
+#'   \code{cont_vars}, the structural-zero indicator is dropped and
+#'   \code{catzero} is set to \code{FALSE} for that variable in both the
+#'   adjustment model and the interaction stage, with a warning. Explicit
+#'   \code{zero_vars} handling is preserved if the variable was also listed in
+#'   \code{zero_vars}; zero handling implied only by \code{catzero_vars} is not
+#'   retained for variables in \code{cont_vars}.
 #' @param spike_vars
-#'   An optional character vector naming variables to be assessed for a spike
-#'   at zero using the SAZ algorithm. Implies \code{catzero_vars} (and
-#'   therefore \code{zero_vars}) for the named variables. \strong{Note:} if a
-#'   variable also appears in \code{cont_vars}, the spike-at-zero treatment is
-#'   dropped and the variable is treated as an ordinary continuous variable in
-#'   both the adjustment model and the interaction stage (with a warning). The
-#'   \code{zero_vars} recoding of non-positive values is still applied.
+#'   An optional character vector naming variables to be assessed for a spike at
+#'   zero using the SAZ algorithm. For adjustment variables, \code{spike_vars}
+#'   implies \code{catzero_vars} and therefore \code{zero_vars}. \strong{Note:}
+#'   if a variable also appears in \code{cont_vars}, spike-at-zero handling is
+#'   dropped and both \code{spike} and the implied \code{catzero} indicator are
+#'   set to \code{FALSE} for that variable in both the adjustment model and the
+#'   interaction stage, with a warning. Explicit \code{zero_vars} handling is
+#'   preserved if the variable was also listed in \code{zero_vars}; zero handling
+#'   implied only by \code{spike_vars} is not retained for variables in
+#'   \code{cont_vars}.
 #' @param min_prop
 #'   Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
 #'   SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
@@ -540,14 +580,15 @@
 #'     the retained interaction models. Each row corresponds to one selected
 #'     continuous variable. The column \code{type} gives the tested functional
 #'     form, one of \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. The
-#'     metrics include the main and interaction FP powers, interaction deviance,
-#'     deviance difference, interaction degrees of freedom, p-value, total model
-#'     degrees of freedom, AIC and BIC values for the main-effects and
-#'     interaction models, and their differences. When \code{criterion = "aic"}
-#'     or \code{criterion = "bic"}, an additional \code{dAIC} or \code{dBIC}
-#'     column may be present. When p-value adjustment is used, a
-#'     \code{p_adjusted} column may be present. If no interaction is retained,
-#'     this is an empty data frame.}
+#'     metrics include the main and interaction FP powers and the
+#'     criterion-specific interaction evaluation columns. For
+#'     \code{criterion = "pvalue"}, the metrics include \code{pvalue} and,
+#'     when applicable, \code{p_adjusted}. For \code{criterion = "aic"} or
+#'     \code{criterion = "bic"}, p-value columns are omitted and the reported
+#'     interaction metrics are based on AIC/BIC only. If no interaction is
+#'     retained, this is an empty data frame. The reported AIC/BIC columns are
+#'      interaction-specific comparison criteria, not full fitted-model AIC/BIC 
+#'      values; see \code{test_interaction()} for details.}
 #'   \item{\code{all_model_metrics}}{A data frame with the same columns as
 #'     \code{best_model_metrics} but containing metrics for the interaction
 #'     model evaluated for each variable in \code{cont_vars}, using the form
@@ -564,24 +605,6 @@
 #'     fitted interaction model for the functional form specified in
 #'     \code{cont_var_forms} for that variable, for example
 #'     \code{object$all_interaction_models$age$fp2}.}
-#'   \item{\code{best_fitted_functions}}{A named list of numeric matrices for
-#'     the continuous variables whose interactions were retained by the
-#'     selection criterion. Each matrix has one row per observation or grid
-#'     point and columns: the continuous variable itself; \code{f0},
-#'     \code{f1}, \ldots (group-specific fitted FP functions);
-#'     \code{se(f0)}, \code{se(f1)}, \ldots (pointwise standard errors);
-#'     \code{f0_lower}, \code{f0_upper}, \ldots (95\% confidence bounds);
-#'     \code{f1-f0}, \code{f2-f0}, \ldots (differences relative to the
-#'     reference group); \code{se(f1-f0)}, \ldots (standard errors of
-#'     differences); and \code{(f1-f0)_lower}, \code{(f1-f0)_upper}, \ldots
-#'     (confidence bounds for differences). Attributes \code{fp_centers},
-#'     \code{center_type}, and \code{group_fp_powers} are attached for use
-#'     by \code{predict.mfpi()}. If no interaction is retained, this is an
-#'     empty list.}
-#'   \item{\code{all_fitted_functions}}{A named list (one element per
-#'     \code{cont_var}) of fitted-function matrices for each interaction model,
-#'     in the same format as \code{best_fitted_functions}. Each element uses
-#'     the form specified in \code{cont_var_forms} for that variable.}
 #'   \item{\code{center_vals_list}}{A named list (one element per
 #'     \code{cont_var}) of centering constants used when fitting the
 #'     interaction model. These are the exact values subtracted from the
@@ -782,7 +805,7 @@ mfpi.default <- function(
     df                = 4,
     center            = TRUE,
     subset            = NULL,
-    family            = c("gaussian", "poisson", "binomial", "cox"),
+    family            = "gaussian",
     criterion         = c("pvalue", "aic", "bic"),
     select            = 0.05,
     alpha             = 0.05,
@@ -812,38 +835,19 @@ mfpi.default <- function(
   cl <- match.call()
   
   # Match enumerated arguments -------------------------------------------------
-  family      <- match.arg(family)
   xorder      <- match.arg(xorder)
   criterion   <- match.arg(criterion)
   flex        <- match.arg(flex)
   ties        <- match.arg(ties)
   center_type <- match.arg(center_type)
   
-  # Resolve family: convert string to GLM object for non-Cox families ----------
-  # mfp2:::fit_mfp() and mfp2:::fit_model() expect a GLM family object for
-  # non-Cox families and the character string "cox" for Cox models.
-  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
-  if (!family %in% allowed_families) {
-    stop(
-      paste0("! Invalid family: '", family, "'. Allowed values are: ",
-             paste(allowed_families, collapse = ", "), "."),
-      call. = FALSE
-    )
-  }
+  # Resolve family -------------------------------------------------------------
+  family_info <- normalize_family_argument(family)
   
-  family_string <- family   # keep string for branching (== "cox", == "gaussian")
-  if (family != "cox") {
-    family <- tryCatch(
-      get(family, mode = "function", envir = parent.frame())(),
-      error = function(e) stop(
-        paste0("! Cannot construct GLM family object from '", family_string,
-               "'. ", conditionMessage(e)),
-        call. = FALSE
-      )
-    )
-  }
+  family        <- family_info$family
+  family_string <- family_info$family_string
   
-   if (!is.matrix(x)) {
+  if (!is.matrix(x)) {
     stop("! `x` must be a matrix.", call. = FALSE)
   }
   
@@ -868,6 +872,13 @@ mfpi.default <- function(
     stop(
       "! `x` must not contain missing values (NA).\n",
       "i Remove or impute missing data before calling `mfpi()`.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.numeric(x) || any(!is.finite(x))) {
+    stop(
+      "! `x` must be a numeric matrix with finite values.",
       call. = FALSE
     )
   }
@@ -907,10 +918,32 @@ mfpi.default <- function(
          call. = FALSE)
   }
   
+  if (group_var %in% cont_vars) {
+    stop(
+      paste0("! `group_var = '", group_var,
+             "'` must not also appear in `cont_vars`."),
+      call. = FALSE
+    )
+  }
+  
   nlev <- length(unique(x[, group_var]))
   if (nlev < 2L) {
     stop(
       paste0("! `group_var` must have at least two distinct values; found ", nlev, "."),
+      call. = FALSE
+    )
+  }
+  
+  if (!is.character(p_adjust_method) || length(p_adjust_method) != 1L) {
+    stop("! `p_adjust_method` must be a single character string.", call. = FALSE)
+  }
+  
+  if (!p_adjust_method %in% stats::p.adjust.methods) {
+    stop(
+      "! Invalid `p_adjust_method`: ", p_adjust_method, ".\n",
+      "i Supported methods are: ",
+      paste(stats::p.adjust.methods, collapse = ", "),
+      ".",
       call. = FALSE
     )
   }
@@ -1045,58 +1078,75 @@ mfpi.default <- function(
   }
   
   # Validate response y --------------------------------------------------------
-  if (family_string == "cox") {
-    if (!survival::is.Surv(y)) {
-      stop("! For `family = 'cox'`, `y` must be a `survival::Surv` object.",
-           call. = FALSE)
-    }
-    if (nrow(y) != nobs) {
-      stop(paste0("! `y` has ", nrow(y), " rows but `x` has ", nobs,
-                  " rows; they must match."), call. = FALSE)
-    }
-    if (attr(y, "type") != "right") {
-      stop(paste0("! Only right-censored survival data are currently supported; ",
-                  "`y` has censoring type '", attr(y, "type"), "'."),
-           call. = FALSE)
-    }
+  validate_family_response(
+    y             = y,
+    family_string = family_string,
+    nobs          = nobs
+  )
+  
+  # Validate Cox-specific auxiliary inputs ------------------------------------
+  if (family_string == "cox" && !is.null(strata)) {
     if (is.factor(strata)) strata <- as.numeric(strata)
-    if (!is.null(strata)) {
-      strata_len <- if (is.vector(strata)) length(strata) else nrow(strata)
-      if (strata_len != nobs) {
-        stop(
-          paste0("! Length of `strata` (", strata_len, ") must equal the number of ",
-                 "rows in `x` (", nobs, ")."),
-          call. = FALSE
-        )
-      }
-    }
-  } else {
-    if (is.matrix(y) || is.data.frame(y)) {
-      stop(paste0("! For `family = '", family_string, "'`, `y` must be a vector, ",
-                  "not an object of class ", paste(class(y), collapse = ", "), "."),
-           call. = FALSE)
-    }
-    if (length(y) != nobs) {
-      stop(paste0("! `y` has length ", length(y), " but `x` has ", nobs,
-                  " rows; they must match."), call. = FALSE)
+    
+    strata_len <- if (is.vector(strata)) length(strata) else NROW(strata)
+    
+    if (strata_len != nobs) {
+      stop(
+        paste0(
+          "! Length of `strata` (", strata_len, ") must equal the number of ",
+          "rows in `x` (", nobs, ")."
+        ),
+        call. = FALSE
+      )
     }
   }
   
   # Validate weights and offset ------------------------------------------------
   if (!is.null(weights)) {
-    if (any(weights < 0))
-      stop("! `weights` must not be negative.", call. = FALSE)
-    if (length(weights) != nobs)
-      stop(paste0("! Length of `weights` (", length(weights), ") must equal ",
-                  "the number of rows in `x` (", nobs, ")."), call. = FALSE)
+    if (
+      !is.numeric(weights) ||
+      length(weights) != nobs ||
+      anyNA(weights) ||
+      any(!is.finite(weights)) ||
+      any(weights < 0)
+    ) {
+      stop(
+        paste0(
+          "! `weights` must be a finite non-negative numeric vector ",
+          "of length nobs."
+        ),
+        call. = FALSE
+      )
+    }
   }
   
-  if (!is.null(offset) && length(offset) != nobs) {
-    stop(paste0("! Length of `offset` (", length(offset), ") must equal ",
-                "the number of rows in `x` (", nobs, ")."), call. = FALSE)
+  if (!is.null(offset)) {
+    if (
+      !is.numeric(offset) ||
+      length(offset) != nobs ||
+      anyNA(offset) ||
+      any(!is.finite(offset))
+    ) {
+      stop(
+        "! `offset` must be a finite numeric vector of length nobs.",
+        call. = FALSE
+      )
+    }
   }
   
   # Validate alpha and select --------------------------------------------------
+  if (!is.numeric(alpha) || anyNA(alpha) || any(!is.finite(alpha))) {
+    stop("! `alpha` must be numeric, finite, and non-missing.", call. = FALSE)
+  }
+  
+  if (!is.numeric(select) || anyNA(select) || any(!is.finite(select))) {
+    stop("! `select` must be numeric, finite, and non-missing.", call. = FALSE)
+  }
+  
+  if (!is.numeric(df) || anyNA(df) || any(!is.finite(df))) {
+    stop("! `df` must be numeric, finite, and non-missing.", call. = FALSE)
+  }
+  
   if (any(alpha < 0) || any(alpha > 1)) {
     stop("! All values of `alpha` must be in [0, 1].", call. = FALSE)
   }
@@ -1161,14 +1211,28 @@ mfpi.default <- function(
             call. = FALSE)
   }
   
-  if (!is.null(zero_vars) && !is.null(catzero_vars)) {
-    overlap <- intersect(zero_vars, catzero_vars)
-    if (length(overlap) > 0L) {
-      stop(paste0("! The following variables appear in both `zero_vars` and `catzero_vars`: ",
-                  paste(overlap, collapse = ", "),
-                  ". Use only one option per variable."), call. = FALSE)
-    }
+  zero_vars_in    <- intersect(zero_vars,    vnames)
+  catzero_vars_in <- intersect(catzero_vars, vnames)
+  spike_vars_in   <- intersect(spike_vars,   vnames)
+  
+  # For cont_vars, catzero/spike will be dropped later, so do not treat
+  # zero + catzero overlap on cont_vars as fatal.
+  overlap <- intersect(zero_vars_in, setdiff(catzero_vars_in, cont_vars))
+  
+  if (length(overlap) > 0L) {
+    stop(
+      paste0(
+        "! The following variables appear in both `zero_vars` and `catzero_vars`: ",
+        paste(overlap, collapse = ", "),
+        ". Use only one option per variable."
+      ),
+      call. = FALSE
+    )
   }
+  
+  zero_vars    <- zero_vars_in
+  catzero_vars <- catzero_vars_in
+  spike_vars   <- spike_vars_in
   
   # Validate acd_vars ----------------------------------------------------------
   if (!is.null(acd_vars) && !all(acd_vars %in% vnames)) {
@@ -1177,24 +1241,75 @@ mfpi.default <- function(
   }
   
   # Validate shift and scale ---------------------------------------------------
+  if (!is.null(shift)) {
+    if (!is.numeric(shift)) {
+      stop("! `shift` must be numeric or NULL.", call. = FALSE)
+    }
+    
+    bad_shift <- !is.na(shift) & !is.finite(shift)
+    
+    if (any(bad_shift)) {
+      stop(
+        "! All non-missing values of `shift` must be finite.",
+        call. = FALSE
+      )
+    }
+  }
+  
   if (!is.null(shift) && length(shift) != 1L && length(shift) != nvars) {
-    stop(paste0("! `shift` must be NULL, a single number, or a vector of length ",
-                nvars, "; got length ", length(shift), "."), call. = FALSE)
+    stop(
+      paste0(
+        "! `shift` must be a single number or a vector of length ",
+        nvars, "; got length ", length(shift), "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  if (!is.null(scale)) {
+    if (!is.numeric(scale)) {
+      stop("! `scale` must be numeric or NULL.", call. = FALSE)
+    }
+    
+    bad_scale <- !is.na(scale) & (!is.finite(scale) | scale <= 0)
+    
+    if (any(bad_scale)) {
+      stop(
+        "! All non-missing values of `scale` must be finite and positive.",
+        call. = FALSE
+      )
+    }
   }
   
   if (!is.null(scale) && length(scale) != 1L && length(scale) != nvars) {
-    stop(paste0("! `scale` must be NULL, a single number, or a vector of length ",
-                nvars, "; got length ", length(scale), "."), call. = FALSE)
-  }
-  
-  if (!is.null(scale) && any(scale <= 0 | is.na(scale))) {
-    stop("! All values of `scale` must be positive and non-missing.", call. = FALSE)
+    stop(
+      paste0(
+        "! `scale` must be a single number or a vector of length ",
+        nvars, "; got length ", length(scale), "."
+      ),
+      call. = FALSE
+    )
   }
   
   # Validate center ------------------------------------------------------------
+  # Developer note: mfpi.formula() may pass a per-variable logical vector after
+  # reading fp()/fp2() attributes, so the default method is the final validation
+  # gate for both direct matrix calls and formula calls.
+  if (!is.logical(center) || anyNA(center)) {
+    stop(
+      "! `center` must be logical and must not contain missing values.",
+      call. = FALSE
+    )
+  }
+  
   if (length(center) != 1L && length(center) != nvars) {
-    stop(paste0("! `center` must be a single logical or a logical vector of length ",
-                nvars, "; got length ", length(center), "."), call. = FALSE)
+    stop(
+      paste0(
+        "! `center` must be a single logical or a logical vector of length ",
+        nvars, "; got length ", length(center), "."
+      ),
+      call. = FALSE
+    )
   }
   
   # Validate df ----------------------------------------------------------------
@@ -1219,13 +1334,22 @@ mfpi.default <- function(
   }
   
   # Validate spike proportions -------------------------------------------------
-  if (!is.numeric(min_prop) || length(min_prop) != 1L || min_prop < 0 || min_prop > 1) {
-    stop("! `min_prop` must be a single numeric value in [0, 1].", call. = FALSE)
+  if (!is.numeric(min_prop) || length(min_prop) != 1L ||
+      anyNA(min_prop) || !is.finite(min_prop) ||
+      min_prop < 0 || min_prop > 1) {
+    stop(
+      "! `min_prop` must be a single finite numeric value in [0, 1].",
+      call. = FALSE
+    )
   }
   
   if (!is.numeric(max_prop) || length(max_prop) != 1L ||
+      anyNA(max_prop) || !is.finite(max_prop) ||
       max_prop < 0 || max_prop > 1) {
-    stop("! `max_prop` must be a single numeric value in [0, 1].", call. = FALSE)
+    stop(
+      "! `max_prop` must be a single finite numeric value in [0, 1].",
+      call. = FALSE
+    )
   }
   
   if (min_prop > max_prop) {
@@ -1316,24 +1440,34 @@ mfpi.default <- function(
   }
   
   if (is.null(shift)) {
-    shift <- apply(x, 2L, find_shift_factor)
+    shift <- rep(NA_real_, nvars)
   } else if (length(shift) == 1L) {
     shift <- rep(shift, nvars)
   }
+  
   shift <- setNames(shift, vnames)
+  
+  shift_missing <- is.na(shift)
+  
+  if (any(shift_missing)) {
+    shift[shift_missing] <- apply(
+      x[, shift_missing, drop = FALSE],
+      2L,
+      find_shift_factor
+    )
+  }
   
   # NOTE: scale is computed AFTER the shift has been applied to x (see below),
   # because find_scale_factor() must operate on the shifted variable to match
   # standalone mfp2. Here we only normalise a user-supplied scale; automatic
   # computation is deferred until after shifting.
-  user_supplied_scale <- !is.null(scale)
-  if (user_supplied_scale && length(scale) == 1L) {
+  if (is.null(scale)) {
+    scale <- rep(NA_real_, nvars)
+  } else if (length(scale) == 1L) {
     scale <- rep(scale, nvars)
   }
   
-  if (user_supplied_scale) {
-    scale <- setNames(scale, vnames)
-  }
+  scale <- setNames(scale, vnames)
   
   if (is.null(control)) {
     control <- if (family_string == "cox") survival::coxph.control() else
@@ -1344,76 +1478,55 @@ mfpi.default <- function(
   keep <- intersect(keep, vnames)
   
   # Process zero_vars / catzero_vars / spike_vars to named logical vectors -----
-  zero_vars    <- intersect(zero_vars,    vnames)
-  catzero_vars <- intersect(catzero_vars, vnames)
-  spike_vars   <- intersect(spike_vars,   vnames)
-  
   zero_flag    <- setNames(rep(FALSE, nvars), vnames)
   catzero_flag <- setNames(rep(FALSE, nvars), vnames)
   spike_flag   <- setNames(rep(FALSE, nvars), vnames)
   
   if (length(zero_vars)    > 0L) zero_flag[zero_vars]       <- TRUE
   if (length(catzero_vars) > 0L) catzero_flag[catzero_vars] <- TRUE
-  if (length(spike_vars)   > 0L) {
-    spike_flag[spike_vars]   <- TRUE
-    catzero_flag[spike_vars] <- TRUE   # spike implies catzero
-  }
+  if (length(spike_vars)   > 0L) spike_flag[spike_vars]     <- TRUE
   
-  # Override spike/catzero for cont_vars ----------------------------------------
-  # Check BEFORE the cascade (zero_flag[catzero_flag] <- TRUE) so that
-  # zero_flag at this point reflects only what the user explicitly put in
-  # zero_vars, not what would be cascaded from spike/catzero. This lets the
-  # warning message accurately tell the user whether zero recoding applies.
-  #
-  # spike = TRUE: runs the SAZ algorithm AND adds I(x=0) indicator.
-  # catzero = TRUE: adds I(x=0) indicator only, no SAZ algorithm.
-  # Neither can be used for cont_vars because the interaction design matrix
-  # does not include group-specific I(x=0) indicators. The flags are reset
-  # to FALSE here; the cascade below then runs on the corrected flags.
-  
-  spike_in_cont   <- intersect(spike_vars,   cont_vars)
-  catzero_in_cont <- intersect(catzero_vars, cont_vars)  # excludes spike vars
+  # cont_vars may keep explicit zero handling, but cannot use catzero/spike.
+  # Developer note: this cleanup must happen BEFORE the cascade below. Otherwise
+  # spike_vars/catzero_vars would imply zero_vars for cont_vars, which is not the
+  # intended MFPI stage-2 contract. Only explicit zero_vars should survive for
+  # interaction variables.
+  spike_in_cont   <- intersect(names(spike_flag)[spike_flag], cont_vars)
+  catzero_in_cont <- intersect(names(catzero_flag)[catzero_flag], cont_vars)
   
   if (length(spike_in_cont) > 0L) {
-    for (v in spike_in_cont) {
-      zero_note <- if (zero_flag[v])
-        " Non-positive values will still be recoded to zero before FP transformation."
-      else
-        ""
-      warning(
-        "Variable '", v, "' is in both 'cont_vars' and 'spike_vars'. ",
-        "The SAZ algorithm and the I(x=0) binary indicator have been dropped ",
-        "for this variable in both the adjustment model and the interaction ",
-        "stage. It will be treated as an ordinary continuous variable.",
-        zero_note,
-        call. = FALSE
-      )
-    }
+    warning(
+      "The following `cont_vars` were also marked as `spike_vars`: ",
+      paste(spike_in_cont, collapse = ", "),
+      ". Spike-at-zero handling is not supported for MFPI interaction variables; ",
+      "`spike` and the implied `catzero` indicator are set to FALSE for these variables. ",
+      "Explicit `zero_vars` settings are preserved.",
+      call. = FALSE
+    )
+    
     spike_flag[spike_in_cont]   <- FALSE
     catzero_flag[spike_in_cont] <- FALSE
   }
   
   if (length(catzero_in_cont) > 0L) {
-    for (v in catzero_in_cont) {
-      zero_note <- if (zero_flag[v])
-        " Non-positive values will still be recoded to zero before FP transformation."
-      else
-        ""
-      warning(
-        "Variable '", v, "' is in both 'cont_vars' and 'catzero_vars'. ",
-        "The I(x=0) binary indicator has been dropped for this variable in ",
-        "both the adjustment model and the interaction stage. It will be ",
-        "treated as an ordinary continuous variable.",
-        zero_note,
-        call. = FALSE
-      )
-    }
+    warning(
+      "The following `cont_vars` were also marked as `catzero_vars`: ",
+      paste(catzero_in_cont, collapse = ", "),
+      ". Structural-zero binary indicators are not supported for MFPI interaction variables; ",
+      "`catzero` is set to FALSE for these variables. ",
+      "Explicit `zero_vars` settings are preserved.",
+      call. = FALSE
+    )
+    
     catzero_flag[catzero_in_cont] <- FALSE
   }
   
-  # Cascade: spike implies catzero implies zero ---------------------------------
-  catzero_flag[spike_flag]  <- TRUE   # redundant but explicit
-  zero_flag[catzero_flag]   <- TRUE   # catzero implies zero
+  # Cascade only after unsupported cont_var flags have been removed.
+  # For adjustment variables, spike -> catzero -> zero is preserved. For
+  # cont_vars, spike/catzero were already reset above, so this cascade will not
+  # create zero handling unless zero_vars was explicitly supplied.
+  catzero_flag[spike_flag] <- TRUE
+  zero_flag[catzero_flag]  <- TRUE
   
   # Reset zero/catzero for variables that contain only positive values ---------
   if (any(zero_flag)) {
@@ -1456,10 +1569,30 @@ mfpi.default <- function(
   }
   
   acd_flag <- setNames(rep(FALSE, nvars), vnames)
+  
   if (!is.null(acd_vars)) {
+    # Keep only variables that exist in `x`; unknown variables were warned about
+    # in the earlier validation block.
     acd_vars <- unique(intersect(acd_vars, vnames))
-    # ACD transformation is not supported for cont_vars
-    acd_vars <- setdiff(acd_vars, cont_vars)
+    
+    # Developer note:
+    # ACD transformations are disabled for MFPI interaction variables. The
+    # interaction variable's functional form is handled by the flex0-flex4
+    # search, and applying ACD upstream would change the interaction scale and
+    # break reconstruction of f_j(x).
+    acd_in_cont <- intersect(acd_vars, cont_vars)
+    
+    if (length(acd_in_cont) > 0L) {
+      warning(
+        "ACD transformation is disabled for cont_vars: ",
+        paste(acd_in_cont, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+      
+      acd_vars <- setdiff(acd_vars, cont_vars)
+    }
+    
     acd_flag[acd_vars] <- TRUE
   }
   
@@ -1485,8 +1618,14 @@ mfpi.default <- function(
   # must operate on the shifted variable; computing it on the raw (unshifted) x
   # would give a different scaling factor for any variable with a non-zero shift.
   # User-supplied scale (normalised earlier) is left untouched.
-  if (!user_supplied_scale) {
-    scale <- setNames(apply(x, 2L, find_scale_factor), vnames)
+  scale_missing <- is.na(scale)
+  
+  if (any(scale_missing)) {
+    scale[scale_missing] <- apply(
+      x[, scale_missing, drop = FALSE],
+      2L,
+      find_scale_factor
+    )
   }
   
   # Positivity check for variables that undergo nonlinear FP transformation ----
@@ -1529,12 +1668,31 @@ mfpi.default <- function(
     if (!is.null(istrata)) istrata <- istrata[subset]
   }
   
+  # A dataset with two groups can pass initial validation, then subset can 
+  # remove all observations from one group. Later internals may fail inside 
+  # dummy creation or interaction fitting with a less informative error.
+  
+  if (length(unique(x[, group_var])) < 2L) {
+    stop("`group_var` must contain at least two groups after subsetting.", call. = FALSE)
+  }
+  
+  group_counts <- table(x[, group_var])
+  small_groups <- names(group_counts)[group_counts < 3L]
+  if (length(small_groups) > 0L) {
+    warning(
+      "Some groups have fewer than 3 observations after subsetting: ",
+      paste(small_groups, collapse = ", "),
+      ". FP model fitting may be unreliable.",
+      call. = FALSE
+    )
+  }
+  
   # Winsorise cont_vars to reduce influence of extreme values ------------------
-  # Variables marked as zero / catzero / spike are excluded from Winsorisation
-  # so that the zero spike and the positive distribution are both preserved.
+  # Variables with final zero handling are excluded from Winsorisation so that
+  # structural-zero values and the positive distribution are both preserved.
   winsorize_limits <- NULL
   if (isTRUE(winsorize) && length(cont_vars) > 0L) {
-    exclude_from_win <- unique(c(zero_vars, catzero_vars, spike_vars))
+    exclude_from_win <- names(zero_flag)[zero_flag]
     win <- winsorize_cont_vars(
       x         = x,
       cont_vars = cont_vars,
@@ -1552,7 +1710,7 @@ mfpi.default <- function(
         excluded <- intersect(exclude_from_win, cont_vars)
         if (length(excluded) > 0L) {
           cat(sprintf(
-            "i Excluded from Winsorisation (zero/catzero/spike): %s\n",
+            "i Excluded from Winsorisation (zero-handled): %s\n",
             paste(excluded, collapse = ", ")
           ))
         }
@@ -1575,7 +1733,7 @@ mfpi.default <- function(
     select            = select,
     alpha             = alpha,
     df                = df_list,
-    keep        = keep,
+    keep              = keep,
     force_max_fp      = force_max_fp,
     xorder            = xorder,
     fp_powers         = power_list,
@@ -1602,6 +1760,7 @@ mfpi.default <- function(
     digits            = digits,
     center_type       = center_type,
     scale             = scale,
+    shift             = shift,
     has_offset        = has_offset,
     p_adjust_method   = p_adjust_method
   )
@@ -1615,6 +1774,17 @@ mfpi.default <- function(
   fit$min_improvement   <- min_improvement
   fit$cont_var_forms    <- cont_var_forms
   
+  # Developer note:
+  # Store prediction-time reconstruction metadata on the returned mfpi object.
+  # `predict.mfpi()` needs the preprocessed training matrix and model settings to
+  # rebuild group-specific fitted functions f_j(x) without relying on
+  # precomputed fitted functions from the flex functions.
+  fit$x_train_scaled <- x
+  fit$family_string  <- family_string
+  fit$zero_vars      <- zero_flag
+  fit$center_type    <- center_type
+  fit$cont_vars      <- cont_vars
+  
   class(fit) <- "mfpi"
   fit
 }
@@ -1622,22 +1792,23 @@ mfpi.default <- function(
 #' @describeIn mfpi Formula interface for \code{mfpi()}.
 #'
 #' Constructs a model frame from the supplied formula and data, processes
-#' predictor variables (including any \code{fp()} terms), and fits an MFPI
+#' predictor variables (including any \code{fp()} or \code{fp2()} terms), and fits an MFPI
 #' model by calling \code{mfpi.default()} internally.
 #'
-#' @section Argument precedence (fp() vs global):
-#' Arguments supplied inside \code{fp()} are treated as variable-specific
-#' settings and take precedence over the corresponding global arguments passed
-#' to \code{mfpi.formula()}. Variables not wrapped in \code{fp()} use the global
-#' argument values. For \code{zero_vars}, \code{catzero_vars},
-#' \code{spike_vars}, and \code{force_max_fp_vars}, global settings are combined
-#' with the corresponding \code{fp()} flags and then checked by
+#' @section Argument precedence (fp()/fp2() vs global):
+#' Arguments supplied inside \code{fp()} or \code{fp2()} are treated as
+#' variable-specific settings and take precedence over the corresponding global
+#' arguments passed to \code{mfpi.formula()}. Variables not wrapped in
+#' \code{fp()} or \code{fp2()} use the global argument values. For
+#' \code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, and
+#' \code{force_max_fp_vars}, global settings are combined with the
+#' corresponding \code{fp()} or \code{fp2()} flags and then checked by
 #' \code{mfpi.default()} for unsupported combinations. Cardinality-based
 #' adjustments to \code{df} may still be applied internally.
 #'
 #' @section Parameters not available in the formula interface:
 #' The following \code{mfpi.default()} parameters must be supplied as scalar
-#' arguments only; per-variable specification via \code{fp()} is not
+#' arguments only; per-variable specification via \code{fp()} or \code{fp2()} is not
 #' supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 #' \code{flex}, \code{p_interact}, \code{min_improvement},
 #' \code{include_group_var}, \code{show_models}, \code{cycles},
@@ -1672,7 +1843,7 @@ mfpi.formula <- function(formula,
                          df                = 4,
                          center            = TRUE,
                          subset            = NULL,
-                         family            = c("gaussian", "poisson", "binomial", "cox"),
+                         family            = "gaussian",
                          criterion         = c("pvalue", "aic", "bic"),
                          select            = 0.05,
                          alpha             = 0.05,
@@ -1699,12 +1870,15 @@ mfpi.formula <- function(formula,
                          ...) {
   
   call <- match.call()
-  family    <- match.arg(family)
-  xorder    <- match.arg(xorder)
-  criterion <- match.arg(criterion)
-  flex      <- match.arg(flex)
-  ties      <- match.arg(ties)
+  
+  xorder      <- match.arg(xorder)
+  criterion   <- match.arg(criterion)
+  flex        <- match.arg(flex)
+  ties        <- match.arg(ties)
   center_type <- match.arg(center_type)
+  
+  family_info   <- normalize_family_argument(family)
+  family_string <- family_info$family_string
   # ---------------------------------------------------------------------------
   # Input validation (formula-specific constraints)
   # ---------------------------------------------------------------------------
@@ -1723,33 +1897,108 @@ mfpi.formula <- function(formula,
     stop("! method is only for formula objects.", call. = FALSE)
   
   # The formula interface only supports scalar defaults; per-variable settings
-  # must be supplied via fp() terms in the formula.
+  # must be supplied via fp()/fp2() terms in the formula.
   if (length(df) != 1L)
     stop("! df must be a single numeric.\n",
-         "i Use fp() in the formula to set per-variable df values.", call. = FALSE)
+         "i Use fp() or fp2() in the formula to set per-variable df values.", call. = FALSE)
   
   if (length(alpha) != 1L)
     stop("! alpha must be a single numeric.\n",
-         "i Use fp() in the formula to set per-variable alpha values.", call. = FALSE)
+         "i Use fp() or fp2() in the formula to set per-variable alpha values.", call. = FALSE)
   
   if (length(select) != 1L)
     stop("! select must be a single numeric.\n",
-         "i Use fp() in the formula to set per-variable select values.", call. = FALSE)
+         "i Use fp() or fp2() in the formula to set per-variable select values.", call. = FALSE)
   
   if (!is.null(scale) && length(scale) != 1L)
     stop("! scale must be a single numeric or NULL.\n",
-         "i Use fp() in the formula to set per-variable scale values.", call. = FALSE)
+         "i Use fp() or fp2() in the formula to set per-variable scale values.", call. = FALSE)
   
-  if (length(center) != 1L)
-    stop("! center must be a single logical value.\n",
-         "i Use fp() in the formula to set per-variable center values.", call. = FALSE)
-  
-  if (!is.null(shift) && length(shift) != 1L)
+  if (!is.null(shift) && length(shift) != 1L) {
     stop("! shift must be a single numeric or NULL.\n",
-         "i Use fp() in the formula to set per-variable shift values.", call. = FALSE)
+         "i Use fp() or fp2() in the formula to set per-variable shift values.", call. = FALSE)
+  }
   
-  if (!is.null(powers) && !is.list(powers))
+  if (!is.numeric(df) || anyNA(df) || !is.finite(df) || df <= 0) {
+    stop(
+      "! `df` must be a single positive finite numeric value.\n",
+      "i Use `fp()` or `fp2()` in the formula to set per-variable `df` values.",
+      call. = FALSE
+    )
+  }
+  
+  if (df != 1L && df %% 2L != 0L) {
+    stop(
+      "! `df` must be 1 or an even positive integer.\n",
+      "i Use `fp()` or `fp2()` in the formula to set per-variable `df` values.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.numeric(alpha) || anyNA(alpha) || !is.finite(alpha) ||
+      alpha < 0 || alpha > 1) {
+    stop(
+      "! `alpha` must be a single numeric value in [0, 1].\n",
+      "i Use `fp()` or `fp2()` in the formula to set per-variable `alpha` values.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.numeric(select) || anyNA(select) || !is.finite(select) ||
+      select < 0 || select > 1) {
+    stop(
+      "! `select` must be a single numeric value in [0, 1].\n",
+      "i Use `fp()` or `fp2()` in the formula to set per-variable `select` values.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.logical(center) || length(center) != 1L || anyNA(center)) {
+    stop(
+      "! `center` must be a single logical value.\n",
+      "i Use `fp()` or `fp2()` in the formula to set per-variable `center` values.",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.null(scale)) {
+    if (!is.numeric(scale) || length(scale) != 1L) {
+      stop(
+        "! `scale` must be a single numeric value, `NA`, or `NULL`.\n",
+        "i Use `fp()` or `fp2()` in the formula to set per-variable `scale` values.",
+        call. = FALSE
+      )
+    }
+    if (!is.na(scale) && (!is.finite(scale) || scale <= 0)) {
+      stop(
+        "! `scale` must be positive, `NA`, or `NULL`.\n",
+        "i Use `fp()` or `fp2()` in the formula to set per-variable `scale` values.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  if (!is.null(shift)) {
+    if (!is.numeric(shift) || length(shift) != 1L) {
+      stop(
+        "! `shift` must be a single numeric value, `NA`, or `NULL`.\n",
+        "i Use `fp()` or `fp2()` in the formula to set per-variable `shift` values.",
+        call. = FALSE
+      )
+    }
+    if (!is.na(shift) && !is.finite(shift)) {
+      stop(
+        "! `shift` must be finite, `NA`, or `NULL`.\n",
+        "i Use `fp()` or `fp2()` in the formula to set per-variable `shift` values.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  if (!is.null(powers) && !is.list(powers)) {
     stop("! powers must be a named list or NULL.", call. = FALSE)
+  }
+  
   
   # ---------------------------------------------------------------------------
   # Validate cont_vars against original data types (before model.matrix)
@@ -1795,7 +2044,13 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   # Build model frame and extract y, x
   # ---------------------------------------------------------------------------
-  mf     <- stats::model.frame(formula, data = data, drop.unused.levels = TRUE)
+  mf <- stats::model.frame(
+    formula,
+    data = data,
+    drop.unused.levels = TRUE,
+    na.action = stats::na.fail
+  )
+  
   labels <- attr(terms(mf), "term.labels")
   if (length(labels) == 0L)
     stop("! No predictors found in formula. At least one predictor is required.",
@@ -1809,7 +2064,7 @@ mfpi.formula <- function(formula,
   terms_drop    <- NULL
   
   if (!is.null(attr(terms_formula, "specials")$strata)) {
-    if (family == "cox") {
+    if (family_string == "cox") {
       if (!is.null(call$strata))
         warning("i strata appear in both the formula and as an argument.\n",
                 "i Formula strata are used; the argument is ignored.",
@@ -1849,15 +2104,21 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   y <- stats::model.extract(mf, "response")
   
-  if (family != "cox" && survival::is.Surv(y))
+  if (family_string != "cox" && survival::is.Surv(y))
     stop(sprintf(
       "! Response is a Surv object but family = '%s'. Set family = 'cox'.",
-      family), call. = FALSE)
-  
-  if (family != "cox")
-    y <- as.numeric(y)
+      family_string
+    ), call. = FALSE)
   
   x <- stats::model.matrix(terms_model, mf)
+  
+  # Developer note: save formula reconstruction metadata before modifying the
+  # model matrix. The subsequent intercept removal, factor-group handling, and
+  # fp()/fp2() renaming can otherwise drop or obscure these attributes. These
+  # fields allow a future predict.mfpi() method to rebuild the same design from
+  # ordinary formula-style newdata.
+  x_contrasts <- attr(x, "contrasts")
+  x_xlevels   <- .getXlevels(terms_model, mf)
   
   # Save the assign attribute before subsetting (matrix subsetting drops it)
   x_assign <- attr(x, "assign")
@@ -1909,43 +2170,45 @@ mfpi.formula <- function(formula,
   names_x <- colnames(x)
   
   # ---------------------------------------------------------------------------
-  # Detect fp() terms in the model frame and extract their attributes
+  # Detect fp()/fp2() terms in the model frame and extract their attributes
   # ---------------------------------------------------------------------------
-  fp_pos <- grep("fp(", colnames(mf), fixed = TRUE)
   
+  fp_pos <- which(is_fp_term(colnames(mf)))
   # ---------------------------------------------------------------------------
-  # Resolve final variable names: fp() renames "fp(age)" -> "age" in x.
+  # Resolve final variable names: fp()/fp2() terms rename to raw variable names in x.
   # We do the rename now so all parameter lists use the correct final names.
   # ---------------------------------------------------------------------------
   if (length(fp_pos) > 0L) {
     fp_data_pre <- mf[, fp_pos, drop = FALSE]
     fp_vars_pre <- unname(sapply(fp_data_pre, function(v) attr(v, "name")))
-    names_x     <- replace(names_x, grep("fp(", names_x, fixed = TRUE), fp_vars_pre)
+    
+    fp_x_pos <- which(is_fp_term(names_x))
+    
+    if (length(fp_x_pos) != length(fp_vars_pre)) {
+      stop(
+        "! Internal formula parsing error: the number of fp()/fp2() terms in the model matrix does not match the model frame.",
+        call. = FALSE
+      )
+    }
+    
+    names_x <- replace(names_x, fp_x_pos, fp_vars_pre)
     colnames(x) <- names_x
   }
   
   # Initialise per-variable parameter lists from global defaults.
-  # shift and scale are estimated from x (now with correct names). Crucially,
-  # scale must be computed on the SHIFTED x to match standalone mfp2, so we
-  # compute shift first, form a shifted copy of x, and compute scale on that.
-  # The shifted copy is used only for find_scale_factor(); the actual shift and
-  # scale application happens later in mfpi.default().
-  # df is replicated as-is; mfpi.default() applies assign_df() internally.
-  df_list     <- setNames(rep(list(df), nx), names_x)
-  
-  shift_list  <- if (is.null(shift))
-    setNames(as.list(apply(x, 2L, find_shift_factor)), names_x)
-  else
-    setNames(rep(list(shift), nx), names_x)
-  
-  if (is.null(scale)) {
-    shift_now <- vapply(shift_list, function(v) as.numeric(v[[1L]]), numeric(1L))
-    x_shifted <- sweep(x, 2L, shift_now[names_x], "+")
-    scale_list <- setNames(as.list(apply(x_shifted, 2L, find_scale_factor)),
-                           names_x)
+  df_list <- setNames(rep(list(df), nx), names_x)
+  shift_list <- if (is.null(shift)) {
+    setNames(rep(list(NA_real_), nx), names_x)
   } else {
-    scale_list <- setNames(rep(list(scale), nx), names_x)
+    setNames(rep(list(shift), nx), names_x)
   }
+  
+  scale_list <- if (is.null(scale)) {
+    setNames(rep(list(NA_real_), nx), names_x)
+  } else {
+    setNames(rep(list(scale), nx), names_x)
+  }
+  
   center_list <- setNames(rep(list(center), nx), names_x)
   alpha_list  <- setNames(rep(list(alpha),  nx), names_x)
   select_list <- setNames(rep(list(select), nx), names_x)
@@ -1985,25 +2248,28 @@ mfpi.formula <- function(formula,
     # reuse here under the canonical name fp_vars.
     fp_vars <- fp_vars_pre
     
-    # Guard against duplicated fp() usage
+    # Guard against duplicated fp()/fp2() usage
     dups <- fp_vars[duplicated(fp_vars)]
     if (length(dups) > 0L)
-      stop(paste0("! Variables used more than once in fp(): ",
+      stop(paste0("! Variables used more than once in fp()/fp2(): ",
                   paste(dups, collapse = ", "), "."), call. = FALSE)
     
-    # Guard against variables appearing both inside fp() and as plain terms.
-    # colnames(mf) contains "fp(age)" for fp() terms and the response variable.
-    # Exclude the response (first column when LHS is present) and fp() columns;
+    # Guard against variables appearing both inside fp()/fp2() and as plain terms.
+    # colnames(mf) contains "fp(age)"/"fp2(age)" for FP terms and the response variable.
+    # Exclude the response (first column when LHS is present) and FP columns;
     # check remaining predictor names against fp_vars.
-    response_col <- deparse(formula[[2L]])
-    pred_cols    <- setdiff(colnames(mf), response_col)
-    plain_cols   <- pred_cols[!grepl("fp(", pred_cols, fixed = TRUE)]
+    response_pos <- attr(stats::terms(formula), "response")
+    response_col <- if (response_pos > 0L) names(mf)[response_pos] else character(0L)
+    
+    pred_cols  <- setdiff(colnames(mf), response_col)
+    plain_cols <- pred_cols[!is_fp_term(pred_cols)]
     also_plain   <- intersect(plain_cols, fp_vars)
+    
     if (length(also_plain) > 0L)
-      stop(paste0("! Variables in fp() must not appear elsewhere in the formula: ",
+      stop(paste0("! Variables in fp()/fp2() must not appear elsewhere in the formula: ",
                   paste(also_plain, collapse = ", "), "."), call. = FALSE)
     
-    # Note: fp() column names were already renamed above (before list init)
+    # Note: fp()/fp2() column names were already renamed above (before list init)
     # so names_x and colnames(x) already use the real variable names.
     
     # Helper: apply fp() attribute overrides to a named default list.
@@ -2029,7 +2295,7 @@ mfpi.formula <- function(formula,
     spike_list   <- apply_fp_override(spike_list,   "spike")
     force_max_fp_list <- apply_fp_override(force_max_fp_list, "force_max_fp")
     
-    # fp() powers take precedence over fp_powers argument
+    # fp()/fp2() powers take precedence over the powers argument
     fp_pow_override <- Filter(Negate(is.null),
                               setNames(lapply(fp_data, attr, "powers"), fp_vars))
     conflict <- if (!is.null(powers)) {
@@ -2039,8 +2305,8 @@ mfpi.formula <- function(formula,
     }
     
     if (length(conflict) > 0L)
-      warning(paste0("i Powers specified in both fp() and powers argument; ",
-                     "fp() values take precedence for: ",
+      warning(paste0("i Powers specified in both fp()/fp2() and powers argument; ",
+                     "fp()/fp2() values take precedence for: ",
                      paste(conflict, collapse = ", "), "."), call. = FALSE)
     power_list <- modifyList(power_list, fp_pow_override)
   }
@@ -2097,7 +2363,7 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   # Delegate to mfpi.default
   # ---------------------------------------------------------------------------
-  mfpi.default(
+  fit <-  mfpi.default(
     x                 = x,
     y                 = y,
     group_var         = group_var,
@@ -2143,4 +2409,11 @@ mfpi.formula <- function(formula,
     digits            = digits,
     ...
   )
+  fit$formula_interface <- TRUE
+  fit$formula <- formula
+  fit$formula_terms <- stats::delete.response(terms_model)
+  fit$formula_contrasts <- x_contrasts
+  fit$formula_xlevels <- x_xlevels
+  
+  fit
 }

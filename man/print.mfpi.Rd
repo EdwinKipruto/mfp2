@@ -4,10 +4,14 @@
 \alias{print.mfpi}
 \title{Print an \code{"mfpi"} Object}
 \usage{
-\method{print}{mfpi}(x, ...)
+\method{print}{mfpi}(x, digits = NULL, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
+
+\item{digits}{Optional non-negative integer controlling the number of decimal
+places used when printing numeric output. If \code{NULL}, \code{x$digits}
+is used when available; otherwise 3 is used.}
 
 \item{...}{Currently unused.}
 }
@@ -15,8 +19,17 @@
 \code{x} invisibly.
 }
 \description{
-Displays the adjustment model, interaction model metrics, and the final
-interaction decision summary. For \code{criterion = "pvalue"}, an additional
-p-value adjustment step is printed before the final summary so that raw and
-adjusted p-values can be inspected separately.
+Displays the adjustment model, criterion-specific interaction model metrics,
+and the final interaction decision summary. The printed candidate table shows
+only the metrics relevant to the selected criterion. Full diagnostics remain
+available in the returned object.
+}
+\details{
+For \code{criterion = "pvalue"}, an additional p-value adjustment step is
+printed before the final summary so that raw and adjusted p-values can be
+inspected separately.
+
+Numeric values are rounded for display only. The underlying metrics stored in
+the \code{"mfpi"} object are not modified, and model-selection decisions are
+based on the unrounded values computed during fitting.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/mfpi_plot.R
 \name{plot.mfpi}
 \alias{plot.mfpi}
-\title{Plot Group-Specific Fitted Functions and Fitted-Function Differences from an MFPI Model}
+\title{Plot MFPI Fitted Functions and Fitted-Function Differences}
 \usage{
 \method{plot}{mfpi}(
   x,
@@ -27,245 +27,171 @@
 )
 }
 \arguments{
-\item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
+\item{x}{Object of class \code{"mfpi"}.}
 
-\item{terms}{Character vector of variable names to plot. Default
-\code{NULL} plots all variables whose interaction was selected as
-significant. Pass one or more variable names to plot specific variables
-regardless of selection status.}
+\item{terms}{Optional character vector of continuous variables to plot. If
+\code{NULL}, only selected interaction terms are plotted. If supplied, the
+requested terms are plotted regardless of selection status, provided stored
+term-specific winner models are available.}
 
-\item{plot_type}{Character string specifying the plot to produce. One of
-\code{"fitted"}, \code{"difference"}, or \code{"both"}. Default is
-\code{"fitted"}.}
+\item{plot_type}{Character scalar. One of \code{"fitted"},
+\code{"difference"}, or \code{"both"}.}
 
-\item{auto_print}{Logical. If \code{TRUE}, each plot is printed as it is
-created. Default is \code{TRUE}. With FALSE, plots are returned
-invisibly and can be printed, saved, or assembled manually.}
+\item{auto_print}{Logical scalar. If \code{TRUE}, each plot is printed as it
+is created. If \code{FALSE}, plots are returned invisibly for manual
+printing or saving.}
 
-\item{show_title}{Logical. If \code{TRUE}, titles and subtitles are added.
-Default is \code{TRUE}.}
+\item{show_title}{Logical scalar. If \code{TRUE}, plot titles and subtitles
+are added.}
 
-\item{show_rug}{Logical. If \code{TRUE}, rug marks for the observed values
-of the continuous variable are added at the bottom of each plot. Default is
-\code{FALSE} for faster rendering with large datasets.}
+\item{show_rug}{Logical scalar. If \code{TRUE}, rug marks for the plotted
+\eqn{x} values are added at the bottom of each plot.}
 
-\item{show_ci_fitted}{Logical. If \code{TRUE}, 95\\% confidence bands are
-shown around the group-specific fitted curves. Default is \code{FALSE},
-which gives cleaner and faster fitted-function plots.}
+\item{show_ci_fitted}{Logical scalar. If \code{TRUE}, confidence bands are
+shown around the group-specific fitted functions.}
 
-\item{show_ci_diff}{Logical. If \code{TRUE}, a 95\\% confidence band is shown
-around the fitted-function difference curve. Default is \code{TRUE}.}
+\item{show_ci_diff}{Logical scalar. If \code{TRUE}, a confidence band is
+shown around the fitted-function difference curve.}
 
-\item{legend_position}{Legend position for the fitted-function plot. May be
-one of \code{"inside"}, \code{"right"}, \code{"left"}, \code{"bottom"}, \code{"top"}, or \code{"none"}.
-The default is \code{"inside"}, which places the legend inside the plotting
-panel.}
+\item{legend_position}{Character scalar. Legend position for fitted-function
+plots. One of \code{"inside"}, \code{"right"}, \code{"left"},
+\code{"bottom"}, \code{"top"}, or \code{"none"}.}
 
 \item{legend_inside}{Numeric vector of length 2 giving the legend position
-inside the plotting panel when \code{legend_position = "inside"}. Values are
-given in normalized parent coordinates, with \code{c(0, 0)} at the bottom-left
-and \code{c(1, 1)} at the top-right. The default is \code{c(0.02, 0.98)}.}
+inside the plotting panel when \code{legend_position = "inside"}.}
 
-\item{legend_justification}{Numeric vector of length 2 giving the legend
-justification when \code{legend_position = "inside"}. The default is \code{c(0, 1)},
-which anchors the top-left corner of the legend at \code{legend_inside}.}
+\item{legend_justification}{Numeric vector of length 2 giving legend
+justification when \code{legend_position = "inside"}.}
 
-\item{colour_ref}{Character. Colour for the reference-group curve and
-confidence band. Default is \code{"#2166AC"}.}
+\item{colour_ref}{Character scalar. Colour for the reference-group fitted
+function and confidence band.}
 
-\item{colour_grp}{Character. Colour for the non-reference-group curve and
-confidence band. Default is \code{"#D6604D"}.}
+\item{colour_grp}{Character scalar. Colour for the comparison-group fitted
+function and confidence band.}
 
-\item{line_types}{Optional character vector specifying linetypes for the
-group-specific fitted-function curves. If \code{NULL}, solid lines are
-used for both the reference and comparison groups. The vector may be
-unnamed with length 2, in which case values are matched to the reference
-and comparison groups in order, or named using the original group labels,
-for example \code{c("placebo" = "solid", "standard" = "dashed")}.}
+\item{line_types}{Optional character vector of linetypes for the two fitted
+functions. If unnamed, it must have length 2 and is interpreted as
+reference then comparison. If named, names must match the original group
+labels shown in the legend.}
 
-\item{colour_diff}{Character. Colour for the difference curve and confidence
-band. Default is \code{"#1B7837"}.}
+\item{colour_diff}{Character scalar. Colour for the difference curve and its
+confidence band.}
 
-\item{linewidth}{Positive numeric. Line width for fitted and difference
-curves. Default is \code{1}.}
+\item{linewidth}{Positive numeric scalar. Line width for fitted and
+difference curves.}
 
-\item{ribbon_alpha}{Numeric in \eqn{[0, 1]}. Transparency of confidence
-bands. Default is \code{0.2}.}
+\item{ribbon_alpha}{Numeric scalar in \eqn{[0, 1]}. Transparency of
+confidence bands.}
 
-\item{rug_alpha}{Numeric in \eqn{[0, 1]}. Transparency of rug marks. Ignored
-when \code{show_rug = FALSE}. Default is \code{0.4}.}
+\item{rug_alpha}{Numeric scalar in \eqn{[0, 1]}. Transparency of rug marks.}
 
-\item{...}{Currently unused.}
+\item{...}{Currently unused. Supplied arguments trigger a warning.}
 }
 \value{
-A nested named list of \code{ggplot} or \code{patchwork} objects,
-returned invisibly.
+Invisibly returns a nested named list of \code{ggplot} or
+\code{patchwork} objects.
 }
 \description{
-Produces group-specific fitted-function plots, fitted-function difference
-plots, or both for continuous variables in an \code{"mfpi"} object. By
-default, only variables whose interaction was retained as significant are
-plotted; any variable in \code{cont_vars} can also be plotted by passing
-its name via \code{terms}. Fitted-function plots and difference plots have
-separate confidence-band controls, allowing the user to suppress uncertainty
-bands for group-specific fitted curves while retaining the confidence band
-for the fitted-function difference curve. Plots are returned invisibly as a
-nested named list.
+Produces plots of group-specific MFPI fitted functions, fitted-function
+differences, or both for continuous variables in an object of class
+\code{"mfpi"}.
+}
+\details{
+Plotting data are computed on demand by \code{predict.mfpi()}. The plotting
+method no longer reads precomputed fitted-function matrices from
+\code{object$best_fitted_functions} or \code{object$all_fitted_functions}.
+This means fitted functions are reconstructed only when requested, using the
+same prediction path used by \code{predict(object, type = "both")}.
 }
 \section{Plot types}{
 
-Three plot types are available via the \code{plot_type} argument.
+Three plot types are available through \code{plot_type}.
 
-\code{"fitted"} overlays the fitted linear predictor for the reference
-group and one non-reference group on shared axes. Confidence bands for these
-group-specific curves are controlled by \code{show_ci_fitted}.
+\describe{
+\item{\code{"fitted"}}{
+Plots the group-specific fitted functions \eqn{\hat f_j(x)} for the
+reference group and one comparison group on shared axes. Confidence bands
+for these curves are controlled by \code{show_ci_fitted}.
+}
+\item{\code{"difference"}}{
+Plots the pointwise fitted-function difference
+\eqn{\hat f_j(x) - \hat f_r(x)} with a horizontal reference line at zero.
+Confidence bands for the difference curve are controlled by
+\code{show_ci_diff}.
+}
+\item{\code{"both"}}{
+Places the fitted-function plot and the fitted-function difference plot
+side by side. This option requires the \pkg{patchwork} package.
+}
+}
+}
 
-\code{"difference"} plots the pointwise fitted-function difference
-\eqn{D_j(x) = f_j(x) - f_0(x)} with a horizontal reference line at zero.
-The confidence band for the difference curve is controlled by
-\code{show_ci_diff}. Deviations from zero indicate effect modification.
+\section{Prediction source}{
 
-\code{"both"} shows fitted and difference plots side by side and requires
-the \pkg{patchwork} package.
+The method calls \code{predict.mfpi()} internally with
+\code{type = "both"}, \code{grid = TRUE}, and \code{se.fit = TRUE}. The
+resulting \code{wide} matrix is used for plotting. Therefore this plot method
+depends on \code{predict.mfpi()} and the shared prediction helper
+\code{build_group_fp_basis()}, not on the legacy fitted-function generator.
+}
+
+\section{Term selection}{
+
+If \code{terms = NULL}, only selected interaction terms are plotted. These are
+obtained from \code{object$best_interaction_model}, using
+\code{model = "best"} in \code{predict.mfpi()}.
+
+If \code{terms} is supplied, those variables are plotted from the wider
+stored winner set using \code{model = "all"}. This allows inspection of
+non-selected continuous variables, provided their term-specific winner models
+are stored in the object.
 }
 
 \section{Confidence bands}{
 
-The two confidence-band controls are deliberately separate because the
-inferential roles of the plots differ.
+The confidence-band controls are separate because the fitted-function and
+difference plots have different inferential roles.
 
 \itemize{
 \item \code{show_ci_fitted} controls confidence bands around the
-group-specific fitted curves. The default is \code{FALSE}, which gives
-cleaner and faster fitted-function plots.
+group-specific fitted functions. The default is \code{FALSE} for cleaner
+fitted-function plots.
 \item \code{show_ci_diff} controls the confidence band around the
-fitted-function difference curve. The default is \code{TRUE}, because
-the difference curve is usually the main inferential display for
-interaction.
+fitted-function difference curve. The default is \code{TRUE} because the
+difference curve is usually the primary interaction display.
+}
 }
 
-When a confidence band is suppressed, the corresponding lower and upper
-confidence-limit columns are not required for plotting.
-}
+\section{Return value}{
 
-\section{Performance}{
-
-The function constructs only the plot type requested by \code{plot_type}.
-For example, when \code{plot_type = "difference"}, fitted-function plots are
-not built internally. This avoids unnecessary \pkg{ggplot2} object creation.
-
-Rug marks can be expensive for large datasets because each observation is
-drawn as a graphical object. The default is \code{show_rug = FALSE} for
-faster rendering. Set \code{show_rug = TRUE} to display rug marks.
-
-Plot printing can also be slow, especially when many variables or group
-comparisons are plotted. The default is \code{auto_print = TRUE}, so plots
-are printed as they are created. Set \code{auto_print = FALSE} to return
-them invisibly for manual printing or saving.
-}
-
-\section{Return structure}{
-
-The return value is a nested named list. Outer names are variable names from
-\code{terms}. Inner names are of the form
-\code{"grp<j>_vs_grp<0>"} for each non-reference group level \eqn{j}.
-Each leaf is a \code{ggplot} object when \code{plot_type = "fitted"} or
-\code{"difference"}, or a \code{patchwork} object when
-\code{plot_type = "both"}.
-}
-
-\section{Title and subtitle annotations}{
-
-Each plot is annotated by default with two text lines.
-
-The title describes the structural comparison being plotted without
-hard-coding colour names. Group identity in fitted-function plots is shown
-through the legend and line aesthetics.
-\itemize{
-\item Fitted plots: \code{"Group-specific fitted functions"}.
-\item Difference plots: \code{"Difference in fitted functions"}.
-}
-
-The subtitle summarises the functional form being shown, the displayed
-group contrast, and the selection metric, for example
-\code{"type = Linear; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)"}.
-The continuous variable is not repeated in the subtitle because it is shown
-on the x-axis.
-
-The metric shown depends on the criterion used to fit the model:
-\itemize{
-\item \code{criterion = "pvalue"}: the subtitle shows \code{p_raw} and,
-when \code{p_adjust_method != "none"} and the variable was selected,
-also the stored adjusted p-value \code{p_adj}.
-\item \code{criterion = "aic"}: the subtitle shows \code{dAIC}.
-\item \code{criterion = "bic"}: the subtitle shows \code{dBIC}.
-}
-
-To suppress title and subtitle, set \code{show_title = FALSE}. Axis labels
-are still shown.
-}
-
-\section{Plotting non-selected variables}{
-
-By default (\code{terms = NULL}), only variables whose interaction was
-retained as significant are plotted. If no variables were selected, an
-informative message is printed and the function returns invisibly.
-
-Any variable in \code{cont_vars} can be plotted regardless of whether its
-interaction was selected, by passing its name via \code{terms}:
-\preformatted{plot(fit, terms = "age")}
-This plots the fitted curve using the functional form pre-specified for that
-variable in \code{cont_var_forms}, with the same subtitle showing the
-interaction test metric.
+The return value is a nested named list, returned invisibly. Outer names are
+continuous-variable names. Inner names are contrast labels of the form
+\code{"grp<j>_vs_grp<r>"}, where \code{j} is the comparison group and
+\code{r} is the reference group. Each leaf is a \code{ggplot} object for
+\code{plot_type = "fitted"} or \code{"difference"}, or a \code{patchwork}
+object for \code{plot_type = "both"}.
 }
 
 \examples{
 \dontrun{
 fit <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
 
-# Return selected fitted-function plots without printing
-plots <- plot(fit)
+# Plot selected fitted functions.
+plot(fit)
 
-# Print one plot manually
-plots$age$grp1_vs_grp0
+# Return selected difference plots without printing.
+plots <- plot(fit, plot_type = "difference", auto_print = FALSE)
 
-# Difference plot with confidence band, returned without printing
-plots <- plot(fit, plot_type = "difference")
+# Plot a non-selected variable if its winner model is stored.
+plot(fit, terms = "age", plot_type = "both")
 
-# Print difference plots immediately
-plot(fit, plot_type = "difference", auto_print = TRUE)
+# Add confidence bands to group-specific fitted functions.
+plot(fit, plot_type = "fitted", show_ci_fitted = TRUE)
 
-# Add confidence bands to group-specific fitted curves
-plot(fit, plot_type = "fitted",
-     show_ci_fitted = TRUE,
-     auto_print = TRUE)
-
-# Custom linetypes for the reference and comparison groups
-plot(fit, plot_type = "fitted",
-     line_types = c("solid", "dotdash"))
-
-# Suppress all confidence bands
-plots <- plot(fit, plot_type = "both",
-              show_ci_fitted = FALSE,
-              show_ci_diff = FALSE)
-
-# Show rug marks if desired
-plot(fit, plot_type = "difference",
-     show_rug = TRUE,
-     auto_print = TRUE)
-
-# Plot a non-selected variable by name
-plot(fit, terms = "age", plot_type = "difference", auto_print = TRUE)
-
-# Save a specific plot
-ggplot2::ggsave(
-  "age_difference.pdf",
-  plots$age$grp1_vs_grp0,
-  width = 7,
-  height = 5
-)
+# Save a returned plot.
+ggplot2::ggsave("age_difference.pdf", plots$age$grp1_vs_grp0)
 }
 }
 \seealso{
-\code{mfpi()}, \code{gen_fitted_values_per_group()}
+\code{mfpi()}, \code{predict.mfpi()}
 }

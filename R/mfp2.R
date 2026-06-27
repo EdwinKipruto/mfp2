@@ -2213,8 +2213,6 @@ mfp2.formula <- function(formula,
   
   family_string <- get_family_string_formula(family)
   
-  allowed_families <- c("gaussian", "binomial", "poisson", "cox")
-  
   if (!family_string %in% allowed_families) {
     stop(
       sprintf(
@@ -2758,10 +2756,6 @@ mfp2.formula <- function(formula,
   nx <- ncol(x) 
   names_x <- colnames(x)
   
-  # helper function to identify fp terms when fp() or fp2() is used
-  is_fp_term <- function(z) {
-    grepl("^fp2?\\(.*\\)$", z)
-  }
   
   # Map each original formula term to the model-matrix columns it generated.
   # This is used to expand `keep` safely for factor terms without prefix matching.
@@ -3055,6 +3049,19 @@ mfp2.formula <- function(formula,
   fit$formula_term_to_columns <- term_to_columns
   
   fit
+}
+
+#' Helper function to identify fp terms when fp() or fp2() is used in the formula
+#'
+#' @param z A character vector.
+#'
+#' @return A logical vector indicating whether each element matches 
+#' an `fp()` or `fp2()` term.
+#'
+#' @keywords internal
+#' @noRd
+is_fp_term <- function(z) {
+  grepl("^fp2?\\(.*\\)$", z)
 }
 
 #' Extract coefficients from object of class `mfp2`

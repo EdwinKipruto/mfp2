@@ -116,7 +116,7 @@ head(advanced_prostate_cancer)
 
 The following call tests whether the treatment effect on survival varies across
 values of `age`, while adjusting for the other selected predictors. The
-functional form for `age` is pre-specified as FP1 using `cont_var_forms`.
+functional form for `age` is pre-specified as FP2 using `cont_var_forms`.
 Here, `criterion = "pvalue"` uses p-values to select the adjustment model and
 the functional forms of its continuous predictors, with `select = alpha = 0.05`.
 The p-value threshold for the interaction test is set separately using
@@ -131,7 +131,7 @@ fit_quick <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
-  cont_var_forms    = c(age = "fp1"),
+  cont_var_forms    = c(age = "fp2"),
   flex              = "flex1",
   family            = "cox",
   p_interact        = 0.05,
@@ -218,7 +218,7 @@ For example, to test `age` as FP1 and leave `wt` as linear (the default):
 mfpi(
   ...,
   cont_vars      = c("age", "wt"),
-  cont_var_forms = c(age = "fp1")
+  cont_var_forms = c(age = "fp2")
 )
 ```
 
@@ -228,7 +228,7 @@ evidence, ideally before looking at the data. For guidance on choosing a
 functional form, see the [Flexibility levels](#Flex) section and the
 recommendations of Royston and Sauerbrei (2014).
 
-Unnamed entries and unnamed scalars (e.g. `cont_var_forms = "fp1"`) are not
+Unnamed entries and unnamed scalars (e.g. `cont_var_forms = "fp2"`) are not
 accepted; every entry must carry the name of the target variable to ensure the
 specification is unambiguous.
 
@@ -495,7 +495,7 @@ strong reason to expect a non-monotone treatment-effect function:
 mfpi(
   ...,
   cont_vars      = "age",
-  cont_var_forms = c(age = "fp1"),
+  cont_var_forms = c(age = "fp2"),
   flex           = "flex3"
 )
 ```
@@ -705,7 +705,7 @@ variables can be wrapped in `fp()` to control FP-specific settings, such as the
 degrees of freedom or the candidate power set. For example,
 `fp(age, df = 2, select = 1)` restricts `age` to an FP1 function and forces it
 to remain in the adjustment model. Here we use the defaults for all variables
-and pre-specify `age` as FP1 via `cont_var_forms`:
+and pre-specify `age` as FP2 via `cont_var_forms`:
 
 ```{r prespecified}
 fit_pre <- mfpi(
@@ -714,7 +714,7 @@ fit_pre <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
-  cont_var_forms    = c(age = "fp1"),
+  cont_var_forms    = c(age = "fp2"),
   flex              = "flex1",
   family            = "cox",
   select            = 0.05,
@@ -746,7 +746,7 @@ transformed or untransformed forms, are then used for adjustment in the
 interaction models for `age`.
 
 **Step 2: All interaction models.** For `age`, one interaction model is fitted
-using the pre-specified form from `cont_var_forms` here, FP1. Each row shows the
+using the pre-specified form from `cont_var_forms` here, FP2. Each row shows the
 functional form, the deviance of the main-effects model, the deviance of the
 interaction model, the likelihood-ratio statistic, the raw p-value, and other
 model information.
@@ -887,7 +887,7 @@ fit_flex3 <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var      = "rx",
   cont_vars      = "age",
-  cont_var_forms = c(age = "fp1"),
+  cont_var_forms = c(age = "fp2"),
   flex           = "flex3",
   family         = "cox",
   select         = 0.05,
@@ -938,7 +938,7 @@ fit_exp <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
-  cont_var_forms    = c(age = "fp1"),
+  cont_var_forms    = c(age = "fp2"),
   flex              = "flex1",
   family            = "cox",
   select            = 0.05,
@@ -1071,7 +1071,7 @@ fit_bic <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var       = "rx",
   cont_vars       = c("age", "wt", "sbp", "dbp", "sz", "ap", "hg"),
-  cont_var_forms  = c(age = "fp1"),
+  cont_var_forms  = c(age = "fp2"),
   flex            = "flex1",
   family          = "cox",
   criterion       = "bic",
@@ -1133,7 +1133,7 @@ fit_logistic <- mfpi(
     pf + hx + bm + stage + ekg + rx,
   group_var         = "rx",
   cont_vars         = "age",
-  cont_var_forms    = c(age = "fp1"),
+  cont_var_forms    = c(age = "fp2"),
   data              = prostate,
   flex              = "flex1",
   family            = "binomial",

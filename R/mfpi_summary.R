@@ -43,8 +43,6 @@ summary.mfpi <- function(object, ...) {
       var_winners            = object$var_winners,
       best_interaction_model = object$best_interaction_model,
       all_interaction_models = object$all_interaction_models,
-      best_fitted_functions  = object$best_fitted_functions,
-      all_fitted_functions   = object$all_fitted_functions,
       model_summaries        = model_summaries
     ),
     class = "summary.mfpi"

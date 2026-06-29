@@ -200,6 +200,180 @@ transform_vector_fp <- function(x,
   x_trafo
 }
 
+#' Functions to transform a variable using fractional polynomial powers or acd
+#' 
+#' These functions generate fractional polynomials for a variable similar to
+#' `fracgen` in Stata. `transform_vector_acd` generates the acd transformation
+#' for a variable.
+#' 
+#' @details 
+#' The fp transformation generally transforms `x` as follows. For each pi in
+#' `power` = (p1, p2, ..., pn) it creates a variable x^pi and returns the
+#' collection of variables as a matrix. It may process the data using 
+#' shifting and scaling as desired. Centering has to be done after the 
+#' data is transformed using these functions, if desired. 
+#' 
+#' A special case are repeated powers, i.e. when some pi = pj. In this case, 
+#' the fp transformations are given by x^pi and x^pi * log(x). In case
+#' more than 2 powers are repeated they are repeatedly multiplied with 
+#' log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and 
+#' x^pi * log(x)^2. 
+#' 
+#' Note that the powers pi are assumed to be sorted. That is, this function 
+#' sorts them, then proceeds to compute the transformation. For example, 
+#' the output will be the same for `power = c(1, 1, 2)` and
+#' `power = c(1, 2, 1)`. This is done to make sense of repeated powers and 
+#' to uniquely define FPs. In case an ACD transformation is used, there is a 
+#' specific order in which powers are processed, which is always the same (but 
+#' not necessarily sorted). 
+#' Thus, throughout the whole package powers will always be given and processed
+#' in either sorted, or ACD specific order and the columns of the matrix 
+#' returned by this function will always align with the powers used
+#' throughout this package.
+#' 
+#' Binary variables are not transformed, unless `check_binary` is set to
+#' `FALSE`. This is usually not necessary, the only special case to set it to 
+#' `FALSE` is when a single value is to be transformed during prediction (e.g.
+#' to transform a reference value). When this is done, binary variables are
+#' still returned unchanged, but a single value from a continuous variable will
+#' be transformed as desired by the fitted transformations. For model fit, 
+#' `check_binary` should always be at its default value.
+#' 
+#' @section Data processing: 
+#' An important note on data processing. Variables are shifted and scaled 
+#' before being transformed by any powers. That is to ensure positive values
+#' and reasonable scales. Note that scaling does not change the estimated 
+#' powers, see also \code{find_scale_factor()}.
+#' 
+#' However, they may be centered after transformation. This is not done by
+#' these functions.
+#' That is to ensure that the correlation between variables stay intact, 
+#' as centering before transformation would affect them. This is described
+#' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.
+#' Also, centering is not recommended, and should only be done for the final
+#' model if desired.
+#' 
+#' If a variable is specified in the \code{zero} or \code{catzero} arguments, 
+#' nonpositive values (zero or negative) are not shifted. Instead, they are replaced 
+#' with zero, and transformation is applied only to the positive values. This approach 
+#' is useful in cases where nonpositive values have a qualitatively different interpretation 
+#' (e.g., nonsmokers in smoking data) and should not be transformed in the same way 
+#' as positive values.
+#' 
+#' @param x a vector of a predictor variable.
+#' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
+#' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
+#' an ACD transformation is applied in which case power must be a numeric 
+#' vector of length 2, and `NA` indicated which parts are used for the final 
+#' FP.
+#' @param scale scaling factor for x of interest. Must be a positive integer
+#' or `NULL`. Default is 1, meaning no scaling is applied. 
+#' If `NULL`, then scaling factors are automatically estimated by the
+#' program. 
+#' @param shift shift required for shifting x to positive values. Default is 0, 
+#' meaning no shift is applied. If `NULL` then the shift is estimated 
+#' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
+#' @param powers passed to \code{fit_acd()}.
+#' @param acd_parameter a list usually returned by \code{fit_acd()}. In particular, 
+#' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
+#' `scale` which are to be applied when using the acd transformation in 
+#' new data.
+#' @param name character used to define names for the output matrix. Default
+#' is `NULL`, meaning the output will have unnamed columns.
+#' @param zero Logical indicating whether only positive values of the variable 
+#' should be transformed, with nonpositive values (zero or negative) set to zero. 
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
+#' are replaced with zero before transformation. If \code{FALSE} (default), all values 
+#' are shifted (if needed) to ensure positivity before transformation.
+#' @param check_binary a logical indicating whether or not input `x` is checked
+#' if it is a binary variable (i.e. has only two distinct values). The default
+#' `TRUE` usually only needs to changed when this function is to be used to 
+#' transform data for predictions. See Details.
+#' 
+#' @examples
+#' z = 1:10
+#' transform_vector_fp(z)
+#' transform_vector_acd(z)
+#' @return 
+#' Returns a matrix of transformed variable(s). The number of columns
+#' depends on the number of powers provided, the number of rows is equal to the
+#' length of `x`. The columns are sorted by increased power.
+#' If all powers are `NA`, then this function returns `NULL`.
+#' In case an acd transformation is applied, the output is a list with two 
+#' entries. The first `acd` is the matrix of transformed variables, the acd 
+#' term is returned as the last column of the matrix (i.e. in case that the 
+#' power for the normal data is `NA`, then it is the only column in the matrix).
+#' The second entry `acd_parameter` returns a list of estimated parameters
+#' for the ACD transformation, or simply the input `acd_parameter` if it was
+#' not `NULL`.
+#' 
+#' @references 
+#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
+#' \emph{Multivariable regression model building by using fractional 
+#' polynomials: Description of SAS, STATA and R programs. 
+#' Comput Stat Data Anal, 50(12): 3464-85.}
+#' 
+#' @export
+transform_vector_fp_fast <- function(x,
+                                     power = 1,
+                                     scale = 1,
+                                     shift = 0,
+                                     name = NULL,
+                                     zero = FALSE,
+                                     check_binary = TRUE) {
+  
+  if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
+    stop("`zero` must be a single logical value (TRUE or FALSE).", call. = FALSE)
+  }
+  
+  if (!is.logical(check_binary) ||
+      length(check_binary) != 1L ||
+      is.na(check_binary)) {
+    stop("`check_binary` must be a single logical value (TRUE or FALSE).",
+         call. = FALSE)
+  }
+  
+  if (all(is.na(power))) {
+    return(NULL)
+  }
+  
+  if (is.null(shift)) {
+    shift <- find_shift_factor(x)
+  }
+  
+  if (is.null(scale)) {
+    scale <- find_scale_factor(x)
+  }
+  
+  if (zero) {
+    shift <- 0
+  }
+  
+  power <- sort(power)
+  
+  if (!zero && check_binary && length(unique(x)) <= 2L) {
+    x_out <- matrix(x, ncol = 1L)
+    if (!is.null(name)) {
+      colnames(x_out) <- name_transformed_variables(name, 1L)
+    }
+    return(x_out)
+  }
+  
+  x_trafo <- transform_fp_core(
+    x_raw     = as.numeric(x),
+    power     = as.numeric(power),
+    shift_val = as.numeric(shift),
+    scale_val = as.numeric(scale),
+    zero      = zero
+  )
+  
+  if (!is.null(name)) {
+    colnames(x_trafo) <- name_transformed_variables(name, ncol(x_trafo))
+  }
+  
+  x_trafo
+}
+
 #' @describeIn transform_vector_fp Function to generate acd transformation.
 #' @export
 transform_vector_acd <- function(x, 
@@ -1129,7 +1303,7 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
 #' @noRd
 name_transformed_variables <- function(name, n_powers, acd = FALSE) {
   if (!acd) {
-    paste0(name, ".", 1:n_powers)
+    paste0(name, ".", seq_len(n_powers))
   } else {
     c(paste0(name, ".1"), paste0("A_", name, ".1"))
   }

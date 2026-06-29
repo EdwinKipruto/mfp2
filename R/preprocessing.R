@@ -134,8 +134,13 @@ apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
     x <- x + shift
     # check whether all x are now positive
     if (!all(x > 0))
-      stop("The minimum value of x after shifting x is ", min(x, na.rm = T), " which is not > 0. Check your adjustment factors")
-  }
+      stop(
+        "The minimum value of x after shifting x is ",
+        min(x, na.rm = TRUE),
+        " which is not > 0. Check your adjustment factors",
+        call. = FALSE
+      )
+    }
   
   # if scale is NULL then scale x for computational stability using R&S formula
   if (is.null(scale)) { # No scaling

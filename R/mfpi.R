@@ -84,6 +84,11 @@
 #' example to \code{"holm"}. Exploratory findings should therefore be treated as
 #' candidate interactions requiring further assessment or validation.
 #'
+#' When multiplicity adjustment is requested, adjustment is performed over the
+#' planned family of tests, one for each variable in \code{cont_vars}. Failed or
+#' undefined interaction tests remain \code{NA} and cannot be selected, but they
+#' are still counted in the adjustment family.
+#'
 #' In both settings, the functional form for each variable should be specified
 #' in advance using \code{cont_var_forms}. Each variable may be assigned
 #' \code{"linear"}, \code{"fp1"}, or \code{"fp2"}; variables not named in
@@ -373,9 +378,14 @@
 #'   Binary covariates are centered at the lower of their two values rather than
 #'   the mean. Default is `TRUE`.
 #' @param subset
-#'   An optional integer vector of positive row indices selecting a subset of
-#'   observations. Default is `NULL` (all observations used). see [mfp2::mfp2()]
-#'   for details
+#'   Optional subset of observations used for model selection and fitting.
+#'   May be either a logical vector with one value per observation or a numeric
+#'   vector of positive integer row indices. Missing, non-finite, zero,
+#'   negative, out-of-range, non-integer, and duplicated indices are not allowed.
+#'   Default is `NULL`, meaning that all observations are used. As in
+#'   \code{\link[mfp2]{mfp2}}, subsetting is applied after preprocessing
+#'   parameters such as shift, scale, and centering constants have been computed
+#'   from the full data.
 #' @param family
 #'   Model family specification. May be one of the character strings
 #'   `"gaussian"`, `"binomial"`, `"poisson"`, or `"cox"`; a GLM family function
@@ -521,7 +531,7 @@
 #'   to both the adjustment-variable selection step and the interaction test 
 #'   for each variable in \code{cont_vars}. Recommended when the sample size is
 #'   small. Default \code{FALSE}. Has no effect for non-Gaussian families or 
-#'   when \code{criterion} is not \code{"pvalue"}.
+#'   when \code{criterion} is not \code{"pvalue"}. Inactive
 #' @param control
 #'   A list of control parameters for the underlying fitting routine, as
 #'   returned by [stats::glm.control()] (non-Cox families) or
@@ -559,9 +569,12 @@
 #'   \code{criterion = "pvalue"}. Passed to \code{\link[stats]{p.adjust}}.
 #'   Accepted values include \code{"none"} (default, no adjustment),
 #'   \code{"holm"}, \code{"bonferroni"}, \code{"hochberg"}, \code{"BH"},
-#'   and \code{"BY"}. P-values are adjusted across all variables in
-#'   \code{cont_vars} (one test per variable). The argument has no effect on
-#'   AIC/BIC-based selection decisions.
+#'   and \code{"BY"}. P-values are adjusted over the planned family of
+#'   interaction tests, namely one test for each variable in \code{cont_vars}.
+#'   Variables for which no valid p-value can be computed remain \code{NA}
+#'   and are not selected, but they are still counted in the multiplicity
+#'   adjustment. The argument has no effect on AIC/BIC-based selection
+#'   decisions.
 #' @param verbose
 #'   Logical. Whether to print progress information during model fitting.
 #'   Default is `TRUE`.
@@ -628,8 +641,6 @@
 #'     reference group.}
 #'   \item{\code{flex}}{The flexibility level used (\code{"flex1"} through
 #'     \code{"flex4"}).}
-#'   \item{\code{criterion}}{The selection criterion used
-#'     (\code{"pvalue"}, \code{"aic"}, or \code{"bic"}).}
 #'   \item{\code{family}}{The regression family used for fitting: a GLM
 #'     family object for Gaussian, binomial, and Poisson models, or the
 #'     character string \code{"cox"} for Cox models.}
@@ -1383,11 +1394,15 @@ mfpi.default <- function(
       stop(paste0("! The following names in `powers` do not match any column of `x`: ",
                   paste(unknown_names, collapse = ", "), "."), call. = FALSE)
     }
-    if (!all(sapply(powers, is.numeric))) {
+    
+    if (!all(vapply(powers, is.numeric, logical(1L)))) {
       stop("! All elements of `powers` must be numeric vectors.", call. = FALSE)
     }
-    powers  <- lapply(powers, sort)
-    pw_lengths <- sapply(powers, length)
+    
+    powers <- lapply(powers, sort)
+    
+    pw_lengths <- vapply(powers, length, integer(1L))
+
     too_short  <- names(pw_lengths[pw_lengths < 2L])
     if (length(too_short) > 0L) {
       stop(paste0("! Each element of `powers` must contain at least two values. ",
@@ -1399,24 +1414,100 @@ mfpi.default <- function(
   
   # Validate subset ------------------------------------------------------------
   if (!is.null(subset)) {
-    if (!is.vector(subset)) {
-      stop(paste0("! `subset` must be a vector; got class ",
-                  paste(class(subset), collapse = ", "), "."), call. = FALSE)
+    if (is.logical(subset)) {
+      if (length(subset) != nobs || anyNA(subset)) {
+        stop(
+          "! Logical `subset` must have one TRUE/FALSE value per observation and contain no NA.",
+          call. = FALSE
+        )
+      }
+      
+      subset <- which(subset)
+      
+    } else if (is.numeric(subset)) {
+      if (
+        anyNA(subset) ||
+        any(!is.finite(subset)) ||
+        any(subset != as.integer(subset)) ||
+        any(subset < 1L) ||
+        any(subset > nobs)
+      ) {
+        stop(
+          "! Numeric `subset` must contain valid positive row indices within the range of `x`.",
+          call. = FALSE
+        )
+      }
+      
+      subset <- as.integer(subset)
+      
+    } else {
+      stop(
+        "! `subset` must be either a logical vector or a numeric/integer vector of row indices.",
+        call. = FALSE
+      )
     }
-    if (any(subset < 0L)) {
-      stop("! `subset` must not contain negative indices.", call. = FALSE)
+    
+    if (anyDuplicated(subset)) {
+      stop(
+        "! `subset` must not contain duplicated row indices.",
+        call. = FALSE
+      )
     }
+    
     if (length(subset) < 5L) {
-      stop(paste0("! After subsetting, only ", length(subset),
-                  " observations remain; at least 5 are required."), call. = FALSE)
+      stop(
+        paste0(
+          "! After subsetting, only ", length(subset),
+          " observations remain; at least 5 are required."
+        ),
+        call. = FALSE
+      )
     }
   }
   
-  # Set scalar/vector defaults -------------------------------------------------
+  # Validate p_adjust_method ----------------------------------------------------
+  if (!is.character(p_adjust_method) || length(p_adjust_method) != 1L ||
+      is.na(p_adjust_method)) {
+    stop("! `p_adjust_method` must be a single character string.", call. = FALSE)
+  }
+  
+  p_adjust_method <- match.arg(
+    p_adjust_method,
+    choices = c("none", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
+  )
+  
+  # Validate interaction-selection thresholds -----------------------------------
+  if (!is.numeric(p_interact) ||
+      length(p_interact) != 1L ||
+      anyNA(p_interact) ||
+      !is.finite(p_interact) ||
+      p_interact <= 0 ||
+      p_interact > 1) {
+    stop(
+      "! `p_interact` must be a single finite numeric value in (0, 1].",
+      call. = FALSE
+    )
+  }
+  
+  if (!is.null(min_improvement)) {
+    if (!is.numeric(min_improvement) ||
+        length(min_improvement) != 1L ||
+        anyNA(min_improvement) ||
+        !is.finite(min_improvement) ||
+        min_improvement <= 0) {
+      stop(
+        "! `min_improvement` must be NULL or a single finite positive numeric value.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  # Set default min_improvement -------------------------------------------------
   if (is.null(min_improvement)) {
     min_improvement <- switch(criterion, pvalue = p_interact, aic = 2, bic = 2)
   }
   
+  # 
   if (is.null(weights)) weights <- rep.int(1, nobs)
   has_offset <- !is.null(offset)
   
@@ -1528,22 +1619,32 @@ mfpi.default <- function(
   catzero_flag[spike_flag] <- TRUE
   zero_flag[catzero_flag]  <- TRUE
   
-  # Reset zero/catzero for variables that contain only positive values ---------
-  if (any(zero_flag)) {
-    vars_pos <- names(zero_flag)[zero_flag]
+  # Reset zero/catzero/spike for variables that contain only positive values -----
+  if (any(zero_flag | catzero_flag | spike_flag)) {
+    vars_pos <- names(zero_flag)[zero_flag | catzero_flag | spike_flag]
+    
     all_positive <- vars_pos[
-      apply(x[, vars_pos, drop = FALSE], 2L,
-            function(col) all(col > 0, na.rm = TRUE))
+      apply(
+        x[, vars_pos, drop = FALSE],
+        2L,
+        function(col) all(col > 0, na.rm = TRUE)
+      )
     ]
+    
     if (length(all_positive) > 0L) {
       warning(
-        paste0("i The following variables in `zero_vars` / `catzero_vars` contain ",
-               "only positive values and have been reset to standard processing: ",
-               paste(all_positive, collapse = ", "), "."),
+        paste0(
+          "i The following variables in `zero_vars`, `catzero_vars`, or ",
+          "`spike_vars` contain only positive values and have been reset to ",
+          "standard processing: ",
+          paste(all_positive, collapse = ", "), "."
+        ),
         call. = FALSE
       )
+      
       zero_flag[all_positive]    <- FALSE
       catzero_flag[all_positive] <- FALSE
+      spike_flag[all_positive]   <- FALSE
     }
   }
   
@@ -1554,17 +1655,29 @@ mfpi.default <- function(
   if (length(binary_names) > 0L) {
     reset_vars <- intersect(
       binary_names,
-      union(names(zero_flag)[zero_flag], names(catzero_flag)[catzero_flag])
+      Reduce(
+        union,
+        list(
+          names(zero_flag)[zero_flag],
+          names(catzero_flag)[catzero_flag],
+          names(spike_flag)[spike_flag]
+        )
+      )
     )
     if (length(reset_vars) > 0L) {
       warning(
-        paste0("i The following binary variables were marked in `zero_vars` or ",
-               "`catzero_vars` but are binary; resetting to standard processing: ",
-               paste(reset_vars, collapse = ", "), "."),
+        paste0(
+          "i The following binary variables were marked in `zero_vars`, ",
+          "`catzero_vars`, or `spike_vars` but are binary; resetting to standard ",
+          "processing: ",
+          paste(reset_vars, collapse = ", "), "."
+        ),
         call. = FALSE
       )
+      
       zero_flag[reset_vars]    <- FALSE
       catzero_flag[reset_vars] <- FALSE
+      spike_flag[reset_vars]   <- FALSE
     }
   }
   
@@ -1662,7 +1775,12 @@ mfpi.default <- function(
   # Apply subset ---------------------------------------------------------------
   if (!is.null(subset)) {
     x       <- x[subset, , drop = FALSE]
-    y       <- if (family_string == "cox") y[subset, , drop = FALSE] else y[subset]
+  
+    y <- if (family_string == "cox" || is.matrix(y)) {
+      y[subset, , drop = FALSE]
+    } else {
+      y[subset]
+    }
     weights <- weights[subset]
     offset  <- offset[subset]
     if (!is.null(istrata)) istrata <- istrata[subset]
@@ -2180,8 +2298,7 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   if (length(fp_pos) > 0L) {
     fp_data_pre <- mf[, fp_pos, drop = FALSE]
-    fp_vars_pre <- unname(sapply(fp_data_pre, function(v) attr(v, "name")))
-    
+    fp_vars_pre <- unname(vapply(fp_data_pre, function(v) attr(v, "name"), character(1L)))
     fp_x_pos <- which(is_fp_term(names_x))
     
     if (length(fp_x_pos) != length(fp_vars_pre)) {

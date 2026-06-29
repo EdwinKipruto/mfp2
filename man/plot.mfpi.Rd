@@ -97,11 +97,10 @@ differences, or both for continuous variables in an object of class
 \code{"mfpi"}.
 }
 \details{
-Plotting data are computed on demand by \code{predict.mfpi()}. The plotting
-method no longer reads precomputed fitted-function matrices from
-\code{object$best_fitted_functions} or \code{object$all_fitted_functions}.
-This means fitted functions are reconstructed only when requested, using the
-same prediction path used by \code{predict(object, type = "both")}.
+Plotting data are computed on demand by \code{predict.mfpi()}. Fitted
+functions are reconstructed only when requested, using the same prediction
+path used by \code{predict(object, type = "both")}. The fitted \code{"mfpi"}
+object does not store precomputed fitted-function matrices.
 }
 \section{Plot types}{
 

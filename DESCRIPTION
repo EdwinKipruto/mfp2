@@ -22,6 +22,7 @@ Imports:
     utils,
     dplyr,
     tibble,
+    Rcpp,
     numDeriv
 Suggests:
     knitr,
@@ -58,6 +59,8 @@ Author:
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
+LinkingTo:
+    Rcpp
 Config/testthat/edition: 3
 Language: en-US
 Config/roxygen2/version: 8.0.0

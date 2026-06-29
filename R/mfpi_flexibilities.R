@@ -99,8 +99,6 @@
 #'   groups. See the *Flex levels* section in \code{mfpi()} for details.
 #' @param run_test Logical. Whether to perform the interaction test. Default
 #'   `TRUE`.
-#' @param compute_fitted Logical. Whether to compute group-specific fitted
-#'   functions. Requires `run_test = TRUE`. Default `TRUE`.
 #'
 #' @note \code{force_max_fp} is constructed internally inside \code{flex1()}
 #'   and \code{flex4()} and passed to \code{mfp2:::fit_mfp()}. It is a named
@@ -121,8 +119,6 @@
 #'   \item{`znames`}{Character vector of interaction-term column names.}
 #'   \item{`test_results`}{Interaction test output from `test_interaction()`,
 #'     or `NULL` if `run_test = FALSE`.}
-#'   \item{`fitted_functions`}{Group-specific fitted values from
-#'     `gen_fitted_values_per_group()`, or `NULL` if `compute_fitted = FALSE`.}
 #' }
 #'
 #' @keywords internal

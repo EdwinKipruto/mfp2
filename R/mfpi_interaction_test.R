@@ -246,22 +246,80 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   # P-value: F-test (Gaussian only) or chi-square LRT
   # ---------------------------------------------------------------------------
-  if (use_ftest && family_string == "gaussian") {
-    # Use calculate_f_test with convention 1: pass both residual dfs
-    # as a vector and let the function compute d1 = dfs_resid[1] - dfs_resid[2].
-    # Residual dfs are taken from the fitted objects to correctly account for
-    # all parameters including adjustment variables.
-    df_resid_main <- fit_main$fit$df.residual
-    df_resid_int  <- fit_interaction$fit$df.residual
-    n_obs         <- nrow(xinteraction)
-    ftest_result  <- calculate_f_test(
-      deviances = c(dev_main, dev_interaction),
-      dfs_resid = c(df_resid_main, df_resid_int),
-      n_obs     = n_obs
+  # ---------------------------------------------------------------------------
+  # P-value: F-test (Gaussian only) or chi-square LRT
+  # ---------------------------------------------------------------------------
+  if (deviance_diff < -sqrt(.Machine$double.eps)) {
+    
+    warning(
+      sprintf(
+        paste0(
+          "Interaction test for variable '%s' using %s was not assigned a p-value: ",
+          "the fitted interaction model has a larger deviance than the main-effects model ",
+          "(main deviance = %.6g, interaction deviance = %.6g, difference = %.6g). ",
+          "This can occur with non-nested selected FP transformations, rank deficiency, ",
+          "or numerical convergence issues. For non-nested MFPI comparisons, especially ",
+          "when using flex3 or flex4, AIC or BIC can be more appropriate than a ",
+          "likelihood-ratio or F-test p-value. The interaction p-value is set to NA; ",
+          "AIC/BIC values are still reported."
+        ),
+        cont_var,
+        flex,
+        dev_main,
+        dev_interaction,
+        deviance_diff
+      ),
+      call. = FALSE
     )
-    pvalue <- ftest_result$pvalue
+    
+    pvalue <- NA_real_
+    
   } else {
-    pvalue <- stats::pchisq(deviance_diff, df = df_int, lower.tail = FALSE)
+    
+    deviance_diff <- max(deviance_diff, 0)
+    
+    if (use_ftest && family_string == "gaussian") {
+      
+      # MFP2-style Gaussian deviance, not -2 * logLik
+      dev_main_f <- deviance_gaussian(
+        residuals = fit_main$residuals,
+        weights   = fit_main$weights
+      )
+      
+      dev_int_f <- deviance_gaussian(
+        residuals = fit_interaction$residuals,
+        weights   = fit_interaction$weights
+      )
+      
+      power_df_interaction <- switch(
+        flex,
+        flex0 = 0L,
+        flex1 = degree,
+        flex2 = degree,
+        flex3 = degree,
+        flex4 = n_groups * degree,
+        stop("Internal error: unknown flexibility level.", call. = FALSE)
+      )
+      
+      df_resid_int <- fit_interaction$fit$df.residual - power_df_interaction
+      
+      ftest_result <- calculate_f_test(
+        deviances = c(dev_main_f, dev_int_f),
+        dfs_resid = df_resid_int,
+        n_obs     = nrow(xinteraction),
+        d1        = df_int
+      )
+      
+      pvalue <- ftest_result$pvalue
+      
+    } else {
+      
+      pvalue <- stats::pchisq(
+        deviance_diff,
+        df = df_int,
+        lower.tail = FALSE
+      )
+    }
   }
   
   # ---------------------------------------------------------------------------

@@ -54,7 +54,7 @@
 #'
 #' @section FP transformations:
 #'
-#' FP transformations are delegated to \code{mfp2::transform_vector_fp()}.
+#' FP transformations are delegated to \code{transform_vector_fp()}.
 #' The power convention is:
 #'
 #' \describe{
@@ -172,11 +172,11 @@
 #'   values, and have at least two distinct values.
 #' @param power Numeric vector of FP powers. Length one gives an FP1 basis;
 #'   length two gives an FP2 basis. Repeated powers are handled by
-#'   \code{mfp2::transform_vector_fp()}.
+#'   \code{transform_vector_fp()}.
 #' @param shift Optional numeric shift applied before FP transformation. Passed
-#'   to \code{mfp2::transform_vector_fp()}.
+#'   to \code{transform_vector_fp()}.
 #' @param scale Optional numeric scale applied before FP transformation. Passed
-#'   to \code{mfp2::transform_vector_fp()}.
+#'   to \code{transform_vector_fp()}.
 #' @param center Logical. If \code{TRUE}, center the FP basis columns before
 #'   constructing the group-specific design matrix. Default is \code{FALSE}.
 #' @param zero Logical. If \code{TRUE}, non-positive values of \code{cont_var}
@@ -255,7 +255,7 @@
 #' }
 #'
 #' @seealso \code{\link{transform_z_variables}},
-#'   \code{mfp2::transform_vector_fp}
+#'   \code{transform_vector_fp}
 #'
 #' @examples
 #' cont <- matrix(1:6, ncol = 1)
@@ -378,7 +378,7 @@ create_z_variables <- function(cont_var,
   
   # Transform full continuous variable first ----------------------------------
   # This avoids applying FP transformations to artificial out-of-group zeros.
-  x_fp <- mfp2::transform_vector_fp(
+  x_fp <- transform_vector_fp(
     x            = cont_var,
     power        = power,
     shift        = shift,
@@ -763,7 +763,7 @@ create_z_variables <- function(cont_var,
 #'   must have the same number of rows as \code{cont_var}, contain no missing
 #'   values, and have at least two distinct values.
 #' @param shift Optional numeric shift applied before FP transformation. Passed
-#'   to \code{mfp2::transform_vector_fp()}.
+#'   to \code{transform_vector_fp()}.
 #' @param scale Optional numeric scale applied before FP transformation. Passed
 #'   to \code{mfp2::transform_vector_fp()}.
 #' @param center Logical. If \code{TRUE}, center each candidate FP basis before
@@ -998,7 +998,7 @@ transform_z_variables <- function(cont_var,
   }
   
   # Candidate powers -----------------------------------------------------------
-  powers_matrix <- mfp2::generate_powers_fp(
+  powers_matrix <- generate_powers_fp(
     degree = fp_degree,
     powers = fp_cand
   )
@@ -1041,7 +1041,7 @@ transform_z_variables <- function(cont_var,
     
     # Transform full continuous variable first.
     # Do not transform zero-padded group variables.
-    x_fp <- mfp2::transform_vector_fp(
+    x_fp <- transform_vector_fp(
       x            = cont_var,
       power        = power_i,
       shift        = shift,
@@ -1293,6 +1293,11 @@ transform_z_variables <- function(cont_var,
 #'   dummy columns are still required for model-matrix consistency. When
 #'   supplied, the values in `x` must be a subset of `levels`; any extra values
 #'   in `x` not listed in `levels` raise an error.
+#' @param quiet Logical. If \code{TRUE}, suppress informational messages about
+#'   levels supplied in \code{levels} that are not present in \code{x}. This is
+#'   used during prediction, where new data may validly contain only a subset of
+#'   the fitted group levels. Unseen levels in \code{x} that are not listed in
+#'   \code{levels} still produce an error.
 #'
 #' @return A numeric matrix with `nrow(x)` rows and \eqn{K - 1} columns, where
 #'   \eqn{K} is the number of unique levels (from `x` or from `levels`). Column
@@ -1312,7 +1317,7 @@ transform_z_variables <- function(cont_var,
 #'}
 #' @keywords internal
 #' @noRd
-create_group_dummies <- function(x, levels = NULL) {
+create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
   
   if (!is.matrix(x))         stop("`x` must be a matrix.",                  call. = FALSE)
   if (ncol(x) != 1L)         stop("`x` must have exactly one column.",      call. = FALSE)
@@ -1332,22 +1337,32 @@ create_group_dummies <- function(x, levels = NULL) {
       stop("`levels` must be a finite numeric vector with no missing values.",
            call. = FALSE)
     }
+    
     all_levels <- sort(unique(levels))
     
     extra_in_data   <- setdiff(observed_levels, all_levels)
     missing_in_data <- setdiff(all_levels, observed_levels)
     
-    msgs <- character(0L)
-    if (length(extra_in_data) > 0L)
-      msgs <- c(msgs, paste0("Values in `x` not listed in `levels`: ",
-                             paste(extra_in_data, collapse = ", "), "."))
-    if (length(missing_in_data) > 0L)
-      msgs <- c(msgs, paste0("Levels not present in `x` (will produce all-zero columns): ",
-                             paste(missing_in_data, collapse = ", "), "."))
-    if (length(extra_in_data) > 0L)
-      stop(paste(msgs, collapse = "\n"), call. = FALSE)
-    if (length(missing_in_data) > 0L)
-      message(paste(msgs, collapse = "\n"))
+    if (length(extra_in_data) > 0L) {
+      stop(
+        paste0(
+          "Values in `x` not listed in `levels`: ",
+          paste(extra_in_data, collapse = ", "),
+          "."
+        ),
+        call. = FALSE
+      )
+    }
+    
+    if (length(missing_in_data) > 0L && !isTRUE(quiet)) {
+      message(
+        paste0(
+          "Levels not present in `x` (will produce all-zero columns): ",
+          paste(missing_in_data, collapse = ", "),
+          "."
+        )
+      )
+    }
   }
   
   if (length(all_levels) < 2L) {
@@ -1360,7 +1375,6 @@ create_group_dummies <- function(x, levels = NULL) {
   colnames(mat) <- paste0(xname, all_levels[-1L])
   mat
 }
-
 # -----------------------------------------------------------------------------
 # var_group() -----------------------------------------------------------------
 # -----------------------------------------------------------------------------

@@ -141,7 +141,7 @@
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
 #'   two retained sub-objects. Top-level fields:
 #' \describe{
-#'   \item{\code{best_model_metrics}}{Tibble of metrics for the best
+#'   \item{\code{best_model_metrics}}{Data frame of metrics for the best
 #'     interaction model per significant variable.}
 #'   \item{\code{all_model_metrics}}{Tibble of metrics for the interaction
 #'     model evaluated for each variable in \code{cont_vars}, using the form
@@ -1144,7 +1144,6 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #' multiplicity adjustment does not affect the selection decision.
 #'
 #' @keywords internal
-#' @importFrom dplyr bind_rows
 #' @noRd
 evaluate_interactions <- function(y, processed_data, selected_vars,
                                   adj_fp_powers, 
@@ -1245,15 +1244,10 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     # The form for this variable is pre-specified; exactly one candidate.
     active_type <- cont_var_forms[[var_name]]
     
-    # Collect the single candidate model and fitted functions for this variable
+    # Collect the single candidate model and metrics for this variable
     candidate_models <- vector("list", n_types)
-    candidate_fitted <- vector("list", n_types)
     candidate_metrics <- vector("list", n_types)
     candidate_full_fits <- vector("list", n_types)
-    names(candidate_models) <- active_type
-    names(candidate_fitted) <- active_type
-    names(candidate_metrics) <- active_type
-    names(candidate_full_fits) <- active_type
     
     # Verbose: one row for the single candidate.
     if (verbose) {
@@ -1363,9 +1357,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       all_idx <- all_idx + 1L
       all_metrics_list[[all_idx]] <- metrics
       
-      # Store candidate model and fitted functions regardless of significance
-      candidate_models[[interaction_type]]  <- fit_result$test_results$interaction_model
-      candidate_fitted[[interaction_type]]  <- fit_result$fitted_functions
+      # Store candidate model regardless of significance
+      candidate_models[[interaction_type]] <- fit_result$test_results$interaction_model
       
       # With one pre-specified form per variable, assign directly.
       # For AIC/BIC the winner is resolved in the block below after the
@@ -1544,7 +1537,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }
     
-    # Store the fitted model and functions for this variable regardless of significance
+    # Store the fitted interaction model for this variable regardless of significance
     all_interaction_models[[var_name]] <- candidate_models
 
     # Update all_metrics_list with the selected best_metric. For AIC/BIC,
@@ -1630,11 +1623,17 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       all_candidate_metrics$p_adjusted <- NA_real_
       
       valid_p <- is.finite(all_candidate_metrics$pvalue)
+      n_planned_tests <- length(cont_vars) * n_types
+      
       if (any(valid_p)) {
         all_candidate_metrics$p_adjusted[valid_p] <- if (p_adjust_method == "none") {
           all_candidate_metrics$pvalue[valid_p]
         } else {
-          stats::p.adjust(all_candidate_metrics$pvalue[valid_p], method = p_adjust_method)
+          stats::p.adjust(
+            all_candidate_metrics$pvalue[valid_p],
+            method = p_adjust_method,
+            n      = n_planned_tests
+          )
         }
       }
       

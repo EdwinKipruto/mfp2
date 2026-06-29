@@ -128,142 +128,167 @@
 #' @import stats
 #' @keywords internal
 #' @noRd
-fit_glm <- function(x,
-                    y, 
-                    family, 
-                    weights, 
-                    offset, 
-                    fast = TRUE,
-                    has_offset = FALSE,
-                    x_has_intercept = FALSE) {
-  
-  nobs <- NROW(y)
-  
-  if (!is.null(offset)) {
-    if (!is.numeric(offset)) {
-      stop("! `offset` must be numeric.", call. = FALSE)
-    }
-    
-    if (length(offset) != nobs) {
-      stop("! `offset` must have one value per observation.", call. = FALSE)
-    }
-  }
-  
-  has_predictors <- !is.null(x) && NCOL(x) > 0L
-  
-  if (isTRUE(x_has_intercept)) {
-    if (!has_predictors) {
-      stop(
-        "Internal error: x_has_intercept = TRUE requires a non-empty matrix.",
-        call. = FALSE
-      )
-    }
-    if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
-      stop(
-        "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
-        call. = FALSE
-      )
-    }
-  }
-  
-  if (fast) {
-    
-    if (isTRUE(x_has_intercept)) {
-      xx <- x
-    } else if (has_predictors) {
-      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
-    } else {
-      xx <- matrix(
-        rep.int(1, nobs),
-        ncol = 1L,
-        dimnames = list(NULL, "(Intercept)")
-      )
-    }
-    
-    fit <- stats::glm.fit(
-      x = xx,
-      y = y,
-      family = family,
-      weights = weights,
-      offset = offset
-    )
-  } else {
-    
-    x_formula <- if (isTRUE(x_has_intercept)) {
-      x[, -1L, drop = FALSE]
-    } else {
-      x
-    }
-    has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
-    
-    if (!has_formula_predictors) {
-      data <- data.frame(y = y)
-      
-      if (isTRUE(has_offset)) {
-        data$offset_ <- offset
-        formula <- y ~ offset(offset_)
-      } else {
-        formula <- y ~ 1
-      }
-      
-    } else {
-      if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
-        stop("! Internal error: x must have non-empty column names.", call. = FALSE)
-      }
-      
-      data <- data.frame(x_formula, y = y, check.names = FALSE)
-      
-      rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
-      
-      if (isTRUE(has_offset)) {
-        data$offset_ <- offset
-        rhs <- paste(rhs, "+ offset(offset_)")
-      }
-      
-      formula <- stats::as.formula(paste("y ~", rhs))
-    }
-    
-    
-    fit <- stats::glm(
-      formula = formula,
-      data = data,
-      family = family,
-      weights = weights,
-      x = TRUE,
-      y = TRUE
-    )
-  }
-  
-  # account for estimation of variance parameter in gaussian models
-  # computation as in logLik.glm using rank
-  df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
-  
-  
-  # we need weighted rss for gaussian
-  fit_weights <- fit$prior.weights
-  if (is.null(fit_weights)) {
-    fit_weights <- weights
-  }
-  
-  if (length(fit_weights) != length(fit$residuals)) {
-    stop(
-      "Internal error: fitted residuals and weights have different lengths.",
-      call. = FALSE
-    )
-  }
-  
-  list(
-    fit = fit,
-    # loglikelihood computed as in stats::logLik.glm
-    logl = df - fit$aic / 2,
-    coefficients = fit$coefficients,
-    df = df,
-    sse =  sum(fit_weights * fit$residuals^2, na.rm = TRUE),
-    residuals = fit$residuals,
-    weights = fit_weights,
-    has_scale_parameter = fit$family$family == "gaussian"
-  )
-}
+ fit_glm <- function(x,
+                     y,
+                     family,
+                     weights,
+                     offset,
+                     fast = TRUE,
+                     has_offset = FALSE,
+                     x_has_intercept = FALSE) {
+   
+   nobs <- NROW(y)
+   
+   has_predictors <- !is.null(x) && NCOL(x) > 0L
+   
+   if (isTRUE(x_has_intercept)) {
+     if (!has_predictors) {
+       stop(
+         "Internal error: x_has_intercept = TRUE requires a non-empty matrix.",
+         call. = FALSE
+       )
+     }
+     
+     if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
+       stop(
+         "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
+         call. = FALSE
+       )
+     }
+   }
+   
+   if (fast) {
+     
+     if (isTRUE(x_has_intercept)) {
+       xx <- x
+     } else if (has_predictors) {
+       xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
+     } else {
+       xx <- matrix(
+         rep.int(1, nobs),
+         ncol = 1L,
+         dimnames = list(NULL, "(Intercept)")
+       )
+     }
+     
+     fit <- stats::glm.fit(
+       x = xx,
+       y = y,
+       family = family,
+       weights = weights,
+       offset = offset
+     )
+     
+   } else {
+     
+     x_formula <- if (isTRUE(x_has_intercept)) {
+       x[, -1L, drop = FALSE]
+     } else {
+       x
+     }
+     
+     has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
+     
+     if (has_formula_predictors) {
+       if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
+         stop(
+           "Internal error: x must have non-empty column names.",
+           call. = FALSE
+         )
+       }
+       
+       data <- data.frame(x_formula, check.names = FALSE)
+       rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
+       
+     } else {
+       data <- data.frame(row.names = seq_len(nobs))
+       rhs <- "1"
+     }
+     
+     if (is.matrix(y)) {
+       response_cols <- c("..mfp2_successes", "..mfp2_failures")
+       
+       if (any(response_cols %in% names(data))) {
+         stop(
+           "Internal error: response column names conflict with design matrix names.",
+           call. = FALSE
+         )
+       }
+       
+       data[[response_cols[1L]]] <- y[, 1L]
+       data[[response_cols[2L]]] <- y[, 2L]
+       
+       lhs <- sprintf(
+         "cbind(%s, %s)",
+         response_cols[1L],
+         response_cols[2L]
+       )
+       
+     } else {
+       response_col <- "..mfp2_y"
+       
+       if (response_col %in% names(data)) {
+         stop(
+           "Internal error: response column name conflicts with design matrix names.",
+           call. = FALSE
+         )
+       }
+       
+       data[[response_col]] <- y
+       lhs <- response_col
+     }
+     
+     if (isTRUE(has_offset)) {
+       data$offset_ <- offset
+       
+       rhs <- if (identical(rhs, "1")) {
+         "offset(offset_)"
+       } else {
+         paste(rhs, "+ offset(offset_)")
+       }
+     }
+     
+     formula <- stats::as.formula(paste(lhs, "~", rhs))
+     
+     fit <- stats::glm(
+       formula = formula,
+       data = data,
+       family = family,
+       weights = weights,
+       x = TRUE,
+       y = TRUE
+     )
+   }
+   
+   # account for estimation of variance parameter in gaussian models
+   # computation as in logLik.glm using rank
+   df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
+   
+   # we need weighted rss for gaussian
+   fit_weights <- fit$prior.weights
+   if (is.null(fit_weights)) {
+     fit_weights <- weights
+   }
+   
+   if (length(fit_weights) != length(fit$residuals)) {
+     stop(
+       "Internal error: fitted residuals and weights have different lengths.",
+       call. = FALSE
+     )
+   }
+   
+   list(
+     fit = fit,
+     # loglikelihood computed as in stats::logLik.glm
+     logl = df - fit$aic / 2,
+     coefficients = fit$coefficients,
+     df = df,
+     sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
+     residuals = fit$residuals,
+     weights = fit_weights,
+     has_scale_parameter = fit$family$family == "gaussian"
+   )
+ }
 
 #' Function that fits Cox proportional hazards models
 #'

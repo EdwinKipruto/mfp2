@@ -245,9 +245,14 @@ predictors before fitting the final interaction model and adjustment model.
 Binary covariates are centered at the lower of their two values rather than
 the mean. Default is \code{TRUE}.}
 
-\item{subset}{An optional integer vector of positive row indices selecting a subset of
-observations. Default is \code{NULL} (all observations used). see \code{\link[=mfp2]{mfp2()}}
-for details}
+\item{subset}{Optional subset of observations used for model selection and fitting.
+May be either a logical vector with one value per observation or a numeric
+vector of positive integer row indices. Missing, non-finite, zero,
+negative, out-of-range, non-integer, and duplicated indices are not allowed.
+Default is \code{NULL}, meaning that all observations are used. As in
+\code{\link[mfp2]{mfp2}}, subsetting is applied after preprocessing
+parameters such as shift, scale, and centering constants have been computed
+from the full data.}
 
 \item{family}{Model family specification. May be one of the character strings
 \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or \code{"cox"}; a GLM family function
@@ -393,7 +398,7 @@ When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
 to both the adjustment-variable selection step and the interaction test
 for each variable in \code{cont_vars}. Recommended when the sample size is
 small. Default \code{FALSE}. Has no effect for non-Gaussian families or
-when \code{criterion} is not \code{"pvalue"}.}
+when \code{criterion} is not \code{"pvalue"}. Inactive}
 
 \item{control}{A list of control parameters for the underlying fitting routine, as
 returned by \code{\link[stats:glm.control]{stats::glm.control()}} (non-Cox families) or
@@ -431,9 +436,12 @@ during evaluation of fitted functions.}
 \code{criterion = "pvalue"}. Passed to \code{\link[stats]{p.adjust}}.
 Accepted values include \code{"none"} (default, no adjustment),
 \code{"holm"}, \code{"bonferroni"}, \code{"hochberg"}, \code{"BH"},
-and \code{"BY"}. P-values are adjusted across all variables in
-\code{cont_vars} (one test per variable). The argument has no effect on
-AIC/BIC-based selection decisions.}
+and \code{"BY"}. P-values are adjusted over the planned family of
+interaction tests, namely one test for each variable in \code{cont_vars}.
+Variables for which no valid p-value can be computed remain \code{NA}
+and are not selected, but they are still counted in the multiplicity
+adjustment. The argument has no effect on AIC/BIC-based selection
+decisions.}
 
 \item{verbose}{Logical. Whether to print progress information during model fitting.
 Default is \code{TRUE}.}
@@ -512,8 +520,6 @@ values themselves are not replaced.}
 reference group.}
 \item{\code{flex}}{The flexibility level used (\code{"flex1"} through
 \code{"flex4"}).}
-\item{\code{criterion}}{The selection criterion used
-(\code{"pvalue"}, \code{"aic"}, or \code{"bic"}).}
 \item{\code{family}}{The regression family used for fitting: a GLM
 family object for Gaussian, binomial, and Poisson models, or the
 character string \code{"cox"} for Cox models.}
@@ -644,6 +650,11 @@ for interaction with \code{group_var}. In this setting, the reported p-values
 are not adjusted for multiplicity unless \code{p_adjust_method} is set, for
 example to \code{"holm"}. Exploratory findings should therefore be treated as
 candidate interactions requiring further assessment or validation.
+
+When multiplicity adjustment is requested, adjustment is performed over the
+planned family of tests, one for each variable in \code{cont_vars}. Failed or
+undefined interaction tests remain \code{NA} and cannot be selected, but they
+are still counted in the adjustment family.
 
 In both settings, the functional form for each variable should be specified
 in advance using \code{cont_var_forms}. Each variable may be assigned

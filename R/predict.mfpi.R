@@ -1590,7 +1590,11 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   
   group_mat <- matrix(group_internal, ncol = 1L)
   colnames(group_mat) <- group_var
-  group_dummies <- create_group_dummies(group_mat, levels = group_levels_numeric)
+  group_dummies <- create_group_dummies(
+    group_mat, 
+    levels = group_levels_numeric,
+    quiet  = TRUE
+    )
   
   # Interaction block: first evaluate all group-specific functions at each row's
   # x value, then zero out FP blocks that do not correspond to the row's group.
@@ -1846,8 +1850,30 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
   if (isTRUE(use_model_predict)) {
     if (identical(family_string, "cox")) {
       pred_type <- if (type == "link") "lp" else "risk"
-      fit <- stats::predict(fit_obj, type = pred_type)
-      return(list(fit = as.numeric(fit), se.fit = NULL, link = NULL))
+      
+      pred <- stats::predict(
+        fit_obj,
+        type   = pred_type,
+        se.fit = se.fit
+      )
+      
+      if (is.list(pred)) {
+        fit <- as.numeric(pred$fit)
+        
+        return(list(
+          fit    = fit,
+          se.fit = if (!is.null(pred$se.fit)) as.numeric(pred$se.fit) else NULL,
+          link   = if (type == "link") fit else NULL
+        ))
+      }
+      
+      fit <- as.numeric(pred)
+      
+      return(list(
+        fit    = fit,
+        se.fit = NULL,
+        link   = if (type == "link") fit else NULL
+      ))
     }
     
     pred <- stats::predict(fit_obj, type = type, se.fit = se.fit)

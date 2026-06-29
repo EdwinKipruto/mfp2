@@ -99,7 +99,7 @@ order_variables_by_significance <- function(xorder,
     ns <- length(varnames)
     p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
     names(p.value) <- names(dev) <- names(df.reduced) <- varnames
-    for (i in 1:ns) {
+    for (i in seq_len(ns)) {
       # remove one variable at a time and fit the reduced model. 
       # only works if you have more than one variable due to (-i)
       fit.reduced <- glm.fit(
@@ -155,7 +155,7 @@ order_variables_by_significance <- function(xorder,
     ns <- length(varnames)
     p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
     names(p.value) <- names(dev) <- names(df.reduced) <- varnames
-    for (i in 1:ns) {
+    for (i in seq_len(ns)) {
       # remove one variable at a time and fit the reduced model
       fit.reduced <- fit_cox(
         x = x[, -i, drop = FALSE],

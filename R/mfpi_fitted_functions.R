@@ -424,8 +424,8 @@ build_group_fp_basis2 <- function(cont_mat,
 #' @param zero_var Logical scalar. Whether non-positive values are structural
 #'   zeros for the interaction variable.
 #' @param coefficient_groups Optional list mapping each group to exact fitted
-#'   interaction coefficient columns. Preferred over the legacy
-#'   \code{var_group()} name parser.
+#'   interaction coefficient columns.  \code{var_group()} metadata-based 
+#'   coefficient lookup.
 #'
 #' @return Numeric matrix with columns for raw x, fitted functions, fitted
 #'   standard errors, fitted confidence intervals, differences from the reference
@@ -580,12 +580,26 @@ gen_fitted_values_per_group <- function(cont_var,
     )
   }
   
+  # Identify the internal group codes used in the fitted interaction model.
+  # `group_var` has already been converted to MFPI's internal numeric coding
+  # before fitted-function reconstruction is reached. These codes are therefore
+  # the correct metadata to use when reconstructing generated FP coefficient names.
+  group_vec  <- as.vector(group_var)
+  grp_levels <- sort(unique(group_vec))
+  n_groups   <- length(grp_levels)
+  
   # Identify coefficient blocks by group --------------------------------------
   groups <- if (!is.null(coefficient_groups)) {
     coefficient_groups
   } else {
-    # Legacy fallback. New code should pass `coefficient_groups` explicitly.
-    var_group(cont_name, coef_names)
+    # Legacy fallback. Newer code should pass `coefficient_groups` explicitly.
+    # The fallback now uses known internal group codes instead of guessing groups
+    # from coefficient names with a regular expression.
+    var_group(
+      var_prefix = cont_name,
+      var_names = coef_names,
+      group_codes = grp_levels
+    )
   }
   
   if (!is.list(groups) || length(groups) == 0L) {
@@ -594,10 +608,6 @@ gen_fitted_values_per_group <- function(cont_var,
       call. = FALSE
     )
   }
-  
-  group_vec  <- as.vector(group_var)
-  grp_levels <- sort(unique(group_vec))
-  n_groups   <- length(grp_levels)
   
   if (length(groups) != n_groups) {
     stop(

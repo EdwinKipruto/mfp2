@@ -1,3 +1,249 @@
+#' Prepare predictor input for \code{mfpi.default()}
+#'
+#' Converts predictor input supplied to \code{mfpi.default()} into the numeric
+#' matrix representation required by the MFPI fitting internals, while
+#' preserving user-facing labels for the grouping variable.
+#'
+#' The default method supports two input forms:
+#'
+#' \describe{
+#'   \item{Numeric matrix input}{
+#'     \code{x} is used directly after validation. The grouping variable must be
+#'     present as a named numeric column. Its observed numeric values are treated
+#'     as the user-facing group labels unless an internal formula-method
+#'     attribute, \code{"mfpi_group_levels_original"}, is present.
+#'   }
+#'   \item{Data-frame input}{
+#'     \code{x} may contain a categorical \code{group_var}. The grouping
+#'     variable may be factor, character, logical, integer, or numeric. It is
+#'     converted to numeric input codes before fitting. Its original labels are
+#'     retained in \code{group_levels_original} so that print, summary, plot, and
+#'     prediction methods can display meaningful group names such as
+#'     \code{"Placebo"} and \code{"Treatment"} rather than internal codes.
+#'   }
+#' }
+#'
+#' Only \code{group_var} may be categorical in the default method. All other
+#' variables must be numeric, integer, or logical. Logical non-group variables
+#' are converted to numeric values before the returned matrix is created.
+#' Character and factor variables other than \code{group_var} are rejected
+#' because \code{mfpi.default()} does not silently create dummy variables for
+#' adjustment covariates or continuous candidate variables.
+#'
+#' The returned matrix is intended for internal modelling only. Downstream
+#' functions such as \code{fit_mfpi()}, \code{preprocess_data()}, and
+#' \code{fit_mfp()} should therefore continue to receive a numeric matrix even
+#' when the user supplied a data frame to \code{mfpi.default()}.
+#'
+#' The returned group-level metadata separates two concepts:
+#'
+#' \describe{
+#'   \item{\code{group_input_levels}}{
+#'     Numeric values present in the returned matrix column for \code{group_var}.
+#'     These values are used by \code{preprocess_data()} to map the grouping
+#'     variable to consecutive internal levels \code{0, 1, ..., K - 1}.
+#'   }
+#'   \item{\code{group_levels_original}}{
+#'     User-facing labels corresponding to \code{group_input_levels}. These
+#'     labels are used for reporting and display.
+#'   }
+#' }
+#'
+#' Reference-level behaviour follows the construction of
+#' \code{group_input_levels}. For factor input, the reference label is the first
+#' element of \code{levels(droplevels(group_var))}. For character input, the
+#' reference label is the first distinct value encountered in the data. For
+#' logical, integer, numeric, and matrix input, the reference level is the
+#' smallest observed value.
+#'
+#' @param x Predictor input supplied to \code{mfpi.default()}. Must be either a
+#'   numeric matrix or a data frame. If \code{x} is a data frame, only
+#'   \code{group_var} may be categorical.
+#' @param group_var Character scalar naming the grouping variable. Numeric
+#'   column indices are not supported.
+#'
+#' @return A list with the following components:
+#' \describe{
+#'   \item{\code{x}}{A numeric matrix suitable for internal MFPI fitting.}
+#'   \item{\code{group_var}}{The validated grouping-variable name.}
+#'   \item{\code{group_input_levels}}{Numeric input levels of the grouping
+#'     variable in the returned matrix.}
+#'   \item{\code{group_levels_original}}{Character labels corresponding to
+#'     \code{group_input_levels}.}
+#' }
+#'
+#' @keywords internal
+#' @noRd
+prepare_mfpi_default_x <- function(x, group_var) {
+  # The public API requires group_var to be a column name. Do not support
+  # numeric column indices here, because allowing both names and positions makes
+  # data-frame input ambiguous and harder to document.
+  if (!is.character(group_var) ||
+      length(group_var) != 1L ||
+      is.na(group_var) ||
+      !nzchar(group_var)) {
+    stop("`group_var` must be a single character variable name.", call. = FALSE)
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Data-frame input
+  # ---------------------------------------------------------------------------
+  # Data frames can preserve factor and character labels. We allow categorical
+  # input only for group_var, convert it to numeric codes for fitting, and keep
+  # the original labels separately for display.
+  if (is.data.frame(x)) {
+    # Require complete, non-empty column names so group_var and downstream
+    # variable selections can be resolved unambiguously.
+    if (is.null(names(x)) || any(!nzchar(names(x)))) {
+      stop("`x` must have valid column names.", call. = FALSE)
+    }
+    
+    # group_var must be present as a named column.
+    if (!group_var %in% names(x)) {
+      stop("`group_var` was not found in `x`.", call. = FALSE)
+    }
+    
+    # Extract the user-supplied grouping variable before any conversion.
+    group_raw <- x[[group_var]]
+    
+    # Missing group labels cannot be mapped reliably to internal group levels.
+    if (anyNA(group_raw)) {
+      stop("`group_var` must not contain missing values.", call. = FALSE)
+    }
+    
+    # Convert the grouping variable to numeric input codes and preserve
+    # user-facing labels. The numeric input codes are not the final internal
+    # levels; preprocess_data() later remaps them to 0, 1, ..., K - 1.
+    if (is.factor(group_raw)) {
+      # Factor input respects the user's factor-level order. The first retained
+      # factor level is the reference label.
+      group_factor <- droplevels(group_raw)
+      group_levels_original <- levels(group_factor)
+      group_numeric <- as.integer(group_factor)
+      group_input_levels <- seq_along(group_levels_original)
+    } else if (is.character(group_raw)) {
+      # Character input has no explicit level order, so preserve first-seen
+      # order. The first distinct value encountered is the reference label.
+      group_levels_original <- unique(group_raw)
+      group_factor <- factor(group_raw, levels = group_levels_original)
+      group_numeric <- as.integer(group_factor)
+      group_input_levels <- seq_along(group_levels_original)
+    } else if (is.logical(group_raw)) {
+      # Logical input is treated as a two-level categorical variable when both
+      # values are observed. Sorting puts FALSE before TRUE.
+      group_input_levels <- sort(unique(as.numeric(group_raw)))
+      group_levels_original <- as.character(as.logical(group_input_levels))
+      group_numeric <- as.numeric(group_raw)
+    } else if (is.numeric(group_raw) || is.integer(group_raw)) {
+      # Numeric/integer input is already usable for modelling. Sorting makes the
+      # smallest observed value the reference level.
+      group_input_levels <- sort(unique(as.numeric(group_raw)))
+      group_levels_original <- as.character(group_input_levels)
+      group_numeric <- as.numeric(group_raw)
+    } else {
+      stop(
+        "`group_var` must be factor, character, logical, integer, or numeric.",
+        call. = FALSE
+      )
+    }
+    
+    # Only group_var may be categorical. Other columns are not dummy-coded by
+    # mfpi.default(); users should either supply numeric encodings explicitly or
+    # use the formula method where appropriate.
+    non_group <- setdiff(names(x), group_var)
+    
+    bad <- non_group[!vapply(x[non_group], function(z) {
+      is.numeric(z) || is.integer(z) || is.logical(z)
+    }, logical(1L))]
+    
+    if (length(bad) > 0L) {
+      stop(
+        "Only `group_var` may be categorical in `mfpi.default()`. ",
+        "Non-group variables must be numeric, integer, or logical. ",
+        "Problem variable(s): ",
+        paste(bad, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    
+    # Work on a copy so the caller's data frame is not modified.
+    x_work <- x
+    
+    # Replace the original grouping variable with numeric input codes.
+    x_work[[group_var]] <- group_numeric
+    
+    # Convert logical non-group variables to numeric values so as.matrix()
+    # produces a numeric matrix rather than a mixed-type matrix.
+    for (nm in non_group) {
+      if (is.logical(x_work[[nm]])) {
+        x_work[[nm]] <- as.numeric(x_work[[nm]])
+      }
+    }
+    
+    # Convert the validated data frame to the numeric matrix expected by the
+    # fitting internals.
+    x_mat <- as.matrix(x_work)
+    storage.mode(x_mat) <- "double"
+    
+    return(list(
+      x = x_mat,
+      group_var = group_var,
+      group_input_levels = group_input_levels,
+      group_levels_original = group_levels_original
+    ))
+  }
+  
+  # ---------------------------------------------------------------------------
+  # Matrix input
+  # ---------------------------------------------------------------------------
+  # Matrix input preserves the historical default-method contract: the predictor
+  # matrix must already be numeric, and group_var must name one of its columns.
+  if (!is.matrix(x)) {
+    stop("`x` must be a matrix or data frame.", call. = FALSE)
+  }
+  
+  if (is.null(colnames(x))) {
+    stop("`x` must have column names.", call. = FALSE)
+  }
+  
+  if (!is.numeric(x)) {
+    stop(
+      "`x` must be a numeric matrix, or a data frame with only `group_var` categorical.",
+      call. = FALSE
+    )
+  }
+  
+  if (!group_var %in% colnames(x)) {
+    stop("`group_var` was not found in `x`.", call. = FALSE)
+  }
+  
+  # For numeric matrix input, the observed group values are both the input
+  # levels and, unless overridden by an internal formula-method attribute, the
+  # user-facing labels.
+  group_input_levels <- sort(unique(as.numeric(x[, group_var])))
+  
+  # Formula input may arrive here as a numeric matrix with this attribute set.
+  # When present, it carries the original factor/character labels from the model
+  # frame. Ordinary matrix input will not have this attribute.
+  group_levels_original <- attr(
+    x,
+    "mfpi_group_levels_original",
+    exact = TRUE
+  )
+  
+  if (is.null(group_levels_original)) {
+    group_levels_original <- as.character(group_input_levels)
+  }
+  
+  list(
+    x = x,
+    group_var = group_var,
+    group_input_levels = group_input_levels,
+    group_levels_original = as.character(group_levels_original)
+  )
+}
+
+
 #' Model Interactions Between a Categorical and Continuous Covariates
 #'
 #' `mfpi()` investigates interactions between a categorical variable
@@ -223,9 +469,12 @@
 #' interaction candidates because the shared model terms cancel.
 #'
 #' @param x
-#'   For \code{mfpi.default()} only. A numeric matrix of dimension
-#'   \eqn{n \times p}, where rows are observations and columns are variables.
-#'   Column names are required. The matrix must not contain an intercept
+#'   For \code{mfpi.default()} only. A numeric matrix or data frame of predictor
+#'   variables. If \code{x} is a data frame, \code{group_var} may be factor,
+#'   character, logical, integer, or numeric. All non-group variables must be
+#'   numeric, integer, or logical. Internally, \code{group_var} is remapped to
+#'   consecutive integer levels, while its original labels are preserved for
+#'   printing, summaries, plotting, and prediction metadata. The matrix must not contain an intercept
 #'   column; binary variables should be coded as 0/1; multi-level categorical
 #'   variables (other than \code{group_var}) should be expanded into dummy
 #'   variables beforehand. Must be free of missing values.
@@ -252,14 +501,16 @@
 #'   \code{group_var} must already be expanded to dummy columns, or encoded
 #'   as factors which \code{model.matrix()} will expand automatically.
 #' @param group_var
-#'   A single character string naming the categorical (grouping) variable in
-#'   \code{x} (e.g. a treatment or exposure indicator). The analysis tests
-#'   whether the relationship between each variable in \code{cont_vars} and
-#'   the outcome differs across levels of \code{group_var}. The group variable
-#'   may use arbitrary numeric levels. Internally, levels are sorted, the lowest
-#'   level is treated as the reference group, and dummy variables are created
-#'   for all non-reference levels. Must have at least two distinct non-missing
-#'   values.
+#' Character scalar identifying the categorical grouping
+#'   variable. In \code{mfpi.default()}, this variable may be factor,
+#'   character, logical, integer, or numeric when \code{x} is a data frame. It
+#'   is converted to internal consecutive integer levels for fitting. For a
+#'   factor \code{group_var}, the first element of \code{levels(group_var)} is
+#'   used as the reference level. For a character \code{group_var}, the first
+#'   distinct value encountered in the data is used as the reference level. For
+#'   logical, integer, or numeric \code{group_var}, the smallest observed value
+#'   is used as the reference level. The original labels are preserved for
+#'    printing, summaries, plotting, and prediction metadata.
 #' @param cont_vars
 #'   A non-empty character vector naming the continuous variables in \code{x}
 #'   for which interactions with \code{group_var} are to be investigated. All
@@ -531,7 +782,7 @@
 #'   to both the adjustment-variable selection step and the interaction test 
 #'   for each variable in \code{cont_vars}. Recommended when the sample size is
 #'   small. Default \code{FALSE}. Has no effect for non-Gaussian families or 
-#'   when \code{criterion} is not \code{"pvalue"}. Inactive
+#'   when \code{criterion} is not \code{"pvalue"}. 
 #' @param control
 #'   A list of control parameters for the underlying fitting routine, as
 #'   returned by [stats::glm.control()] (non-Cox families) or
@@ -636,22 +887,53 @@
 #'     (0, 1, 2, \ldots) corresponding to the sorted levels of
 #'     \code{group_var}. This records the level ordering; the observed group
 #'     values themselves are not replaced.}
-#'   \item{\code{group_levels_original}}{The sorted original levels of
-#'     \code{group_var} as they appear in the data. The lowest level is the
-#'     reference group.}
+#'   \item{\code{group_levels_original}}{User-facing labels of
+#'     \code{group_var}, used for printing, summaries, plotting, and prediction
+#'     metadata.}
+#'   \item{\code{group_level_map}}{A data frame mapping user-facing
+#'     \code{group_var} labels to input values and internal integer levels.}
 #'   \item{\code{flex}}{The flexibility level used (\code{"flex1"} through
 #'     \code{"flex4"}).}
 #'   \item{\code{family}}{The regression family used for fitting: a GLM
 #'     family object for Gaussian, binomial, and Poisson models, or the
 #'     character string \code{"cox"} for Cox models.}
+#'   \item{\code{family_string}}{Character scalar giving the normalized family
+#'     name used internally for family-specific branching. One of
+#'     \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
+#'     \code{"cox"}.}
+#'   \item{\code{scale}}{Named numeric vector of scale factors used to transform
+#'     continuous predictors onto the shifted/scaled FP fitting scale. These
+#'     values are reused by \code{predict.mfpi()} and \code{plot.mfpi()} and
+#'     should not be recomputed from new data.}
+#'   \item{\code{shift}}{Named numeric vector of shifts added to continuous
+#'     predictors before scaling. These values define the FP transformation
+#'     scale used during fitting and are reused during prediction.}
+#'   \item{\code{center_type}}{Character scalar describing the centering
+#'     convention used for FP-transformed terms.}
+#'   \item{\code{zero_vars}}{Named logical vector indicating which variables
+#'     used structural-zero handling during FP transformation.}
+#'   \item{\code{cont_vars}}{Character vector of continuous variables tested for
+#'     interaction with \code{group_var}.}
+#'   \item{\code{cont_var_forms}}{Named character vector giving the requested
+#'     interaction functional form for each variable in \code{cont_vars}, for
+#'     example \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.}
+#'   \item{\code{x_train_scaled}}{Numeric matrix containing the final
+#'     shifted/scaled training predictor matrix used by MFPI after preprocessing
+#'     and optional Winsorisation. This component is stored so that
+#'     \code{predict.mfpi()} and \code{plot.mfpi()} can reconstruct
+#'     fitted-function and ordinary prediction design matrices.}
+#'   \item{\code{digits}}{Integer giving the number of significant digits used
+#'     when printing interaction-test results.}   
 #'   \item{\code{nobs}}{Number of observations used in model fitting.}
 #'   \item{\code{show_models}}{Value of the \code{show_models} argument.}
 #'   \item{\code{winsorize}}{Logical; whether Winsorisation was applied.}
 #'   \item{\code{winsorize_probs}}{The probability cutoffs used for
 #'     Winsorisation, or \code{NULL} when \code{winsorize = FALSE}.}
-#'   \item{\code{winsorize_limits}}{A named list of the actual lower and
-#'     upper limits applied to each \code{cont_var} during Winsorisation,
-#'     or \code{NULL} when \code{winsorize = FALSE}.}
+#'   \item{\code{winsorize_limits}}{A numeric matrix of Winsorisation limits,
+#'     with rows \code{"lower"} and \code{"upper"} and columns named by
+#'     \code{cont_vars}. Entries are \code{NA} for variables excluded from
+#'     Winsorisation, for example zero-handled variables. \code{NULL} when
+#'     \code{winsorize = FALSE}.}
 #'   \item{\code{p_adjust_method}}{Character string: the multiplicity
 #'     adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
 #'   \item{\code{p_interact}}{Numeric: the significance threshold for
@@ -705,9 +987,11 @@
 #' [mfp2::plot.mfpi()]
 #' 
 #' @examples
+#' \dontrun{
 #' data("prostate")
-#' # Flexibility level 1: simplest interaction structure
-#' flex_1 <- mfpi(
+#'
+#' # Basic MFPI fit using the simplest interaction structure.
+#' fit <- mfpi(
 #'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
 #'     fp(bph) + fp(cp),
 #'   data = prostate,
@@ -716,74 +1000,31 @@
 #'   center = FALSE,
 #'   flex = "flex1",
 #'   include_group_var = TRUE,
-#'   show_models = TRUE,
-#'   verbose = TRUE
+#'   show_models = FALSE,
+#'   verbose = FALSE
 #' )
 #'
-#' # Plot both treatment-specific curves and treatment effects
-#' plot(flex_1, terms = "cavol", plot_type = "both")
+#' # Plot group-specific fitted functions and fitted-function differences.
+#' # The difference plot is on the model scale, not a probability, odds ratio,
+#' # rate ratio, hazard ratio, or full predicted response.
+#' if (requireNamespace("patchwork", quietly = TRUE)) {
+#'   plot(fit, terms = "cavol", plot_type = "both")
+#' }
 #'
-#' # Pre-specify functional forms: cavol as FP2, age as linear (default)
-#' flex_1_prespec <- mfpi(
+#' # Pre-specify functional forms: cavol as FP2, age uses the default search.
+#' fit_prespecified <- mfpi(
 #'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
 #'     fp(bph) + fp(cp),
 #'   data = prostate,
-#'   cont_vars      = c("cavol", "age"),
+#'   cont_vars = c("cavol", "age"),
 #'   cont_var_forms = c(cavol = "fp2"),
-#'   group_var      = "svi",
-#'   center         = FALSE,
-#'   flex           = "flex1",
-#'   include_group_var = TRUE,
-#'   verbose        = TRUE
-#' )
-#'
-#' # Flexibility level 2:
-#' flex_2 <- mfpi(
-#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-#'     fp(bph) + fp(cp),
-#'   data = prostate,
-#'   cont_vars = c("cavol", "age"),
 #'   group_var = "svi",
 #'   center = FALSE,
-#'   flex = "flex2",
+#'   flex = "flex1",
 #'   include_group_var = TRUE,
-#'   show_models = TRUE,
-#'   verbose = TRUE
+#'   verbose = FALSE
 #' )
-#'
-#' plot(flex_2, terms = "cavol", plot_type = "both")
-#'
-#' # Flexibility level 3: 
-#' flex_3 <- mfpi(
-#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-#'     fp(bph) + fp(cp),
-#'   data = prostate,
-#'   cont_vars = c("cavol", "age"),
-#'   group_var = "svi",
-#'   center = FALSE,
-#'   flex = "flex3",
-#'   include_group_var = TRUE,
-#'   show_models = TRUE,
-#'   verbose = TRUE
-#' )
-#'
-#' plot(flex_3, terms = "cavol", plot_type = "both")
-#'
-#' # Flexibility level 4: most flexible specification 
-#' flex_4 <- mfpi(
-#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-#'     fp(bph) + fp(cp),
-#'   data = prostate,
-#'   cont_vars = c("cavol", "age"),
-#'   group_var = "svi",
-#'   center = FALSE,
-#'   flex = "flex4",
-#'   include_group_var = TRUE,
-#'   show_models = TRUE,
-#'   verbose = TRUE
-#' )
-#'
-#' plot(flex_4, terms = "cavol", plot_type = "both")
+#' }
 #' @export
 mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
@@ -795,6 +1036,7 @@ mfpi <- function(x, ...) {
 #' The default method accepts a numeric matrix \code{x} and response vector
 #' \code{y}.
 #'
+#' @method mfpi default
 #' @export
 
 mfpi.default <- function(
@@ -858,26 +1100,18 @@ mfpi.default <- function(
   family        <- family_info$family
   family_string <- family_info$family_string
   
-  if (!is.matrix(x)) {
-    stop("! `x` must be a matrix.", call. = FALSE)
-  }
+  # Prepare x 
+  prepared_x <- prepare_mfpi_default_x(
+    x = x,
+    group_var = group_var
+  )
+  
+  x <- prepared_x$x
+  group_var <- prepared_x$group_var
+  group_input_levels <- prepared_x$group_input_levels
+  group_levels_original <- prepared_x$group_levels_original
   
   vnames <- colnames(x)
-  if (is.null(vnames)) {
-    stop(
-      "! `x` must have column names.\n",
-      "i Use `colnames(x) <- ...` to assign them.",
-      call. = FALSE
-    )
-  }
-  
-  if (any(is.character(x))) {
-    stop(
-      "! `x` contains character values.\n",
-      "i Convert all categorical variables to numeric dummy columns before calling `mfpi()`.",
-      call. = FALSE
-    )
-  }
   
   if (anyNA(x)) {
     stop(
@@ -889,16 +1123,13 @@ mfpi.default <- function(
   
   if (!is.numeric(x) || any(!is.finite(x))) {
     stop(
-      "! `x` must be a numeric matrix with finite values.",
+      "! `x` must be numeric after preprocessing and contain finite values.",
       call. = FALSE
     )
   }
   
   # Basic dimension checks on x ------------------------------------------------
   np    <- dim(x)
-  nobs  <- as.integer(np[1L])
-  nvars <- as.integer(np[2L])
-  
   if (is.null(np)) {
     stop(
       "! `x` must be a matrix with at least one row and one column.\n",
@@ -907,6 +1138,8 @@ mfpi.default <- function(
     )
   }
   
+  nobs  <- as.integer(np[1L])
+  nvars <- as.integer(np[2L])
   # Validate group_var ---------------------------------------------------------
   if (is.null(group_var)) {
     stop(
@@ -1471,11 +1704,6 @@ mfpi.default <- function(
     stop("! `p_adjust_method` must be a single character string.", call. = FALSE)
   }
   
-  p_adjust_method <- match.arg(
-    p_adjust_method,
-    choices = c("none", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-  )
-  
   # Validate interaction-selection thresholds -----------------------------------
   if (!is.numeric(p_interact) ||
       length(p_interact) != 1L ||
@@ -1786,6 +2014,16 @@ mfpi.default <- function(
     if (!is.null(istrata)) istrata <- istrata[subset]
   }
   
+  # Refresh group-level metadata after subsetting. The metadata are created
+  # before subset is applied, so a subset can remove one or more group levels.
+  # Passing stale levels into preprocess_data() can create all-zero group dummies.
+  observed_group_levels <- sort(unique(as.numeric(x[, group_var])))
+  
+  keep_group_levels <- group_input_levels %in% observed_group_levels
+  
+  group_input_levels <- group_input_levels[keep_group_levels]
+  group_levels_original <- group_levels_original[keep_group_levels]
+  
   # A dataset with two groups can pass initial validation, then subset can 
   # remove all observations from one group. Later internals may fail inside 
   # dummy creation or interaction fitting with a less informative error.
@@ -1820,20 +2058,26 @@ mfpi.default <- function(
     x                <- win$x
     winsorize_limits <- win$limits
     if (verbose) {
-      cat(sprintf(
-        "\ni Winsorising %d cont_var(s) at percentiles (%g, %g):\n",
+      message(sprintf(
+        "Winsorising %d cont_var(s) at percentiles (%g, %g).",
         length(cont_vars), winsorize_probs[1L], winsorize_probs[2L]
       ))
-      if (length(exclude_from_win) > 0L) {
-        excluded <- intersect(exclude_from_win, cont_vars)
-        if (length(excluded) > 0L) {
-          cat(sprintf(
-            "i Excluded from Winsorisation (zero-handled): %s\n",
-            paste(excluded, collapse = ", ")
-          ))
-        }
+      
+      excluded <- intersect(exclude_from_win, cont_vars)
+      if (length(excluded) > 0L) {
+        message(sprintf(
+          "Excluded from Winsorisation because of zero handling: %s.",
+          paste(excluded, collapse = ", ")
+        ))
       }
-      print(winsorize_limits)
+      
+      if (!is.null(winsorize_limits)) {
+        limits_text <- utils::capture.output(print(winsorize_limits))
+        message(
+          "Winsorisation limits:\n",
+          paste(limits_text, collapse = "\n")
+        )
+      }
     }
   }
   
@@ -1880,7 +2124,9 @@ mfpi.default <- function(
     scale             = scale,
     shift             = shift,
     has_offset        = has_offset,
-    p_adjust_method   = p_adjust_method
+    p_adjust_method   = p_adjust_method,
+    group_input_levels     = group_input_levels,
+    group_levels_original  = group_levels_original
   )
   
   # Attach Winsorisation metadata for transparency in the returned object
@@ -1902,6 +2148,7 @@ mfpi.default <- function(
   fit$zero_vars      <- zero_flag
   fit$center_type    <- center_type
   fit$cont_vars      <- cont_vars
+  fit$call <- cl
   
   class(fit) <- "mfpi"
   fit
@@ -1942,6 +2189,7 @@ mfpi.default <- function(
 #'
 #' @seealso [mfp2::print.mfpi()], [mfp2::summary.mfpi()], [mfp2::plot.mfpi()], 
 #' [mfp2::mfp2()]
+#' @method mfpi formula
 #' @export
 mfpi.formula <- function(formula,
                          data,
@@ -1997,6 +2245,17 @@ mfpi.formula <- function(formula,
   
   family_info   <- normalize_family_argument(family)
   family_string <- family_info$family_string
+  
+  # acd_vars is not allowed as argument
+  dots <- list(...)
+  
+  if ("acd_vars" %in% names(dots)) {
+    stop(
+      "! `acd_vars` cannot be passed to the formula interface directly.\n",
+      "i Use `fp(variable, acd = TRUE)` or `fp2(variable, acd = TRUE)` in the formula instead.",
+      call. = FALSE
+    )
+  }
   # ---------------------------------------------------------------------------
   # Input validation (formula-specific constraints)
   # ---------------------------------------------------------------------------
@@ -2249,39 +2508,54 @@ mfpi.formula <- function(formula,
   }
   
   # ---------------------------------------------------------------------------
-  # Handle group_var that was a factor in the original data.
-  # model.matrix() expands factors into dummy columns, so the original column
-  # name disappears. mfpi.default() expects group_var as a single numeric
-  # column. Fix: remove the dummy columns and add back the raw integer codes.
+  # Handle categorical group_var from the original data.
+  # model.matrix() expands factor/character predictors into dummy columns, so
+  # the original column name may disappear. mfpi.default() expects group_var as
+  # a single numeric column. We therefore remove any dummy columns for group_var
+  # and add back numeric codes, while preserving the original labels as a matrix
+  # attribute for downstream reporting.
   # ---------------------------------------------------------------------------
-  if (!is.null(group_var) && !group_var %in% colnames(x)) {
-    # group_var was expanded by model.matrix. Identify and remove its dummies
-    # using the saved assign attribute.
-    term_labels <- attr(terms_model, "term.labels")
-    gv_term_idx <- which(term_labels == group_var)
-    if (length(gv_term_idx) == 1L) {
-      gv_cols <- which(x_assign == gv_term_idx)
-      if (length(gv_cols) > 0L) {
-        x        <- x[, -gv_cols, drop = FALSE]
-        x_assign <- x_assign[-gv_cols]
-      }
-    }
-    # Add back the raw group_var values as a single numeric column.
-    # For factors, use integer codes (preprocess_data remaps to 0-based).
+  group_levels_original <- NULL
+  
+  if (!is.null(group_var)) {
     gv_raw <- mf[[group_var]]
+    
     if (is.factor(gv_raw)) {
-      # Try to recover original numeric levels; fall back to integer codes
-      num_levels <- suppressWarnings(as.numeric(levels(gv_raw)))
-      if (anyNA(num_levels)) {
-        gv_numeric <- as.integer(gv_raw)
-      } else {
-        gv_numeric <- num_levels[as.integer(gv_raw)]
-      }
+      gv_factor <- droplevels(gv_raw)
+      group_levels_original <- levels(gv_factor)
+      gv_numeric <- as.integer(gv_factor)
+    } else if (is.character(gv_raw)) {
+      group_levels_original <- unique(gv_raw)
+      gv_factor <- factor(gv_raw, levels = group_levels_original)
+      gv_numeric <- as.integer(gv_factor)
+    } else if (is.logical(gv_raw)) {
+      group_levels_original <- as.character(sort(unique(gv_raw)))
+      gv_numeric <- as.numeric(gv_raw)
     } else {
       gv_numeric <- as.numeric(gv_raw)
+      group_levels_original <- as.character(sort(unique(gv_numeric)))
     }
-    x <- cbind(x, gv_numeric)
-    colnames(x)[ncol(x)] <- group_var
+    
+    if (!group_var %in% colnames(x)) {
+      # group_var was expanded by model.matrix. Identify and remove its dummies
+      # using the saved assign attribute.
+      term_labels <- attr(terms_model, "term.labels")
+      gv_term_idx <- which(term_labels == group_var)
+      
+      if (length(gv_term_idx) == 1L) {
+        gv_cols <- which(x_assign == gv_term_idx)
+        
+        if (length(gv_cols) > 0L) {
+          x        <- x[, -gv_cols, drop = FALSE]
+          x_assign <- x_assign[-gv_cols]
+        }
+      }
+      
+      x <- cbind(x, gv_numeric)
+      colnames(x)[ncol(x)] <- group_var
+    }
+    
+    attr(x, "mfpi_group_levels_original") <- group_levels_original
   }
   
   nx      <- ncol(x)
@@ -2531,6 +2805,7 @@ mfpi.formula <- function(formula,
   fit$formula_terms <- stats::delete.response(terms_model)
   fit$formula_contrasts <- x_contrasts
   fit$formula_xlevels <- x_xlevels
+  fit$call <- call
   
   fit
 }

@@ -12,10 +12,29 @@
 \item{...}{Currently unused.}
 }
 \value{
-An object of class \code{"summary.mfpi"}.
+An object of class \code{"summary.mfpi"}. The object is a list
+containing the main printed MFPI components, group-level metadata, retained
+model objects, and ordinary regression summaries for retained interaction
+models.
 }
 \description{
-Produces a structured summary of an \code{"mfpi"} fit. The printed summary
-contains the same model-building output as \code{print.mfpi()} and adds
-regression output for retained interaction models.
+Produces a structured summary of an \code{"mfpi"} fit.
+}
+\details{
+The summary object contains the model-building information printed by
+\code{print.mfpi()}, together with ordinary regression summaries for the
+retained interaction models. It is designed to support a two-layer display:
+
+\enumerate{
+\item the MFPI model-building output, including the adjustment model,
+candidate interaction models, optional p-value adjustment, and final
+interaction-selection summary;
+\item regression summaries for the retained interaction models.
+}
+
+The regression summaries are useful for inspecting the final fitted models,
+but their coefficient-level Wald p-values do not account for fractional
+polynomial power selection. The MFPI interaction decision should be based on
+the interaction summary table and the relevant model-selection metric rather
+than on the regression table alone.
 }

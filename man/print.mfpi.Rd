@@ -9,9 +9,9 @@
 \arguments{
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
-\item{digits}{Optional non-negative integer controlling the number of decimal
-places used when printing numeric output. If \code{NULL}, \code{x$digits}
-is used when available; otherwise 3 is used.}
+\item{digits}{Optional non-negative integer controlling the number of digits
+used when printing numeric output. If \code{NULL}, \code{x$digits} is used
+when available; otherwise 3 is used.}
 
 \item{...}{Currently unused.}
 }
@@ -20,14 +20,15 @@ is used when available; otherwise 3 is used.}
 }
 \description{
 Displays the adjustment model, criterion-specific interaction model metrics,
-and the final interaction decision summary. The printed candidate table shows
-only the metrics relevant to the selected criterion. Full diagnostics remain
-available in the returned object.
+detailed group-level interaction FP powers, and the final interaction
+decision summary. The printed candidate table shows only the metrics relevant
+to the selected criterion. Full diagnostics remain available in the returned
+object.
 }
 \details{
-For \code{criterion = "pvalue"}, an additional p-value adjustment step is
-printed before the final summary so that raw and adjusted p-values can be
-inspected separately.
+For \code{criterion = "pvalue"}, the final interaction summary includes
+both raw and adjusted p-values together with the selection marker and
+adjustment method.
 
 Numeric values are rounded for display only. The underlying metrics stored in
 the \code{"mfpi"} object are not modified, and model-selection decisions are

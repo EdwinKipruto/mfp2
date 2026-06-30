@@ -44,9 +44,12 @@ term-specific interaction model.}
 
 \item{se.fit}{Logical scalar. Whether to compute pointwise standard errors.
 For fitted-function targets, these are standard errors of fitted functions
-or function differences. For ordinary prediction, these are standard errors
-of the linear predictor, transformed by the delta method when
-\code{type = "response"}.}
+or function differences on the model scale. For ordinary GLM prediction,
+response-scale standard errors use the same inverse-link derivative
+convention as \code{predict.glm()}. For Cox response prediction,
+\code{fit} is the relative risk score \eqn{\exp(\eta)} and
+\code{se.fit} follows \code{predict.coxph(type = "risk",
+reference = "zero")}.}
 
 \item{level}{Numeric scalar in \code{(0, 1)}. Confidence level for
 pointwise fitted-function and fitted-difference intervals.}
@@ -65,9 +68,12 @@ metadata are stored in \code{object}. If \code{NULL}, the first internal
 group level is used.}
 
 \item{offset}{Optional numeric vector for ordinary \code{"link"} or
-\code{"response"} prediction with \code{newdata}. Supply one value per
-\code{newdata} row when the fitted interaction model used an offset.
-Ignored for fitted-function prediction.}
+\code{"response"} prediction. If \code{newdata} is supplied,
+\code{offset} must contain one value per row of \code{newdata}. If
+\code{newdata = NULL}, a supplied \code{offset} must contain one value
+per training row; the stored training design is reconstructed and the
+supplied offset is used instead of delegating to the fitted model's own
+\code{predict()} method. Ignored for fitted-function prediction.}
 
 \item{strata}{Reserved for future Cox baseline-survival prediction. It is
 ignored for the current Cox prediction targets, which are the linear
@@ -102,12 +108,6 @@ present for \code{type = "difference"} and \code{type = "both"}. Columns
 are \code{term}, \code{x}, \code{contrast}, \code{group},
 \code{reference}, \code{fit}, and, when \code{se.fit = TRUE},
 \code{se.fit}, \code{lower}, and \code{upper}.}
-\item{\code{wide}}{Numeric matrix compatible with the historical fitted
-function output. Columns include the raw-scale \eqn{x} column, fitted
-functions such as \code{f0} and \code{f1}, standard-error columns such as
-\code{se(f0)}, confidence limits such as \code{f0_lower}, difference
-columns such as \code{f1-f0}, and difference confidence limits such as
-\code{(f1-f0)_lower}.}
 \item{\code{metadata}}{List containing group-specific FP powers,
 centering constants, coefficient groups, reference group, scale and shift
 values, zero-handling flag, confidence level, and \code{se.fit}.}
@@ -123,8 +123,11 @@ model was used.}
 contains \code{term}, \code{fit}, and, when requested and available,
 \code{se.fit}.}
 \item{\code{design}}{Reconstructed numeric interaction-model matrix.
-Present for ordinary prediction with supplied \code{newdata}; \code{NULL}
-for ordinary prediction on the original fitting data.}
+Present when ordinary prediction uses the manual reconstructed-design path,
+either because \code{newdata} was supplied or because a replacement
+\code{offset} was supplied for training-data prediction. \code{NULL}
+when prediction delegates to the stored fitted model's own \code{predict()}
+method.}
 \item{\code{metadata}}{List describing whether ordinary prediction was
 used, whether \code{newdata} was supplied, whether the design matrix was
 reconstructed, group metadata, offset usage, and response-scale status.}
@@ -162,8 +165,8 @@ are included.}
 \code{differences} component contains one row for every evaluation
 \eqn{x} value and every non-reference contrast.}
 \item{\code{type = "both"}}{Returns both group-specific fitted functions
-and fitted-function differences. This is the default and is the intended
-replacement for the old precomputed fitted-function matrices.}
+and fitted-function differences. This is the default fitted-function
+prediction target.}
 \item{\code{type = "link"}}{Returns ordinary subject-level linear
 predictor values from the term-specific interaction model. This target
 returns one prediction per row of the fitting data or \code{newdata}.}
@@ -209,12 +212,15 @@ a structural zero point if structural zeros are present.
 \section{Ordinary link and response prediction}{
 
 Ordinary \code{type = "link"} and \code{type = "response"} prediction are
-subject-level targets. For \code{newdata = NULL}, the stored fitted model's
-own prediction method is used. For supplied \code{newdata}, the method
-reconstructs the full term-specific interaction-model matrix, including
-group dummies, the row-specific group interaction block, selected adjustment
-covariates, and offsets when applicable. The reconstructed matrix is then
-multiplied by the fitted coefficient vector.
+subject-level targets. For \code{newdata = NULL} and \code{offset = NULL},
+the stored fitted model's own prediction method is used. If
+\code{newdata = NULL} but a replacement \code{offset} is supplied, the
+stored training design is reconstructed so that the supplied offset is used
+explicitly. For supplied \code{newdata}, the method reconstructs the full
+term-specific interaction-model matrix, including group dummies, the
+row-specific group interaction block, selected adjustment covariates, and
+offsets when applicable. The reconstructed matrix is then multiplied by the
+fitted coefficient vector.
 }
 
 \section{Required object metadata}{
@@ -241,7 +247,8 @@ head(p1$differences)
 
 # Smooth fitted-function curves for plotting.
 p2 <- predict(fit, terms = "age", type = "both", grid = TRUE)
-plot(p2$wide[, "age"], p2$wide[, "f0"], type = "l")
+age_fun <- subset(p2$functions, group == unique(p2$functions$group)[1L])
+plot(age_fun$x, age_fun$fit, type = "l")
 
 # Fitted functions only.
 p3 <- predict(fit, terms = "age", type = "function")

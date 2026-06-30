@@ -99,18 +99,28 @@ Investigating whether the effect of a treatment or other grouping variable chang
 
 The Multivariable Fractional Polynomial Interaction (MFPI) procedure (Royston and Sauerbrei, 2004) addresses these issues by modelling covariate effects using fractional polynomial (FP) functions within levels of a grouping variable. It is a parametric approach based on fractional polynomials and includes the linear interaction model as its simplest special case. Four flexibility variants (flex1 to flex4) control how FP powers are selected and constrained across groups (Royston and Sauerbrei, 2013, 2014). The procedure first constructs an adjustment model using the MFP algorithm, then tests whether group-specific functions are parallel on the scale of the linear predictor.
 
-This vignette describes `mfpi()` in the `mfp2` package. The function supports Gaussian, binomial, Poisson, and Cox regression models, and provides both formula and matrix interfaces (see `?mfpi` for the matrix interface). It investigates interactions between a categorical grouping variable (`group_var`) and one or more continuous covariates (`cont_vars`). The grouping variable is treated as a factor internally, with the lowest value used as the reference group.
+This vignette describes `mfpi()` in the `mfp2` package. The function supports Gaussian, binomial, Poisson, and Cox regression models, and provides formula, matrix, and data-frame interfaces. It investigates interactions between a categorical grouping variable (`group_var`) and one or more continuous covariates (`cont_vars`). The grouping variable is remapped internally to consecutive integer levels for fitting, but its original labels are preserved for printing, summaries, plotting, prediction metadata, and the group-level FP power tables.
 
 # Quick start
 
 We begin with a worked example before describing the methodology in detail. The
 `advanced_prostate_cancer` dataset in `mfp2` contains 475 observations, of
 which 338 are observed deaths. It includes survival time (`survtime`),
-event/censoring status (`cens`), a binary treatment variable (`rx`), eight
-continuous covariates (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,  `hg`, `sg`), and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`) as shown below.
+event/censoring status (`cens`), a treatment variable (`rx`), eight
+continuous covariates (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,  `hg`, `sg`), and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`). In this vignette, the original 0/1 treatment codes are recoded as the factor levels `Placebo` and `Treatment` before model fitting.
 
 ```{r data}
 data("advanced_prostate_cancer", package = "mfp2")
+
+# Use descriptive treatment labels. The original
+# dataset stores rx as 0/1. Converting it to a factor makes printed tables,
+# summaries, and plots easier to read.
+advanced_prostate_cancer$rx <- factor(
+  advanced_prostate_cancer$rx,
+  levels = c(0, 1),
+  labels = c("Placebo", "Treatment")
+)
+
 head(advanced_prostate_cancer)
 ```
 
@@ -122,7 +132,7 @@ the functional forms of its continuous predictors, with `select = alpha = 0.05`.
 The p-value threshold for the interaction test is set separately using
 `p_interact = 0.05`. The arguments `select` and `alpha` apply only to the
 adjustment-model selection step and are described in detail in the documentation
-for `mfp2()`; see `?mfp2`.
+for `mfp2()`.
 
 ```{r quickstart}
 fit_quick <- mfpi(
@@ -147,20 +157,55 @@ print(fit_quick)
 The output is organised into sequential steps. Step 1 presents the adjustment
 model selected by MFP; in this example, six variables are retained as linear
 adjustment terms for the interaction analysis involving age. Step 2 presents the
-interaction model metrics, Step 3 reports the p-value adjustment table, and Step
-4 provides the final interaction summary. When `criterion = "aic"` or
-`criterion = "bic"`, the output includes only the adjustment model, the
-interaction model metrics, and the interaction summary, because p-value
-adjustment is not required.
+interaction model metrics. Directly below Step 2, an unnumbered detail table
+shows the interaction-side FP powers by group level when such powers are
+available. Step 3 provides the final interaction summary. For
+`criterion = "pvalue"`, this summary includes both raw and adjusted p-values and
+reports the p-value adjustment method.
 
-The `summary()` method additionally prints the regression coefficients for
-retained interactions. The `plot()` method displays the group-specific fitted
-functions and the fitted-function difference. The remainder of this vignette
-explains each component in detail.
+The `summary()` method additionally prints a retained-only interaction-power
+detail table, followed by the regression coefficients for retained interaction
+models. The `plot()` method computes plotting data on demand through
+`predict.mfpi()` and displays the group-specific fitted functions and the
+fitted-function difference. The remainder of this vignette explains each
+component in detail.
 
-```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age x rx interaction."}
+```{r quickstart-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age-by-treatment interaction."}
 plot(fit_quick, plot_type = "both")
 ```
+
+## Grouping variables, labels, and reference levels
+
+The grouping variable is specified by `group_var`, which must be a character
+scalar naming a column. In the formula interface, the grouping variable may be a
+factor, character, logical, integer, or numeric variable in the supplied data. In
+the default interface, `x` may be a numeric matrix or a data frame. If `x` is a
+data frame, only `group_var` may be categorical; all other variables must be
+numeric, integer, or logical. This keeps the default interface explicit and
+avoids silently dummy-coding adjustment variables.
+
+Internally, `mfpi()` remaps the grouping variable to consecutive integer levels
+`0, 1, ..., K - 1`. These internal levels are used in model matrices, coefficient
+names, prediction-column names, and group-specific FP basis construction. The
+original labels are stored separately and are used for printed output, summaries,
+plots, and prediction metadata. For example, in this vignette `rx` is recoded as a factor with levels
+`c("Placebo", "Treatment")`. The internal levels are `0` and `1`, but the
+printed group-level tables and plot legends use `Placebo` and `Treatment`.
+
+The reference level is determined as follows. For a factor `group_var`, the
+reference level is the first element of `levels(droplevels(group_var))`, so users
+can control the reference by setting factor levels before fitting. For a
+character `group_var`, the reference is the first distinct value encountered in
+the data. For logical, integer, numeric, and numeric-matrix input, the reference
+is the smallest observed value. The mapping is stored in the fitted object as
+`group_level_map` when available.
+
+If `include_group_var = TRUE`, the grouping variable is also included in the
+adjustment model. In that case, `mfpi()` creates `K - 1` group dummy variables
+and forces them into the adjustment model. This can be useful when the group
+main effect must be adjusted for in Step 1, but it increases the number of
+forced adjustment parameters when `group_var` has many levels. Sparse group
+levels can therefore make the adjustment model less stable.
 
 # Prespecified and exploratory interaction analyses
 
@@ -194,7 +239,7 @@ When `criterion = "pvalue"`, multiplicity adjustment is controlled by the
 `p_adjust_method = "none"`, meaning that no multiplicity correction is applied.
 When multiple variables are screened, adjustment is applied across all tested
 variables, with one interaction test per variable. The adjusted p-values are
-shown in Step 3 and used for the final selection decision in Step 4.
+shown in Step 3 and used for the final selection decision.
 
 ## Pre-specifying the functional form: `cont_var_forms`
 
@@ -212,7 +257,7 @@ variable names from `cont_vars` and whose values are one of `"linear"`,
 `"linear"` by default. The argument is `NULL` by default, which assigns
 `"linear"` to all variables.
 
-For example, to test `age` as FP1 and leave `wt` as linear (the default):
+For example, to test `age` as FP2 and leave `wt` as linear (the default):
 
 ```{r cont-var-forms-example, eval=FALSE}
 mfpi(
@@ -270,7 +315,7 @@ are collected after the per-variable loop and adjusted together before the
 final selection decisions are made. During verbose model fitting, the p-value
 reported within each variable is therefore provisional when adjustment is
 requested. After all variables have been evaluated and p-values adjusted, the
-final interaction decisions are determined and printed as Step 3 and Step 4.
+final interaction decisions are determined and printed in Step 3.
 When `p_adjust_method = "none"`, the p-value printed during fitting is the
 final result and is shown immediately as `>> p_raw = ... -> Selected/Not selected`.
 
@@ -394,15 +439,13 @@ Thus, `flex2` may select powers different from those selected by `flex1`,
 because power selection is informed by group-specific effects. However, once the
 powers have been selected, the same FP powers are used in both the
 main-effects and interaction models. The main-effects model is therefore nested
-within the interaction model.
+within the interaction model. The interaction test uses the same nominal degrees
+of freedom as `flex1`, namely $(K - 1) \times m$.
 
-The interaction test uses the same nominal degrees of freedom as `flex1`,
-namely $(K - 1) \times m$, where $K$ is the number of groups and $m$ is the
-number of FP terms.
-
-In the simulations, FP1 with `flex2` had high power but slightly inflated
-significance levels. FP2 with `flex2` showed clearly inflated type I error and
-was therefore not recommended as a routine choice.
+In the simulation study by Royston and Sauerbrei (2013, 2014), FP1 with `flex2`
+had high power but slightly inflated significance levels. FP2 with `flex2` 
+showed clearly inflated type I error and was therefore not recommended as a 
+routine choice.
 
 ## `flex3`
 
@@ -444,19 +487,20 @@ Because `flex4` allows separate power selection for the main-effects and
 interaction models, and may also allow group-specific powers in the interaction
 model, the comparison may be non-nested. When the FP basis functions used in the
 main-effects and interaction models differ, the main-effects model is not a
-simple restriction of the interaction model. If the same basis functions are used
-in the fitted main-effects and interaction models, the comparison is the usual nested-model setting. The interaction test uses
-$2(K - 1) \times m$ degrees of freedom, which is twice as many as
-`flex1`--`flex3` to account for the additional flexibility from allowing
-group-specific powers.
+simple restriction of the interaction model. If the same basis functions are estimated
+in the fitted main-effects and interaction models, the comparison is the usual 
+nested-model setting. The interaction test uses $2(K - 1) \times m$ degrees of 
+freedom, which is twice as many as `flex1`--`flex3` to account for the additional
+flexibility from allowing group-specific powers.
 
 In the simulation studies of Royston and Sauerbrei (2013, 2014), FP2 with
 `flex4` was conservative, with empirical significance levels around 2--3%
-rather than the nominal 5%, and had low power.
+rather than the nominal 5%, but had low power.
 
 `flex4` may be useful when there is a strong subject-matter reason to believe
 that the functional form of the covariate effect differs between groups.
-However, this may require sufficiently large samples.
+However, this may require sufficiently large samples to detect interaction
+effects.
 
 ## Summary table
 
@@ -487,9 +531,10 @@ knitr::kable(
 The choice of functional form --- linear, FP1, or FP2 --- is made via
 `cont_var_forms` and should be based on subject-matter knowledge before the
 data are examined. Each variable in `cont_vars` is then tested using exactly
-its pre-specified form. For example, following the recommendation of Royston
-and Sauerbrei (2014), a user might specify FP1 with `flex3` when there is no
-strong reason to expect a non-monotone treatment-effect function:
+its pre-specified form. For example, a user may choose FP2 with `flex3` when
+there is subject-matter reason to allow a more flexible nonlinear interaction
+function while allowing the main-effects and interaction models to select
+separate FP powers:
 
 ```{r cont-var-forms-flex3, eval=FALSE}
 mfpi(
@@ -520,8 +565,8 @@ This issue is most relevant for flexibility variants that allow separate power
 selection for the main-effects and interaction models, such as `flex3` and
 `flex4`. However, the nestedness of a particular fitted comparison should be
 judged from the selected FP basis functions, not only from the flexibility label.
-For example, a `flex3` fit may still give a nested comparison if the selected
-main-effects and interaction powers are the same.
+For example, `flex3` and `flex4` fits may still give a nested comparison if the
+selected main-effects and interaction powers are the same.
 
 As an alternative, AIC or BIC may be used to compare non-nested models, since
 these criteria do not require the main-effects model to be nested within the
@@ -650,6 +695,11 @@ undergoes FP transformation, while the remaining values are set to zero.
 Variables listed in `catzero_vars` or `spike_vars` that are not in `cont_vars`
 are handled in the adjustment model as described in the `mfp2()` documentation.
 
+In the formula interface, ACD handling should be requested term by term through
+`fp(..., acd = TRUE)` or `fp2(..., acd = TRUE)`. Argument-level `acd_vars` is not
+part of the formula interface; this avoids ambiguity between global arguments
+and the term-specific settings embedded in the formula.
+
 ## F-test for Gaussian models
 
 When `family = "gaussian"` and the sample size is small, the chi-square
@@ -686,8 +736,9 @@ In the formula interface, the same per-variable control is available through
 
 All survival model examples use the `advanced_prostate_cancer` dataset included
 in the `mfp2` package. The outcome is time to death (overall survival), defined
-by `survtime` and the censoring indicator `cens`. The binary variable `rx`
-(treatment allocation) is the grouping variable. For a full description of the
+by `survtime` and the censoring indicator `cens`. The treatment-allocation
+variable `rx` is the grouping variable. In this vignette it is converted from
+the original 0/1 coding to a factor with levels `Placebo` and `Treatment`. For a full description of the
 data, see Royston and Sauerbrei (2008). The dataset contains 475 observations
 with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,
 `hg`, `sg`) and five categorical covariates (`pf`, `hx`, `bm`, `stage`, `ekg`).
@@ -696,7 +747,8 @@ with eight continuous measurements (`age`, `wt`, `sbp`, `dbp`, `sz`, `ap`,
 
 Suppose that, based on prior evidence, we have identified `age` as the single
 covariate to investigate for interaction with treatment, and that subject-matter
-knowledge suggests a monotone relationship, motivating an FP1 functional form.
+knowledge suggests allowing a nonlinear treatment-by-age function, motivating an
+FP2 functional form.
 Because only one interaction is tested, the resulting p-value can be interpreted
 directly without multiplicity adjustment.
 
@@ -704,8 +756,9 @@ The formula interface is the most convenient way to call `mfpi()`. Continuous
 variables can be wrapped in `fp()` to control FP-specific settings, such as the
 degrees of freedom or the candidate power set. For example,
 `fp(age, df = 2, select = 1)` restricts `age` to an FP1 function and forces it
-to remain in the adjustment model. Here we use the defaults for all variables
-and pre-specify `age` as FP2 via `cont_var_forms`:
+to remain in the adjustment model. In the interaction analysis below, however,
+we use the defaults for the adjustment step and pre-specify the interaction
+function for `age` as FP2 via `cont_var_forms`:
 
 ```{r prespecified}
 fit_pre <- mfpi(
@@ -727,7 +780,8 @@ fit_pre <- mfpi(
 ### Output: prespecified analysis
 
 Calling `print()` on the fitted object displays a structured summary. With
-`criterion = "pvalue"`, the output has four steps.
+`criterion = "pvalue"`, the printed model-building output has three numbered
+steps.
 
 ```{r print-pre}
 print(fit_pre)
@@ -746,43 +800,55 @@ transformed or untransformed forms, are then used for adjustment in the
 interaction models for `age`.
 
 **Step 2: All interaction models.** For `age`, one interaction model is fitted
-using the pre-specified form from `cont_var_forms` here, FP2. Each row shows the
-functional form, the deviance of the main-effects model, the deviance of the
-interaction model, the likelihood-ratio statistic, the raw p-value, and other
-model information.
+using the pre-specified form from `cont_var_forms`, here FP2. Each row shows the
+functional form, the deviance of the interaction model, the likelihood-ratio
+statistic or information-criterion improvement, the raw p-value when applicable,
+and the main-effect FP powers. Directly below this table, the unnumbered
+`FP powers by group level` table expands the interaction-side power list into
+one row per group level. This keeps the main Step 2 table compact
+while still showing which FP powers were used for each group-specific
+interaction function.
 
-**Step 3: P-value adjustment.** For p-value-based analyses, this table shows the
-raw p-value for each tested variable and, when `p_adjust_method != "none"`, the
-corresponding adjusted p-value. With the default `p_adjust_method = "none"` and
-a single tested variable, this table simply reports the raw p-value.
-
-**Step 4: Interaction summary.** This compact table shows one row per tested
+**Step 3: Interaction summary.** This compact table shows one row per tested
 variable. It gives the functional form, the raw p-value, and the adjusted
-p-value used for the final decision. Variables whose final p-value is below
-`p_interact` are marked with `*`.
+p-value used for the final decision. The p-value adjustment method is printed
+below the table. Variables whose final p-value is below `p_interact` are marked
+with `*`.
 
 ### Regression output {- .unlisted}
 
-For p-value-based fits, the `summary()` method adds a fifth section with the
-full regression coefficients of retained interaction models. For AIC- and
-BIC-based fits, the regression output follows the interaction summary.
+The `summary()` method appends an unnumbered retained-only interaction-power
+detail table and then adds Step 4 with the full regression coefficients of
+retained interaction models.
 
 ```{r summary-pre}
 summary(fit_pre)
 ```
 
+The retained interaction-power detail table printed before the regression
+output is restricted to selected interaction models. It is unnumbered because it
+explains the retained model specification rather than adding another
+model-selection step.
+
 **Regression output.** For each variable with a significant interaction,
 the regression table from the fitted `coxph()` model is displayed. This table
 includes coefficient estimates, standard errors, z-values, and p-values for all
-terms in the model. The interaction model uses the naming convention
-`<varname><group><power_index>` for the group-specific FP terms. For example,
-if `age` is modelled as FP1 with groups 0 and 1, the coefficients `age01` and
-`age11` represent the FP term for group 0 and group 1, respectively. For FP2,
-two terms per group are shown, for example `age01` and `age02` for group 0, and
-`age11` and `age12` for group 1.
+terms in the model. The interaction model still uses internal numeric group codes in coefficient
+names, even though printed tables and plots use the original labels. For the
+labelled `rx` factor used in this vignette, `Placebo` is the reference group and
+is mapped internally to group code 0, while `Treatment` is mapped to group code
+1. The mapping can be inspected with `fit_pre$group_level_map`.
+
+The group-specific FP coefficients use the naming convention
+`<varname><internal_group_code><power_index>`. For example, if `age` is modelled
+as FP1, `age01` represents the FP term for `Placebo` and `age11` represents the
+corresponding FP term for `Treatment`. For FP2, two terms per group are shown,
+for example `age01` and `age02` for `Placebo`, and `age11` and `age12` for
+`Treatment`.
 
 The group dummy coefficient, for example `rx1`, represents the main effect of
-the grouping variable. The p-values in the regression output are the standard
+the internally coded comparison group. In this vignette that comparison group is
+`Treatment`, relative to the reference group `Placebo`. The p-values in the regression output are the standard
 Wald-test p-values reported by `summary.coxph()`. These p-values do not account
 for the degrees of freedom used during FP power selection. Therefore, the
 appropriate p-value for testing the interaction is the one reported in the
@@ -813,7 +879,8 @@ rug marks showing the observed values of the continuous variable.
 
 Each plot includes a compact subtitle summarising the functional form, the group
 contrast, and the selection metric. For example:
-`type = FP1; rx: 1 vs 0; p_raw = 0.031 (p_adj = 0.047)`.
+`type = FP1; rx: Treatment vs Placebo; p_raw = 0.031 (p_adj = 0.047)` when
+original group labels are available.
 For AIC or BIC, the subtitle shows `dAIC` or `dBIC`, respectively.
 
 The fitted-function plot distinguishes groups using the legend and line
@@ -827,7 +894,7 @@ curves. If `line_types = NULL`, solid lines are used by default. Users may pass
 an unnamed vector matched to the group order, for example
 `line_types = c("solid", "dashed")`, or a named vector using the original group
 labels, for example
-`line_types = c("placebo" = "solid", "standard" = "dashed")`.
+`line_types = c("Placebo" = "solid", "Treatment" = "dashed")`.
 
 #### Fitted functions
 
@@ -837,7 +904,7 @@ added here to show uncertainty and the distribution of the observed age values.
 If the two fitted curves are approximately parallel, this suggests little
 evidence that the treatment effect varies with age.
 
-```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age x rx interaction."}
+```{r plot-fitted-pre, fig.cap = "Group-specific fitted functions for the age-by-treatment interaction."}
 plot(fit_pre,
      plot_type = "fitted",
      show_ci_fitted = TRUE,
@@ -848,12 +915,13 @@ plot(fit_pre,
 
 The difference plot shows the fitted-function difference between the comparison
 group and the reference group, using the original group labels. For example, the
-y-axis may be labelled `f(rx = 1) - f(rx = 0)`. A horizontal reference line
+y-axis may be labelled `f(rx = Treatment) - f(rx = Placebo)` when `rx` was
+supplied with those factor labels. A horizontal reference line
 at zero is added. The confidence band is shown by default. Positive values
 indicate that the fitted function is higher in the comparison group than in the
 reference group at that covariate value.
 
-```{r plot-diff-pre, fig.cap = "Fitted-function difference for the age x rx interaction."}
+```{r plot-diff-pre, fig.cap = "Fitted-function difference for the age-by-treatment interaction."}
 plot(fit_pre, plot_type = "difference")
 ```
 
@@ -864,21 +932,20 @@ difference plot in a single display. This side-by-side view makes it easier to
 see how differences between the group-specific fitted functions change across
 the range of the continuous variable.
 
-```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age x rx interaction."}
+```{r plot-both-pre, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference for the age-by-treatment interaction."}
 plot(fit_pre, plot_type = "both")
 ```
 
-## Using `flex3` as an example: the recommended practical choice
+## Using `flex3` with a prespecified FP2 function
 
-Royston and Sauerbrei (2014) recommended FP1 with `flex3` as a practical
-default when there is no strong subject-matter reason to expect a non-monotone
-treatment-effect function. In `flex3`, the main-effects model and the
-interaction model may use different FP power sets. This makes `flex3` more
-flexible than `flex1`, while still requiring the same interaction powers to be
-used across treatment groups.
+In `flex3`, the main-effects model and the interaction model may use different
+FP power sets. This makes `flex3` more flexible than `flex1`, while still
+requiring the same interaction powers to be used across treatment groups.
 
-We now refit the prespecified analysis for `age` using `flex3`, again
-pre-specifying the FP1 functional form:
+We now refit the prespecified analysis for `age` using `flex3`, while keeping
+`age` prespecified as FP2. This makes the example comparable with the earlier
+`flex1` analysis in terms of the requested interaction functional form; only the
+MFPI flexibility level changes.
 
 ```{r flex3-pre}
 fit_flex3 <- mfpi(
@@ -899,11 +966,12 @@ fit_flex3 <- mfpi(
 print(fit_flex3)
 ```
 
-Compared with the `flex1` analysis, the adjustment model selected in Step 1 is
-unchanged because it is determined by the MFP selection step, not by the chosen
-flexibility level. The Step 2 interaction model may differ, however, because
-`flex3` allows the main-effects and interaction models to use different FP power
-sets. In this example, the `flex1` and `flex3` analyses lead to the same result.
+Compared with the earlier `flex1` analysis, the adjustment model selected in
+Step 1 is determined by the MFP selection step, not by the chosen MFPI
+flexibility level. The Step 2 interaction model may differ because `flex3`
+allows the main-effects and interaction models to use different FP power sets.
+The interaction form remains FP2, so this example isolates the effect of
+changing the flexibility variant from `flex1` to `flex3`.
 
 ```{r flex3-plot, fig.width = 10, fig.cap = "Fitted functions and fitted-function difference using flex3."}
 plot(fit_flex3, plot_type = "both")
@@ -926,7 +994,7 @@ In this example, seven continuous covariates are screened for possible
 interactions with treatment. The model also includes `sg` as an adjustment
 covariate, but `sg` is not included in `cont_vars` and is therefore not tested
 for interaction. Assume that, based on subject-matter knowledge, `age` is
-pre-specified as FP1, while all other variables are left as linear, which is the
+pre-specified as FP2, while all other variables are left as linear, which is the
 default. Because multiple variables are screened, the Holm step-down correction
 is applied via `p_adjust_method`. The adjustment is applied across all tested
 variables, with one p-value per variable.
@@ -959,16 +1027,16 @@ and the same MFP settings are used.
 
 **Step 2** shows the fitted interaction model for each variable in `cont_vars`,
 using the pre-specified form from `cont_var_forms`. Each row shows the functional
-form, the interaction test statistics, and the raw p-value.
+form, the interaction test statistics, and the raw p-value. The unnumbered
+interaction-power detail table printed directly below Step 2 shows the
+group-level interaction FP powers for each candidate model.
 
-**Step 3: P-value adjustment.** This table shows the raw p-value and adjusted
-p-value for each tested variable. With `p_adjust_method = "holm"`, adjustment is
-applied across all seven tested variables.
-
-**Step 4: Interaction summary.** This compact table shows one row per tested
+**Step 3: Interaction summary.** This compact table shows one row per tested
 variable, giving the functional form, the raw p-value, and the adjusted
-p-value used for the final decision. Variables whose adjusted p-value falls
-below `p_interact = 0.05` are marked with `*`.
+p-value used for the final decision. With `p_adjust_method = "holm"`, adjustment
+is applied across all seven tested variables, and the adjustment method is
+printed below the table. Variables whose adjusted p-value falls below
+`p_interact = 0.05` are marked with `*`.
 
 In an exploratory analysis, the adjusted p-value is the one used for the
 selection decision. Variables marked with `*` are candidates for genuine
@@ -981,10 +1049,12 @@ without `*` do not provide sufficient evidence of interaction after adjustment.
 summary(fit_exp)
 ```
 
-For p-value-based fits, Step 5 prints the regression output only for variables
-whose interaction was selected, that is, variables marked with `*` in Step 4. As
-before, the correct interaction test p-values are those from the interaction
-summary, not the Wald p-values in the regression table.
+For p-value-based fits, `summary()` first repeats the model-building output,
+then prints an unnumbered retained-only interaction-power detail table, and then
+prints Step 4 with the regression output only for variables whose interaction was
+selected, that is, variables marked with `*` in Step 3. As before, the correct
+interaction test p-values are those from the interaction summary, not the Wald
+p-values in the regression table.
 
 ### Plotting selected variables
 
@@ -1001,7 +1071,7 @@ was selected, by passing its name via `terms`. The fitted curve uses the
 functional form pre-specified in `cont_var_forms` for that variable. For
 example, to inspect the fitted interaction for `wt` (which was not selected):
 
-```{r plot-nonsig, fig.width=10, fig.height=5, fig.cap = "Fitted interaction for the wt x rx interaction (not selected)."}
+```{r plot-nonsig, fig.width=10, fig.height=5, fig.cap = "Fitted interaction for the wt-by-treatment interaction (not selected)."}
 plot(fit_exp, terms = "wt", plot_type = "both", legend_inside = c(0.85, 0.98))
 ```
 
@@ -1092,7 +1162,9 @@ different set of adjustment variables or select different functional forms.
 
 **Step 2** shows one row per tested variable with the interaction model metrics:
 the main-effects BIC, the interaction BIC, and the dBIC improvement. Each
-variable is tested using the form specified in `cont_var_forms`.
+variable is tested using the form specified in `cont_var_forms`. The unnumbered
+interaction-power detail table printed directly below Step 2 shows the
+group-level interaction FP powers for each candidate model.
 
 **Step 3: Interaction summary.** This table shows one row per tested variable
 with the functional form, the dBIC improvement, and the selection decision.
@@ -1124,7 +1196,7 @@ prostate$death36 <- as.integer(prostate$survtime <= 36 & prostate$cens == 1)
 ```
 
 We test whether the effect of treatment on 36-month mortality depends on `age`,
-using `flex1` and pre-specifying `age` as FP1:
+using `flex1` and pre-specifying `age` as FP2:
 
 ```{r logistic-fit}
 fit_logistic <- mfpi(
@@ -1145,11 +1217,11 @@ print(fit_logistic)
 ```
 
 The output follows the same structure as the Cox model. With
-`criterion = "pvalue"`, the printed output includes the p-value adjustment table
-before the final interaction summary. The interaction test and fitted-function
-difference are now on the log-odds scale.
+`criterion = "pvalue"`, the interaction summary includes both raw and adjusted
+p-values and reports the adjustment method. The interaction test and
+fitted-function difference are now on the log-odds scale.
 
-```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and fitted-function difference for age x rx."}
+```{r logistic-plot, fig.width = 10, fig.cap = "Logistic regression: fitted functions and fitted-function difference for age by treatment."}
 plot(fit_logistic, plot_type = "both")
 ```
 
@@ -1168,7 +1240,9 @@ Key components include:
 - `all_model_metrics`: a data frame of evaluation metrics for the interaction
   model fitted for each variable in `cont_vars`, using the form specified in
   `cont_var_forms`. For p-value-based analyses it includes raw p-values and,
-  when `p_adjust_method != "none"`, adjusted p-values.
+  when `p_adjust_method != "none"`, adjusted p-values. The FP power columns are
+  stored as list-columns so that group-level interaction powers can be printed
+  and reused programmatically.
 - `best_model_metrics`: one row per selected variable, containing the functional
   form and the metric used for the final interaction decision, such as
   `p_adjusted`, `dAIC`, or `dBIC`.
@@ -1176,11 +1250,16 @@ Key components include:
   variables.
 - `all_interaction_models`: a named list containing the fitted interaction model
   for every variable in `cont_vars`, regardless of selection.
-- `best_fitted_functions` and `all_fitted_functions`: group-specific fitted
-  values used by `plot()`.
+- Plotting data are computed on demand by `predict.mfpi()` when `plot()` is
+  called; fitted-function matrices are not precomputed or required in the fitted
+  object.
 - `winsorize_limits`: the actual Winsorisation cutoffs applied.
-- `group_levels_original` and `group_levels_new`: the original and remapped
-  factor levels of `group_var`.
+- `group_levels_original` and `group_levels_new`: the user-facing labels of
+  `group_var` and the internal consecutive group codes used for fitting.
+- `group_level_map`: a data frame linking user-facing group labels, input
+  levels, and internal levels. In this vignette it maps `Placebo` and
+  `Treatment` to the internal codes used in coefficient and prediction-column
+  names.
 - `cont_var_forms`: the named character vector of pre-specified functional forms,
   one entry per variable in `cont_vars`.
 - `var_winners`: a named list of per-variable fitted results, including those

@@ -4,10 +4,14 @@
 \alias{print.summary.mfpi}
 \title{Print a \code{"summary.mfpi"} Object}
 \usage{
-\method{print}{summary.mfpi}(x, ...)
+\method{print}{summary.mfpi}(x, digits = NULL, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"summary.mfpi"}.}
+
+\item{digits}{Optional non-negative integer controlling the number of decimal
+places used when printing numeric output. If \code{NULL}, \code{x$digits}
+is used when available; otherwise the print helper default is used.}
 
 \item{...}{Currently unused.}
 }
@@ -15,7 +19,27 @@
 \code{x} invisibly.
 }
 \description{
-Displays the structured MFPI output and appends regression summaries for
-retained interaction models. For p-value selection, the regression output is
-printed after Step 4; for AIC/BIC selection, it is printed after Step 3.
+Displays the structured MFPI summary.
+}
+\details{
+The printed summary first reuses \code{print.mfpi()} to display the
+model-building output. This includes the adjustment model, all interaction
+candidates, the candidate interaction FP powers by group level, optional
+p-value adjustment, and the final interaction summary.
+
+After the model-building output, the summary print method appends:
+
+\enumerate{
+\item an unnumbered retained-only detail table showing the group-specific
+interaction-side FP powers for retained interaction models;
+\item ordinary regression summaries for retained interaction models.
+}
+
+The retained-power table is intentionally not printed as a numbered step. It
+is a detail table that explains the retained models before the regression
+output. This avoids confusing labels such as \code{"Step 2b"} when there is
+no visible \code{"Step 2a"}.
+
+The regression output is printed after \code{print.mfpi()}'s Step 3 and is
+labelled Step 4 for all interaction-selection criteria.
 }

@@ -168,8 +168,9 @@ compute_group_difference <- function(coef_vec, xtransformed, group_fp_powers) {
 #'   `coefx`, as returned by [vcov()].
 #' @param groups List of character vectors of length \eqn{K}, one per group.
 #'   Each element gives the coefficient names of the FP terms belonging to
-#'   that group, in ascending group order (reference group first). As returned
-#'   by \code{var_group()}.
+#'   that group, in ascending internal group-code order. This is the structure
+#'   returned by \code{var_group()} or supplied through stored
+#'   \code{coefficient_groups}.
 #' @param group_name Character string. Column name of the grouping variable in
 #'   the original data. Used to identify the group dummy coefficients
 #'   \eqn{\hat{\gamma}_j} in `coefx` via a regex pattern

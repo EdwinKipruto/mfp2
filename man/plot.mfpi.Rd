@@ -39,13 +39,14 @@ term-specific winner models are available.}
 
 \item{auto_print}{Logical scalar. If \code{TRUE}, each plot is printed as it
 is created. If \code{FALSE}, plots are returned invisibly for manual
-printing or saving.}
+printing, modification, or saving.}
 
 \item{show_title}{Logical scalar. If \code{TRUE}, plot titles and subtitles
-are added.}
+are added. Subtitles include interaction type, group contrast, and the
+selection metric available for the plotted variable.}
 
 \item{show_rug}{Logical scalar. If \code{TRUE}, rug marks for the plotted
-\eqn{x} values are added at the bottom of each plot.}
+\eqn{x} grid values are added at the bottom of each plot.}
 
 \item{show_ci_fitted}{Logical scalar. If \code{TRUE}, confidence bands are
 shown around the group-specific fitted functions.}
@@ -58,30 +59,31 @@ plots. One of \code{"inside"}, \code{"right"}, \code{"left"},
 \code{"bottom"}, \code{"top"}, or \code{"none"}.}
 
 \item{legend_inside}{Numeric vector of length 2 giving the legend position
-inside the plotting panel when \code{legend_position = "inside"}.}
+inside the plotting panel when \code{legend_position = "inside"}. Values
+are interpreted in normalized parent coordinates.}
 
 \item{legend_justification}{Numeric vector of length 2 giving legend
 justification when \code{legend_position = "inside"}.}
 
 \item{colour_ref}{Character scalar. Colour for the reference-group fitted
-function and confidence band.}
+function and its confidence band.}
 
 \item{colour_grp}{Character scalar. Colour for the comparison-group fitted
-function and confidence band.}
+function and its confidence band.}
 
 \item{line_types}{Optional character vector of linetypes for the two fitted
 functions. If unnamed, it must have length 2 and is interpreted as
-reference then comparison. If named, names must match the original group
-labels shown in the legend.}
+reference group followed by comparison group. If named, names must match the
+original group labels shown in the legend.}
 
 \item{colour_diff}{Character scalar. Colour for the difference curve and its
 confidence band.}
 
-\item{linewidth}{Positive numeric scalar. Line width for fitted and
+\item{linewidth}{Positive numeric scalar. Line width for fitted-function and
 difference curves.}
 
-\item{ribbon_alpha}{Numeric scalar in \eqn{[0, 1]}. Transparency of
-confidence bands.}
+\item{ribbon_alpha}{Numeric scalar in \eqn{[0, 1]}. Transparency of confidence
+bands.}
 
 \item{rug_alpha}{Numeric scalar in \eqn{[0, 1]}. Transparency of rug marks.}
 
@@ -92,15 +94,18 @@ Invisibly returns a nested named list of \code{ggplot} or
 \code{patchwork} objects.
 }
 \description{
-Produces plots of group-specific MFPI fitted functions, fitted-function
-differences, or both for continuous variables in an object of class
-\code{"mfpi"}.
+Produces diagnostic plots for selected or requested continuous variables in an
+object of class \code{"mfpi"}. The method can display group-specific fitted
+functions, fitted-function differences between a comparison group and the
+reference group, or both plot types side by side.
 }
 \details{
-Plotting data are computed on demand by \code{predict.mfpi()}. Fitted
-functions are reconstructed only when requested, using the same prediction
-path used by \code{predict(object, type = "both")}. The fitted \code{"mfpi"}
-object does not store precomputed fitted-function matrices.
+The plotting method is deliberately prediction-based. It does not rely on
+precomputed fitted-function matrices stored in the fitted \code{"mfpi"}
+object. Instead, plotting data are generated on demand by
+\code{predict.mfpi()} using the same prediction path used for ordinary MFPI
+prediction. This keeps plotting consistent with prediction and avoids storing
+large plotting grids inside the fitted model object.
 }
 \section{Plot types}{
 
@@ -108,53 +113,99 @@ Three plot types are available through \code{plot_type}.
 
 \describe{
 \item{\code{"fitted"}}{
-Plots the group-specific fitted functions \eqn{\hat f_j(x)} for the
-reference group and one comparison group on shared axes. Confidence bands
-for these curves are controlled by \code{show_ci_fitted}.
+Plots the group-specific fitted functions for the reference group and one
+comparison group on shared axes. For a continuous variable \eqn{x}, the
+plotted curves correspond to \eqn{\hat f_r(x)} for the reference group
+and \eqn{\hat f_j(x)} for comparison group \eqn{j}. Confidence bands for
+these group-specific fitted functions are controlled by
+\code{show_ci_fitted}. The y-axis label identifies the model scale of
+the covariate function, for example outcome scale, log-odds, log-mean,
+or log-hazard.
 }
 \item{\code{"difference"}}{
 Plots the pointwise fitted-function difference
-\eqn{\hat f_j(x) - \hat f_r(x)} with a horizontal reference line at zero.
-Confidence bands for the difference curve are controlled by
-\code{show_ci_diff}.
+\eqn{\hat f_j(x) - \hat f_r(x)} for one comparison group \eqn{j} versus
+the reference group \eqn{r}. A horizontal zero line is added to make the
+absence of a fitted-function difference visually explicit. Confidence
+bands for the difference curve are controlled by \code{show_ci_diff}.
+The y-axis keeps the explicit contrast, \eqn{\hat f_j(x) - \hat f_r(x)},
+and appends the model scale in parentheses.
 }
 \item{\code{"both"}}{
 Places the fitted-function plot and the fitted-function difference plot
-side by side. This option requires the \pkg{patchwork} package.
+side by side for each variable and group contrast. This option requires
+the \pkg{patchwork} package.
 }
 }
+}
+
+\section{Model scale and interpretation}{
+
+The plotted values are estimated covariate functions, not full fitted
+responses. For Gaussian models the fitted function is on the outcome scale.
+For binomial models it is on the log-odds scale. For Poisson models it is on
+the log-mean scale. For Cox models it is on the log-hazard scale.
+
+Difference plots show differences between estimated covariate functions on
+the same model scale. They should not be interpreted as probabilities, odds
+ratios, rate ratios, hazard ratios, survival probabilities, or complete
+predicted responses unless a separate transformation is explicitly applied.
 }
 
 \section{Prediction source}{
 
-The method calls \code{predict.mfpi()} internally with
-\code{type = "both"}, \code{grid = TRUE}, and \code{se.fit = TRUE}. The
-resulting \code{wide} matrix is used for plotting. Therefore this plot method
-depends on \code{predict.mfpi()} and the shared prediction helper
-\code{build_group_fp_basis()}, not on the legacy fitted-function generator.
+For each plotted variable, the method calls \code{predict.mfpi()} with
+\code{type = "both"} and \code{grid = TRUE}. Standard errors are requested
+only when at least one requested plot requires confidence bands. The plotting
+data are taken from the long-format \code{functions} and \code{differences}
+components returned by \code{predict.mfpi()}.
+
+The \code{functions} component contains one row per evaluation value and
+group, with columns such as \code{term}, \code{x}, \code{group}, and
+\code{fit}. The \code{differences} component contains one row per
+evaluation value and non-reference contrast, with columns such as
+\code{term}, \code{x}, \code{contrast}, \code{group}, \code{reference},
+and \code{fit}. Confidence limits are read from \code{lower} and
+\code{upper} when standard errors were requested.
+}
+
+\section{Group labels and reference group}{
+
+MFPI stores group information in two forms. Internal group codes, usually
+\code{0}, \code{1}, ..., are used in coefficient names and prediction
+metadata. Original group labels, such as \code{"Placebo"} and
+\code{"Treatment"}, are used for display. If the fitted object contains a
+\code{group_level_map} component, plotting uses that mapping preferentially.
+Otherwise it falls back to \code{group_levels_original} and
+\code{group_levels_new}.
+
+Plot list names are intentionally based on internal group codes, for example
+\code{"grp1_vs_grp0"}. This keeps returned object names syntactically stable
+even when original group labels contain spaces, punctuation, or non-standard
+characters. The visual labels inside the plots use the original group labels.
 }
 
 \section{Term selection}{
 
-If \code{terms = NULL}, only selected interaction terms are plotted. These are
-obtained from \code{object$best_interaction_model}, using
-\code{model = "best"} in \code{predict.mfpi()}.
+If \code{terms = NULL}, only selected interaction terms are plotted. Selected
+variables are obtained from \code{x$best_interaction_model}, and prediction is
+requested with \code{model = "best"}.
 
-If \code{terms} is supplied, those variables are plotted from the wider
-stored winner set using \code{model = "all"}. This allows inspection of
-non-selected continuous variables, provided their term-specific winner models
-are stored in the object.
+If \code{terms} is supplied, the requested variables are plotted from the
+full stored winner set using \code{model = "all"}. This allows inspection of
+non-selected variables, provided the corresponding term-specific winner models
+are stored in the fitted object.
 }
 
 \section{Confidence bands}{
 
-The confidence-band controls are separate because the fitted-function and
+Confidence-band controls are separate because fitted-function plots and
 difference plots have different inferential roles.
 
 \itemize{
 \item \code{show_ci_fitted} controls confidence bands around the
-group-specific fitted functions. The default is \code{FALSE} for cleaner
-fitted-function plots.
+group-specific fitted functions. The default is \code{FALSE} to keep the
+fitted-function display visually simple.
 \item \code{show_ci_diff} controls the confidence band around the
 fitted-function difference curve. The default is \code{TRUE} because the
 difference curve is usually the primary interaction display.
@@ -163,12 +214,13 @@ difference curve is usually the primary interaction display.
 
 \section{Return value}{
 
-The return value is a nested named list, returned invisibly. Outer names are
-continuous-variable names. Inner names are contrast labels of the form
-\code{"grp<j>_vs_grp<r>"}, where \code{j} is the comparison group and
-\code{r} is the reference group. Each leaf is a \code{ggplot} object for
-\code{plot_type = "fitted"} or \code{"difference"}, or a \code{patchwork}
-object for \code{plot_type = "both"}.
+The method returns a nested named list invisibly. Outer names are continuous
+variable names. Inner names are contrast labels of the form
+\code{"grp<j>_vs_grp<r>"}, where \code{j} is the internal code of the
+comparison group and \code{r} is the internal code of the reference group.
+Each leaf is a \code{ggplot} object when \code{plot_type = "fitted"} or
+\code{plot_type = "difference"}, and a \code{patchwork} object when
+\code{plot_type = "both"} and both component plots are available.
 }
 
 \examples{
@@ -186,6 +238,10 @@ plot(fit, terms = "age", plot_type = "both")
 
 # Add confidence bands to group-specific fitted functions.
 plot(fit, plot_type = "fitted", show_ci_fitted = TRUE)
+
+# Use named line types matching original group labels.
+plot(fit, plot_type = "fitted",
+     line_types = c(Placebo = "solid", Treatment = "dashed"))
 
 # Save a returned plot.
 ggplot2::ggsave("age_difference.pdf", plots$age$grp1_vs_grp0)

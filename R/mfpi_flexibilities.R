@@ -458,10 +458,15 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       )
     }
     
-    # Fit a one-term FP transformation at each candidate power and choose
-    # the lowest-deviance fit. Adjustment columns and group dummies are
-    # included as covariates so the comparison is on equal footing with the
-    # MFP-fitted model.
+    # Fit a one-term FP transformation at each candidate power and choose the
+    # lowest-deviance fit. Adjustment columns and group dummies are included as
+    # covariates so the comparison is on equal footing with the MFP-fitted model.
+    #
+    # Although this deviance search uses fast = TRUE, where `offset` is passed
+    # directly to the underlying fitting routine, forward `has_offset` as well.
+    # This keeps offset handling consistent with the rest of the MFPI fitting
+    # path and avoids future inconsistencies if this call is changed to use a
+    # formula-based fit.
     fixed_x <- cbind(group_dummies, xadj)
     dev_vec <- vapply(nonunit_cand, function(p) {
       z_p <- transform_vector_fp(
@@ -473,18 +478,19 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         name  = cont_var
       )
       fit_p <- fit_model(
-        x        = cbind(z_p, fixed_x),
-        y        = y,
-        family   = family,
-        family_string      = family_string,
-        weights  = weights,
-        offset   = offset,
-        method   = ties,
-        strata   = strata,
-        control  = control,
-        nocenter = nocenter,
-        rownames = NULL,
-        fast     = TRUE
+        x             = cbind(z_p, fixed_x),
+        y             = y,
+        family        = family,
+        family_string = family_string,
+        weights       = weights,
+        offset        = offset,
+        method        = ties,
+        strata        = strata,
+        control       = control,
+        nocenter      = nocenter,
+        rownames      = NULL,
+        fast          = TRUE,
+        has_offset    = has_offset
       )
       -2 * fit_p$logl
     }, numeric(1L))
@@ -612,6 +618,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   column_groups_list  <- transformed$column_groups_list
   
   # Step 2: Select the power combination with the lowest deviance -------------
+  # Each candidate within-group FP basis is fitted with the same adjustment
+  # columns and group dummies. The candidate with the smallest deviance supplies
+  # the common FP powers used for the interaction-side design.
+  #
+  # The search uses fast = TRUE, so `offset` is passed directly to the underlying
+  # fitting routine. We still forward `has_offset` to keep fit_model() calls
+  # consistent across the MFPI codebase and to preserve correct behaviour if the
+  # implementation later switches to a formula-based fit.
   fixed_x <- cbind(group_dummies, xadj)
   
   deviance_vec <- vapply(transformed_groups, function(z) {
@@ -630,7 +644,8 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       control       = control,
       nocenter      = nocenter,
       rownames      = NULL,
-      fast          = TRUE
+      fast          = TRUE,
+      has_offset = has_offset
     )
     -2 * fit$logl
   }, numeric(1L))
@@ -990,6 +1005,8 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   
   # Centre only the within-group cont_var columns; adjustment already centred
   center_vec  <- c(rep(center,    k), rep(FALSE, n_total - k))
+  # Developer note: Non-positive values within groups are handled via zero = TRUE"),
+  # this is unrelated to the user's zero_var flag.
   zero_vec    <- c(rep(TRUE,      k), rep(FALSE, n_total - k))
   spike_vec   <- c(rep(spike_var, k), rep(FALSE, n_total - k))
   acd_vec      <- setNames(rep(FALSE, n_total), vnames)

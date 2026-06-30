@@ -201,7 +201,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      p_interact, min_improvement, show_models, verbose,
                      digits, scale, shift = NULL, quiet = FALSE, has_offset,
                      center_type = c("grand", "group"),
-                     p_adjust_method = "none") {
+                     p_adjust_method = "none",
+                     group_input_levels = NULL,
+                     group_levels_original = NULL) {
   
   center_type <- match.arg(center_type)
   
@@ -228,7 +230,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     catzero_vars      = catzero_vars,
     spike_vars        = spike_vars,
     keep        = keep,
-    force_max_fp      = force_max_fp
+    force_max_fp      = force_max_fp,
+    group_input_levels    = group_input_levels,
+    group_levels_original = group_levels_original
   )
   
   # ---------------------------------------------------------------------------
@@ -443,7 +447,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   
   n_significant <- nrow(univ_results$best_model_metrics)
   if (n_significant == 0L && !quiet) {
-    warning("! No significant interactions were found.", call. = FALSE)
+    message("! No significant interactions were found.", call. = FALSE)
   }
   
   if (verbose) {
@@ -469,6 +473,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     criterion                = univ_results$criterion,
     group_levels_new         = univ_results$group_levels_new,
     group_levels_original    = univ_results$group_levels_original,
+    group_level_map          = univ_results$group_level_map,
     family                   = univ_results$family,
     nobs                     = univ_results$nobs,
     p_adjust_method          = univ_results$p_adjust_method,
@@ -554,21 +559,76 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 preprocess_data <- function(x, group_var, include_group_var,
                             select, alpha, df, center, acd_vars,
                             fp_powers, zero_vars, catzero_vars, spike_vars,
-                            keep, force_max_fp) {
+                            keep, force_max_fp, group_input_levels = NULL,
+                            group_levels_original = NULL) {
   
   original_names <- colnames(x)
   
   # Developer note:
   # Internally remap group_var to 0, 1, ..., K - 1. Several downstream helpers
   # build and parse column names using the group value as a suffix, so arbitrary
-  # original levels such as 10/20, 0.5/1.5, or -1/1 are unsafe. Original values
-  # are retained in cat_info for reporting; mapped values are used internally.
+  # original levels such as 10/20, 0.5/1.5, -1/1, or character labels are unsafe.
+  #
+  # `input_levels` are the numeric values currently stored in x[, group_var].
+  # `original_levels` are the user-facing labels used for printing, summaries,
+  # plotting, and prediction metadata.
   group_values_original <- x[, group_var, drop = FALSE]
-  original_levels <- sort(unique(drop(group_values_original)))
-  new_levels      <- seq_along(original_levels) - 1L
+  
+  input_levels <- if (!is.null(group_input_levels)) {
+    as.numeric(group_input_levels)
+  } else {
+    sort(unique(drop(group_values_original)))
+  }
+  
+  original_levels <- if (!is.null(group_levels_original)) {
+    as.character(group_levels_original)
+  } else {
+    as.character(input_levels)
+  }
+  
+  if (length(original_levels) != length(input_levels)) {
+    stop(
+      "Internal error: `group_levels_original` and `group_input_levels` ",
+      "must have the same length.",
+      call. = FALSE
+    )
+  }
+  
+  # Keep only group levels that are still present after any row-level filtering
+  # such as `subset`. `drop()` removes matrix/data-frame dimensions if present.
+  observed_input_levels <- sort(unique(drop(group_values_original)))
+  
+  # Identify metadata levels that were known before filtering but are no longer
+  # represented in the data. Keeping these would create all-zero group dummies.
+  unused_input_levels <- setdiff(input_levels, observed_input_levels)
+  
+  # If filtering removed one or more groups, remove the corresponding entries
+  # from both the numeric/internal level vector and the original-label vector.
+  # This keeps the two vectors aligned before new internal levels are assigned.
+  if (length(unused_input_levels) > 0L) {
+    keep <- input_levels %in% observed_input_levels
+    input_levels <- input_levels[keep]
+    original_levels <- original_levels[keep]
+  }
+  
+  new_levels <- seq_along(input_levels) - 1L
+  
+  n_group_levels <- length(new_levels)
+  
+  if (isTRUE(include_group_var) && n_group_levels > 6L) {
+    warning(
+      paste0(
+        "`include_group_var = TRUE` will add ",
+        n_group_levels - 1L,
+        " forced group dummy variables to the adjustment model. ",
+        "This may be unstable when group levels are sparse."
+      ),
+      call. = FALSE
+    )
+  }
   
   group_mapped <- new_levels[
-    match(drop(group_values_original), original_levels)
+    match(drop(group_values_original), input_levels)
   ]
   
   group_values <- matrix(
@@ -666,8 +726,34 @@ preprocess_data <- function(x, group_var, include_group_var,
   
   # Compute group dummies once. They are always stored in cat_info and are also
   # appended to the adjustment matrix when include_group_var = TRUE.
-  group_dummies_mat <- create_group_dummies(group_values, levels = new_levels)
+  group_dummies_mat <- create_group_dummies(
+    group_values,
+    levels = new_levels,
+    quiet = TRUE
+  )
   
+  # Group dummy names are generated from the pattern paste0(group_var, level),
+  # for example "trt1". A user-supplied predictor can legitimately have the same
+  # name. If that happens, duplicate column names would corrupt model fitting,
+  # adjustment-variable selection, coefficient lookup, and prediction
+  # reconstruction. Stop early with a clear error instead of allowing silent
+  # name collisions.
+  dummy_names_candidate <- colnames(group_dummies_mat)
+  dummy_name_collisions <- intersect(dummy_names_candidate, colnames(x_filtered))
+  
+  if (length(dummy_name_collisions) > 0L) {
+    stop(
+      paste0(
+        "Generated group dummy column name(s) collide with existing predictor ",
+        "column name(s): ",
+        paste(dummy_name_collisions, collapse = ", "),
+        ". Rename the existing predictor column(s) or the grouping variable."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  # 
   if (include_group_var) {
     dummy_names <- colnames(group_dummies_mat)
     x_filtered  <- cbind(x_filtered, group_dummies_mat)
@@ -710,13 +796,16 @@ preprocess_data <- function(x, group_var, include_group_var,
       values          = group_values,
       original_values = group_values_original,
       original_levels = original_levels,
+      input_levels    = input_levels,
       new_levels      = new_levels,
       level_map       = data.frame(
         original = original_levels,
-        internal = new_levels
+        input    = input_levels,
+        internal = new_levels,
+        stringsAsFactors = FALSE
       ),
-      group_var       = group_var,
-      dummies         = group_dummies_mat
+      group_var      = group_var,
+      dummies        = group_dummies_mat
     ),
     dummy_names    = dummy_names,
     updated_params = updated_params
@@ -924,7 +1013,7 @@ format_type_label <- function(type) {
 #' @keywords internal
 #' @noRd
 format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
- 
+  
   # Format a single power entry as a parenthesised string. Always returns a
   # length-1 character string ("." for missing/empty).
   # For flex1-3, `pow` is a numeric vector e.g. c(1, 2).
@@ -1210,7 +1299,12 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   adjusting_pvals <- criterion == "pvalue" && p_adjust_method != "none"
   
   best_idx     <- 0L   # counter for significant variables
-  all_idx      <- 0L   # counter for all models
+  all_idx      <- 0L   # write counter for all candidate metric rows
+  
+  # Used only when p-value adjustment is requested. In that case the adjusted
+  # candidate table becomes the authoritative all-model metric table returned
+  # by evaluate_interactions().
+  all_candidate_metrics <- NULL
   
   for (var_name in cont_vars) {
     
@@ -1343,9 +1437,19 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       )
       
       # Annotate metrics -------------------------------------------------------
-      metrics           <- fit_result$test_results$evaluation_metrics
-      metrics$variable  <- var_name
-      metrics$type      <- interaction_type
+      metrics          <- fit_result$test_results$evaluation_metrics
+      metrics$variable <- var_name
+      metrics$type     <- interaction_type
+      
+      # Normalise reporting-oriented FP power columns. This keeps the metric object
+      # readable and machine-readable without changing the fitted interaction model
+      # or prediction internals.
+      metrics <- normalise_metric_fp_powers(
+        metrics      = metrics,
+        variable     = var_name,
+        group_levels = cat_info$original_levels
+      )
+      
       candidate_metrics[[interaction_type]] <- metrics
       candidate_full_fits[[interaction_type]] <- fit_result
       
@@ -1539,7 +1643,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     
     # Store the fitted interaction model for this variable regardless of significance
     all_interaction_models[[var_name]] <- candidate_models
-
+    
     # Update all_metrics_list with the selected best_metric. For AIC/BIC,
     # the canonical improvement columns remain `AIC_main_minus_int` and
     # `BIC_main_minus_int`; `dAIC` and `dBIC` are display labels only.
@@ -1617,8 +1721,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   # Phase 2: p-value adjustment and final p-value decisions
   # ============================================================================
   if (adjusting_pvals) {
-    all_candidate_metrics <- dplyr::bind_rows(all_metrics_list[seq_len(all_idx)])
-    
+    #all_candidate_metrics <- dplyr::bind_rows(all_metrics_list[seq_len(all_idx)])
+    all_candidate_metrics <- bind_metric_rows(all_metrics_list[seq_len(all_idx)])
     if (nrow(all_candidate_metrics) > 0L && "pvalue" %in% names(all_candidate_metrics)) {
       all_candidate_metrics$p_adjusted <- NA_real_
       
@@ -1671,44 +1775,16 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       }
     }
     
-    # Replace all_metrics_list so the returned all_model_metrics contains
-    # p_adjusted exactly as used for decisions.
-    all_idx <- nrow(all_candidate_metrics)
-    all_metrics_list <- if (nrow(all_candidate_metrics) > 0L) {
-      split(all_candidate_metrics, seq_len(nrow(all_candidate_metrics)))
-    } else {
-      list()
-    }
     
-    # Verbose: after p-value adjustment, print the final output as Step 3
-    # and Step 4. The per-variable output printed during fitting is provisional
-    # because adjusted p-values are only available after all variables are fitted.
+    # Verbose: after p-value adjustment, print one final interaction summary.
+    # The per-variable output printed during fitting is provisional because
+    # adjusted p-values are only available after all variables are fitted.
     if (verbose) {
       rule_thick <- strrep("=", 70)
       rule_thin  <- strrep("-", 70)
       
       cat("\n", rule_thick, "\n", sep = "")
-      cat("  STEP 3: P-value Adjustment\n")
-      cat(rule_thick, "\n", sep = "")
-      
-      if (nrow(all_candidate_metrics) > 0L) {
-        
-        type_label <- format_type_label(all_candidate_metrics$type)
-        step3_tab <- data.frame(
-          Variable   = all_candidate_metrics$variable,
-          Type       = type_label,
-          p_raw      = all_candidate_metrics$pvalue,
-          p_adjusted = all_candidate_metrics$p_adjusted,
-          check.names = FALSE
-        )
-        print(step3_tab, row.names = FALSE)
-        cat(sprintf("\n  p_adjust_method = %s\n", p_adjust_method))
-      } else {
-        cat("  No candidate p-values available.\n")
-      }
-      
-      cat("\n", rule_thick, "\n", sep = "")
-      cat("  STEP 4: Interaction Summary\n")
+      cat("  STEP 3: Interaction Summary\n")
       cat(rule_thick, "\n", sep = "")
       cat(sprintf("  %-12s %-8s %12s %12s  %s\n",
                   "Variable", "Type", "p_raw", "p_adjusted", ""))
@@ -1730,6 +1806,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         }
       }
       cat(rule_thin, "\n", sep = "")
+      cat(sprintf("  p_adjust_method = %s\n", p_adjust_method))
       cat(sprintf("  * = selected at p_interact = %g\n\n", p_interact))
       
       if (show_models) {
@@ -1749,24 +1826,35 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     
   }
   
-  # Trim pre-allocated lists to actual fill level
+  # Trim pre-allocated lists to actual fill level. When p-value adjustment was
+  # used, all_candidate_metrics is the authoritative all-model metric table, so
+  # all_metrics_list no longer needs to be trimmed for final binding.
   best_metrics_list <- best_metrics_list[seq_len(best_idx)]
-  all_metrics_list  <- all_metrics_list[seq_len(all_idx)]
+  
+  if (!adjusting_pvals) {
+    all_metrics_list <- all_metrics_list[seq_len(all_idx)]
+  }
   
   # Drop NULL slots from best_interaction_model
   best_interaction_model <- Filter(Negate(is.null), best_interaction_model)
-
+  
   # Combine results -----------------------------------------------------------
-  if (length(best_metrics_list) > 0L) {
-    combined_metrics <- dplyr::bind_rows(best_metrics_list)
-    # Move type to first column using base R subsetting - avoids rlang dependency
-    combined_metrics <- combined_metrics[, c("type", setdiff(names(combined_metrics), "type")),
-                                         drop = FALSE]
-  } else {
-    combined_metrics <- data.frame()
+  combined_metrics <- bind_metric_rows(best_metrics_list)
+  
+  if (nrow(combined_metrics) > 0L && "type" %in% names(combined_metrics)) {
+    # Move type to first column using base R subsetting.
+    combined_metrics <- combined_metrics[
+      ,
+      c("type", setdiff(names(combined_metrics), "type")),
+      drop = FALSE
+    ]
   }
   
-  all_model_metrics <- dplyr::bind_rows(all_metrics_list)
+  all_model_metrics <- if (adjusting_pvals && !is.null(all_candidate_metrics)) {
+    all_candidate_metrics
+  } else {
+    bind_metric_rows(all_metrics_list)
+  }
   
   # type first, variable second, then remaining metric columns
   if (nrow(all_model_metrics) > 0L) {
@@ -1785,6 +1873,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     show_models              = show_models,
     group_levels_new         = cat_info$new_levels,
     group_levels_original    = cat_info$original_levels,
+    group_level_map          = cat_info$level_map,
     flex                     = flex,
     criterion                = criterion,
     family                   = family,

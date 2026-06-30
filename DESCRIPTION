@@ -20,8 +20,6 @@ Imports:
     stats,
     survival,
     utils,
-    dplyr,
-    tibble,
     Rcpp,
     numDeriv
 Suggests:

@@ -102,9 +102,12 @@ mfpi(x, ...)
 )
 }
 \arguments{
-\item{x}{For \code{mfpi.default()} only. A numeric matrix of dimension
-\eqn{n \times p}, where rows are observations and columns are variables.
-Column names are required. The matrix must not contain an intercept
+\item{x}{For \code{mfpi.default()} only. A numeric matrix or data frame of predictor
+variables. If \code{x} is a data frame, \code{group_var} may be factor,
+character, logical, integer, or numeric. All non-group variables must be
+numeric, integer, or logical. Internally, \code{group_var} is remapped to
+consecutive integer levels, while its original labels are preserved for
+printing, summaries, plotting, and prediction metadata. The matrix must not contain an intercept
 column; binary variables should be coded as 0/1; multi-level categorical
 variables (other than \code{group_var}) should be expanded into dummy
 variables beforehand. Must be free of missing values.}
@@ -119,14 +122,16 @@ factor, or a two-column numeric matrix \code{cbind(successes, failures)}.
 For Cox models, supply a right-censored \code{survival::Surv()} object.
 Must have the same number of observations as \code{x}.}
 
-\item{group_var}{A single character string naming the categorical (grouping) variable in
-\code{x} (e.g. a treatment or exposure indicator). The analysis tests
-whether the relationship between each variable in \code{cont_vars} and
-the outcome differs across levels of \code{group_var}. The group variable
-may use arbitrary numeric levels. Internally, levels are sorted, the lowest
-level is treated as the reference group, and dummy variables are created
-for all non-reference levels. Must have at least two distinct non-missing
-values.}
+\item{group_var}{Character scalar identifying the categorical grouping
+variable. In \code{mfpi.default()}, this variable may be factor,
+character, logical, integer, or numeric when \code{x} is a data frame. It
+is converted to internal consecutive integer levels for fitting. For a
+factor \code{group_var}, the first element of \code{levels(group_var)} is
+used as the reference level. For a character \code{group_var}, the first
+distinct value encountered in the data is used as the reference level. For
+logical, integer, or numeric \code{group_var}, the smallest observed value
+is used as the reference level. The original labels are preserved for
+printing, summaries, plotting, and prediction metadata.}
 
 \item{cont_vars}{A non-empty character vector naming the continuous variables in \code{x}
 for which interactions with \code{group_var} are to be investigated. All
@@ -398,7 +403,7 @@ When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
 to both the adjustment-variable selection step and the interaction test
 for each variable in \code{cont_vars}. Recommended when the sample size is
 small. Default \code{FALSE}. Has no effect for non-Gaussian families or
-when \code{criterion} is not \code{"pvalue"}. Inactive}
+when \code{criterion} is not \code{"pvalue"}.}
 
 \item{control}{A list of control parameters for the underlying fitting routine, as
 returned by \code{\link[stats:glm.control]{stats::glm.control()}} (non-Cox families) or
@@ -515,22 +520,53 @@ intermediate results and is useful for programmatic access.}
 (0, 1, 2, \ldots) corresponding to the sorted levels of
 \code{group_var}. This records the level ordering; the observed group
 values themselves are not replaced.}
-\item{\code{group_levels_original}}{The sorted original levels of
-\code{group_var} as they appear in the data. The lowest level is the
-reference group.}
+\item{\code{group_levels_original}}{User-facing labels of
+\code{group_var}, used for printing, summaries, plotting, and prediction
+metadata.}
+\item{\code{group_level_map}}{A data frame mapping user-facing
+\code{group_var} labels to input values and internal integer levels.}
 \item{\code{flex}}{The flexibility level used (\code{"flex1"} through
 \code{"flex4"}).}
 \item{\code{family}}{The regression family used for fitting: a GLM
 family object for Gaussian, binomial, and Poisson models, or the
 character string \code{"cox"} for Cox models.}
+\item{\code{family_string}}{Character scalar giving the normalized family
+name used internally for family-specific branching. One of
+\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
+\code{"cox"}.}
+\item{\code{scale}}{Named numeric vector of scale factors used to transform
+continuous predictors onto the shifted/scaled FP fitting scale. These
+values are reused by \code{predict.mfpi()} and \code{plot.mfpi()} and
+should not be recomputed from new data.}
+\item{\code{shift}}{Named numeric vector of shifts added to continuous
+predictors before scaling. These values define the FP transformation
+scale used during fitting and are reused during prediction.}
+\item{\code{center_type}}{Character scalar describing the centering
+convention used for FP-transformed terms.}
+\item{\code{zero_vars}}{Named logical vector indicating which variables
+used structural-zero handling during FP transformation.}
+\item{\code{cont_vars}}{Character vector of continuous variables tested for
+interaction with \code{group_var}.}
+\item{\code{cont_var_forms}}{Named character vector giving the requested
+interaction functional form for each variable in \code{cont_vars}, for
+example \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.}
+\item{\code{x_train_scaled}}{Numeric matrix containing the final
+shifted/scaled training predictor matrix used by MFPI after preprocessing
+and optional Winsorisation. This component is stored so that
+\code{predict.mfpi()} and \code{plot.mfpi()} can reconstruct
+fitted-function and ordinary prediction design matrices.}
+\item{\code{digits}}{Integer giving the number of significant digits used
+when printing interaction-test results.}
 \item{\code{nobs}}{Number of observations used in model fitting.}
 \item{\code{show_models}}{Value of the \code{show_models} argument.}
 \item{\code{winsorize}}{Logical; whether Winsorisation was applied.}
 \item{\code{winsorize_probs}}{The probability cutoffs used for
 Winsorisation, or \code{NULL} when \code{winsorize = FALSE}.}
-\item{\code{winsorize_limits}}{A named list of the actual lower and
-upper limits applied to each \code{cont_var} during Winsorisation,
-or \code{NULL} when \code{winsorize = FALSE}.}
+\item{\code{winsorize_limits}}{A numeric matrix of Winsorisation limits,
+with rows \code{"lower"} and \code{"upper"} and columns named by
+\code{cont_vars}. Entries are \code{NA} for variables excluded from
+Winsorisation, for example zero-handled variables. \code{NULL} when
+\code{winsorize = FALSE}.}
 \item{\code{p_adjust_method}}{Character string: the multiplicity
 adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
 \item{\code{p_interact}}{Numeric: the significance threshold for
@@ -837,9 +873,11 @@ takes precedence over the \code{offset} argument.
 }
 
 \examples{
+\dontrun{
 data("prostate")
-# Flexibility level 1: simplest interaction structure
-flex_1 <- mfpi(
+
+# Basic MFPI fit using the simplest interaction structure.
+fit <- mfpi(
   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
     fp(bph) + fp(cp),
   data = prostate,
@@ -848,74 +886,31 @@ flex_1 <- mfpi(
   center = FALSE,
   flex = "flex1",
   include_group_var = TRUE,
-  show_models = TRUE,
-  verbose = TRUE
+  show_models = FALSE,
+  verbose = FALSE
 )
 
-# Plot both treatment-specific curves and treatment effects
-plot(flex_1, terms = "cavol", plot_type = "both")
+# Plot group-specific fitted functions and fitted-function differences.
+# The difference plot is on the model scale, not a probability, odds ratio,
+# rate ratio, hazard ratio, or full predicted response.
+if (requireNamespace("patchwork", quietly = TRUE)) {
+  plot(fit, terms = "cavol", plot_type = "both")
+}
 
-# Pre-specify functional forms: cavol as FP2, age as linear (default)
-flex_1_prespec <- mfpi(
+# Pre-specify functional forms: cavol as FP2, age uses the default search.
+fit_prespecified <- mfpi(
   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
     fp(bph) + fp(cp),
   data = prostate,
-  cont_vars      = c("cavol", "age"),
+  cont_vars = c("cavol", "age"),
   cont_var_forms = c(cavol = "fp2"),
-  group_var      = "svi",
-  center         = FALSE,
-  flex           = "flex1",
-  include_group_var = TRUE,
-  verbose        = TRUE
-)
-
-# Flexibility level 2:
-flex_2 <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data = prostate,
-  cont_vars = c("cavol", "age"),
   group_var = "svi",
   center = FALSE,
-  flex = "flex2",
+  flex = "flex1",
   include_group_var = TRUE,
-  show_models = TRUE,
-  verbose = TRUE
+  verbose = FALSE
 )
-
-plot(flex_2, terms = "cavol", plot_type = "both")
-
-# Flexibility level 3: 
-flex_3 <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data = prostate,
-  cont_vars = c("cavol", "age"),
-  group_var = "svi",
-  center = FALSE,
-  flex = "flex3",
-  include_group_var = TRUE,
-  show_models = TRUE,
-  verbose = TRUE
-)
-
-plot(flex_3, terms = "cavol", plot_type = "both")
-
-# Flexibility level 4: most flexible specification 
-flex_4 <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data = prostate,
-  cont_vars = c("cavol", "age"),
-  group_var = "svi",
-  center = FALSE,
-  flex = "flex4",
-  include_group_var = TRUE,
-  show_models = TRUE,
-  verbose = TRUE
-)
-
-plot(flex_4, terms = "cavol", plot_type = "both")
+}
 }
 \references{
 Royston, P. and Sauerbrei, W. (2004). A new approach to modelling

@@ -52,8 +52,8 @@
 #'     \code{upper}, and one column per variable.
 #'   }
 #' }
-#'
 #' @examples
+#' \dontrun{
 #' set.seed(1)
 #'
 #' x <- cbind(
@@ -68,8 +68,9 @@
 #'
 #' out$limits
 #' range(out$x[, "age"])
-#'
-#' @export
+#' }
+#' @keywords internal
+#' @noRd
 winsorize_cont_vars <- function(x,
                                 cont_vars,
                                 probs     = c(0.01, 0.99),

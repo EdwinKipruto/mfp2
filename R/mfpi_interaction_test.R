@@ -1,3 +1,103 @@
+#' Construct a best-model metrics row
+#'
+#' Creates a one-row base data frame containing the model comparison metrics
+#' for a selected MFPI interaction candidate. Fractional polynomial powers are
+#' stored as list-columns to preserve their numeric representation for later
+#' printing, summarising, and prediction-related use.
+#'
+#' @param variable Character scalar. Name of the continuous variable tested for
+#'   interaction.
+#' @param type Character scalar. Functional form tested for `variable`, such as
+#'   `"linear"`, `"fp1"`, or `"fp2"`.
+#' @param fp_powers_main Numeric vector. Fractional polynomial powers selected
+#'   for the main-effect function of `variable`.
+#' @param fp_powers_int Numeric vector. Fractional polynomial powers selected
+#'   for the interaction function of `variable`.
+#' @param deviance_int Numeric scalar. Deviance of the interaction model.
+#' @param deviance_diff Numeric scalar. Difference in deviance between the
+#'   main-effects model and the interaction model.
+#' @param df_int Numeric scalar. Degrees of freedom associated with the
+#'   interaction test.
+#' @param pvalue Numeric scalar. P-value for the interaction test.
+#' @param df_total Numeric scalar. Total degrees of freedom used by the selected
+#'   interaction model.
+#' @param AIC_main Numeric scalar. Akaike information criterion of the
+#'   main-effects model.
+#' @param AIC_interaction Numeric scalar. Akaike information criterion of the
+#'   interaction model.
+#' @param BIC_main Numeric scalar. Bayesian information criterion of the
+#'   main-effects model.
+#' @param BIC_interaction Numeric scalar. Bayesian information criterion of the
+#'   interaction model.
+#'
+#' @return A one-row data frame of class `"best_model_metrics"` with columns:
+#'   `type`, `variable`, `fp_powers_main`, `fp_powers_int`, `deviance_int`,
+#'   `deviance_diff`, `df_int`, `pvalue`, `df_total`, `AIC_main`,
+#'   `AIC_interaction`, `AIC_main_minus_int`, `BIC_main`, `BIC_interaction`,
+#'   and `BIC_main_minus_int`. The `fp_powers_main` and `fp_powers_int`
+#'   columns are list-columns.
+#'
+#' @keywords internal
+#' @noRd
+make_best_model_metrics <- function(variable,
+                                    type = NA_character_,
+                                    fp_powers_main,
+                                    fp_powers_int,
+                                    deviance_int,
+                                    deviance_diff,
+                                    df_int,
+                                    pvalue,
+                                    df_total,
+                                    AIC_main,
+                                    AIC_interaction,
+                                    BIC_main,
+                                    BIC_interaction) {
+  out <- data.frame(
+    type               = type,
+    variable           = variable,
+    deviance_int       = deviance_int,
+    deviance_diff      = deviance_diff,
+    df_int             = df_int,
+    pvalue             = pvalue,
+    df_total           = df_total,
+    AIC_main           = AIC_main,
+    AIC_interaction    = AIC_interaction,
+    AIC_main_minus_int = AIC_main - AIC_interaction,
+    BIC_main           = BIC_main,
+    BIC_interaction    = BIC_interaction,
+    BIC_main_minus_int = BIC_main - BIC_interaction,
+    stringsAsFactors   = FALSE,
+    check.names        = FALSE
+  )
+  
+  out$fp_powers_main <- I(list(fp_powers_main))
+  out$fp_powers_int  <- I(list(fp_powers_int))
+  
+  out <- out[
+    c(
+      "type",
+      "variable",
+      "fp_powers_main",
+      "fp_powers_int",
+      "deviance_int",
+      "deviance_diff",
+      "df_int",
+      "pvalue",
+      "df_total",
+      "AIC_main",
+      "AIC_interaction",
+      "AIC_main_minus_int",
+      "BIC_main",
+      "BIC_interaction",
+      "BIC_main_minus_int"
+    )
+  ]
+  
+  class(out) <- c("best_model_metrics", "data.frame")
+  out
+}
+
+
 # Interaction test for MFPI
 #
 # test_interaction() fits the main-effects and interaction models, computes
@@ -156,7 +256,7 @@
 #'
 #' @return A list with four components:
 #' \describe{
-#'   \item{`evaluation_metrics`}{A tibble of class
+#'   \item{`evaluation_metrics`}{A data frame of class
 #'     `"best_model_metrics"` with one row per call, containing:
 #'     `variable`, `fp_powers_main`, `fp_powers_int`,
 #'     `deviance_int` (\eqn{-2\ell_{\text{int}}}),
@@ -179,7 +279,6 @@
 #'     (\eqn{df_{\text{int}}}).}
 #' }
 #'
-#' @importFrom tibble tibble
 #' @keywords internal
 #' @noRd
 test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
@@ -231,7 +330,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   dev_main        <- -2 * fit_main$logl
   dev_interaction <- -2 * fit_interaction$logl
-  deviance_diff        <- dev_main - dev_interaction   # T = -2(l_main - l_int) >= 0
+  deviance_diff   <- dev_main - dev_interaction   # T = -2(l_main - l_int) >= 0
   
   # ---------------------------------------------------------------------------
   # Degrees of freedom
@@ -327,7 +426,24 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # AIC = -2l + 2p;  BIC = -2l + p * log(n*)
   # n* = number of events for Cox; n otherwise
   # ---------------------------------------------------------------------------
-  n_eff <- if (family_string == "cox") sum(y[, "status"]) else NROW(y)
+  if (family_string == "cox") {
+    # `mfpi.default()` validates that Cox responses are right-censored Surv
+    # objects before interaction testing is reached. For those objects, the
+    # event/status indicator is stored in the final matrix column, but that
+    # column is not guaranteed to be named "status". Use the final column
+    # positionally rather than y[, "status"].
+    status <- y[, ncol(y)]
+    n_eff <- sum(!is.na(status) & status > 0)
+    
+    if (!is.finite(n_eff) || n_eff <= 0L) {
+      stop(
+        "Cox BIC requires at least one observed event.",
+        call. = FALSE
+      )
+    }
+  } else {
+    n_eff <- NROW(y)
+  }
   
   AIC_main           <- dev_main        + 2          * df_main
   AIC_interaction    <- dev_interaction + 2          * df_total
@@ -337,35 +453,41 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   # Assemble evaluation metrics tibble
   # ---------------------------------------------------------------------------
-  fp_powers_main <- setNames(list(bestfp_main), cont_name)
-  fp_powers_int  <- bestfp_interaction
+  #fp_powers_main <- setNames(list(bestfp_main), cont_name)
+  #fp_powers_int  <- bestfp_interaction
   
-  metrics <- tibble::tibble(
-    variable           = cont_name,
-    fp_powers_main     = fp_powers_main,
-    fp_powers_int      = list(fp_powers_int),
-    deviance_int       = dev_interaction,
-    deviance_diff      = deviance_diff,
-    df_int     = df_int,
-    pvalue             = pvalue,
-    df_total           = df_total,
-    AIC_main           = AIC_main,                   
-    AIC_interaction    = AIC_interaction,            
-    AIC_main_minus_int = AIC_main - AIC_interaction, 
-    BIC_main           = BIC_main,                   
-    BIC_interaction    = BIC_interaction,            
-    BIC_main_minus_int = BIC_main - BIC_interaction
+  metric_type <- switch(
+    as.character(degree),
+    `0` = "linear",
+    `1` = "fp1",
+    `2` = "fp2",
+    paste0("fp", degree)
   )
-  class(metrics) <- c("best_model_metrics", class(metrics))
+  
+  metrics <- make_best_model_metrics(
+    variable        = cont_name,
+    type            = metric_type,
+    fp_powers_main  = bestfp_main,
+    fp_powers_int   = bestfp_interaction,
+    deviance_int    = dev_interaction,
+    deviance_diff   = deviance_diff,
+    df_int          = df_int,
+    pvalue          = pvalue,
+    df_total        = df_total,
+    AIC_main        = AIC_main,
+    AIC_interaction = AIC_interaction,
+    BIC_main        = BIC_main,
+    BIC_interaction = BIC_interaction
+  )
   
   list(
     evaluation_metrics = metrics,
     interaction_model  = fit_interaction,
     deviance_models    = list(main = dev_main, interaction = dev_interaction),
     df                 = list(
-    main               = df_main,
-    interaction        = df_total,
-    interaction_only   = df_int
+      main               = df_main,
+      interaction        = df_total,
+      interaction_only   = df_int
     )
   )
 }
@@ -384,6 +506,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #' @section Output columns:
 #' The printed table contains the following columns:
 #' \describe{
+#'   \item{`type`}{Functional form tested for the continuous variable.}
 #'   \item{`variable`}{Name of the continuous variable tested.}
 #'   \item{`fp_powers_main`}{FP powers in the main-effects model, formatted as
 #'     `"(p1)"` (FP1) or `"(p1, p2)"` (FP2).}
@@ -422,6 +545,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 #'
 #' @return Invisibly returns `x`.
 #'
+#' @method print best_model_metrics
 #' @export
 print.best_model_metrics <- function(x, ...) {
   # Guard: power columns may be absent if the user subset the data frame

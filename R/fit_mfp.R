@@ -181,10 +181,24 @@ fit_mfp <- function(x,
   # poisson() construction as well. Cox remains the character string "cox".
   family_fit <- resolve_fit_model_family(family)
   
-  if (verbose) {
-    cat("\ni Initial degrees of freedom:\n")
-    print(matrix(df, nrow = 1, dimnames = list("df", variables_x)),
-          quote = FALSE)
+  # if (verbose) {
+  #   cat("\ni Initial degrees of freedom:\n")
+  #   print(matrix(df, nrow = 1, dimnames = list("df", variables_x)),
+  #         quote = FALSE)
+  # }
+  
+  if (isTRUE(verbose)) {
+    df_text <- utils::capture.output(
+      print(
+        matrix(df, nrow = 1, dimnames = list("df", variables_x)),
+        quote = FALSE
+      )
+    )
+    
+    message(
+      "Initial degrees of freedom:\n",
+      paste(df_text, collapse = "\n")
+    )
   }
   
   # step 1: order variables ----------------------------------------------------
@@ -200,8 +214,10 @@ fit_mfp <- function(x,
   }
   
   if (verbose) {
-    cat(sprintf("\ni Visiting order: %s\n",
-                paste0(variables_ordered, collapse = ", ")))
+    message(sprintf(
+      "Visiting order: %s",
+      paste0(variables_ordered, collapse = ", ")
+    ))
   }
   
   # step 2: pre-process input --------------------------------------------------
@@ -405,7 +421,19 @@ fit_mfp <- function(x,
   names(acd_parameter) <- names(acdx)
   
   # Number of events
-  n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
+  if (family_string == "cox") {
+    status <- y[, ncol(y)]
+    n_obs <- sum(!is.na(status) & status > 0)
+    
+    if (!is.finite(n_obs) || n_obs <= 0L) {
+      stop(
+        "Cox AIC/BIC selection requires at least one observed event.",
+        call. = FALSE
+      )
+    }
+  } else {
+    n_obs <- nrow(x)
+  }
   
   # step 3: MFP backfitting cycles --------------------------------------------
   j         <- 1L
@@ -416,9 +444,10 @@ fit_mfp <- function(x,
   
   while (j <= cycles) {
     if (verbose) {
-      cat("\n---------------------")
-      cat(sprintf("\ni Running MFP Cycle %d\n", j))
-      cat("---------------------\n")
+      message(sprintf(
+        "%s\nRunning MFP Cycle %d\n%s",
+        strrep("-", 21), j, strrep("-", 21)
+      ))
     }
     
     fit_best_cycle <- find_best_fp_cycle(
@@ -471,8 +500,9 @@ fit_mfp <- function(x,
     if (powers_same && spike_same) {
       converged <- TRUE
       if (verbose)
-        cat(sprintf(
-          "\ni Fractional polynomial fitting algorithm converged after %d cycle(s).\n", j
+        message(sprintf(
+          "Fractional polynomial fitting algorithm converged after %d cycle(s).",
+          j
         ))
       break
     } else {
@@ -489,6 +519,7 @@ fit_mfp <- function(x,
       call. = FALSE
     )
   }
+  
   
   # step 4: final transformation ----------------------------------------------
   # Backscale x before final FP transformation so that coefficients are on

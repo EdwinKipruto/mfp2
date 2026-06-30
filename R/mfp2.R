@@ -1544,7 +1544,7 @@ if (!is.null(subset)) {
       )
     }
     
-    type <- attr(y, "type")
+    type <- attr(y, "type", exact = TRUE)
     if (type != "right") {
       stop(
         sprintf("! Type of censoring must not be %s.", type),
@@ -2207,6 +2207,17 @@ mfp2.formula <- function(formula,
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
   ties <- match.arg(ties)
+  
+  dots <- list(...)
+  
+  if ("acd_vars" %in% names(dots)) {
+    stop(
+      "`acd_vars` is not supported as an argument to `mfp2.formula()`. ",
+      "Use `fp(..., acd = TRUE)` or `fp2(..., acd = TRUE)` inside the formula ",
+      "to request ACD handling for formula terms.",
+      call. = FALSE
+    )
+  }
   
   # Allowed families
   allowed_families <- c("gaussian", "binomial", "poisson", "cox")

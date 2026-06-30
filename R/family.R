@@ -199,7 +199,7 @@ validate_family_response <- function(y, family_string, nobs) {
       )
     }
     
-    type <- attr(y, "type")
+    type <- attr(y, "type", exact = TRUE)
     if (!identical(type, "right")) {
       stop(
         paste0(

@@ -1381,35 +1381,62 @@ create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
 
 #' Partition Generated FP Variable Names into Group-Specific Subsets
 #'
-#' Given a common variable prefix and a character vector of column names, returns
-#' a list where each element contains the generated variable names belonging to
-#' one group.
+#' Given a continuous-variable name, a set of column names, and the known
+#' internal group codes used by MFPI, returns a list where each element contains
+#' the generated FP variable names belonging to one group.
 #'
-#' Variable names are assumed to follow the convention
-#' `<var_prefix><group_code><power_index>`, where `group_code` identifies the
-#' level of `group_var` and `power_index` is the final single digit identifying
-#' the fractional-polynomial power column. For example, in `"age105"`, the
-#' prefix is `"age"`, the group code is `"10"`, and the power index is `"5"`.
+#' This helper does not infer group membership from a regular expression.
+#' Instead, it constructs the expected generated names directly from known model
+#' metadata:
 #'
-#' This parsing rule supports multi-digit group codes, so groups such as `"1"`,
-#' `"10"`, and `"11"` are kept separate.
+#' \preformatted{
+#'   <var_prefix><group_code><power_index>
+#' }
+#'
+#' For example, if \code{var_prefix = "age"}, \code{group_codes = c(0, 1, 10)},
+#' and \code{power_indices = 1:2}, the expected generated names are:
+#'
+#' \preformatted{
+#'   age01, age02,
+#'   age11, age12,
+#'   age101, age102
+#' }
+#'
+#' This design avoids fragile string-pattern matching. In particular, valid
+#' variable names containing characters such as \code{.}, \code{+}, \code{(},
+#' or \code{)} are treated literally because the function compares complete
+#' expected names with \code{var_names}; it never interprets variable names as
+#' regular expressions.
+#'
+#' The final digit in each generated name is treated as the FP power-column
+#' index. The preceding suffix characters after \code{var_prefix} identify the
+#' internal group code. Multi-digit group codes such as \code{"10"} and
+#' \code{"11"} are therefore handled explicitly through \code{group_codes}.
 #'
 #' This is a lookup helper used after \code{create_z_variables()} to recover
-#' which generated columns belong to each level of `group_var`.
+#' which generated columns belong to each level of \code{group_var}.
 #'
-#' @param var_prefix Character string. The common prefix of the generated
-#'   variable names to partition. For example, `"age"` matches names such as
-#'   `"age01"`, `"age02"`, `"age101"`, and `"age105"`.
+#' @param var_prefix Character scalar. The original continuous-variable name
+#'   used as the prefix of generated FP variables.
 #' @param var_names Character vector of column names to search.
+#' @param group_codes Vector of known internal group codes. These are usually
+#'   \code{0}, \code{1}, ..., or their character equivalents. They should be the
+#'   same internal codes used when the group-specific FP columns were generated.
+#' @param power_indices Vector of allowed FP power-column indices. The default
+#'   \code{1:9} preserves the previous helper's ability to recognise any
+#'   single-digit power index while still matching names exactly.
 #'
-#' @return A list of character vectors, one per unique group code found between
-#'   `var_prefix` and the final single-digit power index. Groups are returned in
-#'   the order in which their first matching column appears in `var_names`.
+#' @return A list of character vectors, one per group code with at least one
+#'   generated column present in \code{var_names}. Groups are returned in the
+#'   order supplied by \code{group_codes}. Within each group, column names are
+#'   returned in the order in which they appear in \code{var_names}.
 #'
 #' @examples
 #' var_group(
-#'   "age",
-#'   c("age01", "age02", "age11", "age12", "age101", "age102", "bmi")
+#'   var_prefix = "age",
+#'   var_names = c("age01", "age02", "age11", "age12", "age101", "age102", "bmi"),
+#'   group_codes = c(0, 1, 10),
+#'   power_indices = 1:2
 #' )
 #' # Returns:
 #' # list(
@@ -1418,42 +1445,75 @@ create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
 #' #   c("age101", "age102")
 #' # )
 #'
-#' @examples
-#' # FP5 example with groups 0, 1, and 10
-#' var_group(
-#'   "age",
-#'   c(
-#'     "age01", "age02", "age03", "age04", "age05",
-#'     "age11", "age12", "age13", "age14", "age15",
-#'     "age101", "age102", "age103", "age104", "age105"
-#'   )
-#' )
-#'
 #' @keywords internal
 #' @noRd
-var_group <- function(var_prefix, var_names) {
-  if (!is.character(var_prefix) || length(var_prefix) != 1L)
-    stop("`var_prefix` must be a single character string.", call. = FALSE)
+var_group <- function(var_prefix,
+                      var_names,
+                      group_codes,
+                      power_indices = 1:9) {
+  if (!is.character(var_prefix) || length(var_prefix) != 1L ||
+      is.na(var_prefix) || !nzchar(var_prefix)) {
+    stop(
+      "`var_prefix` must be a single non-empty character string.",
+      call. = FALSE
+    )
+  }
   
-  if (!is.character(var_names) || length(var_names) == 0L)
-    stop("`var_names` must be a non-empty character vector.", call. = FALSE)
+  if (!is.character(var_names) || length(var_names) == 0L ||
+      anyNA(var_names)) {
+    stop(
+      "`var_names` must be a non-empty character vector without missing values.",
+      call. = FALSE
+    )
+  }
   
-  matched <- grep(paste0("^", var_prefix, "\\d{2,}$"), var_names, value = TRUE)
-  if (length(matched) == 0L) return(list())
+  if (missing(group_codes) || length(group_codes) == 0L ||
+      anyNA(group_codes) || !is.atomic(group_codes)) {
+    stop(
+      "`group_codes` must be a non-empty atomic vector without missing values.",
+      call. = FALSE
+    )
+  }
   
-  prefix_len <- nchar(var_prefix)
+  if (length(power_indices) == 0L || anyNA(power_indices) ||
+      !is.atomic(power_indices)) {
+    stop(
+      "`power_indices` must be a non-empty atomic vector without missing values.",
+      call. = FALSE
+    )
+  }
   
-  suffix <- substr(matched, prefix_len + 1L, nchar(matched))
+  group_codes <- unique(as.character(group_codes))
+  power_indices <- unique(as.character(power_indices))
   
-  # Naming convention: <varname><group><power_index>
-  # The final digit is the power index; everything before it is the group code.
-  group_code <- substr(suffix, 1L, nchar(suffix) - 1L)
+  # The naming convention stores the FP power-column index as the final single
+  # digit. Restricting `power_indices` to one digit avoids ambiguous names such
+  # as paste0("age", "1", "10"), where the boundary between group code and
+  # power index would no longer be clear.
+  if (any(nchar(power_indices) != 1L) ||
+      any(!(power_indices %in% as.character(0:9)))) {
+    stop(
+      "`power_indices` must contain only single-digit values from 0 to 9.",
+      call. = FALSE
+    )
+  }
   
-  unique_grps <- unique(group_code)
-  
-  lapply(unique_grps, function(g) {
-    matched[group_code == g]
+  groups <- lapply(group_codes, function(g) {
+    # Construct the exact names that are valid for this variable and group.
+    # This replaces the old regex-based search:
+    #
+    #   grep(paste0("^", var_prefix, "\\d{2,}$"), var_names, value = TRUE)
+    #
+    # Exact matching avoids accidental matches when `var_prefix` contains regex
+    # metacharacters such as ".", "+", "(", or ")".
+    expected <- paste0(var_prefix, g, power_indices)
+    
+    # Preserve the existing column order from `var_names`, because downstream
+    # model-matrix code may rely on the order in which columns appear.
+    var_names[var_names %in% expected]
   })
+  
+  groups[lengths(groups) > 0L]
 }
 
 # -----------------------------------------------------------------------------

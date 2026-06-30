@@ -24,6 +24,7 @@ delegates to \code{\link[=print.data.frame]{print.data.frame()}}.
 
 The printed table contains the following columns:
 \describe{
+\item{\code{type}}{Functional form tested for the continuous variable.}
 \item{\code{variable}}{Name of the continuous variable tested.}
 \item{\code{fp_powers_main}}{FP powers in the main-effects model, formatted as
 \code{"(p1)"} (FP1) or \code{"(p1, p2)"} (FP2).}

@@ -13,15 +13,6 @@
 #' metadata, and then assigns the exact coefficient names used in the fitted
 #' interaction model.
 #'
-#' @section Why this helper is separate:
-#' This helper is deliberately independent of the legacy fitted-function
-#' generator. It is the shared low-level reconstruction engine used by
-#' \code{predict.mfpi()} for fitted-function prediction and ordinary
-#' subject-level prediction. Keep it in a stable file, such as
-#' \file{R/mfpi_basis_helpers.R} or \file{R/predict.mfpi.R}, so that
-#' \code{gen_fitted_values_per_group()} can be removed without breaking
-#' prediction.
-#'
 #' @section Scale convention:
 #' When \code{transform_basis = TRUE}, \code{cont_mat} must be on the
 #' shifted-but-not-scaled FP scale used by \code{transform_matrix()}, usually
@@ -325,16 +316,13 @@ build_group_fp_basis <- function(cont_mat,
 }
 
 
-# -----------------------------------------------------------------------------
-# predict.mfpi() ---------------------------------------------------------------
-# -----------------------------------------------------------------------------
 #' Predict from an MFPI Model
 #'
 #' Computes predictions from an object of class \code{"mfpi"}.
 #'
 #' The main prediction target is the group-specific MFPI fitted function
 #' \eqn{f_j(x)}. For each requested continuous variable, the method can return
-#' the fitted functions, pointwise standard errors, confidence intervals, and
+#' fitted functions, pointwise standard errors, confidence intervals, and
 #' contrasts between fitted functions. Ordinary link- and response-scale
 #' prediction from the term-specific interaction model is also supported.
 #'
@@ -359,7 +347,8 @@ build_group_fp_basis <- function(cont_mat,
 #'   response-scale predictions. For Gaussian models this is the fitted mean,
 #'   for binomial models the fitted probability, for Poisson models the fitted
 #'   mean count or rate, and for Cox models the relative risk score
-#'   \eqn{\exp(\eta)}.}
+#'   \eqn{\exp(\eta)}. Cox response prediction is not an absolute survival
+#'   probability.}
 #' }
 #'
 #' @section Term-specific prediction:
@@ -389,6 +378,13 @@ build_group_fp_basis <- function(cont_mat,
 #' zero-handled variables, the grid is built over the positive part and includes
 #' a structural zero point if structural zeros are present.
 #'
+#' Fitted-function differences are computed relative to a reference group.
+#' Unless \code{reference} is supplied, the reference group used at model fitting
+#' is reused. Supplying \code{reference} only changes the contrast baseline for
+#' fitted-function differences returned by \code{type = "difference"} or
+#' \code{type = "both"}; it does not refit the model or change the fit-time
+#' group coding used by ordinary prediction.
+#'
 #' @section Ordinary link and response prediction:
 #' Ordinary \code{type = "link"} and \code{type = "response"} prediction are
 #' subject-level targets. For \code{newdata = NULL} and \code{offset = NULL},
@@ -401,14 +397,30 @@ build_group_fp_basis <- function(cont_mat,
 #' offsets when applicable. The reconstructed matrix is then multiplied by the
 #' fitted coefficient vector.
 #'
+#' Ordinary prediction uses the group coding, reference level, contrasts, and
+#' centering conventions stored at model fitting. New observations must belong
+#' to group levels observed during fitting. New group levels are rejected
+#' because no fitted coefficients exist for groups outside the fit-time design.
+#'
+#' @section Cox models:
+#' For Cox models, \code{type = "link"} returns the zero-reference linear
+#' predictor and \code{type = "response"} returns the relative risk score
+#' \eqn{\exp(\eta)}. Baseline survival, cumulative-hazard, expected-event, and
+#' absolute-risk prediction are not currently implemented. Formula-level Cox
+#' strata used during fitting affect the partial likelihood and
+#' stratum-specific baseline hazards, but no prediction-time strata argument is
+#' supported by this method.
+#'
 #' @section Required object metadata:
-#' New-data prediction assumes that the \code{"mfpi"} object stores the final
-#' shifted/scaled training matrix and prediction metadata created at fit time.
-#' In particular, fitted-function prediction with \code{newdata = NULL} uses
-#' \code{object$x_train_scaled} or \code{object$x_scaled}. New-data ordinary
-#' prediction additionally relies on stored shift, scale, winsorisation limits,
-#' group-level mapping, selected adjustment-model powers, centering constants,
-#' and each flex result's \code{coefficient_groups}.
+#' New-data prediction assumes that the \code{"mfpi"} object stores prediction
+#' metadata created at fit time. In particular, fitted-function prediction with
+#' \code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
+#' plus a replacement \code{offset} require \code{object$x_train_internal},
+#' the post-preprocessing training matrix containing shifted/scaled predictors
+#' and internally remapped \code{group_var} codes. New-data ordinary prediction
+#' additionally relies on stored shift, scale, winsorisation limits, group-level
+#' mapping, selected adjustment-model powers, centering constants, formula
+#' metadata when applicable, and each flex result's \code{coefficient_groups}.
 #'
 #' @param object An object of class \code{"mfpi"}.
 #' @param newdata Optional matrix or data frame. For fitted-function prediction
@@ -417,9 +429,10 @@ build_group_fp_basis <- function(cont_mat,
 #'   raw scale. The grouping variable is not required for fitted-function
 #'   prediction because all group-specific functions are evaluated at each
 #'   supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
-#'   \code{"response"}), \code{newdata} must also contain the grouping
-#'   variable and all selected adjustment variables required by the
-#'   term-specific interaction model.
+#'   \code{"response"}), \code{newdata} must also contain the grouping variable
+#'   and all selected adjustment variables required by the term-specific
+#'   interaction model. Group values in \code{newdata} must correspond to
+#'   levels observed during model fitting.
 #' @param terms Character vector of continuous variables to predict. If
 #'   \code{NULL}, terms are selected from the requested \code{model} scope.
 #' @param model Character scalar, either \code{"best"} or \code{"all"}.
@@ -431,8 +444,7 @@ build_group_fp_basis <- function(cont_mat,
 #'   response-scale standard errors use the same inverse-link derivative
 #'   convention as \code{predict.glm()}. For Cox response prediction,
 #'   \code{fit} is the relative risk score \eqn{\exp(\eta)} and
-#'   \code{se.fit} follows \code{predict.coxph(type = "risk",
-#'   reference = "zero")}.
+#'   \code{se.fit} follows the zero-reference relative-risk convention.
 #' @param level Numeric scalar in \code{(0, 1)}. Confidence level for
 #'   pointwise fitted-function and fitted-difference intervals.
 #' @param grid Logical scalar. If \code{TRUE}, evaluate fitted functions on a
@@ -443,8 +455,10 @@ build_group_fp_basis <- function(cont_mat,
 #'   \code{x} values can be \code{n_grid + 1}.
 #' @param reference Optional reference group for fitted-function differences.
 #'   May be an internal group label or an original group label if group-level
-#'   metadata are stored in \code{object}. If \code{NULL}, the first internal
-#'   group level is used.
+#'   metadata are stored in \code{object}. If \code{NULL}, the reference group
+#'   used at model fitting is reused. This argument affects only fitted-function
+#'   differences; it does not change the fit-time reference level used by the
+#'   stored interaction model.
 #' @param offset Optional numeric vector for ordinary \code{"link"} or
 #'   \code{"response"} prediction. If \code{newdata} is supplied,
 #'   \code{offset} must contain one value per row of \code{newdata}. If
@@ -452,14 +466,9 @@ build_group_fp_basis <- function(cont_mat,
 #'   per training row; the stored training design is reconstructed and the
 #'   supplied offset is used instead of delegating to the fitted model's own
 #'   \code{predict()} method. Ignored for fitted-function prediction.
-#' @param strata Reserved for future Cox baseline-survival prediction. It is
-#'   ignored for the current Cox prediction targets, which are the linear
-#'   predictor and relative risk score.
-#' @param allow_new_group_levels Logical scalar. Reserved for future extensions.
-#'   New group levels are rejected because no fitted coefficients exist for
-#'   groups that were not present at model fitting.
 #' @param ... Reserved for future extensions. Currently unused arguments produce
-#'   a warning.
+#'   a warning. Cox baseline-survival arguments such as prediction times or
+#'   prediction-time strata are not currently supported.
 #'
 #' @return If one term is requested, an object of class
 #' \code{"mfpi_prediction"}. If multiple terms are requested, a named list of
@@ -535,17 +544,20 @@ build_group_fp_basis <- function(cont_mat,
 #' # Fitted functions only.
 #' p3 <- predict(fit, terms = "age", type = "function")
 #'
-#' # Differences relative to a chosen reference group.
-#' p4 <- predict(fit, terms = "age", type = "difference", reference = 0)
+#' # Differences relative to the fit-time reference group.
+#' p4 <- predict(fit, terms = "age", type = "difference")
+#'
+#' # Differences relative to an explicitly chosen observed group.
+#' p5 <- predict(fit, terms = "age", type = "difference", reference = 0)
 #'
 #' # Ordinary subject-level response prediction for new observations.
 #' new_x <- x[1:10, , drop = FALSE]
-#' p5 <- predict(fit, terms = "age", type = "response", newdata = new_x)
-#' head(p5$predictions)
+#' p6 <- predict(fit, terms = "age", type = "response", newdata = new_x)
+#' head(p6$predictions)
 #'
 #' # Multiple terms return a named prediction list.
-#' p6 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
-#' names(p6)
+#' p7 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
+#' names(p7)
 #' }
 #'
 #' @method predict mfpi
@@ -561,8 +573,6 @@ predict.mfpi <- function(object,
                          n_grid = 200L,
                          reference = NULL,
                          offset = NULL,
-                         strata = NULL,
-                         allow_new_group_levels = FALSE,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
   # either the fitted-function path or the ordinary subject-level path.
@@ -595,12 +605,6 @@ predict.mfpi <- function(object,
     stop("`n_grid` must be an integer >= 2.", call. = FALSE)
   }
   
-  if (!is.logical(allow_new_group_levels) ||
-      length(allow_new_group_levels) != 1L || anyNA(allow_new_group_levels)) {
-    stop("`allow_new_group_levels` must be a single non-missing logical value.",
-         call. = FALSE)
-  }
-  
   dots <- list(...)
   if (length(dots) > 0L) {
     warning(
@@ -613,14 +617,7 @@ predict.mfpi <- function(object,
     warning("`grid` is ignored for `type = \"link\"` and `type = \"response\"`.",
             call. = FALSE)
   }
-  
-  if (!is.null(strata)) {
-    warning(
-      "`strata` is reserved for future Cox baseline-survival prediction and is ignored here.",
-      call. = FALSE
-    )
-  }
-  
+
   fits <- mfpi_get_prediction_fits(object = object, terms = terms, model = model)
   
   out <- stats::setNames(
@@ -666,8 +663,7 @@ predict.mfpi <- function(object,
         term = term,
         fit_result = fit_result,
         newdata = newdata,
-        offset = offset,
-        allow_new_group_levels = allow_new_group_levels
+        offset = offset
       )
       
       pred <- mfpi_predict_from_design(
@@ -794,8 +790,8 @@ mfpi_get_prediction_fits <- function(object, terms, model) {
 #' Prepares the one-column continuous-variable matrix used to reconstruct
 #' fitted functions. For supplied \code{newdata}, raw values are transformed
 #' using the same shift, scale, and winsorisation metadata used at model fit
-#' time. For \code{newdata = NULL}, the helper reads the stored final training
-#' matrix from \code{object$x_train_scaled} or \code{object$x_scaled}.
+#' time. For \code{newdata = NULL}, the helper reads the stored
+#' post-preprocessing training matrix from \code{object$x_train_internal}.
 #'
 #' @section Scale convention:
 #' The returned \code{cont_var_scaled} is on the stored shifted/scaled scale,
@@ -870,15 +866,15 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
   }
   
   if (is.null(newdata)) {
-    x_train <- object$x_train_scaled
-    if (is.null(x_train)) x_train <- object$x_scaled
+    x_train <- object$x_train_internal
     
     if (is.null(x_train)) {
       stop(
         paste0(
           "`newdata` is NULL, but the MFPI object does not contain ",
-          "`x_train_scaled`. Store the final shifted/scaled fitting matrix ",
-          "or supply `newdata` containing `", term, "`."
+          "`x_train_internal`, the post-preprocessing training matrix. ",
+          "Refit the model with the current version of `mfpi()` or supply ",
+          "`newdata` containing `", term, "`."
         ),
         call. = FALSE
       )
@@ -1473,8 +1469,6 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #'   \code{newdata = NULL}, it must contain one value per training row and
 #'   triggers reconstruction of the stored training design. Required when the
 #'   fitted interaction model used an offset and manual prediction is used.
-#' @param allow_new_group_levels Logical scalar. Currently unsupported when new
-#'   levels appear because no fitted coefficients exist for unseen groups.
 #'
 #' @return A list with \code{X} (design matrix without intercept, or
 #'   \code{NULL} when prediction delegates to the fitted model),
@@ -1484,8 +1478,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' @keywords internal
 #' @noRd
 mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
-                                       offset = NULL,
-                                       allow_new_group_levels = FALSE) {
+                                       offset = NULL) {
   # Build the subject-level model matrix only when delegation to the fitted
   # model is not possible or not appropriate, such as supplied newdata.
   
@@ -1508,8 +1501,9 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # If a new `offset` is supplied with `newdata = NULL`, delegation would ignore
   # that offset and use the offset stored at fit time. To honor the supplied
   # offset, switch to the same manual reconstructed-design path used for
-  # supplied `newdata`, but start from the stored shifted/scaled training matrix.
-  newdata_is_training_scaled <- FALSE
+  # supplied `newdata`, but start from `x_train_internal`, the
+  # post-preprocessing training matrix.
+  newdata_is_training_internal <- FALSE
   if (is.null(newdata)) {
     if (is.null(offset)) {
       return(list(
@@ -1523,31 +1517,47 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       ))
     }
     
-    newdata <- object$x_train_scaled
-    if (is.null(newdata)) newdata <- object$x_scaled
+    newdata <- object$x_train_internal
+    
     if (is.null(newdata)) {
       stop(
         paste0(
           "Cannot apply a supplied `offset` with `newdata = NULL` because ",
-          "the MFPI object does not store the shifted/scaled training matrix."
+          "the MFPI object does not store `x_train_internal`, the ",
+          "post-preprocessing training matrix. Refit the model with the current ",
+          "version of `mfpi()` or supply explicit `newdata`."
         ),
         call. = FALSE
       )
     }
     
-    newdata_is_training_scaled <- TRUE
+    newdata_is_training_internal <- TRUE
   }
   
   coef_names <- names(coef_vec)
   target_cols <- setdiff(coef_names, "(Intercept)")
-  n_raw <- if (is.data.frame(newdata)) nrow(newdata) else NROW(newdata)
-  if (n_raw == 0L) stop("`newdata` must contain at least one row.", call. = FALSE)
   
-  # Local conversion helper keeps the global namespace smaller. For formula
-  # interface fits, prediction must use the original formula terms, contrasts,
-  # and factor levels. If model.matrix() fails, do not silently fall back to
-  # data.matrix(), because that can recode factors/characters and return a
-  # numerically valid but wrong design matrix.
+  n_raw <- if (is.data.frame(newdata)) nrow(newdata) else NROW(newdata)
+  if (n_raw == 0L) {
+    stop("`newdata` must contain at least one row.", call. = FALSE)
+  }
+  
+  # Formula-interface prediction should replay the fit-time formula design
+  # recipe before numeric coercion. This rebuilds formula-derived columns such
+  # as factor dummies using stored terms, contrasts, and xlevels, while preserving
+  # raw group and continuous variables needed for MFPI-specific reconstruction.
+  if (!isTRUE(newdata_is_training_internal) &&
+      isTRUE(object$formula_interface) &&
+      is.data.frame(newdata)) {
+    newdata <- mfpi_prepare_formula_newdata(
+      object = object,
+      newdata = newdata
+    )
+  }
+  
+  # Local conversion helper. At this point, formula-interface data frames have
+  # already been expanded with fit-time formula metadata. Plain matrix-interface
+  # input remains unchanged.
   as_prediction_matrix <- function(data) {
     if (is.data.frame(data)) data <- data.matrix(data)
     if (is.vector(data) && is.null(dim(data))) data <- matrix(data, ncol = 1L)
@@ -1587,10 +1597,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       )
     }
     
-    # When a replacement offset is supplied with `newdata = NULL`, `nd` is the
-    # stored training matrix. It has already been shifted, scaled, and
-    # winsorised at fit time. Do not transform it a second time.
-    if (isTRUE(newdata_is_training_scaled)) {
+    # When a replacement offset is supplied with `newdata = NULL`, `nd` is
+    # `x_train_internal`. It has already been shifted, scaled, winsorised, and
+    # internally group-remapped at fit time. Do not transform it a second time.
+    if (isTRUE(newdata_is_training_internal)) {
       out <- nd[, vars, drop = FALSE]
       storage.mode(out) <- "double"
       return(out)
@@ -1635,10 +1645,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     group_raw <- as.vector(nd[, group_var])
   }
   
-  if (isTRUE(newdata_is_training_scaled)) {
-    # The stored training matrix already contains MFPI's internal numeric group
-    # codes. Do not match these values against original labels such as
-    # "Placebo" and "Active".
+  if (isTRUE(newdata_is_training_internal)) {
+    # `x_train_internal` already contains MFPI's internal numeric group codes.
+    # Do not match these values against original labels such as "Placebo" and
+    # "Active".
     group_internal <- suppressWarnings(as.numeric(group_raw))
     if (anyNA(group_internal)) {
       stop(
@@ -1653,15 +1663,13 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       hit <- match(as.character(group_raw), as.character(orig))
       if (anyNA(hit)) {
         bad <- unique(group_raw[is.na(hit)])
-        if (!allow_new_group_levels) {
-          stop(
-            paste0("`newdata` contains group level(s) not seen at fit time: ",
-                   paste(bad, collapse = ", "), "."),
-            call. = FALSE
-          )
-        }
         stop(
-          "`allow_new_group_levels = TRUE` is not supported because no coefficients exist for unseen groups.",
+          paste0(
+            "`newdata` contains group level(s) not seen at fit time: ",
+            paste(bad, collapse = ", "),
+            ". Ordinary prediction uses the group coding and reference level stored ",
+            "at model fitting; no coefficients exist for new group levels."
+          ),
           call. = FALSE
         )
       }
@@ -1738,17 +1746,33 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   adj_model <- object$adjustment_model
   adj_vars <- character(0L)
   if (!is.null(adj_model)) {
-    if (exists("get_selected_variables", mode = "function")) {
-      adj_vars <- get_selected_variables(adj_model)
-    } else if (!is.null(adj_model$fp_terms)) {
-      fp_terms <- adj_model$fp_terms
-      if (!is.null(rownames(fp_terms))) adj_vars <- rownames(fp_terms)
-    }
+    adj_vars <- get_selected_variables(adj_model)
   }
   
   group_dummy_names <- paste0(group_var, group_labels[-1L])
   adj_vars <- setdiff(adj_vars, c(term, group_dummy_names))
   adj_vars <- unique(adj_vars[!is.na(adj_vars) & nzchar(adj_vars)])
+  
+  # Formula-interface newdata has already been expanded near the top of this
+  # helper by mfpi_prepare_formula_newdata(). At this stage, selected adjustment
+  # columns should already be present in `nd`. Do not patch factors one variable
+  # at a time here; missing columns indicate that the stored formula recipe could
+  # not reproduce the fit-time design.
+  if (!isTRUE(newdata_is_training_internal) &&
+      isTRUE(object$formula_interface) &&
+      length(adj_vars) > 0L) {
+    missing_adj <- setdiff(adj_vars, colnames(nd))
+    if (length(missing_adj) > 0L) {
+      stop(
+        paste0(
+          "Formula-interface prediction could not reconstruct selected ",
+          "adjustment column(s): ",
+          paste(missing_adj, collapse = ", "), "."
+        ),
+        call. = FALSE
+      )
+    }
+  }
   
   x_adjustment <- NULL
   if (length(adj_vars) > 0L) {
@@ -1765,8 +1789,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     
     powers <- if (!is.null(adj_model$fp_powers)) {
       adj_model$fp_powers[adj_vars]
-    } else if (!is.null(adj_model$fp_terms) &&
-               exists("get_fp_powers", mode = "function")) {
+    } else if (!is.null(adj_model$fp_terms)) {
       get_fp_powers(adj_vars, adj_model$fp_terms)
     } else {
       NULL
@@ -1908,7 +1931,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     has_offset = has_offset,
     group_internal = group_internal,
     group_levels = group_labels,
-    newdata = !isTRUE(newdata_is_training_scaled),
+    newdata = !isTRUE(newdata_is_training_internal),
     use_model_predict = FALSE
   )
 }
@@ -2419,4 +2442,121 @@ mfpi_fit_has_offset <- function(fit_obj) {
     return(length(off) > 0L)
   }
   FALSE
+}
+
+
+#' Prepare New Data for Formula-Interface MFPI Prediction
+#'
+#' Replays the fit-time formula design recipe for formula-interface
+#' \code{mfpi()} objects. The helper rebuilds formula-derived columns using the
+#' stored terms object, factor levels, and contrasts, while preserving the raw
+#' user-supplied columns needed by MFPI-specific prediction logic.
+#'
+#' This function does not rerun variable selection, refit models, or recompute
+#' fractional-polynomial powers. It only rebuilds the formula-side design
+#' columns that \code{model.matrix()} created at fit time.
+#'
+#' @param object Object of class \code{"mfpi"} containing formula metadata.
+#' @param newdata Raw data frame supplied to \code{predict.mfpi()}.
+#'
+#' @return A data frame containing the original raw columns plus any formula-
+#'   derived design columns that were not already present.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_prepare_formula_newdata <- function(object, newdata) {
+  if (!is.data.frame(newdata)) {
+    return(newdata)
+  }
+  
+  terms_obj <- object$formula_terms
+  if (is.null(terms_obj)) {
+    stop(
+      "Formula-interface prediction metadata are missing: `formula_terms` is NULL.",
+      call. = FALSE
+    )
+  }
+  
+  xlevels <- object$formula_xlevels
+  if (is.null(xlevels)) {
+    xlevels <- list()
+  }
+  
+  xcontrasts <- object$formula_contrasts
+  
+  mf <- tryCatch(
+    stats::model.frame(
+      terms_obj,
+      data = newdata,
+      na.action = stats::na.pass,
+      xlev = xlevels,
+      drop.unused.levels = FALSE
+    ),
+    error = function(e) {
+      stop(
+        paste0(
+          "Could not reconstruct the formula model frame for `newdata`: ",
+          conditionMessage(e)
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  
+  mm <- tryCatch(
+    {
+      if (is.null(xcontrasts)) {
+        stats::model.matrix(terms_obj, data = mf)
+      } else {
+        stats::model.matrix(
+          terms_obj,
+          data = mf,
+          contrasts.arg = xcontrasts
+        )
+      }
+    },
+    error = function(e) {
+      stop(
+        paste0(
+          "Could not reconstruct the formula model matrix for `newdata`: ",
+          conditionMessage(e)
+        ),
+        call. = FALSE
+      )
+    }
+  )
+  
+  if ("(Intercept)" %in% colnames(mm)) {
+    mm <- mm[, setdiff(colnames(mm), "(Intercept)"), drop = FALSE]
+  }
+  
+  out <- newdata
+  
+  if (ncol(mm) > 0L) {
+    mm_df <- as.data.frame(mm, optional = TRUE)
+    names(mm_df) <- colnames(mm)
+    
+    add_cols <- setdiff(names(mm_df), names(out))
+    if (length(add_cols) > 0L) {
+      out <- cbind(out, mm_df[, add_cols, drop = FALSE])
+    }
+  }
+  
+  expected_cols <- object$formula_design_columns
+  if (!is.null(expected_cols) && length(expected_cols) > 0L) {
+    missing_cols <- setdiff(expected_cols, names(out))
+    if (length(missing_cols) > 0L) {
+      stop(
+        paste0(
+          "`newdata` could not be expanded to the fit-time formula design. ",
+          "Missing design column(s): ",
+          paste(missing_cols, collapse = ", "),
+          "."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  
+  out
 }

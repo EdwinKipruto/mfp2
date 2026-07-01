@@ -42,11 +42,13 @@
 #' @return 
 #' A list with two components:
 #' 
-#' * \code{data}: A list with length equal to the number of possible fractional polynomial (FP) 
-#'   transformations for the variable of interest. Each entry is a matrix with \code{nobs} rows. 
-#'   The number of columns equals the FP \code{degree}, unless \code{catzero = TRUE}, in which case 
-#'   an additional column is included for the binary indicator variable. For example, with 
-#'   \code{degree = 2}, \code{catzero = TRUE}, and \code{nobs = 10}, each entry is a 10 × 3 matrix. 
+#' * \code{data}: A list with length equal to the number of possible fractional
+#'  polynomial (FP) transformations for the variable of interest. Each entry is 
+#'  a matrix with \code{nobs} rows. The number of columns equals the 
+#'  FP \code{degree}, unless \code{catzero = TRUE}, in which case an additional
+#'   column is included for the binary indicator variable. For example, with 
+#'   \code{degree = 2}, \code{catzero = TRUE}, and \code{nobs = 10}, each entry 
+#'   is a \eqn{10 \times 3} matrix.
 #'   The FP-transformed values are not centered. If \code{degree = 0}, the list contains a single 
 #'   entry with one column (or two columns if \code{catzero = TRUE}), representing the linear 
 #'   transformation (and binary indicator, if applicable).

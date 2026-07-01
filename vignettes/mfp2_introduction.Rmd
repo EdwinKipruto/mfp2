@@ -749,6 +749,19 @@ mfp2(lpsa ~ fp(age, powers = c(1, 0.5)) + svi + fp(pgg45) + fp(weight) +
 )
 ```
 
+## Candidate FP powers
+
+Candidate FP powers can be supplied either through the top-level `powers`
+argument or term by term inside `fp()` or `fp2()` in the formula interface. The
+values define a set of candidate base powers, not a final selected FP power
+vector. Duplicate candidate powers are removed. For example, `powers = c(4, 4)`
+is treated as the single candidate set `powers = 4`; repeated selected powers
+such as FP2(4, 4) are generated internally when an FP2 model is fitted.
+
+In the formula interface, powers supplied inside `fp()` or `fp2()` take
+precedence over powers supplied through the top-level `powers` argument for the
+same variable. This avoids ambiguity when a variable-specific formula term and a
+global `powers` list both specify candidate powers.
 
 # Explanation of output from the model-selection algorithm
 
@@ -1098,42 +1111,54 @@ categorical variables in regression modelling, see Royston and Sauerbrei (2008,
 Chapter 3).
 
 In **R**, the `model.matrix()` function automatically generates dummy variables
-for factors. For ordinal variables, users should assign an appropriate contrast
-matrix to preserve the ordering of the categories. The `mfp2` package provides
-the `contr.cumulative()` function for creating cumulative contrasts. Nominal
-variables can be treated as standard factors.
+for factors. Nominal factors can be supplied to the formula interface and are
+expanded internally. Ordered factor predictors, however, are not passed directly
+to `mfp2.formula()`, because their polynomial contrast columns would otherwise
+be treated as separate MFP candidate variables. For ordinal predictors, create
+the intended numeric dummy or contrast columns explicitly before fitting. The
+`mfp2` package provides the `contr.cumulative()` function for cumulative ordinal
+contrasts; the example below uses equivalent cumulative indicator columns for
+clarity.
 
-Before fitting a model, convert categorical variables to factors using
-`factor()`. For ordinal variables, set `ordered = TRUE`. Levels may be specified
-explicitly; otherwise, the first level is used as the reference category.
+Before fitting a model, decide how the ordinal information should enter the
+regression model. The example below represents the three-level ordinal variable
+`x4` by two cumulative indicators, while the nominal variable `x9` remains a
+standard factor.
 
 ```{r categorical-variables-combined, message=TRUE, warning=TRUE}
 # Load the art data
 data("art")
 
 # Ordinal variable x4
-art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
-contrasts(art$x4) <- contr.cumulative(levels(art$x4))
+# Ordered factors are not passed directly to mfp2.formula(). Instead, create
+# explicit numeric columns representing the intended ordinal coding.
+x4_ord <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
+x4_num <- match(as.character(x4_ord), levels(x4_ord))
+
+art$x4_ge_2 <- as.integer(x4_num >= 2L)
+art$x4_ge_3 <- as.integer(x4_num >= 3L)
+art$x4 <- NULL
 
 # Nominal variable x9
+# Nominal factors can remain factors; model.matrix() expands them internally.
 art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
 
 # Display the first 10 rows to check
 head(art, 10)
 
 # Formula interface example
-# Dummy variables for x4 and x9 are generated internally.
-# Other numeric variables remain unchanged.
+# The ordinal variable x4 is represented by explicit numeric cumulative
+# indicators. The nominal variable x9 is dummy-coded internally.
 fit_formula <- mfp2(
-  y ~ fp(x1) + x2 + fp(x3) + x4 + fp(x5) + fp(x6) +
-    fp(x7) + x8 + x9 + fp(x10),
+  y ~ fp(x1) + x2 + fp(x3) + x4_ge_2 + x4_ge_3 +
+    fp(x5) + fp(x6) + fp(x7) + x8 + x9 + fp(x10),
   data = art,
   verbose = FALSE
 )
 
 # Matrix interface example
 # Manually create the model matrix for all predictors.
-x <- model.matrix(y ~ ., data = art)[, -1]  # exclude intercept
+x <- model.matrix(y ~ ., data = art)[, -1, drop = FALSE]  # exclude intercept
 head(x)
 
 y <- as.numeric(art$y)

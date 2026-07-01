@@ -150,3 +150,101 @@ apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
   }
   return(x)
 }
+
+
+#' Validate rank and estimability of a default-interface design matrix
+#'
+#' Checks that a numeric design matrix supplied to the default matrix interface
+#' has complete column names, contains no constant or non-informative columns,
+#' and is full column rank after adding an intercept when appropriate.
+#'
+#' This is an internal defensive check for the matrix/default interface. Unlike
+#' the formula interface, the default interface receives only a numeric design
+#' matrix and cannot know whether columns came from raw variables, dummy coding,
+#' ordered-factor polynomial contrasts, spline bases, or user-defined features.
+#' Therefore this helper validates the actual estimability of the supplied
+#' columns rather than trying.
+#' Therefore this helper validates the actual estimability of the supplied
+#' columns rather than trying to infer their origin from column names.
+#'
+#' For Cox models, `intercept` should be `FALSE` because Cox partial-likelihood
+#' models do not include an intercept. For ordinary Gaussian, binomial, poisson,
+#' and other GLM-style fits, `intercept` should usually be `TRUE`.
+#'
+#' @param x A numeric design matrix, or an object coercible to a matrix. Columns
+#'   are candidate variables supplied to the default interface.
+#' @param intercept Logical scalar. If `TRUE`, an intercept column is included
+#'   when checking matrix rank. If `FALSE`, rank is checked on `x` alone.
+#'
+#' @return Invisibly returns `TRUE` if the design passes validation.
+#'
+#' @details
+#' A column is treated as non-informative when, after removing non-finite values,
+#' it has at most one unique value. Rank deficiency is detected using `qr()`.
+#' If the design is rank-deficient, the helper reports columns identified by the
+#' QR pivot as aliased or not estimable.
+#'
+#' This check is intentionally conservative. It is meant to fail early for input
+#' matrices that cannot support valid model-comparison tests in the MFP
+#' selection cycle. Step-level rank checks are still needed because a candidate
+#' can become non-estimable in a particular adjustment model even if the initial
+#' design passes this validation.
+#'
+#' @keywords internal
+#' @noRd
+validate_default_design_rank <- function(x, intercept = TRUE) {
+  if (!is.matrix(x)) {
+    x <- as.matrix(x)
+  }
+  
+  if (is.null(colnames(x)) || anyNA(colnames(x)) || any(colnames(x) == "")) {
+    stop("`x` must have complete, non-empty column names.", call. = FALSE)
+  }
+  
+  bad_constant <- vapply(
+    seq_len(ncol(x)),
+    function(j) {
+      z <- x[, j]
+      z <- z[is.finite(z)]
+      length(unique(z)) <= 1L
+    },
+    logical(1L)
+  )
+  
+  if (any(bad_constant)) {
+    stop(
+      sprintf(
+        "The following columns in `x` are constant or non-informative: %s.",
+        paste(colnames(x)[bad_constant], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  
+  X <- if (intercept) cbind("(Intercept)" = 1, x) else x
+  
+  qr_x <- qr(X)
+  full_rank <- qr_x$rank == ncol(X)
+  
+  if (!full_rank) {
+    pivot <- qr_x$pivot
+    aliased_positions <- pivot[(qr_x$rank + 1L):ncol(X)]
+    aliased_names <- colnames(X)[aliased_positions]
+    aliased_names <- setdiff(aliased_names, "(Intercept)")
+    
+    stop(
+      sprintf(
+        paste0(
+          "The supplied design matrix is rank-deficient. ",
+          "The following column(s) are aliased or not estimable in the initial design: %s. ",
+          "Remove redundant columns or provide a design in which each candidate variable ",
+          "adds an estimable degree of freedom."
+        ),
+        paste(aliased_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  
+  invisible(TRUE)
+}

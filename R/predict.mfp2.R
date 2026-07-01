@@ -345,6 +345,10 @@ predict.mfp2 <- function(object,
       #  prepare_newdata_for_predict() returns the final correct names
       term_coef <- coef(object)[colnames(x_trafo)]
       
+      # Replace NA coefficients with 0 (rank-deficient or aliased terms),
+      # matching the convention in predict.coxph().
+      term_coef[is.na(term_coef)] <- 0
+      
       # create output data.frame
       # backtransform variable to original scale
       variable = (as.numeric(x_seq)) - object$transformations[t,"shift"]
@@ -447,16 +451,24 @@ predict.mfp2 <- function(object,
       check_binary = FALSE
     )
     
+    # Strip "mfp2" from the class vector so stats::predict() dispatches to
+    # predict.coxph() or predict.glm() instead of recursing into predict.mfp2().
+    obj_base <- object
+    class(obj_base) <- setdiff(class(obj_base), "mfp2")
+    
     if (object$family_string == "cox") {
-      pred <- getFromNamespace("predict.coxph", "survival")(
-        object,
+      # reference = "zero": mfp2 already centers the design matrix, so
+      # predict.coxph() must not subtract object$means again.
+      pred <- stats::predict(
+        obj_base,
         newdata = newdata,
         type = type,
+        reference = "zero",
         ...
       )
     } else {
-      pred <- stats::predict.glm(
-        object,
+      pred <- stats::predict(
+        obj_base,
         newdata = newdata,
         type = type,
         ...
@@ -467,18 +479,21 @@ predict.mfp2 <- function(object,
   }
   
   # no newdata supplied
+  obj_base <- object
+  class(obj_base) <- setdiff(class(obj_base), "mfp2")
   if (object$family_string == "cox") {
     return(
-      getFromNamespace("predict.coxph", "survival")(
-        object = object,
+      stats::predict(
+        obj_base,
         type = type,
+        reference = "zero",
         ...
       )
     )
   } else {
     return(
-      stats::predict.glm(
-        object = object,
+      stats::predict(
+        obj_base,
         type = type,
         ...
       )
@@ -493,7 +508,7 @@ predict.mfp2 <- function(object,
 #' and type of prediction. This is an internal helper function for GLMs, survival models,
 #' and other regression frameworks.
 #' 
-#' @param nfit Numeric vector of linear predictors (Xβ).
+#' @param nfit Numeric vector of linear predictors \eqn{X\beta}.
 #' @param family Character string specifying the model family. Supported families include:
 #'   - `"gaussian"`: linear regression
 #'   - `"binomial"`: binary outcomes or proportions
@@ -750,8 +765,10 @@ prepare_newdata_for_predict <- function(object,
     if (length(nonzero_cols) > 0) {
       if (!all(newdata[, nonzero_cols, drop = FALSE] > 0)) {
         warning(
-          "i After shifting using training data some values in newdata remain negative.",
-          "i Predictions for such observations may not be available in case of non-linear transformations."
+          "After shifting using training data, some values in newdata ",
+          "remain non-positive. Predictions for such observations may not ",
+          "be available when non-linear transformations are applied.",
+          call. = FALSE
         )
       }
     } 
@@ -924,11 +941,9 @@ calculate_standard_error <- function(model,
   # uses matrix multiplications for efficiency
   vcovx <- vcovx[ind, ind, drop = FALSE]
   # similar to v = diag(x%*%vcovx%*%t(x))
-  v <- sapply(
-    1:nrow(X), 
-    function(i, x, vcovx) x[i, , drop = FALSE] %*% vcovx %*% t(x[i, , drop = FALSE]),
-    x = X, vcovx = vcovx
-  )
+  
+  # Vectorised form of diag(X %*% vcovx %*% t(X)):
+  v <- rowSums((X %*% vcovx) * X)
   
   sqrt(v)
 }

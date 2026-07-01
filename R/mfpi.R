@@ -1,3 +1,58 @@
+#' Format unused dot arguments for error messages
+#'
+#' @param dots Pairlist or list of arguments captured from \code{...}.
+#'
+#' @return Character vector of display labels.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_dot_labels <- function(dots) {
+  if (length(dots) == 0L) return(character(0L))
+  
+  dot_names <- names(dots)
+  if (is.null(dot_names)) {
+    dot_names <- rep("", length(dots))
+  }
+  
+  named <- !is.na(dot_names) & nzchar(dot_names)
+  labels <- character(length(dots))
+  
+  labels[named] <- paste0("`", dot_names[named], "`")
+  
+  if (any(!named)) {
+    labels[!named] <- vapply(
+      dots[!named],
+      function(z) paste(deparse(z, width.cutoff = 60L), collapse = " "),
+      character(1L)
+    )
+  }
+  
+  labels
+}
+
+
+#' Reject unused dot arguments
+#'
+#' @param dots Pairlist or list of arguments captured from \code{...}.
+#' @param context Character scalar naming the interface being validated.
+#'
+#' @return Invisibly returns \code{TRUE} when no arguments are supplied.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_check_unused_dots <- function(dots, context) {
+  if (length(dots) == 0L) return(invisible(TRUE))
+  
+  stop(
+    paste0(
+      "Unused argument(s) supplied to ", context, ": ",
+      paste(mfpi_dot_labels(dots), collapse = ", "),
+      "."
+    ),
+    call. = FALSE
+  )
+}
+
 #' Prepare predictor input for \code{mfpi.default()}
 #'
 #' Converts predictor input supplied to \code{mfpi.default()} into the numeric
@@ -833,7 +888,10 @@ prepare_mfpi_default_x <- function(x, group_var) {
 #'   A positive integer. Minimum number of significant digits displayed when
 #'   printing interaction-test results. Default is `3`.
 #' @param ...
-#'   Currently unused. Reserved for future extensions.
+#'   For S3 method compatibility only. Additional arguments are not currently
+#'   used; supplying arguments through \code{...} is an error. In the formula
+#'   interface, variable-specific FP options should be supplied inside
+#'   \code{fp()} or \code{fp2()}.
 #'
 #' @return
 #' An object of class \code{"mfpi"}. The object is a list with the following
@@ -884,9 +942,8 @@ prepare_mfpi_default_x <- function(x, group_var) {
 #'     intermediate results and is useful for programmatic access.}
 #'   \item{\code{group_var}}{The name of the grouping variable.}
 #'   \item{\code{group_levels_new}}{A zero-based integer index
-#'     (0, 1, 2, \ldots) corresponding to the sorted levels of
-#'     \code{group_var}. This records the level ordering; the observed group
-#'     values themselves are not replaced.}
+#'     (0, 1, 2, \ldots) used internally after \code{group_var} is remapped by
+#'     \code{preprocess_data()}.}
 #'   \item{\code{group_levels_original}}{User-facing labels of
 #'     \code{group_var}, used for printing, summaries, plotting, and prediction
 #'     metadata.}
@@ -917,11 +974,13 @@ prepare_mfpi_default_x <- function(x, group_var) {
 #'   \item{\code{cont_var_forms}}{Named character vector giving the requested
 #'     interaction functional form for each variable in \code{cont_vars}, for
 #'     example \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.}
-#'   \item{\code{x_train_scaled}}{Numeric matrix containing the final
-#'     shifted/scaled training predictor matrix used by MFPI after preprocessing
-#'     and optional Winsorisation. This component is stored so that
-#'     \code{predict.mfpi()} and \code{plot.mfpi()} can reconstruct
-#'     fitted-function and ordinary prediction design matrices.}
+#'   \item{\code{x_train_internal}}{Numeric matrix containing the
+#'     post-preprocessing training predictor matrix used by MFPI. This matrix
+#'     contains shifted/scaled predictors and the internally remapped
+#'     \code{group_var} codes produced by \code{preprocess_data()}. It is used
+#'     by \code{predict.mfpi()} when manual reconstruction of training-data
+#'     predictions is required, for example when \code{newdata = NULL} and a
+#'     replacement \code{offset} is supplied.}
 #'   \item{\code{digits}}{Integer giving the number of significant digits used
 #'     when printing interaction-test results.}   
 #'   \item{\code{nobs}}{Number of observations used in model fitting.}
@@ -1086,6 +1145,12 @@ mfpi.default <- function(
     ...
 ) {
   cl <- match.call()
+  
+  dots <- match.call(expand.dots = FALSE)$...
+  mfpi_check_unused_dots(
+    dots = dots,
+    context = "`mfpi.default()`"
+  )
   
   # Match enumerated arguments -------------------------------------------------
   xorder      <- match.arg(xorder)
@@ -1610,40 +1675,15 @@ mfpi.default <- function(
     ftest <- FALSE
   }
   
-  # Validate and build powers list ------------------------------------------
-  if (!is.null(powers) && !is.list(powers)) {
-    stop("! `powers` must be a named list.", call. = FALSE)
-  }
-  
-  default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  power_list <- setNames(replicate(nvars, default_powers, simplify = FALSE), vnames)
-  
-  if (!is.null(powers)) {
-    if (length(powers) != sum(nchar(names(powers)) > 0L, na.rm = TRUE)) {
-      stop("! Every element of `powers` must have a name.", call. = FALSE)
-    }
-    unknown_names <- setdiff(names(powers), vnames)
-    if (length(unknown_names) > 0L) {
-      stop(paste0("! The following names in `powers` do not match any column of `x`: ",
-                  paste(unknown_names, collapse = ", "), "."), call. = FALSE)
-    }
-    
-    if (!all(vapply(powers, is.numeric, logical(1L)))) {
-      stop("! All elements of `powers` must be numeric vectors.", call. = FALSE)
-    }
-    
-    powers <- lapply(powers, sort)
-    
-    pw_lengths <- vapply(powers, length, integer(1L))
-
-    too_short  <- names(pw_lengths[pw_lengths < 2L])
-    if (length(too_short) > 0L) {
-      stop(paste0("! Each element of `powers` must contain at least two values. ",
-                  "Insufficient values for: ", paste(too_short, collapse = ", "), "."),
-           call. = FALSE)
-    }
-    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
-  }
+  # Validate and build powers list ----------------------------------------------
+  # `powers` defines candidate base-power sets, not selected FP power vectors.
+  # Duplicate candidate values are removed. Repeated selected FP powers are
+  # generated later by replacement when fitting FP2 or higher-degree models.
+  power_list <- validate_fp_power_list(
+    powers = powers,
+    vnames = vnames,
+    arg_name = "powers"
+  )
   
   # Validate subset ------------------------------------------------------------
   if (!is.null(subset)) {
@@ -1952,6 +1992,13 @@ mfpi.default <- function(
   shift_to_zero[vnames[df_list == 1L]]             <- TRUE
   shift[shift_to_zero] <- 0
   
+  # `group_var` is categorical/index metadata, not an FP predictor.
+  # It must remain on its input coding until preprocess_data() remaps it to
+  # internal 0, 1, ..., K - 1 levels.
+  if (group_var %in% names(shift)) {
+    shift[group_var] <- 0
+  }
+  
   # Apply shift and scale to x -------------------------------------------------
   x <- sweep(x, 2L, shift, "+")
   
@@ -1960,6 +2007,16 @@ mfpi.default <- function(
   # would give a different scaling factor for any variable with a non-zero shift.
   # User-supplied scale (normalised earlier) is left untouched.
   scale_missing <- is.na(scale)
+  
+  # `group_var` must not be automatically scaled. It is remapped later by
+  # preprocess_data(), and scaling it here can make stored raw group levels
+  # incompatible with observed group values.
+  if (group_var %in% names(scale_missing)) {
+    scale_missing[group_var] <- FALSE
+  }
+  if (group_var %in% names(scale)) {
+    scale[group_var] <- 1
+  }
   
   if (any(scale_missing)) {
     scale[scale_missing] <- apply(
@@ -1992,6 +2049,13 @@ mfpi.default <- function(
     }
   }
   
+  # Final safety assignment to ensures later edits cannot accidentally 
+  # reintroduce group scaling.
+  if (group_var %in% names(scale)) {
+    scale[group_var] <- 1
+  }
+  
+  # Scale the x based on the estimated scaling factors
   x <- sweep(x, 2L, scale, "/")
   
   # Prepare stratification for Cox models --------------------------------------
@@ -2138,12 +2202,10 @@ mfpi.default <- function(
   fit$min_improvement   <- min_improvement
   fit$cont_var_forms    <- cont_var_forms
   
-  # Developer note:
-  # Store prediction-time reconstruction metadata on the returned mfpi object.
-  # `predict.mfpi()` needs the preprocessed training matrix and model settings to
-  # rebuild group-specific fitted functions f_j(x) without relying on
-  # precomputed fitted functions from the flex functions.
-  fit$x_train_scaled <- x
+  # `fit_mfpi()` stores `x_train_internal`, the post-preprocessing training
+  # matrix used for manual prediction reconstruction. It contains shifted/scaled
+  # predictors and internally remapped group_var codes. Do not store or use the
+  # pre-remap matrix `x` for prediction.
   fit$family_string  <- family_string
   fit$zero_vars      <- zero_flag
   fit$center_type    <- center_type
@@ -2237,6 +2299,12 @@ mfpi.formula <- function(formula,
   
   call <- match.call()
   
+  dots <- match.call(expand.dots = FALSE)$...
+  mfpi_check_unused_dots(
+    dots = dots,
+    context = "`mfpi.formula()`"
+  )
+
   xorder      <- match.arg(xorder)
   criterion   <- match.arg(criterion)
   flex        <- match.arg(flex)
@@ -2797,14 +2865,16 @@ mfpi.formula <- function(formula,
     center_type       = center_type,
     p_adjust_method   = p_adjust_method,
     verbose           = verbose,
-    digits            = digits,
-    ...
+    digits            = digits
   )
   fit$formula_interface <- TRUE
   fit$formula <- formula
   fit$formula_terms <- stats::delete.response(terms_model)
   fit$formula_contrasts <- x_contrasts
   fit$formula_xlevels <- x_xlevels
+  # predict.mfpi() needs to know the final fit-time column names after intercept
+  # removal, group-variable replacement, and fp() renaming.
+  fit$formula_design_columns <- colnames(x)
   fit$call <- call
   
   fit

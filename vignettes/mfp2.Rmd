@@ -1318,32 +1318,42 @@ effectively equivalent to combining levels of a variable. For more details on
 handling categorical variables in regression modeling, see Royston and Sauerbrei
 (2008, Chapter 3).  
 
-In R, the `model.matrix()` function automatically generates dummy variables for factors. For ordinal variables, users should assign an appropriate contrast matrix to preserve order information. The `mfp2` package provides the `contr.cumulative()` function for creating cumulative contrasts. Nominal variables can remain as standard factors.  
+In R, the `model.matrix()` function automatically generates dummy variables for factors. Nominal factors can be supplied to the formula interface and are expanded internally. Ordered factor predictors, however, are not passed directly to `mfp2.formula()`, because their polynomial contrast columns would otherwise be treated as separate MFP candidate variables. For ordinal predictors, create the intended numeric dummy or contrast columns explicitly before fitting. The `mfp2` package provides the `contr.cumulative()` function for cumulative ordinal contrasts; the example below uses equivalent cumulative indicator columns for clarity.  
 
-Before fitting a model, convert the variable to a factor using `factor()` and set `ordered = TRUE` for ordinal variables. Levels can be specified explicitly; otherwise, the first level is the reference.
+Before fitting a model, decide how the ordinal information should enter the regression model. The example below represents the three-level ordinal variable `x4` by two cumulative indicators, while the nominal variable `x9` remains a standard factor.
 
 ```{r categorical-variables-combined, message=TRUE, warning=TRUE}
 # Load the art data
 data("art")
 
 # --- Ordinal variable x4 ---
-art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
-contrasts(art$x4) <- contr.cumulative(levels(art$x4))
+# Ordered factors are not passed directly to mfp2.formula(). Instead, create
+# explicit numeric columns representing the intended ordinal coding.
+x4_num <- as.integer(as.character(art$x4))
+art$x4_ge_2 <- as.integer(x4_num >= 2)
+art$x4_ge_3 <- as.integer(x4_num >= 3)
+art$x4 <- NULL
 
 # --- Nominal variable x9 ---
+# Nominal factors can remain factors; model.matrix() expands them internally.
 art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
 
 # Display the first 10 rows to check
 head(art, 10)
 
 # -- Formula interface example--
-# Dummy variables for x4 and x9 are generated internally
-# Other numeric variables remain unchanged
-fit_formula <- mfp2(y ~ fp(x1) + x2 + fp(x3) + x4 + fp(x5) + fp(x6) + fp(x7) + x8 + x9 + fp(x10), data = art, verbose = FALSE)
+# The ordinal variable x4 is represented by explicit numeric cumulative
+# indicators. The nominal variable x9 is dummy-coded internally.
+fit_formula <- mfp2(
+  y ~ fp(x1) + x2 + fp(x3) + x4_ge_2 + x4_ge_3 +
+    fp(x5) + fp(x6) + fp(x7) + x8 + x9 + fp(x10),
+  data = art,
+  verbose = FALSE
+)
 
 # --Matrix interface example--
 # Manually create model matrix for all predictors
-x <- model.matrix(y ~ . , data = art)[,-1]  # exclude intercept
+x <- model.matrix(y ~ . , data = art)[, -1, drop = FALSE]  # exclude intercept
 head(x)
 y <- as.numeric(art$y)
 

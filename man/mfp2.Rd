@@ -333,7 +333,7 @@ description of the model to be fitted. Special \code{fp} terms can be used to
 define fp-transformations. For \code{family = binomial()}, the left-hand side may
 be a numeric 0/1 response, a two-level factor response, or a grouped binomial
 response written as \code{cbind(successes, failures)}. The details of model
-specification are given under ‘Details’.}
+specification are given under "Details" section.}
 
 \item{data}{for \code{mfp2.formula}: a \code{data.frame} which contains all variables
 specified in \code{formula}.}
@@ -585,7 +585,7 @@ encoded using polynomial contrasts (\code{\link[stats]{contr.poly}}), which
 produce orthogonal contrasts representing trend effects across ordered levels
 (e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
 
-If the analysis requires dummy coding that reflects ordinal thresholds—
+If the analysis requires dummy coding that reflects ordinal thresholds-
 for instance, comparing level A versus the rest, or levels A and B versus
 the rest—the user must define and assign an appropriate contrast matrix
 before calling \code{mfp2.formula()}. This can be done using the
@@ -656,13 +656,13 @@ changes smoothly from \eqn{\beta_0} at \eqn{\text{ACD}(X) \approx 0}
 (corresponding to the minimum of \eqn{X}) to \eqn{\beta_0 + \beta_1} at
 \eqn{\text{ACD}(X) \approx 1} (corresponding to the maximum of \eqn{X}).
 
-Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped—changing
-slowly at the extremes and more rapidly in the central range—the resulting
+Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped - changing
+slowly at the extremes and more rapidly in the central range - the resulting
 relationship between \eqn{Y} and \eqn{X} is typically nonlinear and
 sigmoid-shape. This sigmoid shape cannot be achieved by standard fractional
 polynomial (FP) functions.
 
-Intuitively, the ACD transformation “stretches” the middle of \eqn{X}'s
+Intuitively, the ACD transformation "stretches" the middle of \eqn{X}'s
 distribution while compressing the tails. A linear effect of
 \eqn{\text{ACD}(X)} in the regression thus produces slow changes in \eqn{Y}
 for extreme values of \eqn{X} and faster changes for central values,
@@ -727,7 +727,7 @@ Royston and Sauerbrei (2016).
 
 \strong{Information criteria}
 
-As an alternative criterion, the fit of models M1–M6 can be evaluated using
+As an alternative criterion, the fit of models M1-M6 can be evaluated using
 AIC or BIC. The model with the smallest AIC or BIC is selected.
 }
 
@@ -735,7 +735,7 @@ AIC or BIC. The model with the smallest AIC or BIC is selected.
 
 In epidemiological and clinical studies, a continuous covariate \code{x} may have a
 mixture of zeros and positive values, which is called a semi-continuous variable.
-There is a ‘spike’ at zero in an otherwise continuous distribution. Examples
+There is a "spike" at zero in an otherwise continuous distribution. Examples
 include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption,
 where some individuals have no exposure while others have positive values. When
 \code{x = 0} defines a distinct subpopulation, the outcome for these individuals can

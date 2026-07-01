@@ -1,3 +1,68 @@
+#' Validate MFP Candidate Powers Against Closed-Test Requirements
+#'
+#' Checks that each variable with \code{df > 1} has at least one candidate
+#' fractional-polynomial power other than \code{1}. In the MFP selection engine,
+#' power \code{1} is fitted separately as the ordinary linear model and is
+#' therefore excluded from degree-1 FP candidate fitting. The closed-test
+#' procedure requires an available FP1 candidate whenever \code{df > 1}, so a
+#' candidate-power set containing only \code{1} is invalid in that case.
+#'
+#' Repeated selected powers remain valid for FP2 and higher-degree models. For
+#' example, \code{c(1, 1)} is a valid selected FP2 power vector, corresponding
+#' to the basis \eqn{x} and \eqn{x \log(x)}. This helper does not reject repeated
+#' selected powers; it only rejects candidate-power sets that collapse to the
+#' single value \code{1} when the algorithm needs a non-linear FP candidate.
+#'
+#' @param powers Named list of numeric candidate-power vectors, one element per
+#'   variable. Each element is treated as a candidate set: values are coerced to
+#'   numeric, deduplicated, sorted, and checked after removing missing and
+#'   non-finite values.
+#' @param df Named numeric or integer vector of degrees of freedom, one value
+#'   per variable. Values greater than \code{1} indicate that FP model selection
+#'   may require degree-1 candidate fitting.
+#'
+#' @return Invisibly returns \code{TRUE} if all candidate-power sets are
+#'   compatible with the closed-test procedure.
+#'
+#' @details
+#' This is an internal selection-engine validation. It should be called after
+#' \code{powers} and \code{df} have been normalized to named per-variable
+#' objects and before calls to \code{select_ra2()}, \code{select_ic()}, or
+#' \code{find_best_fpm_step()}.
+#'
+#' @keywords internal
+#' @noRd
+validate_mfp_candidate_powers <- function(powers, df) {
+  only_linear_candidate <- vapply(
+    powers,
+    function(v) {
+      v <- sort(unique(as.numeric(v)))
+      v <- v[!is.na(v) & is.finite(v)]
+      length(v) == 1L && identical(v, 1)
+    },
+    logical(1L)
+  )
+  
+  vars_invalid <- names(which(only_linear_candidate & df > 1L))
+  
+  if (length(vars_invalid) > 0L) {
+    stop(
+      paste0(
+        "The following variable(s) have `df > 1` but their candidate-power ",
+        "set contains only power 1: ",
+        paste(vars_invalid, collapse = ", "),
+        ". Power 1 is fitted separately as the ordinary linear model and is ",
+        "excluded from FP1 candidate fitting. The closed-test procedure requires ",
+        "at least one available FP1 candidate when `df > 1`. Use `df = 1` for a ",
+        "purely linear effect, or include at least one non-1 candidate power."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  invisible(TRUE)
+}
+
 #' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #'
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -249,34 +314,17 @@ fit_mfp <- function(x,
   }
   
   # Assert repeated powers of 1 are not supported
-  diff_one <- vapply(
-    powers,
-    function(v) {
-      v <- v[!is.na(v)]
-      length(v) > 1L && all(v == 1)
-    },
-    logical(1L)
+  # The closed-test selection procedure requires an FP1 candidate whenever
+  # a variable is allowed to use FP terms (`df > 1`). Power 1 is fitted separately
+  # as the ordinary linear model and is excluded from degree-1 FP candidate
+  # fitting inside find_best_fpm_step(). Therefore, a candidate-power set that
+  # contains only power 1 would leave the FP1 step empty and make the closed test
+  # undefined. Repeated selected powers such as c(1, 1) remain valid for FP2;
+  # this check only rejects candidate *sets* that collapse to the single value 1.
+  validate_mfp_candidate_powers(
+    powers = powers,
+    df = df
   )
-  
-  if (any(diff_one)) {
-    dfx <- df[diff_one]
-    vars_invalid <- names(dfx)[dfx > 1]
-    
-    if (length(vars_invalid) > 0L) {
-      stop(
-        paste(
-          "The powers of some variables are repeated and all equal to 1.",
-          "Repeated powers equal to 1 are not supported.",
-          sprintf(
-            "i This applies to: %s.",
-            paste0(vars_invalid, collapse = ", ")
-          ),
-          sep = "\n"
-        ),
-        call. = FALSE
-      )
-    }
-  }
   
   # Force variables into the model by setting p-value threshold to 1
   if (!is.null(keep)) {
@@ -888,10 +936,9 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #' are `NA`, the continuous transformed component is inactive.
 #' @param spike_decision Integer scalar (1, 2, or 3) specifying spike-at-zero
 #'   handling:
-#'   * `1` – include both the continuous transformed term(s) and the binary
-#'     spike-at-zero indicator.
-#'   * `2` – include only the continuous transformed term(s).
-#'   * `3` – include only the binary spike-at-zero indicator.
+#'   * `1` - include both the continuous transformed term(s) and the binary
+#'   * `2` - include only the continuous transformed term(s).
+#'   * `3` - include only the binary spike-at-zero indicator.
 #' @param catzero Logical scalar indicating whether the final/effective
 #'   catzero binary indicator is included for this variable. This should be the
 #'   final metadata after applying spike-at-zero decisions, not the cycle-time

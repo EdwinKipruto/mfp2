@@ -226,6 +226,11 @@ plot.mfpi <- function(x,
     stop("! `x` must be an object of class \"mfpi\".", call. = FALSE)
   }
   
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package `ggplot2` is required for plotting. Please install it.",
+         call. = FALSE)
+  }
+  
   check_logical_scalar <- function(value, name) {
     if (!is.logical(value) || length(value) != 1L || is.na(value)) {
       stop("! `", name, "` must be a single TRUE or FALSE value.",

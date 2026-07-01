@@ -112,7 +112,10 @@ column; binary variables should be coded as 0/1; multi-level categorical
 variables (other than \code{group_var}) should be expanded into dummy
 variables beforehand. Must be free of missing values.}
 
-\item{...}{Currently unused. Reserved for future extensions.}
+\item{...}{For S3 method compatibility only. Additional arguments are not currently
+used; supplying arguments through \code{...} is an error. In the formula
+interface, variable-specific FP options should be supplied inside
+\code{fp()} or \code{fp2()}.}
 
 \item{y}{For \code{mfpi.default()} only. The response object. For Gaussian models,
 supply a finite numeric vector of length \eqn{n}. For Poisson models,
@@ -517,9 +520,8 @@ internal \code{evaluate_interactions()} call. Contains all
 intermediate results and is useful for programmatic access.}
 \item{\code{group_var}}{The name of the grouping variable.}
 \item{\code{group_levels_new}}{A zero-based integer index
-(0, 1, 2, \ldots) corresponding to the sorted levels of
-\code{group_var}. This records the level ordering; the observed group
-values themselves are not replaced.}
+(0, 1, 2, \ldots) used internally after \code{group_var} is remapped by
+\code{preprocess_data()}.}
 \item{\code{group_levels_original}}{User-facing labels of
 \code{group_var}, used for printing, summaries, plotting, and prediction
 metadata.}
@@ -550,11 +552,13 @@ interaction with \code{group_var}.}
 \item{\code{cont_var_forms}}{Named character vector giving the requested
 interaction functional form for each variable in \code{cont_vars}, for
 example \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.}
-\item{\code{x_train_scaled}}{Numeric matrix containing the final
-shifted/scaled training predictor matrix used by MFPI after preprocessing
-and optional Winsorisation. This component is stored so that
-\code{predict.mfpi()} and \code{plot.mfpi()} can reconstruct
-fitted-function and ordinary prediction design matrices.}
+\item{\code{x_train_internal}}{Numeric matrix containing the
+post-preprocessing training predictor matrix used by MFPI. This matrix
+contains shifted/scaled predictors and the internally remapped
+\code{group_var} codes produced by \code{preprocess_data()}. It is used
+by \code{predict.mfpi()} when manual reconstruction of training-data
+predictions is required, for example when \code{newdata = NULL} and a
+replacement \code{offset} is supplied.}
 \item{\code{digits}}{Integer giving the number of significant digits used
 when printing interaction-test results.}
 \item{\code{nobs}}{Number of observations used in model fitting.}

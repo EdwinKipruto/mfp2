@@ -362,7 +362,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
           "likelihood-ratio or F-test p-value. The interaction p-value is set to NA; ",
           "AIC/BIC values are still reported."
         ),
-        cont_var,
+        cont_name,
         flex,
         dev_main,
         dev_interaction,

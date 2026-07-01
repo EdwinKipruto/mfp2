@@ -166,6 +166,11 @@
 #'     (regardless of selection). See \code{evaluate_interactions()}.}
 #'   \item{\code{univariable_interactions}}{Full list from
 #'     \code{evaluate_interactions()}.}
+#'   \item{\code{x_train_internal}}{Numeric matrix containing the
+#'     post-preprocessing training predictor matrix. It contains shifted/scaled
+#'     predictors and the internally remapped \code{group_var} codes produced by
+#'     \code{preprocess_data()}. This matrix is used by \code{predict.mfpi()}
+#'     when manual reconstruction of training-data predictions is required.}
 #' }
 #'
 #' @section Algorithm:
@@ -447,7 +452,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   
   n_significant <- nrow(univ_results$best_model_metrics)
   if (n_significant == 0L && !quiet) {
-    message("! No significant interactions were found.", call. = FALSE)
+    message("! No significant interactions were found.")
   }
   
   if (verbose) {
@@ -479,6 +484,14 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     p_adjust_method          = univ_results$p_adjust_method,
     scale                    = scale,
     shift                    = shift,
+    # Training matrix after MFPI preprocessing.
+    #
+    # This matrix contains shifted/scaled predictors and the internally remapped
+    # group_var codes produced by preprocess_data(). It is the correct matrix for
+    # manual training-data prediction reconstruction, especially when
+    # predict.mfpi(newdata = NULL, offset = ...) cannot delegate to the stored fit.
+    x_train_internal         = processed_data$original_x,
+    
     var_winners              = univ_results$var_winners,
     adjustment_model         = adjustment_model,
     univariable_interactions = univ_results,
@@ -630,6 +643,20 @@ preprocess_data <- function(x, group_var, include_group_var,
   group_mapped <- new_levels[
     match(drop(group_values_original), input_levels)
   ]
+  
+  if (anyNA(group_mapped)) {
+    bad <- unique(drop(group_values_original)[is.na(group_mapped)])
+    stop(
+      paste0(
+        "Internal error: group values could not be mapped to stored group levels. ",
+        "Unmatched value(s): ",
+        paste(bad, collapse = ", "),
+        ". This usually indicates that `group_var` was modified before ",
+        "group-level remapping."
+      ),
+      call. = FALSE
+    )
+  }
   
   group_values <- matrix(
     group_mapped,

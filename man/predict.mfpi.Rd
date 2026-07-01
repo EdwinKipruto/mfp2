@@ -16,8 +16,6 @@
   n_grid = 200L,
   reference = NULL,
   offset = NULL,
-  strata = NULL,
-  allow_new_group_levels = FALSE,
   ...
 )
 }
@@ -30,9 +28,10 @@ must contain the requested continuous-variable columns on their original
 raw scale. The grouping variable is not required for fitted-function
 prediction because all group-specific functions are evaluated at each
 supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
-\code{"response"}), \code{newdata} must also contain the grouping
-variable and all selected adjustment variables required by the
-term-specific interaction model.}
+\code{"response"}), \code{newdata} must also contain the grouping variable
+and all selected adjustment variables required by the term-specific
+interaction model. Group values in \code{newdata} must correspond to
+levels observed during model fitting.}
 
 \item{terms}{Character vector of continuous variables to predict. If
 \code{NULL}, terms are selected from the requested \code{model} scope.}
@@ -48,8 +47,7 @@ or function differences on the model scale. For ordinary GLM prediction,
 response-scale standard errors use the same inverse-link derivative
 convention as \code{predict.glm()}. For Cox response prediction,
 \code{fit} is the relative risk score \eqn{\exp(\eta)} and
-\code{se.fit} follows \code{predict.coxph(type = "risk",
-reference = "zero")}.}
+\code{se.fit} follows the zero-reference relative-risk convention.}
 
 \item{level}{Numeric scalar in \code{(0, 1)}. Confidence level for
 pointwise fitted-function and fitted-difference intervals.}
@@ -64,8 +62,10 @@ prediction.}
 
 \item{reference}{Optional reference group for fitted-function differences.
 May be an internal group label or an original group label if group-level
-metadata are stored in \code{object}. If \code{NULL}, the first internal
-group level is used.}
+metadata are stored in \code{object}. If \code{NULL}, the reference group
+used at model fitting is reused. This argument affects only fitted-function
+differences; it does not change the fit-time reference level used by the
+stored interaction model.}
 
 \item{offset}{Optional numeric vector for ordinary \code{"link"} or
 \code{"response"} prediction. If \code{newdata} is supplied,
@@ -75,16 +75,9 @@ per training row; the stored training design is reconstructed and the
 supplied offset is used instead of delegating to the fitted model's own
 \code{predict()} method. Ignored for fitted-function prediction.}
 
-\item{strata}{Reserved for future Cox baseline-survival prediction. It is
-ignored for the current Cox prediction targets, which are the linear
-predictor and relative risk score.}
-
-\item{allow_new_group_levels}{Logical scalar. Reserved for future extensions.
-New group levels are rejected because no fitted coefficients exist for
-groups that were not present at model fitting.}
-
 \item{...}{Reserved for future extensions. Currently unused arguments produce
-a warning.}
+a warning. Cox baseline-survival arguments such as prediction times or
+prediction-time strata are not currently supported.}
 }
 \value{
 If one term is requested, an object of class
@@ -139,7 +132,7 @@ Computes predictions from an object of class \code{"mfpi"}.
 \details{
 The main prediction target is the group-specific MFPI fitted function
 \eqn{f_j(x)}. For each requested continuous variable, the method can return
-the fitted functions, pointwise standard errors, confidence intervals, and
+fitted functions, pointwise standard errors, confidence intervals, and
 contrasts between fitted functions. Ordinary link- and response-scale
 prediction from the term-specific interaction model is also supported.
 
@@ -174,7 +167,8 @@ returns one prediction per row of the fitting data or \code{newdata}.}
 response-scale predictions. For Gaussian models this is the fitted mean,
 for binomial models the fitted probability, for Poisson models the fitted
 mean count or rate, and for Cox models the relative risk score
-\eqn{\exp(\eta)}.}
+\eqn{\exp(\eta)}. Cox response prediction is not an absolute survival
+probability.}
 }
 }
 
@@ -207,6 +201,13 @@ in their original row order; duplicates are retained. With
 \code{grid = TRUE}, values are replaced by an equally spaced grid. For
 zero-handled variables, the grid is built over the positive part and includes
 a structural zero point if structural zeros are present.
+
+Fitted-function differences are computed relative to a reference group.
+Unless \code{reference} is supplied, the reference group used at model fitting
+is reused. Supplying \code{reference} only changes the contrast baseline for
+fitted-function differences returned by \code{type = "difference"} or
+\code{type = "both"}; it does not refit the model or change the fit-time
+group coding used by ordinary prediction.
 }
 
 \section{Ordinary link and response prediction}{
@@ -221,17 +222,35 @@ term-specific interaction-model matrix, including group dummies, the
 row-specific group interaction block, selected adjustment covariates, and
 offsets when applicable. The reconstructed matrix is then multiplied by the
 fitted coefficient vector.
+
+Ordinary prediction uses the group coding, reference level, contrasts, and
+centering conventions stored at model fitting. New observations must belong
+to group levels observed during fitting. New group levels are rejected
+because no fitted coefficients exist for groups outside the fit-time design.
+}
+
+\section{Cox models}{
+
+For Cox models, \code{type = "link"} returns the zero-reference linear
+predictor and \code{type = "response"} returns the relative risk score
+\eqn{\exp(\eta)}. Baseline survival, cumulative-hazard, expected-event, and
+absolute-risk prediction are not currently implemented. Formula-level Cox
+strata used during fitting affect the partial likelihood and
+stratum-specific baseline hazards, but no prediction-time strata argument is
+supported by this method.
 }
 
 \section{Required object metadata}{
 
-New-data prediction assumes that the \code{"mfpi"} object stores the final
-shifted/scaled training matrix and prediction metadata created at fit time.
-In particular, fitted-function prediction with \code{newdata = NULL} uses
-\code{object$x_train_scaled} or \code{object$x_scaled}. New-data ordinary
-prediction additionally relies on stored shift, scale, winsorisation limits,
-group-level mapping, selected adjustment-model powers, centering constants,
-and each flex result's \code{coefficient_groups}.
+New-data prediction assumes that the \code{"mfpi"} object stores prediction
+metadata created at fit time. In particular, fitted-function prediction with
+\code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
+plus a replacement \code{offset} require \code{object$x_train_internal},
+the post-preprocessing training matrix containing shifted/scaled predictors
+and internally remapped \code{group_var} codes. New-data ordinary prediction
+additionally relies on stored shift, scale, winsorisation limits, group-level
+mapping, selected adjustment-model powers, centering constants, formula
+metadata when applicable, and each flex result's \code{coefficient_groups}.
 }
 
 \examples{
@@ -253,17 +272,20 @@ plot(age_fun$x, age_fun$fit, type = "l")
 # Fitted functions only.
 p3 <- predict(fit, terms = "age", type = "function")
 
-# Differences relative to a chosen reference group.
-p4 <- predict(fit, terms = "age", type = "difference", reference = 0)
+# Differences relative to the fit-time reference group.
+p4 <- predict(fit, terms = "age", type = "difference")
+
+# Differences relative to an explicitly chosen observed group.
+p5 <- predict(fit, terms = "age", type = "difference", reference = 0)
 
 # Ordinary subject-level response prediction for new observations.
 new_x <- x[1:10, , drop = FALSE]
-p5 <- predict(fit, terms = "age", type = "response", newdata = new_x)
-head(p5$predictions)
+p6 <- predict(fit, terms = "age", type = "response", newdata = new_x)
+head(p6$predictions)
 
 # Multiple terms return a named prediction list.
-p6 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
-names(p6)
+p7 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
+names(p7)
 }
 
 }

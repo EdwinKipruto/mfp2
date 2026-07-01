@@ -179,7 +179,7 @@
 #' produce orthogonal contrasts representing trend effects across ordered levels
 #' (e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
 #'
-#' If the analysis requires dummy coding that reflects ordinal thresholds—
+#' If the analysis requires dummy coding that reflects ordinal thresholds-
 #' for instance, comparing level A versus the rest, or levels A and B versus
 #' the rest—the user must define and assign an appropriate contrast matrix
 #' before calling \code{mfp2.formula()}. This can be done using the
@@ -247,13 +247,13 @@
 #' (corresponding to the minimum of \eqn{X}) to \eqn{\beta_0 + \beta_1} at 
 #' \eqn{\text{ACD}(X) \approx 1} (corresponding to the maximum of \eqn{X}). 
 #' 
-#' Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped—changing 
-#' slowly at the extremes and more rapidly in the central range—the resulting 
+#' Because the mapping from \eqn{X} to \eqn{\text{ACD}(X)} is S-shaped - changing
+#' slowly at the extremes and more rapidly in the central range - the resulting 
 #' relationship between \eqn{Y} and \eqn{X} is typically nonlinear and 
 #' sigmoid-shape. This sigmoid shape cannot be achieved by standard fractional 
 #' polynomial (FP) functions.
 #' 
-#' Intuitively, the ACD transformation “stretches” the middle of \eqn{X}'s 
+#' Intuitively, the ACD transformation "stretches" the middle of \eqn{X}'s 
 #' distribution while compressing the tails. A linear effect of 
 #' \eqn{\text{ACD}(X)} in the regression thus produces slow changes in \eqn{Y} 
 #' for extreme values of \eqn{X} and faster changes for central values, 
@@ -318,14 +318,14 @@
 #' 
 #' **Information criteria**
 #'
-#' As an alternative criterion, the fit of models M1–M6 can be evaluated using 
+#' As an alternative criterion, the fit of models M1-M6 can be evaluated using 
 #' AIC or BIC. The model with the smallest AIC or BIC is selected.
 #' 
 #' 
 #' @section Details on  spike-at-zero (SAZ) modeling:
 #' In epidemiological and clinical studies, a continuous covariate `x` may have a 
 #' mixture of zeros and positive values, which is called a semi-continuous variable. 
-#' There is a ‘spike’ at zero in an otherwise continuous distribution. Examples 
+#' There is a "spike" at zero in an otherwise continuous distribution. Examples 
 #' include occupational exposures (e.g., asbestos) or alcohol/tobacco consumption, 
 #' where some individuals have no exposure while others have positive values. When 
 #' `x = 0` defines a distinct subpopulation, the outcome for these individuals can 
@@ -521,7 +521,7 @@
 #' define fp-transformations. For `family = binomial()`, the left-hand side may
 #' be a numeric 0/1 response, a two-level factor response, or a grouped binomial
 #' response written as `cbind(successes, failures)`. The details of model
-#' specification are given under ‘Details’.
+#' specification are given under "Details" section.
 #' @param data for `mfp2.formula`: a `data.frame` which contains all variables
 #' specified in `formula`.
 #' @param weights Optional numeric vector of observation weights. 
@@ -1095,6 +1095,14 @@ mfp2.default <- function(x,
       call. = FALSE
     )
   }
+  
+  # Fail early if the default-interface design matrix is not estimable.
+  # Use `family_string`, not `family`, because non-Cox character families have
+  # already been converted to stats::family objects above.
+  validate_default_design_rank(
+    x,
+    intercept = family_string != "cox"
+  )
   
   # Validation helpers ---------------------------------------------------------
   # These helpers keep public-boundary checks explicit and prevent malformed
@@ -1700,64 +1708,15 @@ if (!is.null(subset)) {
     stop("! `min_prop` must be less than `max_prop`.", call. = FALSE)
   }
   
-  # set defaults ---------------------------------------------------------------
-  if (!is.null(powers) && !is.list(powers)) {
-    stop("! `powers` must be a list.", call. = FALSE)
-  }
-  
-  # default FP powers proposed by Royston and Altman (1994)
-  powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  power_list <- setNames(replicate(nvars, powx, simplify = FALSE), vnames)
-  
-  # deal with user supplied powers
-  if (!is.null(powers)) {
-    if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
-      stop("! All elements supplied in `powers` must be named.",
-           call. = FALSE)
-    }
-    
-    dd <- which(!names(powers) %in% vnames)
-    if (length(dd) != 0) {
-      stop(
-        "! Unknown variable name(s) in `powers`.",
-        sprintf(
-          "\ni This applies to: %s.",
-          paste(names(powers)[dd], collapse = ", ")
-        ),
-        "\ni The names in `powers` must match column names in `x`.",
-        call. = FALSE
-      )
-    }
-    
-    if (!all(sapply(powers, is.numeric))) {
-      stop("All elements of powers must be numeric", call. = FALSE)
-    }
-    
-    bad_power_values <- names(powers)[vapply(
-      powers,
-      function(v) anyNA(v) || any(!is.finite(v)),
-      logical(1L)
-    )]
-    if (length(bad_power_values) != 0) {
-      stop("! All elements of powers must contain only finite, non-missing values.\n",
-           sprintf("i This applies to the following variables: %s.",
-                   paste0(bad_power_values, collapse = ", ")), call. = FALSE)
-    }
-    
-    powers <- lapply(powers, function(v) sort(v))
-    
-    pow_length <- vapply(powers, length, integer(1L))
-    pow_length_invalid <- which(pow_length < 2L)
-    
-    if (length(pow_length_invalid) != 0L) {
-      stop("! Each element of `powers` must contain at least two values.\n",
-           sprintf("i This applies to the following variables: %s.",
-                   paste0(names(pow_length_invalid), collapse = ", ")),
-           call. = FALSE)
-    }
-    
-    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
-  }
+  # Validate and build powers list ----------------------------------------------
+  # `powers` defines candidate base-power sets, not selected FP power vectors.
+  # Duplicate candidate values are removed. Repeated selected FP powers are
+  # generated later by replacement when fitting FP2 or higher-degree models.
+  power_list <- validate_fp_power_list(
+    powers = powers,
+    vnames = vnames,
+    arg_name = "powers"
+  )
   
   # Default weights and offset
   if (is.null(weights)) {
@@ -2621,6 +2580,49 @@ mfp2.formula <- function(formula,
     na.action = stats::na.pass
   )
   
+  
+  # Future work:
+  # Support ordered factors as grouped formula terms rather than rejecting them.
+  # `mfp2.formula()` should preserve the `assign` metadata returned by
+  # model.matrix(), mapping each original formula term to all generated design
+  # columns. `mfp2.default()` and the MFP step functions should then operate on
+  # term blocks, not only on individual matrix columns. For example, an ordered
+  # factor `x4` expanded to `x4.L` and `x4.Q` should be tested, selected, kept,
+  # or dropped as one block. This will require extending the internal variable
+  # metadata from a flat variable-name vector to a structure such as:
+  #
+  #   term_blocks <- list(
+  #     x1 = list(type = "fp", columns = "x1"),
+  #     x2 = list(type = "linear", columns = "x2"),
+  #     x4 = list(type = "factor_block", columns = c("x4.L", "x4.Q"))
+  #   )
+  #
+  # The default matrix interface can keep its current one-column-per-variable
+  # behavior by constructing trivial one-column blocks internally.
+  
+  ordered_factor_vars <- names(mf)[vapply(mf, is.ordered, logical(1L))]
+  
+  response_name <- names(mf)[1L]
+  ordered_factor_vars <- setdiff(ordered_factor_vars, response_name)
+  
+  if (length(ordered_factor_vars) > 0L) {
+    stop(
+      sprintf(
+        paste0(
+          "Ordered factor predictors are not currently supported by `mfp2.formula()` ",
+          "because `model.matrix()` expands them into polynomial contrast columns, ",
+          "which the MFP selection engine would treat as separate variables. ",
+          "Problematic variable(s): %s."
+        ),
+        paste(ordered_factor_vars, collapse = ", ")
+      ),
+      "\nConvert them explicitly before fitting, for example into dummy variables ",
+      "for an ordinal predictor, or into a numeric score if that is the intended model.",
+      call. = FALSE
+    )
+  }
+  
+
   # check whether no predictor exists in the model, i.e. y ~ 1
   labels <- attr(terms_formula, "term.labels")
   if (length(labels) == 0) {
@@ -2864,33 +2866,14 @@ mfp2.formula <- function(formula,
   power_list <- setNames(replicate(nx, powx, simplify = FALSE), names_x)
   
   # deal with user supplied powers in the argument, not through fp()
-  if (!is.null(powers)) {
-    if (length(powers) != sum(names(powers) != "", na.rm = TRUE)) {
-      stop(
-        "! All elements supplied in `powers` must have names.",
-        call. = FALSE
-      )
-    }
-    
-    valid_power_names <- colnames(x)
-    
-    bad_power <- setdiff(names(powers), valid_power_names)
-    
-    if (length(bad_power) > 0L) {
-      stop(
-        sprintf(
-          "! Unknown or unsupported variable name(s) in `powers`: %s.",
-          paste(bad_power, collapse = ", ")
-        ),
-        "\ni In the formula interface, `powers` must name final numeric model-matrix columns.",
-        call. = FALSE
-      )
-    }
-    
-    powers <- lapply(powers, function(v) sort(v))
-    
-    power_list <- modifyList(power_list, Filter(Negate(is.null), powers))
-  }
+  # Validate and build the complete candidate-power list. Top-level `powers`
+  # replaces the defaults for matching predictor columns. Duplicate candidate
+  # powers are removed because repeated selected FP powers are generated later.
+  power_list <- validate_fp_power_list(
+    powers = powers,
+    vnames = colnames(x),
+    arg_name = "powers"
+  )
   
   # if fp() is used in the formula
   acdx <- NULL
@@ -3317,36 +3300,14 @@ fp <- function(x,
   validate_scalar_fp(spike, "spike", name, "logical", allow_null = FALSE, allow_na = FALSE)
   validate_scalar_fp(force_max_fp, "force_max_fp", name, "logical", allow_null = FALSE, allow_na = FALSE)
   
-  # powers is allowed to be NULL or a numeric vector. Candidate-count and other
-  # model-selection checks can remain in mfp2.default(), but malformed powers
-  # should not be stored as attributes.
+  # `powers` is a candidate base-power set. Duplicate values are removed here so
+  # formula-level powers use the same semantics as the top-level `powers` list.
+  # Repeated selected powers are generated later by replacement.
   if (!is.null(powers)) {
-    if (!is.numeric(powers)) {
-      stop(
-        sprintf("! In fp(%s), `powers` must be NULL or a numeric vector.", name),
-        call. = FALSE
-      )
-    }
-    
-    if (anyNA(powers) || any(!is.finite(powers))) {
-      stop(
-        sprintf(
-          "! In fp(%s), `powers` must contain only finite, non-missing values.",
-          name
-        ),
-        call. = FALSE
-      )
-    }
-    
-    if (length(powers) < 2L) {
-      stop(
-        sprintf(
-          "! In fp(%s), `powers` must contain at least two values.",
-          name
-        ),
-        call. = FALSE
-      )
-    }
+    powers <- normalize_fp_power_vector(
+      powers,
+      context = sprintf("`powers` in fp(%s)", name)
+    )
   }
   
   attr(x, "df") <- df

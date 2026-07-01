@@ -123,7 +123,7 @@ reset_acd <- function(x, acdx) {
 #' The Stata Journal, 16(1), pp.72-87.}
 #' 
 #' Royston, P. (2014). \emph{A smooth covariate rank transformation for use in 
-#' regression models with a sigmoid dose–response function. The Stata Journal,
+#' regression models with a sigmoid dose-response function. The Stata Journal,
 #'  14(2), 329-341}. 
 #' 
 #' @export

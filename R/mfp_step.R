@@ -72,9 +72,9 @@
 #' @param force_max_fp A logical vector of length \code{nvars}, named by
 #'  variable name. If \code{TRUE} for variable \code{xi}, forces
 #' \code{select_ic()} and \code{select_ic_acd()} to select the most complex
-#' functional form available — the highest-likelihood FP model at the degree
+#' functional form available-the highest-likelihood FP model at the degree
 #'   specified by \code{df} for non-ACD variables, or \code{FP1(x, A(x))} for
-#'   ACD variables — without competing it against simpler forms (null, linear,
+#'   ACD variables-without competing it against simpler forms (null, linear,
 #'   or lower-degree FP) under AIC/BIC. The best power combination within the
 #'   selected form is still determined by \code{find_best_fpm_step()} via
 #'   deviance minimisation, which is equivalent to AIC/BIC minimisation at
@@ -918,9 +918,9 @@ select_linear <- function(x,
 #' at the significance level specified by \code{alpha}, using 2\emph{m}-2 degrees
 #' of freedom. If the test is not significant, retain the best FP1 model. Otherwise,
 #' repeat this step by comparing FP\emph{m} to all remaining lower-order FP models, 
-#' down to FP\emph{m}–1, which is tested with 2 degrees of freedom. If the final 
-#' test is not significant, retain the best FP\emph{m}–1 model; otherwise, 
-#' retain the best FP\emph{m} model.
+#' down to \eqn{\mathrm{FP}_{m-1}}, which is tested with 2 degrees of freedom.
+#' If the final test is not significant, retain the best \eqn{\mathrm{FP}_{m-1}}
+#' model; otherwise, retain the best FP\emph{m} model.
 #' 
 #' Note that the "best" FP\emph{x} model used in each step refers to the model 
 #' that applies an FP\emph{x} transformation to the variable of interest and 
@@ -1949,7 +1949,7 @@ select_ic_acd <- function(x,
   # Select best model ---------------------------------------------------------- 
   if (isTRUE(force_max_fp[xi])) {
     # Skip functional form competition: always select the most complex ACD
-    # model — FP1(x, A(x)) — which is the last row of res$metrics.
+    # model - FP1(x, A(x)) - which is the last row of res$metrics.
     # The best power combination within it was already found by
     # find_best_fpm_step() via deviance minimisation.
     res$model_best <- nrow(res$metrics)

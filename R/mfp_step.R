@@ -365,8 +365,7 @@ find_best_fp_step <- function(x,
 #' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}. 
 #'   In this case, nonpositive values of \code{xi} were set to zero before transformation, 
 #'   and only positive values were transformed.
-#' * `catzero`: Logical in
-#' dicating whether a combination of a zero transformation 
+#' * `catzero`: Logical indicating whether a combination of a zero transformation 
 #'   and a binary indicator variable was applied to \code{xi}. This means that 
 #'   nonpositive values of \code{xi} were set to zero, only positive values were 
 #'   transformed, and an additional binary variable was created to indicate 
@@ -425,44 +424,134 @@ find_best_fpm_step <- function(x,
     prev_adj_params = prev_adj_params,
     precomputed_adj = precomputed_adj
   )
-  
-  # if (parallel) { # VERY SLOW. NO NEED FOR PARALLEL
-  #   metrics_list <- foreach(i = seq_along(x_transformed$data_fp),
-  #                          .packages = "mfp2",
-  #                          .export = c("fit_model", "calculate_model_metrics")) %dopar% {
-  #   # combine FP variables for x of interest with adjustment variables
-  #   fit <- fit_model(
-  #     x = cbind(x_transformed$data_fp[[i]], x_transformed$data_adj),
-  #     y = y,
-  #     family = family, ...
-  #   )
-  # 
-  #   # use degree many additional degrees of freedom
-  #   p <- sprintf("%g", x_transformed$powers_fp[i, , drop = TRUE])
-  # 
-  #   # respect acd
-  #   if (acdx[xi]) {
-  #     p[length(p)] <- sprintf("A(%s)", p[length(p)])
-  #   }
-  #   
-  #   # compute metrics
-  #   metric_val <- calculate_model_metrics(fit, n_obs, degree)
-  # 
-  #   # return named list element
-  #   list(name = paste(p, collapse = " "), value = metric_val)
-  # 
-  # }
-  # 
-  # # Convert list to named data.table
-  # metrics <- do.call(rbind, lapply(metrics_list, `[[`, "value"))
-  # rownames(metrics) <- sapply(metrics_list, `[[`, "name")
-  # } else {
-  # Sequential approach
 
   data_adj <- x_transformed$data_adj
   data_fp <- x_transformed$data_fp
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
   use_glm_intercept_template <- !identical(family_string, "cox")
+  
+  # Parallel computation ---------------------------------------------------------
+  # Candidate FP models for the current variable xi are independent once the
+  # adjustment block has been fixed. Therefore, only this candidate-model search
+  # is parallelized. The main MFP cycles and the within-cycle variable update
+  # order remain sequential elsewhere in the algorithm.
+  # if (isTRUE(parallel)) {
+  #   # Capture arguments passed through `...` once so they can be forwarded safely
+  #   # inside future workers via do.call().
+  #   fit_model_dots <- list(...)
+  #   
+  #   # Fit one candidate FP model for the current variable xi.
+  #   #
+  #   # In the parallel branch, each worker builds its own model matrix. We do not
+  #   # reuse or mutate the sequential branch's working design matrix because that
+  #   # object would not be safe to share across future workers.
+  #   fit_one_candidate <- function(i) {
+  #     data_xi <- data_fp[[i]]
+  #     
+  #     # Combine the candidate FP basis for xi with the fixed adjustment block.
+  #     # The adjustment block is identical for all candidate powers in this step.
+  #     if (has_adj) {
+  #       x_fit <- cbind(data_xi, data_adj)
+  #     } else {
+  #       x_fit <- data_xi
+  #     }
+  #     
+  #     # GLM fits require an intercept. Add it here and tell fit_model()/fit_glm()
+  #     # that the intercept is already present to avoid adding it again.
+  #     # Cox fits must not include an intercept.
+  #     if (use_glm_intercept_template) {
+  #       x_fit <- cbind("(Intercept)" = rep.int(1, nrow(data_xi)), x_fit)
+  #     }
+  #     
+  #     fit <- do.call(
+  #       fit_model,
+  #       c(
+  #         list(
+  #           x               = x_fit,
+  #           y               = y,
+  #           family          = family,
+  #           family_string   = family_string,
+  #           has_offset      = has_offset,
+  #           x_has_intercept = use_glm_intercept_template
+  #         ),
+  #         fit_model_dots
+  #       )
+  #     )
+  #     
+  #     # All candidate models fitted here have the same FP degree, so their model
+  #     # metrics can be compared directly. The best model is selected later by
+  #     # maximum log-likelihood.
+  #     calculate_model_metrics(
+  #       fit,
+  #       n_obs,
+  #       degree
+  #     )
+  #   }
+  #   
+  #   # Use the number of workers from the currently active future plan. This
+  #   # respects the user's plan, for example future::multisession, future::cluster,
+  #   # future::multicore, or future::sequential. The package does not set or reset
+  #   # the future plan internally.
+  #   n_candidates <- length(data_fp)
+  #   
+  #   n_workers <- future::nbrOfWorkers()
+  #   n_workers <- max(1L, min(n_workers, n_candidates))
+  #   
+  #   chunk_size <- ceiling(n_candidates / n_workers)
+  #   # Split candidate models into worker-sized chunks. This avoids creating one
+  #   # future per candidate model, which can be slower than sequential fitting for
+  #   # small Gaussian models because of scheduling and serialization overhead.
+  #   candidate_chunks <- split(
+  #     seq_len(n_candidates),
+  #     ceiling(seq_len(n_candidates) / chunk_size)
+  #   )
+  #   
+  #   # Each worker receives one chunk and fits the candidates in that chunk
+  #   # sequentially. This reduces future overhead while preserving the ordering of
+  #   # the candidate metrics after unlisting below.
+  #   fit_candidate_chunk <- function(idx) {
+  #     out <- vector("list", length(idx))
+  #     
+  #     for (jj in seq_along(idx)) {
+  #       out[[jj]] <- fit_one_candidate(idx[jj])
+  #     }
+  #     
+  #     out
+  #   }
+  #   
+  #   # Candidate model fitting is deterministic and does not use RNG, so no
+  #   # parallel RNG streams are required.
+  #   metrics_chunks <- future.apply::future_lapply(
+  #     candidate_chunks,
+  #     fit_candidate_chunk,
+  #     future.seed = FALSE
+  #   )
+  #   
+  #   # Flatten worker-level results back to one result per candidate and combine
+  #   # them into the same metrics matrix returned by the sequential branch.
+  #   metrics <- unlist(metrics_chunks, recursive = FALSE)
+  #   metrics <- do.call(rbind, metrics)
+  #   
+  #   # Select the best candidate by log-likelihood and store its transformed
+  #   # current-variable design in current_params for subsequent adjustment steps.
+  #   model_best <- as.numeric(which.max(metrics[, "logl"]))
+  #   x_transformed$current_params[[xi]]$data_xi <-
+  #     x_transformed$data_fp[[model_best]]
+  #   
+  #   return(
+  #     list(
+  #       acd = acdx[xi],
+  #       powers = x_transformed$powers_fp,
+  #       power_best = x_transformed$powers_fp[model_best, , drop = TRUE],
+  #       metrics = metrics,
+  #       model_best = model_best,
+  #       zero = zero[xi],
+  #       catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
+  #       current_adj_params = x_transformed$current_params
+  #     )
+  #   )
+  # }
+  # Sequential computation ---------------------------------------------------------
   
   first_xi <- data_fp[[1L]]
   n_xi_cols <- NCOL(first_xi)
@@ -1157,7 +1246,7 @@ select_ra2 <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, ...
+        precomputed_adj = precomputed_adj,  ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1421,7 +1510,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj,  ...
   )
   
   old_names = rownames(res$metrics)

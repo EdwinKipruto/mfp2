@@ -120,9 +120,9 @@ generate_powers_acd <- function(degree = NULL,
 generate_combinations_with_replacement <- function(x,
                                                    k) {
   
-  if (k > 5) {
-    warning("FP degree higher than 5; the MFP algorithm may take a while to do model selection.")
-  }
+  # if (k > 5) {
+  #   warning("FP degree higher than 5; the MFP algorithm may take a while to do model selection.")
+  # }
   
   # Sort input so that returned combinations are ordered consistently.
   x <- sort(x)

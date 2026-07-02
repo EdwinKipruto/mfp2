@@ -25,9 +25,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// generate_transformations_fp_cpp
+List generate_transformations_fp_cpp(const NumericVector& x, const NumericMatrix& powers, const bool zero, Nullable<NumericMatrix> catzero);
+RcppExport SEXP _mfp2_generate_transformations_fp_cpp(SEXP xSEXP, SEXP powersSEXP, SEXP zeroSEXP, SEXP catzeroSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type powers(powersSEXP);
+    Rcpp::traits::input_parameter< const bool >::type zero(zeroSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericMatrix> >::type catzero(catzeroSEXP);
+    rcpp_result_gen = Rcpp::wrap(generate_transformations_fp_cpp(x, powers, zero, catzero));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_mfp2_transform_fp_core", (DL_FUNC) &_mfp2_transform_fp_core, 5},
+    {"_mfp2_generate_transformations_fp_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_cpp, 4},
     {NULL, NULL, 0}
 };
 

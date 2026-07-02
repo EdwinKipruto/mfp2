@@ -528,7 +528,7 @@ fit_mfp <- function(x,
       force_max_fp    = force_max_fp,
       has_offset      = has_offset,
       n_obs           = n_obs,
-      verbose        = verbose
+      verbose         = verbose
     )
     
     powers_updated        <- fit_best_cycle$powers_current

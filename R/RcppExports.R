@@ -5,3 +5,7 @@ transform_fp_core <- function(x_raw, power, shift_val, scale_val, zero) {
     .Call(`_mfp2_transform_fp_core`, x_raw, power, shift_val, scale_val, zero)
 }
 
+generate_transformations_fp_cpp <- function(x, powers, zero, catzero = NULL) {
+    .Call(`_mfp2_generate_transformations_fp_cpp`, x, powers, zero, catzero)
+}
+

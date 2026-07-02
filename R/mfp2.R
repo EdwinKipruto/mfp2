@@ -1425,10 +1425,10 @@ if (!is.null(subset)) {
   validate_positive_integer_scalar(cycles, "cycles")
   cycles <- as.integer(cycles)
   
-  # verbose and ftest are scalar logical flags.
+  # verbose, and ftest are scalar logical flags.
   validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
   validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
-  
+
   # alpha and select are probabilities, either scalar or one value per predictor.
   validate_probability_vector(alpha, "alpha", nvars)
   validate_probability_vector(select, "select", nvars)

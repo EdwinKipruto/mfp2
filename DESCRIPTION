@@ -14,7 +14,7 @@ Authors@R: c(
            email = "wilhelm.sauerbrei@uniklinik-freiburg.de")
   )
 Depends:
-    R (>= 4.2.0)
+    R (>= 4.6.0)
 Imports:
     ggplot2 (>= 3.4.0),
     stats,

@@ -569,7 +569,7 @@ plot.mfpi <- function(x,
           legend.position = legend_inside,
           legend.justification = legend_justification,
           legend.background = ggplot2::element_rect(
-            fill = grDevices::adjustcolor("white", alpha.f = 0.85),
+            fill = ggplot2::alpha("white", 0.85),
             colour = "grey80"
           )
         )

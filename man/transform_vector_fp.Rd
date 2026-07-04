@@ -144,6 +144,36 @@ is useful in cases where nonpositive values have a qualitatively different inter
 as positive values.
 }
 
+\section{Domain restrictions}{
+
+Fractional-polynomial transformations are applied after shifting and scaling.
+Users should ensure that the shifted and scaled values are in the domain
+required by the specified powers. In particular, powers involving logarithms
+require strictly positive input. This includes \code{power = 0}, which represents
+\code{log(x)}, and repeated powers such as \code{c(2, 2)}, where the second transformed
+variable is proportional to \code{x^2 * log(x)}.
+
+Negative powers are undefined at zero, and non-integer powers are not
+real-valued for negative input. Therefore, when using powers such as \code{0},
+\code{-1}, \code{-0.5}, \code{0.5}, or repeated powers, the values of \code{(x + shift) / scale}
+should be strictly positive unless \code{zero = TRUE}.
+
+Positive integer powers such as \code{1}, \code{2}, and \code{3} can be evaluated at zero
+and negative values, provided they are not part of a repeated-power FP basis.
+
+These low-level transformation functions assume that the supplied \code{x},
+\code{shift}, \code{scale}, and \code{power} values are compatible. If incompatible values
+are supplied, the transformation may produce non-finite values or fail with
+an error from the underlying numerical code. In normal use through \code{mfp2()},
+shift and scale parameters are estimated and checked during model fitting.
+During prediction, \code{predict.mfp2()} checks the fitted powers and stops with
+an informative error if new data fall outside the required transformation
+domain.
+
+If \code{zero = TRUE}, nonpositive values are treated structurally: they are not
+shifted, and their transformed continuous components are set to zero.
+}
+
 \examples{
 z = 1:10
 transform_vector_fp(z)

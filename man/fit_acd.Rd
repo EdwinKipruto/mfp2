@@ -68,8 +68,7 @@ across the whole observed distribution of x (Royston 2014).
 
 set.seed(42)
 x = apply_shift_scale(rnorm(100))
-y = rnorm(100)
-fit_acd(x, y)
+fit_acd(x)
 
 }
 \references{

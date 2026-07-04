@@ -125,7 +125,7 @@ If both comparisons are significant, both components are retained. If only one c
 
 # Extreme proportions of zeros
 
-SAZ modelling is meaningful only when the proportion of zeros is moderate. By default, `mfp2()` applies the SAZ algorithm only if the zero proportion lies between `min_prop = 0.05` and `max_prop = 0.95`. If the proportion is outside this interval, or if the variable is binary, the spike flag is reset.
+SAZ modelling is meaningful only when both the zero component and the positive component are sufficiently represented. By default, `mfp2()` applies the SAZ algorithm only if the proportion of observations in each component is at least `min_saz_component_prop` (default `0.10`). If either the zero-component proportion or the positive-component proportion falls below this threshold, or if the variable is binary, the spike flag is reset.
 
 When a spike flag is reset, the final handling of `zero` and `catzero` depends on what the user explicitly requested through `zero_vars` and `catzero_vars` in the matrix interface, or through `zero = TRUE` and `catzero = TRUE` inside `fp()` in the formula interface.
 

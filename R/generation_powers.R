@@ -1,43 +1,45 @@
-#' Function that generates a matrix of FP powers for any degree
+#' Generate fractional-polynomial power combinations
 #'
-#' @param degree The degree of fractional polynomial. For example,
-#' degree = 1 is FP1 and returns 8 powers; degree 2 is FP2 and 
-#' returns 36 pairs of powers; degree 3 is FP3 and returns 120 
-#' triples of powers, and so on. If the ACD transformation is used,
-#' this degree is assumed to be 2.
-#' @param powers the set of allowed powers for the fractional polynomials. 
-#' Default is `NULL` and the set \eqn{(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
-#' 
-#' @details 
-#' For FP powers, this function returns all combinations of the powers of 
-#' length `degree`, that is all pairs in which each entry is taken from the 
-#' set `powers`, but no pair is repeated (i.e. the order of the entries does 
-#' not matter).
-#' Thus, for the default set of powers and degree 2, this function returns
-#' 36 combinations.
-#' 
-#' For ACD powers, this function simply returns all possible tuples of 
-#' powers of length n. 
-#' Thus, for the default set of powers, this function returns 8 possible
-#' powers, and for degree 2 it returns 64 pairs of powers. Higher degrees
-#' are not supported by the function. In case that `degree = 0` or `degree = 1`, 
-#' the first column of the matrix representing untransformed data are set to 
-#' `NA` to indicate that the normal data do not play a role. Higher degrees
-#' than two are not supported. 
-#' 
+#' Generates the candidate power matrix used for ordinary fractional-polynomial
+#' transformations.
+#'
+#' @param degree Integer degree of the fractional polynomial. For example,
+#'   `degree = 1` generates FP1 powers, `degree = 2` generates FP2 pairs,
+#'   and `degree = 3` generates FP3 triples. If `NULL`, the default is `2`.
+#' @param powers Numeric vector of allowed fractional-polynomial powers. If
+#'   `NULL`, the default set `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` is used.
+#'
+#' @details
+#' `generate_powers_fp()` returns all combinations with replacement of length
+#' `degree` from the supplied power set. The order of powers within a row does
+#' not matter, and each row is sorted in increasing order. Repeated powers are
+#' allowed, for example `(0, 0)` or `(1, 1)`, corresponding to repeated-power
+#' fractional-polynomial terms.
+#'
+#' With the default set of eight powers, `degree = 1` gives 8 candidate powers,
+#' `degree = 2` gives 36 candidate pairs, and `degree = 3` gives 120 candidate
+#' triples.
+#'
+#' If `degree = 0`, the function returns a one-row, one-column matrix containing
+#' `1`, representing the null transformation.
+#'
+#' @return
+#' A numeric matrix. For `degree > 0`, the matrix has `degree` columns and one
+#' row for each candidate power combination. For `degree = 0`, the matrix has
+#' one column containing `1`.
+#'
 #' @examples
 #' powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+#'
+#' generate_powers_fp(degree = 1, powers = powx)
 #' generate_powers_fp(degree = 2, powers = powx)
-#' generate_powers_acd(degree = 2, powers = powx)
-#' 
-#' @return 
-#' A matrix of powers with degree columns and rows depending on the `degree`.
-#' For ACD powers always a matrix with two columns. For normal fps each row
-#' will be sorted in increasing order (in alignment with
-#' how \code{transform_vector_fp()} processes the data).
-#' 
-#' @export
-generate_powers_fp <- function(degree = NULL, 
+#'
+#' # A single supplied power with degree 2 gives the repeated-power FP2 basis.
+#' generate_powers_fp(degree = 2, powers = 2)
+#'
+#' @keywords internal
+#' @noRd
+generate_powers_fp <- function(degree = NULL,
                                powers = NULL) {
   if (is.null(degree)) {
     degree <- 2
@@ -51,38 +53,70 @@ generate_powers_fp <- function(degree = NULL,
     return(matrix(1, nrow = 1, ncol = 1))
   }
   
-   # combination below does not work if x is of length 1
-     if (length(powers) == 1){
-    return(matrix(powers, nrow = 1, ncol = 1))
-    }
-  
   # using replacement because powers may be repeated e.g. (0,0) or (1,1)
   generate_combinations_with_replacement(powers, degree)
 }
 
-#' @describeIn generate_powers_fp Function to generate acd powers.
-#' @export
-generate_powers_acd <- function(degree = NULL, 
+#' Generate ACD power combinations
+#'
+#' Generates the candidate power matrix used for approximate cumulative
+#' distribution (ACD) transformations.
+#'
+#' @param degree Integer ACD degree. Supported values are `0`, `1`, and `2`.
+#'   If `NULL`, the default is `2`.
+#' @param powers Numeric vector of allowed powers. If `NULL`, the default set
+#'   `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` is used.
+#'
+#' @details
+#' `generate_powers_acd()` returns candidate power pairs for ACD transformations.
+#' Unlike ordinary fractional-polynomial powers, ACD powers are generated as
+#' Cartesian products, so order matters.
+#'
+#' The returned matrix always has two columns. The first column corresponds to
+#' the untransformed-data component and the second column corresponds to the ACD
+#' component. For `degree = 0` and `degree = 1`, entries in the first column are
+#' set to `NA` to indicate that the untransformed-data component is not used.
+#'
+#' For the default set of eight powers, `degree = 1` gives 8 candidate rows and
+#' `degree = 2` gives 64 candidate pairs. Degrees greater than 2 are not
+#' supported.
+#'
+#' @return
+#' A two-column numeric matrix of ACD power specifications. Rows containing
+#' `NA` in the first column indicate that the untransformed-data component is
+#' not included.
+#'
+#' @examples
+#' powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+#'
+#' generate_powers_acd(degree = 0, powers = powx)
+#' generate_powers_acd(degree = 1, powers = powx)
+#' generate_powers_acd(degree = 2, powers = powx)
+#'
+#' @keywords internal
+#' @noRd
+generate_powers_acd <- function(degree = NULL,
                                 powers = NULL) {
   if (is.null(degree)) {
     degree <- 2
   }
+  
   if (is.null(powers)) {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
-  
   
   # Internal contract: ACD supports degree 0, 1, or 2 only.
   if (length(degree) != 1L || is.na(degree) || degree < 0L || degree > 2L) {
     stop("Internal error: `degree` for ACD must be 0, 1, or 2.", call. = FALSE)
   }
   
-  
-  if (degree == 0)
+  if (degree == 0) {
     return(matrix(c(NA, 1), ncol = 2))
+  }
   
-  if (degree == 1) 
+  if (degree == 1) {
     return(matrix(c(rep(NA, length(powers)), powers), ncol = 2))
+  }
   
   matrix(as.matrix(expand.grid(powers, powers)), ncol = 2)
 }

@@ -104,8 +104,7 @@ reset_acd <- function(x, acdx) {
 #'
 #'set.seed(42)
 #' x = apply_shift_scale(rnorm(100))
-#' y = rnorm(100)
-#' fit_acd(x, y)
+#' fit_acd(x)
 #' 
 #' @return 
 #' A list is returned with components
@@ -159,7 +158,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
     stop("`scale` must be a single positive numeric value or NULL.")
   }
   
-  if (!is.logical(zero) || length(zero) != 1) {
+  if (!is.logical(zero) || length(zero) != 1 || is.na(zero)) {
     stop("`zero` must be a single logical value (TRUE or FALSE).")
   }
   

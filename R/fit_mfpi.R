@@ -86,10 +86,11 @@
 #'   its FP transformation.
 #' @param spike_vars Named logical vector of length \eqn{p}. Whether each
 #'   predictor is subject to spike-at-zero (SAZ) modelling.
-#' @param min_prop Numeric in \eqn{[0,1]}. Minimum proportion of zeros
-#'   required for SAZ modelling.
-#' @param max_prop Numeric in \eqn{[0,1]}. Maximum proportion of zeros for
-#'   SAZ modelling.
+#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#'   proportion in each component of a spike-at-zero covariate: the
+#'   zero component and the positive component. Only
+#'   affects variables in the adjustment model, since spike-at-zero handling is
+#'   suppressed for variables in \code{cont_vars}.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
 #'   use an F-test (via \code{calculate_f_test()}) rather than a
 #'   chi-square likelihood-ratio test for the interaction p-value. Also
@@ -200,7 +201,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      force_max_fp,
                      df, xorder,
                      fp_powers, ties, strata, nocenter, acd_vars, zero_vars,
-                     catzero_vars, spike_vars, min_prop, max_prop, use_ftest,
+                     catzero_vars, spike_vars,  min_saz_component_prop, use_ftest,
                      control, group_var, include_group_var, flex, cont_vars,
                      cont_var_forms,
                      p_interact, min_improvement, show_models, verbose,
@@ -211,7 +212,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      group_levels_original = NULL) {
   
   center_type <- match.arg(center_type)
-  
+  quiet  <- !isTRUE(verbose)
   # Resolve GLM family objects once for all repeated internal model fits.
   # Public mfp2.default() already does this, but keeping it here makes direct
   # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
@@ -265,8 +266,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     ties           = ties,
     strata         = strata,
     nocenter       = nocenter,
-    min_prop       = min_prop,
-    max_prop       = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
     use_ftest      = use_ftest,
     control        = control,
     force_max_fp   = processed_data$updated_params$force_max_fp,
@@ -438,8 +438,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     show_models        = show_models,
     p_interact         = p_interact,
     min_improvement    = min_improvement,
-    min_prop           = min_prop,
-    max_prop           = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
     center_type        = center_type,
     scale              = scale,
     shift              = shift,
@@ -473,6 +472,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     center_vals_list         = univ_results$center_vals_list,
     adjust_terms             = adjustment_model$fp_terms,
     group_var                = univ_results$group_var,
+    include_group_var        = include_group_var,
     show_models              = univ_results$show_models,
     flex                     = univ_results$flex,
     criterion                = univ_results$criterion,
@@ -542,7 +542,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 #' @param zero_vars Named logical vector. Whether each predictor should treat
 #'   non-positive values as zero.
 #' @param catzero_vars Named logical vector. Whether each predictor should add a
-#'   structural-zero indicator.
+#'   zero indicator.
 #' @param spike_vars Named logical vector. Whether each predictor should be
 #'   assessed for spike-at-zero handling.
 #' @param keep Character vector of variable names always retained in the
@@ -891,8 +891,9 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @param strata Integer stratum vector for stratified Cox models, or
 #'   \code{NULL}.
 #' @param nocenter Numeric vector passed to \code{survival::coxph()}.
-#' @param min_prop Numeric. Minimum proportion of zeros for SAZ modelling.
-#' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
+#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#'   proportion in each component of a spike-at-zero covariate, passed to
+#'   \code{fit_mfp()} for adjustment-model fitting.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
 #' @param verbose Logical. Passed directly to \code{fit_mfp()}.
@@ -920,9 +921,9 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' @noRd
 fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
                                  family_string, criterion, updated_params,
-                                 xorder, ties, strata, nocenter, min_prop,
-                                 max_prop, use_ftest, control,
-                                 force_max_fp, scale,has_offset,
+                                 xorder, ties, strata, nocenter, 
+                                 min_saz_component_prop, use_ftest, control,
+                                 force_max_fp, scale, has_offset,
                                  verbose = FALSE) {
   n_vars    <- ncol(x)
   x_names   <- colnames(x)
@@ -965,8 +966,8 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     zero          = updated_params$zero_vars,
     catzero       = updated_params$catzero_vars,
     spike         = updated_params$spike_vars,
-    min_prop      = min_prop,
-    max_prop      = max_prop,
+    min_saz_component_prop = min_saz_component_prop, 
+    saz_pre_resolved = TRUE,
     force_max_fp  = force_max_fp,
     has_offset    = has_offset,
     verbose       = verbose
@@ -1150,7 +1151,7 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #'   \code{adjustment_model$zero}. These are used when rebuilding the selected
 #'   adjustment matrix inside \code{evaluate_interactions()}.
 #' @param adj_catzero Named logical vector for selected adjustment variables,
-#'   giving the final post-fit structural-zero indicator flags from
+#'   giving the final post-fit zero indicator flags from
 #'   \code{adjustment_model$catzero}.
 #' @param adj_spike Named logical vector for selected adjustment variables,
 #'   giving the final post-fit spike-at-zero flags from
@@ -1270,7 +1271,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   use_ftest, control, nocenter, family,
                                   family_string, fp_powers, cycles, criterion,
                                   digits, group_var, show_models, p_interact,
-                                  min_improvement, min_prop, max_prop,
+                                  min_improvement, min_saz_component_prop,
                                   center_type = c("grand", "group"),
                                   scale = NULL, shift = NULL,
                                   adj_acd_parameter = NULL,
@@ -1454,8 +1455,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
         cycles        = cycles,
         zero_var      = processed_data$updated_params$zero_vars[var_name],
         spike_var     = FALSE,
-        min_prop      = min_prop,
-        max_prop      = max_prop,
+        min_saz_component_prop = min_saz_component_prop,
         flex          = flex,
         scale_var     = if (!is.null(scale)) unname(scale[var_name]) else 1,
         shift_var     = if (!is.null(shift)) unname(shift[var_name]) else 0,

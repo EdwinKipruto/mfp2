@@ -1,11 +1,12 @@
 #' Reset Spike-at-Zero Indicators and Undo Cascade for Ineligible Variables
 #'
 #' Evaluates whether each variable flagged as a spike-at-zero (\code{spike})
-#' is eligible for the SAZ algorithm based on its zero proportion and
-#' cardinality. For ineligible variables, \code{spike} is reset to
-#' \code{FALSE} and the \code{catzero} and \code{zero} flags are restored to
-#' the user's original pre-cascade values. This correctly undoes the implicit
-#' cascade (\code{catzero[spike] <- TRUE}, \code{zero[catzero] <- TRUE}) that
+#' is eligible for the SAZ algorithm based on representation of both components:
+#' the zero component and the positive continuous component. For
+#' ineligible variables, \code{spike} is reset to \code{FALSE} and the
+#' \code{catzero} and \code{zero} flags are restored to the user's original
+#' pre-cascade values. This correctly undoes the implicit cascade
+#' \code{catzero[spike] <- TRUE}, \code{zero[catzero] <- TRUE} that
 #' \code{fit_mfp()} applies before calling this function, ensuring that only
 #' what the user explicitly requested is preserved.
 #'
@@ -16,92 +17,80 @@
 #'   catzero[spike]  <- TRUE   # spike implies catzero
 #'   zero[catzero]   <- TRUE   # catzero implies zero
 #' }
-#' If \code{reset_spike()} only resets \code{spike}, \code{catzero} and 
-#' \code{zero} remain \code{TRUE} for
-#' ineligible variables even though the user never asked for them. This
-#' function corrects that by accepting the pre-cascade user values and
-#' restoring them for any variable where \code{spike} is reset.
+#' If \code{reset_spike()} only resets \code{spike}, \code{catzero} and
+#' \code{zero} remain \code{TRUE} for ineligible variables even though the user
+#' never asked for them. This function corrects that by accepting the
+#' pre-cascade user values and restoring them for any variable where
+#' \code{spike} is reset.
 #'
-#' @param x A numeric matrix or data frame with column names. Only columns
-#'   named in \code{spike} are examined. Assumes that the values for variables
-#'   to undergo spike have zeros and positives values only.
+#' @param x A numeric matrix or data frame with column names. Only columns named
+#'   in \code{spike} are examined. For variables undergoing spike-at-zero
+#'   eligibility checks, nonpositive values should already have been temporarily
+#'   recoded to zero by \code{fit_mfp()}.
 #' @param spike A named logical vector. \code{TRUE} indicates the column was
 #'   flagged as a spike-at-zero variable. Should be the post-cascade version
-#'   (after \code{catzero[spike] <- TRUE} has been applied in
-#'   \code{fit_mfp()}).
+#'   after \code{catzero[spike] <- TRUE} has been applied in \code{fit_mfp()}.
 #' @param user_catzero A named logical vector of the user's original
-#'   \code{catzero} specification \strong{before} the cascade
+#'   \code{catzero} specification before the cascade
 #'   \code{catzero[spike] <- TRUE} was applied. Must have the same names as
 #'   \code{spike}.
 #' @param user_zero A named logical vector of the user's original \code{zero}
-#'   specification \strong{before} the cascade \code{zero[catzero] <- TRUE}
-#'   was applied. Must have the same names as \code{spike}.
-#' @param min_prop Numeric in \eqn{(0, 0.5)}. Minimum proportion of zeros
-#'   required to retain the spike indicator. If the observed zero proportion
-#'   is below \code{min_prop}, the variable has too few zeros for a meaningful
-#'   spike model. Default \code{0.05}.
-#' @param max_prop Numeric in \eqn{(0.5, 1)}. Maximum proportion of zeros
-#'   allowed to retain the spike indicator. If the observed zero proportion
-#'   exceeds \code{max_prop}, the positive part is too sparse for reliable FP
-#'   fitting. Default \code{0.95}.
+#'   specification before the cascade \code{zero[catzero] <- TRUE} was applied.
+#'   Must have the same names as \code{spike}.
+#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#'   proportion in each component of a spike-at-zero covariate: the
+#'   structural-zero component and the positive continuous component. A
+#'   requested spike-at-zero variable is retained only if both component
+#'   proportions are at least this value.
 #'
-#' @return A named list with three elements, each a named logical vector of
-#'   the same length as \code{spike}:
+#' @return A named list with three elements, each a named logical vector of the
+#'   same length as \code{spike}:
 #' \describe{
-#'   \item{\code{spike}}{Updated spike vector. Entries for ineligible
-#'     variables are set to \code{FALSE}; all other entries are unchanged.}
+#'   \item{\code{spike}}{Updated spike vector. Entries for ineligible variables
+#'     are set to \code{FALSE}; all other entries are unchanged.}
 #'   \item{\code{catzero}}{Updated catzero vector. For ineligible variables
-#'     (where \code{spike} was just reset), restored to \code{user_catzero}.
-#'     All other entries retain their post-cascade values, i.e. \code{TRUE}
-#'     for variables that remain eligible spike variables.}
-#'   \item{\code{zero}}{Updated zero vector. For ineligible variables,
-#'     restored to \code{user_zero}. All other entries retain their
-#'     post-cascade values.}
+#'     where \code{spike} was just reset, restored to \code{user_catzero}. All
+#'     other entries retain their post-cascade values, i.e. \code{TRUE} for
+#'     variables that remain eligible spike variables.}
+#'   \item{\code{zero}}{Updated zero vector. For ineligible variables, restored
+#'     to \code{user_zero}. All other entries retain their post-cascade values.}
 #' }
 #'
 #' @section Cascade restoration examples:
-#' For a variable whose \code{spike} is reset, the outcome depends on what
-#' the user originally specified:
+#' For a variable whose \code{spike} is reset, the outcome depends on what the
+#' user originally specified:
 #' \describe{
-#'   \item{User specified \code{spike} only (not \code{catzero} or
-#'     \code{zero})}{After reset: \code{spike = FALSE},
-#'     \code{catzero = FALSE}, \code{zero = FALSE}. The variable is treated
-#'     as a standard continuous predictor -- no binary indicator, no zero
-#'     recoding.}
+#'   \item{User specified \code{spike} only, not \code{catzero} or
+#'     \code{zero}}{After reset: \code{spike = FALSE},
+#'     \code{catzero = FALSE}, \code{zero = FALSE}. The variable is treated as
+#'     a standard continuous predictor -- no binary indicator, no zero recoding.}
 #'   \item{User specified \code{spike} and \code{zero = TRUE}}{After reset:
 #'     \code{spike = FALSE}, \code{catzero = FALSE}, \code{zero = TRUE}.
-#'     Non-positive values are still recoded to zero before FP transformation,
+#'     Nonpositive values are still recoded to zero before FP transformation,
 #'     but no binary indicator is added and the SAZ algorithm is not run.}
-#'   \item{User specified \code{spike} and \code{catzero = TRUE}}{After
-#'     reset: \code{spike = FALSE}, \code{catzero = TRUE},
-#'     \code{zero = TRUE}. The binary structural-zero indicator
-#'     \code{I(x == 0)} on the recoded scale, equivalent to
-#'     \code{I(original x <= 0)}, is still added (as explicitly requested 
-#'     via \code{catzero}), but the SAZ
-#'     selection algorithm is not run.}
+#'   \item{User specified \code{spike} and \code{catzero = TRUE}}{After reset:
+#'     \code{spike = FALSE}, \code{catzero = TRUE}, \code{zero = TRUE}. The
+#'     binary structural-zero indicator \code{I(x == 0)} on the recoded scale,
+#'     equivalent to \code{I(original x <= 0)}, is still added as explicitly
+#'     requested via \code{catzero}, but the SAZ selection algorithm is not run.}
 #' }
 #'
 #' @details
-#' Three conditions cause a variable's spike indicator to be reset:
+#' Two conditions cause a variable's spike indicator to be reset:
 #' \enumerate{
-#'   \item \strong{Too few zeros} -- zero proportion below \code{min_prop}.
-#'     There are not enough zero observations to reliably model a spike at
-#'     zero or to estimate its contribution separately from the FP function.
-#'   \item \strong{Too many zeros} -- zero proportion above \code{max_prop}.
-#'     The positive part has too few observations for reliable FP power
-#'     selection and fitting.
-#'   \item \strong{Binary variable} -- exactly two unique finite values.
-#'     The positive part would contain a single unique value, making FP
+#'   \item \strong{Insufficient component representation} -- either the
+#'     structural-zero proportion or the positive-observation proportion is
+#'     below \code{min_saz_component_prop}.
+#'   \item \strong{Binary variable} -- exactly two unique finite values. The
+#'     positive part would contain a single unique value, making FP
 #'     transformation degenerate.
 #' }
-#' A warning is issued for each reset, identifying the affected variables and
-#' the reason. Variables reset for both proportion and binary reasons receive
-#' two separate warnings.
+#' A warning is issued for each reset reason, identifying the affected variables.
 #'
 #' @keywords internal
 #' @noRd
 reset_spike <- function(x, spike, user_catzero, user_zero,
-                        min_prop = 0.05, max_prop = 0.95) {
+                        min_saz_component_prop = 0.10) {
   
   # Early exit: no spike variables to evaluate. In this case there was no
   # spike-implied cascade to preserve, so return the user's original zero and
@@ -112,44 +101,111 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   
   names_spike <- names(spike)[spike]
   
-  # Proportion of structural zeros for each requested spike-at-zero variable.
+  # Component proportions for each requested spike-at-zero variable.
   # At this point fit_mfp() has already recoded nonpositive values to zero for
-  # zero/catzero/spike variables, so x == 0 represents the zero/nonpositive
-  # group used by the spike-at-zero machinery.
-  prop_zero <- colMeans(x[, names_spike, drop = FALSE] == 0, na.rm = TRUE)
+  # zero/catzero/spike variables, so x == 0 represents the structural-zero group
+  # and x > 0 represents the positive continuous component.
+  n_zero <- vapply(
+    names_spike,
+    function(v) {
+      sum(is.finite(x[, v]) & x[, v] == 0)
+    },
+    integer(1L)
+  )
+  
+  n_positive <- vapply(
+    names_spike,
+    function(v) {
+      sum(is.finite(x[, v]) & x[, v] > 0)
+    },
+    integer(1L)
+  )
+  
+  n_observed <- n_zero + n_positive
+  
+  prop_zero <- n_zero / n_observed
+  prop_positive <- n_positive / n_observed
   
   # Binary variables are not eligible for spike-at-zero modelling. A binary
   # covariate already represents a two-level effect, so adding a separate zero
   # spike indicator would be redundant or non-identifiable.
-  is_binary <- vapply(names_spike, function(v) {
-    length(unique(x[is.finite(x[, v]), v])) == 2L
-  }, logical(1L))
+  is_binary <- vapply(
+    names_spike,
+    function(v) {
+      length(unique(x[is.finite(x[, v]), v])) == 2L
+    },
+    logical(1L)
+  )
   
   # Identify variables whose spike option must be reset by each reason.
-  to_reset_prop   <- names_spike[
-    prop_zero <= 0 | prop_zero >= 1 |
-      prop_zero < min_prop | prop_zero > max_prop
+  to_reset_component <- names_spike[
+    is.na(prop_zero) |
+      is.na(prop_positive) |
+      prop_zero < min_saz_component_prop |
+      prop_positive < min_saz_component_prop
   ]
   
   to_reset_binary <- names_spike[is_binary]
-  to_reset        <- union(to_reset_prop, to_reset_binary)
+  to_reset <- union(to_reset_component, to_reset_binary)
   
-  # Warn about proportion-based resets.
-  if (length(to_reset_prop) > 0L) {
-    warning(
-      "The spike-at-zero option has been reset for the following variable(s) ",
-      "because the zero proportion is outside [", min_prop, ", ", max_prop, "]: ",
-      paste(to_reset_prop, collapse = ", "), ".",
-      call. = FALSE
+  # Warn about component-representation resets.
+  if (length(to_reset_component) > 0L) {
+    component_reason <- vapply(
+      to_reset_component,
+      function(v) {
+        p0 <- prop_zero[[v]]
+        pp <- prop_positive[[v]]
+        nz <- n_zero[[v]]
+        np <- n_positive[[v]]
+        no <- n_observed[[v]]
+        
+        if (is.na(no) || no == 0L) {
+          return("no finite zero or positive observations are available")
+        }
+        
+        if (nz == 0L && np > 0L) {
+          return(sprintf(
+            "all observed values are positive; zero proportion is 0 < `min_saz_component_prop = %s`",
+            min_saz_component_prop
+          ))
+        }
+        
+        if (np == 0L && nz > 0L) {
+          return(sprintf(
+            "all observed values are structural zeros; positive observation proportion is 0 < `min_saz_component_prop = %s`",
+            min_saz_component_prop
+          ))
+        }
+        
+        if (is.na(p0) || p0 < min_saz_component_prop) {
+          return(sprintf(
+            "zero proportion is %.4g < `min_saz_component_prop = %s`",
+            p0,
+            min_saz_component_prop
+          ))
+        }
+        
+        if (is.na(pp) || pp < min_saz_component_prop) {
+          return(sprintf(
+            "positive observation proportion is %.4g < `min_saz_component_prop = %s`",
+            pp,
+            min_saz_component_prop
+          ))
+        }
+        
+        "component representation is insufficient"
+      },
+      character(1L)
     )
-  }
-  
-  # Warn about binary-variable resets.
-  if (length(to_reset_binary) > 0L) {
+    
     warning(
-      "The spike-at-zero option has been reset for the following variable(s) ",
-      "because they are binary (exactly two unique finite values): ",
-      paste(to_reset_binary, collapse = ", "), ".",
+      paste(
+        c(
+          "The spike-at-zero option has been reset for the following variable(s):",
+          sprintf("- %s: %s", to_reset_component, component_reason)
+        ),
+        collapse = "\n"
+      ),
       call. = FALSE
     )
   }
@@ -180,6 +236,11 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
     zero[to_reset]    <- user_zero[to_reset]
   }
   
+  # Re-apply the ordinary catzero -> zero cascade after restoring user choices.
+  # This preserves explicit catzero handling when spike is reset, because
+  # catzero_vars always implies zero_vars.
+  zero[catzero] <- TRUE
+  
   # Defensive internal consistency checks. These should never fail if the
   # cascade above has been applied correctly.
   if (any(spike & !catzero)) {
@@ -190,6 +251,175 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   }
   
   list(spike = spike, catzero = catzero, zero = zero)
+}
+
+#' Resolve Spike-at-Zero Eligibility Before Preprocessing
+#'
+#' Internal helper used before shift and scale parameters are chosen.
+#'
+#' The spike-at-zero cascade implies that `spike` variables are temporarily
+#' treated as `catzero`, and `catzero` variables are temporarily treated as
+#' `zero`. This affects preprocessing because zero-handled variables should keep
+#' the structural-zero component at zero.
+#'
+#' If a requested spike variable is later found ineligible for SAZ, it should
+#' revert to the user's explicit `catzero` and `zero` choices before ordinary
+#' shift/scale preprocessing is performed. This helper performs that early
+#' eligibility resolution.
+#'
+#' @param x Raw numeric design matrix or data frame, before shift/scale
+#'   preprocessing.
+#' @param spike Named logical vector indicating requested spike-at-zero
+#'   variables.
+#' @param catzero Named logical vector indicating requested categorical-zero
+#'   variables.
+#' @param zero Named logical vector indicating requested zero-handled variables.
+#' @param min_saz_component_prop Numeric in `(0, 0.5)`. Minimum required
+#'   proportion in both the structural-zero and positive components.
+#'
+#' @return A named list with updated `spike`, `catzero`, and `zero` logical
+#'   vectors.
+#'
+#' @keywords internal
+#' @noRd
+resolve_saz_eligibility <- function(x,
+                                    spike,
+                                    catzero,
+                                    zero,
+                                    min_saz_component_prop = 0.10) {
+  if (!any(spike)) {
+    return(list(
+      spike = spike,
+      catzero = catzero,
+      zero = zero
+    ))
+  }
+  
+  user_catzero <- catzero
+  user_zero <- zero
+  
+  # Apply a temporary cascade only for eligibility checking.
+  catzero_for_spike <- catzero
+  zero_for_spike <- zero
+  
+  catzero_for_spike[spike] <- TRUE
+  zero_for_spike[catzero_for_spike] <- TRUE
+  
+  # Build temporary data for the eligibility check. This does not modify the
+  # original x used for fitting or preprocessing.
+  x_for_spike <- x
+  
+  zero_vars <- intersect(
+    names(zero_for_spike)[zero_for_spike],
+    colnames(x_for_spike)
+  )
+  
+  for (v in zero_vars) {
+    x_for_spike[x_for_spike[, v] <= 0, v] <- 0
+  }
+  
+  reset_spike(
+    x = x_for_spike,
+    spike = spike,
+    user_catzero = user_catzero,
+    user_zero = user_zero,
+    min_saz_component_prop = min_saz_component_prop
+  )
+}
+
+#' Cap FP Degrees of Freedom for Spike-at-Zero Positive Components
+#'
+#' Internal helper used by \code{fit_mfp()} after \code{reset_spike()}.
+#'
+#' For ordinary variables, \code{assign_df()} caps the maximum FP degrees of
+#' freedom according to the number of distinct values in the full variable. For
+#' spike-at-zero variables, the continuous FP part is fitted to the positive
+#' component, while zero/nonpositive observations are represented structurally
+#' through the binary zero indicator. Therefore the SAZ-specific df cap must be
+#' based on the number of distinct positive values, not on the number of distinct
+#' values in the full variable including zero.
+#'
+#' The rules mirror \code{assign_df()}:
+#' \itemize{
+#'   \item at most 3 distinct positive values: force linear, \code{df = 1};
+#'   \item 4 or 5 distinct positive values: cap at FP1, \code{df = min(df, 2)};
+#'   \item 6 or more distinct positive values: keep the requested df.
+#' }
+#'
+#' @param x Numeric matrix or data frame after temporary zero recoding for spike
+#'   eligibility. For spike variables, nonpositive values should already be
+#'   represented as zero.
+#' @param df Named integer vector of current maximum df values.
+#' @param spike Named logical vector indicating final retained spike-at-zero
+#'   variables after \code{reset_spike()}.
+#'
+#' @return Updated named integer vector of df values.
+#'
+#' @keywords internal
+#' @noRd
+cap_spike_df <- function(x, df, spike) {
+  if (!any(spike)) {
+    return(df)
+  }
+  
+  spike_vars <- intersect(names(spike)[spike], names(df))
+  
+  if (length(spike_vars) == 0L) {
+    return(df)
+  }
+  
+  changed <- character(0L)
+  old_values <- integer(0L)
+  new_values <- integer(0L)
+  unique_values <- integer(0L)
+  
+  for (v in spike_vars) {
+    positive_values <- x[, v]
+    positive_values <- positive_values[
+      is.finite(positive_values) & positive_values > 0
+    ]
+    
+    u_positive <- length(unique(positive_values))
+    
+    old_df <- as.integer(df[[v]])
+    new_df <- old_df
+    
+    if (u_positive <= 3L) {
+      new_df <- 1L
+    } else if (u_positive <= 5L) {
+      new_df <- min(2L, old_df)
+    }
+    
+    if (!identical(new_df, old_df)) {
+      changed <- c(changed, v)
+      old_values <- c(old_values, old_df)
+      new_values <- c(new_values, new_df)
+      unique_values <- c(unique_values, u_positive)
+      df[[v]] <- new_df
+    }
+  }
+  
+  if (length(changed) > 0L) {
+    warning(
+      "For the following spike-at-zero variable(s), the maximum FP df was ",
+      "reduced because the positive component has few distinct values: ",
+      paste0(
+        changed,
+        " (",
+        unique_values,
+        " distinct positive values: df ",
+        old_values,
+        " -> ",
+        new_values,
+        ")",
+        collapse = ", "
+      ),
+      ".",
+      call. = FALSE
+    )
+  }
+  
+  df
 }
 
 
@@ -424,19 +654,19 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' \tabular{llll}{
 #'   \strong{Condition} \tab \strong{Interpretation} \tab
 #'   \strong{Retained component(s)} \tab \strong{Selected model} \cr
-#'   \code{p_drop_binary <= select}, \code{p_drop_continuous <= select} \tab
+#'   \code{p_drop_binary < select}, \code{p_drop_continuous < select} \tab
 #'   Both reductions are significantly worse than Model 1 \tab
 #'   Continuous FP/linear/ACD + binary zero indicator \tab
 #'   Model 1 \cr
-#'   \code{p_drop_binary <= select}, \code{p_drop_continuous > select} \tab
+#'   \code{p_drop_binary < select}, \code{p_drop_continuous >= select} \tab
 #'   Removing the binary component is harmful; removing the continuous component is acceptable \tab
 #'   Binary zero indicator only \tab
 #'   Model 3 \cr
-#'   \code{p_drop_binary > select}, \code{p_drop_continuous <= select} \tab
+#'   \code{p_drop_binary >= select}, \code{p_drop_continuous < select} \tab
 #'   Removing the continuous component is harmful; removing the binary component is acceptable \tab
 #'   Continuous FP/linear/ACD only \tab
 #'   Model 2 \cr
-#'   \code{p_drop_binary > select}, \code{p_drop_continuous > select} \tab
+#'   \code{p_drop_binary >= select}, \code{p_drop_continuous >= select} \tab
 #'   Neither reduction is significantly worse than Model 1 \tab
 #'   Better-fitting reduced component \tab
 #'   Model 2 if \code{logLik(Model 2) > logLik(Model 3)}, otherwise Model 3 \cr
@@ -525,11 +755,11 @@ compute_saz_stage2_decision <- function(metrics,
     p_drop_binary <- stats1$pvalue
     p_drop_continuous <- stats2$pvalue
     
-    decision <- if (p_drop_binary <= select && p_drop_continuous <= select) {
+    decision <- if (p_drop_binary < select && p_drop_continuous < select) {
       1L  # Model 1: both components
-    } else if (p_drop_binary <= select && p_drop_continuous > select) {
+    } else if (p_drop_binary < select && p_drop_continuous >= select) {
       3L  # Model 3: binary zero-indicator only
-    } else if (p_drop_binary > select && p_drop_continuous <= select) {
+    } else if (p_drop_binary >= select && p_drop_continuous < select) {
       2L  # Model 2: continuous FP/linear/ACD only
     } else {
       # If neither reduced model is significantly worse than the full model,

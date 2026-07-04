@@ -1,30 +1,19 @@
-#' Normalize and validate a model family argument
+#' Normalize and validate a model family
 #'
-#' Converts a user-supplied model family argument into the internal pair used by
-#' the fitting functions: a resolved family object and a character family name.
-#' The input may be a supported character string, a GLM family function, or a
-#' GLM family object.
+#' @param family Character family name, GLM family function, or GLM family object.
+#' @param family_arg Character label used in error messages for function inputs.
 #'
-#' Character inputs `"gaussian"`, `"binomial"`, and `"poisson"` are converted to
-#' their corresponding \pkg{stats} family objects. Character input `"cox"` is
-#' retained as `"cox"` because Cox models are handled outside the GLM family
-#' system. Family functions and family objects are accepted only when they return
-#' or represent a supported GLM family.
-#'
-#' @param family A character string, GLM family function, or GLM family object.
-#'
-#' @return A list with two components:
+#' @return A list with elements:
 #' \describe{
-#'   \item{\code{family}}{The resolved family object, or the character string
-#'     `"cox"` for Cox models.}
+#'   \item{\code{family}}{A GLM family object, or character \code{"cox"}.}
 #'   \item{\code{family_string}}{The normalized character family name.}
 #' }
 #'
 #' @keywords internal
 #' @noRd
-normalize_family_argument <- function(family) {
-  
+normalize_family_argument <- function(family, family_arg = deparse(substitute(family))) {
   allowed_families <- c("gaussian", "binomial", "poisson", "cox")
+  family_arg <- paste(family_arg, collapse = " ")
   
   if (is.character(family)) {
     if (length(family) != 1L) {
@@ -50,8 +39,6 @@ normalize_family_argument <- function(family) {
       )
     }
     
-    family_string <- family
-    
     family_obj <- if (family == "cox") {
       "cox"
     } else {
@@ -65,20 +52,18 @@ normalize_family_argument <- function(family) {
     
     return(list(
       family = family_obj,
-      family_string = family_string
+      family_string = family
     ))
   }
   
   if (is.function(family)) {
-    family_name <- deparse(substitute(family))
-    
     family_obj <- tryCatch(
       family(),
       error = function(e) {
         stop(
           sprintf(
-            "! Could not create a family object from the provided function '%s'. Error: %s",
-            family_name,
+            "! Could not create a family object from the provided function `%s`. Error: %s",
+            family_arg,
             conditionMessage(e)
           ),
           call. = FALSE
@@ -89,8 +74,8 @@ normalize_family_argument <- function(family) {
     if (!inherits(family_obj, "family")) {
       stop(
         sprintf(
-          "! The provided function '%s' did not return a valid GLM family object.",
-          family_name
+          "! The provided function `%s` did not return a valid GLM family object.",
+          family_arg
         ),
         call. = FALSE
       )
@@ -98,7 +83,7 @@ normalize_family_argument <- function(family) {
     
     family_string <- family_obj$family
     
-    if (family_string == "cox") {
+    if (identical(family_string, "cox")) {
       stop(
         "! `cox` must be specified as a character string, not as a function.",
         call. = FALSE
@@ -108,7 +93,8 @@ normalize_family_argument <- function(family) {
     if (!family_string %in% allowed_families) {
       stop(
         sprintf(
-          "! Invalid family: '%s'. Supported families are: %s.",
+          "! Invalid family returned by `%s`: '%s'. Supported families are: %s.",
+          family_arg,
           family_string,
           paste(allowed_families, collapse = ", ")
         ),
@@ -125,7 +111,7 @@ normalize_family_argument <- function(family) {
   if (inherits(family, "family")) {
     family_string <- family$family
     
-    if (family_string == "cox") {
+    if (identical(family_string, "cox")) {
       stop(
         "! `cox` must be specified as a character string, not as a family object.",
         call. = FALSE
@@ -153,6 +139,38 @@ normalize_family_argument <- function(family) {
     "! `family` must be a character string, a GLM family function, or a GLM family object.",
     call. = FALSE
   )
+}
+
+#' Extract family name for the formula interface
+#'
+#' Internal helper used by `mfp2.formula()` to determine the family name before
+#' calling `mfp2.default()`. This is needed because the formula interface must
+#' know whether Cox-specific formula terms such as `strata()` are allowed, but
+#' family validation and normalization are still handled by `mfp2.default()`.
+#'
+#' @param family A character family name, a GLM family function, or a GLM family
+#'   object.
+#'
+#' @return A single character string giving the family name.
+#'
+#' @keywords internal
+#' @noRd
+get_family_string_formula <- function(family, family_arg = deparse(substitute(family))) {
+  normalize_family_argument(
+    family,
+    family_arg = family_arg
+  )$family_string
+}
+
+
+#' Resolve a model family once for repeated internal fits
+#'
+#' @param family Character family name, family function, family object, or "cox".
+#' @return A resolved GLM family object, or the character string "cox".
+#' @keywords internal
+#' @noRd
+resolve_fit_model_family <- function(family) {
+  normalize_family_argument(family)$family
 }
 
 #' Validate response against model family

@@ -43,19 +43,12 @@
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit.
 #' @param rownames a parameter for Cox models.
-#' @param zero a named logical vector
 #' @param catzero A named list of structural-zero indicators. Each element is
 #' either `NULL` or an n x 1 integer/numeric matrix. Non-NULL elements indicate
 #' variables for which a binary structural-zero column is available.
 #' @param zero A named logical vector indicating, which columns of 
 #' \code{x} should treat nonpositive values (zero or negative) as zero before 
 #' transformation. Must be the same length as the columns of \code{x}.
-#' @param catzero A named list of binary indicator variables of length \code{ncol(x)} 
-#' for nonpositive values, created when specific variables are passed to the 
-#' \code{catzero} argument of \code{fit_mfp}. If an element of the list is 
-#' \code{NULL}, it indicates that the corresponding variable was not specified by
-#' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
-#' is a list of binary variables, not a named logical vector as in \code{fit_mfp}.
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #' a spike at zero. The length and order of \code{spike} must match those of
 #' the columns in \code{x}.
@@ -308,7 +301,19 @@ find_best_fp_step <- function(x,
   # add spike metrics to fit1 for printing stage 2
   f_names <- rownames(fit1$metrics)[fit1$model_best]
   spike_metrics <- do.call(rbind, metrics)
-  rownames(spike_metrics) <- c(f_names, strsplit(f_names, " \\+ ")[[1]])
+  
+  stage2_names <- strsplit(f_names, " \\+ ")[[1]]
+  
+  # For df = 1, stage 1 can be a linear SAZ model. Ensure the full model
+  # label still has an explicit binary component so the three stage-2 rows are:
+  # full model, continuous/linear component only, binary component only.
+  if (isTRUE(spike[[xi]]) && length(stage2_names) == 1L) {
+    f_names <- paste0(stage2_names, " + Binary")
+    stage2_names <- c(stage2_names, "Binary")
+  }
+  
+  rownames(spike_metrics) <- c(f_names, stage2_names)
+  
   fit1$spike_metrics <- list(metrics = spike_metrics, 
                              spike_decision = spike_decision[xi],
                              pvalue = decision$pvalue)
@@ -793,14 +798,38 @@ fit_linear_step <- function(x,
   ) 
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[1]]
   
-  # fit a model based on the assumption that xi is linear. If catzero, its
-  # corresponding binary variable will be included in the model
+  # Fit a model based on the assumption that xi is linear.
+  # If catzero or spike-at-zero is active for xi, the corresponding binary
+  # component is already included in data_xi.
+  data_xi <- x_transformed$data_fp[[1L]]
+  data_adj <- x_transformed$data_adj
+  
+  has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
+  use_glm_intercept_template <- !identical(family_string, "cox")
+  
+  if (has_adj) {
+    x_fit <- cbind(data_xi, data_adj)
+  } else {
+    x_fit <- data_xi
+  }
+  
+  # GLM fits need an intercept. Add it here and tell fit_model()/fit_glm()
+  # that the intercept is already present, so fit_glm() does not add it again.
+  # Cox models must not include an intercept.
+  if (use_glm_intercept_template) {
+    x_fit <- cbind(
+      "(Intercept)" = rep.int(1, nrow(data_xi)),
+      x_fit
+    )
+  }
+  
   model_linear <- fit_model(
-    x = cbind(x_transformed$data_fp[[1]], x_transformed$data_adj),
+    x = x_fit,
     y = y,
-    family = family, 
-    family_string = family_string, 
+    family = family,
+    family_string = family_string,
     has_offset = has_offset,
+    x_has_intercept = use_glm_intercept_template,
     ...
   )
   
@@ -913,6 +942,10 @@ select_linear <- function(x,
     prev_adj_params = prev_adj_params
   )
   
+  has_binary_xi <- isTRUE(spike[[xi]]) || !is.null(catzero[[xi]])
+  binary_suffix <- if (has_binary_xi) " + Binary" else ""
+  linear_name <- paste0("linear", binary_suffix)
+  
   # Model 1: Null model
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -938,6 +971,9 @@ select_linear <- function(x,
   powers <- rbind(fit_null$powers, fit_linear$powers)
   metrics <- rbind(fit_null$metrics, fit_linear$metrics)
   
+  rownames(powers) <- c("null", linear_name)
+  rownames(metrics) <- c("null", linear_name)
+  
   # compute F or Chi-square statistic between the two models
   if (ftest) {
     # note that ftest is only TRUE if model is gaussian
@@ -952,9 +988,11 @@ select_linear <- function(x,
   
   # Compute the corresponding p-value
   pvalue <- stats$pvalue
-  names(pvalue) <- c("null vs linear")
+  test_name <- paste0("null vs ", linear_name)
+  
+  names(pvalue) <- test_name
   statistic <- stats$statistic 
-  names(statistic) <- c("null vs linear")
+  names(statistic) <- test_name
   
   # Check whether the variable should be forced into the model; index 1 denotes
   # a null, while 2 denotes a linear model
@@ -963,7 +1001,7 @@ select_linear <- function(x,
   } else {
     model_best <- switch(
       tolower(criterion), 
-      "pvalue" = ifelse(pvalue > select, 1, 2), 
+      "pvalue" = ifelse(pvalue >= select, 1, 2), 
       "aic" = which.min(metrics[, "aic", drop = TRUE]), 
       "bic" = which.min(metrics[, "bic", drop = TRUE])
     ) 
@@ -1770,7 +1808,7 @@ select_ic <- function(x,
   
   
   # All FPm models
-  fits_fpm <- list()
+  fits_fpm <- vector("list", degree)
   
   for (m in seq_len(degree)) {
     fits_fpm[[m]] <- find_best_fpm_step(

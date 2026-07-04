@@ -42,8 +42,7 @@ mfpi(x, ...)
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
-  min_prop = 0.05,
-  max_prop = 0.95,
+  min_saz_component_prop = 0.1,
   ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
@@ -88,8 +87,7 @@ mfpi(x, ...)
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
-  min_prop = 0.05,
-  max_prop = 0.95,
+  min_saz_component_prop = 0.1,
   ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
@@ -325,7 +323,9 @@ variables from most to least significant in a full multiple regression;
 variable. Default is \code{NULL}, which uses the standard set proposed by
 Royston and Altman (1994): \eqn{\{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where
 0 denotes the natural logarithm. Each element must be named after the
-corresponding column of \code{x} and must contain at least two distinct values.}
+corresponding column of \code{x} and must contain at least one finite value.
+A single non-unity candidate power is valid (e.g. \code{powers = list(x = 2)});
+see the \code{powers} argument of \code{mfp2()} for details.}
 
 \item{ties}{A character string specifying the method for handling tied event times in
 Cox regression. One of \code{"breslow"} (default), \code{"efron"}, or \code{"exact"}.
@@ -356,8 +356,9 @@ values} section for details.}
 \item{catzero_vars}{An optional character vector naming variables for which a binary structural
 zero indicator \eqn{I(x \le 0)} should be added to the adjustment model
 alongside the FP terms for the positive part. For adjustment variables,
-\code{catzero_vars} implies \code{zero_vars}. A variable that is not in
-\code{cont_vars} may not appear in both \code{zero_vars} and
+\code{spike_vars} implies \code{catzero_vars} and therefore \code{zero_vars}
+while the SAZ algorithm remains active after eligibility checks. A variable
+that is not in \code{cont_vars} may not appear in both \code{zero_vars} and
 \code{catzero_vars}. \strong{Note:} if a variable also appears in
 \code{cont_vars}, the structural-zero indicator is dropped and
 \code{catzero} is set to \code{FALSE} for that variable in both the
@@ -377,28 +378,12 @@ preserved if the variable was also listed in \code{zero_vars}; zero handling
 implied only by \code{spike_vars} is not retained for variables in
 \code{cont_vars}.}
 
-\item{min_prop}{Numeric in \eqn{(0, 1)}. Minimum proportion of zeros required for the
-SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
-\code{0.05}. Must be less than \code{max_prop}. If the observed zero
-proportion is below \code{min_prop} (too few zeros to model a spike
-meaningfully), the spike flag is reset to \code{FALSE} for that variable.
-The resulting treatment depends on what the user originally specified
-alongside \code{spike_vars}: if \code{catzero_vars} or \code{zero_vars}
-were also specified for that variable, those flags are preserved;
-otherwise the variable reverts to a standard continuous predictor.
-Only affects variables in the adjustment model since \code{spike_vars}
-is always suppressed for \code{cont_vars}.}
-
-\item{max_prop}{Numeric in \eqn{(0, 1)}. Maximum proportion of zeros allowed for the
-SAZ algorithm to be applied to a variable in \code{spike_vars}. Default
-\code{0.95}. Must be greater than \code{min_prop}. If the observed zero
-proportion exceeds \code{max_prop} (too many zeros; the positive part is
-too sparse for reliable FP fitting), the spike flag is reset to
-\code{FALSE}. As with \code{min_prop}, the resulting treatment of
-\code{catzero} and \code{zero} depends on the user's original
-specification. Variables that are binary (exactly two unique values) are
-also reset regardless of their zero proportion. Only affects variables
-in the adjustment model.}
+\item{min_saz_component_prop}{Numeric in \eqn{(0, 0.5)}. Minimum required proportion in each component of
+a spike-at-zero covariate: the structural-zero component and the positive
+continuous component. Default \code{0.10}. A requested spike-at-zero
+adjustment variable is retained for SAZ modelling only if both the
+structural-zero proportion and the positive-observation proportion are at
+least this value.}
 
 \item{ftest}{Logical. Whether to use an F-test rather than a chi-square
 likelihood-ratio test when computing p-values for Gaussian models.
@@ -795,7 +780,7 @@ variable.}
 \item{\code{catzero_vars}}{As \code{zero_vars}, with an additional
 indicator for zero values.}
 \item{\code{spike_vars}}{Uses the spike-at-zero algorithm and implies
-\code{catzero_vars}.}
+\code{catzero_vars} while SAZ remains active after eligibility checks.}
 }
 
 Variables listed in \code{catzero_vars} or \code{spike_vars} are supported
@@ -821,6 +806,22 @@ zero before FP transformation. Zero handling implied only by
 Variables in \code{spike_vars} or \code{catzero_vars} that are
 \strong{not} in \code{cont_vars} are fully respected in the adjustment
 model as documented in \code{\link[=mfp2]{mfp2()}}.
+}
+
+\section{Spike-at-zero eligibility}{
+
+Spike-at-zero handling in \code{mfpi()} follows the same eligibility rule as
+in \code{mfp2()}. A requested spike-at-zero adjustment variable remains
+eligible only if both the structural-zero component and the positive
+continuous component are sufficiently represented. Let \eqn{p_0} be the
+structural-zero proportion and \eqn{p_+ = 1 - p_0} be the positive-observation
+proportion. SAZ is applied only if both \eqn{p_0} and \eqn{p_+} are at least
+\code{min_saz_component_prop}.
+
+Variables in \code{cont_vars}, which define the continuous variables tested
+for interaction with the grouping variable, are not treated as spike-at-zero
+variables during the MFPI interaction test. Spike-at-zero handling applies to
+eligible adjustment variables.
 }
 
 \section{Information criteria}{
@@ -863,7 +864,7 @@ supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 \code{flex}, \code{p_interact}, \code{min_improvement},
 \code{include_group_var}, \code{show_models}, \code{cycles},
 \code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
-\code{nocenter}, \code{min_prop}, \code{max_prop}, \code{ftest},
+\code{nocenter}, \code{min_saz_component_prop}, \code{ftest},
 \code{control}, \code{verbose}, \code{digits}.
 }
 

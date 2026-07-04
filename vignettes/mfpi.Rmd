@@ -321,42 +321,59 @@ final result and is shown immediately as `>> p_raw = ... -> Selected/Not selecte
 
 ## The interaction model
 
-For a binary grouping variable, let $t = 0$ denote the reference group and
-$t = 1$ denote the comparison group. Let $z$ be the continuous covariate under
-investigation. Prior to FP transformation, $z$ is shifted when it contains
-negative or zero values to ensure positivity, and optionally scaled for
+For a binary grouping variable, let \(t = 0\) denote the reference group and
+\(t = 1\) denote the comparison group. Let \(z\) be the continuous covariate
+under investigation. Prior to FP transformation, \(z\) is shifted when it
+contains negative or zero values to ensure positivity, and optionally scaled for
 numerical stability.
 
-If an FP2 function with powers $p_1$ and $p_2$ is selected, the interaction
+If an FP2 function with powers \(p_1\) and \(p_2\) is selected, the interaction
 model for the linear predictor is
-$$
-\eta_i
-=
+
+\[
+\eta_i =
 \mathbf{x}_i^\top \boldsymbol{\gamma}
-+ \alpha \, t_i
-+ \sum_{j=0}^{1} I(t_i = j)
-  \bigl[
-    \beta_{j1}\, \phi_1(z_i)
-    + \beta_{j2}\, \phi_2(z_i)
-  \bigr],
-$$
++ \alpha t_i
++ \sum_{j = 0}^{1} I(t_i = j)
+\left[
+\beta_{j1}\phi_1(z_i)
++
+\beta_{j2}\phi_2(z_i)
+\right].
+\]
 
-where $\mathbf{x}_i^\top \boldsymbol{\gamma}$ denotes the linear predictor
-contribution from the adjustment covariates, $\alpha$ is the main effect of the
-grouping variable, $I(t_i = j)$ is the indicator for group $j$, and
-$\phi_1(z_i) = z_i^{p_1}$, $\phi_2(z_i) = z_i^{p_2}$ are the FP basis functions
-(with $z^0 = \log z$ by convention).
+Here, \(\mathbf{x}_i^\top \boldsymbol{\gamma}\) denotes the linear predictor
+contribution from the adjustment covariates, \(\alpha\) is the main effect of
+the grouping variable, \(I(t_i = j)\) is the indicator for group \(j\), and
+\(\phi_1(z_i)\) and \(\phi_2(z_i)\) are the selected FP basis functions. For
+distinct FP powers,
 
-The group-specific contribution of $z$ for an observation in group $j$ is then
+\[
+\phi_1(z_i) = z_i^{p_1},
+\qquad
+\phi_2(z_i) = z_i^{p_2},
+\]
 
-$$
+with \(z^0 = \log(z)\) by convention. For repeated FP2 powers,
+\(p_1 = p_2 = p\), the basis functions are
+
+\[
+\phi_1(z_i) = z_i^p,
+\qquad
+\phi_2(z_i) = z_i^p \log(z_i).
+\]
+
+The group-specific contribution of \(z\) for an observation in group \(j\) is
+
+\[
 \hat{f}_j(z_i)
 =
-\hat{\beta}_{j1}\, \phi_1(z_i)
+\hat{\beta}_{j1}\phi_1(z_i)
 +
-\hat{\beta}_{j2}\, \phi_2(z_i),
-\qquad j = 0, 1.
-$$
+\hat{\beta}_{j2}\phi_2(z_i),
+\qquad
+j = 0, 1.
+\]
 
 The interaction test assesses whether the group-specific functions are parallel
 on the scale of the linear predictor. For Gaussian models, this is the outcome
@@ -366,19 +383,20 @@ log-hazard scale.
 
 A useful way to display the interaction is the fitted-function difference,
 
-$$
+\[
 \hat{d}(z_i)
 =
 \hat{f}_1(z_i) - \hat{f}_0(z_i),
-$$
+\]
 
 together with a pointwise 95% confidence interval. If the two functions are
-parallel, the difference is approximately constant over $z$. If the difference
-varies with $z$, this suggests that the effect of the grouping variable on the
-outcome depends on the value of the continuous covariate. Pointwise standard
-errors for $\hat{d}(z_i)$ and for the group-specific functions $\hat{f}_j(z_i)$
-are estimated using the delta method applied to the variance-covariance matrix
-of the fitted interaction model.
+parallel, the difference is approximately constant over \(z\). If the difference
+varies with \(z\), this suggests that the effect of the grouping variable on the
+outcome depends on the value of the continuous covariate.
+
+Pointwise standard errors for \(\hat{d}(z_i)\) and for the group-specific
+functions \(\hat{f}_j(z_i)\) are estimated using the delta method applied to the
+variance-covariance matrix of the fitted interaction model.
 
 The fitted-function difference plot should be interpreted as a model-based
 visual summary. The confidence interval is pointwise and depends on the selected
@@ -1072,7 +1090,7 @@ functional form pre-specified in `cont_var_forms` for that variable. For
 example, to inspect the fitted interaction for `wt` (which was not selected):
 
 ```{r plot-nonsig, fig.width=10, fig.height=5, fig.cap = "Fitted interaction for the wt-by-treatment interaction (not selected)."}
-plot(fit_exp, terms = "wt", plot_type = "both", legend_inside = c(0.85, 0.98))
+plot(fit_exp, terms = "wt", plot_type = "both", legend_inside = c(0.60, 0.98))
 ```
 
 This is useful for diagnostic inspection: it shows what the fitted interaction

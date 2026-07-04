@@ -24,14 +24,16 @@
 #' are displayed.
 #' @param size_points Numeric value. Size of points used when residuals 
 #' are displayed.
-#' @param size_points_spike Numeric value. Size of the point drawn at zero 
-#' when the covariate includes a spike-at-zero component (`spike_dec = 1`).
+#' @param size_points_spike Numeric value. Size of the point drawn at zero
+#'   when the covariate retains both the continuous and binary SAZ components
+#'   (internal `spike_dec = 1`).
 #' @param color_points Character value. Color of points used when residuals 
 #'   are displayed.
 #' @param color_line Character value. Color of the line representing 
 #'   the partial predictor.
-#' @param color_line_spike Character value. Color of the point drawn at zero 
-#'   when the covariate includes a spike-at-zero component (`spike_dec = 1`).
+#' @param color_line_spike Character value. Color of the point drawn at zero
+#'   when the covariate retains both the continuous and binary SAZ components
+#'   (internal `spike_dec = 1`).
 #' @param linetype Character value. Line type for the partial predictor. 
 #'   See [ggplot2::geom_line()] for options.
 #' @param linewidth Numeric value. Width of the line representing 
@@ -73,7 +75,8 @@
 #'   confidence intervals is displayed.
 #' * If `spike_dec == 2` (or not specified), the covariate is plotted as a 
 #'   continuous FP function in the usual way.
-#'  See \code{fracplot} for details on partial predictors
+#'
+#' See \code{predict.mfp2()} for details on partial predictors.
 #' @examples
 #'
 #' # Gaussian response
@@ -272,7 +275,21 @@ fracplot <- function(model,
   plots
 }
 
-#' @describeIn fracplot Alias for fracplot.
-plot_mfp <- function(...) {
-    fracplot(...)
+#' @describeIn fracplot S3 plot method for \code{mfp2} objects.
+#'
+#' @param x A fitted \code{mfp2} object.
+#' @param ... Further arguments passed to \code{fracplot()}.
+#'
+#' @examples
+#' data("prostate")
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- as.numeric(prostate$lpsa)
+#' fit <- mfp2(x, y, verbose = FALSE)
+#' plot(fit)
+#'
+#' @method plot mfp2
+#' @export
+plot.mfp2 <- function(x, ...) {
+  fracplot(model = x, ...)
 }
+

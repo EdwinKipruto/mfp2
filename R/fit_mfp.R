@@ -126,7 +126,7 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'   treat non-positive values as zero before FP transformation. Must match
 #'   the length and order of the columns of \code{x}.
 #' @param catzero A logical vector indicating which columns of \code{x} should
-#'   treat non-positive values as zero AND have a binary structural-zero
+#'   treat non-positive values as zero and have a binary zero
 #'   indicator automatically created and included in the model. Internally,
 #'   values \code{x <= 0} are first recoded to zero; the indicator is then
 #'   computed as \code{I(x == 0)} on the recoded scale, equivalent to
@@ -135,10 +135,16 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' @param spike A logical vector indicating which columns of \code{x} contain
 #'   a spike at zero and should be assessed using the SAZ algorithm. Must
 #'   match the length and order of the columns of \code{x}.
-#' @param min_prop Numeric in \eqn{(0, 0.5)}. Minimum proportion of zeros
-#'   required for the SAZ algorithm to be applied. Default \code{0.05}.
-#' @param max_prop Numeric in \eqn{(0.5, 1)}. Maximum proportion of zeros
-#'   allowed for the SAZ algorithm to be applied. Default \code{0.95}.
+#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#'   proportion in each component of a spike-at-zero covariate: the
+#'   zero component and the positive component. A requested
+#'   spike-at-zero variable is retained for SAZ modelling only if both component
+#'   proportions are at least this value.
+#' @param saz_pre_resolved Logical. If \code{TRUE}, spike-at-zero eligibility
+#'   has already been resolved before shift/scale preprocessing by the caller.
+#'   In that case, \code{fit_mfp()} does not call \code{reset_spike()} again.
+#'   If \code{FALSE}, \code{fit_mfp()} performs a defensive late eligibility
+#'   reset for internal callers that have not yet been updated.
 #' @param force_max_fp A logical vector of length nvars. If \code{TRUE} for a
 #'   variable, forces selection of the most complex functional form at the
 #'   degree specified by \code{df}, bypassing AIC/BIC comparison against
@@ -169,18 +175,24 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' }
 #'
 #' @section Spike-at-zero handling:
-#' In step 2, the following operations are applied in order:
+#' In normal public calls, spike-at-zero eligibility should already have been
+#' resolved before shift/scale preprocessing. This is necessary because variables
+#' reset from SAZ to ordinary FP may need ordinary FP shifting rather than the
+#' shift-to-zero behaviour used for active zero/catzero/spike variables.
+#'
+#' Inside \code{fit_mfp()}, the following operations are applied:
 #' \enumerate{
-#'   \item The pre-cascade user values of \code{catzero} and \code{zero} are
-#'     saved.
-#'   \item The cascade is applied: \code{catzero[spike] <- TRUE} and
+#'   \item The cascade is enforced: \code{catzero[spike] <- TRUE} and
 #'     \code{zero[catzero] <- TRUE}.
-#'   \item \code{reset_spike()} is called for variables where spike eligibility
-#'     criteria are not met (zero proportion outside \code{[min_prop, max_prop]}
-#'     or binary variables). For reset variables, \code{spike} is set to
-#'     \code{FALSE} and \code{catzero}/\code{zero} are restored to the
-#'     user-specified pre-cascade values -- so only what the user explicitly
-#'     requested is preserved.
+#'   \item A temporary recoded copy of \code{x} is created for spike-specific
+#'     checks and positive-part df capping.
+#'   \item If \code{saz_pre_resolved = FALSE}, \code{reset_spike()} is called as
+#'     a defensive fallback for internal callers that have not resolved SAZ
+#'     eligibility before preprocessing.
+#'   \item For retained spike variables, the maximum FP degrees of freedom may
+#'     be reduced according to the number of distinct positive values. This
+#'     mirrors the ordinary MFP df-capping rule, but applies it to the positive
+#'     continuous component rather than to the full variable including zeros.
 #' }
 #'
 #' @return See \code{mfp2()} for details on the returned \code{mfp2} object.
@@ -232,8 +244,8 @@ fit_mfp <- function(x,
                     zero,
                     catzero,
                     spike,
-                    min_prop,
-                    max_prop,
+                    min_saz_component_prop,
+                    saz_pre_resolved = FALSE,
                     force_max_fp,
                     has_offset,
                     verbose) {
@@ -313,18 +325,6 @@ fit_mfp <- function(x,
          call. = FALSE)
   }
   
-  # Assert repeated powers of 1 are not supported
-  # The closed-test selection procedure requires an FP1 candidate whenever
-  # a variable is allowed to use FP terms (`df > 1`). Power 1 is fitted separately
-  # as the ordinary linear model and is excluded from degree-1 FP candidate
-  # fitting inside find_best_fpm_step(). Therefore, a candidate-power set that
-  # contains only power 1 would leave the FP1 step empty and make the closed test
-  # undefined. Repeated selected powers such as c(1, 1) remain valid for FP2;
-  # this check only rejects candidate *sets* that collapse to the single value 1.
-  validate_mfp_candidate_powers(
-    powers = powers,
-    df = df
-  )
   
   # Force variables into the model by setting p-value threshold to 1
   if (!is.null(keep)) {
@@ -343,19 +343,13 @@ fit_mfp <- function(x,
   }
   
   # Spike-at-zero handling -----------------------------------------------------
-  # Order of operations is critical:
+  # Public callers should resolve SAZ eligibility before shift/scale
+  # preprocessing. This prevents variables reset from SAZ to ordinary FP from
+  # retaining a shift = 0 that was chosen only because spike was temporarily TRUE.
   #
-  # 1. Save user-specified catzero and zero BEFORE the cascade. These are the
-  #    values the user explicitly requested -- not what was implied by spike.
-  #
-  # 2. Apply the cascade: spike implies catzero implies zero. This is done here
-  #    (as well as in mfp2()) in case fit_mfp() is called directly.
-  #
-  # 3. Call reset_spike() for variables that do not meet eligibility criteria.
-  #    The new reset_spike() accepts the pre-cascade user values and restores
-  #    catzero and zero to those values for reset variables -- so a user who
-  #    only specified spike (not catzero or zero) gets a clean revert to
-  #    standard continuous predictor treatment when spike is reset.
+  # fit_mfp() still enforces the spike/catzero/zero cascade. It also keeps a
+  # defensive reset path for internal callers that have not yet pre-resolved SAZ
+  # eligibility.
   
   user_catzero <- catzero   # pre-cascade user intent
   user_zero    <- zero      # pre-cascade user intent
@@ -376,27 +370,45 @@ fit_mfp <- function(x,
     }
   }
   
-  # Reset ineligible spike variables.
-  # reset_spike() receives the temporarily recoded data, so its x == 0 check is
-  # equivalent to checking original x <= 0 for effective zero variables.
+  # Defensive reset for ineligible spike variables.
   #
-  # For reset variables, catzero and zero are restored to the original
-  # user-specified values saved above. This is why user_catzero and user_zero
-  # must be saved before the cascade.
-  if (any(spike)) {
-    result  <- reset_spike(
-      x            = x_for_spike,
-      spike        = spike,
-      user_catzero = user_catzero,
-      user_zero    = user_zero,
-      min_prop     = min_prop,
-      max_prop     = max_prop
+  # Public callers such as mfp2.default() should resolve SAZ eligibility before
+  # shift/scale preprocessing and call fit_mfp(..., saz_pre_resolved = TRUE).
+  # That avoids the unsafe situation where a spike variable is reset to ordinary
+  # FP after shift = 0 has already been chosen.
+  #
+  # This late reset is kept only for internal callers that have not yet
+  # pre-resolved SAZ eligibility.
+  if (!isTRUE(saz_pre_resolved) && any(spike)) {
+    result <- reset_spike(
+      x                      = x_for_spike,
+      spike                  = spike,
+      user_catzero           = user_catzero,
+      user_zero              = user_zero,
+      min_saz_component_prop = min_saz_component_prop
     )
     
     spike   <- result$spike
     catzero <- result$catzero
     zero    <- result$zero
   }
+  
+  # For retained spike-at-zero variables, cap the maximum FP df using only the
+  # positive component. Ordinary assign_df() uses the full variable,
+  # but for SAZ the relevant information for the FP part is x > 0 after
+  # temporary zero recoding.
+  df <- cap_spike_df(
+    x     = x_for_spike,
+    df    = df,
+    spike = spike
+  )
+  
+  # Validate candidate powers after all early df modifications. This includes
+  # ACD forcing df = 4 and SAZ-specific df capping for retained spike variables.
+  validate_mfp_candidate_powers(
+    powers = powers,
+    df = df
+  )
   
   # Spike decision initialisation.
   # 2 means standard FP algorithm by default.
@@ -427,7 +439,7 @@ fit_mfp <- function(x,
     #zero_x[names(cols_to_zero)] <- FALSE
   }
   
-  # Binary structural-zero indicators for catzero variables.
+  # Binary zero indicators for catzero variables.
   #
   # Because non-positive values have already been recoded to zero above,
   # x == 0 here means:
@@ -671,7 +683,7 @@ fit_mfp <- function(x,
         !sapply(powers_current, function(p) all(is.na(p))) |
           (spike & spike_decision == 3L)
       ]), drop = FALSE],
-      y               = y,
+      y_original = y,
       fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
                                         criterion, zero, catzero_effective, spike,
                                         spike_decision),
@@ -689,34 +701,6 @@ fit_mfp <- function(x,
   class(fit) <- c("mfp2", class(fit))
   fit
 }
-
-
-#' Resolve a model family once for repeated internal fits
-#'
-#' @param family Character family name, family function, family object, or "cox".
-#' @return A resolved GLM family object, or the character string "cox".
-#' @keywords internal
-#' @noRd
-resolve_fit_model_family <- function(family) {
-  if (is.character(family)) {
-    if (identical(family, "cox")) {
-      return(family)
-    }
-    return(switch(
-      family,
-      gaussian = stats::gaussian(),
-      binomial = stats::binomial(),
-      poisson  = stats::poisson()
-    ))
-  }
-  
-  if (is.function(family)) {
-    return(family())
-  }
-  
-  family
-}
-
 
 #' Helper to run cycles of the mfp algorithm 
 #' 

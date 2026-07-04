@@ -8,6 +8,7 @@
   object,
   newdata = NULL,
   type = NULL,
+  se.fit = FALSE,
   terms = NULL,
   terms_seq = c("equidistant", "data"),
   alpha = 0.05,
@@ -20,214 +21,141 @@
 )
 }
 \arguments{
-\item{object}{a fitted object of class \code{mfp2}.}
+\item{object}{A fitted object of class \code{mfp2}.}
 
-\item{newdata}{optionally, a matrix with column names in which to look for
-variables with which to predict. If provided, the variables are internally
-shifted using the shifting values stored in \code{object}. See \code{mfp2()} for
-further details.}
+\item{newdata}{Optional matrix or data frame containing variables for
+prediction. Column names must identify the original predictors used by the
+fit. Formula-created predictors are reconstructed when possible.}
 
-\item{type}{the type of prediction required.  The default is on the scale of
-the linear predictors. See \code{predict.glm()} or \code{predict.coxph()} for details.
-In case \code{type = "terms"}, see the Section on \verb{Terms prediction}. In case
-\code{type = "contrasts"}, see the Section on \code{Contrasts}.}
+\item{type}{Prediction type. The default is \code{"link"} for GLM models and
+\code{"lp"} for Cox models. Use \code{"terms"} for variable-specific partial
+predictors and \code{"contrasts"} for variable-specific contrasts.}
 
-\item{terms}{a character vector of variable names specifying for which
-variables term or contrast predictions are desired. Only used in case
-\code{type = "terms"} or \code{type = "contrasts"}. If \code{NULL} (the default) then all
-selected variables in the final model will be used. In any case, only
-variables used in the final model are used, even if more variable names are
-passed.}
+\item{se.fit}{Logical scalar. For full-model predictions, if \code{TRUE}, request
+standard errors from \code{predict.glm()} or \code{predict.coxph()}. For
+\code{type = "terms"} and \code{type = "contrasts"}, the returned data frames always
+contain an \code{se} column, and \code{se.fit} is ignored.}
 
-\item{terms_seq}{a character string specifying how the range of variable
-values for term predictions are handled. The default \code{equidistant} computes
-the range of the data range and generates an equidistant sequence of
-100 points from the minimum to the maximum values of shifted values to
-properly show the functional form estimated in the final model.
-The option \code{data} uses the observed data values directly, but these may not
-adequately reflect the functional form of the data, especially when extreme
-values or influential points are present.}
+\item{terms}{Character vector of original variable names for term or contrast
+prediction. Only variables selected in the final fitted model are used. If
+\code{NULL}, all selected variables are used.}
 
-\item{alpha}{significance level used for computing confidence intervals in
-terms prediction.}
+\item{terms_seq}{Character scalar controlling values used for term prediction.
+\code{"equidistant"} generates \code{nseq} equally spaced values over the observed
+range. \code{"data"} uses observed values directly.}
 
-\item{ref}{a named list of reference values used when \code{type = "contrasts"}.
-Note that any variable requested in \code{terms}, but not having an entry in this
-list (or if the entry is \code{NULL}) then the mean value of shifted data
-(or minimum for binary variables) will be used as reference. Values should be
-specified on the original scale of the variable since the program will
-internally scale it using the scaling factors obtained from
-\code{find_scale_factor()}. By default, this function uses the means
-(for continuous variables) and minimum (for binary variables) as
-reference values.}
+\item{alpha}{Significance level used for confidence intervals in term and
+contrast predictions.}
 
-\item{strata}{stratum levels used for predictions.}
+\item{ref}{Named list of reference values for \code{type = "contrasts"}. Values
+must be supplied on the original variable scale.}
 
-\item{newoffset}{A vector of offsets used for predictions. This parameter is
-important when newdata is supplied. The offsets are directly added to the
-linear predictor without any transformations.}
+\item{strata}{Optional stratum levels used when predicting from Cox models
+with new data.}
 
-\item{nseq}{Integer specifying how many values to generate when
-\code{terms_seq = "equidistant"}. Default is 100.}
+\item{newoffset}{Optional numeric vector of offsets for prediction when the
+fitted model used an offset and \code{newdata} is supplied.}
 
-\item{add_intercept}{Logical indicating whether to include an intercept in
-the linear predictor when \code{type = "terms"}. The default is \code{TRUE}.}
+\item{nseq}{Positive integer giving the number of equally spaced values used
+when \code{terms_seq = "equidistant"}.}
 
-\item{...}{further arguments passed to \code{predict.glm()} or \code{predict.coxph()}.}
+\item{add_intercept}{Logical scalar. For \code{type = "terms"}, controls whether
+the model intercept is included in GLM term values and term standard errors.
+It has no effect for contrasts and does not apply to Cox models.}
+
+\item{...}{Further arguments passed to \code{predict.glm()} or \code{predict.coxph()}
+for full-model predictions.}
 }
 \value{
-For any \code{type} other than \code{"terms"} the output conforms to the output
-of \code{predict.glm()} or \code{predict.coxph()}.
+For full-model predictions, the return value follows \code{predict.glm()} or
+\code{predict.coxph()}. In particular, if \code{se.fit = TRUE}, the result may be a list
+containing fitted values and standard errors according to the underlying
+method.
 
-If \code{type = "terms"} or \code{type = "contrasts"}, then a named list with entries
-for each variable requested in \code{terms} (excluding those not present in the
-final model).
-Each entry is a \code{data.frame} with the following columns:
+For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list with
+one data frame per selected variable. Each data frame contains:
 \itemize{
-\item \code{variable}: variable values on original scale (without shifting).
-\item \code{variable_pre}: variable with pre-transformation applied, i.e. shifted, and centered as required.
-\item \code{value}: partial linear predictor or contrast (depending on \code{type}).
-\item \code{se}: standard error of partial linear predictor or contrast.
-\item \code{lower}: lower limit of confidence interval.
-\item \code{upper}: upper limit of confidence interval.
+\item \code{variable}: values on the original scale before fitted shifting.
+\item \code{variable_pre}: values after fitted shifting, before or after binary
+SAZ coding as appropriate.
+\item \code{value}: partial linear predictor or contrast.
+\item \code{se}: conditional standard error.
+\item \code{lower}: lower confidence limit.
+\item \code{upper}: upper confidence limit.
 }
 }
 \description{
-Obtains predictions from an \code{mfp2} object.
+This method predicts from the final fitted model stored in an \code{mfp2} object.
+For ordinary predictions it delegates to the underlying \code{predict.glm()} or
+\code{predict.coxph()} method after reconstructing the transformed design matrix
+used during fitting. For \code{type = "terms"} and \code{type = "contrasts"}, it returns
+variable-specific partial predictors with conditional standard errors.
 }
 \details{
-When \code{newdata} is supplied, it is first shifted using the factors obtained
-from the training data, then transformed using the selected fractional
-polynomial powers, and optionally centered if \code{center = TRUE} was used in
-the original \code{mfp2()} fit. If the shifting factors from the training data
-are not large enough, some variables may remain non-positive, which can
-cause errors when non-linear transformations (e.g., logarithms) are applied;
-in such cases, a warning is issued.
+Obtain predictions from a fitted \code{mfp2} object.
 
-After transformation (and centering), the prepared \code{newdata} is passed
-directly to \code{predict.glm()} or \code{predict.coxph()} depending on the model family,
-including proper handling of offsets. This replaces manual linear predictor
-computation in previous implementations and allows computation of \code{se.fit}
-when requested.
+If \code{newdata} is supplied, the variables are prepared using the transformation
+metadata saved in \code{object}: fitted shifts, scales, selected fractional
+polynomial powers, centering constants, zero-handling indicators, catzero
+indicators, and spike-at-zero decisions. This ensures that prediction uses the
+same transformed design scale as model fitting.
 
-\strong{Terms predictions} (\code{type = "terms"}) compute partial linear predictors
-for selected variables, accounting for fractional polynomial transformations
-and spike-at-zero indicators.
+Prediction stops when shifted \code{newdata} is outside the domain required by the
+final fitted transformation. This check is applied only to variables whose
+selected powers require strictly positive input, such as logarithmic powers,
+repeated powers, negative powers, or non-integer powers. Variables whose final
+fitted zero-handled or binary-only SAZ representation permits non-positive
+values are exempt from this positivity stop.
 
-\strong{Contrasts} (\code{type = "contrasts"}) compute differences relative to reference
-values. Reference values are shifted, transformed, and centered consistently
-with the model. If \code{ref = NULL}, the mean (continuous) or minimum (binary)
-of shifted values is used.
+For full-model predictions, standard errors are requested with \code{se.fit = TRUE}
+and are computed by the underlying \code{predict.glm()} or \code{predict.coxph()} method.
+For Cox models, this method always calls \code{predict.coxph()} with
+\code{reference = "zero"}. The transformed design matrix in \code{mfp2} has already been
+centered where required, so asking \code{predict.coxph()} to subtract an additional
+sample or strata reference would shift the linear predictor incorrectly.
+
+For \code{type = "terms"}, standard errors are computed from the fitted covariance
+matrix for the columns belonging to each selected variable. If
+\code{add_intercept = TRUE} and the model is not Cox, the intercept contribution is
+included in both the term value and its standard error. If
+\code{add_intercept = FALSE}, the intercept contribution is excluded from both.
+
+For \code{type = "contrasts"}, the returned value is the difference between the
+partial predictor at each value and the partial predictor at the reference
+value. Intercepts do not contribute to contrasts, and the standard errors are
+computed from the transformed difference. These standard errors are
+conditional on the final selected model and do not include model-selection
+uncertainty.
 }
 \section{Terms prediction}{
 
-If \code{type = "terms"}, this function computes the partial linear predictors
-for each variable included in the final model. Unlike \code{predict.glm()} and
-\code{predict.coxph()}, this function accounts for the fact that a single variable
-may be represented by multiple transformed terms.
-
-For a variable modeled using a first-degree fractional polynomial (FP1),
-the partial predictor is given by
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j},
-where \eqn{x_j^*} is the transformed variable (centered if \code{center = TRUE}).
-
-If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
-partial predictor becomes
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
-where \eqn{(x_j^*)^+ = \max(x_j^*,0)} denotes the positive-part transformation,
-\eqn{z_j^*} is the binary indicator for nonpositive values and
-\eqn{\hat{\beta}_{z_j}} is its corresponding coefficient.
-
-Explicitly:
-When \eqn{x_j = 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + 0 \cdot \hat{\beta}_j + \hat{\beta}_{z_j} = \hat{\beta}_0 + \hat{\beta}_{z_j}}.
-When \eqn{x_j > 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + 0 \cdot \hat{\beta}_{z_j} = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
-
-If only \code{zero = TRUE} (and \code{catzero = FALSE}), the FP2 partial predictor is
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
-
-For a second-degree fractional polynomial (FP2), the partial predictor
-takes the form
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}},
-where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components
-of the original variable (centered if \code{center = TRUE}).
-
-If \code{catzero = TRUE}, the FP2 partial predictor extends to
-\eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
-
-If only \code{zero = TRUE} (and \code{catzero = FALSE}), the FP2 partial predictor extends to
-\eqn{\hat{\eta}_j = (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
-
-This functionality is particularly useful for visualizing the functional
-relationship of a continuous variable, or for assessing model fit when
-residuals are included. See also \code{fracplot()}.
+If \code{type = "terms"}, this function computes partial linear predictors for
+selected variables in the final model. A single original variable may be
+represented by multiple fitted columns, for example FP2 terms, zero-handled
+positive-part terms, or a catzero binary indicator. The method collects the
+relevant fitted columns for each variable and multiplies them by their fitted
+coefficients.
 }
 
 \section{Contrasts}{
 
-If \code{type = "contrasts"}, this function computes contrasts relative to a
-specified reference value for the \eqn{j}th variable (e.g., age = 50). Let
-\eqn{x_j} denote the values of the \eqn{j}th variable in \code{newdata}, and
-\eqn{x_j^{\mathrm{ref}}} the reference value. The contrast is defined as the
-difference between the partial linear predictor evaluated at the transformed
-(and centered, if \code{center = TRUE}) value \eqn{x_j}, and that evaluated at the
-transformed reference value \eqn{x_j^{*(\mathrm{ref})}}, i.e.,
-\eqn{f(x_j^*) - f(x_j^{*(\mathrm{ref})})}.
-
-For a first-degree fractional polynomial (FP1), the partial predictor is
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}. If a spike-at-zero
-binary indicator is included (\code{catzero = TRUE}), the
-partial predictor becomes
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
-where \eqn{z_j^*} is the binary indicator for nonpositive values.
-The contrast is then computed as the difference between the partial predictor
-evaluated at \eqn{x_j^*} (and \eqn{z_j^*} if \code{catzero = TRUE}) and the
-partial predictor evaluated at the reference value \eqn{x_j^{*(\mathrm{ref})}}
-(and \eqn{z_j^{*(\mathrm{ref})}} if \code{catzero = TRUE}).
-
-For a second-degree fractional polynomial (FP2), the partial predictor is
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}.
-If a spike-at-zero binary indicator is included (\code{catzero = TRUE}), the
-partial predictor becomes
-\deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
-The contrast is then computed in the same conditional manner as for FP1.
-
-Here, \eqn{x_j^*}, \eqn{x_{j1}^*}, \eqn{x_{j2}^*}, and \eqn{z_j^*} are the
-transformed (and centered if applicable) components, and the \eqn{\hat{\beta}}
-terms are the corresponding model coefficients.
-
-Reference values \eqn{x_j^{*(\mathrm{ref})}} (and \eqn{z_j^{*(\mathrm{ref})}} if \code{catzero = TRUE})
-are shifted, transformed, and centered using the training data, ensuring full
-consistency with the fitted model.
-
-If \code{ref = NULL}, the function uses the mean of the shifted \eqn{x_j} for continuous
-variables and the minimum (typically 0) for binary variables. For \code{catzero} variables,
-the reference binary indicator \eqn{z_j^{*(\mathrm{ref})}} is determined by whether
-the value is positive or zero.
-
-The fitted partial predictors are centered at the reference point, meaning the
-contrast at that point is zero. Confidence intervals at the reference value have
-zero width.
-
-This approach allows direct comparison of a variable's effect relative to a
-meaningful baseline, including the spike-at-zero effect only when it is present.
+If \code{type = "contrasts"}, this function computes variable-specific contrasts
+relative to reference values. Reference values supplied through \code{ref} must be
+on the original data scale; they are shifted, transformed, and centered using
+the fitted transformation metadata. If \code{ref = NULL} for a variable, the method
+uses the mean shifted value for continuous variables and the minimum shifted
+value for binary-like variables.
 }
 
 \examples{
-
-# Gaussian model
 data("prostate")
-x = as.matrix(prostate[,2:8])
-y = as.numeric(prostate$lpsa)
-# default interface
-fit1 = mfp2(x, y, verbose = FALSE)
-predict(fit1) # make predictions
+x <- as.matrix(prostate[, 2:8])
+y <- as.numeric(prostate$lpsa)
 
-# Binomial model
-data("pima")
-x2 <- as.matrix(pima[,2:9])
-y2 <- as.vector(pima$y)
-fit2 <- mfp2(x2, y2, family = binomial(link = "logit"), verbose = FALSE)
-predict(fit2, newdata = x2, type = "response") # make predictions on response scale
+fit <- mfp2(x, y, verbose = FALSE)
+predict(fit)
+predict(fit, se.fit = TRUE)
+predict(fit, type = "terms")
 
 }
 \seealso{

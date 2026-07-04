@@ -1,203 +1,134 @@
 #' Predict Method for `mfp2`
-#' 
-#' Obtains predictions from an `mfp2` object.
-#' 
-#' @details 
-#' When `newdata` is supplied, it is first shifted using the factors obtained 
-#' from the training data, then transformed using the selected fractional 
-#' polynomial powers, and optionally centered if `center = TRUE` was used in 
-#' the original `mfp2()` fit. If the shifting factors from the training data 
-#' are not large enough, some variables may remain non-positive, which can 
-#' cause errors when non-linear transformations (e.g., logarithms) are applied; 
-#' in such cases, a warning is issued.  
-#' 
-#' After transformation (and centering), the prepared `newdata` is passed 
-#' directly to `predict.glm()` or `predict.coxph()` depending on the model family, 
-#' including proper handling of offsets. This replaces manual linear predictor 
-#' computation in previous implementations and allows computation of `se.fit` 
-#' when requested.
-#' 
-#' **Terms predictions** (`type = "terms"`) compute partial linear predictors 
-#' for selected variables, accounting for fractional polynomial transformations 
-#' and spike-at-zero indicators.  
-#' 
-#' **Contrasts** (`type = "contrasts"`) compute differences relative to reference 
-#' values. Reference values are shifted, transformed, and centered consistently 
-#' with the model. If `ref = NULL`, the mean (continuous) or minimum (binary) 
-#' of shifted values is used. 
+#'
+#' Obtain predictions from a fitted `mfp2` object.
+#'
+#' @description
+#' This method predicts from the final fitted model stored in an `mfp2` object.
+#' For ordinary predictions it delegates to the underlying `predict.glm()` or
+#' `predict.coxph()` method after reconstructing the transformed design matrix
+#' used during fitting. For `type = "terms"` and `type = "contrasts"`, it returns
+#' variable-specific partial predictors with conditional standard errors.
+#'
+#' @details
+#' If `newdata` is supplied, the variables are prepared using the transformation
+#' metadata saved in `object`: fitted shifts, scales, selected fractional
+#' polynomial powers, centering constants, zero-handling indicators, catzero
+#' indicators, and spike-at-zero decisions. This ensures that prediction uses the
+#' same transformed design scale as model fitting.
+#'
+#' Prediction stops when shifted `newdata` is outside the domain required by the
+#' final fitted transformation. This check is applied only to variables whose
+#' selected powers require strictly positive input, such as logarithmic powers,
+#' repeated powers, negative powers, or non-integer powers. Variables whose final
+#' fitted zero-handled or binary-only SAZ representation permits non-positive
+#' values are exempt from this positivity stop.
+#'
+#' For full-model predictions, standard errors are requested with `se.fit = TRUE`
+#' and are computed by the underlying `predict.glm()` or `predict.coxph()` method.
+#' For Cox models, this method always calls `predict.coxph()` with
+#' `reference = "zero"`. The transformed design matrix in `mfp2` has already been
+#' centered where required, so asking `predict.coxph()` to subtract an additional
+#' sample or strata reference would shift the linear predictor incorrectly.
+#'
+#' For `type = "terms"`, standard errors are computed from the fitted covariance
+#' matrix for the columns belonging to each selected variable. If
+#' `add_intercept = TRUE` and the model is not Cox, the intercept contribution is
+#' included in both the term value and its standard error. If
+#' `add_intercept = FALSE`, the intercept contribution is excluded from both.
+#'
+#' For `type = "contrasts"`, the returned value is the difference between the
+#' partial predictor at each value and the partial predictor at the reference
+#' value. Intercepts do not contribute to contrasts, and the standard errors are
+#' computed from the transformed difference. These standard errors are
+#' conditional on the final selected model and do not include model-selection
+#' uncertainty.
+#'
 #' @section Terms prediction:
-#' If `type = "terms"`, this function computes the partial linear predictors 
-#' for each variable included in the final model. Unlike `predict.glm()` and 
-#' `predict.coxph()`, this function accounts for the fact that a single variable 
-#' may be represented by multiple transformed terms.
+#' If `type = "terms"`, this function computes partial linear predictors for
+#' selected variables in the final model. A single original variable may be
+#' represented by multiple fitted columns, for example FP2 terms, zero-handled
+#' positive-part terms, or a catzero binary indicator. The method collects the
+#' relevant fitted columns for each variable and multiplies them by their fitted
+#' coefficients.
 #'
-#' For a variable modeled using a first-degree fractional polynomial (FP1), 
-#' the partial predictor is given by 
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j}, 
-#' where \eqn{x_j^*} is the transformed variable (centered if `center = TRUE`). 
-#' 
-#' If a spike-at-zero binary indicator is included (`catzero = TRUE`), the 
-#' partial predictor becomes 
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}}, 
-#' where \eqn{(x_j^*)^+ = \max(x_j^*,0)} denotes the positive-part transformation,
-#'  \eqn{z_j^*} is the binary indicator for nonpositive values and 
-#'  \eqn{\hat{\beta}_{z_j}} is its corresponding coefficient.
-#'
-#' Explicitly:
-#' When \eqn{x_j = 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + 0 \cdot \hat{\beta}_j + \hat{\beta}_{z_j} = \hat{\beta}_0 + \hat{\beta}_{z_j}}.
-#' When \eqn{x_j > 0}, \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_j^* \hat{\beta}_j + 0 \cdot \hat{\beta}_{z_j} = \hat{\beta}_0 + x_j^* \hat{\beta}_j}.
-#' 
-#' If only `zero = TRUE` (and `catzero = FALSE`), the FP2 partial predictor is
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
-#'
-#' For a second-degree fractional polynomial (FP2), the partial predictor 
-#' takes the form 
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}, 
-#' where \eqn{x_{j1}^*} and \eqn{x_{j2}^*} are the two transformed components 
-#' of the original variable (centered if `center = TRUE`).  
-#' 
-#' If `catzero = TRUE`, the FP2 partial predictor extends to 
-#' \eqn{\hat{\eta}_j = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
-#'
-#' If only `zero = TRUE` (and `catzero = FALSE`), the FP2 partial predictor extends to 
-#' \eqn{\hat{\eta}_j = (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2}}.
-#'
-#' This functionality is particularly useful for visualizing the functional
-#' relationship of a continuous variable, or for assessing model fit when
-#' residuals are included. See also `fracplot()`.
-#' 
 #' @section Contrasts:
-#' If `type = "contrasts"`, this function computes contrasts relative to a 
-#' specified reference value for the \eqn{j}th variable (e.g., age = 50). Let 
-#' \eqn{x_j} denote the values of the \eqn{j}th variable in `newdata`, and 
-#' \eqn{x_j^{\mathrm{ref}}} the reference value. The contrast is defined as the 
-#' difference between the partial linear predictor evaluated at the transformed 
-#' (and centered, if `center = TRUE`) value \eqn{x_j}, and that evaluated at the
-#' transformed reference value \eqn{x_j^{*(\mathrm{ref})}}, i.e., 
-#' \eqn{f(x_j^*) - f(x_j^{*(\mathrm{ref})})}.
+#' If `type = "contrasts"`, this function computes variable-specific contrasts
+#' relative to reference values. Reference values supplied through `ref` must be
+#' on the original data scale; they are shifted, transformed, and centered using
+#' the fitted transformation metadata. If `ref = NULL` for a variable, the method
+#' uses the mean shifted value for continuous variables and the minimum shifted
+#' value for binary-like variables.
 #'
-#' For a first-degree fractional polynomial (FP1), the partial predictor is
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_j^* \hat{\beta}_j}. If a spike-at-zero
-#' binary indicator is included (`catzero = TRUE`), the 
-#' partial predictor becomes
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_j^*)^+ \hat{\beta}_j + z_j^* \hat{\beta}_{z_j}},
-#' where \eqn{z_j^*} is the binary indicator for nonpositive values.
-#' The contrast is then computed as the difference between the partial predictor 
-#' evaluated at \eqn{x_j^*} (and \eqn{z_j^*} if `catzero = TRUE`) and the 
-#' partial predictor evaluated at the reference value \eqn{x_j^{*(\mathrm{ref})}} 
-#' (and \eqn{z_j^{*(\mathrm{ref})}} if `catzero = TRUE`).
+#' @param object A fitted object of class `mfp2`.
+#' @param newdata Optional matrix or data frame containing variables for
+#'   prediction. Column names must identify the original predictors used by the
+#'   fit. Formula-created predictors are reconstructed when possible.
+#' @param type Prediction type. The default is `"link"` for GLM models and
+#'   `"lp"` for Cox models. Use `"terms"` for variable-specific partial
+#'   predictors and `"contrasts"` for variable-specific contrasts.
+#' @param se.fit Logical scalar. For full-model predictions, if `TRUE`, request
+#'   standard errors from `predict.glm()` or `predict.coxph()`. For
+#'   `type = "terms"` and `type = "contrasts"`, the returned data frames always
+#'   contain an `se` column, and `se.fit` is ignored.
+#' @param terms Character vector of original variable names for term or contrast
+#'   prediction. Only variables selected in the final fitted model are used. If
+#'   `NULL`, all selected variables are used.
+#' @param terms_seq Character scalar controlling values used for term prediction.
+#'   `"equidistant"` generates `nseq` equally spaced values over the observed
+#'   range. `"data"` uses observed values directly.
+#' @param alpha Significance level used for confidence intervals in term and
+#'   contrast predictions.
+#' @param ref Named list of reference values for `type = "contrasts"`. Values
+#'   must be supplied on the original variable scale.
+#' @param strata Optional stratum levels used when predicting from Cox models
+#'   with new data.
+#' @param newoffset Optional numeric vector of offsets for prediction when the
+#'   fitted model used an offset and `newdata` is supplied.
+#' @param nseq Positive integer giving the number of equally spaced values used
+#'   when `terms_seq = "equidistant"`.
+#' @param add_intercept Logical scalar. For `type = "terms"`, controls whether
+#'   the model intercept is included in GLM term values and term standard errors.
+#'   It has no effect for contrasts and does not apply to Cox models.
+#' @param ... Further arguments passed to `predict.glm()` or `predict.coxph()`
+#'   for full-model predictions.
 #'
-#' For a second-degree fractional polynomial (FP2), the partial predictor is
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + x_{j1}^* \hat{\beta}_{j1} + x_{j2}^* \hat{\beta}_{j2}}.
-#' If a spike-at-zero binary indicator is included (`catzero = TRUE`), the 
-#' partial predictor becomes
-#' \deqn{\hat{f}(x_j^*) = \hat{\beta}_0 + (x_{j1}^*)^+ \hat{\beta}_{j1} + (x_{j2}^*)^+ \hat{\beta}_{j2} + z_j^* \hat{\beta}_{z_j}}.
-#' The contrast is then computed in the same conditional manner as for FP1.
+#' @return
+#' For full-model predictions, the return value follows `predict.glm()` or
+#' `predict.coxph()`. In particular, if `se.fit = TRUE`, the result may be a list
+#' containing fitted values and standard errors according to the underlying
+#' method.
 #'
-#' Here, \eqn{x_j^*}, \eqn{x_{j1}^*}, \eqn{x_{j2}^*}, and \eqn{z_j^*} are the 
-#' transformed (and centered if applicable) components, and the \eqn{\hat{\beta}} 
-#' terms are the corresponding model coefficients.
+#' For `type = "terms"` or `type = "contrasts"`, the result is a named list with
+#' one data frame per selected variable. Each data frame contains:
+#' \itemize{
+#'   \item `variable`: values on the original scale before fitted shifting.
+#'   \item `variable_pre`: values after fitted shifting, before or after binary
+#'     SAZ coding as appropriate.
+#'   \item `value`: partial linear predictor or contrast.
+#'   \item `se`: conditional standard error.
+#'   \item `lower`: lower confidence limit.
+#'   \item `upper`: upper confidence limit.
+#' }
 #'
-#' Reference values \eqn{x_j^{*(\mathrm{ref})}} (and \eqn{z_j^{*(\mathrm{ref})}} if `catzero = TRUE`) 
-#' are shifted, transformed, and centered using the training data, ensuring full 
-#' consistency with the fitted model.
-#'
-#' If `ref = NULL`, the function uses the mean of the shifted \eqn{x_j} for continuous 
-#' variables and the minimum (typically 0) for binary variables. For `catzero` variables, 
-#' the reference binary indicator \eqn{z_j^{*(\mathrm{ref})}} is determined by whether 
-#' the value is positive or zero.
-#'
-#' The fitted partial predictors are centered at the reference point, meaning the 
-#' contrast at that point is zero. Confidence intervals at the reference value have 
-#' zero width.
-#'
-#' This approach allows direct comparison of a variable's effect relative to a 
-#' meaningful baseline, including the spike-at-zero effect only when it is present.
-#' @param object a fitted object of class `mfp2`.
-#' @param newdata optionally, a matrix with column names in which to look for 
-#' variables with which to predict. If provided, the variables are internally 
-#' shifted using the shifting values stored in `object`. See \code{mfp2()} for 
-#' further details.
-#' @param type the type of prediction required.  The default is on the scale of
-#' the linear predictors. See `predict.glm()` or `predict.coxph()` for details. 
-#' In case `type = "terms"`, see the Section on `Terms prediction`. In case 
-#' `type = "contrasts"`, see the Section on `Contrasts`.
-#' @param terms a character vector of variable names specifying for which 
-#' variables term or contrast predictions are desired. Only used in case 
-#' `type = "terms"` or `type = "contrasts"`. If `NULL` (the default) then all 
-#' selected variables in the final model will be used. In any case, only 
-#' variables used in the final model are used, even if more variable names are 
-#' passed.
-#' @param terms_seq a character string specifying how the range of variable 
-#' values for term predictions are handled. The default `equidistant` computes
-#' the range of the data range and generates an equidistant sequence of
-#' 100 points from the minimum to the maximum values of shifted values to 
-#' properly show the functional form estimated in the final model. 
-#' The option `data` uses the observed data values directly, but these may not 
-#' adequately reflect the functional form of the data, especially when extreme
-#' values or influential points are present.
-#' @param alpha significance level used for computing confidence intervals in 
-#' terms prediction.
-#' @param ref a named list of reference values used when `type = "contrasts"`.
-#' Note that any variable requested in `terms`, but not having an entry in this
-#' list (or if the entry is `NULL`) then the mean value of shifted data 
-#' (or minimum for binary variables) will be used as reference. Values should be 
-#' specified on the original scale of the variable since the program will 
-#' internally scale it using the scaling factors obtained from 
-#' \code{find_scale_factor()}. By default, this function uses the means 
-#' (for continuous variables) and minimum (for binary variables) as
-#' reference values. 
-#' @param strata stratum levels used for predictions. 
-#' @param newoffset A vector of offsets used for predictions. This parameter is 
-#' important when newdata is supplied. The offsets are directly added to the 
-#' linear predictor without any transformations.
-#' @param nseq Integer specifying how many values to generate when 
-#' `terms_seq = "equidistant"`. Default is 100.
-#' @param add_intercept Logical indicating whether to include an intercept in  
-#' the linear predictor when `type = "terms"`. The default is `TRUE`. 
-#' @param ... further arguments passed to `predict.glm()` or `predict.coxph()`.
-#' 
 #' @examples
-#'
-#' # Gaussian model
 #' data("prostate")
-#' x = as.matrix(prostate[,2:8])
-#' y = as.numeric(prostate$lpsa)
-#' # default interface
-#' fit1 = mfp2(x, y, verbose = FALSE)
-#' predict(fit1) # make predictions
-#' 
-#' # Binomial model
-#' data("pima")
-#' x2 <- as.matrix(pima[,2:9])
-#' y2 <- as.vector(pima$y)
-#' fit2 <- mfp2(x2, y2, family = binomial(link = "logit"), verbose = FALSE)
-#' predict(fit2, newdata = x2, type = "response") # make predictions on response scale
-#' 
-#' @return 
-#' For any `type` other than `"terms"` the output conforms to the output
-#' of `predict.glm()` or `predict.coxph()`.
-#' 
-#' If `type = "terms"` or `type = "contrasts"`, then a named list with entries
-#' for each variable requested in `terms` (excluding those not present in the
-#' final model).
-#' Each entry is a `data.frame` with the following columns:
-#' 
-#' * `variable`: variable values on original scale (without shifting).
-#' * `variable_pre`: variable with pre-transformation applied, i.e. shifted, and centered as required.
-#' * `value`: partial linear predictor or contrast (depending on `type`).
-#' * `se`: standard error of partial linear predictor or contrast.
-#' * `lower`: lower limit of confidence interval.
-#' * `upper`: upper limit of confidence interval.
-#' 
-#' @seealso 
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- as.numeric(prostate$lpsa)
+#'
+#' fit <- mfp2(x, y, verbose = FALSE)
+#' predict(fit)
+#' predict(fit, se.fit = TRUE)
+#' predict(fit, type = "terms")
+#'
+#' @seealso
 #' \code{mfp2()}, [stats::predict.glm()], [survival::predict.coxph()]
-#' 
+#'
 #' @method predict mfp2
 #' @export
 predict.mfp2 <- function(object, 
                          newdata = NULL, 
                          type = NULL,
+                         se.fit = FALSE,
                          terms = NULL,
                          terms_seq = c("equidistant", "data"),
                          alpha = 0.05,
@@ -207,7 +138,7 @@ predict.mfp2 <- function(object,
                          nseq = 100,
                          add_intercept = TRUE,
                          ...) {
- 
+  
   terms_seq <- match.arg(terms_seq)
   
   if (!is.numeric(alpha) || alpha <= 0 || alpha >= 1) {
@@ -216,6 +147,10 @@ predict.mfp2 <- function(object,
   
   if (!is.numeric(nseq) || nseq <= 0) {
     stop("'nseq' must be a positive integer.", call. = FALSE)
+  }
+  
+  if (!is.logical(se.fit) || length(se.fit) != 1L || is.na(se.fit)) {
+    stop("'se.fit' must be a single TRUE or FALSE value.", call. = FALSE)
   }
   
   # assert that the object must be mfp2
@@ -246,9 +181,9 @@ predict.mfp2 <- function(object,
   }
   
   if (!is.null(newdata) && anyNA(newdata)) {
-      stop("! newdata must not contain any NA (missing data).\n", 
-           "i Please remove any missing data before passing newdata to this function.",
-           call. = FALSE)
+    stop("! newdata must not contain any NA (missing data).\n", 
+         "i Please remove any missing data before passing newdata to this function.",
+         call. = FALSE)
   }
   
   # TODO: add checks for missing strata and offset in case they were used in fit
@@ -263,7 +198,7 @@ predict.mfp2 <- function(object,
     )
   }
   
-   if (type %in% c("terms", "contrasts")) {
+  if (type %in% c("terms", "contrasts")) {
     n_term1 <- length(terms)
     terms <- intersect(terms, get_selected_variable_names(object))
     # length of terms after intersections
@@ -285,7 +220,9 @@ predict.mfp2 <- function(object,
       warning("i Some of names of reference values are not in terms.\n", 
               "i predict() continues but does not consider them.", call. = FALSE)
     
-    # Extract intercept if present
+    # Extract the fitted intercept for GLM term predictions. The intercept is
+    # included only when add_intercept = TRUE and type = "terms". It is never
+    # included for Cox partial predictors or contrasts.
     cf <- coef(object)
     if ("(Intercept)" %in% names(cf)) {
       intercept <- cf["(Intercept)"]
@@ -320,9 +257,9 @@ predict.mfp2 <- function(object,
         
         # no need to apply pretransformation (shift), already done
         x_trafo <- prepare_newdata_for_predict(object, 
-                                    x_seq, 
-                                    apply_pre = FALSE,
-                                    allow_missing_predictors = TRUE)
+                                               x_seq, 
+                                               apply_pre = FALSE,
+                                               allow_missing_predictors = TRUE)
         x_trafo <- as.matrix(x_trafo)
       } else {
         # no equidistant
@@ -341,8 +278,10 @@ predict.mfp2 <- function(object,
           apply_pre = FALSE,
           allow_missing_predictors = TRUE))
       }
-      # using colnames(x_trafo) addresses issues of FPm and catzero because
-      #  prepare_newdata_for_predict() returns the final correct names
+      # Use the prepared design column names to select coefficients. This is
+      # essential for FPm, zero-handled variables, catzero indicators, and SAZ
+      # decisions because one original variable may map to multiple fitted
+      # columns.
       term_coef <- coef(object)[colnames(x_trafo)]
       
       # Replace NA coefficients with 0 (rank-deficient or aliased terms),
@@ -367,7 +306,8 @@ predict.mfp2 <- function(object,
         value = x_trafo %*% term_coef + intercept
       )
       
-      #
+      # For term predictions there is no reference value. For contrasts,
+      # x_ref_trafo is the fitted-design representation of the reference point.
       x_ref_trafo <- NULL
       if (type == "contrasts") {
         # compute transformations for reference level
@@ -383,7 +323,7 @@ predict.mfp2 <- function(object,
           }
           x_ref <- ifelse(length(unique(na.omit(v))) == 2,
                           min(v, na.rm = TRUE),
-                          mean(v, na.rm = TRUE)) # What of zero argument? Do we need to adjust?
+                          mean(v, na.rm = TRUE))
           
         } else {
           # pretransform given reference level
@@ -402,7 +342,12 @@ predict.mfp2 <- function(object,
         res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
       }
       
-      res$se <- calculate_standard_error(object, x_trafo, x_ref_trafo)
+      res$se <- calculate_standard_error(
+        object,
+        x_trafo,
+        x_ref_trafo,
+        include_intercept = add_intercept && type == "terms"
+      )
       mult <- qnorm(1 - (alpha / 2))
       res$lower <- res$value - mult * res$se
       res$upper <- res$value + mult * res$se
@@ -414,8 +359,9 @@ predict.mfp2 <- function(object,
     return(res_list)
   } 
   
-  # usual predicted values
-
+  # Full-model predictions. At this point newdata, if supplied, is converted
+  # to the same transformed design scale used when fitting the final model.
+  
   if (!is.null(newdata)) {
     
     # check whether offset was used in the model
@@ -457,12 +403,14 @@ predict.mfp2 <- function(object,
     class(obj_base) <- setdiff(class(obj_base), "mfp2")
     
     if (object$family_string == "cox") {
-      # reference = "zero": mfp2 already centers the design matrix, so
-      # predict.coxph() must not subtract object$means again.
+      # Cox reference convention: mfp2 stores and predicts on an already
+      # prepared design scale. Use reference = "zero" so predict.coxph() does
+      # not subtract its own sample or stratum means a second time.
       pred <- stats::predict(
         obj_base,
         newdata = newdata,
         type = type,
+        se.fit = se.fit,
         reference = "zero",
         ...
       )
@@ -471,6 +419,7 @@ predict.mfp2 <- function(object,
         obj_base,
         newdata = newdata,
         type = type,
+        se.fit = se.fit,
         ...
       )
     }
@@ -486,6 +435,7 @@ predict.mfp2 <- function(object,
       stats::predict(
         obj_base,
         type = type,
+        se.fit = se.fit,
         reference = "zero",
         ...
       )
@@ -495,6 +445,7 @@ predict.mfp2 <- function(object,
       stats::predict(
         obj_base,
         type = type,
+        se.fit = se.fit,
         ...
       )
     )
@@ -602,6 +553,71 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
          # Default fallback: return linear predictor
          nfit
   )
+}
+
+#' Does a fitted term require positive raw prediction input?
+#'
+#' Internal helper used by `predict.mfp2()`.
+#'
+#' The prediction method applies the shift values learned during fitting before
+#' constructing transformed variables. This helper determines whether the
+#' shifted raw covariate for variable `v` must be strictly positive, based on
+#' the final fitted model metadata.
+#'
+#' For ordinary FP terms, all selected powers in `object$fp_powers[[v]]` apply
+#' directly to the raw covariate.
+#'
+#' For ACD terms, `object$fp_powers[[v]][1]` applies to the raw covariate and
+#' `object$fp_powers[[v]][2]` applies to the ACD component A(x). Therefore only
+#' the first power is checked against the raw covariate here.
+#'
+#' Variables fitted with zero-handling are exempt because nonpositive values are
+#' represented structurally. Variables with `spike_decision = 3` are also exempt
+#' because the continuous component is dropped and only the spike/catzero
+#' indicator is retained.
+#'
+#' @param object A fitted `mfp2` object.
+#' @param v Character scalar giving the variable name.
+#'
+#' @return A single logical value.
+#'
+#' @keywords internal
+#' @noRd
+requires_positive_raw_input <- function(object, v) {
+  powers <- object$fp_powers[[v]]
+  
+  if (is.null(powers) || all(is.na(powers))) {
+    return(FALSE)
+  }
+  
+  if (!is.null(object$zero) && isTRUE(object$zero[[v]])) {
+    return(FALSE)
+  }
+  
+  if (!is.null(object$spike_dec) &&
+      v %in% names(object$spike_dec) &&
+      !is.na(object$spike_dec[[v]]) &&
+      as.integer(object$spike_dec[[v]]) == 3L) {
+    return(FALSE)
+  }
+  
+  is_acd <- !is.null(object$acd) &&
+    v %in% names(object$acd) &&
+    isTRUE(object$acd[[v]])
+  
+  raw_powers <- if (is_acd) {
+    # For ACD terms:
+    #   powers[1] applies to raw x
+    #   powers[2] applies to A(x)
+    #
+    # Only the raw-x power determines whether shifted raw newdata must be
+    # strictly positive at this stage.
+    powers[1L]
+  } else {
+    powers
+  }
+  
+  fp_power_requires_positive_input(raw_powers)
 }
 
 #' Rebuild formula-interface newdata with model.matrix()
@@ -713,6 +729,7 @@ prepare_newdata_for_predict <- function(object,
                                         allow_missing_predictors = FALSE
 ) {
   newdata <- as.matrix(newdata)
+  n_newdata <- nrow(newdata)
   
   # step 0: check that newdata has column names
   if (is.null(colnames(newdata)) || any(colnames(newdata) == "")) {
@@ -752,26 +769,62 @@ prepare_newdata_for_predict <- function(object,
     # shifting, so scaling is intentionally not applied here.
     newdata <- sweep(newdata, 2, object$transformations[vnames, "shift"], "+")
     
-    # step 4: check positivity after shifting
-    # exclude binary variables before returning an error
-    continuous_cols <- colnames(newdata)[
-      apply(newdata, 2, function(x) length(unique(x)) > 2)
+    # Step 4: validate positive-domain requirements after applying fitted shifts.
+    #
+    # This check uses the final fitted model metadata rather than the values in
+    # `newdata` to decide which variables require strictly positive input. This is
+    # important because a prediction batch may contain only one or two unique values
+    # for a continuous FP variable.
+    positive_raw_vars <- vnames[
+      vapply(
+        vnames,
+        function(v) requires_positive_raw_input(object, v),
+        logical(1L)
+      )
     ]
     
-    # exclude spike-at-zero columns
-    nonzero_cols <- setdiff(continuous_cols, names(which(object$zero)))
-    
-    # check positivity only if there are columns to check
-    if (length(nonzero_cols) > 0) {
-      if (!all(newdata[, nonzero_cols, drop = FALSE] > 0)) {
-        warning(
-          "After shifting using training data, some values in newdata ",
-          "remain non-positive. Predictions for such observations may not ",
-          "be available when non-linear transformations are applied.",
+    if (length(positive_raw_vars) > 0L) {
+      bad_vars <- positive_raw_vars[
+        vapply(
+          positive_raw_vars,
+          function(v) {
+            any(!is.na(newdata[, v]) & newdata[, v] <= 0)
+          },
+          logical(1L)
+        )
+      ]
+      
+      if (length(bad_vars) > 0L) {
+        bad_counts <- vapply(
+          bad_vars,
+          function(v) {
+            sum(!is.na(newdata[, v]) & newdata[, v] <= 0)
+          },
+          integer(1L)
+        )
+        
+        bad_summary <- paste0(
+          bad_vars,
+          " (",
+          bad_counts,
+          ifelse(bad_counts == 1L, " row", " rows"),
+          ")"
+        )
+        
+        stop(
+          "After applying the shift values learned during fitting, some values in ",
+          "`newdata` remain non-positive for variables whose fitted transformation ",
+          "requires strictly positive input.\n",
+          "i Problematic variable(s): ",
+          paste(bad_summary, collapse = ", "),
+          ".\n",
+          "i Prediction is undefined for these values. Refit with larger shift ",
+          "values, restrict `newdata` to the fitted domain, or use zero-handling ",
+          "where appropriate.",
           call. = FALSE
         )
       }
-    } 
+    }
     
     # already the coefficients are in original scale after shifting
     # newdata <- sweep(newdata, 2, object$transformations[vnames, "scale"], "/")
@@ -788,16 +841,16 @@ prepare_newdata_for_predict <- function(object,
   # only through the binary spike indicator. In both cases, transform_vector_acd()
   # returns NULL before applying ACD parameters, so no stored parameter object is
   # needed for prediction.
-    acd_vars <- vnames[
-      vapply(
-        vnames,
-        function(v) {
-          isTRUE(object$fp_terms[v, "acd"]) &&
-            !all(is.na(object$fp_powers[[v]]))
-        },
-        logical(1)
-      )
-    ]
+  acd_vars <- vnames[
+    vapply(
+      vnames,
+      function(v) {
+        isTRUE(object$fp_terms[v, "acd"]) &&
+          !all(is.na(object$fp_powers[[v]]))
+      },
+      logical(1)
+    )
+  ]
   
   missing_acd <- acd_vars[
     vapply(
@@ -855,8 +908,14 @@ prepare_newdata_for_predict <- function(object,
     ) 
   }
   
-  # step 7: convert to data frame for downstream predict methods
-  newdata <- data.frame(newdata)
+  # step 7: convert to data frame for downstream predict methods.
+  # Intercept-only final models may have no transformed predictor columns, but
+  # prediction must still preserve the number of rows in newdata.
+  if (NCOL(newdata) == 0L) {
+    newdata <- data.frame(row.names = seq_len(n_newdata))
+  } else {
+    newdata <- data.frame(newdata)
+  }
   
   # step 8: add Cox strata column if required
   if (object$family_string == "cox") {
@@ -890,30 +949,34 @@ prepare_newdata_for_predict <- function(object,
 #' @param xref transformed reference value for variable of interest. Default is
 #'  `NULL`, in which case this function computes standard errors without reference 
 #' values.
+#' @param include_intercept logical indicating whether intercept variance and
+#' covariance should be included when no reference value is supplied. This must
+#' match the `add_intercept` choice used for term predictions.
 #' 
 #' @details 
 #' See pages 91-92 and following in the book by Royston and Sauerbrei 2008
 #' for the formulas and mathematical details.
 #' 
 #' @return 
-#' Standard error.
+#' Numeric vector of conditional standard errors.
 #' 
 #' @references
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 #' @keywords internal
 #' @noRd
 calculate_standard_error <- function(model, 
                                      X, 
-                                     xref = NULL) { 
-
+                                     xref = NULL,
+                                     include_intercept = TRUE) { 
+  
   vcovx <- vcov(object = model)
   
   # this might happen if subset is used with very few observations
   if (any(is.nan(vcovx)))
     warning("i NaN detected in the covariance matrix of the model.",
-            "i Standard errors for calculation of confident intervals may not exist")
+            "i Standard errors for calculation of confidence intervals may not exist")
   
   # get rid of variance and covariance of intercept if any
   xnames <- colnames(X)
@@ -928,15 +991,22 @@ calculate_standard_error <- function(model,
     # Subtract the reference value: f(x)-f(xref)
     X <- sweep(X, 2, xref, "-")
   }
-
-  # augment X by intercept if necessary
-  # i.e. when a cox model is used or a reference value is given we don't use
-  # the variance and covariances of the intercept
-  if (model$family_string != "cox" && is.null(xref)) {
-    X <- cbind(1, X)
-    ind <- c(1, ind)
+  
+  # Augment X by the intercept only when the reported term value includes
+  # the intercept. Contrasts and Cox partial predictors do not include intercept
+  # variance.
+  if (isTRUE(include_intercept) && model$family_string != "cox" && is.null(xref)) {
+    intercept_ind <- match("(Intercept)", colnames(vcovx))
+    if (is.na(intercept_ind)) {
+      stop(
+        "Cannot compute SE with intercept; covariance matrix lacks `(Intercept)`.",
+        call. = FALSE
+      )
+    }
+    X <- cbind("(Intercept)" = 1, X)
+    ind <- c(intercept_ind, ind)
   }
-
+  
   # the following computation is equivalent to the formula in the book but
   # uses matrix multiplications for efficiency
   vcovx <- vcovx[ind, ind, drop = FALSE]

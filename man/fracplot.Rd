@@ -2,7 +2,7 @@
 % Please edit documentation in R/fracplot.R
 \name{fracplot}
 \alias{fracplot}
-\alias{plot_mfp}
+\alias{plot.mfp2}
 \title{Plot response functions from a fitted \code{mfp2} object}
 \usage{
 fracplot(
@@ -25,7 +25,7 @@ fracplot(
   alpha_fill = 0.1
 )
 
-plot_mfp(...)
+\method{plot}{mfp2}(x, ...)
 }
 \arguments{
 \item{model}{A fitted \code{`mfp2`} model.}
@@ -57,7 +57,8 @@ are displayed.}
 the partial predictor.}
 
 \item{color_line_spike}{Character value. Color of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_dec = 1}).}
+when the covariate retains both the continuous and binary SAZ components
+(internal \code{spike_dec = 1}).}
 
 \item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
 
@@ -68,7 +69,8 @@ are displayed.}
 are displayed.}
 
 \item{size_points_spike}{Numeric value. Size of the point drawn at zero
-when the covariate includes a spike-at-zero component (\code{spike_dec = 1}).}
+when the covariate retains both the continuous and binary SAZ components
+(internal \code{spike_dec = 1}).}
 
 \item{linetype}{Character value. Line type for the partial predictor.
 See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}} for options.}
@@ -79,7 +81,9 @@ the partial predictor.}
 \item{alpha_fill}{Numeric value between 0 and 1. Transparency of the
 confidence interval ribbon.}
 
-\item{...}{Further arguments passed from the alias \code{plot_mfp()}.}
+\item{x}{A fitted \code{mfp2} object.}
+
+\item{...}{Further arguments passed to \code{fracplot()}.}
 }
 \value{
 A list of \code{ggplot2} plot objects, one for each term requested. Can be
@@ -126,12 +130,13 @@ the title). Mean values at 0 and 1 are connected with a line, and a ribbon showi
 confidence intervals is displayed.
 \item If \code{spike_dec == 2} (or not specified), the covariate is plotted as a
 continuous FP function in the usual way.
-See \code{fracplot} for details on partial predictors
 }
+
+See \code{predict.mfp2()} for details on partial predictors.
 }
 \section{Functions}{
 \itemize{
-\item \code{plot_mfp()}: Alias for fracplot.
+\item \code{plot(mfp2)}: S3 plot method for \code{mfp2} objects.
 
 }}
 \examples{
@@ -143,6 +148,12 @@ y = as.numeric(prostate$lpsa)
 # default interface
 fit = mfp2(x, y, verbose = FALSE)
 fracplot(fit) # generate plots
+
+data("prostate")
+x <- as.matrix(prostate[, 2:8])
+y <- as.numeric(prostate$lpsa)
+fit <- mfp2(x, y, verbose = FALSE)
+plot(fit)
 
 }
 \seealso{

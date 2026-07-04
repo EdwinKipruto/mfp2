@@ -568,3 +568,69 @@ resolve_interaction_power_labels <- function(powers, group_levels = NULL) {
   # Fall back to generic labels.
   paste0("level_", seq_len(n_powers))
 }
+
+#' Check for ordered-factor variables in formula interfaces
+#'
+#' Ordered factors are unsafe in the formula interfaces because model.matrix()
+#' expands them using polynomial contrasts by default, creating columns such as
+#' .L, .Q, and .C. The MFP/MFPI engines would then treat those contrast columns
+#' as independent variables rather than one conceptual predictor.
+#'
+#' @param vars Character vector of variable names to check.
+#' @param data Data frame containing the variables.
+#' @param interface Character label used in the error message.
+#'
+#' @keywords internal
+#' @noRd
+check_ordered_factor_variables <- function(vars,
+                                           data,
+                                           interface = "model") {
+  if (is.null(data)) {
+    return(invisible(NULL))
+  }
+  
+  vars <- unique(vars)
+  vars <- vars[!is.na(vars) & nzchar(vars)]
+  vars <- intersect(vars, names(data))
+  
+  if (length(vars) == 0L) {
+    return(invisible(NULL))
+  }
+  
+  is_ordered <- vapply(
+    vars,
+    function(v) {
+      is.ordered(data[[v]])
+    },
+    logical(1L)
+  )
+  
+  ordered_vars <- vars[is_ordered]
+  
+  if (length(ordered_vars) == 0L) {
+    return(invisible(NULL))
+  }
+  
+  stop(
+    sprintf(
+      paste0(
+        "`%s()` does not support ordered-factor variables: %s.\n",
+        "Ordered factors are expanded by `model.matrix()` into polynomial ",
+        "contrast columns such as `.L`, `.Q`, and `.C`. The MFP/MFPI engine ",
+        "would then treat those contrast columns as separate variables, which ",
+        "breaks variable-wise selection, degree testing, and group-specific ",
+        "interaction construction.\n",
+        "Convert ordered factors to unordered factors, numeric scores, or ",
+        "explicit dummy/ordinal indicator variables before fitting."
+      ),
+      interface,
+      paste(sQuote(ordered_vars), collapse = ", ")
+    ),
+    call. = FALSE
+  )
+  
+  invisible(NULL)
+}
+
+
+

@@ -34,7 +34,6 @@ normalize_fp_power_vector <- function(powers, context = "`powers`") {
   sort(unique(as.numeric(powers)))
 }
 
-
 #' Validate and Normalize a Named Candidate FP Power List
 #'
 #' Validates a named list of candidate fractional-polynomial base-power sets and
@@ -42,11 +41,20 @@ normalize_fp_power_vector <- function(powers, context = "`powers`") {
 #' argument defines candidate base powers, not selected FP power vectors.
 #' Duplicate values are removed.
 #'
+#' The optional \code{df} argument is accepted for compatibility with older
+#' internal callers, but this helper does not perform df-dependent closed-test
+#' validation. That validation must happen after early df modifications such as
+#' ACD forcing and SAZ positive-component df capping, via
+#' \code{validate_mfp_candidate_powers()} in \code{fit_mfp()}.
+#'
 #' @param powers User-supplied powers argument. Must be \code{NULL} or a named
 #'   list of numeric vectors.
 #' @param vnames Character vector of valid predictor names.
 #' @param default_powers Numeric vector of default candidate powers.
 #' @param arg_name Character scalar used in error messages.
+#' @param df Optional numeric scalar or vector aligned with \code{vnames}.
+#'   Accepted for compatibility; df-dependent validation is deferred to
+#'   \code{validate_mfp_candidate_powers()}.
 #'
 #' @return Named list of normalized candidate-power vectors, one element per
 #'   predictor in \code{vnames}.
@@ -56,13 +64,23 @@ normalize_fp_power_vector <- function(powers, context = "`powers`") {
 validate_fp_power_list <- function(powers,
                                    vnames,
                                    default_powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3),
-                                   arg_name = "powers") {
+                                   arg_name = "powers",
+                                   df = NULL) {
   if (!is.character(vnames) || length(vnames) == 0L ||
       anyNA(vnames) || any(!nzchar(vnames))) {
     stop(
       "`vnames` must be a non-empty character vector of predictor names.",
       call. = FALSE
     )
+  }
+  
+  # Do not perform df-dependent candidate-power validation here. The effective
+  # df can still change later (for example ACD forces df = 4 and retained SAZ
+  # variables may have df capped using only their positive component). The closed-
+  # test check is therefore deferred to validate_mfp_candidate_powers() inside
+  # fit_mfp(), after those modifications are complete.
+  if (!is.null(df)) {
+    invisible(df)
   }
   
   default_powers <- normalize_fp_power_vector(
@@ -110,6 +128,7 @@ validate_fp_power_list <- function(powers,
   }
   
   unknown_names <- setdiff(pow_names, vnames)
+  
   if (length(unknown_names) > 0L) {
     stop(
       paste0(
@@ -135,5 +154,7 @@ validate_fp_power_list <- function(powers,
   }
   
   power_list[names(powers_norm)] <- powers_norm
+  
+  
   power_list
 }

@@ -2,22 +2,22 @@
 % Please edit documentation in R/preprocessing.R
 \name{find_shift_factor}
 \alias{find_shift_factor}
-\title{Function that calculates a value used to shift predictor}
+\title{Calculate a shift factor for a predictor variable}
 \usage{
 find_shift_factor(x)
 }
 \arguments{
-\item{x}{a numeric vector.}
+\item{x}{A numeric vector.}
 }
 \value{
 A numeric value that can be used to shift \code{x} to positive values.
-If all values are positive, or if \code{x} is binary then 0 is returned.
+If all values are positive, or if \code{x} is binary, then 0 is returned.
 }
 \description{
-Function that calculates a value used to shift predictor
+Calculate a shift factor for a predictor variable
 }
 \details{
-For details on why shifting is necessary see the corresponding section in the
+For details on why shifting is necessary, see the corresponding section in the
 documentation of \code{mfp2()}.
 
 This function implements the formula in Section 4.7 of Royston and
@@ -30,6 +30,6 @@ find_shift_factor(x)
 }
 \references{
 Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
+A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}
 }

@@ -34,21 +34,9 @@ details.}
 Must contain at least two values when supplied. If \code{NULL}, the default
 powers \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} are used.}
 
-\item{zero}{Logical. If \code{TRUE}, nonpositive values of this variable are
-treated as zero and FP transformations are applied only to positive values.
-This is the formula-interface equivalent of listing the variable in
-\code{zero_vars} in \code{mfp2.default()}.}
-
-\item{catzero}{Logical. If \code{TRUE}, nonpositive values of this variable
-are treated as zero and an additional binary indicator is created. This
-implies \code{zero = TRUE}. This is the formula-interface equivalent of
-listing the variable in \code{catzero_vars} in \code{mfp2.default()}.}
-
-\item{spike}{Logical. If \code{TRUE}, this variable is assessed for a spike
-at zero using the SAZ algorithm. This implies \code{catzero = TRUE} and
-\code{zero = TRUE} while the SAZ algorithm is active. This is the
-formula-interface equivalent of listing the variable in \code{spike_vars}
-in \code{mfp2.default()}.}
+\item{zero, catzero, spike}{Logical formula-interface versions of
+\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars}. See
+\code{\link{mfp2}}.}
 
 \item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
 allowed by \code{df} is selected for this variable. This argument is only

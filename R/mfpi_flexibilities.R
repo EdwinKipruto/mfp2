@@ -92,8 +92,9 @@
 #' @param spike_var Logical scalar. Whether `cont_var` is subject to
 #'   spike-at-zero handling. Always `FALSE` for interaction testing; see
 #'   \code{evaluate_interactions()}.
-#' @param min_prop Numeric. Minimum proportion of zeros for SAZ modelling.
-#' @param max_prop Numeric. Maximum proportion of zeros for SAZ modelling.
+#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#'   proportion in each component of a spike-at-zero covariate. Passed through
+#'   to \code{fit_mfp()} when an internal flex model uses spike-at-zero handling.
 #' @param flex Character string; `"flex0"`, `"flex1"`, `"flex2"`, `"flex3"`,
 #'   or `"flex4"`. Controls how FP powers are estimated and constrained across
 #'   groups. See the *Flex levels* section in \code{mfpi()} for details.
@@ -127,7 +128,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
                      criterion, ties, degree, family, family_string, fp_cand,
                      use_ftest, center, xorder, weights, offset, strata,
                      control, nocenter, cycles, zero_var, spike_var = FALSE,
-                     min_prop = 0.05, max_prop = 0.95,
+                     min_saz_component_prop = 0.10,
                      flex, scale_var = 1, shift_var = 0,
                      center_type = c("grand", "group"), has_offset,
                      run_test = TRUE) {
@@ -156,8 +157,6 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     stop("`group_var` must be a single character string naming a column of `x`.",
          call. = FALSE)
   }
-  
-  
   
   # Linear degree always uses flex0, regardless of the flex setting
   if (degree < 1L) flex <- "flex0"
@@ -207,8 +206,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     cycles         = cycles,
     zero_var       = zero_var,
     spike_var      = spike_var,
-    min_prop       = min_prop,
-    max_prop       = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
     run_test       = run_test,
     has_offset     = has_offset
   )
@@ -236,7 +234,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   degree, family, family_string, fp_cand, use_ftest,
                   center, xorder, weights, offset, strata, control,
                   nocenter, cycles, zero_var, spike_var = FALSE,
-                  min_prop = 0.05, max_prop = 0.95,
+                  min_saz_component_prop = 0.10,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
@@ -342,7 +340,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   degree, family, family_string, fp_cand, use_ftest,
                   center, xorder, weights, offset, strata, control,
                   nocenter, cycles, zero_var, spike_var = FALSE,
-                  min_prop = 0.05, max_prop = 0.95,
+                  min_saz_component_prop = 0.10,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
@@ -430,8 +428,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     catzero       = catzero,
     zero          = zero_vec,
     spike         = spike_vec,
-    min_prop      = min_prop,
-    max_prop      = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
+    saz_pre_resolved = TRUE,
     has_offset    = has_offset,
     verbose       = FALSE
   )
@@ -580,7 +578,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   degree, family, family_string, fp_cand, use_ftest,
                   center, xorder, weights, offset, strata, control,
                   nocenter, cycles, zero_var, spike_var = FALSE,
-                  min_prop = 0.05, max_prop = 0.95,
+                  min_saz_component_prop = 0.10,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
@@ -841,7 +839,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   degree, family, family_string, fp_cand, use_ftest,
                   center, xorder, weights, offset, strata, control,
                   nocenter, cycles, zero_var, spike_var = FALSE,
-                  min_prop = 0.05, max_prop = 0.95,
+                  min_saz_component_prop = 0.10,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
@@ -861,7 +859,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     weights       = weights, offset = offset, strata = strata,
     control       = control, nocenter = nocenter, cycles = cycles,
     zero_var      = zero_var, spike_var = spike_var,
-    min_prop      = min_prop, max_prop = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
     has_offset    = has_offset,
     run_test      = FALSE
   )
@@ -940,7 +938,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   degree, family, family_string, fp_cand, use_ftest,
                   center, xorder, weights, offset, strata, control,
                   nocenter, cycles, zero_var, spike_var = FALSE,
-                  min_prop = 0.05, max_prop = 0.95,
+                  min_saz_component_prop = 0.10,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
@@ -1045,8 +1043,8 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero          = zero_vec,
     catzero       = catzero_vec,
     spike         = spike_vec,
-    min_prop      = min_prop,
-    max_prop      = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
+    saz_pre_resolved = TRUE,
     has_offset    = has_offset,
     verbose       = FALSE
   )
@@ -1231,7 +1229,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     xorder        = xorder, weights = weights, offset = offset,
     strata        = strata, control = control, nocenter = nocenter,
     cycles        = cycles, zero_var = zero_var, spike_var = spike_var,
-    min_prop      = min_prop, max_prop = max_prop,
+    min_saz_component_prop = min_saz_component_prop,
     has_offset    = has_offset,
     run_test = FALSE
   )

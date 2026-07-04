@@ -1704,6 +1704,27 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     )
   }
   
+  # Numeric fallback only proves that `newdata` group values can be interpreted
+  # as internal numeric group codes. It does not prove that those codes were
+  # observed when the model was fitted.
+  #
+  # New group levels must be rejected because the fitted MFPI model has no
+  # group-specific interaction coefficients for unseen groups.
+  unknown_group <- !group_internal %in% group_levels_numeric
+  
+  if (any(unknown_group)) {
+    unknown_values <- unique(group_internal[unknown_group])
+    
+    stop(
+      paste0(
+        "`newdata` contains group level(s) not seen at fit time: ",
+        paste(unknown_values, collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
+  }
+  
   group_mat <- matrix(group_internal, ncol = 1L)
   colnames(group_mat) <- group_var
   group_dummies <- create_group_dummies(

@@ -57,79 +57,142 @@ order_variables_by_significance <- function(xorder,
                                             method, 
                                             control,
                                             nocenter) {
+  # If there is only one predictor, there is no ordering problem to solve.
+  # Return the current column name unchanged.
   if (ncol(x) <= 1L) {
     return(colnames(x))
   }
   
-  # Convert factors to dummy variables if it exists...take it to the main function
-  # x = model.matrix(as.formula(paste("~", paste(colnames(x), collapse="+"))),
-  #                  data = as.data.frame(x))
-  # save the family in factor form to be used later for gaussian
-  fam <- family
-  # number of rows of x or observations
-  n <- dim(x)[1]
+  # Store predictor names once. These names are used both to label p-values
+  # and to return the final visiting order.
+  predictor_names <- colnames(x)
+  
+  # Number of candidate predictors to rank.
+  n_predictors <- length(predictor_names)
+  
+  # Store one likelihood-ratio-test p-value per predictor.
+  # A smaller p-value means the model fit worsens more when that predictor is
+  # removed, so the predictor is treated as more important.
+  p_values <- numeric(n_predictors)
+  names(p_values) <- predictor_names
   
   if (family_string != "cox") {
-    # glm.fit requires a function as a family not a character name
+    # GLM ordering ------------------------------------------------------------
+    
+    # Number of observations. Used to create the intercept column once.
+    n_obs <- nrow(x)
+    
+    # glm.fit() requires a family object, not a character string.
+    # For example, "gaussian" must become gaussian().
     if (is.character(family)) {
-      family <- get(family, mode = "function", envir = parent.frame())
+      family <- get(
+        family,
+        mode = "function",
+        envir = parent.frame()
+      )
     }
-    if (is.function(family)) family <- family()
-    # family <- family()
-    fit.full <- glm.fit(
-      x = cbind(rep(1, n), x), y = y, weights = weights, offset = offset,
+    
+    # If the user supplied a family function, evaluate it to get the family
+    # object expected by glm.fit().
+    if (is.function(family)) {
+      family <- family()
+    }
+    
+    # Build the full GLM design matrix once.
+    # x does not contain an intercept at this point, so column 1 is added here.
+    x_full <- cbind(
+      "(Intercept)" = rep.int(1, n_obs),
+      x
+    )
+    
+    # Fit the full model containing the intercept and all predictors.
+    full_fit <- glm.fit(
+      x = x_full,
+      y = y,
+      weights = weights,
+      offset = offset,
       family = family
     )
     
-    # Rank of the glm full model
-    p1 <- fit.full$rank
+    # Effective parameter count for the full model.
+    # For non-Gaussian GLMs, the rank is the number of estimated regression
+    # coefficients. For Gaussian GLMs, the residual scale/dispersion is also
+    # estimated, so one extra parameter is counted for the likelihood/AIC
+    # relationship used below.
+    full_df <- full_fit$rank
     
-    # There is an additional scale parameter to estimate in OLS regression. The
-    # binomial and Poisson regression models have no scale parameter.
-    if (family_string == "gaussian") p1 <- p1 + 1
+    if (family_string == "gaussian") {
+      full_df <- full_df + 1L
+    }
     
-    # loglikelihood of the full model calculated based on  aic = -2logL + 2k
-    logl.full <- p1 - fit.full$aic / 2 
+    # glm.fit() stores AIC = -2 * logLik + 2 * k.
+    # Rearranging gives logLik = k - AIC / 2, where k is full_df.
+    full_loglik <- full_df - full_fit$aic / 2
     
-    # Deviance of the full model
-    dev.full <- -2 * logl.full
-    
-    # we need to calculate p-values for each variable using likelihood ratio test
-    varnames <- colnames(x)
-    ns <- length(varnames)
-    p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
-    names(p.value) <- names(dev) <- names(df.reduced) <- varnames
-    for (i in seq_len(ns)) {
-      # remove one variable at a time and fit the reduced model. 
-      # only works if you have more than one variable due to (-i)
-      fit.reduced <- glm.fit(
-        x = cbind(rep(1, n), x[, -i, drop = FALSE]),
+    for (predictor_index in seq_len(n_predictors)) {
+      # Remove one predictor at a time from the full design matrix.
+      #
+      # Important indexing detail:
+      #   x_full column 1 is the intercept.
+      #   x column 1 is predictor 1.
+      #   Therefore predictor_index in x corresponds to column
+      #   predictor_index + 1 in x_full.
+      #
+      # The +1 is only needed in the GLM branch because we manually added an
+      # intercept column to x_full.
+      reduced_x <- x_full[, -(predictor_index + 1L), drop = FALSE]
+      
+      # Fit the reduced model without the current predictor.
+      reduced_fit <- glm.fit(
+        x = reduced_x,
         y = y,
         weights = weights, 
         offset = offset, 
         family = family
       )
-      # calculate the deviance of the reduced model-model without the ith variable
-      p2 <- fit.reduced$rank
       
-      if (family_string == "gaussian") p2 <- p2 + 1
-      # loglikelihood of the reduced model
-      logl.reduced <- p2 - fit.reduced$aic / 2 
+      # Effective parameter count for the reduced model.
+      reduced_df <- reduced_fit$rank
       
-      # Deviance of the reduced model
-      dev[i] <- -2 * logl.reduced
+      # Same Gaussian adjustment as for the full model: count the estimated
+      # residual scale/dispersion parameter.
+      if (family_string == "gaussian") {
+        reduced_df <- reduced_df + 1L
+      }
       
-      # degrees of freedom of the reduced model
-      df.reduced[i] <- p2
+      # Recover reduced-model log-likelihood from AIC.
+      reduced_loglik <- reduced_df - reduced_fit$aic / 2
       
-      # loglik difference: -2(logL.reduced - logL.full)
-      teststatic <- -2 * logl.reduced + 2 * logl.full
+      # Likelihood-ratio statistic:
+      #   -2 * (logLik_reduced - logLik_full)
+      #
+      # This is equivalent to:
+      #   2 * (logLik_full - logLik_reduced)
+      #
+      # Larger values indicate that removing the predictor worsens the model.
+      lrt_statistic <- -2 * reduced_loglik + 2 * full_loglik
       
-      # calculate the Chi-square p.value
-      p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
+      # Difference in effective degrees of freedom between full and reduced
+      # models. This is usually 1 for a single numeric predictor, but can be
+      # different if the model matrix is rank-deficient.
+      lrt_df <- full_df - reduced_df
+      
+      # Convert the likelihood-ratio statistic to a p-value.
+      p_values[predictor_index] <- pchisq(
+        lrt_statistic,
+        df = lrt_df,
+        lower.tail = FALSE
+      )
     }
-  } else { # cox model
-    fit.full <- fit_cox(
+    
+  } else {
+    # Cox ordering ------------------------------------------------------------
+    
+    # Preserve row names once and reuse them in all Cox fits.
+    row_names <- rownames(x)
+    
+    # Fit the full Cox model containing all predictors.
+    full_fit <- fit_cox(
       x = x, 
       y = y, 
       strata = strata,
@@ -137,62 +200,75 @@ order_variables_by_significance <- function(xorder,
       offset = offset,
       control = control, 
       method = method,
-      rownames = rownames(x),
+      rownames = row_names,
       nocenter = nocenter
     ) 
     
-    # Degrees of freedom for the full cox model
-    p1 <- fit.full$df
+    # Effective degrees of freedom and log-likelihood for the full Cox model.
+    full_df <- full_fit$df
+    full_loglik <- full_fit$logl
     
-    # loglikelihood of the full cox model
-    logl.full <- fit.full$logl
-    
-    # Deviance of the full cox model
-    dev.full <- -2 * logl.full
-    
-    # we need to calculate p-values for each variable using likelihood ratio test
-    varnames <- colnames(x)
-    ns <- length(varnames)
-    p.value <- loglikx <- dev <- df.reduced <- numeric(ns)
-    names(p.value) <- names(dev) <- names(df.reduced) <- varnames
-    for (i in seq_len(ns)) {
-      # remove one variable at a time and fit the reduced model
-      fit.reduced <- fit_cox(
-        x = x[, -i, drop = FALSE],
-        y = y, strata = strata,
+    for (predictor_index in seq_len(n_predictors)) {
+      # Remove one predictor at a time.
+      #
+      # No +1 is needed here because Cox design matrix x does not have an
+      # added intercept column. Predictor predictor_index is column
+      # predictor_index in x.
+      reduced_x <- x[, -predictor_index, drop = FALSE]
+      
+      # Fit the reduced Cox model without the current predictor.
+      reduced_fit <- fit_cox(
+        x = reduced_x,
+        y = y,
+        strata = strata,
         weights = weights, 
         offset = offset, 
         control = control,
         method = method,
-        rownames = rownames(x),
+        rownames = row_names,
         nocenter = nocenter
       )
-      # Degrees of freedom for the reduced model
-      p2 <- fit.reduced$df
       
-      # loglikelihood of the reduced model
-      logl.reduced <- fit.reduced$logl
+      # Effective degrees of freedom and log-likelihood for the reduced model.
+      reduced_df <- reduced_fit$df
+      reduced_loglik <- reduced_fit$logl
       
-      # Deviance of the reduced model
-      dev[i] <- -2 * logl.reduced
+      # Likelihood-ratio statistic:
+      #   -2 * (logLik_reduced - logLik_full)
+      #
+      # Larger values indicate that removing the predictor worsens the model.
+      lrt_statistic <- -2 * reduced_loglik + 2 * full_loglik
       
-      # degrees of freedom of the reduced model
-      df.reduced[i] <- p2
+      # Difference in degrees of freedom between the full and reduced Cox
+      # models.
+      lrt_df <- full_df - reduced_df
       
-      # loglik difference: -2(logL.reduced - logL.full)
-      teststatic <- -2 * logl.reduced + 2 * logl.full
-      
-      # calculate the p.value
-      p.value[i] <- pchisq(teststatic, df = p1 - p2, lower.tail = FALSE)
+      # Convert the likelihood-ratio statistic to a p-value.
+      p_values[predictor_index] <- pchisq(
+        lrt_statistic,
+        df = lrt_df,
+        lower.tail = FALSE
+      )
     }
   }
   
-  # Order the p-values based on xorder
-  pvalues <- switch(xorder,
-                    "descending" = sort(p.value, decreasing = TRUE),
-                    "ascending"  = sort(p.value, decreasing = FALSE),
-                    "original"  = p.value 
-  )
+  # Return variable names ordered by likelihood-ratio-test p-value.
+  #
+  # ascending:
+  #   Most significant predictors first. This is the default MFP visiting order.
+  #
+  # descending:
+  #   Least significant predictors first.
+  #
+  # original:
+  #   Preserve the input column order.
+  if (xorder == "ascending") {
+    return(names(sort(p_values, decreasing = FALSE)))
+  }
   
-  names(pvalues)
+  if (xorder == "descending") {
+    return(names(sort(p_values, decreasing = TRUE)))
+  }
+  
+  predictor_names
 }

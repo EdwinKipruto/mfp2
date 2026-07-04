@@ -58,6 +58,34 @@
 #' (e.g., nonsmokers in smoking data) and should not be transformed in the same way 
 #' as positive values.
 #' 
+#' @section Domain restrictions:
+#' Fractional-polynomial transformations are applied after shifting and scaling.
+#' Users should ensure that the shifted and scaled values are in the domain
+#' required by the specified powers. In particular, powers involving logarithms
+#' require strictly positive input. This includes `power = 0`, which represents
+#' `log(x)`, and repeated powers such as `c(2, 2)`, where the second transformed
+#' variable is proportional to `x^2 * log(x)`.
+#'
+#' Negative powers are undefined at zero, and non-integer powers are not
+#' real-valued for negative input. Therefore, when using powers such as `0`,
+#' `-1`, `-0.5`, `0.5`, or repeated powers, the values of `(x + shift) / scale`
+#' should be strictly positive unless `zero = TRUE`.
+#'
+#' Positive integer powers such as `1`, `2`, and `3` can be evaluated at zero
+#' and negative values, provided they are not part of a repeated-power FP basis.
+#'
+#' These low-level transformation functions assume that the supplied `x`,
+#' `shift`, `scale`, and `power` values are compatible. If incompatible values
+#' are supplied, the transformation may produce non-finite values or fail with
+#' an error from the underlying numerical code. In normal use through `mfp2()`,
+#' shift and scale parameters are estimated and checked during model fitting.
+#' During prediction, `predict.mfp2()` checks the fitted powers and stops with
+#' an informative error if new data fall outside the required transformation
+#' domain.
+#'
+#' If `zero = TRUE`, nonpositive values are treated structurally: they are not
+#' shifted, and their transformed continuous components are set to zero.
+#' 
 #' @param x a vector of a predictor variable.
 #' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
 #' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
@@ -984,6 +1012,66 @@ transform_vector_power <- function(x, power = 1, zero = FALSE) {
   #xt[!is.finite(xt)] <- 0
   
   return(xt)
+}
+
+#' Does an FP power specification require strictly positive input?
+#'
+#' Internal helper used by transformation and prediction code.
+#'
+#' Fractional-polynomial terms involving logarithms require strictly positive
+#' input. This includes power 0, which represents log(x), and repeated-power
+#' terms such as c(2, 2), where the second term is x^2 * log(x).
+#'
+#' Positive integer powers such as 1, 2, and 3 do not require strictly positive
+#' input, because they are well-defined for zero and negative values.
+#'
+#' Negative powers and non-integer powers are treated as requiring strictly
+#' positive input in this package. This is conservative, but consistent with the
+#' usual MFP convention that shifted/scaled covariates should be positive for
+#' non-linear FP transformations.
+#'
+#' @param power Numeric vector of selected FP powers.
+#'
+#' @return A single logical value.
+#'
+#' @keywords internal
+#' @noRd
+fp_power_requires_positive_input <- function(power) {
+  if (is.null(power) || length(power) == 0L || all(is.na(power))) {
+    return(FALSE)
+  }
+  
+  p <- as.numeric(power[!is.na(power)])
+  
+  if (length(p) == 0L) {
+    return(FALSE)
+  }
+  
+  # Repeated powers require log(x), e.g. c(2, 2) gives
+  # x^2 and x^2 * log(x).
+  if (length(p) > length(unique(p))) {
+    return(TRUE)
+  }
+  
+  # Power 0 represents log(x).
+  if (any(p == 0)) {
+    return(TRUE)
+  }
+  
+  # Negative powers are undefined at zero and unstable near zero. For package
+  # consistency, require strictly positive input rather than allowing negative
+  # bases for negative integer powers.
+  if (any(p < 0)) {
+    return(TRUE)
+  }
+  
+  # Non-integer powers are not real-valued for negative inputs.
+  if (any(p != floor(p))) {
+    return(TRUE)
+  }
+  
+  # Remaining case: distinct positive integer powers, e.g. 1, 2, 3.
+  FALSE
 }
 
 #' Simple function to center data

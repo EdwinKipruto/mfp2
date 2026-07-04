@@ -59,116 +59,7 @@
 #'   \code{degree = 0}).
 #' @keywords internal
 #' @noRd
-generate_transformations_fp <- function(x, 
-                                        degree, 
-                                        powers,
-                                        zero,
-                                        catzero = NULL) {
-  
-  # Validate catzero, if provided
-  if (!is.null(catzero)) {
-    if (!is.matrix(catzero) || ncol(catzero) != 1L) {
-      stop("`catzero` must be an n x 1 matrix.")
-    }
-    
-    if (nrow(catzero) != length(x)) {
-      stop("`catzero` must have one row per observation in `x`.")
-    }
-    
-    if (!is.numeric(catzero)) {
-      stop("`catzero` must be a numeric/integer matrix.")
-    }
-  }
-  
-  # all possible combination of powers given degree
-  combs <- generate_powers_fp(degree = degree, powers = powers)
-  nfp <- dim(combs)[1]
-  
-  # Precompute whether catzero is provided to avoid repeated is.null() checks 
-  # inside lapply
-  use_catzero <- !is.null(catzero)
-  
-  # Apply transformation and optionally append catzero
-  fpdt <- lapply(seq_len(nfp), function(i) {
-    mat <- transform_vector_fp(x = x, power = combs[i, ], zero = zero)
-    
-    if (use_catzero) {
-      mat <- cbind(catzero, mat)
-      colnames(mat) <- c("catzero", paste0("V", seq_len(ncol(mat) - 1L)))
-    }
-    
-    mat
-  })
-  
-  # Return list with transformed data and powers used
-  list(
-    data = fpdt,
-    powers = combs
-  )
-}
-
-#' Function to generate all requested FP transformations for a single variable
-#' 
-#' @param x A numeric vector of length \code{nobs}, assumed to have been shifted 
-#' (except for variables with \code{zero} or \code{catzero} transformations) and
-#' scaled.
-#' @param degree A numeric value indicating the degree of fractional polynomials (FPs). 
-#' For ACD transformation, this is assumed to be 2.
-#' @param powers A numeric vector specifying the set of allowed fractional 
-#' polynomial (FP) powers to be used in the transformation. 
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive
-#' values are replaced with zero before transformation. If \code{FALSE} (default), 
-#' all values are shifted (if needed) to ensure positivity before transformation.
-#' @param catzero An optional n x 1 numeric/integer matrix containing the
-#' structural-zero binary indicator for the current variable.
-#' @details 
-#' Any fractional polynomial (FP) transformation is defined by a vector of powers, 
-#' such as \code{(p1, p2)} for degree 2. These correspond to the terms \code{x^p1} 
-#' and \code{x^p2}. Therefore, all combinations of the values in \code{powers} 
-#' are considered (see \code{generate_powers_fp}). 
-#' 
-#' A special case arises when powers are repeated, i.e., \code{p1 = p2}. In such cases, 
-#' the second term is multiplied by \code{log(x)}, following the standard FP convention 
-#' (see \code{transform_vector_fp}).
-#' 
-#' When the ACD transformation is requested, all pairs of powers of length 2 are evaluated, 
-#' resulting in 64 unique combinations (see \code{generate_powers_acd}).
-#' 
-#' If `degree = 0` then these functions return the data unchanged for fp, 
-#' or simply the acd transformation of the input variable, i.e. in both cases
-#' the power is set to 1 (linear).
-#' 
-#' If \code{degree = 0}, the function returns the data unchanged for an FP transformation, 
-#' or applies only the ACD transformation to the input variable. In both cases, 
-#' the power is set to 1 (linear).
-#' 
-#' When \code{catzero} is used, the transformed (or untransformed) continuous variable is 
-#' combined with its corresponding binary indicator, representing whether the original 
-#' value was positive or nonpositive.
-#' 
-#' @return 
-#' A list with two components:
-#' 
-#' * \code{data}: A list with length equal to the number of possible fractional
-#'  polynomial (FP) transformations for the variable of interest. Each entry is 
-#'  a matrix with \code{nobs} rows. The number of columns equals the 
-#'  FP \code{degree}, unless \code{catzero = TRUE}, in which case an additional
-#'   column is included for the binary indicator variable. For example, with 
-#'   \code{degree = 2}, \code{catzero = TRUE}, and \code{nobs = 10}, each entry 
-#'   is a \eqn{10 \times 3} matrix.
-#'   The FP-transformed values are not centered. If \code{degree = 0}, the list contains a single 
-#'   entry with one column (or two columns if \code{catzero = TRUE}), representing the linear 
-#'   transformation (and binary indicator, if applicable).
-#' *  \code{data}: the associated FP powers for each entry in data. 
-#' * \code{powers}: A matrix of FP powers corresponding to each entry in \code{data}. 
-#'   Each row contains the powers used for the associated transformation (e.g., 
-#'  two columns for \code{degree = 2}, one for \code{degree = 1}, and one for
-#'   \code{degree = 0}).
-#' @keywords internal
-#' @noRd
-generate_transformations_fp2 <- function(x,
+generate_transformations_fp <- function(x,
                                         degree,
                                         powers,
                                         zero,
@@ -238,26 +129,125 @@ generate_transformations_acd <- function(x,
     }
   }
   
-  # all possible pairs of powers
-  combs <- generate_powers_acd(degree = degree, powers = powers)
-  nfp <- dim(combs)[1L]
+  # All possible ACD power combinations. For ACD, each row has two entries:
+  # the first power is applied to x, and the second power is applied to acd(x).
+  combs <- generate_powers_acd(
+    degree = degree,
+    powers = powers
+  )
   
-  # Precompute whether catzero is provided to avoid repeated is.null() checks 
-  # inside lapply
+  nfp <- nrow(combs)
   use_catzero <- !is.null(catzero)
   
-  # Apply transformation and optionally append catzero
-  fpdt <- lapply(seq_len(nfp), function(i) {
-    mat <- transform_vector_acd(x = x, power = combs[i, ], zero = zero,
-          acd_parameter = acd_parameter)$acd
+  # Compute the base ACD transformation once.
+  #
+  # The old implementation called transform_vector_acd() once per candidate
+  # power row. When acd_parameter was supplied, that repeatedly called
+  # apply_acd() even though acd(x) is identical for all candidate rows.
+  if (is.null(acd_parameter)) {
+    acd_parameter_work <- fit_acd(
+      x = x,
+      powers = powers,
+      shift = 0,
+      scale = 1,
+      zero = zero
+    )
+    
+    x_acd_base <- acd_parameter_work$acd
+    
+    # The fitted acd values are not needed after extracting x_acd_base.
+    acd_parameter_work$acd <- NULL
+    
+  } else {
+    acd_parameter_work <- acd_parameter
+    
+    # Remove any stored fitted acd values before calling apply_acd(); apply_acd()
+    # only needs beta0, beta1, power, shift, scale, and zero.
+    acd_parameter_apply <- acd_parameter_work
+    acd_parameter_apply$acd <- NULL
+    
+    x_acd_base <- do.call(
+      apply_acd,
+      modifyList(
+        acd_parameter_apply,
+        list(
+          x = x,
+          zero = zero
+        )
+      )
+    )
+  }
+  
+  # Cache each unique FP transformation of x and acd(x).
+  #
+  # For default ACD degree 2, combs has 64 rows, but only 8 unique powers are
+  # applied to x and 8 unique powers are applied to acd(x). Caching avoids
+  # repeatedly calling transform_vector_fp() for the same power.
+  make_power_key <- function(p) {
+    if (is.na(p)) {
+      return("<NA>")
+    }
+    
+    as.character(p)
+  }
+  
+  power_x_values <- unique(combs[, 1L])
+  power_acd_values <- unique(combs[, 2L])
+  
+  x_fp_cache <- vector("list", length(power_x_values))
+  names(x_fp_cache) <- vapply(power_x_values, make_power_key, character(1L))
+  
+  for (j in seq_along(power_x_values)) {
+    p <- power_x_values[j]
+    
+    if (is.na(p)) {
+      x_fp_cache[[j]] <- NULL
+    } else {
+      x_fp_cache[[j]] <- transform_vector_fp(
+        x = x,
+        power = p,
+        scale = 1,
+        shift = 0,
+        zero = zero
+      )
+    }
+  }
+  
+  x_acd_cache <- vector("list", length(power_acd_values))
+  names(x_acd_cache) <- vapply(power_acd_values, make_power_key, character(1L))
+  
+  for (j in seq_along(power_acd_values)) {
+    p <- power_acd_values[j]
+    
+    if (is.na(p)) {
+      x_acd_cache[[j]] <- NULL
+    } else {
+      x_acd_cache[[j]] <- transform_vector_fp(
+        x = x_acd_base,
+        power = p,
+        scale = 1,
+        shift = 0,
+        zero = FALSE
+      )
+    }
+  }
+  
+  # Assemble one candidate matrix per ACD power row.
+  fpdt <- vector("list", nfp)
+  
+  for (i in seq_len(nfp)) {
+    x_fp <- x_fp_cache[[make_power_key(combs[i, 1L])]]
+    x_acd <- x_acd_cache[[make_power_key(combs[i, 2L])]]
+    
+    mat <- cbind(x_fp, x_acd)
     
     if (use_catzero) {
       mat <- cbind(catzero, mat)
-      colnames(mat)[1] <- "catzero"
+      colnames(mat) <- c("catzero", paste0("V", seq_len(ncol(mat) - 1L)))
     }
     
-    mat
-  })
+    fpdt[[i]] <- mat
+  }
   
   list(
     data = fpdt, 

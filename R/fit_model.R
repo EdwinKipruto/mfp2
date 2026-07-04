@@ -24,7 +24,7 @@
 #' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
 #' `x` as an already-intercepted model matrix. Must be FALSE for Cox models.
 #' 
-#'  @return 
+#' @return 
 #' A list with the following components: 
 #' 
 #' * `logl`: the log likelihood of the fitted model.

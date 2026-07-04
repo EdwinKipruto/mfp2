@@ -2,31 +2,29 @@
 % Please edit documentation in R/preprocessing.R
 \name{apply_shift_scale}
 \alias{apply_shift_scale}
-\title{Shift and scale vector x}
+\title{Shift and scale a predictor vector}
 \usage{
 apply_shift_scale(x, scale = NULL, shift = NULL)
 }
 \arguments{
-\item{x}{A vector of predictor variable}
+\item{x}{A numeric vector of predictor values.}
 
-\item{scale}{scaling factors for x of interest. Must be positive integers.
-Default is NULL and  scaling factors are automatically estimated using
-find_scale_factor() function else it uses user supplied scaling factors. If no scaling
-is needed just use scale = 1}
+\item{scale}{Scaling factor for \code{x}. Must be a positive numeric value.
+Default is \code{NULL}, in which case the scaling factor is estimated
+automatically using \code{find_scale_factor()}. Set \code{scale = 1} to disable
+scaling.}
 
-\item{shift}{adjustment factors required for shifting x to positive
-values. Default is NULL and adjustment factors are estimated automatically
-using find_shift_factor() function}
+\item{shift}{Shift factor for \code{x}. Default is \code{NULL}, in which case the
+shift is estimated automatically using \code{find_shift_factor()}.}
 }
 \value{
-A numeric value that has been shifted and scaled.
+A numeric vector of the same length as \code{x}, shifted and scaled.
 }
 \description{
-A function that is used to shift x values to positive values if it contains
-negative or zero values.If all values of x are positive then the original
-values of x is returned without shifting but scaled if the scaling factor is
-not equal to 1. If x has already been shifted and scaled then the function does
-nothing.
+Shifts \code{x} to positive values if it contains negative or zero values. If all
+values of \code{x} are already positive, the original values are returned without
+shifting but scaled if the scaling factor is not equal to 1. If \code{x} has
+already been shifted and scaled, the function returns it unchanged.
 }
 \examples{
 x = 1:1000

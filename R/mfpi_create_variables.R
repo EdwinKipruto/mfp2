@@ -430,17 +430,36 @@ create_z_variables <- function(cont_var,
   }
   
   # Fill group-specific fitting design matrix ---------------------------------
+    # Pre-compute zero_in_group before the loop
+  rows_by_group <- split(seq_len(n), group_idx)
+  
+  zero_by_group <- if (zero) {
+    lapply(rows_by_group, function(rows) rows[zero_rows[rows]])
+  } else {
+    NULL
+  }
+  
   for (g in seq_len(n_groups)) {
-    in_group <- group_idx == g
-    cols_g   <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
+    # Row indices for observations belonging to the current group. Using
+    # precomputed indices avoids rebuilding `group_idx == g` inside the loop.
+    rows_g_all <- rows_by_group[[g]]
+    
+    # Column indices for the current group's FP block in the full interaction
+    # design matrix. Each group contributes `n_terms` consecutive columns.
+    cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
     
     if (center) {
       if (center_type == "grand") {
+        # Grand-mean centering uses the same centering constants for every group.
+        # These were computed once over all valid observations before the loop.
         centers_g <- grand_means
       } else {
-        rows_g <- in_group & valid_rows
+        # Group-specific centering uses only valid rows from the current group.
+        # When `zero = TRUE`, non-positive rows are excluded from the centering
+        # calculation because they are structural zeros in the FP component.
+        rows_g_valid <- rows_g_all[valid_rows[rows_g_all]]
         
-        if (!any(rows_g)) {
+        if (length(rows_g_valid) == 0L) {
           stop(
             paste0(
               "Cannot compute within-group centering constants for group ",
@@ -450,7 +469,8 @@ create_z_variables <- function(cont_var,
           )
         }
         
-        centers_g <- colMeans(x_fp[rows_g, , drop = FALSE], na.rm = TRUE)
+        # Compute one centering constant per FP term for the current group.
+        centers_g <- colMeans(x_fp[rows_g_valid, , drop = FALSE], na.rm = TRUE)
         
         if (any(!is.finite(centers_g))) {
           stop(
@@ -463,23 +483,31 @@ create_z_variables <- function(cont_var,
         }
       }
     } else {
+      # No centering requested: subtracting zero leaves the transformed FP basis
+      # unchanged while keeping the assignment code below uniform.
       centers_g <- rep(0, n_terms)
     }
     
+    # Store the centering constants in the same column order as the final
+    # group-specific design matrix. These values are later attached as metadata.
     center_vals_work[cols_g] <- centers_g
     
-    # z_g(x_i) = [B_g(x_i) - center_g] * I(group_i == g)
-    # Out-of-group rows remain structural zeros.
-    z[in_group, cols_g] <- sweep(
-      x_fp[in_group, , drop = FALSE],
+    # Insert the centered FP basis into the current group's active rows and
+    # current group's columns. Rows from other groups remain structural zeros in
+    # this block because `z` was initialized to zero.
+    z[rows_g_all, cols_g] <- sweep(
+      x_fp[rows_g_all, , drop = FALSE],
       2L,
       centers_g,
       "-",
       check.margin = FALSE
     )
     
-    if (zero && any(in_group & zero_rows)) {
-      z[in_group & zero_rows, cols_g] <- 0
+    # For zero-handled variables, restore structural-zero rows to exactly zero
+    # after centering. This prevents centering from turning zero rows into
+    # negative centering constants.
+    if (zero && length(zero_by_group[[g]]) > 0L) {
+      z[zero_by_group[[g]], cols_g] <- 0
     }
   }
   
@@ -503,27 +531,56 @@ create_z_variables <- function(cont_var,
   }
   
   # Optional evaluation matrix -------------------------------------------------
-  # Unlike z, this evaluates every group-specific function at every x value.
+  # Unlike `z`, this matrix evaluates every group-specific function at every
+  # observed x value. It is used for fitted-function evaluation, plotting, and
+  # prediction over a common x grid, so it deliberately does not contain
+  # out-of-group structural zeros.
   x_eval <- NULL
   
   if (return_eval) {
     x_eval <- matrix(0, nrow = n, ncol = n_groups * n_terms)
     colnames(x_eval) <- z_names
     
-    for (g in seq_len(n_groups)) {
-      cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
+    if (!center || center_type == "grand") {
+      # With no centering, every group subtracts zero. With grand centering, every
+      # group subtracts the same grand centering constants. In both cases the
+      # evaluated FP basis is identical for all group blocks, so compute it once
+      # and replicate the columns across groups.
+      base_cols <- seq_len(n_terms)
       
-      x_eval[, cols_g] <- sweep(
+      x_eval_base <- sweep(
         x_fp,
         2L,
-        center_vals_work[cols_g],
+        center_vals_work[base_cols],
         "-",
         check.margin = FALSE
       )
       
-      if (zero && any(zero_rows)) {
-        x_eval[zero_rows, cols_g] <- 0
+      # Repeat the same evaluated basis once per group while preserving the final
+      # group-specific column naming convention in `z_names`.
+      x_eval[, ] <- x_eval_base[, rep(seq_len(n_terms), times = n_groups),
+                                drop = FALSE]
+    } else {
+      # Group centering uses different centering constants by group, so each group
+      # block must still be centered separately.
+      for (g in seq_len(n_groups)) {
+        cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
+        
+        x_eval[, cols_g] <- sweep(
+          x_fp,
+          2L,
+          center_vals_work[cols_g],
+          "-",
+          check.margin = FALSE
+        )
       }
+    }
+    
+    # Structural-zero rows represent absence of the positive-part FP contribution.
+    # Restore them once across all evaluation columns after centering. This avoids
+    # repeating the same zero-row assignment inside each group block.
+    if (zero && any(zero_rows)) {
+      x_eval[zero_rows, ] <- 0
     }
   }
   

@@ -633,4 +633,71 @@ check_ordered_factor_variables <- function(vars,
 }
 
 
-
+#' Extract a Named Adjustment-Model Flag
+#'
+#' Extracts a named logical or numeric flag vector from the fitted adjustment
+#' model and aligns it to the selected adjustment variables.
+#'
+#' This is used after the adjustment model has been fitted because fit_mfp()
+#' may update zero, catzero, and spike flags during preprocessing or
+#' spike-at-zero checks. The interaction-evaluation stage must therefore use
+#' the final post-fit flags stored in the adjustment model, not the original
+#' pre-fit user inputs.
+#'
+#' @param object Fitted adjustment model object.
+#' @param field Character scalar naming the field to extract.
+#' @param selected_vars Character vector of selected adjustment variables.
+#' @param default Default value used when the field is absent.
+#'
+#' @return A named vector aligned to `selected_vars`.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_extract_adjustment_flag <- function(object,
+                                         field,
+                                         selected_vars,
+                                         default = FALSE) {
+  if (!is.character(field) || length(field) != 1L ||
+      is.na(field) || !nzchar(field)) {
+    stop("`field` must be a single non-empty character string.", call. = FALSE)
+  }
+  
+  selected_vars <- as.character(selected_vars)
+  
+  flag <- object[[field]]
+  
+  if (is.null(flag)) {
+    return(stats::setNames(
+      rep(default, length(selected_vars)),
+      selected_vars
+    ))
+  }
+  
+  if (is.null(names(flag))) {
+    stop(
+      paste0(
+        "! Internal error: `adjustment_model$", field,
+        "` must be named."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  missing_flag <- setdiff(selected_vars, names(flag))
+  
+  if (length(missing_flag) > 0L) {
+    stop(
+      paste0(
+        "! Internal error: `adjustment_model$", field,
+        "` is missing selected variable(s): ",
+        paste(missing_flag, collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  out <- flag[selected_vars]
+  names(out) <- selected_vars
+  out
+}

@@ -1060,8 +1060,13 @@ mfpi.default <- function(
   
   # Check cont_vars have sufficient unique values --------------------------------
   # Binary or near-categorical variables produce degenerate FP transformations.
-  n_unique <- vapply(cont_vars, function(v)
-    length(unique(x[!is.na(x[, v, drop = TRUE]), v, drop = TRUE])), integer(1L))
+  # `x` has already been checked above to contain no missing or non-finite values.
+  # Count unique observed values directly.
+    n_unique <- vapply(cont_vars, function(v) {
+      length(unique(x[, v, drop = TRUE]))
+    }, integer(1L))
+  
+  
   binary_cont <- cont_vars[n_unique <= 2L]
   few_unique  <- cont_vars[n_unique > 2L & n_unique <= 5L]
   
@@ -1413,15 +1418,18 @@ mfpi.default <- function(
   
   if (is.null(offset))  offset  <- rep.int(0, nobs)
   
+  # helper
+    expand_to_named <- function(val, n, nms) {
+      if (length(val) == 1L) val <- rep(val, n)
+      setNames(val, nms)
+    }
+  
   # Expand scalars and guarantee names on all per-variable vectors.
   # fit_mfp() and preprocess_data() rely on named vectors for
   # correct alignment after group_var is removed.
-  if (length(select) == 1L) select <- rep(select, nvars)
-  if (length(alpha)  == 1L) alpha  <- rep(alpha,  nvars)
-  if (length(center) == 1L) center <- rep(center, nvars)
-  select <- setNames(select, vnames)
-  alpha  <- setNames(alpha,  vnames)
-  center <- setNames(center, vnames)
+    select <- expand_to_named(select, nvars, vnames)
+    alpha  <- expand_to_named(alpha,  nvars, vnames)
+    center <- expand_to_named(center, nvars, vnames)
   
   # When criterion = "pvalue", force_max_fp is achieved by setting alpha = 1,
   # which ensures the significance test always accepts the most complex FP form.
@@ -1540,13 +1548,8 @@ mfpi.default <- function(
   if (any(zero_flag | catzero_flag | spike_flag)) {
     vars_pos <- names(zero_flag)[zero_flag | catzero_flag | spike_flag]
     
-    all_positive <- vars_pos[
-      apply(
-        x[, vars_pos, drop = FALSE],
-        2L,
-        function(col) all(col > 0, na.rm = TRUE)
-      )
-    ]
+    xpos <- x[, vars_pos, drop = FALSE]
+    all_positive <- vars_pos[colSums(xpos <= 0) == 0L]
     
     if (length(all_positive) > 0L) {
       warning(
@@ -1664,21 +1667,18 @@ mfpi.default <- function(
   # Apply shift and scale to x -------------------------------------------------
   x <- sweep(x, 2L, shift, "+")
   
-  # Compute scale on the SHIFTED x, matching standalone mfp2. find_scale_factor()
-  # must operate on the shifted variable; computing it on the raw (unshifted) x
-  # would give a different scaling factor for any variable with a non-zero shift.
-  # User-supplied scale (normalised earlier) is left untouched.
-  scale_missing <- is.na(scale)
-  
-  # `group_var` must not be automatically scaled. It is remapped later by
-  # preprocess_data(), and scaling it here can make stored raw group levels
-  # incompatible with observed group values.
-  if (group_var %in% names(scale_missing)) {
-    scale_missing[group_var] <- FALSE
-  }
+  # `group_var` is categorical/index metadata, not an FP predictor. It must not be
+  # automatically scaled because preprocess_data() later remaps it to internal
+  # 0, 1, ..., K - 1 group codes. Keeping scale[group_var] = 1 also ensures that
+  # stored prediction metadata does not imply a raw continuous-variable scaling
+  # operation for the grouping column.
   if (group_var %in% names(scale)) {
     scale[group_var] <- 1
   }
+  
+  # Compute scale factors on shifted x, matching standalone mfp2. User-supplied
+  # scale values are left untouched; only missing scales are estimated.
+  scale_missing <- is.na(scale)
   
   if (any(scale_missing)) {
     scale[scale_missing] <- apply(
@@ -1709,12 +1709,6 @@ mfpi.default <- function(
         call. = FALSE
       )
     }
-  }
-  
-  # Final safety assignment to ensures later edits cannot accidentally 
-  # reintroduce group scaling.
-  if (group_var %in% names(scale)) {
-    scale[group_var] <- 1
   }
   
   # Scale the x based on the estimated scaling factors

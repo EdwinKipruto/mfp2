@@ -20,16 +20,15 @@ Imports:
     survival,
     utils,
     Rcpp,
-    numDeriv
+    numDeriv,
+    ggplot2 (>= 3.4.0)
 Suggests:
-    ggplot2 (>= 3.4.0),
     knitr,
-    testthat (>= 3.0.0),
+    testthat (>= 3.3.1),
     xfun,
     rmarkdown,
     formatR,
-    patchwork,
-    spelling
+    patchwork
 Description: Fits multivariable fractional polynomial models with simultaneous
     selection of variables and functional forms for generalized linear models
     and Cox proportional hazards models. Key references are Royston and Altman

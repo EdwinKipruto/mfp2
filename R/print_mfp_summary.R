@@ -90,7 +90,20 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
       print_mat_fct(xi, fit, criterion, spike = TRUE)
     )
     print(mat_print, quote = FALSE, na.print = ".", print.gap = 1)
-    cat(sprintf("Selected: %s\n", rownames(mat_print)[fit$spike_metrics$spike_decision]))
+    
+    stage2_model_names <- rownames(fit$spike_metrics$metrics)
+    
+    selected_stage2_model <- saz_decision_label(
+      fit$spike_metrics$spike_decision,
+      style = "stage2_model",
+      full_label = stage2_model_names[1],
+      continuous_label = stage2_model_names[2],
+      binary_label = stage2_model_names[3]
+    )
+    
+    selected_stage2_row <- match(selected_stage2_model, rownames(mat_print))
+    
+    cat(sprintf("Selected: %s\n", rownames(mat_print)[selected_stage2_row]))
     } 
   }
 }

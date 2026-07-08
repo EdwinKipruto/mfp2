@@ -2981,8 +2981,680 @@ test_that("fracplot() runs without error for Gaussian model", {
   expect_error(fracplot(fit), NA)
 })
 
+# =============================================================================
+# 22. C++ core tests
+# =============================================================================
+test_that("C++ FP core preserves missing and non-finite values", {
+  x <- c(1, NA_real_, NaN, Inf, 4)
+  p <- c(1, 0)
+  
+  out <- transform_fp_core(
+    x_raw = x,
+    power = p,
+    shift_val = 0,
+    scale_val = 1,
+    zero = FALSE
+  )
+  
+  expect_equal(out[1, ], c(1, 0))
+  expect_true(is.na(out[2, 1]))
+  expect_true(is.na(out[2, 2]))
+  expect_true(is.nan(out[3, 1]))
+  expect_true(is.nan(out[3, 2]))
+  expect_true(is.infinite(out[4, 1]))
+  expect_true(is.infinite(out[4, 2]))
+})
+
+# Test purpose: Checks that the C++ FP core returns the expected ordinary
+# fractional-polynomial columns for powers 1 and 0.
+# Test purpose: Checks that the C++ FP core returns the expected ordinary
+# fractional-polynomial columns for powers 1 and 0.
+test_that("C++ FP core computes ordinary FP transformations", {
+  x <- c(1, 2, 4)
+  p <- c(1, 0)
+  
+  out <- mfp2:::transform_fp_core(
+    x_raw = x,
+    power = p,
+    shift_val = 0,
+    scale_val = 1,
+    zero = FALSE
+  )
+  
+  expected <- cbind(
+    x,
+    log(x)
+  )
+  
+  expect_true(is.matrix(out))
+  expect_equal(
+    unname(out, force = TRUE),
+    unname(expected, force = TRUE),
+    tolerance = 1e-12
+  )
+})
+
+# Test purpose: Checks that the C++ FP core implements repeated-power FP rules.
+test_that("C++ FP core handles repeated powers", {
+  x <- c(1, 2, 4)
+  p <- c(0, 0)
+  
+  out <- transform_fp_core(
+    x_raw = x,
+    power = p,
+    shift_val = 0,
+    scale_val = 1,
+    zero = FALSE
+  )
+  
+  expected <- cbind(
+    log(x),
+    log(x)^2
+  )
+  
+  expect_true(is.matrix(out))
+  expect_equal(unname(out), expected, tolerance = 1e-12)
+})
 
 
+# Test purpose: Checks that the C++ FP core applies shift and scale exactly once.
+test_that("C++ FP core applies shift and scale", {
+  x <- c(1, 3, 5)
+  shift <- 1
+  scale <- 2
+  x_scaled <- (x + shift) / scale
+  
+  out <- transform_fp_core(
+    x_raw = x,
+    power = c(1, 0),
+    shift_val = shift,
+    scale_val = scale,
+    zero = FALSE
+  )
+  
+  expected <- cbind(
+    x_scaled,
+    log(x_scaled)
+  )
+  
+  expect_equal(
+    unname(out, force = TRUE),
+    unname(expected, force = TRUE),
+    tolerance = 1e-12
+  )
+})
+
+
+# Test purpose: Checks that the C++ FP core maps non-positive values to zero
+# rows when zero handling is active.
+test_that("C++ FP core handles zero mode", {
+  x <- c(-2, 0, 1, 4)
+  
+  out <- transform_fp_core(
+    x_raw = x,
+    power = c(1, 0),
+    shift_val = 0,
+    scale_val = 1,
+    zero = TRUE
+  )
+  
+  expected <- rbind(
+    c(0, 0),
+    c(0, 0),
+    c(1, log(1)),
+    c(4, log(4))
+  )
+  
+  expect_equal(unname(out), expected, tolerance = 1e-12)
+})
+
+
+# Test purpose: Checks that the C++ FP core preserves missing and non-finite
+# values. Keep this test only if transform_fp_core_internal() has the explicit
+# missing/non-finite guard.
+test_that("C++ FP core preserves missing and non-finite values", {
+  x <- c(1, NA_real_, NaN, Inf, 4)
+  p <- c(1, 0)
+  
+  out <- transform_fp_core(
+    x_raw = x,
+    power = p,
+    shift_val = 0,
+    scale_val = 1,
+    zero = FALSE
+  )
+  
+  expect_equal(out[1, ], c(1, 0))
+  expect_true(is.na(out[2, 1]))
+  expect_true(is.na(out[2, 2]))
+  expect_true(is.nan(out[3, 1]))
+  expect_true(is.nan(out[3, 2]))
+  expect_true(is.infinite(out[4, 1]))
+  expect_true(is.infinite(out[4, 2]))
+  expect_equal(out[5, ], c(4, log(4)))
+})
+
+
+# Test purpose: Checks that the R wrapper around the C++ FP core preserves
+# variable naming.
+test_that("transform_vector_fp keeps expected column names with C++ core", {
+  x <- c(1, 2, 4)
+  
+  out <- transform_vector_fp(
+    x = x,
+    power = c(1, 0),
+    shift = 0,
+    scale = 1,
+    name = "x",
+    zero = FALSE,
+    check_binary = FALSE
+  )
+  
+  expect_true(is.matrix(out))
+  expect_equal(ncol(out), 2L)
+  expect_equal(unname(out[, 2]), x)
+  expect_equal(unname(out[, 1]), log(x))
+  expect_false(is.null(colnames(out)))
+})
+
+
+# Test purpose: Checks that the C++ batch FP generator returns one matrix per
+# candidate power row.
+test_that("generate_transformations_fp_cpp returns one matrix per power row", {
+  x <- c(1, 2, 4)
+  powers <- rbind(
+    c(1, 1),
+    c(0, 0),
+    c(1, 0)
+  )
+  
+  out <- generate_transformations_fp_cpp(
+    x = x,
+    powers = powers,
+    zero = FALSE,
+    catzero = NULL
+  )
+  
+  expect_type(out, "list")
+  expect_length(out, nrow(powers))
+  
+  expect_equal(
+    unname(out[[1]]),
+    unname(cbind(x, x * log(x))),
+    tolerance = 1e-12
+  )
+  
+  expect_equal(
+    unname(out[[2]]),
+    cbind(log(x), log(x)^2),
+    tolerance = 1e-12
+  )
+  
+  expect_equal(
+    unname(out[[3]]),
+    unname(cbind(x, log(x))),
+    tolerance = 1e-12
+  )
+})
+
+
+# Test purpose: Checks that the C++ batch FP generator applies the binary
+# shortcut when zero handling is inactive.
+test_that("generate_transformations_fp_cpp uses binary shortcut", {
+  x <- c(0, 1, 0, 1)
+  powers <- rbind(
+    c(1, 1),
+    c(0, 0)
+  )
+  
+  out <- generate_transformations_fp_cpp(
+    x = x,
+    powers = powers,
+    zero = FALSE,
+    catzero = NULL
+  )
+  
+  expect_length(out, 2L)
+  expect_equal(unname(out[[1]]), matrix(x, ncol = 1L))
+  expect_equal(unname(out[[2]]), matrix(x, ncol = 1L))
+})
+
+
+# Test purpose: Checks that the C++ batch FP generator prepends catzero when
+# catzero is supplied.
+test_that("generate_transformations_fp_cpp prepends catzero", {
+  x <- c(1, 2, 4)
+  powers <- rbind(c(1, 0))
+  catzero <- matrix(c(0, 1, 0), ncol = 1L)
+  
+  out <- generate_transformations_fp_cpp(
+    x = x,
+    powers = powers,
+    zero = FALSE,
+    catzero = catzero
+  )
+  
+  expect_length(out, 1L)
+  expect_equal(ncol(out[[1]]), 3L)
+  expect_equal(unname(out[[1]][, 1]), as.numeric(catzero[, 1]))
+  expect_equal(unname(out[[1]][, 2]), x)
+  expect_equal(unname(out[[1]][, 3]), log(x), tolerance = 1e-12)
+  expect_equal(colnames(out[[1]]), c("catzero", "V1", "V2"))
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge returns NULL when
+# there are no adjustment variables.
+test_that("C++ adjustment-step bridge handles no adjustment variables", {
+  x <- matrix(c(1, 2, 3), ncol = 1L)
+  colnames(x) <- "x1"
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = character(0),
+    powers_adj = list(),
+    acdx_adj = list(),
+    zero_adj = list(),
+    catzero = list(),
+    spike_adj = list(),
+    spike_decision_int_adj = integer(0),
+    acd_parameter_adj = list(),
+    eliminated = logical(0),
+    spike_binary_only_flags = logical(0),
+    current_power_keys_adj = list(),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expect_equal(out$data_adj_list, list())
+  expect_null(out$data_adj)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge builds ordinary FP
+# adjustment columns on cache miss.
+test_that("C++ adjustment-step bridge builds FP adjustment columns", {
+  x <- cbind(
+    x1 = c(1, 2, 4),
+    x2 = c(2, 3, 5)
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = c("x1", "x2"),
+    powers_adj = list(x1 = c(1), x2 = c(0, 0)),
+    acdx_adj = list(x1 = FALSE, x2 = FALSE),
+    zero_adj = list(x1 = FALSE, x2 = FALSE),
+    catzero = list(x1 = NULL, x2 = NULL),
+    spike_adj = list(x1 = FALSE, x2 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L, x2 = 2L),
+    acd_parameter_adj = list(x1 = NULL, x2 = NULL),
+    eliminated = c(x1 = FALSE, x2 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE, x2 = FALSE),
+    current_power_keys_adj = list(x1 = c(1), x2 = c(0, 0)),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected_x1 <- matrix(x[, "x1"], ncol = 1L)
+  colnames(expected_x1) <- "x1_adj1"
+  
+  expected_x2 <- cbind(log(x[, "x2"]), log(x[, "x2"])^2)
+  colnames(expected_x2) <- c("x2_adj1", "x2_adj2")
+  
+  expected <- cbind(expected_x1, expected_x2)
+  
+  expect_equal(names(out$data_adj_list), c("x1", "x2"))
+  expect_equal(out$data_adj_list$x1, expected_x1, tolerance = 1e-12)
+  expect_equal(out$data_adj_list$x2, expected_x2, tolerance = 1e-12)
+  expect_equal(out$data_adj, expected, tolerance = 1e-12)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge prepends catzero for
+# a non-spike variable.
+test_that("C++ adjustment-step bridge prepends catzero for non-spike variable", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = cz),
+    spike_adj = list(x1 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1)),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected <- cbind(cz[, 1], x[, "x1"])
+  colnames(expected) <- c("x1_adj1", "x1_adj2")
+  
+  expect_equal(out$data_adj_list$x1, expected)
+  expect_equal(out$data_adj, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge applies spike
+# decision 1 as catzero plus continuous FP columns.
+test_that("C++ adjustment-step bridge handles spike decision 1", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = cz),
+    spike_adj = list(x1 = TRUE),
+    spike_decision_int_adj = c(x1 = 1L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1)),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected <- cbind(cz[, 1], x[, "x1"])
+  colnames(expected) <- c("x1_adj1", "x1_adj2")
+  
+  expect_equal(out$data_adj, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge applies spike
+# decision 2 as continuous FP columns only.
+test_that("C++ adjustment-step bridge handles spike decision 2", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = cz),
+    spike_adj = list(x1 = TRUE),
+    spike_decision_int_adj = c(x1 = 2L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1)),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected <- matrix(x[, "x1"], ncol = 1L)
+  colnames(expected) <- "x1_adj1"
+  
+  expect_equal(out$data_adj, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge applies spike
+# decision 3 as catzero only.
+test_that("C++ adjustment-step bridge handles spike decision 3", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(NA_real_)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = cz),
+    spike_adj = list(x1 = TRUE),
+    spike_decision_int_adj = c(x1 = 3L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = TRUE),
+    spike_binary_only_flags = c(x1 = TRUE),
+    current_power_keys_adj = list(x1 = NA_real_),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected <- matrix(cz[, 1], ncol = 1L)
+  colnames(expected) <- "x1_adj1"
+  
+  expect_equal(out$data_adj, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge returns n x 0 data_adj
+# when adjustment variables exist but all are eliminated.
+test_that("C++ adjustment-step bridge handles all-eliminated adjustment variables", {
+  x <- cbind(
+    x1 = c(1, 2, 4),
+    x2 = c(2, 3, 5)
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = c("x1", "x2"),
+    powers_adj = list(x1 = c(NA_real_), x2 = c(NA_real_)),
+    acdx_adj = list(x1 = FALSE, x2 = FALSE),
+    zero_adj = list(x1 = FALSE, x2 = FALSE),
+    catzero = list(x1 = NULL, x2 = NULL),
+    spike_adj = list(x1 = FALSE, x2 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L, x2 = 2L),
+    acd_parameter_adj = list(x1 = NULL, x2 = NULL),
+    eliminated = c(x1 = TRUE, x2 = TRUE),
+    spike_binary_only_flags = c(x1 = FALSE, x2 = FALSE),
+    current_power_keys_adj = list(x1 = NA_real_, x2 = NA_real_),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expect_true(is.matrix(out$data_adj))
+  expect_equal(nrow(out$data_adj), nrow(x))
+  expect_equal(ncol(out$data_adj), 0L)
+  expect_equal(NCOL(out$data_adj), 0L)
+  expect_equal(ncol(out$data_adj_list$x1), 0L)
+  expect_equal(ncol(out$data_adj_list$x2), 0L)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge reuses the cached
+# matrix when normalized powers and spike decision are unchanged.
+test_that("C++ adjustment-step bridge reuses cache on cache hit", {
+  x <- cbind(x1 = c(1, 2, 4))
+  
+  cached <- matrix(c(99, 98, 97), ncol = 1L)
+  colnames(cached) <- "old_name"
+  
+  prev_xi <- list(
+    data_adj_list = list(x1 = cached),
+    spike_decision_adj = c(x1 = 2L)
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = NULL),
+    spike_adj = list(x1 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1)),
+    prev_power_keys_adj = list(x1 = c(1)),
+    prev_xi = prev_xi,
+    has_prev = TRUE
+  )
+  
+  expected <- cached
+  colnames(expected) <- "x1_adj1"
+  
+  expect_equal(out$data_adj, expected)
+  expect_equal(out$data_adj_list$x1, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge recomputes the matrix
+# when the normalized power key changes.
+test_that("C++ adjustment-step bridge recomputes on power-key cache miss", {
+  x <- cbind(x1 = c(1, 2, 4))
+  
+  cached <- matrix(c(99, 98, 97), ncol = 1L)
+  
+  prev_xi <- list(
+    data_adj_list = list(x1 = cached),
+    spike_decision_adj = c(x1 = 2L)
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(0)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = NULL),
+    spike_adj = list(x1 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(0)),
+    prev_power_keys_adj = list(x1 = c(1)),
+    prev_xi = prev_xi,
+    has_prev = TRUE
+  )
+  
+  expected <- matrix(log(x[, "x1"]), ncol = 1L)
+  colnames(expected) <- "x1_adj1"
+  
+  expect_equal(out$data_adj, expected, tolerance = 1e-12)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge recomputes the matrix
+# when the spike decision changes.
+test_that("C++ adjustment-step bridge recomputes on spike-decision cache miss", {
+  x <- cbind(x1 = c(1, 2, 4))
+  cz <- matrix(c(0, 1, 0), ncol = 1L)
+  
+  cached <- matrix(c(99, 98, 97), ncol = 1L)
+  
+  prev_xi <- list(
+    data_adj_list = list(x1 = cached),
+    spike_decision_adj = c(x1 = 2L)
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1)),
+    acdx_adj = list(x1 = FALSE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = cz),
+    spike_adj = list(x1 = TRUE),
+    spike_decision_int_adj = c(x1 = 1L),
+    acd_parameter_adj = list(x1 = NULL),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1)),
+    prev_power_keys_adj = list(x1 = c(1)),
+    prev_xi = prev_xi,
+    has_prev = TRUE
+  )
+  
+  expected <- cbind(cz[, 1], x[, "x1"])
+  colnames(expected) <- c("x1_adj1", "x1_adj2")
+  
+  expect_equal(out$data_adj, expected)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge applies stored ACD
+# parameters without fitting ACD inside build_adjustment_step().
+test_that("C++ adjustment-step bridge builds stored-ACD adjustment columns", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  
+  acd_parameter <- list(
+    beta0 = 0,
+    beta1 = 1,
+    power = 1,
+    shift = 0,
+    scale = 1
+  )
+  
+  out <- mfp2_build_adjustment_step_loop(
+    x = x,
+    vars_adj = "x1",
+    powers_adj = list(x1 = c(1, 1)),
+    acdx_adj = list(x1 = TRUE),
+    zero_adj = list(x1 = FALSE),
+    catzero = list(x1 = NULL),
+    spike_adj = list(x1 = FALSE),
+    spike_decision_int_adj = c(x1 = 2L),
+    acd_parameter_adj = list(x1 = acd_parameter),
+    eliminated = c(x1 = FALSE),
+    spike_binary_only_flags = c(x1 = FALSE),
+    current_power_keys_adj = list(x1 = c(1, 1)),
+    prev_power_keys_adj = NULL,
+    prev_xi = NULL,
+    has_prev = FALSE
+  )
+  
+  expected <- cbind(
+    x[, "x1"],
+    stats::pnorm(x[, "x1"])
+  )
+  colnames(expected) <- c("x1_adj1", "x1_adj2")
+  
+  expect_equal(out$data_adj, expected, tolerance = 1e-12)
+})
+
+
+# Test purpose: Checks that the C++ adjustment-step bridge rejects ACD variables
+# without stored ACD parameters.
+test_that("C++ adjustment-step bridge rejects missing stored ACD parameters", {
+  x <- cbind(x1 = c(1, 2, 4, 8))
+  
+  expect_error(
+    mfp2_build_adjustment_step_loop(
+      x = x,
+      vars_adj = "x1",
+      powers_adj = list(x1 = c(1, 1)),
+      acdx_adj = list(x1 = TRUE),
+      zero_adj = list(x1 = FALSE),
+      catzero = list(x1 = NULL),
+      spike_adj = list(x1 = FALSE),
+      spike_decision_int_adj = c(x1 = 2L),
+      acd_parameter_adj = list(x1 = NULL),
+      eliminated = c(x1 = FALSE),
+      spike_binary_only_flags = c(x1 = FALSE),
+      current_power_keys_adj = list(x1 = c(1, 1)),
+      prev_power_keys_adj = NULL,
+      prev_xi = NULL,
+      has_prev = FALSE
+    ),
+    "missing stored|require stored|acd_parameter",
+    ignore.case = TRUE
+  )
+})
 # =============================================================================
 # End of tests
 # =============================================================================

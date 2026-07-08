@@ -623,10 +623,10 @@ transform_matrix <- function(x,
       stop("! 'spike_decision' must not contain missing values.", call. = FALSE)
     }
     
-    bad_vals <- setdiff(unique(spike_decision), c(1, 2, 3))
+    bad_vals <- setdiff(unique(spike_decision), unname(saz_decision_codes))
     if (length(bad_vals) > 0L) {
       stop(
-        "! 'spike_decision' must only contain values 1, 2, or 3.",
+        "! 'spike_decision' must only contain values 1L, 2L, or 3L.",
         call. = FALSE
       )
     }
@@ -645,7 +645,8 @@ transform_matrix <- function(x,
   all_powers_na <- length(all_powers) == 0L || all(is.na(all_powers))
   
   has_binary_only_spike <- !is.null(spike_decision) &&
-    any(spike & spike_decision == 3, na.rm = TRUE)
+    any(spike & spike_decision == saz_decision_codes[["binary_only"]],
+        na.rm = TRUE)
   
   if (all_powers_na && !has_binary_only_spike) {
     return(NULL)
@@ -703,6 +704,27 @@ transform_matrix <- function(x,
     spike_decision <- spike_decision[names_vars]
   }
   
+  # Apply SAZ decisions before constructing FP/ACD components. In particular,
+  # binary-only SAZ variables must not have their positive-value FP/ACD function
+  # constructed and discarded afterwards, because that can evaluate log(0),
+  # negative powers, or repeated-power log terms at structural-zero rows.
+  binary_only_spike_vars <- character(0L)
+  
+  if (!is.null(spike_decision)) {
+    for (v in names(spike_decision)) {
+      if (isTRUE(spike[[v]])) {
+        dec <- as.integer(spike_decision[[v]])
+        
+        if (dec == saz_decision_codes[["continuous_only"]]) {
+          catzero[[v]] <- FALSE
+        } else if (dec == saz_decision_codes[["binary_only"]]) {
+          catzero[[v]] <- TRUE
+          binary_only_spike_vars <- c(binary_only_spike_vars, v)
+        }
+      }
+    }
+  }
+  
   #----------------------
   # FP / ACD transformations
   #----------------------
@@ -711,6 +733,11 @@ transform_matrix <- function(x,
   acd_component_cols <- character(0L)
   
   for (name in names_vars) {
+    if (name %in% binary_only_spike_vars) {
+      x_trafo[[name]] <- NULL
+      next
+    }
+    
     if (isTRUE(acdx[[name]])) {
       # During fitting, acd_parameter_list is usually NULL and parameters are
       # estimated. During prediction, fitted ACD parameters are supplied here.
@@ -765,19 +792,17 @@ transform_matrix <- function(x,
   #------------------------------
   # Spike decision post-processing
   #------------------------------
-  # The continuous FP/ACD part is built first. Then spike_decision controls
-  # whether the structural-zero binary is included and whether the continuous
-  # component is retained.
+  # SAZ decisions that affect component construction were applied before the
+  # transformation loop. This defensive block keeps the final component list in
+  # sync if future callers modify `spike_decision` handling above.
   if (!is.null(spike_decision)) {
     for (v in names(spike_decision)) {
-      dec <- spike_decision[[v]]
+      dec <- as.integer(spike_decision[[v]])
       
       if (isTRUE(spike[[v]])) {
-        if (dec == 2L) {
-          # FP/ACD only: suppress *_bin while keeping the transformed component.
+        if (dec == saz_decision_codes[["continuous_only"]]) {
           catzero[[v]] <- FALSE
-        } else if (dec == 3L) {
-          # Binary only: remove the transformed component and force *_bin.
+        } else if (dec == saz_decision_codes[["binary_only"]]) {
           x_trafo[[v]] <- NULL
           catzero[[v]] <- TRUE
         }
@@ -808,7 +833,7 @@ transform_matrix <- function(x,
       binary_only_spike <- isTRUE(spike[[v]]) &&
         !is.null(spike_decision) &&
         v %in% names(spike_decision) &&
-        isTRUE(spike_decision[[v]] == 3L)
+        isTRUE(spike_decision[[v]] == saz_decision_codes[["binary_only"]])
       
       # all powers NA usually means the variable was eliminated. The exception
       # is spike_decision == 3, where the binary indicator is the selected term.
@@ -987,31 +1012,86 @@ transform_matrix <- function(x,
     zero_expanded = zero_expanded
   )
 }
-#' Simple function to transform vector by a single power
-#' 
-#' @param x a vector of a predictor variable.
-#' @param power single power.
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
-#' are replaced with zero before transformation. 
-#' @return A vector of transformed values if power is not equal to 1
+
+#' Transform a Vector by One Fractional-Polynomial Power
+#'
+#' Applies a single fractional-polynomial power transformation to a numeric
+#' vector. This helper is a scalar-power wrapper around the shared C++ FP
+#' transformation core used by \code{transform_vector_fp()}.
+#'
+#' @details
+#' The transformation rule is:
+#' \itemize{
+#'   \item \code{power = 0}: return \eqn{\log(x)}.
+#'   \item \code{power != 0}: return \eqn{x^\code{power}}.
+#' }
+#'
+#' This helper is intentionally limited to one power. Full FP bases with
+#' multiple powers, such as \code{c(p1, p2)}, should be constructed with
+#' \code{transform_vector_fp()} instead. The scalar-power check prevents a
+#' silent error where the C++ core would return multiple columns and this helper
+#' would otherwise keep only the first one.
+#'
+#' When \code{zero = TRUE}, nonpositive values are treated as structural zeros:
+#' rows with \code{x <= 0} are returned as zero and are not evaluated by
+#' \code{log()} or power operations. This prevents invalid evaluations such as
+#' \code{log(0)} or \code{0^(-1)}. Missing and non-finite values are propagated
+#' by the shared C++ transformation core.
+#'
+#' The function passes \code{shift = 0} and \code{scale = 1} to the C++ core
+#' because its contract is to transform the vector exactly as supplied, not to
+#' apply additional preprocessing.
+#'
+#' @param x Numeric vector to transform and must have positive values.
+#' @param power Numeric scalar. Fractional-polynomial power to apply. A value
+#'   of \code{0} represents the logarithmic transformation.
+#' @param zero Logical scalar. If \code{TRUE}, transform only positive values
+#'   and return zero for nonpositive values. If \code{FALSE}, transform all
+#'   values as supplied.
+#'
+#' @return
+#' A numeric vector of transformed values with the same length as \code{x}.
+#'
+#' @seealso
+#' \code{\link{transform_vector_fp}}
+#'
 #' @keywords internal
 #' @noRd
-transform_vector_power <- function(x, power = 1, zero = FALSE) {
-  
-  if (zero) {
-    x[x <= 0] <- 0
+
+transform_vector_power2 <- function(x, power = 1, zero = FALSE) {
+  # This helper is intentionally a single-power wrapper. It is used where one
+  # scalar FP power is expected, not where a full FP basis such as c(p1, p2) is
+  # requested. Guarding here prevents a silent bug if a vector of powers is
+  # accidentally supplied: transform_fp_core() would return one column per
+  # power, and taking [, 1L] would silently discard the remaining columns.
+  if (!is.numeric(power) || length(power) != 1L || is.na(power) || !is.finite(power)) {
+    stop(
+      "'power' must be a single finite, non-missing numeric value.",
+      call. = FALSE
+    )
   }
   
-  if (power == 0) {
-    xt <- log(x)
-  } else {
-  xt <- x ^ power
+  if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
+    stop("'zero' must be a single non-missing logical value.", call. = FALSE)
   }
-  #xt[!is.finite(xt)] <- 0
   
-  return(xt)
+  # Delegate to the same C++ kernel used by transform_vector_fp(). This keeps
+  # the single-power helper numerically consistent with the package-wide FP
+  # implementation:
+  #   power = 0   -> log(x)
+  #   power != 0  -> x^power
+  #   zero = TRUE -> rows with x <= 0 are structural zeros and are not evaluated
+  #                  by log() or pow(); they remain zero in the returned vector.
+  #
+  # The helper passes shift = 0 and scale = 1 because its original contract was
+  # to transform the vector exactly as supplied, not to apply extra preprocessing.
+  transform_fp_core(
+    x_raw     = as.numeric(x),
+    power     = as.numeric(power),
+    shift_val = 0,
+    scale_val = 1,
+    zero      = zero
+  )[, 1L]
 }
 
 #' Does an FP power specification require strictly positive input?

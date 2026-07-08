@@ -39,10 +39,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// build_adjustment_step_loop_cpp
+List build_adjustment_step_loop_cpp(const NumericMatrix& x, const IntegerVector& x_col_index, const CharacterVector& vars_adj, const List& powers_adj, const LogicalVector& acdx_adj, const LogicalVector& zero_adj, const List& catzero_adj, const LogicalVector& spike_adj, const IntegerVector& spike_decision_int_adj, const List& acd_parameter_adj, const LogicalVector& eliminated, const LogicalVector& spike_binary_only_flags, const List& current_power_keys_adj, const List& prev_power_keys_adj, const List& prev_data_adj_list, const IntegerVector& prev_spike_decision_int_adj, const bool has_prev);
+RcppExport SEXP _mfp2_build_adjustment_step_loop_cpp(SEXP xSEXP, SEXP x_col_indexSEXP, SEXP vars_adjSEXP, SEXP powers_adjSEXP, SEXP acdx_adjSEXP, SEXP zero_adjSEXP, SEXP catzero_adjSEXP, SEXP spike_adjSEXP, SEXP spike_decision_int_adjSEXP, SEXP acd_parameter_adjSEXP, SEXP eliminatedSEXP, SEXP spike_binary_only_flagsSEXP, SEXP current_power_keys_adjSEXP, SEXP prev_power_keys_adjSEXP, SEXP prev_data_adj_listSEXP, SEXP prev_spike_decision_int_adjSEXP, SEXP has_prevSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type x_col_index(x_col_indexSEXP);
+    Rcpp::traits::input_parameter< const CharacterVector& >::type vars_adj(vars_adjSEXP);
+    Rcpp::traits::input_parameter< const List& >::type powers_adj(powers_adjSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type acdx_adj(acdx_adjSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type zero_adj(zero_adjSEXP);
+    Rcpp::traits::input_parameter< const List& >::type catzero_adj(catzero_adjSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type spike_adj(spike_adjSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type spike_decision_int_adj(spike_decision_int_adjSEXP);
+    Rcpp::traits::input_parameter< const List& >::type acd_parameter_adj(acd_parameter_adjSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type eliminated(eliminatedSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type spike_binary_only_flags(spike_binary_only_flagsSEXP);
+    Rcpp::traits::input_parameter< const List& >::type current_power_keys_adj(current_power_keys_adjSEXP);
+    Rcpp::traits::input_parameter< const List& >::type prev_power_keys_adj(prev_power_keys_adjSEXP);
+    Rcpp::traits::input_parameter< const List& >::type prev_data_adj_list(prev_data_adj_listSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type prev_spike_decision_int_adj(prev_spike_decision_int_adjSEXP);
+    Rcpp::traits::input_parameter< const bool >::type has_prev(has_prevSEXP);
+    rcpp_result_gen = Rcpp::wrap(build_adjustment_step_loop_cpp(x, x_col_index, vars_adj, powers_adj, acdx_adj, zero_adj, catzero_adj, spike_adj, spike_decision_int_adj, acd_parameter_adj, eliminated, spike_binary_only_flags, current_power_keys_adj, prev_power_keys_adj, prev_data_adj_list, prev_spike_decision_int_adj, has_prev));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_mfp2_transform_fp_core", (DL_FUNC) &_mfp2_transform_fp_core, 5},
     {"_mfp2_generate_transformations_fp_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_cpp, 4},
+    {"_mfp2_build_adjustment_step_loop_cpp", (DL_FUNC) &_mfp2_build_adjustment_step_loop_cpp, 17},
     {NULL, NULL, 0}
 };
 

@@ -24,6 +24,12 @@ body {
   line-height: 1.5;
 }
 
+/* Justify narrative paragraphs */
+p {
+  text-align: justify;
+  text-justify: inter-word;
+}
+
 /* Justify normal prose, but not code, tables, headings, or captions */
 p, li {
   text-align: justify;

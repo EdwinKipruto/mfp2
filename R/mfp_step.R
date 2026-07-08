@@ -234,9 +234,9 @@ find_best_fp_step <- function(x,
     # continuous + binary spike model. If stage 1 selects null,
     # any previous binary-only decision is stale.
     if (isTRUE(spike[[xi]])) {
-      # Here 2L is just the neutral non-binary-only state and its appropiate
-      # since the variable will be eliminated
-      spike_decision[[xi]] <- 2L
+      # continuous_only is the neutral non-binary-only state here because the
+      # variable will be eliminated.
+      spike_decision[[xi]] <- saz_decision_codes[["continuous_only"]]
     }
     
     return(list(
@@ -259,16 +259,18 @@ find_best_fp_step <- function(x,
   
   # If we get here:
   # power_best is not NA
-  # AND xi is a spike variable
+  # and xi is a spike variable
   # Therefore run SAZ stage 2.
   # ----------------------------------------------------------------------------
-  # Evaluate spike at zero (SAZ) variables to update spike_decision 
-  # This is stage 2 of SAZ algorithm. Computed only when variable is selected
+  # Evaluate spike at zero (SAZ) variables to update spike_decision.
+  # This is stage 2 of the SAZ algorithm, computed only when the variable was
+  # selected in stage 1. See evaluate_saz_stage2() (spike_at_zero.R) for the
+  # reduced-model fitting, decision rule, and stage-2 printing.
   # ----------------------------------------------------------------------------
-  # fit candidate models to evaluate Spike at zero variables
-  models <- fit_saz_reduced_models(
-    stage1_selection = fit1,
+  stage2 <- evaluate_saz_stage2(
+    fit1 = fit1,
     xi = xi,
+    power_best = power_best,
     y = y,
     weights = weights,
     offset = offset,
@@ -279,49 +281,16 @@ find_best_fp_step <- function(x,
     nocenter = nocenter,
     control = control,
     rownames = rownames,
-    has_offset = has_offset
-  )
-  
-  # compute metrics for the three models to decide on SAZ models
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
-  
-  metrics <- compute_saz_stage2_metrics(
-    fit1 = models$fit1,
-    fit2 = models$fit2,
-    fit3 = models$fit3,
+    has_offset = has_offset,
     n_obs = n_obs,
-    power_best = power_best
+    criterion = criterion,
+    select = select,
+    ftest = ftest,
+    spike_decision = spike_decision,
+    verbose = verbose
   )
   
-  # Update spike_decision. That is decision on whether both components,  
-  # FPm/linear only, or binary only is needed
-  decision <- compute_saz_stage2_decision(metrics, criterion, select, n_obs, ftest)
-  spike_decision[xi] <- decision$decision
-  
-  # add spike metrics to fit1 for printing stage 2
-  f_names <- rownames(fit1$metrics)[fit1$model_best]
-  spike_metrics <- do.call(rbind, metrics)
-  
-  stage2_names <- strsplit(f_names, " \\+ ")[[1]]
-  
-  # For df = 1, stage 1 can be a linear SAZ model. Ensure the full model
-  # label still has an explicit binary component so the three stage-2 rows are:
-  # full model, continuous/linear component only, binary component only.
-  if (isTRUE(spike[[xi]]) && length(stage2_names) == 1L) {
-    f_names <- paste0(stage2_names, " + Binary")
-    stage2_names <- c(stage2_names, "Binary")
-  }
-  
-  rownames(spike_metrics) <- c(f_names, stage2_names)
-  
-  fit1$spike_metrics <- list(metrics = spike_metrics, 
-                             spike_decision = spike_decision[xi],
-                             pvalue = decision$pvalue)
-  if (verbose) {
-    print_mfp_step(xi = xi, criterion = criterion, fit = fit1, stage2 = TRUE)
-  }
-  
-  return(list(power_best = power_best, spike_decision = spike_decision,
+  return(list(power_best = power_best, spike_decision = stage2$spike_decision,
               current_adj_params = fit1$current_adj_params))
   
 }
@@ -435,127 +404,7 @@ find_best_fpm_step <- function(x,
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
   use_glm_intercept_template <- !identical(family_string, "cox")
   
-  # Parallel computation ---------------------------------------------------------
-  # Candidate FP models for the current variable xi are independent once the
-  # adjustment block has been fixed. Therefore, only this candidate-model search
-  # is parallelized. The main MFP cycles and the within-cycle variable update
-  # order remain sequential elsewhere in the algorithm.
-  # if (isTRUE(parallel)) {
-  #   # Capture arguments passed through `...` once so they can be forwarded safely
-  #   # inside future workers via do.call().
-  #   fit_model_dots <- list(...)
-  #   
-  #   # Fit one candidate FP model for the current variable xi.
-  #   #
-  #   # In the parallel branch, each worker builds its own model matrix. We do not
-  #   # reuse or mutate the sequential branch's working design matrix because that
-  #   # object would not be safe to share across future workers.
-  #   fit_one_candidate <- function(i) {
-  #     data_xi <- data_fp[[i]]
-  #     
-  #     # Combine the candidate FP basis for xi with the fixed adjustment block.
-  #     # The adjustment block is identical for all candidate powers in this step.
-  #     if (has_adj) {
-  #       x_fit <- cbind(data_xi, data_adj)
-  #     } else {
-  #       x_fit <- data_xi
-  #     }
-  #     
-  #     # GLM fits require an intercept. Add it here and tell fit_model()/fit_glm()
-  #     # that the intercept is already present to avoid adding it again.
-  #     # Cox fits must not include an intercept.
-  #     if (use_glm_intercept_template) {
-  #       x_fit <- cbind("(Intercept)" = rep.int(1, nrow(data_xi)), x_fit)
-  #     }
-  #     
-  #     fit <- do.call(
-  #       fit_model,
-  #       c(
-  #         list(
-  #           x               = x_fit,
-  #           y               = y,
-  #           family          = family,
-  #           family_string   = family_string,
-  #           has_offset      = has_offset,
-  #           x_has_intercept = use_glm_intercept_template
-  #         ),
-  #         fit_model_dots
-  #       )
-  #     )
-  #     
-  #     # All candidate models fitted here have the same FP degree, so their model
-  #     # metrics can be compared directly. The best model is selected later by
-  #     # maximum log-likelihood.
-  #     calculate_model_metrics(
-  #       fit,
-  #       n_obs,
-  #       degree
-  #     )
-  #   }
-  #   
-  #   # Use the number of workers from the currently active future plan. This
-  #   # respects the user's plan, for example future::multisession, future::cluster,
-  #   # future::multicore, or future::sequential. The package does not set or reset
-  #   # the future plan internally.
-  #   n_candidates <- length(data_fp)
-  #   
-  #   n_workers <- future::nbrOfWorkers()
-  #   n_workers <- max(1L, min(n_workers, n_candidates))
-  #   
-  #   chunk_size <- ceiling(n_candidates / n_workers)
-  #   # Split candidate models into worker-sized chunks. This avoids creating one
-  #   # future per candidate model, which can be slower than sequential fitting for
-  #   # small Gaussian models because of scheduling and serialization overhead.
-  #   candidate_chunks <- split(
-  #     seq_len(n_candidates),
-  #     ceiling(seq_len(n_candidates) / chunk_size)
-  #   )
-  #   
-  #   # Each worker receives one chunk and fits the candidates in that chunk
-  #   # sequentially. This reduces future overhead while preserving the ordering of
-  #   # the candidate metrics after unlisting below.
-  #   fit_candidate_chunk <- function(idx) {
-  #     out <- vector("list", length(idx))
-  #     
-  #     for (jj in seq_along(idx)) {
-  #       out[[jj]] <- fit_one_candidate(idx[jj])
-  #     }
-  #     
-  #     out
-  #   }
-  #   
-  #   # Candidate model fitting is deterministic and does not use RNG, so no
-  #   # parallel RNG streams are required.
-  #   metrics_chunks <- future.apply::future_lapply(
-  #     candidate_chunks,
-  #     fit_candidate_chunk,
-  #     future.seed = FALSE
-  #   )
-  #   
-  #   # Flatten worker-level results back to one result per candidate and combine
-  #   # them into the same metrics matrix returned by the sequential branch.
-  #   metrics <- unlist(metrics_chunks, recursive = FALSE)
-  #   metrics <- do.call(rbind, metrics)
-  #   
-  #   # Select the best candidate by log-likelihood and store its transformed
-  #   # current-variable design in current_params for subsequent adjustment steps.
-  #   model_best <- as.numeric(which.max(metrics[, "logl"]))
-  #   x_transformed$current_params[[xi]]$data_xi <-
-  #     x_transformed$data_fp[[model_best]]
-  #   
-  #   return(
-  #     list(
-  #       acd = acdx[xi],
-  #       powers = x_transformed$powers_fp,
-  #       power_best = x_transformed$powers_fp[model_best, , drop = TRUE],
-  #       metrics = metrics,
-  #       model_best = model_best,
-  #       zero = zero[xi],
-  #       catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
-  #       current_adj_params = x_transformed$current_params
-  #     )
-  #   )
-  # }
+
   # Sequential computation ---------------------------------------------------------
   
   first_xi <- data_fp[[1L]]
@@ -2109,6 +1958,187 @@ select_ic_acd <- function(x,
   res
 }
 
+#' Build Adjustment-Step Matrices Using the C++ Hot Loop
+#'
+#' Prepares aligned inputs for `build_adjustment_step_loop_cpp()` and calls the
+#' C++ implementation of the per-variable adjustment loop used inside
+#' `build_adjustment_step()`.
+#'
+#' This helper is intentionally scoped to the MFP adjustment-step path. It does
+#' not estimate ACD parameters. ACD adjustment variables are expected to have
+#' stored `acd_parameter` values already; the C++ code applies those stored
+#' parameters when recomputing ACD adjustment columns.
+#'
+#' @param x Numeric matrix or numeric data frame containing the original
+#'   predictors.
+#' @param vars_adj Character vector of adjustment-variable names.
+#' @param powers_adj Named list of current selected powers for `vars_adj`.
+#' @param acdx_adj Named logical vector/list indicating ACD variables.
+#' @param zero_adj Named logical vector/list indicating zero handling.
+#' @param catzero Named list of structural-zero indicator matrices. Elements
+#'   are either `NULL` or `nrow(x) x 1` matrices.
+#' @param spike_adj Named logical vector/list indicating spike-at-zero variables.
+#' @param spike_decision_int_adj Named integer vector of spike decisions.
+#' @param acd_parameter_adj Named list of stored ACD parameters for `vars_adj`.
+#' @param eliminated Named logical vector indicating variables with all-NA powers.
+#' @param spike_binary_only_flags Named logical vector indicating
+#'   `spike_decision == 3`.
+#' @param current_power_keys_adj Named list of normalized current power keys.
+#' @param prev_power_keys_adj Named list of normalized previous power keys, or
+#'   `NULL` if there is no previous cache.
+#' @param prev_xi Previous cache object for the current focal variable, or
+#'   `NULL`.
+#' @param has_prev Logical scalar; whether `prev_xi` is available.
+#'
+#' @return A list with:
+#' \describe{
+#'   \item{data_adj_list}{Named list of per-variable adjustment matrices.}
+#'   \item{data_adj}{The final column-bound adjustment matrix.}
+#' }
+#'
+#' @keywords internal
+#' @noRd
+mfp2_build_adjustment_step_loop <- function(x,
+                                            vars_adj,
+                                            powers_adj,
+                                            acdx_adj,
+                                            zero_adj,
+                                            catzero,
+                                            spike_adj,
+                                            spike_decision_int_adj,
+                                            acd_parameter_adj,
+                                            eliminated,
+                                            spike_binary_only_flags,
+                                            current_power_keys_adj,
+                                            prev_power_keys_adj = NULL,
+                                            prev_xi = NULL,
+                                            has_prev = FALSE) {
+  # The zero-adjustment-variable case is handled here and returns data_adj = NULL.
+  # If adjustment variables exist but all contribute zero columns, the C++ helper
+  # returns an n x 0 matrix.
+  if (length(vars_adj) == 0L) {
+    return(list(
+      data_adj_list = list(),
+      data_adj      = NULL
+    ))
+  }
+  
+  # The C++ interface expects a numeric matrix. In normal MFP internals `x`
+  # should already be a numeric matrix, but this keeps the bridge robust.
+  if (!is.matrix(x)) {
+    x <- data.matrix(x)
+  }
+  
+  if (!is.numeric(x)) {
+    stop("Internal error: `x` must be numeric in build_adjustment_step().",
+         call. = FALSE)
+  }
+  
+  # Convert list-like logical inputs to plain aligned logical vectors. This
+  # avoids relying on Rcpp's coercion of named one-element list entries.
+  acdx_flag <- vapply(acdx_adj, isTRUE, logical(1L))
+  zero_flag <- vapply(zero_adj, isTRUE, logical(1L))
+  spike_flag <- vapply(spike_adj, isTRUE, logical(1L))
+  eliminated_flag <- vapply(eliminated, isTRUE, logical(1L))
+  spike_binary_only_flag <- vapply(spike_binary_only_flags, isTRUE, logical(1L))
+  
+  # build_adjustment_step() should only apply stored ACD parameters. It should
+  # not fit/refit ACD inside the MFP step loop.
+  if (any(acdx_flag)) {
+    missing_acd_parameter <- vars_adj[
+      acdx_flag &
+        vapply(acd_parameter_adj, is.null, logical(1L))
+    ]
+    
+    if (length(missing_acd_parameter) > 0L) {
+      stop(
+        paste0(
+          "Internal error: ACD adjustment variable(s) are missing stored ",
+          "acd_parameter values in build_adjustment_step(): ",
+          paste(missing_acd_parameter, collapse = ", "),
+          "."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  
+  # Previous per-variable matrices are used for cache hits. If no previous cache
+  # exists, pass aligned NULL placeholders.
+  prev_data_adj_list <- vector("list", length(vars_adj))
+  names(prev_data_adj_list) <- vars_adj
+  
+  prev_spike_decision_int_adj <- rep(NA_integer_, length(vars_adj))
+  names(prev_spike_decision_int_adj) <- vars_adj
+  
+  if (has_prev) {
+    if (is.null(prev_xi)) {
+      stop("Internal error: `has_prev = TRUE` but `prev_xi` is NULL.",
+           call. = FALSE)
+    }
+    
+    prev_data_adj_list <- prev_xi$data_adj_list[vars_adj]
+    
+    prev_spike_decision_int_adj <- as.integer(
+      prev_xi$spike_decision_adj[vars_adj]
+    )
+    names(prev_spike_decision_int_adj) <- vars_adj
+  }
+  
+  # If there is no previous cache, pass an aligned list of NULL power keys.
+  if (!has_prev || is.null(prev_power_keys_adj)) {
+    prev_power_keys_adj <- vector("list", length(vars_adj))
+    names(prev_power_keys_adj) <- vars_adj
+  }
+  
+  # Pass column positions instead of slicing x. C++ uses zero-based indices.
+  x_col_index <- match(vars_adj, colnames(x))
+  
+  if (anyNA(x_col_index)) {
+    stop(
+      paste0(
+        "Internal error: adjustment variable(s) are missing from `x`: ",
+        paste(vars_adj[is.na(x_col_index)], collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  # Slice catzero here so the C++ inputs are all aligned to vars_adj.
+  catzero_adj <- catzero[vars_adj]
+  
+  cpp_adj <- build_adjustment_step_loop_cpp(
+    x                            = x,
+    x_col_index                  = as.integer(x_col_index - 1L),
+    vars_adj                     = vars_adj,
+    powers_adj                   = unname(powers_adj),
+    acdx_adj                     = unname(acdx_flag),
+    zero_adj                     = unname(zero_flag),
+    catzero_adj                  = unname(catzero_adj),
+    spike_adj                    = unname(spike_flag),
+    spike_decision_int_adj       = unname(as.integer(spike_decision_int_adj)),
+    acd_parameter_adj            = unname(acd_parameter_adj),
+    eliminated                   = unname(eliminated_flag),
+    spike_binary_only_flags      = unname(spike_binary_only_flag),
+    current_power_keys_adj       = unname(current_power_keys_adj),
+    prev_power_keys_adj          = unname(prev_power_keys_adj),
+    prev_data_adj_list           = unname(prev_data_adj_list),
+    prev_spike_decision_int_adj  = unname(prev_spike_decision_int_adj),
+    has_prev                     = has_prev
+  )
+  
+  # Restore names defensively. The C++ helper also assigns names, but keeping
+  # this in R makes the cache contract explicit.
+  data_adj_list <- cpp_adj$data_adj_list
+  names(data_adj_list) <- vars_adj
+  
+  list(
+    data_adj_list = data_adj_list,
+    data_adj      = cpp_adj$data_adj
+  )
+}
+
 #' Build transformed adjustment data for one MFP step
 #'
 #' Internal helper used by transform_data_step() and selection functions to
@@ -2154,18 +2184,28 @@ build_adjustment_step <- function(x,
   # Adjustment variables are all variables except the current focal variable.
   vars_adj <- setdiff(names_powers_current, xi)
   
+  # Return contract:
+  #   * If there are no adjustment variables, data_adj is NULL.
+  #   * If adjustment variables exist but all contribute zero columns,
+  #     data_adj is an n x 0 matrix.
+  #   * If at least one adjustment variable contributes columns,
+  #     data_adj is the column-bound adjustment matrix.
+  #
+  # Downstream code should test NCOL(data_adj) > 0L rather than relying on NULL
+  # versus n x 0 matrix semantics.
+  
   # These are returned even when there are no adjustment variables.
   powers_adj <- NULL
   spike_decision_adj <- NULL
   
-  # Per-variable transformed adjustment matrices.
-  # Each element is keyed by the adjustment variable name.
+  # Defaults for the no-adjustment-variable case.
+  data_adj <- NULL
   data_adj_list <- list()
   
   if (length(vars_adj) > 0L) {
     # Reusable empty matrix for variables that contribute no adjustment columns,
     # for example eliminated variables with all-NA powers.
-    empty_adj_mat <- matrix(nrow = nrow(x), ncol = 0L)
+    #empty_adj_mat <- matrix(nrow = nrow(x), ncol = 0L)
     
     # Previous cached adjustment information for this focal variable.
     # prev_adj_params is indexed by xi.
@@ -2210,7 +2250,11 @@ build_adjustment_step <- function(x,
     spike_binary_only_flags <- vapply(
       vars_adj,
       function(v) {
-        isTRUE(spike_adj[[v]]) && identical(spike_decision_int_adj[[v]], 3L)
+        isTRUE(spike_adj[[v]]) &&
+          identical(
+            spike_decision_int_adj[[v]],
+            saz_decision_codes[["binary_only"]]
+          )
       },
       logical(1L)
     )
@@ -2246,183 +2290,28 @@ build_adjustment_step <- function(x,
       )
     }
     
-    # -------------------------------------------------------------------------
-    # Build adjustment columns variable by variable
-    # -------------------------------------------------------------------------
-    for (varname in vars_adj) {
-      
-      # Current spike decision for this adjustment variable.
-      # Needed for cache comparison and catzero/spike handling.
-      spike_current <- spike_decision_int_adj[[varname]]
-      
-      # -----------------------------------------------------------------------
-      # Extract previous cache entry for this adjustment variable
-      # -----------------------------------------------------------------------
-      # We only need two per-variable previous values here:
-      #   1. prev_data_adj: the matrix to reuse on a cache hit
-      #   2. prev_spike_decision: the previous spike decision for comparison
-      #
-      # Previous powers are compared through the precomputed prev_power_keys_adj,
-      # so no per-variable previous-power object is needed here.
-      prev_data_adj <- NULL
-      prev_spike_decision <- NULL
-      
-      if (has_prev) {
-        prev_data_adj <- prev_xi$data_adj_list[[varname]]
-        
-        # Must be integer to match spike_current.
-        prev_spike_decision <- prev_spike_decision_int_adj[[varname]]
-      }
-      
-      # -----------------------------------------------------------------------
-      # Cache invalidation
-      # -----------------------------------------------------------------------
-      # Recompute only if either:
-      #   1. the normalized power key changed, or
-      #   2. the spike decision changed.
-      #
-      # Other transformation-relevant inputs such as acdx, zero, acd_parameter,
-      # spike, and catzero are fixed after preprocessing within one fit_mfp()
-      # run, so they are not part of this cache key.
-      recompute <- TRUE
-      
-      if (!is.null(prev_data_adj)) {
-        prev_power_key <- prev_power_keys_adj[[varname]]
-        current_power_key <- current_power_keys_adj[[varname]]
-        
-        powers_same <- identical(prev_power_key, current_power_key)
-        spike_decision_same <- identical(
-          prev_spike_decision,
-          spike_current
-        )
-        
-        recompute <- !(powers_same && spike_decision_same)
-      }
-      
-      # -----------------------------------------------------------------------
-      # Build or reuse adjustment matrix for this variable
-      # -----------------------------------------------------------------------
-      
-      if (spike_binary_only_flags[[varname]]) {
-        # Binary-only spike:
-        # use only the structural-zero indicator matrix.
-        #
-        # Under the internal invariant, catzero[[varname]] is already an n x 1
-        # matrix, so do not wrap it in matrix() or as.matrix().
-        cz <- catzero[[varname]]
-        
-        if (is.null(cz)) {
-          stop(
-            "Internal error: binary-only spike variable '", varname,
-            "' has no catzero indicator.",
-            call. = FALSE
-          )
-        }
-        
-        adj_mat <- cz
-        
-      } else if (eliminated[[varname]]) {
-        # Eliminated non-binary-only variable:
-        # contributes no adjustment columns.
-        adj_mat <- empty_adj_mat
-        
-      } else if (!recompute) {
-        # Cache hit:
-        # reuse the previous transformed matrix for this variable.
-        adj_mat <- prev_data_adj
-        
-      } else {
-        xvec <- x[, varname, drop = TRUE]
-        power_current <- as.numeric(powers_adj[[varname]])
-        
-        # Cache miss:
-        # recompute the transformed continuous/FP part.
-        if (isTRUE(acdx_adj[[varname]])) {
-          transformed <- transform_vector_acd(
-            x = xvec,
-            power = power_current,
-            zero = zero_adj[[varname]],
-            acd_parameter = acd_parameter_adj[[varname]],
-            
-            # Full candidate powers are needed by acd() when acd_parameter = NULL.
-            powers = powers[[varname]]
-          )$acd
-        } else {
-          transformed <- transform_vector_fp(
-            x = xvec,
-            power = power_current,
-            zero = zero_adj[[varname]]
-          )
-        }
-        
-        # Normalize transformed output to matrix form.
-        # Downstream code expects every adjustment contribution to be a matrix,
-        # including one-column transformations.
-        if (is.null(transformed)) {
-          adj_mat <- empty_adj_mat
-        } else if (is.null(dim(transformed))) {
-          adj_mat <- matrix(transformed, ncol = 1L)
-        } else {
-          adj_mat <- as.matrix(transformed)
-        }
-        
-        # ---------------------------------------------------------------------
-        # Add structural-zero indicator if needed
-        # ---------------------------------------------------------------------
-        # catzero handling depends on spike_decision:
-        #
-        #   spike_decision == 1:
-        #     include both catzero and continuous FP part.
-        #
-        #   spike_decision == 2:
-        #     include continuous FP part only.
-        #
-        #   spike_decision == 3:
-        #     include catzero only.
-        #
-        # Non-spike variables with catzero available get catzero prepended to
-        # their transformed FP columns.
-        cz_mat <- catzero[[varname]]
-        
-        if (!is.null(cz_mat)) {
-          if (isTRUE(spike_adj[[varname]])) {
-            spike_val <- spike_current
-            
-            if (identical(spike_val, 1L)) {
-              adj_mat <- cbind(cz_mat, adj_mat)
-            } else if (identical(spike_val, 2L)) {
-              adj_mat <- adj_mat
-            } else if (identical(spike_val, 3L)) {
-              adj_mat <- cz_mat
-            }
-          } else {
-            adj_mat <- cbind(cz_mat, adj_mat)
-          }
-        }
-      }
-      
-      # Assign informative column names.
-      #
-      # The final adjustment matrix is constructed by cbind-ing all entries of
-      # data_adj_list. Prefixing with varname preserves the mapping from columns
-      # back to the original adjustment variable.
-      if (!is.null(adj_mat) && ncol(adj_mat) > 0L) {
-        colnames(adj_mat) <- paste0(varname, "_adj", seq_len(ncol(adj_mat)))
-      }
-      
-      # Store per-variable matrix for cache reuse in later iterations.
-      data_adj_list[[varname]] <- adj_mat
-    }
-  }
-  
-  # Combine all adjustment-variable matrices into one adjustment matrix.
-  #
-  # If there are no adjustment variables, return NULL. If some variables are
-  # eliminated, their entries are 0-column matrices and do not add columns.
-  data_adj <- if (length(data_adj_list) > 0L) {
-    do.call(cbind, data_adj_list)
-  } else {
-    NULL
+    # The surrounding R code remains responsible for preparing named metadata and
+    # preserving the build_adjustment_step() return contract.
+    cpp_adj <- mfp2_build_adjustment_step_loop(
+      x                         = x,
+      vars_adj                  = vars_adj,
+      powers_adj                = powers_adj,
+      acdx_adj                  = acdx_adj,
+      zero_adj                  = zero_adj,
+      catzero                   = catzero,
+      spike_adj                 = spike_adj,
+      spike_decision_int_adj    = spike_decision_int_adj,
+      acd_parameter_adj         = acd_parameter_adj,
+      eliminated                = eliminated,
+      spike_binary_only_flags   = spike_binary_only_flags,
+      current_power_keys_adj    = current_power_keys_adj,
+      prev_power_keys_adj       = prev_power_keys_adj,
+      prev_xi                   = prev_xi,
+      has_prev                  = has_prev
+    )
+    
+    data_adj_list <- cpp_adj$data_adj_list
+    data_adj      <- cpp_adj$data_adj
   }
   
   list(

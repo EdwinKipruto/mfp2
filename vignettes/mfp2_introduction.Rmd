@@ -106,45 +106,65 @@ library(formatR)
 # Introduction to the `mfp2` package
 
 `mfp2` is a package that implements the multivariable fractional
-polynomial (MFP) approach to model selection. The MFP combines variable
-selection with the selection of suitable functional forms for continuous
-covariates. In addition to standard MFP modelling, the package supports
-the approximate cumulative distribution (ACD) transformation proposed by
-Royston (2014) and implemented in the Stata procedure MFPA (Royston and
-Sauerbrei, 2016). This extension enables modelling of sigmoid
-relationships between a continuous covariate `x` and an outcome variable
-`y`.
+polynomial (MFP) approach to model selection. The MFP approach combines
+variable selection with the selection of suitable functional forms for
+continuous covariates.
 
-The package offers three options for variable and function selection:
-nominal significance levels using p-values, Akaike information criterion
-(AIC), and Bayesian information criterion (BIC). It also provides
-functions for prediction and plotting. Currently, the package implements
-linear, logistic, Poisson, and Cox regression models. However, the
-package is designed in such a way that it can easily incorporate other
-regression models.
+Compared with the original `mfp` package in R, `mfp2` provides a broader
+and more flexible implementation of fractional polynomial modelling. In
+particular, while `mfp` is restricted to FP1 and FP2 functions, `mfp2`
+allows fractional polynomial functions of arbitrary degree, denoted FPm,
+where \(m = 1, \ldots, M\). The package also extends model selection
+beyond p-value based procedures by allowing selection using Akaike
+information criterion (AIC) and Bayesian information criterion (BIC).
+Additional functionality includes support for sigmoid relationships
+through the approximate cumulative distribution (ACD) transformation,
+spike-at-zero (SAZ) modelling for semi-continuous covariates, and
+interaction modelling between categorical grouping variables and
+continuous covariates through `mfpi()`. These extensions are implemented
+with attention to computational efficiency, including compiled code for
+performance-critical transformation steps, and are accompanied by
+documented functions and vignettes that illustrate the main modelling
+workflows.
 
-The main function, `mfp2()`, implements the standard MFP algorithm and
-its ACD extension. It also implements spike-at-zero (SAZ) modelling for
-semi-continuous covariates with a point mass at zero. SAZ modelling is
-useful when zero values may represent a distinct subgroup, while
-positive values are modelled using an FP function. This is handled
-within `mfp2()` by combining a binary zero indicator with an FP function
-for the positive part of the covariate. For more details on the SAZ
+The ACD transformation was proposed by Royston (2014) and implemented in
+the Stata procedure MFPA (Royston and Sauerbrei, 2016). It enables the
+modelling of sigmoid relationships between a continuous covariate `x`
+and an outcome variable `y`. In `mfp2`, ACD modelling is available
+through the main `mfp2()` function.
+
+The `mfp2()` function also implements SAZ modelling for semi-continuous
+covariates with a point mass at zero. SAZ modelling is useful when zero
+values may represent a distinct subgroup, while positive values are
+modelled using an FP or linear function. In `mfp2`, an SAZ covariate is
+initially represented by two components: a binary indicator for the zero
+part and an FP or linear function for the positive part of the covariate.
+After this full SAZ representation has been considered, the algorithm
+evaluates whether both components are needed, whether only the FP or
+linear positive-part component should be retained, or whether only the
+binary zero indicator should be retained. If the covariate is not
+selected, both components are dropped. For more details on the SAZ
 algorithm, see the `mfp2()` documentation and the dedicated SAZ vignette
 available within the package.
 
-Beyond `mfp2()`, the package also provides `mfpi()`, a dedicated
-function for multivariable fractional polynomial interaction (MFPI)
-analysis. The `mfpi()` function investigates interactions between a
-grouping variable, such as treatment, and continuous covariates using FP
-functions. This avoids the need to categorize continuous variables or
-assume linearity when assessing whether the effect of a grouping
-variable varies across the range of a continuous covariate (Royston and
-Sauerbrei, 2004). Thus, within the `mfp2` package, `mfp2()` is the main
-function for MFP, MFPA, and SAZ modelling, whereas `mfpi()` is the
-dedicated function for interaction analysis. For more details on MFPI,
-see the `mfpi()` documentation and the dedicated MFPI vignette available
-within the `mfp2` package.
+Beyond `mfp2()`, the package provides `mfpi()`, a dedicated function for
+multivariable fractional polynomial interaction (MFPI) analysis. The
+`mfpi()` function investigates interactions between a grouping variable,
+such as treatment, and continuous covariates using FP functions. This
+avoids the need to categorize continuous variables or assume linearity
+when assessing whether the effect of a grouping variable varies across
+the range of a continuous covariate (Royston and Sauerbrei, 2004).
+Thus, within the `mfp2` package, `mfp2()` is the main function for MFP,
+MFPA/ACD, and SAZ modelling, whereas `mfpi()` is the dedicated function
+for interaction analysis. For more details on MFPI, see the `mfpi()`
+documentation and the dedicated MFPI vignette available within the
+package.
+
+Currently, the package implements linear, logistic, Poisson, and Cox
+regression models. Future development may extend this implementation to
+other likelihood-based regression models, such as Gamma and inverse
+Gaussian GLMs, negative binomial regression, and parametric survival
+models.
 
 The `mfp2()` function offers two interfaces for input data. The first
 interface, the matrix interface, allows direct input of the covariate
@@ -163,8 +183,8 @@ Royston, and Willi Sauerbrei. We acknowledge the comments and
 suggestions provided by Georg Heinze and Gregory Steiner, which helped
 us improve our package. The R package is maintained by Edwin Kipruto,
 while the Stata MFP and MFPA programs are maintained by Patrick Royston.
-Parts of the text and some recommendations (e.g. section 2.3.3) have
-been taken from the Stata programs MFP and MFPA.
+Parts of the text and some recommendations, for example Section 2.3.3,
+have been taken from the Stata programs MFP and MFPA.
 
 # Estimation algorithm
 
@@ -981,47 +1001,65 @@ make all transformed covariate values positive. This can lead to prediction
 errors when nonlinear FP functions involving logarithms or negative powers are
 used. In such cases, `predict()` issues a warning.
 
+Fitted FP functions can be visualized using `plot(fit)`. The `plot()`
+method is the recommended graphical interface for fitted `mfp2` objects;
+the older `fracplot()` function remains available for backward
+compatibility.
+
 # Graphical presentation of FP functions
 
-The regression coefficients $\hat{\beta}$ for FP terms provide only limited
-information about the fitted function for a variable of interest. A more
-informative approach is to visualize the fitted function, especially for
-variables with nonlinear effects (Royston and Sauerbrei, 2008). The `mfp2`
-package provides the `fracplot()` function for this purpose.
+The regression coefficients $\hat{\beta}$ for FP terms provide only
+limited information about the fitted function for a variable of interest.
+A more informative approach is to visualize the fitted function,
+especially for variables with nonlinear effects (Royston and Sauerbrei,
+2008).
 
-Given a fitted `mfp2` object, `fracplot()` produces plots of the selected
-functions, together with 95% confidence intervals. As with all data-derived
-models, model-based confidence intervals may be too narrow. Bootstrap methods can
-be used to obtain more realistic estimates of standard errors and pointwise
-confidence intervals (Sauerbrei and Royston, 2007). The variable to be plotted
-can be specified using the `terms` argument. If `terms = NULL`, which is the
-default, `fracplot()` returns a list of plots for all variables included in the
-final model.
+The recommended way to produce graphical displays from a fitted `mfp2`
+object is to use the S3 `plot()` method. The method returns a list of
+`ggplot2` objects, one for each selected variable requested. Internally,
+the current `plot()` method uses the same plotting machinery as
+`fracplot()`. The `fracplot()` function remains available for backward
+compatibility, but `plot()` is the preferred interface for new code and
+will be used throughout this vignette.
 
-By default, `fracplot()` produces a component-plus-residual plot, because
-`partial_only = FALSE`. For Gaussian models with constant weights and a single
-covariate, this corresponds to a plot of the outcome against the covariate, with
-the fitted function added. For other normal-error models, weighted residuals are
-calculated and added to the fitted values. In models with two or more
-covariates, the plotted function is the partial linear predictor for the
-variable of interest and includes the intercept.
+Given a fitted `mfp2` object, `plot()` produces plots of the selected
+functions, together with pointwise confidence intervals. As with all
+data-derived models, model-based confidence intervals may be too narrow
+because they do not account for uncertainty from variable and function
+selection. Bootstrap methods can be used to obtain more realistic
+estimates of standard errors and pointwise confidence intervals
+(Sauerbrei and Royston, 2007). The variable to be plotted can be
+specified using the `terms` argument. If `terms = NULL`, which is the
+default, `plot()` returns a list of plots for all variables included in
+the final model.
 
-For generalized linear models and Cox models, `fracplot()` plots fitted values
-on the scale of the linear predictor. For generalized linear models, deviance
-residuals are added to the partial linear predictor. For Cox models, martingale
-residuals are added instead. These component-plus-residual values are shown as
-points in the plot. Such plots can reveal the amount of residual variation across
-the covariate range and may indicate lack of fit or influential observations
-(Royston and Sauerbrei, 2008; StataCorp, 2023).
+By default, `plot()` produces a component-plus-residual plot because
+`partial_only = FALSE`. For Gaussian models with constant weights and a
+single covariate, this corresponds to a plot of the outcome against the
+covariate, with the fitted function added. For other normal-error
+models, weighted residuals are calculated and added to the fitted
+values. In models with two or more covariates, the plotted function is
+the partial linear predictor for the variable of interest and includes
+the intercept.
 
-If `partial_only = TRUE`, `fracplot()` plots only the partial linear predictor,
-without adding residuals. Further details on component-plus-residual plots are
-available in the [Stata postestimation manual](https://www.stata.com/manuals/rmfppostestimation.pdf).
+For generalized linear models and Cox models, `plot()` displays fitted
+values on the scale of the linear predictor. For generalized linear
+models, deviance residuals are added to the partial linear predictor.
+For Cox models, martingale residuals are added instead. These
+component-plus-residual values are shown as points in the plot. Such
+plots can reveal the amount of residual variation across the covariate
+range and may indicate lack of fit or influential observations (Royston
+and Sauerbrei, 2008; StataCorp, 2023).
+
+If `partial_only = TRUE`, `plot()` displays only the partial linear
+predictor, without adding residuals. Further details on
+component-plus-residual plots are available in the
+[Stata postestimation manual](https://www.stata.com/manuals/rmfppostestimation.pdf).
 
 For example, the fitted function for `cavol` can be plotted as follows:
 
 ```{r, eval=TRUE, fig.cap="\\label{fig:fig2}Prostate data. Graphical presentation of results from an FP analysis", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
-plots <- fracplot(fit)
+plots <- plot(fit)
 
 # plots is a list
 class(plots)
@@ -1032,35 +1070,37 @@ plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
 
 \newpage
 
-The `fracplot()` function also allows a reference value to be included in the
-plot. This is useful when the aim is to display contrasts relative to a selected
-reference point. To do this, set `type = "contrasts"` and provide the reference
-value using the `ref` argument. If `ref = NULL`, which is the default, the
-average value is used as the reference for continuous variables, and the minimum
-value is used for binary variables. For example, to use 30 as the reference
-value for the continuous variable `cavol`, use the following code:
+The `plot()` method also allows a reference value to be included in the
+plot. This is useful when the aim is to display contrasts relative to a
+selected reference point. To do this, set `type = "contrasts"` and
+provide the reference value using the `ref` argument. If `ref = NULL`,
+which is the default, the average value is used as the reference for
+continuous variables, and the minimum value is used for binary
+variables. For example, to use 30 as the reference value for the
+continuous variable `cavol`, use the following code:
 
 ```{r, eval=TRUE, fig.cap="\\label{fig:fig3}Prostate data. Illustration on how to use reference points (ref point = 30)", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
-plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 30))
+plots <- plot(fit, type = "contrasts", ref = list(cavol = 30))
 plots[[1]] + ggplot2::ylab("Partial predictor")
 ```
 
-In some cases, a fitted function plotted using the original observed covariate
-values may appear very sharp near extreme values. This can occur when only a few
-observations are available in the extreme part of the covariate distribution.
+In some cases, a fitted function plotted using the original observed
+covariate values may appear very sharp near extreme values. This can
+occur when only a few observations are available in the extreme part of
+the covariate distribution.
 
-The `fracplot()` function provides two options for the covariate values used in
-the plot. The first option, `terms_seq = "data"`, uses the original covariate
-values from the data used to fit the model. The second option,
-`terms_seq = "equidistant"`, generates an equally spaced sequence of values over
-the observed covariate range.
+The `plot()` method provides two options for the covariate values used
+in the plot. The first option, `terms_seq = "data"`, uses the original
+covariate values from the data used to fit the model. The second option,
+`terms_seq = "equidistant"`, generates an equally spaced sequence of
+values over the observed covariate range.
 
-To illustrate these options, we use the `art` dataset included in the `mfp2`
-package. This dataset is described in Royston and Sauerbrei (2008, Chapter 10),
-and the outcome variable is continuous. In this example, we fit an MFP model
-with a single covariate, $x5$.
+To illustrate these options, we use the `art` dataset included in the
+`mfp2` package. This dataset is described in Royston and Sauerbrei
+(2008, Chapter 10), and the outcome variable is continuous. In this
+example, we fit an MFP model with a single covariate, $x5$.
 
-```{r, eval=TRUE, fig.cap="Art data. Illustration of the `terms_seq` argument in `fracplot()`. In the original data, the selected function was FP(0, 3), equivalent to $\\beta_0 + \\beta_1 \\log(x_5) + \\beta_2 x_5^3$. The function is plotted using the original observed values of `x5` (right panel) and an equally spaced sequence of values over the observed range of `x5` (left panel). The two functions are identical up to approximately x5 = 62. Beyond this value, the plot based on the original values appears nearly linear because there are no observations between 62.21 and 235. In contrast, the equally spaced sequence clearly displays the fitted FP2 curve.", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
+```{r, eval=TRUE, fig.cap="Art data. Illustration of the `terms_seq` argument in `plot.mfp2()`. In the original data, the selected function was FP(0, 3), equivalent to $\\beta_0 + \\beta_1 \\log(x_5) + \\beta_2 x_5^3$. The function is plotted using the original observed values of `x5` (right panel) and an equally spaced sequence of values over the observed range of `x5` (left panel). The two functions are identical up to approximately x5 = 62. Beyond this value, the plot based on the original values appears nearly linear because there are no observations between 62.21 and 235. In contrast, the equally spaced sequence clearly displays the fitted FP2 curve.", fig.width=7, fig.height=5, out.width="100%", fig.align="center"}
 # load art data
 data("art")
 
@@ -1069,19 +1109,20 @@ xx <- as.matrix(art[, "x5", drop = FALSE])
 yy <- as.numeric(art$y)
 fit2 <- mfp2(xx, yy, verbose = FALSE)
 
-# generate plot using original data 
-plot1 <- fracplot(fit2)
-plot1[[1]] <- plot1[[1]] + 
-  ggplot2::ylab("Partial predictor + residuals") 
+# generate plot using original data
+plot1 <- plot(fit2)
+plot1[[1]] <- plot1[[1]] +
+  ggplot2::ylab("Partial predictor + residuals")
 
-# generate plot using sequence of data
-plot2 <- fracplot(fit2, terms_seq = "equidistant")
-plot2[[1]] <- plot2[[1]] + 
-  ggplot2::ylab("Partial predictor + residuals") 
+# generate plot using an equally spaced sequence
+plot2 <- plot(fit2, terms_seq = "equidistant")
+plot2[[1]] <- plot2[[1]] +
+  ggplot2::ylab("Partial predictor + residuals")
 
 # combine plots
 patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
 ```
+
 
 # Handling categorical variables {#handling-categorical}
 
@@ -1212,11 +1253,11 @@ fit
 
 The output shows that four continuous variables are selected: `glucose` with
 power 1, `bmi` with power -2, `diabetes` with power 1, and `age` with powers
-0 and 3. The selected functions can be visualized using `fracplot()`, as shown
-below.
+0 and 3. The selected functions can be visualized using the `plot()` method, as
+shown below.
 
 ```{r out.lines = 103, fig.show='hold', fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE, fig.width=7, fig.height=6, out.width="100%", fig.align="center"}
-plots <- fracplot(fit)
+plots <- plot(fit)
 
 # Rename y-label for all plots
 plots <- lapply(plots, function(v) {
@@ -1363,6 +1404,11 @@ fit3
 ```
 
 # References
+
+Sauerbrei, W., Royston, P. and Kipruto, E. (2025). Multivariable
+fractional polynomial models and extensions. In *International
+Encyclopedia of Statistical Science* (pp. 1609-1616). Berlin,
+Heidelberg: Springer Berlin Heidelberg.
 
 Huebner, M., le Cessie, S., Schmidt, C.O. and Vach, W. (2018). A
 contemporary conceptual framework for initial data analysis.

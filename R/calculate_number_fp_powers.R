@@ -11,15 +11,15 @@
 #' \code{c(NA, 2)} contribute one FP power after removing the structural
 #' \code{NA}.
 #'
-#' If \code{spike_decision} is supplied, variables with
-#' \code{spike_decision == 3L} are treated as binary-only spike terms and
-#' contribute zero FP powers, regardless of their stored powers.
+#' If \code{spike_decision} is supplied, variables with decision
+#' \code{saz_decision_codes[["binary_only"]]} are treated as binary-only spike
+#' terms and contribute zero FP powers, regardless of their stored powers.
 #'
 #' @param x A named list of fractional polynomial powers.
-#' @param spike_decision Optional named integer vector with spike decisions:
-#'   \code{1L} for FP/linear plus binary spike indicator,
-#'   \code{2L} for FP/linear only, and
-#'   \code{3L} for binary spike indicator only.
+#' @param spike_decision Optional named integer vector with spike decisions.
+#'   Codes are defined by \code{saz_decision_codes}: \code{cont_binary} for
+#'   FP/linear plus binary spike indicator, \code{continuous_only} for FP/linear
+#'   only, and \code{binary_only} for binary spike indicator only.
 #'
 #' @return Integer value denoting the total number of estimated FP powers.
 #'
@@ -55,19 +55,22 @@ calculate_number_fp_powers <- function(x, spike_decision = NULL) {
     
     spike_decision <- spike_decision[names(x)]
     
-    if (anyNA(spike_decision) || any(!spike_decision %in% c(1L, 2L, 3L))) {
+    if (anyNA(spike_decision) || any(!spike_decision %in% unname(saz_decision_codes))) {
       stop(
         "`spike_decision` must contain only values 1L, 2L, or 3L.",
         call. = FALSE
       )
     }
   } else {
-    spike_decision <- setNames(rep(2L, length(x)), names(x))
+    spike_decision <- setNames(
+      rep(saz_decision_codes[["continuous_only"]], length(x)),
+      names(x)
+    )
   }
   
   count_one <- function(p, spike_decision) {
     # Binary-only spike: no FP power parameter.
-    if (identical(as.integer(spike_decision), 3L)) {
+    if (identical(as.integer(spike_decision), saz_decision_codes[["binary_only"]])) {
       return(0L)
     }
     

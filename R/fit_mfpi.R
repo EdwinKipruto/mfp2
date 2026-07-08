@@ -322,7 +322,10 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   adj_spike_decision <- if (!is.null(adjustment_model$spike_dec)) {
     adjustment_model$spike_dec
   } else {
-    setNames(rep(2L, length(selected_vars)), selected_vars)
+    setNames(
+      rep(saz_decision_codes[["continuous_only"]], length(selected_vars)),
+      selected_vars
+    )
   }
   
   adj_spike_decision <- adj_spike_decision[selected_vars]

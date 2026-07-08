@@ -20,20 +20,21 @@
 #'  \code{predict.mfp2()}. `"data"` uses the observed values, `"equidistant"` creates
 #' a grid over the covariate range.
 #' @param alpha Confidence level for intervals. Passed to \code{predict.mfp2()}.
+#' @param show_titles Logical scalar. If \code{TRUE}, add automatically
+#'   generated plot titles describing the FP/ACD and spike-at-zero
+#'   representation. If \code{FALSE}, omit plot titles.
 #' @param shape Numeric value. Shape of points used when residuals 
 #' are displayed.
 #' @param size_points Numeric value. Size of points used when residuals 
 #' are displayed.
-#' @param size_points_spike Numeric value. Size of the point drawn at zero
-#'   when the covariate retains both the continuous and binary SAZ components
-#'   (internal `spike_dec = 1`).
+#' @param size_points_spike Numeric value. Size of the point drawn for the
+#'   zero component of spike-at-zero covariates.
 #' @param color_points Character value. Color of points used when residuals 
 #'   are displayed.
 #' @param color_line Character value. Color of the line representing 
 #'   the partial predictor.
-#' @param color_line_spike Character value. Color of the point drawn at zero
-#'   when the covariate retains both the continuous and binary SAZ components
-#'   (internal `spike_dec = 1`).
+#' @param color_line_spike Character value. Color of the point drawn for the
+#'   zero component of spike-at-zero covariates.
 #' @param linetype Character value. Line type for the partial predictor. 
 #'   See [ggplot2::geom_line()] for options.
 #' @param linewidth Numeric value. Width of the line representing 
@@ -56,25 +57,35 @@
 #' are used for Cox regression. This matches the behavior of the Stata `mfp` 
 #' program.
 #' 
-#' Spike-at-zero covariates are handled according to the `spike_dec` code:
-#' * `1` – Include both the transformed FP function for positive values and the binary 
-#'       spike-at-zero indicator.
-#' * `2` – Ignore the spike; treat the variable as continuous (usual FP plot).
-#' * `3` – Show only the binary spike-at-zero indicator.
+#' Spike-at-zero covariates are plotted according to the representation retained
+#' in the final model:
+#' * both components: the transformed positive-value FP/ACD component plus the
+#'   structural-zero binary indicator.
+#' * positive-part only: the transformed positive-value FP/ACD component, with
+#'   the structural-zero binary indicator suppressed.
+#' * zero indicator only: the structural-zero binary indicator without a
+#'   continuous FP/ACD component.
 #'
-#' Plot behavior for each decision:
-#' * If `spike_dec == 1`, the plot shows the FP function for positive values 
-#'   and includes the binary spike-at-zero indicator. The term 
-#'   \eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also 
-#'   displayed with a vertical error bar. The plot title includes 
-#'   `+ z` to indicate the presence of the spike-at-zero component. The FP power 
-#'   for the positive part is enclosed in parentheses. For example, `FP(0) + z` 
-#'   indicates an FP power of 0 (log) for the positive values.
-#' * If `spike_dec == 3`, the plot shows the binary indicator alone (`z only` in 
-#'   the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing 
-#'   confidence intervals is displayed.
-#' * If `spike_dec == 2` (or not specified), the covariate is plotted as a 
-#'   continuous FP function in the usual way.
+#' Plot titles use explicit spike-at-zero labels:
+#' * `spike: both components FP(<powers>) + zero indicator` when both the
+#'   positive-value FP component and the structural-zero indicator are retained.
+#' * `spike: positive-part only FP(<powers>)` when only the positive-value FP
+#'   component is retained.
+#' * `spike: zero indicator only` when only the structural-zero indicator is
+#'   retained.
+#'
+#' For ACD terms, the continuous component is labelled as
+#' `ACD FP(<powers>)`, for example
+#' `spike: both components ACD FP(0.5) + zero indicator`.
+#'
+#' Set \code{show_titles = FALSE} to suppress these automatically generated
+#' plot titles. This is useful when plots are combined in multi-panel figures
+#' or when custom titles are added later with ggplot2.
+#'
+#' For spike-at-zero covariates with a continuous component, the curve is drawn
+#' only over `x > 0`. If a fitted value at `x = 0` is available, it is displayed
+#' as a separate point with a vertical error bar, consistent with the convention
+#' that the FP/ACD function is not evaluated at zero.
 #'
 #' See \code{predict.mfp2()} for details on partial predictors.
 #' @examples
@@ -105,6 +116,7 @@ fracplot <- function(model,
                      ref = NULL,
                      terms_seq = c("data", "equidistant"),
                      alpha = 0.05,
+                     show_titles = TRUE,
                      color_points = "#AAAAAA",
                      color_line = "red", 
                      color_line_spike = "red",
@@ -127,11 +139,15 @@ fracplot <- function(model,
   if (!inherits(model, "mfp2")) 
     stop("The model entered is not an mfp2 object.", call. = FALSE)
   
- # check if ref is a list (only if it is not NULL)
+  # check if ref is a list (only if it is not NULL)
   if (!is.null(ref) && !is.list(ref))
     stop("ref must be a list", call. = FALSE)
   
- # set defaults depending on type
+  if (!is.logical(show_titles) || length(show_titles) != 1L || is.na(show_titles)) {
+    stop("show_titles must be a single non-missing logical value.", call. = FALSE)
+  }
+  
+  # set defaults depending on type
   type <- match.arg(type)
   if (type == "contrasts") {
     partial_only <- TRUE
@@ -154,7 +170,7 @@ fracplot <- function(model,
                          type = "terms", 
                          terms = terms, 
                          terms_seq = "data")
-    }
+  }
   
   if (length(pred) == 0) {
     warning("i Variables specified in terms not used in final model.")
@@ -176,7 +192,7 @@ fracplot <- function(model,
     #pred_data <- lapply(pred_data, function(v) transform(v, resid = resid))
     pred_data <- lapply(pred_data, function(v) {
       v$resid <- resid
-    v})
+      v})
     
     # y label for the plot
     ylab <- "Partial Predictor + residuals"
@@ -189,22 +205,59 @@ fracplot <- function(model,
   # generated by R CMD CHECK about missing bindings of global variables
   for (v in names(pred)) {
     df <- pred[[v]]
-    # Check if variable has a spike-at-zero binary indicator
-    is_spike <- !is.null(model$catzero_list[[v]])
+    # Check if variable was assessed by the spike-at-zero algorithm.
+    # Use stored spike metadata rather than catzero_list: for positive-part-only
+    # spike terms, the binary indicator is intentionally suppressed, but the
+    # variable is still a spike-at-zero covariate and must be plotted as a
+    # positive-value function.
+    is_spike <- FALSE
+    if (!is.null(model$spike) && v %in% names(model$spike)) {
+      is_spike <- isTRUE(model$spike[[v]])
+    } else if (!is.null(model$fp_terms) &&
+               v %in% rownames(model$fp_terms) &&
+               "spike" %in% colnames(model$fp_terms)) {
+      is_spike <- isTRUE(model$fp_terms[v, "spike"])
+    }
     
-    # Title with FP powers and spike label
-    title_spike <- ifelse(model$spike_dec[v] == 1, " + z",
-                          ifelse(model$spike_dec[v] == 3, " (z only)", ""))
+    spike_dec_v <- saz_decision_codes[["continuous_only"]]
+    if (is_spike &&
+        !is.null(model$spike_dec) &&
+        v %in% names(model$spike_dec) &&
+        !is.na(model$spike_dec[[v]])) {
+      spike_dec_v <- as.integer(model$spike_dec[[v]])
+    }
+    
+    is_acd <- !is.null(model$fp_terms) &&
+      v %in% rownames(model$fp_terms) &&
+      "acd" %in% colnames(model$fp_terms) &&
+      isTRUE(model$fp_terms[v, "acd"])
+    
+    power_label <- paste0(model$fp_powers[[v]], collapse = ", ")
+    continuous_label <- if (is_acd) {
+      sprintf("ACD FP(%s)", power_label)
+    } else {
+      sprintf("FP(%s)", power_label)
+    }
+    
+    # Title with FP/ACD powers and explicit spike-at-zero representation.
+    # The internal spike_dec code is not exposed in the plot title.
+    plot_title <- if (is_spike) {
+      saz_decision_label(
+        spike_dec_v,
+        style = "plot_title",
+        continuous_label = continuous_label
+      )
+    } else {
+      continuous_label
+    }
     
     p <- ggplot2::ggplot(data = df, ggplot2::aes(x = .data$variable, y = .data$value)) +
-      ggplot2::ggtitle(sprintf("FP%s(%s)%s%s", 
-                               ifelse(model$fp_terms[v, "acd"], "1", ""),
-                               paste0(model$fp_powers[[v]], collapse = ", "),
-                               ifelse(model$fp_terms[v, "acd"], ":ACD", ""),
-                               title_spike)
-      ) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw()
+    
+    if (show_titles) {
+      p <- p + ggplot2::ggtitle(plot_title)
+    }
     
     # Residuals go first
     if (!partial_only) {
@@ -215,22 +268,46 @@ fracplot <- function(model,
                                    shape = shape)
     }
     
-    # Then fitted line/ribbon on top
-    # Add line for positive values only if spike-at-zero exists
-    if (is_spike && model$spike_dec[v] != 2) {
+    # Then fitted line/ribbon on top.
+    # For active spike-at-zero covariates, the positive-value FP/ACD curve must
+    # not extend through x = 0. The retained representation is handled as one
+    # of: both components, positive-part only, or zero-indicator only.
+    if (is_spike && spike_dec_v == saz_decision_codes[["binary_only"]]) {
+      # Binary-only SAZ:
+      # predict.mfp2() represents the x-axis as the structural-zero indicator
+      # I(x <= 0), so the prediction data may contain many repeated 0/1 rows
+      # when terms_seq = "data". Collapse to one row per level before drawing;
+      # otherwise geom_line() may connect duplicated values in data order.
+      bin_df <- df[!duplicated(df$variable), , drop = FALSE]
+      bin_df <- bin_df[order(bin_df$variable), , drop = FALSE]
+      
+      p <- p + ggplot2::geom_line(
+        data = bin_df,
+        ggplot2::aes(x = .data$variable, y = .data$value),
+        linewidth = linewidth,
+        linetype = linetype,
+        color = color_line
+      ) +
+        ggplot2::geom_point(
+          data = bin_df,
+          ggplot2::aes(x = .data$variable, y = .data$value),
+          color = color_line,
+          size = size_points_spike
+        ) +
+        ggplot2::geom_errorbar(
+          data = bin_df,
+          ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+          width = 0.2,
+          color = color_line
+        )
+      
+    } else if (is_spike && spike_dec_v == saz_decision_codes[["cont_binary"]]) {
+      # Cont + binary: FP curve for x > 0, point at x = 0
       pos_df <- df[df$variable > 0, , drop = FALSE]
+      pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
       zero_df <- df[df$variable == 0, , drop = FALSE]
       
-      if (model$spike_dec[v] == 3) {
-        # Expect df to have two rows: one for 0 and one for 1
-        p <- p + ggplot2::geom_line(linewidth = linewidth,
-                                    linetype = linetype,
-                                    color = color_line) +
-          ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
-                               alpha = alpha_fill,
-                               fill = color_fill)
-      } else {
-      p <- p + ggplot2::geom_line(data = pos_df, 
+      p <- p + ggplot2::geom_line(data = pos_df,
                                   ggplot2::aes(x = .data$variable, y = .data$value),
                                   linewidth = linewidth,
                                   linetype = linetype,
@@ -238,22 +315,46 @@ fracplot <- function(model,
         ggplot2::geom_ribbon(data = pos_df,
                              ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                              alpha = alpha_fill, fill = color_fill)
-      # Add point at zero for the spike
-      zero_df <- df[df$variable == 0, , drop = FALSE]
+      
       if (nrow(zero_df) > 0) {
         p <- p + ggplot2::geom_point(data = zero_df,
                                      ggplot2::aes(y = .data$value),
                                      color = color_line_spike,
-                                     size = size_points_spike) + 
+                                     size = size_points_spike) +
           ggplot2::geom_errorbar(data = zero_df,
                                  ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
-                                 width = 0.2,   # small width so it's vertical
+                                 width = 0.2,
                                  color = color_line)
       }
+      
+    } else if (is_spike && spike_dec_v == saz_decision_codes[["continuous_only"]]) {
+      # Cont only: FP curve for x > 0, separate reference point at x = 0
+      pos_df <- df[df$variable > 0, , drop = FALSE]
+      pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
+      zero_df <- df[df$variable == 0, , drop = FALSE]
+      
+      p <- p + ggplot2::geom_line(data = pos_df,
+                                  ggplot2::aes(x = .data$variable, y = .data$value),
+                                  linewidth = linewidth,
+                                  linetype = linetype,
+                                  color = color_line) +
+        ggplot2::geom_ribbon(data = pos_df,
+                             ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                             alpha = alpha_fill, fill = color_fill)
+      
+      if (nrow(zero_df) > 0) {
+        p <- p + ggplot2::geom_point(data = zero_df,
+                                     ggplot2::aes(y = .data$value),
+                                     color = color_line_spike,
+                                     size = size_points_spike) +
+          ggplot2::geom_errorbar(data = zero_df,
+                                 ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+                                 width = 0.2,
+                                 color = color_line)
       }
       
     } else {
-      # regular continuous plot
+      # Regular continuous plot (non-spike variable)
       p <- p + ggplot2::geom_line(linewidth = linewidth,
                                   linetype = linetype,
                                   color = color_line) +
@@ -271,7 +372,7 @@ fracplot <- function(model,
     # }
     plots[[v]] <- p
   }
-
+  
   plots
 }
 
@@ -292,4 +393,3 @@ fracplot <- function(model,
 plot.mfp2 <- function(x, ...) {
   fracplot(model = x, ...)
 }
-

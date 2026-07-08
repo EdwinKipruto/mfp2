@@ -13,6 +13,7 @@ fracplot(
   ref = NULL,
   terms_seq = c("data", "equidistant"),
   alpha = 0.05,
+  show_titles = TRUE,
   color_points = "#AAAAAA",
   color_line = "red",
   color_line_spike = "red",
@@ -50,15 +51,18 @@ a grid over the covariate range.}
 
 \item{alpha}{Confidence level for intervals. Passed to \code{predict.mfp2()}.}
 
+\item{show_titles}{Logical scalar. If \code{TRUE}, add automatically
+generated plot titles describing the FP/ACD and spike-at-zero
+representation. If \code{FALSE}, omit plot titles.}
+
 \item{color_points}{Character value. Color of points used when residuals
 are displayed.}
 
 \item{color_line}{Character value. Color of the line representing
 the partial predictor.}
 
-\item{color_line_spike}{Character value. Color of the point drawn at zero
-when the covariate retains both the continuous and binary SAZ components
-(internal \code{spike_dec = 1}).}
+\item{color_line_spike}{Character value. Color of the point drawn for the
+zero component of spike-at-zero covariates.}
 
 \item{color_fill}{Character value. Fill color of the confidence interval ribbon.}
 
@@ -68,9 +72,8 @@ are displayed.}
 \item{size_points}{Numeric value. Size of points used when residuals
 are displayed.}
 
-\item{size_points_spike}{Numeric value. Size of the point drawn at zero
-when the covariate retains both the continuous and binary SAZ components
-(internal \code{spike_dec = 1}).}
+\item{size_points_spike}{Numeric value. Size of the point drawn for the
+zero component of spike-at-zero covariates.}
 
 \item{linetype}{Character value. Line type for the partial predictor.
 See \code{\link[ggplot2:geom_line]{ggplot2::geom_line()}} for options.}
@@ -108,29 +111,39 @@ residuals are used for generalized linear models, while martingale residuals
 are used for Cox regression. This matches the behavior of the Stata \code{mfp}
 program.
 
-Spike-at-zero covariates are handled according to the \code{spike_dec} code:
+Spike-at-zero covariates are plotted according to the representation retained
+in the final model:
 \itemize{
-\item \code{1} – Include both the transformed FP function for positive values and the binary
-spike-at-zero indicator.
-\item \code{2} – Ignore the spike; treat the variable as continuous (usual FP plot).
-\item \code{3} – Show only the binary spike-at-zero indicator.
+\item both components: the transformed positive-value FP/ACD component plus the
+structural-zero binary indicator.
+\item positive-part only: the transformed positive-value FP/ACD component, with
+the structural-zero binary indicator suppressed.
+\item zero indicator only: the structural-zero binary indicator without a
+continuous FP/ACD component.
 }
 
-Plot behavior for each decision:
+Plot titles use explicit spike-at-zero labels:
 \itemize{
-\item If \code{spike_dec == 1}, the plot shows the FP function for positive values
-and includes the binary spike-at-zero indicator. The term
-\eqn{\hat{\beta}_0 + \hat{\beta}} for observations equal to zero is also
-displayed with a vertical error bar. The plot title includes
-\code{+ z} to indicate the presence of the spike-at-zero component. The FP power
-for the positive part is enclosed in parentheses. For example, \code{FP(0) + z}
-indicates an FP power of 0 (log) for the positive values.
-\item If \code{spike_dec == 3}, the plot shows the binary indicator alone (\verb{z only} in
-the title). Mean values at 0 and 1 are connected with a line, and a ribbon showing
-confidence intervals is displayed.
-\item If \code{spike_dec == 2} (or not specified), the covariate is plotted as a
-continuous FP function in the usual way.
+\item \verb{spike: both components FP(<powers>) + zero indicator} when both the
+positive-value FP component and the structural-zero indicator are retained.
+\item \verb{spike: positive-part only FP(<powers>)} when only the positive-value FP
+component is retained.
+\item \verb{spike: zero indicator only} when only the structural-zero indicator is
+retained.
 }
+
+For ACD terms, the continuous component is labelled as
+\verb{ACD FP(<powers>)}, for example
+\verb{spike: both components ACD FP(0.5) + zero indicator}.
+
+Set \code{show_titles = FALSE} to suppress these automatically generated
+plot titles. This is useful when plots are combined in multi-panel figures
+or when custom titles are added later with ggplot2.
+
+For spike-at-zero covariates with a continuous component, the curve is drawn
+only over \code{x > 0}. If a fitted value at \code{x = 0} is available, it is displayed
+as a separate point with a vertical error bar, consistent with the convention
+that the FP/ACD function is not evaluated at zero.
 
 See \code{predict.mfp2()} for details on partial predictors.
 }

@@ -2486,10 +2486,14 @@ print.mfp2 <- function(x, ...) {
     
     saz_decision <- rep("not SAZ", nrow(fp_terms))
     saz_decision[is_saz & !selected] <- "not selected"
-    saz_decision[is_saz & selected & dec == 1L] <- "cont + binary"
-    saz_decision[is_saz & selected & dec == 2L] <- "continuous only"
-    saz_decision[is_saz & selected & dec == 3L] <- "binary only"
-    saz_decision[is_saz & selected & !(dec %in% c(1L, 2L, 3L))] <- "unknown"
+    
+    selected_saz <- is_saz & selected
+    
+    saz_decision[selected_saz] <- saz_decision_label(
+      dec[selected_saz],
+      style = "print",
+      unknown = "unknown"
+    )
     
     fp_terms[["spike_dec"]] <- saz_decision
     names(fp_terms)[names(fp_terms) == "spike_dec"] <- "saz_decision"

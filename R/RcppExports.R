@@ -9,3 +9,7 @@ generate_transformations_fp_cpp <- function(x, powers, zero, catzero = NULL) {
     .Call(`_mfp2_generate_transformations_fp_cpp`, x, powers, zero, catzero)
 }
 
+build_adjustment_step_loop_cpp <- function(x, x_col_index, vars_adj, powers_adj, acdx_adj, zero_adj, catzero_adj, spike_adj, spike_decision_int_adj, acd_parameter_adj, eliminated, spike_binary_only_flags, current_power_keys_adj, prev_power_keys_adj, prev_data_adj_list, prev_spike_decision_int_adj, has_prev) {
+    .Call(`_mfp2_build_adjustment_step_loop_cpp`, x, x_col_index, vars_adj, powers_adj, acdx_adj, zero_adj, catzero_adj, spike_adj, spike_decision_int_adj, acd_parameter_adj, eliminated, spike_binary_only_flags, current_power_keys_adj, prev_power_keys_adj, prev_data_adj_list, prev_spike_decision_int_adj, has_prev)
+}
+

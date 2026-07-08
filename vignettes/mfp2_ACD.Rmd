@@ -24,6 +24,12 @@ body {
   line-height: 1.6;
 }
 
+/* Justify narrative paragraphs */
+p {
+  text-align: justify;
+  text-justify: inter-word;
+}
+
 /* Colour section headings in the main text only */
 h1, h2, h3, h4 {
   margin-top: 1.4em;
@@ -507,14 +513,14 @@ plausible and supported by the data.
 
 # Plotting the fitted functions
 
-The fitted functions can be inspected using `fracplot()`.
+The fitted functions can be inspected using `plot()`.
 
 ```{r plot-acd, fig.cap="ACD model compared with a standard MFP model.", fig.width=8, fig.height=4}
-p1 <- fracplot(fit_acd_matrix, terms = "x")[[1]] +
+p1 <- plot(fit_acd_matrix, terms = "x")[[1]] +
   ggplot2::ylab("Partial predictor + residuals") +
   ggplot2::ggtitle("ACD model")
 
-p2 <- fracplot(fit_standard, terms = "x")[[1]] +
+p2 <- plot(fit_standard, terms = "x")[[1]] +
   ggplot2::ylab("Partial predictor + residuals") +
   ggplot2::ggtitle("Standard MFP model")
 

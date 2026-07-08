@@ -1848,7 +1848,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       zero = adj_flag("zero", FALSE),
       catzero = adj_flag("catzero", FALSE),
       spike = adj_flag("spike", FALSE),
-      spike_decision = adj_flag("spike_dec", 2L),
+      spike_decision = adj_flag(
+        "spike_dec",
+        saz_decision_codes[["continuous_only"]]
+      ),
       keep_x_order = FALSE,
       reset_zero = FALSE,
       check_binary = TRUE

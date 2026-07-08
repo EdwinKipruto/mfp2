@@ -411,8 +411,11 @@ fit_mfp <- function(x,
   )
   
   # Spike decision initialisation.
-  # 2 means standard FP algorithm by default.
-  spike_decision        <- rep(2L, length(variables_ordered))
+  # continuous_only means standard FP algorithm by default.
+  spike_decision        <- rep(
+    saz_decision_codes[["continuous_only"]],
+    length(variables_ordered)
+  )
   names(spike_decision) <- variables_ordered
   
   # Final zero recoding of the real x ------------------------------------------
@@ -628,10 +631,12 @@ fit_mfp <- function(x,
   
   for (v in names(catzero_effective)) {
     if (isTRUE(spike[[v]])) {
-      if (as.integer(spike_decision[[v]]) == 2L) {
+      if (as.integer(spike_decision[[v]]) ==
+          saz_decision_codes[["continuous_only"]]) {
         # Spike continuous-only or null: no spike *_bin column.
         catzero_effective[[v]] <- FALSE
-      } else if (as.integer(spike_decision[[v]]) == 3L) {
+      } else if (as.integer(spike_decision[[v]]) ==
+                 saz_decision_codes[["binary_only"]]) {
         # Spike binary-only: *_bin is the selected term.
         catzero_effective[[v]] <- TRUE
       }
@@ -650,7 +655,7 @@ fit_mfp <- function(x,
   }
   
   for (v in names(spike_decision)) {
-    if (spike[v] && spike_decision[v] == 3L) {
+    if (spike[v] && spike_decision[v] == saz_decision_codes[["binary_only"]]) {
       powers_current[[v]] <- NA
     }
   }
@@ -681,7 +686,7 @@ fit_mfp <- function(x,
       convergence_mfp = converged,
       x_original = x[, names(powers_current[
         !sapply(powers_current, function(p) all(is.na(p))) |
-          (spike & spike_decision == 3L)
+          (spike & spike_decision == saz_decision_codes[["binary_only"]])
       ]), drop = FALSE],
       y_original = y,
       fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
@@ -895,7 +900,10 @@ find_best_fp_cycle <- function(x,
 normalize_powers_for_convergence <- function(powers, spike_decision) {
   out <- Map(
     function(power, decision) {
-      if (identical(as.integer(decision), 3L)) {
+      if (identical(
+        as.integer(decision),
+        saz_decision_codes[["binary_only"]]
+      )) {
         NA_real_
       } else {
         unname(power)
@@ -962,7 +970,7 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   
   if (length(spike_decision) != 1L ||
       is.na(spike_decision) ||
-      !(as.integer(spike_decision) %in% c(1L, 2L, 3L))) {
+      !(as.integer(spike_decision) %in% unname(saz_decision_codes))) {
     stop("`spike_decision` must be a single integer 1, 2, or 3.")
   }
   
@@ -973,7 +981,7 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   spike_decision <- as.integer(spike_decision)
   
   # Binary-only spike: exactly one binary indicator column.
-  if (spike_decision == 3L) {
+  if (spike_decision == saz_decision_codes[["binary_only"]]) {
     return(1L)
   }
   
@@ -1096,7 +1104,7 @@ create_fp_terms <- function(fp_powers,
     
     #selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
     selected = mapply(function(p, sd) {
-      if (sd == 3L) TRUE  # binary-only spike is still selected
+      if (sd == saz_decision_codes[["binary_only"]]) TRUE  # binary-only spike is still selected
       else !all(is.na(p))
     }, fp_powers, spike_decision),
     # final degrees of freedom

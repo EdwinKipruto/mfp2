@@ -293,7 +293,7 @@ predict.mfp2 <- function(object,
       variable = (as.numeric(x_seq)) - object$transformations[t,"shift"]
       variable_pre = as.numeric(x_seq)
       
-      if (object$spike_dec[t] == 3) {
+      if (object$spike_dec[t] == saz_decision_codes[["binary_only"]]) {
         #variable <- object$catzero_list[[t]]
         #variable_pre <- variable
         variable <- as.integer(x_seq[, t] <= 0)
@@ -597,7 +597,7 @@ requires_positive_raw_input <- function(object, v) {
   if (!is.null(object$spike_dec) &&
       v %in% names(object$spike_dec) &&
       !is.na(object$spike_dec[[v]]) &&
-      as.integer(object$spike_dec[[v]]) == 3L) {
+      as.integer(object$spike_dec[[v]]) == saz_decision_codes[["binary_only"]]) {
     return(FALSE)
   }
   

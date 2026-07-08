@@ -1,3 +1,104 @@
+# -----------------------------------------------------------------------------
+# Spike-at-zero decision helpers ----------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Spike-at-Zero Decision Codes
+#'
+#' Internal constants for final spike-at-zero (SAZ) decisions. These values are
+#' stored in fitted objects and must remain stable.
+#'
+#' \describe{
+#'   \item{\code{cont_binary = 1L}}{
+#'     Continuous FP/linear/ACD component plus binary zero-indicator retained.
+#'   }
+#'   \item{\code{continuous_only = 2L}}{
+#'     Continuous FP/linear/ACD component retained; binary zero-indicator dropped.
+#'   }
+#'   \item{\code{binary_only = 3L}}{
+#'     Binary zero-indicator retained; continuous component dropped.
+#'   }
+#' }
+#'
+#' @keywords internal
+#' @noRd
+saz_decision_codes <- c(
+  cont_binary     = 1L,
+  continuous_only = 2L,
+  binary_only     = 3L
+)
+
+
+#' Render Spike-at-Zero Decision Labels
+#'
+#' Maps SAZ decision codes to existing print, plot, and verbose-output labels.
+#' This preserves current user-facing text while keeping the mapping in one
+#' place.
+#'
+#' @param decision Numeric or integer SAZ decision code.
+#' @param style Character scalar. One of \code{"print"}, \code{"plot_title"},
+#'   or \code{"stage2_model"}.
+#' @param continuous_label Character scalar used by plot and stage-2 labels.
+#' @param full_label Character scalar used as the stage-2 full-model label.
+#' @param binary_label Character scalar used as the stage-2 binary-only label.
+#' @param unknown Character scalar used for invalid codes.
+#'
+#' @return Character vector for \code{style = "print"}; character scalar for
+#'   other styles.
+#'
+#' @keywords internal
+#' @noRd
+saz_decision_label <- function(decision,
+                               style = c("print", "plot_title", "stage2_model"),
+                               continuous_label = "",
+                               full_label = NULL,
+                               binary_label = "Binary",
+                               unknown = "unknown") {
+  style <- match.arg(style)
+  decision_int <- as.integer(decision)
+  
+  if (style == "print") {
+    out <- rep(unknown, length(decision_int))
+    out[decision_int == saz_decision_codes[["cont_binary"]]] <- "cont + binary"
+    out[decision_int == saz_decision_codes[["continuous_only"]]] <- "continuous only"
+    out[decision_int == saz_decision_codes[["binary_only"]]] <- "binary only"
+    return(out)
+  }
+  
+  if (length(decision_int) != 1L || is.na(decision_int)) {
+    return(unknown)
+  }
+  
+  if (decision_int == saz_decision_codes[["binary_only"]]) {
+    if (style == "plot_title") {
+      return("spike: zero indicator only")
+    }
+    
+    return(binary_label)
+  }
+  
+  if (decision_int == saz_decision_codes[["cont_binary"]]) {
+    if (style == "plot_title") {
+      return(paste0(
+        "spike: both components ",
+        continuous_label,
+        " + zero indicator"
+      ))
+    }
+    
+    return(full_label)
+  }
+  
+  if (decision_int == saz_decision_codes[["continuous_only"]]) {
+    if (style == "plot_title") {
+      return(paste0("spike: positive-part only ", continuous_label))
+    }
+    
+    return(continuous_label)
+  }
+  
+  unknown
+}
+
 #' Reset Spike-at-Zero Indicators and Undo Cascade for Ineligible Variables
 #'
 #' Evaluates whether each variable flagged as a spike-at-zero (\code{spike})
@@ -756,15 +857,19 @@ compute_saz_stage2_decision <- function(metrics,
     p_drop_continuous <- stats2$pvalue
     
     decision <- if (p_drop_binary < select && p_drop_continuous < select) {
-      1L  # Model 1: both components
+      saz_decision_codes[["cont_binary"]]  # Model 1: both components
     } else if (p_drop_binary < select && p_drop_continuous >= select) {
-      3L  # Model 3: binary zero-indicator only
+      saz_decision_codes[["binary_only"]]  # Model 3: binary zero-indicator only
     } else if (p_drop_binary >= select && p_drop_continuous < select) {
-      2L  # Model 2: continuous FP/linear/ACD only
+      saz_decision_codes[["continuous_only"]]  # Model 2: continuous FP/linear/ACD only
     } else {
       # If neither reduced model is significantly worse than the full model,
       # choose the better-fitting reduced model.
-      if (metrics$metrics2["logl"] > metrics$metrics3["logl"]) 2L else 3L
+      if (metrics$metrics2["logl"] > metrics$metrics3["logl"]) {
+        saz_decision_codes[["continuous_only"]]
+      } else {
+        saz_decision_codes[["binary_only"]]
+      }
     }
     
     return(list(
@@ -777,21 +882,157 @@ compute_saz_stage2_decision <- function(metrics,
   }
   
   if (criterion == "aic") {
-    decision <- which.min(c(
+    aic_values <- c(
       metrics$metrics1["aic"],
       metrics$metrics2["aic"],
       metrics$metrics3["aic"]
-    ))
+    )
+    names(aic_values) <- names(saz_decision_codes)
+    
+    decision <- saz_decision_codes[[names(which.min(aic_values))]]
     
     return(list(decision = decision, pvalue = NA_real_))
   }
   
   # criterion == "bic"
-  decision <- which.min(c(
+  bic_values <- c(
     metrics$metrics1["bic"],
     metrics$metrics2["bic"],
     metrics$metrics3["bic"]
-  ))
+  )
+  names(bic_values) <- names(saz_decision_codes)
+  
+  decision <- saz_decision_codes[[names(which.min(bic_values))]]
   
   list(decision = decision, pvalue = NA_real_)
 }
+
+
+#' Evaluate Stage 2 of the Spike-at-Zero (SAZ) Algorithm for One Variable
+#'
+#' Internal helper used by \code{find_best_fp_step()}.
+#'
+#' Stage 2 of the SAZ algorithm is evaluated only when stage 1 selected a
+#' non-null functional form for a spike-at-zero variable \code{xi}. This
+#' function fits the two reduced candidate models (continuous-only and
+#' binary-only), compares them against the full continuous + binary model
+#' already selected in stage 1, updates \code{spike_decision[[xi]]}
+#' accordingly, and builds the printable stage-2 metrics table.
+#'
+#' @param fit1 Stage 1 selection object, as returned by one of the
+#'   \code{select_*()} functions (e.g. \code{select_ra2()}, \code{select_ic()}).
+#'   Must contain \code{metrics} (a matrix with a row for the selected model)
+#'   and \code{model_best} (the row index of that model). Also used by
+#'   \code{fit_saz_reduced_models()} to reuse the stage-1 transformed design.
+#' @param xi Character scalar; focal variable name.
+#' @param power_best Named numeric vector of best powers selected in stage 1
+#'   for \code{xi}. Used only to determine the FP degree for stage 2 metric
+#'   computation.
+#' @param y,weights,offset,family,family_string,method,strata,nocenter,control,
+#'   rownames,has_offset Passed through to \code{fit_saz_reduced_models()}.
+#' @param n_obs Numeric; number of observations (or events, for Cox models).
+#' @param criterion,select,ftest Passed through to
+#'   \code{compute_saz_stage2_decision()}.
+#' @param spike_decision Named numeric vector of current spike decisions. This
+#'   function only updates \code{spike_decision[[xi]]}; all other entries are
+#'   returned unchanged.
+#' @param verbose Logical. If \code{TRUE}, prints the stage-2 selection table
+#'   via \code{print_mfp_step(..., stage2 = TRUE)}.
+#'
+#' @return A list with:
+#'   * \code{spike_decision}: the input vector with \code{spike_decision[[xi]]}
+#'     updated to the stage-2 decision (\code{1}, \code{2}, or \code{3}).
+#'   * \code{spike_metrics}: a list with \code{metrics} (matrix of stage-2
+#'     model metrics, row-labeled), \code{spike_decision} (the scalar decision
+#'     for \code{xi}), and \code{pvalue}. This mirrors the object historically
+#'     attached to \code{fit1$spike_metrics} and is returned directly so
+#'     callers and tests do not need to inspect \code{fit1} to retrieve it.
+#'
+#' @keywords internal
+#' @noRd
+evaluate_saz_stage2 <- function(fit1,
+                                xi,
+                                power_best,
+                                y,
+                                weights,
+                                offset,
+                                family,
+                                family_string,
+                                method,
+                                strata,
+                                nocenter,
+                                control,
+                                rownames,
+                                has_offset,
+                                n_obs,
+                                criterion,
+                                select,
+                                ftest,
+                                spike_decision,
+                                verbose) {
+  
+  # Fit the two reduced SAZ candidate models. Model 1 (full continuous +
+  # binary) is already available via fit1 and is not refitted here.
+  models <- fit_saz_reduced_models(
+    stage1_selection = fit1,
+    xi = xi,
+    y = y,
+    weights = weights,
+    offset = offset,
+    family = family,
+    family_string = family_string,
+    method = method,
+    strata = strata,
+    nocenter = nocenter,
+    control = control,
+    rownames = rownames,
+    has_offset = has_offset
+  )
+  
+  metrics <- compute_saz_stage2_metrics(
+    fit1 = models$fit1,
+    fit2 = models$fit2,
+    fit3 = models$fit3,
+    n_obs = n_obs,
+    power_best = power_best
+  )
+  
+  # Decide whether both components, continuous-only, or binary-only is needed.
+  decision <- compute_saz_stage2_decision(metrics, criterion, select, n_obs, ftest)
+  spike_decision[xi] <- decision$decision
+  
+  # Build the printable stage-2 metrics table, matching model labels from
+  # stage 1.
+  f_names <- rownames(fit1$metrics)[fit1$model_best]
+  spike_metrics_mat <- do.call(rbind, metrics)
+  
+  stage2_names <- strsplit(f_names, " \\+ ")[[1]]
+  
+  # For df = 1, stage 1 can be a linear SAZ model whose label has only one
+  # component name. Ensure the full-model label always shows an explicit
+  # binary component, so the three stage-2 rows read as: full model,
+  # continuous/linear component only, binary component only.
+  if (length(stage2_names) == 1L) {
+    f_names <- paste0(stage2_names, " + Binary")
+    stage2_names <- c(stage2_names, "Binary")
+  }
+  
+  rownames(spike_metrics_mat) <- c(f_names, stage2_names)
+  
+  spike_metrics <- list(
+    metrics = spike_metrics_mat,
+    spike_decision = spike_decision[xi],
+    pvalue = decision$pvalue
+  )
+  
+  if (verbose) {
+    fit1$spike_metrics <- spike_metrics
+    print_mfp_step(xi = xi, criterion = criterion, fit = fit1, stage2 = TRUE)
+  }
+  
+  list(
+    spike_decision = spike_decision,
+    spike_metrics = spike_metrics
+  )
+}
+

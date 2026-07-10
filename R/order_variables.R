@@ -1,274 +1,316 @@
+# Variable-ordering helpers for the MFP backfitting algorithm
+#
+# The full linear model has two distinct roles in mfp2:
+#
+#   1. It provides the null- and full-linear-model deviances retained for later
+#      reporting.
+#   2. When significance-based ordering is requested, it is the reference model
+#      against which each leave-one-predictor-out model is compared.
+#
+# Importantly, the full linear model itself does not depend on `xorder`.
+# `xorder` affects only the order in which predictors are visited during the
+# subsequent MFP backfitting cycles.
 
-#' Helper to order variables for mfp2 algorithm
-#' 
-#' To be used in \code{fit_mfp()}.
-#' 
-#' @param xorder a string determining the order of entry of the covariates
-#' into the model-selection algorithm. The default is `ascending`, which enters
-#' them by ascending p-values, or decreasing order of significance in a
-#' multiple regression (i.e. most significant first).
-#' `descending` places them in reverse significance order, whereas 
-#' `original` respects the original order in `x`.
-#' @param x a design matrix of dimension n * p where n is the number of
-#' observations and p the number of predictors including intercept for glms,
-#' or excluding intercept for Cox models. 
-#' @param y  a vector of responses for glms, or a `Surv` object generated using
-#' the [survival::Surv()] function for Cox models. 
-#' @param family a character string naming a family function supported by
-#' `glm()` or "cox" for Cox models.
-#' @param family_string A character string representing the selected family, 
-#'   e.g., "gaussian".
-#' @param weights,offset parameters for both glm and Cox models, see either
-#' [stats::glm()] or [survival::coxph()] depending on family. 
-#' @param strata,method,control,nocenter Cox model specific parameters, see
-#' [survival::coxph()].
-#' @param ... passed to `order_variables_by_significance`.
-#' 
-#' @return 
-#' A vector of the variable names in `x`, ordered according to `xorder`.
-#' 
-#' @import utils
+
+# -----------------------------------------------------------------------------
+# order_variables() -----------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Fit the Full Linear Reference Model and Determine Predictor Visiting Order
+#'
+#' Fits the model containing every candidate predictor as an ordinary linear
+#' term and determines the order in which predictors are visited by the MFP
+#' backfitting algorithm.
+#'
+#' @details
+#' The full linear reference model is fitted unconditionally because its null
+#' and fitted-model deviances are retained by \code{fit_mfp()}.
+#' This fit is invariant to \code{xorder}: changing the visiting order does not
+#' change the predictors, likelihood, coefficients, or deviance of the full
+#' linear model.
+#'
+#' Predictor ranking is a separate operation. It is performed only when all of
+#' the following are true:
+#' \itemize{
+#'   \item more than one predictor is present; and
+#'   \item \code{xorder} is \code{"ascending"} or \code{"descending"}.
+#' }
+#'
+#' For significance-based ordering, one reduced model is fitted per predictor by
+#' omitting that predictor from the full linear model. A likelihood-ratio test
+#' compares the reduced model with the full model. Predictors are then ordered by
+#' the resulting p-values:
+#' \describe{
+#'   \item{\code{"ascending"}}{Smallest p-value first; the predictor whose
+#'     omission most strongly worsens model fit is visited first.}
+#'   \item{\code{"descending"}}{Largest p-value first; the least significant
+#'     predictor is visited first.}
+#'   \item{\code{"original"}}{The original column order of \code{x} is
+#'     retained and no reduced models are fitted.}
+#' }
+#'
+#' With a single predictor, no ranking problem exists. The full linear reference
+#' model is still fitted so that its deviance is available, and the sole
+#' predictor is returned unchanged.
+#'
+#' @section Deviance convention:
+#' Deviance is family-specific and is taken directly from the full reference
+#' fit returned by \code{fit_model()}. For GLMs, \code{null_deviance} and
+#' \code{linear_deviance} are the \code{null.deviance} and \code{deviance}
+#' values computed by \code{stats::glm.fit()} or \code{stats::glm()}. For Cox
+#' models, they are minus twice the null and fitted partial log-likelihoods.
+#'
+#' These reported deviances are separate from the log-likelihoods used for the
+#' leave-one-predictor-out likelihood-ratio tests below.
+#'
+#' @param xorder Character scalar controlling the predictor visiting order.
+#'   Supported values are \code{"ascending"}, \code{"descending"}, and
+#'   \code{"original"}.
+#' @param x Numeric design matrix with one column per candidate predictor and
+#'   one row per observation. The matrix excludes the intercept for both GLM and
+#'   Cox models. Column names identify the predictors.
+#' @param y Response used to fit the models. For GLMs, this may be a numeric
+#'   vector, a factor response accepted by \code{stats::glm()}, or a two-column
+#'   matrix of grouped binomial counts. For Cox models, this must be a
+#'   \code{survival::Surv()} object.
+#' @param family GLM family object used by \code{fit_model()}, or character
+#'   \code{"cox"} for a Cox proportional-hazards model.
+#' @param family_string Normalized character family name, for example
+#'   \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
+#'   \code{"cox"}.
+#' @param weights Optional observation weights passed to \code{fit_model()}.
+#' @param offset Optional linear-predictor offset passed to \code{fit_model()}.
+#' @param strata Optional Cox stratification object. Ignored for GLMs.
+#' @param method Cox tie-handling method. Ignored for GLMs.
+#' @param control Model-fitting control object passed to the GLM or Cox fitting
+#'   path.
+#' @param nocenter Cox centering-suppression argument. Ignored for GLMs.
+#'
+#' @return A list with three components:
+#' \describe{
+#'   \item{\code{variables_ordered}}{Character vector containing every
+#'     predictor name exactly once, in the requested visiting order.}
+#'   \item{\code{null_deviance}}{Family-specific deviance of the null model
+#'     associated with the full linear reference fit.}
+#'   \item{\code{linear_deviance}}{Family-specific deviance of the full
+#'     linear reference model.}
+#' }
+#'
 #' @keywords internal
 #' @noRd
 order_variables <- function(xorder = "ascending",
-                            x = NULL, 
-                            ...) {
-  names_ordered <- colnames(x)
+                            x,
+                            y,
+                            family,
+                            family_string,
+                            weights = NULL,
+                            offset = NULL,
+                            strata = NULL,
+                            method = NULL,
+                            control = NULL,
+                            nocenter = NULL) {
+  predictor_names <- colnames(x)
+  n_predictors <- ncol(x)
   
-  if (xorder != "original") {
-    names_ordered <- order_variables_by_significance(xorder = xorder, x = x, ...)
+  # The full linear reference model is required independently of predictor
+  # ordering. Fit it once and reuse its log-likelihood for all reduced-model
+  # comparisons below.
+  full_reference <- fit_full_linear_reference(
+    x = x,
+    y = y,
+    family = family,
+    family_string = family_string,
+    weights = weights,
+    offset = offset,
+    strata = strata,
+    method = method,
+    control = control,
+    nocenter = nocenter
+  )
+  
+  # No reduced-model fits are needed when the user requests the original order
+  # or when only one predictor is available. The full reference fit above is
+  # nevertheless retained because its deviance is required for reporting.
+  rank_predictors <- n_predictors > 1L && !identical(xorder, "original")
+  
+  variables_ordered <- if (rank_predictors) {
+    order_variables_by_significance(
+      xorder = xorder,
+      x = x,
+      y = y,
+      family = family,
+      family_string = family_string,
+      weights = weights,
+      offset = offset,
+      strata = strata,
+      method = method,
+      control = control,
+      nocenter = nocenter,
+      full_reference = full_reference
+    )
+  } else {
+    predictor_names
   }
   
-  names_ordered
+  list(
+    variables_ordered = variables_ordered,
+    null_deviance = full_reference$null_deviance,
+    linear_deviance = full_reference$model_deviance
+  )
 }
 
-#' @describeIn order_variables Order by significance in regression model. The 
-#' number of columns of `x` should be greater than 1 for Cox models.
+
+# -----------------------------------------------------------------------------
+# fit_full_linear_reference() -------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Fit the Full Linear Reference Model
+#'
+#' Fits a model containing all candidate predictors as ordinary linear terms.
+#' The fitted model supplies both the null and full-linear-model deviances and,
+#' when
+#' significance-based ordering is requested, the full-model likelihood and
+#' degrees of freedom used in leave-one-predictor-out likelihood-ratio tests.
+#'
+#' @inheritParams order_variables
+#'
+#' @return A model-fit wrapper returned by \code{fit_model()}, including
+#'   \code{logl}, \code{df}, \code{null_deviance},
+#'   \code{model_deviance}, coefficients, residual information, and the
+#'   underlying fitted object.
+#'
 #' @keywords internal
 #' @noRd
-order_variables_by_significance <- function(xorder, 
-                                            x, 
+fit_full_linear_reference <- function(x,
+                                      y,
+                                      family,
+                                      family_string,
+                                      weights,
+                                      offset,
+                                      strata,
+                                      method,
+                                      control,
+                                      nocenter) {
+  fit_model(
+    x = x,
+    y = y,
+    family = family,
+    family_string = family_string,
+    weights = weights,
+    offset = offset,
+    method = method,
+    strata = strata,
+    control = control,
+    rownames = rownames(x),
+    nocenter = nocenter,
+    fast = TRUE
+  )
+}
+
+
+# -----------------------------------------------------------------------------
+# order_variables_by_significance() -------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Order Predictors by Leave-One-Out Significance
+#'
+#' Orders predictors using likelihood-ratio tests comparing the full linear
+#' reference model with models obtained by removing one predictor at a time.
+#'
+#' @details
+#' This helper does not fit the full linear model. The caller supplies
+#' \code{full_reference}, ensuring that the invariant full-model fit is computed
+#' only once and reused for every reduced-model comparison.
+#'
+#' A predictor may correspond to a single design-matrix column. The test degrees
+#' of freedom are calculated as the difference between the parameter counts of
+#' the full and reduced fits. If that difference is not positive, or if a valid
+#' likelihood-ratio statistic cannot be formed, the predictor receives
+#' \code{NA} as its ordering p-value and is placed after predictors with valid
+#' p-values. No predictor is dropped from the returned order.
+#'
+#' Ties retain the original column order of \code{x}.
+#'
+#' @inheritParams order_variables
+#' @param full_reference Model-fit wrapper returned by
+#'   \code{fit_full_linear_reference()} for the model containing all predictors
+#'   linearly.
+#'
+#' @return Character vector containing all predictor names in significance-based
+#'   visiting order.
+#'
+#' @keywords internal
+#' @noRd
+order_variables_by_significance <- function(xorder,
+                                            x,
                                             y,
                                             family,
                                             family_string,
-                                            weights, 
-                                            offset, 
-                                            strata, 
-                                            method, 
+                                            weights,
+                                            offset,
+                                            strata,
+                                            method,
                                             control,
-                                            nocenter) {
-  # If there is only one predictor, there is no ordering problem to solve.
-  # Return the current column name unchanged.
-  if (ncol(x) <= 1L) {
-    return(colnames(x))
-  }
-  
-  # Store predictor names once. These names are used both to label p-values
-  # and to return the final visiting order.
+                                            nocenter,
+                                            full_reference) {
   predictor_names <- colnames(x)
+  n_predictors <- ncol(x)
   
-  # Number of candidate predictors to rank.
-  n_predictors <- length(predictor_names)
+  # Initialize with NA rather than zero. A failed or non-identifiable comparison
+  # must not be interpreted as overwhelming evidence against the predictor.
+  p_values <- stats::setNames(
+    rep(NA_real_, n_predictors),
+    predictor_names
+  )
   
-  # Store one likelihood-ratio-test p-value per predictor.
-  # A smaller p-value means the model fit worsens more when that predictor is
-  # removed, so the predictor is treated as more important.
-  p_values <- numeric(n_predictors)
-  names(p_values) <- predictor_names
-  
-  if (family_string != "cox") {
-    # GLM ordering ------------------------------------------------------------
+  for (predictor_index in seq_len(n_predictors)) {
+    # Remove exactly one predictor while preserving matrix structure. This loop
+    # is entered only when n_predictors > 1, so reduced_x remains non-empty.
+    reduced_x <- x[, -predictor_index, drop = FALSE]
     
-    # Number of observations. Used to create the intercept column once.
-    n_obs <- nrow(x)
-    
-    # glm.fit() requires a family object, not a character string.
-    # For example, "gaussian" must become gaussian().
-    if (is.character(family)) {
-      family <- get(
-        family,
-        mode = "function",
-        envir = parent.frame()
-      )
-    }
-    
-    # If the user supplied a family function, evaluate it to get the family
-    # object expected by glm.fit().
-    if (is.function(family)) {
-      family <- family()
-    }
-    
-    # Build the full GLM design matrix once.
-    # x does not contain an intercept at this point, so column 1 is added here.
-    x_full <- cbind(
-      "(Intercept)" = rep.int(1, n_obs),
-      x
-    )
-    
-    # Fit the full model containing the intercept and all predictors.
-    full_fit <- glm.fit(
-      x = x_full,
+    reduced_fit <- fit_model(
+      x = reduced_x,
       y = y,
+      family = family,
+      family_string = family_string,
       weights = weights,
       offset = offset,
-      family = family
+      method = method,
+      strata = strata,
+      control = control,
+      rownames = rownames(x),
+      nocenter = nocenter,
+      fast = TRUE
     )
     
-    # Effective parameter count for the full model.
-    # For non-Gaussian GLMs, the rank is the number of estimated regression
-    # coefficients. For Gaussian GLMs, the residual scale/dispersion is also
-    # estimated, so one extra parameter is counted for the likelihood/AIC
-    # relationship used below.
-    full_df <- full_fit$rank
+    lrt_df <- full_reference$df - reduced_fit$df
+    lrt_statistic <- 2 * (full_reference$logl - reduced_fit$logl)
     
-    if (family_string == "gaussian") {
-      full_df <- full_df + 1L
-    }
-    
-    # glm.fit() stores AIC = -2 * logLik + 2 * k.
-    # Rearranging gives logLik = k - AIC / 2, where k is full_df.
-    full_loglik <- full_df - full_fit$aic / 2
-    
-    for (predictor_index in seq_len(n_predictors)) {
-      # Remove one predictor at a time from the full design matrix.
-      #
-      # Important indexing detail:
-      #   x_full column 1 is the intercept.
-      #   x column 1 is predictor 1.
-      #   Therefore predictor_index in x corresponds to column
-      #   predictor_index + 1 in x_full.
-      #
-      # The +1 is only needed in the GLM branch because we manually added an
-      # intercept column to x_full.
-      reduced_x <- x_full[, -(predictor_index + 1L), drop = FALSE]
-      
-      # Fit the reduced model without the current predictor.
-      reduced_fit <- glm.fit(
-        x = reduced_x,
-        y = y,
-        weights = weights, 
-        offset = offset, 
-        family = family
-      )
-      
-      # Effective parameter count for the reduced model.
-      reduced_df <- reduced_fit$rank
-      
-      # Same Gaussian adjustment as for the full model: count the estimated
-      # residual scale/dispersion parameter.
-      if (family_string == "gaussian") {
-        reduced_df <- reduced_df + 1L
-      }
-      
-      # Recover reduced-model log-likelihood from AIC.
-      reduced_loglik <- reduced_df - reduced_fit$aic / 2
-      
-      # Likelihood-ratio statistic:
-      #   -2 * (logLik_reduced - logLik_full)
-      #
-      # This is equivalent to:
-      #   2 * (logLik_full - logLik_reduced)
-      #
-      # Larger values indicate that removing the predictor worsens the model.
-      lrt_statistic <- -2 * reduced_loglik + 2 * full_loglik
-      
-      # Difference in effective degrees of freedom between full and reduced
-      # models. This is usually 1 for a single numeric predictor, but can be
-      # different if the model matrix is rank-deficient.
-      lrt_df <- full_df - reduced_df
-      
-      # Convert the likelihood-ratio statistic to a p-value.
-      p_values[predictor_index] <- pchisq(
-        lrt_statistic,
+    # A valid nested-model likelihood-ratio test requires a positive df
+    # difference and finite likelihoods. Small negative statistics can occur
+    # from numerical rounding, so truncate such values to zero.
+    if (is.finite(lrt_df) && lrt_df > 0L && is.finite(lrt_statistic)) {
+      p_values[predictor_index] <- stats::pchisq(
+        q = max(0, lrt_statistic),
         df = lrt_df,
         lower.tail = FALSE
       )
     }
-    
+  }
+  
+  # Convert the requested p-value direction into a single ascending score.
+  # A secondary index keeps the original column order when p-values are tied.
+  ordering_score <- if (identical(xorder, "descending")) {
+    -p_values
   } else {
-    # Cox ordering ------------------------------------------------------------
-    
-    # Preserve row names once and reuse them in all Cox fits.
-    row_names <- rownames(x)
-    
-    # Fit the full Cox model containing all predictors.
-    full_fit <- fit_cox(
-      x = x, 
-      y = y, 
-      strata = strata,
-      weights = weights,
-      offset = offset,
-      control = control, 
-      method = method,
-      rownames = row_names,
-      nocenter = nocenter
-    ) 
-    
-    # Effective degrees of freedom and log-likelihood for the full Cox model.
-    full_df <- full_fit$df
-    full_loglik <- full_fit$logl
-    
-    for (predictor_index in seq_len(n_predictors)) {
-      # Remove one predictor at a time.
-      #
-      # No +1 is needed here because Cox design matrix x does not have an
-      # added intercept column. Predictor predictor_index is column
-      # predictor_index in x.
-      reduced_x <- x[, -predictor_index, drop = FALSE]
-      
-      # Fit the reduced Cox model without the current predictor.
-      reduced_fit <- fit_cox(
-        x = reduced_x,
-        y = y,
-        strata = strata,
-        weights = weights, 
-        offset = offset, 
-        control = control,
-        method = method,
-        rownames = row_names,
-        nocenter = nocenter
-      )
-      
-      # Effective degrees of freedom and log-likelihood for the reduced model.
-      reduced_df <- reduced_fit$df
-      reduced_loglik <- reduced_fit$logl
-      
-      # Likelihood-ratio statistic:
-      #   -2 * (logLik_reduced - logLik_full)
-      #
-      # Larger values indicate that removing the predictor worsens the model.
-      lrt_statistic <- -2 * reduced_loglik + 2 * full_loglik
-      
-      # Difference in degrees of freedom between the full and reduced Cox
-      # models.
-      lrt_df <- full_df - reduced_df
-      
-      # Convert the likelihood-ratio statistic to a p-value.
-      p_values[predictor_index] <- pchisq(
-        lrt_statistic,
-        df = lrt_df,
-        lower.tail = FALSE
-      )
-    }
+    p_values
   }
   
-  # Return variable names ordered by likelihood-ratio-test p-value.
-  #
-  # ascending:
-  #   Most significant predictors first. This is the default MFP visiting order.
-  #
-  # descending:
-  #   Least significant predictors first.
-  #
-  # original:
-  #   Preserve the input column order.
-  if (xorder == "ascending") {
-    return(names(sort(p_values, decreasing = FALSE)))
-  }
+  ordering_index <- order(
+    ordering_score,
+    seq_along(ordering_score),
+    na.last = TRUE
+  )
   
-  if (xorder == "descending") {
-    return(names(sort(p_values, decreasing = TRUE)))
-  }
-  
-  predictor_names
+  predictor_names[ordering_index]
 }

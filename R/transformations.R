@@ -227,7 +227,7 @@ transform_vector_acd <- function(x,
   } else {
     x_acd <- do.call(
       apply_acd,
-      modifyList(acd_parameter, list(x = x, zero = zero))
+      utils::modifyList(acd_parameter, list(x = x, zero = zero))
     )
   }
   

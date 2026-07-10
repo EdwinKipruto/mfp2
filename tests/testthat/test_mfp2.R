@@ -32,7 +32,7 @@
 #  18.  Reproducibility
 #  19.  Transformation helpers
 #  20.  Likelihood-ratio and F-test helpers
-#  21.  fracplot()
+#  21.  plot()
 #  22.  C++ core tests
 # =============================================================================
 
@@ -5351,14 +5351,57 @@ test_that("calculate_f_test() returns correct p-value", {
 })
 
 # =============================================================================
-# 21. fracplot()
+# 21. plot()
 # =============================================================================
 
-# Test purpose: Checks that fracplot() can be called on a Gaussian mfp2 fit without error.
-test_that("fracplot() runs without error for Gaussian model", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  # fracplot returns ggplot objects or similar; just check it runs
-  expect_error(fracplot(fit), NA)
+# Test purpose: Checks that plot() can be called on a Gaussian mfp2 fit without
+# error.
+test_that("plot() runs without error for Gaussian model", {
+  fit <- mfp2(
+    x_prostate,
+    y_prostate,
+    verbose = FALSE
+  )
+  
+  expect_error(
+    plot(fit),
+    NA
+  )
+})
+
+# Test purpose: Checks that plot() returns a list and does not emit warnings for
+# a Gaussian mfp2 model.
+test_that("plot() runs without warning for Gaussian models", {
+  fit <- mfp2(
+    x_prostate,
+    y_prostate,
+    verbose = FALSE
+  )
+  
+  expect_warning(
+    plots <- plot(fit),
+    NA
+  )
+  
+  expect_type(plots, "list")
+})
+
+# Test purpose: Checks that the deprecated fracplot() wrapper still delegates to
+# the plotting implementation and returns a list.
+test_that("fracplot() is deprecated but still works for Gaussian models", {
+  fit <- mfp2(
+    x_prostate,
+    y_prostate,
+    verbose = FALSE
+  )
+  
+  expect_warning(
+    plots <- fracplot(fit),
+    regexp = "fracplot.*deprecated.*plot",
+    ignore.case = TRUE
+  )
+  
+  expect_type(plots, "list")
 })
 
 # =============================================================================

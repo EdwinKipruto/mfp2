@@ -805,6 +805,9 @@ mfp2.default <- function(x,
   # Step 1: Capture the call and rename public-facing arguments -----------------
   cl <- match.call()
   
+  # Display the public generic name rather than the S3 method name.
+  cl[[1L]] <- quote(mfp2)
+  
   # Public interface:
   # zero_vars, catzero_vars and spike_vars are character vectors of variable names.
   #
@@ -1612,6 +1615,7 @@ mfp2.default <- function(x,
 
 
 #' @describeIn mfp2 Provides formula interface for `mfp2`.
+#' @importFrom utils modifyList
 #' @export
 mfp2.formula <- function(formula, 
                          data, 
@@ -2485,6 +2489,17 @@ mfp2.formula <- function(formula,
   fit$formula_strata_xlevels <- formula_strata_xlevels
   fit$formula_offset_terms <- formula_offset_terms
   fit$formula_offset_xlevels <- formula_offset_xlevels
+  # Replace the internal mfp2.default() call with the original
+  # user-facing formula-interface call.
+  call[[1L]] <- quote(mfp2)
+  
+  formula_position <- match("formula", names(call))
+  
+  if (!is.na(formula_position)) {
+    names(call)[formula_position] <- ""
+  }
+  
+  fit$call_mfp <- call
   
   fit
 }
@@ -2538,6 +2553,7 @@ coef.mfp2 <- function(object, ...) {
 #' \code{mfp2()}, [stats::glm()], [stats::summary.glm()], [survival::coxph()],
 #' [survival::summary.coxph()]
 #' 
+#' @importFrom utils getFromNamespace
 #' @export
 summary.mfp2 <- function(object, ...) {
   if (!inherits(object, "mfp2")) {
@@ -2546,7 +2562,7 @@ summary.mfp2 <- function(object, ...) {
   
   if (identical(object$family_string, "cox")) {
     return(
-      getFromNamespace("summary.coxph", "survival")(
+       getFromNamespace("summary.coxph", "survival")(
         object,
         ...
       )
@@ -2558,103 +2574,781 @@ summary.mfp2 <- function(object, ...) {
     ...
   )
 }
-
 #' Print method for objects of class `mfp2`
 #'
-#' Enhances printing by information on data processing and fractional
-#' polynomials.
+#' Prints a structured summary of an \code{mfp2} model, including the original
+#' model call, selection criterion, convergence status, selected and excluded
+#' variables, covariate preprocessing, a readable breakdown of the final
+#' functional form chosen for every variable (split into standard MFP, ACD,
+#' and spike-at-zero (SAZ) results), the complete raw settings table, final
+#' coefficients, and model-fit measures.
 #'
-#' @param x `mfp2` object to be printed.
-#' @param ... passed to `print` methods of underlying model class. A useful
-#' option as the `digits` argument, indicating printed digits.
+#' @details
+#' The "Summary of Function Selection" section reports one row per variable,
+#' split across three sub-tables so that ACD- and SAZ-specific detail never
+#' has to be crammed into the same columns as ordinary variables:
+#' \itemize{
+#'   \item \strong{Standard MFP}: variables that used neither ACD nor SAZ.
+#'   \item \strong{Approximate Cumulative Distribution (ACD), non-spike
+#'     variables}: ACD variables not assessed by the SAZ algorithm.
+#'   \item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables,
+#'     including ones that were also ACD-transformed (marked via their own
+#'     \code{ACD} column), since the SAZ decision is the more consequential
+#'     fact for those variables.
+#' }
+#' Within every table, selected variables are listed before excluded ones.
 #'
-#' @return Two dataframes: the first one contains preprocessing parameters
-#'   (shifting, scaling, and centering), and the second one includes additional
-#'   parameters such as `df`, `select`, and `alpha` passed through `mfp2`. It
-#'   also returns a list of the final model fitted, which can be either a GLM or
-#'   Cox model depending on the chosen family.
+#' Each table's \code{Function} column is a single human-readable label
+#' (e.g. \code{"linear"}, \code{"FP(1, 2)"}, \code{"FP(0.5) (x > 0)"},
+#' \code{"FP(-1, -1) (x > 0) + binary"}, \code{"binary indicator only"}, or
+#' \code{"out"}), built from the selected powers together with the
+#' \code{zero}/\code{catzero} status.
+#'
+#' The subsequent "Detailed Settings" table reproduces the original,
+#' unabridged \code{fp_terms} columns (renamed only for readability, e.g.
+#' \code{catzero} -> \code{catzero_final} and \code{spike_dec} ->
+#' \code{saz_decision}), also sorted with selected variables first. Notes
+#' about \code{select}/\code{alpha} divergence and the
+#' \code{catzero}-implies-\code{zero} relationship, plus definitions for any
+#' column whose meaning may not be obvious, are printed immediately below it.
+#'
+#' The reported model-fit values use family-specific definitions.
+#'
+#' For generalized linear models:
+#' \itemize{
+#'   \item the null-model value is the null deviance returned by
+#'     \code{glm.fit()} or \code{glm()};
+#'   \item the full-linear value is the residual deviance of the model containing
+#'     all candidate predictors as ordinary linear terms; and
+#'   \item the final-MFP value is the residual deviance of the selected MFP
+#'     model.
+#' }
+#'
+#' For Cox proportional-hazards models, the reported values are minus twice the
+#' corresponding null or fitted partial log-likelihood.
+#'
+#' The inherited \code{print.glm()} or \code{print.coxph()} method is not used.
+#' Those methods print family-specific footer information such as residual
+#' degrees of freedom and AIC, but they do not report the full-linear reference
+#' model used by the MFP procedure.
+#'
+#' The selection criterion is read from \code{x$criterion_mfp} when available.
+#' For older objects without that field, it is inferred from the
+#' \code{select} and \code{alpha} columns of \code{x$fp_terms}.
+#'
+#' Older serialized \code{mfp2} objects may not contain all three model-fit
+#' fields. Missing values are printed as \code{NA} rather than causing the
+#' print method to fail.
+#'
+#' @param x An object of class \code{"mfp2"}.
+#' @param detailed_settings Logical. If \code{FALSE}, omits the "Detailed
+#'   Settings" table (the complete, unabridged \code{fp_terms} columns)
+#'   entirely, along with its associated \code{Note:} lines and column
+#'   definitions (which are controlled independently by \code{notes}, but
+#'   have nothing left to annotate when this table isn't printed). Default is
+#'   \code{TRUE}.
+#' @param notes Logical. If \code{FALSE}, suppresses all auto-generated
+#'   explanatory text printed after the Detailed Settings table -- both the
+#'   \code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship,
+#'   \code{select}/\code{alpha} divergence) and the column-definition
+#'   paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
+#'   Has no effect when \code{detailed_settings = FALSE}. Default is
+#'   \code{TRUE}.
+#' @param ... Further arguments passed to \code{print.default()} when printing
+#'   the coefficient vector. The \code{digits} argument, when supplied, is also
+#'   used to format the model-fit values.
+#'
+#' @return Invisibly returns \code{x}.
+#'
 #' @export
-print.mfp2 <- function(x, ...) {
-  # Shift and scaling factors with centering values
-  cat("Shifting, Scaling and Centering of covariates", "\n")
-  print.data.frame(x$transformations)
-  cat("\n")
+print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   
-  # Final MFP powers
-  cat("Final Multivariable Fractional Polynomial for y", "\n")
+  # ---------------------------------------------------------------------------
+  # Step 1: Resolve display settings
+  # ---------------------------------------------------------------------------
   
-  # Prepare a print-only copy. Do not modify x$fp_terms itself because internal
-  # code may rely on the original column names and numeric spike_dec coding.
-  fp_terms <- x$fp_terms
+  dots <- list(...)
+  digits <- dots$digits
   
-  # Convert internal numeric spike_dec to a user-facing SAZ decision label,
-  # preserving the original column position so power columns are not moved.
-  if ("spike_dec" %in% names(fp_terms)) {
-    selected <- if ("selected" %in% names(fp_terms)) {
-      fp_terms[["selected"]]
+  if (is.null(digits)) {
+    digits <- max(3L, getOption("digits") - 3L)
+  }
+  
+  output_width <- 78L
+  
+  make_boundary <- function(character = "-") {
+    paste(rep(character, output_width), collapse = "")
+  }
+  
+  # Full-width heading, used for top-level sections.
+  print_section_heading <- function(title) {
+    cat(make_boundary("-"), "\n", sep = "")
+    cat(title, "\n")
+    cat(make_boundary("-"), "\n\n", sep = "")
+  }
+  
+  # Light heading, used for the Standard MFP / ACD / SAZ sub-tables nested
+  # inside "Summary of Function Selection": an underline matching the title's
+  # own width, so it reads as "one topic, several angles" rather than three
+  # unrelated top-level sections.
+  print_subsection_heading <- function(title) {
+    cat(title, "\n", sep = "")
+    cat(paste(rep("-", nchar(title)), collapse = ""), "\n", sep = "")
+  }
+  
+  print_variable_list <- function(label, variables) {
+    variable_text <- if (length(variables) > 0L) {
+      paste(variables, collapse = ", ")
     } else {
-      rep(TRUE, nrow(fp_terms))
+      "none"
     }
     
-    is_saz <- if ("spike" %in% names(fp_terms)) {
-      fp_terms[["spike"]]
+    complete_text <- paste0(label, ": ", variable_text)
+    
+    wrapped_text <- strwrap(
+      complete_text,
+      width = output_width,
+      exdent = nchar(label) + 2L
+    )
+    
+    cat(paste(wrapped_text, collapse = "\n"), "\n", sep = "")
+  }
+  
+  format_convergence <- function(value) {
+    if (length(value) != 1L || is.na(value)) {
+      return("unknown")
+    }
+    
+    if (isTRUE(value)) {
+      return("yes")
+    }
+    
+    if (identical(value, FALSE)) {
+      return("no")
+    }
+    
+    "unknown"
+  }
+  
+  format_criterion <- function(value) {
+    if (length(value) != 1L || is.na(value)) {
+      return(NULL)
+    }
+    
+    value <- as.character(value)
+    criterion_key <- tolower(gsub("[^[:alnum:]]", "", value))
+    
+    switch(
+      criterion_key,
+      "pvalue" = "p-value",
+      "aic" = "AIC",
+      "bic" = "BIC",
+      value
+    )
+  }
+  
+  # Build a single human-readable functional-form label from a variable's
+  # selected powers together with its zero/catzero status. `acd_prefix`
+  # should be FALSE whenever the calling table already has dedicated
+  # power-on-x / power-on-A(x) columns (the ACD table), and TRUE only when
+  # the table has no such columns but the row is nonetheless ACD-transformed
+  # (an ACD variable that also went through the SAZ table).
+  format_function_label <- function(powers, zero, catzero, acd_prefix = FALSE,
+                                    selected = TRUE) {
+    # An unselected variable is always "out", regardless of any lingering
+    # catzero/zero flag values -- those describe what was *requested*, not
+    # what survived selection, and the two can disagree for eliminated
+    # spike variables depending on how spike_decision was left set.
+    if (!isTRUE(selected)) {
+      return("out")
+    }
+    
+    has_continuous <- length(powers) > 0L
+    
+    if (has_continuous) {
+      base_label <- if (length(powers) == 1L && isTRUE(powers == 1)) {
+        "linear"
+      } else {
+        sprintf("FP(%s)", paste(powers, collapse = ", "))
+      }
+      
+      if (isTRUE(acd_prefix)) {
+        base_label <- paste0("ACD ", base_label)
+      }
+      
+      if (isTRUE(zero)) {
+        base_label <- paste0(base_label, " (x > 0)")
+      }
+      
+      if (isTRUE(catzero)) {
+        base_label <- paste0(base_label, " + binary")
+      }
+      
+      return(base_label)
+    }
+    
+    if (isTRUE(catzero)) {
+      return("binary indicator only")
+    }
+    
+    "out"
+  }
+  
+  # Extract a variable's non-NA selected powers from a single fp_terms row,
+  # given the names of the power1, power2, ... columns.
+  extract_powers <- function(row, power_cols) {
+    p <- as.numeric(row[power_cols])
+    p[!is.na(p)]
+  }
+  
+  # Sort a data.frame so that selected rows (selected_status = TRUE) come
+  # first, preserving original relative order within each group.
+  sort_selected_first <- function(df, selected_status) {
+    df[order(!selected_status), , drop = FALSE]
+  }
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 2: Prepare the detailed MFP table and selection indicators
+  # ---------------------------------------------------------------------------
+  
+  # Work on a print-only copy. Do not modify `x$fp_terms`, because downstream
+  # package code may depend on its original column names and numeric SAZ codes.
+  fp_terms <- x$fp_terms
+  
+  variable_names <- rownames(fp_terms)
+  
+  if (is.null(variable_names) &&
+      !is.null(x$fp_powers) &&
+      length(x$fp_powers) == nrow(fp_terms)) {
+    variable_names <- names(x$fp_powers)
+  }
+  
+  if (is.null(variable_names) ||
+      length(variable_names) != nrow(fp_terms)) {
+    variable_names <- paste0("V", seq_len(nrow(fp_terms)))
+  }
+  
+  rownames(fp_terms) <- variable_names
+  
+  if ("selected" %in% names(fp_terms)) {
+    selected_status <- fp_terms[["selected"]]
+    
+    if (!is.logical(selected_status)) {
+      selected_status <- tolower(as.character(selected_status)) %in%
+        c("true", "t", "yes", "y", "1")
+    }
+  } else if ("df_final" %in% names(fp_terms)) {
+    selected_status <- !is.na(fp_terms[["df_final"]]) &
+      fp_terms[["df_final"]] > 0
+  } else {
+    selected_status <- rep(TRUE, nrow(fp_terms))
+  }
+  
+  if (anyNA(selected_status)) {
+    selected_fallback <- if ("df_final" %in% names(fp_terms)) {
+      !is.na(fp_terms[["df_final"]]) &
+        fp_terms[["df_final"]] > 0
     } else {
       rep(FALSE, nrow(fp_terms))
     }
     
-    dec <- suppressWarnings(as.integer(fp_terms[["spike_dec"]]))
-    
-    saz_decision <- rep("not SAZ", nrow(fp_terms))
-    saz_decision[is_saz & !selected] <- "not selected"
-    
-    selected_saz <- is_saz & selected
-    
-    saz_decision[selected_saz] <- saz_decision_label(
-      dec[selected_saz],
-      style = "print",
-      unknown = "unknown"
-    )
-    
-    fp_terms[["spike_dec"]] <- saz_decision
-    names(fp_terms)[names(fp_terms) == "spike_dec"] <- "saz_decision"
+    selected_status[is.na(selected_status)] <-
+      selected_fallback[is.na(selected_status)]
   }
   
-  # Rename only the printed column, not the internal object field.
-  names(fp_terms)[names(fp_terms) == "catzero"] <- "catzero_final"
+  acd_flag <- if ("acd" %in% names(fp_terms)) {
+    as.logical(fp_terms[["acd"]])
+  } else {
+    rep(FALSE, nrow(fp_terms))
+  }
   
-  print.data.frame(fp_terms)
+  zero_flag <- if ("zero" %in% names(fp_terms)) {
+    as.logical(fp_terms[["zero"]])
+  } else {
+    rep(FALSE, nrow(fp_terms))
+  }
+  
+  catzero_flag <- if ("catzero" %in% names(fp_terms)) {
+    as.logical(fp_terms[["catzero"]])
+  } else {
+    rep(FALSE, nrow(fp_terms))
+  }
+  
+  spike_flag <- if ("spike" %in% names(fp_terms)) {
+    sp <- fp_terms[["spike"]]
+    if (!is.logical(sp)) {
+      tolower(as.character(sp)) %in% c("true", "t", "yes", "y", "1")
+    } else {
+      sp
+    }
+  } else {
+    rep(FALSE, nrow(fp_terms))
+  }
+  
+  decision_code <- if ("spike_dec" %in% names(fp_terms)) {
+    suppressWarnings(as.integer(fp_terms[["spike_dec"]]))
+  } else {
+    rep(NA_integer_, nrow(fp_terms))
+  }
+  
+  power_cols <- grep("^power[0-9]+$", names(fp_terms), value = TRUE)
+  powers_by_row <- lapply(seq_len(nrow(fp_terms)), function(i) {
+    extract_powers(fp_terms[i, , drop = FALSE], power_cols)
+  })
+  
+  df_initial_all <- if ("df_initial" %in% names(fp_terms)) fp_terms[["df_initial"]] else rep(NA, nrow(fp_terms))
+  df_final_all   <- if ("df_final" %in% names(fp_terms)) fp_terms[["df_final"]] else rep(NA, nrow(fp_terms))
+  df_change_all  <- sprintf("%s -> %s", df_initial_all, df_final_all)
+  
+  selected_variables <- variable_names[selected_status]
+  excluded_variables <- variable_names[!selected_status]
+  
+  # SAZ decision text, one label per variable (only meaningful for
+  # spike-eligible variables; used both in the SAZ table and in
+  # Detailed Settings' saz_decision column).
+  saz_decision_text <- rep("not SAZ", nrow(fp_terms))
+  saz_decision_text[spike_flag & !selected_status] <- "not selected"
+  saz_decision_text[spike_flag & selected_status] <- saz_decision_label(
+    decision_code[spike_flag & selected_status],
+    style = "print",
+    unknown = "unknown"
+  )
+  # saz_decision_label(style = "print") returns "cont + binary" for the
+  # combined decision; standardize to the fuller wording used elsewhere in
+  # this print method.
+  saz_decision_text[saz_decision_text == "cont + binary"] <- "continuous + binary"
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 3: Determine the model-selection criterion
+  # ---------------------------------------------------------------------------
+  
+  criterion_label <- format_criterion(x$criterion_mfp)
+  
+  if (is.null(criterion_label)) {
+    criterion_values <- character(0L)
+    
+    if ("select" %in% names(fp_terms)) {
+      criterion_values <- c(criterion_values, as.character(fp_terms[["select"]]))
+    }
+    
+    if ("alpha" %in% names(fp_terms)) {
+      criterion_values <- c(criterion_values, as.character(fp_terms[["alpha"]]))
+    }
+    
+    criterion_values <- unique(toupper(trimws(criterion_values)))
+    criterion_values <- criterion_values[!is.na(criterion_values) & nzchar(criterion_values)]
+    
+    if ("AIC" %in% criterion_values) {
+      criterion_label <- "AIC"
+    } else if ("BIC" %in% criterion_values) {
+      criterion_label <- "BIC"
+    } else {
+      criterion_label <- "p-value"
+    }
+  }
+  
+  is_pvalue_criterion <- identical(criterion_label, "p-value")
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 4: Print the main output banner
+  # ---------------------------------------------------------------------------
+  
+  cat(make_boundary("="), "\n", sep = "")
+  cat("MFP Model Fit\n")
+  cat(make_boundary("="), "\n\n", sep = "")
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 5: Print the original mfp2 call
+  # ---------------------------------------------------------------------------
+  
+  print_section_heading("Model Call")
+  
+  if (!is.null(x$call_mfp)) {
+    print(x$call_mfp)
+  } else {
+    cat("(original mfp2 call unavailable)\n")
+  }
+  
   cat("\n")
   
-  # Print compact explanations for columns that are easy to misread.
-  if (any(c("zero", "catzero_final", "spike", "saz_decision") %in%
-          names(fp_terms))) {
-    cat("Column notes:\n")
+  
+  # ---------------------------------------------------------------------------
+  # Step 6: Print the model-selection summary
+  # ---------------------------------------------------------------------------
+  
+  print_section_heading("Selection Summary")
+  
+  cat("Converged: ", format_convergence(x$convergence_mfp), "\n", sep = "")
+  cat("Criterion: ", criterion_label, "\n", sep = "")
+  
+  # A variable counts as "linear" if its sole continuous term is FP1 with
+  # power exactly 1 (and it is not ACD-transformed), or if it is a
+  # binary-only spike variable (no continuous component at all, just a 0/1
+  # indicator). Every other selected variable is "nonlinear": any FP2
+  # (including FP(1, 1), which contains a log(x) term), any FP1 with power
+  # != 1, and any ACD variable regardless of its specific powers. Whether a
+  # zero/catzero indicator is additionally present does not, by itself,
+  # change this classification.
+  is_plain_linear <- !acd_flag &
+    vapply(powers_by_row, function(p) length(p) == 1L && isTRUE(p == 1), logical(1L))
+  is_binary_only <- vapply(powers_by_row, length, integer(1L)) == 0L & catzero_flag
+  
+  linear_status <- selected_status & (is_plain_linear | is_binary_only)
+  nonlinear_status <- selected_status & !linear_status
+  
+  print_variable_list(
+    label = "Selected variables (linear)",
+    variables = variable_names[linear_status]
+  )
+  
+  print_variable_list(
+    label = "Selected variables (nonlinear)",
+    variables = variable_names[nonlinear_status]
+  )
+  
+  print_variable_list(
+    label = "Excluded variables",
+    variables = excluded_variables
+  )
+  
+  cat("\n")
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 7: Print covariate preprocessing information
+  # ---------------------------------------------------------------------------
+  
+  print_section_heading("Covariate Preprocessing")
+  
+  if (!is.null(x$transformations)) {
+    print.data.frame(x$transformations, right = FALSE)
+  } else {
+    cat("(preprocessing information unavailable)\n")
+  }
+  
+  cat("\n")
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 8: Summary of Function Selection (Standard MFP / ACD / SAZ)
+  # ---------------------------------------------------------------------------
+  
+  print_section_heading("Summary of Function Selection")
+  
+  function_label_plain <- mapply(
+    FUN = format_function_label,
+    powers = powers_by_row,
+    zero = zero_flag,
+    catzero = catzero_flag,
+    selected = selected_status,
+    MoreArgs = list(acd_prefix = FALSE),
+    SIMPLIFY = TRUE
+  )
+  
+  # Partition: every variable belongs to exactly one of the three tables.
+  # Spike-eligible variables go to SAZ regardless of ACD status (SAZ is the
+  # more consequential decision for them); among the rest, ACD variables go
+  # to the ACD table; everyone else goes to Standard MFP.
+  in_saz <- spike_flag
+  in_acd_only <- acd_flag & !spike_flag
+  in_standard <- !acd_flag & !spike_flag
+  
+  # --- Standard MFP ----------------------------------------------------------
+  
+  standard_table <- data.frame(
+    Variable = variable_names[in_standard],
+    Selected = ifelse(selected_status[in_standard], "yes", "no"),
+    `df (init -> final)` = df_change_all[in_standard],
+    Function = unname(function_label_plain[in_standard]),
+    row.names = NULL,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  standard_table <- sort_selected_first(standard_table, selected_status[in_standard])
+  
+  print_subsection_heading("Standard MFP")
+  print.data.frame(standard_table, row.names = FALSE, right = FALSE)
+  cat("\n")
+  
+  # --- ACD (non-spike) --------------------------------------------------------
+  
+  if (any(in_acd_only)) {
+    power1_all <- if ("power1" %in% names(fp_terms)) fp_terms[["power1"]] else rep(NA, nrow(fp_terms))
+    power2_all <- if ("power2" %in% names(fp_terms)) fp_terms[["power2"]] else rep(NA, nrow(fp_terms))
     
-    if ("zero" %in% names(fp_terms)) {
-      cat("  zero: TRUE means FP transformations are applied only to the positive part of the variable.\n")
-    }
+    format_na_dot <- function(v) ifelse(is.na(v), ".", format(v, trim = TRUE))
     
-    if ("catzero_final" %in% names(fp_terms)) {
-      cat("  catzero_final: TRUE means a binary indicator for the non-positive component is included in the final model.\n")
-    }
+    acd_table <- data.frame(
+      Variable = variable_names[in_acd_only],
+      Selected = ifelse(selected_status[in_acd_only], "yes", "no"),
+      `df (init -> final)` = df_change_all[in_acd_only],
+      `Power on x` = format_na_dot(power1_all[in_acd_only]),
+      `Power on A(x)` = format_na_dot(power2_all[in_acd_only]),
+      Function = unname(function_label_plain[in_acd_only]),
+      row.names = NULL,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    acd_table <- sort_selected_first(acd_table, selected_status[in_acd_only])
     
-    if ("spike" %in% names(fp_terms)) {
-      cat("  spike: TRUE means SAZ was requested and not reset by the eligibility checks.\n")
-    }
-    
-    if ("saz_decision" %in% names(fp_terms)) {
-      cat("  saz_decision: final SAZ form selected; \"not selected\" means SAZ was eligible but the variable was dropped.\n")
-    }
-    
+    print_subsection_heading(
+      "Approximate Cumulative Distribution (ACD) -- non-spike variables"
+    )
+    print.data.frame(acd_table, row.names = FALSE, right = FALSE)
     cat("\n")
   }
-  x$call <- x$call_mfp
-  cat(sprintf("MFP algorithm convergence: %s\n", x$convergence_mfp))
   
-  # Print model object using underlying print function.
-  NextMethod("print", x)
+  # --- Spike-at-Zero (SAZ) -----------------------------------------------------
+  
+  if (any(in_saz)) {
+    function_label_saz <- mapply(
+      FUN = format_function_label,
+      powers = powers_by_row[in_saz],
+      zero = zero_flag[in_saz],
+      catzero = catzero_flag[in_saz],
+      acd_prefix = acd_flag[in_saz],
+      selected = selected_status[in_saz],
+      SIMPLIFY = TRUE
+    )
+    
+    saz_table <- data.frame(
+      Variable = variable_names[in_saz],
+      Selected = ifelse(selected_status[in_saz], "yes", "no"),
+      `df (init -> final)` = df_change_all[in_saz],
+      ACD = ifelse(acd_flag[in_saz], "yes", "no"),
+      Decision = saz_decision_text[in_saz],
+      Function = unname(function_label_saz),
+      row.names = NULL,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    saz_table <- sort_selected_first(saz_table, selected_status[in_saz])
+    
+    print_subsection_heading(
+      "Spike-at-Zero (SAZ) -- may include ACD variables"
+    )
+    print.data.frame(saz_table, row.names = FALSE, right = FALSE)
+    cat("\n")
+  }
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 9: Detailed Settings (complete raw fp_terms table)
+  # ---------------------------------------------------------------------------
+  
+  if (isTRUE(detailed_settings)) {
+    
+    print_section_heading("Detailed Settings")
+    
+    detailed_table <- data.frame(
+      Selected = ifelse(selected_status, "yes", "no"),
+      `df (init -> final)` = df_change_all,
+      row.names = variable_names,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    
+    if (is_pvalue_criterion) {
+      if ("select" %in% names(fp_terms)) detailed_table[["select"]] <- fp_terms[["select"]]
+      if ("alpha" %in% names(fp_terms)) detailed_table[["alpha"]] <- fp_terms[["alpha"]]
+    }
+    detailed_table[["acd"]] <- ifelse(acd_flag, "yes", "no")
+    detailed_table[["zero"]] <- ifelse(zero_flag, "yes", "no")
+    detailed_table[["catzero_final"]] <- ifelse(catzero_flag, "yes", "no")
+    detailed_table[["spike"]] <- ifelse(spike_flag, "yes", "no")
+    detailed_table[["saz_decision"]] <- saz_decision_text
+    if ("power1" %in% names(fp_terms)) detailed_table[["power1"]] <- fp_terms[["power1"]]
+    if ("power2" %in% names(fp_terms)) detailed_table[["power2"]] <- fp_terms[["power2"]]
+    
+    detailed_table <- sort_selected_first(detailed_table, selected_status)
+    
+    print.data.frame(detailed_table, right = FALSE)
+    cat("\n")
+    
+    # --- Notes and column definitions ---------------------------------------
+    #
+    # Everything here is auxiliary explanatory text, not part of the data
+    # itself, so it is all controlled by the `notes` argument together.
+    
+    if (isTRUE(notes)) {
+      
+      note_lines <- character(0L)
+      
+      if (any(catzero_flag)) {
+        note_lines <- c(
+          note_lines,
+          "catzero implies zero.",
+          paste0(
+            "catzero_final = yes means a binary indicator for the ",
+            "non-positive component is included in the final model."
+          )
+        )
+      }
+      
+      if (is_pvalue_criterion && all(c("select", "alpha") %in% names(fp_terms))) {
+        select_num <- suppressWarnings(as.numeric(fp_terms[["select"]]))
+        alpha_num  <- suppressWarnings(as.numeric(fp_terms[["alpha"]]))
+        
+        mode_value <- function(v) {
+          v <- v[!is.na(v)]
+          if (length(v) == 0L) return(NA_real_)
+          tab <- table(v)
+          as.numeric(names(tab)[which.max(tab)])
+        }
+        
+        select_common <- mode_value(select_num)
+        alpha_common  <- mode_value(alpha_num)
+        
+        diverges <- (!is.na(select_num) & select_num != select_common) |
+          (!is.na(alpha_num) & alpha_num != alpha_common)
+        
+        if (any(diverges)) {
+          diverging_vars <- variable_names[diverges]
+          note_lines <- c(note_lines, sprintf(
+            "%s use%s select = %s, alpha = %s (all others use select = %s, alpha = %s).",
+            paste(diverging_vars, collapse = ", "),
+            if (length(diverging_vars) == 1L) "s" else "",
+            paste(unique(format(select_num[diverges], trim = TRUE)), collapse = "/"),
+            paste(unique(format(alpha_num[diverges], trim = TRUE)), collapse = "/"),
+            format(select_common, trim = TRUE),
+            format(alpha_common, trim = TRUE)
+          ))
+        }
+      }
+      
+      for (note in note_lines) {
+        cat("Note: ", note, "\n", sep = "")
+      }
+      
+      if (length(note_lines) > 0L) cat("\n")
+      
+      # --- Column definitions ---------------------------------------------
+      # catzero_final's meaning is covered in the Notes above (together with
+      # the catzero-implies-zero relationship), not repeated here.
+      
+      if (any(acd_flag)) {
+        cat(
+          "acd:\n",
+          "  yes means the variable underwent an approximate cumulative ",
+          "distribution\n  (ACD) transformation. acd and spike are independent ",
+          "settings, so a\n  variable can be yes for both; ACD variables that ",
+          "were also assessed by\n  the spike-at-zero algorithm are listed in ",
+          "the SAZ table above (with an\n  ACD column marking them), not in the ",
+          "ACD table.\n\n",
+          sep = ""
+        )
+      }
+      
+      if (any(zero_flag)) {
+        cat(
+          "zero:\n",
+          "  yes means FP transformations are applied only to the positive ",
+          "component\n  of the variable.\n\n",
+          sep = ""
+        )
+      }
+      
+      if (any(spike_flag)) {
+        cat(
+          "spike:\n",
+          "  yes means SAZ modelling was requested and remained eligible after ",
+          "the\n  eligibility checks.\n\n",
+          sep = ""
+        )
+        
+        cat(
+          "saz_decision:\n",
+          "  Final SAZ status for each variable.\n\n",
+          sep = ""
+        )
+      }
+      
+    }
+    
+  }
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 10: Print final-model coefficients
+  # ---------------------------------------------------------------------------
+  
+  print_section_heading("Final Model Coefficients")
+  
+  coefficients <- stats::coef(x)
+  
+  if (length(coefficients) > 0L) {
+    print.default(coefficients, ...)
+  } else {
+    cat("(none)\n")
+  }
+  
+  cat("\n")
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 11: Collect the three stored model-fit values
+  # ---------------------------------------------------------------------------
+  
+  get_deviance_value <- function(value) {
+    if (length(value) != 1L) {
+      return(NA_real_)
+    }
+    
+    suppressWarnings(as.numeric(value))
+  }
+  
+  deviance_values <- c(
+    "Null model" = get_deviance_value(x$null_deviance),
+    "Full linear model" = get_deviance_value(x$linear_deviance),
+    "Final MFP model" = get_deviance_value(x$mfp_deviance)
+  )
+  
+  
+  # ---------------------------------------------------------------------------
+  # Step 12: Format and print the model-fit values
+  # ---------------------------------------------------------------------------
+  
+  formatted_deviance <- vapply(
+    deviance_values,
+    function(value) {
+      if (is.na(value)) {
+        return("NA")
+      }
+      
+      if (!is.finite(value)) {
+        return(as.character(value))
+      }
+      
+      format(value, digits = digits, trim = TRUE)
+    },
+    character(1L)
+  )
+  
+  deviance_labels <- paste0(trimws(names(formatted_deviance)), ":")
+  label_width <- max(nchar(deviance_labels))
+  
+  print_section_heading("Model Deviances")
+  
+  for (i in seq_along(formatted_deviance)) {
+    cat(
+      sprintf(
+        "%-*s  %s\n",
+        label_width,
+        deviance_labels[[i]],
+        unname(formatted_deviance[[i]])
+      )
+    )
+  }
+  
+  cat("\n")
+  cat(make_boundary("="), "\n", sep = "")
+  
+  invisible(x)
 }
-
 #' Helper to assign attributes to a variable undergoing FP-transformation
 #'
 #' Used in the formula interface to `mfp2()`.

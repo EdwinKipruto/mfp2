@@ -4,22 +4,95 @@
 \alias{print.mfp2}
 \title{Print method for objects of class \code{mfp2}}
 \usage{
-\method{print}{mfp2}(x, ...)
+\method{print}{mfp2}(x, detailed_settings = TRUE, notes = TRUE, ...)
 }
 \arguments{
-\item{x}{\code{mfp2} object to be printed.}
+\item{x}{An object of class \code{"mfp2"}.}
 
-\item{...}{passed to \code{print} methods of underlying model class. A useful
-option as the \code{digits} argument, indicating printed digits.}
+\item{detailed_settings}{Logical. If \code{FALSE}, omits the "Detailed
+Settings" table (the complete, unabridged \code{fp_terms} columns)
+entirely, along with its associated \code{Note:} lines and column
+definitions (which are controlled independently by \code{notes}, but
+have nothing left to annotate when this table isn't printed). Default is
+\code{TRUE}.}
+
+\item{notes}{Logical. If \code{FALSE}, suppresses all auto-generated
+explanatory text printed after the Detailed Settings table -- both the
+\code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship,
+\code{select}/\code{alpha} divergence) and the column-definition
+paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
+Has no effect when \code{detailed_settings = FALSE}. Default is
+\code{TRUE}.}
+
+\item{...}{Further arguments passed to \code{print.default()} when printing
+the coefficient vector. The \code{digits} argument, when supplied, is also
+used to format the model-fit values.}
 }
 \value{
-Two dataframes: the first one contains preprocessing parameters
-(shifting, scaling, and centering), and the second one includes additional
-parameters such as \code{df}, \code{select}, and \code{alpha} passed through \code{mfp2}. It
-also returns a list of the final model fitted, which can be either a GLM or
-Cox model depending on the chosen family.
+Invisibly returns \code{x}.
 }
 \description{
-Enhances printing by information on data processing and fractional
-polynomials.
+Prints a structured summary of an \code{mfp2} model, including the original
+model call, selection criterion, convergence status, selected and excluded
+variables, covariate preprocessing, a readable breakdown of the final
+functional form chosen for every variable (split into standard MFP, ACD,
+and spike-at-zero (SAZ) results), the complete raw settings table, final
+coefficients, and model-fit measures.
+}
+\details{
+The "Summary of Function Selection" section reports one row per variable,
+split across three sub-tables so that ACD- and SAZ-specific detail never
+has to be crammed into the same columns as ordinary variables:
+\itemize{
+\item \strong{Standard MFP}: variables that used neither ACD nor SAZ.
+\item \strong{Approximate Cumulative Distribution (ACD), non-spike
+variables}: ACD variables not assessed by the SAZ algorithm.
+\item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables,
+including ones that were also ACD-transformed (marked via their own
+\code{ACD} column), since the SAZ decision is the more consequential
+fact for those variables.
+}
+Within every table, selected variables are listed before excluded ones.
+
+Each table's \code{Function} column is a single human-readable label
+(e.g. \code{"linear"}, \code{"FP(1, 2)"}, \code{"FP(0.5) (x > 0)"},
+\code{"FP(-1, -1) (x > 0) + binary"}, \code{"binary indicator only"}, or
+\code{"out"}), built from the selected powers together with the
+\code{zero}/\code{catzero} status.
+
+The subsequent "Detailed Settings" table reproduces the original,
+unabridged \code{fp_terms} columns (renamed only for readability, e.g.
+\code{catzero} -> \code{catzero_final} and \code{spike_dec} ->
+\code{saz_decision}), also sorted with selected variables first. Notes
+about \code{select}/\code{alpha} divergence and the
+\code{catzero}-implies-\code{zero} relationship, plus definitions for any
+column whose meaning may not be obvious, are printed immediately below it.
+
+The reported model-fit values use family-specific definitions.
+
+For generalized linear models:
+\itemize{
+\item the null-model value is the null deviance returned by
+\code{glm.fit()} or \code{glm()};
+\item the full-linear value is the residual deviance of the model containing
+all candidate predictors as ordinary linear terms; and
+\item the final-MFP value is the residual deviance of the selected MFP
+model.
+}
+
+For Cox proportional-hazards models, the reported values are minus twice the
+corresponding null or fitted partial log-likelihood.
+
+The inherited \code{print.glm()} or \code{print.coxph()} method is not used.
+Those methods print family-specific footer information such as residual
+degrees of freedom and AIC, but they do not report the full-linear reference
+model used by the MFP procedure.
+
+The selection criterion is read from \code{x$criterion_mfp} when available.
+For older objects without that field, it is inferred from the
+\code{select} and \code{alpha} columns of \code{x$fp_terms}.
+
+Older serialized \code{mfp2} objects may not contain all three model-fit
+fields. Missing values are printed as \code{NA} rather than causing the
+print method to fail.
 }

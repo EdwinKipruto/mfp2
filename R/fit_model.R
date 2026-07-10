@@ -31,67 +31,74 @@
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
 #' * `sse`: residual sum of squares.
+#' * `null_deviance`: family-specific deviance of the null model. For GLMs,
+#'   this is the `null.deviance` returned by [stats::glm.fit()] or
+#'   [stats::glm()]. For Cox models, it is minus twice the null partial
+#'   log-likelihood.
+#' * `model_deviance`: family-specific deviance of the fitted model. For GLMs,
+#'   this is the `deviance` returned by [stats::glm.fit()] or [stats::glm()].
+#'   For Cox models, it is minus twice the fitted partial log-likelihood.
 #' * `fit`: the object returned by the fitting procedure.
 #' 
 #' @importFrom stats family
 #' @keywords internal
 #' @noRd
- fit_model <- function(x,
-                        y,
-                        family,
-                        family_string,
-                        weights = NULL,
-                        offset = NULL,
-                        method = NULL,
-                        strata = NULL,
-                        control = NULL,
-                        rownames = NULL,
-                        nocenter = NULL,
-                        fast = TRUE,
-                        has_offset = FALSE,
-                        x_has_intercept = FALSE) {
-    
-    # Set column names if not provided
-    if (!is.null(dim(x)) && is.null(colnames(x))) {
-      colnames(x) <- colnames(x, do.NULL = FALSE)
-    }
-    
-    if (identical(family_string, "cox")) {
-      if (isTRUE(x_has_intercept)) {
-        stop(
-          "Internal error: Cox model matrix must not include an intercept.",
-          call. = FALSE
-        )
-      }
-      
-      fit <- fit_cox(
-        x = x,
-        y = y,
-        strata = strata,
-        weights = weights,
-        offset = offset,
-        control = control,
-        method = method,
-        rownames = rownames,
-        nocenter = nocenter,
-        fast = fast,
-        has_offset = has_offset
-      )
-    } else {
-      fit <- fit_glm(
-        y = y,
-        x = x,
-        family = family,
-        weights = weights,
-        offset = offset,
-        fast = fast,
-        has_offset = has_offset,
-        x_has_intercept = x_has_intercept
-      )
-    }
-    
-    fit
+fit_model <- function(x,
+                      y,
+                      family,
+                      family_string,
+                      weights = NULL,
+                      offset = NULL,
+                      method = NULL,
+                      strata = NULL,
+                      control = NULL,
+                      rownames = NULL,
+                      nocenter = NULL,
+                      fast = TRUE,
+                      has_offset = FALSE,
+                      x_has_intercept = FALSE) {
+  
+  # Set column names if not provided
+  if (!is.null(dim(x)) && is.null(colnames(x))) {
+    colnames(x) <- colnames(x, do.NULL = FALSE)
   }
+  
+  if (identical(family_string, "cox")) {
+    if (isTRUE(x_has_intercept)) {
+      stop(
+        "Internal error: Cox model matrix must not include an intercept.",
+        call. = FALSE
+      )
+    }
+    
+    fit <- fit_cox(
+      x = x,
+      y = y,
+      strata = strata,
+      weights = weights,
+      offset = offset,
+      control = control,
+      method = method,
+      rownames = rownames,
+      nocenter = nocenter,
+      fast = fast,
+      has_offset = has_offset
+    )
+  } else {
+    fit <- fit_glm(
+      y = y,
+      x = x,
+      family = family,
+      weights = weights,
+      offset = offset,
+      fast = fast,
+      has_offset = has_offset,
+      x_has_intercept = x_has_intercept
+    )
+  }
+  
+  fit
+}
 
 #' Function that fits generalized linear models 
 #'
@@ -123,172 +130,179 @@
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
 #' * `sse`: residual sum of squares.
+#' * `null_deviance`: null-model deviance returned by the fitted GLM.
+#' * `model_deviance`: residual deviance returned by the fitted GLM.
 #' * `fit`: the fitted model object.
 #' 
 #' @import stats
 #' @keywords internal
 #' @noRd
- fit_glm <- function(x,
-                     y,
-                     family,
-                     weights,
-                     offset,
-                     fast = TRUE,
-                     has_offset = FALSE,
-                     x_has_intercept = FALSE) {
-   
-   nobs <- NROW(y)
-   
-   has_predictors <- !is.null(x) && NCOL(x) > 0L
-   
-   if (isTRUE(x_has_intercept)) {
-     if (!has_predictors) {
-       stop(
-         "Internal error: x_has_intercept = TRUE requires a non-empty matrix.",
-         call. = FALSE
-       )
-     }
-     
-     if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
-       stop(
-         "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
-         call. = FALSE
-       )
-     }
-   }
-   
-   if (fast) {
-     
-     if (isTRUE(x_has_intercept)) {
-       xx <- x
-     } else if (has_predictors) {
-       xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
-     } else {
-       xx <- matrix(
-         rep.int(1, nobs),
-         ncol = 1L,
-         dimnames = list(NULL, "(Intercept)")
-       )
-     }
-     
-     fit <- stats::glm.fit(
-       x = xx,
-       y = y,
-       family = family,
-       weights = weights,
-       offset = offset
-     )
-     
-   } else {
-     
-     x_formula <- if (isTRUE(x_has_intercept)) {
-       x[, -1L, drop = FALSE]
-     } else {
-       x
-     }
-     
-     has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
-     
-     if (has_formula_predictors) {
-       if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
-         stop(
-           "Internal error: x must have non-empty column names.",
-           call. = FALSE
-         )
-       }
-       
-       data <- data.frame(x_formula, check.names = FALSE)
-       rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
-       
-     } else {
-       data <- data.frame(row.names = seq_len(nobs))
-       rhs <- "1"
-     }
-     
-     if (is.matrix(y)) {
-       response_cols <- c("..mfp2_successes", "..mfp2_failures")
-       
-       if (any(response_cols %in% names(data))) {
-         stop(
-           "Internal error: response column names conflict with design matrix names.",
-           call. = FALSE
-         )
-       }
-       
-       data[[response_cols[1L]]] <- y[, 1L]
-       data[[response_cols[2L]]] <- y[, 2L]
-       
-       lhs <- sprintf(
-         "cbind(%s, %s)",
-         response_cols[1L],
-         response_cols[2L]
-       )
-       
-     } else {
-       response_col <- "..mfp2_y"
-       
-       if (response_col %in% names(data)) {
-         stop(
-           "Internal error: response column name conflicts with design matrix names.",
-           call. = FALSE
-         )
-       }
-       
-       data[[response_col]] <- y
-       lhs <- response_col
-     }
-     
-     if (isTRUE(has_offset)) {
-       data$offset_ <- offset
-       
-       rhs <- if (identical(rhs, "1")) {
-         "offset(offset_)"
-       } else {
-         paste(rhs, "+ offset(offset_)")
-       }
-     }
-     
-     formula <- stats::as.formula(paste(lhs, "~", rhs))
-     
-     fit <- stats::glm(
-       formula = formula,
-       data = data,
-       family = family,
-       weights = weights,
-       x = TRUE,
-       y = TRUE
-     )
-   }
-   
-   # account for estimation of variance parameter in gaussian models
-   # computation as in logLik.glm using rank
-   df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
-   
-   # we need weighted rss for gaussian
-   fit_weights <- fit$prior.weights
-   if (is.null(fit_weights)) {
-     fit_weights <- weights
-   }
-   
-   if (length(fit_weights) != length(fit$residuals)) {
-     stop(
-       "Internal error: fitted residuals and weights have different lengths.",
-       call. = FALSE
-     )
-   }
-   
-   list(
-     fit = fit,
-     # loglikelihood computed as in stats::logLik.glm
-     logl = df - fit$aic / 2,
-     coefficients = fit$coefficients,
-     df = df,
-     sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
-     residuals = fit$residuals,
-     weights = fit_weights,
-     has_scale_parameter = fit$family$family == "gaussian"
-   )
- }
+fit_glm <- function(x,
+                    y,
+                    family,
+                    weights,
+                    offset,
+                    fast = TRUE,
+                    has_offset = FALSE,
+                    x_has_intercept = FALSE) {
+  
+  nobs <- NROW(y)
+  
+  has_predictors <- !is.null(x) && NCOL(x) > 0L
+  
+  if (isTRUE(x_has_intercept)) {
+    if (!has_predictors) {
+      stop(
+        "Internal error: x_has_intercept = TRUE requires a non-empty matrix.",
+        call. = FALSE
+      )
+    }
+    
+    if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
+      stop(
+        "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  if (fast) {
+    
+    if (isTRUE(x_has_intercept)) {
+      xx <- x
+    } else if (has_predictors) {
+      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
+    } else {
+      xx <- matrix(
+        rep.int(1, nobs),
+        ncol = 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
+    }
+    
+    fit <- stats::glm.fit(
+      x = xx,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset
+    )
+    
+  } else {
+    
+    x_formula <- if (isTRUE(x_has_intercept)) {
+      x[, -1L, drop = FALSE]
+    } else {
+      x
+    }
+    
+    has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
+    
+    if (has_formula_predictors) {
+      if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
+        stop(
+          "Internal error: x must have non-empty column names.",
+          call. = FALSE
+        )
+      }
+      
+      data <- data.frame(x_formula, check.names = FALSE)
+      rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
+      
+    } else {
+      data <- data.frame(row.names = seq_len(nobs))
+      rhs <- "1"
+    }
+    
+    if (is.matrix(y)) {
+      response_cols <- c("..mfp2_successes", "..mfp2_failures")
+      
+      if (any(response_cols %in% names(data))) {
+        stop(
+          "Internal error: response column names conflict with design matrix names.",
+          call. = FALSE
+        )
+      }
+      
+      data[[response_cols[1L]]] <- y[, 1L]
+      data[[response_cols[2L]]] <- y[, 2L]
+      
+      lhs <- sprintf(
+        "cbind(%s, %s)",
+        response_cols[1L],
+        response_cols[2L]
+      )
+      
+    } else {
+      response_col <- "..mfp2_y"
+      
+      if (response_col %in% names(data)) {
+        stop(
+          "Internal error: response column name conflicts with design matrix names.",
+          call. = FALSE
+        )
+      }
+      
+      data[[response_col]] <- y
+      lhs <- response_col
+    }
+    
+    if (isTRUE(has_offset)) {
+      data$offset_ <- offset
+      
+      rhs <- if (identical(rhs, "1")) {
+        "offset(offset_)"
+      } else {
+        paste(rhs, "+ offset(offset_)")
+      }
+    }
+    
+    formula <- stats::as.formula(paste(lhs, "~", rhs))
+    
+    fit <- stats::glm(
+      formula = formula,
+      data = data,
+      family = family,
+      weights = weights,
+      x = TRUE,
+      y = TRUE
+    )
+  }
+  
+  # account for estimation of variance parameter in gaussian models
+  # computation as in logLik.glm using rank
+  df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
+  
+  # we need weighted rss for gaussian
+  fit_weights <- fit$prior.weights
+  if (is.null(fit_weights)) {
+    fit_weights <- weights
+  }
+  
+  if (length(fit_weights) != length(fit$residuals)) {
+    stop(
+      "Internal error: fitted residuals and weights have different lengths.",
+      call. = FALSE
+    )
+  }
+  
+  list(
+    fit = fit,
+    # Log-likelihood computed as in stats::logLik.glm(). This remains the
+    # quantity used for likelihood-ratio tests and information criteria.
+    logl = df - fit$aic / 2,
+    coefficients = fit$coefficients,
+    df = df,
+    sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
+    residuals = fit$residuals,
+    weights = fit_weights,
+    has_scale_parameter = fit$family$family == "gaussian",
+    # Use the family-specific deviances already computed by glm.fit()/glm().
+    # These are not, in general, equal to minus twice the log-likelihood.
+    null_deviance = unname(fit$null.deviance),
+    model_deviance = unname(fit$deviance)
+  )
+}
 
 #' Function that fits Cox proportional hazards models
 #'
@@ -315,6 +329,8 @@
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
 #' * `sse`: residual sum of squares (not used).
+#' * `null_deviance`: minus twice the null partial log-likelihood.
+#' * `model_deviance`: minus twice the fitted partial log-likelihood.
 #' * `fit`: the fitted model object.
 #' 
 #' @import survival
@@ -400,10 +416,17 @@ fit_cox <- function(x,
     )
   }
   
-  logl <- if (length(fit$loglik) >= 2) {
-    fit$loglik[2]
+  # coxph.fit()/coxph() normally return the null and fitted partial
+  # log-likelihoods in positions 1 and 2, respectively. Preserve both so the
+  # caller can report null and fitted-model deviances without another fit.
+  if (length(fit$loglik) >= 2L) {
+    null_logl <- fit$loglik[1L]
+    model_logl <- fit$loglik[2L]
   } else {
-    fit$loglik[1]
+    # Defensive fallback for an irregular fitted object. The available value is
+    # treated as the fitted partial log-likelihood; the null value is unknown.
+    null_logl <- NA_real_
+    model_logl <- fit$loglik[1L]
   }
   
   fit_weights <- fit$prior.weights
@@ -413,15 +436,21 @@ fit_cox <- function(x,
   }
   
   list(
-    fit = fit, 
-    logl = logl,
-    coefficients = fit$coefficients, 
-    # sometimes coefficients can be NA
-    # for example when including same variables in the model
-    df = length(fit$coefficients[!is.na(fit$coefficients)]), 
+    fit = fit,
+    logl = model_logl,
+    coefficients = fit$coefficients,
+    # Sometimes coefficients can be NA, for example when duplicate or
+    # linearly dependent predictors are included in the model.
+    df = length(fit$coefficients[!is.na(fit$coefficients)]),
     weights = fit_weights,
     sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
     residuals = fit$residuals,
-    has_scale_parameter = FALSE
+    has_scale_parameter = FALSE,
+    null_deviance = if (is.finite(null_logl)) {
+      unname(-2 * null_logl)
+    } else {
+      NA_real_
+    },
+    model_deviance = unname(-2 * model_logl)
   )
 }

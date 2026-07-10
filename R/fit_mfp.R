@@ -70,6 +70,7 @@ validate_mfp_candidate_powers <- function(powers, df) {
   invisible(TRUE)
 }
 
+
 #' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #'
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -163,8 +164,14 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'
 #' @section Algorithm:
 #' \enumerate{
-#'   \item \strong{Variable ordering.} Variables are ordered according to
-#'     \code{xorder}. This may involve fitting a preliminary regression model.
+#'   \item \strong{Full linear reference and variable ordering.} A model
+#'     containing all candidate predictors as ordinary linear terms is fitted
+#'     once. Its null and fitted-model deviances are retained as
+#'     \code{null_deviance} and \code{linear_deviance}. When
+#'     \code{xorder} is \code{"ascending"} or \code{"descending"} and
+#'     more than one predictor is present, leave-one-predictor-out likelihood-
+#'     ratio tests determine the visiting order. For \code{xorder = "original"}
+#'     or a single predictor, no reduced ordering models are fitted.
 #'   \item \strong{Pre-processing.} Initial FP powers are set to 1. ACD
 #'     transformation setup, zero/catzero/spike handling, and spike eligibility
 #'     checks are performed. See the \emph{Spike-at-zero handling} section.
@@ -202,7 +209,15 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'     continuous component rather than to the full variable including zeros.
 #' }
 #'
-#' @return See \code{mfp2()} for details on the returned \code{mfp2} object.
+#' @return An object of class \code{"mfp2"} built from the final fitted
+#'   GLM or Cox model and augmented with MFP-specific metadata. In addition to
+#'   the selected powers, transformation settings, and convergence information,
+#'   the returned object contains three family-specific deviance values:
+#'   \code{null_deviance}, \code{linear_deviance}, and
+#'   \code{mfp_deviance}. For GLMs these are the null and residual deviances
+#'   returned by the fitted GLM objects. For Cox models they are minus twice the
+#'   corresponding null and fitted partial log-likelihoods. See \code{mfp2()}
+#'   for the remaining components.
 #'
 #' @references
 #' Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic
@@ -223,6 +238,7 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' to survival data. \emph{Biostatistics & Epidemiology}, 3(1), 23--37.
 #'
 #' @seealso \code{mfp2()}, \code{find_best_fp_cycle()}, \code{reset_spike()}
+#' @importFrom utils modifyList
 #' @keywords internal
 #' @noRd
 fit_mfp <- function(x,
@@ -289,21 +305,33 @@ fit_mfp <- function(x,
     )
   }
   
-  # Step 2: Determine the order in which variables enter the backfitting cycle
-  # Variable ordering can matter for the final selected model, since each MFP
-  # step adjusts for the current powers of all other variables. `xorder`
-  # controls whether variables are visited by ascending/descending univariate
-  # significance or in their original column order.
-  variables_ordered <- variables_x
+  # Step 2: Fit the full linear reference and determine visiting order -------
+  # order_variables() always fits the model containing every candidate
+  # predictor as an ordinary linear term. That fit supplies both the null-model
+  # deviance and the full-linear-model deviance. Its log-likelihood is separately
+  # reused for leave-one-predictor-out likelihood-ratio tests when
+  # significance-based ordering is requested.
+  #
+  # The call is deliberately unconditional: with one predictor, or with
+  # xorder = "original", no reduced ordering models are needed, but the full
+  # linear reference deviance is still required for the fitted mfp2 object.
+  ordering_result <- order_variables(
+    xorder        = xorder, 
+    x             = x, 
+    y             = y,
+    family        = family_fit,
+    family_string = family_string,
+    weights       = weights,
+    offset        = offset,
+    strata        = strata, 
+    method        = method,
+    control       = control,
+    nocenter      = nocenter
+  )
   
-  if (length(variables_x) > 1) {
-    variables_ordered <- order_variables(
-      xorder        = xorder, x = x, y = y, family = family_fit,
-      family_string = family_string, weights = weights, offset = offset,
-      strata        = strata, method = method, control = control,
-      nocenter      = nocenter
-    )
-  }
+  variables_ordered <- ordering_result$variables_ordered
+  null_deviance <- ordering_result$null_deviance
+  linear_deviance <- ordering_result$linear_deviance
   
   if (verbose) {
     message(sprintf(
@@ -362,7 +390,7 @@ fit_mfp <- function(x,
   if (any(acdx)) {
     acdx           <- reset_acd(x, acdx)
     variables_acd  <- names(acdx)[acdx]
-    powers_current <- modifyList(
+    powers_current <- utils::modifyList(
       powers_current,
       sapply(variables_acd, function(v) c(1, NA), simplify = FALSE)
     )
@@ -720,16 +748,24 @@ fit_mfp <- function(x,
     has_offset    = has_offset
   )
   
+  # The final fit supplies the family-specific deviance for the selected MFP
+  # model. For GLMs this is the residual deviance; for Cox models it is minus
+  # twice the fitted partial log-likelihood.
+  mfp_deviance <- modelfit$model_deviance
+  
   # Assemble the mfp2 object: start from the glm/coxph fit object returned by
   # fit_model() and layer on MFP-specific metadata (selected powers, shift/
   # scale/center, zero/catzero/spike status, convergence, etc.) expected by
   # print.mfp2()/summary.mfp2()/predict.mfp2().
-  fit <- modifyList(
+  fit <- utils::modifyList(
     modelfit$fit,
     list(
       centers         = data_transformed$centers,
       acd_parameter   = data_transformed$acd_parameter,
       convergence_mfp = converged,
+      null_deviance   = null_deviance,
+      linear_deviance = linear_deviance,
+      mfp_deviance    = mfp_deviance,
       x_original = x[, names(powers_current[
         !sapply(powers_current, function(p) all(is.na(p))) |
           (spike & spike_decision == saz_decision_codes[["binary_only"]])

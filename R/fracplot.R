@@ -1,147 +1,169 @@
 #' Plot response functions from a fitted `mfp2` object
 #'
-#' Produces partial predictor plots (or contrasts) with confidence intervals
-#' against selected covariates from a fitted \code{`mfp2`} model. If requested, 
-#' component-plus-residual plots are also supported. 
+#' Produces partial-predictor or contrast plots with confidence intervals for
+#' selected covariates from a fitted \code{mfp2} model. For term plots, the
+#' fitted component can be shown alone or combined with residuals.
 #'
-#' @param model A fitted \code{`mfp2`} model.
-#' @param terms Character vector with variable names to be plotted.  If `NULL`,
-#' all fractional polynomial terms in the model are plotted.
-#' @param partial_only Logical. If `TRUE`, only the partial predictor (model
-#' component) is plotted. If `FALSE` (default), component-plus-residual plots
-#' are drawn. Only used if `type = "terms"`. See below for details. 
-#' @param type Character, one of `"terms"` or `"contrasts"`. Passed to
-#' \code{predict.mfp2()}. `"terms"` plots partial predictors (with or without
-#' residuals), while `"contrasts"` plots contrasts relative to a reference
-#' value. 
-#' @param ref Reference list passed to \code{predict.mfp2()} when `type =
-#'  "contrasts"`. Ignored otherwise.
-#' @param terms_seq Character, one of `"data"` or `"equidistant"`. Passed to
-#'  \code{predict.mfp2()}. `"data"` uses the observed values, `"equidistant"` creates
-#' a grid over the covariate range.
-#' @param alpha Confidence level for intervals. Passed to \code{predict.mfp2()}.
-#' @param show_titles Logical scalar. If \code{TRUE}, add automatically
-#'   generated plot titles describing the FP/ACD and spike-at-zero
-#'   representation. If \code{FALSE}, omit plot titles.
-#' @param shape Numeric value. Shape of points used when residuals 
-#' are displayed.
-#' @param size_points Numeric value. Size of points used when residuals 
-#' are displayed.
-#' @param size_points_spike Numeric value. Size of the point drawn for the
-#'   zero component of spike-at-zero covariates.
-#' @param color_points Character value. Color of points used when residuals 
-#'   are displayed.
-#' @param color_line Character value. Color of the line representing 
-#'   the partial predictor.
-#' @param color_line_spike Character value. Color of the point drawn for the
-#'   zero component of spike-at-zero covariates.
-#' @param linetype Character value. Line type for the partial predictor. 
-#'   See [ggplot2::geom_line()] for options.
-#' @param linewidth Numeric value. Width of the line representing 
-#' the partial predictor.
-#' @param color_fill Character value. Fill color of the confidence interval ribbon.
-#' @param alpha_fill Numeric value between 0 and 1. Transparency of the 
-#' confidence interval ribbon.
-#' @param ... Further arguments passed from the alias `plot_mfp()`. 
-#' 
-#' @details 
-#' Confidence intervals are based on the variance–covariance matrix of the 
-#' final fitted model. They reflect uncertainty in the regression coefficients 
-#' but not in the selection of fractional polynomial powers. Intervals may 
-#' therefore be too narrow. A bootstrap approach (not yet implemented) is 
-#' recommended for more realistic intervals (see Royston & Sauerbrei, 2008, 
-#' Section 4.9.2).
-#' 
-#' Component-plus-residual plots are available if `type = "terms"`. Deviance 
-#' residuals are used for generalized linear models, while martingale residuals 
-#' are used for Cox regression. This matches the behavior of the Stata `mfp` 
-#' program.
-#' 
-#' Spike-at-zero covariates are plotted according to the representation retained
-#' in the final model:
-#' * both components: the transformed positive-value FP/ACD component plus the
-#'   structural-zero binary indicator.
-#' * positive-part only: the transformed positive-value FP/ACD component, with
-#'   the structural-zero binary indicator suppressed.
-#' * zero indicator only: the structural-zero binary indicator without a
-#'   continuous FP/ACD component.
+#' @param x A fitted \code{mfp2} object.
+#' @param terms Character vector naming variables to plot. If \code{NULL}, all
+#'   eligible terms retained in the final model are plotted.
+#' @param partial_only Logical scalar. If \code{TRUE}, plot only the fitted
+#'   partial predictor. If \code{FALSE}, the default, add residuals to produce
+#'   component-plus-residual plots. This argument is used only when
+#'   \code{type = "terms"}; contrast plots always use \code{partial_only = TRUE}.
+#' @param type Character scalar, either \code{"terms"} or \code{"contrasts"}.
+#'   Term plots display partial predictors; contrast plots display differences
+#'   from the reference supplied through \code{ref}.
+#' @param ref Optional named list of reference values used when
+#'   \code{type = "contrasts"}. Ignored for term plots.
+#' @param terms_seq Character scalar, either \code{"data"} or
+#'   \code{"equidistant"}. The first evaluates the fitted function at observed
+#'   covariate values; the second uses an equally spaced grid over the observed
+#'   range. For contrast plots, the default is \code{"equidistant"} when this
+#'   argument is omitted.
+#' @param alpha Numeric scalar giving the significance level used to construct
+#'   confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
+#'   intervals.
+#' @param show_titles Logical scalar. If \code{TRUE}, add titles describing the
+#'   selected FP or ACD representation and any retained spike-at-zero component.
+#' @param color_points Colour used for residual points.
+#' @param color_line Colour used for the fitted continuous curve.
+#' @param color_line_spike Colour used for the structural-zero point.
+#' @param color_fill Fill colour used for confidence ribbons.
+#' @param shape Point shape used for residual observations.
+#' @param size_points Point size used for residual observations.
+#' @param size_points_spike Point size used for structural-zero observations.
+#' @param linetype Line type used for fitted curves.
+#' @param linewidth Line width used for fitted curves.
+#' @param alpha_fill Numeric scalar between 0 and 1 controlling confidence-band
+#'   transparency.
+#' @param ... Reserved for compatibility with the base \code{plot()} generic.
 #'
-#' Plot titles use explicit spike-at-zero labels:
-#' * `spike: both components FP(<powers>) + zero indicator` when both the
-#'   positive-value FP component and the structural-zero indicator are retained.
-#' * `spike: positive-part only FP(<powers>)` when only the positive-value FP
-#'   component is retained.
-#' * `spike: zero indicator only` when only the structural-zero indicator is
-#'   retained.
+#' @details
+#' Confidence intervals are based on the variance-covariance matrix of the final
+#' fitted model. They account for uncertainty in the regression coefficients but
+#' not for uncertainty introduced by model and power selection. Consequently,
+#' they may be narrower than intervals obtained from a full bootstrap procedure.
 #'
-#' For ACD terms, the continuous component is labelled as
-#' `ACD FP(<powers>)`, for example
-#' `spike: both components ACD FP(0.5) + zero indicator`.
+#' Component-plus-residual plots are available for \code{type = "terms"}.
+#' Deviance residuals are used for generalized linear models and martingale
+#' residuals for Cox regression.
 #'
-#' Set \code{show_titles = FALSE} to suppress these automatically generated
-#' plot titles. This is useful when plots are combined in multi-panel figures
-#' or when custom titles are added later with ggplot2.
+#' Spike-at-zero covariates are displayed according to the representation
+#' retained by the final model:
+#' \itemize{
+#'   \item both components: the positive-value FP or ACD function and the
+#'     structural-zero indicator;
+#'   \item positive-part only: the positive-value function without the binary
+#'     zero indicator;
+#'   \item zero-indicator only: the binary structural-zero component without a
+#'     continuous function.
+#' }
 #'
-#' For spike-at-zero covariates with a continuous component, the curve is drawn
-#' only over `x > 0`. If a fitted value at `x = 0` is available, it is displayed
-#' as a separate point with a vertical error bar, consistent with the convention
-#' that the FP/ACD function is not evaluated at zero.
+#' For spike-at-zero terms with a continuous component, the curve is drawn only
+#' for \code{x > 0}. A fitted value at \code{x = 0}, when available, is shown as
+#' a separate point with a vertical confidence interval because an FP or ACD
+#' function is not evaluated at zero.
 #'
-#' See \code{predict.mfp2()} for details on partial predictors.
+#' @return A named list of \code{ggplot2} objects, one for each plotted term.
+#'   Individual plots can be printed directly or combined with packages such as
+#'   \pkg{patchwork}.
+#'
 #' @examples
-#'
-#' # Gaussian response
 #' data("prostate")
-#' x = as.matrix(prostate[,2:8])
-#' y = as.numeric(prostate$lpsa)
-#' # default interface
-#' fit = mfp2(x, y, verbose = FALSE)
-#' fracplot(fit) # generate plots
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- as.numeric(prostate$lpsa)
+#' fit <- mfp2(x, y, verbose = FALSE)
 #'
-#' @return 
-#' A list of `ggplot2` plot objects, one for each term requested. Can be 
-#' drawn as individual plots or facetted / combined easily using e.g. 
-#' `patchwork::wrap_plots` and further customized. 
-#' 
-#' @seealso 
-#' \code{predict.mfp2()}
-#' 
-#' @import ggplot2
+#' plots <- plot(fit)
+#' plots[[1]]
+#'
+#' @seealso \code{\link{predict.mfp2}}, \code{\link{fracplot}}
 #' @importFrom ggplot2 .data
+#' @method plot mfp2
 #' @export
-fracplot <- function(model, 
-                     terms = NULL, 
-                     partial_only = FALSE, 
-                     type = c("terms","contrasts"),
-                     ref = NULL,
-                     terms_seq = c("data", "equidistant"),
-                     alpha = 0.05,
-                     show_titles = TRUE,
-                     color_points = "#AAAAAA",
-                     color_line = "red", 
-                     color_line_spike = "red",
-                     color_fill = "#000000",
-                     shape = 1,
-                     size_points = 1,
-                     size_points_spike = 2,
-                     linetype = "solid", 
-                     linewidth = 1,
-                     alpha_fill = 0.1) {
+plot.mfp2 <- function(x,
+                      terms = NULL,
+                      partial_only = FALSE,
+                      type = c("terms", "contrasts"),
+                      ref = NULL,
+                      terms_seq = c("data", "equidistant"),
+                      alpha = 0.05,
+                      show_titles = TRUE,
+                      color_points = "#AAAAAA",
+                      color_line = "red",
+                      color_line_spike = "red",
+                      color_fill = "#000000",
+                      shape = 1,
+                      size_points = 1,
+                      size_points_spike = 2,
+                      linetype = "solid",
+                      linewidth = 1,
+                      alpha_fill = 0.1,
+                      ...) {
+  terms_seq_missing <- missing(terms_seq)
   
-  # Does a check if ggplot2 is available
-  # It should be as it is in the imports section but in CRAN checks some systems don't have it!
+  plot_mfp2_impl(
+    model = x,
+    terms = terms,
+    partial_only = partial_only,
+    type = type,
+    ref = ref,
+    terms_seq = terms_seq,
+    alpha = alpha,
+    show_titles = show_titles,
+    color_points = color_points,
+    color_line = color_line,
+    color_line_spike = color_line_spike,
+    color_fill = color_fill,
+    shape = shape,
+    size_points = size_points,
+    size_points_spike = size_points_spike,
+    linetype = linetype,
+    linewidth = linewidth,
+    alpha_fill = alpha_fill,
+    terms_seq_missing = terms_seq_missing
+  )
+}
+
+# Internal implementation shared by plot.mfp2() and fracplot().
+#
+# Keeping the plotting logic here prevents the preferred plot() method from
+# passing through the deprecated fracplot() wrapper and emitting a warning.
+plot_mfp2_impl <- function(model,
+                           terms = NULL,
+                           partial_only = FALSE,
+                           type = c("terms", "contrasts"),
+                           ref = NULL,
+                           terms_seq = c("data", "equidistant"),
+                           alpha = 0.05,
+                           show_titles = TRUE,
+                           color_points = "#AAAAAA",
+                           color_line = "red",
+                           color_line_spike = "red",
+                           color_fill = "#000000",
+                           shape = 1,
+                           size_points = 1,
+                           size_points_spike = 2,
+                           linetype = "solid",
+                           linewidth = 1,
+                           alpha_fill = 0.1,
+                           terms_seq_missing = FALSE) {
+  
+  
+  # Fail clearly if ggplot2 is unavailable at runtime.
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package \"ggplot2\" needed for this function to work. Please install it.",
          call. = FALSE
     )
   }
-  # assert that the object must be mfp2
+  # Validate the fitted object before prediction.
   if (!inherits(model, "mfp2")) 
     stop("The model entered is not an mfp2 object.", call. = FALSE)
   
-  # check if ref is a list (only if it is not NULL)
+  # Contrast references must be supplied as a named list.
   if (!is.null(ref) && !is.list(ref))
-    stop("ref must be a list", call. = FALSE)
+    stop("`ref` must be a list or NULL.", call. = FALSE)
   
   if (!is.logical(show_titles) || length(show_titles) != 1L || is.na(show_titles)) {
     stop("show_titles must be a single non-missing logical value.", call. = FALSE)
@@ -151,7 +173,7 @@ fracplot <- function(model,
   type <- match.arg(type)
   if (type == "contrasts") {
     partial_only <- TRUE
-    if (missing(terms_seq))
+    if (terms_seq_missing)
       terms_seq <- "equidistant"
   }
   
@@ -173,8 +195,8 @@ fracplot <- function(model,
   }
   
   if (length(pred) == 0) {
-    warning("i Variables specified in terms not used in final model.")
-    return()
+    warning("Variables specified in `terms` were not retained in the final model.", call. = FALSE)
+    return(list())
   }
   
   ylab <- "Partial Predictor"
@@ -186,7 +208,7 @@ fracplot <- function(model,
     resid <- if (model$family_string == "cox") {
       model$residuals
     } else {
-      residuals.glm(model, type = "deviance")
+      stats::residuals(model, type = "deviance")
     }
     # add residuals to the data
     #pred_data <- lapply(pred_data, function(v) transform(v, resid = resid))
@@ -376,20 +398,85 @@ fracplot <- function(model,
   plots
 }
 
-#' @describeIn fracplot S3 plot method for \code{mfp2} objects.
+#' Deprecated fractional-polynomial plotting interface
 #'
-#' @param x A fitted \code{mfp2} object.
-#' @param ... Further arguments passed to \code{fracplot()}.
+#' @description
+#' \code{fracplot()} is deprecated. Use \code{plot()} on a fitted \code{mfp2}
+#' object instead. The deprecated function remains available temporarily for
+#' backward compatibility and returns the same plot list as \code{plot()}.
+#'
+#' @inheritParams plot.mfp2
+#' @param model A fitted \code{mfp2} object.
+#'
+#' @return A named list of \code{ggplot2} objects, identical to the result from
+#'   \code{plot(model, ...)}.
 #'
 #' @examples
 #' data("prostate")
 #' x <- as.matrix(prostate[, 2:8])
 #' y <- as.numeric(prostate$lpsa)
 #' fit <- mfp2(x, y, verbose = FALSE)
-#' plot(fit)
 #'
-#' @method plot mfp2
+#' # Preferred interface
+#' plots <- plot(fit)
+#'
+#' \dontrun{
+#' # Deprecated compatibility interface
+#' old_plots <- fracplot(fit)
+#' }
+#'
+#' @seealso \code{\link{plot.mfp2}}
 #' @export
-plot.mfp2 <- function(x, ...) {
-  fracplot(model = x, ...)
+fracplot <- function(model,
+                     terms = NULL,
+                     partial_only = FALSE,
+                     type = c("terms", "contrasts"),
+                     ref = NULL,
+                     terms_seq = c("data", "equidistant"),
+                     alpha = 0.05,
+                     show_titles = TRUE,
+                     color_points = "#AAAAAA",
+                     color_line = "red",
+                     color_line_spike = "red",
+                     color_fill = "#000000",
+                     shape = 1,
+                     size_points = 1,
+                     size_points_spike = 2,
+                     linetype = "solid",
+                     linewidth = 1,
+                     alpha_fill = 0.1) {
+  terms_seq_missing <- missing(terms_seq)
+  
+  .Deprecated(
+    new = "plot",
+    package = "mfp2",
+    old = "fracplot",
+    msg = paste0(
+      "`fracplot()` is deprecated and will be removed in a future version ",
+      "of mfp2. Use `plot()` with a fitted `mfp2` object instead, for example ",
+      "`plot(fit)`."
+    )
+  )
+  
+  plot_mfp2_impl(
+    model = model,
+    terms = terms,
+    partial_only = partial_only,
+    type = type,
+    ref = ref,
+    terms_seq = terms_seq,
+    alpha = alpha,
+    show_titles = show_titles,
+    color_points = color_points,
+    color_line = color_line,
+    color_line_spike = color_line_spike,
+    color_fill = color_fill,
+    shape = shape,
+    size_points = size_points,
+    size_points_spike = size_points_spike,
+    linetype = linetype,
+    linewidth = linewidth,
+    alpha_fill = alpha_fill,
+    terms_seq_missing = terms_seq_missing
+  )
 }

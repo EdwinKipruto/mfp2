@@ -131,10 +131,12 @@ values for a variable as follows:
 assigned \code{df = min(2, default)} and >= 6 distinct values are assigned
 \code{df = default}.}
 
-\item{center}{a logical determining whether variables are centered before
-final model fitting. The default \code{TRUE} implies mean centering, except for
-binary covariates, where the covariate is centered using the lower of the two
-distinct values of the covariate. See Details section below.}
+\item{center}{a logical determining whether the fractional polynomial (or
+ACD) transformed function of each variable is centered before final model
+fitting. The default \code{TRUE} centers by the mean of the transformed values;
+the exception is binary covariates, which are not power-transformed and are
+instead centered by subtracting the lower of their two distinct values.
+See Details section below.}
 
 \item{subset}{an optional vector specifying a subset of observations
 to be used in the fitting process. Default is \code{NULL} and all observations are
@@ -207,11 +209,16 @@ equivalent. Default is the Breslow method. This argument is used for Cox
 models only and has no effect on other model families.
 See \code{survival::coxph()} for details.}
 
-\item{strata}{a numeric vector or matrix of variables that define strata
-to be used for stratification in a Cox model. A new factor, whose levels are
-all possible combinations of the variables supplied will be created.
-Default is \code{NULL} and a Cox model without stratification would be fitted.
-See \code{survival::coxph()} for details.}
+\item{strata}{For Cox models, optional stratification values supplied to
+the default/matrix interface. May be a vector or factor with one value per
+observation, or a matrix/data frame with one row per observation for
+multiple stratification variables. Multiple columns are combined into one
+high-level strata object. The final Cox formula fit stores this as an
+internal \code{strata(strata_)} term; ordinary vector/factor strata are not
+converted to integer codes until the low-level \code{coxph.fit()} path.
+In the formula interface, use \code{strata()} or
+\code{survival::strata()} in the formula. Default is \code{NULL}, giving
+an unstratified Cox model. See \code{survival::coxph()} for details.}
 
 \item{nocenter}{a numeric vector with a list of values for fitting Cox
 models. See \code{survival::coxph()} for details.}
@@ -404,9 +411,13 @@ regression model with a probit link.
 For Cox proportional hazards models, the response should be a \code{Surv} object
 (created with \code{survival::Surv()}), and the \code{family} argument should be set to
 \code{"cox"}. Only right-censored data are currently supported.
-Stratified Cox models can be specified using the \code{strata} argument, or by
-including \code{strata} terms in the model formula when using the formula interface
-\code{mfp2.formula}.
+Stratified Cox models can be specified using the \code{strata} argument,
+or by including \code{strata()} terms in the model formula when using
+\code{mfp2.formula()}. In both interfaces, strata are kept as high-level
+factor/vector values for the final \code{survival::coxph()} formula fit;
+they are converted to integer codes only inside the low-level
+\code{survival::coxph.fit()} path. This matches \code{survival::coxph()}
+semantics and preserves labels for prediction.
 }
 
 \section{Details on shifting, scaling, centering}{
@@ -506,27 +517,42 @@ variable selection.
 
 \subsection{Ordered Factors}{
 
-Ordered categorical variables (created using \code{ordered()}) are, by default,
-encoded using polynomial contrasts (\code{\link[stats]{contr.poly}}), which
-produce orthogonal contrasts representing trend effects across ordered levels
-(e.g., \code{x.L}, \code{x.Q}, \code{x.C}).
+Ordered factors, created using \code{ordered()} or
+\code{factor(..., ordered = TRUE)}, are not accepted by
+\code{mfp2.formula()}.
 
-If the analysis requires dummy coding that reflects ordinal thresholds-
-for instance, comparing level A versus the rest, or levels A and B versus
-the rest—the user must define and assign an appropriate contrast matrix
-before calling \code{mfp2.formula()}. This can be done using the
-\code{contr.cumulative()} function provided in this package:
+Ordered factors normally use polynomial contrasts, such as
+\code{\link[stats]{contr.poly}}, which would expand the predictor into
+multiple trend components. These expanded columns cannot be treated as a
+single fractional-polynomial predictor and may lead to ambiguous variable
+selection and interpretation. Therefore, ordered factors are rejected before
+model-matrix construction.
 
-\preformatted{
-data$x <- ordered(data$x, levels = c("A", "B", "C", "D"))
-contrasts(data$x) <- contr.cumulative(levels(data$x))
-fit <- mfp2(y ~ x, data = data)
+Users must explicitly recode an ordered predictor before fitting the model.
+Depending on the scientific question, suitable alternatives include:
+
+\itemize{
+\item converting the ordered categories to a numeric score when a
+meaningful quantitative scale exists;
+\item converting the variable to an unordered factor when separate
+category effects are required; or
+\item manually creating numeric indicator variables representing the
+desired ordinal thresholds.
 }
 
-This approach generates cumulative dummy variables that preserve the
-ordinal nature of the variable while allowing for interpretable
-threshold-type effects. Users should ensure that the contrast specification
-reflects the intended interpretation prior to fitting the model.
+For example, cumulative threshold indicators can be constructed manually:
+
+\preformatted{
+data$x_ge_B <- as.integer(data$x %in% c("B", "C", "D"))
+data$x_ge_C <- as.integer(data$x %in% c("C", "D"))
+data$x_ge_D <- as.integer(data$x == "D")
+
+fit <- mfp2(
+  y ~ x_ge_B + x_ge_C + x_ge_D,
+  data = data,
+  keep = c("x_ge_B", "x_ge_C", "x_ge_D")
+)
+}
 }
 
 \subsection{The \code{mfp2.default()} Method}{
@@ -763,8 +789,11 @@ Variable-name arguments such as \code{keep}, \code{zero_vars},
 existing column names in \code{x}. Unknown names are treated as errors to
 avoid silently ignoring misspelled model specifications.
 
-The formula may contain \code{strata()} terms for stratified Cox models and
-\code{offset()} terms for model offsets. For a formula using \code{.}, such
+The formula may contain \code{strata()} or \code{survival::strata()}
+terms for stratified Cox models and \code{offset()} or
+\code{stats::offset()} terms for model offsets. Namespace-qualified formula
+specials are normalized internally so that they retain standard formula
+special semantics. For a formula using \code{.}, such
 as \code{y ~ .}, continuous variables are still subject to the global
 \code{df}, \code{select}, and \code{alpha} defaults unless overridden inside
 \code{fp()} terms.
@@ -778,6 +807,20 @@ MFP algorithm, they use functions with the same names (e.g \code{fp()}). Therefo
 if you load both packages using a call to \code{library}, there will
 be namespace conflicts and only the functions from the package loaded last
 will work properly.
+
+To avoid this conflict, use \code{fp2()} instead of \code{fp()} inside the
+\code{mfp2()} formula whenever both packages are loaded in the same
+session, for example:
+
+\preformatted{
+library(mfp)
+library(mfp2)
+fit <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
+}
+
+\code{fp2()} is a simple alias for \code{fp()} (see \code{\link{fp}}) and
+accepts exactly the same arguments; it exists solely so that its name does
+not collide with \code{mfp}'s own \code{fp()}.
 }
 
 \section{Convergence and Troubleshooting}{
@@ -846,5 +889,6 @@ with a spike at zero: simulation study and practical application to survival dat
 Biostatistics & Epidemiology, 3(1), pp.23-37.}
 }
 \seealso{
-\code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()}
+\code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()},
+\code{fp2()}
 }

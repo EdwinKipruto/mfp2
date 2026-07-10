@@ -80,8 +80,17 @@
 #'   contrast predictions.
 #' @param ref Named list of reference values for `type = "contrasts"`. Values
 #'   must be supplied on the original variable scale.
-#' @param strata Optional stratum levels used when predicting from Cox models
-#'   with new data.
+#' @param strata Optional stratum values used when predicting from Cox models
+#'   with supplied \code{newdata}. This is needed for default/matrix-interface
+#'   Cox fits that used the fit-time \code{strata} argument, because the final
+#'   Cox model contains an internal \code{strata(strata_)} term. Supply one
+#'   value per prediction row for a single stratification factor, or a matrix or
+#'   data frame with one row per prediction row for multiple stratification
+#'   factors. Ordinary vector or factor strata are passed through as raw
+#'   high-level values so that \code{predict.coxph()} can evaluate the stored
+#'   \code{strata(strata_)} term itself. Formula-interface strata are
+#'   reconstructed automatically from \code{newdata} when the original strata
+#'   variable(s) are present.
 #' @param newoffset Optional numeric vector of offsets for prediction when the
 #'   fitted model used an offset and `newdata` is supplied.
 #' @param nseq Positive integer giving the number of equally spaced values used
@@ -175,6 +184,8 @@ predict.mfp2 <- function(object,
   if (!is.null(newdata) && is.null(colnames(newdata))) {
     stop("Newdata must have column names", call. = FALSE)
   }
+  
+  newdata_raw <- newdata
   
   if (!is.null(newdata)) {
     newdata <- reconstruct_formula_newdata(object, newdata)
@@ -364,6 +375,14 @@ predict.mfp2 <- function(object,
   
   if (!is.null(newdata)) {
     
+    if (
+      is.null(newoffset) &&
+      !is.null(newdata_raw) &&
+      !is.null(object$formula_offset_terms)
+    ) {
+      newoffset <- reconstruct_formula_offset_newdata(object, newdata_raw)
+    }
+    
     # check whether offset was used in the model
     has_offset <- isTRUE(object$has_offset)
     if (has_offset) {
@@ -387,6 +406,15 @@ predict.mfp2 <- function(object,
       
     } else {
       newoffset <- NULL
+    }
+    
+    if (
+      object$family_string == "cox" &&
+      is.null(strata) &&
+      !is.null(newdata_raw) &&
+      !is.null(object$formula_strata_terms)
+    ) {
+      strata <- reconstruct_formula_strata_newdata(object, newdata_raw)
     }
     
     newdata <- prepare_newdata_for_predict(
@@ -688,6 +716,151 @@ reconstruct_formula_newdata <- function(object, newdata) {
   mm
 }
 
+#' Reconstruct formula-level Cox strata from prediction data
+#'
+#' Reconstructs the original formula-level Cox stratification term from
+#' `newdata` for `mfp2` objects fitted through the formula interface.
+#'
+#' This helper deliberately mimics the high-level `survival::coxph()` strata
+#' handling:
+#'
+#' - for a single strata variable, it returns the evaluated column from the
+#'   model frame;
+#' - for multiple strata variables, it combines them with
+#'   `survival::strata(..., shortlabel = TRUE)`;
+#' - it does **not** convert the result to integer codes.
+#'
+#' Integer conversion belongs only in the low-level Cox fitting path immediately
+#' before calling `survival::coxph.fit()`, analogous to the `istrat` object used
+#' internally by `survival::coxph()`.
+#'
+#' @param object A fitted `mfp2` object.
+#' @param newdata A user-supplied prediction data frame before formula
+#'   reconstruction has been applied.
+#'
+#' @return Either `NULL`, if no formula-level strata metadata are available, or
+#'   a Cox strata object suitable for passing as the `strata` argument to
+#'   `prepare_newdata_for_predict()`.
+#'
+#' @keywords internal
+#' @noRd
+reconstruct_formula_strata_newdata <- function(object, newdata) {
+  if (!isTRUE(object$formula_interface) ||
+      is.null(object$formula_strata_terms)) {
+    return(NULL)
+  }
+  
+  newdata_df <- as.data.frame(newdata)
+  
+  mf <- tryCatch(
+    stats::model.frame(
+      object$formula_strata_terms,
+      data = newdata_df,
+      na.action = stats::na.pass,
+      xlev = object$formula_strata_xlevels
+    ),
+    error = function(e) {
+      stop(
+        "! This `mfp2` object was fitted with formula-level Cox strata, ",
+        "but the strata term could not be reconstructed from `newdata`.\n",
+        "i Include the original strata variable(s) in `newdata`, or supply ",
+        "`strata = ...` explicitly to `predict()`.\n",
+        "i Original error: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+  
+  if (NROW(mf) != NROW(newdata_df)) {
+    stop(
+      "! Formula-level Cox strata reconstruction returned the wrong number of rows.",
+      call. = FALSE
+    )
+  }
+  
+  if (anyNA(mf)) {
+    stop(
+      "! Reconstructed Cox strata contain missing values.\n",
+      "i Please remove missing strata values from `newdata` before prediction.",
+      call. = FALSE
+    )
+  }
+  
+  if (NCOL(mf) == 1L) {
+    mf[[1L]]
+  } else {
+    do.call(
+      survival::strata,
+      c(as.list(mf), list(shortlabel = TRUE))
+    )
+  }
+}
+
+#' Rebuild Formula-Level Offset from Prediction Newdata
+#'
+#' Internal helper used by predict.mfp2(). If an mfp2 object was fitted with
+#' offset() in the formula interface, this reconstructs the offset vector from
+#' ordinary newdata.
+#'
+#' @keywords internal
+#' @noRd
+reconstruct_formula_offset_newdata <- function(object, newdata) {
+  if (!isTRUE(object$formula_interface) ||
+      is.null(object$formula_offset_terms)) {
+    return(NULL)
+  }
+  
+  newdata_df <- as.data.frame(newdata)
+  
+  mf <- tryCatch(
+    stats::model.frame(
+      object$formula_offset_terms,
+      data = newdata_df,
+      na.action = stats::na.pass,
+      xlev = object$formula_offset_xlevels
+    ),
+    error = function(e) {
+      stop(
+        "! This `mfp2` object was fitted with a formula-level offset, ",
+        "but the offset could not be reconstructed from `newdata`.\n",
+        "i Include the original offset variable(s) in `newdata`, or supply ",
+        "`newoffset = ...` explicitly to `predict()`.\n",
+        "i Original error: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+  
+  out <- stats::model.offset(mf)
+  
+  if (is.null(out)) {
+    stop(
+      "! Formula-level offset could not be evaluated from `newdata`.",
+      call. = FALSE
+    )
+  }
+  
+  out <- as.vector(out)
+  
+  if (length(out) != NROW(newdata_df)) {
+    stop(
+      "! Formula-level offset reconstruction returned the wrong number of rows.",
+      call. = FALSE
+    )
+  }
+  
+  if (anyNA(out) || any(!is.finite(out))) {
+    stop(
+      "! Reconstructed offset contains missing or non-finite values.",
+      call. = FALSE
+    )
+  }
+  
+  out
+}
+
 #' Helper function to prepare newdata for predict function
 #' 
 #' To be used in \code{predict.mfp2()}.
@@ -695,7 +868,10 @@ reconstruct_formula_newdata <- function(object, newdata) {
 #' @param object fitted `mfp2` model object.
 #' @param newdata dataset to be prepared for predictions. Its columns can be
 #' a subset of the columns used for fitting the model. 
-#' @param strata,offset passed from \code{predict.mfp2()}.
+#' @param strata,offset passed from \code{predict.mfp2()}. For Cox
+#'   prediction, \code{strata} must be kept as a high-level vector/factor or
+#'   combined multi-column strata object; integer conversion is not performed
+#'   here because the stored Cox formula evaluates \code{strata(strata_)}.
 #' @param apply_pre logical indicating whether the fitted pre-transformation
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
@@ -920,7 +1096,44 @@ prepare_newdata_for_predict <- function(object,
   # step 8: add Cox strata column if required
   if (object$family_string == "cox") {
     if (!is.null(strata)) {
-      newdata$strata_ <- survival::strata(strata, shortlabel = TRUE)
+      strata_n <- if (is.vector(strata) || is.factor(strata)) {
+        length(strata)
+      } else {
+        NROW(strata)
+      }
+      
+      if (strata_n != nrow(newdata)) {
+        stop(
+          "! `strata` must have one value or row per prediction row.",
+          call. = FALSE
+        )
+      }
+      
+      if (anyNA(strata)) {
+        stop("! `strata` must not contain missing values.", call. = FALSE)
+      }
+      
+      # The stored Cox model contains the formula term `strata(strata_)`.
+      # Therefore prediction newdata must contain the same high-level `strata_`
+      # variable that was used at fitting. Do not pre-wrap ordinary vector or
+      # factor strata with survival::strata(), because predict.coxph() will
+      # evaluate strata(strata_) itself. Pre-wrapping would create levels such
+      # as "1" instead of fit-time levels such as "strata_=1" and trigger
+      # false "new levels" errors.
+      #
+      # Multiple matrix/data-frame strata columns are the only case where this
+      # helper combines values first: the default/matrix interface stores one
+      # synthetic `strata_` variable, so prediction must recreate that one
+      # combined high-level variable before predict.coxph() evaluates
+      # strata(strata_).
+      newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
+        do.call(
+          survival::strata,
+          c(as.list(as.data.frame(strata)), list(shortlabel = TRUE))
+        )
+      } else {
+        strata
+      }
     }
   }
   

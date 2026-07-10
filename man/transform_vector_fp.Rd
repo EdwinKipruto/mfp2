@@ -2,7 +2,6 @@
 % Please edit documentation in R/transformations.R
 \name{transform_vector_fp}
 \alias{transform_vector_fp}
-\alias{transform_vector_acd}
 \title{Functions to transform a variable using fractional polynomial powers or acd}
 \usage{
 transform_vector_fp(
@@ -13,17 +12,6 @@ transform_vector_fp(
   name = NULL,
   zero = FALSE,
   check_binary = TRUE
-)
-
-transform_vector_acd(
-  x,
-  power = c(1, 1),
-  shift = 0,
-  powers = NULL,
-  scale = 1,
-  acd_parameter = NULL,
-  name = NULL,
-  zero = FALSE
 )
 }
 \arguments{
@@ -57,13 +45,6 @@ are shifted (if needed) to ensure positivity before transformation.}
 if it is a binary variable (i.e. has only two distinct values). The default
 \code{TRUE} usually only needs to changed when this function is to be used to
 transform data for predictions. See Details.}
-
-\item{powers}{passed to \code{fit_acd()}.}
-
-\item{acd_parameter}{a list usually returned by \code{fit_acd()}. In particular,
-it must have components that define \code{beta0}, \code{beta1}, \code{power}, \code{shift} and
-\code{scale} which are to be applied when using the acd transformation in
-new data.}
 }
 \value{
 Returns a matrix of transformed variable(s). The number of columns
@@ -80,8 +61,7 @@ not \code{NULL}.
 }
 \description{
 These functions generate fractional polynomials for a variable similar to
-\code{fracgen} in Stata. \code{transform_vector_acd} generates the acd transformation
-for a variable.
+\code{fracgen} in Stata.
 }
 \details{
 The fp transformation generally transforms \code{x} as follows. For each pi in
@@ -116,11 +96,6 @@ still returned unchanged, but a single value from a continuous variable will
 be transformed as desired by the fitted transformations. For model fit,
 \code{check_binary} should always be at its default value.
 }
-\section{Functions}{
-\itemize{
-\item \code{transform_vector_acd()}: Function to generate acd transformation.
-
-}}
 \section{Data processing}{
 
 An important note on data processing. Variables are shifted and scaled
@@ -177,7 +152,6 @@ shifted, and their transformed continuous components are set to zero.
 \examples{
 z = 1:10
 transform_vector_fp(z)
-transform_vector_acd(z)
 }
 \references{
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.

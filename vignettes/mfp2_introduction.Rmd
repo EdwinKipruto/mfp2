@@ -170,8 +170,11 @@ The `mfp2()` function offers two interfaces for input data. The first
 interface, the matrix interface, allows direct input of the covariate
 matrix `x` and the outcome `y`. The second interface, the formula
 interface, uses a formula object together with a data frame, similar to
-the `glm()` function with slight modifications. Both interfaces are
-equivalent in terms of functionality.
+the `glm()` function with slight modifications. Both interfaces use the
+same MFP fitting machinery, but the formula interface additionally constructs
+the model matrix and can expand nominal factors. The matrix interface requires
+all predictors, including categorical indicators, to be supplied as numeric
+matrix columns.
 
 The package also includes several example datasets. We will illustrate
 working with `mfp2` using the prostate dataset. Details about the
@@ -222,8 +225,8 @@ covariates. The selected powers for this covariate are retained, and the
 same procedure is then applied sequentially to the remaining covariates.
 The first cycle ends after all covariates have been processed. At this
 stage, some covariates may have been eliminated, while the selected
-continuous covariates may have been assigned linear, FP1, or FP2
-functions.
+continuous covariates may have been assigned linear or FP functions up to
+the maximum degree allowed by their specified degrees of freedom.
 
 The model obtained at the end of the first cycle provides the starting
 point for the next cycle. Subsequent cycles proceed in the same way as
@@ -986,8 +989,8 @@ them as new observations. This can be done as follows:
 new_observations <- x[1:5, ]
 dim(new_observations)
 
-# Generate predictions for these observations
-predict(fit, newdata = new_observations)
+# Generate predictions for these observations with their standard errors
+predict(fit, newdata = new_observations, se.fit = TRUE)
 ```
 
 When `newdata` is supplied, `predict()` applies the same transformations that
@@ -995,11 +998,16 @@ were used when fitting the model. In particular, any shifting required for FP
 transformations is based on the shifting factors estimated from the development
 data.
 
+For models fitted with an explicit matrix-interface offset, predictions on
+`newdata` must also supply the corresponding `newoffset`. Formula-interface
+offset expressions are reconstructed from the variables present in `newdata`.
+
 Users should note that, if a new observation contains values outside the range
 of the development data, the original shifting factor may not be sufficient to
-make all transformed covariate values positive. This can lead to prediction
-errors when nonlinear FP functions involving logarithms or negative powers are
-used. In such cases, `predict()` issues a warning.
+make all transformed covariate values positive. Prediction is undefined when a
+selected logarithmic or negative-power FP term receives a non-positive value
+after the fitted shift has been applied. In that situation, `predict()` stops
+with an informative error identifying the affected variables and rows.
 
 Fitted FP functions can be visualized using `plot(fit)`. The `plot()`
 method is the recommended graphical interface for fitted `mfp2` objects;
@@ -1155,11 +1163,10 @@ In **R**, the `model.matrix()` function automatically generates dummy variables
 for factors. Nominal factors can be supplied to the formula interface and are
 expanded internally. Ordered factor predictors, however, are not passed directly
 to `mfp2.formula()`, because their polynomial contrast columns would otherwise
-be treated as separate MFP candidate variables. For ordinal predictors, create
-the intended numeric dummy or contrast columns explicitly before fitting. The
-`mfp2` package provides the `contr.cumulative()` function for cumulative ordinal
-contrasts; the example below uses equivalent cumulative indicator columns for
-clarity.
+be treated as separate MFP candidate variables. For ordinal predictors, create the intended numeric threshold indicators or
+other scientifically justified numeric coding explicitly before fitting. This
+keeps the ordinal representation transparent and avoids relying on an internal
+contrast helper. The example below uses cumulative threshold indicators.
 
 Before fitting a model, decide how the ordinal information should enter the
 regression model. The example below represents the three-level ordinal variable
@@ -1225,10 +1232,11 @@ diabetes. The dataset contains a binary outcome variable indicating the presence
 (1) or absence (0) of diabetes, together with eight covariates. Further details
 are given in Royston and Sauerbrei (2008, Chapter 9.7).
 
-In `mfp2()`, the response variable `y` for logistic regression should be supplied
-as a binary vector rather than as a matrix. Apart from the `family` argument, the
-remaining arguments are nearly identical to those used for Gaussian models, both
-in the default and formula interfaces.
+In `mfp2()`, a binomial response may be supplied as a binary 0/1 vector, a
+two-level factor, or a two-column matrix of grouped counts in the form
+`cbind(successes, failures)`. Apart from the `family` argument, the remaining
+arguments are nearly identical to those used for Gaussian models in both the
+default and formula interfaces.
 
 ```{r out.lines = 103}
 # Load pima data
@@ -1297,15 +1305,31 @@ for Gaussian models.
 # Load gbsg data
 data("gbsg")
 
-# Create dummy variables for grade using ordinal coding
-gbsg <- create_dummy_variables(
-  gbsg,
-  var_ordinal = "grade",
-  drop_variables = TRUE
-)
+# Encode grade manually using cumulative threshold indicators.
+# Construct the ordinal coding explicitly so that the thresholds and
+# reference category are visible in the vignette.
+grade_levels <- sort(unique(as.character(gbsg$grade)))
+grade_index <- match(as.character(gbsg$grade), grade_levels)
 
-# Covariate matrix
-x <- as.matrix(gbsg[, -c(1, 6, 10, 11)])
+if (length(grade_levels) != 3L || anyNA(grade_index)) {
+  stop(
+    "`grade` must contain exactly three non-missing ordered levels.",
+    call. = FALSE
+  )
+}
+
+# grade_1 compares grades 2 and 3 with grade 1.
+gbsg$grade_1 <- as.integer(grade_index >= 2L)
+
+# grade_2 compares grade 3 with grades 1 and 2.
+gbsg$grade_2 <- as.integer(grade_index >= 3L)
+
+# Remove the source ordinal variable after creating its explicit indicators.
+gbsg$grade <- NULL
+
+# Covariate matrix. Remove the patient identifier and survival outcome columns;
+# retain the manually created grade indicators as ordinary binary predictors.
+x <- as.matrix(gbsg[, -c(1, 6, 10, 11), drop = FALSE])
 head(x, 10)
 
 # Create survival outcome
@@ -1316,7 +1340,7 @@ fit1 <- mfp2(
   x, y,
   family = "cox",
   keep = "hormon",
-  control = coxph.control(iter.max = 50),
+  control = survival::coxph.control(iter.max = 50),
   verbose = FALSE
 )
 
@@ -1350,7 +1374,7 @@ fit2 <- mfp2(
   family = "cox",
   keep = "hormon",
   powers = list(enodes = c(0.5, 1, 2, 3)),
-  control = coxph.control(iter.max = 50),
+  control = survival::coxph.control(iter.max = 50),
   verbose = FALSE
 )
 
@@ -1393,8 +1417,8 @@ fit2
 
 # Formula interface
 fit3 <- mfp2(
-  Surv(rectime, censrec) ~ age + meno + size + nodes + pgr + er +
-    grade_1 + grade_2 + strata(hormon),
+  survival::Surv(rectime, censrec) ~ age + meno + size + nodes + pgr + er +
+    grade_1 + grade_2 + survival::strata(hormon),
   family = "cox",
   data = gbsg,
   verbose = FALSE

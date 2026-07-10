@@ -387,15 +387,17 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' @section Ordinary link and response prediction:
 #' Ordinary \code{type = "link"} and \code{type = "response"} prediction are
-#' subject-level targets. For \code{newdata = NULL} and \code{offset = NULL},
+#' subject-level targets. For \code{newdata = NULL} and \code{newoffset = NULL},
 #' the stored fitted model's own prediction method is used. If
-#' \code{newdata = NULL} but a replacement \code{offset} is supplied, the
-#' stored training design is reconstructed so that the supplied offset is used
+#' \code{newdata = NULL} but a replacement \code{newoffset} is supplied, the
+#' stored training design is reconstructed so that the supplied new offset is used
 #' explicitly. For supplied \code{newdata}, the method reconstructs the full
 #' term-specific interaction-model matrix, including group dummies, the
 #' row-specific group interaction block, selected adjustment covariates, and
-#' offsets when applicable. The reconstructed matrix is then multiplied by the
-#' fitted coefficient vector.
+#' offsets when applicable. Formula-level offsets are reconstructed from
+#' \code{newdata} when possible; an explicitly supplied \code{newoffset}
+#' takes precedence. The reconstructed matrix is then multiplied by the fitted
+#' coefficient vector.
 #'
 #' Ordinary prediction uses the group coding, reference level, contrasts, and
 #' centering conventions stored at model fitting. New observations must belong
@@ -415,7 +417,7 @@ build_group_fp_basis <- function(cont_mat,
 #' New-data prediction assumes that the \code{"mfpi"} object stores prediction
 #' metadata created at fit time. In particular, fitted-function prediction with
 #' \code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
-#' plus a replacement \code{offset} require \code{object$x_train_internal},
+#' plus a replacement \code{newoffset} require \code{object$x_train_internal},
 #' the post-preprocessing training matrix containing shifted/scaled predictors
 #' and internally remapped \code{group_var} codes. New-data ordinary prediction
 #' additionally relies on stored shift, scale, winsorisation limits, group-level
@@ -459,16 +461,23 @@ build_group_fp_basis <- function(cont_mat,
 #'   used at model fitting is reused. This argument affects only fitted-function
 #'   differences; it does not change the fit-time reference level used by the
 #'   stored interaction model.
-#' @param offset Optional numeric vector for ordinary \code{"link"} or
+#' @param strata Optional prediction-time Cox strata for ordinary \code{"link"}
+#'   or \code{"response"} prediction. Ignored for fitted-function prediction.
+#'   Supply one value per row, or a matrix/data frame with one row per prediction
+#'   row for multiple strata variables.
+#' @param newoffset Optional numeric vector for ordinary \code{"link"} or
 #'   \code{"response"} prediction. If \code{newdata} is supplied,
-#'   \code{offset} must contain one value per row of \code{newdata}. If
-#'   \code{newdata = NULL}, a supplied \code{offset} must contain one value
+#'   \code{newoffset} must contain one value per row of \code{newdata}. If
+#'   \code{newdata = NULL}, a supplied \code{newoffset} must contain one value
 #'   per training row; the stored training design is reconstructed and the
-#'   supplied offset is used instead of delegating to the fitted model's own
-#'   \code{predict()} method. Ignored for fitted-function prediction.
+#'   supplied new offset is used instead of delegating to the fitted model's own
+#'   \code{predict()} method. For formula-interface fits with a formula-level
+#'   offset, \code{newoffset} may be omitted when \code{newdata} contains the
+#'   original offset variable(s), because the offset is reconstructed from the
+#'   stored formula metadata. Ignored for fitted-function prediction.
 #' @param ... Reserved for future extensions. Currently unused arguments produce
-#'   a warning. Cox baseline-survival arguments such as prediction times or
-#'   prediction-time strata are not currently supported.
+#'   a warning. Cox baseline-survival arguments such as prediction times are
+#'   not currently supported.
 #'
 #' @return If one term is requested, an object of class
 #' \code{"mfpi_prediction"}. If multiple terms are requested, a named list of
@@ -508,7 +517,7 @@ build_group_fp_basis <- function(cont_mat,
 #'   \item{\code{design}}{Reconstructed numeric interaction-model matrix.
 #'   Present when ordinary prediction uses the manual reconstructed-design path,
 #'   either because \code{newdata} was supplied or because a replacement
-#'   \code{offset} was supplied for training-data prediction. \code{NULL}
+#'   \code{newoffset} was supplied for training-data prediction. \code{NULL}
 #'   when prediction delegates to the stored fitted model's own \code{predict()}
 #'   method.}
 #'   \item{\code{metadata}}{List describing whether ordinary prediction was
@@ -572,7 +581,8 @@ predict.mfpi <- function(object,
                          grid = FALSE,
                          n_grid = 200L,
                          reference = NULL,
-                         offset = NULL,
+                         strata = NULL,
+                         newoffset = NULL,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
   # either the fitted-function path or the ordinary subject-level path.
@@ -606,6 +616,24 @@ predict.mfpi <- function(object,
   }
   
   dots <- list(...)
+  if ("offset" %in% names(dots)) {
+    if (!is.null(newoffset)) {
+      stop(
+        "Use only one of `newoffset` or deprecated `offset` in `predict.mfpi()`.",
+        call. = FALSE
+      )
+    }
+    
+    warning(
+      "`offset` in `predict.mfpi()` is deprecated. Please use `newoffset` ",
+      "for prediction-time offsets.",
+      call. = FALSE
+    )
+    
+    newoffset <- dots$offset
+    dots$offset <- NULL
+  }
+  
   if (length(dots) > 0L) {
     warning(
       "Unused arguments in `...`: ", paste(names(dots), collapse = ", "), ".",
@@ -617,7 +645,7 @@ predict.mfpi <- function(object,
     warning("`grid` is ignored for `type = \"link\"` and `type = \"response\"`.",
             call. = FALSE)
   }
-
+  
   fits <- mfpi_get_prediction_fits(object = object, terms = terms, model = model)
   
   out <- stats::setNames(
@@ -657,13 +685,21 @@ predict.mfpi <- function(object,
       }
       
       # Ordinary prediction is subject-level: each row belongs to one group,
-      # so the reconstructed interaction block is masked row by row.
+      # so the reconstructed interaction block is masked row by row. Formula-level
+      # Cox strata are reconstructed from raw newdata unless explicitly supplied.
+      ordinary_strata <- strata
+      if (is.null(ordinary_strata) && !is.null(newdata) &&
+          !is.null(object$formula_strata_terms)) {
+        ordinary_strata <- reconstruct_formula_strata_newdata(object, newdata)
+      }
+      
       design <- mfpi_build_ordinary_design(
         object = object,
         term = term,
         fit_result = fit_result,
         newdata = newdata,
-        offset = offset
+        strata = ordinary_strata,
+        newoffset = newoffset
       )
       
       pred <- mfpi_predict_from_design(
@@ -672,6 +708,7 @@ predict.mfpi <- function(object,
         fit_result = fit_result,
         X_new = design$X,
         offset = design$offset,
+        model_newdata = design$model_newdata,
         type = type,
         se.fit = se.fit,
         use_model_predict = design$use_model_predict
@@ -693,7 +730,9 @@ predict.mfpi <- function(object,
             group_levels = design$group_levels,
             group_internal = design$group_internal,
             offset_used = design$has_offset,
-            response_scale = type == "response"
+            response_scale = type == "response",
+            used_model_predict = isTRUE(pred$used_model_predict),
+            model_newdata_columns = if (!is.null(design$model_newdata)) colnames(design$model_newdata) else NULL
           )
         ),
         class = c("mfpi_prediction", "list")
@@ -1441,12 +1480,12 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' group, so out-of-group interaction blocks must be set to zero row by row.
 #'
 #' @section Training-data path:
-#' If \code{newdata = NULL} and \code{offset = NULL}, no matrix is
+#' If \code{newdata = NULL} and \code{newoffset = NULL}, no matrix is
 #' reconstructed. The returned object tells \code{mfpi_predict_from_design()}
 #' to call the fitted model's own \code{predict()} method. This preserves the
 #' original GLM or Cox fitted-value behavior. If \code{newdata = NULL} but a
-#' replacement \code{offset} is supplied, the stored shifted/scaled training
-#' matrix is used to reconstruct the design matrix so the supplied offset can
+#' replacement \code{newoffset} is supplied, the stored shifted/scaled training
+#' matrix is used to reconstruct the design matrix so the supplied new offset can
 #' be applied explicitly.
 #'
 #' @section New-data path:
@@ -1464,7 +1503,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' @param newdata Optional prediction data. If \code{NULL}, the fitted model's
 #'   own prediction method is used. If supplied, it must contain the interaction
 #'   term, grouping variable, and selected adjustment variables.
-#' @param offset Optional numeric offset vector for ordinary prediction. For
+#' @param newoffset Optional numeric offset vector for ordinary prediction. For
 #'   supplied \code{newdata}, it must contain one value per new-data row. For
 #'   \code{newdata = NULL}, it must contain one value per training row and
 #'   triggers reconstruction of the stored training design. Required when the
@@ -1478,7 +1517,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' @keywords internal
 #' @noRd
 mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
-                                       offset = NULL) {
+                                       strata = NULL, newoffset = NULL) {
   # Build the subject-level model matrix only when delegation to the fitted
   # model is not possible or not appropriate, such as supplied newdata.
   
@@ -1496,19 +1535,20 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   
   # Training-data ordinary prediction usually delegates to the fitted model.
   # This keeps Cox and GLM fitted-value conventions identical to the original
-  # model object when no replacement offset is requested.
+  # model object when no replacement newoffset is requested.
   #
-  # If a new `offset` is supplied with `newdata = NULL`, delegation would ignore
-  # that offset and use the offset stored at fit time. To honor the supplied
-  # offset, switch to the same manual reconstructed-design path used for
+  # If a new `newoffset` is supplied with `newdata = NULL`, delegation would ignore
+  # that new offset and use the offset stored at fit time. To honor the supplied
+  # new offset, switch to the same manual reconstructed-design path used for
   # supplied `newdata`, but start from `x_train_internal`, the
   # post-preprocessing training matrix.
   newdata_is_training_internal <- FALSE
   if (is.null(newdata)) {
-    if (is.null(offset)) {
+    if (is.null(newoffset) && is.null(strata)) {
       return(list(
         X = NULL,
         offset = NULL,
+        model_newdata = NULL,
         has_offset = mfpi_fit_has_offset(interaction_model$fit),
         group_internal = NULL,
         group_levels = NULL,
@@ -1522,7 +1562,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     if (is.null(newdata)) {
       stop(
         paste0(
-          "Cannot apply a supplied `offset` with `newdata = NULL` because ",
+          "Cannot apply a supplied `newoffset` with `newdata = NULL` because ",
           "the MFPI object does not store `x_train_internal`, the ",
           "post-preprocessing training matrix. Refit the model with the current ",
           "version of `mfpi()` or supply explicit `newdata`."
@@ -1541,6 +1581,12 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   if (n_raw == 0L) {
     stop("`newdata` must contain at least one row.", call. = FALSE)
   }
+  
+  # Keep the raw user-supplied data frame for formula-level offset
+  # reconstruction. Formula design reconstruction may add/replace columns, but
+  # offset expressions such as offset(log(exposure)) must be evaluated against
+  # the original newdata variables.
+  newdata_raw <- newdata
   
   # Formula-interface prediction should replay the fit-time formula design
   # recipe before numeric coercion. This rebuilds formula-derived columns such
@@ -1582,6 +1628,17 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   nd <- as_prediction_matrix(newdata)
   n <- nrow(nd)
   
+  if (is.null(newoffset) &&
+      !isTRUE(newdata_is_training_internal) &&
+      isTRUE(object$formula_interface) &&
+      is.data.frame(newdata_raw) &&
+      !is.null(object$formula_offset_terms)) {
+    newoffset <- reconstruct_formula_offset_newdata(
+      object = object,
+      newdata = newdata_raw
+    )
+  }
+  
   # Local scaling helper applies the same raw -> shifted/scaled transformation
   # used at fit time and then applies stored winsorisation limits if present.
   scale_vars <- function(vars) {
@@ -1597,7 +1654,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       )
     }
     
-    # When a replacement offset is supplied with `newdata = NULL`, `nd` is
+    # When a replacement newoffset is supplied with `newdata = NULL`, `nd` is
     # `x_train_internal`. It has already been shifted, scaled, winsorised, and
     # internally group-remapped at fit time. Do not transform it a second time.
     if (isTRUE(newdata_is_training_internal)) {
@@ -1928,11 +1985,11 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   }
   
   has_offset <- mfpi_fit_has_offset(interaction_model$fit)
-  if (is.null(offset)) {
+  if (is.null(newoffset)) {
     if (has_offset) {
       stop(
         paste0(
-          "The fitted interaction model used an offset. Supply `offset` with ",
+          "The fitted interaction model used an offset. Supply `newoffset` with ",
           "one value per row of `newdata`."
         ),
         call. = FALSE
@@ -1940,18 +1997,62 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
     pred_offset <- rep(0, n)
   } else {
-    if (!is.numeric(offset) || length(offset) != n || anyNA(offset) ||
-        any(!is.finite(offset))) {
-      stop("`offset` must be a finite numeric vector with one value per prediction row.",
+    if (!is.numeric(newoffset) || length(newoffset) != n || anyNA(newoffset) ||
+        any(!is.finite(newoffset))) {
+      stop("`newoffset` must be a finite numeric vector with one value per prediction row.",
            call. = FALSE)
     }
-    pred_offset <- as.numeric(offset)
+    pred_offset <- as.numeric(newoffset)
     has_offset <- TRUE
+  }
+  
+  # Build a formula-compatible data frame for the stored glm/coxph model.
+  # Predictor names are exactly the fitted coefficient names (without intercept).
+  model_newdata <- as.data.frame(X, check.names = FALSE)
+  
+  fit_formula <- stats::formula(interaction_model$fit)
+  formula_text <- paste(deparse(fit_formula), collapse = " ")
+  expects_offset <- grepl("offset\\(offset_\\)", formula_text)
+  expects_strata <- grepl("strata\\(strata_\\)", formula_text)
+  
+  if (expects_offset) {
+    model_newdata$offset_ <- pred_offset
+  }
+  
+  if (expects_strata) {
+    if (is.null(strata)) {
+      stop(
+        paste0(
+          "The fitted Cox interaction model is stratified. Supply `strata` ",
+          "with one value or row per prediction row, or include the original ",
+          "formula strata variable(s) in `newdata`."
+        ),
+        call. = FALSE
+      )
+    }
+    
+    strata_n <- if (is.vector(strata) || is.factor(strata)) length(strata) else NROW(strata)
+    if (strata_n != n) {
+      stop("`strata` must have one value or row per prediction row.", call. = FALSE)
+    }
+    if (anyNA(strata)) {
+      stop("`strata` must not contain missing values.", call. = FALSE)
+    }
+    
+    model_newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
+      do.call(
+        survival::strata,
+        c(as.list(as.data.frame(strata)), list(shortlabel = TRUE))
+      )
+    } else {
+      strata
+    }
   }
   
   list(
     X = X,
     offset = pred_offset,
+    model_newdata = model_newdata,
     has_offset = has_offset,
     group_internal = group_internal,
     group_levels = group_labels,
@@ -1991,7 +2092,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 #'   \code{NULL} when \code{use_model_predict = TRUE}.
 #' @param offset Numeric offset vector for manual prediction, or \code{NULL}
 #'   when the fitted model's own prediction method is used. For manually
-#'   reconstructed training-data prediction, this can be a replacement offset
+#'   reconstructed training-data prediction, this can be a replacement newoffset
 #'   supplied with \code{newdata = NULL}.
 #' @param type Character scalar, either \code{"link"} or \code{"response"}.
 #' @param se.fit Logical scalar. Whether to compute standard errors.
@@ -2004,7 +2105,8 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 #' @keywords internal
 #' @noRd
 mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
-                                     type, se.fit, use_model_predict = FALSE) {
+                                     model_newdata = NULL, type, se.fit,
+                                     use_model_predict = FALSE) {
   # Final ordinary-prediction step. Either delegate to the fitted model's
   # predict() method or multiply the reconstructed design by the coefficients.
   
@@ -2012,19 +2114,21 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
   fit_obj <- interaction_model$fit
   family_string <- mfpi_family_string(object)
   
-  if (isTRUE(use_model_predict)) {
-    # Training-data prediction without a replacement offset delegates to the
+  if (isTRUE(use_model_predict) || !is.null(model_newdata)) {
+    # Training-data prediction without a replacement newoffset delegates to the
     # fitted model. Cox uses reference = "zero" so delegated predictions
     # agree with the manual X %*% beta convention used for newdata.
     if (identical(family_string, "cox")) {
       pred_type <- if (type == "link") "lp" else "risk"
       
-      pred <- stats::predict(
-        fit_obj,
-        type   = pred_type,
+      predict_args <- list(
+        object = fit_obj,
+        type = pred_type,
         se.fit = se.fit,
         reference = "zero"
       )
+      if (!is.null(model_newdata)) predict_args$newdata <- model_newdata
+      pred <- do.call(stats::predict, predict_args)
       
       if (is.list(pred)) {
         fit <- as.numeric(pred$fit)
@@ -2032,7 +2136,8 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
         return(list(
           fit    = fit,
           se.fit = if (!is.null(pred$se.fit)) as.numeric(pred$se.fit) else NULL,
-          link   = if (type == "link") fit else NULL
+          link   = if (type == "link") fit else NULL,
+          used_model_predict = TRUE
         ))
       }
       
@@ -2041,19 +2146,24 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
       return(list(
         fit    = fit,
         se.fit = NULL,
-        link   = if (type == "link") fit else NULL
+        link   = if (type == "link") fit else NULL,
+        used_model_predict = TRUE
       ))
     }
     
-    pred <- stats::predict(fit_obj, type = type, se.fit = se.fit)
+    predict_args <- list(object = fit_obj, type = type, se.fit = se.fit)
+    if (!is.null(model_newdata)) predict_args$newdata <- model_newdata
+    pred <- do.call(stats::predict, predict_args)
     if (is.list(pred)) {
       return(list(
         fit = as.numeric(pred$fit),
         se.fit = if (!is.null(pred$se.fit)) as.numeric(pred$se.fit) else NULL,
-        link = NULL
+        link = NULL,
+        used_model_predict = TRUE
       ))
     }
-    return(list(fit = as.numeric(pred), se.fit = NULL, link = NULL))
+    return(list(fit = as.numeric(pred), se.fit = NULL, link = NULL,
+                used_model_predict = TRUE))
   }
   
   coef_vec <- interaction_model$coefficients
@@ -2143,7 +2253,8 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
     }
   }
   
-  list(fit = as.numeric(fit), se.fit = se_out, link = eta)
+  list(fit = as.numeric(fit), se.fit = se_out, link = eta,
+       used_model_predict = FALSE)
 }
 
 

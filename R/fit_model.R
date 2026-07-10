@@ -336,22 +336,27 @@ fit_cox <- function(x,
   if (is.null(control)) { 
     control <- survival::coxph.control()
   }
-  
   has_predictors <- !is.null(x) && NCOL(x) > 0
+  
+  istrata <- if (!is.null(strata)) {
+    as.integer(strata)
+  } else {
+    NULL
+  }
   
   if (fast) {
     fit <- survival::coxph.fit(
       x = x,
       y = y, 
-      strata = strata,
-      weights = weights,
+      strata = istrata,
       offset = offset,
       control = control, 
+      weights = weights,
       method = method, 
       rownames = rownames, 
       resid = TRUE,
       nocenter = nocenter
-    )  
+    )
   } else {
     # construct appropriate formula incorporating offset and strata terms
     # cbinding y will lead to two variables: time and status

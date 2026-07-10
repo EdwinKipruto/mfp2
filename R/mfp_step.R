@@ -76,10 +76,17 @@
 #'   already guarantees acceptance of the most complex form. 
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
+#' @param n_obs Numeric; number of observations (or observed events, for Cox
+#' models), used for AIC/BIC-based selection and small-sample F-tests.
 #' @param precomputed_adj Optional internal adjustment object returned by
 #' \code{build_adjustment_step()}. When supplied, adjustment-variable
 #' transformations are reused and only current-variable candidate
-#' transformations are generated.
+#' transformations are generated. \code{find_best_fp_step()} itself does not
+#' take this argument; it is documented here because several sibling
+#' functions below (\code{find_best_fpm_step()}, \code{fit_null_step()},
+#' \code{fit_linear_step()}, \code{select_linear()}, \code{select_ra2()},
+#' \code{select_ra2_acd()}, \code{select_ic()}, \code{select_ic_acd()}) use
+#' \code{@@inheritParams find_best_fp_step} and rely on this entry.
 #' @param verbose a logical; run in verbose mode.
 #' 
 #' @details 
@@ -176,9 +183,17 @@ find_best_fp_step <- function(x,
                               n_obs,
                               verbose) {
   
+  # find_best_fp_step() dispatches xi's model-selection to the right
+  # closed-test/IC routine, prints progress, cleans up the returned powers,
+  # and (for spike variables) runs SAZ stage 2 once stage 1 has selected a
+  # non-null model. See "Functional form selection" above for how the three
+  # selection routines relate.
+  
   degree <- as.numeric(df / 2)
   
-  # choose appropriate selection function
+  # Step 1: Choose the appropriate selection function for xi ------------------
+  # Linear (df = 1), ACD, or ordinary FP case, each further split by
+  # criterion (p-value closed-test vs. AIC/BIC).
   if (df == 1) {
     # linear case 
     select_fct <- select_linear
@@ -194,6 +209,7 @@ find_best_fp_step <- function(x,
     } else select_fct <- select_ic
   }
   
+  # Step 2: Run the selected routine and optionally print progress -----------
   fit1 <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
     y = y, family = family, family_string = family_string, 
@@ -210,11 +226,11 @@ find_best_fp_step <- function(x,
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
   }
   
+  # Step 3: Clean up the returned powers for xi -------------------------------
   # prepare power to return. Remove trailing NAs, unless ACD is used
   power_best <- as.numeric(fit1$power_best)
   
   if (!fit1$acd) {
-    #power_best <- na.omit(power_best) 
     power_best <- power_best[!is.na(power_best)]
     if (length(power_best) == 0) {
       power_best <- NA 
@@ -226,6 +242,7 @@ find_best_fp_step <- function(x,
     xi,length(power_best),acd = acdx[xi]
   )
   
+  # Step 4: If xi was eliminated (stage 1 selected null), stop here ----------
   # Stage 1 selected null.
   # Nothing more to do.
   # For spike variables, clear stale binary-only decision.
@@ -246,6 +263,7 @@ find_best_fp_step <- function(x,
     ))
   }
   
+  # Step 5: If xi is not a spike variable, stop here (no stage 2 needed) -----
   if (!isTRUE(spike[[xi]])) {
     # Stage 1 selected a non-null model,
     # but xi is not a spike variable.
@@ -257,6 +275,7 @@ find_best_fp_step <- function(x,
     ))
   }
   
+  # Step 6: xi is a selected spike variable, so run SAZ stage 2 --------------
   # If we get here:
   # power_best is not NA
   # and xi is a spike variable
@@ -368,10 +387,11 @@ find_best_fpm_step <- function(x,
                                precomputed_adj = NULL,
                                n_obs,
                                ...
-                               ) {
-  # Number of events
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
+) {
+  # n_obs (number of observations, or events for Cox models) is computed once
+  # in fit_mfp() and passed down as a parameter, rather than recomputed here.
   
+  # Step 1: For degree 1 (FP1), drop power 1 from xi's own candidate set -----
   if (degree == 1) {
     # Degree-1 candidate generation is for the current variable xi only.
     # Exclude power 1 for xi because the corresponding linear model is fitted
@@ -388,6 +408,8 @@ find_best_fpm_step <- function(x,
     powers[[xi]] <- setdiff(powers[[xi]], 1)
   }
   
+  # Step 2: Generate candidate FP/ACD transformations for xi and the current
+  # adjustment set (or reuse precomputed_adj if the caller already built it).
   # generate FP data for x of interest (xi) and adjustment variables
   # Takes into account variables that should not be shifted thru 'zero'
   x_transformed <- transform_data_step(
@@ -398,14 +420,19 @@ find_best_fpm_step <- function(x,
     prev_adj_params = prev_adj_params,
     precomputed_adj = precomputed_adj
   )
-
+  
   data_adj <- x_transformed$data_adj
   data_fp <- x_transformed$data_fp
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
   use_glm_intercept_template <- !identical(family_string, "cox")
   
-
-  # Sequential computation ---------------------------------------------------------
+  
+  # Step 3: Build a reusable design-matrix template ---------------------------
+  # All FP candidates for xi within this degree share the same number of
+  # columns (n_xi_cols) and the same adjustment block, so build the
+  # intercept + adjustment part of the design matrix once here, and just
+  # overwrite the xi block for each candidate in the loop below. This avoids
+  # reallocating/cbind-ing the full matrix once per candidate.
   
   first_xi <- data_fp[[1L]]
   n_xi_cols <- NCOL(first_xi)
@@ -434,6 +461,7 @@ find_best_fpm_step <- function(x,
     design_mat <- cbind(first_xi, data_adj)
     xi_cols <- seq_len(n_xi_cols)
   }
+  # Step 4: Fit one model per candidate FP power set and score it ------------
   metrics <- vector("list", length(data_fp))
   for (i in seq_along(data_fp)) {
     # combine FP variables for x of interest with adjustment variables.
@@ -480,11 +508,14 @@ find_best_fpm_step <- function(x,
       n_obs,
       degree
     )
-  
+    
   }
   
   metrics <- do.call(rbind, metrics) 
   
+  # Step 5: Pick the candidate with the highest log-likelihood ---------------
+  # (equivalent to lowest deviance/AIC/BIC here, since all candidates in this
+  # call share the same degrees of freedom; see @details above).
   model_best <- as.numeric(which.max(metrics[, "logl"]))
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[model_best]]
   
@@ -508,10 +539,13 @@ find_best_fpm_step <- function(x,
 #' captured by `...` are passed on to \code{fit_model()}.
 #' 
 #' @return 
-#' A list with two entries: 
+#' A list with three entries: 
 #' 
 #' * `powers`: FP power(s) of `xi` in fitted model - in this case `NA`.
 #' * `metrics`: A matrix with performance indices for fitted model.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi`,
+#'   cached for reuse in later steps (see \code{prev_adj_params} in
+#'   \code{find_best_fp_step()}).
 #' 
 #' @inheritParams find_best_fp_step
 #' @param ... Parameters passed to `fit_model()`.
@@ -535,11 +569,9 @@ fit_null_step <- function(x,
                           precomputed_adj = NULL,
                           n_obs,
                           ...
-                          ) {
+) {
   
-  # Number of events
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
-  
+  # Step 1: Build (or reuse) the adjustment-variable design matrix ----------
   # Null model uses adjustment variables only. Do not call
   # transform_data_step(df = 1) here: that would generate the current-variable
   # linear candidate and then discard it.
@@ -569,6 +601,7 @@ fit_null_step <- function(x,
     data_adj = adj$data_adj
   )
   
+  # Step 2: Fit the null model (adjustment variables only, xi excluded) -----
   # An empty matrix can be returned which creates problem for cox model
   # convert it to NULL 
   x_tran <- adj$data_adj
@@ -585,8 +618,9 @@ fit_null_step <- function(x,
                           family_string   = family_string,
                           has_offset = has_offset,
                           ...
-                          ) 
+  ) 
   
+  # Step 3: Score the null model and return, with xi's power fixed at NA ----
   list(
     powers = NA,
     metrics = rbind(null = calculate_model_metrics(model_null, n_obs)),
@@ -606,11 +640,13 @@ fit_null_step <- function(x,
 #' All parameters captured by \code{...} are passed to \code{fit_model}.
 #' 
 #' @return 
-#' A list with two entries: 
+#' A list with three entries: 
 #' 
 #' * `powers`: FP power(s) of `xi` (or its ACD transformation) in fitted model.
 #' * `metrics`: A matrix with performance indices for fitted model.
-#' * `prev_adj_params`: Previously adjusted parameters.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi`,
+#'   cached for reuse in later steps (see \code{prev_adj_params} in
+#'   \code{find_best_fp_step()}).
 #' @inheritParams find_best_fp_step
 #' @param ... Parameters passed to `fit_model()`.
 #' @keywords internal
@@ -633,9 +669,10 @@ fit_linear_step <- function(x,
                             n_obs,
                             ...,
                             precomputed_adj = NULL) {
-  # Number of events in survival models or observation in GLM 
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
+  # n_obs (number of observations, or events for Cox models) is computed once
+  # in fit_mfp() and passed down as a parameter, rather than recomputed here.
   
+  # Step 1: Transform xi as a linear term (power 1) plus the adjustment set -
   # transform all data as given by current working model
   # set variable of interest to linear term only
   x_transformed <- transform_data_step(
@@ -647,6 +684,7 @@ fit_linear_step <- function(x,
   ) 
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[1]]
   
+  # Step 2: Assemble the design matrix and fit the linear model -------------
   # Fit a model based on the assumption that xi is linear.
   # If catzero or spike-at-zero is active for xi, the corresponding binary
   # component is already included in data_xi.
@@ -682,7 +720,8 @@ fit_linear_step <- function(x,
     ...
   )
   
-  # respect acd
+  # Step 3: Score the linear model (0 additional df beyond the 1 already
+  # counted for the linear term itself) and label the metrics row for ACD.
   metrics <- rbind(
     linear = calculate_model_metrics(
       obj = model_linear,
@@ -742,8 +781,11 @@ fit_linear_step <- function(x,
 #'   nonpositive values of \code{xi} were set to zero, only positive values were 
 #'   transformed, and an additional binary variable was created to indicate 
 #'   whether \code{xi} was positive or nonpositive.
-#' * `spike_decision`: Spike decision flag for xi.
-#' * `prev_adj_params`: Previously adjusted parameters.
+#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
+#'   variable, carried through from the `spike` argument.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
+#'   whichever of the null/linear models was selected, cached for reuse in
+#'   later steps (see \code{prev_adj_params} in \code{find_best_fp_step()}).
 #' @param degree not used.
 #' @param force_max_fp not used
 #' @param ... passed to fitting functions. 
@@ -775,8 +817,18 @@ select_linear <- function(x,
                           n_obs,
                           ...) {
   
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
+  # select_linear() is only used when df = 1 for xi (see find_best_fp_step()'s
+  # dispatch logic): this covers variables that are restricted to a linear
+  # effect, e.g. dummy/categorical variables or any continuous variable the
+  # user explicitly restricted via df = 1. Because no FP alternative exists
+  # for such variables, the closed-test procedure collapses to a single
+  # null-vs-linear comparison
   
+  # Step 1: Build the adjustment matrix (all variables except xi, transformed
+  # at their *current* powers_current) once, and reuse it for both candidate
+  # fits below. This is valid because neither the null nor the linear model
+  # for xi changes what the adjustment variables look like - only xi's own
+  # representation differs between the two candidates.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -791,11 +843,18 @@ select_linear <- function(x,
     prev_adj_params = prev_adj_params
   )
   
+  # If xi itself contributes a structural-zero binary indicator (because it is
+  # an active spike variable, or was passed through catzero_vars), the linear
+  # model for xi always includes that indicator alongside the continuous term.
+  # The " + Binary" suffix on row/test names makes this visible in printed
+  # output and in the metrics/powers matrices below, without changing which
+  # models are actually compared (there is still only null vs. linear).
   has_binary_xi <- isTRUE(spike[[xi]]) || !is.null(catzero[[xi]])
   binary_suffix <- if (has_binary_xi) " + Binary" else ""
   linear_name <- paste0("linear", binary_suffix)
   
-  # Model 1: Null model
+  # Step 2: Fit the two candidate models -------------------------------------
+  # Model 1: Null model (xi excluded entirely, adjustment variables only).
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
@@ -805,7 +864,7 @@ select_linear <- function(x,
     precomputed_adj = precomputed_adj, n_obs = n_obs, ...
   )
   
-  # Model 2: Linear model
+  # Model 2: Linear model (xi included with FP power fixed at 1).
   fit_linear <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
@@ -816,6 +875,9 @@ select_linear <- function(x,
     precomputed_adj = precomputed_adj, ...
   )
   
+  # Stack both candidates' powers/metrics into 2-row matrices so the rest of
+  # this function (and the caller) can treat them uniformly, the same way
+  # select_ra2()/select_ic() stack an arbitrary number of candidate rows.
   # Extract powers and metrics of interest
   powers <- rbind(fit_null$powers, fit_linear$powers)
   metrics <- rbind(fit_null$metrics, fit_linear$metrics)
@@ -823,6 +885,7 @@ select_linear <- function(x,
   rownames(powers) <- c("null", linear_name)
   rownames(metrics) <- c("null", linear_name)
   
+  # Step 3: Test null vs. linear (1 df difference: the coefficient for xi) ---
   # compute F or Chi-square statistic between the two models
   if (ftest) {
     # note that ftest is only TRUE if model is gaussian
@@ -832,6 +895,8 @@ select_linear <- function(x,
       n_obs = n_obs
     )
   } else {
+    # Ordinary likelihood-ratio chi-square test (2 * difference in log-lik,
+    # compared to a chi-square distribution with the df difference, here 1).
     stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
   
@@ -843,11 +908,22 @@ select_linear <- function(x,
   statistic <- stats$statistic 
   names(statistic) <- test_name
   
+  # Step 4: Select null or linear, or force linear if xi is in `keep` --------
+  # `keep` overrides ordinary selection entirely: a kept variable is never
+  # dropped, so it is fixed at the linear model regardless of significance or
+  # information criterion.
   # Check whether the variable should be forced into the model; index 1 denotes
   # a null, while 2 denotes a linear model
   if (xi %in% keep) {
     model_best <- 2
   } else {
+    # For "pvalue": xi is dropped (null) unless the null-vs-linear test is
+    # significant at the `select` threshold - this mirrors Test 1 of the FP
+    # closed-test procedure (see select_ra2()), just with only one candidate
+    # non-null model instead of several FP degrees.
+    # For "aic"/"bic": simply pick whichever of the two rows has the smaller
+    # criterion value; there's no separate functional-form step because a
+    # linear-only variable has no functional form to choose between.
     model_best <- switch(
       tolower(criterion), 
       "pvalue" = ifelse(pvalue >= select, 1, 2), 
@@ -868,6 +944,10 @@ select_linear <- function(x,
     zero = zero[xi],
     catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
     spike = spike[xi],
+    # Return the adjustment-variable cache belonging to whichever model was
+    # actually selected (not always fit_linear's), so that the cache stored in
+    # prev_adj_params for the *next* cycle correctly reflects xi's current
+    # state (excluded vs. included) rather than always assuming inclusion.
     current_adj_params = if (model_best == 1) fit_null$current_adj_params else fit_linear$current_adj_params
   )
 }
@@ -926,8 +1006,11 @@ select_linear <- function(x,
 #' * `model_best`: row index of best model in `metrics`.
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
-#' * `spike_decision`: Spike decision flag for xi.
-#' * `prev_adj_params`: Previously adjusted parameters.
+#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
+#'   variable, carried through from the `spike` argument.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
+#'   the selected model, cached for reuse in later steps (see
+#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
 #' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
@@ -966,14 +1049,23 @@ select_ra2 <- function(x,
                        n_obs,
                        ...) {
   
+  # select_ra2() implements the RA2 closed-test function-selection procedure
+  # (Royston & Sauerbrei 2008, Ch. 4 & 6) for a single continuous variable xi
+  # at a given candidate FP degree. Called once per FP degree from
+  # find_best_fp_step() (criterion = "pvalue", non-ACD variables only).
+  # `degree` is the *maximum* degree under consideration (df / 2 for xi); the
+  # tests below successively fall back to simpler models (null, linear, then
+  # FP1, FP2, ... up to degree - 1) until one is not significantly worse than
+  # FPm(degree), or none are, in which case FPm(degree) itself is retained.
+  #
+  # degree = 1 (linear-only variables) is handled by select_linear() instead;
+  # this guard is defensive and should not normally trigger from
+  # find_best_fp_step()'s dispatch logic.
   if (degree < 1) {
     return(NULL)
   }
   
-  
-  # Number of events in survival models or observations in GLM
-  #n_obs <- ifelse(family_string == "cox", sum(y[, 2]), nrow(x))
-  
+  # Step 0: Set up the test statistic helper and shared naming -------------
   # simplify testing by defining test helper function
   if (ftest) {
     calculate_test <- function(metrics, n_obs) {
@@ -992,6 +1084,7 @@ select_ra2 <- function(x,
     }
   }
   
+  # step 1: setup output list
   # Model labels get a binary suffix when the focal variable contributes a
   # structural-zero indicator, either through spike handling or catzero.
   # Compute this once to keep row names, test labels, and candidate names
@@ -999,10 +1092,14 @@ select_ra2 <- function(x,
   has_binary_xi <- isTRUE(spike[[xi]]) || !is.null(catzero[[xi]])
   binary_suffix <- if (has_binary_xi) " + Binary" else ""
   
-  #fpmax <- ifelse(spike[xi] || !is.null(catzero[[xi]]),  paste0("FP", degree, " + Binary"), paste0("FP", degree))
   fpmax <- paste0("FP", degree, binary_suffix)
   
   # output list
+  # `res` accumulates one row per candidate model tested (in `metrics` and
+  # `powers`) and one entry per pairwise test performed (in `statistic` and
+  # `pvalue`) as the procedure works through Tests 1-3 below. Each early
+  # return fixes `model_best` as a row index into `res$metrics`/`res$powers`
+  # at that point.
   res <- list(
     keep = xi %in% keep, 
     acd = FALSE, 
@@ -1016,7 +1113,11 @@ select_ra2 <- function(x,
     current_adj_params = NULL
   )
   
-  
+  # Step 2: Build the adjustment matrix (all variables except xi, transformed
+  # at their *current* powers_current) once, and reuse it for all candidate
+  # fits below. This is valid because neither the null nor the FPm models
+  # for xi changes what the adjustment variables look like - only xi's own
+  # representation differs between the candidate models.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -1030,7 +1131,12 @@ select_ra2 <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params
   )
-  # fit highest fp and null model for initial step
+  
+  # Step 3: Test null vs. FPm. Asks "is xi associated with the outcome at all, 
+  # in its most flexible form at this degree?" If not significant (at the 
+  # `select` level), xi is dropped, unless forced via `keep`.
+  
+  # fit highest fp (FPm) and null model
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = degree, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
@@ -1039,6 +1145,7 @@ select_ra2 <- function(x,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, ...
   )
+  
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
@@ -1052,13 +1159,15 @@ select_ra2 <- function(x,
     fit_null$metrics
   )
   rownames(res$metrics) <- c(fpmax, "null")
+  # Row 1 = FPm, the reference model every later test compares
+  # against; row 2 = null model, whose power is NA since xi is excluded.
   res$powers <- rbind(fit_fpmax$power_best, NA)
   
   # return also the adjustment parameters
   res$current_adj_params <- fit_fpmax$current_adj_params
-  
+
   # Test 1: test for overall significance (null vs best FPm)
-  # df for tests are degree * 2
+  # df for tests are 2 * degree 
   stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
   res$statistic <- stats$statistic
   names(res$statistic) <- sprintf("%s vs null", fpmax)
@@ -1069,6 +1178,8 @@ select_ra2 <- function(x,
   current_keep <- if (is.null(keep)) character(0) else keep
   
   if (stats$pvalue >= select && !(xi %in% current_keep)) {
+    # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
+    # the null row).
     # not selected and not forced into model
     res$power_best = NA
     res$model_best = 2
@@ -1076,8 +1187,11 @@ select_ra2 <- function(x,
     return(res)
   }
   
-  # Test 2: test for non-linearity (linear vs best FPm)
-  # df for tests are degree * 2 - 1
+  # Step 4: Test linear vs. FPm. xi is significant overall (or forced in); now
+  # ask "is the extra flexibility of FPm actually needed, or would a simple 
+  # linear term do just as well?" This test has one fewer df than Test 1 because
+  # the linear model already spends 1 df on xi (vs. 0 for the null model).
+  
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx, 
@@ -1095,6 +1209,8 @@ select_ra2 <- function(x,
   
   lin_names <- paste0("linear", binary_suffix)
   rownames(res$metrics) <- c(old_names, lin_names)
+  # The linear candidate has 1 power (fixed at 1); pad with NA so its row
+  # matches res$powers' width (degree columns, one per FPm(degree) power).
   res$powers = rbind(res$powers, 
                      ensure_length(fit_lin$powers, ncol(res$powers)))
   
@@ -1106,6 +1222,9 @@ select_ra2 <- function(x,
   names(res$pvalue) <- names(res$statistic)
   
   if (stats$pvalue >= alpha) {
+    # Test 2 not significant: the extra flexibility beyond linear is not
+    # needed. Accept linear and stop (model_best = 3: rows were inserted in
+    # order FPm(degree), null, linear).
     # no non-linearity detected
     res$power_best = 1
     res$model_best = 3
@@ -1113,11 +1232,16 @@ select_ra2 <- function(x,
     return(res)
   }
   
-  # Test 3: test for complexity of the functions (best FP1 vs best FPm)
-  # do this for all fps with lower degrees
-  # dfs for tests are decreasing
+  # Step 5: Test FPx vs. FPm, where x = 1,2,..m-1. Non-linearity was detected 
+  # (Test 2 significant), but FPm may still be more complex than necessary.
+  # Walk up through increasingly complex lower degrees (FP1, FP2, ...) and
+  # stop as soon as one is not significantly worse than FPm; that
+  # lower-degree FP becomes the final choice. If every lower degree is
+  # significantly worse, FPm itself is retained (Step 6, after the loop).
+  # do this for all fps with lower degrees. dfs for tests are decreasing
+  
   if (degree > 1) {
-    # Vector of lower degrees
+    # Vector of lower degrees starting with FP1. 
     lower_degrees <- 1:(degree - 1)
     
     # Construct FP names once
@@ -1143,6 +1267,8 @@ select_ra2 <- function(x,
       )
       rownames(res$metrics) <- c(old_names, fpm)
       
+      # Append powers, padded to match the fpmax column width (lower-degree
+      # candidates have fewer powers than FPm(degree)).
       # Append powers
       res$powers <- rbind(res$powers, 
                           ensure_length(fit_fpm$power_best, ncol(res$powers)))
@@ -1159,6 +1285,9 @@ select_ra2 <- function(x,
       
       # Stop early if non-linearity detected
       if (stats$pvalue >= alpha) {
+        # FPm(current_degree) is not significantly worse than FPm(degree):
+        # accept it and stop climbing further; model_best is the row just
+        # appended (the last row of res$metrics at this point).
         # non-linearity detected, but lower than maximum degree
         res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = FALSE]
         res$model_best = nrow(res$metrics)
@@ -1169,7 +1298,9 @@ select_ra2 <- function(x,
     
   }
   
-  # return highest power
+  # Step 6: Every lower-degree FP tested was significantly worse than
+  # FPm (or degree == 1, so there were no lower degrees to test at
+  # all): retain the highest-degree FPm itself (row 1, inserted first).
   res$power_best <- fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
   res$model_best <- 1
   res$current_adj_params <- fit_fpmax$current_adj_params
@@ -1211,8 +1342,11 @@ select_ra2 <- function(x,
 #' * `model_best`: row index of best model in `metrics`.
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
-#' * `spike_decision`: Spike decision flag for xi.
-#' * `prev_adj_params`: Previously adjusted parameters.
+#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
+#'   variable, carried through from the `spike` argument.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
+#'   the selected model, cached for reuse in later steps (see
+#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
 #' 
 #' @references 
 #' Royston, P. and Sauerbrei, W., 2016. \emph{mfpa: Extension of mfp using the
@@ -1252,6 +1386,17 @@ select_ra2_acd <- function(x,
                            n_obs,
                            ...) {
   
+  # This implements the FSPA (function-selection procedure for ACD) 5-test
+  # closed procedure for the 6 ACD sub-models (M1-M6), documented in detail in
+  # mfp2()'s "Closed test procedure to choose final model" section:
+  #   M1 = FP1(x, A(x))   [fpmax, the most flexible/reference model]
+  #   M2 = FP1(x, .)      (regular FP1 in x, ACD term dropped)
+  #   M3 = FP1(., A(x))   (FP1 in A(x), x term dropped)
+  #   M4 = linear(x)      (linear in x, ACD term dropped)
+  #   M5 = linear(., A(x)) (linear in A(x), x term dropped)
+  #   M6 = null           (xi omitted entirely)
+  # Tests run in the order M6 vs M1, M4 vs M1, M2 vs M1, M3 vs M1, M5 vs M3.
+  
   # simplify testing by defining test helper function
   if (ftest) {
     calculate_test <- function(metrics, n_obs) {
@@ -1277,7 +1422,9 @@ select_ra2_acd <- function(x,
   has_binary_xi <- isTRUE(spike[[xi]]) || !is.null(catzero[[xi]])
   binary_suffix <- if (has_binary_xi) " + Binary" else ""
   fpmax <- paste0("FP1(x, A(x))", binary_suffix)
-
+  
+  # acdx_reset_xi disables the ACD flag for xi only, used when fitting
+  # candidates (e.g. linear(x), FP1(x, .)) that do not involve A(x).
   acdx_reset_xi <- acdx
   acdx_reset_xi[xi] = FALSE
   
@@ -1295,7 +1442,9 @@ select_ra2_acd <- function(x,
     current_adj_params = NULL
   )
   
-  
+  # Build the adjustment matrix (all variables except xi, transformed
+  # at their *current* powers_current) once, and reuse it for all candidate
+  # fits below.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -1309,6 +1458,11 @@ select_ra2_acd <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params
   )
+  
+  # Test 1 (M6 vs M1): null vs. FP1(x, A(x)), df = 4. Asks whether xi (in its
+  # most flexible ACD-augmented form) is associated with the outcome at all.
+  # Not significant (at `select`) => drop xi entirely (M6), unless kept.
+  
   # fit highest fp and null model for initial step
   fit_fpmax <- find_best_fpm_step(
     x = x, xi = xi, degree = 2, y = y, 
@@ -1318,6 +1472,7 @@ select_ra2_acd <- function(x,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, ...
   )
+  
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
@@ -1326,6 +1481,8 @@ select_ra2_acd <- function(x,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, ...
   )
+  # Row 1 = M1 (FP1(x, A(x))), the reference model for Tests 1-4; row 2 = M6
+  # (null), whose power is a 2-column NA since neither x nor A(x) is included.
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
     fit_null$metrics
@@ -1347,6 +1504,8 @@ select_ra2_acd <- function(x,
   current_keep <- if (is.null(keep)) character(0) else keep
   
   if (stats$pvalue >= select && !(xi %in% current_keep)) {
+    # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
+    # the null/M6 row).
     # not selected and not forced into model
     res$power_best = matrix(c(NA, NA), ncol = 2)
     res$model_best = 2
@@ -1354,8 +1513,10 @@ select_ra2_acd <- function(x,
     return(res)
   }
   
-  # test for non-linearity in x
-  # df for tests are degree * 2 - 1 = 3
+  # Test 2 (M4 vs M1): linear(x) vs. FP1(x, A(x)), df = 3. Asks whether the
+  # simplest possible model (plain linear in x, no ACD term at all) is
+  # already as good as the full M1 model. acdx_reset_xi is used here (and in
+  # Test 3) because M4/M2 do not involve A(x) for xi.
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
@@ -1383,6 +1544,9 @@ select_ra2_acd <- function(x,
   names(res$pvalue) <- names(res$statistic)
   
   if (stats$pvalue >= alpha) {
+    # Test 2 not significant: plain linear(x) (M4) is not significantly worse
+    # than M1. Accept it and stop (model_best = 3: rows inserted in order M1,
+    # null/M6, linear/M4).
     # no non-linearity detected
     res$power_best = matrix(c(1, NA), ncol = 2)
     res$model_best = 3
@@ -1390,6 +1554,9 @@ select_ra2_acd <- function(x,
     return(res)
   }
   
+  # Test 3 (M2 vs M1): FP1(x, .) vs. FP1(x, A(x)), df = 2. M4 was rejected
+  # (Test 2 significant); now ask whether an ordinary (non-ACD) FP1 in x
+  # alone captures the relationship as well as the full M1 model.
   # test for functional form, comparison with FP1(x, .)
   fit <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
@@ -1419,6 +1586,8 @@ select_ra2_acd <- function(x,
   names(res$pvalue) <- names(res$statistic)
   
   if (stats$pvalue >= alpha) {
+    # Test 3 not significant: ordinary FP1(x, .) (M2) is not significantly
+    # worse than M1. Accept it and stop (model_best = 4).
     # FP1(x, .) is good enough
     res$power_best = matrix(c(fit$power_best, NA), ncol = 2)
     res$model_best = 4
@@ -1426,6 +1595,14 @@ select_ra2_acd <- function(x,
     return(res)
   }
   
+  # Test 4 (M3 vs M1): FP1(., A(x)) vs. FP1(x, A(x)), df = 2. M2 was rejected
+  # too; now ask the complementary question - does dropping x and keeping
+  # only the ACD term, FP1(., A(x)), capture the relationship as well as M1?
+  #
+  # a *significant* result now means M3 is rejected
+  # and M1 must be kept as final (no further simplification possible), so we
+  # stop with model_best = 1. A *non-significant* result means M3 survives
+  # this test and we must go on to Test 5 to compare it against M5.
   # test for functional form, comparison with FP1(., A(x))
   fit_fp1a <- find_best_fpm_step(
     x = x, xi = xi, degree = 1, y = y, 
@@ -1454,6 +1631,8 @@ select_ra2_acd <- function(x,
   names(res$pvalue) <- names(res$statistic)
   
   if (stats$pvalue < alpha) {
+    # Test 4 significant: M3 is significantly worse than M1, so M1 cannot be
+    # simplified any further. Stop with the full FP1(x, A(x)) model.
     # FP1(x, A(x)) is the best
     res$power_best = fit_fpmax$power_best
     res$model_best = 1
@@ -1461,6 +1640,11 @@ select_ra2_acd <- function(x,
     return(res)
   }
   
+  # Test 5 (M5 vs M3): linear(., A(x)) vs. FP1(., A(x)), df = 1. M3 survived
+  # Test 4 (was not significantly worse than M1), so now decide whether M3
+  # itself can be simplified further down to a plain linear term in A(x).
+  # Note this test compares against M3 (not M1) as the reference model -
+  # the only test in this function that does so.
   # return best model between FP1(., A(x)) and linear(., A(x))
   fit_lineara <- fit_linear_step(
     x = x, xi = xi, y = y, 
@@ -1489,6 +1673,8 @@ select_ra2_acd <- function(x,
   names(res$pvalue) <- names(res$statistic)
   
   if (stats$pvalue < alpha) {
+    # Test 5 significant: M5 (linear in A(x)) is significantly worse than M3,
+    # so M3 cannot be simplified further. Stop with FP1(., A(x)).
     # use FP1(., A(x))
     res$power_best = fit_fp1a$power_best
     res$model_best = 5
@@ -1496,6 +1682,9 @@ select_ra2_acd <- function(x,
     return(res)
   }
   
+  # Test 5 not significant: M5 is not significantly worse than M3, so the
+  # simplest surviving model is linear(., A(x)) - the end of the procedure,
+  # since M5 has no simpler ACD sub-model to fall back to.
   # use linear(., A(x))
   res$power_best = matrix(c(NA, 1), ncol = 2)
   res$model_best = 6
@@ -1557,8 +1746,11 @@ select_ra2_acd <- function(x,
 #' case..
 #' * `statistic`: test statistic used, depends on `ftest`, `NA` in this 
 #' case.
-#' * `spike_decision`: Spike decision flag for xi.
-#' * `prev_adj_params`: Previously adjusted parameters.
+#' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
+#'   variable, carried through from the `spike` argument.
+#' * `current_adj_params`: Adjustment-variable transformations for `xi` from
+#'   the selected model, cached for reuse in later steps (see
+#'   \code{prev_adj_params} in \code{find_best_fp_step()}).
 #' 
 #' @seealso 
 #' \code{select_ra2()}
@@ -1593,6 +1785,18 @@ select_ic <- function(x,
                       n_obs,
                       ...) {
   
+  # select_ic() implements AIC/BIC-based selection (criterion = "aic"/"bic"),
+  # the simpler alternative to select_ra2()'s sequential closed-test
+  # procedure: instead of a chain of pairwise significance tests, every
+  # relevant model (null, linear, FP1, FP2, ..., FPm) is fit once and
+  # the one with the smallest AIC/BIC is chosen directly. There is no
+  # `select`/`alpha` threshold involved here - the criterion value alone
+  # decides, which is why `statistic`/`pvalue` below are just placeholders
+  # (NA) rather than real test results.
+  #
+  # degree = 1 (linear-only variables) is handled by select_linear() instead;
+  # this guard is defensive and should not normally trigger from
+  # find_best_fp_step()'s dispatch logic.
   if (degree < 1) {
     return(NULL)
   }
@@ -1633,7 +1837,10 @@ select_ic <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params
   )
-  # Fit all relevant models ----------------------------------------------------
+  # Step 1: Fit all relevant models (null, linear, FP1..FPm) ------------------
+  # Unlike select_ra2(), there's no early-stopping here: every candidate is
+  # fit up front and compared at the end, since the decision rule (smallest
+  # AIC/BIC) needs all of them regardless of any individual model's fit.
   # Null Model
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -1656,7 +1863,11 @@ select_ic <- function(x,
   res$current_adj_params <- fit_null$current_adj_params
   
   
-  # All FPm models
+  # All FPm models: fit the best FP1, FP2...FPm candidate at each
+  # degree in turn (find_best_fpm_step() already picks the best power
+  # combination within each fixed degree by deviance, which is equivalent to
+  # AIC/BIC minimisation at fixed df since the penalty term is the same for
+  # all power combinations sharing that degree).
   fits_fpm <- vector("list", degree)
   
   for (m in seq_len(degree)) {
@@ -1672,7 +1883,8 @@ select_ic <- function(x,
   
   names(fits_fpm) <- paste0("FP", seq_len(degree), binary_suffix)
   
-  # Assemble output summary ----------------------------------------------------
+  # Step 2: Assemble powers/metrics for null, linear, and each best FPm into a
+  # single indexed summary (candidate_names gives the row order/labels) -----
   # output summary - only output best fpm models
   len_max <- ncol(fits_fpm[[fpmax]]$powers)
   
@@ -1714,8 +1926,12 @@ select_ic <- function(x,
   )
   rownames(res$metrics) <- candidate_names
   
-  # Select best model ----------------------------------------------------------
+  # Step 3: Select the best model by AIC/BIC, respecting force_max_fp/keep --
+  # Three mutually exclusive selection modes, in priority order:
   if (isTRUE(force_max_fp[xi])) {
+    # 1. force_max_fp: bypass model comparison entirely and always take the
+    # most complex FP model at the requested degree (the last row inserted:
+    # null, linear, FP1, ..., FPm, so nrow(res$metrics) is FPm(degree)).
     # Skip functional form competition: always select the most complex FP model
     # at the requested degree (last row of res$metrics = FPm or FPm + Binary).
     # The best power combination within that degree was already found by
@@ -1723,6 +1939,10 @@ select_ic <- function(x,
     # AIC/BIC minimisation at fixed df (same penalty for all power combinations).
     res$model_best <- nrow(res$metrics)
   } else if (xi %in% keep) { 
+    # 2. keep: xi must remain in the model, so the null-model row (row 1) is
+    # excluded from the comparison before taking which.min(); the resulting
+    # index is then shifted by +1 to account for the excluded row and land
+    # back on the correct row of the full res$metrics/res$powers.
     # Prevent selection of null model; choose best among linear through FPm.
     ind_select <- 2:nrow(res$metrics)
     res$model_best <- which.min(
@@ -1731,6 +1951,8 @@ select_ic <- function(x,
     # shift by 1 since null row was excluded
     res$model_best <- res$model_best + 1
   }else{
+    # 3. Unrestricted: every candidate (including null) is eligible; simply
+    # take whichever row has the smallest AIC/BIC.
     # Unrestricted: choose best among null through FPm.
     ind_select <- 1:nrow(res$metrics)
     res$model_best <- which.min(
@@ -1738,6 +1960,10 @@ select_ic <- function(x,
     )
   }
   
+  # Map the winning row index back to the adjustment-parameter cache from
+  # whichever underlying fit produced it: row 1 = null, row 2 = linear, rows
+  # 3+ = fits_fpm[[row - 2]] (FP1, FP2, ... in the same order they were
+  # appended to res$metrics/res$powers above).
   res$power_best <- res$powers[res$model_best, , drop = FALSE]
   res$current_adj_params <- if (res$model_best == 1L) {
     fit_null$current_adj_params
@@ -1778,6 +2004,12 @@ select_ic_acd <- function(x,
                           n_obs,
                           ...) {
   
+  # select_ic_acd() is the AIC/BIC counterpart of select_ra2_acd(): instead of
+  # the 5-test closed sequence over M1-M6, it fits the 6 relevant ACD
+  # sub-models directly (null, linear(x), linear(., A(x)), FP1(x, .),
+  # FP1(., A(x)), FP1(x, A(x))) and picks whichever has the smallest AIC/BIC.
+  # As in select_ic(), `statistic`/`pvalue` are just NA placeholders since no
+  # significance testing is involved.
   acdx_reset_xi <- acdx
   acdx_reset_xi[xi] <- FALSE
   # Model labels get a binary suffix when the focal variable contributes a
@@ -1815,6 +2047,13 @@ select_ic_acd <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params
   )
+  # Step 1: Fit all relevant models: null, linear(x), linear(., A(x)), and the
+  # three best FP1 candidates (FP1(x, .), FP1(., A(x)), FP1(x, A(x))) --------
+  # As in select_ic(), every candidate is fit up front (no early stopping),
+  # since AIC/BIC selection needs all of them for comparison. acdx_reset_xi
+  # (ACD disabled for xi only) is used for the null/linear(x)/FP1(x, .)
+  # candidates, which do not involve A(x); the ordinary acdx is used for the
+  # linear(., A(x))/FP1(., A(x))/FP1(x, A(x)) candidates, which do.
   # fit all relevant models
   fit_null <- fit_null_step(
     x = x, xi = xi, y = y, 
@@ -1824,6 +2063,8 @@ select_ic_acd <- function(x,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, ...
   )
+  
+  # linear(x, .)
   fit_lin <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
@@ -1832,6 +2073,8 @@ select_ic_acd <- function(x,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs, 
     precomputed_adj = precomputed_adj, ...
   )
+  
+  # linear(., A(x))
   fit_lina <- fit_linear_step(
     x = x, xi = xi, y = y, 
     powers_current = powers_current, powers = powers, acdx = acdx,
@@ -1843,9 +2086,16 @@ select_ic_acd <- function(x,
   
   res$current_adj_params <- fit_null$current_adj_params
   
-
+  # The three FP1 variants (in x only, in A(x) only, and jointly FP1(x, A(x)))
+  # are computed via find_best_fpm_step() at the appropriate degree (degree 1
+  # for the single-transform variants, degree 2 for the joint FP1(x, A(x))
+  # since it involves two power slots) and collected in a named list so Step 2
+  # can iterate over them generically.
+  
+ 
   fits <- setNames(
     list(
+      # FP1(x, .)
       find_best_fpm_step(
         x = x, xi = xi, degree = 1, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx_reset_xi,
@@ -1854,6 +2104,7 @@ select_ic_acd <- function(x,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, ...
       ), 
+      # FP1(., A(x))
       find_best_fpm_step(
         x = x, xi = xi, degree = 1, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx,
@@ -1862,6 +2113,7 @@ select_ic_acd <- function(x,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, ...
       ), 
+      # FP1(x, A(x))
       find_best_fpm_step(
         x = x, xi = xi, degree = 2, y = y, 
         powers_current = powers_current, powers = powers, acdx = acdx,
@@ -1878,6 +2130,8 @@ select_ic_acd <- function(x,
     )
   )
   
+  # Step 2: Assemble powers/metrics for null, the two linear variants, and the
+  # three best FP1 candidates into a single indexed summary -----------------
   # Assemble output summary ----------------------------------------------------
   # output summary - only output best fpm models
   len_max <- 2L
@@ -1922,14 +2176,22 @@ select_ic_acd <- function(x,
     )
   )
   rownames(res$metrics) <- candidate_names
-  # Select best model ---------------------------------------------------------- 
+  # Step 3: Select the best model by AIC/BIC, respecting force_max_fp/keep --
+  # Same three mutually exclusive selection modes as select_ic(), just over
+  # the 6-row ACD candidate set instead of degree + 2 rows.
   if (isTRUE(force_max_fp[xi])) {
+    # 1. force_max_fp: always take the most complex ACD model, FP1(x, A(x)),
+    # which is the last row inserted (null, linear, linear(., A(x)), FP1(x,.),
+    # FP1(., A(x)), FP1(x, A(x))).
     # Skip functional form competition: always select the most complex ACD
     # model - FP1(x, A(x)) - which is the last row of res$metrics.
     # The best power combination within it was already found by
     # find_best_fpm_step() via deviance minimisation.
     res$model_best <- nrow(res$metrics)
   } else if (xi %in% keep) {
+    # 2. keep: exclude the null row, take which.min() over the rest, then
+    # shift the index by +1 to land back on the correct row of the full
+    # res$metrics/res$powers.
     # Prevent selection of null model; choose best among linear through FP1(x, A(x)).
     ind_select <- 2:nrow(res$metrics)
     res$model_best <- which.min(
@@ -1937,6 +2199,7 @@ select_ic_acd <- function(x,
     )
     res$model_best <- res$model_best + 1L
   }else{
+    # 3. Unrestricted: every candidate (including null) is eligible.
     # Unrestricted: choose best among null through FP1(x, A(x))
     ind_select = 1:nrow(res$metrics)
     res$model_best <- which.min(
@@ -1944,6 +2207,10 @@ select_ic_acd <- function(x,
     )
   }
   
+  # Map the winning row index back to the adjustment-parameter cache from
+  # whichever underlying fit produced it: row 1 = null, row 2 = linear(x),
+  # row 3 = linear(., A(x)), rows 4+ = fits[[row - 3]] (FP1(x,.), FP1(.,A(x)),
+  # FP1(x,A(x)), in the same order they were inserted into `fits` above).
   res$power_best = res$powers[res$model_best, , drop = FALSE]
   res$current_adj_params <- if (res$model_best == 1L) {
     fit_null$current_adj_params
@@ -2013,6 +2280,7 @@ mfp2_build_adjustment_step_loop <- function(x,
                                             prev_power_keys_adj = NULL,
                                             prev_xi = NULL,
                                             has_prev = FALSE) {
+  # Step 1: Handle the trivial case of no adjustment variables --------------
   # The zero-adjustment-variable case is handled here and returns data_adj = NULL.
   # If adjustment variables exist but all contribute zero columns, the C++ helper
   # returns an n x 0 matrix.
@@ -2023,6 +2291,7 @@ mfp2_build_adjustment_step_loop <- function(x,
     ))
   }
   
+  # Step 2: Normalize/validate inputs for the C++ hot loop -------------------
   # The C++ interface expects a numeric matrix. In normal MFP internals `x`
   # should already be a numeric matrix, but this keeps the bridge robust.
   if (!is.matrix(x)) {
@@ -2063,6 +2332,7 @@ mfp2_build_adjustment_step_loop <- function(x,
     }
   }
   
+  # Step 3: Prepare previous-cycle cache inputs (for cache-hit reuse) -------
   # Previous per-variable matrices are used for cache hits. If no previous cache
   # exists, pass aligned NULL placeholders.
   prev_data_adj_list <- vector("list", length(vars_adj))
@@ -2108,6 +2378,7 @@ mfp2_build_adjustment_step_loop <- function(x,
   # Slice catzero here so the C++ inputs are all aligned to vars_adj.
   catzero_adj <- catzero[vars_adj]
   
+  # Step 4: Call the C++ hot loop with all inputs aligned to vars_adj -------
   cpp_adj <- build_adjustment_step_loop_cpp(
     x                            = x,
     x_col_index                  = as.integer(x_col_index - 1L),
@@ -2128,6 +2399,7 @@ mfp2_build_adjustment_step_loop <- function(x,
     has_prev                     = has_prev
   )
   
+  # Step 5: Restore names on the returned per-variable matrices --------------
   # Restore names defensively. The C++ helper also assigns names, but keeping
   # this in R makes the cache contract explicit.
   data_adj_list <- cpp_adj$data_adj_list
@@ -2145,6 +2417,19 @@ mfp2_build_adjustment_step_loop <- function(x,
 #' avoid recomputing the adjustment matrix repeatedly for the same focal
 #' variable, powers_current, and spike_decision state.
 #' @inheritParams transform_data_step
+#' @return
+#' A list with four entries:
+#' * `powers_adj`: named list of FP powers used for each adjustment variable
+#'   (i.e. \code{powers_current} restricted to variables other than `xi`), or
+#'   `NULL` if there are no adjustment variables.
+#' * `spike_decision_adj`: named vector of spike-at-zero decisions for each
+#'   adjustment variable, or `NULL` if there are no adjustment variables.
+#' * `data_adj_list`: named list of per-adjustment-variable transformed
+#'   matrices (used as a cache for the next call), or an empty list if there
+#'   are no adjustment variables.
+#' * `data_adj`: the column-bound adjustment design matrix, `NULL` if there are
+#'   no adjustment variables, or an `n x 0` matrix if adjustment variables
+#'   exist but all currently contribute zero columns (e.g. all eliminated).
 #' @keywords internal
 #' @noRd
 build_adjustment_step <- function(x,
@@ -2177,6 +2462,7 @@ build_adjustment_step <- function(x,
   #
   # It is NOT a vector inside this inner fitting code.
   
+  # Step 1: Identify the adjustment variable set (everything except xi) -----
   # Use powers_current names for the canonical variable order.
   # Accessing x columns by name avoids copying/reordering the full x matrix.
   names_powers_current <- names(powers_current)
@@ -2203,10 +2489,7 @@ build_adjustment_step <- function(x,
   data_adj_list <- list()
   
   if (length(vars_adj) > 0L) {
-    # Reusable empty matrix for variables that contribute no adjustment columns,
-    # for example eliminated variables with all-NA powers.
-    #empty_adj_mat <- matrix(nrow = nrow(x), ncol = 0L)
-    
+    # Step 2: Slice adjustment-variable metadata and compute cache keys -----
     # Previous cached adjustment information for this focal variable.
     # prev_adj_params is indexed by xi.
     prev_xi <- prev_adj_params[[xi]]
@@ -2290,6 +2573,7 @@ build_adjustment_step <- function(x,
       )
     }
     
+    # Step 3: Delegate to the C++ hot loop for the actual (re)computation ---
     # The surrounding R code remains responsible for preparing named metadata and
     # preserving the build_adjustment_step() return contract.
     cpp_adj <- mfp2_build_adjustment_step_loop(
@@ -2341,6 +2625,9 @@ build_adjustment_step <- function(x,
 #' @param powers a set of allowed FP powers.
 #' @param acdx a logical vector indicating the use of acd transformation.
 #' @param zero named logical vector of length ncol(x)
+#' @param spike A logical vector indicating which columns of \code{x} contain
+#' a spike at zero. The length and order of \code{spike} must match those of
+#' the columns in \code{x}.
 #' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
 #' for nonpositive values, created when specific variables are passed to the
 #' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
@@ -2421,6 +2708,7 @@ transform_data_step <- function(x,
                                 prev_adj_params,
                                 precomputed_adj = NULL
 ) {
+  # Step 1: Build (or reuse) the adjustment matrix for every variable except xi
   # Access x columns by name; avoid copying/reordering x for every candidate
   # transformation call.
   if (is.null(precomputed_adj)) {
@@ -2441,12 +2729,15 @@ transform_data_step <- function(x,
     adj <- precomputed_adj
   }
   
+  # Step 2: Generate the FP/ACD candidate transformations for xi itself -----
   # generate fp data for xi (unchanged, spike_decision not applied here)
   data_xi <- x[, xi, drop = TRUE]
   
   if (length(unique(data_xi)) <= 3) {
-    # if a variable has less than 4 levels we do not generate FP data
-    # but set nonpositive values to zero, when zero argument is used
+    # Variables with <= 3 distinct values are treated as linear/binary: no FP
+    # candidates are generated, but nonpositive values are still recoded to
+    # zero if `zero` is requested, and a catzero indicator column is added if
+    # present (df = 1 is enforced upstream for such variables; see assign_df()).
     if (zero[xi]) {
       data_xi[data_xi <= 0] <- 0
     }
@@ -2482,7 +2773,8 @@ transform_data_step <- function(x,
     powers_fp <- fpd$powers
   }
   
-  #Store everything under xi in current_params
+  # Step 3: Cache this step's adjustment-variable state for the next step ---
+  # Store everything under xi in current_params
   current_params <- list()
   current_params[[xi]] <- list(
     powers_adj = adj$powers_adj,
@@ -2501,21 +2793,30 @@ transform_data_step <- function(x,
   )
 }
 
-#' Helper function to ensure vectors have a specified length
-#' 
-#' Used to make sure dimensions of matrix rows match.
-#' 
-#' @param x input vector or matrix. 
-#' @param size length or size of `x` which is desired.
-#' @param fill value to fill in if `x` is not of desired length or size.
+#' Pad a vector to a fixed length
+#'
+#' Pads `x` with `fill` until it has length `size`.
+#'
+#' Used internally to make sure matrix rows have matching dimensions. This
+#' helper assumes that `length(x) <= size`; it is intended for padding, not
+#' truncation.
+#'
+#' @param x Input vector.
+#' @param size Desired length of `x`.
+#' @param fill Value used to pad `x` when it is shorter than `size`.
+#'   Defaults to `NA`.
+#'
+#' @return `x` unchanged if `length(x) == size`; otherwise `x` followed by
+#'   enough `fill` values to reach length `size`.
+#'
 #' @keywords internal
 #' @noRd
 ensure_length <- function(x, size, fill = NA) {
-  if (length(x) == size)
+  if (length(x) == size) {
     return(x)
+  }
   
-  x_new = rep(NA, size)
-  x_new[1:length(x)] = x
-  
+  x_new <- rep(fill, size)
+  x_new[seq_along(x)] <- x
   x_new
 }

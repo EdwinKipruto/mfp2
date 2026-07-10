@@ -14,7 +14,7 @@ mfpi(x, ...)
   group_var = NULL,
   cont_vars = NULL,
   cont_var_forms = NULL,
-  flex = c("flex1", "flex2", "flex3", "flex4"),
+  flex = c("flex3", "flex1", "flex2", "flex4"),
   p_interact = 0.05,
   min_improvement = NULL,
   include_group_var = FALSE,
@@ -60,7 +60,7 @@ mfpi(x, ...)
   group_var = NULL,
   cont_vars = NULL,
   cont_var_forms = NULL,
-  flex = c("flex1", "flex2", "flex3", "flex4"),
+  flex = c("flex3", "flex1", "flex2", "flex4"),
   p_interact = 0.05,
   min_improvement = NULL,
   include_group_var = FALSE,
@@ -146,8 +146,8 @@ variables.}
 each variable in \code{cont_vars}. Names must be a subset of
 \code{cont_vars}; values must each be one of \code{"linear"},
 \code{"fp1"}, or \code{"fp2"}. Variables in \code{cont_vars} that are not
-named in \code{cont_var_forms} are assigned \code{"linear"} by default.
-\code{NULL} (the default) assigns \code{"linear"} to all variables.
+named in \code{cont_var_forms} are assigned \code{"fp1"} by default.
+\code{NULL} (the default) assigns \code{"fp1"} to all variables.
 
 Each variable is tested using exactly the pre-specified functional form;
 no data-driven selection among forms is performed. This avoids the
@@ -158,12 +158,12 @@ data.
 Unnamed vectors and scalars are not accepted; every entry must carry the
 name of the target variable to ensure the specification is unambiguous.
 
-Example: to test \code{age} as FP2 and \code{bmi} as FP1 while leaving
-all other \code{cont_vars} as linear:
-\preformatted{cont_var_forms = c(age = "fp2", bmi = "fp1")}}
+Example: to test \code{age} as FP2 while leaving all other
+\code{cont_vars} at the default (\code{"fp1"}):
+\preformatted{cont_var_forms = c(age = "fp2")}}
 
 \item{flex}{A character string controlling how FP powers are estimated and constrained
-across groups. One of \code{"flex1"} (default), \code{"flex2"}, \code{"flex3"}, or
+across groups. One of \code{"flex1"}, \code{"flex2"}, \code{"flex3"} (default), or
 \code{"flex4"}. See the \emph{Flexibility levels} section for details.}
 
 \item{p_interact}{Numeric in \eqn{(0, 1]}. Nominal significance level for the interaction
@@ -331,19 +331,27 @@ see the \code{powers} argument of \code{mfp2()} for details.}
 Cox regression. One of \code{"breslow"} (default), \code{"efron"}, or \code{"exact"}.
 Ignored for non-Cox families. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{strata}{A numeric vector or matrix defining stratification factors for Cox models.
-A single combined factor is created from all supplied variables. Default is
-\code{NULL} (no stratification). Currently only a single stratification factor
-is supported.}
+\item{strata}{Optional stratification factor(s) for Cox models. May be a vector, factor,
+matrix, data frame, or \code{survival::strata()} object with one row per
+observation. Multiple supplied columns are combined with
+\code{survival::strata(shortlabel = TRUE)}. Default \code{NULL} means no
+stratification. Ordinary vector/factor strata are kept as high-level
+values for formula-based Cox fitting; integer conversion is restricted to
+the low-level \code{coxph.fit()} path. In the formula interface,
+\code{strata()} and \code{survival::strata()} terms may also be supplied
+directly in the formula; formula strata take precedence over this argument.}
 
 \item{nocenter}{A numeric vector of values passed to \code{\link[survival:coxph]{survival::coxph()}}. Cox models only;
 ignored otherwise.}
 
-\item{acd_vars}{An optional character vector naming continuous variables to be transformed
+\item{acd_vars}{For \code{mfpi.default()} only; not a parameter of \code{mfpi.formula()}
+(passing it there raises an error). An optional character vector naming
+continuous variables to be transformed
 via the approximate cumulative distribution (ACD) transformation before FP
 selection. The transformed variable is named \code{A(x)}. ACD transformation is
-disabled for variables listed in \code{cont_vars}. See \code{\link[=mfp2]{mfp2()}} for
-details.}
+disabled for variables listed in \code{cont_vars}. In the formula interface, use
+\code{fp(variable, acd = TRUE)} or \code{fp2(variable, acd = TRUE)} instead.
+See \code{\link[=mfp2]{mfp2()}} for details.}
 
 \item{zero_vars}{An optional character vector naming variables for which non-positive values
 should be treated as structural zero. FP transformations are applied only
@@ -543,7 +551,7 @@ contains shifted/scaled predictors and the internally remapped
 \code{group_var} codes produced by \code{preprocess_data()}. It is used
 by \code{predict.mfpi()} when manual reconstruction of training-data
 predictions is required, for example when \code{newdata = NULL} and a
-replacement \code{offset} is supplied.}
+replacement \code{newoffset} is supplied.}
 \item{\code{digits}}{Integer giving the number of significant digits used
 when printing interaction-test results.}
 \item{\code{nobs}}{Number of observations used in model fitting.}
@@ -571,6 +579,36 @@ form), \code{score} (the decisive metric value), and
 \code{center_vals} (centering constants).}
 \item{\code{criterion}}{character specifying criterion used for adjustment
 and interaction models}
+\item{\code{call}}{The matched call to \code{mfpi()}.}
+\item{\code{formula_interface}}{Logical; \code{TRUE} if the model was
+fitted via \code{mfpi.formula()}. Not present when fitted via
+\code{mfpi.default()}.}
+\item{\code{formula}}{The formula supplied to \code{mfpi.formula()}.
+Only present when fitted via the formula interface.}
+\item{\code{formula_terms}}{The \code{terms} object for the predictors
+(response removed), as used to build the model matrix. Only present
+when fitted via the formula interface.}
+\item{\code{formula_contrasts}}{The \code{contrasts} attribute of the
+model matrix built from \code{formula}/\code{data}, as needed to
+reconstruct the same design from new data. Only present when fitted
+via the formula interface.}
+\item{\code{formula_xlevels}}{Factor levels recorded from the training
+model frame (via \code{.getXlevels()}), needed to reconstruct the same
+design from new data. Only present when fitted via the formula
+interface.}
+\item{\code{formula_design_columns}}{Character vector of the final
+fit-time column names of \code{x}, after intercept removal,
+group-variable replacement, and \code{fp()}/\code{fp2()} renaming. Only
+present when fitted via the formula interface.}
+\item{\code{formula_offset_terms}, \code{formula_offset_xlevels}}{Formula
+offset metadata used by \code{predict.mfpi()} to reconstruct a
+formula-level offset from raw \code{newdata}. Only present when fitted
+via the formula interface; values are \code{NULL} when no formula offset
+was used.}
+\item{\code{formula_strata_terms}, \code{formula_strata_xlevels}}{Formula
+Cox-strata metadata corresponding to any \code{strata()} term supplied
+in the formula. Only present when fitted via the formula interface; values
+are \code{NULL} when no formula strata were used.}
 }
 }
 \description{
@@ -581,7 +619,7 @@ variable is treated as a factor internally; in a typical randomised controlled
 trial it represents treatment allocation, with the lowest value as the control
 arm. Confounders and other prognostic variables are adjusted for via FP
 transformations selected by the MFP algorithm implemented in the
-\code{\link[=mfp2]{mfp2()}}.
+\code{mfp2()}.
 }
 \details{
 The default method accepts a numeric matrix \code{x} and response vector
@@ -619,7 +657,7 @@ considerations. The functional form tested for each variable in
 \code{cont_vars} is the one specified in \code{cont_var_forms}; no
 data-driven selection among linear, FP1, and FP2 candidates is performed.
 
-\strong{\code{flex1} (default; least flexible).} FP powers are selected for the main
+\strong{\code{flex1} (least flexible).} FP powers are selected for the main
 effect of the continuous covariate \eqn{z} in a model that excludes the
 treatment-by-covariate interaction. The same selected powers are then used at
 each level of the treatment variable \eqn{t}. The interaction is assessed by
@@ -639,9 +677,9 @@ under flex1, the interaction test result may also differ. The degrees of
 freedom for the interaction test are the same as for flex1: 1 for FP1 and 2
 for FP2.
 
-\strong{\code{flex3}.} Separate FP powers are estimated for the main-effects model and
-for the within-group functions, though the within-group powers are still
-constrained to be equal across groups. Because the main-effects and
+\strong{\code{flex3} (default).} Separate FP powers are estimated for the main-effects
+model and for the within-group functions, though the within-group powers are
+still constrained to be equal across groups. Because the main-effects and
 interaction models may use different FP families, they are non-nested. The
 interaction test has 1 degree of freedom for FP1 and 2 degrees of freedom for
 FP2.
@@ -684,7 +722,7 @@ are still counted in the adjustment family.
 In both settings, the functional form for each variable should be specified
 in advance using \code{cont_var_forms}. Each variable may be assigned
 \code{"linear"}, \code{"fp1"}, or \code{"fp2"}; variables not named in
-\code{cont_var_forms} default to \code{"linear"}. Data-driven selection among
+\code{cont_var_forms} default to \code{"fp1"}. Data-driven selection among
 these forms is not conducted by \code{mfpi()}, because it can inflate Type I
 error and introduce selection bias.
 }
@@ -856,7 +894,7 @@ corresponding \code{fp()} or \code{fp2()} flags and then checked by
 adjustments to \code{df} may still be applied internally.
 }
 
-\section{Parameters not available in the formula interface}{
+\section{Parameters restricted to scalar values in the formula interface}{
 
 The following \code{mfpi.default()} parameters must be supplied as scalar
 arguments only; per-variable specification via \code{fp()} or \code{fp2()} is not
@@ -866,15 +904,25 @@ supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 \code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
 \code{nocenter}, \code{min_saz_component_prop}, \code{ftest},
 \code{control}, \code{verbose}, \code{digits}.
+
+\code{acd_vars}, by contrast, is not merely scalar-restricted but entirely
+unavailable as a direct argument to \code{mfpi.formula()} (passing it
+raises an error); use \code{fp(variable, acd = TRUE)} or
+\code{fp2(variable, acd = TRUE)} in the formula instead.
 }
 
 \section{Strata and offset in the formula}{
 
-For Cox models, \code{strata()} terms may be included directly in the
-formula (e.g. \code{Surv(t, d) ~ fp(age) + strata(centre)}). If
-\code{strata} is also supplied as an argument, the formula value is used
-and a warning is issued. Similarly, an \code{offset()} term in the formula
-takes precedence over the \code{offset} argument.
+For Cox models, \code{strata()} or \code{survival::strata()} terms may be
+included directly in the formula, for example
+\code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata variables are
+combined using \code{survival::strata(shortlabel = TRUE)}. If \code{strata}
+is also supplied as an argument, the formula value is used and a warning is
+issued. Similarly, an \code{offset()} or \code{stats::offset()} term in the
+formula takes precedence over the \code{offset} argument. Formula-offset
+metadata are stored on the fitted object so \code{predict.mfpi()} can
+reconstruct the offset from raw prediction \code{newdata}; if the needed raw
+offset variables are absent, supply \code{newoffset} to \code{predict()}.
 }
 
 \examples{
@@ -950,8 +998,8 @@ Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
 for Modelling Continuous Variables}. John Wiley & Sons.
 }
 \seealso{
-\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfpi]{print.mfpi()}} and
-\code{\link[=plot.mfpi]{plot.mfpi()}}
+\code{\link{summary.mfpi}}, \code{\link{mfp2}},
+\code{\link{print.mfpi}}, and \code{\link{plot.mfpi}}.
 
 \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}},
 \code{\link[=mfp2]{mfp2()}}

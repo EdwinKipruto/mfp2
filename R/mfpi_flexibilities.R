@@ -81,7 +81,9 @@
 #'   compatibility; has no effect when variable selection is disabled.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param strata Integer stratum vector for stratified Cox models, or `NULL`.
+#' @param strata Optional high-level Cox stratification object, or `NULL`.
+#'   Passed through to Cox model fits without converting ordinary vector/factor
+#'   strata to integer codes.
 #' @param control Fitting control list from [stats::glm.control()] or
 #'   [survival::coxph.control()].
 #' @param nocenter Numeric vector for Cox centring suppression; see
@@ -303,7 +305,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     )
   }
   
-
+  
   list(
     bestfp_main        = bestfp_main,
     bestfp_interaction = bestfp_interaction,
@@ -347,7 +349,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   run_test = TRUE) {
   
   center_type <- match.arg(center_type)
-
+  
   
   if (degree < 1L) {
     stop("! `degree` must be >= 1 for flex1; use flex0 for linear models.",
@@ -542,7 +544,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-
+  
   list(
     bestfp_main        = bestfp,
     bestfp_interaction = bestfp_interaction,
@@ -846,7 +848,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   run_test = TRUE) {
   
   center_type <- match.arg(center_type)
-
+  
   # Shared arguments for flex1 and flex2 calls ---------------------------------
   shared <- list(
     x             = x, y = y, cont_var = cont_var, group_var = group_var,
@@ -945,7 +947,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   run_test = TRUE) {
   
   center_type <- match.arg(center_type)
-
+  
   
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]

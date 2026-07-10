@@ -50,8 +50,17 @@ contrast predictions.}
 \item{ref}{Named list of reference values for \code{type = "contrasts"}. Values
 must be supplied on the original variable scale.}
 
-\item{strata}{Optional stratum levels used when predicting from Cox models
-with new data.}
+\item{strata}{Optional stratum values used when predicting from Cox models
+with supplied \code{newdata}. This is needed for default/matrix-interface
+Cox fits that used the fit-time \code{strata} argument, because the final
+Cox model contains an internal \code{strata(strata_)} term. Supply one
+value per prediction row for a single stratification factor, or a matrix or
+data frame with one row per prediction row for multiple stratification
+factors. Ordinary vector or factor strata are passed through as raw
+high-level values so that \code{predict.coxph()} can evaluate the stored
+\code{strata(strata_)} term itself. Formula-interface strata are
+reconstructed automatically from \code{newdata} when the original strata
+variable(s) are present.}
 
 \item{newoffset}{Optional numeric vector of offsets for prediction when the
 fitted model used an offset and \code{newdata} is supplied.}

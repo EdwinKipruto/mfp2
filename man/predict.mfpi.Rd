@@ -15,7 +15,8 @@
   grid = FALSE,
   n_grid = 200L,
   reference = NULL,
-  offset = NULL,
+  strata = NULL,
+  newoffset = NULL,
   ...
 )
 }
@@ -67,17 +68,25 @@ used at model fitting is reused. This argument affects only fitted-function
 differences; it does not change the fit-time reference level used by the
 stored interaction model.}
 
-\item{offset}{Optional numeric vector for ordinary \code{"link"} or
+\item{strata}{Optional prediction-time Cox strata for ordinary \code{"link"}
+or \code{"response"} prediction. Ignored for fitted-function prediction.
+Supply one value per row, or a matrix/data frame with one row per prediction
+row for multiple strata variables.}
+
+\item{newoffset}{Optional numeric vector for ordinary \code{"link"} or
 \code{"response"} prediction. If \code{newdata} is supplied,
-\code{offset} must contain one value per row of \code{newdata}. If
-\code{newdata = NULL}, a supplied \code{offset} must contain one value
+\code{newoffset} must contain one value per row of \code{newdata}. If
+\code{newdata = NULL}, a supplied \code{newoffset} must contain one value
 per training row; the stored training design is reconstructed and the
-supplied offset is used instead of delegating to the fitted model's own
-\code{predict()} method. Ignored for fitted-function prediction.}
+supplied new offset is used instead of delegating to the fitted model's own
+\code{predict()} method. For formula-interface fits with a formula-level
+offset, \code{newoffset} may be omitted when \code{newdata} contains the
+original offset variable(s), because the offset is reconstructed from the
+stored formula metadata. Ignored for fitted-function prediction.}
 
 \item{...}{Reserved for future extensions. Currently unused arguments produce
-a warning. Cox baseline-survival arguments such as prediction times or
-prediction-time strata are not currently supported.}
+a warning. Cox baseline-survival arguments such as prediction times are
+not currently supported.}
 }
 \value{
 If one term is requested, an object of class
@@ -118,7 +127,7 @@ contains \code{term}, \code{fit}, and, when requested and available,
 \item{\code{design}}{Reconstructed numeric interaction-model matrix.
 Present when ordinary prediction uses the manual reconstructed-design path,
 either because \code{newdata} was supplied or because a replacement
-\code{offset} was supplied for training-data prediction. \code{NULL}
+\code{newoffset} was supplied for training-data prediction. \code{NULL}
 when prediction delegates to the stored fitted model's own \code{predict()}
 method.}
 \item{\code{metadata}}{List describing whether ordinary prediction was
@@ -213,15 +222,17 @@ group coding used by ordinary prediction.
 \section{Ordinary link and response prediction}{
 
 Ordinary \code{type = "link"} and \code{type = "response"} prediction are
-subject-level targets. For \code{newdata = NULL} and \code{offset = NULL},
+subject-level targets. For \code{newdata = NULL} and \code{newoffset = NULL},
 the stored fitted model's own prediction method is used. If
-\code{newdata = NULL} but a replacement \code{offset} is supplied, the
-stored training design is reconstructed so that the supplied offset is used
+\code{newdata = NULL} but a replacement \code{newoffset} is supplied, the
+stored training design is reconstructed so that the supplied new offset is used
 explicitly. For supplied \code{newdata}, the method reconstructs the full
 term-specific interaction-model matrix, including group dummies, the
 row-specific group interaction block, selected adjustment covariates, and
-offsets when applicable. The reconstructed matrix is then multiplied by the
-fitted coefficient vector.
+offsets when applicable. Formula-level offsets are reconstructed from
+\code{newdata} when possible; an explicitly supplied \code{newoffset}
+takes precedence. The reconstructed matrix is then multiplied by the fitted
+coefficient vector.
 
 Ordinary prediction uses the group coding, reference level, contrasts, and
 centering conventions stored at model fitting. New observations must belong
@@ -245,7 +256,7 @@ supported by this method.
 New-data prediction assumes that the \code{"mfpi"} object stores prediction
 metadata created at fit time. In particular, fitted-function prediction with
 \code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
-plus a replacement \code{offset} require \code{object$x_train_internal},
+plus a replacement \code{newoffset} require \code{object$x_train_internal},
 the post-preprocessing training matrix containing shifted/scaled predictors
 and internally remapped \code{group_var} codes. New-data ordinary prediction
 additionally relies on stored shift, scale, winsorisation limits, group-level

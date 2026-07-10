@@ -33,6 +33,10 @@
 #' @keywords internal
 #' @noRd
 validate_mfp_candidate_powers <- function(powers, df) {
+  # Step 1: Flag variables whose candidate-power set collapses to just `1`.
+  # A candidate set of exactly {1} after cleaning (dedup, drop NA/non-finite)
+  # gives the closed-test procedure no non-linear FP1 candidate to test against
+  # the linear model, which is required whenever df > 1.
   only_linear_candidate <- vapply(
     powers,
     function(v) {
@@ -43,6 +47,9 @@ validate_mfp_candidate_powers <- function(powers, df) {
     logical(1L)
   )
   
+  # Step 2: Report an error listing every variable where this is a problem
+  # (only-linear candidate set combined with df > 1), rather than failing on
+  # just the first offending variable.
   vars_invalid <- names(which(only_linear_candidate & df > 1L))
   
   if (length(vars_invalid) > 0L) {
@@ -250,20 +257,24 @@ fit_mfp <- function(x,
                     has_offset,
                     verbose) {
   
+  # fit_mfp() implements the full MFP/MFPA/SAZ algorithm described in the
+  # "Algorithm" section above: order variables, pre-process ACD/zero/catzero/
+  # spike settings, run backfitting cycles to select FP powers, then transform
+  # and fit the final model. mfp2.default()/mfp2.formula() are expected to have
+  # already validated and shifted/scaled all inputs before calling this function.
+  
   variables_x <- colnames(x)
   
+  # Step 1: Resolve the family object and optionally report initial df --------
   # Resolve GLM family objects once for all repeated internal model fits.
   # Public mfp2.default() already does this, but keeping it here makes direct
   # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
   # poisson() construction as well. Cox remains the character string "cox".
   family_fit <- resolve_fit_model_family(family)
   
-  # if (verbose) {
-  #   cat("\ni Initial degrees of freedom:\n")
-  #   print(matrix(df, nrow = 1, dimnames = list("df", variables_x)),
-  #         quote = FALSE)
-  # }
-  
+  # Print the starting df for each variable before the backfitting cycles
+  # begin, so users can see what df each predictor was assigned prior to any
+  # cardinality-based or SAZ-based capping performed later in this function.
   if (isTRUE(verbose)) {
     df_text <- utils::capture.output(
       print(
@@ -278,7 +289,11 @@ fit_mfp <- function(x,
     )
   }
   
-  # step 1: order variables ----------------------------------------------------
+  # Step 2: Determine the order in which variables enter the backfitting cycle
+  # Variable ordering can matter for the final selected model, since each MFP
+  # step adjusts for the current powers of all other variables. `xorder`
+  # controls whether variables are visited by ascending/descending univariate
+  # significance or in their original column order.
   variables_ordered <- variables_x
   
   if (length(variables_x) > 1) {
@@ -297,7 +312,12 @@ fit_mfp <- function(x,
     ))
   }
   
-  # step 2: pre-process input --------------------------------------------------
+  # Step 3: Initialize FP powers and align all per-variable vectors/x to order
+  # Every variable starts the first cycle as linear (power = 1); the
+  # backfitting cycles below will update powers_current as better-fitting FP
+  # forms are found. All per-variable option vectors (and x itself) are then
+  # reordered to variables_ordered so the rest of the function can index them
+  # consistently by name/position.
   powers_current <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
   
   # Re-order all per-variable vectors to match variables_ordered
@@ -326,12 +346,19 @@ fit_mfp <- function(x,
   }
   
   
-  # Force variables into the model by setting p-value threshold to 1
+  # `keep` forces variables into the final model regardless of their
+  # backfitting significance, by setting their selection threshold to 1
+  # (i.e. always significant) for the p-value criterion.
   if (!is.null(keep)) {
     select[which(names(select) %in% keep)] <- 1
   }
   
-  # ACD transformation setup ---------------------------------------------------
+  # Step 4: Configure the ACD (approximate cumulative distribution) transform -
+  # Requesting ACD for a variable forces df = 4, since the FSPA function-
+  # selection procedure for ACD needs the full FP1(p1, p2) model space (see
+  # "Details on approximate cumulative distribution transformation" in mfp2()).
+  # Initial powers_current for ACD variables are set to c(1, NA): a linear
+  # term for x and no ACD term yet, to be updated in the first backfitting cycle.
   if (any(acdx)) {
     acdx           <- reset_acd(x, acdx)
     variables_acd  <- names(acdx)[acdx]
@@ -342,7 +369,7 @@ fit_mfp <- function(x,
     df[variables_ordered %in% variables_acd] <- 4
   }
   
-  # Spike-at-zero handling -----------------------------------------------------
+  # Step 5: Resolve the spike/catzero/zero cascade and SAZ eligibility --------
   # Public callers should resolve SAZ eligibility before shift/scale
   # preprocessing. This prevents variables reset from SAZ to ordinary FP from
   # retaining a shift = 0 that was chosen only because spike was temporarily TRUE.
@@ -418,7 +445,7 @@ fit_mfp <- function(x,
   )
   names(spike_decision) <- variables_ordered
   
-  # Final zero recoding of the real x ------------------------------------------
+  # Step 6: Recode real x for zero handling and build catzero indicator matrices
   # Now that reset_spike() has produced the final zero/catzero/spike vectors, we
   # can safely mutate the actual x used by the MFP cycles.
   #
@@ -434,14 +461,16 @@ fit_mfp <- function(x,
     for (j in cols_to_zero) {
       x[x[, j] <= 0, j] <- 0
     }
-    
-    # Once x <= 0 has been physically recoded to 0, downstream transformation
-    # functions no longer need to perform zero recoding again during the MFP
-    # cycles. This avoids double handling of zero variables.
-    #zero_x <- setNames(rep(FALSE, length(variables_ordered)), variables_ordered)
-    #zero_x[names(cols_to_zero)] <- FALSE
   }
   
+  # zero_x is intentionally kept identical to zero (not reset to FALSE), even
+  # though x has already been physically recoded to 0 above. The backfitting
+  # cycles below (find_best_fp_cycle() / transform_data_step()) still need
+  # this flag at cycle time to know which variables have a zero component, so
+  # that FP transformations during variable/degree selection are computed only
+  # over the positive part while the recoded zeros are left untouched.
+  
+  # Step 7: Build catzero binary-indicator matrices and cache ACD parameters -
   # Binary zero indicators for catzero variables.
   #
   # Because non-positive values have already been recoded to zero above,
@@ -468,7 +497,10 @@ fit_mfp <- function(x,
   
   names(catzero_mat_list) <- names(catzero)
   
-  # ACD parameters (cached for speed)
+  # ACD parameters (beta0, beta1, power, shift, scale for the rank-based
+  # power-linear approximation) are estimated once per ACD variable here and
+  # cached, rather than being refit on every backfitting cycle/step that needs
+  # to apply the ACD transformation.
   acd_parameter <- lapply(names(acdx), function(v) {
     if (isTRUE(acdx[[v]])) {
       fit_acd(
@@ -483,14 +515,16 @@ fit_mfp <- function(x,
   
   names(acd_parameter) <- names(acdx)
   
-  # Number of events
+  # Number of events (Cox) or observations (all other families), used for
+  # AIC/BIC-based selection and to guard against fitting a Cox model with no
+  # observed events.
   if (family_string == "cox") {
     status <- y[, ncol(y)]
     n_obs <- sum(!is.na(status) & status > 0)
     
     if (!is.finite(n_obs) || n_obs <= 0L) {
       stop(
-        "Cox AIC/BIC selection requires at least one observed event.",
+        "Cox selection requires at least one observed event.",
         call. = FALSE
       )
     }
@@ -498,7 +532,10 @@ fit_mfp <- function(x,
     n_obs <- nrow(x)
   }
   
-  # step 3: MFP backfitting cycles --------------------------------------------
+  # Step 8: Run MFP backfitting cycles until convergence -----------------------
+  # A cycle is one complete pass through all variables (see find_best_fp_cycle()
+  # documentation); convergence means neither the selected powers nor the SAZ
+  # stage-2 decisions changed compared to the previous cycle.
   j         <- 1L
   converged <- FALSE
   
@@ -550,15 +587,16 @@ fit_mfp <- function(x,
     spike_decision_updated <- fit_best_cycle$spike_decision
     prev_adj_params       <- fit_best_cycle$prev_adj_params
     
-    
-    #powers_same <- identical(powers_current, powers_updated)
+    # Compare powers after normalizing away the stored-but-inactive continuous
+    # power of binary-only spike variables (spike_decision = 3), since that
+    # power does not affect the fitted adjustment matrix and would otherwise
+    # cause spurious non-convergence.
     powers_same <- identical(
       normalize_powers_for_convergence(powers_current, spike_decision),
       normalize_powers_for_convergence(powers_updated, spike_decision_updated)
     )
     
     spike_same <- identical(spike_decision, spike_decision_updated)
-    
     
     if (powers_same && spike_same) {
       converged <- TRUE
@@ -584,7 +622,7 @@ fit_mfp <- function(x,
   }
   
   
-  # step 4: final transformation ----------------------------------------------
+  # Step 9: Apply the final FP/ACD transformation and centering ---------------
   # Backscale x before final FP transformation so that coefficients are on
   # the phi(x + shift) scale, matching what a user would expect from mfp2().
   # Scaling was applied upstream for numerical stability during power selection
@@ -600,16 +638,16 @@ fit_mfp <- function(x,
   acd_parameter_final <- acd_parameter
   
   for (v in names(acd_parameter_final)) {
-      if (!is.null(acd_parameter_final[[v]])) {
-        # Remove training-data ACD values. fit_acd() returns $acd as the
-        # transformed training vector, but only beta0/beta1/power/shift/scale
-        # are needed for apply_acd() during prediction. Keeping $acd wastes
-        # memory and can cause confusion.
-        acd_parameter_final[[v]]$acd <- NULL
-        acd_parameter_final[[v]]$shift <- 0
-        acd_parameter_final[[v]]$scale <- scale[[v]]
-      }
+    if (!is.null(acd_parameter_final[[v]])) {
+      # Remove training-data ACD values. fit_acd() returns $acd as the
+      # transformed training vector, but only beta0/beta1/power/shift/scale
+      # are needed for apply_acd() during prediction. Keeping $acd wastes
+      # memory and can cause confusion.
+      acd_parameter_final[[v]]$acd <- NULL
+      acd_parameter_final[[v]]$shift <- 0
+      acd_parameter_final[[v]]$scale <- scale[[v]]
     }
+  }
   
   data_transformed <- transform_matrix(
     x                  = x,
@@ -654,13 +692,18 @@ fit_mfp <- function(x,
     }
   }
   
+  # Binary-only spike variables (spike_decision = 3) contribute no continuous
+  # FP/ACD term to the final model, only the *_bin indicator handled above.
+  # Their stored continuous power is no longer meaningful past this point, so
+  # it is set to NA here to keep fp_powers/fp_terms metadata consistent with
+  # the actual final design matrix.
   for (v in names(spike_decision)) {
     if (spike[v] && spike_decision[v] == saz_decision_codes[["binary_only"]]) {
       powers_current[[v]] <- NA
     }
   }
   
-  # step 5: fit final model ---------------------------------------------------
+  # Step 10: Fit the final model and assemble the returned mfp2 object --------
   modelfit <- fit_model(
     x             = data_transformed$x_transformed,
     y             = y,
@@ -677,7 +720,10 @@ fit_mfp <- function(x,
     has_offset    = has_offset
   )
   
-  # Build and return mfp2 object ----------------------------------------------
+  # Assemble the mfp2 object: start from the glm/coxph fit object returned by
+  # fit_model() and layer on MFP-specific metadata (selected powers, shift/
+  # scale/center, zero/catzero/spike status, convergence, etc.) expected by
+  # print.mfp2()/summary.mfp2()/predict.mfp2().
   fit <- modifyList(
     modelfit$fit,
     list(
@@ -779,6 +825,9 @@ fit_mfp <- function(x,
 #' cycle to avoid recomputation.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
+#' @param n_obs Numeric; number of observations (or observed events, for Cox
+#' models), used for AIC/BIC-based selection and small-sample F-tests. Computed
+#' once in \code{fit_mfp()} and passed through unchanged across cycles.
 #' 
 #' @return 
 #' A list with updated components `powers_current` (current FP powers for all 
@@ -817,17 +866,22 @@ find_best_fp_cycle <- function(x,
                                force_max_fp,
                                has_offset,
                                n_obs
-                               ) {
+) {
   
-  # order of names of powers does not change
+  # Variable visiting order within the cycle is fixed by the names of
+  # powers_current (set once in fit_mfp() according to `xorder`); it does not
+  # change from cycle to cycle.
   names_x <- names(powers_current)
   
+  # Step through every variable once, updating its FP power/spike decision in
+  # turn while adjusting for the *current* powers of all other variables.
+  # Because powers_current is updated in place after each step, later
+  # variables in this same pass are adjusted using already-updated powers of
+  # earlier variables (Gauss-Seidel-style backfitting, not Jacobi-style).
   for (xi in names_x) {
-    # iterate through all predictors xi and update xi's best FP power
-    # in terms of loglikelihood
-    # the result can be NA (variable not significant), linear, FP1, FP2, ...
-    # note that the adjustment set and powers are given by powers_current
-    # which is updated in each step
+    # Assess xi's best FP form (NA / linear / FP1 / FP2 / ...) via the closed
+    # test procedure, holding the other variables' current powers fixed as
+    # the adjustment set.
     fit_best_fp_step <- find_best_fp_step(
       x = x, # the order of columns does not matter since internal codes uses column names
       y = y,
@@ -861,14 +915,17 @@ find_best_fp_cycle <- function(x,
       n_obs        = n_obs,
       verbose = verbose
     )
-    # Update parameters
+    # Update powers_current and spike_decision in place so that the next
+    # variable in this loop (and the next cycle) sees xi's latest result.
     powers_current[[xi]] <- fit_best_fp_step$power_best
-    spike_decision <- fit_best_fp_step$spike_decision
-    # Store the returned adjustments keyed by xi
+    spike_decision       <- fit_best_fp_step$spike_decision
+    # Cache xi's adjustment-variable transformations, keyed by xi, so the next
+    # cycle can reuse them instead of recomputing from scratch.
     prev_adj_params[[xi]] <- fit_best_fp_step$current_adj_params[[xi]]
   }
   
-  list(powers_current = powers_current, spike_decision = spike_decision, 
+  list(powers_current  = powers_current,
+       spike_decision  = spike_decision, 
        prev_adj_params = prev_adj_params)
 }
 
@@ -898,6 +955,10 @@ find_best_fp_cycle <- function(x,
 #' @keywords internal
 #' @noRd
 normalize_powers_for_convergence <- function(powers, spike_decision) {
+  # For each variable, replace the stored power with NA if it is binary-only
+  # spike (decision 3, where the continuous power is inert metadata), and
+  # strip names from the power vector otherwise so that comparisons via
+  # identical() aren't tripped up by incidental name differences.
   out <- Map(
     function(power, decision) {
       if (identical(
@@ -968,6 +1029,7 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #' @noRd
 calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   
+  # Step 1: Validate scalar inputs -----------------------------------------
   if (length(spike_decision) != 1L ||
       is.na(spike_decision) ||
       !(as.integer(spike_decision) %in% unname(saz_decision_codes))) {
@@ -980,6 +1042,7 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   
   spike_decision <- as.integer(spike_decision)
   
+  # Step 2: Apply the df rules in the order documented above --------------
   # Binary-only spike: exactly one binary indicator column.
   if (spike_decision == saz_decision_codes[["binary_only"]]) {
     return(1L)
@@ -992,6 +1055,8 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
     return(0L)
   }
   
+  # Linear model contributes 1 df; an FP of degree m (m non-NA powers)
+  # contributes 2*m df, regardless of whether any powers are repeated.
   p <- as.numeric(powers[!is.na(powers)])
   
   df <- if (length(p) == 1L && p == 1) {
@@ -1011,27 +1076,44 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
 
 #' Helper to convert a nested list with same or different length into a matrix
 #' 
+#' Converts the per-variable list of selected FP powers (which may have a
+#' different length for each variable, e.g. 1 power for FP1, 2 for FP2) into a
+#' single rectangular matrix suitable for use as columns in
+#' \code{create_fp_terms()}'s output data frame.
+#' 
 #' To be used in \code{fit_mfp()}.
 #' 
-#' @param power_list list of powers created in `fit_mfp()`.
+#' @param power_list Named list of numeric power vectors, one element per
+#'   variable, as stored in \code{fit_mfp()}'s \code{powers_current}. Elements
+#'   may have different lengths (e.g. length 1 for a linear/FP1 variable,
+#'   length 2 for FP2).
 #' 
 #' @return 
-#' a matrix.
+#' A numeric matrix with one row per variable (in the order of
+#' \code{power_list}, row names taken from its names) and one column per power
+#' slot up to the largest FP degree present (columns named \code{"power1"},
+#' \code{"power2"}, ...). For variables whose selected FP degree is lower than
+#' the matrix's number of columns, the extra entries are \code{NA}.
 #' @keywords internal
 #' @noRd
 convert_powers_list_to_matrix <- function(power_list) {
-  # Check the maximum number of powers i.e  FP2 has 2 while FP1 has 1
+  # Step 1: Determine how many power columns are needed, i.e. the largest
+  # number of selected powers across all variables (FP2 has 2, FP1 has 1).
   psize <- sapply(power_list, length)
   maxp <- max(psize)
   
-  # Create a new nested list of same length. This means that if FP1 was choosen
-  # for x then the second power should be NA
+  # Step 2: For each power slot i = 1..maxp, extract the i-th power of every
+  # variable. Indexing past a shorter vector's length yields NA automatically,
+  # which is exactly the desired padding for lower-degree variables (e.g. the
+  # second power of an FP1 variable becomes NA).
   new_list_powers <- vector(mode = "list", length = length(power_list))
   for (i in 1:maxp) {
     new_list_powers[[i]] <- sapply(power_list, function(x) x[i])
   }
-  # combine the powers and rename.
-  matp <- do.call(cbind, new_list_powers)
+  
+  # Step 3: Column-bind the per-slot vectors into a matrix and label the
+  # columns power1, power2, ... .
+  matp           <- do.call(cbind, new_list_powers)
   colnames(matp) <- paste0("power", 1:maxp)
   
   matp
@@ -1065,7 +1147,12 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' * `power1, power2, ...`: final estimated FP powers (as many columns as needed).
 #' 
 #' @inheritParams fit_mfp
-#' @param fp_powers powers of the created FP terms.
+#' @param fp_powers Named list of final selected FP powers, one numeric vector
+#' per variable (as stored in \code{fit_mfp()}'s \code{powers_current}). An
+#' all-\code{NA} vector means the variable was not selected into the final
+#' model. Used both to derive the \code{selected}/\code{df_final} columns and,
+#' via \code{convert_powers_list_to_matrix()}, the \code{power1, power2, ...}
+#' columns.
 #' @keywords internal
 #' @noRd
 create_fp_terms <- function(fp_powers, 
@@ -1078,7 +1165,10 @@ create_fp_terms <- function(fp_powers,
                             catzero,
                             spike, 
                             spike_decision) {
-                              
+  
+  # Step 1: Align every input vector/list to the same variable order/subset
+  # as fp_powers, since callers may pass vectors covering a different (e.g.
+  # unordered) set of variable names.
   vars <- names(fp_powers)
   
   acdx <- acdx[vars]
@@ -1090,6 +1180,7 @@ create_fp_terms <- function(fp_powers,
   spike <- spike[vars]
   spike_decision <- spike_decision[vars]
   
+  # Step 2: Assemble the one-row-per-variable overview table.
   fp_terms <- data.frame(
     # initial degrees of freedom
     df_initial = df, 
@@ -1102,12 +1193,16 @@ create_fp_terms <- function(fp_powers,
     # Spike decision
     spike_dec = spike_decision,
     
-    #selected = sapply(fp_powers, function(p) ifelse(all(is.na(p)), FALSE, TRUE)),
+    # A variable is "selected" if it has a non-NA continuous power, or if it
+    # is a binary-only spike variable (spike_decision = 3): such variables
+    # have fp_powers all NA by design (see calculate_df()), yet still
+    # contribute a term (the binary indicator) to the final model.
     selected = mapply(function(p, sd) {
       if (sd == saz_decision_codes[["binary_only"]]) TRUE  # binary-only spike is still selected
       else !all(is.na(p))
     }, fp_powers, spike_decision),
-    # final degrees of freedom
+    # final degrees of freedom, using the same per-variable rules as
+    # calculate_df() (binary-only spike, unselected, linear, FPm, +catzero).
     df_final = mapply(
       calculate_df,
       fp_powers,
@@ -1115,11 +1210,16 @@ create_fp_terms <- function(fp_powers,
       catzero,
       SIMPLIFY = TRUE
     ), 
+    # Adds power1, power2, ... columns (NA-padded to the largest selected FP
+    # degree across all variables).
     convert_powers_list_to_matrix(fp_powers)
   )
-
-    rownames(fp_terms) <- names(fp_powers)
   
+  rownames(fp_terms) <- names(fp_powers)
+  
+  # Step 3: For non-p-value criteria, `select`/`alpha` no longer represent
+  # significance levels, so replace them with the criterion name (e.g. "AIC")
+  # for a clearer summary/print display.
   if (criterion != "pvalue") {
     fp_terms$select <- toupper(criterion)
     fp_terms$alpha <- toupper(criterion)
@@ -1143,6 +1243,7 @@ create_fp_terms <- function(fp_powers,
 #' @keywords internal
 #' @noRd
 backscale_matrix <- function(x, scalex) {
+  # Step 1: Validate inputs (NULL passthrough, matrix/numeric/names checks).
   # If x is NULL, return NULL
   if (is.null(x)) {
     return(NULL)
@@ -1175,8 +1276,8 @@ backscale_matrix <- function(x, scalex) {
     stop("Missing scaling values for column(s): ", paste(missing_cols, collapse = ", "))
   }
   
-  # Multiply each column by the corresponding scalar
+  # Step 2: Backscale, i.e. undo `x / scale` (applied upstream before FP power
+  # selection) by multiplying each column back by its scale factor.
   unscale_x <- sweep(x, 2, scalex[vnames], FUN = "*")
   return(unscale_x)
 }
-

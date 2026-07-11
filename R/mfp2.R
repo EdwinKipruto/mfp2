@@ -2514,7 +2514,9 @@ mfp2.formula <- function(formula,
 #' @keywords internal
 #' @noRd
 is_fp_term <- function(z) {
-  grepl("^fp2?\\(.*\\)$", z)
+  # Recognize both ordinary and namespace-qualified FP terms:
+  # fp(x), fp2(x), mfp2::fp(x), and mfp2::fp2(x).
+  grepl("^(mfp2::)?fp2?\\(.*\\)$", z)
 }
 
 #' Extract coefficients from object of class `mfp2`
@@ -2553,27 +2555,26 @@ coef.mfp2 <- function(object, ...) {
 #' \code{mfp2()}, [stats::glm()], [stats::summary.glm()], [survival::coxph()],
 #' [survival::summary.coxph()]
 #' 
-#' @importFrom utils getFromNamespace
 #' @export
 summary.mfp2 <- function(object, ...) {
+  # Ensure that the supplied object was created by mfp2().
   if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
   }
   
-  if (identical(object$family_string, "cox")) {
-    return(
-       getFromNamespace("summary.coxph", "survival")(
-        object,
-        ...
-      )
-    )
+  # Dispatch to the summary method for the underlying fitted model:
+  # summary.glm() for GLMs or summary.coxph() for Cox models.
+  result <- NextMethod("summary")
+  
+  # Replace the internal glm()/coxph() call with the original
+  # user-facing mfp2() call.
+  if (!is.null(object$call_mfp)) {
+    result$call <- object$call_mfp
   }
   
-  stats::summary.glm(
-    object,
-    ...
-  )
+  result
 }
+
 #' Print method for objects of class `mfp2`
 #'
 #' Prints a structured summary of an \code{mfp2} model, including the original

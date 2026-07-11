@@ -1,0 +1,165 @@
+
+R version 4.6.1 (2026-06-24 ucrt) -- "Happy Hop"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-w64-mingw32/x64
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> # This file is part of the standard setup for testthat.
+> # It is recommended that you do not modify it.
+> #
+> # Where should you do additional test configuration?
+> # Learn more about the roles of various files in:
+> # * https://r-pkgs.org/testing-design.html#sec-tests-files-overview
+> # * https://testthat.r-lib.org/articles/special-files.html
+> 
+> library(testthat)
+> library(ctlr)
+> 
+> test_check("ctlr")
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Constant tolerance limits specified: intercept= 5& slope= 0
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Constant tolerance limits specified: intercept= 5& slope= 0
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Non-constant tolerance limits specified: intercept= 0& slope= 0.15
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+Number of simulations used for CPA plot is set to 100
+
+
+Generating Conditional probability of agreement plot
+
+**************************************************************
+
+Saving 7 x 7 in image
+Conditional probability of agreement plot exported to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpQ9d5d2\file4a2448a7161f\ctl_outputs\cpa_plot.pdf
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Constant tolerance limits specified: intercept= 5& slope= 0
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+
+Generating Tolerance Limits Plot
+
+**************************************************************
+
+Saving 7 x 7 in image
+Tolerance limits plot exported to ./ctl_outputs/tl_plot.pdf
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Constant tolerance limits specified: intercept= 5& slope= 0
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpQ9d5d2\file4a2451ea4cd8\ctl_outputs\ctl_results.rda
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Non-constant tolerance limits specified: intercept= 1& slope= 0.2
+
+Estimating BLUP for latent trait...
+diff_bias=5.14230158133301, 95%CI=[2.59934718823013;7.68525597443589]
+
+prop_bias=0.79538824468499, 95%CI=[0.734754456891755;0.856022032478225]
+
+
+[ FAIL 0 | WARN 0 | SKIP 0 | PASS 21 ]
+> 
+> proc.time()
+   user  system elapsed 
+   5.40    0.56    5.95 

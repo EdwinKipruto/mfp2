@@ -318,10 +318,9 @@ build_group_fp_basis <- function(cont_mat,
 
 #' Predict from an MFPI Model
 #'
-#' Computes predictions from an object of class \code{"mfpi"}.
-#'
-#' The main prediction target is the group-specific MFPI fitted function
-#' \eqn{f_j(x)}. For each requested continuous variable, the method can return
+#' Computes predictions from an object of class \code{"mfpi"}.The main prediction
+#'  target is the group-specific MFPI fitted function \eqn{f_j(x)}. For each 
+#'  requested continuous variable, the method can return
 #' fitted functions, pointwise standard errors, confidence intervals, and
 #' contrasts between fitted functions. Ordinary link- and response-scale
 #' prediction from the term-specific interaction model is also supported.
@@ -358,10 +357,24 @@ build_group_fp_basis <- function(cont_mat,
 #' it returns a named list of such objects with class
 #' \code{"mfpi_prediction_list"}.
 #'
-#' \code{model = "best"} restricts prediction to selected interaction models.
-#' \code{model = "all"} allows prediction from all stored term-specific winner
-#' models, including non-selected variables when their fitted interaction model
-#' is available.
+#' @section Choosing terms and model scope:
+#' Each tested continuous variable has a single fitted interaction model,
+#' compared against its main-effects-only counterpart using the model's
+#' selection \code{criterion} (AIC, BIC, or p-value) at fit time.
+#' \code{model = "best"} restricts prediction to variables whose interaction
+#' was retained by that criterion in the final selected model. \code{model =
+#' "all"} widens this to every tested variable's fitted interaction model,
+#' including variables that were not retained, as long as a fitted model was
+#' stored for that variable.
+#'
+#' \code{terms} and \code{model} work together: \code{terms} picks which
+#' variables to predict, while \code{model} determines which pool of fitted
+#' models those variables are drawn from. If \code{terms = NULL}, all
+#' variables available within the requested \code{model} scope are used. If
+#' \code{terms} is supplied, every requested variable must have a fitted model
+#' within that scope, or the call fails with the names of the missing
+#' variable(s); this is most likely to happen when a variable's interaction
+#' was not retained and \code{model = "best"} is used.
 #'
 #' @section Fitted-function prediction:
 #' Fitted-function prediction reconstructs only the group-specific FP basis
@@ -410,8 +423,23 @@ build_group_fp_basis <- function(cont_mat,
 #' \eqn{\exp(\eta)}. Baseline survival, cumulative-hazard, expected-event, and
 #' absolute-risk prediction are not currently implemented. Formula-level Cox
 #' strata used during fitting affect the partial likelihood and
-#' stratum-specific baseline hazards, but no prediction-time strata argument is
-#' supported by this method.
+#' stratum-specific baseline hazards. Prediction-time strata for new
+#' observations are supplied via the \code{strata} argument; see below.
+#'
+#' @section Standard errors and confidence intervals:
+#' \code{se.fit} and \code{level} apply to both prediction targets, but the
+#' quantity they describe differs between them. For fitted functions and
+#' fitted-function differences, \code{se.fit = TRUE} adds pointwise standard
+#' errors on the model scale, together with \code{lower}/\code{upper}
+#' confidence limits at the requested \code{level}; these describe the
+#' precision of \eqn{f_j(x)} or \eqn{f_j(x) - f_r(x)} at each evaluation
+#' point, not a simultaneous confidence band. For ordinary \code{"link"} and
+#' \code{"response"} prediction, \code{se.fit = TRUE} adds a single
+#' \code{se.fit} column to \code{predictions}; \code{level} is not used here,
+#' since no interval is returned for ordinary prediction. Response-scale
+#' standard errors follow the same inverse-link delta-method convention as
+#' \code{predict.glm()}, and Cox response-scale standard errors follow the
+#' zero-reference relative-risk convention described under \emph{Cox models}.
 #'
 #' @section Required object metadata:
 #' New-data prediction assumes that the \code{"mfpi"} object stores prediction
@@ -436,8 +464,11 @@ build_group_fp_basis <- function(cont_mat,
 #'   interaction model. Group values in \code{newdata} must correspond to
 #'   levels observed during model fitting.
 #' @param terms Character vector of continuous variables to predict. If
-#'   \code{NULL}, terms are selected from the requested \code{model} scope.
-#' @param model Character scalar, either \code{"best"} or \code{"all"}.
+#'   \code{NULL}, terms are selected from the requested \code{model} scope. See
+#'   \emph{Choosing terms and model scope}.
+#' @param model Character scalar, either \code{"best"} (retained interaction
+#'   models only) or \code{"all"} (every tested variable's fitted interaction
+#'   model). See \emph{Choosing terms and model scope}.
 #' @param type Character scalar. One of \code{"both"}, \code{"function"},
 #'   \code{"difference"}, \code{"link"}, or \code{"response"}.
 #' @param se.fit Logical scalar. Whether to compute pointwise standard errors.
@@ -616,24 +647,6 @@ predict.mfpi <- function(object,
   }
   
   dots <- list(...)
-  if ("offset" %in% names(dots)) {
-    if (!is.null(newoffset)) {
-      stop(
-        "Use only one of `newoffset` or deprecated `offset` in `predict.mfpi()`.",
-        call. = FALSE
-      )
-    }
-    
-    warning(
-      "`offset` in `predict.mfpi()` is deprecated. Please use `newoffset` ",
-      "for prediction-time offsets.",
-      call. = FALSE
-    )
-    
-    newoffset <- dots$offset
-    dots$offset <- NULL
-  }
-  
   if (length(dots) > 0L) {
     warning(
       "Unused arguments in `...`: ", paste(names(dots), collapse = ", "), ".",

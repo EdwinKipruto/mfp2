@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head><title>R: Multivariable Fractional Polynomial Models with Extensions</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<link rel="stylesheet" type="text/css" href="R.css">
+</head><body><div class="container">
+<h1> Multivariable Fractional Polynomial Models with Extensions
+<img class="toplogo" src="../../../doc/html/Rlogo.svg" alt="[R logo]">
+</h1>
+<hr>
+<div style="text-align: center;">
+<a href="../../../doc/html/packages.html"><img class="arrow" src="../../../doc/html/left.jpg" alt="[Up]"></a>
+<a href="../../../doc/html/index.html"><img class="arrow" src="../../../doc/html/up.jpg" alt="[Top]"></a>
+</div><h2>Documentation for package &lsquo;mfp2&rsquo; version 1.0.1</h2>
+
+<ul><li><a href="../DESCRIPTION" type="text/plain; charset=utf-8">DESCRIPTION file</a></li>
+<li><a href="../doc/index.html">User guides, package vignettes and other documentation</a></li>
+<li><a href="../NEWS.md">Package NEWS</a></li>
+<li><a href="../README.md">Package README</a></li>
+</ul>
+
+<h2>Help Pages</h2>
+
+
+<table style="width: 100%;">
+<tr><td style="width: 25%;"><a href="apply_acd.html">apply_acd</a></td>
+<td>Function to apply Approximate Cumulative Distribution (ACD)</td></tr>
+<tr><td style="width: 25%;"><a href="apply_shift_scale.html">apply_shift_scale</a></td>
+<td>Shift and scale vector x</td></tr>
+<tr><td style="width: 25%;"><a href="art.html">art</a></td>
+<td>Artificial dataset with continuous response</td></tr>
+<tr><td style="width: 25%;"><a href="assign_df.html">assign_df</a></td>
+<td>Helper to assign degrees of freedom</td></tr>
+<tr><td style="width: 25%;"><a href="backscale_matrix.html">backscale_matrix</a></td>
+<td>Backscale Columns of a Matrix (Internal)</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_df.html">calculate_df</a></td>
+<td>Helper to calculates the final degrees of freedom for the selected model</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_f_test.html">calculate_f_test</a></td>
+<td>Function to compute F-statistic and p-value from deviances</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_lr_test.html">calculate_lr_test</a></td>
+<td>Function to calculate p-values for likelihood-ratio test</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_model_metrics.html">calculate_model_metrics</a></td>
+<td>Function to compute model metrics to be used within 'mfp2'</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_number_fp_powers.html">calculate_number_fp_powers</a></td>
+<td>Calculates the total number of fractional polynomial powers in adjustment variables.</td></tr>
+<tr><td style="width: 25%;"><a href="calculate_standard_error.html">calculate_standard_error</a></td>
+<td>Helper function to compute standard error of a partial predictor</td></tr>
+<tr><td style="width: 25%;"><a href="center_matrix.html">center_matrix</a></td>
+<td>Simple function to center data</td></tr>
+<tr><td style="width: 25%;"><a href="coef.mfp2.html">coef.mfp2</a></td>
+<td>Extract coefficients from object of class 'mfp2'</td></tr>
+<tr><td style="width: 25%;"><a href="convert_powers_list_to_matrix.html">convert_powers_list_to_matrix</a></td>
+<td>Helper to convert a nested list with same or different length into a matrix</td></tr>
+<tr><td style="width: 25%;"><a href="create_dummy_variables.html">create_dummy_variables</a></td>
+<td>Simple function to create dummy variables for ordinal and nominal variables</td></tr>
+<tr><td style="width: 25%;"><a href="create_fp_terms.html">create_fp_terms</a></td>
+<td>Helper to create overview table of fp terms</td></tr>
+<tr><td style="width: 25%;"><a href="deviance_gaussian.html">deviance_gaussian</a></td>
+<td>Deviance computations as used in mfp in stata</td></tr>
+<tr><td style="width: 25%;"><a href="ensure_length.html">ensure_length</a></td>
+<td>Helper function to ensure vectors have a specified length</td></tr>
+<tr><td style="width: 25%;"><a href="find_best_fp1_for_acd.html">find_best_fp1_for_acd</a></td>
+<td>Function to fit univariable FP1 models for acd transformation</td></tr>
+<tr><td style="width: 25%;"><a href="find_best_fpm_step.html">find_best_fpm_step</a></td>
+<td>Function to find the best FP functions of given degree for a single variable</td></tr>
+<tr><td style="width: 25%;"><a href="find_best_fp_cycle.html">find_best_fp_cycle</a></td>
+<td>Helper to run cycles of the mfp algorithm</td></tr>
+<tr><td style="width: 25%;"><a href="find_best_fp_step.html">find_best_fp_step</a></td>
+<td>Function to estimate the best FP functions for a single variable</td></tr>
+<tr><td style="width: 25%;"><a href="find_scale_factor.html">find_scale_factor</a></td>
+<td>Function that calculates an integer used to scale predictor</td></tr>
+<tr><td style="width: 25%;"><a href="find_shift_factor.html">find_shift_factor</a></td>
+<td>Function that calculates a value used to shift predictor</td></tr>
+<tr><td style="width: 25%;"><a href="fit_acd.html">fit_acd</a></td>
+<td>Function to estimate approximate cumulative distribution (ACD)</td></tr>
+<tr><td style="width: 25%;"><a href="fit_cox.html">fit_cox</a></td>
+<td>Function that fits Cox proportional hazards models</td></tr>
+<tr><td style="width: 25%;"><a href="fit_glm.html">fit_glm</a></td>
+<td>Function that fits generalized linear models</td></tr>
+<tr><td style="width: 25%;"><a href="fit_linear_step.html">fit_linear_step</a></td>
+<td>Function to fit linear model for variable of interest</td></tr>
+<tr><td style="width: 25%;"><a href="fit_mfp.html">fit_mfp</a></td>
+<td>Function for fitting a model using the MFP or MFPA algorithm</td></tr>
+<tr><td style="width: 25%;"><a href="fit_model.html">fit_model</a></td>
+<td>Function that fits models supported by 'mfp2'</td></tr>
+<tr><td style="width: 25%;"><a href="fit_null_step.html">fit_null_step</a></td>
+<td>Function to fit null model excluding variable of interest</td></tr>
+<tr><td style="width: 25%;"><a href="fp.html">fp</a></td>
+<td>Helper to assign attributes to a variable undergoing FP-transformation</td></tr>
+<tr><td style="width: 25%;"><a href="fp.html">fp2</a></td>
+<td>Helper to assign attributes to a variable undergoing FP-transformation</td></tr>
+<tr><td style="width: 25%;"><a href="fracplot.html">fracplot</a></td>
+<td>Plot response functions from a fitted 'mfp2' object</td></tr>
+<tr><td style="width: 25%;"><a href="gbsg.html">gbsg</a></td>
+<td>Breast cancer dataset used in the Royston and Sauerbrei (2008) book.</td></tr>
+<tr><td style="width: 25%;"><a href="generate_combinations_with_replacement.html">generate_combinations_with_replacement</a></td>
+<td>Helper function to generate combinations with replacement</td></tr>
+<tr><td style="width: 25%;"><a href="generate_powers_fp.html">generate_powers_acd</a></td>
+<td>Function that generates a matrix of FP powers for any degree</td></tr>
+<tr><td style="width: 25%;"><a href="generate_powers_fp.html">generate_powers_fp</a></td>
+<td>Function that generates a matrix of FP powers for any degree</td></tr>
+<tr><td style="width: 25%;"><a href="generate_transformations_fp.html">generate_transformations_acd</a></td>
+<td>Function to generate all requested FP transformations for a single variable</td></tr>
+<tr><td style="width: 25%;"><a href="generate_transformations_fp.html">generate_transformations_fp</a></td>
+<td>Function to generate all requested FP transformations for a single variable</td></tr>
+<tr><td style="width: 25%;"><a href="get_selected_variable_names.html">get_selected_variable_names</a></td>
+<td>Helper function to extract selected variables from fitted 'mfp2' object</td></tr>
+<tr><td style="width: 25%;"><a href="mfp2.html">mfp2</a></td>
+<td>Multivariable Fractional Polynomial Models with Extensions</td></tr>
+<tr><td style="width: 25%;"><a href="mfp2.html">mfp2.default</a></td>
+<td>Multivariable Fractional Polynomial Models with Extensions</td></tr>
+<tr><td style="width: 25%;"><a href="mfp2.html">mfp2.formula</a></td>
+<td>Multivariable Fractional Polynomial Models with Extensions</td></tr>
+<tr><td style="width: 25%;"><a href="name_transformed_variables.html">name_transformed_variables</a></td>
+<td>Helper function to name transformed variables</td></tr>
+<tr><td style="width: 25%;"><a href="order_variables.html">order_variables</a></td>
+<td>Helper to order variables for mfp2 algorithm</td></tr>
+<tr><td style="width: 25%;"><a href="order_variables.html">order_variables_by_significance</a></td>
+<td>Helper to order variables for mfp2 algorithm</td></tr>
+<tr><td style="width: 25%;"><a href="pima.html">pima</a></td>
+<td>Pima Indians dataset used in the Royston and Sauerbrei (2008) book.</td></tr>
+<tr><td style="width: 25%;"><a href="fracplot.html">plot_mfp</a></td>
+<td>Plot response functions from a fitted 'mfp2' object</td></tr>
+<tr><td style="width: 25%;"><a href="predict.mfp2.html">predict.mfp2</a></td>
+<td>Predict Method for 'mfp2'</td></tr>
+<tr><td style="width: 25%;"><a href="prepare_newdata_for_predict.html">prepare_newdata_for_predict</a></td>
+<td>Helper function to prepare newdata for predict function</td></tr>
+<tr><td style="width: 25%;"><a href="print.mfp2.html">print.mfp2</a></td>
+<td>Print method for objects of class 'mfp2'</td></tr>
+<tr><td style="width: 25%;"><a href="print_mfp_step.html">print_mfp_ic_step</a></td>
+<td>Function for verbose printing of function selection procedure (FSP)</td></tr>
+<tr><td style="width: 25%;"><a href="print_mfp_step.html">print_mfp_pvalue_step</a></td>
+<td>Function for verbose printing of function selection procedure (FSP)</td></tr>
+<tr><td style="width: 25%;"><a href="print_mfp_step.html">print_mfp_step</a></td>
+<td>Function for verbose printing of function selection procedure (FSP)</td></tr>
+<tr><td style="width: 25%;"><a href="prostate.html">prostate</a></td>
+<td>Prostate cancer dataset used in the Royston and Sauerbrei (2008) book.</td></tr>
+<tr><td style="width: 25%;"><a href="reset_acd.html">reset_acd</a></td>
+<td>Helper to reset acd transformation for variables with few values</td></tr>
+<tr><td style="width: 25%;"><a href="select_ic.html">select_ic</a></td>
+<td>Function selection procedure based on information criteria</td></tr>
+<tr><td style="width: 25%;"><a href="select_ic.html">select_ic_acd</a></td>
+<td>Function selection procedure based on information criteria</td></tr>
+<tr><td style="width: 25%;"><a href="select_linear.html">select_linear</a></td>
+<td>Helper to select between null and linear term for a single variable</td></tr>
+<tr><td style="width: 25%;"><a href="select_ra2.html">select_ra2</a></td>
+<td>Function selection procedure based on closed testing procedure</td></tr>
+<tr><td style="width: 25%;"><a href="select_ra2_acd.html">select_ra2_acd</a></td>
+<td>Function selection procedure for ACD based on closed testing procedure</td></tr>
+<tr><td style="width: 25%;"><a href="summary.mfp2.html">summary.mfp2</a></td>
+<td>Summarizing 'mfp2' model fits</td></tr>
+<tr><td style="width: 25%;"><a href="transform_data_step.html">transform_data_step</a></td>
+<td>Function to extract and transform adjustment variables</td></tr>
+<tr><td style="width: 25%;"><a href="transform_matrix.html">transform_matrix</a></td>
+<td>Function to transform each column of matrix using final FP powers or acd</td></tr>
+<tr><td style="width: 25%;"><a href="transform_vector_fp.html">transform_vector_acd</a></td>
+<td>Functions to transform a variable using fractional polynomial powers or acd</td></tr>
+<tr><td style="width: 25%;"><a href="transform_vector_fp.html">transform_vector_fp</a></td>
+<td>Functions to transform a variable using fractional polynomial powers or acd</td></tr>
+<tr><td style="width: 25%;"><a href="transform_vector_power.html">transform_vector_power</a></td>
+<td>Simple function to transform vector by a single power</td></tr>
+</table>
+</div></body></html>

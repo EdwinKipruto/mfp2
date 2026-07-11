@@ -1,0 +1,1726 @@
+---
+title: "Multivariable Fractional Polynomials with Extensions"
+author:
+- Edwin Kipruto
+- Michael Kammer
+- Patrick Royston
+- Willi Sauerbrei
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    fig_caption: yes
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+    fig_crop: no
+link-citations: yes
+header-includes:
+- \usepackage{setspace}
+- \doublespacing
+vignette: >
+  %\VignetteIndexEntry{Multivariable Fractional Polynomials with Extensions}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+
+```{r include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	tidy = TRUE,
+	fig.pos = "h"
+)
+oldwidth <- options()$width
+options(width = 100)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=75))
+
+library(mfp2)
+library(ggplot2)
+library(survival)
+library(formatR)
+```
+
+```{r include=FALSE}
+# the code in this chunk enables us to truncate the print output for each
+# chunk using the `out.lines` option
+# save the built-in output hook
+hook_output <- knitr::knit_hooks$get("output")
+
+# set a new output hook to truncate text output
+knitr::knit_hooks$set(output = function(x, options) {
+  if (!is.null(n <- options$out.lines)) {
+    x <- xfun::split_lines(x)
+    if (length(x) > n) {
+        
+      # truncate the output
+      x <- c(head(x, n), "....\n")
+    }
+    x <- paste(x, collapse = "\n")
+  }
+  hook_output(x, options)
+})
+```
+
+# Introduction to Multivariable Fractional Polynomials (MFP)
+
+## Overview of MFP
+Multivariable regression models are widely used across various fields of science
+where empirical data is analyzed. In model building, many researchers often
+assume a linear function for continuous variables, sometimes after applying
+“standard” transformations such as logarithms, or dividing the variable into
+several categories. Assuming linearity without considering non-linear
+relationships may hinder the detection of effects or cause the effects to be
+mismodeled. Categorizing continuous variables, which results in modelling
+implausible step functions, is a common practice but widely criticized (Royston
+et al. 2006; Sauerbrei et al. 2020).
+
+When building a descriptive model with the aim of capturing the data structure
+parsimoniously, two components should be considered: first, variable selection
+to identify the subset of "important" covariates that have a significant impact
+on the outcome and second, whether non-linear relationships of continuous
+covariates fit the data (substantially) better.
+
+The MFP approach has been proposed as a pragmatic method that combines variable
+and function selection simultaneously in multivariable  regression modelling.
+This approach identifies non-linear functions for continuous variables if
+sufficiently supported by the data, and eliminates covariates with no or weak
+effects by backward elimination (BE). Despite its relative simplicity, the
+selected models often capture the essential information from the data. The MFP
+models are relatively straightforward to interpret and report, which is
+important for transportability and practical usability.
+
+In detail, the MFP procedure combines:
+- variable selection through backward elimination with
+- selection of fractional polynomial (FP) functions for continuous variables.
+
+The analyst must decide on nominal significance levels $(\alpha_1, \alpha_2)$
+for both components. This choice has a strong influence on the complexity of the
+final model. Often, the same significance levels $(\alpha_1 = \alpha_2)$ are
+used for both components, but they can also differ. The decision regarding these
+significance levels strongly depends on the specific aim of the analysis.
+
+The rest of the paper is organized as follows. Section 1.2 provides an overview
+of fractional polynomial functions for a single continuous covariate in the
+model, including the function selection procedure (FSP). Section 1.3 describes
+the MFP approach, focusing on models involving two or more covariates.
+
+Section 2 is an introduction to the `mfp2` package. It covers the
+installation process and provides instructions for utilizing the package in
+various linear regression models. The package functionality is predominantly
+demonstrated using Gaussian linear models (Subsection 2.3), while other models,
+such as logistic (Subsection 2.4),and Cox (Subsection
+2.5), are briefly explained.
+
+Section 3 introduces an extension of MFP using the approximate cumulative
+distribution (ACD) transformation of a continuous covariate. This extension
+allows for modelling a sigmoid relationship between covariates and an outcome
+variable (subsection 3.1).
+
+For more comprehensive information about MFP and its extensions, please refer to
+Royston and Sauerbrei 2008 or visit [MFP website (click here)](https://mfp.imbi.uni-freiburg.de/) 
+and explore the references given there.
+
+## Fractional polynomial models for a continuous variable
+
+Suppose that we have an outcome variable, a single continuous covariate $x$, and
+a regression model relating them. A starting point is the straight-line model
+$\beta_1x$ (for simplicity, we suppress the constant term, $\beta_0$). Often, a
+straight line is an adequate description of the relationship, but other models
+should be investigated for possible improvements in ﬁt. A simple extension of
+the straight line is a power transformation model, $\beta_1x^{p}$. The latter
+model has often been used by practitioners in an ad hoc way, utilizing different
+choices of $p$. Royston and Altman (1994) formalized the model by calling it a
+ﬁrst-degree fractional polynomial or FP1 function. The power $p$ is chosen from
+a pragmatically restricted set of eight elements: $S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}$, 
+where $x^0$ denotes the natural logarithm $\log(x)$.
+
+As with polynomial regression, extension from one-term FP1 functions to more
+complex and ﬂexible two-term FP2 functions is straightforward. The quadratic
+function $\beta_1x^1 + \beta_2x^2$ is written as $\beta_1x^{p1} + \beta_2x^{p2}$
+in FP terminology. The powers $p1=1$ and $p2=2$ are members of set $S$. Royston
+and Altman extended the class of FP2 functions with different powers to cases
+with equal powers ($p1=p2=p$) by defining them as $\beta_1x^p + \beta_2x^p \log(x)$.
+These are known as repeated-powers functions. Detailed definitions of FP
+functions are given in Section 4.3.1 of Royston and Sauerbrei (2008). For formal deﬁnitions, we use their notation.
+
+FP1 functions are always monotonic and those with power $p < 0$ have an asymptote
+as $x\rightarrow \infty$. FP2 functions may be monotonic or unimodal (i.e., 
+have one maximum or one minimum for positive values of $x$), and they have an
+asymptote as $x\rightarrow \infty$ when both $p1$ and $p2$ are negative.
+For more details, see Royston and Sauerbrei (2008), Section 4.4.
+
+Extension to FPm is straightforward but $m>2$ is hardly needed when modelling
+health research data with MFP. For $m = 2$, there are 44 models available within
+the set of FP powers ($S$), consisting of 8 FP1 models and 36 FP2 models. Although
+the allowed class of FP functions may seem limited, it encompasses a wide range
+of diverse shapes. This is illustrated in the Figure below, with the left panel
+displaying eight FP1 powers and the right panel depicting a subset of FP2
+powers.
+
+```{r, eval=TRUE, echo=FALSE}
+#==============================================================================
+# 8 FP1 FUNCTIONS 
+#===============================================================================
+x <- seq(0.05, 1.05, length.out = 1000)
+funx <- function(x, power){
+  ifelse(power == rep(0, length(x)), log(x), x^power)
+}
+s <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+# transform x using the powers in s
+outx <- lapply(s, function(s) funx(x = x, power = s))
+
+# multiply the first 3 with -1 so that the function increase rather than decrease
+# due to negative powers. these are betas i,e y = beta*x^p
+k <- c(-1, -1, -1, 1, 1, 1, 1, 1)
+datx <- matrix(unlist(outx), ncol = length(s))
+datax <- datx %*% diag(k)
+# standardize the data so that y is in the same range
+dataxx <- apply(datax, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+colnames(dataxx) <- c(paste0("x", 1:length(s)))
+dataxx <- as.data.frame(dataxx)
+dataxx$x <- x
+width <- 0.5
+fig1 <- ggplot(dataxx, aes(x)) + 
+  geom_line(aes(y = x1, colour = "x1"), linewidth = width, color = "#006400") + 
+  geom_line(aes(y = x2, colour = "x2"), linewidth = width, color ="#ff0000") + 
+  geom_line(aes(y = x3, colour = "x3"), linewidth = width, color ="#ffd700") +
+  geom_line(aes(y = x4, colour = "x4"), linewidth = width, color ="#ff00ff") +
+  geom_line(aes(y = x5, colour = "x5"), linewidth = width, color ="#ffb6c1") +
+  geom_line(aes(y = x6, colour = "x6"), linewidth = width, color ="#00ff00") +
+  geom_line(aes(y = x7, colour = "x7"), linewidth = width, color ="#0000ff") +
+  geom_line(aes(y = x8, colour = "x8"), linewidth = width, color ="#000000") +
+  geom_text(aes(x = 0.175, y = 1,size = 5, label = "-2"), color = "#006400") +
+  geom_text(aes(x = 0.25, y = 0.9,size = 5, label = "-1"), color = "#ff0000") +
+  geom_text(aes(x = 0.33, y = 0.83,size = 5, label = "-0.5"), color = "#ffd700") +
+  geom_text(aes(x = 0.4, y = 0.725,size = 5, label = "0"), color = "#ff00ff") +
+  geom_text(aes(x = 0.5, y = 0.65,size = 5, label = "0.5"), color = "#ffb6c1") +
+  geom_text(aes(x = 0.59, y = 0.575,size = 5, label = "1"), color = "#00ff00") +
+  geom_text(aes(x = 0.7, y = 0.475,size = 5, label = "2"), color = "#0000ff") +
+  geom_text(aes(x = 0.75, y = 0.4,size = 5, label = "3"), color = "#000000") +
+  labs(x="x", y="Fractional polynomial f(x)") +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+    axis.ticks = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title=element_text(size=18),
+    axis.text.x = element_blank()) 
+
+# Define functions
+f1 <- function(x) 3 - 10*x^2 + 4*x^3
+f2 <- function(x) 20 - 15.4*x^2 + 4*x^3
+f3 <- function(x) -20 + 6*log(x) + 6*log(x)*log(x)
+f4 <- function(x) 20 + 0.3*(x^-2) - 4*(x^-1)
+f5 <- function(x) -10 + 5*(x^0.5) + 14*(x^-0.5)
+f6 <- function(x) 33 + 19*log(x) - 7*(x^2)
+f7 <- function(x) -10 + 10*(x - 1.5) + 10*(x - 1.5)^2
+
+# Create data frames for each function
+x <- seq(0.1, 3, by = 0.01)
+df1 <- data.frame(x = x, y = f1(x))
+df2 <- data.frame(x = x, y = f2(x))
+df3 <- data.frame(x = x, y = f3(x))
+df4 <- data.frame(x = x, y = f4(x))
+df5 <- data.frame(x = x, y = f5(x))
+df6 <- data.frame(x = x, y = f6(x))
+df7 <- data.frame(x = x, y = f7(x))
+
+# Plot functions
+fig2 <- ggplot() +
+    geom_line(data = df1, aes(x = x, y = y), color = "#e41a1c") +
+    geom_line(data = df2, aes(x = x, y = y), color = "#377eb8") +
+    geom_line(data = df3, aes(x = x, y = y), color = "#4daf4a") +
+    geom_line(data = df4, aes(x = x, y = y), color = "#984ea3") +
+    geom_line(data = df5, aes(x = x, y = y), color = "#ff7f00") +
+    geom_line(data = df6, aes(x = x, y = y), color = "#FF00FF") +
+    geom_line(data = df7, aes(x = x, y = y), color = "#a65628") +
+    scale_x_continuous(limits = c(0, 3)) +
+    scale_y_continuous(expand = c(0, 0), limits = c(-25,40)) + theme_classic() +
+    geom_text(aes(x = 0.75, y = 2.4,size = 5, label = "(2, 3)"), color = "#e41a1c") +
+    geom_text(aes(x = 1.6, y =1.95,size = 5, label = "(2, 3)"), color = "#377eb8")+
+    geom_text(aes(x = 0.7, y = -18,size = 5, label = "(0, 0)"), color = "#4daf4a") +
+    geom_text(aes(x = 1.25, y = 20,size = 5, label = "(-2, -1)"), color = "#984ea3") +
+    geom_text(aes(x = 1.3, y = 12,size = 5, label = "(-0.5, 0.5)"), color = "#ff7f00") +
+    geom_text(aes(x = 1.25, y = 29.5,size = 5, label = "(0, 2)"), color = "#FF00FF") +
+    geom_text(aes(x = 1, y = -9.5,size = 5, label = "(1, 2)"), color = "#a65628") +
+    ylab(" ") +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      panel.border = element_rect(colour = "black", fill=NA, linewidth=0.5),
+      axis.title = element_text(size=18),
+      axis.ticks = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_blank()
+    )
+
+figure <- patchwork::wrap_plots(fig1, fig2, 
+                               ncol = 2, nrow = 1, 
+                               widths = 8, heights = 2)
+
+```
+
+```{r fig1, echo=FALSE, fig.cap="Illustration of the flexibility of the FP family. 8 FP1 functions (left panel) and a subset of FP2 functions (right panel). FPs are global functions. See section 1.3.1.4 for a proposed extension of local features", fig.height= 5, fig.width=8}
+figure
+```
+
+
+Based on extensive experience with real data and several simulation studies, FP1
+and FP2 are generally considered adequate in the context of multivariable model
+building, particularly when the selection of variable and functional forms are required
+(Royston and Sauerbrei 2008; Sauerbrei et al. 2007a).
+
+### Function selection procedure (FSP)
+
+This short description of the MFP methodology content is based on previously
+published encyclopedia articles (Sauerbrei and Royston, 2011; Sauerbrei and
+Royston, 2016).
+
+Choosing the best fitting FP1, FP2, or linear function for a given dataset is
+conducted by grid search, computing the deviance (minus twice the maximized
+log-likelihood) and making a decision for the best function based on a suitable
+algorithm (e.g. via pre-defined significance levels). 
+
+The default function in most implementations of MFP is a linear function.
+Therefore, unless the data support a more complex FP function, a straight line
+model is chosen. Concerning the default, there are occasional exceptions. For example, to model
+time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007b)
+chose a default time ($t$) transformation of $\log (t)$ rather than $t$.
+
+It can be assumed that deviance diﬀerence between an FPm and an FP(m-1) model is
+distributed approximately as central $\chi^2$ on 2 degrees of freedom (d.f.)
+(Royston and Sauerbrei 2008, Chapter 4.9; Ambler and Royston (2001)). To select a
+speciﬁc function, a closed test procedure was proposed (Royston and Sauerbrei
+2008, Section 4.10). The complexity of the ﬁnally chosen function requires
+pre-definition of the nominal significance level $(\alpha)$ and the degree ($m$)
+of the most complex FP model allowed. Typical choices are $\alpha = 0.05$ and
+FP2 ($m = 2$).  We illustrate the strategy for $m = 2$, which runs as follows:
+
+ 1. Use the deviance difference to test the best FP2 model for $x$ at the
+ $(\alpha)$ signiﬁcance level against the null model using 4 d.f. If the test is
+ not signiﬁcant, stop and conclude that the eﬀect of $x$ is "not signiﬁcant" at
+ the $\alpha$ level. Otherwise continue. 
+ 2. Test the best FP2 for $x$ against a straight line at the $\alpha$ level
+ using 3 d.f. If the test is not signiﬁcant, stop, the ﬁnal model being a
+ straight line. Otherwise continue.
+ 3. Test the best FP2 for $x$ against the best FP1 at the $\alpha$ level using 2
+ d.f. If the test is not signiﬁcant, the ﬁnal model is FP1, otherwise, the ﬁnal
+ model is FP2. This marks the end of procedure.
+
+Step 1 is a test of the overall association of the outcome with $x$. 
+Step 2 examines the evidence for nonlinearity. Step 3 chooses between a simpler 
+or a more complex non-linear model.
+ 
+## MFP procedure
+
+When developing a multivariable model with a relatively large number of
+candidate covariates (say between 10 and 30, we are not envisaging the case of
+high-dimensional data), an important distinction is between descriptive,
+predictive and explanatory modelling (Shmueli, 2010). MFP was mainly developed
+for descriptive modelling, aiming to capture the data structure parsimoniously.
+Nevertheless, a suitable descriptive model often has a fit similar to a model
+whose aim is good prediction (Sauerbrei et al. 2007a). In some fields, the term
+explanatory modelling is used exclusively for testing causal theory.
+
+In many areas of science, the main interest often lies in the identification of
+inﬂuential variables and determination of appropriate functional forms for
+continuous variables. Often, linearity is presumed without checking this
+important assumption. The MFP procedure was proposed as a pragmatic strategy to
+investigate whether nonlinear functions can improve the model ﬁt (Royston and
+Sauerbrei, 2008; Sauerbrei and Royston, 1999). MFP combines backward elimination
+for the selection of variables with a systematic search for possible
+nonlinearity by the function selection procedure (FSP). The extension is
+feasible with any type of regression model to which BE is applicable. The
+philosophy behind MFP modeling is to create interpretable and relatively simple
+models (Sauerbrei et al. 2007a). Consequently, an analyst using MFP should be
+less concerned about failing to include variables with a weak eﬀect or failing
+to identify minor curvature in a functional form of a continuous covariate.
+Modiﬁcations that may improve MFP models are combination with post-estimation
+shrinkage (Dunkler et al., 2016, R-package shrink) and a more systematic check
+for overlooked local features (Binder and Sauerbrei, 2010, currently not
+implemented in the `mfp2` package). Successful use of MFP requires only general
+knowledge about building regression models.
+
+Two nominal signiﬁcance level values are the main tuning parameters: $\alpha_1$
+for selecting variables with BE (in the ﬁrst step of the FSP) and $\alpha_2$ for
+comparing the ﬁt of functions within the FSP. Often, $\alpha_1=\alpha_2$ is a
+good choice. If available, subject-matter knowledge should replace or at least
+guide data-dependent model choice. Only minor modiﬁcations are required to
+incorporate various types of subject-matter knowledge into MFP modeling. For a
+detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
+modeling in practice are given in Sauerbrei et al. (2007a) and in Royston and
+Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
+$\alpha_1$ and $\alpha_2$ by AIC-P or BIC-P.
+
+### MFP -- Key issues and approaches to handling them
+
+Mainly focusing on the FP component, we brieﬂy mention key issues of MFP
+modeling and refer to the literature for further reading. A brief overview is
+also given on the MFP website (https://mfp.imbi.uni-freiburg.de/fp). Regarding
+variable selection, we have summarized relevant issues and provided arguments
+for backward elimination as our preferred strategy (Royston and Sauerbrei 2008,
+Chapter 2). Even when a search for model improvement using a nonlinear function
+is not considered, that is, all functions are assumed linear, it is infeasible
+to derive a suitable and stable model for description in small datasets. Below
+we provide some information about sample size needed, but implicitly we assume
+that the sample size is "suﬃcient".
+
+#### The variable has to be positive
+
+The class of FP1 and FP2 functions includes a log and other transformations
+which require that the continuous variable must be positive. A preliminary
+origin-shift transformation can be applied as shown in section 2.3.2.
+
+Sometimes, there are variables that exhibit a spike at zero. This means that a
+certain proportion of individuals have zero values, while among those with
+positive values, the variable has a continuous distribution. In epidemiology,
+typical examples are cigarette consumption or alcohol intake. There are
+different approaches to modeling such variables. Royston and Sauerbrei
+(2008, chapter 4.15) and Royston et al. (2010) proposed a method that involves
+adding a small constant (to have positive values) and a binary indicator (for
+zero or positive values) to the regression model. Additionally, they utilized
+fractional polynomials to determine the functional form of the variable. In
+a two-stage procedure, they assessed whether the binary variable and/or the
+continuous function is required for a good fit to the data. Becher et al. (2012)
+proposed a slight modification of this approach. These two approaches are currently not
+implemented in the `mfp2` package.
+
+#### Sample size and influential observations
+
+All statistical models are potentially adversely aﬀected by inﬂuential
+observations or "outliers". However, compared with models that comprise only
+linear functions, the situation may be more critical for FP functions because
+logarithmic or negative power transformations may produce extreme functional
+estimates at small values of $x$. Conversely, the same may happen with large
+positive powers at large values of $x$. Such transformations may create inﬂuential
+observations that may affect parts of the FSP. To mitigate the impact of
+influential observations, it is important to assess the robustness of FP
+functions. Some suggestions for investigating inﬂuential points (IPs) and
+handling such issues in MFP modeling can be found in Royston and Sauerbrei
+(2008, Chapters 5 and 10) and their paper on improving the robustness of FP
+models (Royston and Sauerbrei, 2007). Using synthetic data, a more detailed
+investigation of IPs is given in Sauerbrei et al. (2023). The authors conclude
+that for smaller sample sizes, IPs and low power are important reasons that the
+MFP approach may not be able to identify underlying functional relationships for
+continuous variables and selected models might differ substantially from the
+true model. However, for larger sample sizes (about 50 or more observations per
+variable) a carefully conducted MFP analysis (which includes checks for IPs and
+other aspects of model criticism) is often a suitable way to select a
+multivariable regression model which includes continuous variables.
+
+#### Lack of fit
+
+Based on experience we argue that FP1 or FP2 functions are sufficient to derive
+a good fitting model. Occasionally, higher order FP functions (with $m = 3$ or 
+$m = 4$) are useful in data analysis. Negative exponential or other types of
+pre-transformations may help to improve the fit of a complex function or may
+allow to incorporate subject specific knowledge. An example is discussed in
+section 3.1.3 in Sauerbrei and Royston (1999).
+
+#### Local features
+
+Unlike splines which have a local interpretation of the fitted function, FPs
+provide a curve with a global interpretation. To investigate possible
+"overlooked" local features of an FP function, Binder and Sauerbrei (2010)
+conducted a systematic analysis of residuals from a model obtained by MFP. If
+local features are detected by their MFP + L procedure, statistically signiﬁcant
+local polynomials are then parsimoniously added to the FP function. This enables the
+identification and incorporation of local features that may have been missed by
+the global FP function. This approach is not currently implemented in the `mfp2`
+package, but it is a potential area for future extensions.
+
+# Introduction to the `mfp2` package
+
+`mfp2` is a package that implements the MFP approach to model selection. In
+addition, it has the ability to model a sigmoid relationship between `x` and an
+outcome variable `y` using the ACD transformation proposed by Royston (2014) and
+implemented in the Stata procedure MFPA (Royston and Sauerbrei 2016). The
+package offers three options for variable and function selection: nominal
+significance levels (p-value), adapted Akaike information criterion (AIC-P), and adapted Bayesian
+information criterion (BIC-P). It also provides functions for prediction and
+plotting. Currently, the package implements linear, logistic, Poisson, and Cox
+regression models. However, the package is designed in such a way that it can
+easily incorporate other regression models.
+
+The main function, `mfp2()`, implements both MFP and MFPA. The latter adds
+sigmoid functions to the FP family and is only required if sigmoid functions are
+relevant. It offers two interfaces for input data. The first interface (matrix,
+default) allows direct input of the covariate matrix `x` and the outcome `y`.
+The second interface (formula) uses a formula object in conjunction with a data
+frame, similar to the `glm()` function with slight modifications. Both
+interfaces are equivalent in terms of functionality.
+
+The package also includes several example datasets. We will illustrate working with
+`mfp2` using the prostate dataset. Details about the dataset are found in the
+book by Royston and Sauerbrei (2008) and on the MFP website.
+
+The current authors of `mfp2` are Edwin Kipruto, Michael Kammer, Patrick
+Royston, and Willi Sauerbrei. We acknowledge the comments and suggestions
+provided by Georg Heinze and Gregory Steiner, which helped us improve our
+package. The R package is maintained by Edwin Kipruto, while the Stata MFP and
+MFPA programs are maintained by Patrick Royston. Parts of the text and some
+recommendations (e.g. section 2.3.3) have been taken from the Stata programs MFP
+and MFPA.
+
+## Estimation algorithm
+
+The estimation algorithm employed in `mfp2` sequentially processes the
+covariates using a back-fitting approach. It calculates the p-values of each
+covariate using the likelihood ratio test, assuming linearity, and then arranges
+the covariates based on these p-values. By default, the covariates are arranged
+in order of decreasing statistical significance. This ordering aims to
+prioritize modeling relatively important variables before less important ones,
+which can help mitigate potential challenges in model fitting arising from
+collinearity or, more generally, the presence of "concurvity" among the
+covariates (StataCorp. 2023). Although alternative options for covariate
+ordering are available in the `mfp2` package, such as increasing statistical
+significance (`xorder = "descending"`) and respecting the user's original
+variable order (`xorder = "original"`), we strongly recommend the default option
+(`xorder = "ascending"`). Occasionally, there may be subject matter knowledge
+that provides arguments to change this order.
+
+If a covariate contains non-positive values, the program by default shifts the
+location of the covariate to ensure positivity. In addition, it scales the
+shifted covariate before the first cycle of the algorithm. For more information
+on shifting and scaling, please see section 2.3.2.
+
+During the initial cycle, the best-fitting FP function for the first variable
+(ordered by the p-values from the full model including all variables) is
+determined, with adjustment for all the other variables, assuming that
+continuous variables have a linear effect. The selected power terms are kept,
+and the process is repeated for the other variables. The first iteration
+concludes when all the variables have been processed in this way. Some variables
+may be eliminated, and for the remaining selected continuous variables linear,
+FP1 or FP2 functions are chosen. This is the starting point for the next cycle.
+It works similar to the initial cycle, with the selected power terms from the
+initial cycle being used for all variables except the one currently being
+processed.
+
+Updating of FP functions and candidate variables continues through several
+cycles until the functions and variables included in the overall model do not
+change from one cycle to the next (convergence). Typically, MFP requires two to
+four cycles for convergence. Non-convergence may occur when there is
+oscillation between two or more models, but this situation is extremely rare. If
+this situation arises, try changing the nominal significance levels.
+
+## Installation
+
+To install and load the `mfp2` package, enter the following command in the R console:
+
+```{r, eval=FALSE}
+# install the package
+install.packages("mfp2")
+
+# load the package
+library(mfp2)
+```
+
+## Linear regression
+
+The default `family` in `mfp2` package is `family = "gaussian"`, which fits a
+Gaussian linear model. We will use the prostate cancer data (Stamey et al.,
+1989) included in our package to demonstrate how to fit this model. The dataset
+contains seven covariates (six continuous (`age`, `pgg45`, `cavol`, `weight`,
+`bph`, and `cp`) and one binary (`svi`)) and a continuous outcome variable log
+prostate-specific antigen (lpsa) of 97 male patients with prostate cancer. Our
+aim is to determine variables with influence on the outcome and whether
+non-linear functional relationships exist between the covariates and the outcome
+variable.
+
+Load the `prostate` dataset from the `mfp2` package and display the first six rows  
+
+```{r out.lines = 10}
+# Load prostate data
+data("prostate")
+head(prostate, 6)
+
+# create covariate matrix x and numeric vector y 
+x <- as.matrix(prostate[,2:8])
+y <- as.numeric(prostate$lpsa)
+```
+
+The command `data("prostate")` loads a data frame from the `mfp2` package. We
+create a matrix `x` and a numeric vector `y` from the data frame to be used by
+the matrix interface of the `mfp2()` function.
+
+### Fitting MFP models using the matrix and formula interfaces
+
+The default interface of `mfp2()` requires a matrix of covariates `x` and a 
+numeric vector of response `y` for continuous outcomes. If you have one covariate,
+make sure you convert it into a matrix with a single column.
+
+We demonstrate how to fit the Gaussian linear model using the default
+parameters. The formula interface uses the `fp()` function to state that
+continuous variables should be modelled using fractional polynomials (with
+default parameters). The two approaches lead to the same results as demonstrated
+by calling `summary()` with the fitted models as input.
+
+```{r}
+# default interface
+fit_default <- mfp2(x, y, 
+                    verbose = FALSE)
+summary(fit_default)
+
+# formula interface
+fit_formula <- mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
+                    data = prostate, 
+                    verbose = FALSE)
+summary(fit_formula)
+```
+
+The main distinction between the formulas used in `mfp2()` and `glm()` functions
+in **R** is the inclusion of the `fp()` function within the formula. The
+presence of the `fp()` function in the formula indicates that the variables
+included within it should undergo FP transformation, provided that the degree of
+freedom (df) is not equal to 1. A df of 1 indicates a linear relationship, which
+does not require transformation. Note that `df` is an argument of the `fp()`
+function.
+
+The variable `svi` is a binary variable and is therefore not passed to the `fp()`
+function. This is because binary or factor variables should not undergo FP 
+transformation. If a binary variable is passed to the `fp()` function,
+the program will automatically set the `df` to 1, treating the variable as linear.
+However, passing a factor variable to the `fp()` function will result in an error.
+For more details on how `mfp2` handles categorical variables, refer to section 2.3.10.
+
+### Shifting and scaling of covariates
+
+Fractional polynomials are defined only for positive variables due to the use of
+logarithms and other power transformations such as the square root. Thus, `mfp2()`
+estimates shifting factors for each variables to ensure positivity. The function 
+`find_shift_factor()`, used internally by `mfp2`, automatically estimates 
+shifting factors for each continuous variables. The formula used to estimate the
+shifting factor for a continuous variable, say $x1$, is given by:
+
+\[
+shift_{x1} = \gamma - \min(x1)
+\]
+
+where $\min(x1)$ is the smallest observed value of $x1$, while $\gamma$ is the 
+minimum increment between successive ordered sample values of $x1$, excluding 0 
+(Royston and Sauerbrei, 2008). The new variable $x1' = x1 + shift_{x1}$ will 
+then be used by `mfp2()` in estimating the FP powers. 
+
+For example, to estimate shifting factors for covariate matrix `x` from prostate
+data in R, you can run the following code:
+
+```{r, eval = TRUE}
+# minimum values for each covariate
+apply(x, 2, min)
+
+# shifting values for each covariate
+apply(x, 2, find_shift_factor)
+```
+
+We see that among the continuous variables, only the variable `pgg45` is shifted
+by a factor of 1, which is attributed to its minimum value being 0. Even though
+the variable `svi` also has a minimum value of 0, it is not shifted because it is 
+a binary variable. The user can manually set the shifting factors for each 
+variable in the `mfp2()` function if desired to e.g. improve interpretability.
+
+If the values of the variables are too large or too small, it is important to 
+scale the variables to reduce the chances of numerical underflow or overflow 
+which can lead to inaccuracies and difficulties in estimating the model 
+(Royston and Sauerbrei, 2008). 
+Scaling can be done automatically or by directly specifying the scaling values for
+each variables so that the magnitude of the covariate values are not too extreme. 
+By default scaling factors are estimated by the program as follows.
+
+After adjusting the location of $x$ (if necessary) so that its minimum value 
+is positive, creating $x'$, automatic scaling will divide each value of $x'$ by 
+$10^p$ where the exponent $p$ is given by 
+
+\[
+p = sign(k) \times floor(|k|), \quad \text{where} \quad k = \log_{10} (\max(x')- \min(x')).
+\]
+
+The `mfp2()` function uses this formula to scale the columns of the covariate
+matrix, implemented through the `find_scale_factor()` function. From the output
+below, we see that the variables `age`, `cavol`, and `cp` have scaling factors
+of 10 each, while the variables `pgg45` and `weight` have scaling factors of 100
+each. Each variable will be divided by its corresponding scaling factor. A
+scaling factor of 1 (e.g. `bph` and `svi`) implies no scaling.
+
+```{r, eval=TRUE}
+# shift x if nonpositive values exist
+shift <- apply(x, 2, find_shift_factor)
+xnew <- sweep(x, 2, shift, "+")
+
+# scaling factors
+apply(xnew, 2, find_scale_factor)
+```
+
+To manually enter shifting and scaling factors, the `mfp2()` function provides 
+the `shift` and `scale` arguments. In the default usage of `mfp2()`, a vector of
+shifting or scaling factors, with a length equal to the number of covariates, can
+be provided. In the formula interface, shifting or scaling factors 
+can be directly specified within the `fp()` function. Below is an example to 
+illustrate this (not run):
+
+```{r, eval = FALSE}
+# Default interface
+mfp2(x,y, 
+     shift = c(0, 0, 1, 0, 0, 0, 0), 
+     scale = c(10, 1, 100, 10, 100, 1, 10))
+
+# Formula interface
+mfp2(lpsa ~ fp(age, shift = 0, scale = 10) + svi + fp(pgg45, shift = 1, scale = 100) + fp(cavol, shift = 0, scale = 10) + fp(weight, shift = 0, scale = 100) + fp(bph, shift = 0, scale = 1) + fp(cp, shift = 0, scale = 10),
+     data = prostate)
+```
+
+In the default interface, each variable in the `x` matrix is assigned a shifting 
+and scaling factor based on their respective positions. For instance, the first 
+variable in the column of `x`, which is `age`, is assigned a shifting factor of 0 
+and a scaling factor of 10. The second variable, `svi`, is assigned a shifting 
+factor of 0 and a scaling factor of 1, and so on.
+
+### Setting degrees of freedom for each variable {#df_vars}
+
+The degrees of freedom (df) for each covariate (excluding the intercept) are
+twice the degrees of freedom of the FP. For instance, if the maximum allowed
+complexity of variable $x1$ is a second-degree FP (FP2), then the degrees of
+freedom assigned to this variable should be 4. To find the best fitting
+function, FSP selects power terms $p1$ and $p2$ and the corresponding regression
+coefficients $\beta_1$ and $\beta_2$. The default `df` is 4 ($m = 2$) for each
+covariate.
+
+After assigning the default degrees of freedom to each variable, the program
+overrides the default value if a variable has only a very small number of unique
+values as such variables may not be handled as other continuous variable. As
+proposed in the Stata program the rules for overriding the default degrees of
+freedom are as follows:
+
+* If a variable has 2-3 distinct values, it is assigned `df` = 1 (linear).\
+* If a variable has 4-5 distinct values, it is assigned `df` = min(2, default).\
+* If a variable has 6 or more distinct values, it is assigned `df` = default.
+
+These rules ensure that the appropriate `df` are assigned to variables. For 
+instance, it is not sensible to fit an FP2 function to a variable with only 3 
+distinct values (StataCorp. 2023). 
+
+The following code illustrates how to set different `df` for  each variable. In 
+the default interface, the `df` of the binary variable `svi` is explicitly set 
+to 1 (linear), while in the formula interface, there is no need to specify the
+`df`, as the program automatically assigns `df = 1` for binary variables.
+
+If the user attempts to enter `df = 4` for `svi` in the default interface, the 
+program will reset the `df` to 1 and issue a warning.
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y, df = c(4, 1, 4, 4, 4, 4, 4))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age, df = 4) + svi + fp(pgg45, df = 4) + fp(cavol, df = 4) + fp(weight, df = 4) + fp(bph, df = 4) + fp(cp, df = 4),
+     data = prostate)
+```
+
+In addition, if the user does not explicitly assign `df` to variables, the
+program will automatically assign `df = 4` to each variable, corresponding to $m
+= 2$ as the default for MFP modelling. It is important to note that even if a
+continuous variable is not passed to the `fp()` function in the formula
+interface, the `df` of that variable will still be set to the default value and
+will later be adjusted based on the unique values. The following examples are
+all equivalent:
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y)
+
+# Formula Interface, all continuous variables passed to the fp() function
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + fp(cp), 
+     data = prostate)
+
+# Formula Interface, `cp` not passed to the fp() function
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) + cp, 
+     data = prostate)
+
+# Formula Interface, all covariates not passed to the fp() function
+mfp2(lpsa ~ age + svi + pgg45 + cavol + weight + bph + cp, 
+     data = prostate)
+```
+
+### Tuning parameters for MFP
+
+The two key components of MFP are variable selection with backward elimination
+(BE) and function selection for continuous variables through the function
+selection procedure (FSP). The `mfp2()` function has an argument called
+`criterion`, which allows the user to specify the criterion applied for variable
+and function selection.
+
+The default criterion is `pvalue`, which enables the user to set two nominal
+significance levels: $\alpha_1$  for variable selection with BE and $\alpha_2$
+for comparing the fit of the functions (linear, best FP1, best FP2 and so on)
+within the FSP. The choice of these significance levels strongly influences the
+complexity and stability of the final model. Please refer to section [section
+2.3.4.1](#Nominal_significance_levels) for instructions on setting the nominal
+significance levels.
+
+The `mfp2` package offers alternative approaches to variable and function selection by utilizing information criteria. Within the MFP framework, each covariate is evaluated univariately while adjusting for the other covariates through an overarching back-fitting algorithm. This algorithm iteratively assesses each covariate and selects the model (null, linear, FP1, FP2) with the minimum AIC-P (criterion set to aic) or BIC-P (criterion set to bic) (see section 2.3.4.2). Here, AIC-P and BIC-P refer to the adapted versions of AIC and BIC, respectively, to distinguish them from the original AIC and BIC. However, in the program, we use the abbreviations AIC and BIC to denote AIC-P and BIC-P.
+
+The "null" model refers to a model without the covariate of interest. A "linear" 
+model assumes a linear relationship with the outcome variable, while an FP1 model 
+assumes a non-linear relationship using the FP1 function. The `criterion` argument
+allows users to specify whether they want to use AIC-P or BIC-P criteria for both
+variable and function selection. If AIC-P or BIC-P is selected as the criterion, the
+nominal significance levels set through the `select` and `alpha` arguments will 
+be ignored. For details on using AIC-P and BIC-P in variable and function selection,
+please refer to [section 2.3.4.2](#information_criteria).
+
+#### Nominal significance levels {#Nominal_significance_levels}
+
+The `mfp2()` function has the arguments `select` and `alpha` for setting the
+nominal significance level for variable selection by BE and for testing between
+FP models of different degrees, respectively. When using these arguments, you
+should ensure that the `criterion` is set to `"pvalue"` to correctly use the
+specified significance levels.
+
+For variable selection, a significance level can be set using the `select`
+argument. A value of 1 (`select = 1`) for all variables forces them all into the
+model. Setting the nominal significance level to be 1 for a given variable
+forces it into the model, leaving others to be selected or not. A variable is
+dropped if its removal leads to a nonsignificant increase in deviance. Default
+is `select = 0.05` for each variable.
+
+On the other hand, the `alpha` argument is used to determine the complexity of
+the selected FP function. A value of 1 (`alpha = 1`) will choose the most
+complex FP function permitted for a given variable. For example, if FP2 is the
+most complex function allowed for a continuous variable, setting `alpha = 1`
+will select the best FP2 function. Default is `alpha = 0.05` for each continuous
+variable.
+
+The rules for setting `select` and `alpha` are the same as those for setting `df` 
+([see section 2.3.3](#df_vars)). The following R codes shows how to set equal
+nominal significance levels for variable and function selection 
+$(\alpha_1 = \alpha_2 = 0.05)$ for each variable and produces identical results.
+Setting different nominal significance levels is straightforward. Simply replace
+the value 0.05 with the desired significance level of your choice.
+
+```{r eval = FALSE}
+# Default Interface
+mfp2(x,y, 
+     select = rep(0.05, ncol(x)), 
+     alpha = rep(0.05, ncol(x)))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, select = 0.05) + 
+       fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, 
+     data = prostate)
+```
+
+In the formula interface, binary variables such as `svi` that are not passed in
+the `fp()` function utilize the global `select` argument. In our example, the
+global parameter is set to `select = 0.05`. If several binary variables exist in
+the model, the global parameters will be used for all of them. However, if 
+specific parameters need to be set for individual binary variables, the user can
+use the `fp()`function. In summary, if a variable is not passed through the `fp`
+function, it will utilize the global parameters.
+
+Suppose we want to force the variables `"age"` and `"svi"` in the model. To achieve
+this, we have two options:
+
+* Set `select = 1` for `age` and `svi` in the `mfp2()` function.\
+* Alternatively, we can use the `keep` argument, which resets the nominal 
+significance levels for `age` and `svi` to 1 if they are different from 1. 
+This ensures that these variables are retained in the model.
+
+```{r eval = FALSE}
+# default Interface
+# Set select to 1 for variables "age" and "svi"
+mfp2(x,y, 
+     select = c(1, 1, 0.05, 0.05, 0.05, 0.05, 0.05),
+     alpha = rep(0.05, ncol(x)))
+
+# use keep argument
+mfp2(x,y,
+     select = rep(0.05, ncol(x)), 
+     alpha = rep(0.05, ncol(x)), 
+     keep = c("age", "svi"))
+
+# formula Interface
+# use fp() function and set select to 1 for "age" and "svi"
+mfp2(lpsa ~ fp(age, select = 1) + fp(svi, df = 1, select = 1) + fp(pgg45, select = 0.05) + 
+       fp(cavol, select = 0.05) + fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, data = prostate)
+
+# use keep argument
+mfp2(lpsa ~ fp(age, select = 0.05) + svi + fp(pgg45, select = 0.05) + fp(cavol, select = 0.05) + 
+       fp(weight, select = 0.05) + fp(bph, select = 0.05) + fp(cp, select = 0.05), 
+     select = 0.05, alpha = 0.05, 
+     keep = c("age", "svi"), 
+     data = prostate)
+```
+
+#### Information criteria {#information_criteria}
+
+Instead of using nominal significance levels for variable and function selection, 
+an alternative approach is to directly use adapted versions of AIC or BIC, defined below.
+
+\setlength{\jot}{0.5pt}
+\begin{align*}
+AIC-P & = -2 \log(L) + 2k \\
+BIC-P & = -2 \log(L) + \log(n) \times k,
+\end{align*}
+
+where $\log(L)$ is the maximum log-likelihood of the fitted model, which
+measures how well the model fits the data. The parameter $k$ corresponds to the
+number of estimated parameters in the model (regression estimates and FP powers)
+and $n$ is the sample size or the number of observations in the dataset. AIC-P and
+BIC-P consider both model fit and complexity, with lower values indicating
+better-fitting models.
+
+For instance, let's assume we want to select the best model for a variable of interest ($z$) with fixed adjustment variables $x1$ (with power $p3$ as the best FP1 function) and $x2$ (linear function was pre-specified). Then, we can compare the AIC and BIC of different models, such as FP2, FP1, linear, and null models for $z$. The adjustment models all have the same number of parameters (2 for $x1$, 1 for $x2$, and perhaps an intercept if it exists). For $z$, we have 4, 2, and 1 parameter(s) for FP2, FP1, and linear models, respectively, for a model without an intercept. In a model without an intercept, the total number of parameters, including adjustment variables, for variable z are 7 (4 + 3) for FP2, 5 (2 + 3) for FP1, and 4 (1 + 3) for a linear model. These total
+number of parameters for each model type is used in calculating the AIC-P and BIC-P.
+The model with the smallest AIC-P or BIC-P is then selected for $z$.
+
+In `mfp2` package, this can be achieved by setting the `criterion` argument to
+either `"aic"` or `"bic"` in the `mfp2()` function. Additionally, if there is a
+need to force certain variables, such as `age` and `svi`, into the model, the
+`keep` argument can be used.
+
+The following R code demonstrates how to implement this approach using both the
+default and formula interfaces, as well as how to force specific variables into
+the model:
+
+```{r, eval=FALSE}
+# Default Interface
+mfp2(x, y,
+     criterion = "aic", 
+     keep = c("age", "svi"))
+
+# Formula Interface
+mfp2(lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
+     criterion = "aic", 
+     keep = c("age", "svi"), 
+     data = prostate)
+```
+
+### Model comparison tests
+
+The FSP in `mfp2()` function compares various models for the variable of
+interest. For instance, if the most complex allowed FP function is FP2, the FSP
+will compare the best FP2 model with the null model, the best FP2 model with the
+linear model, and the best FP2 model with the best FP1 model, when the
+`criterion = "pvalue"`. The deviance for each model (null, linear, FP1, and FP2)
+and their corresponding differences and p-values will be calculated.
+
+When comparing Gaussian models, the `mfp2()` function provides two options for 
+calculating p-values: the F-test and the Chi-square test. The Chi-square test is
+the default option. For other non-Gaussian models such Cox and logistic regression 
+models, the Chi-square test is used. For more detailed information, please refer
+to page 23 of the [MFP Stata manual paper (here)]( https://www.stata.com/manuals/rfp.pdf)
+
+To use the F-test, we can set the `ftest = TRUE`, as demonstrated in the example
+below. Conversely, to use the Chi-square test, set `ftest = FALSE`.
+
+```{r, eval=FALSE}
+# Default Interface
+mfp2(x, y,
+     criterion = "pvalue", 
+     ftest = TRUE)
+
+# Formula Interface
+mfp2(lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) + fp(bph) +  fp(cp),
+     criterion = "pvalue", 
+     ftest = TRUE, 
+     data = prostate)
+```
+
+Please note that the p-values reported by the `mfp` program in `Stata` for 
+Gaussian models are based on the F-test. If you intend to compare the
+results between the two software packages, it is crucial to ensure that 
+`ftest = TRUE` is set in **R** since the default is `ftest = FALSE`.
+
+It is important to be aware that the older version of the `mfp` package in **R**
+uses the Chi-square test for all model types, which may yield different results
+compared to the Stata program, for Gaussian models. In summary, the `mfp2`
+package reproduces the results of Stata (mfp and mfpa programs), as well as the
+old `mfp` program in **R** if you set `ftest = FALSE`.
+
+### Subject matter knowledge may require changes in fractional polynomial powers
+
+By default, the `mfp2()` function uses the predefined set $S = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}$ 
+for each continuous covariate, as proposed in the original
+paper by Royston and Altman (1994). However, there may be situations where users
+want to provide their own power terms based on subject matter knowledge (not all
+powers allowed). In such cases, the `powers` argument which takes a list of
+powers can be employed to specify the desired power terms. More extreme powers
+may be considered for a possible improvement of the model fit. This may be
+sensible if the ‘extreme’ power terms (-2, -2) or (3,3) are selected,
+Considering (-3,-3) or (4,4) may be a suitable option. By default, the covariates are arranged in order of decreasing statistical significance (see section 2.1 for other options).
+
+The following example illustrates how to assign different power terms to
+continuous covariates. Two power terms (1 and 0.5) are evaluated for the `age`
+covariate. This set includes three models of degree 2 (with power combinations
+of (1, 0.5), (1, 1), and (0.5, 0.5)),and a model of degree 1 (with power of
+0.5). A linear model (power=1) is also allowed.
+
+The `cavol` variable is assigned three powers (1, 0, 1). 
+The remaining continuous variables, namely `pgg45`, `weight`, `bph`, and `cp`, 
+are not assigned any power terms. Instead, the default powers defined in set $S$
+are used and  a search through all possible fractional polynomials up to the
+degree set by `df` is performed.
+
+When using the `fp()` function in the formula interface, the power terms
+provided must be a `vector` not a list since they are specific to a particular
+variable.
+
+```{r, eval=FALSE}
+# create a list of power terms for covariates "age" and "cavol"
+powx <- list(age = c(1, 0.5), cavol = c(1, 0, 1))   
+
+# Default Interface
+mfp2(x, y, 
+     criterion = "pvalue", 
+     powers = powx)
+
+# Formula Interface
+mfp2(lpsa ~ fp(age, powers = c(1 , 0.5) ) + svi + fp(pgg45) + fp(cavol, powers = c(1, 0, 1)) + fp(weight) + fp(bph) +  fp(cp), 
+     data = prostate)
+
+```
+ 
+### Explanation of output from model-selection algorithm
+
+Using the prostate example, we briefly explain how the algorithm works. Similar
+to backward elimination, it starts with the full model (model with all
+variables, linear function for all continuous variables) and investigates
+whether variables can be eliminated and whether non-linear functions improve the
+fit. For each of the continuous variables, the FSP is used to check whether a
+non-linear function fits the data significantly better than a linear function.
+After the first cycle, some variables may be eliminated from the model, and for
+some continuous variables, a more suitable non-linear function may be identified
+as a better fit for the data.
+
+The algorithm then proceeds to the second cycle, but the new starting model now
+has fewer variables due to the elimination process in the previous cycle.
+Additionally, non-linear functions may have been identified for some of the
+continuous variables. In the second cycle, all variables will be reconsidered,
+even if they were not significant at the end of the first cycle, and FSP is used
+again to determine the 'best' fitting FP function (the selected functions may be
+different due to potential variations in the adjustment variables). The results
+obtained from the second cycle then serve as the starting model for the third
+cycle. In most cases, the variables and functions selected remain unchanged in
+cycles 3 or 4 and the algorithm stops with the final MFP model.
+
+The order of 'searching' for model improvement by better fitting non-linear
+functions is important. Mismodelling the functional form of a variable with a
+strong effect is more critical than mismodelling the functional form of a
+variable with a weak effect. Therefore, the order is determined by the p-values
+from the full model. Variables with small p-values are considered first.
+
+To explain the output of the MFP algorithm, we will use the default interface of
+the `mfp2()` function to build an MFP model with the default parameters.
+Specifically, all continuous variables are assigned a degree of freedom (df) of
+4, implying that FP2 is the most complex permitted function. Moreover, we employ
+the 'pvalue' as the criterion for variable and function selection, and we set
+the nominal significance levels for both components to 0.05 for all variables.
+Finally, we use the F-test instead of Chi-square to calculate the p-values.
+
+The **R** output displays the `df` used for each variable, as denoted by the
+"initial degrees of freedom". The program correctly identifies `svi` as a binary
+variable and assigns it a df of 1. Additionally, the variables are ordered based
+on their p-values in descending order of significance, as indicated by the
+"visiting order". The variable `cavol` has the smallest p-value and will be
+evaluated first, while `age` has the largest p-value and will be evaluated last.
+
+
+```{r out.lines = 103}
+fit <- mfp2(x, y, 
+            criterion = "pvalue", 
+            select = 0.05, alpha = 0.05, 
+            ftest = TRUE)
+```
+
+After the variables are ordered, the MFP algorithm starts by searching for a
+suitable function for `cavol`. It compares the best-fitting FP2 (-0.5, 1)
+function for `cavol` against a null model that excludes `cavol`. This comparison
+involves adjusting for all other six variables (`svi` to `age`) using linear
+functions. The test is highly significant (p = 0.0000), indicating that the best
+FP2 function fits significantly better than a null model. Next, the model with
+the best FP2 function is compared to a model assuming linearity, and the test
+remains significant (p  = 0.0011). This suggests that `cavol` can be better
+described by a non-linear function at this stage. Finally, the best FP2 function
+is compared to the best FP1 (0) function, and the test is not significant (p =
+0.2226). Thus, at this stage in the model-selection procedure, the final
+function for `cavol` is FP1 with power 0, denoting a log function.
+
+The next variable to be evaluated is `svi`, which is a binary variable. In this
+case, only the test of null versus linear is appropriate. Both the null and
+linear models of `svi` are adjusted for `log(cavol)` (the log function just
+selected) and the other five variables (`pgg45`, `cp`, `weight`, `bph`, and
+`age`) that are still present in the model. The test of null versus linear is
+significant (p = 0.0042), indicating that `svi` remains in the model.
+
+Next, we evaluate the continuous variable `pgg45` in the same model as for
+`svi`. The p-value for the first test (FP2 versus null) is not significant (p =
+0.3091), and the variable is eliminated from the model and will not be included
+in any of the models in the rest of the first cycle.
+
+Next, the algorithm evaluates the variable `weight` in a model adjusting for
+`log(cavol)`, `svi`, and the three variables (`cp`, `bph`, and `age`) that have
+not yet been evaluated. The first test is non-significant (p = 0.0521), and the
+variable is eliminated for the rest of the first cycle. In the subsequent steps,
+`bph`, `cp`, and `age` are also eliminated.
+
+**At the end of the first cycle, only two variables were selected: `log(cavol)` and `svi`.**
+
+The variables and functions selected in the first cycle becomes the new starting
+model for the second cycle. The second cycle starts with the evaluation of the
+effect of `cavol`, but this time in a simpler model adjusting for `svi` only.
+Deviances are larger compared to cycle 1 because the five variables (`pgg45`,
+`age`, `weight`, `bph` and `cp`) no longer belong to the 'adjustment' model.
+However, the FSP  still selects `log(cavol)`, now with a different estimate for
+the regression parameter.
+
+Then `svi` is evaluated in a model that includes only `log(cavol)`, and the test
+of linear vs null confirms that the variable should be included in the model.
+`Pgg45` is evaluated in a model with `svi` and `log(cavol)` as adjustment
+variables, but the test of inclusion (FP2 vs null) is not significant and the
+variable is again eliminated.
+
+The variable `weight` is considered next in a model with `svi` and `log(cavol)`.
+In contrast to the first cycle, the test for inclusion (FP2 vs null) is
+significant (p = 0.0052), indicating that `weight` needs to be re-included into
+the model. The second test of the FSP (FP2 vs linearity) is non-significant and
+a linear function is chosen for `weight`.  The inclusion of `weight` in the
+second cycle is a result of eliminating `bph`, `cp` and `age` in the first
+cycle, and of the correlation between these variables.
+
+In the subsequent steps, `bph`, `cp`, and `age` are investigated in models
+adjusting for `log(cavol)`, `svi`, and `weight` (linear). Compared to the first
+cycle, the p-values change, but all of them are much larger than 0.05.
+Therefore, none of these variables are included in the model.
+
+**The second cycle ends with the model consisting of `log(cavol)`, `svi` (binary), and `weight` (linear)**. 
+
+This model serves as the starting point for the third cycle (not shown), where
+all seven variables are investigated again. However, there are no further change
+in the selected variables or functions, so MFP terminates with the three
+variables selected in the second cycle.
+
+### Methods defined for mfp2
+
+Once you fit an MFP model using the `mfp2()` function, you can apply various
+methods to the resulting model object to extract information or perform specific
+tasks. Suppose we fit an MFP model for the Gaussian family with default
+parameters as follows:
+
+```{r, eval= TRUE,  tidy = TRUE, tidy.opts = list(width.cutoff = 80)}
+fit <- mfp2(x, y, verbose = FALSE)
+class(fit)
+```
+
+The `fit` is an object of class `mfp2`, which inherits properties from `glm` and `lm`. If
+the `family = "cox"`, the fit will inherit from `coxph` in the survival
+package. This means that `mfp2` can utilize methods and functions defined for
+`glm`, `lm` or `coxph`.
+
+To obtain a summary of the final `mfp2` object, you can simply enter the object
+name (e.g., `fit` in our example) or use the print function. The `print()`
+function provides a comprehensive summary of the final MFP model, including the
+parameters used in the MFP model such as shifting and scaling factors, degrees
+of freedom (denoted by `df_initial`), nominal significance levels (`select` and
+`alpha`), and other relevant information.
+
+Furthermore, it shows the final degrees of freedom (denoted by `df_final`),
+where a `df` of 0 indicates that a variable was eliminated, which is confirmed
+by the `selected` column. The `power` column
+shows the final FP powers for variables, with eliminated variables assigned `NA`. The `acd` column, which indicates whether ACD transformation was applied to a covariate, will only be displayed when the user chooses to apply ACD transformation to at least one covariate.
+
+```{r, eval= TRUE}
+print(fit)
+```
+
+To display the regression coefficients from the final MFP model, you can use the
+`coef()` or `summary()` function. It's important to note that the variables in
+the model have names with dot extensions. This means that a variable with two FP
+powers (FP2) will be denoted as "var.1" and "var.2". Please note that the
+displayed regression coefficients are not currently scaled back to the original
+scale.
+
+```{r, eval= TRUE}
+# extract only regression coefficients
+coef(fit)
+
+# display regression coefficients with other statistics
+summary(fit)
+```
+
+Users can generate predictions for new or existing data based on the fitted MFP
+model using the `predict()` function. To illustrate this, let's consider an
+example using the prostate dataset. Suppose we want to make predictions for the
+first five observations in the matrix $x$ (considering them as new observations).
+We can achieve this with the following code:
+
+```{r out.lines = 10, eval= TRUE}
+ # extract the first five observations from 'x'
+new_observations <- x[1:5, ] 
+dim(new_observations)
+
+# make predictions for these new observations.
+predict(fit, newdata = new_observations)
+```
+
+To prepare the `newdata` for prediction, the `predict()` function applies any
+necessary shifting and scaling based on the factors obtained from the
+development data. It is important to note that if the shifting factors are not
+sufficiently large as estimated from the development data, variables in
+`newdata` may end up with negative values, which can cause prediction errors if
+non-linear functional forms are used. A warning is given in this case by the
+function.
+
+### Graphical presentation of FP functions
+
+The regression estimates ($\hat{\beta}$) for FP terms provide incomplete
+information as they only give limited insight into the fitted function for the
+variable of interest. A more informative approach is to visualize functions for
+variables with non-linear effects (Royston and Sauerbrei, 2008). The `mfp2`
+package offers the `fracplot()` function specifically designed for this purpose.
+
+By providing the `mfp2` object and other relevant arguments, `fracplot()`
+generates plots of the functions for variables along with 95% confidence
+intervals. As for all data derived models, model based confidence limits may be
+too narrow. The bootstrap may be used to derive more realistic estimates of
+standard errors and pointwise confidence intervals (Sauerbrei and Royston 2007).
+You can specify the variable to be plotted using the `terms` argument. If
+`terms` is set to `NULL` (the default), the function returns a list of plots for
+all variables included in the model.
+
+The `fracplot()` function, by default produces a component-plus-residual plot.
+This is because the `partial_only` argument is set to `FALSE` by default. 
+
+For Gaussian models with constant weights and a single covariate, this amounts
+to a plot of the outcome variable and each covariate with the fitted function.
+
+For other normal-error models, weighted residuals are calculated and added
+to the fit. For models with two or more covariates, the function is the partial
+linear predictor for the variable of interest and includes the intercept.
+
+For generalized linear and Cox models, the `fracplot()` function plots the
+fitted values on the scale of the linear predictor. Deviance residuals are added
+to the (partial) linear predictor for generalized linear models, while
+martingale residuals are added for Cox models to give component-plus-residual.
+These values are small circles on the plot. The component-plus-residual plots
+may show the amount of residual variation at each covariate and may indicate
+lack of fit or outliers in the outcome (Royston and Sauerbrei, 2008; StataCorp.
+2023).
+
+If you set `partial_only = TRUE`, the `fracplot()` function will plot only the
+partial linear predictor without including the residuals. For more detailed
+information on component-plus-residuals, you can refer to the 
+[Stata manual (here)](https://www.stata.com/manuals/rmfppostestimation.pdf).
+
+For instance, to plot the function for `cavol` in the model, you can use the 
+following code:
+
+```{r, eval= TRUE,fig.cap="\\label{fig:fig2}Prostate data. Graphical presentation of results from an FP analysis"}
+plots <- fracplot(fit)
+
+# plots is a list
+class(plots)
+
+# The plot of cavol is the first element of the list
+plots[[1]] + ggplot2::ylab("Partial predictor + residuals")
+
+```
+
+\newpage
+
+The `fracplot()` function also supports the incorporation of a reference point
+or target value in the plot. Including a reference point allows for visualizing
+whether other data points exceed or fall below the reference point. To achieve
+this, you can use the `type` argument and set it to "contrasts" (`type = "contrasts"`). 
+Additionally, you can supply the reference point using the `ref`
+argument. By default, the `ref` argument is set to `NULL`, and average values
+are used as the reference points for continuous variables, while the minimum
+values are used as reference points for binary variables. For instance, if we
+want the reference value for the continuous variable `cavol` to be 30, we can
+use the following code:
+
+```{r, eval= TRUE, fig.cap="\\label{fig:fig3}Prostate data. Illustration on how to use reference points (ref point = 30)"}
+plots <- fracplot(fit, type = "contrasts", ref = list(cavol = 30))
+plots[[1]] + ggplot2::ylab("Partial predictor")
+```
+
+In certain cases, when the data points for a specific variable contain extreme
+values, the resulting function plotted using the original data can appear very
+sharp. This sharpness is primarily due to the limited number of data points that
+are close to the extreme values of the variable.
+
+The `fracplot()` function provides two options for generating the plot. The
+first option is to use the original data that was used to fit the model
+(`terms_seq = "data"`). The second option is to generate a sequence of
+equidistant new data points using the range of the original data for the
+variable of interest (`terms_seq = "equidistant"`).
+
+To illustrate these options, we will use the `art` dataset included in the
+`mfp2` package. This dataset is described in detail by Royston and Sauerbrei
+(2008, Chapter 10), and the outcome variable is continuous. In our example, we
+will fit an MFP model with a single covariate ($x5$) (see Figure below).
+
+```{r, eval = TRUE, fig.cap = "Art data. Illustration on how to use terms_seq argument in fracplot. In the original data, the function FP(0,3) was selected, equivalent to $\\beta_0 + \\beta_1log(x5) + \\beta_2x5^3$. This function was plotted using the original values of x5 in the data (right panel) and a sequence of equidistant new data points using the range of the original x5 data (left panel). The two functions are identical up to x5 = 62. However, beyond this point, a linear trend is estimated when the original values are used due to lack of data points between 62.21 and 235. If the new data is used, it results in a curve, clearly depicting the FP2 function."}
+
+# load art data
+data("art")
+
+# fit mfp model using art data
+xx <- as.matrix(art[,"x5", drop = FALSE])
+yy <- as.numeric(art$y)
+fit2 <- mfp2(xx, yy, verbose = FALSE)
+
+# generate plot using original data 
+plot1 <- fracplot(fit2)
+plot1[[1]] <- plot1[[1]] + 
+  ggplot2::ylab("Partial predictor + residuals") 
+
+# generate plot using sequence of data
+plot2 <- fracplot(fit2, terms_seq = "equidistant")
+plot2[[1]] <- plot2[[1]] + 
+  ggplot2::ylab("Partial predictor + residuals") 
+
+# combine plots
+patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
+
+```
+
+
+### Handling categorical variables
+
+The `mfp2` package requires the creation of dummy (indicator) variables for
+categorical independent variables before using the `mfp2()` function. The number
+of dummy variables depends on the number of classes in the categorical variable.
+As a general rule of thumb, a categorical variable with `k` classes is
+represented by `k-1` dummy variables, each taking on the values of 0 and 1. It
+may be easiest to define k-1 new dummy variable before starting `mfp2`,
+including all k-1 dummy variables as independent variables. Based on subject
+matter knowledge you may also decide to combine some of the categories,
+resulting in a smaller number of dummy variables and decide to include these
+dummy variables in the model, not allowing their elimination. In principle, this
+would be an important decision from the initial data analysis process (Huebner
+et al 2018).
+
+Categorical variables can be measured using an ordinal scale or a nominal scale.
+An ordinal variable indicates that the levels of the variable are ordered in
+some way, such as the levels of income (e.g., low income, medium income, and
+high income). On the other hand, a nominal variable has no intrinsic ordering
+among its categories. When variable selection is involved in the model building
+process, it is important to consider different approaches for coding ordinal and
+nominal variables in order to facilitate interpretation. This is because, during
+variable selection, certain dummy variables may be eliminated, which is
+analogous to combining some levels of variables. For more details on handling
+categorical variables, refer to Royston and Sauerbrei (2008, Chapter 3).
+
+The `model.matrix()` function in **R** automatically generates dummy variables
+using a dummy coding for categorical variables. This will ignore any ordinal
+structure of the variables. The `mfp2` package offers a function called
+`create_dummy_variables()` that provides an alternative to the `model.matrix()`
+specifically designed for creating dummy variables for both ordinal and nominal
+variables.
+
+Before using the `create_dummy_variables()` function, we recommend converting
+the variable of interest to a factor using the `factor()` function in base R. If
+necessary, you can specify the levels of the variable. Otherwise, the first
+level will be used as the reference. We will illustrate how to handle
+categorical variables using the `art` data. The outcome variable is continuous,
+and there are 10 covariates.
+
+The R code below demonstrates how to convert the ordinal variable `x4`, which
+has 3 levels (1 as the reference, 2, and 3), to dummy variables using ordinal
+coding. Similarly, it demonstrates how to convert the nominal variable `x9`,
+which also has 3 levels (1 as the reference, 2, and 3), to dummy variables using
+categorical coding. The final data will contain the dummy variables, which can
+be supplied to the `mfp2()` function.
+
+```{r out.lines = 103}
+# load art data
+data("art")
+
+# order the levels of the variable such that Levels: 1 < 2 < 3
+art$x4 <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
+
+# convert x9 to factor and assign level 1 as reference group
+art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
+
+# create dummy variables for x4 and x9 based on ordinal an categorical coding and drop 
+# the original variable
+art <- create_dummy_variables(art, 
+                              var_ordinal = c("x4"),
+                              var_nominal = c("x9"),
+                              drop_variables = TRUE)
+
+# display the first 20 observations
+head(art, 10)
+```
+
+After creating the dummy variables (`x4_1` and `x4_2` for `x4`, and `x92` and
+`x93` for `x9`), we fit the MFP model using the `mfp2()` function with default
+parameters. If a categorical variable is not an important predictor of the
+outcome, all the dummy variables will be eliminated, as in the case of variable
+`x9.` On the other hand, variable `x4` is an important predictor, and only one
+dummy (`x4_2`) out of the two was eliminated. Elimination of `x4_2` means that
+the two categories  2 and 3 are collapsed as a result of the selection
+process.
+
+```{r out.lines = 103}
+# create matrix x and outcome y
+x <- as.matrix(art[,-1])
+y <- as.numeric(art$y)
+
+# fit mfp using default interface with default parameters
+fit <- mfp2(x,y, verbose = FALSE)
+fit
+```
+
+## Logistic regression
+
+Logistic regression is a statistical method used to model binary outcomes. The
+`mfp2()` function implements the logistic regression model using the `family =
+"binomial"` argument. For illustration, we will use the Pima Indians dataset
+included in the mfp2 package, which was downloaded from the [MFP
+website(here)](https://mfp.imbi.uni-freiburg.de/book#dataset_tables). The
+dataset originates from a study conducted on a cohort of 768 female Pima
+Indians, a group known to be particularly susceptible to diabetes. Out of the
+768 individuals, 268 developed diabetes. The dataset consists of a binary
+outcome variable, denoting the presence (1) or absence (0) of diabetes, and
+eight covariates. For more information on the dataset, please refer to the book
+by Royston and Sauerbrei (2008) Chapter 9.7.
+
+In the `mfp2()` function, the response variable `y` should be provided as a
+binary vector rather than a matrix. The other arguments whether using the
+"default" or "formula" interface for logistic regression, are nearly identical
+to those previously explained for the Gaussian family.
+
+```{r out.lines = 103}
+# load pima data
+data("pima")
+head(pima)
+
+# matrix x
+x <- as.matrix(pima[,2:9])
+# outcome y
+y <- as.vector(pima$y)
+
+# fit mfp
+fit <- mfp2(x, y, 
+            family = "binomial", 
+            verbose = FALSE)
+fit
+```
+
+From the output, it is evident that four continuous variables (`glucose`(power
+1), bmi(-2), `diabetes`(1) and `age` (0, 3)) are selected. We can use
+`fracplot()` function to generate plots for these selected variables, as
+illustrated below, which produced the Figure below.
+
+```{r out.lines = 103, fig.show='hold', fig.cap="Pima data. Graphical presentation of results from an MFP analysis", echo=FALSE}
+plots <- fracplot(fit)
+
+# rename y-label for all plots
+plots <- lapply(plots, function(v) {
+  v + ggplot2::ylab("Partial pred + residuals")
+})
+
+# combine multiple ggplot objects into a single figure
+patchwork::wrap_plots(plots, ncol = 2)
+```
+
+## Survival data
+
+We illustrate two of the analyses performed by Sauerbrei and Royston (1999). We
+use the `gbsg` data, which contains prognostic factors data from the German
+Breast Cancer Study Group of patients with node-positive breast cancer. The
+response variable is recurrence-free survival time (`rectime`), and the
+censoring variable is `censrec.` There are 686 patients with 299 events. We use
+Cox regression to predict the log hazard of recurrence from prognostic factors,
+of which five are continuous (`age`, `size`, `nodes`, `pgr`, `er`), and one is
+binary (`meno`). The variable `grade` is ordinal, and we will use ordinal coding
+to create two dummy variables (`grade_1` and `grade_2`). The treatment variable
+hormonal therapy (`hormon`) is forced into the model. As an alternative we stratify
+the analysis using the `hormon` variable.
+
+We use the `mfp2()` function with default parameters to build a model from the
+initial set of eight covariates. We set the nominal significance level for
+variable and FP selection to 0.05 for all variables except `hormon`, which is
+forced into the model using the `keep` argument by setting the significance
+level of `hormon` to 1.
+
+The `mfp2()` function for survival outcome requires the outcome variable to be a
+survival object created using the `survival::Surv()` function. Other arguments
+are similar to those explained previously for the Gaussian family.
+
+```{r out.lines = 103}
+# load gbsg data
+data("gbsg")
+
+# data preparation 
+# create dummy variable for grade using ordinal coding
+gbsg <- create_dummy_variables(gbsg, 
+                               var_ordinal = "grade",
+                               drop_variables = TRUE)
+
+# covariate matrix x 
+x <- as.matrix(gbsg[,-c(1, 6, 10, 11)])
+head(x, 10)
+
+# use Surv() function to create outcome y
+y <- survival::Surv(gbsg$rectime, gbsg$censrec)
+
+# fit mfp and keep hormon in the model
+fit1 <- mfp2(x, y, family = "cox",keep = "hormon", 
+             control = coxph.control(iter.max = 50),
+                          verbose = FALSE)
+fit1
+```
+
+According to Sauerbrei and Royston (1999), medical knowledge dictates that the
+estimated risk function for `nodes` (number of positive nodes), which was
+selected with FP powers (-2, -1), should be monotonic - but the selected function
+is not.
+Therefore, they proposed to estimate a preliminary exponential transformation,
+`enodes = exp(-0.12 * nodes)`, for nodes and fitting a degree 1 FP for `enodes`,
+thus obtaining a monotonic risk function. The value of -0.12 was estimated
+univariately using nonlinear Cox regression. To ensure a negative exponent,
+Sauerbrei and Royston (1999) restricted the powers for `enodes` to be positive.
+Their Model III may be fit by using the following R command, which yields
+identical results to the [mfp command in Stata(here)](https://www.stata.com/manuals13/rmfp.pdf):
+
+```{r out.lines = 103}
+# remove nodes and include enodes
+x <- as.matrix(gbsg[,-c(1, 5, 10, 11)])
+
+# fit mfp and keep hormon in the model
+fit2 <- mfp2(x, y, family = "cox", keep = "hormon",
+             powers = list(enodes = c(0.5, 1, 2, 3)), 
+             control = coxph.control(iter.max = 50),
+             verbose = FALSE)
+fit2
+```
+
+See Figure 1 in Sauerbrei and Royston (1999) for the functions for nodes with
+powers (-2, - 1) and for enodes.
+
+### Stratified Cox model
+
+The stratified Cox model is a variation of the Cox proportional hazards (PH)
+model that allows for controlling the effect of a covariate that does not
+satisfy the PH assumption (Therneau et al. 2000). The model includes covariates
+that are assumed to satisfy the PH assumption, while the covariate being
+stratified on is not included in the model. Instead of including the stratified
+variable as a covariate in the model, it is used to define distinct subgroups.
+
+The `mfp2()` function, similar to the `coxph()` function in the survival
+package, includes a `strata` argument that enables stratification. The fitted
+MFP model assumes that the FP functions for a particular variable do not vary
+over the strata. However, it is essential for the user to evaluate this
+assumption.
+
+To provide an illustrative example, we will stratify the analysis using the
+variable `hormon`. The following **R** code demonstrates how to fit a stratified
+Cox model using both the default and formula interfaces, along with their
+default parameters.
+
+```{r out.lines = 103}
+# using default interface
+fit2 <- mfp2(x[,-7], y, family = "cox", 
+             strata = x[,7], 
+             verbose = FALSE)
+fit2
+
+# using formula interface
+fit3 <- mfp2(Surv(rectime,censrec)~ age + meno + size + nodes + pgr + er + grade_1 + 
+               grade_2 + strata(hormon),
+             family = "cox", 
+             data =gbsg, 
+             verbose = FALSE)
+```
+
+# MFP with ACD transformation
+
+Royston (2014) proposed the approximate cumulative distribution (ACD)
+transformation of a continuous covariate `x` as a route toward modeling a
+sigmoid relationship between `x` and an outcome variable `y`. The
+ACD transformation is a smooth function that maps a continuous covariate, `x`,
+to an approximation, `ACD (x)`, of its distribution function. By construction,
+the distribution of `ACD (x)` in the sample is roughly uniform on (0, 1). FP
+modeling is then performed with the transformed values `ACD (x)` instead of `x`
+as a covariate. He further showed that such an approach could successfully
+represent a sigmoid function of `x`, something a standard FP function cannot do
+(Royston and Sauerbrei 2008). He went on to demonstrate that useful flexibility
+in functional form could be achieved by considering both `x` and `a = ACD (x)`
+simultaneously as independent covariates and applying the MFP algorithm to `x`
+and `a`. To limit instability and overfitting, he suggested restricting the
+models considered for `x` and `a` to FP1 functions. Furthermore, Royston (2014)
+highlighted that models based on `ACD (x)` may have other advantages in terms of
+interpretability of regression coefficients.
+
+Royston and Sauerbrei (2016) extended the MFP modeling approach to incorporate
+the ACD transformation, resulting in the MFPA (MFP with ACD) algorithm. To
+implement this extension, the original FSP is replaced by a modified version
+known as FSPA (FSP with ACD transformation). The MFPA algorithm has all the
+features of the MFP algorithm plus the ability to model a sigmoid function. For
+additional information on MFPA, including FSPA, please refer to
+Royston and Sauerbrei (2016)
+
+## Modeling a sigmoid relationship
+
+We will demonstrate how to fit the MFPA using the `mfp2()` function. In this
+example, we simulated the data to create an example that showcases this
+relationship. The simulation process is outlined below.
+
+```{r out.lines = 103}
+# Generate artificial data with sigmoid relationship
+set.seed(54) 
+n <- 500  
+x <- matrix(rnorm(n), ncol = 1, dimnames = list(NULL, "x") )
+
+# Apply sigmoid transformation to x
+sigmoid <- function(x) {
+  1 / (1 + exp(-1.7*x))
+}
+
+# Generate y with sigmoid relationship to x
+y <- as.numeric(20*sigmoid(x) + rnorm(n, mean = 0, sd = 0.5))
+```
+
+The `mfp2()` function has an `acdx` argument that allows the user to specify the
+names of continuous variables to undergo the ACD transformation. The use of `acdx`
+invokes the FSPA to determine the best-fitting model (see documentation for more
+details). The `acdx` parameter can be set in the formula interface using the `fp()`
+function, as demonstrated in the R code below. To avoid confusion with the
+original variable `x`, the variable representing the ACD transformation of `x`
+is named `A(x)` in the output.
+
+```{r out.lines = 103}
+# default interface
+fit1 <- mfp2(x, y, 
+             acdx = "x", 
+             verbose = FALSE)
+
+# formula interface
+datax <- data.frame(y, x)
+fit2 <- mfp2(y ~ fp(x, acdx = TRUE),
+             data = datax,
+             verbose = FALSE)
+
+# display selected power terms
+fit2
+
+# fit usual mfp: bad idea but useful for illustration
+fit3 <- mfp2(y ~ fp(x, acdx = FALSE), 
+             data = datax, 
+             verbose = FALSE)
+fit3
+```
+
+The selected function using the ACD transformation is FP1(1,1), represented by
+$\beta_0 + \beta_1x^1 +\beta_2a^1$. On the other hand, the usual MFP approach
+selected FP2(3,3), equivalent to $\beta_0 + \beta_1x^3 +\beta_2x^3 \log(x)$.
+The Figure below shows these functions. It is evident from the figure that the ACD
+approach provides a better fit to the data compared to the usual MFP model.
+
+
+```{r,echo=FALSE,eval=TRUE}
+p1 <- fracplot(fit1, terms = "x")[[1]] + ggplot2::ylab("y")
+p2 <- fracplot(fit3, terms = "x")[[1]] + ggplot2::ylab("y")
+figurex <- patchwork::wrap_plots(p1, p2, 
+                               ncol = 2, nrow = 1, 
+                               widths = 8, heights = 2)
+```
+
+```{r,echo=FALSE, fig.cap="The selected function using the ACD transformation is FP1(1,1) represented by $\\beta_0 + \\beta_1x^1 +\\beta_2a^1$(left panel), while the usual MFP selected FP2(3,3), equivalent to $\\beta_0 + \\beta_1x^3 +\\beta_2x^3\\log(x)$ (right panel). See text for more details", fig.width=8, fig.height=4}
+figurex
+```
+
+\newpage
+# References
+
+* Ambler, G. and Royston, P. (2001). Fractional polynomial model selection procedures: investigation of type I error rate. J. Stat. Comput. Simul., 69, 89–108.
+
+* Becher, H., Lorenz, E., Royston, P., and Sauerbrei, W. (2012). Analysing covariates with spike at zero: a modified FP procedure and conceptual issues. Biom. J., 54 (5), 686–700.
+
+* Binder, H. and Sauerbrei, W. (2010). Adding local components to global functions for continuous covariates in multivariable regression modeling. Stat. Med., 29, 808–817.
+
+* Binder, H., Sauerbrei, W., and Royston, P. (2013). Comparison between splines and fractional polynomials for multivariable model building with continuous covariates: a simulation study with continuous response. Stat. Med., 32, 2262–2277.
+
+* Buchholz, A. and Sauerbrei, W. (2011). Comparison of procedures to assess non-linear and time-varying effects in multivariable models for survival data. Biom. J., 53, 308–331. DOI: 10.1002/bimj.201000159.
+
+* Draper, D. (1995). Assessment and propagation of model selection uncertainty (with discussion). J. R. Stat. Soc. Ser. B, 57, 45–97.
+
+* Dunkler, D., Sauerbrei, W., and Heinze, G. (2016). Global, parameterwise and joint post-estimation shrinkage. J. Stat. Softw.
+
+* Faes, C., Aerts, M., Geys, H., and Molenberghs, G. (2007). Model averaging using fractional polynomials to estimate a safe level of exposure. Risk Anal., 27, 111–123.
+
+* Huebner, M., le Cessie, S., Schmidt, C. O., & Vach, W. (2018). A contemporary conceptual framework for initial data analysis. Observational Studies, 4(1), 171-192.
+
+* Royston, P. (2014). A smooth covariate rank transformation for use in regression models with a sigmoid dose-response function. Stata J., 14, 329–341.
+
+* Royston, P., Altman, D. G. (1994). Regression using fractional polynomials of continuous covariates parsimonious parametric modelling (with discussion). Applied Statistics 43 (3): 429–467.
+
+* Royston, P. and Sauerbrei, W. (2004). A new approach to modelling interactions between treatment and continuous covariates in clinical trials by using fractional polynomial. Stat. Med., 23, 2509–2525.
+
+* Royston, P. and Sauerbrei, W. (2007). Improving the robustness of fractional polynomial models by preliminary covariate transformation. Comput. Stat. Data Anal., 51, 4240–4253.
+
+* Royston, P. and Sauerbrei, W. (2008). Multivariable Model-Building—A Pragmatic Approach to Regression Analysis Based on Fractional Polynomials for Modelling Continuous Variables, John Wiley & Sons, Chichester, UK.
+
+* Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a continuous variable: simulation study of significance level for several methods of analysis. Stat. Med., 32 (22), 3788–3803.
+
+* Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a continuous variable: simulation study of power for several methods of analysis. Stat. Med., 33, 4695–4708.
+
+* Royston, P., Altman, D.G., Sauerbrei, W. (2006): Dichotomizing continuous predictors in multiple regression: a bad idea. Statistics in  Medicine, 25: 127-141
+
+* Royston, P. and Sauerbrei, W. (2008). Multivariable model-building: a pragmatic approach to re- gression analysis based on fractional polynomials for modelling continuous variables. John Wiley & Sons.
+
+* Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD covariate transformation for enhanced parametric multivariable modeling. The Stata Journal, 16(1), 72-87.
+
+* Royston, P., Sauerbrei, W., and Becher, H. (2010). Modelling continuous exposures with a ‘spike’ at zero: a new procedure based on fractional polynomials. Stat. Med., 29, 1219–1227.
+
+* Sauerbrei, W. (1999). The use of resampling methods to simplify regression models in medical statistics. Appl. Stat., 48, 313–329.
+
+* Sauerbrei, W., Abrahamowicz, M., Altman, D.G., et al. (2014). STrengthening Analytical Thinking for Observational Strategies: the STRATOS initiative. Stat. Med., 33 (30), 5413–32.
+
+* Sauerbrei, W., Kipruto, E., Balmford, J. (2022). Effects of Influential Points and Sample Size on the Selection and Replicability of Multivariable Fractional Polynomial Models. Diagnostic and Prognostic Research, 7(1):7
+
+* Sauerbrei, W., Meier-Hirmer, C., Benner, A., Royston, P. (2006). Multivariable regression model building by using fractional polynomials: description of SAS, STATA and R programs. Computational Statistics and Data Analysis, 50: 3464-3485.
+
+* Sauerbrei W, Perperoglou A, Schmid M, Abrahamowicz M, Becher H, Binder H, Dunkler D, Harrell Jr. FE, Royston P, Heinze G for TG2 of the STRATOS initiative (2020). State of the art in selection of variables and functional forms in multivariable analysis - outstanding issues. Diagnostic and Prognostic Research, 4:3, 1-18. DOI: 10.1186/s41512-020-00074-3
+
+* Sauerbrei, W. and Royston, P. (1999). Building multivariable prognostic and diagnostic models: trans- formation of the predictors using fractional polynomials. J. R. Stat. Soc. Ser. A, 162, 71–94.
+
+* Sauerbrei, W. and Royston, P. (2011). Multivariable fractional polynomial models, in: Lovric, M. (Ed.): International Encyclopedia of Statistical Science, Springer Berlin, p. 899-902.
+
+* Sauerbrei, W. and Royston, P. (2016). Multivariable Fractional Polynomial Models. Wiley StatsRef: Statistics Reference Online. 1–8. DOI: 10.1002/9781118445112.stat07861.
+
+* Sauerbrei, W., Royston, P., Binder, H. (2007b). Selection of important variables and determination of functional form for continuous predictors in multivariable model-building. Stat. Med., 26, 5512–5528.
+
+* Sauerbrei, W., Royston, P., Look, M. (2007a). A new proposal for multivariable modelling of time- varying effects in survival data based on fractional polynomial time-transformation. Biom. J., 49, 453–473.
+
+* Sauerbrei, W., Royston, P. (2007): Modelling to extract more information from clinical trials data : on some roles for the bootstrap. Statistics in Medicine, 26: 4989-5001.
+
+* Shmueli, G. (2010). To explain or to predict? Stat. Sci., 3, 289–310.
+
+* Stamey TA, Kabalin JN, McNeal JE, Johnstone I.M, Freiha F, Redwine EA and Yang N (1989). Prostate specific antigen in the diagnosis and treatment of adenocarcinoma of the prostate. II. Radical prostatectomy treated patients. The Journal of Urology;141(5),1076-1083.
+
+* StataCorp. (2023). Stata: Release 18. Statistical Software. College Station, TX: StataCorp LLC.
+
+* Therneau, T.M., Grambsch, P.M., Therneau, T.M. and Grambsch, P.M., (2000). The cox model (pp. 39-77). Springer New York.
+
+```{r, eval=TRUE, echo=FALSE}
+# reset width to the original value
+options(width=oldwidth)
+```
+
+
+
+
+

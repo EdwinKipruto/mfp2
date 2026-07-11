@@ -1,0 +1,325 @@
+
+R version 4.6.1 (2026-06-24 ucrt) -- "Happy Hop"
+Copyright (C) 2026 The R Foundation for Statistical Computing
+Platform: x86_64-w64-mingw32/x64
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> pkgname <- "ctlr"
+> source(file.path(R.home("share"), "R", "examples-header.R"))
+> options(warn = 1)
+> options(pager = "console")
+> library('ctlr')
+> 
+> base::assign(".oldSearch", base::search(), pos = 'CheckExEnv')
+> base::assign(".old_wd", base::getwd(), pos = 'CheckExEnv')
+> cleanEx()
+> nameEx("ctl")
+> ### * ctl
+> 
+> flush(stderr()); flush(stdout())
+> 
+> ### Name: ctl
+> ### Title: Clinical Tolerance Limits for Assessing Agreement
+> ### Aliases: ctl
+> 
+> ### ** Examples
+> 
+> ## Don't show: 
+> if (requireNamespace("withr", quietly = TRUE)) withAutoprint({ # examplesIf
++ ## End(Don't show)
++ withr::with_tempdir({
++    # Tolerance limit plot
++    ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 5, slope = 0.15,
++        tlplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE, outputs_path = ".")
++ 
++    ctl(ctl_dataset2, idvar = "id", ynew = "y1", yref = "y2", intercept = 1, slope = 0.2,
++        seed = 11446158, tlplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE,
++        outputs_path = ".")
++ 
++    # Conditional probability of agreement plot
++    ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 5, slope = 0.15,
++        nbsimul = 100, cpaplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE,
++        outputs_path = ".")
++ 
++    ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 0, slope = 0.15,
++        nbsimul = 100, cpaplot = TRUE, pointwise = TRUE, plots_to_file = TRUE,
++        results_to_file = TRUE, outputs_path = ".")
++ 
++    ctl(ctl_dataset2, idvar = "id", ynew = "y1", yref = "y2", intercept = 1, slope = 0.2,
++        seed = 11446158, nbsimul = 100, cpaplot = TRUE, simultaneous = TRUE)
++ })
++ ## Don't show: 
++ }) # examplesIf
+> withr::with_tempdir({
++     ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 5, slope = 0.15, 
++         tlplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE, outputs_path = ".")
++     ctl(ctl_dataset2, idvar = "id", ynew = "y1", yref = "y2", intercept = 1, slope = 0.2, 
++         seed = 11446158, tlplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE, 
++         outputs_path = ".")
++     ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 5, slope = 0.15, 
++         nbsimul = 100, cpaplot = TRUE, plots_to_file = TRUE, results_to_file = TRUE, 
++         outputs_path = ".")
++     ctl(ctl_dataset1, idvar = "id", ynew = "y1", yref = "y2", intercept = 0, slope = 0.15, 
++         nbsimul = 100, cpaplot = TRUE, pointwise = TRUE, plots_to_file = TRUE, results_to_file = TRUE, 
++         outputs_path = ".")
++     ctl(ctl_dataset2, idvar = "id", ynew = "y1", yref = "y2", intercept = 1, slope = 0.2, 
++         seed = 11446158, nbsimul = 100, cpaplot = TRUE, simultaneous = TRUE)
++ })
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Non-constant tolerance limits specified: intercept= 5& slope= 0.15
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+
+Generating Tolerance Limits Plot
+
+**************************************************************
+
+Saving 7 x 7 in image
+Tolerance limits plot exported to ./ctl_outputs/tl_plot.pdf
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\ctl_results.rda
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 11446158
+
+Non-constant tolerance limits specified: intercept= 1& slope= 0.2
+
+Estimating BLUP for latent trait...
+diff_bias=5.14230158133301, 95%CI=[2.59934718823013;7.68525597443589]
+
+prop_bias=0.79538824468499, 95%CI=[0.734754456891755;0.856022032478225]
+
+
+
+Generating Tolerance Limits Plot
+
+**************************************************************
+
+Saving 7 x 7 in image
+Tolerance limits plot exported to ./ctl_outputs/tl_plot.pdf
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\ctl_results.rda
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Non-constant tolerance limits specified: intercept= 5& slope= 0.15
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+Number of simulations used for CPA plot is set to 100
+
+
+Generating Conditional probability of agreement plot
+
+**************************************************************
+
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Saving 7 x 7 in image
+Conditional probability of agreement plot exported to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\cpa_plot.pdf
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\ctl_results.rda
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 123456789
+
+Non-constant tolerance limits specified: intercept= 0& slope= 0.15
+
+Estimating BLUP for latent trait...
+diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
+
+prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
+
+
+Number of simulations used for CPA plot is set to 100
+
+
+Generating Conditional probability of agreement plot
+
+**************************************************************
+
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Saving 7 x 7 in image
+Conditional probability of agreement plot exported to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\cpa_plot.pdf
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpYFWtpQ\file2f0c4e7d5260\ctl_outputs\ctl_results.rda
+
+Use of Clinical Tolerance Limits (CTL) for assessing agreement
+**************************************************************
+
+ID Variable: id
+New Method Y Variable: y1
+Reference Method Y Variable: y2
+Running...
+
+seed set to 11446158
+
+Non-constant tolerance limits specified: intercept= 1& slope= 0.2
+
+Estimating BLUP for latent trait...
+diff_bias=5.14230158133301, 95%CI=[2.59934718823013;7.68525597443589]
+
+prop_bias=0.79538824468499, 95%CI=[0.734754456891755;0.856022032478225]
+
+
+Number of simulations used for CPA plot is set to 100
+
+
+Generating Conditional probability of agreement plot
+
+**************************************************************
+
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+Initial degrees of freedom:
+   x
+df 4
+Visiting order: x
+---------------------
+Running MFP Cycle 1
+---------------------
+---------------------
+Running MFP Cycle 2
+---------------------
+Fractional polynomial fitting algorithm converged after 2 cycle(s).
+> ## End(Don't show)
+> 
+> 
+> 
+> ### * <FOOTER>
+> ###
+> cleanEx()
+> options(digits = 7L)
+> base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
+Time elapsed:  7.23 0.32 7.57 NA NA 
+> grDevices::dev.off()
+null device 
+          1 
+> ###
+> ### Local variables: ***
+> ### mode: outline-minor ***
+> ### outline-regexp: "\\(> \\)?### [*]+" ***
+> ### End: ***
+> quit('no')

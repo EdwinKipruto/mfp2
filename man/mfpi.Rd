@@ -51,6 +51,7 @@ mfpi(x, ...)
   p_adjust_method = "none",
   verbose = TRUE,
   digits = 3,
+  term_groups = NULL,
   ...
 )
 
@@ -106,9 +107,10 @@ character, logical, integer, or numeric. All non-group variables must be
 numeric, integer, or logical. Internally, \code{group_var} is remapped to
 consecutive integer levels, while its original labels are preserved for
 printing, summaries, plotting, and prediction metadata. The matrix must not contain an intercept
-column; binary variables should be coded as 0/1; multi-level categorical
-variables (other than \code{group_var}) should be expanded into dummy
-variables beforehand. Must be free of missing values.}
+column; binary variables should be coded as 0/1. Multi-level categorical
+adjustment variables must be expanded into design columns and supplied as
+one conceptual block through \code{term_groups}. Must be free of missing
+values.}
 
 \item{...}{For S3 method compatibility only. Additional arguments are not currently
 used; supplying arguments through \code{...} is an error. In the formula
@@ -134,13 +136,14 @@ logical, integer, or numeric \code{group_var}, the smallest observed value
 is used as the reference level. The original labels are preserved for
 printing, summaries, plotting, and prediction metadata.}
 
-\item{cont_vars}{A non-empty character vector naming the continuous variables in \code{x}
-for which interactions with \code{group_var} are to be investigated. All
-named variables must exist as columns of \code{x} and must be numeric.
-Binary variables (2 or fewer unique values) are not permitted and will
-cause an error. Variables with 5 or fewer unique values will trigger a
-warning, as FP transformation may be unreliable for near-categorical
-variables.}
+\item{cont_vars}{A non-empty character vector naming singleton continuous columns of
+\code{x} whose interactions with \code{group_var} are to be
+investigated. Each name must identify an existing numeric column. A
+conceptual grouped term, or any raw column belonging to one, is not
+permitted because categorical blocks are adjustment terms only. Binary
+variables (2 or fewer unique values) are not permitted and cause an error.
+Variables with 5 or fewer unique values trigger a warning because FP
+transformation may be unreliable for near-categorical variables.}
 
 \item{cont_var_forms}{Optional named character vector specifying the functional form to use for
 each variable in \code{cont_vars}. Names must be a subset of
@@ -189,11 +192,13 @@ is chosen as the final functional form. Small differences in AIC or BIC
 provide little evidence for preferring one model over another; values
 around 2 are often used as a rough guide rather than a strict cutoff.}
 
-\item{include_group_var}{Logical. Whether \code{group_var} should be passed to the MFP algorithm
-alongside the other adjustment variables when selecting the adjustment
-model in stage one. Default is \code{FALSE}. When \code{TRUE}, the nominal
-significance level for \code{group_var} is set to 1, forcing it into the
-adjustment model.}
+\item{include_group_var}{Logical. Whether \code{group_var} should enter the stage-one MFP
+adjustment model. Default is \code{FALSE}. When \code{TRUE}, the
+non-reference group dummy columns are registered as one conceptual
+categorical term named by \code{group_var} and forced into the adjustment
+model with \code{select = 1}. The block is excluded from the ordinary
+stage-two adjustment matrix because the interaction models add the group
+main effects separately.}
 
 \item{show_models}{Logical. If \code{TRUE} and \code{verbose = TRUE}, prints the full
 regression coefficient table (via \code{summary()}) for the winning
@@ -450,6 +455,19 @@ Default is \code{TRUE}.}
 \item{digits}{A positive integer. Minimum number of significant digits displayed when
 printing interaction-test results. Default is \code{3}.}
 
+\item{term_groups}{For \code{mfpi.default()} only. Optional named list defining conceptual
+categorical adjustment terms. Each list name is the term name and each
+value is a character vector of one or more columns of \code{x}; for
+example, \code{list(stage = c("stageII", "stageIII"))}. A one-column
+mapping supports a binary factor whose conceptual name differs from its
+dummy column name. The columns must exist, must be unique within and across
+groups, and may not
+include \code{group_var}. Unlisted columns remain singleton terms. Each
+grouped block is selected jointly and fitted as a fixed linear effect. It
+cannot be listed in \code{cont_vars} or use ACD, zero, catzero,
+spike-at-zero, or \code{force_max_fp}. Formula factors are grouped
+automatically, so this argument is not available in \code{mfpi.formula()}.}
+
 \item{formula}{For \code{mfpi.formula()} only. A formula object describing the model.
 Continuous predictors to be FP-transformed should be wrapped in
 \code{fp()} or \code{fp2()}, e.g.
@@ -460,9 +478,9 @@ and \code{scale}. See the \emph{Argument precedence} section in
 \code{mfpi.formula()} for full rules.}
 
 \item{data}{For \code{mfpi.formula()} only. A data frame containing all variables
-named in \code{formula}. Multi-level categorical variables other than
-\code{group_var} must already be expanded to dummy columns, or encoded
-as factors which \code{model.matrix()} will expand automatically.}
+named in \code{formula}. Unordered and ordered factors other than
+\code{group_var} are expanded by \code{model.matrix()} and their contrast
+columns are treated as one fixed linear adjustment term for joint selection.}
 }
 \value{
 An object of class \code{"mfpi"}. The object is a list with the following
@@ -506,8 +524,15 @@ FP-transformed variables during model fitting and must be reused
 \code{center = FALSE}.}
 \item{\code{adjust_terms}}{A data frame describing the FP terms
 selected for the adjustment model.}
-\item{\code{adjustment_model}}{The full adjustment model object
-returned by \code{mfp2()}.}
+\item{\code{adjustment_model}}{The full grouped adjustment model object
+returned by the MFP core. Its \code{fp_terms} component has one row per
+conceptual term, including one row for each categorical block.}
+\item{\code{term_to_columns}}{Named list mapping conceptual adjustment
+terms to the raw predictor columns used by the fitted object. Singleton
+entries contain one column; categorical entries contain the complete
+contrast block.}
+\item{\code{adjustment_term_to_columns}}{The same mapping restricted to
+terms available to the stage-one adjustment model after preprocessing.}
 \item{\code{univariable_interactions}}{The full return value of the
 internal \code{evaluate_interactions()} call. Contains all
 intermediate results and is useful for programmatic access.}
@@ -600,6 +625,14 @@ interface.}
 fit-time column names of \code{x}, after intercept removal,
 group-variable replacement, and \code{fp()}/\code{fp2()} renaming. Only
 present when fitted via the formula interface.}
+\item{\code{formula_term_to_columns}}{Named list mapping each conceptual
+predictor term to the design columns it generated. Simple factor wrappers
+are named by their source variable; their raw design-column names remain
+unchanged. Entries are used to reconstruct complete categorical
+adjustment blocks during prediction. Only present for formula fits.}
+\item{\code{formula_factor_terms}}{Character vector naming the conceptual
+unordered and ordered factor terms treated as fixed-linear adjustment
+blocks. Only present for formula fits.}
 \item{\code{formula_offset_terms}, \code{formula_offset_xlevels}}{Formula
 offset metadata used by \code{predict.mfpi()} to reconstruct a
 formula-level offset from raw \code{newdata}. Only present when fitted
@@ -790,6 +823,37 @@ arguments passed to \code{mfp2::mfp2()}, such as \code{select}, \code{alpha},
 \code{keep}, and \code{df}.
 }
 
+\section{Categorical adjustment terms}{
+
+Categorical predictors other than \code{group_var} are adjustment terms;
+they are not candidates for the MFPI interaction test. In the formula
+interface, unordered and ordered factors are expanded using the fitted
+\code{model.matrix()} contrasts, and all contrast columns generated by one
+factor are represented by one conceptual term. The complete block is
+retained or removed by a joint adjustment-model test. Ordered factors retain
+their polynomial contrasts unless the formula specifies another contrast.
+Simple wrappers such as \code{factor(stage)} and \code{ordered(stage)}
+use \code{stage} as the conceptual adjustment-term name. The generated
+design columns and fitted coefficient names retain their standard
+\code{model.matrix()} names.
+
+In the default matrix interface, categorical columns must already be encoded
+numerically and grouped with \code{term_groups}. For example,
+\code{term_groups = list(stage = c("stageII", "stageIII"))}
+declares the two columns to be one adjustment term named \code{stage}.
+Columns not mentioned in \code{term_groups} remain singleton terms. Group
+names and member columns must be unique, and a column cannot belong to more
+than one group.
+
+Grouped categorical terms are fixed linear blocks. Their effective settings
+are \code{df = 1}, power 1, shift 0, scale 1, no centering, and no ACD,
+zero, catzero, spike-at-zero, or \code{force_max_fp} processing.
+\code{keep} may name the conceptual term or one of its member columns; in
+either case the complete block is retained. A grouped term or member column
+cannot be listed in \code{cont_vars}, because MFPI interaction candidates
+must be singleton continuous variables.
+}
+
 \section{Shifting, scaling, and centering}{
 
 Fractional polynomials require strictly positive input values. \code{mfpi()}
@@ -911,6 +975,18 @@ raises an error); use \code{fp(variable, acd = TRUE)} or
 \code{fp2(variable, acd = TRUE)} in the formula instead.
 }
 
+\section{Categorical terms in the formula interface}{
+
+Unordered and ordered factor predictors other than \code{group_var} are
+expanded with the contrasts recorded by \code{model.matrix()}. All columns
+generated by one factor are stored as one conceptual adjustment term and are
+selected jointly. Do not wrap a categorical predictor in \code{fp()} or
+\code{fp2()}; those wrappers are for continuous variables. The factor term
+may be named in \code{keep}, but it cannot be named in \code{cont_vars}.
+The fitted terms, contrasts, levels, and term-to-column mapping are stored so
+\code{predict.mfpi()} can accept raw factor-valued \code{newdata}.
+}
+
 \section{Strata and offset in the formula}{
 
 For Cox models, \code{strata()} or \code{survival::strata()} terms may be
@@ -961,6 +1037,35 @@ fit_prespecified <- mfpi(
   center = FALSE,
   flex = "flex1",
   include_group_var = TRUE,
+  verbose = FALSE
+)
+
+# Formula factors are grouped automatically in the adjustment model.
+dat <- data.frame(
+  y = rnorm(180),
+  trt = factor(rep(c("control", "active"), each = 90)),
+  age = runif(180, 30, 80),
+  stage = factor(rep(c("I", "II", "III"), length.out = 180))
+)
+fit_factor <- mfpi(
+  y ~ trt + fp(age) + stage,
+  data = dat,
+  group_var = "trt",
+  cont_vars = "age",
+  keep = "stage",
+  verbose = FALSE
+)
+fit_factor$term_to_columns$stage
+
+# Matrix-interface categorical columns are grouped explicitly.
+mm <- model.matrix(~ stage, data = dat)[, -1, drop = FALSE]
+x <- cbind(trt = as.integer(dat$trt) - 1L, age = dat$age, mm)
+fit_matrix <- mfpi(
+  x, dat$y,
+  group_var = "trt",
+  cont_vars = "age",
+  term_groups = list(stage = colnames(mm)),
+  keep = "stage",
   verbose = FALSE
 )
 }

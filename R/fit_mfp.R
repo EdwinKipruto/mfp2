@@ -80,24 +80,30 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' The function does not perform argument checks and expects that all inputs
 #' have been properly prepared by \code{mfp2()}.
 #'
-#' @param x A numeric matrix of dimensions nobs x nvars. Does not contain an
-#'   intercept, but columns are already expanded into dummy variables as
-#'   necessary. Data are assumed to be shifted and scaled.
+#' @param x A numeric design matrix with one row per observation and one or
+#'   more raw columns per conceptual term. It excludes the intercept; categorical
+#'   terms may already be expanded into dummy columns. Data are assumed to be
+#'   shifted and scaled.
+#' @param term_to_columns Named list mapping every conceptual term to the raw
+#'   columns of \code{x} that represent it. Explicitly mapped entries are fixed
+#'   linear design blocks, including a one-column mapping whose raw column name
+#'   differs from the conceptual term. Identity singleton entries retain
+#'   ordinary MFP behavior.
 #' @param y A vector for the response variable or a \code{Surv} object.
 #' @param weights A vector of observation weights of length nobs.
 #' @param offset A vector of length nobs of offsets.
 #' @param cycles An integer representing the maximum number of iteration cycles
 #'   during which FP powers for all predictors are updated.
-#' @param scale A named numeric vector of length nvars of scaling factors. Not
-#'   applied during power selection cycles, but used in step 4 to backscale
-#'   \code{x} before the final model fit so that coefficients are on the
-#'   \eqn{\phi(x + \text{shift})} scale.
-#' @param shift A named numeric vector of length nvars of shift terms. Not
-#'   applied (shifting was done upstream), but re-ordered to conform to
+#' @param scale Named numeric vector with one scaling factor per conceptual
+#'   term. It is not applied during power selection cycles, but is used to
+#'   backscale the corresponding raw column or column block before the final fit.
+#' @param shift Named numeric vector with one shift per conceptual term. Shifting
+#'   has already been applied upstream; the values are reordered to conform to
 #'   \code{xorder} and stored in the returned object.
-#' @param df A numeric vector of length nvars of degrees of freedom.
-#' @param center A logical vector of length nvars indicating if variables are
-#'   to be centred.
+#' @param df Named numeric vector with one degrees-of-freedom setting per
+#'   conceptual term. Explicitly mapped terms must have \code{df = 1}.
+#' @param center Named logical vector with one centering setting per conceptual
+#'   term.
 #' @param family Either a character string specifying the model family
 #'   (e.g., \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
 #'   \code{"cox"}) or a function that returns a GLM family object such as
@@ -107,42 +113,39 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'   e.g., \code{"gaussian"}.
 #' @param criterion A character string defining the criterion used to select
 #'   variables and FP models of different degrees.
-#' @param select A numeric vector of length nvars indicating significance levels
-#'   used during MFP backfitting to decide whether each predictor is retained.
-#' @param alpha A numeric vector of length nvars indicating significance levels
-#'   for tests between FP models of different degrees.
+#' @param select Named numeric vector with one significance threshold per
+#'   conceptual term, used during backfitting to decide whether the term is
+#'   retained.
+#' @param alpha Named numeric vector with one functional-form significance
+#'   threshold per conceptual term.
 #' @param keep A character vector with names of variables to be kept in the
 #'   model regardless of selection criteria.
 #' @param xorder A string determining the order of entry of the covariates into
 #'   the model-selection algorithm.
-#' @param powers A named list of numeric values setting the permitted FP powers
-#'   for each covariate.
+#' @param powers Named list of permitted FP powers, one element per conceptual
+#'   term. Explicitly mapped terms use the fixed linear power \code{1}.
 #' @param method A character string specifying the method for tie handling in
 #'   Cox regression.
 #' @param strata A factor of all possible combinations of stratification
 #'   variables. Returned from \code{survival::strata()}.
 #' @param nocenter A numeric vector with a list of values for fitting Cox
 #'   models. See \code{survival::coxph()} for details.
-#' @param acdx A logical vector of length nvars indicating which continuous
-#'   variables should undergo the approximate cumulative distribution (ACD)
-#'   transformation.
+#' @param acdx Named logical vector with one value per conceptual term,
+#'   indicating which singleton continuous terms undergo the approximate
+#'   cumulative distribution (ACD) transformation.
 #' @param ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an
 #'   F-test rather than a chi-square likelihood-ratio test.
 #' @param control A list with parameters for model fit. See
 #'   \code{survival::coxph()} or \code{stats::glm()} for details.
-#' @param zero A logical vector indicating which columns of \code{x} should
-#'   treat non-positive values as zero before FP transformation. Must match
-#'   the length and order of the columns of \code{x}.
-#' @param catzero A logical vector indicating which columns of \code{x} should
-#'   treat non-positive values as zero and have a binary zero
-#'   indicator automatically created and included in the model. Internally,
-#'   values \code{x <= 0} are first recoded to zero; the indicator is then
-#'   computed as \code{I(x == 0)} on the recoded scale, equivalent to
-#'   \code{I(original x <= 0)}. Must
-#'   match the length and order of the columns of \code{x}.
-#' @param spike A logical vector indicating which columns of \code{x} contain
-#'   a spike at zero and should be assessed using the SAZ algorithm. Must
-#'   match the length and order of the columns of \code{x}.
+#' @param zero Named logical vector with one value per conceptual term,
+#'   indicating which singleton terms treat non-positive values as zero before
+#'   FP transformation.
+#' @param catzero Named logical vector with one value per conceptual term,
+#'   indicating which singleton terms also receive a binary zero indicator.
+#'   Internally, values \code{x <= 0} are recoded to zero and the indicator is
+#'   equivalent to \code{I(original x <= 0)}.
+#' @param spike Named logical vector with one value per conceptual term,
+#'   indicating which singleton terms are assessed using the SAZ algorithm.
 #' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   zero component and the positive component. A requested
@@ -153,8 +156,8 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'   In that case, \code{fit_mfp()} does not call \code{reset_spike()} again.
 #'   If \code{FALSE}, \code{fit_mfp()} performs a defensive late eligibility
 #'   reset for internal callers that have not yet been updated.
-#' @param force_max_fp A logical vector of length nvars. If \code{TRUE} for a
-#'   variable, forces selection of the most complex functional form at the
+#' @param force_max_fp Named logical vector with one value per conceptual term.
+#'   If \code{TRUE} for a term, forces selection of the most complex functional form at the
 #'   degree specified by \code{df}, bypassing AIC/BIC comparison against
 #'   simpler forms. Has no effect when \code{criterion = "pvalue"}.
 #' @param has_offset logical indicating whether an offset was specified before
@@ -271,7 +274,8 @@ fit_mfp <- function(x,
                     saz_pre_resolved = FALSE,
                     force_max_fp,
                     has_offset,
-                    verbose) {
+                    verbose,
+                    term_to_columns = NULL) {
   
   # fit_mfp() implements the full MFP/MFPA/SAZ algorithm described in the
   # "Algorithm" section above: order variables, pre-process ACD/zero/catzero/
@@ -279,7 +283,24 @@ fit_mfp <- function(x,
   # and fit the final model. mfp2.default()/mfp2.formula() are expected to have
   # already validated and shifted/scaled all inputs before calling this function.
   
-  variables_x <- colnames(x)
+  if (is.null(term_to_columns)) {
+    term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
+  }
+  
+  variables_x <- names(term_to_columns)
+  
+  # A non-trivial mapping exists when a conceptual term either spans multiple
+  # raw columns or maps to a single raw column with a different name. The latter
+  # occurs for two-level factors and binary group dummies (for example,
+  # `treatment` -> `treatment1`). Both cases require raw-column expansion.
+  has_mapped_terms <- any(vapply(
+    variables_x,
+    function(term) {
+      cols <- term_to_columns[[term]]
+      length(cols) != 1L || !identical(cols[[1L]], term)
+    },
+    logical(1L)
+  ))
   
   # Step 1: Resolve the family object and optionally report initial df --------
   # Resolve GLM family objects once for all repeated internal model fits.
@@ -317,7 +338,8 @@ fit_mfp <- function(x,
   # linear reference deviance is still required for the fitted mfp2 object.
   ordering_result <- order_variables(
     xorder        = xorder, 
-    x             = x, 
+    x             = x,
+    term_to_columns = term_to_columns,
     y             = y,
     family        = family_fit,
     family_string = family_string,
@@ -346,7 +368,10 @@ fit_mfp <- function(x,
   # forms are found. All per-variable option vectors (and x itself) are then
   # reordered to variables_ordered so the rest of the function can index them
   # consistently by name/position.
-  powers_current <- setNames(as.list(rep(1, ncol(x))), variables_ordered)
+  powers_current <- stats::setNames(
+    as.list(rep(1, length(variables_ordered))),
+    variables_ordered
+  )
   
   # Re-order all per-variable vectors to match variables_ordered
   alpha        <- setNames(alpha,   variables_x)[variables_ordered]
@@ -362,14 +387,15 @@ fit_mfp <- function(x,
   force_max_fp <- setNames(force_max_fp, variables_x)[variables_ordered]
   powers       <- powers[variables_ordered]
   
-  # Reorder x once to match the fixed variable order used by powers_current.
-  # Hot-path transformation code can then access columns by name without
-  # defensively copying/reordering the full matrix in every step.
-  if (!identical(colnames(x), variables_ordered)) {
-    x <- x[, variables_ordered, drop = FALSE]
+  # Reorder the raw design columns by conceptual-term visiting order. For the
+  # historical singleton case this is identical to the previous column reorder.
+  term_to_columns <- term_to_columns[variables_ordered]
+  raw_columns_ordered <- unlist(term_to_columns, use.names = FALSE)
+  if (!identical(colnames(x), raw_columns_ordered)) {
+    x <- x[, raw_columns_ordered, drop = FALSE]
   }
-  if (!identical(colnames(x), variables_ordered)) {
-    stop("Internal error: x column order does not match variables_ordered.",
+  if (!identical(colnames(x), raw_columns_ordered)) {
+    stop("Internal error: x column order does not match term_to_columns.",
          call. = FALSE)
   }
   
@@ -416,7 +442,14 @@ fit_mfp <- function(x,
   # Do not mutate the real x here.
   x_for_spike <- x
   
-  zero_aligned_for_spike <- zero[colnames(x_for_spike)]
+  zero_aligned_for_spike <- if (has_mapped_terms) {
+    stats::setNames(
+      rep(unname(zero[names(term_to_columns)]), lengths(term_to_columns)),
+      unlist(term_to_columns, use.names = FALSE)
+    )[colnames(x_for_spike)]
+  } else {
+    zero[colnames(x_for_spike)]
+  }
   cols_to_zero_for_spike <- which(zero_aligned_for_spike)
   
   if (length(cols_to_zero_for_spike) > 0L) {
@@ -482,7 +515,14 @@ fit_mfp <- function(x,
   # FALSE remain untouched.
   
   zero_x       <- zero
-  zero_aligned <- zero[colnames(x)]
+  zero_aligned <- if (has_mapped_terms) {
+    stats::setNames(
+      rep(unname(zero[names(term_to_columns)]), lengths(term_to_columns)),
+      unlist(term_to_columns, use.names = FALSE)
+    )[colnames(x)]
+  } else {
+    zero[colnames(x)]
+  }
   cols_to_zero <- which(zero_aligned)
   
   if (length(cols_to_zero) > 0L) {
@@ -560,6 +600,15 @@ fit_mfp <- function(x,
     n_obs <- nrow(x)
   }
   
+  # Make the non-trivial term lookup available to unchanged FP-only selection
+  # functions through the working matrix. Identity-mapped fits carry no extra
+  # attribute, preserving the historical path.
+  if (has_mapped_terms) {
+    attr(x, "mfp2_term_to_columns") <- term_to_columns
+  } else if (!is.null(attr(x, "mfp2_term_to_columns", exact = TRUE))) {
+    attr(x, "mfp2_term_to_columns") <- NULL
+  }
+  
   # Step 8: Run MFP backfitting cycles until convergence -----------------------
   # A cycle is one complete pass through all variables (see find_best_fp_cycle()
   # documentation); convergence means neither the selected powers nor the SAZ
@@ -580,6 +629,7 @@ fit_mfp <- function(x,
     
     fit_best_cycle <- find_best_fp_cycle(
       x               = x,
+      term_to_columns = term_to_columns,
       y               = y,
       powers_current  = powers_current,
       df              = df,
@@ -649,6 +699,9 @@ fit_mfp <- function(x,
     )
   }
   
+  if (has_mapped_terms) {
+    attr(x, "mfp2_term_to_columns") <- NULL
+  }
   
   # Step 9: Apply the final FP/ACD transformation and centering ---------------
   # Backscale x before final FP transformation so that coefficients are on
@@ -656,7 +709,15 @@ fit_mfp <- function(x,
   # Scaling was applied upstream for numerical stability during power selection
   # and has no effect on power selection itself.
   if (any(scale != 1)) {
-    x <- backscale_matrix(x, scale)
+    scale_for_columns <- if (has_mapped_terms) {
+      stats::setNames(
+        rep(unname(scale[names(term_to_columns)]), lengths(term_to_columns)),
+        unlist(term_to_columns, use.names = FALSE)
+      )
+    } else {
+      scale
+    }
+    x <- backscale_matrix(x, scale_for_columns)
   }
   
   # ACD parameters are estimated on the scaled working x.
@@ -677,17 +738,78 @@ fit_mfp <- function(x,
     }
   }
   
+  if (has_mapped_terms) {
+    raw_columns <- unlist(term_to_columns, use.names = FALSE)
+    
+    power_list_final <- list()
+    center_final <- logical(0L)
+    acdx_final <- logical(0L)
+    zero_final <- logical(0L)
+    # `transform_matrix()` expects `catzero` as a named logical vector.
+    # Expand the term-level flags to one logical value per raw design column;
+    # the separate `acd_parameter_final_columns` object remains list-valued.
+    catzero_final <- logical(0L)
+    spike_final <- logical(0L)
+    spike_decision_final <- integer(0L)
+    acd_parameter_final_columns <- list()
+    
+    for (term in names(term_to_columns)) {
+      cols <- term_to_columns[[term]]
+      if (term_uses_column_mapping(term, cols)) {
+        selected <- !all(is.na(powers_current[[term]]))
+        for (col in cols) {
+          power_list_final[[col]] <- if (selected) 1 else NA_real_
+          center_final[col] <- center[[term]]
+          acdx_final[col] <- FALSE
+          zero_final[col] <- FALSE
+          catzero_final[col] <- FALSE
+          spike_final[col] <- FALSE
+          spike_decision_final[col] <- saz_decision_codes[["continuous_only"]]
+          acd_parameter_final_columns[col] <- list(NULL)
+        }
+      } else {
+        col <- cols[[1L]]
+        power_list_final[[col]] <- powers_current[[term]]
+        center_final[col] <- center[[term]]
+        acdx_final[col] <- acdx[[term]]
+        zero_final[col] <- zero[[term]]
+        catzero_final[col] <- isTRUE(catzero[[term]])
+        spike_final[col] <- spike[[term]]
+        spike_decision_final[col] <- spike_decision[[term]]
+        acd_parameter_final_columns[col] <- list(acd_parameter_final[[term]])
+      }
+    }
+    
+    power_list_final <- power_list_final[raw_columns]
+    center_final <- center_final[raw_columns]
+    acdx_final <- acdx_final[raw_columns]
+    zero_final <- zero_final[raw_columns]
+    catzero_final <- catzero_final[raw_columns]
+    spike_final <- spike_final[raw_columns]
+    spike_decision_final <- spike_decision_final[raw_columns]
+    acd_parameter_final_columns <- acd_parameter_final_columns[raw_columns]
+  } else {
+    power_list_final <- powers_current
+    center_final <- center
+    acdx_final <- acdx
+    zero_final <- zero
+    catzero_final <- catzero
+    spike_final <- spike
+    spike_decision_final <- spike_decision
+    acd_parameter_final_columns <- acd_parameter_final
+  }
+  
   data_transformed <- transform_matrix(
     x                  = x,
-    power_list         = powers_current,
-    center             = center,
-    acdx               = acdx,
-    acd_parameter_list = acd_parameter_final,
-    zero               = zero,   # logical needed for centering even after zeroing
-    catzero            = catzero,
-    spike              = spike,
+    power_list         = power_list_final,
+    center             = center_final,
+    acdx               = acdx_final,
+    acd_parameter_list = acd_parameter_final_columns,
+    zero               = zero_final,
+    catzero            = catzero_final,
+    spike              = spike_final,
     reset_zero         = FALSE,
-    spike_decision     = spike_decision
+    spike_decision     = spike_decision_final
   )
   
   # Update catzero for final metadata.
@@ -748,6 +870,27 @@ fit_mfp <- function(x,
     has_offset    = has_offset
   )
   
+  # predict.coxph() expresses prediction offsets relative to the mean training
+  # offset, independently of the covariate reference. This is final-model
+  # metadata, so calculate it once here after the MFP backfitting cycles have
+  # terminated and the final Cox model has been fitted. Internal candidate fits
+  # do not need to calculate or store it.
+  cox_offset_reference <- if (identical(family_string, "cox")) {
+    if (isTRUE(has_offset)) unname(mean(offset)) else 0
+  } else {
+    NULL
+  }
+  
+  # fit_model() stores the exact relationship between transformed source
+  # columns and fitted coefficient names for every full formula-based fit.
+  transformed_to_model_columns <- modelfit$transformed_to_model_columns
+  if (is.null(transformed_to_model_columns)) {
+    stop(
+      "Internal error: final model lacks transformed-to-model column metadata.",
+      call. = FALSE
+    )
+  }
+  
   # The final fit supplies the family-specific deviance for the selected MFP
   # model. For GLMs this is the residual deviance; for Cox models it is minus
   # twice the fitted partial log-likelihood.
@@ -766,10 +909,18 @@ fit_mfp <- function(x,
       null_deviance   = null_deviance,
       linear_deviance = linear_deviance,
       mfp_deviance    = mfp_deviance,
-      x_original = x[, names(powers_current[
-        !sapply(powers_current, function(p) all(is.na(p))) |
-          (spike & spike_decision == saz_decision_codes[["binary_only"]])
-      ]), drop = FALSE],
+      x_original = if (has_mapped_terms) {
+        selected_terms <- names(powers_current)[
+          !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |
+            (spike & spike_decision == saz_decision_codes[["binary_only"]])
+        ]
+        x[, unlist(term_to_columns[selected_terms], use.names = FALSE), drop = FALSE]
+      } else {
+        x[, names(powers_current[
+          !sapply(powers_current, function(p) all(is.na(p))) |
+            (spike & spike_decision == saz_decision_codes[["binary_only"]])
+        ]), drop = FALSE]
+      },
       y_original = y,
       fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
                                         criterion, zero, catzero_effective, spike,
@@ -781,9 +932,16 @@ fit_mfp <- function(x,
       catzero         = catzero_effective,
       catzero_list = catzero_mat_list,
       spike              = spike,
-      spike_dec       = spike_decision
+      spike_dec       = spike_decision,
+      transformed_to_model_columns = transformed_to_model_columns,
+      cox_offset_reference = cox_offset_reference
     )
   )
+  
+  # Store the complete conceptual-term lookup for every fit. Identity mappings
+  # are required by prediction just as explicit categorical mappings are, and
+  # keeping one invariant avoids reconstructing term structure downstream.
+  fit$term_to_columns <- term_to_columns
   
   class(fit) <- c("mfp2", class(fit))
   fit
@@ -872,7 +1030,7 @@ fit_mfp <- function(x,
 #' cycle).
 #' @keywords internal
 #' @noRd
-find_best_fp_cycle <- function(x, 
+find_best_fp_cycle <- function(x,
                                y, 
                                powers_current, 
                                df, 
@@ -901,8 +1059,13 @@ find_best_fp_cycle <- function(x,
                                prev_adj_params,
                                force_max_fp,
                                has_offset,
-                               n_obs
+                               n_obs,
+                               term_to_columns = NULL
 ) {
+  
+  if (is.null(term_to_columns)) {
+    term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
+  }
   
   # Variable visiting order within the cycle is fixed by the names of
   # powers_current (set once in fit_mfp() according to `xorder`); it does not
@@ -919,7 +1082,8 @@ find_best_fp_cycle <- function(x,
     # test procedure, holding the other variables' current powers fixed as
     # the adjustment set.
     fit_best_fp_step <- find_best_fp_step(
-      x = x, # the order of columns does not matter since internal codes uses column names
+      x = x, # raw columns are resolved through term_to_columns
+      term_to_columns = term_to_columns,
       y = y,
       xi = xi,
       powers_current = powers_current,
@@ -951,9 +1115,16 @@ find_best_fp_cycle <- function(x,
       n_obs        = n_obs,
       verbose = verbose
     )
+    # Explicitly mapped terms have one conceptual linear/null state even when
+    # a binary factor contributes only one non-identity dummy column.
+    power_best <- fit_best_fp_step$power_best
+    if (term_uses_column_mapping(xi, term_to_columns[[xi]])) {
+      power_best <- if (all(is.na(power_best))) NA_real_ else 1
+    }
+    
     # Update powers_current and spike_decision in place so that the next
     # variable in this loop (and the next cycle) sees xi's latest result.
-    powers_current[[xi]] <- fit_best_fp_step$power_best
+    powers_current[[xi]] <- power_best
     spike_decision       <- fit_best_fp_step$spike_decision
     # Cache xi's adjustment-variable transformations, keyed by xi, so the next
     # cycle can reuse them instead of recomputing from scratch.

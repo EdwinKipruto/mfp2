@@ -31,8 +31,9 @@ prediction because all group-specific functions are evaluated at each
 supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
 \code{"response"}), \code{newdata} must also contain the grouping variable
 and all selected adjustment variables required by the term-specific
-interaction model. Group values in \code{newdata} must correspond to
-levels observed during model fitting.}
+interaction model. For formula fits, supply original factor-valued columns;
+for default-interface grouped terms, supply every raw member column. Group
+and factor values must use levels observed during fitting.}
 
 \item{terms}{Character vector of continuous variables to predict. If
 \code{NULL}, terms are selected from the requested \code{model} scope. See
@@ -258,6 +259,21 @@ to group levels observed during fitting. New group levels are rejected
 because no fitted coefficients exist for groups outside the fit-time design.
 }
 
+\section{Categorical adjustment variables in prediction}{
+
+For formula fits, \code{newdata} should contain the original factor columns,
+not manually created dummy columns. The stored predictor terms, factor
+levels, and contrasts are used to recreate the fit-time design. All contrast
+columns belonging to a selected categorical adjustment term are then
+transformed and inserted together. Unseen factor levels are rejected.
+
+For default-interface fits using \code{term_groups}, \code{newdata} must
+contain every raw member column of each selected grouped term. Supplying only
+part of a block is an error. Categorical adjustment columns are reused as
+fixed linear columns; no FP, ACD, zero, catzero, or spike transformation is
+applied at prediction time.
+}
+
 \section{Cox models}{
 
 For Cox models, \code{type = "link"} returns the zero-reference linear
@@ -295,8 +311,9 @@ plus a replacement \code{newoffset} require \code{object$x_train_internal},
 the post-preprocessing training matrix containing shifted/scaled predictors
 and internally remapped \code{group_var} codes. New-data ordinary prediction
 additionally relies on stored shift, scale, winsorisation limits, group-level
-mapping, selected adjustment-model powers, centering constants, formula
-metadata when applicable, and each flex result's \code{coefficient_groups}.
+mapping, the conceptual-term-to-column lookup, selected adjustment-model
+powers, centering constants, formula factor levels and contrasts when
+applicable, and each flex result's \code{coefficient_groups}.
 }
 
 \examples{
@@ -317,6 +334,12 @@ plot(age_fun$x, age_fun$fit, type = "l")
 
 # Fitted functions only.
 p3 <- predict(fit, terms = "age", type = "function")
+
+# Formula-fitted categorical adjustment variables are supplied on their
+# original factor scale; predict.mfpi() recreates the stored contrasts.
+nd <- training_data[1:20, c("trt", "age", "stage"), drop = FALSE]
+p_factor <- predict(fit_with_stage, newdata = nd, terms = "age",
+                    model = "all", type = "link")
 
 # Differences relative to the fit-time reference group.
 p4 <- predict(fit, terms = "age", type = "difference")

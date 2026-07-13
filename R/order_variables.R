@@ -66,9 +66,12 @@
 #' @param xorder Character scalar controlling the predictor visiting order.
 #'   Supported values are \code{"ascending"}, \code{"descending"}, and
 #'   \code{"original"}.
-#' @param x Numeric design matrix with one column per candidate predictor and
-#'   one row per observation. The matrix excludes the intercept for both GLM and
-#'   Cox models. Column names identify the predictors.
+#' @param x Numeric design matrix with one row per observation and one or more
+#'   raw columns per conceptual term. The matrix excludes the intercept for both
+#'   GLM and Cox models.
+#' @param term_to_columns Named list mapping each conceptual term to the raw
+#'   design-matrix columns that represent it. Singleton terms contain one column;
+#'   grouped categorical terms contain multiple columns.
 #' @param y Response used to fit the models. For GLMs, this may be a numeric
 #'   vector, a factor response accepted by \code{stats::glm()}, or a two-column
 #'   matrix of grouped binomial counts. For Cox models, this must be a
@@ -108,9 +111,14 @@ order_variables <- function(xorder = "ascending",
                             strata = NULL,
                             method = NULL,
                             control = NULL,
-                            nocenter = NULL) {
-  predictor_names <- colnames(x)
-  n_predictors <- ncol(x)
+                            nocenter = NULL,
+                            term_to_columns = NULL) {
+  if (is.null(term_to_columns)) {
+    term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
+  }
+  
+  predictor_names <- names(term_to_columns)
+  n_predictors <- length(term_to_columns)
   
   # The full linear reference model is required independently of predictor
   # ordering. Fit it once and reuse its log-likelihood for all reduced-model
@@ -137,6 +145,7 @@ order_variables <- function(xorder = "ascending",
     order_variables_by_significance(
       xorder = xorder,
       x = x,
+      term_to_columns = term_to_columns,
       y = y,
       family = family,
       family_string = family_string,
@@ -222,14 +231,14 @@ fit_full_linear_reference <- function(x,
 #' \code{full_reference}, ensuring that the invariant full-model fit is computed
 #' only once and reused for every reduced-model comparison.
 #'
-#' A predictor may correspond to a single design-matrix column. The test degrees
-#' of freedom are calculated as the difference between the parameter counts of
-#' the full and reduced fits. If that difference is not positive, or if a valid
+#' A predictor may correspond to one or more design-matrix columns. All columns
+#' belonging to one conceptual term are removed together, and the test degrees
+#' of freedom equal the number of removed columns. If that difference is not positive, or if a valid
 #' likelihood-ratio statistic cannot be formed, the predictor receives
 #' \code{NA} as its ordering p-value and is placed after predictors with valid
 #' p-values. No predictor is dropped from the returned order.
 #'
-#' Ties retain the original column order of \code{x}.
+#' Ties retain the original conceptual-term order.
 #'
 #' @inheritParams order_variables
 #' @param full_reference Model-fit wrapper returned by
@@ -252,9 +261,22 @@ order_variables_by_significance <- function(xorder,
                                             method,
                                             control,
                                             nocenter,
-                                            full_reference) {
-  predictor_names <- colnames(x)
-  n_predictors <- ncol(x)
+                                            full_reference,
+                                            term_to_columns = NULL) {
+  if (is.null(term_to_columns)) {
+    term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
+  }
+  
+  predictor_names <- names(term_to_columns)
+  n_predictors <- length(term_to_columns)
+  has_mapped_terms <- any(vapply(
+    predictor_names,
+    function(term) {
+      cols <- term_to_columns[[term]]
+      length(cols) != 1L || !identical(cols[[1L]], term)
+    },
+    logical(1L)
+  ))
   
   # Initialize with NA rather than zero. A failed or non-identifiable comparison
   # must not be interpreted as overwhelming evidence against the predictor.
@@ -264,9 +286,20 @@ order_variables_by_significance <- function(xorder,
   )
   
   for (predictor_index in seq_len(n_predictors)) {
-    # Remove exactly one predictor while preserving matrix structure. This loop
-    # is entered only when n_predictors > 1, so reduced_x remains non-empty.
-    reduced_x <- x[, -predictor_index, drop = FALSE]
+    term <- predictor_names[[predictor_index]]
+    drop_columns <- if (has_mapped_terms) {
+      term_to_columns[[term]]
+    } else {
+      colnames(x)[predictor_index]
+    }
+    
+    # Preserve the historical positional drop for singleton-only fits. In the
+    # grouped path, remove the complete raw design block for the current term.
+    reduced_x <- if (has_mapped_terms) {
+      x[, setdiff(colnames(x), drop_columns), drop = FALSE]
+    } else {
+      x[, -predictor_index, drop = FALSE]
+    }
     
     reduced_fit <- fit_model(
       x = reduced_x,
@@ -283,7 +316,14 @@ order_variables_by_significance <- function(xorder,
       fast = TRUE
     )
     
-    lrt_df <- full_reference$df - reduced_fit$df
+    # Preserve the historical fitted-df difference for singleton-only calls.
+    # With a non-trivial term mapping, the joint test uses one degree of freedom per
+    # removed raw design column.
+    lrt_df <- if (has_mapped_terms) {
+      length(drop_columns)
+    } else {
+      full_reference$df - reduced_fit$df
+    }
     lrt_statistic <- 2 * (full_reference$logl - reduced_fit$logl)
     
     # A valid nested-model likelihood-ratio test requires a positive df
@@ -299,7 +339,7 @@ order_variables_by_significance <- function(xorder,
   }
   
   # Convert the requested p-value direction into a single ascending score.
-  # A secondary index keeps the original column order when p-values are tied.
+  # A secondary index keeps the original conceptual-term order when p-values are tied.
   ordering_score <- if (identical(xorder, "descending")) {
     -p_values
   } else {

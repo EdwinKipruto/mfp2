@@ -39,6 +39,8 @@
 #'   this is the `deviance` returned by [stats::glm.fit()] or [stats::glm()].
 #'   For Cox models, it is minus twice the fitted partial log-likelihood.
 #' * `fit`: the object returned by the fitting procedure.
+#' * `transformed_to_model_columns`: for full fits, a named character vector
+#'   mapping source design columns to the exact fitted coefficient names.
 #' 
 #' @importFrom stats family
 #' @keywords internal
@@ -94,6 +96,41 @@ fit_model <- function(x,
       fast = fast,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept
+    )
+  }
+  
+  
+  # Full formula-based fits may quote non-syntactic source-column names in
+  # their coefficient vectors. Store the exact positional relationship once at
+  # fit time so prediction code never has to add or remove backticks.
+  if (!isTRUE(fast)) {
+    source_columns <- if (is.null(x) || NCOL(x) == 0L) {
+      character(0L)
+    } else {
+      colnames(x)
+    }
+    
+    if (isTRUE(x_has_intercept) && length(source_columns) > 0L &&
+        identical(source_columns[[1L]], "(Intercept)")) {
+      source_columns <- source_columns[-1L]
+    }
+    
+    fitted_columns <- names(fit$coefficients)
+    if (is.null(fitted_columns)) {
+      fitted_columns <- character(0L)
+    }
+    fitted_columns <- setdiff(fitted_columns, "(Intercept)")
+    
+    if (length(source_columns) != length(fitted_columns)) {
+      stop(
+        "Internal error: fitted coefficient names do not align with source columns.",
+        call. = FALSE
+      )
+    }
+    
+    fit$transformed_to_model_columns <- stats::setNames(
+      fitted_columns,
+      source_columns
     )
   }
   

@@ -417,6 +417,19 @@ build_group_fp_basis <- function(cont_mat,
 #' to group levels observed during fitting. New group levels are rejected
 #' because no fitted coefficients exist for groups outside the fit-time design.
 #'
+#' @section Categorical adjustment variables in prediction:
+#' For formula fits, \code{newdata} should contain the original factor columns,
+#' not manually created dummy columns. The stored predictor terms, factor
+#' levels, and contrasts are used to recreate the fit-time design. All contrast
+#' columns belonging to a selected categorical adjustment term are then
+#' transformed and inserted together. Unseen factor levels are rejected.
+#'
+#' For default-interface fits using \code{term_groups}, \code{newdata} must
+#' contain every raw member column of each selected grouped term. Supplying only
+#' part of a block is an error. Categorical adjustment columns are reused as
+#' fixed linear columns; no FP, ACD, zero, catzero, or spike transformation is
+#' applied at prediction time.
+#'
 #' @section Cox models:
 #' For Cox models, \code{type = "link"} returns the zero-reference linear
 #' predictor and \code{type = "response"} returns the relative risk score
@@ -449,8 +462,9 @@ build_group_fp_basis <- function(cont_mat,
 #' the post-preprocessing training matrix containing shifted/scaled predictors
 #' and internally remapped \code{group_var} codes. New-data ordinary prediction
 #' additionally relies on stored shift, scale, winsorisation limits, group-level
-#' mapping, selected adjustment-model powers, centering constants, formula
-#' metadata when applicable, and each flex result's \code{coefficient_groups}.
+#' mapping, the conceptual-term-to-column lookup, selected adjustment-model
+#' powers, centering constants, formula factor levels and contrasts when
+#' applicable, and each flex result's \code{coefficient_groups}.
 #'
 #' @param object An object of class \code{"mfpi"}.
 #' @param newdata Optional matrix or data frame. For fitted-function prediction
@@ -461,8 +475,9 @@ build_group_fp_basis <- function(cont_mat,
 #'   supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
 #'   \code{"response"}), \code{newdata} must also contain the grouping variable
 #'   and all selected adjustment variables required by the term-specific
-#'   interaction model. Group values in \code{newdata} must correspond to
-#'   levels observed during model fitting.
+#'   interaction model. For formula fits, supply original factor-valued columns;
+#'   for default-interface grouped terms, supply every raw member column. Group
+#'   and factor values must use levels observed during fitting.
 #' @param terms Character vector of continuous variables to predict. If
 #'   \code{NULL}, terms are selected from the requested \code{model} scope. See
 #'   \emph{Choosing terms and model scope}.
@@ -583,6 +598,12 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' # Fitted functions only.
 #' p3 <- predict(fit, terms = "age", type = "function")
+#'
+#' # Formula-fitted categorical adjustment variables are supplied on their
+#' # original factor scale; predict.mfpi() recreates the stored contrasts.
+#' nd <- training_data[1:20, c("trt", "age", "stage"), drop = FALSE]
+#' p_factor <- predict(fit_with_stage, newdata = nd, terms = "age",
+#'                     model = "all", type = "link")
 #'
 #' # Differences relative to the fit-time reference group.
 #' p4 <- predict(fit, terms = "age", type = "difference")
@@ -1502,11 +1523,13 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' be applied explicitly.
 #'
 #' @section New-data path:
-#' For supplied \code{newdata}, the helper converts prediction data to a
-#' numeric matrix, maps the grouping variable to internal group levels, creates
-#' group dummies, reconstructs the group-specific FP interaction block, masks
-#' out-of-group FP blocks, rebuilds selected adjustment covariates using stored
-#' adjustment-model metadata, resolves offsets, and finally orders columns to
+#' For supplied \code{newdata}, the helper first reconstructs formula terms
+#' and factor contrasts when required, then maps the grouping variable to
+#' internal levels, creates group dummies, rebuilds the group-specific FP
+#' interaction block, and masks out-of-group blocks row by row. Selected
+#' adjustment terms are expanded through the stored term-to-column lookup so
+#' categorical contrast blocks remain complete. The helper then applies the
+#' stored adjustment transformations, resolves offsets, and orders columns to
 #' match the fitted coefficient vector.
 #'
 #' @param object Object of class \code{"mfpi"} containing group coding,
@@ -1515,7 +1538,9 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' @param fit_result Stored term-specific flex fit result.
 #' @param newdata Optional prediction data. If \code{NULL}, the fitted model's
 #'   own prediction method is used. If supplied, it must contain the interaction
-#'   term, grouping variable, and selected adjustment variables.
+#'   term, grouping variable, and selected adjustment terms. Formula fits accept
+#'   original factor columns; matrix fits require every raw column in each
+#'   selected grouped term.
 #' @param newoffset Optional numeric offset vector for ordinary prediction. For
 #'   supplied \code{newdata}, it must contain one value per new-data row. For
 #'   \code{newdata = NULL}, it must contain one value per training row and
@@ -1832,27 +1857,40 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
   }
   
-  # Adjustment block. Reuse final adjustment-model powers/flags/centers and do
-  # not recompute centers from newdata.
+  # Adjustment block. The adjustment model stores one row per conceptual term,
+  # while prediction data contain the raw design columns. Expand selected terms
+  # through term_to_columns so categorical contrast blocks are reconstructed and
+  # centered together exactly as they were during MFPI fitting.
   adj_model <- object$adjustment_model
-  adj_vars <- character(0L)
+  adj_terms <- character(0L)
   if (!is.null(adj_model)) {
-    adj_vars <- get_selected_variables(adj_model)
+    adj_terms <- get_selected_variables(adj_model)
+  }
+  
+  adjustment_lookup <- if (!is.null(adj_model$term_to_columns)) {
+    adj_model$term_to_columns
+  } else if (!is.null(object$adjustment_term_to_columns)) {
+    object$adjustment_term_to_columns
+  } else {
+    stats::setNames(as.list(adj_terms), adj_terms)
   }
   
   group_dummy_names <- paste0(group_var, group_labels[-1L])
-  adj_vars <- setdiff(adj_vars, c(term, group_dummy_names))
-  adj_vars <- unique(adj_vars[!is.na(adj_vars) & nzchar(adj_vars)])
+  adj_terms <- setdiff(adj_terms, c(term, group_var, group_dummy_names))
+  adj_terms <- unique(adj_terms[!is.na(adj_terms) & nzchar(adj_terms)])
   
-  # Formula-interface newdata has already been expanded near the top of this
-  # helper by mfpi_prepare_formula_newdata(). At this stage, selected adjustment
-  # columns should already be present in `nd`. Do not patch factors one variable
-  # at a time here; missing columns indicate that the stored formula recipe could
-  # not reproduce the fit-time design.
+  raw_adj_cols <- unique(unlist(
+    adjustment_lookup[adj_terms],
+    use.names = FALSE
+  ))
+  
+  # Formula newdata has already been expanded with the fit-time terms,
+  # contrasts, and factor levels. Every member column of each selected grouped
+  # adjustment term must therefore be present before transformation.
   if (!isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
-      length(adj_vars) > 0L) {
-    missing_adj <- setdiff(adj_vars, colnames(nd))
+      length(raw_adj_cols) > 0L) {
+    missing_adj <- setdiff(raw_adj_cols, colnames(nd))
     if (length(missing_adj) > 0L) {
       stop(
         paste0(
@@ -1866,62 +1904,99 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   }
   
   x_adjustment <- NULL
-  if (length(adj_vars) > 0L) {
+  if (length(adj_terms) > 0L) {
     if (is.null(adj_model)) {
       stop("Selected adjustment variables require `object$adjustment_model`.",
            call. = FALSE)
     }
     
-    x_scaled <- scale_vars(adj_vars)
+    x_scaled <- scale_vars(raw_adj_cols)
     x_plus <- x_scaled
-    for (v in adj_vars) {
-      x_plus[, v] <- x_plus[, v] * mfpi_named_scalar(object$scale, v, default = 1)
+    for (col in raw_adj_cols) {
+      x_plus[, col] <- x_plus[, col] *
+        mfpi_named_scalar(object$scale, col, default = 1)
     }
     
-    powers <- if (!is.null(adj_model$fp_powers)) {
-      adj_model$fp_powers[adj_vars]
+    powers_term <- if (!is.null(adj_model$fp_powers)) {
+      adj_model$fp_powers[adj_terms]
     } else if (!is.null(adj_model$fp_terms)) {
-      get_fp_powers(adj_vars, adj_model$fp_terms)
+      get_fp_powers(adj_terms, adj_model$fp_terms)
     } else {
       NULL
     }
     
-    if (is.null(powers) || length(powers) != length(adj_vars) ||
-        any(vapply(powers, length, integer(1L)) == 0L)) {
+    if (is.null(powers_term) || length(powers_term) != length(adj_terms) ||
+        any(vapply(powers_term, length, integer(1L)) == 0L)) {
       stop("Adjustment model is missing FP powers required for prediction.",
            call. = FALSE)
     }
     
-    adj_flag <- function(field, default) {
+    term_flag <- function(field, term_name, default) {
       val <- adj_model[[field]]
-      if (is.null(val)) return(stats::setNames(rep(default, length(adj_vars)), adj_vars))
-      if (is.null(names(val))) {
-        stop(paste0("Adjustment model field `", field, "` must be named."),
-             call. = FALSE)
+      if (is.null(val) || is.null(names(val)) || !term_name %in% names(val)) {
+        return(default)
       }
-      out <- stats::setNames(rep(default, length(adj_vars)), adj_vars)
-      shared <- intersect(adj_vars, names(val))
-      out[shared] <- val[shared]
-      out
+      val[[term_name]]
     }
+    
+    power_cols <- list()
+    acd_cols <- logical(0L)
+    zero_cols <- logical(0L)
+    catzero_cols <- logical(0L)
+    spike_cols <- logical(0L)
+    spike_decision_cols <- integer(0L)
+    acd_parameter_cols <- list()
+    
+    for (adj_term in adj_terms) {
+      cols <- adjustment_lookup[[adj_term]]
+      grouped <- term_uses_column_mapping(adj_term, cols)
+      
+      for (col in cols) {
+        power_cols[[col]] <- if (grouped) 1 else powers_term[[adj_term]]
+        acd_cols[col] <- if (grouped) FALSE else
+          isTRUE(term_flag("acd", adj_term, FALSE))
+        zero_cols[col] <- if (grouped) FALSE else
+          isTRUE(term_flag("zero", adj_term, FALSE))
+        catzero_cols[col] <- if (grouped) FALSE else
+          isTRUE(term_flag("catzero", adj_term, FALSE))
+        spike_cols[col] <- if (grouped) FALSE else
+          isTRUE(term_flag("spike", adj_term, FALSE))
+        spike_decision_cols[col] <- if (grouped) {
+          saz_decision_codes[["continuous_only"]]
+        } else {
+          as.integer(term_flag(
+            "spike_dec", adj_term,
+            saz_decision_codes[["continuous_only"]]
+          ))
+        }
+        acd_parameter_cols[col] <- list(
+          if (!grouped && !is.null(adj_model$acd_parameter)) {
+            adj_model$acd_parameter[[adj_term]]
+          } else {
+            NULL
+          }
+        )
+      }
+    }
+    
+    power_cols <- power_cols[raw_adj_cols]
+    acd_cols <- acd_cols[raw_adj_cols]
+    zero_cols <- zero_cols[raw_adj_cols]
+    catzero_cols <- catzero_cols[raw_adj_cols]
+    spike_cols <- spike_cols[raw_adj_cols]
+    spike_decision_cols <- spike_decision_cols[raw_adj_cols]
+    acd_parameter_cols <- acd_parameter_cols[raw_adj_cols]
     
     x_trans <- transform_matrix(
       x = x_plus,
-      power_list = powers,
-      center = stats::setNames(rep(FALSE, length(adj_vars)), adj_vars),
-      acdx = adj_flag("acd", FALSE),
-      acd_parameter_list = if (!is.null(adj_model$acd_parameter)) {
-        adj_model$acd_parameter[adj_vars]
-      } else {
-        NULL
-      },
-      zero = adj_flag("zero", FALSE),
-      catzero = adj_flag("catzero", FALSE),
-      spike = adj_flag("spike", FALSE),
-      spike_decision = adj_flag(
-        "spike_dec",
-        saz_decision_codes[["continuous_only"]]
-      ),
+      power_list = power_cols,
+      center = stats::setNames(rep(FALSE, length(raw_adj_cols)), raw_adj_cols),
+      acdx = acd_cols,
+      acd_parameter_list = acd_parameter_cols,
+      zero = zero_cols,
+      catzero = catzero_cols,
+      spike = spike_cols,
+      spike_decision = spike_decision_cols,
       keep_x_order = FALSE,
       reset_zero = FALSE,
       check_binary = TRUE
@@ -1947,8 +2022,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         
         zero_expanded <- x_trans$zero_expanded[colnames(x_adjustment)]
         if (is.null(zero_expanded) || anyNA(zero_expanded)) {
-          zero_expanded <- stats::setNames(rep(FALSE, ncol(x_adjustment)),
-                                           colnames(x_adjustment))
+          zero_expanded <- stats::setNames(
+            rep(FALSE, ncol(x_adjustment)),
+            colnames(x_adjustment)
+          )
         }
         
         x_adjustment <- center_matrix(
@@ -1979,19 +2056,50 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
          call. = FALSE)
   }
   
-  missing_cols <- setdiff(target_cols, colnames(X))
-  if (length(missing_cols) > 0L) {
+  # Resolve source design columns to the exact names used by the fitted model.
+  # Formula-based fits may quote non-syntactic coefficient names, whereas
+  # predict.glm()/predict.coxph() still require raw source-column names in
+  # newdata. Keep both representations rather than rewriting names heuristically.
+  column_map <- interaction_model$transformed_to_model_columns
+  if (is.null(column_map) || !is.character(column_map) ||
+      is.null(names(column_map)) || anyNA(column_map) ||
+      any(!nzchar(column_map)) || anyDuplicated(names(column_map)) ||
+      anyDuplicated(unname(column_map))) {
+    stop(
+      "Internal error: interaction model lacks a valid transformed-to-model column mapping.",
+      call. = FALSE
+    )
+  }
+  
+  missing_model_cols <- setdiff(target_cols, unname(column_map))
+  if (length(missing_model_cols) > 0L) {
     stop(
       paste0(
         "Cannot reconstruct ordinary MFPI prediction matrix for term `", term,
-        "`: missing fitted-model column(s): ",
-        paste(missing_cols, collapse = ", "), "."
+        "`: mapping is missing fitted-model column(s): ",
+        paste(missing_model_cols, collapse = ", "), "."
       ),
       call. = FALSE
     )
   }
   
-  X <- X[, target_cols, drop = FALSE]
+  source_cols <- names(column_map)[match(target_cols, unname(column_map))]
+  missing_source_cols <- setdiff(source_cols, colnames(X))
+  if (length(missing_source_cols) > 0L) {
+    stop(
+      paste0(
+        "Cannot reconstruct ordinary MFPI prediction matrix for term `", term,
+        "`: missing source design column(s): ",
+        paste(missing_source_cols, collapse = ", "), "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  X_source <- X[, source_cols, drop = FALSE]
+  X <- X_source
+  colnames(X) <- target_cols
+  
   if (anyNA(X) || any(!is.finite(X))) {
     stop(paste0("Non-finite values were produced in the prediction matrix for term `",
                 term, "`."), call. = FALSE)
@@ -2019,9 +2127,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     has_offset <- TRUE
   }
   
-  # Build a formula-compatible data frame for the stored glm/coxph model.
-  # Predictor names are exactly the fitted coefficient names (without intercept).
-  model_newdata <- as.data.frame(X, check.names = FALSE)
+  # Build formula-compatible newdata using the raw source-column names. The
+  # manual matrix X uses fitted coefficient names, while model prediction must
+  # receive the names that appeared in the fit-time data frame.
+  model_newdata <- as.data.frame(X_source, check.names = FALSE)
   
   fit_formula <- stats::formula(interaction_model$fit)
   formula_text <- paste(deparse(fit_formula), collapse = " ")
@@ -2081,8 +2190,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 #' interaction model. When \code{use_model_predict = TRUE}, the helper
 #' delegates to the stored fitted model's \code{predict()} method. Otherwise,
 #' it multiplies the reconstructed design matrix by the fitted coefficient
-#' vector, adds the intercept and supplied offset when applicable, and
-#' transforms to the response scale if requested.
+#' vector, adds the intercept and offset when applicable, and transforms to
+#' the response scale if requested. GLM offsets are added directly. Cox offsets
+#' are first expressed relative to the mean training offset, matching
+#' `predict.coxph(reference = "zero")`.
 #'
 #' @section Standard errors:
 #' For manual prediction, the helper first computes the standard error of the
@@ -2130,7 +2241,8 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
   if (isTRUE(use_model_predict) || !is.null(model_newdata)) {
     # Training-data prediction without a replacement newoffset delegates to the
     # fitted model. Cox uses reference = "zero" so delegated predictions
-    # agree with the manual X %*% beta convention used for newdata.
+    # agree with the manual covariate scale; both paths also use the same
+    # mean-training-offset origin.
     if (identical(family_string, "cox")) {
       pred_type <- if (type == "link") "lp" else "risk"
       
@@ -2204,9 +2316,16 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
   }
   
   # Manual path: construct the linear predictor from the reconstructed
-  # design matrix, add any supplied offset, and add an intercept for GLM-like
-  # models. Cox models have no ordinary intercept.
-  eta <- as.vector(X_new %*% coef_vec[beta_names]) + offset
+  # design matrix. Cox offsets follow survival::predict.coxph(): the supplied
+  # prediction offset is expressed relative to the mean offset in the fitting
+  # data, independently of reference = "zero" for the covariates. GLM offsets
+  # retain their ordinary uncentred interpretation.
+  prediction_offset <- offset
+  if (identical(family_string, "cox")) {
+    prediction_offset <- offset - mfpi_cox_offset_reference(object)
+  }
+  
+  eta <- as.vector(X_new %*% coef_vec[beta_names]) + prediction_offset
   if (has_intercept) eta <- eta + unname(coef_vec["(Intercept)"])
   
   fam <- object$family
@@ -2266,8 +2385,17 @@ mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
     }
   }
   
-  list(fit = as.numeric(fit), se.fit = se_out, link = eta,
-       used_model_predict = FALSE)
+  # Match the delegated predict.glm()/predict.coxph() branches: ordinary
+  # prediction outputs are plain unnamed numeric vectors. Matrix row names can
+  # otherwise propagate through rowSums() into se_eta and se_out.
+  if (!is.null(se_out)) se_out <- as.numeric(se_out)
+  
+  list(
+    fit = as.numeric(fit),
+    se.fit = se_out,
+    link = as.numeric(eta),
+    used_model_predict = FALSE
+  )
 }
 
 
@@ -2564,6 +2692,37 @@ mfpi_resolve_reference_group <- function(reference, group_labels, object) {
     ),
     call. = FALSE
   )
+}
+
+
+#' Retrieve the Cox Offset Reference Stored at Fit Time
+#'
+#' `survival::predict.coxph()` subtracts the mean training offset from every
+#' prediction offset, including when `reference = "zero"`. All Cox models
+#' The final adjustment fit calculates that scalar once and the top-level
+#' MFPI object stores it as `cox_offset_reference` for every interaction model.
+#'
+#' @param object A fitted `mfpi` object.
+#'
+#' @return Finite numeric scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_cox_offset_reference <- function(object) {
+  reference <- object$cox_offset_reference
+  
+  if (!is.numeric(reference) || length(reference) != 1L ||
+      is.na(reference) || !is.finite(reference)) {
+    stop(
+      paste0(
+        "The fitted MFPI object lacks valid Cox offset-reference metadata. ",
+        "Refit the MFPI object with the current package version."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  unname(reference)
 }
 
 

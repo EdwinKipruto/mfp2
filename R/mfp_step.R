@@ -3,20 +3,24 @@
 #' See \code{mfp2()} for a brief summary on the notation used here and 
 #' \code{fit_mfp()} for an overview of the fitting procedure.  
 #' 
-#' @param x an input matrix of dimensions nobs x nvars. Does not contain 
-#' intercept, but columns are already expanded into dummy variables as 
-#' necessary. Data are assumed to be shifted and scaled. 
+#' @param x Numeric design matrix with one row per observation and raw columns
+#'   already expanded as needed. It excludes the intercept and is assumed to be
+#'   shifted and scaled.
 #' @param y a vector for the response variable or a `Surv` object.
-#' @param xi a character string indicating the name of the current variable 
-#' of interest, for which the best fractional polynomial transformation is
-#' to be estimated in the current step. 
+#' @param xi Character scalar naming the current conceptual term. For a
+#'   singleton continuous term its FP form is assessed; for a multi-column term
+#'   the complete fixed linear block is assessed jointly.
+#' @param term_to_columns Named list mapping each conceptual term to the raw
+#'   design-matrix columns that represent it. Multi-column entries are treated
+#'   as fixed linear blocks and tested jointly. The lookup is threaded
+#'   explicitly through every selection routine so grouped adjustment
+#'   terms are available during both linear and FP model searches.
 #' @param weights a vector of observation weights of length nobs. 
 #' @param offset a vector of length nobs of offsets.
 #' @param df a numeric vector indicating the maximum degrees of freedom for the 
 #' variable of interest `xi`.
-#' @param powers_current a list of length equal to the number of variables, 
-#' indicating the fp powers to be used in the current step for all variables 
-#' (except `xi`). 
+#' @param powers_current Named list with one selected-power state per
+#'   conceptual term, used for all adjustment terms in the current step.
 #' @param family Either a character string naming the family (e.g., "gaussian", "binomial", "cox") 
 #'   or a function that returns a GLM family object (e.g., stats::gaussian). 
 #'   For Cox models, only a character string "cox" is allowed.
@@ -24,8 +28,10 @@
 #'   e.g., "gaussian".
 #' @param criterion a character string defining the criterion used to select 
 #' variables and FP models of different degrees.
-#' @param select a numeric value indicating the significance level
-#' for backward elimination of `xi`.
+#' @param select Numeric scalar giving the nominal significance level used to
+#'   decide whether the current term `xi` is retained during MFP backfitting.
+#'   For a grouped categorical term, this value applies to the joint test of
+#'   its complete design-matrix block. A value of 1 forces the term to remain.
 #' @param alpha a numeric value indicating the significance level
 #' for tests between FP models of different degrees for `xi`. 
 #' @param keep a character vector with names of variables to be kept 
@@ -38,20 +44,18 @@
 #' variables. Returned from [survival::strata()]. 
 #' @param nocenter a numeric vector with a list of values for fitting Cox 
 #' models. See [survival::coxph()] for details.
-#' @param acdx a logical vector of length nvars indicating continuous variables 
-#' to undergo the approximate cumulative distribution (ACD) transformation.
+#' @param acdx Named logical vector with one value per conceptual term;
+#'   multi-column terms must be \code{FALSE}.
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit.
 #' @param rownames a parameter for Cox models.
 #' @param catzero A named list of structural-zero indicators. Each element is
 #' either `NULL` or an n x 1 integer/numeric matrix. Non-NULL elements indicate
 #' variables for which a binary structural-zero column is available.
-#' @param zero A named logical vector indicating, which columns of 
-#' \code{x} should treat nonpositive values (zero or negative) as zero before 
-#' transformation. Must be the same length as the columns of \code{x}.
-#' @param spike A logical vector indicating which columns of \code{x} contain
-#' a spike at zero. The length and order of \code{spike} must match those of
-#' the columns in \code{x}.
+#' @param zero Named logical vector with one value per conceptual term,
+#'   indicating structural-zero handling for singleton terms.
+#' @param spike Named logical vector with one value per conceptual term,
+#'   indicating spike-at-zero handling for singleton terms.
 #' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()}, 
 #' with length equal to \code{ncol(x)}. Each list element corresponds to a variable; 
 #' if an element is \code{NULL}, the variable was not specified in the 
@@ -181,8 +185,11 @@ find_best_fp_step <- function(x,
                               force_max_fp,
                               has_offset,
                               n_obs,
-                              verbose) {
+                              verbose,
+                              term_to_columns) {
   
+  # `fit_mfp()` constructs the complete conceptual-term lookup once and the
+  # backfitting cycle passes it explicitly through every selection routine.
   # find_best_fp_step() dispatches xi's model-selection to the right
   # closed-test/IC routine, prints progress, cleans up the returned powers,
   # and (for spike variables) runs SAZ stage 2 once stage 1 has selected a
@@ -210,6 +217,9 @@ find_best_fp_step <- function(x,
   }
   
   # Step 2: Run the selected routine and optionally print progress -----------
+  # Pass the term lookup to every selector, not only to select_linear(). Even
+  # when xi is a continuous FP term, its adjustment set can contain grouped
+  # categorical terms whose raw columns must be assembled as one block.
   fit1 <- select_fct(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx, 
     y = y, family = family, family_string = family_string, 
@@ -219,7 +229,8 @@ find_best_fp_step <- function(x,
     method = method, strata = strata, nocenter = nocenter, n_obs = n_obs,
     control = control, rownames = rownames, zero = zero, catzero = catzero,
     spike = spike, spike_decision = spike_decision, has_offset = has_offset,
-    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   
   if (verbose) {
@@ -386,8 +397,12 @@ find_best_fpm_step <- function(x,
                                has_offset,
                                precomputed_adj = NULL,
                                n_obs,
+                               term_to_columns,
                                ...
 ) {
+  # The conceptual-term lookup is normalized once in fit_mfp() and passed
+  # explicitly so every FP candidate uses the same focal and adjustment
+  # raw-column blocks.
   # n_obs (number of observations, or events for Cox models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
   
@@ -418,7 +433,9 @@ find_best_fpm_step <- function(x,
     spike = spike, spike_decision = spike_decision, 
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
-    precomputed_adj = precomputed_adj
+    precomputed_adj = precomputed_adj,
+    term_to_columns = term_to_columns
+    
   )
   
   data_adj <- x_transformed$data_adj
@@ -568,9 +585,12 @@ fit_null_step <- function(x,
                           has_offset,
                           precomputed_adj = NULL,
                           n_obs,
+                          term_to_columns,
                           ...
 ) {
   
+  # The lookup is passed explicitly even when a precomputed adjustment block
+  # is available, so this helper remains consistent when it builds the block.
   # Step 1: Build (or reuse) the adjustment-variable design matrix ----------
   # Null model uses adjustment variables only. Do not call
   # transform_data_step(df = 1) here: that would generate the current-variable
@@ -587,7 +607,8 @@ fit_null_step <- function(x,
       spike = spike,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params
+      prev_adj_params = prev_adj_params,
+      term_to_columns = term_to_columns
     )
   } else {
     precomputed_adj
@@ -668,7 +689,8 @@ fit_linear_step <- function(x,
                             has_offset,
                             n_obs,
                             ...,
-                            precomputed_adj = NULL) {
+                            precomputed_adj = NULL,
+                            term_to_columns) {
   # n_obs (number of observations, or events for Cox models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
   
@@ -680,7 +702,8 @@ fit_linear_step <- function(x,
     powers = powers, zero = zero, catzero = catzero, spike = spike,
     spike_decision = spike_decision, acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
-    precomputed_adj = precomputed_adj
+    precomputed_adj = precomputed_adj,
+    term_to_columns = term_to_columns
   ) 
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[1]]
   
@@ -815,8 +838,11 @@ select_linear <- function(x,
                           force_max_fp,
                           has_offset,
                           n_obs,
+                          term_to_columns,
                           ...) {
   
+  # `term_to_columns` is required here because the focal term or any of its
+  # adjustment terms may correspond to more than one raw design-matrix column.
   # select_linear() is only used when df = 1 for xi (see find_best_fp_step()'s
   # dispatch logic): this covers variables that are restricted to a linear
   # effect, e.g. dummy/categorical variables or any continuous variable the
@@ -840,7 +866,8 @@ select_linear <- function(x,
     spike = spike,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params
+    prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   
   # If xi itself contributes a structural-zero binary indicator (because it is
@@ -861,7 +888,7 @@ select_linear <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, has_offset = has_offset, spike = spike,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    precomputed_adj = precomputed_adj, n_obs = n_obs, ...
+    precomputed_adj = precomputed_adj, n_obs = n_obs, term_to_columns = term_to_columns, ...
   )
   
   # Model 2: Linear model (xi included with FP power fixed at 1).
@@ -872,7 +899,8 @@ select_linear <- function(x,
     catzero = catzero, spike_decision = spike_decision, spike = spike,
     has_offset = has_offset, n_obs = n_obs,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj,
+    term_to_columns = term_to_columns, ...
   )
   
   # Stack both candidates' powers/metrics into 2-row matrices so the rest of
@@ -885,8 +913,10 @@ select_linear <- function(x,
   rownames(powers) <- c("null", linear_name)
   rownames(metrics) <- c("null", linear_name)
   
-  # Step 3: Test null vs. linear (1 df difference: the coefficient for xi) ---
-  # compute F or Chi-square statistic between the two models
+  # Step 3: Test null vs. linear jointly -----------------------------------
+  # A singleton contributes one regression coefficient. A grouped categorical
+  # term contributes one coefficient per raw design column, so the metric df
+  # difference automatically gives the joint block-test degrees of freedom.
   if (ftest) {
     # note that ftest is only TRUE if model is gaussian
     stats <- calculate_f_test(
@@ -895,8 +925,9 @@ select_linear <- function(x,
       n_obs = n_obs
     )
   } else {
-    # Ordinary likelihood-ratio chi-square test (2 * difference in log-lik,
-    # compared to a chi-square distribution with the df difference, here 1).
+    # Ordinary likelihood-ratio chi-square test (2 * difference in log-lik),
+    # compared with a chi-square distribution using the fitted-model df
+    # difference (one for a singleton, group size for a grouped term).
     stats <- calculate_lr_test(metrics[, "logl"], metrics[, "df"])
   }
   
@@ -1047,6 +1078,7 @@ select_ra2 <- function(x,
                        force_max_fp,
                        has_offset,
                        n_obs,
+                       term_to_columns,
                        ...) {
   
   # select_ra2() implements the RA2 closed-test function-selection procedure
@@ -1118,6 +1150,8 @@ select_ra2 <- function(x,
   # fits below. This is valid because neither the null nor the FPm models
   # for xi changes what the adjustment variables look like - only xi's own
   # representation differs between the candidate models.
+  # Thread the term lookup into adjustment construction so grouped terms are
+  # included as complete blocks while xi undergoes ordinary FP selection.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -1129,7 +1163,8 @@ select_ra2 <- function(x,
     spike = spike,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params
+    prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   
   # Step 3: Test null vs. FPm. Asks "is xi associated with the outcome at all, 
@@ -1143,7 +1178,7 @@ select_ra2 <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   fit_null <- fit_null_step(
@@ -1152,7 +1187,7 @@ select_ra2 <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   res$metrics <- rbind(
     fit_fpmax$metrics[fit_fpmax$model_best, ],
@@ -1165,7 +1200,7 @@ select_ra2 <- function(x,
   
   # return also the adjustment parameters
   res$current_adj_params <- fit_fpmax$current_adj_params
-
+  
   # Test 1: test for overall significance (null vs best FPm)
   # df for tests are 2 * degree 
   stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
@@ -1198,7 +1233,7 @@ select_ra2 <- function(x,
     family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset,n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   old_names <- rownames(res$metrics)
@@ -1257,7 +1292,7 @@ select_ra2 <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj,  ...
+        precomputed_adj = precomputed_adj,  term_to_columns = term_to_columns, ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1384,6 +1419,7 @@ select_ra2_acd <- function(x,
                            force_max_fp,
                            has_offset,
                            n_obs,
+                           term_to_columns,
                            ...) {
   
   # This implements the FSPA (function-selection procedure for ACD) 5-test
@@ -1445,6 +1481,8 @@ select_ra2_acd <- function(x,
   # Build the adjustment matrix (all variables except xi, transformed
   # at their *current* powers_current) once, and reuse it for all candidate
   # fits below.
+  # Thread the term lookup into adjustment construction so grouped terms are
+  # included as complete blocks while xi undergoes ACD selection.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -1456,7 +1494,8 @@ select_ra2_acd <- function(x,
     spike = spike,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params
+    prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   
   # Test 1 (M6 vs M1): null vs. FP1(x, A(x)), df = 4. Asks whether xi (in its
@@ -1470,7 +1509,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   fit_null <- fit_null_step(
@@ -1479,7 +1518,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   # Row 1 = M1 (FP1(x, A(x))), the reference model for Tests 1-4; row 2 = M6
   # (null), whose power is a 2-column NA since neither x nor A(x) is included.
@@ -1523,7 +1562,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1564,7 +1603,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj,  ...
+    precomputed_adj = precomputed_adj,  term_to_columns = term_to_columns, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1610,7 +1649,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1652,7 +1691,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   old_names = rownames(res$metrics)
@@ -1783,6 +1822,7 @@ select_ic <- function(x,
                       force_max_fp,
                       has_offset,
                       n_obs,
+                      term_to_columns,
                       ...) {
   
   # select_ic() implements AIC/BIC-based selection (criterion = "aic"/"bic"),
@@ -1824,6 +1864,8 @@ select_ic <- function(x,
   )
   
   
+  # Thread the term lookup into adjustment construction so grouped terms are
+  # included as complete blocks during AIC/BIC FP selection.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -1835,7 +1877,8 @@ select_ic <- function(x,
     spike = spike,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params
+    prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   # Step 1: Fit all relevant models (null, linear, FP1..FPm) ------------------
   # Unlike select_ra2(), there's no early-stopping here: every candidate is
@@ -1848,7 +1891,7 @@ select_ic <- function(x,
     family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   # Linear model
   fit_lin <- fit_linear_step(
@@ -1857,7 +1900,7 @@ select_ic <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero, 
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   res$current_adj_params <- fit_null$current_adj_params
@@ -1877,7 +1920,7 @@ select_ic <- function(x,
       family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
       prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-      precomputed_adj = precomputed_adj, ...
+      precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
     )
   }
   
@@ -2002,6 +2045,7 @@ select_ic_acd <- function(x,
                           force_max_fp,
                           has_offset,
                           n_obs,
+                          term_to_columns,
                           ...) {
   
   # select_ic_acd() is the AIC/BIC counterpart of select_ra2_acd(): instead of
@@ -2034,6 +2078,8 @@ select_ic_acd <- function(x,
   )
   
   
+  # Thread the term lookup into adjustment construction so grouped terms are
+  # included as complete blocks during AIC/BIC ACD selection.
   precomputed_adj <- build_adjustment_step(
     x = x,
     xi = xi,
@@ -2045,7 +2091,8 @@ select_ic_acd <- function(x,
     spike = spike,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
-    prev_adj_params = prev_adj_params
+    prev_adj_params = prev_adj_params,
+    term_to_columns = term_to_columns
   )
   # Step 1: Fit all relevant models: null, linear(x), linear(., A(x)), and the
   # three best FP1 candidates (FP1(x, .), FP1(., A(x)), FP1(x, A(x))) --------
@@ -2061,7 +2108,7 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero, 
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   # linear(x, .)
@@ -2071,7 +2118,7 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs, 
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   # linear(., A(x))
@@ -2081,7 +2128,7 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
   
   res$current_adj_params <- fit_null$current_adj_params
@@ -2092,7 +2139,7 @@ select_ic_acd <- function(x,
   # since it involves two power slots) and collected in a named list so Step 2
   # can iterate over them generically.
   
- 
+  
   fits <- setNames(
     list(
       # FP1(x, .)
@@ -2102,7 +2149,7 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, ...
+        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
       ), 
       # FP1(., A(x))
       find_best_fpm_step(
@@ -2111,7 +2158,7 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero, 
         spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, ...
+        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
       ), 
       # FP1(x, A(x))
       find_best_fpm_step(
@@ -2120,7 +2167,7 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, ...
+        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
       )
     ),
     c(
@@ -2442,7 +2489,10 @@ build_adjustment_step <- function(x,
                                   spike,
                                   spike_decision,
                                   acd_parameter,
-                                  prev_adj_params) {
+                                  prev_adj_params,
+                                  term_to_columns) {
+  # `term_to_columns` has already been normalized by fit_mfp(); this function
+  # only consumes the mapping when assembling singleton and grouped blocks.
   # ---------------------------------------------------------------------------
   # Purpose
   # ---------------------------------------------------------------------------
@@ -2573,29 +2623,102 @@ build_adjustment_step <- function(x,
       )
     }
     
-    # Step 3: Delegate to the C++ hot loop for the actual (re)computation ---
-    # The surrounding R code remains responsible for preparing named metadata and
-    # preserving the build_adjustment_step() return contract.
-    cpp_adj <- mfp2_build_adjustment_step_loop(
-      x                         = x,
-      vars_adj                  = vars_adj,
-      powers_adj                = powers_adj,
-      acdx_adj                  = acdx_adj,
-      zero_adj                  = zero_adj,
-      catzero                   = catzero,
-      spike_adj                 = spike_adj,
-      spike_decision_int_adj    = spike_decision_int_adj,
-      acd_parameter_adj         = acd_parameter_adj,
-      eliminated                = eliminated,
-      spike_binary_only_flags   = spike_binary_only_flags,
-      current_power_keys_adj    = current_power_keys_adj,
-      prev_power_keys_adj       = prev_power_keys_adj,
-      prev_xi                   = prev_xi,
-      has_prev                  = has_prev
+    # Step 3: Preserve the historical C++ path only for identity-mapped
+    # singleton terms. A categorical term may have one dummy column but a
+    # different conceptual name, for example `svi` -> `svi1`; such terms must
+    # be assembled through their raw-column lookup rather than matched to x by
+    # the conceptual name.
+    mapped_as_block <- vapply(
+      vars_adj,
+      function(term) {
+        cols <- term_to_columns[[term]]
+        length(cols) != 1L || !identical(cols[[1L]], term)
+      },
+      logical(1L)
     )
+    names(mapped_as_block) <- vars_adj
     
-    data_adj_list <- cpp_adj$data_adj_list
-    data_adj      <- cpp_adj$data_adj
+    if (!any(mapped_as_block)) {
+      cpp_adj <- mfp2_build_adjustment_step_loop(
+        x                         = x,
+        vars_adj                  = vars_adj,
+        powers_adj                = powers_adj,
+        acdx_adj                  = acdx_adj,
+        zero_adj                  = zero_adj,
+        catzero                   = catzero,
+        spike_adj                 = spike_adj,
+        spike_decision_int_adj    = spike_decision_int_adj,
+        acd_parameter_adj         = acd_parameter_adj,
+        eliminated                = eliminated,
+        spike_binary_only_flags   = spike_binary_only_flags,
+        current_power_keys_adj    = current_power_keys_adj,
+        prev_power_keys_adj       = prev_power_keys_adj,
+        prev_xi                   = prev_xi,
+        has_prev                  = has_prev
+      )
+      
+      data_adj_list <- cpp_adj$data_adj_list
+      data_adj      <- cpp_adj$data_adj
+    } else {
+      direct_vars <- vars_adj[!mapped_as_block]
+      block_vars  <- vars_adj[mapped_as_block]
+      
+      data_adj_list <- vector("list", length(vars_adj))
+      names(data_adj_list) <- vars_adj
+      
+      if (length(direct_vars) > 0L) {
+        cpp_adj <- mfp2_build_adjustment_step_loop(
+          x                         = x,
+          vars_adj                  = direct_vars,
+          powers_adj                = powers_adj[direct_vars],
+          acdx_adj                  = acdx_adj[direct_vars],
+          zero_adj                  = zero_adj[direct_vars],
+          catzero                   = catzero,
+          spike_adj                 = spike_adj[direct_vars],
+          spike_decision_int_adj    = spike_decision_int_adj[direct_vars],
+          acd_parameter_adj         = acd_parameter_adj[direct_vars],
+          eliminated                = eliminated[direct_vars],
+          spike_binary_only_flags   = spike_binary_only_flags[direct_vars],
+          current_power_keys_adj    = current_power_keys_adj[direct_vars],
+          prev_power_keys_adj       = if (is.null(prev_power_keys_adj)) {
+            NULL
+          } else {
+            prev_power_keys_adj[direct_vars]
+          },
+          prev_xi                   = prev_xi,
+          has_prev                  = has_prev
+        )
+        data_adj_list[direct_vars] <- cpp_adj$data_adj_list[direct_vars]
+      }
+      
+      # Fixed categorical blocks are already on their required linear design
+      # scale. This covers both multi-column factors and binary factors whose
+      # single dummy column has a different name from the conceptual term.
+      for (term in block_vars) {
+        if (isTRUE(eliminated[[term]])) {
+          data_adj_list[[term]] <- matrix(
+            numeric(0L),
+            nrow = nrow(x),
+            ncol = 0L,
+            dimnames = list(rownames(x), character(0L))
+          )
+        } else {
+          data_adj_list[[term]] <- x[, term_to_columns[[term]], drop = FALSE]
+        }
+      }
+      
+      contributes <- vapply(data_adj_list, NCOL, integer(1L)) > 0L
+      if (any(contributes)) {
+        data_adj <- do.call(cbind, data_adj_list[contributes])
+      } else {
+        data_adj <- matrix(
+          numeric(0L),
+          nrow = nrow(x),
+          ncol = 0L,
+          dimnames = list(rownames(x), character(0L))
+        )
+      }
+    }
   }
   
   list(
@@ -2615,9 +2738,9 @@ build_adjustment_step <- function(x,
 #' if their parameters have not changed.
 #' @param x a matrix of predictors that includes the variable of interest `xi`.
 #' It is assumed that continuous variables have already been shifted and scaled.
-#' @param xi name of the continuous predictor for which the FP function will be
-#' estimated. There are no binary or two-level variables allowed. All variables
-#' except `xi` are referred to as "adjustment variables".
+#' @param xi Name of the conceptual term being assessed. It may be a
+#'   singleton FP-eligible predictor or a fixed multi-column linear block. All
+#'   other conceptual terms are adjustment terms.
 #' @param powers_current a named list of FP powers of all variables of interest,
 #' including `xi`. Note that these powers are updated during backfitting or MFP
 #' cycles.
@@ -2706,8 +2829,11 @@ transform_data_step <- function(x,
                                 spike_decision,
                                 acd_parameter,
                                 prev_adj_params,
-                                precomputed_adj = NULL
+                                precomputed_adj = NULL,
+                                term_to_columns
 ) {
+  # `term_to_columns` is supplied by the fitting call chain and maps the focal
+  # conceptual term to the raw column block used below.
   # Step 1: Build (or reuse) the adjustment matrix for every variable except xi
   # Access x columns by name; avoid copying/reordering x for every candidate
   # transformation call.
@@ -2723,54 +2849,77 @@ transform_data_step <- function(x,
       spike = spike,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
-      prev_adj_params = prev_adj_params
+      prev_adj_params = prev_adj_params,
+      term_to_columns = term_to_columns
     )
   } else {
     adj <- precomputed_adj
   }
   
   # Step 2: Generate the FP/ACD candidate transformations for xi itself -----
-  # generate fp data for xi (unchanged, spike_decision not applied here)
-  data_xi <- x[, xi, drop = TRUE]
+  xi_cols <- term_to_columns[[xi]]
+  if (is.null(xi_cols)) {
+    stop(
+      sprintf("Internal error: term '%s' is missing from `term_to_columns`.", xi),
+      call. = FALSE
+    )
+  }
   
-  if (length(unique(data_xi)) <= 3) {
-    # Variables with <= 3 distinct values are treated as linear/binary: no FP
-    # candidates are generated, but nonpositive values are still recoded to
-    # zero if `zero` is requested, and a catzero indicator column is added if
-    # present (df = 1 is enforced upstream for such variables; see assign_df()).
-    if (zero[xi]) {
-      data_xi[data_xi <= 0] <- 0
-    }
-    
-    # add catzero variable if not null; if null cbind will remove it
-    data_xi_mat <- matrix(data_xi, ncol = 1L)
-    
-    if (!is.null(catzero[[xi]])) {
-      data_xi_mat <- cbind(catzero[[xi]], data_xi_mat)
-      colnames(data_xi_mat)[1L] <- "catzero"
-    }
-    
-    data_fp <- list(data_xi_mat)
-    powers_fp <- matrix(1, nrow = 1L, ncol = 1L)
-    
+  if (length(xi_cols) > 1L) {
+    # A multi-column term is categorical by construction. Treat its complete
+    # design block as one fixed linear candidate and skip all FP/cardinality
+    # logic that applies only to a single numeric predictor.
+    data_fp <- list(x[, xi_cols, drop = FALSE])
+    powers_fp <- matrix(1, nrow = 1L, ncol = length(xi_cols))
   } else {
-    if (acdx[xi]) {
-      # when df = 1 -> degree = 0
-      # and we return the data unchanged, i.e. with power = 1
-      fpd <- generate_transformations_acd(data_xi, degree = floor(df / 2),
-                                          powers = powers[[xi]],
-                                          zero = zero[xi],
-                                          catzero = catzero[[xi]],
-                                          acd_parameter = acd_parameter[[xi]])
+    # Preserve the historical single-column path exactly.
+    data_xi <- x[, xi_cols, drop = TRUE]
+    
+    if (length(unique(data_xi)) <= 3) {
+      # Variables with <= 3 distinct values are treated as linear/binary: no FP
+      # candidates are generated, but nonpositive values are still recoded to
+      # zero if `zero` is requested, and a catzero indicator column is added if
+      # present (df = 1 is enforced upstream for such variables; see assign_df()).
+      if (zero[xi]) {
+        data_xi[data_xi <= 0] <- 0
+      }
+      
+      # add catzero variable if not null; if null cbind will remove it
+      data_xi_mat <- matrix(data_xi, ncol = 1L)
+      
+      if (!is.null(catzero[[xi]])) {
+        data_xi_mat <- cbind(catzero[[xi]], data_xi_mat)
+        colnames(data_xi_mat)[1L] <- "catzero"
+      }
+      
+      data_fp <- list(data_xi_mat)
+      powers_fp <- matrix(1, nrow = 1L, ncol = 1L)
+      
     } else {
-      # note that degree is df / 2
-      fpd <- generate_transformations_fp(data_xi, degree = floor(df / 2),
-                                         powers = powers[[xi]],
-                                         zero = zero[xi],
-                                         catzero = catzero[[xi]])
+      if (acdx[xi]) {
+        # when df = 1 -> degree = 0
+        # and we return the data unchanged, i.e. with power = 1
+        fpd <- generate_transformations_acd(
+          data_xi,
+          degree = floor(df / 2),
+          powers = powers[[xi]],
+          zero = zero[xi],
+          catzero = catzero[[xi]],
+          acd_parameter = acd_parameter[[xi]]
+        )
+      } else {
+        # note that degree is df / 2
+        fpd <- generate_transformations_fp(
+          data_xi,
+          degree = floor(df / 2),
+          powers = powers[[xi]],
+          zero = zero[xi],
+          catzero = catzero[[xi]]
+        )
+      }
+      data_fp <- fpd$data
+      powers_fp <- fpd$powers
     }
-    data_fp <- fpd$data
-    powers_fp <- fpd$powers
   }
   
   # Step 3: Cache this step's adjustment-variable state for the next step ---

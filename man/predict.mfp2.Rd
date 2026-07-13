@@ -36,19 +36,24 @@ standard errors from \code{predict.glm()} or \code{predict.coxph()}. For
 \code{type = "terms"} and \code{type = "contrasts"}, the returned data frames always
 contain an \code{se} column, and \code{se.fit} is ignored.}
 
-\item{terms}{Character vector of original variable names for term or contrast
-prediction. Only variables selected in the final fitted model are used. If
-\code{NULL}, all selected variables are used.}
+\item{terms}{Character vector of conceptual term names for term or contrast
+prediction. For a simple wrapper such as \code{factor(x9)}, use the source
+variable name \code{x9}, not the wrapper expression or an individual
+generated contrast column. Only terms selected in the final fitted model
+are used. If \code{NULL}, all selected terms are used.}
 
-\item{terms_seq}{Character scalar controlling values used for term prediction.
-\code{"equidistant"} generates \code{nseq} equally spaced values over the observed
-range. \code{"data"} uses observed values directly.}
+\item{terms_seq}{Character scalar controlling values used for singleton
+continuous-term prediction. \code{"equidistant"} generates \code{nseq} equally
+spaced values over the observed range and \code{"data"} uses observed values.
+Grouped categorical terms are always evaluated at observed prediction rows.}
 
 \item{alpha}{Significance level used for confidence intervals in term and
 contrast predictions.}
 
-\item{ref}{Named list of reference values for \code{type = "contrasts"}. Values
-must be supplied on the original variable scale.}
+\item{ref}{Named list of reference values for \code{type = "contrasts"}.
+Continuous-term values are supplied on the original variable scale. A
+formula factor reference may be a fitted level label. A manually grouped
+matrix term may use a numeric vector with one value per raw member column.}
 
 \item{strata}{Optional stratum values used when predicting from Cox models
 with supplied \code{newdata}. This is needed for default/matrix-interface
@@ -82,11 +87,14 @@ containing fitted values and standard errors according to the underlying
 method.
 
 For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list with
-one data frame per selected variable. Each data frame contains:
+one data frame per selected conceptual term. Each data frame contains:
 \itemize{
 \item \code{variable}: values on the original scale before fitted shifting.
+For simple formula factor terms, this contains factor-level labels.
 \item \code{variable_pre}: values after fitted shifting, before or after binary
-SAZ coding as appropriate.
+SAZ coding as appropriate. For factor terms, this repeats the level label.
+\item Raw grouped-term columns: categorical or manually grouped terms also
+include the underlying model-matrix columns used to compute the term.
 \item \code{value}: partial linear predictor or contrast.
 \item \code{se}: conditional standard error.
 \item \code{lower}: lower confidence limit.
@@ -121,7 +129,9 @@ and are computed by the underlying \code{predict.glm()} or \code{predict.coxph()
 For Cox models, this method always calls \code{predict.coxph()} with
 \code{reference = "zero"}. The transformed design matrix in \code{mfp2} has already been
 centered where required, so asking \code{predict.coxph()} to subtract an additional
-sample or strata reference would shift the linear predictor incorrectly.
+sample or strata reference would shift the covariate contribution incorrectly.
+Cox offsets retain the native \code{predict.coxph()} convention: the prediction
+offset is expressed relative to the mean offset in the fitting data.
 
 For \code{type = "terms"}, standard errors are computed from the fitted covariance
 matrix for the columns belonging to each selected variable. If
@@ -139,11 +149,32 @@ uncertainty.
 \section{Terms prediction}{
 
 If \code{type = "terms"}, this function computes partial linear predictors for
-selected variables in the final model. A single original variable may be
-represented by multiple fitted columns, for example FP2 terms, zero-handled
-positive-part terms, or a catzero binary indicator. The method collects the
-relevant fitted columns for each variable and multiplies them by their fitted
+selected terms in the final model. A conceptual term may be represented by
+multiple fitted columns, for example an FP2 basis, a zero-handled positive
+component with an indicator, or a categorical contrast block. The method
+collects the relevant fitted columns for each term and multiplies them by their
 coefficients.
+}
+
+\section{Grouped categorical terms}{
+
+Formula-created unordered and ordered factors are reconstructed with the
+fitted factor levels and contrasts. Ordinary predictions therefore accept
+the original factor variables in \code{newdata}; users do not need to create
+dummy or polynomial-contrast columns manually.
+
+For \code{type = "terms"}, a grouped categorical term is evaluated at the
+observed rows of the supplied \code{newdata}, or at the fitted rows when
+\code{newdata = NULL}. The returned data frame includes the raw design-block
+columns and, for simple formula factor main effects, the corresponding factor
+level in \code{variable}. The \code{terms_seq} argument applies only to
+singleton continuous terms.
+
+For \code{type = "contrasts"}, a formula factor reference may be supplied as
+a level label, for example \code{ref = list(race = "A")}. If omitted, the
+first fitted factor level is used. For a manually declared matrix-interface
+group, the reference may be a numeric vector with one value per raw group
+column; if omitted, the first observed design row is used.
 }
 
 \section{Contrasts}{
@@ -165,6 +196,34 @@ fit <- mfp2(x, y, verbose = FALSE)
 predict(fit)
 predict(fit, se.fit = TRUE)
 predict(fit, type = "terms")
+
+\dontrun{
+# Formula factors are supplied in their original form for prediction.
+set.seed(1)
+d <- data.frame(
+  y = rnorm(45),
+  age = runif(45, 30, 75),
+  race = factor(rep(c("A", "B", "C"), each = 15)),
+  severity = ordered(
+    rep(c("mild", "moderate", "severe"), length.out = 45),
+    levels = c("mild", "moderate", "severe")
+  )
+)
+fit_factor <- mfp2(
+  y ~ age + race + severity, data = d,
+  keep = c("race", "severity"), verbose = FALSE
+)
+predict(fit_factor, newdata = d[1:4, ])
+predict(fit_factor, newdata = d[1:4, ], type = "terms", terms = "race")
+predict(
+  fit_factor,
+  newdata = d[1:4, ],
+  type = "contrasts",
+  terms = "race",
+  ref = list(race = "A")
+)
+
+}
 
 }
 \seealso{

@@ -49,13 +49,14 @@
 #'   degree. The best power combination within that degree is still selected by
 #'   the criterion (equivalently, by deviance minimization at fixed df).
 #' @param select Named numeric vector of length \eqn{p}. Nominal significance
-#'   levels for backward elimination of each predictor.
+#'   levels used by the MFP variable-selection tests for adjustment terms.
 #' @param alpha Named numeric vector of length \eqn{p}. Significance levels
 #'   for FP degree selection. Under \code{criterion = "pvalue"}, \code{alpha = 1}
 #'   guarantees the most complex FP degree is always accepted. Ignored under
 #'   \code{criterion = "aic"} or \code{"bic"}.
-#' @param keep Character vector of variable names forced into the
-#'   adjustment model regardless of selection.
+#' @param keep Character vector naming conceptual adjustment terms or raw
+#'   member columns that are forced into the adjustment model. Naming one
+#'   member of a grouped categorical term retains the complete block.
 #' @param force_max_fp Named logical vector of length \eqn{p}. For each
 #'   variable, if \code{TRUE}, forces \code{select_ic()} to select the most
 #'   complex functional form at the degree specified by \code{df}, bypassing
@@ -141,6 +142,11 @@
 #' @param p_adjust_method Character string. Method for adjusting p-values
 #'   across all variables in \code{cont_vars} when \code{criterion = "pvalue"}.
 #'   Passed to \code{\link[stats]{p.adjust}}. Default \code{"none"}.
+#' @param term_to_columns Complete named lookup created by
+#'   \code{mfpi.default()}. Each name is a conceptual adjustment term and each
+#'   value is its raw predictor column vector. Multi-column entries are fixed
+#'   linear categorical blocks selected and cached jointly. This is required
+#'   internal metadata, not a user-facing tuning argument.
 #' @return A list with top-level fields (accessible as \code{fit$field}) and
 #'   two retained sub-objects. Top-level fields:
 #' \describe{
@@ -163,7 +169,9 @@
 #'   \item{\code{group_var}, \code{flex}, \code{family}, \code{nobs},
 #'     \code{show_models}, \code{group_levels_new},
 #'     \code{group_levels_original}}{Metadata fields.}
-#'   \item{\code{adjustment_model}}{Full adjustment model object.}
+#'   \item{\code{adjustment_model}}{Full grouped adjustment model object.}
+#'   \item{\code{adjustment_term_to_columns}}{Named mapping from conceptual
+#'     adjustment terms to the raw columns used during fitting and prediction.}
 #'   \item{\code{p_adjust_method}}{The multiplicity adjustment method used.}
 #'   \item{\code{var_winners}}{Named list of per-variable best candidates
 #'     (regardless of selection). See \code{evaluate_interactions()}.}
@@ -183,9 +191,11 @@
 #' appended to \code{x}. All parameter vectors are synchronized silently.
 #'
 #' \strong{Step 1 - Adjustment model.} \code{fit_mfp()} selects
-#' adjustment variables and FP transformations using \code{criterion}.
-#' Selected variables, their FP powers, and spike decisions are fixed for
-#' the remainder of the algorithm.
+#' conceptual adjustment terms and FP transformations using \code{criterion}.
+#' Continuous singleton terms follow the ordinary MFP procedure. Multi-column
+#' categorical terms enter as fixed linear blocks and are retained or removed
+#' by one joint test. Selected terms, their transformations, and spike decisions
+#' are fixed for the remainder of the algorithm.
 #'
 #' \strong{Step 2 - Univariable interactions.} For each variable in
 #' \code{cont_vars}, the interaction model is fitted using the form
@@ -211,7 +221,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      center_type = c("grand", "group"),
                      p_adjust_method = "none",
                      group_input_levels = NULL,
-                     group_levels_original = NULL) {
+                     group_levels_original = NULL,
+                     term_to_columns) {
   
   center_type <- match.arg(center_type)
   quiet  <- !isTRUE(verbose)
@@ -240,7 +251,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     keep        = keep,
     force_max_fp      = force_max_fp,
     group_input_levels    = group_input_levels,
-    group_levels_original = group_levels_original
+    group_levels_original = group_levels_original,
+    term_to_columns       = term_to_columns
   )
   
   # ---------------------------------------------------------------------------
@@ -275,13 +287,19 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     force_max_fp   = processed_data$updated_params$force_max_fp,
     scale          = scale,
     has_offset     = has_offset,
+    term_to_columns = processed_data$term_to_columns,
     verbose        = FALSE
   )
   
   # Identify variables retained by the adjustment model
   selected_vars <- get_selected_variables(adjustment_model)
   if (include_group_var) {
-    selected_vars <- setdiff(selected_vars, processed_data$dummy_names)
+    # Group dummies form one conceptual term named by group_var. Exclude that
+    # term from the ordinary adjustment set used in interaction models.
+    selected_vars <- setdiff(
+      selected_vars,
+      c(group_var, processed_data$dummy_names)
+    )
   }
   
   if (verbose) {
@@ -445,6 +463,17 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     mfp2_message("")
   }
   
+  # Every Cox interaction candidate is fitted on the same observations with
+  # the same training offset as the final adjustment model. fit_mfp() has
+  # already calculated the predict.coxph() offset origin once, so expose that
+  # scalar on the top-level MFPI object rather than recomputing it for every
+  # interaction fit.
+  cox_offset_reference <- if (identical(family_string, "cox")) {
+    adjustment_model$cox_offset_reference
+  } else {
+    NULL
+  }
+  
   list(
     best_model_metrics       = univ_results$best_model_metrics,
     all_model_metrics        = univ_results$all_model_metrics,
@@ -462,6 +491,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     group_level_map          = univ_results$group_level_map,
     family                   = univ_results$family,
     nobs                     = univ_results$nobs,
+    cox_offset_reference     = cox_offset_reference,
     p_adjust_method          = univ_results$p_adjust_method,
     scale                    = scale,
     shift                    = shift,
@@ -475,6 +505,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     
     var_winners              = univ_results$var_winners,
     adjustment_model         = adjustment_model,
+    adjustment_term_to_columns = processed_data$term_to_columns,
     univariable_interactions = univ_results,
     digits                   = digits
   )
@@ -532,6 +563,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 #'   adjustment columns and stored in \code{updated_params$force_max_fp}. When
 #'   \code{include_group_var = TRUE}, dummy columns receive \code{FALSE}
 #'   because they have \code{df = 1} and no FP form to force.
+#' @param term_to_columns Named list mapping each conceptual adjustment term to
+#'   one raw predictor column or a complete categorical contrast block.
 #'
 #' @return A list with five components:
 #' \describe{
@@ -554,7 +587,8 @@ preprocess_data <- function(x, group_var, include_group_var,
                             select, alpha, df, center, acd_vars,
                             fp_powers, zero_vars, catzero_vars, spike_vars,
                             keep, force_max_fp, group_input_levels = NULL,
-                            group_levels_original = NULL) {
+                            group_levels_original = NULL,
+                            term_to_columns) {
   
   original_names <- colnames(x)
   
@@ -659,14 +693,35 @@ preprocess_data <- function(x, group_var, include_group_var,
   predictor_names <- setdiff(original_names, group_var)
   x_filtered      <- x_internal[, predictor_names, drop = FALSE]
   
-  # Developer note:
-  # group_var is removed from the adjustment matrix. If the user listed group_var
-  # in keep, remove it here; otherwise fit_mfp() would receive a keep variable
-  # that is no longer a column of x.
-  keep_filtered <- intersect(
-    if (is.null(keep)) character(0L) else keep,
-    predictor_names
+  # Remove the dedicated grouping variable from the adjustment-term lookup but
+  # retain every other conceptual term and its surviving raw columns.
+  adjustment_term_to_columns <- lapply(term_to_columns, function(cols) {
+    intersect(cols, predictor_names)
+  })
+  adjustment_term_to_columns <- adjustment_term_to_columns[
+    lengths(adjustment_term_to_columns) > 0L
+  ]
+  
+  adjustment_column_to_term <- stats::setNames(
+    rep(names(adjustment_term_to_columns), lengths(adjustment_term_to_columns)),
+    unlist(adjustment_term_to_columns, use.names = FALSE)
   )
+  
+  # Convert keep entries to conceptual adjustment terms. A raw member column of
+  # a grouped categorical term therefore retains the complete block.
+  keep_filtered <- character(0L)
+  if (!is.null(keep)) {
+    keep_filtered <- unique(vapply(keep, function(value) {
+      if (value %in% names(adjustment_term_to_columns)) {
+        value
+      } else if (value %in% names(adjustment_column_to_term)) {
+        unname(adjustment_column_to_term[[value]])
+      } else {
+        NA_character_
+      }
+    }, character(1L)))
+    keep_filtered <- keep_filtered[!is.na(keep_filtered)]
+  }
   
   # Developer note:
   # Slice per-variable parameters by name, not by position. This is safer after
@@ -794,7 +849,10 @@ preprocess_data <- function(x, group_var, include_group_var,
       )
     }
     
-    updated_params$keep <- c(keep_filtered, dummy_names)
+    # Treat all group dummy columns as one conceptual term. They are forced
+    # into the adjustment model together and removed together before stage 2.
+    adjustment_term_to_columns[[group_var]] <- dummy_names
+    updated_params$keep <- unique(c(keep_filtered, group_var))
   }
   
   list(
@@ -816,6 +874,7 @@ preprocess_data <- function(x, group_var, include_group_var,
       dummies        = group_dummies_mat
     ),
     dummy_names    = dummy_names,
+    term_to_columns = adjustment_term_to_columns,
     updated_params = updated_params
   )
 }
@@ -878,6 +937,8 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'   \code{fit_mfp()} for adjustment-model fitting.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
 #' @param control Fitting control list.
+#' @param term_to_columns Named lookup used by the grouped MFP core to map
+#'   each conceptual adjustment term to one or more raw design columns.
 #' @param verbose Logical. Passed directly to \code{fit_mfp()}.
 #'
 #' @return The fitted model object returned by \code{fit_mfp()}, which
@@ -906,20 +967,44 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
                                  xorder, ties, strata, nocenter, 
                                  min_saz_component_prop, use_ftest, control,
                                  force_max_fp, scale, has_offset,
+                                 term_to_columns,
                                  verbose = FALSE) {
   n_vars    <- ncol(x)
   x_names   <- colnames(x)
   
-  # Build scale_vec: real scale factor for predictor columns, 1 for group
-  # dummy columns. Dummy column names (e.g. "rx1", "svi1") are not present
-  # in names(scale) since scale is keyed by the original variable names from
-  # mfpi.default. The intersect() therefore naturally assigns scale = 1 to
-  # dummies, which is correct -- dummies are binary and should not be scaled.
+  # Build raw-column scale values first, then collapse all modelling settings
+  # to one value per conceptual term for the grouped MFP core. Group dummy and
+  # categorical contrast columns use scale 1.
   scale_vec <- setNames(rep(1, n_vars), x_names)
   if (!is.null(scale)) {
     shared <- intersect(x_names, names(scale))
     scale_vec[shared] <- scale[shared]
   }
+  
+  collapse <- function(values, setting) {
+    collapse_option_to_terms(values, term_to_columns, setting)
+  }
+  
+  df_term <- collapse(updated_params$df, "df")
+  center_term <- collapse(updated_params$center, "center")
+  select_term <- collapse(updated_params$select, "select")
+  alpha_term <- collapse(updated_params$alpha, "alpha")
+  acd_term <- collapse(updated_params$acd_vars, "acd_vars")
+  zero_term <- collapse(updated_params$zero_vars, "zero_vars")
+  catzero_term <- collapse(updated_params$catzero_vars, "catzero_vars")
+  spike_term <- collapse(updated_params$spike_vars, "spike_vars")
+  force_term <- collapse(updated_params$force_max_fp, "force_max_fp")
+  scale_term <- collapse(scale_vec, "scale")
+  
+  powers_term <- lapply(names(term_to_columns), function(term) {
+    cols <- term_to_columns[[term]]
+    if (term_uses_column_mapping(term, cols)) {
+      1
+    } else {
+      updated_params$fp_powers[[cols[[1L]]]]
+    }
+  })
+  names(powers_term) <- names(term_to_columns)
   
   fit_mfp(
     x             = x,
@@ -930,27 +1015,28 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     method        = ties,
     strata        = strata,
     nocenter      = nocenter,
-    scale         = scale_vec,
-    shift         = rep(0, n_vars),
+    scale         = scale_term,
+    shift         = stats::setNames(rep(0, length(term_to_columns)), names(term_to_columns)),
     ftest         = use_ftest,
     control       = control,
     family        = family,
     family_string = family_string,
     criterion     = criterion,
     xorder        = xorder,
-    df            = updated_params$df,
-    center        = updated_params$center,
-    select        = updated_params$select,
-    alpha         = updated_params$alpha,
+    df            = df_term,
+    center        = center_term,
+    select        = select_term,
+    alpha         = alpha_term,
     keep          = updated_params$keep,
-    powers        = updated_params$fp_powers,
-    acdx          = updated_params$acd_vars,
-    zero          = updated_params$zero_vars,
-    catzero       = updated_params$catzero_vars,
-    spike         = updated_params$spike_vars,
+    powers        = powers_term,
+    acdx          = acd_term,
+    zero          = zero_term,
+    catzero       = catzero_term,
+    spike         = spike_term,
     min_saz_component_prop = min_saz_component_prop, 
     saz_pre_resolved = TRUE,
-    force_max_fp  = force_max_fp,
+    force_max_fp  = force_term,
+    term_to_columns = term_to_columns,
     has_offset    = has_offset,
     verbose       = verbose
   )
@@ -1361,6 +1447,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     x                  = x,
     selected_vars      = selected_vars,
     group_dummy_names  = group_dummy_names,
+    group_dummy_term   = cat_info$group_var,
+    term_to_columns    = processed_data$term_to_columns,
     skip_adjustment    = skip_adjustment,
     scale              = scale,
     adj_fp_powers      = adj_fp_powers,
@@ -2292,27 +2380,32 @@ print_interaction_step3_summary <- function(var_winners,
 #'
 #' Rebuilding the full transformed adjustment matrix inside every
 #' \code{cont_vars} loop iteration is therefore unnecessary. This helper avoids
-#' that repeated work by transforming each source variable once. The companion
-#' helper \code{mfpi_make_xadj_current()} then assembles the current adjustment
-#' matrix by dropping whole source-variable blocks.
+#' that repeated work by transforming each conceptual adjustment term once.
+#' The companion helper \code{mfpi_make_xadj_current()} then assembles the
+#' current adjustment matrix by dropping complete term blocks.
 #'
-#' The cache is keyed by source-variable name, not by transformed column name.
-#' This is intentional. A single source variable can expand into several columns,
-#' for example FP2 columns, ACD-derived columns, or structural-zero indicator
-#' columns. Dropping columns by regular expression on transformed names is
-#' fragile; dropping by source-variable block is safe.
+#' The cache is keyed by conceptual term name, not by transformed column name.
+#' A continuous singleton may expand into FP, ACD, or structural-zero columns,
+#' while a categorical term contributes all of its contrast columns. Dropping
+#' by conceptual term preserves both kinds of block without relying on fragile
+#' transformed-name matching.
 #'
 #' @param x Numeric matrix. The processed predictor matrix used by MFPI
 #'   interaction fitting. It must contain all selected adjustment variables.
 #'   Columns are assumed to have already been shifted and scaled upstream.
 #'
-#' @param selected_vars Character vector. Variables selected by the adjustment
-#'   model before removing group dummy columns and before removing the current
+#' @param selected_vars Character vector of conceptual terms selected by the
+#'   adjustment model before excluding the group-dummy term and the current
 #'   \code{cont_var}.
 #'
 #' @param group_dummy_names Character vector or \code{NULL}. Names of internal
 #'   group dummy columns that must not be included in the adjustment matrix,
 #'   because the flex models add group dummies separately.
+#'
+#' @param group_dummy_term Character scalar naming the conceptual group-dummy
+#'   term when \code{include_group_var = TRUE}.
+#' @param term_to_columns Named list mapping each selected conceptual adjustment
+#'   term to its raw predictor columns.
 #'
 #' @param skip_adjustment Logical scalar. If \code{TRUE}, no adjustment blocks
 #'   are transformed and an empty cache is returned.
@@ -2350,12 +2443,11 @@ print_interaction_step3_summary <- function(var_winners,
 #' @return
 #' A named list with two elements:
 #' \describe{
-#'   \item{\code{selected_adj_vars}}{Character vector of selected adjustment
-#'     source variables after excluding group dummy columns.}
-#'   \item{\code{adj_blocks}}{Named list keyed by source-variable name. Each
-#'     element is either a numeric matrix containing all transformed columns for
-#'     that source variable, or \code{NULL} if the transformation produced no
-#'     columns.}
+#'   \item{\code{selected_adj_vars}}{Character vector of selected conceptual
+#'     adjustment terms after excluding the group-dummy term.}
+#'   \item{\code{adj_blocks}}{Named list keyed by conceptual term. Each
+#'     element contains every transformed column for that term. For a categorical
+#'     block this is the complete set of fixed-linear contrast columns.}
 #' }
 #'
 #' @keywords internal
@@ -2363,6 +2455,8 @@ print_interaction_step3_summary <- function(var_winners,
 mfpi_build_adjustment_block_cache <- function(x,
                                               selected_vars,
                                               group_dummy_names,
+                                              group_dummy_term,
+                                              term_to_columns,
                                               skip_adjustment,
                                               scale,
                                               adj_fp_powers,
@@ -2383,7 +2477,10 @@ mfpi_build_adjustment_block_cache <- function(x,
   # Adjustment variables are selected adjustment-model variables excluding the
   # group dummies. The current cont_var is not removed here; it is removed later
   # by mfpi_make_xadj_current(), because that removal changes per loop iteration.
-  selected_adj_vars <- setdiff(selected_vars, group_dummy_names)
+  selected_adj_vars <- setdiff(
+    selected_vars,
+    c(group_dummy_term, group_dummy_names)
+  )
   selected_adj_vars <- unique(
     selected_adj_vars[!is.na(selected_adj_vars) & nzchar(selected_adj_vars)]
   )
@@ -2404,70 +2501,68 @@ mfpi_build_adjustment_block_cache <- function(x,
   }
   
   for (v in selected_adj_vars) {
-    # Defensive checks. These are internal errors because mfpi.default() and
-    # fit_adjustment_model() should already have produced consistent objects.
-    if (!v %in% colnames(x)) {
-      stop(
-        paste0(
-          "! Internal error: selected adjustment variable `", v,
-          "` is not present in the predictor matrix."
-        ),
-        call. = FALSE
-      )
+    cols <- term_to_columns[[v]]
+    
+    # Work one conceptual term at a time. A categorical term contributes all of
+    # its raw contrast columns as one cached block; a continuous singleton uses
+    # its selected FP transformation and optional extensions.
+    x_one <- x[, cols, drop = FALSE]
+    
+    scale_cols <- stats::setNames(rep(1, length(cols)), cols)
+    if (!is.null(scale)) {
+      shared <- intersect(cols, names(scale))
+      scale_cols[shared] <- scale[shared]
+    }
+    x_one <- sweep(x_one, 2L, scale_cols, "*")
+    
+    grouped <- term_uses_column_mapping(v, cols)
+    power_cols <- if (grouped) {
+      stats::setNames(rep(list(1), length(cols)), cols)
+    } else {
+      stats::setNames(list(adj_fp_powers[[v]]), cols)
     }
     
-    if (!v %in% names(adj_fp_powers)) {
-      stop(
-        paste0(
-          "! Internal error: missing FP powers for selected adjustment variable `",
-          v, "`."
-        ),
-        call. = FALSE
-      )
+    center_cols <- if (!is.null(center)) center[cols] else {
+      stats::setNames(rep(FALSE, length(cols)), cols)
     }
     
-    # Work one source variable at a time. This is the key design choice: the
-    # resulting block can later be dropped as a unit when v == var_name.
-    x_one <- x[, v, drop = FALSE]
+    false_cols <- stats::setNames(rep(FALSE, length(cols)), cols)
+    spike_decision_cols <- stats::setNames(
+      rep(saz_decision_codes[["continuous_only"]], length(cols)),
+      cols
+    )
     
-    # x arrives shifted and scaled. For the final model-fitting design, restore
-    # the shifted-but-not-scaled scale, x + shift, before FP transformation.
-    # This mirrors the scale convention used elsewhere in MFPI fitting.
-    scale_v <- 1
-    if (!is.null(scale) && v %in% names(scale)) {
-      scale_v <- unname(scale[[v]])
-    }
-    
-    if (!is.numeric(scale_v) || length(scale_v) != 1L ||
-        is.na(scale_v) || !is.finite(scale_v) || scale_v == 0) {
-      stop(
-        paste0("! Invalid scale value for adjustment variable `", v, "`."),
-        call. = FALSE
-      )
-    }
-    
-    if (scale_v != 1) {
-      x_one[, v] <- x_one[, v] * scale_v
-    }
-    
-    # Pass one-variable named subsets to transform_matrix(). This preserves all
-    # transformation-specific behaviour for that source variable, including FP,
-    # ACD, zero, catzero, and spike-at-zero handling.
-    transformed <- transform_matrix(
-      x                  = x_one,
-      power_list         = adj_fp_powers[v],
-      center             = center[v],
-      acdx               = acd_vars[v],
-      zero               = adj_zero[v],
-      catzero            = adj_catzero[v],
-      spike              = adj_spike[v],
-      spike_decision     = adj_spike_decision[v],
-      keep_x_order       = FALSE,
-      acd_parameter_list = if (!is.null(adj_acd_parameter)) {
-        adj_acd_parameter[v]
+    if (!grouped) {
+      false_cols[cols] <- FALSE
+      acd_cols <- stats::setNames(isTRUE(acd_vars[[v]]), cols)
+      zero_cols <- stats::setNames(isTRUE(adj_zero[[v]]), cols)
+      catzero_cols <- stats::setNames(isTRUE(adj_catzero[[v]]), cols)
+      spike_cols <- stats::setNames(isTRUE(adj_spike[[v]]), cols)
+      spike_decision_cols[cols] <- adj_spike_decision[[v]]
+      acd_parameter_cols <- if (!is.null(adj_acd_parameter)) {
+        stats::setNames(list(adj_acd_parameter[[v]]), cols)
       } else {
         NULL
-      },
+      }
+    } else {
+      acd_cols <- false_cols
+      zero_cols <- false_cols
+      catzero_cols <- false_cols
+      spike_cols <- false_cols
+      acd_parameter_cols <- stats::setNames(rep(list(NULL), length(cols)), cols)
+    }
+    
+    transformed <- transform_matrix(
+      x                  = x_one,
+      power_list         = power_cols,
+      center             = center_cols,
+      acdx               = acd_cols,
+      zero               = zero_cols,
+      catzero            = catzero_cols,
+      spike              = spike_cols,
+      spike_decision     = spike_decision_cols,
+      keep_x_order       = FALSE,
+      acd_parameter_list = acd_parameter_cols,
       reset_zero         = FALSE,
       check_binary       = TRUE
     )

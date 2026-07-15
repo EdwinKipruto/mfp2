@@ -233,8 +233,9 @@ fit_full_linear_reference <- function(x,
 #'
 #' A predictor may correspond to one or more design-matrix columns. All columns
 #' belonging to one conceptual term are removed together, and the test degrees
-#' of freedom equal the number of removed columns. If that difference is not positive, or if a valid
-#' likelihood-ratio statistic cannot be formed, the predictor receives
+#' of freedom equal the fitted rank difference between the full and reduced
+#' models. If that difference is not positive, or if a valid likelihood-ratio
+#' statistic cannot be formed, the predictor receives
 #' \code{NA} as its ordering p-value and is placed after predictors with valid
 #' p-values. No predictor is dropped from the returned order.
 #'
@@ -316,14 +317,10 @@ order_variables_by_significance <- function(xorder,
       fast = TRUE
     )
     
-    # Preserve the historical fitted-df difference for singleton-only calls.
-    # With a non-trivial term mapping, the joint test uses one degree of freedom per
-    # removed raw design column.
-    lrt_df <- if (has_mapped_terms) {
-      length(drop_columns)
-    } else {
-      full_reference$df - reduced_fit$df
-    }
+    # Use the fitted rank contribution of the omitted conceptual term. Raw
+    # design-block width can exceed this difference when one or more grouped
+    # columns are aliased or otherwise non-estimable in the fitted model.
+    lrt_df <- full_reference$df - reduced_fit$df
     lrt_statistic <- 2 * (full_reference$logl - reduced_fit$logl)
     
     # A valid nested-model likelihood-ratio test requires a positive df

@@ -31,9 +31,11 @@ prediction because all group-specific functions are evaluated at each
 supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
 \code{"response"}), \code{newdata} must also contain the grouping variable
 and all selected adjustment variables required by the term-specific
-interaction model. For formula fits, supply original factor-valued columns;
-for default-interface grouped terms, supply every raw member column. Group
-and factor values must use levels observed during fitting.}
+interaction model. Other predictors from the original formula may be
+omitted. For formula fits, supply original factor-valued columns; for
+default-interface grouped terms, supply every raw member column. Group
+values and factor values used by selected terms must use levels observed
+during fitting.}
 
 \item{terms}{Character vector of continuous variables to predict. If
 \code{NULL}, terms are selected from the requested \code{model} scope. See

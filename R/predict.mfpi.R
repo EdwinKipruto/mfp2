@@ -475,9 +475,11 @@ build_group_fp_basis <- function(cont_mat,
 #'   supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
 #'   \code{"response"}), \code{newdata} must also contain the grouping variable
 #'   and all selected adjustment variables required by the term-specific
-#'   interaction model. For formula fits, supply original factor-valued columns;
-#'   for default-interface grouped terms, supply every raw member column. Group
-#'   and factor values must use levels observed during fitting.
+#'   interaction model. Other predictors from the original formula may be
+#'   omitted. For formula fits, supply original factor-valued columns; for
+#'   default-interface grouped terms, supply every raw member column. Group
+#'   values and factor values used by selected terms must use levels observed
+#'   during fitting.
 #' @param terms Character vector of continuous variables to predict. If
 #'   \code{NULL}, terms are selected from the requested \code{model} scope. See
 #'   \emph{Choosing terms and model scope}.
@@ -1505,6 +1507,68 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 # Ordinary link/response prediction -------------------------------------------
 # -----------------------------------------------------------------------------
 
+#' Resolve the Adjustment Design Required by One MFPI Interaction Model
+#'
+#' @keywords internal
+#' @noRd
+mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
+  coefficient_groups <- fit_result$coefficient_groups
+  if (is.null(coefficient_groups)) {
+    coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
+  }
+  mfpi_validate_coefficient_groups(coefficient_groups, term = term)
+  
+  group_labels <- names(coefficient_groups)
+  if (is.null(group_labels) || anyNA(group_labels) || any(!nzchar(group_labels))) {
+    group_labels <- as.character(seq_along(coefficient_groups) - 1L)
+    names(coefficient_groups) <- group_labels
+  }
+  
+  adj_model <- object$adjustment_model
+  adj_terms <- character(0L)
+  if (!is.null(adj_model)) {
+    adj_terms <- get_selected_variables(adj_model)
+  }
+  
+  adjustment_lookup <- if (!is.null(adj_model$term_to_columns)) {
+    adj_model$term_to_columns
+  } else if (!is.null(object$adjustment_term_to_columns)) {
+    object$adjustment_term_to_columns
+  } else {
+    stats::setNames(as.list(adj_terms), adj_terms)
+  }
+  
+  group_var <- object$group_var
+  group_dummy_names <- paste0(group_var, group_labels[-1L])
+  adj_terms <- setdiff(adj_terms, c(term, group_var, group_dummy_names))
+  adj_terms <- unique(adj_terms[!is.na(adj_terms) & nzchar(adj_terms)])
+  
+  missing_terms <- setdiff(adj_terms, names(adjustment_lookup))
+  if (length(missing_terms) > 0L) {
+    stop(
+      paste0(
+        "The stored adjustment term-to-column lookup is missing selected term(s): ",
+        paste(missing_terms, collapse = ", "), "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  raw_adj_cols <- unique(unlist(
+    adjustment_lookup[adj_terms],
+    use.names = FALSE
+  ))
+  
+  list(
+    coefficient_groups = coefficient_groups,
+    group_labels = group_labels,
+    adjustment_model = adj_model,
+    adjustment_lookup = adjustment_lookup,
+    adjustment_terms = adj_terms,
+    raw_adjustment_columns = raw_adj_cols
+  )
+}
+
 #' Build the Ordinary Interaction-Model Design Matrix
 #'
 #' Reconstructs the numeric design matrix required for ordinary
@@ -1523,8 +1587,9 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 #' be applied explicitly.
 #'
 #' @section New-data path:
-#' For supplied \code{newdata}, the helper first reconstructs formula terms
-#' and factor contrasts when required, then maps the grouping variable to
+#' For supplied \code{newdata}, the helper first reconstructs only formula
+#' terms and factor contrasts required by the stored interaction model, then
+#' maps the grouping variable to
 #' internal levels, creates group dummies, rebuilds the group-specific FP
 #' interaction block, and masks out-of-group blocks row by row. Selected
 #' adjustment terms are expanded through the stored term-to-column lookup so
@@ -1615,6 +1680,21 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   coef_names <- names(coef_vec)
   target_cols <- setdiff(coef_names, "(Intercept)")
   
+  # Resolve the selected adjustment recipe before formula reconstruction.
+  # Prediction should evaluate only formula expressions needed by this stored
+  # term-specific interaction model, not every predictor offered at fit time.
+  prediction_spec <- mfpi_prediction_adjustment_spec(
+    object = object,
+    term = term,
+    fit_result = fit_result
+  )
+  coefficient_groups <- prediction_spec$coefficient_groups
+  group_labels <- prediction_spec$group_labels
+  adj_model <- prediction_spec$adjustment_model
+  adjustment_lookup <- prediction_spec$adjustment_lookup
+  adj_terms <- prediction_spec$adjustment_terms
+  raw_adj_cols <- prediction_spec$raw_adjustment_columns
+  
   n_raw <- if (is.data.frame(newdata)) nrow(newdata) else NROW(newdata)
   if (n_raw == 0L) {
     stop("`newdata` must contain at least one row.", call. = FALSE)
@@ -1630,13 +1710,28 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # recipe before numeric coercion. This rebuilds formula-derived columns such
   # as factor dummies using stored terms, contrasts, and xlevels, while preserving
   # raw group and continuous variables needed for MFPI-specific reconstruction.
+  required_input_columns <- unique(c(term, object$group_var, raw_adj_cols))
+  
   if (!isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
       is.data.frame(newdata)) {
     newdata <- mfpi_prepare_formula_newdata(
       object = object,
-      newdata = newdata
+      newdata = newdata,
+      terms = unique(c(term, object$group_var, adj_terms)),
+      required_columns = required_input_columns
     )
+  }
+  
+  # Ignore extra supplied columns before numeric validation. In particular,
+  # missing values or unseen levels in formula predictors that are absent from
+  # this selected interaction model must not affect prediction.
+  if (is.data.frame(newdata)) {
+    keep_input <- intersect(required_input_columns, names(newdata))
+    newdata <- newdata[, keep_input, drop = FALSE]
+  } else if (is.matrix(newdata) && !is.null(colnames(newdata))) {
+    keep_input <- intersect(required_input_columns, colnames(newdata))
+    newdata <- newdata[, keep_input, drop = FALSE]
   }
   
   # Local conversion helper. At this point, formula-interface data frames have
@@ -1778,18 +1873,6 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
   }
   
-  coefficient_groups <- fit_result$coefficient_groups
-  if (is.null(coefficient_groups)) {
-    coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
-  }
-  mfpi_validate_coefficient_groups(coefficient_groups, term = term)
-  
-  group_labels <- names(coefficient_groups)
-  if (is.null(group_labels) || anyNA(group_labels) || any(!nzchar(group_labels))) {
-    group_labels <- as.character(seq_along(coefficient_groups) - 1L)
-    names(coefficient_groups) <- group_labels
-  }
-  
   group_levels_numeric <- suppressWarnings(as.numeric(group_labels))
   if (anyNA(group_levels_numeric)) {
     stop(
@@ -1861,29 +1944,6 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # while prediction data contain the raw design columns. Expand selected terms
   # through term_to_columns so categorical contrast blocks are reconstructed and
   # centered together exactly as they were during MFPI fitting.
-  adj_model <- object$adjustment_model
-  adj_terms <- character(0L)
-  if (!is.null(adj_model)) {
-    adj_terms <- get_selected_variables(adj_model)
-  }
-  
-  adjustment_lookup <- if (!is.null(adj_model$term_to_columns)) {
-    adj_model$term_to_columns
-  } else if (!is.null(object$adjustment_term_to_columns)) {
-    object$adjustment_term_to_columns
-  } else {
-    stats::setNames(as.list(adj_terms), adj_terms)
-  }
-  
-  group_dummy_names <- paste0(group_var, group_labels[-1L])
-  adj_terms <- setdiff(adj_terms, c(term, group_var, group_dummy_names))
-  adj_terms <- unique(adj_terms[!is.na(adj_terms) & nzchar(adj_terms)])
-  
-  raw_adj_cols <- unique(unlist(
-    adjustment_lookup[adj_terms],
-    use.names = FALSE
-  ))
-  
   # Formula newdata has already been expanded with the fit-time terms,
   # contrasts, and factor levels. Every member column of each selected grouped
   # adjustment term must therefore be present before transformation.
@@ -1931,61 +1991,24 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
            call. = FALSE)
     }
     
-    term_flag <- function(field, term_name, default) {
-      val <- adj_model[[field]]
-      if (is.null(val) || is.null(names(val)) || !term_name %in% names(val)) {
-        return(default)
-      }
-      val[[term_name]]
-    }
-    
-    power_cols <- list()
-    acd_cols <- logical(0L)
-    zero_cols <- logical(0L)
-    catzero_cols <- logical(0L)
-    spike_cols <- logical(0L)
-    spike_decision_cols <- integer(0L)
-    acd_parameter_cols <- list()
-    
-    for (adj_term in adj_terms) {
-      cols <- adjustment_lookup[[adj_term]]
-      grouped <- term_uses_column_mapping(adj_term, cols)
-      
-      for (col in cols) {
-        power_cols[[col]] <- if (grouped) 1 else powers_term[[adj_term]]
-        acd_cols[col] <- if (grouped) FALSE else
-          isTRUE(term_flag("acd", adj_term, FALSE))
-        zero_cols[col] <- if (grouped) FALSE else
-          isTRUE(term_flag("zero", adj_term, FALSE))
-        catzero_cols[col] <- if (grouped) FALSE else
-          isTRUE(term_flag("catzero", adj_term, FALSE))
-        spike_cols[col] <- if (grouped) FALSE else
-          isTRUE(term_flag("spike", adj_term, FALSE))
-        spike_decision_cols[col] <- if (grouped) {
-          saz_decision_codes[["continuous_only"]]
-        } else {
-          as.integer(term_flag(
-            "spike_dec", adj_term,
-            saz_decision_codes[["continuous_only"]]
-          ))
-        }
-        acd_parameter_cols[col] <- list(
-          if (!grouped && !is.null(adj_model$acd_parameter)) {
-            adj_model$acd_parameter[[adj_term]]
-          } else {
-            NULL
-          }
-        )
-      }
-    }
-    
-    power_cols <- power_cols[raw_adj_cols]
-    acd_cols <- acd_cols[raw_adj_cols]
-    zero_cols <- zero_cols[raw_adj_cols]
-    catzero_cols <- catzero_cols[raw_adj_cols]
-    spike_cols <- spike_cols[raw_adj_cols]
-    spike_decision_cols <- spike_decision_cols[raw_adj_cols]
-    acd_parameter_cols <- acd_parameter_cols[raw_adj_cols]
+    expanded_adjustment <- expand_term_metadata_to_columns(
+      term_to_columns = adjustment_lookup[adj_terms],
+      powers = powers_term,
+      raw_columns = raw_adj_cols,
+      acdx = adj_model$acd,
+      zero = adj_model$zero,
+      catzero = adj_model$catzero,
+      spike = adj_model$spike,
+      spike_decision = adj_model$spike_dec,
+      acd_parameter = adj_model$acd_parameter
+    )
+    power_cols <- expanded_adjustment$powers
+    acd_cols <- expanded_adjustment$acdx
+    zero_cols <- expanded_adjustment$zero
+    catzero_cols <- expanded_adjustment$catzero
+    spike_cols <- expanded_adjustment$spike
+    spike_decision_cols <- expanded_adjustment$spike_decision
+    acd_parameter_cols <- expanded_adjustment$acd_parameter
     
     x_trans <- transform_matrix(
       x = x_plus,
@@ -2765,13 +2788,19 @@ mfpi_fit_has_offset <- function(fit_obj) {
 #'
 #' @param object Object of class \code{"mfpi"} containing formula metadata.
 #' @param newdata Raw data frame supplied to \code{predict.mfpi()}.
+#' @param terms Optional conceptual terms required by the selected interaction
+#'   model. When supplied, unrelated original formula expressions are not
+#'   evaluated.
+#' @param required_columns Optional raw or model-matrix columns that must be
+#'   present after reconstruction.
 #'
 #' @return A data frame containing the original raw columns plus any formula-
 #'   derived design columns that were not already present.
 #'
 #' @keywords internal
 #' @noRd
-mfpi_prepare_formula_newdata <- function(object, newdata) {
+mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
+                                         required_columns = NULL) {
   if (!is.data.frame(newdata)) {
     return(newdata)
   }
@@ -2791,12 +2820,53 @@ mfpi_prepare_formula_newdata <- function(object, newdata) {
   
   xcontrasts <- object$formula_contrasts
   
+  if (is.null(terms)) {
+    active_terms <- terms_obj
+  } else {
+    terms <- unique(as.character(terms))
+    terms <- terms[!is.na(terms) & nzchar(terms)]
+    if (length(terms) == 0L) {
+      return(newdata)
+    }
+    active_terms <- prediction_formula_terms(object, terms)
+  }
+  
+  active_factors <- attr(active_terms, "factors")
+  active_frame_variables <- if (is.null(active_factors)) {
+    character(0L)
+  } else {
+    rownames(active_factors)[rowSums(active_factors != 0) > 0L]
+  }
+  active_xlevels <- xlevels[intersect(names(xlevels), active_frame_variables)]
+  
+  expected_cols <- required_columns
+  if (is.null(expected_cols)) {
+    if (is.null(terms)) {
+      expected_cols <- object$formula_design_columns
+    } else {
+      lookup <- object$formula_term_to_columns
+      if (is.null(lookup)) lookup <- object$adjustment_term_to_columns
+      if (!is.null(lookup)) {
+        expected_cols <- unique(unlist(
+          lookup[intersect(terms, names(lookup))],
+          use.names = FALSE
+        ))
+      }
+    }
+  }
+  expected_cols <- unique(as.character(expected_cols))
+  expected_cols <- expected_cols[!is.na(expected_cols) & nzchar(expected_cols)]
+  if (length(expected_cols) > 0L &&
+      all(expected_cols %in% names(newdata))) {
+    return(newdata)
+  }
+  
   mf <- tryCatch(
     stats::model.frame(
-      terms_obj,
+      active_terms,
       data = newdata,
       na.action = stats::na.pass,
-      xlev = xlevels,
+      xlev = active_xlevels,
       drop.unused.levels = FALSE
     ),
     error = function(e) {
@@ -2810,15 +2880,19 @@ mfpi_prepare_formula_newdata <- function(object, newdata) {
     }
   )
   
+  active_contrasts <- xcontrasts[
+    intersect(names(xcontrasts), names(mf))
+  ]
+  
   mm <- tryCatch(
     {
-      if (is.null(xcontrasts)) {
-        stats::model.matrix(terms_obj, data = mf)
+      if (length(active_contrasts) == 0L) {
+        stats::model.matrix(active_terms, data = mf)
       } else {
         stats::model.matrix(
-          terms_obj,
+          active_terms,
           data = mf,
-          contrasts.arg = xcontrasts
+          contrasts.arg = active_contrasts
         )
       }
     },
@@ -2849,14 +2923,13 @@ mfpi_prepare_formula_newdata <- function(object, newdata) {
     }
   }
   
-  expected_cols <- object$formula_design_columns
-  if (!is.null(expected_cols) && length(expected_cols) > 0L) {
+  if (length(expected_cols) > 0L) {
     missing_cols <- setdiff(expected_cols, names(out))
     if (length(missing_cols) > 0L) {
       stop(
         paste0(
-          "`newdata` could not be expanded to the fit-time formula design. ",
-          "Missing design column(s): ",
+          "`newdata` could not be expanded to the selected interaction-model design. ",
+          "Missing required column(s): ",
           paste(missing_cols, collapse = ", "),
           "."
         ),

@@ -16,6 +16,14 @@
 
 * Added `plot.mfp2()`, an S3 `plot()` method for `mfp2` objects. The method provides partial predictor and contrast plots and is now the recommended interface for visualizing fitted `mfp2` models. The existing `fracplot()` function is retained as an alias for backward compatibility.
 
+## Subsetting and factor handling
+
+* Updated `mfp2.formula()` so that `subset` expressions are evaluated exactly once using standard formula semantics: names are resolved from `data` first and then from the formula environment.
+
+* Formula methods now construct the complete model frame once and retain requested rows directly. This avoids non-standard-evaluation failures involving internal row-index variables and prevents formula expressions, offsets, and strata terms from being evaluated a second time.
+
+* For formula fits with a non-`NULL` subset, unused factor levels are dropped and default unordered or ordered contrasts are regenerated from the retained levels. Factor-specific custom contrasts are preserved when all levels remain; if subsetting removes a level from a factor with an attached custom contrast, fitting stops with a targeted error rather than silently changing the coding.
+
 ## Bug fixes
 
 * Fixed an issue in `predict.mfp2()` when `type = "response"` was used with binomial-family models.

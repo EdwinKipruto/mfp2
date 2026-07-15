@@ -25,12 +25,12 @@
 #'
 #' For full-model predictions, standard errors are requested with `se.fit = TRUE`
 #' and are computed by the underlying `predict.glm()` or `predict.coxph()` method.
-#' For Cox models, this method always calls `predict.coxph()` with
-#' `reference = "zero"`. The transformed design matrix in `mfp2` has already been
-#' centered where required, so asking `predict.coxph()` to subtract an additional
-#' sample or strata reference would shift the covariate contribution incorrectly.
-#' Cox offsets retain the native `predict.coxph()` convention: the prediction
-#' offset is expressed relative to the mean offset in the fitting data.
+#' Cox relative predictions expose the same covariate-reference choices as
+#' `predict.coxph()`, while retaining `reference = "zero"` as the default used by
+#' earlier `mfp2` releases. Absolute Cox predictions use the fitted Cox baseline
+#' hazard and deliberately do not accept a covariate `reference`, because
+#' `predict.coxph()` fixes its own internally consistent sample reference on that
+#' calculation path.
 #'
 #' For `type = "terms"`, standard errors are computed from the fitted covariance
 #' matrix for the columns belonging to each selected variable. If
@@ -44,6 +44,79 @@
 #' computed from the transformed difference. These standard errors are
 #' conditional on the final selected model and do not include model-selection
 #' uncertainty.
+#'
+#' @section Cox prediction scales and covariate references:
+#' A Cox model describes how covariates multiply an otherwise unspecified
+#' baseline hazard. Consequently, `type = "lp"` and `type = "risk"` are
+#' **relative** quantities:
+#' \itemize{
+#'   \item `type = "lp"` returns the relative log-hazard, also called the linear
+#'     predictor.
+#'   \item `type = "risk"` returns `exp(lp)`, a relative hazard or risk score.
+#' }
+#' Neither output is an absolute hazard, event probability, or survival
+#' probability. Their numerical origin is selected with `reference`:
+#' \itemize{
+#'   \item `"zero"` uses the transformed `mfp2` design values exactly as
+#'     reconstructed. This is the default and keeps the full-model linear
+#'     predictor aligned with `mfp2`'s independently calculated term
+#'     contributions.
+#'   \item `"sample"` subtracts the column means stored by the fitted `coxph`
+#'     object before calculating the covariate contribution.
+#'   \item `"strata"` subtracts weighted training-data means separately within
+#'     each fitted stratum. In an unstratified model this is effectively the
+#'     sample reference.
+#' }
+#' Changing from `"zero"` to `"sample"` adds the same constant to every `lp`
+#' and multiplies every `risk` by the same constant. Differences in `lp` and
+#' ratios of `risk` are therefore unchanged. With `reference = "strata"`, the
+#' constant is stratum-specific, so this invariance applies to comparisons made
+#' within the same stratum. Cox models do not define a common baseline hazard
+#' across different strata.
+#'
+#' The reference may matter visibly when a fitted transformed column has a
+#' nonzero Cox-model mean, most commonly when a variable was fitted with
+#' `center = FALSE`, for binary or zero-handled columns, or when a custom
+#' `nocenter` convention was used. Even when fitted values differ only by a
+#' constant, standard errors from `predict.coxph(se.fit = TRUE)` can differ
+#' because they are calculated from the reference-adjusted design row.
+#'
+#' Offsets use a separate convention. Regardless of `reference`,
+#' `predict.coxph()` expresses a prediction offset relative to the mean offset
+#' in the training data. The `reference` argument controls covariate centering;
+#' it does not control offset centering.
+#'
+#' @section Absolute Cox predictions:
+#' `type = "expected"` and `type = "survival"` are supported. They use the
+#' genuine baseline-cumulative-hazard machinery retained in the underlying
+#' fitted `coxph` object, including its response, risk sets, strata, residuals,
+#' coefficients, covariance matrix, tie method, and offsets.
+#'
+#' For an ordinary right-censored response `Surv(time, status)`,
+#' `type = "expected"` returns the predicted cumulative hazard up to `time`,
+#' and `type = "survival"` returns `exp(-expected)`, the corresponding survival
+#' probability. For a counting-process response `Surv(start, stop, status)`, the
+#' prediction applies to the supplied interval.
+#'
+#' Absolute predictions with `newdata` require follow-up times or intervals in
+#' addition to covariates. All required information is supplied through
+#' `newdata`; there is no separate response argument. For a formula-interface
+#' fit, include the variables used on the left-hand side of the original formula
+#' and `mfp2` reconstructs the `Surv` response automatically. For any fit,
+#' including a matrix-interface fit, `newdata` may instead contain exactly one
+#' column that is itself a `Surv` object. Wrap that matrix-like column in `I()`
+#' when constructing a data frame so that it remains a single column, for
+#' example `data.frame(x = xnew, y = I(Surv(time, status)))`. The response
+#' column is used only to determine the prediction time or interval; predictor
+#' transformation still uses the ordinary fitted covariate columns. With
+#' `newdata = NULL`, the fitted response is used directly.
+#'
+#' The Cox baseline-hazard path always uses the sample reference internally.
+#' Supplying `reference` together with `type = "expected"` or
+#' `type = "survival"` is therefore rejected with an informative error instead
+#' of being silently ignored. The same argument is also rejected for `mfp2`'s
+#' own `type = "terms"` and `type = "contrasts"`; use `ref` for contrast
+#' reference values.
 #'
 #' @section Terms prediction:
 #' If `type = "terms"`, this function computes partial linear predictors for
@@ -82,8 +155,12 @@
 #'
 #' @param object A fitted object of class `mfp2`.
 #' @param newdata Optional matrix or data frame containing variables for
-#'   prediction. Column names must identify the original predictors used by the
-#'   fit. Formula-created predictors are reconstructed when possible.
+#'   prediction. Only predictors retained in the final model are required for
+#'   relative Cox, GLM, term, or contrast predictions. Cox predictions with
+#'   `type = "expected"` or `type = "survival"` must also contain the
+#'   follow-up response: provide the original response-side variables for a
+#'   formula fit, or include exactly one `Surv` column in `newdata`. Formula-
+#'   created predictors are reconstructed when possible.
 #' @param type Prediction type. The default is `"link"` for GLM models and
 #'   `"lp"` for Cox models. Use `"terms"` for variable-specific partial
 #'   predictors and `"contrasts"` for variable-specific contrasts.
@@ -118,12 +195,19 @@
 #'   reconstructed automatically from \code{newdata} when the original strata
 #'   variable(s) are present.
 #' @param newoffset Optional numeric vector of offsets for prediction when the
-#'   fitted model used an offset and `newdata` is supplied.
+#'   fitted model used an offset and `newdata` is supplied. Prediction offsets
+#'   are centered by `predict.coxph()` at the mean training offset independently
+#'   of the covariate `reference`.
 #' @param nseq Positive integer giving the number of equally spaced values used
 #'   when `terms_seq = "equidistant"`.
 #' @param add_intercept Logical scalar. For `type = "terms"`, controls whether
 #'   the model intercept is included in GLM term values and term standard errors.
 #'   It has no effect for contrasts and does not apply to Cox models.
+#' @param reference Character scalar controlling the covariate origin for Cox
+#'   `type = "lp"` and `type = "risk"` predictions. One of `"zero"`,
+#'   `"sample"`, or `"strata"`; the default is `"zero"`. It is not available
+#'   for GLM predictions, `mfp2` term/contrast predictions, or Cox
+#'   expected-event/survival predictions.
 #' @param ... Further arguments passed to `predict.glm()` or `predict.coxph()`
 #'   for full-model predictions.
 #'
@@ -184,6 +268,40 @@
 #'   ref = list(race = "A")
 #' )
 #'
+#' # Cox lp/risk predictions are relative; reference changes their origin.
+#' data("gbsg")
+#' fit_cox <- mfp2(
+#'   survival::Surv(rectime, censrec) ~ age + nodes,
+#'   data = gbsg,
+#'   family = "cox",
+#'   df = 1,
+#'   select = 1,
+#'   alpha = 1,
+#'   verbose = FALSE
+#' )
+#' profiles <- gbsg[1:3, c("age", "nodes")]
+#' predict(fit_cox, profiles, type = "lp")
+#' predict(fit_cox, profiles, type = "lp", reference = "sample")
+#'
+#' # Absolute predictions also need the follow-up time from the response side.
+#' absolute_profiles <- gbsg[1:3, c("rectime", "censrec", "age", "nodes")]
+#' predict(fit_cox, absolute_profiles, type = "survival")
+#' predict(fit_cox, absolute_profiles, type = "expected")
+#'
+#' # After matrix-interface fitting, embed one Surv column in newdata.
+#' x_cox <- as.matrix(gbsg[, c("age", "nodes")])
+#' y_cox <- survival::Surv(gbsg$rectime, gbsg$censrec)
+#' fit_cox_matrix <- mfp2(
+#'   x_cox, y_cox, family = "cox", df = 1, select = 1, alpha = 1,
+#'   verbose = FALSE
+#' )
+#' matrix_profiles <- data.frame(
+#'   age = gbsg$age[1:3],
+#'   nodes = gbsg$nodes[1:3]
+#' )
+#' matrix_profiles$followup <- I(y_cox[1:3])
+#' predict(fit_cox_matrix, matrix_profiles, type = "survival")
+#'
 #' }
 #'
 #' @seealso
@@ -203,7 +321,29 @@ predict.mfp2 <- function(object,
                          newoffset = NULL, 
                          nseq = 100,
                          add_intercept = TRUE,
+                         reference = c("zero", "sample", "strata"),
                          ...) {
+  
+  # Record whether the caller explicitly supplied a covariate reference before
+  # the default promise is evaluated. This distinction is essential for
+  # expected/survival predictions, where the underlying Cox method fixes its own
+  # sample reference and an explicit user value would otherwise be misleading.
+  reference_supplied <- !missing(reference)
+  
+  # `newy` was considered during development but is intentionally not part of
+  # the public API. Absolute Cox prediction data belong in `newdata`, matching
+  # the data-oriented convention used by predict.coxph(). Catch legacy draft
+  # calls here so the argument cannot disappear silently into `...`.
+  dots_call <- match.call(expand.dots = FALSE)[["..."]]
+  dots_names <- names(as.list(dots_call))
+  if (!is.null(dots_names) && "newy" %in% dots_names) {
+    stop(
+      "'newy' has been removed. Supply the Cox prediction response in ",
+      "'newdata': include the original formula response variables or one ",
+      "Surv column.",
+      call. = FALSE
+    )
+  }
   
   terms_seq <- match.arg(terms_seq)
   
@@ -231,6 +371,29 @@ predict.mfp2 <- function(object,
     type <- ifelse(object$family_string == "cox", "lp", "link")
   }
   
+  if (!is.character(type) || length(type) != 1L || is.na(type)) {
+    stop("'type' must be a single non-missing character value.", call. = FALSE)
+  }
+  
+  # Cox prediction types are resolved here rather than left to
+  # predict.coxph(). This lets mfp2 distinguish its own term/contrast paths from
+  # the relative and absolute full-model paths and report argument conflicts
+  # before any transformed data are constructed.
+  cox_reference <- NULL
+  if (identical(object$family_string, "cox")) {
+    type <- mfp2_match_cox_prediction_type(type)
+    cox_reference <- mfp2_validate_cox_reference(
+      type = type,
+      reference = reference,
+      reference_supplied = reference_supplied
+    )
+  } else if (reference_supplied) {
+    stop(
+      "'reference' is only available for Cox models.",
+      call. = FALSE
+    )
+  }
+  
   selected_internal_terms <- get_selected_variable_names(object)
   
   if (is.null(terms)) {
@@ -249,8 +412,35 @@ predict.mfp2 <- function(object,
   
   newdata_raw <- newdata
   
+  # Absolute Cox predictions with newdata need a Surv response because
+  # predict.coxph() evaluates the cumulative baseline hazard at the supplied
+  # time or interval. Reconstruct it before formula newdata are reduced to the
+  # active predictor design columns.
+  cox_prediction_response <- if (
+    !is.null(newdata_raw) &&
+    identical(object$family_string, "cox") &&
+    type %in% c("expected", "survival")
+  ) {
+    mfp2_reconstruct_cox_prediction_response(
+      object = object,
+      newdata = newdata_raw
+    )
+  } else {
+    NULL
+  }
+  
+  prediction_terms <- if (type %in% c("terms", "contrasts")) {
+    intersect(terms, selected_internal_terms)
+  } else {
+    selected_internal_terms
+  }
+  
   if (!is.null(newdata)) {
-    newdata <- reconstruct_formula_newdata(object, newdata)
+    newdata <- reconstruct_formula_newdata(
+      object,
+      newdata,
+      terms = prediction_terms
+    )
   }
   
   if (!is.null(newdata) && anyNA(newdata)) {
@@ -367,6 +557,7 @@ predict.mfp2 <- function(object,
         x_trafo <- as.matrix(prepare_newdata_for_predict(
           object,
           source_block,
+          terms = t,
           apply_pre = source_needs_preprocessing,
           allow_missing_predictors = TRUE,
           check_binary = FALSE
@@ -405,6 +596,7 @@ predict.mfp2 <- function(object,
           x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             reference_block,
+            terms = t,
             apply_pre = TRUE,
             allow_missing_predictors = TRUE,
             check_binary = FALSE
@@ -431,12 +623,17 @@ predict.mfp2 <- function(object,
           x_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_seq,
+            terms = t,
             apply_pre = FALSE,
             allow_missing_predictors = TRUE
           ))
         } else {
           x_seq <- if (!is.null(newdata)) {
-            newdata[, t, drop = FALSE] + object$transformations[t, "shift"]
+            matrix(
+              newdata[[t]] + object$transformations[t, "shift"],
+              ncol = 1L,
+              dimnames = list(NULL, t)
+            )
           } else {
             object$x_original[, t, drop = FALSE]
           }
@@ -444,6 +641,7 @@ predict.mfp2 <- function(object,
           x_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_seq,
+            terms = t,
             apply_pre = FALSE,
             allow_missing_predictors = TRUE
           ))
@@ -492,6 +690,7 @@ predict.mfp2 <- function(object,
           x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_ref,
+            terms = t,
             apply_pre = FALSE,
             check_binary = FALSE,
             reset_zero = FALSE,
@@ -570,93 +769,571 @@ predict.mfp2 <- function(object,
     newdata <- prepare_newdata_for_predict(
       object,
       newdata,
+      terms = selected_internal_terms,
       strata = strata,
       offset = newoffset,
       check_binary = FALSE
     )
     
-    # Strip "mfp2" from the class vector so stats::predict() dispatches to
-    # predict.coxph() or predict.glm() instead of recursing into predict.mfp2().
+    if (!is.null(cox_prediction_response)) {
+      newdata <- mfp2_attach_cox_prediction_response(
+        object = object,
+        newdata = newdata,
+        response = cox_prediction_response
+      )
+    }
+    
+    if (identical(object$family_string, "cox")) {
+      return(
+        mfp2_predict_cox_base(
+          object = object,
+          newdata = newdata,
+          type = type,
+          se.fit = se.fit,
+          reference = cox_reference,
+          ...
+        )
+      )
+    }
+    
+    # Strip "mfp2" so S3 dispatch reaches predict.glm() rather than recursively
+    # entering predict.mfp2().
     obj_base <- object
     class(obj_base) <- setdiff(class(obj_base), "mfp2")
     
-    if (object$family_string == "cox") {
-      # Cox reference convention: mfp2 stores and predicts on an already
-      # prepared design scale. Use reference = "zero" so predict.coxph() does
-      # not subtract its own sample or stratum means a second time. Raw
-      # prediction offsets are passed through unchanged: predict.coxph() itself
-      # subtracts the stored mean training offset. Validate the fit-time origin
-      # whenever an offset was structurally included.
-      if (isTRUE(object$has_offset)) {
-        mfp2_cox_offset_reference(object)
-      }
-      
-      pred <- stats::predict(
-        obj_base,
-        newdata = newdata,
-        type = type,
-        se.fit = se.fit,
-        reference = "zero",
-        ...
-      )
-    } else {
-      pred <- stats::predict(
+    return(
+      stats::predict(
         obj_base,
         newdata = newdata,
         type = type,
         se.fit = se.fit,
         ...
       )
-    }
-    
-    return(pred)
+    )
   }
   
-  # With no newdata, delegate directly to the fitted base model.
-  obj_base <- object
-  class(obj_base) <- setdiff(class(obj_base), "mfp2")
-  if (object$family_string == "cox") {
-    if (isTRUE(object$has_offset)) {
-      mfp2_cox_offset_reference(object)
-    }
-    
+  # With no newdata, the fitted base object already contains the training
+  # response, transformed design, strata, and offsets required by its native
+  # prediction method.
+  if (identical(object$family_string, "cox")) {
     return(
-      stats::predict(
-        obj_base,
+      mfp2_predict_cox_base(
+        object = object,
         type = type,
         se.fit = se.fit,
-        reference = "zero",
-        ...
-      )
-    )
-  } else {
-    return(
-      stats::predict(
-        obj_base,
-        type = type,
-        se.fit = se.fit,
+        reference = cox_reference,
         ...
       )
     )
   }
+  
+  obj_base <- object
+  class(obj_base) <- setdiff(class(obj_base), "mfp2")
+  stats::predict(
+    obj_base,
+    type = type,
+    se.fit = se.fit,
+    ...
+  )
+}
+
+
+#' Match a Cox Prediction Type Used by `predict.mfp2()`
+#'
+#' Resolves exact or unambiguous partial Cox prediction-type names before the
+#' method chooses a prediction path. `mfp2` implements `"terms"` and
+#' `"contrasts"` itself, delegates `"lp"` and `"risk"` to the relative
+#' prediction branch of `predict.coxph()`, and delegates `"expected"` and
+#' `"survival"` to its baseline-hazard branch.
+#'
+#' Performing this match centrally prevents a partially matched type from being
+#' routed to the wrong branch and makes invalid values fail before prediction
+#' data are transformed.
+#'
+#' @param type Character scalar supplied to `predict.mfp2()`.
+#'
+#' @return One of `"lp"`, `"risk"`, `"expected"`, `"survival"`,
+#'   `"terms"`, or `"contrasts"`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_match_cox_prediction_type <- function(type) {
+  choices <- c("lp", "risk", "expected", "survival", "terms", "contrasts")
+  
+  tryCatch(
+    match.arg(type, choices),
+    error = function(e) {
+      stop(
+        "For Cox models, 'type' must be one of: ",
+        paste(shQuote(choices), collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  )
+}
+
+
+#' Validate the Cox Covariate Reference for the Requested Prediction Type
+#'
+#' `survival::predict.coxph()` uses `reference` only for relative
+#' linear-predictor, risk, and native term predictions. `mfp2` computes its own
+#' term and contrast output, while the Cox expected-event/survival path
+#' unconditionally uses the sample reference internally. This helper enforces
+#' those distinctions and returns a value only when the delegated Cox method can
+#' use it.
+#'
+#' The explicit-supply flag is kept separate from the argument value because the
+#' default `c("zero", "sample", "strata")` is a normal `match.arg()` default.
+#' An omitted default must not be mistaken for a user request on a prediction
+#' path where references do not apply.
+#'
+#' @param type Resolved Cox prediction type.
+#' @param reference Candidate reference argument.
+#' @param reference_supplied Logical scalar indicating whether the caller
+#'   explicitly supplied `reference` to `predict.mfp2()`.
+#'
+#' @return A single validated reference string for `type = "lp"` or
+#'   `type = "risk"`; otherwise `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_validate_cox_reference <- function(type,
+                                        reference,
+                                        reference_supplied) {
+  if (!is.logical(reference_supplied) ||
+      length(reference_supplied) != 1L ||
+      is.na(reference_supplied)) {
+    stop("Internal error: invalid reference-supply flag.", call. = FALSE)
+  }
+  
+  if (type %in% c("terms", "contrasts")) {
+    if (reference_supplied) {
+      stop(
+        "'reference' is not used for mfp2 term or contrast predictions. ",
+        "Use 'ref' to choose variable-specific contrast reference values.",
+        call. = FALSE
+      )
+    }
+    return(NULL)
+  }
+  
+  if (type %in% c("expected", "survival")) {
+    if (reference_supplied) {
+      stop(
+        "'reference' does not apply to Cox predictions with type = '",
+        type,
+        "'. The baseline-hazard calculation uses the fitted sample ",
+        "reference internally; remove the 'reference' argument.",
+        call. = FALSE
+      )
+    }
+    return(NULL)
+  }
+  
+  # The public default is the vector used by match.arg(), but mfp2's chosen
+  # first/default value is explicitly "zero". Return it directly when the
+  # caller omitted the argument; an explicitly supplied value must be scalar
+  # and is validated below.
+  if (!reference_supplied) {
+    return("zero")
+  }
+  
+  tryCatch(
+    match.arg(reference, c("zero", "sample", "strata")),
+    error = function(e) {
+      stop(
+        "For Cox predictions of type 'lp' or 'risk', 'reference' must be ",
+        "one of 'zero', 'sample', or 'strata'.",
+        call. = FALSE
+      )
+    }
+  )
+}
+
+
+#' Delegate a Full-Model Prediction to the Stored Cox Fit
+#'
+#' Removes only the `"mfp2"` class and then calls the native Cox prediction
+#' method through `stats::predict()`. The underlying object remains a complete
+#' `coxph` fit with its fitted response, transformed design matrix, residuals,
+#' means, covariance matrix, strata metadata, and tie method intact.
+#'
+#' Relative predictions (`"lp"` and `"risk"`) receive the validated covariate
+#' reference. Absolute predictions (`"expected"` and `"survival"`) deliberately
+#' omit that argument because `predict.coxph()` resets it to `"sample"` before
+#' calculating the baseline cumulative hazard. Omitting it also avoids implying
+#' that an ignored user value controls absolute predictions.
+#'
+#' When the fitted model contains an offset, the stored training-offset origin
+#' is validated before delegation. Offset centering itself remains the
+#' responsibility of `predict.coxph()` and is independent of the covariate
+#' reference.
+#'
+#' @param object Fitted `mfp2` Cox object.
+#' @param newdata Optional fully transformed prediction data frame. For absolute
+#'   predictions it must also contain the internal `Surv` response column.
+#' @param type Resolved Cox prediction type.
+#' @param se.fit Logical scalar passed to `predict.coxph()`.
+#' @param reference Validated reference string for relative predictions, or
+#'   `NULL` for absolute predictions.
+#' @param ... Further arguments passed to the native Cox prediction method.
+#'
+#' @return The unmodified result returned by `predict.coxph()`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_predict_cox_base <- function(object,
+                                  newdata = NULL,
+                                  type,
+                                  se.fit,
+                                  reference = NULL,
+                                  ...) {
+  if (!inherits(object, "mfp2") ||
+      !identical(object$family_string, "cox")) {
+    stop("Internal error: a fitted mfp2 Cox object is required.", call. = FALSE)
+  }
+  
+  if (!type %in% c("lp", "risk", "expected", "survival")) {
+    stop("Internal error: unsupported delegated Cox prediction type.",
+         call. = FALSE)
+  }
+  
+  if (isTRUE(object$has_offset)) {
+    mfp2_cox_offset_reference(object)
+  }
+  
+  obj_base <- object
+  class(obj_base) <- setdiff(class(obj_base), "mfp2")
+  
+  # Keep the native Cox method authoritative for both covariate-reference and
+  # offset origins. In particular, do not add or subtract
+  # object$cox_offset_reference here: predict.coxph() reconstructs the fitted
+  # model frame when an offset is present, subtracts the mean training offset,
+  # and applies the requested covariate reference in the same calculation.
+  # Reimplementing either adjustment in mfp2 would double-center one component
+  # and can diverge from the exact fitted coxph design.
+  if (type %in% c("lp", "risk")) {
+    if (is.null(reference)) {
+      stop("Internal error: relative Cox prediction lacks a reference.",
+           call. = FALSE)
+    }
+    
+    if (is.null(newdata)) {
+      return(stats::predict(
+        obj_base,
+        type = type,
+        se.fit = se.fit,
+        reference = reference,
+        ...
+      ))
+    }
+    
+    return(stats::predict(
+      obj_base,
+      newdata = newdata,
+      type = type,
+      se.fit = se.fit,
+      reference = reference,
+      ...
+    ))
+  }
+  
+  if (is.null(newdata)) {
+    return(stats::predict(
+      obj_base,
+      type = type,
+      se.fit = se.fit,
+      ...
+    ))
+  }
+  
+  stats::predict(
+    obj_base,
+    newdata = newdata,
+    type = type,
+    se.fit = se.fit,
+    ...
+  )
+}
+
+
+#' Recover the Internal Response Variable Name of the Stored Cox Formula
+#'
+#' The final Cox model fitted by `mfp2` uses an internal formula whose response
+#' is a single symbol (currently `y`). Absolute prediction with new data must
+#' attach a `Surv` object under exactly that symbol so that
+#' `predict.coxph()` can build its prediction model frame with the response
+#' retained.
+#'
+#' The name is derived from the stored terms object rather than hard-coded. This
+#' keeps prediction tied to the actual fitted formula and produces a targeted
+#' error if a legacy or malformed object lacks the required metadata.
+#'
+#' @param object Fitted `mfp2` Cox object.
+#'
+#' @return Character scalar naming the response column expected by the stored
+#'   Cox formula.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_cox_internal_response_name <- function(object) {
+  terms_object <- object$terms
+  response_index <- attr(terms_object, "response")
+  variables <- attr(terms_object, "variables")
+  
+  if (is.null(terms_object) ||
+      is.null(response_index) ||
+      length(response_index) != 1L ||
+      response_index < 1L ||
+      is.null(variables) ||
+      length(variables) < response_index + 1L) {
+    stop(
+      "The fitted Cox model lacks response-term metadata needed for ",
+      "absolute prediction. Refit the mfp2 object with the current version.",
+      call. = FALSE
+    )
+  }
+  
+  response_expression <- variables[[response_index + 1L]]
+  if (!is.symbol(response_expression)) {
+    stop(
+      "The stored Cox response is not a simple internal variable. ",
+      "Refit the mfp2 object with the current version.",
+      call. = FALSE
+    )
+  }
+  
+  as.character(response_expression)
+}
+
+
+#' Derive and Validate a Cox Prediction Response from `newdata`
+#'
+#' Absolute Cox predictions are evaluated at a follow-up time or interval.
+#' Therefore `predict.coxph(type = "expected")` and `type = "survival"` need a
+#' `Surv` response in the prediction model frame in addition to the transformed
+#' covariates. This helper derives that response exclusively from the supplied
+#' `newdata`; no second response argument is used.
+#'
+#' Two input forms are supported:
+#' \itemize{
+#'   \item If `newdata` contains exactly one column inheriting from `Surv`, that
+#'     column is used directly. This form works for every `mfp2` Cox fit and is
+#'     particularly useful when the model was fitted with the matrix interface.
+#'     Because a `Surv` object is matrix-like, callers should protect it with
+#'     `I()` when adding it to a data frame so it remains one column.
+#'   \item If no `Surv` column is present and the model was fitted through the
+#'     formula interface, the helper evaluates only the left-hand side of the
+#'     original user formula in `newdata`. Replacing the right-hand side by `1`
+#'     prevents predictors, strata, and offsets from being evaluated twice.
+#' }
+#'
+#' The derived response is checked against the response retained by the fitted
+#' Cox object. It must have one row per prediction row, contain no missing
+#' values, and use the same survival representation, such as right-censored or
+#' start-stop/counting-process data.
+#'
+#' @param object Fitted `mfp2` Cox object.
+#' @param newdata User-supplied prediction data before formula reconstruction
+#'   and fractional-polynomial transformation.
+#'
+#' @return A validated `Surv` object aligned row-for-row with `newdata`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_reconstruct_cox_prediction_response <- function(object, newdata) {
+  newdata_df <- as.data.frame(newdata, check.names = FALSE)
+  
+  # A direct Surv column gives all interfaces the same explicit data contract.
+  # It is extracted before predictor reconstruction, which intentionally drops
+  # non-predictor columns from the transformed Cox design frame.
+  surv_columns <- names(newdata_df)[vapply(
+    newdata_df,
+    function(column) inherits(column, "Surv"),
+    logical(1L)
+  )]
+  
+  if (length(surv_columns) > 1L) {
+    stop(
+      "Cox predictions of type 'expected' or 'survival' found more than ",
+      "one Surv column in newdata: ", paste(surv_columns, collapse = ", "),
+      ". Supply exactly one prediction response.",
+      call. = FALSE
+    )
+  }
+  
+  response <- if (length(surv_columns) == 1L) {
+    newdata_df[[surv_columns]]
+  } else {
+    NULL
+  }
+  
+  if (is.null(response) && isTRUE(object$formula_interface)) {
+    if (!inherits(object$formula, "formula")) {
+      stop(
+        "The fitted formula-interface Cox model lacks its original formula ",
+        "and cannot derive the prediction response from newdata. Refit the ",
+        "mfp2 object with the current version.",
+        call. = FALSE
+      )
+    }
+    
+    # Retain only the original response expression. This supports ordinary
+    # Surv(time, status), start-stop responses, namespace-qualified calls, and
+    # user-defined response expressions stored in the formula environment.
+    response_formula <- object$formula
+    response_formula[[3L]] <- 1
+    
+    # Serialized formulas can contain an unqualified Surv() call even when the
+    # survival package is not attached in the prediction session. Preserve the
+    # original environment and add survival::Surv only when no Surv binding is
+    # already visible.
+    formula_environment <- environment(response_formula)
+    if (is.null(formula_environment)) {
+      formula_environment <- parent.frame()
+    }
+    if (!exists("Surv", envir = formula_environment, inherits = TRUE)) {
+      response_environment <- new.env(parent = formula_environment)
+      response_environment$Surv <- survival::Surv
+      environment(response_formula) <- response_environment
+    }
+    
+    response <- tryCatch(
+      stats::model.response(
+        stats::model.frame(
+          response_formula,
+          data = newdata_df,
+          na.action = stats::na.pass
+        )
+      ),
+      error = function(e) {
+        stop(
+          "Cox predictions of type 'expected' or 'survival' require the follow-up ",
+          "response information in newdata. Include the variables used on the ",
+          "left-hand side of the fitted formula, or include exactly one Surv ",
+          "column in newdata.\nOriginal error: ", conditionMessage(e),
+          call. = FALSE
+        )
+      }
+    )
+  }
+  
+  if (is.null(response)) {
+    stop(
+      "Cox predictions of type 'expected' or 'survival' require the follow-up ",
+      "response information in newdata. For a formula fit, include the ",
+      "original response variables. Otherwise include exactly one Surv column, ",
+      "for example data.frame(x = xnew, y = I(Surv(time, status))).",
+      call. = FALSE
+    )
+  }
+  
+  if (!inherits(response, "Surv")) {
+    stop(
+      "The Cox prediction response derived from newdata is not a ",
+      "survival::Surv object.",
+      call. = FALSE
+    )
+  }
+  
+  if (NROW(response) != NROW(newdata_df)) {
+    stop(
+      "The Cox prediction response must have one row per row of newdata.",
+      call. = FALSE
+    )
+  }
+  
+  if (anyNA(response)) {
+    stop(
+      "The Cox prediction response in newdata must not contain missing values.",
+      call. = FALSE
+    )
+  }
+  
+  fitted_response <- object$y
+  if (is.null(fitted_response)) {
+    fitted_response <- object$y_original
+  }
+  
+  if (!inherits(fitted_response, "Surv")) {
+    stop(
+      "The fitted Cox object lacks a valid stored Surv response. Refit the ",
+      "model with the current mfp2 version.",
+      call. = FALSE
+    )
+  }
+  
+  if (!identical(attr(response, "type"), attr(fitted_response, "type")) ||
+      NCOL(response) != NCOL(fitted_response)) {
+    stop(
+      "The Cox prediction response in newdata has a different survival type ",
+      "from the fitted model.",
+      call. = FALSE
+    )
+  }
+  
+  response
+}
+
+
+#' Attach the Cox Prediction Response to Transformed Newdata
+#'
+#' Adds the validated `Surv` response to the fully transformed prediction frame
+#' under the response symbol used by the stored internal Cox formula. The
+#' response is wrapped with `I()` so the multi-column `Surv` matrix remains one
+#' model-frame variable instead of being expanded into ordinary data-frame
+#' columns.
+#'
+#' @param object Fitted `mfp2` Cox object.
+#' @param newdata Fully transformed prediction data frame containing fitted
+#'   design columns and any internal `strata_` or `offset_` variables.
+#' @param response Validated `Surv` object aligned with `newdata`.
+#'
+#' @return `newdata` with the internal Cox response column appended.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_attach_cox_prediction_response <- function(object,
+                                                newdata,
+                                                response) {
+  newdata <- as.data.frame(newdata, check.names = FALSE)
+  response_name <- mfp2_cox_internal_response_name(object)
+  
+  if (response_name %in% names(newdata)) {
+    stop(
+      "The transformed prediction data already contain the internal Cox ",
+      "response column '", response_name, "'.",
+      call. = FALSE
+    )
+  }
+  
+  if (!inherits(response, "Surv") || NROW(response) != nrow(newdata)) {
+    stop("Internal error: invalid or misaligned Cox prediction response.",
+         call. = FALSE)
+  }
+  
+  newdata[[response_name]] <- I(response)
+  newdata
 }
 
 #' Resolve Conceptual Terms to Raw Prediction Columns
 #'
-#' Returns the complete term lookup stored by grouped-term fits. The names are
-#' conceptual terms and each value contains the corresponding raw design-matrix
-#' columns in fitted term order.
+#' Returns the term lookup stored by grouped-term fits. The names are conceptual
+#' terms and each value contains the corresponding raw design-matrix columns in
+#' fitted term order. The lookup can be restricted to active prediction terms.
 #'
 #' @param object A fitted \code{mfp2} object.
+#' @param terms Optional character vector of conceptual terms to retain.
 #'
 #' @return Named list mapping conceptual terms to raw input columns.
 #'
 #' @keywords internal
 #' @noRd
-prediction_term_to_columns <- function(object) {
-  terms <- rownames(object$transformations)
+prediction_term_to_columns <- function(object, terms = NULL) {
+  fitted_terms <- rownames(object$transformations)
   
-  if (is.null(terms) || length(terms) == 0L) {
+  if (is.null(fitted_terms) || length(fitted_terms) == 0L) {
     stop("The fitted object does not contain transformation term names.",
          call. = FALSE)
   }
@@ -664,14 +1341,46 @@ prediction_term_to_columns <- function(object) {
   lookup <- object$term_to_columns
   
   if (is.null(lookup)) {
-    stop("The fitted object does not contain `term_to_columns`.", call. = FALSE)
+    # Objects created before grouped categorical support did not store an
+    # explicit conceptual-term lookup. Formula fits from newer releases may
+    # still carry the equivalent formula-level lookup, so prefer it when
+    # available. Otherwise a continuous-only legacy object has an identity
+    # relationship between conceptual terms and raw predictor columns.
+    lookup <- object$formula_term_to_columns
+    
+    if (is.null(lookup)) {
+      selected_terms <- tryCatch(
+        get_selected_variable_names(object),
+        error = function(e) character(0L)
+      )
+      selected_raw_columns <- if (is.null(object$x_original)) {
+        character(0L)
+      } else {
+        colnames(object$x_original)
+      }
+      
+      # A retained grouped term cannot be reconstructed safely without its
+      # stored member-column mapping. Fail explicitly rather than silently
+      # treating the conceptual name as a raw design column.
+      unresolved_selected <- setdiff(selected_terms, selected_raw_columns)
+      if (length(unresolved_selected) > 0L) {
+        stop(
+          "The fitted object lacks grouped-term mapping metadata for selected term(s): ",
+          paste(unresolved_selected, collapse = ", "),
+          ". Refit the model with the current mfp2 version.",
+          call. = FALSE
+        )
+      }
+      
+      lookup <- stats::setNames(as.list(fitted_terms), fitted_terms)
+    }
   }
   
   if (!is.list(lookup) || is.null(names(lookup)) || anyDuplicated(names(lookup))) {
     stop("The fitted grouped-term lookup is malformed.", call. = FALSE)
   }
   
-  missing_terms <- setdiff(terms, names(lookup))
+  missing_terms <- setdiff(fitted_terms, names(lookup))
   if (length(missing_terms) > 0L) {
     stop(
       "The fitted grouped-term lookup is missing term(s): ",
@@ -680,7 +1389,7 @@ prediction_term_to_columns <- function(object) {
     )
   }
   
-  lookup <- lookup[terms]
+  lookup <- lookup[fitted_terms]
   
   invalid <- vapply(
     lookup,
@@ -696,6 +1405,19 @@ prediction_term_to_columns <- function(object) {
          call. = FALSE)
   }
   
+  if (!is.null(terms)) {
+    terms <- unique(as.character(terms))
+    unknown <- setdiff(terms, names(lookup))
+    if (length(unknown) > 0L) {
+      stop(
+        "Unknown fitted prediction term(s): ",
+        paste(unknown, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    lookup <- lookup[terms]
+  }
+  
   lookup
 }
 
@@ -704,13 +1426,74 @@ prediction_term_to_columns <- function(object) {
 # transformed matrix and fitted coefficient order; prediction therefore does
 # not need to quote, unquote, sanitize, or otherwise guess model column names.
 prediction_model_column_names <- function(object, transformed_columns) {
-  model_columns <- unname(
-    object$transformed_to_model_columns[transformed_columns]
-  )
+  column_map <- object$transformed_to_model_columns
   
-  if (is.null(object$transformed_to_model_columns) || anyNA(model_columns)) {
+  if (is.null(column_map)) {
+    # Legacy continuous-only objects predate the explicit map. Recreate the
+    # complete transformed source-column order from the stored training data,
+    # then align it positionally with the fitted coefficient vector. Final
+    # glm()/coxph() fits preserve formula-column order, including aliased
+    # coefficients, so this recovers exact quoted or non-syntactic names.
+    selected_terms <- get_selected_variable_names(object)
+    
+    if (length(selected_terms) == 0L) {
+      if (length(transformed_columns) > 0L) {
+        stop(
+          "Cannot map transformed columns for an intercept-only fitted object.",
+          call. = FALSE
+        )
+      }
+      return(character(0L))
+    }
+    
+    if (is.null(object$x_original)) {
+      stop(
+        "The legacy fitted object lacks training predictors needed to reconstruct coefficient-column metadata.",
+        call. = FALSE
+      )
+    }
+    
+    reconstructed <- prepare_newdata_for_predict(
+      object,
+      object$x_original,
+      terms = selected_terms,
+      apply_pre = FALSE,
+      allow_missing_predictors = FALSE
+    )
+    source_columns <- colnames(reconstructed)
+    if (is.null(source_columns)) {
+      source_columns <- character(0L)
+    }
+    
+    fitted_columns <- names(stats::coef(object))
+    if (is.null(fitted_columns)) {
+      fitted_columns <- character(0L)
+    }
+    fitted_columns <- fitted_columns[fitted_columns != "(Intercept)"]
+    
+    if (length(source_columns) != length(fitted_columns)) {
+      stop(
+        "The legacy fitted object does not contain enough metadata to align transformed columns with fitted coefficients.",
+        call. = FALSE
+      )
+    }
+    
+    column_map <- stats::setNames(fitted_columns, source_columns)
+  }
+  
+  if (!is.character(column_map) || is.null(names(column_map)) ||
+      anyDuplicated(names(column_map))) {
     stop(
-      "Internal error: fitted object lacks the transformed-to-model column mapping.",
+      "The fitted transformed-to-model column mapping is malformed.",
+      call. = FALSE
+    )
+  }
+  
+  model_columns <- unname(column_map[transformed_columns])
+  if (anyNA(model_columns)) {
+    stop(
+      "The fitted object lacks coefficient mappings for transformed column(s): ",
+      paste(transformed_columns[is.na(model_columns)], collapse = ", "),
       call. = FALSE
     )
   }
@@ -735,90 +1518,26 @@ prediction_model_column_names <- function(object, transformed_columns) {
 #' @keywords internal
 #' @noRd
 expand_prediction_metadata <- function(object, raw_columns) {
-  # Resolve the fitted term structure and build its reverse mapping so each raw
-  # design column can inherit the metadata stored for its conceptual term.
   lookup <- prediction_term_to_columns(object)
-  column_to_term <- stats::setNames(
-    rep(names(lookup), lengths(lookup)),
-    unlist(lookup, use.names = FALSE)
+  spike_source <- if (!is.null(object$spike)) {
+    object$spike
+  } else {
+    object$fp_terms[, "spike"]
+  }
+  
+  expanded <- expand_term_metadata_to_columns(
+    term_to_columns = lookup,
+    powers = object$fp_powers,
+    raw_columns = raw_columns,
+    acdx = object$acd,
+    zero = object$zero,
+    catzero = object$catzero,
+    spike = spike_source,
+    spike_decision = object$spike_dec,
+    acd_parameter = object$acd_parameter
   )
   
-  unknown <- setdiff(raw_columns, names(column_to_term))
-  if (length(unknown) > 0L) {
-    stop(
-      "Unknown raw prediction column(s): ",
-      paste(unknown, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  
-  raw_terms <- unname(column_to_term[raw_columns])
-  
-  # Determine grouped status through a named term-level vector. This avoids
-  # repeatedly subsetting the lookup with duplicated term names when several
-  # raw columns belong to the same conceptual term.
-  grouped_by_term <- mapped_term_flags(lookup)
-  grouped <- unname(grouped_by_term[raw_terms])
-  
-  # Grouped categorical columns are fixed linear columns. A selected group
-  # therefore expands to power 1 for every member; an omitted group expands to NA.
-  powers <- lapply(seq_along(raw_columns), function(i) {
-    term <- raw_terms[[i]]
-    term_powers <- object$fp_powers[[term]]
-    
-    if (grouped[[i]]) {
-      if (is.null(term_powers) || all(is.na(term_powers))) NA_real_ else 1
-    } else {
-      term_powers
-    }
-  })
-  names(powers) <- raw_columns
-  
-  term_value <- function(values, term, default = FALSE) {
-    if (is.null(values) || !term %in% names(values)) default else values[[term]]
-  }
-  
-  acdx <- zero <- catzero <- spike <- logical(length(raw_columns))
-  spike_decision <- integer(length(raw_columns))
-  acd_parameter <- vector("list", length(raw_columns))
-  
-  # Continuous-only options are disabled for grouped categorical blocks.
-  # Singleton terms inherit their stored ACD, zero, catzero, and spike settings.
-  for (i in seq_along(raw_columns)) {
-    term <- raw_terms[[i]]
-    
-    if (grouped[[i]]) {
-      acdx[[i]] <- FALSE
-      zero[[i]] <- FALSE
-      catzero[[i]] <- FALSE
-      spike[[i]] <- FALSE
-      spike_decision[[i]] <- saz_decision_codes[["continuous_only"]]
-      acd_parameter[i] <- list(NULL)
-    } else {
-      acdx[[i]] <- isTRUE(term_value(object$acd, term, FALSE))
-      zero[[i]] <- isTRUE(term_value(object$zero, term, FALSE))
-      catzero[[i]] <- isTRUE(term_value(object$catzero, term, FALSE))
-      spike_source <- if (!is.null(object$spike)) object$spike else object$fp_terms[, "spike"]
-      spike[[i]] <- isTRUE(term_value(spike_source, term, FALSE))
-      spike_decision[[i]] <- as.integer(
-        term_value(object$spike_dec, term, saz_decision_codes[["continuous_only"]])
-      )
-      # Use single-bracket list assignment so a missing ACD parameter is
-      # stored as a NULL element without deleting the element from the list.
-      acd_parameter[i] <- list(
-        if (!is.null(object$acd_parameter) &&
-            term %in% names(object$acd_parameter)) {
-          object$acd_parameter[[term]]
-        } else {
-          NULL
-        }
-      )
-    }
-  }
-  
-  names(acdx) <- names(zero) <- names(catzero) <- names(spike) <-
-    names(spike_decision) <- names(acd_parameter) <- raw_columns
-  
+  raw_terms <- unname(expanded$terms)
   shifts <- stats::setNames(
     vapply(
       raw_terms,
@@ -829,15 +1548,15 @@ expand_prediction_metadata <- function(object, raw_columns) {
   )
   
   list(
-    terms = stats::setNames(raw_terms, raw_columns),
-    powers = powers,
+    terms = expanded$terms,
+    powers = expanded$powers,
     shift = shifts,
-    acdx = acdx,
-    zero = zero,
-    catzero = catzero,
-    spike = spike,
-    spike_decision = spike_decision,
-    acd_parameter = acd_parameter
+    acdx = expanded$acdx,
+    zero = expanded$zero,
+    catzero = expanded$catzero,
+    spike = expanded$spike,
+    spike_decision = expanded$spike_decision,
+    acd_parameter = expanded$acd_parameter
   )
 }
 
@@ -1167,6 +1886,102 @@ requires_positive_raw_input <- function(object, v) {
   fp_power_requires_positive_input(raw_powers)
 }
 
+#' Resolve Formula Labels for Active Prediction Terms
+#'
+#' Formula fits retain original formula labels for evaluation and conceptual
+#' term names for MFP selection. This helper links the two representations so
+#' prediction can evaluate only the terms present in the final model.
+#'
+#' @keywords internal
+#' @noRd
+prediction_formula_source_name <- function(term_label) {
+  factor_source <- formula_factor_source_name(term_label)
+  if (!is.null(factor_source)) {
+    return(factor_source)
+  }
+  
+  formula_fp_source_name(term_label)
+}
+
+
+prediction_formula_term_map <- function(object) {
+  map <- object$formula_prediction_term_names
+  labels <- attr(object$formula_terms, "term.labels")
+  
+  if (!is.null(map)) {
+    if (!is.character(map) || is.null(names(map)) || anyDuplicated(names(map))) {
+      stop("The fitted formula prediction-term map is malformed.",
+           call. = FALSE)
+    }
+    missing_labels <- setdiff(labels, names(map))
+    if (length(missing_labels) > 0L) {
+      stop(
+        "The fitted formula prediction-term map is missing formula term(s): ",
+        paste(missing_labels, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    return(map[labels])
+  }
+  
+  # Backward-compatible fallback for objects fitted before the explicit map was
+  # stored. Bare terms and simple factor wrappers can be resolved safely. More
+  # complex legacy formula objects retain the previous complete-formula replay.
+  map <- stats::setNames(labels, labels)
+  lookup <- prediction_term_to_columns(object)
+  for (label in labels) {
+    source_name <- prediction_formula_source_name(label)
+    if (!is.null(source_name) && source_name %in% names(lookup)) {
+      map[[label]] <- source_name
+    }
+  }
+  map
+}
+
+
+#' Restrict Stored Formula Terms to Active Conceptual Terms
+#'
+#' @keywords internal
+#' @noRd
+prediction_formula_terms <- function(object, terms) {
+  terms_object <- object$formula_terms
+  term_map <- prediction_formula_term_map(object)
+  labels <- attr(terms_object, "term.labels")
+  active_labels <- names(term_map)[unname(term_map) %in% terms]
+  keep_labels <- active_labels
+  
+  # Preserve lower-order terms that use only variables from an active term.
+  # model.matrix() uses the term hierarchy when deciding factor contrast coding;
+  # retaining these support terms reproduces the fit-time columns for active
+  # interactions without reintroducing unrelated predictor dependencies.
+  factors <- attr(terms_object, "factors")
+  if (!is.null(factors) && length(active_labels) > 0L) {
+    for (active_label in active_labels) {
+      active_variables <- rownames(factors)[factors[, active_label] != 0]
+      support_labels <- colnames(factors)[
+        vapply(
+          seq_len(ncol(factors)),
+          function(index) {
+            term_variables <- rownames(factors)[factors[, index] != 0]
+            length(term_variables) > 0L &&
+              all(term_variables %in% active_variables)
+          },
+          logical(1L)
+        )
+      ]
+      keep_labels <- union(keep_labels, support_labels)
+    }
+  }
+  
+  drop_indices <- which(!labels %in% keep_labels)
+  if (length(drop_indices) > 0L) {
+    terms_object <- terms_object[-drop_indices]
+  }
+  
+  terms_object
+}
+
+
 #' Rebuild formula-interface newdata with model.matrix()
 #'
 #' Formula-fitted mfp2 objects are fitted on the expanded numeric design matrix
@@ -1177,22 +1992,27 @@ requires_positive_raw_input <- function(object, v) {
 #'
 #' @keywords internal
 #' @noRd
-reconstruct_formula_newdata <- function(object, newdata) {
+reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   # Matrix-interface fits already receive raw design columns and need no formula
   # evaluation. Formula fits are reconstructed with stored levels and contrasts.
   if (!isTRUE(object$formula_interface)) {
     return(newdata)
   }
   
-  expected <- unlist(prediction_term_to_columns(object), use.names = FALSE)
-  # Accept callers that already supplied the exact fitted model-matrix columns.
-  # Return only those columns, in fitted order. Formula newdata may also contain
-  # factor-valued strata or other non-predictor variables. Keeping those extra
-  # columns until prepare_newdata_for_predict() converts the data to a matrix
-  # would coerce the complete predictor block to character. The original raw
-  # newdata is retained separately by predict.mfp2() for reconstructing strata
-  # and offsets, so it is correct to isolate the fitted numeric design here.
-  if (length(expected) > 0L && all(expected %in% colnames(newdata))) {
+  if (is.null(terms)) {
+    terms <- get_selected_variable_names(object)
+  }
+  lookup <- prediction_term_to_columns(object, terms = terms)
+  expected <- unlist(lookup, use.names = FALSE)
+  
+  # A final intercept-only model has no predictor dependencies. Preserve the
+  # requested row count without evaluating any original formula expression.
+  if (length(expected) == 0L) {
+    return(data.frame(row.names = seq_len(nrow(newdata))))
+  }
+  
+  # Accept callers that already supplied the exact active model-matrix columns.
+  if (all(expected %in% colnames(newdata))) {
     return(newdata[, expected, drop = FALSE])
   }
   
@@ -1205,48 +2025,55 @@ reconstruct_formula_newdata <- function(object, newdata) {
   }
   
   newdata_df <- as.data.frame(newdata)
+  active_formula_terms <- prediction_formula_terms(object, terms)
+  active_factors <- attr(active_formula_terms, "factors")
+  active_frame_variables <- if (is.null(active_factors)) {
+    character(0L)
+  } else {
+    rownames(active_factors)[rowSums(active_factors != 0) > 0L]
+  }
+  active_xlevels <- object$formula_xlevels[
+    intersect(names(object$formula_xlevels), active_frame_variables)
+  ]
   
-  # model.frame() evaluates formula expressions and enforces the fitted factor
-  # levels; model.matrix() then recreates the original contrast coding.
+  # model.frame() evaluates only active formula expressions and enforces their
+  # fitted factor levels; model.matrix() recreates the fitted contrast coding.
   mf <- stats::model.frame(
-    object$formula_terms,
+    active_formula_terms,
     data = newdata_df,
     na.action = stats::na.pass,
-    xlev = object$formula_xlevels
+    xlev = active_xlevels
   )
-  
+  active_contrasts <- object$formula_contrasts[
+    intersect(names(object$formula_contrasts), names(mf))
+  ]
   mm <- stats::model.matrix(
-    object$formula_terms,
+    active_formula_terms,
     data = mf,
-    contrasts.arg = object$formula_contrasts
+    contrasts.arg = active_contrasts
   )
   
   keep_cols <- colnames(mm) != "(Intercept)"
   mm <- mm[, keep_cols, drop = FALSE]
   
-  # Restore the exact column names used by the fitted object after any formula
-  # sanitisation or internal renaming performed during fitting.
+  # Restore the exact column names used by the fitted object after formula
+  # sanitisation or internal fp()/fp2() renaming.
   column_map <- object$formula_column_map
   if (!is.null(column_map)) {
     mapped <- unname(column_map[colnames(mm)])
     colnames(mm) <- ifelse(is.na(mapped), colnames(mm), mapped)
   }
   
-  # Keep and order only the predictor columns that were present in the fitted
-  # formula design matrix.
-  if (!is.null(object$formula_model_matrix_columns)) {
-    missing <- setdiff(object$formula_model_matrix_columns, colnames(mm))
-    if (length(missing) > 0L) {
-      stop(
-        "! Could not reconstruct required model-matrix column(s) from newdata: ",
-        paste(missing, collapse = ", "),
-        call. = FALSE
-      )
-    }
-    mm <- mm[, object$formula_model_matrix_columns, drop = FALSE]
+  missing <- setdiff(expected, colnames(mm))
+  if (length(missing) > 0L) {
+    stop(
+      "! Could not reconstruct required model-matrix column(s) from newdata: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
   }
   
-  mm
+  mm[, expected, drop = FALSE]
 }
 
 #' Reconstruct formula-level Cox strata from prediction data
@@ -1330,16 +2157,28 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
   }
 }
 
-#' Retrieve the Cox Offset Reference Stored at Fit Time
+#' Retrieve and Validate the Cox Offset Origin Stored at Fit Time
 #'
-#' `survival::predict.coxph()` subtracts the mean training offset from each
-#' prediction offset independently of the covariate reference. The final `fit_mfp()` result
-#' stores that scalar as `cox_offset_reference`; prediction validates the field
-#' before delegating raw offsets to `predict.coxph()`.
+#' `survival::predict.coxph()` handles offsets independently of the covariate
+#' `reference`. For both training and new-data predictions it subtracts the mean
+#' training offset, so a supplied prediction offset contributes as
+#' `new_offset - mean(training_offset)`.
 #'
-#' @param object A fitted `mfp2` Cox object.
+#' The final `fit_mfp()` call stores that mean once as `cox_offset_reference`.
+#' This helper validates the metadata before delegation. It intentionally does
+#' not alter prediction offsets or combine them with covariate centering; the
+#' native Cox method remains the single implementation of that arithmetic.
 #'
-#' @return Finite numeric scalar.
+#' A malformed value normally indicates a Cox object created by an older package
+#' version or an object whose internals were modified after fitting. Failing here
+#' gives a direct remediation message rather than allowing an unexplained shift
+#' in the predicted linear predictor.
+#'
+#' @param object A fitted `mfp2` Cox object containing
+#'   `cox_offset_reference`.
+#'
+#' @return Unnamed finite numeric scalar equal to the mean offset used in the
+#'   final Cox fitting data.
 #'
 #' @keywords internal
 #' @noRd
@@ -1361,11 +2200,29 @@ mfp2_cox_offset_reference <- function(object) {
 }
 
 
-#' Rebuild Formula-Level Offset from Prediction Newdata
+#' Rebuild a Formula-Level Offset from Prediction Newdata
 #'
-#' Internal helper used by predict.mfp2(). If an mfp2 object was fitted with
-#' offset() in the formula interface, this reconstructs the offset vector from
-#' ordinary newdata.
+#' Formula-interface fits store a response-free terms object containing only the
+#' original `offset()` expression and the factor levels required to evaluate it.
+#' This helper evaluates that expression in ordinary user-facing `newdata` and
+#' returns the raw offset vector expected by the internal fitted Cox or GLM
+#' formula.
+#'
+#' No centering is performed here. For Cox models the raw vector is attached as
+#' `offset_`, after which `predict.coxph()` subtracts the mean training offset.
+#' Keeping reconstruction separate from centering prevents the offset origin
+#' from being applied twice and keeps GLM and Cox delegation consistent with
+#' their native prediction methods.
+#'
+#' The helper returns `NULL` for matrix-interface fits and for formula fits that
+#' did not contain an offset. Evaluation errors identify the missing original
+#' variable and direct callers to the explicit `newoffset` alternative.
+#'
+#' @param object Fitted `mfp2` object.
+#' @param newdata User-facing prediction data before formula reconstruction.
+#'
+#' @return `NULL` when no formula offset is stored, otherwise a finite numeric
+#'   vector with one value per prediction row.
 #'
 #' @keywords internal
 #' @noRd
@@ -1437,6 +2294,8 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
 #'   prediction, \code{strata} must be kept as a high-level vector/factor or
 #'   combined multi-column strata object; integer conversion is not performed
 #'   here because the stored Cox formula evaluates \code{strata(strata_)}.
+#' @param terms Character vector of conceptual terms required for this prediction.
+#'   Defaults to the terms selected in the final model.
 #' @param apply_pre logical indicating whether the fitted pre-transformation
 #' is applied or not.
 #' @param apply_center logical indicating whether the fitted centers are applied
@@ -1461,6 +2320,7 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
 #' @noRd
 prepare_newdata_for_predict <- function(object,
                                         newdata,
+                                        terms = NULL,
                                         strata = NULL,
                                         offset = NULL,
                                         apply_pre = TRUE,
@@ -1481,7 +2341,10 @@ prepare_newdata_for_predict <- function(object,
   
   # Resolve the conceptual-term lookup once. Full prediction requires every raw
   # member column; term-specific prediction may include complete term subsets.
-  lookup <- prediction_term_to_columns(object)
+  if (is.null(terms)) {
+    terms <- get_selected_variable_names(object)
+  }
+  lookup <- prediction_term_to_columns(object, terms = terms)
   expected <- unlist(lookup, use.names = FALSE)
   missing <- setdiff(expected, colnames(newdata))
   
@@ -1528,132 +2391,132 @@ prepare_newdata_for_predict <- function(object,
   raw_columns <- unlist(lookup[active_terms], use.names = FALSE)
   
   if (length(raw_columns) == 0L) {
-    stop("! No usable predictors were found in newdata.", call. = FALSE)
-  }
-  
-  newdata <- newdata[, raw_columns, drop = FALSE]
-  
-  non_numeric <- raw_columns[
-    !vapply(newdata, is.numeric, logical(1L))
-  ]
-  if (length(non_numeric) > 0L) {
-    stop(
-      "! Reconstructed predictor column(s) must be numeric: ",
-      paste(non_numeric, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  
-  newdata <- as.matrix(newdata)
-  storage.mode(newdata) <- "double"
-  metadata <- expand_prediction_metadata(object, raw_columns)
-  
-  # Apply the fitted shift only to raw user data. Stored x_original data and
-  # internally generated term grids are already on the shifted prediction scale.
-  if (apply_pre) {
-    newdata <- sweep(newdata, 2L, metadata$shift[raw_columns], "+")
+    newdata <- data.frame(row.names = seq_len(n_newdata))
+  } else {
+    newdata <- newdata[, raw_columns, drop = FALSE]
     
-    positive_terms <- active_terms[
-      vapply(
-        active_terms,
-        function(term) {
-          length(lookup[[term]]) == 1L && requires_positive_raw_input(object, term)
-        },
-        logical(1L)
-      )
+    non_numeric <- raw_columns[
+      !vapply(newdata, is.numeric, logical(1L))
     ]
+    if (length(non_numeric) > 0L) {
+      stop(
+        "! Reconstructed predictor column(s) must be numeric: ",
+        paste(non_numeric, collapse = ", "),
+        call. = FALSE
+      )
+    }
     
-    if (length(positive_terms) > 0L) {
-      bad_terms <- positive_terms[
+    newdata <- as.matrix(newdata)
+    storage.mode(newdata) <- "double"
+    metadata <- expand_prediction_metadata(object, raw_columns)
+    
+    # Apply the fitted shift only to raw user data. Stored x_original data and
+    # internally generated term grids are already on the shifted prediction scale.
+    if (apply_pre) {
+      newdata <- sweep(newdata, 2L, metadata$shift[raw_columns], "+")
+      
+      positive_terms <- active_terms[
         vapply(
-          positive_terms,
+          active_terms,
           function(term) {
-            column <- lookup[[term]][[1L]]
-            any(!is.na(newdata[, column]) & newdata[, column] <= 0)
+            length(lookup[[term]]) == 1L && requires_positive_raw_input(object, term)
           },
           logical(1L)
         )
       ]
       
-      if (length(bad_terms) > 0L) {
-        bad_summary <- vapply(
-          bad_terms,
-          function(term) {
-            column <- lookup[[term]][[1L]]
-            count <- sum(!is.na(newdata[, column]) & newdata[, column] <= 0)
-            paste0(term, " (", count, if (count == 1L) " row)" else " rows)")
-          },
-          character(1L)
-        )
+      if (length(positive_terms) > 0L) {
+        bad_terms <- positive_terms[
+          vapply(
+            positive_terms,
+            function(term) {
+              column <- lookup[[term]][[1L]]
+              any(!is.na(newdata[, column]) & newdata[, column] <= 0)
+            },
+            logical(1L)
+          )
+        ]
         
-        stop(
-          "After applying the shift values learned during fitting, some values in ",
-          "`newdata` remain non-positive for terms whose fitted transformation ",
-          "requires strictly positive input.\n",
-          "i Problematic term(s): ", paste(bad_summary, collapse = ", "), ".",
-          call. = FALSE
+        if (length(bad_terms) > 0L) {
+          bad_summary <- vapply(
+            bad_terms,
+            function(term) {
+              column <- lookup[[term]][[1L]]
+              count <- sum(!is.na(newdata[, column]) & newdata[, column] <= 0)
+              paste0(term, " (", count, if (count == 1L) " row)" else " rows)")
+            },
+            character(1L)
+          )
+          
+          stop(
+            "After applying the shift values learned during fitting, some values in ",
+            "`newdata` remain non-positive for terms whose fitted transformation ",
+            "requires strictly positive input.\n",
+            "i Problematic term(s): ", paste(bad_summary, collapse = ", "), ".",
+            call. = FALSE
+          )
+        }
+      }
+    }
+    
+    # ACD prediction needs the parameters estimated at fit time for each active
+    # singleton ACD term.
+    active_acd <- raw_columns[
+      metadata$acdx &
+        !vapply(metadata$powers, function(p) is.null(p) || all(is.na(p)), logical(1L))
+    ]
+    missing_acd <- active_acd[
+      vapply(
+        active_acd,
+        function(column) is.null(metadata$acd_parameter[[column]]),
+        logical(1L)
+      )
+    ]
+    
+    if (length(missing_acd) > 0L) {
+      stop(
+        "Missing stored ACD parameters for prediction column(s): ",
+        paste(missing_acd, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    
+    # Recreate the exact uncentred transformed columns used by the final model.
+    x_trans <- transform_matrix(
+      newdata,
+      power_list = metadata$powers,
+      center = stats::setNames(rep(FALSE, length(raw_columns)), raw_columns),
+      keep_x_order = TRUE,
+      acdx = metadata$acdx,
+      acd_parameter_list = metadata$acd_parameter,
+      check_binary = check_binary,
+      zero = metadata$zero,
+      catzero = metadata$catzero,
+      spike = metadata$spike,
+      spike_decision = metadata$spike_decision,
+      reset_zero = reset_zero
+    )
+    
+    if (is.null(x_trans)) {
+      newdata <- matrix(numeric(0L), nrow = n_newdata, ncol = 0L)
+    } else {
+      newdata <- x_trans$x_transformed
+      
+      # Apply the stored final-model centres after transformation.
+      if (apply_center && !is.null(object$centers)) {
+        newdata <- center_matrix(
+          newdata,
+          centers = object$centers[colnames(newdata)],
+          zero = x_trans$zero_expanded
         )
       }
     }
-  }
-  
-  # ACD prediction needs the parameters estimated at fit time for each active
-  # singleton ACD term.
-  active_acd <- raw_columns[
-    metadata$acdx &
-      !vapply(metadata$powers, function(p) is.null(p) || all(is.na(p)), logical(1L))
-  ]
-  missing_acd <- active_acd[
-    vapply(
-      active_acd,
-      function(column) is.null(metadata$acd_parameter[[column]]),
-      logical(1L)
-    )
-  ]
-  
-  if (length(missing_acd) > 0L) {
-    stop(
-      "Missing stored ACD parameters for prediction column(s): ",
-      paste(missing_acd, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  
-  # Recreate the exact uncentred transformed columns used by the final model.
-  x_trans <- transform_matrix(
-    newdata,
-    power_list = metadata$powers,
-    center = stats::setNames(rep(FALSE, length(raw_columns)), raw_columns),
-    keep_x_order = TRUE,
-    acdx = metadata$acdx,
-    acd_parameter_list = metadata$acd_parameter,
-    check_binary = check_binary,
-    zero = metadata$zero,
-    catzero = metadata$catzero,
-    spike = metadata$spike,
-    spike_decision = metadata$spike_decision,
-    reset_zero = reset_zero
-  )
-  
-  if (is.null(x_trans)) {
-    newdata <- matrix(numeric(0L), nrow = n_newdata, ncol = 0L)
-  } else {
-    newdata <- x_trans$x_transformed
     
-    # Apply the stored final-model centres after transformation.
-    if (apply_center && !is.null(object$centers)) {
-      newdata <- center_matrix(
-        newdata,
-        centers = object$centers[colnames(newdata)],
-        zero = x_trans$zero_expanded
-      )
+    if (NCOL(newdata) == 0L) {
+      newdata <- data.frame(row.names = seq_len(n_newdata))
+    } else {
+      newdata <- data.frame(newdata, check.names = FALSE)
     }
-  }
-  
-  if (NCOL(newdata) == 0L) {
-    newdata <- data.frame(row.names = seq_len(n_newdata))
-  } else {
-    newdata <- data.frame(newdata, check.names = FALSE)
   }
   
   # Attach high-level strata and offset variables expected by the stored model

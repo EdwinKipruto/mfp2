@@ -256,14 +256,21 @@ predictors before fitting the final interaction model and adjustment model.
 Binary covariates are centered at the lower of their two values rather than
 the mean. Default is \code{TRUE}.}
 
-\item{subset}{Optional subset of observations used for model selection and fitting.
-May be either a logical vector with one value per observation or a numeric
-vector of positive integer row indices. Missing, non-finite, zero,
-negative, out-of-range, non-integer, and duplicated indices are not allowed.
-Default is \code{NULL}, meaning that all observations are used. As in
-\code{\link[mfp2]{mfp2}}, subsetting is applied after preprocessing
-parameters such as shift, scale, and centering constants have been computed
-from the full data.}
+\item{subset}{Optional subset of observations used for model selection and fitting. In
+the formula interface, this may be an expression involving columns of
+\code{data} and objects in the formula environment; it is evaluated exactly once,
+with data columns taking precedence. In the matrix interface, it is an
+ordinary logical vector with one value per observation or a numeric vector
+of positive integer row indices evaluated in the caller. Missing,
+non-finite, zero, negative, out-of-range, non-integer, and duplicated
+indices are not allowed. Unique numeric indices retain their supplied order.
+Default is \code{NULL}, meaning that all observations
+are used. Automatic shift and scale values for continuous predictors are
+computed from the full data. The formula method then drops unused factor
+levels and rebuilds categorical design columns from the retained
+observations. The matrix method cannot reconstruct factor contrasts and
+stops if a mapped \code{term_groups} block loses estimable dimension after
+subsetting.}
 
 \item{family}{Model family specification. May be one of the character strings
 \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or \code{"cox"}; a GLM family function
@@ -630,6 +637,9 @@ predictor term to the design columns it generated. Simple factor wrappers
 are named by their source variable; their raw design-column names remain
 unchanged. Entries are used to reconstruct complete categorical
 adjustment blocks during prediction. Only present for formula fits.}
+\item{\code{formula_prediction_term_names}}{Named character vector mapping
+original formula term labels to the conceptual names used by MFPI
+selection and prediction. Only present for formula fits.}
 \item{\code{formula_factor_terms}}{Character vector naming the conceptual
 unordered and ordered factor terms treated as fixed-linear adjustment
 blocks. Only present for formula fits.}
@@ -823,6 +833,30 @@ arguments passed to \code{mfp2::mfp2()}, such as \code{select}, \code{alpha},
 \code{keep}, and \code{df}.
 }
 
+\section{Details on the \code{subset} argument}{
+
+In \code{mfpi.formula()}, the supplied subset expression is evaluated exactly once
+using standard formula lookup: names are resolved first from columns of \code{data}
+and then from the formula environment. Therefore expressions such as
+\code{subset = age >= 50}, a logical data column such as \code{subset = eligible}, and
+caller-defined row indices are supported; the subset does not itself have to
+be stored in \code{data}.
+
+In \code{mfpi.default()}, there is no formula data mask. The supplied logical or
+numeric/integer vector is evaluated normally in the caller, and matrix column
+names are not exposed as standalone variables. Use an explicit expression
+such as \code{subset = x[, "age"] >= 50} when deriving the subset from a matrix
+column. In both interfaces, continuous shift and scale calculations retain
+their full-data source, while model selection and fitting use only the
+retained observations. Numeric row positions must be unique; unique positions
+retain the order supplied by the user and are not sorted automatically.
+
+When \code{subset = NULL}, the formula interface reuses the complete evaluated
+model frame directly. It does not invoke retained-row resolution or rebuild
+factor coding. Subset-specific row and factor processing occurs only when a
+non-\code{NULL} subset is supplied.
+}
+
 \section{Categorical adjustment terms}{
 
 Categorical predictors other than \code{group_var} are adjustment terms;
@@ -841,6 +875,18 @@ In the default matrix interface, categorical columns must already be encoded
 numerically and grouped with \code{term_groups}. For example,
 \code{term_groups = list(stage = c("stageII", "stageIII"))}
 declares the two columns to be one adjustment term named \code{stage}.
+With \code{subset}, automatic continuous shift and scale calculations retain
+their full-data source. The formula interface performs extra factor processing
+only for a non-\code{NULL} subset. It preserves factor-specific custom contrasts when
+all levels remain, and it drops unused levels and regenerates default treatment
+or ordered polynomial contrasts when no custom contrast was supplied. If a
+predictor with factor-specific custom contrasts loses a level, fitting stops
+because a unique reduced contrast basis cannot be inferred safely. The matrix
+interface has only the supplied numeric columns and cannot reconstruct their
+factor origin; it rejects a grouped block whose estimable dimension decreases
+after subsetting. Formula and matrix results may therefore differ when a subset
+removes factor levels.
+
 Columns not mentioned in \code{term_groups} remain singleton terms. Group
 names and member columns must be unique, and a column cannot belong to more
 than one group.

@@ -24,7 +24,7 @@ Imports:
     ggplot2 (>= 3.4.0)
 Suggests:
     knitr,
-    testthat (>= 3.3.1),
+    testthat (>= 3.2.0),
     xfun,
     rmarkdown,
     formatR,

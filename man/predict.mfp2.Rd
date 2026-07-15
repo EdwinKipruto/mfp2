@@ -17,6 +17,7 @@
   newoffset = NULL,
   nseq = 100,
   add_intercept = TRUE,
+  reference = c("zero", "sample", "strata"),
   ...
 )
 }
@@ -24,8 +25,12 @@
 \item{object}{A fitted object of class \code{mfp2}.}
 
 \item{newdata}{Optional matrix or data frame containing variables for
-prediction. Column names must identify the original predictors used by the
-fit. Formula-created predictors are reconstructed when possible.}
+prediction. Only predictors retained in the final model are required for
+relative Cox, GLM, term, or contrast predictions. Cox predictions with
+\code{type = "expected"} or \code{type = "survival"} must also contain the
+follow-up response: provide the original response-side variables for a
+formula fit, or include exactly one \code{Surv} column in \code{newdata}. Formula-
+created predictors are reconstructed when possible.}
 
 \item{type}{Prediction type. The default is \code{"link"} for GLM models and
 \code{"lp"} for Cox models. Use \code{"terms"} for variable-specific partial
@@ -68,7 +73,9 @@ reconstructed automatically from \code{newdata} when the original strata
 variable(s) are present.}
 
 \item{newoffset}{Optional numeric vector of offsets for prediction when the
-fitted model used an offset and \code{newdata} is supplied.}
+fitted model used an offset and \code{newdata} is supplied. Prediction offsets
+are centered by \code{predict.coxph()} at the mean training offset independently
+of the covariate \code{reference}.}
 
 \item{nseq}{Positive integer giving the number of equally spaced values used
 when \code{terms_seq = "equidistant"}.}
@@ -76,6 +83,12 @@ when \code{terms_seq = "equidistant"}.}
 \item{add_intercept}{Logical scalar. For \code{type = "terms"}, controls whether
 the model intercept is included in GLM term values and term standard errors.
 It has no effect for contrasts and does not apply to Cox models.}
+
+\item{reference}{Character scalar controlling the covariate origin for Cox
+\code{type = "lp"} and \code{type = "risk"} predictions. One of \code{"zero"},
+\code{"sample"}, or \code{"strata"}; the default is \code{"zero"}. It is not available
+for GLM predictions, \code{mfp2} term/contrast predictions, or Cox
+expected-event/survival predictions.}
 
 \item{...}{Further arguments passed to \code{predict.glm()} or \code{predict.coxph()}
 for full-model predictions.}
@@ -126,12 +139,12 @@ values are exempt from this positivity stop.
 
 For full-model predictions, standard errors are requested with \code{se.fit = TRUE}
 and are computed by the underlying \code{predict.glm()} or \code{predict.coxph()} method.
-For Cox models, this method always calls \code{predict.coxph()} with
-\code{reference = "zero"}. The transformed design matrix in \code{mfp2} has already been
-centered where required, so asking \code{predict.coxph()} to subtract an additional
-sample or strata reference would shift the covariate contribution incorrectly.
-Cox offsets retain the native \code{predict.coxph()} convention: the prediction
-offset is expressed relative to the mean offset in the fitting data.
+Cox relative predictions expose the same covariate-reference choices as
+\code{predict.coxph()}, while retaining \code{reference = "zero"} as the default used by
+earlier \code{mfp2} releases. Absolute Cox predictions use the fitted Cox baseline
+hazard and deliberately do not accept a covariate \code{reference}, because
+\code{predict.coxph()} fixes its own internally consistent sample reference on that
+calculation path.
 
 For \code{type = "terms"}, standard errors are computed from the fitted covariance
 matrix for the columns belonging to each selected variable. If
@@ -146,6 +159,83 @@ computed from the transformed difference. These standard errors are
 conditional on the final selected model and do not include model-selection
 uncertainty.
 }
+\section{Cox prediction scales and covariate references}{
+
+A Cox model describes how covariates multiply an otherwise unspecified
+baseline hazard. Consequently, \code{type = "lp"} and \code{type = "risk"} are
+\strong{relative} quantities:
+\itemize{
+\item \code{type = "lp"} returns the relative log-hazard, also called the linear
+predictor.
+\item \code{type = "risk"} returns \code{exp(lp)}, a relative hazard or risk score.
+}
+Neither output is an absolute hazard, event probability, or survival
+probability. Their numerical origin is selected with \code{reference}:
+\itemize{
+\item \code{"zero"} uses the transformed \code{mfp2} design values exactly as
+reconstructed. This is the default and keeps the full-model linear
+predictor aligned with \code{mfp2}'s independently calculated term
+contributions.
+\item \code{"sample"} subtracts the column means stored by the fitted \code{coxph}
+object before calculating the covariate contribution.
+\item \code{"strata"} subtracts weighted training-data means separately within
+each fitted stratum. In an unstratified model this is effectively the
+sample reference.
+}
+Changing from \code{"zero"} to \code{"sample"} adds the same constant to every \code{lp}
+and multiplies every \code{risk} by the same constant. Differences in \code{lp} and
+ratios of \code{risk} are therefore unchanged. With \code{reference = "strata"}, the
+constant is stratum-specific, so this invariance applies to comparisons made
+within the same stratum. Cox models do not define a common baseline hazard
+across different strata.
+
+The reference may matter visibly when a fitted transformed column has a
+nonzero Cox-model mean, most commonly when a variable was fitted with
+\code{center = FALSE}, for binary or zero-handled columns, or when a custom
+\code{nocenter} convention was used. Even when fitted values differ only by a
+constant, standard errors from \code{predict.coxph(se.fit = TRUE)} can differ
+because they are calculated from the reference-adjusted design row.
+
+Offsets use a separate convention. Regardless of \code{reference},
+\code{predict.coxph()} expresses a prediction offset relative to the mean offset
+in the training data. The \code{reference} argument controls covariate centering;
+it does not control offset centering.
+}
+
+\section{Absolute Cox predictions}{
+
+\code{type = "expected"} and \code{type = "survival"} are supported. They use the
+genuine baseline-cumulative-hazard machinery retained in the underlying
+fitted \code{coxph} object, including its response, risk sets, strata, residuals,
+coefficients, covariance matrix, tie method, and offsets.
+
+For an ordinary right-censored response \code{Surv(time, status)},
+\code{type = "expected"} returns the predicted cumulative hazard up to \code{time},
+and \code{type = "survival"} returns \code{exp(-expected)}, the corresponding survival
+probability. For a counting-process response \code{Surv(start, stop, status)}, the
+prediction applies to the supplied interval.
+
+Absolute predictions with \code{newdata} require follow-up times or intervals in
+addition to covariates. All required information is supplied through
+\code{newdata}; there is no separate response argument. For a formula-interface
+fit, include the variables used on the left-hand side of the original formula
+and \code{mfp2} reconstructs the \code{Surv} response automatically. For any fit,
+including a matrix-interface fit, \code{newdata} may instead contain exactly one
+column that is itself a \code{Surv} object. Wrap that matrix-like column in \code{I()}
+when constructing a data frame so that it remains a single column, for
+example \code{data.frame(x = xnew, y = I(Surv(time, status)))}. The response
+column is used only to determine the prediction time or interval; predictor
+transformation still uses the ordinary fitted covariate columns. With
+\code{newdata = NULL}, the fitted response is used directly.
+
+The Cox baseline-hazard path always uses the sample reference internally.
+Supplying \code{reference} together with \code{type = "expected"} or
+\code{type = "survival"} is therefore rejected with an informative error instead
+of being silently ignored. The same argument is also rejected for \code{mfp2}'s
+own \code{type = "terms"} and \code{type = "contrasts"}; use \code{ref} for contrast
+reference values.
+}
+
 \section{Terms prediction}{
 
 If \code{type = "terms"}, this function computes partial linear predictors for
@@ -222,6 +312,40 @@ predict(
   terms = "race",
   ref = list(race = "A")
 )
+
+# Cox lp/risk predictions are relative; reference changes their origin.
+data("gbsg")
+fit_cox <- mfp2(
+  survival::Surv(rectime, censrec) ~ age + nodes,
+  data = gbsg,
+  family = "cox",
+  df = 1,
+  select = 1,
+  alpha = 1,
+  verbose = FALSE
+)
+profiles <- gbsg[1:3, c("age", "nodes")]
+predict(fit_cox, profiles, type = "lp")
+predict(fit_cox, profiles, type = "lp", reference = "sample")
+
+# Absolute predictions also need the follow-up time from the response side.
+absolute_profiles <- gbsg[1:3, c("rectime", "censrec", "age", "nodes")]
+predict(fit_cox, absolute_profiles, type = "survival")
+predict(fit_cox, absolute_profiles, type = "expected")
+
+# After matrix-interface fitting, embed one Surv column in newdata.
+x_cox <- as.matrix(gbsg[, c("age", "nodes")])
+y_cox <- survival::Surv(gbsg$rectime, gbsg$censrec)
+fit_cox_matrix <- mfp2(
+  x_cox, y_cox, family = "cox", df = 1, select = 1, alpha = 1,
+  verbose = FALSE
+)
+matrix_profiles <- data.frame(
+  age = gbsg$age[1:3],
+  nodes = gbsg$nodes[1:3]
+)
+matrix_profiles$followup <- I(y_cox[1:3])
+predict(fit_cox_matrix, matrix_profiles, type = "survival")
 
 }
 

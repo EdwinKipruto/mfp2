@@ -600,15 +600,6 @@ fit_mfp <- function(x,
     n_obs <- nrow(x)
   }
   
-  # Make the non-trivial term lookup available to unchanged FP-only selection
-  # functions through the working matrix. Identity-mapped fits carry no extra
-  # attribute, preserving the historical path.
-  if (has_mapped_terms) {
-    attr(x, "mfp2_term_to_columns") <- term_to_columns
-  } else if (!is.null(attr(x, "mfp2_term_to_columns", exact = TRUE))) {
-    attr(x, "mfp2_term_to_columns") <- NULL
-  }
-  
   # Step 8: Run MFP backfitting cycles until convergence -----------------------
   # A cycle is one complete pass through all variables (see find_best_fp_cycle()
   # documentation); convergence means neither the selected powers nor the SAZ
@@ -699,10 +690,6 @@ fit_mfp <- function(x,
     )
   }
   
-  if (has_mapped_terms) {
-    attr(x, "mfp2_term_to_columns") <- NULL
-  }
-  
   # Step 9: Apply the final FP/ACD transformation and centering ---------------
   # Backscale x before final FP transformation so that coefficients are on
   # the phi(x + shift) scale, matching what a user would expect from mfp2().
@@ -739,55 +726,25 @@ fit_mfp <- function(x,
   }
   
   if (has_mapped_terms) {
-    raw_columns <- unlist(term_to_columns, use.names = FALSE)
-    
-    power_list_final <- list()
-    center_final <- logical(0L)
-    acdx_final <- logical(0L)
-    zero_final <- logical(0L)
-    # `transform_matrix()` expects `catzero` as a named logical vector.
-    # Expand the term-level flags to one logical value per raw design column;
-    # the separate `acd_parameter_final_columns` object remains list-valued.
-    catzero_final <- logical(0L)
-    spike_final <- logical(0L)
-    spike_decision_final <- integer(0L)
-    acd_parameter_final_columns <- list()
-    
-    for (term in names(term_to_columns)) {
-      cols <- term_to_columns[[term]]
-      if (term_uses_column_mapping(term, cols)) {
-        selected <- !all(is.na(powers_current[[term]]))
-        for (col in cols) {
-          power_list_final[[col]] <- if (selected) 1 else NA_real_
-          center_final[col] <- center[[term]]
-          acdx_final[col] <- FALSE
-          zero_final[col] <- FALSE
-          catzero_final[col] <- FALSE
-          spike_final[col] <- FALSE
-          spike_decision_final[col] <- saz_decision_codes[["continuous_only"]]
-          acd_parameter_final_columns[col] <- list(NULL)
-        }
-      } else {
-        col <- cols[[1L]]
-        power_list_final[[col]] <- powers_current[[term]]
-        center_final[col] <- center[[term]]
-        acdx_final[col] <- acdx[[term]]
-        zero_final[col] <- zero[[term]]
-        catzero_final[col] <- isTRUE(catzero[[term]])
-        spike_final[col] <- spike[[term]]
-        spike_decision_final[col] <- spike_decision[[term]]
-        acd_parameter_final_columns[col] <- list(acd_parameter_final[[term]])
-      }
-    }
-    
-    power_list_final <- power_list_final[raw_columns]
-    center_final <- center_final[raw_columns]
-    acdx_final <- acdx_final[raw_columns]
-    zero_final <- zero_final[raw_columns]
-    catzero_final <- catzero_final[raw_columns]
-    spike_final <- spike_final[raw_columns]
-    spike_decision_final <- spike_decision_final[raw_columns]
-    acd_parameter_final_columns <- acd_parameter_final_columns[raw_columns]
+    expanded_final <- expand_term_metadata_to_columns(
+      term_to_columns = term_to_columns,
+      powers = powers_current,
+      center = center,
+      acdx = acdx,
+      zero = zero,
+      catzero = catzero,
+      spike = spike,
+      spike_decision = spike_decision,
+      acd_parameter = acd_parameter_final
+    )
+    power_list_final <- expanded_final$powers
+    center_final <- expanded_final$center
+    acdx_final <- expanded_final$acdx
+    zero_final <- expanded_final$zero
+    catzero_final <- expanded_final$catzero
+    spike_final <- expanded_final$spike
+    spike_decision_final <- expanded_final$spike_decision
+    acd_parameter_final_columns <- expanded_final$acd_parameter
   } else {
     power_list_final <- powers_current
     center_final <- center
@@ -922,9 +879,13 @@ fit_mfp <- function(x,
         ]), drop = FALSE]
       },
       y_original = y,
-      fp_terms        = create_fp_terms(powers_current, acdx, df, select, alpha,
-                                        criterion, zero, catzero_effective, spike,
-                                        spike_decision),
+      fp_terms        = create_fp_terms(
+        powers_current, acdx, df, select, alpha, criterion, zero,
+        catzero_effective, spike, spike_decision,
+        term_to_columns = term_to_columns,
+        transformed_to_model_columns = transformed_to_model_columns,
+        coefficients = modelfit$fit$coefficients
+      ),
       transformations = data.frame(shift = shift, scale = scale, center = center),
       fp_powers       = powers_current,
       acd             = acdx,
@@ -1360,6 +1321,14 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' model. Used both to derive the \code{selected}/\code{df_final} columns and,
 #' via \code{convert_powers_list_to_matrix()}, the \code{power1, power2, ...}
 #' columns.
+#' @param term_to_columns Optional complete conceptual-term-to-raw-column
+#'   mapping. When supplied, explicitly mapped retained terms report their
+#'   fitted rank contribution rather than one df per stored linear power.
+#' @param transformed_to_model_columns Optional named mapping from final
+#'   transformed design columns to exact fitted coefficient names.
+#' @param coefficients Optional named coefficient vector from the final fitted
+#'   model. Missing coefficients are treated as non-estimable and do not
+#'   contribute to a grouped term's final df.
 #' @keywords internal
 #' @noRd
 create_fp_terms <- function(fp_powers, 
@@ -1371,7 +1340,10 @@ create_fp_terms <- function(fp_powers,
                             zero,
                             catzero,
                             spike, 
-                            spike_decision) {
+                            spike_decision,
+                            term_to_columns = NULL,
+                            transformed_to_model_columns = NULL,
+                            coefficients = NULL) {
   
   # Step 1: Align every input vector/list to the same variable order/subset
   # as fp_powers, since callers may pass vectors covering a different (e.g.
@@ -1387,7 +1359,104 @@ create_fp_terms <- function(fp_powers,
   spike <- spike[vars]
   spike_decision <- spike_decision[vars]
   
-  # Step 2: Assemble the one-row-per-variable overview table.
+  # Step 2: Calculate final degrees of freedom. Continuous terms use the MFP
+  # convention implemented by calculate_df(). Explicitly mapped fixed-linear
+  # terms are different: one conceptual term can represent several fitted
+  # design columns, so its final df is the number of estimable coefficients in
+  # that block rather than the single power value stored for selection.
+  df_final <- mapply(
+    calculate_df,
+    fp_powers,
+    spike_decision,
+    catzero,
+    SIMPLIFY = TRUE
+  )
+  names(df_final) <- vars
+  
+  if (!is.null(term_to_columns)) {
+    missing_terms <- setdiff(vars, names(term_to_columns))
+    if (length(missing_terms) > 0L) {
+      stop(
+        sprintf(
+          "Internal error: term-to-column metadata is missing term(s): %s.",
+          paste(missing_terms, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    mapped <- mapped_term_flags(term_to_columns[vars])
+    mapped_selected <- mapped & !vapply(
+      fp_powers,
+      function(p) all(is.na(p)),
+      logical(1L)
+    )
+    
+    if (any(mapped_selected)) {
+      if (is.null(transformed_to_model_columns) || is.null(coefficients)) {
+        stop(
+          paste0(
+            "Internal error: fitted column and coefficient metadata are ",
+            "required to calculate grouped-term degrees of freedom."
+          ),
+          call. = FALSE
+        )
+      }
+      
+      coefficient_names <- names(coefficients)
+      if (is.null(coefficient_names)) {
+        stop(
+          "Internal error: final fitted coefficients must have names.",
+          call. = FALSE
+        )
+      }
+      
+      for (term in vars[mapped_selected]) {
+        raw_columns <- term_to_columns[[term]]
+        transformed_columns <- paste0(raw_columns, ".1")
+        
+        missing_transformed <- setdiff(
+          transformed_columns,
+          names(transformed_to_model_columns)
+        )
+        if (length(missing_transformed) > 0L) {
+          stop(
+            sprintf(
+              paste0(
+                "Internal error: transformed-column metadata for grouped ",
+                "term '%s' is missing: %s."
+              ),
+              term,
+              paste(missing_transformed, collapse = ", ")
+            ),
+            call. = FALSE
+          )
+        }
+        
+        model_columns <- unname(
+          transformed_to_model_columns[transformed_columns]
+        )
+        missing_coefficients <- setdiff(model_columns, coefficient_names)
+        if (length(missing_coefficients) > 0L) {
+          stop(
+            sprintf(
+              paste0(
+                "Internal error: coefficient metadata for grouped term '%s' ",
+                "is missing: %s."
+              ),
+              term,
+              paste(missing_coefficients, collapse = ", ")
+            ),
+            call. = FALSE
+          )
+        }
+        
+        df_final[[term]] <- sum(!is.na(coefficients[model_columns]))
+      }
+    }
+  }
+  
+  # Step 3: Assemble the one-row-per-variable overview table.
   fp_terms <- data.frame(
     # initial degrees of freedom
     df_initial = df, 
@@ -1408,15 +1477,7 @@ create_fp_terms <- function(fp_powers,
       if (sd == saz_decision_codes[["binary_only"]]) TRUE  # binary-only spike is still selected
       else !all(is.na(p))
     }, fp_powers, spike_decision),
-    # final degrees of freedom, using the same per-variable rules as
-    # calculate_df() (binary-only spike, unselected, linear, FPm, +catzero).
-    df_final = mapply(
-      calculate_df,
-      fp_powers,
-      spike_decision,
-      catzero,
-      SIMPLIFY = TRUE
-    ), 
+    df_final = unname(df_final),
     # Adds power1, power2, ... columns (NA-padded to the largest selected FP
     # degree across all variables).
     convert_powers_list_to_matrix(fp_powers)
@@ -1424,7 +1485,7 @@ create_fp_terms <- function(fp_powers,
   
   rownames(fp_terms) <- names(fp_powers)
   
-  # Step 3: For non-p-value criteria, `select`/`alpha` no longer represent
+  # Step 4: For non-p-value criteria, `select`/`alpha` no longer represent
   # significance levels, so replace them with the criterion name (e.g. "AIC")
   # for a clearer summary/print display.
   if (criterion != "pvalue") {

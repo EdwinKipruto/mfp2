@@ -139,10 +139,15 @@ the exception is binary covariates, which are not power-transformed and are
 instead centered by subtracting the lower of their two distinct values.
 See Details section below.}
 
-\item{subset}{an optional vector specifying a subset of observations
-to be used in the fitting process. Default is \code{NULL} and all observations are
-used. See Details below. weights/offset/strata must be aligned to original
-data rows, even when subset is supplied.}
+\item{subset}{an optional subset of observations used for model selection and
+fitting. In the formula interface, this may be an expression involving columns
+of \code{data} and objects in the formula environment; it is evaluated exactly once,
+with data columns taking precedence. In the matrix interface, \code{subset} is an
+ordinary logical vector or numeric/integer vector of row positions evaluated
+in the caller. Numeric row positions must be unique; their supplied order is
+preserved. Default is \code{NULL}, meaning that all observations are used.
+\code{weights}, \code{offset}, and \code{strata} must remain aligned to the original data rows,
+even when a subset is supplied. See Details below.}
 
 \item{family}{Either a character string specifying the model family
 (e.g., "gaussian", "binomial", "poisson", "cox") or a function that
@@ -292,9 +297,11 @@ supports binary factors whose conceptual name differs from their dummy
 column name. Columns not listed are treated as identity singleton terms.
 Explicitly mapped terms are selected and tested
 jointly and must be linear-only (effective \code{df = 1}) with no ACD,
-zero, catzero, or spike-at-zero handling. The formula method constructs
-this mapping automatically from \code{model.matrix()} and does not expose
-a separate user-facing argument.}
+zero, catzero, or spike-at-zero handling. If subsetting reduces the
+estimable dimension of a mapped block, the matrix method stops because it
+cannot reconstruct the original factor levels or contrasts. The formula
+method constructs this mapping automatically from \code{model.matrix()}
+and does not expose a separate user-facing argument.}
 
 \item{formula}{for \code{mfp2.formula}: an object of class \code{formula}: a symbolic
 description of the model to be fitted. Special \code{fp} terms can be used to
@@ -325,6 +332,8 @@ variable.
 \item term_to_columns: a complete named list mapping every conceptual term
 to its raw design-matrix column or columns. Simple factor wrappers use the
 source variable name, while the raw columns retain model.matrix() names.
+\item formula_prediction_term_names: for formula fits, a named character
+vector mapping original formula term labels to conceptual MFP term names.
 \item formula_factor_info: for formula fits with simple factor main effects,
 fitted level and design-block metadata used by term and contrast prediction.
 \item acd: a vector with information for which variables the acd
@@ -493,6 +502,23 @@ if \code{subset} is used and shift or scale parameters need to be estimated,
 applying the subset. The subset is then applied before model selection and
 fitting are performed on the selected observations.
 
+The two interfaces resolve \code{subset} differently. In \code{mfp2.formula()}, the
+supplied expression is evaluated exactly once using standard formula lookup:
+names are resolved first from columns of \code{data} and then from the formula
+environment. Thus \code{subset = age >= 50}, \code{subset = keep}, and a caller-defined
+row-index object are all supported; \code{subset} does not itself have to be a
+column of \code{data}. In \code{mfp2.default()}, no formula data mask exists, so the
+supplied logical or numeric/integer vector is evaluated normally in the caller.
+Matrix column names are not made available as standalone variables; use an
+explicit expression such as \code{subset = x[, "age"] >= 50} when needed.
+In both interfaces, numeric row positions must be unique. Unique positions
+retain the order supplied by the user and are not sorted automatically.
+
+When \code{subset = NULL}, the formula interface reuses the complete evaluated
+model frame directly. It does not invoke retained-row resolution or rebuild
+factor coding. Subset-specific row and factor processing occurs only when a
+non-\code{NULL} subset is supplied.
+
 Consequently, using \code{subset} in \code{mfp2()} is not equivalent to subsetting the
 data before calling the function. The \code{subset} argument should not be used for
 tasks such as cross-validation or removal of missing values; those should be
@@ -502,6 +528,25 @@ analysis subsets. For example, separate models may be fitted for women and men
 while estimating the shift and scale parameters from the same full dataset.
 In that setting, \code{subset} restricts model selection and fitting to the chosen
 group while retaining consistent shift and scale parameters across groups.
+
+Categorical variables follow an interface-specific rule after the full-data
+preprocessing parameters have been determined. In the formula interface, this
+extra factor processing runs only for a non-\code{NULL} subset. If all levels of a
+factor remain represented, any factor-specific custom contrasts are preserved
+exactly. If levels are removed from a factor using default contrasts, unused
+levels are dropped and \code{model.matrix()} regenerates treatment contrasts or
+the lower-dimensional ordered-factor polynomial basis. If levels are removed
+from a predictor carrying factor-specific custom contrasts, fitting stops with
+a targeted error because there is no unique safe reduced contrast basis. The
+fitted object therefore stores only the levels and contrasts actually used in
+the fit. A factor with fewer than two retained levels produces an error.
+
+In the matrix interface, \code{x} contains only numeric columns: the original
+factor levels and contrast generator are unavailable. The supplied columns are
+therefore retained unchanged. A mapped \code{term_groups} block is rejected
+if its estimable dimension decreases after subsetting. Formula and matrix calls
+can consequently differ only in this special situation, where subsetting
+removes categorical levels and only the formula interface can rebuild them.
 }
 
 \section{Handling of Categorical Variables}{

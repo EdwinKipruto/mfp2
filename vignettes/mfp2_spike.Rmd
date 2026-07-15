@@ -224,12 +224,10 @@ In the formula interface, SAZ modelling is requested inside `fp()` using
 
 ```{r quick-start-fit}
 fit_both <- mfp2(
-  y ~ fp(x_saz, spike = TRUE),
+  y ~ fp(x_saz, select = 0.05, alpha = 0.05, spike = TRUE),
   data = dat_both,
   family = "gaussian",
   criterion = "pvalue",
-  select = 0.05,
-  alpha = 0.05,
   min_saz_component_prop = 0.10,
   verbose = FALSE
 )

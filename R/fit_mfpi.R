@@ -2515,42 +2515,33 @@ mfpi_build_adjustment_block_cache <- function(x,
     }
     x_one <- sweep(x_one, 2L, scale_cols, "*")
     
-    grouped <- term_uses_column_mapping(v, cols)
-    power_cols <- if (grouped) {
-      stats::setNames(rep(list(1), length(cols)), cols)
-    } else {
-      stats::setNames(list(adj_fp_powers[[v]]), cols)
-    }
-    
-    center_cols <- if (!is.null(center)) center[cols] else {
-      stats::setNames(rep(FALSE, length(cols)), cols)
-    }
-    
-    false_cols <- stats::setNames(rep(FALSE, length(cols)), cols)
-    spike_decision_cols <- stats::setNames(
-      rep(saz_decision_codes[["continuous_only"]], length(cols)),
-      cols
+    center_term <- collapse_option_to_terms(
+      if (!is.null(center)) center else {
+        stats::setNames(rep(FALSE, ncol(x)), colnames(x))
+      },
+      term_to_columns[v],
+      "center"
     )
-    
-    if (!grouped) {
-      false_cols[cols] <- FALSE
-      acd_cols <- stats::setNames(isTRUE(acd_vars[[v]]), cols)
-      zero_cols <- stats::setNames(isTRUE(adj_zero[[v]]), cols)
-      catzero_cols <- stats::setNames(isTRUE(adj_catzero[[v]]), cols)
-      spike_cols <- stats::setNames(isTRUE(adj_spike[[v]]), cols)
-      spike_decision_cols[cols] <- adj_spike_decision[[v]]
-      acd_parameter_cols <- if (!is.null(adj_acd_parameter)) {
-        stats::setNames(list(adj_acd_parameter[[v]]), cols)
-      } else {
-        NULL
-      }
-    } else {
-      acd_cols <- false_cols
-      zero_cols <- false_cols
-      catzero_cols <- false_cols
-      spike_cols <- false_cols
-      acd_parameter_cols <- stats::setNames(rep(list(NULL), length(cols)), cols)
-    }
+    expanded_adjustment <- expand_term_metadata_to_columns(
+      term_to_columns = term_to_columns[v],
+      powers = stats::setNames(list(adj_fp_powers[[v]]), v),
+      raw_columns = cols,
+      center = center_term,
+      acdx = acd_vars,
+      zero = adj_zero,
+      catzero = adj_catzero,
+      spike = adj_spike,
+      spike_decision = adj_spike_decision,
+      acd_parameter = adj_acd_parameter
+    )
+    power_cols <- expanded_adjustment$powers
+    center_cols <- expanded_adjustment$center
+    acd_cols <- expanded_adjustment$acdx
+    zero_cols <- expanded_adjustment$zero
+    catzero_cols <- expanded_adjustment$catzero
+    spike_cols <- expanded_adjustment$spike
+    spike_decision_cols <- expanded_adjustment$spike_decision
+    acd_parameter_cols <- expanded_adjustment$acd_parameter
     
     transformed <- transform_matrix(
       x                  = x_one,

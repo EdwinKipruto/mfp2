@@ -124,6 +124,23 @@
 #' applying the subset. The subset is then applied before model selection and
 #' fitting are performed on the selected observations.
 #'
+#' The two interfaces resolve `subset` differently. In `mfp2.formula()`, the
+#' supplied expression is evaluated exactly once using standard formula lookup:
+#' names are resolved first from columns of `data` and then from the formula
+#' environment. Thus `subset = age >= 50`, `subset = keep`, and a caller-defined
+#' row-index object are all supported; `subset` does not itself have to be a
+#' column of `data`. In `mfp2.default()`, no formula data mask exists, so the
+#' supplied logical or numeric/integer vector is evaluated normally in the caller.
+#' Matrix column names are not made available as standalone variables; use an
+#' explicit expression such as `subset = x[, "age"] >= 50` when needed.
+#' In both interfaces, numeric row positions must be unique. Unique positions
+#' retain the order supplied by the user and are not sorted automatically.
+#'
+#' When `subset = NULL`, the formula interface reuses the complete evaluated
+#' model frame directly. It does not invoke retained-row resolution or rebuild
+#' factor coding. Subset-specific row and factor processing occurs only when a
+#' non-`NULL` subset is supplied.
+#'
 #' Consequently, using `subset` in `mfp2()` is not equivalent to subsetting the
 #' data before calling the function. The `subset` argument should not be used for
 #' tasks such as cross-validation or removal of missing values; those should be
@@ -133,6 +150,25 @@
 #' while estimating the shift and scale parameters from the same full dataset.
 #' In that setting, `subset` restricts model selection and fitting to the chosen
 #' group while retaining consistent shift and scale parameters across groups.
+#'
+#' Categorical variables follow an interface-specific rule after the full-data
+#' preprocessing parameters have been determined. In the formula interface, this
+#' extra factor processing runs only for a non-`NULL` subset. If all levels of a
+#' factor remain represented, any factor-specific custom contrasts are preserved
+#' exactly. If levels are removed from a factor using default contrasts, unused
+#' levels are dropped and \code{model.matrix()} regenerates treatment contrasts or
+#' the lower-dimensional ordered-factor polynomial basis. If levels are removed
+#' from a predictor carrying factor-specific custom contrasts, fitting stops with
+#' a targeted error because there is no unique safe reduced contrast basis. The
+#' fitted object therefore stores only the levels and contrasts actually used in
+#' the fit. A factor with fewer than two retained levels produces an error.
+#'
+#' In the matrix interface, \code{x} contains only numeric columns: the original
+#' factor levels and contrast generator are unavailable. The supplied columns are
+#' therefore retained unchanged. A mapped \code{term_groups} block is rejected
+#' if its estimable dimension decreases after subsetting. Formula and matrix calls
+#' can consequently differ only in this special situation, where subsetting
+#' removes categorical levels and only the formula interface can rebuild them.
 #' 
 #' 
 #' @section Handling of Categorical Variables:
@@ -472,9 +508,11 @@
 #'   column name. Columns not listed are treated as identity singleton terms.
 #'   Explicitly mapped terms are selected and tested
 #'   jointly and must be linear-only (effective \code{df = 1}) with no ACD,
-#'   zero, catzero, or spike-at-zero handling. The formula method constructs
-#'   this mapping automatically from \code{model.matrix()} and does not expose
-#'   a separate user-facing argument.
+#'   zero, catzero, or spike-at-zero handling. If subsetting reduces the
+#'   estimable dimension of a mapped block, the matrix method stops because it
+#'   cannot reconstruct the original factor levels or contrasts. The formula
+#'   method constructs this mapping automatically from \code{model.matrix()}
+#'   and does not expose a separate user-facing argument.
 #' @param y Response variable for `mfp2.default`.
 #' For `family = "gaussian"` and `family = "poisson"`, `y` must be a numeric
 #' vector with one value per observation. For `family = "binomial"`, `y` may be
@@ -535,10 +573,15 @@
 #' the exception is binary covariates, which are not power-transformed and are
 #' instead centered by subtracting the lower of their two distinct values.
 #' See Details section below.
-#' @param subset an optional vector specifying a subset of observations
-#' to be used in the fitting process. Default is `NULL` and all observations are 
-#' used. See Details below. weights/offset/strata must be aligned to original 
-#' data rows, even when subset is supplied.
+#' @param subset an optional subset of observations used for model selection and
+#' fitting. In the formula interface, this may be an expression involving columns
+#' of `data` and objects in the formula environment; it is evaluated exactly once,
+#' with data columns taking precedence. In the matrix interface, `subset` is an
+#' ordinary logical vector or numeric/integer vector of row positions evaluated
+#' in the caller. Numeric row positions must be unique; their supplied order is
+#' preserved. Default is `NULL`, meaning that all observations are used.
+#' `weights`, `offset`, and `strata` must remain aligned to the original data rows,
+#' even when a subset is supplied. See Details below.
 #' @param family Either a character string specifying the model family 
 #'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
 #'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
@@ -752,6 +795,8 @@
 #' \item term_to_columns: a complete named list mapping every conceptual term
 #' to its raw design-matrix column or columns. Simple factor wrappers use the
 #' source variable name, while the raw columns retain model.matrix() names.
+#' \item formula_prediction_term_names: for formula fits, a named character
+#' vector mapping original formula term labels to conceptual MFP term names.
 #' \item formula_factor_info: for formula fits with simple factor main effects,
 #' fitted level and design-block metadata used by term and contrast prediction.
 #' \item acd: a vector with information for which variables the acd 
@@ -917,6 +962,43 @@ formula_factor_source_name <- function(term_label) {
 }
 
 
+#' Resolve a Simple fp()/fp2() Formula Term to Its Source Variable
+#'
+#' @param term_label Original formula term label.
+#'
+#' @return Source variable name for a simple fp()/fp2() wrapper, otherwise
+#'   `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+formula_fp_source_name <- function(term_label) {
+  expr <- tryCatch(str2lang(term_label), error = function(e) NULL)
+  if (is.null(expr) || !is.call(expr) || length(expr) < 2L) {
+    return(NULL)
+  }
+  
+  call_head <- expr[[1L]]
+  function_name <- if (is.symbol(call_head)) {
+    as.character(call_head)
+  } else if (
+    is.call(call_head) && length(call_head) == 3L &&
+    as.character(call_head[[1L]]) %in% c("::", ":::") &&
+    is.symbol(call_head[[3L]])
+  ) {
+    as.character(call_head[[3L]])
+  } else {
+    NULL
+  }
+  
+  if (is.null(function_name) || !function_name %in% c("fp", "fp2") ||
+      !is.symbol(expr[[2L]])) {
+    return(NULL)
+  }
+  
+  as.character(expr[[2L]])
+}
+
+
 #' Resolve User-Facing Conceptual Names for Formula Terms
 #'
 #' Formula term labels are retained for model.frame()/model.matrix()
@@ -938,8 +1020,12 @@ formula_conceptual_term_names <- function(terms_object, model_frame) {
   out <- stats::setNames(term_labels, term_labels)
   factor_labels <- identify_formula_factor_terms(terms_object, model_frame)
   
-  for (label in intersect(factor_labels, term_labels)) {
-    source_name <- formula_factor_source_name(label)
+  for (label in term_labels) {
+    source_name <- if (label %in% factor_labels) {
+      formula_factor_source_name(label)
+    } else {
+      formula_fp_source_name(label)
+    }
     if (!is.null(source_name)) {
       out[[label]] <- source_name
     }
@@ -1026,6 +1112,230 @@ mapped_term_flags <- function(term_to_columns) {
     names(term_to_columns),
     function(term) term_uses_column_mapping(term, term_to_columns[[term]]),
     logical(1L)
+  )
+}
+
+
+#' Expand a Scalar df Default for Explicitly Mapped Terms
+#'
+#' A scalar `df` is the default complexity for ordinary continuous predictors.
+#' Explicitly mapped terms, including multi-column categorical contrasts and
+#' one-column binary-factor mappings, are supplied fixed linear design blocks
+#' and therefore receive `df = 1` before cardinality-based df assignment.
+#'
+#' Per-column df vectors are intentionally returned unchanged so that the
+#' existing grouped-term validation can reject explicit nonlinear settings.
+#'
+#' @param df Numeric scalar or per-column vector.
+#' @param vnames Raw design-matrix column names.
+#' @param term_to_columns Complete conceptual-term lookup.
+#'
+#' @return `df` unchanged when it is already per-column; otherwise a named
+#'   per-column vector with explicitly mapped columns set to 1.
+#' @keywords internal
+#' @noRd
+expand_scalar_df_for_mapped_terms <- function(df, vnames, term_to_columns) {
+  if (length(df) != 1L) {
+    return(df)
+  }
+  
+  df_default <- stats::setNames(rep(df, length(vnames)), vnames)
+  mapped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
+  
+  if (length(mapped_terms) > 0L) {
+    mapped_columns <- unlist(
+      term_to_columns[mapped_terms],
+      use.names = FALSE
+    )
+    df_default[mapped_columns] <- 1L
+  }
+  
+  df_default
+}
+
+
+#' Expand a Default Scale Setting for Explicitly Mapped Terms
+#'
+#' A NULL or scalar `scale` setting controls ordinary continuous predictors.
+#' Explicitly mapped terms, including multi-column categorical contrasts and
+#' one-column binary-factor mappings, are supplied fixed model-matrix blocks
+#' and therefore receive `scale = 1` before automatic scale estimation.
+#'
+#' Per-column scale vectors are intentionally returned unchanged so that an
+#' explicit common scale remains supported and the existing grouped-term
+#' consistency checks can reject unequal member-column settings.
+#'
+#' @param scale NULL, a numeric scalar, or a per-column numeric vector.
+#' @param vnames Raw design-matrix column names.
+#' @param term_to_columns Complete conceptual-term lookup.
+#'
+#' @return A named per-column vector when `scale` is NULL or scalar, with
+#'   explicitly mapped columns set to 1; otherwise `scale` unchanged.
+#' @keywords internal
+#' @noRd
+expand_scale_for_mapped_terms <- function(scale, vnames, term_to_columns) {
+  if (!is.null(scale) && length(scale) != 1L) {
+    return(scale)
+  }
+  
+  ordinary_default <- if (is.null(scale)) NA_real_ else scale
+  scale_default <- stats::setNames(
+    rep(ordinary_default, length(vnames)),
+    vnames
+  )
+  mapped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
+  
+  if (length(mapped_terms) > 0L) {
+    mapped_columns <- unlist(
+      term_to_columns[mapped_terms],
+      use.names = FALSE
+    )
+    scale_default[mapped_columns] <- 1
+  }
+  
+  scale_default
+}
+
+
+#' Expand Conceptual-Term Metadata to Raw Design Columns
+#'
+#' Grouped terms store one set of selection and transformation settings for a
+#' conceptual term, while model fitting and prediction operate on the raw
+#' columns in its design block. This helper performs that expansion in one
+#' place. Explicitly mapped terms are always represented as ordinary linear
+#' columns and cannot inherit continuous-only transformations.
+#'
+#' @param term_to_columns Named list mapping conceptual terms to raw columns.
+#' @param powers Named list of selected powers by conceptual term.
+#' @param raw_columns Raw columns to return, in the required output order.
+#' @param center,acdx,zero,catzero,spike Optional named term-level settings.
+#' @param spike_decision Optional named integer decision codes by term.
+#' @param acd_parameter Optional named list of fitted ACD parameters by term.
+#'
+#' @return Named list of metadata aligned with \code{raw_columns}.
+#'
+#' @keywords internal
+#' @noRd
+expand_term_metadata_to_columns <- function(
+    term_to_columns,
+    powers,
+    raw_columns = unlist(term_to_columns, use.names = FALSE),
+    center = NULL,
+    acdx = NULL,
+    zero = NULL,
+    catzero = NULL,
+    spike = NULL,
+    spike_decision = NULL,
+    acd_parameter = NULL) {
+  if (!is.list(term_to_columns) || is.null(names(term_to_columns)) ||
+      anyDuplicated(names(term_to_columns))) {
+    stop("The conceptual-term column lookup is malformed.", call. = FALSE)
+  }
+  
+  invalid_terms <- vapply(
+    term_to_columns,
+    function(columns) {
+      !is.character(columns) || length(columns) == 0L || anyNA(columns) ||
+        any(!nzchar(columns))
+    },
+    logical(1L)
+  )
+  all_columns <- unlist(term_to_columns, use.names = FALSE)
+  if (any(invalid_terms) || anyDuplicated(all_columns)) {
+    stop("The conceptual-term column lookup contains invalid raw columns.",
+         call. = FALSE)
+  }
+  
+  raw_columns <- as.character(raw_columns)
+  unknown <- setdiff(raw_columns, all_columns)
+  if (length(unknown) > 0L) {
+    stop(
+      "Unknown raw column(s): ",
+      paste(unknown, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  
+  column_to_term <- stats::setNames(
+    rep(names(term_to_columns), lengths(term_to_columns)),
+    all_columns
+  )
+  raw_terms <- unname(column_to_term[raw_columns])
+  grouped_by_term <- mapped_term_flags(term_to_columns)
+  grouped <- unname(grouped_by_term[raw_terms])
+  
+  term_value <- function(values, term, default) {
+    if (is.null(values) || is.null(names(values)) ||
+        !term %in% names(values)) {
+      return(default)
+    }
+    values[[term]]
+  }
+  
+  powers_columns <- lapply(seq_along(raw_columns), function(index) {
+    term <- raw_terms[[index]]
+    term_powers <- term_value(powers, term, NA_real_)
+    
+    if (grouped[[index]]) {
+      if (length(term_powers) == 0L || all(is.na(term_powers))) {
+        NA_real_
+      } else {
+        1
+      }
+    } else {
+      term_powers
+    }
+  })
+  names(powers_columns) <- raw_columns
+  
+  center_columns <- acdx_columns <- zero_columns <- catzero_columns <-
+    spike_columns <- logical(length(raw_columns))
+  spike_decision_columns <- integer(length(raw_columns))
+  acd_parameter_columns <- vector("list", length(raw_columns))
+  
+  for (index in seq_along(raw_columns)) {
+    term <- raw_terms[[index]]
+    
+    center_columns[[index]] <- isTRUE(term_value(center, term, FALSE))
+    if (grouped[[index]]) {
+      acdx_columns[[index]] <- FALSE
+      zero_columns[[index]] <- FALSE
+      catzero_columns[[index]] <- FALSE
+      spike_columns[[index]] <- FALSE
+      spike_decision_columns[[index]] <-
+        saz_decision_codes[["continuous_only"]]
+      acd_parameter_columns[index] <- list(NULL)
+    } else {
+      acdx_columns[[index]] <- isTRUE(term_value(acdx, term, FALSE))
+      zero_columns[[index]] <- isTRUE(term_value(zero, term, FALSE))
+      catzero_columns[[index]] <- isTRUE(term_value(catzero, term, FALSE))
+      spike_columns[[index]] <- isTRUE(term_value(spike, term, FALSE))
+      spike_decision_columns[[index]] <- as.integer(term_value(
+        spike_decision,
+        term,
+        saz_decision_codes[["continuous_only"]]
+      ))
+      acd_parameter_columns[index] <- list(
+        term_value(acd_parameter, term, NULL)
+      )
+    }
+  }
+  
+  names(center_columns) <- names(acdx_columns) <- names(zero_columns) <-
+    names(catzero_columns) <- names(spike_columns) <-
+    names(spike_decision_columns) <- names(acd_parameter_columns) <-
+    raw_columns
+  
+  list(
+    terms = stats::setNames(raw_terms, raw_columns),
+    powers = powers_columns,
+    center = center_columns,
+    acdx = acdx_columns,
+    zero = zero_columns,
+    catzero = catzero_columns,
+    spike = spike_columns,
+    spike_decision = spike_decision_columns,
+    acd_parameter = acd_parameter_columns
   )
 }
 
@@ -1237,6 +1547,9 @@ normalize_term_groups <- function(x_columns, term_groups = NULL) {
 #' @param setting Character setting name used in the error message.
 #' @param predicate Function returning a logical vector of valid values.
 #' @param requirement Character description of the required value.
+#' @param reason Optional explanation appended to the error. When omitted, a
+#'   setting-specific explanation is supplied for continuous-only options and
+#'   fractional-polynomial search controls.
 #'
 #' @return Invisibly returns \code{TRUE}.
 #' @keywords internal
@@ -1245,7 +1558,34 @@ validate_grouped_term_setting <- function(term_to_columns,
                                           values,
                                           setting,
                                           predicate,
-                                          requirement) {
+                                          requirement,
+                                          reason = NULL) {
+  if (is.null(reason)) {
+    if (setting %in% c(
+      "acdx", "acd_vars", "zero_vars", "catzero_vars", "spike_vars"
+    )) {
+      reason <- paste(
+        "Grouped terms are fixed categorical design blocks;",
+        "continuous-variable transformations and structural-zero options",
+        "apply only to singleton continuous predictors."
+      )
+    } else if (setting %in% c("df", "force_max_fp_vars")) {
+      reason <- paste(
+        "Grouped terms are fixed linear design blocks and cannot enter the",
+        "fractional-polynomial transformation search."
+      )
+    }
+  }
+  
+  reason_suffix <- if (
+    is.character(reason) && length(reason) == 1L && !is.na(reason) &&
+    nzchar(reason)
+  ) {
+    paste0(" ", reason)
+  } else {
+    ""
+  }
+  
   grouped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
   for (term in grouped_terms) {
     cols <- term_to_columns[[term]]
@@ -1253,8 +1593,15 @@ validate_grouped_term_setting <- function(term_to_columns,
     if (length(valid) != length(cols) || anyNA(valid) || !all(valid)) {
       stop(
         sprintf(
-          "! Grouped term '%s' requires `%s` to be %s for every member column: %s.",
-          term, setting, requirement, paste(cols, collapse = ", ")
+          paste0(
+            "! Grouped term '%s' requires `%s` to be %s for every member ",
+            "column: %s.%s"
+          ),
+          term,
+          setting,
+          requirement,
+          paste(cols, collapse = ", "),
+          reason_suffix
         ),
         call. = FALSE
       )
@@ -1394,6 +1741,17 @@ mfp2.default <- function(x,
          call. = FALSE)
   }
   
+  # Formula dispatch can attach a private, full-row preprocessing matrix to
+  # the subset-specific fitting design. Extract it immediately and work with
+  # two explicit matrices thereafter:
+  #   * x: the design used for validation, selection, and fitting;
+  #   * preprocess_x: the source for automatic full-data preprocessing choices.
+  # Direct matrix calls carry no attribute, so both names refer to the same x.
+  preprocessing <- extract_preprocess_matrix(x)
+  x <- preprocessing$x
+  preprocess_x <- preprocessing$preprocess_x
+  x_input <- x
+  
   # nobs = number of observations (rows), nvars = number of predictors (columns).
   # These two counts are used throughout the rest of the function to validate
   # the length of vector arguments such as df, select, alpha, shift, scale.
@@ -1488,6 +1846,13 @@ mfp2.default <- function(x,
     } else {
       stop(
         "! subset must be either a logical vector or a numeric/integer vector of row indices.",
+        call. = FALSE
+      )
+    }
+    
+    if (anyDuplicated(subset)) {
+      stop(
+        "! `subset` must not contain duplicated row indices.",
         call. = FALSE
       )
     }
@@ -1873,7 +2238,7 @@ mfp2.default <- function(x,
     vars_to_check <- vnames[zero]
     
     bad_vars <- vars_to_check[
-      apply(x[, vars_to_check, drop = FALSE], 2, function(col) {
+      apply(preprocess_x[, vars_to_check, drop = FALSE], 2, function(col) {
         all(col > 0, na.rm = TRUE)
       })
     ]
@@ -1894,7 +2259,7 @@ mfp2.default <- function(x,
   if (any(catzero)) {
     vars_to_check_cz <- vnames[catzero]
     bad_vars_cz <- vars_to_check_cz[
-      apply(x[, vars_to_check_cz, drop = FALSE], 2, function(col) {
+      apply(preprocess_x[, vars_to_check_cz, drop = FALSE], 2, function(col) {
         all(col > 0, na.rm = TRUE)
       })
     ]
@@ -1951,7 +2316,7 @@ mfp2.default <- function(x,
   #   - zero handling is unnecessary because the variable is already discrete;
   #   - catzero would create a redundant indicator;
   #   - spike implies catzero and would therefore create the same inconsistency.
-  binary_vars <- apply(x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
+  binary_vars <- apply(preprocess_x, 2, function(col) length(unique(col[!is.na(col)])) == 2)
   binary_names <- vnames[binary_vars]
   
   # Reset zero, catzero, and spike for binary variables, with a single warning.
@@ -1985,7 +2350,7 @@ mfp2.default <- function(x,
   # the user's explicit zero/catzero choices before ordinary FP preprocessing.
   if (any(spike)) {
     saz_flags <- resolve_saz_eligibility(
-      x                      = x,
+      x                      = preprocess_x,
       spike                  = spike,
       catzero                = catzero,
       zero                   = zero,
@@ -2002,13 +2367,22 @@ mfp2.default <- function(x,
   # an explicit per-variable df vector is instead only downgraded to 1 (linear)
   # for variables with too few unique values to support a curve.
   if (length(df) == 1) {
-    if (df != 1) {
-      df.list <- assign_df(x = x, df_default = df)
+    # A scalar df controls ordinary continuous predictors. Explicitly mapped
+    # terms are supplied fixed linear design blocks, so assign df = 1 to their
+    # raw columns before applying cardinality rules to the remaining columns.
+    df_default <- expand_scalar_df_for_mapped_terms(
+      df = df,
+      vnames = vnames,
+      term_to_columns = term_to_columns
+    )
+    
+    if (any(df_default != 1L)) {
+      df.list <- assign_df(x = preprocess_x, df_default = df_default)
     } else {
-      df.list <- rep(df, nvars)
+      df.list <- df_default
     }
   } else {
-    nux <- apply(x, 2, function(v) length(unique(v)))
+    nux <- apply(preprocess_x, 2, function(v) length(unique(v)))
     index <- nux <= 3
     
     if (any(df[index] != 1)) {
@@ -2056,7 +2430,7 @@ mfp2.default <- function(x,
   shift_missing <- is.na(shift)
   if (any(shift_missing)) {
     shift[shift_missing] <- apply(
-      x[, shift_missing, drop = FALSE],
+      preprocess_x[, shift_missing, drop = FALSE],
       2,
       find_shift_factor
     )
@@ -2066,41 +2440,42 @@ mfp2.default <- function(x,
   # Shift each column of x so that fractional-polynomial powers (which require
   # positive values) can be computed; see "Details on shifting, scaling,
   # centering" in the documentation above.
+  preprocess_x_shifted <- sweep(preprocess_x, 2, shift, "+")
   x <- sweep(x, 2, shift, "+")
   
   # Scaling must be estimated after shifting, since find_scale_factor() operates
-  # on the already-shifted (positive) values.
-  if (is.null(scale)) {
-    scale <- apply(x, 2, find_scale_factor)
-  } else {
-    if (length(scale) == 1) {
-      scale <- rep(scale, nvars) 
-    }
-    
-    if (length(scale) != nvars) {
-      stop(
-        "! scale must either be NULL, a single number, or the number of variables ",
-        "(columns in x) and scale must match.",
-        call. = FALSE
-      )
-    }
-    
-    # NA values mean automatic scaling for those variables.
-    # This allows the formula interface to mix global/default automatic scaling
-    # with per-variable scale values from fp(..., scale = ...).
-    scale_missing <- is.na(scale)
-    
-    if (any(!scale_missing & scale <= 0)) {
-      stop("All non-missing scale values must be positive.", call. = FALSE)
-    }
-    
-    if (any(scale_missing)) {
-      scale[scale_missing] <- apply(
-        x[, scale_missing, drop = FALSE],
-        2,
-        find_scale_factor
-      )
-    }
+  # on the already-shifted values. NULL or scalar scale settings apply to
+  # ordinary continuous predictors, while explicitly mapped model-matrix blocks
+  # retain their supplied basis under the default scale of 1. A per-column
+  # vector remains authoritative and is checked for grouped-term consistency
+  # when the raw-column settings are collapsed below.
+  scale <- expand_scale_for_mapped_terms(
+    scale = scale,
+    vnames = vnames,
+    term_to_columns = term_to_columns
+  )
+  
+  if (length(scale) != nvars) {
+    stop(
+      "! scale must either be NULL, a single number, or the number of variables ",
+      "(columns in x) and scale must match.",
+      call. = FALSE
+    )
+  }
+  
+  scale <- stats::setNames(scale, vnames)
+  scale_missing <- is.na(scale)
+  
+  if (any(!scale_missing & scale <= 0)) {
+    stop("All non-missing scale values must be positive.", call. = FALSE)
+  }
+  
+  if (any(scale_missing)) {
+    scale[scale_missing] <- apply(
+      preprocess_x_shifted[, scale_missing, drop = FALSE],
+      2,
+      find_scale_factor
+    )
   }
   
   # Step 17: Verify shifted values are strictly positive where FPs are used -----
@@ -2116,7 +2491,7 @@ mfp2.default <- function(x,
   
   if (length(vars_to_check) > 0) {
     check_indices <- match(vars_to_check, vnames)
-    xd <- x[, check_indices, drop = FALSE]
+    xd <- preprocess_x_shifted[, check_indices, drop = FALSE]
     
     neg_cols <- which(colSums(xd <= 0, na.rm = TRUE) > 0)
     
@@ -2156,11 +2531,17 @@ mfp2.default <- function(x,
     }
   }
   
-  # Step 19: Apply `subset`, after shift/scale estimation ------------------------
-  # This ordering (estimate shift/scale on the full data, then subset) is what
-  # makes mfp2()'s `subset` different from subsetting the data beforehand;
-  # see "Details on the subset argument" above.
+  # Step 19: Apply `subset`, after full-data preprocessing ----------------------
+  # Matrix calls reach this branch with their original numeric design. Before
+  # rows are removed, verify that every explicitly mapped block keeps the same
+  # estimable dimension. Unlike the formula method, this path has no factor-level
+  # or contrast recipe from which to rebuild a reduced categorical design.
   if (!is.null(subset)) {
+    validate_grouped_subset_rank(
+      x_full = x_input,
+      x_fit = x_input[subset, , drop = FALSE],
+      term_to_columns = term_to_columns
+    )
     
     x <- x[subset, , drop = FALSE]
     
@@ -2457,8 +2838,20 @@ mfp2.formula <- function(formula,
     hint = "i Use fp(..., center = TRUE) or fp(..., center = FALSE) to set different center values for individual variables."
   )
   
-  # Step 4: Validate `weights`, `offset`, and `subset` against `data` -----------
+  # Step 4: Evaluate `subset` and validate observation-level inputs ------------
   n_data <- nrow(data)
+  
+  # Match the data-mask semantics used by standard formula methods. Capture the
+  # user's expression before the `subset` promise is forced, evaluate it exactly
+  # once with columns of `data` taking precedence, and then reuse only the
+  # resolved value. The normalized formula environment inherits the user's
+  # formula environment, so caller-scope objects remain available as a fallback.
+  subset_expr <- substitute(subset)
+  subset <- eval(
+    subset_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
   
   if (!is.null(weights)) {
     if (!is.numeric(weights)) {
@@ -2531,6 +2924,12 @@ mfp2.formula <- function(formula,
           call. = FALSE
         )
       }
+      if (anyDuplicated(subset)) {
+        stop(
+          "! `subset` must not contain duplicated row indices.",
+          call. = FALSE
+        )
+      }
     } else {
       stop(
         "! `subset` must be either a logical vector or a numeric/integer vector of row indices.",
@@ -2575,17 +2974,36 @@ mfp2.formula <- function(formula,
     }
   }
   
-  # Step 6: Build the model frame and check for missing predictors/values -------
-  # model.frame preserves the attributes of the data unlike model.matrix.
-  # Use na.pass here so that mfp2.formula() does not silently drop rows through
-  # the global/default na.action option. Missingness is checked explicitly below.
-  
-  mf <- stats::model.frame(
+  # Step 6: Build full-data and fitted model frames ------------------------------
+  # The formula interface deliberately keeps two model frames:
+  #   * mf_full supplies the original continuous values used by automatic
+  #     preprocessing, preserving the documented pre-subset behavior;
+  #   * mf reuses mf_full when subset is NULL; otherwise it is rebuilt on
+  #     fit_rows and supplies the response, fitted factor levels, contrasts,
+  #     design matrix, and prediction metadata.
+  #
+  # Use na.pass so the global na.action option cannot silently alter either row
+  # set. Missingness is diagnosed explicitly against the full model frame below.
+  mf_full <- stats::model.frame(
     terms_formula,
     data = data,
     drop.unused.levels = TRUE,
     na.action = stats::na.pass
   )
+  # Keep the ordinary formula path independent of subset-specific helpers.
+  # A genuine subset is resolved once; otherwise all evaluated model-frame rows
+  # are retained in their original order.
+  if (is.null(subset)) {
+    fit_rows <- seq_len(nrow(mf_full))
+  } else {
+    fit_rows <- formula_subset_rows(subset, nrow(mf_full))
+  }
+  if (length(fit_rows) < 5L) {
+    stop(
+      sprintf("! The selected subset is too small (<5) to fit an mfp model.\ni The number of selected observations is %d.", length(fit_rows)),
+      call. = FALSE
+    )
+  }
   
   
   # Factor columns are expanded by model.matrix() below and then mapped back
@@ -2606,8 +3024,8 @@ mfp2.formula <- function(formula,
   
   # Because na.action = na.pass was used above, missing values survive into mf
   # and must be checked for explicitly here, with informative row numbers.
-  if (anyNA(mf)) {
-    na_rows <- which(!stats::complete.cases(mf))
+  if (anyNA(mf_full)) {
+    na_rows <- which(!stats::complete.cases(mf_full))
     
     msg <- sprintf(
       "! Missing values are not allowed in variables used by the model formula.\ni Rows with missing values: %s.",
@@ -2621,6 +3039,19 @@ mfp2.formula <- function(formula,
     msg <- paste0(msg, "\ni Please remove or impute missing values before calling mfp2().")
     
     stop(msg, call. = FALSE)
+  }
+  
+  # With no subset, reuse the complete evaluated frame unchanged. This keeps the
+  # ordinary formula path simple and avoids unnecessary row copying or factor
+  # reconstruction. Only a genuine subset needs a retained-row frame with unused
+  # levels removed before model.matrix() rebuilds treatment or ordered contrasts.
+  if (is.null(subset)) {
+    mf <- mf_full
+  } else {
+    # Avoid passing the local `fit_rows` symbol through model.frame(subset = ...):
+    # model.frame() evaluates that expression in the formula/data environment,
+    # where a method-local object is not visible.
+    mf <- subset_formula_model_frame(mf_full, fit_rows)
   }
   
   
@@ -2734,6 +3165,10 @@ mfp2.formula <- function(formula,
     formula_offset_xlevels <- .getXlevels(formula_offset_terms, mf)
   }
   
+  if (is.null(term_offset) && !is.null(offset) && !is.null(subset)) {
+    offset <- offset[fit_rows]
+  }
+  
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
       stop("! `offset` must be numeric.", call. = FALSE)
@@ -2769,9 +3204,15 @@ mfp2.formula <- function(formula,
     )
   }
   
-  # Extract the response and build the full design matrix (with intercept).
+  validate_formula_factor_levels(terms_model, mf)
+  
+  # Extract the fitted response and build both designs independently. `mm` is
+  # authoritative for categorical columns, term mappings, fitting, and prediction.
+  # `mm_full` is only a source of full-data values for automatic preprocessing of
+  # stable, same-named continuous columns; its factor coding is never fitted.
   y <- model.extract(mf, "response")
   
+  mm_full <- stats::model.matrix(terms_model, mf_full)
   mm <- stats::model.matrix(terms_model, mf)
   
   # Identify unordered and ordered factor terms before the intercept is
@@ -2780,6 +3221,10 @@ mfp2.formula <- function(formula,
   # contrasts (contr.poly by default) but are selected as one conceptual term.
   factor_term_labels <- identify_formula_factor_terms(terms_model, mf)
   conceptual_term_names <- formula_conceptual_term_names(terms_model, mf)
+  # Retain the original formula-label -> conceptual-term relationship for
+  # prediction. This map is updated below when fp()/fp2() expressions are
+  # renamed to their source-variable names.
+  formula_prediction_term_names <- conceptual_term_names
   factor_terms <- unname(conceptual_term_names[factor_term_labels])
   
   assign <- attr(mm, "assign")
@@ -2791,6 +3236,8 @@ mfp2.formula <- function(formula,
   keep_cols <- colnames(mm) != "(Intercept)"
   x <- mm[, keep_cols, drop = FALSE]
   assign <- assign[keep_cols]
+  full_keep_cols <- colnames(mm_full) != "(Intercept)"
+  x_full <- mm_full[, full_keep_cols, drop = FALSE]
   
   nx <- ncol(x) 
   names_x <- colnames(x)
@@ -2840,31 +3287,41 @@ mfp2.formula <- function(formula,
            call. = FALSE)
     }
     
-    # Capture fp() term labels (e.g. "fp(age)") before renaming them in the model matrix.
-    fp_terms <- names_x[is_fp_term(names_x)]
+    # Capture the raw fp()/fp2() model-matrix column names before renaming.
+    fp_columns <- names_x[is_fp_term(names_x)]
+    if (length(fp_columns) != length(fp_vars)) {
+      stop(
+        "! Internal formula parsing error: the number of fp()/fp2() terms in the model matrix does not match the model frame.",
+        call. = FALSE
+      )
+    }
     
     # Rename fp()/fp2() model-matrix columns to the underlying variable name,
     # e.g. "fp(age)" becomes "age", so downstream code (and the fitted object)
     # exposes ordinary variable names rather than formula syntax.
     names_x <- replace(names_x, which(is_fp_term(names_x)), fp_vars)
-    
     colnames(x) <- names_x
+    full_fp_pos <- which(is_fp_term(colnames(x_full)))
+    if (length(full_fp_pos) != length(fp_vars)) {
+      stop(
+        "! Internal formula parsing error: full-data and fitted fp()/fp2() columns do not align.",
+        call. = FALSE
+      )
+    }
+    colnames(x_full)[full_fp_pos] <- fp_vars
     
-    # Update the formula-term -> model-matrix-column map after renaming fp() columns.
-    # This prevents keep expansion from using unsafe prefix matching.
-    # Both keep = "fp(x1)" and keep = "x1" resolve to the renamed model column "x1".
-    if (length(fp_terms) > 0L) {
-      for (i in seq_along(fp_terms)) {
-        fp_term <- fp_terms[i]
-        fp_var <- fp_vars[i]
-        
-        if (fp_term %in% names(term_to_columns)) {
-          old_cols <- term_to_columns[[fp_term]]
-          new_cols <- ifelse(old_cols %in% fp_terms, fp_var, old_cols)
-          
-          term_to_columns[[fp_term]] <- new_cols
-          term_to_columns[[fp_var]] <- new_cols
-        }
+    # The conceptual lookup is keyed by source-variable name. Replace its raw
+    # formula-generated column with the renamed column without creating a second
+    # conceptual entry for the original fp() label.
+    for (i in seq_along(fp_columns)) {
+      fp_column <- fp_columns[[i]]
+      fp_var <- fp_vars[[i]]
+      if (fp_var %in% names(term_to_columns)) {
+        term_to_columns[[fp_var]] <- ifelse(
+          term_to_columns[[fp_var]] == fp_column,
+          fp_var,
+          term_to_columns[[fp_var]]
+        )
       }
     }
   }
@@ -2872,8 +3329,13 @@ mfp2.formula <- function(formula,
   # Step 10: Build per-variable default option lists from the global scalars ---
   # Every predictor starts out with the global df/scale/shift/center/alpha/select
   # defaults; fp()-term-specific settings (Step 11) then override individual
-  # entries of these lists where the user supplied them.
-  df_list <- setNames(as.list(assign_df(x = x, df_default = df)), names_x)
+  # entries of these lists where the user supplied them. Cardinality-based df
+  # defaults retain the original full-data source for continuous predictors.
+  x_preprocess <- align_formula_preprocess_matrix(x, x_full)
+  df_list <- setNames(
+    as.list(assign_df(x = x_preprocess, df_default = df)),
+    names_x
+  )
   
   # scaling
   # NA means automatic scaling. mfp2.default() will estimate these values
@@ -3062,8 +3524,14 @@ mfp2.formula <- function(formula,
     
     expanded_keep <- character(0)
     
-    # Valid keep entries are either final model-matrix columns or original formula terms.
-    valid_keep <- unique(c(colnames(x), names(term_to_columns)))
+    # Accept final model-matrix columns, conceptual term names, and original
+    # formula labels such as fp(x). Formula labels resolve through the explicit
+    # fit-time label-to-conceptual-name map.
+    valid_keep <- unique(c(
+      colnames(x),
+      names(term_to_columns),
+      names(formula_prediction_term_names)
+    ))
     bad_keep <- setdiff(keep, valid_keep)
     
     if (length(bad_keep) > 0L) {
@@ -3078,18 +3546,45 @@ mfp2.formula <- function(formula,
     
     for (k in keep) {
       if (k %in% colnames(x)) {
-        # Exact final column match, e.g. keep = "age"
+        # Exact final column match, e.g. keep = "age".
         expanded_keep <- c(expanded_keep, k)
-      } else if (k %in% names(term_to_columns)) {
-        # Exact formula-term match, e.g. keep = "sex" expanding to factor columns
-        expanded_keep <- c(expanded_keep, term_to_columns[[k]])
+      } else {
+        conceptual_name <- if (k %in% names(formula_prediction_term_names)) {
+          unname(formula_prediction_term_names[[k]])
+        } else {
+          k
+        }
+        if (conceptual_name %in% names(term_to_columns)) {
+          # Exact conceptual or original formula-term match, including fp(x).
+          expanded_keep <- c(
+            expanded_keep,
+            term_to_columns[[conceptual_name]]
+          )
+        }
       }
     }
     
     keep <- unique(expanded_keep)
   }
   
-  # Step 14: Delegate to mfp2.default() and attach formula-specific metadata ---
+  # Step 14: Delegate using the subset-specific fitting design ------------------
+  # The private attribute transports the aligned full-data preprocessing source
+  # into mfp2.default(); it is removed immediately on entry there. Responses and
+  # other observation-level inputs are subset here, so pass subset = NULL below
+  # and avoid applying the row selection twice. Formula metadata is derived only
+  # from mf/mm, never from the full-data categorical representation.
+  x <- attach_formula_preprocess_matrix(x, x_full)
+  if (!is.null(subset)) {
+    if (!is.null(weights)) weights <- weights[fit_rows]
+    if (!is.null(strata) && !has_formula_strata) {
+      strata <- if (is.matrix(strata) || is.data.frame(strata)) {
+        strata[fit_rows, , drop = FALSE]
+      } else {
+        strata[fit_rows]
+      }
+    }
+  }
+  
   # Store the raw model-matrix column names before fp() columns are renamed.
   # These are needed by predict.mfp2() to rebuild the same expanded design
   # matrix from ordinary formula-style newdata.
@@ -3129,7 +3624,7 @@ mfp2.formula <- function(formula,
                       shift = unlist(shift_list), 
                       df = unlist(df_list), 
                       center = unlist(center_list),
-                      subset = subset,
+                      subset = NULL,
                       family = family,
                       criterion = criterion,
                       select = unlist(select_list), 
@@ -3157,6 +3652,7 @@ mfp2.formula <- function(formula,
   fit$formula_column_map <- formula_column_map
   fit$formula_model_matrix_columns <- names_x
   fit$formula_term_to_columns <- term_to_columns
+  fit$formula_prediction_term_names <- formula_prediction_term_names
   fit$formula_factor_info <- formula_factor_info
   
   fit$formula_strata_terms <- formula_strata_terms

@@ -1,5 +1,6 @@
 ---
-title: "Introduction to Multivariable Fractional Polynomials"
+title: "MFP Methodology and Practical Considerations"
+subtitle: 'Package version `r as.character(utils::packageVersion("mfp2"))`'
 author:
   - Edwin Kipruto
   - Michael Kammer
@@ -13,7 +14,7 @@ output:
     number_sections: true
     highlight: tango
 vignette: >
-  %\VignetteIndexEntry{Introduction to Multivariable Fractional Polynomials}
+  %\VignetteIndexEntry{MFP Methodology and Practical Considerations}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -36,7 +37,17 @@ library(ggplot2)
 library(patchwork)
 ```
 
-# Introduction to Multivariable Fractional Polynomials (MFP)
+# MFP methodology and practical considerations
+
+This vignette explains the statistical motivation and methodology of
+multivariable fractional polynomial modelling. It covers fractional polynomial
+functions, functional-form selection, backward elimination, sample-size
+considerations, influential observations, lack of fit, and selected
+methodological extensions.
+
+For practical guidance on fitting, inspecting, predicting from, and plotting
+models with the `mfp2` package, see
+`vignette("mfp2_introduction", package = "mfp2")`.
 
 ## Overview of MFP
 
@@ -75,26 +86,25 @@ final model. Often, the same significance levels $(\alpha_1 = \alpha_2)$ are
 used for both components, but they can also differ. The decision regarding these
 significance levels strongly depends on the specific aim of the analysis.
 
-The rest of the paper is organized as follows. Section 1.2 provides an overview
-of fractional polynomial functions for a single continuous covariate in the
-model, including the function selection procedure (FSP). Section 1.3 describes
-the MFP approach, focusing on models involving two or more covariates.
+The remainder of this vignette introduces fractional polynomial functions and
+the multivariable fractional polynomial approach. It describes functional-form
+selection for continuous covariates, variable selection, practical
+considerations, and selected methodological extensions.
 
-Section 2 is an introduction to the `mfp2` package. It covers the
-installation process and provides instructions for utilizing the package in
-various linear regression models. The package functionality is predominantly
-demonstrated using Gaussian linear models (Subsection 2.3), while other models,
-such as logistic (Subsection 2.4),and Cox (Subsection
-2.5), are briefly explained.
+For guidance on fitting models with the `mfp2` package, see
+`vignette("mfp2_introduction", package = "mfp2")`. Dedicated guidance is also
+available for approximate cumulative distribution transformations,
+spike-at-zero modelling, and MFPI interaction analysis:
 
-Section 3 introduces an extension of MFP using the approximate cumulative
-distribution (ACD) transformation of a continuous covariate. This extension
-allows for modelling a sigmoid relationship between covariates and an outcome
-variable (subsection 3.1).
+```r
+vignette("mfp2_ACD", package = "mfp2")
+vignette("mfp2_spike", package = "mfp2")
+vignette("mfpi", package = "mfp2")
+```
 
-For more comprehensive information about MFP and its extensions, please refer to
-Royston and Sauerbrei 2008 or visit [MFP website (click here)](https://mfp.imbi.uni-freiburg.de/) 
-and explore the references given there.
+For more comprehensive information about MFP and its extensions, see Royston
+and Sauerbrei (2008), the references at the end of this vignette, and the
+[MFP website](https://mfp.imbi.uni-freiburg.de/).
 
 ## Fractional polynomial models for a continuous variable
 
@@ -261,7 +271,7 @@ algorithm (e.g. via pre-defined significance levels).
 
 The default function in most implementations of MFP is a linear function.
 Therefore, unless the data support a more complex FP function, a straight line
-model is chosen. Concerning the default, there are occasional exceptions. For example, to model
+model is chosen. There are occasional exceptions. For example, to model
 time-varying regression coefficients in the Cox model, Sauerbrei et al. (2007b)
 chose a default time ($t$) transformation of $\log (t)$ rather than $t$.
 
@@ -269,27 +279,24 @@ It can be assumed that deviance diﬀerence between an FPm and an FP(m-1) model 
 distributed approximately as central $\chi^2$ on 2 degrees of freedom (d.f.)
 (Royston and Sauerbrei 2008, Chapter 4.9; Ambler and Royston (2001)). To select a
 speciﬁc function, a closed test procedure was proposed (Royston and Sauerbrei
-2008, Section 4.10). The complexity of the ﬁnally chosen function requires
-pre-definition of the nominal significance level $(\alpha)$ and the degree ($m$)
-of the most complex FP model allowed. Typical choices are $\alpha = 0.05$ and
-FP2 ($m = 2$).  We illustrate the strategy for $m = 2$, which runs as follows:
+2008, Section 4.10). The complexity of the final function requires pre-definition of a
+variable-selection level and a functional-form selection level, together with
+the degree ($m$) of the most complex FP model allowed. In `mfp2()`, these are
+called `select` and `alpha`. Typical choices are `select = alpha = 0.05` and FP2
+($m = 2$). The closed test for $m = 2$ runs as follows:
 
- 1. Use the deviance difference to test the best FP2 model for $x$ at the
- $(\alpha)$ signiﬁcance level against the null model using 4 d.f. If the test is
- not signiﬁcant, stop and conclude that the eﬀect of $x$ is "not signiﬁcant" at
- the $\alpha$ level. Otherwise continue. 
- 2. Test the best FP2 for $x$ against a straight line at the $\alpha$ level
- using 3 d.f. If the test is not signiﬁcant, stop, the ﬁnal model being a
- straight line. Otherwise continue.
- 3. Test the best FP2 for $x$ against the best FP1 at the $\alpha$ level using 2
- d.f. If the test is not signiﬁcant, the ﬁnal model is FP1, otherwise, the ﬁnal
- model is FP2. This marks the end of procedure.
+1. Test the best FP2 model for $x$ against the null model using 4 d.f. and the
+   `select` level. If the test is not significant, omit $x$ and stop.
+2. Test the best FP2 model against a straight line using 3 d.f. and the `alpha`
+   level. If the test is not significant, retain a straight line and stop.
+3. Test the best FP2 model against the best FP1 model using 2 d.f. and the
+   `alpha` level. Retain FP1 if this test is not significant and FP2 otherwise.
 
 Step 1 is a test of the overall association of the outcome with $x$. 
 Step 2 examines the evidence for nonlinearity. Step 3 chooses between a simpler 
 or a more complex non-linear model.
  
-# MFP procedure
+## Multivariable MFP procedure
 
 When developing a multivariable model with a relatively large number of
 candidate covariates (say between 10 and 30, we are not envisaging the case of
@@ -313,6 +320,19 @@ philosophy behind MFP modeling is to create interpretable and relatively simple
 models (Sauerbrei et al. 2007a). Consequently, an analyst using MFP should be
 less concerned about failing to include variables with a weak eﬀect or failing
 to identify minor curvature in a functional form of a continuous covariate.
+
+### Backfitting cycles
+
+The multivariable procedure updates one covariate at a time while adjusting for
+the current functions of all other retained covariates. The first cycle starts
+from linear representations, orders covariates according to the chosen
+`xorder`, and applies the variable and function selection procedure to each in
+turn. Later cycles revisit every retained candidate using the functions selected
+for the other covariates in the preceding updates. Iteration stops when the
+selected variables, powers, and SAZ decisions no longer change, or when the
+maximum number of `cycles` is reached. This cycling is essential because the
+preferred form for one covariate may change after another covariate is removed
+or transformed.
 Modiﬁcations that may improve MFP models are combination with post-estimation
 shrinkage (Dunkler et al., 2016, R-package shrink) and a more systematic check
 for overlooked local features (Binder and Sauerbrei, 2010, currently not
@@ -327,10 +347,11 @@ guide data-dependent model choice. Only minor modiﬁcations are required to
 incorporate various types of subject-matter knowledge into MFP modeling. For a
 detailed example, see Sauerbrei and Royston (1999). Recommendations for MFP
 modeling in practice are given in Sauerbrei et al. (2007a) and in Royston and
-Sauerbrei (2008, Section 12.2). In the `mfp2` package you may replace
-$\alpha_1$ and $\alpha_2$ by AIC-P or BIC-P.
+Sauerbrei (2008, Section 12.2). In `mfp2()`, the p-value procedure may instead
+be replaced by direct AIC or BIC comparison of the candidate models by setting
+`criterion = "aic"` or `criterion = "bic"`.
 
-# MFP -- Key issues and approaches to handling them
+## Key issues and approaches to handling them
 
 Mainly focusing on the FP component, we brieﬂy mention key issues of MFP
 modeling and refer to the literature for further reading. A brief overview is
@@ -349,19 +370,22 @@ The class of FP1 and FP2 functions includes a log and other transformations
 which require that the continuous variable must be positive. A preliminary
 origin-shift transformation can be applied as shown in section 2.3.2.
 
-Sometimes, there are variables that exhibit a spike at zero. This means that a
-certain proportion of individuals have zero values, while among those with
-positive values, the variable has a continuous distribution. In epidemiology,
-typical examples are cigarette consumption or alcohol intake. There are
-different approaches to modeling such variables. Royston and Sauerbrei
-(2008, chapter 4.15) and Royston et al. (2010) proposed a method that involves
-adding a small constant (to have positive values) and a binary indicator (for
-zero or positive values) to the regression model. Additionally, they utilized
-fractional polynomials to determine the functional form of the variable. In
-a two-stage procedure, they assessed whether the binary variable and/or the
-continuous function is required for a good fit to the data. Becher et al. (2012)
-proposed a slight modification of this approach. These two approaches are currently not
-implemented in the `mfp2` package.
+Sometimes, a continuous variable has a spike at zero: a proportion of
+individuals have an observed value of zero, while the positive values follow a
+continuous distribution. Common epidemiological examples include cigarette
+consumption and alcohol intake.
+
+Royston and Sauerbrei (2008, Section 4.15) and Royston et al. (2010) proposed
+modelling such variables using a binary indicator that distinguishes zero from
+positive values together with a fractional polynomial function for the positive
+component. A two-stage procedure assesses whether the final model should retain
+both components or only one of them. Becher et al. (2012) proposed a
+modification of this approach.
+
+Spike-at-zero modelling is available in `mfp2`. In the formula interface, it can
+be requested with `fp(x, spike = TRUE)`. In the matrix interface, the variable
+can be specified through `spike_vars`. See
+`vignette("mfp2_spike", package = "mfp2")` for practical guidance.
 
 ## Sample size and influential observations
 
@@ -408,7 +432,27 @@ the global FP function. This approach is not currently implemented in the `mfp2`
 package, but it is a potential area for future extensions.
 
 
-# References
+## Model-selection uncertainty and limitations
+
+MFP is a model-selection procedure. Standard errors, confidence intervals, and
+p-values from the final regression fit are conditional on the selected model;
+they do not include uncertainty from variable deletion, FP power selection, or
+repeated backfitting. Apparent precision can therefore be optimistic, especially
+when several candidate functions fit nearly equally well. Bootstrap stability
+analyses, sensitivity analyses, and external validation are useful when the
+selected model will support substantive conclusions or prediction.
+
+The FP family is deliberately parsimonious and global. It may miss sharp local
+features, discontinuities, complex interactions, or shapes not well represented
+by low-degree FP functions. Results can be sensitive to sparse tails,
+influential observations, weak signals, correlated predictors, and small
+samples. MFP was not designed for high-dimensional settings in which the number
+of candidate predictors is large relative to the available information. Its
+selection rules should be combined with subject-matter knowledge rather than
+interpreted as an automatic search for the uniquely true or predictively optimal
+model.
+
+## References
 
 Ambler, G. and Royston, P. (2001). Fractional polynomial model selection procedures: investigation of type I error rate. *Journal of Statistical Computation and Simulation*, 69, 89–108.
 

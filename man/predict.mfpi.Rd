@@ -9,354 +9,510 @@
   newdata = NULL,
   terms = NULL,
   model = c("best", "all"),
-  type = c("both", "function", "difference", "link", "response"),
+  type = NULL,
   se.fit = TRUE,
   level = 0.95,
   grid = FALSE,
   n_grid = 200L,
-  reference = NULL,
   strata = NULL,
+  cox_reference = NULL,
   newoffset = NULL,
   ...
 )
 }
 \arguments{
-\item{object}{An object of class \code{"mfpi"}.}
+\item{object}{An object of class \code{"mfpi"} returned by \code{\link[=mfpi]{mfpi()}}.}
 
-\item{newdata}{Optional matrix or data frame. For fitted-function prediction
-(\code{type = "function"}, \code{"difference"}, or \code{"both"}), it
-must contain the requested continuous-variable columns on their original
-raw scale. The grouping variable is not required for fitted-function
-prediction because all group-specific functions are evaluated at each
-supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
-\code{"response"}), \code{newdata} must also contain the grouping variable
-and all selected adjustment variables required by the term-specific
-interaction model. Other predictors from the original formula may be
-omitted. For formula fits, supply original factor-valued columns; for
-default-interface grouped terms, supply every raw member column. Group
-values and factor values used by selected terms must use levels observed
-during fitting.}
+\item{newdata}{An optional data frame or matrix containing values at which to
+predict.
 
-\item{terms}{Character vector of continuous variables to predict. If
-\code{NULL}, terms are selected from the requested \code{model} scope. See
-\emph{Choosing terms and model scope}.}
+For fitted curves, only the requested continuous variables are required.
+For predictions for individual observations, also supply the grouping
+variable, retained adjustment variables, and any required offset, strata,
+or Cox follow-up variables. See \strong{Predictions for individual
+observations}.}
 
-\item{model}{Character scalar, either \code{"best"} (retained interaction
-models only) or \code{"all"} (every tested variable's fitted interaction
-model). See \emph{Choosing terms and model scope}.}
+\item{terms}{An optional character vector naming continuous variables examined
+by \code{\link[=mfpi]{mfpi()}}. If \code{NULL}, all terms available under the selected \code{model}
+setting are used.}
 
-\item{type}{Character scalar. One of \code{"both"}, \code{"function"},
-\code{"difference"}, \code{"link"}, or \code{"response"}.}
+\item{model}{A character value selecting the available term-specific models.
+\code{"best"} uses only interactions retained by the MFPI selection criterion.
+\code{"all"} uses the stored model for every evaluated continuous variable.
+The default is \code{"best"}.}
 
-\item{se.fit}{Logical scalar. Whether to compute pointwise standard errors.
-For fitted-function targets, these are standard errors of fitted functions
-or function differences on the model scale. For ordinary GLM prediction,
-response-scale standard errors use the same inverse-link derivative
-convention as \code{predict.glm()}. For Cox response prediction,
-\code{fit} is the relative risk score \eqn{\exp(\eta)} and
-\code{se.fit} follows the zero-reference relative-risk convention.}
+\item{type}{The prediction type. Use \code{"function"}, \code{"difference"}, or
+\code{"both"} for fitted curves. For predictions for individual observations,
+Gaussian, binomial, and Poisson models support \code{"link"} and \code{"response"},
+while Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and
+\code{"survival"}. If \code{NULL}, \code{"both"} is used.}
 
-\item{level}{Numeric scalar in \code{(0, 1)}. Confidence level for
-pointwise fitted-function and fitted-difference intervals.}
+\item{se.fit}{A single \code{TRUE} or \code{FALSE} value indicating whether standard
+errors should be returned. The default is \code{TRUE}.}
 
-\item{grid}{Logical scalar. If \code{TRUE}, evaluate fitted functions on a
-grid. Ignored for ordinary \code{"link"} and \code{"response"}
-prediction.}
+\item{level}{A number between 0 and 1 giving the confidence level for
+pointwise fitted-curve and fitted-difference intervals. The default is
+0.95. This argument is not used for predictions for individual
+observations.}
 
-\item{n_grid}{Integer scalar. Number of positive-part grid points when
-\code{grid = TRUE}. If a structural zero is added, the returned number of
-\code{x} values can be \code{n_grid + 1}.}
+\item{grid}{A single \code{TRUE} or \code{FALSE} value. If \code{TRUE}, fitted curves are
+evaluated on an equally spaced grid. If \code{FALSE}, supplied or fitted data
+values are used. This argument is ignored for predictions for individual
+observations.}
 
-\item{reference}{Optional reference group for fitted-function differences.
-May be an internal group label or an original group label if group-level
-metadata are stored in \code{object}. If \code{NULL}, the reference group
-used at model fitting is reused. This argument affects only fitted-function
-differences; it does not change the fit-time reference level used by the
-stored interaction model.}
+\item{n_grid}{An integer of at least 2 giving the number of grid points when
+\code{grid = TRUE}. The default is 200. A structural-zero point can be added in
+addition to these grid points.}
 
-\item{strata}{Optional prediction-time Cox strata for ordinary \code{"link"}
-or \code{"response"} prediction. Ignored for fitted-function prediction.
-Supply one value per row, or a matrix/data frame with one row per prediction
-row for multiple strata variables.}
+\item{strata}{Optional stratum information for predictions for individual
+observations from a stratified Cox model. For one stratification variable,
+supply one value per prediction row. For several variables, supply a matrix
+or data frame with one row per prediction row.
 
-\item{newoffset}{Optional numeric vector for ordinary \code{"link"} or
-\code{"response"} prediction. If \code{newdata} is supplied,
-\code{newoffset} must contain one value per row of \code{newdata}. If
-\code{newdata = NULL}, a supplied \code{newoffset} must contain one value
-per training row; the stored training design is reconstructed and the
-supplied new offset is used instead of delegating to the fitted model's own
-\code{predict()} method. For formula-interface fits with a formula-level
-offset, \code{newoffset} may be omitted when \code{newdata} contains the
-original offset variable(s), because the offset is reconstructed from the
-stored formula metadata. Ignored for fitted-function prediction.}
+This argument is not used for non-Cox models, unstratified Cox models, or
+fitted-curve predictions.}
 
-\item{...}{Reserved for future extensions. Currently unused arguments produce
-a warning. Cox baseline-survival arguments such as prediction times are
-not currently supported.}
+\item{cox_reference}{A character value selecting the covariate reference for
+Cox observation-level predictions with \code{type = "lp"} or \code{type = "risk"}.
+Use \code{"zero"}, \code{"sample"}, or \code{"strata"}. The default is \code{"zero"}.}
+
+\item{newoffset}{An optional finite numeric vector containing one offset value
+per prediction row. It can be used only for predictions for individual
+observations from a term-specific model fitted with an offset.}
+
+\item{...}{Reserved for future extensions. Currently, supplied arguments are
+ignored with a warning.}
 }
 \value{
-If one term is requested, an object of class
-\code{"mfpi_prediction"}. If multiple terms are requested, a named list of
+When one term is requested, an object of class \code{"mfpi_prediction"} is
+returned. When several terms are requested, the result is a named list of
 \code{"mfpi_prediction"} objects with class \code{"mfpi_prediction_list"}.
 
-For \code{type = "function"}, \code{"difference"}, or \code{"both"}, each
-prediction object contains:
-\describe{
-\item{\code{term}}{Continuous variable for which prediction was computed.}
-\item{\code{type}}{Requested prediction type.}
-\item{\code{x}}{Evaluation values on the original raw scale. With
-\code{grid = FALSE}, these are observed or supplied values in row order,
-including duplicates. With \code{grid = TRUE}, these are grid values.}
-\item{\code{functions}}{Data frame of fitted functions, present for
-\code{type = "function"} and \code{type = "both"}. Columns are
-\code{term}, \code{x}, \code{group}, \code{fit}, and, when
-\code{se.fit = TRUE}, \code{se.fit}, \code{lower}, and \code{upper}.}
-\item{\code{differences}}{Data frame of fitted-function differences,
-present for \code{type = "difference"} and \code{type = "both"}. Columns
-are \code{term}, \code{x}, \code{contrast}, \code{group},
-\code{reference}, \code{fit}, and, when \code{se.fit = TRUE},
-\code{se.fit}, \code{lower}, and \code{upper}.}
-\item{\code{metadata}}{List containing group-specific FP powers,
-centering constants, coefficient groups, reference group, scale and shift
-values, zero-handling flag, confidence level, and \code{se.fit}.}
+Each result comes from the term-specific interaction model named by \code{term}.
+
+For \code{type = "function"} or \code{type = "both"}, the \code{functions} component is a
+data frame containing:
+\itemize{
+\item \code{term}: the continuous-variable name;
+\item \code{x}: the value used to evaluate the fitted curve;
+\item \code{group}: the group label;
+\item \code{fit}: the fitted curve value;
+\item \code{se.fit}, \code{lower}, and \code{upper}: the pointwise standard error and confidence
+limits when \code{se.fit = TRUE}.
 }
 
-For \code{type = "link"} or \code{"response"}, each prediction object
-contains:
-\describe{
-\item{\code{term}}{Continuous variable whose term-specific interaction
-model was used.}
-\item{\code{type}}{Either \code{"link"} or \code{"response"}.}
-\item{\code{predictions}}{Data frame with one row per subject. It
-contains \code{term}, \code{fit}, and, when requested and available,
-\code{se.fit}.}
-\item{\code{design}}{Reconstructed numeric interaction-model matrix.
-Present when ordinary prediction uses the manual reconstructed-design path,
-either because \code{newdata} was supplied or because a replacement
-\code{newoffset} was supplied for training-data prediction. \code{NULL}
-when prediction delegates to the stored fitted model's own \code{predict()}
-method.}
-\item{\code{metadata}}{List describing whether ordinary prediction was
-used, whether \code{newdata} was supplied, whether the design matrix was
-reconstructed, group metadata, offset usage, and response-scale status.}
+For \code{type = "difference"} or \code{type = "both"}, the \code{differences} component is
+a data frame containing:
+\itemize{
+\item \code{term}: the continuous-variable name;
+\item \code{x}: the value used to evaluate the curves;
+\item \code{contrast}: a label identifying the comparison;
+\item \code{group}: the comparison group;
+\item \code{reference}: the reference group;
+\item \code{fit}: the comparison-group curve minus the reference-group curve;
+\item \code{se.fit}, \code{lower}, and \code{upper}: the pointwise standard error and confidence
+limits when \code{se.fit = TRUE}.
 }
+
+For predictions for individual observations, the \code{predictions} component is a
+data frame containing \code{term} and \code{fit}, with \code{se.fit} added when requested and
+available.
+
+Other components contain information used by plotting and internal
+prediction checks and should not be treated as a stable public interface.
 }
 \description{
-Computes predictions from an object of class \code{"mfpi"}.The main prediction
-target is the group-specific MFPI fitted function \eqn{f_j(x)}. For each
-requested continuous variable, the method can return
-fitted functions, pointwise standard errors, confidence intervals, and
-contrasts between fitted functions. Ordinary link- and response-scale
-prediction from the term-specific interaction model is also supported.
+Obtain group-specific fitted curves, differences between group curves, or
+predictions for individual observations from a model fitted with \code{\link[=mfpi]{mfpi()}}.
 }
 \details{
-Fitted-function prediction reuses fit-time centering constants and
-never recomputes centers from \code{newdata}. Recomputing centers during
-prediction would define a different FP basis and make the reconstructed
-fitted functions incompatible with the fitted coefficients.
+MFPI fits a separate interaction model for each continuous variable examined
+through \code{cont_vars}. Predictions are therefore produced separately for each
+requested variable. Predictions for two different terms come from two
+different term-specific models; they are not parts of one combined model.
 
-This method does not call or depend on the legacy fitted-function generator.
-Its shared dependency is \code{build_group_fp_basis()}, which must remain
-available after \code{gen_fitted_values_per_group()} is removed.
+Supply continuous predictors on their original scale. Stored shifts, scales,
+fractional-polynomial functions, centering values, zero handling, and
+Winsorisation limits are applied automatically.
+
+The default \code{type = NULL} is equivalent to \code{type = "both"}. Supplying
+\code{newdata} by itself does not change this default. To obtain one prediction per
+row, explicitly use \code{type = "link"}, \code{"response"}, or one of the Cox
+prediction types.
 }
-\section{Prediction targets}{
+\section{Common calls}{
 
-\describe{
-\item{\code{type = "function"}}{Returns the group-specific fitted
-functions \eqn{f_j(x)}. The \code{functions} component contains one row
-for every evaluation \eqn{x} value and every group. When
-\code{se.fit = TRUE}, pointwise standard errors and confidence intervals
-are included.}
-\item{\code{type = "difference"}}{Returns fitted-function contrasts
-\eqn{f_j(x) - f_r(x)} relative to a reference group \eqn{r}. The
-\code{differences} component contains one row for every evaluation
-\eqn{x} value and every non-reference contrast.}
-\item{\code{type = "both"}}{Returns both group-specific fitted functions
-and fitted-function differences. This is the default fitted-function
-prediction target.}
-\item{\code{type = "link"}}{Returns ordinary subject-level linear
-predictor values from the term-specific interaction model. This target
-returns one prediction per row of the fitting data or \code{newdata}.}
-\item{\code{type = "response"}}{Returns ordinary subject-level
-response-scale predictions. For Gaussian models this is the fitted mean,
-for binomial models the fitted probability, for Poisson models the fitted
-mean count or rate, and for Cox models the relative risk score
-\eqn{\exp(\eta)}. Cox response prediction is not an absolute survival
-probability.}
+\itemize{
+\item \code{predict(fit, terms = "age")} returns the fitted group curves for age and
+their differences.
+\item \code{predict(fit, terms = "age", type = "function", grid = TRUE)} returns
+group-specific fitted curves on an equally spaced grid.
+\item \code{predict(fit, terms = "age", type = "difference", grid = TRUE)} returns
+differences between each comparison-group curve and the reference-group
+curve.
+\item \code{predict(fit, terms = "age", type = "response", newdata = new_data)}
+returns one response-scale prediction per row for a GLM.
+\item \code{predict(fit, terms = "age", type = "risk", newdata = new_data)} returns
+one relative-risk prediction per row for a Cox model.
 }
 }
 
-\section{Term-specific prediction}{
+\section{Selecting terms and models}{
 
-MFPI fits one interaction model per tested continuous variable. Predictions
-are therefore term-specific. If one term is requested, the method returns one
-object of class \code{"mfpi_prediction"}. If multiple terms are requested,
-it returns a named list of such objects with class
-\code{"mfpi_prediction_list"}.
+Use \code{terms} to select continuous variables that were examined by \code{\link[=mfpi]{mfpi()}}.
+These are normally names supplied through \code{cont_vars}, not adjustment-variable
+names.
+
+MFPI stores one term-specific interaction model for each evaluated continuous
+variable. The \code{model} argument determines which of these models can be used:
+\itemize{
+\item \code{model = "best"} uses only variables whose interaction was retained by the
+MFPI selection criterion. This is the default.
+\item \code{model = "all"} uses the stored model for every evaluated continuous
+variable for which a model is available, including interactions that were
+not retained.
 }
 
-\section{Choosing terms and model scope}{
+\code{model = "all"} does not return every candidate model considered during
+fitting. It returns the stored term-specific model for each evaluated
+continuous variable.
 
-Each tested continuous variable has a single fitted interaction model,
-compared against its main-effects-only counterpart using the model's
-selection \code{criterion} (AIC, BIC, or p-value) at fit time.
-\code{model = "best"} restricts prediction to variables whose interaction
-was retained by that criterion in the final selected model. \code{model =
-"all"} widens this to every tested variable's fitted interaction model,
-including variables that were not retained, as long as a fitted model was
-stored for that variable.
-
-\code{terms} and \code{model} work together: \code{terms} picks which
-variables to predict, while \code{model} determines which pool of fitted
-models those variables are drawn from. If \code{terms = NULL}, all
-variables available within the requested \code{model} scope are used. If
-\code{terms} is supplied, every requested variable must have a fitted model
-within that scope, or the call fails with the names of the missing
-variable(s); this is most likely to happen when a variable's interaction
-was not retained and \code{model = "best"} is used.
+When \code{terms = NULL}, all terms available under the selected \code{model} setting
+are used. If no interactions were retained, \code{model = "best"} has no models
+available; use \code{model = "all"} to inspect the evaluated terms.
 }
 
-\section{Fitted-function prediction}{
+\section{Choosing the prediction type}{
 
-Fitted-function prediction reconstructs only the group-specific FP basis
-needed for \eqn{f_j(x)} and combines that basis with the fitted
-interaction-model coefficients and covariance matrix. This target is for
-plotting and interpretation, not subject-level risk or mean prediction.
-
-Each group-specific function is evaluated at every supplied \eqn{x} value.
-Therefore, if there are \eqn{n} evaluation values and \eqn{k} groups, the
-\code{functions} component contains \eqn{n \times k} rows. With
-\code{grid = FALSE}, evaluation values are the observed or supplied values
-in their original row order; duplicates are retained. With
-\code{grid = TRUE}, values are replaced by an equally spaced grid. For
-zero-handled variables, the grid is built over the positive part and includes
-a structural zero point if structural zeros are present.
-
-Fitted-function differences are computed relative to a reference group.
-Unless \code{reference} is supplied, the reference group used at model fitting
-is reused. Supplying \code{reference} only changes the contrast baseline for
-fitted-function differences returned by \code{type = "difference"} or
-\code{type = "both"}; it does not refit the model or change the fit-time
-group coding used by ordinary prediction.
+Use the following types for fitted curves:
+\itemize{
+\item \code{type = "function"} returns the fitted curve for each group.
+\item \code{type = "difference"} returns each comparison-group curve minus the
+reference-group curve at the same continuous-variable value.
+\item \code{type = "both"} returns both fitted curves and their differences. This is
+the default when \code{type = NULL}.
 }
 
-\section{Ordinary link and response prediction}{
-
-Ordinary \code{type = "link"} and \code{type = "response"} prediction are
-subject-level targets. For \code{newdata = NULL} and \code{newoffset = NULL},
-the stored fitted model's own prediction method is used. If
-\code{newdata = NULL} but a replacement \code{newoffset} is supplied, the
-stored training design is reconstructed so that the supplied new offset is used
-explicitly. For supplied \code{newdata}, the method reconstructs the full
-term-specific interaction-model matrix, including group dummies, the
-row-specific group interaction block, selected adjustment covariates, and
-offsets when applicable. Formula-level offsets are reconstructed from
-\code{newdata} when possible; an explicitly supplied \code{newoffset}
-takes precedence. The reconstructed matrix is then multiplied by the fitted
-coefficient vector.
-
-Ordinary prediction uses the group coding, reference level, contrasts, and
-centering conventions stored at model fitting. New observations must belong
-to group levels observed during fitting. New group levels are rejected
-because no fitted coefficients exist for groups outside the fit-time design.
+Use the following types for predictions for individual observations:
+\itemize{
+\item For Gaussian, binomial, and Poisson models, \code{type = "link"} returns the
+linear predictor and \code{type = "response"} applies the inverse link function.
+\code{"lp"} is accepted as another name for \code{"link"}.
+\item For Cox models, \code{type = "lp"} returns the relative log-hazard,
+\code{type = "risk"} returns relative hazard, \code{type = "expected"} returns the
+predicted cumulative hazard up to the supplied follow-up time, and
+\code{type = "survival"} returns the estimated survival probability at that
+time. \code{"link"} is accepted as another name for \code{"lp"}.
 }
 
-\section{Categorical adjustment variables in prediction}{
-
-For formula fits, \code{newdata} should contain the original factor columns,
-not manually created dummy columns. The stored predictor terms, factor
-levels, and contrasts are used to recreate the fit-time design. All contrast
-columns belonging to a selected categorical adjustment term are then
-transformed and inserted together. Unseen factor levels are rejected.
-
-For default-interface fits using \code{term_groups}, \code{newdata} must
-contain every raw member column of each selected grouped term. Supplying only
-part of a block is an error. Categorical adjustment columns are reused as
-fixed linear columns; no FP, ACD, zero, catzero, or spike transformation is
-applied at prediction time.
+For Cox models, \code{type = "risk"} is not the same as a GLM response
+prediction.
 }
 
-\section{Cox models}{
+\section{Fitted curves and group differences}{
 
-For Cox models, \code{type = "link"} returns the zero-reference linear
-predictor and \code{type = "response"} returns the relative risk score
-\eqn{\exp(\eta)}. Baseline survival, cumulative-hazard, expected-event, and
-absolute-risk prediction are not currently implemented. Formula-level Cox
-strata used during fitting affect the partial likelihood and
-stratum-specific baseline hazards. Prediction-time strata for new
-observations are supplied via the \code{strata} argument; see below.
+For \code{type = "function"}, \code{"difference"}, or \code{"both"}, only the requested
+continuous variable is required in \code{newdata}. The grouping variable and
+adjustment variables are not required because the function is evaluated for
+every fitted group at each supplied value.
+
+A group-specific fitted curve contains the part of the term-specific model
+defined by the continuous variable and group. For a GLM, it also includes the
+model intercept and the group's main effect. Adjustment variables and offsets
+are not included in fitted-curve output.
+
+A fitted difference is the comparison-group curve minus the reference-group
+curve at the same value. It therefore includes both the group main-effect
+difference and any difference in the fitted continuous-variable functions.
+
+The reference group is the reference level used when \code{\link[=mfpi]{mfpi()}} was fitted.
+For more than two groups, one difference is returned for every non-reference
+group. Original group labels are used in the returned tables when available.
+
+Fitted curves and differences are always reported on the model's
+linear-predictor scale. With the standard links, this is:
+\itemize{
+\item the outcome scale for a Gaussian identity-link model;
+\item the log-odds scale for a binomial logit model;
+\item the log-mean scale for a Poisson log-link model;
+\item a partial log-hazard scale for a Cox model.
+}
+
+For a Cox model, these fitted curves do not include the baseline hazard and
+are not survival probabilities.
+}
+
+\section{Evaluation values and grids}{
+
+When \code{grid = FALSE}, fitted curves are evaluated at the requested variable
+values in \code{newdata}, or at the values used to fit the model when
+\code{newdata = NULL}.
+
+When \code{grid = TRUE}, an equally spaced grid is created between the smallest
+and largest available values. The range is based on \code{newdata} when supplied
+and on the fitting data otherwise. \code{n_grid} controls the number of grid
+points.
+
+For a variable fitted with structural-zero handling, the grid is constructed
+over the positive values. A zero point is also included when structural zeros
+are present, so the result can contain \code{n_grid + 1} distinct values.
+
+If Winsorisation was used during fitting, the same limits are applied to new
+values before prediction. Values outside the fitted limits are replaced by
+the relevant limit. The returned \code{x} column shows the value actually used for
+prediction after Winsorisation.
+
+\code{grid} is used only for fitted curves. It is ignored with a warning for
+predictions for individual observations.
+}
+
+\section{Predictions for individual observations}{
+
+For \code{type = "link"}, \code{"response"}, \code{"lp"}, \code{"risk"}, \code{"expected"}, or
+\code{"survival"}, one prediction is returned for each row.
+
+These predictions use the complete term-specific interaction model. Supply:
+\itemize{
+\item the continuous variable named in \code{terms};
+\item the grouping variable used in the MFPI analysis;
+\item every adjustment variable retained in that term-specific model;
+\item any offset, strata, or follow-up information required for the selected
+prediction type.
+}
+
+Different terms can require different prediction columns because the tested
+continuous variable is removed from its own adjustment set.
+
+For a model fitted with a formula, normally supply the original variables.
+Factors and retained formula expressions are reconstructed automatically.
+
+For a model fitted from a matrix, supply the required columns with the same
+names and coding used during fitting. If adjustment columns were grouped with
+\code{term_groups}, every member column of a required group must be supplied.
+
+New group levels and new factor levels are not supported. Required prediction
+values must not be missing and numeric values must be finite. Extra columns
+not used by the selected term-specific model are ignored.
+
+Stored transformations and Winsorisation limits are applied automatically.
+Do not create transformed or group-interaction columns yourself.
+
+When \code{newdata = NULL}, predictions are returned for the observations used to
+fit each term-specific model.
+}
+
+\section{Offsets}{
+
+Offsets are used only for predictions for individual observations. They are
+not included in fitted curves or fitted differences.
+
+When \code{newdata = NULL}, the fitted offset is used unless \code{newoffset} is
+supplied to replace it. A replacement offset must contain one value for each
+fitting observation.
+
+When \code{newdata} is supplied:
+\itemize{
+\item If the fitted formula contains \code{offset(...)}, include the source variable
+or variables needed by that expression in \code{newdata}. The offset is
+evaluated automatically.
+\item If the offset was supplied through the separate \code{offset} argument, supply
+the offset for the new rows through \code{newoffset}.
+\item A supplied \code{newoffset} takes precedence over a formula offset.
+}
+
+Supply one finite \code{newoffset} value for each prediction row. \code{newoffset}
+cannot be used when the relevant interaction model was fitted without an
+offset.
+}
+
+\section{Cox predictions}{
+
+Cox predictions with \code{type = "lp"} and \code{type = "risk"} are relative
+quantities. They are not absolute hazards or survival probabilities.
+
+Use \code{cox_reference} to choose the covariate reference for these predictions:
+\itemize{
+\item \code{"zero"} uses zero on the fitted predictor scale and is the default.
+\item \code{"sample"} uses the fitted-sample predictor means.
+\item \code{"strata"} uses fitted-sample means within each stratum.
+}
+
+Changing \code{cox_reference} changes the displayed linear predictors and risks,
+but comparisons made using the same reference remain unchanged.
+
+\code{cox_reference} does not change the group used by
+\code{type = "difference"}. It applies only to observation-level Cox predictions
+with \code{type = "lp"} or \code{type = "risk"}.
+
+Cox predictions with \code{type = "expected"} or \code{type = "survival"} also need
+follow-up information for every prediction row.
+
+For a model fitted with a formula, include the variables used in the fitted
+\code{Surv()} response. Alternatively, include exactly one column that is a
+right-censored \code{Surv} object. Wrap it in \code{I()} when constructing a data frame,
+for example:
+
+\code{data.frame(age = age, group = group, followup = I(survival::Surv(time, event)))}.
+
+Do not use \code{cox_reference} with \code{type = "expected"} or
+\code{type = "survival"}.
+
+For a stratified Cox model, each prediction row must have valid stratum
+information. If \code{strata()} was included in the fitted formula, include its
+original variable or variables in \code{newdata}. Otherwise, supply new stratum
+values through \code{strata}.
 }
 
 \section{Standard errors and confidence intervals}{
 
-\code{se.fit} and \code{level} apply to both prediction targets, but the
-quantity they describe differs between them. For fitted functions and
-fitted-function differences, \code{se.fit = TRUE} adds pointwise standard
-errors on the model scale, together with \code{lower}/\code{upper}
-confidence limits at the requested \code{level}; these describe the
-precision of \eqn{f_j(x)} or \eqn{f_j(x) - f_r(x)} at each evaluation
-point, not a simultaneous confidence band. For ordinary \code{"link"} and
-\code{"response"} prediction, \code{se.fit = TRUE} adds a single
-\code{se.fit} column to \code{predictions}; \code{level} is not used here,
-since no interval is returned for ordinary prediction. Response-scale
-standard errors follow the same inverse-link delta-method convention as
-\code{predict.glm()}, and Cox response-scale standard errors follow the
-zero-reference relative-risk convention described under \emph{Cox models}.
-}
+For fitted curves and fitted differences, \code{se.fit = TRUE} returns pointwise
+standard errors and confidence intervals with confidence level \code{level}.
 
-\section{Required object metadata}{
+For predictions for individual observations, \code{se.fit = TRUE} requests the
+standard errors supported by the underlying GLM or Cox prediction method.
+The \code{level} argument is not used for these predictions.
 
-New-data prediction assumes that the \code{"mfpi"} object stores prediction
-metadata created at fit time. In particular, fitted-function prediction with
-\code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
-plus a replacement \code{newoffset} require \code{object$x_train_internal},
-the post-preprocessing training matrix containing shifted/scaled predictors
-and internally remapped \code{group_var} codes. New-data ordinary prediction
-additionally relies on stored shift, scale, winsorisation limits, group-level
-mapping, the conceptual-term-to-column lookup, selected adjustment-model
-powers, centering constants, formula factor levels and contrasts when
-applicable, and each flex result's \code{coefficient_groups}.
+All standard errors and confidence intervals are conditional on the selected
+term-specific model. They do not include uncertainty from adjustment-variable
+selection, function selection, interaction selection, or selection among the
+evaluated terms.
 }
 
 \examples{
 \dontrun{
-# Fit an MFPI model. The exact arguments depend on your analysis.
-fit <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
+data("prostate")
 
-# Default: selected term(s), fitted functions and differences, observed x.
-p1 <- predict(fit)
-names(p1)
-head(p1$functions)
-head(p1$differences)
+fit <- mfpi(
+  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+    fp(bph) + fp(cp),
+  data = prostate,
+  group_var = "svi",
+  cont_vars = c("cavol", "age"),
+  flex = "flex1",
+  include_group_var = TRUE,
+  center = FALSE,
+  verbose = FALSE
+)
 
-# Smooth fitted-function curves for plotting.
-p2 <- predict(fit, terms = "age", type = "both", grid = TRUE)
-age_fun <- subset(p2$functions, group == unique(p2$functions$group)[1L])
-plot(age_fun$x, age_fun$fit, type = "l")
+# By default, return fitted curves and differences for retained interactions.
+predict(fit)
 
-# Fitted functions only.
-p3 <- predict(fit, terms = "age", type = "function")
+# Inspect the stored model for an evaluated term even if it was not retained.
+curves <- predict(
+  fit,
+  terms = "cavol",
+  model = "all",
+  type = "both",
+  grid = TRUE
+)
 
-# Formula-fitted categorical adjustment variables are supplied on their
-# original factor scale; predict.mfpi() recreates the stored contrasts.
-nd <- training_data[1:20, c("trt", "age", "stage"), drop = FALSE]
-p_factor <- predict(fit_with_stage, newdata = nd, terms = "age",
-                    model = "all", type = "link")
+curves$functions
+curves$differences
 
-# Differences relative to the fit-time reference group.
-p4 <- predict(fit, terms = "age", type = "difference")
+# Evaluate fitted curves at selected values. Only cavol is required here.
+selected_values <- predict(
+  fit,
+  newdata = data.frame(cavol = c(0.2, 1, 3)),
+  terms = "cavol",
+  model = "all",
+  type = "function",
+  grid = FALSE
+)
 
-# Differences relative to an explicitly chosen observed group.
-p5 <- predict(fit, terms = "age", type = "difference", reference = 0)
+selected_values$functions
 
-# Ordinary subject-level response prediction for new observations.
-new_x <- x[1:10, , drop = FALSE]
-p6 <- predict(fit, terms = "age", type = "response", newdata = new_x)
-head(p6$predictions)
+# Obtain one prediction per observation from the cavol interaction model.
+row_predictions <- predict(
+  fit,
+  newdata = prostate[1:10, ],
+  terms = "cavol",
+  model = "all",
+  type = "response"
+)
 
-# Multiple terms return a named prediction list.
-p7 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
-names(p7)
+row_predictions$predictions
+
+# Several terms return a named list. Each element uses a different
+# term-specific interaction model.
+several_curves <- predict(
+  fit,
+  terms = c("cavol", "age"),
+  model = "all",
+  type = "function",
+  grid = TRUE
+)
+
+several_curves$cavol$functions
+several_curves$age$functions
+
+# A formula offset is evaluated automatically from newdata.
+set.seed(1)
+d <- data.frame(
+  y = rpois(100, 2),
+  group = factor(sample(c("control", "treated"), 100, replace = TRUE)),
+  age = runif(100, 30, 75),
+  exposure = runif(100, 0.5, 3)
+)
+
+fit_offset <- mfpi(
+  y ~ age + group + offset(log(exposure)),
+  data = d,
+  family = "poisson",
+  group_var = "group",
+  cont_vars = "age",
+  cont_var_forms = c(age = "linear"),
+  flex = "flex1",
+  p_interact = 1,
+  verbose = FALSE
+)
+
+predict(
+  fit_offset,
+  newdata = d[1:5, c("age", "group", "exposure")],
+  terms = "age",
+  model = "all",
+  type = "response"
+)
+
+# Cox predictions.
+lung <- survival::lung
+lung$status <- as.integer(lung$status == 2)
+lung <- lung[complete.cases(lung[, c("time", "status", "age", "sex")]), ]
+lung$sex <- factor(lung$sex)
+
+fit_cox <- mfpi(
+  survival::Surv(time, status) ~ age + sex,
+  data = lung,
+  family = "cox",
+  group_var = "sex",
+  cont_vars = "age",
+  cont_var_forms = c(age = "linear"),
+  flex = "flex1",
+  p_interact = 1,
+  verbose = FALSE
+)
+
+relative_data <- lung[1:5, c("age", "sex")]
+predict(
+  fit_cox,
+  newdata = relative_data,
+  terms = "age",
+  model = "all",
+  type = "risk"
+)
+
+# Survival predictions also require the fitted follow-up variables.
+absolute_data <- lung[1:5, c("time", "status", "age", "sex")]
+predict(
+  fit_cox,
+  newdata = absolute_data,
+  terms = "age",
+  model = "all",
+  type = "survival"
+)
 }
 
+}
+\seealso{
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
 }

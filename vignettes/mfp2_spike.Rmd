@@ -1,5 +1,6 @@
 ---
 title: "Spike-at-Zero Modelling with mfp2"
+subtitle: 'Package version `r as.character(utils::packageVersion("mfp2"))`'
 author: "Edwin Kipruto and Willi Sauerbrei"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -102,6 +103,11 @@ library(survival)
 
 Covariates in biomedical, epidemiological, environmental, and pharmacological studies may have a semi-continuous distribution. In this setting, a proportion of observations is concentrated at zero, while the remaining observations are continuously distributed over positive values. This distributional pattern is often described as a *spike at zero* (SAZ) or *semi-continuous variable* (Robertson et al., 1994; Royston and Sauerbrei, 2008; Becher et al., 2012; Lorenz et al., 2017). We use SAZ throughout this vignette.
 
+In `mfp2`, the structural-zero component is defined by `x <= 0`, not only by
+exact observed zeros. Any negative values are recoded to zero before the SAZ
+eligibility check and component modelling, while positive values form the
+continuous component.
+
 Typical examples include alcohol consumption, tobacco exposure, and laboratory measurements restricted by a limit of detection or quantification. Here, zero may denote no alcohol intake, no tobacco exposure, or a value below the measurement threshold, while positive values describe the amount consumed, the intensity or duration of exposure, or the measured concentration above that limit (Becher et al., 2012; Lorenz et al., 2017).
 
 Several simple strategies are commonly used for SAZ variables, but each
@@ -151,11 +157,31 @@ Becher et al. (2012).
 | Linear | Include the original variable as an ordinary linear term. | Uses the continuous measurement directly. | Ignores the spike and assumes linearity on the model scale. |
 | Standard FP | Apply ordinary FP modelling to the variable after making it positive. | Uses the continuous scale and can capture nonlinear effects. | Ignores the spike; any constant added to make zeros transformable may affect the result. |
 | Linear plus spike indicator | Include a binary spike component and a linear term for the positive values. | Separates the zero group from the linear trend among positive values. | Still assumes linearity over the positive range and no simplification of the model components. |
-| FP-spike | Include a binary spike component and use FP selection for the positive values. | Allows a separate contrast for the zero group and a nonlinear functional form over the positive range, with possible component simplification. | Willi to suggest better option |
+| FP-spike | Include a binary spike component and use FP selection for the positive values. | Allows a separate contrast for the zero group and a nonlinear functional form over the positive range, with possible component simplification. | Requires adequate information in both components and adds model-selection uncertainty. |
 
 SAZ modelling is most useful when `x = 0` identifies a meaningful group, such as no exposure or a value below a measurement threshold. The positive values should also be able to carry additional continuous and possibly nonlinear covariate-response information. In addition, both the zero component and the positive-value component should contain enough observations for reliable estimation of the model parameters.
 
 SAZ should not be used simply because a continuous predictor contains a few zero values. If zero is only a boundary value, a coding artifact, or a consequence of measurement precision, ordinary preprocessing, shifting, scaling, or data cleaning may be more appropriate. Conversely, if the covariate is already binary, SAZ is not needed because the variable already represents a two-level effect.
+
+# Relationship to `zero` and `catzero` handling
+
+`mfp2()` provides three related options for covariates containing nonpositive
+values. They should not be treated as interchangeable.
+
+| Requested handling | Positive-value function | Binary nonpositive-component indicator | Component selection |
+|---|---:|---:|---:|
+| `zero` | Yes | No | No |
+| `catzero` | Yes | Yes | No; both are retained while the term remains selected |
+| `spike` | Yes | Yes | Yes; SAZ chooses both components or either component alone |
+
+In the formula interface, request these options with
+`fp(x, zero = TRUE)`, `fp(x, catzero = TRUE)`, or
+`fp(x, spike = TRUE)`. In the matrix interface, use `zero_vars`,
+`catzero_vars`, or `spike_vars`.
+
+For all three options, original values less than or equal to zero belong to the
+nonpositive component. The detailed sections below focus on `spike`, for which
+both component eligibility and component selection are data dependent.
 
 # Quick start: a worked example
 

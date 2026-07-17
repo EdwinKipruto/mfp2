@@ -16,6 +16,8 @@
 
 * Added `plot.mfp2()`, an S3 `plot()` method for `mfp2` objects. The method provides partial predictor and contrast plots and is now the recommended interface for visualizing fitted `mfp2` models. The existing `fracplot()` function is retained as an alias for backward compatibility.
 
+* Changed per-variable `shift` and `scale` settings in `mfp2.default()` from positional, column-index-based vectors to named vectors matched to `colnames(x)`. Named vectors may specify only a subset of predictors, with unspecified values estimated automatically; their order is irrelevant. Unnamed vectors with more than one value are now rejected to prevent settings from being assigned to the wrong columns.
+
 ## Subsetting and factor handling
 
 * Updated `mfp2.formula()` so that `subset` expressions are evaluated exactly once using standard formula semantics: names are resolved from `data` first and then from the formula environment.

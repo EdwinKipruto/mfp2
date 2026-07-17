@@ -2,7 +2,7 @@
 % Please edit documentation in R/fracplot.R
 \name{fracplot}
 \alias{fracplot}
-\title{Deprecated fractional-polynomial plotting interface}
+\title{Deprecated Fractional-Polynomial Plotting Interface}
 \usage{
 fracplot(
   model,
@@ -26,7 +26,7 @@ fracplot(
 )
 }
 \arguments{
-\item{model}{A fitted \code{mfp2} object.}
+\item{model}{A fitted object of class \code{"mfp2"}.}
 
 \item{terms}{Character vector naming variables to plot. If \code{NULL}, all
 eligible terms retained in the final model are plotted.}
@@ -78,29 +78,36 @@ selected FP or ACD representation and any retained spike-at-zero component.}
 transparency.}
 }
 \value{
-A named list of \code{ggplot2} objects, identical to the result from
-\code{plot(model, ...)}.
+A named list of \code{ggplot2} objects, one for each plotted term, identical to
+the result returned by \code{\link[=plot.mfp2]{plot.mfp2()}}.
 }
 \description{
-\code{fracplot()} is deprecated. Use \code{plot()} on a fitted \code{mfp2}
-object instead. The deprecated function remains available temporarily for
-backward compatibility and returns the same plot list as \code{plot()}.
+\code{fracplot()} is retained temporarily for compatibility with code written
+for earlier versions of \code{mfp2}. Use \code{\link[=plot.mfp2]{plot.mfp2()}} or \code{plot()} instead.
+}
+\details{
+The function forwards its arguments to \code{\link[=plot.mfp2]{plot.mfp2()}} and returns the same
+plot objects.
 }
 \examples{
 data("prostate")
-x <- as.matrix(prostate[, 2:8])
-y <- as.numeric(prostate$lpsa)
-fit <- mfp2(x, y, verbose = FALSE)
 
-# Preferred interface
-plots <- plot(fit)
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+
+# Recommended interface
+plots <- plot(fit, terms = "age")
+plots
 
 \dontrun{
 # Deprecated compatibility interface
-old_plots <- fracplot(fit)
+old_plots <- fracplot(fit, terms = "age")
 }
 
 }
 \seealso{
-\code{\link{plot.mfp2}}
+\code{\link[=plot.mfp2]{plot.mfp2()}}
 }

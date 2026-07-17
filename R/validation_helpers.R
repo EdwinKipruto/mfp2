@@ -233,6 +233,200 @@ validate_numeric_vector <- function(arg,
 }
 
 
+#' Normalize a Per-Column Numeric Setting
+#'
+#' Validate and align a numeric preprocessing setting such as `shift` or
+#' `scale` to the columns of a matrix. Unnamed scalars are recycled. Named
+#' inputs are matched by name rather than by position and may optionally specify
+#' only a subset of columns.
+#'
+#' When `allow_partial_named = TRUE`, a named scalar is deliberately treated as
+#' a one-column specification rather than as a global scalar. The result is a
+#' complete vector in `column_names` order: supplied entries retain their values
+#' and unspecified entries are `NA_real_` sentinels for downstream automatic
+#' estimation. Missing values present in the caller's input are validated before
+#' those internal sentinels are introduced.
+#'
+#' @param value Object to normalize.
+#' @param column_names Character vector of matrix column names.
+#' @param argument_name Character scalar used in error messages.
+#' @param allow_null Logical; whether `NULL` requests automatic values.
+#' @param scalar_recycle Logical; whether a scalar is recycled to every column.
+#' @param strictly_positive Logical; whether supplied non-missing values must be
+#'   strictly positive.
+#' @param allow_na Logical; whether missing values may be retained as internal
+#'   automatic-value sentinels. Public matrix interfaces use `FALSE`; formula
+#'   interfaces use `TRUE` only for vectors constructed internally.
+#' @param allow_partial_named Logical; whether a named vector may specify only a
+#'   subset of columns. Unspecified columns are returned as `NA_real_` so their
+#'   values can be estimated by the existing preprocessing pipeline.
+#'
+#' @return A numeric vector named and ordered exactly like `column_names`.
+#'   For partial named inputs, automatic entries are represented by `NA_real_`.
+#'   For an unnamed scalar, every entry contains the recycled scalar value.
+#' @keywords internal
+#' @noRd
+normalize_named_numeric_setting <- function(value,
+                                            column_names,
+                                            argument_name,
+                                            allow_null = TRUE,
+                                            scalar_recycle = TRUE,
+                                            strictly_positive = FALSE,
+                                            allow_na = FALSE,
+                                            allow_partial_named = FALSE) {
+  n_columns <- length(column_names)
+  shape_message <- if (allow_partial_named) {
+    sprintf(
+      "`%s` must be a single unnamed numeric value or a named numeric vector for one or more columns of `x`.",
+      argument_name
+    )
+  } else {
+    sprintf(
+      "`%s` must be a single numeric value or a named numeric vector with one value for each column of `x`.",
+      argument_name
+    )
+  }
+  
+  if (is.null(value)) {
+    if (!allow_null) {
+      stop(sprintf("`%s` must not be NULL.", argument_name), call. = FALSE)
+    }
+    
+    return(stats::setNames(rep(NA_real_, n_columns), column_names))
+  }
+  
+  # Intercept-only formula models legitimately delegate a zero-column matrix
+  # together with zero-length internally constructed setting vectors.
+  if (n_columns == 0L && length(value) == 0L) {
+    return(stats::setNames(numeric(0L), column_names))
+  }
+  
+  # typeof() deliberately excludes logical and complex values. In particular,
+  # TRUE/FALSE must not be accepted as numeric shift/scale settings.
+  if (!is.numeric(value) || !typeof(value) %in% c("integer", "double")) {
+    stop(
+      sprintf("`%s` must contain numeric values, not %s values.",
+              argument_name, typeof(value)),
+      call. = FALSE
+    )
+  }
+  
+  # Missing values supplied at the public interface remain invalid. Missing
+  # values introduced below for unspecified partial settings are internal
+  # sentinels and are intentionally retained for automatic estimation.
+  if (!allow_na && anyNA(value)) {
+    stop(sprintf("`%s` must not contain missing values.", argument_name),
+         call. = FALSE)
+  }
+  
+  value_names <- names(value)
+  named_partial <- allow_partial_named &&
+    !is.null(value_names) &&
+    length(value) > 0L
+  
+  if (length(value) == 1L && !named_partial) {
+    if (!scalar_recycle && n_columns != 1L) {
+      stop(shape_message, call. = FALSE)
+    }
+    
+    value <- rep(as.numeric(value), n_columns)
+    names(value) <- column_names
+  } else {
+    if (is.null(value_names) ||
+        length(value_names) != length(value) ||
+        anyNA(value_names) ||
+        any(!nzchar(value_names))) {
+      stop(shape_message, call. = FALSE)
+    }
+    
+    if (anyDuplicated(value_names)) {
+      duplicated_names <- unique(value_names[duplicated(value_names)])
+      stop(
+        sprintf(
+          "`%s` names must be unique; duplicated name(s): %s.",
+          argument_name,
+          paste(duplicated_names, collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    
+    unknown_names <- setdiff(value_names, column_names)
+    
+    if (allow_partial_named) {
+      if (length(unknown_names) > 0L) {
+        stop(
+          sprintf(
+            "`%s` contains unknown column name(s): %s.",
+            argument_name,
+            paste(unknown_names, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+      
+      normalized <- stats::setNames(rep(NA_real_, n_columns), column_names)
+      normalized[value_names] <- as.numeric(value)
+      value <- normalized
+    } else {
+      missing_names <- setdiff(column_names, value_names)
+      
+      if (length(value) != n_columns ||
+          length(missing_names) > 0L ||
+          length(unknown_names) > 0L) {
+        details <- character(0L)
+        if (length(missing_names) > 0L) {
+          details <- c(
+            details,
+            sprintf("missing: %s", paste(missing_names, collapse = ", "))
+          )
+        }
+        if (length(unknown_names) > 0L) {
+          details <- c(
+            details,
+            sprintf("unknown: %s", paste(unknown_names, collapse = ", "))
+          )
+        }
+        
+        detail_suffix <- if (length(details) > 0L) {
+          paste0(" (", paste(details, collapse = "; "), ")")
+        } else {
+          ""
+        }
+        
+        stop(
+          sprintf(
+            "`%s` names must match `colnames(x)` exactly%s.",
+            argument_name,
+            detail_suffix
+          ),
+          call. = FALSE
+        )
+      }
+      
+      value <- as.numeric(value[column_names])
+      names(value) <- column_names
+    }
+  }
+  
+  finite_values <- value[!is.na(value)]
+  if (length(finite_values) > 0L && any(!is.finite(finite_values))) {
+    stop(sprintf("`%s` must contain only finite values.", argument_name),
+         call. = FALSE)
+  }
+  
+  if (strictly_positive &&
+      length(finite_values) > 0L &&
+      any(finite_values <= 0)) {
+    stop(sprintf("`%s` must contain only strictly positive values.",
+                 argument_name),
+         call. = FALSE)
+  }
+  
+  value
+}
+
+
 #' Validate a positive integer scalar argument
 #'
 #' Checks that an argument is a single finite positive integer.

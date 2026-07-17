@@ -3,7 +3,7 @@
 \name{fp}
 \alias{fp}
 \alias{fp2}
-\title{Helper to assign attributes to a variable undergoing FP-transformation}
+\title{Specify Fractional-Polynomial Options in a Formula}
 \usage{
 fp(
   x,
@@ -39,20 +39,35 @@ powers \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} are used.}
 \code{\link{mfp2}}.}
 
 \item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
-allowed by \code{df} is selected for this variable. This argument is only
-used when \code{criterion = "aic"} or \code{criterion = "bic"} in
-\code{mfp2()}. It has no effect when \code{criterion = "pvalue"}, because
-the same behaviour can be obtained by setting \code{select = 1} and
-\code{alpha = 1}. Default is \code{FALSE}.}
+allowed by \code{df} is selected for this variable. Under p-value
+selection, both \code{select} and \code{alpha} are internally set to
+\code{1} for the variable. Default is \code{FALSE}.}
 
 \item{...}{Used in alias \code{fp2()} to pass arguments.}
 }
 \value{
-The vector \code{x} with attributes relevant for FP-transformation. All
-arguments passed to this function are stored as attributes.
+A formula term containing the modelling options supplied to \code{fp()}.
+The term is interpreted by \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} during model fitting.
 }
 \description{
-Used in the formula interface to \code{mfp2()}.
+Marks a continuous variable for fractional-polynomial modelling by
+\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} and specifies any variable-specific modelling options.
+\code{fp()} is intended for use inside a model formula. It does not transform
+the variable immediately; the transformation is selected and constructed
+during model fitting.
+}
+\details{
+By default, the function allows selection among omission, a linear effect,
+FP1, and FP2, subject to the model-selection settings supplied to \code{\link[=mfp2]{mfp2()}}
+or \code{\link[=mfpi]{mfpi()}}.
+
+Variable-specific options can be used to restrict the maximum complexity,
+force the variable into the model, request ACD or spike-at-zero modelling,
+or control how zero and nonpositive values are handled.
+
+\code{fp()} should normally be applied only to continuous numeric variables.
+Categorical variables should be included directly in the formula as
+factors.
 }
 \section{Functions}{
 \itemize{
@@ -60,8 +75,29 @@ Used in the formula interface to \code{mfp2()}.
 
 }}
 \examples{
-xr <- 1:10
-fp(xr)
-fp2(xr)
+data("prostate")
+
+# Allow the default fractional-polynomial search for age.
+fit1 <- mfp2(
+  lpsa ~ fp(age) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+
+# Restrict age to at most one degree of freedom.
+fit2 <- mfp2(
+  lpsa ~ fp(age, df = 1) + svi,
+  data = prostate,
+  verbose = FALSE
+)
+
+\dontrun{
+# Request spike-at-zero modelling for a semi-continuous exposure.
+fit_spike <- mfp2(
+  outcome ~ fp(exposure, spike = TRUE) + fp(age),
+  data = analysis_data,
+  verbose = FALSE
+)
+}
 
 }

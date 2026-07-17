@@ -15,7 +15,7 @@ Authors@R: c(
   )
 Depends: R (>= 4.2.0)
 Imports: stats, survival, utils, Rcpp, numDeriv, ggplot2 (>= 3.4.0)
-Suggests: knitr, testthat (>= 3.3.1), xfun, rmarkdown, formatR,
+Suggests: knitr, testthat (>= 3.2.0), xfun, rmarkdown, formatR,
         patchwork
 Description: Fits multivariable fractional polynomial models with simultaneous
     selection of variables and functional forms for generalized linear models
@@ -46,11 +46,11 @@ Language: en-US
 Config/roxygen2/version: 8.0.0
 RemoteType: local
 RemoteUrl: D:\R packages\mfp2
-Packaged: 2026-07-11 13:39:15 UTC; Edwin Kipruto
+Packaged: 2026-07-16 09:51:51 UTC; Edwin Kipruto
 Author: Edwin Kipruto [aut, cre],
   Michael Kammer [aut],
   Patrick Royston [aut],
   Willi Sauerbrei [aut]
 Maintainer: Edwin Kipruto <edwin.kipruto@uniklinik-freiburg.de>
-Built: R 4.6.1; x86_64-w64-mingw32; 2026-07-11 13:39:18 UTC; windows
+Built: R 4.6.1; x86_64-w64-mingw32; 2026-07-16 09:51:54 UTC; windows
 Archs: x64

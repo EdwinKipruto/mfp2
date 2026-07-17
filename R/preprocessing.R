@@ -1,6 +1,10 @@
 #' Calculate a scaling factor for a predictor variable
 #' 
 #' @details
+#' This function exposes one preprocessing calculation used by [mfp2()].
+#' Most users do not need to call it directly because shifting and scaling are
+#' handled automatically during model fitting.
+#' 
 #' For details on why scaling is useful, see the corresponding section in the
 #' documentation of \code{mfp2()}.
 #' 
@@ -31,7 +35,8 @@
 #' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}
 #' 
-#' @export
+#' @keywords internal
+#' @noRd
 find_scale_factor <- function(x) {
   
   n_unique <- length(unique(x))
@@ -51,6 +56,9 @@ find_scale_factor <- function(x) {
 #' Calculate a shift factor for a predictor variable
 #' 
 #' @details
+#' This function exposes one preprocessing calculation used by [mfp2()].
+#' Most users do not need to call it directly because shifting and scaling are
+#' handled automatically during model fitting.
 #' For details on why shifting is necessary, see the corresponding section in the
 #' documentation of \code{mfp2()}.
 #' 
@@ -72,7 +80,8 @@ find_scale_factor <- function(x) {
 #' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
 #' for Modelling Continuous Variables. John Wiley & Sons.}
 #' 
-#' @export
+#' @keywords internal
+#' @noRd
 find_shift_factor <- function(x) {
   
   n_unique <- length(unique(x))
@@ -107,7 +116,8 @@ find_shift_factor <- function(x) {
 #' @returns 
 #' A numeric vector of the same length as `x`, shifted and scaled.
 #'  
-#' @export
+#' @keywords internal
+#' @noRd
 apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
   # restrict x to be a vector not matrix
   if (is.matrix(x))

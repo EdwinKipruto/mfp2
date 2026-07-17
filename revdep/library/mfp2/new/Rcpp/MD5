@@ -1,12 +1,12 @@
 7599bada89d38a2474389682f552755e *CITATION
-cd11dee53e436db4a8a9085486779df6 *DESCRIPTION
+b62ad8a2230b0b62925709e566138a34 *DESCRIPTION
 7976530f6d9f65390dc27387160ebf73 *INDEX
 5efcc413818b0d1d29da6d4524c78cf9 *Meta/Rd.rds
 8bd78fe4d71c3aeb1a0f4982ee51622b *Meta/features.rds
 ad41c7327e426afacc14c228c3fee287 *Meta/hsearch.rds
 902bda4e9284ec7b236face2e1b95db6 *Meta/links.rds
 4fb0e15b7f6b7d3d984b9fed80061bef *Meta/nsInfo.rds
-042398bdda8ade72f35a2c6e0d32568f *Meta/package.rds
+6b4dbffe3da62c524f3b71dec83de76e *Meta/package.rds
 6adb7d23c61acad8c3de2b15e9d6ddd6 *Meta/vignette.rds
 f5ef3825b44e121e64fae1d52cd37960 *NAMESPACE
 fa0704e00767b158c0ee603c94ba0e21 *NEWS.Rd
@@ -100,10 +100,10 @@ f55a0d78225fef3970fc5f54fddb5801 *examples/functionCallback/newApiExample.r
 2b3ff26140686d910b4fe51505b817a3 *examples/performance/extractors.R
 33c7adefe3137cae65b189490c958c6a *examples/performance/performance.R
 7fae3c755e7a0ecf8ad9086c13950530 *help/AnIndex
-5c324e07dd6f068ebad4d507c474c15a *help/Rcpp.rdb
-09b1159b5dde6e39baaa9d60c467a610 *help/Rcpp.rdx
+cd100337d70db1234d6a1a0b6b63f784 *help/Rcpp.rdb
+510d3f20f82561fbef7e76f9cf8ef739 *help/Rcpp.rdx
 adb2edc8639ac31264858da31b58eb8c *help/aliases.rds
-2a525d83f956a7111cee0cf293e895e6 *help/paths.rds
+9959e045fd44c867d039972e7e1c88dc *help/paths.rds
 4a89c56e8a70258d8a08231290bd8239 *html/00Index.html
 ee41876c0116916bb04bcf4fe3e43d78 *html/R.css
 c43702432a8138a32aaee079bbf6e0cd *include/Rcpp.h
@@ -473,7 +473,7 @@ ea2eb551ebe2a0dbe31b89ff4d48b082 *include/Rcpp/vector/traits.h
 b53a80ae2aa1de12e8bd0fbff69c904b *include/Rcpp/vector/vector_from_string.h
 c156d485c87128d54fa2a916e214cd00 *include/RcppCommon.h
 83051c918c676565c50377280f3d80a9 *include/doxygen/Examples.h
-4819b4ab684cef9cf0bb5b5f61167abd *libs/x64/Rcpp.dll
+2ff080a54891217b2bf32d16d28241a4 *libs/x64/Rcpp.dll
 4ea6c33736c6f213ca3b9b43c9d416fe *libs/x64/symbols.rds
 fc570e7927219c2ed9bdb13ca05134d9 *prompt/module.Rd
 e78047bdda3db5af33456370e65a98d0 *skeleton/Num.cpp

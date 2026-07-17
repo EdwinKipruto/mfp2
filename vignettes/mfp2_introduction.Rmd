@@ -1,5 +1,6 @@
 ---
 title: "Introduction to the mfp2 Package"
+subtitle: 'Package version `r as.character(utils::packageVersion("mfp2"))`'
 author: "Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -160,8 +161,10 @@ for interaction analysis. For more details on MFPI, see the `mfpi()`
 documentation and the dedicated MFPI vignette available within the
 package.
 
-Currently, the package implements linear, logistic, Poisson, and Cox
-regression models. Future development may extend this implementation to
+Currently, the package implements Gaussian, binomial, Poisson, and Cox
+regression models. Binomial family objects may use links other than the default
+logit; for example, `binomial(link = "probit")` fits a binomial probit model.
+Future development may extend this implementation to
 other likelihood-based regression models, such as Gamma and inverse
 Gaussian GLMs, negative binomial regression, and parametric survival
 models.
@@ -209,12 +212,13 @@ data. We generally recommend the default option, `xorder = "ascending"`,
 although subject-matter knowledge may sometimes justify a different
 ordering.
 
-If a covariate contains non-positive values, the program shifts the
-covariate by default to ensure positivity, as required for fractional
-polynomial transformations. The shifted covariate is also scaled before
-the first cycle of the algorithm. After model selection, the reported
-regression coefficients are back-scaled to the original scale of the
-covariate, but they are not back-shifted. Further details on shifting
+For a nonlinear FP candidate, the program estimates a shift when positivity
+is required and scales the shifted covariate before the first cycle. Shifts are
+forced to zero for linear, binary, `zero`, `catzero`, and retained `spike`
+terms. After selection, the final basis is expressed as a function of the
+shifted-but-unscaled predictor, such as $\phi(x + s)$; the coefficient must be
+interpreted with that basis and is not generally a coefficient of the raw
+untransformed $x$. Further details on shifting
 and scaling are provided in the section on [shifting and scaling of
 covariates](#shifting-scaling).
 
@@ -331,96 +335,161 @@ categorical variables](#handling-categorical).
 
 # Shifting and scaling of covariates {#shifting-scaling}
 
-Fractional polynomials are defined only for positive variables due to
-the use of logarithms and other power transformations such as the square
-root. Thus, `mfp2()` estimates shifting factors for each variable to
-ensure positivity. The function `find_shift_factor()`, used internally
-by `mfp2`, automatically estimates shifting factors for each continuous
-variable. The formula used to estimate the shifting factor for a
-continuous variable, say $x1$, is given by:
+Some fractional-polynomial functions, including logarithms, negative powers,
+and fractional powers, require positive input values. When necessary, `mfp2()`
+automatically adds a shift before estimating the fractional-polynomial
+function.
 
-$$shift_{x1} = \gamma - \min(x1)$$
+Variables that are already positive usually receive a shift of zero. Binary
+and linear terms are not shifted. Variables fitted with structural-zero
+handling also receive a shift of zero so that zero keeps its intended meaning.
 
-where $\min(x1)$ is the smallest observed value of $x1$, while $\gamma$
-is the minimum increment between successive ordered sample values of
-$x1$, excluding 0 (Royston and Sauerbrei, 2008). The new variable
-$x1' = x1 + shift_{x1}$ will then be used by `mfp2()` in estimating the
-FP powers and fitting the final regression model.
+`mfp2()` can also scale continuous variables to avoid working with values that
+are extremely large or small. Scaling improves numerical stability during FP
+power selection. A scale of 1 means that no scaling is needed.
 
-For example, to estimate shifting factors for covariate matrix `x` from
-prostate data in R, you can run the following code:
+Shifting and scaling are performed automatically. Users do not need to
+calculate these values before fitting the model.
 
-```{r, eval = TRUE}
-# minimum values for each covariate
-apply(x, 2, min)
+The values used by a fitted model are stored in its `transformations`
+component:
 
-# shifting values for each covariate
-apply(x, 2, find_shift_factor)
+```{r inspect-shift-scale}
+fit_default$transformations[, c("shift", "scale"), drop = FALSE]
 ```
 
-We see that among the continuous variables, only `pgg45` is shifted, by
-a value of 1, because its minimum observed value is 0. Although `svi`
-also has a minimum value of 0, it is not shifted because it is a binary
-variable. Users may manually specify shifting factors in `mfp2()` when
-they want to control how the origin of a covariate is defined before FP
-transformations are estimated.
+This table reports the shift and scale used for each model term. For example, a
+shift of 1 means that `mfp2()` added 1 before evaluating the selected FP
+function. A scale of 10 means that the shifted values were divided by 10 during
+FP power selection.
 
-If the values of the variables are too large or too small, it is
-important to scale the variables to reduce the chances of numerical
-underflow or overflow which can lead to inaccuracies and difficulties in
-estimating the model (Royston and Sauerbrei, 2008). Scaling can be done
-automatically or by directly specifying the scaling values for each
-variable so that the magnitude of the covariate values are not too
-extreme. By default scaling factors are estimated by `mfp2()` as
-follows.
+The scale is used for numerical stability during power selection and is removed
+before the final model is fitted. A fitted shift remains part of the selected
+function. Prediction data should always be supplied on the original variable
+scale; `predict()` applies the fitted preprocessing automatically.
 
-After adjusting the location of $x$ (if necessary) so that its minimum
-value is positive, creating $x'$, automatic scaling will divide each
-value of $x'$ by $10^p$ where the exponent $p$ is given by
+## Manually specifying shifts and scales
 
-$$p = sign(k) \times floor(|k|), \quad \text{where} \quad k = \log_{10} (\max(x')- \min(x')).$$
+Most users should allow `mfp2()` to select shifts and scales automatically.
+Manual values can be supplied when a transformation is prespecified or when
+several analyses must use exactly the same preprocessing.
 
-The `mfp2()` function uses this formula to scale the columns of the
-covariate matrix, implemented through the `find_scale_factor()`
-function. From the output below, we see that the variables `age`,
-`cavol`, and `cp` have scaling factors of 10 each, while the variables
-`pgg45` and `weight` have scaling factors of 100 each. Each variable
-will be divided by its corresponding scaling factor. A scaling factor of
-1 (e.g. `bph` and `svi`) implies no scaling.
+With the matrix interface, supply one value for each covariate:
 
-```{r, eval=TRUE}
-# shift x if nonpositive values exist
-shift <- apply(x, 2, find_shift_factor)
-xnew <- sweep(x, 2, shift, "+")
-
-# scaling factors
-apply(xnew, 2, find_scale_factor)
+```{r manual-shift-scale-matrix, eval = FALSE}
+fit_manual <- mfp2(
+  x,
+  y,
+  shift = c(
+    age = 0,
+    svi = 0,
+    pgg45 = 1,
+    cavol = 0,
+    weight = 0,
+    bph = 0,
+    cp = 0
+  ),
+  scale = c(
+    age = 10,
+    svi = 1,
+    pgg45 = 100,
+    cavol = 10,
+    weight = 100,
+    bph = 1,
+    cp = 10
+  )
+)
 ```
 
-To manually enter shifting and scaling factors, the `mfp2()` function
-provides the `shift` and `scale` arguments. In the default usage of
-`mfp2()`, a vector of shifting or scaling factors, with a length equal
-to the number of covariates, can be provided. In the formula interface,
-shifting or scaling factors can be directly specified within the `fp()`
-function. Below is an example to illustrate this (not run):
+With the formula interface, specify the values in each `fp()` term:
 
-```{r, eval = FALSE}
-# Default interface
-mfp2(x, y, shift = c(0, 0, 1, 0, 0, 0, 0), scale = c(10, 1, 100, 10, 100, 1, 10))
-
-# Formula interface
-mfp2(lpsa ~ fp(age, shift = 0, scale = 10) + svi + fp(pgg45, shift = 1, scale = 100) +
-       fp(cavol, shift = 0, scale = 10) + fp(weight, shift = 0, scale = 100) + 
-       fp(bph, shift = 0, scale = 1) + fp(cp, shift = 0, scale = 10),
-     data = prostate)
+```{r manual-shift-scale-formula, eval = FALSE}
+fit_manual <- mfp2(
+  lpsa ~
+    fp(age, shift = 0, scale = 10) +
+    svi +
+    fp(pgg45, shift = 1, scale = 100) +
+    fp(cavol, shift = 0, scale = 10) +
+    fp(weight, shift = 0, scale = 100) +
+    fp(bph, shift = 0, scale = 1) +
+    fp(cp, shift = 0, scale = 10),
+  data = prostate
+)
 ```
 
-In the default interface, each variable in the `x` matrix is assigned a
-shifting and scaling factor based on their respective positions. For
-instance, the first variable in the column of `x`, which is `age`, is
-assigned a shifting factor of 0 and a scaling factor of 10. The second
-variable, `svi`, is assigned a shifting factor of 0 and a scaling factor
-of 1, and so on.
+Set `shift = 0` to prevent automatic shifting and `scale = 1` to prevent
+automatic scaling for a variable. Manually supplied values must be suitable for
+the FP powers being considered. In particular, the shifted values must satisfy
+the domain requirements of logarithmic, negative, and fractional powers.
+
+## Centering and prediction on the original predictor scale
+
+Shifting and scaling are preprocessing operations used while candidate FP or ACD
+functions are estimated. Centering is applied later, after the functional form
+has been selected. With `center = TRUE`, each ordinary selected transformed continuous term is
+centered on its mean in the fitted sample. For zero-handled FP columns, the mean
+is computed from the nonzero transformed values and structural-zero rows remain
+zero after centering. Binary terms are centered by subtracting their lower
+observed value.
+
+The fitted object records the shift, scale, and centering values. Consequently,
+new observations passed to `predict.mfp2()` should be supplied on the original
+predictor scale. The fitted preprocessing operations are reapplied internally;
+users should not manually shift, scale, transform, or center `newdata`.
+
+## Subsetting and analysis populations {#subsetting-analysis-populations}
+
+The `subset` argument has a deliberately different role from subsetting the data
+before calling `mfp2()`. When shift or scale values are estimated automatically,
+`mfp2()` estimates them from the full input data first. It then applies `subset`
+and performs model selection and final fitting on the retained observations.
+This permits several subgroup models to use the same covariate transformations.
+For example, models for women and men may be fitted separately while using shift
+and scale values estimated from the same combined data set.
+
+In the formula interface, a subset expression is evaluated once using ordinary
+formula lookup: names are resolved first from columns of `data` and then from the
+formula environment. Thus all of the following forms are valid:
+
+```{r subset-formula-examples, eval=FALSE}
+keep_rows <- seq_len(nrow(prostate)) %% 2L == 0L
+
+mfp2(lpsa ~ fp(age) + fp(cavol), data = prostate, subset = age >= 60)
+mfp2(lpsa ~ fp(age) + fp(cavol), data = prostate, subset = keep_rows)
+mfp2(lpsa ~ fp(age) + fp(cavol), data = prostate, subset = c(10, 3, 8, 15, 20))
+```
+
+Numeric row positions must be unique. Their supplied order is retained rather
+than sorted. In the matrix interface, `subset` is evaluated in the calling
+environment because there is no formula data mask. Matrix column names are not
+available as standalone variables, so write an explicit matrix expression when
+needed:
+
+```{r subset-matrix-example, eval=FALSE}
+mfp2(x, y, subset = x[, "age"] >= 60)
+```
+
+Observation-level `weights`, external `offset` values, and matrix-interface
+`strata` must remain aligned with the original rows, even when a subset is used.
+The argument should not be used to delete missing observations or to define
+cross-validation folds. Prepare those analysis data explicitly before fitting.
+
+### Factors and grouped terms after subsetting
+
+Subsetting may remove categorical levels. In formula fits, unused levels are
+dropped before the fitted design matrix is constructed. When default contrasts
+are used, `model.matrix()` regenerates the appropriate lower-dimensional
+contrast basis. A factor with fewer than two retained levels cannot be fitted.
+
+Factor-specific custom contrasts are preserved when all fitted levels remain.
+If subsetting removes levels from a factor with custom contrasts, `mfp2()` stops
+rather than guessing a reduced contrast basis, because no unique reconstruction
+is generally available.
+
+The matrix interface receives only numeric columns and therefore cannot rebuild
+factor levels or contrasts. Its supplied columns remain unchanged. A mapped
+`term_groups` block is rejected when subsetting reduces its estimable dimension,
+because the original categorical representation cannot be reconstructed safely.
 
 # Setting degrees of freedom for each variable {#df_vars}
 
@@ -444,6 +513,13 @@ overriding the default degrees of freedom are as follows:
   default).\
 - If a variable has 6 or more distinct values, it is assigned `df` =
   default.
+
+These three rules apply to formula fits and to matrix fits that use a scalar
+`df`. A matrix fit may instead supply an explicit `df` value for every column.
+In that case, variables with 2--3 distinct values are still forced to `df = 1`,
+but supplied values for variables with 4 or more distinct values are retained.
+This interface-specific distinction matters when a per-column `df` vector is
+used.
 
 These rules ensure that the appropriate `df` are assigned to variables.
 For instance, it is not sensible to fit an FP2 function to a variable
@@ -966,10 +1042,12 @@ To display the regression coefficients from the final MFP model, use `coef()` or
 extensions. For example, if a variable is represented by an FP2 function, its two
 transformed terms are labelled as `var.1` and `var.2`.
 
-The displayed regression coefficients are reported on the scale used for model
-fitting. In `mfp2`, the coefficients are back-scaled to account for any scaling
-applied internally, but they are not back-shifted to the original covariate
-origin.
+The displayed regression coefficients multiply the final transformed basis.
+Automatic scale factors are removed from that basis before the final fit, but an
+estimated shift remains part of it. For example, a coefficient may multiply
+$\phi(x + s)$ rather than the raw predictor $x$. Interpret coefficients together
+with `transformations` and the selected powers; prediction still expects the
+original predictor values.
 
 ```{r, eval= TRUE}
 # extract only regression coefficients
@@ -1024,11 +1102,9 @@ especially for variables with nonlinear effects (Royston and Sauerbrei,
 
 The recommended way to produce graphical displays from a fitted `mfp2`
 object is to use the S3 `plot()` method. The method returns a list of
-`ggplot2` objects, one for each selected variable requested. Internally,
-the current `plot()` method uses the same plotting machinery as
-`fracplot()`. The `fracplot()` function remains available for backward
-compatibility, but `plot()` is the preferred interface for new code and
-will be used throughout this vignette.
+`ggplot2` objects, one for each selected variable requested. The `fracplot()`
+function remains available for backward compatibility, but `plot()` is the
+preferred interface for new code and is used throughout this vignette.
 
 Given a fitted `mfp2` object, `plot()` produces plots of the selected
 functions, together with pointwise confidence intervals. As with all
@@ -1134,89 +1210,96 @@ patchwork::wrap_plots(plot2[[1]], plot1[[1]], ncol = 2, widths = 8, heights = 4)
 
 # Handling categorical variables {#handling-categorical}
 
-The `mfp2` package requires categorical independent variables to be represented
-by dummy (indicator) variables before model fitting. The number of dummy
-variables depends on the number of categories. As a general rule, a categorical
-variable with \(k\) categories is represented by \(k - 1\) dummy variables, each
-coded as 0 or 1.
+The formula interface accepts unordered and ordered factors directly. It uses
+`model.matrix()` to expand each factor into its configured contrast columns, but
+all columns generated from one factor are treated by `mfp2()` as one conceptual
+model term. The complete block is selected, retained, tested, or removed jointly.
+Naming the factor in `keep` protects the whole block from exclusion.
 
-One practical approach is to create the \(k - 1\) dummy variables before calling
-`mfp2()` and include them as independent variables in the model. Based on
-subject-matter knowledge, users may also decide to combine some categories
-before model fitting, resulting in fewer dummy variables. They may also decide
-to force selected dummy variables into the model, so that they are not removed
-during variable selection. Such decisions should ideally be made during the
-initial data analysis stage (Huebner et al., 2018).
+## Unordered factors
 
-Categorical variables may be measured on an **ordinal scale** or a **nominal
-scale**. An ordinal variable has categories with a meaningful order, such as
-income categories (low, medium, high). A nominal variable has categories with no
-intrinsic order, such as blood type or gender.
+Unordered factors use their configured contrasts, which are treatment contrasts
+by default. With a factor containing \(k\) levels, the default representation has
+\(k-1\) columns relative to the reference level. `mfp2()` performs one joint test
+of those columns; it does not select individual dummy variables separately.
+General contrast construction is described in `?contrasts`, `?contr.treatment`,
+and `?model.matrix`.
 
-During variable selection, some dummy variables may be removed from the model.
-This is effectively equivalent to combining the corresponding category with the
-reference category or with other categories. For further discussion of
-categorical variables in regression modelling, see Royston and Sauerbrei (2008,
-Chapter 3).
+## Ordered factors
 
-In **R**, the `model.matrix()` function automatically generates dummy variables
-for factors. Nominal factors can be supplied to the formula interface and are
-expanded internally. Ordered factor predictors, however, are not passed directly
-to `mfp2.formula()`, because their polynomial contrast columns would otherwise
-be treated as separate MFP candidate variables. For ordinal predictors, create the intended numeric threshold indicators or
-other scientifically justified numeric coding explicitly before fitting. This
-keeps the ordinal representation transparent and avoids relying on an internal
-contrast helper. The example below uses cumulative threshold indicators.
+Ordered factors also enter as one joint term. Their default `contr.poly` basis
+contains \(k-1\) columns. The resulting `mfp2()` test is therefore an omnibus
+\(k-1\)-degree-of-freedom test of the complete ordered-factor effect. It is not a
+one-degree-of-freedom linear trend test and does not impose a monotonic effect.
 
-Before fitting a model, decide how the ordinal information should enter the
-regression model. The example below represents the three-level ordinal variable
-`x4` by two cumulative indicators, while the nominal variable `x9` remains a
-standard factor.
+When subject-matter knowledge specifies a particular ordinal trend, create an
+explicit numeric score and restrict it to a linear effect. For example:
 
-```{r categorical-variables-combined, message=TRUE, warning=TRUE}
-# Load the art data
+```{r ordinal-score-example, eval=FALSE}
+dat$severity_score <- c(0, 1, 2)[match(dat$severity,
+                                      c("mild", "moderate", "severe"))]
+fit <- mfp2(y ~ fp(severity_score, df = 1) + fp(age), data = dat)
+```
+
+Factor contrast blocks are fixed linear terms. Shifting, scaling, FP, ACD,
+`zero`, `catzero`, and SAZ processing do not apply to them.
+
+## Formula-interface example
+
+The following example supplies both an ordered and an unordered factor directly.
+
+```{r categorical-formula-example, message=TRUE, warning=TRUE}
 data("art")
 
-# Ordinal variable x4
-# Ordered factors are not passed directly to mfp2.formula(). Instead, create
-# explicit numeric columns representing the intended ordinal coding.
-x4_ord <- factor(art$x4, ordered = TRUE, levels = c(1, 2, 3))
-x4_num <- match(as.character(x4_ord), levels(x4_ord))
+art$x4 <- ordered(art$x4, levels = c(1, 2, 3))
+art$x9 <- factor(art$x9, levels = c(1, 2, 3))
 
-art$x4_ge_2 <- as.integer(x4_num >= 2L)
-art$x4_ge_3 <- as.integer(x4_num >= 3L)
-art$x4 <- NULL
-
-# Nominal variable x9
-# Nominal factors can remain factors; model.matrix() expands them internally.
-art$x9 <- factor(art$x9, ordered = FALSE, levels = c(1, 2, 3))
-
-# Display the first 10 rows to check
-head(art, 10)
-
-# Formula interface example
-# The ordinal variable x4 is represented by explicit numeric cumulative
-# indicators. The nominal variable x9 is dummy-coded internally.
 fit_formula <- mfp2(
-  y ~ fp(x1) + x2 + fp(x3) + x4_ge_2 + x4_ge_3 +
-    fp(x5) + fp(x6) + fp(x7) + x8 + x9 + fp(x10),
+  y ~ fp(x1) + x2 + fp(x3) + x4 + fp(x5) + fp(x6) +
+    fp(x7) + x8 + x9 + fp(x10),
   data = art,
+  keep = c("x4", "x9"),
   verbose = FALSE
 )
 
-# Matrix interface example
-# Manually create the model matrix for all predictors.
-x <- model.matrix(y ~ ., data = art)[, -1, drop = FALSE]  # exclude intercept
-head(x)
+fit_formula
+```
 
-y <- as.numeric(art$y)
+For prediction from a formula fit, supply the original factor variables in
+`newdata`. The fitted levels and contrasts are reused. New or unknown levels are
+rejected by the standard `model.frame()` and `model.matrix()` checks.
 
-# Fit the model using the matrix interface
-fit_matrix <- mfp2(x = x, y = y, verbose = FALSE)
+## Matrix-interface example
 
-# Display the fitted object
+The matrix interface requires numeric columns. When several generated columns
+represent one factor, identify them with `term_groups`; otherwise they would be
+considered separate selection candidates.
+
+```{r categorical-matrix-example, message=TRUE, warning=TRUE}
+mm <- model.matrix(
+  y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
+  data = art
+)
+
+x_matrix <- mm[, colnames(mm) != "(Intercept)", drop = FALSE]
+y_matrix <- art$y
+
+x4_columns <- grep("^x4", colnames(x_matrix), value = TRUE)
+x9_columns <- grep("^x9", colnames(x_matrix), value = TRUE)
+
+fit_matrix <- mfp2(
+  x = x_matrix,
+  y = y_matrix,
+  term_groups = list(x4 = x4_columns, x9 = x9_columns),
+  keep = c("x4", "x9"),
+  verbose = FALSE
+)
+
 fit_matrix
 ```
+
+The subsetting rules for factors and grouped matrix terms are described in
+[Subsetting and analysis populations](#subsetting-analysis-populations).
 
 # Logistic regression
 
@@ -1324,12 +1407,15 @@ gbsg$grade_1 <- as.integer(grade_index >= 2L)
 # grade_2 compares grade 3 with grades 1 and 2.
 gbsg$grade_2 <- as.integer(grade_index >= 3L)
 
-# Remove the source ordinal variable after creating its explicit indicators.
-gbsg$grade <- NULL
+# Preserve the source variable as an ordered factor for the formula example.
+gbsg$grade_ord <- ordered(gbsg$grade, levels = grade_levels)
 
-# Covariate matrix. Remove the patient identifier and survival outcome columns;
-# retain the manually created grade indicators as ordinary binary predictors.
-x <- as.matrix(gbsg[, -c(1, 6, 10, 11), drop = FALSE])
+# Covariate matrix. Exclude the source grade variables and retain the manually
+# created grade indicators. They are grouped below as one conceptual term.
+x <- as.matrix(gbsg[, setdiff(
+  names(gbsg),
+  c("id", "grade", "grade_ord", "enodes", "rectime", "censrec")
+), drop = FALSE])
 head(x, 10)
 
 # Create survival outcome
@@ -1339,6 +1425,7 @@ y <- survival::Surv(gbsg$rectime, gbsg$censrec)
 fit1 <- mfp2(
   x, y,
   family = "cox",
+  term_groups = list(grade = c("grade_1", "grade_2")),
   keep = "hormon",
   control = survival::coxph.control(iter.max = 50),
   verbose = FALSE
@@ -1365,13 +1452,17 @@ yields results identical to those from the
 [Stata `mfp` command](https://www.stata.com/manuals13/rmfp.pdf):
 
 ```{r out.lines = 103}
-# Remove nodes and include enodes
-x <- as.matrix(gbsg[, -c(1, 5, 10, 11)])
+# Replace nodes with enodes, retaining the grouped grade indicators.
+x <- cbind(
+  x[, setdiff(colnames(x), "nodes"), drop = FALSE],
+  enodes = gbsg$enodes
+)
 
 # Fit MFP Cox model and force hormon into the model
 fit2 <- mfp2(
   x, y,
   family = "cox",
+  term_groups = list(grade = c("grade_1", "grade_2")),
   keep = "hormon",
   powers = list(enodes = c(0.5, 1, 2, 3)),
   control = survival::coxph.control(iter.max = 50),
@@ -1405,11 +1496,13 @@ and formula interfaces.
 
 ```{r out.lines = 103}
 # Default interface
+hormon_column <- match("hormon", colnames(x))
 fit2 <- mfp2(
-  x[, -7],
+  x[, -hormon_column, drop = FALSE],
   y,
   family = "cox",
-  strata = x[, 7],
+  strata = x[, hormon_column],
+  term_groups = list(grade = c("grade_1", "grade_2")),
   verbose = FALSE
 )
 
@@ -1417,8 +1510,8 @@ fit2
 
 # Formula interface
 fit3 <- mfp2(
-  survival::Surv(rectime, censrec) ~ age + meno + size + nodes + pgr + er +
-    grade_1 + grade_2 + survival::strata(hormon),
+  survival::Surv(rectime, censrec) ~ age + meno + size + enodes + pgr + er +
+    grade_ord + survival::strata(hormon),
   family = "cox",
   data = gbsg,
   verbose = FALSE

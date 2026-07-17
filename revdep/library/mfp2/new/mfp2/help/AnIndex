@@ -6,7 +6,6 @@ coef.mfp2	coef.mfp2
 create_dummy_variables	create_dummy_variables
 find_scale_factor	find_scale_factor
 find_shift_factor	find_shift_factor
-fit_acd	fit_acd
 fp	fp
 fp2	fp
 fracplot	fracplot

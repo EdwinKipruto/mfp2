@@ -64,6 +64,11 @@ These functions generate fractional polynomials for a variable similar to
 \code{fracgen} in Stata.
 }
 \details{
+This is a low-level utility for constructing fractional-polynomial design
+columns from specified powers. It does not perform model or power selection.
+Most users should specify continuous variables with \code{\link[=fp]{fp()}} inside an
+\code{\link[=mfp2]{mfp2()}} formula instead.
+
 The fp transformation generally transforms \code{x} as follows. For each pi in
 \code{power} = (p1, p2, ..., pn) it creates a variable x^pi and returns the
 collection of variables as a matrix. It may process the data using

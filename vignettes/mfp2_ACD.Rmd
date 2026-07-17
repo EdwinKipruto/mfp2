@@ -1,5 +1,6 @@
 ---
 title: "ACD Transformations with mfp2"
+subtitle: 'Package version `r as.character(utils::packageVersion("mfp2"))`'
 author: "Edwin Kipruto, Michael Kammer, Patrick Royston, and Willi Sauerbrei"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
@@ -146,8 +147,8 @@ The ACD transformation can be used in both interfaces of `mfp2()`:
   argument;
 - in the formula interface, by setting `acdx = TRUE` inside `fp()`.
 
-The variable representing the ACD transformation of a covariate `x` is named
-`A_x` internally in `mfp2`.
+In the notation below, the ACD transformation of a covariate `x` is denoted by
+$A_x$.
 
 # Definition of the ACD transformation
 
@@ -328,6 +329,11 @@ $$
 FP1(p_1, p_2).
 $$
 
+This notation follows Royston and Sauerbrei (2016). Here it denotes the sum of
+one FP1 term in the original covariate and one FP1 term in its ACD
+transformation; it should not be confused with the ordinary one-term FP1 model
+used in standard MFP notation.
+
 The powers `p1` and `p2` are selected from the usual FP power set:
 
 $$
@@ -352,7 +358,7 @@ FP1(p_1, p_2),
 $$
 
 and compares it with a set of simpler nested models, as described in the
-[closed test procedure](#FSPA). The aim is to select the simplest function that
+[closed test procedure](#FSA). The aim is to select the simplest function that
 is adequately supported by the data. The procedure considers six nested model 
 families as shown below:
 
@@ -536,6 +542,11 @@ ACD transformations are useful when a sigmoid-shaped relationship is
 scientifically plausible. They may also reduce the influence of extreme
 covariate values, because the observed covariate distribution is mapped to an
 approximately uniform scale on `(0, 1)`.
+
+Requesting ACD sets the term's maximum `df` to 4 because the complete FSPA
+requires the two-component reference model. If the fitting data contain fewer
+than five distinct values for the requested term, `mfp2()` resets the ACD request
+and applies the ordinary MFP rules instead.
 
 The ACD extension should be regarded as an additional modelling option within the
 MFP framework, not as a replacement for standard MFP modelling.

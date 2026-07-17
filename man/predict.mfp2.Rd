@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict.mfp2.R
 \name{predict.mfp2}
 \alias{predict.mfp2}
-\title{Predict Method for \code{mfp2}}
+\title{Predict from an \code{mfp2} Model}
 \usage{
 \method{predict}{mfp2}(
   object,
@@ -17,306 +17,416 @@
   newoffset = NULL,
   nseq = 100,
   add_intercept = TRUE,
-  reference = c("zero", "sample", "strata"),
+  cox_reference = NULL,
   ...
 )
 }
 \arguments{
-\item{object}{A fitted object of class \code{mfp2}.}
+\item{object}{A fitted object of class \code{"mfp2"}.}
 
-\item{newdata}{Optional matrix or data frame containing variables for
-prediction. Only predictors retained in the final model are required for
-relative Cox, GLM, term, or contrast predictions. Cox predictions with
-\code{type = "expected"} or \code{type = "survival"} must also contain the
-follow-up response: provide the original response-side variables for a
-formula fit, or include exactly one \code{Surv} column in \code{newdata}. Formula-
-created predictors are reconstructed when possible.}
+\item{newdata}{An optional data frame or matrix containing observations to
+predict. See \strong{Supplying prediction data}.}
 
-\item{type}{Prediction type. The default is \code{"link"} for GLM models and
-\code{"lp"} for Cox models. Use \code{"terms"} for variable-specific partial
-predictors and \code{"contrasts"} for variable-specific contrasts.}
+\item{type}{A character value selecting the prediction type. See
+\strong{Choosing the prediction type}.}
 
-\item{se.fit}{Logical scalar. For full-model predictions, if \code{TRUE}, request
-standard errors from \code{predict.glm()} or \code{predict.coxph()}. For
-\code{type = "terms"} and \code{type = "contrasts"}, the returned data frames always
-contain an \code{se} column, and \code{se.fit} is ignored.}
+\item{se.fit}{A single \code{TRUE} or \code{FALSE} value. For complete-model
+predictions, \code{TRUE} requests standard errors from the underlying model
+method. Term and contrast results always include standard errors and
+confidence limits, so this argument is ignored for those prediction types.}
 
-\item{terms}{Character vector of conceptual term names for term or contrast
-prediction. For a simple wrapper such as \code{factor(x9)}, use the source
-variable name \code{x9}, not the wrapper expression or an individual
-generated contrast column. Only terms selected in the final fitted model
-are used. If \code{NULL}, all selected terms are used.}
+\item{terms}{An optional character vector naming terms to return with
+\code{type = "terms"} or \code{type = "contrasts"}. Use original variable or group
+names. If \code{NULL}, all terms included in the final model are used.}
 
-\item{terms_seq}{Character scalar controlling values used for singleton
-continuous-term prediction. \code{"equidistant"} generates \code{nseq} equally
-spaced values over the observed range and \code{"data"} uses observed values.
-Grouped categorical terms are always evaluated at observed prediction rows.}
+\item{terms_seq}{A character value controlling the evaluation values for a
+single numeric term. Use \code{"equidistant"} or \code{"data"}. The default is
+\code{"equidistant"}. Grouped terms are always evaluated row by row.}
 
-\item{alpha}{Significance level used for confidence intervals in term and
-contrast predictions.}
+\item{alpha}{A number between 0 and 1 used to calculate confidence intervals
+for term and contrast results. The confidence level is \code{1 - alpha}. The
+default \code{alpha = 0.05} gives 95 percent confidence intervals.}
 
-\item{ref}{Named list of reference values for \code{type = "contrasts"}.
-Continuous-term values are supplied on the original variable scale. A
-formula factor reference may be a fitted level label. A manually grouped
-matrix term may use a numeric vector with one value per raw member column.}
+\item{ref}{A named list of reference values used with
+\code{type = "contrasts"}. Numeric references must be supplied on the original
+variable scale. See \strong{Contrasts and reference values}.}
 
-\item{strata}{Optional stratum values used when predicting from Cox models
-with supplied \code{newdata}. This is needed for default/matrix-interface
-Cox fits that used the fit-time \code{strata} argument, because the final
-Cox model contains an internal \code{strata(strata_)} term. Supply one
-value per prediction row for a single stratification factor, or a matrix or
-data frame with one row per prediction row for multiple stratification
-factors. Ordinary vector or factor strata are passed through as raw
-high-level values so that \code{predict.coxph()} can evaluate the stored
-\code{strata(strata_)} term itself. Formula-interface strata are
-reconstructed automatically from \code{newdata} when the original strata
-variable(s) are present.}
+\item{strata}{Optional stratum information for complete-model prediction
+from a stratified Cox model when \code{newdata} is supplied. For one
+stratification variable, supply one value per row. For several
+stratification variables, supply a
+matrix or data frame with one row per prediction row.
 
-\item{newoffset}{Optional numeric vector of offsets for prediction when the
-fitted model used an offset and \code{newdata} is supplied. Prediction offsets
-are centered by \code{predict.coxph()} at the mean training offset independently
-of the covariate \code{reference}.}
+This argument can be supplied only for complete-model prediction from a
+stratified Cox model when \code{newdata} is supplied.}
 
-\item{nseq}{Positive integer giving the number of equally spaced values used
-when \code{terms_seq = "equidistant"}.}
+\item{newoffset}{An optional finite numeric vector containing one offset
+value for each row of \code{newdata}. See \strong{Offsets}.
 
-\item{add_intercept}{Logical scalar. For \code{type = "terms"}, controls whether
-the model intercept is included in GLM term values and term standard errors.
-It has no effect for contrasts and does not apply to Cox models.}
+This argument can be supplied only for a complete-model prediction when the
+fitted model used an offset and \code{newdata} is supplied.}
 
-\item{reference}{Character scalar controlling the covariate origin for Cox
-\code{type = "lp"} and \code{type = "risk"} predictions. One of \code{"zero"},
-\code{"sample"}, or \code{"strata"}; the default is \code{"zero"}. It is not available
-for GLM predictions, \code{mfp2} term/contrast predictions, or Cox
-expected-event/survival predictions.}
+\item{nseq}{A positive integer giving the number of equally spaced values
+used when \code{terms_seq = "equidistant"}. The default is 100.}
 
-\item{...}{Further arguments passed to \code{predict.glm()} or \code{predict.coxph()}
-for full-model predictions.}
+\item{add_intercept}{A single \code{TRUE} or \code{FALSE} value. For term predictions
+from Gaussian, binomial, and Poisson models, \code{TRUE} includes the fitted
+intercept in each result. The default is \code{TRUE}. It has no effect for Cox
+models or contrasts.}
+
+\item{cox_reference}{A character value choosing the covariate reference for
+Cox predictions with \code{type = "lp"} or \code{type = "risk"}. Use \code{"zero"},
+\code{"sample"}, or \code{"strata"}. The default is \code{"zero"}. It cannot be
+used for non-Cox models, term or contrast predictions, or Cox predictions
+with \code{type = "expected"} or \code{type = "survival"}.}
+
+\item{...}{Further arguments passed to \code{\link[stats:predict.glm]{stats::predict.glm()}} or
+\code{\link[survival:predict.coxph]{survival::predict.coxph()}} for complete-model predictions.}
 }
 \value{
-For full-model predictions, the return value follows \code{predict.glm()} or
-\code{predict.coxph()}. In particular, if \code{se.fit = TRUE}, the result may be a list
-containing fitted values and standard errors according to the underlying
-method.
+For complete-model predictions, the result follows \code{\link[stats:predict.glm]{stats::predict.glm()}} or
+\code{\link[survival:predict.coxph]{survival::predict.coxph()}}. It is usually a numeric vector. When
+\code{se.fit = TRUE}, it is usually a list containing fitted values and standard
+errors.
 
-For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list with
-one data frame per selected conceptual term. Each data frame contains:
+For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list
+with one data frame for each requested term. Each data frame contains:
 \itemize{
-\item \code{variable}: values on the original scale before fitted shifting.
-For simple formula factor terms, this contains factor-level labels.
-\item \code{variable_pre}: values after fitted shifting, before or after binary
-SAZ coding as appropriate. For factor terms, this repeats the level label.
-\item Raw grouped-term columns: categorical or manually grouped terms also
-include the underlying model-matrix columns used to compute the term.
-\item \code{value}: partial linear predictor or contrast.
-\item \code{se}: conditional standard error.
-\item \code{lower}: lower confidence limit.
-\item \code{upper}: upper confidence limit.
+\item \code{variable}: the evaluated value or factor level;
+\item \code{variable_pre}: the value after the fitted shift and before the final
+transformation for a single numeric term. For an indicator-only spike
+term, this is the zero indicator;
+\item \code{value}: the term-specific fitted value or contrast;
+\item \code{se}: the standard error;
+\item \code{lower}: the lower confidence limit;
+\item \code{upper}: the upper confidence limit.
 }
+
+Grouped terms can also include their member columns so that each evaluated
+row can be identified.
 }
 \description{
-This method predicts from the final fitted model stored in an \code{mfp2} object.
-For ordinary predictions it delegates to the underlying \code{predict.glm()} or
-\code{predict.coxph()} method after reconstructing the transformed design matrix
-used during fitting. For \code{type = "terms"} and \code{type = "contrasts"}, it returns
-variable-specific partial predictors with conditional standard errors.
+Obtain predictions from a model fitted with \code{\link[=mfp2]{mfp2()}}. The function can
+return predictions from the complete model, term-specific fitted values,
+or differences from chosen reference values.
 }
 \details{
-Obtain predictions from a fitted \code{mfp2} object.
+Supply predictors using their original values. The fitted shifts, FP or ACD
+functions, centering, zero handling, and spike-at-zero decisions are applied
+automatically.
 
-If \code{newdata} is supplied, the variables are prepared using the transformation
-metadata saved in \code{object}: fitted shifts, scales, selected fractional
-polynomial powers, centering constants, zero-handling indicators, catzero
-indicators, and spike-at-zero decisions. This ensures that prediction uses the
-same transformed design scale as model fitting.
+Do not create fractional-polynomial basis columns, centered columns, or
+structural-zero indicator columns yourself.
 
-Prediction stops when shifted \code{newdata} is outside the domain required by the
-final fitted transformation. This check is applied only to variables whose
-selected powers require strictly positive input, such as logarithmic powers,
-repeated powers, negative powers, or non-integer powers. Variables whose final
-fitted zero-handled or binary-only SAZ representation permits non-positive
-values are exempt from this positivity stop.
-
-For full-model predictions, standard errors are requested with \code{se.fit = TRUE}
-and are computed by the underlying \code{predict.glm()} or \code{predict.coxph()} method.
-Cox relative predictions expose the same covariate-reference choices as
-\code{predict.coxph()}, while retaining \code{reference = "zero"} as the default used by
-earlier \code{mfp2} releases. Absolute Cox predictions use the fitted Cox baseline
-hazard and deliberately do not accept a covariate \code{reference}, because
-\code{predict.coxph()} fixes its own internally consistent sample reference on that
-calculation path.
-
-For \code{type = "terms"}, standard errors are computed from the fitted covariance
-matrix for the columns belonging to each selected variable. If
-\code{add_intercept = TRUE} and the model is not Cox, the intercept contribution is
-included in both the term value and its standard error. If
-\code{add_intercept = FALSE}, the intercept contribution is excluded from both.
-
-For \code{type = "contrasts"}, the returned value is the difference between the
-partial predictor at each value and the partial predictor at the reference
-value. Intercepts do not contribute to contrasts, and the standard errors are
-computed from the transformed difference. These standard errors are
-conditional on the final selected model and do not include model-selection
-uncertainty.
+Standard errors and confidence intervals are conditional on the final fitted
+model. They do not include uncertainty from variable selection or from
+choosing the fitted function.
 }
-\section{Cox prediction scales and covariate references}{
+\section{Supplying prediction data}{
 
-A Cox model describes how covariates multiply an otherwise unspecified
-baseline hazard. Consequently, \code{type = "lp"} and \code{type = "risk"} are
-\strong{relative} quantities:
+Supply \code{newdata} in the same form used when fitting the model.
+
+For a model fitted with a formula, normally supply the original variables.
+For example, supply the factor \code{race}, not manually created contrast columns
+such as \code{raceB} and \code{raceC}. Use factor levels that were available when the
+model was fitted. The required formula terms and factor contrasts are
+recreated automatically.
+
+For a model fitted with a numeric matrix, supply the original numeric columns
+with the same names and coding used in the fitting matrix.
+
+If several matrix columns were grouped using \code{term_groups}, supply every
+member column. Use the group name, rather than the member-column names, in
+the \code{terms} argument.
+
+For complete-model prediction, normally supply only the variables needed by
+terms included in the final model. For term or contrast prediction, only the
+requested terms are required. Additional variables can be needed to evaluate
+a formula offset, Cox strata, or an absolute Cox prediction.
+
+Required values must not be missing. No numeric column in \code{newdata} may
+contain \code{Inf} or \code{-Inf}, including unused extra columns. Prediction stops if
+a supplied value is outside the valid range of the fitted transformation. For example, some logarithmic or negative-power
+functions require a positive value after the fitted shift is applied.
+}
+
+\section{Choosing the prediction type}{
+
+For Gaussian, binomial, and Poisson models:
 \itemize{
-\item \code{type = "lp"} returns the relative log-hazard, also called the linear
-predictor.
-\item \code{type = "risk"} returns \code{exp(lp)}, a relative hazard or risk score.
+\item \code{type = "link"} returns predictions on the link scale.
+\item \code{type = "response"} returns predictions on the response scale.
+\item \code{type = "lp"} is accepted as another name for \code{"link"}.
 }
-Neither output is an absolute hazard, event probability, or survival
-probability. Their numerical origin is selected with \code{reference}:
+
+For Cox models:
 \itemize{
-\item \code{"zero"} uses the transformed \code{mfp2} design values exactly as
-reconstructed. This is the default and keeps the full-model linear
-predictor aligned with \code{mfp2}'s independently calculated term
-contributions.
-\item \code{"sample"} subtracts the column means stored by the fitted \code{coxph}
-object before calculating the covariate contribution.
-\item \code{"strata"} subtracts weighted training-data means separately within
-each fitted stratum. In an unstratified model this is effectively the
-sample reference.
-}
-Changing from \code{"zero"} to \code{"sample"} adds the same constant to every \code{lp}
-and multiplies every \code{risk} by the same constant. Differences in \code{lp} and
-ratios of \code{risk} are therefore unchanged. With \code{reference = "strata"}, the
-constant is stratum-specific, so this invariance applies to comparisons made
-within the same stratum. Cox models do not define a common baseline hazard
-across different strata.
-
-The reference may matter visibly when a fitted transformed column has a
-nonzero Cox-model mean, most commonly when a variable was fitted with
-\code{center = FALSE}, for binary or zero-handled columns, or when a custom
-\code{nocenter} convention was used. Even when fitted values differ only by a
-constant, standard errors from \code{predict.coxph(se.fit = TRUE)} can differ
-because they are calculated from the reference-adjusted design row.
-
-Offsets use a separate convention. Regardless of \code{reference},
-\code{predict.coxph()} expresses a prediction offset relative to the mean offset
-in the training data. The \code{reference} argument controls covariate centering;
-it does not control offset centering.
+\item \code{type = "lp"} returns the relative log-hazard.
+\item \code{type = "risk"} returns the relative hazard, calculated as \code{exp(lp)}.
+\item \code{type = "expected"} returns the predicted cumulative hazard up to the
+supplied follow-up time.
+\item \code{type = "survival"} returns the estimated survival probability at the
+supplied follow-up time.
+\item \code{type = "link"} is accepted as another name for \code{"lp"}.
 }
 
-\section{Absolute Cox predictions}{
-
-\code{type = "expected"} and \code{type = "survival"} are supported. They use the
-genuine baseline-cumulative-hazard machinery retained in the underlying
-fitted \code{coxph} object, including its response, risk sets, strata, residuals,
-coefficients, covariance matrix, tie method, and offsets.
-
-For an ordinary right-censored response \code{Surv(time, status)},
-\code{type = "expected"} returns the predicted cumulative hazard up to \code{time},
-and \code{type = "survival"} returns \code{exp(-expected)}, the corresponding survival
-probability. For a counting-process response \code{Surv(start, stop, status)}, the
-prediction applies to the supplied interval.
-
-Absolute predictions with \code{newdata} require follow-up times or intervals in
-addition to covariates. All required information is supplied through
-\code{newdata}; there is no separate response argument. For a formula-interface
-fit, include the variables used on the left-hand side of the original formula
-and \code{mfp2} reconstructs the \code{Surv} response automatically. For any fit,
-including a matrix-interface fit, \code{newdata} may instead contain exactly one
-column that is itself a \code{Surv} object. Wrap that matrix-like column in \code{I()}
-when constructing a data frame so that it remains a single column, for
-example \code{data.frame(x = xnew, y = I(Surv(time, status)))}. The response
-column is used only to determine the prediction time or interval; predictor
-transformation still uses the ordinary fitted covariate columns. With
-\code{newdata = NULL}, the fitted response is used directly.
-
-The Cox baseline-hazard path always uses the sample reference internally.
-Supplying \code{reference} together with \code{type = "expected"} or
-\code{type = "survival"} is therefore rejected with an informative error instead
-of being silently ignored. The same argument is also rejected for \code{mfp2}'s
-own \code{type = "terms"} and \code{type = "contrasts"}; use \code{ref} for contrast
-reference values.
+For all supported models:
+\itemize{
+\item \code{type = "terms"} returns a fitted value for each requested term on the
+linear-predictor scale. For Gaussian, binomial, and Poisson models, the
+intercept is included by default.
+\item \code{type = "contrasts"} compares each fitted term value with a reference
+value.
 }
 
-\section{Terms prediction}{
-
-If \code{type = "terms"}, this function computes partial linear predictors for
-selected terms in the final model. A conceptual term may be represented by
-multiple fitted columns, for example an FP2 basis, a zero-handled positive
-component with an indicator, or a categorical contrast block. The method
-collects the relevant fitted columns for each term and multiplies them by their
-coefficients.
+When \code{type} is not supplied, the default is \code{"link"} for Gaussian,
+binomial, and Poisson models and \code{"lp"} for Cox models.
 }
 
-\section{Grouped categorical terms}{
+\section{Term predictions}{
 
-Formula-created unordered and ordered factors are reconstructed with the
-fitted factor levels and contrasts. Ordinary predictions therefore accept
-the original factor variables in \code{newdata}; users do not need to create
-dummy or polynomial-contrast columns manually.
+A term can contain more than one fitted column. For example, one term can
+represent an FP2 function, a factor with several contrast columns, a
+zero-handled variable, or several matrix columns grouped with \code{term_groups}.
+These columns are combined and returned as one term result.
 
-For \code{type = "terms"}, a grouped categorical term is evaluated at the
-observed rows of the supplied \code{newdata}, or at the fitted rows when
-\code{newdata = NULL}. The returned data frame includes the raw design-block
-columns and, for simple formula factor main effects, the corresponding factor
-level in \code{variable}. The \code{terms_seq} argument applies only to
-singleton continuous terms.
+Use the original variable or group name in \code{terms}. Use
+\code{\link[=get_selected_variable_names]{get_selected_variable_names()}} to see the terms included in the final model.
+A requested term that is not in the final model is omitted with a warning.
 
-For \code{type = "contrasts"}, a formula factor reference may be supplied as
-a level label, for example \code{ref = list(race = "A")}. If omitted, the
-first fitted factor level is used. For a manually declared matrix-interface
-group, the reference may be a numeric vector with one value per raw group
-column; if omitted, the first observed design row is used.
+For a single numeric term:
+\itemize{
+\item \code{terms_seq = "equidistant"} uses \code{nseq} equally spaced values between the
+smallest and largest available values.
+\item \code{terms_seq = "data"} uses the values in \code{newdata}, or the fitted values
+when \code{newdata = NULL}.
 }
 
-\section{Contrasts}{
+Factors and other grouped terms are evaluated row by row.
 
-If \code{type = "contrasts"}, this function computes variable-specific contrasts
-relative to reference values. Reference values supplied through \code{ref} must be
-on the original data scale; they are shifted, transformed, and centered using
-the fitted transformation metadata. If \code{ref = NULL} for a variable, the method
-uses the mean shifted value for continuous variables and the minimum shifted
-value for binary-like variables.
+For Gaussian, binomial, and Poisson models, \code{add_intercept = TRUE} includes
+the fitted intercept in each term result. Set \code{add_intercept = FALSE} to
+return only the contribution from the requested term. This argument does not
+affect Cox models or contrasts.
+}
+
+\section{Contrasts and reference values}{
+
+With \code{type = "contrasts"}, the returned value is:
+
+\verb{fitted term value at the evaluated value - fitted term value at the reference}.
+
+Supply references as a named list, for example:
+
+\code{ref = list(age = 50, race = "A")}.
+
+Supply numeric references on the original variable scale. If a variable was
+shifted during fitting, the same shift is added to the reference automatically.
+The fitted FP or ACD function and centering are then applied automatically.
+Do not shift, transform, or center the reference yourself.
+
+For example, if the fitted function uses \code{log(age + 10)}, supply
+\code{ref = list(age = 50)}, not 60 and not \code{log(60)}.
+
+For a formula factor, supply a fitted level label. For another grouped term,
+such as a formula interaction or a matrix term created with \code{term_groups},
+supply one numeric value for every member column. A named vector is
+recommended, for example:
+
+\code{ref = list(race = c(raceB = 0, raceC = 0))}.
+The member names are the raw model-matrix columns used for that grouped term.
+
+If no reference is supplied, the function uses:
+\itemize{
+\item the smaller value for a numeric term with two distinct values;
+\item the mean for another single numeric term;
+\item the first fitted level for a formula factor;
+\item the first available row for another grouped term.
+}
+
+The numeric and grouped-row defaults are based on \code{newdata} when it is
+supplied and on the fitted data otherwise. A formula factor always uses its
+first fitted level.
+
+The model intercept is not included in contrasts because it cancels from the
+comparison.
+}
+
+\section{Zero and spike-at-zero variables}{
+
+Supply zero-handled and spike-at-zero variables on their original scale.
+Do not create a separate zero-indicator column.
+
+The zero handling selected during fitting is reused during prediction. A
+nonpositive value is treated in the same way as a nonpositive value in the
+fitted model, and a positive value is passed to the selected continuous
+function when applicable.
+
+If the final spike-at-zero model includes both a continuous component and a
+zero indicator, both are used automatically. If it includes only one
+component, only that component is used.
+
+The same rule is applied to a supplied reference. For a term that includes
+only the zero indicator, a nonpositive reference is treated as indicator 1
+and a positive reference as indicator 0.
+}
+
+\section{Offsets}{
+
+Offsets are used only for complete-model predictions. They are not included
+in term or contrast results.
+
+When \code{newdata = NULL}, the offset values used for fitting are used.
+
+When \code{newdata} is supplied:
+\itemize{
+\item If the model formula contains \code{offset(...)}, include the variable or
+variables needed by that expression in \code{newdata}. The offset is evaluated
+automatically.
+\item If the offset was supplied through the separate \code{offset} argument, supply
+the offset for the new rows through \code{newoffset}.
+\item A supplied \code{newoffset} takes precedence over a formula offset.
+}
+
+Supply one finite \code{newoffset} value for each row of \code{newdata}.
+}
+
+\section{Cox predictions}{
+
+Cox predictions with \code{type = "lp"} and \code{type = "risk"} are relative
+quantities. They are not absolute hazards or survival probabilities.
+
+Use \code{cox_reference} to choose the covariate reference for these relative
+predictions:
+\itemize{
+\item \code{"zero"} uses zero on the fitted predictor scale and is the default.
+\item \code{"sample"} uses the fitted-sample predictor means.
+\item \code{"strata"} uses fitted-sample means within each stratum.
+}
+
+Changing \code{cox_reference} changes the displayed linear predictors and risks,
+but comparisons made using the same reference remain unchanged. With
+\code{cox_reference = "strata"}, comparisons should be made within the same
+stratum.
+
+For the right-censored Cox models supported by \code{mfp2},
+\code{type = "expected"} or \code{type = "survival"} requires \code{newdata} to contain
+follow-up information. For a formula model, include the variables used in the
+fitted \code{Surv()} response. Alternatively, include exactly one column that is a
+\code{Surv} object. Wrap it in \code{I()} when placing it in a data frame, for example:
+
+\code{data.frame(x = xnew, followup = I(survival::Surv(time, event)))}.
+
+When \code{newdata = NULL}, the follow-up values used to fit the model are used.
+
+Do not use \code{cox_reference} with \code{type = "expected"} or
+\code{type = "survival"}.
+
+For a stratified Cox model, each prediction row must have a valid stratum.
+If \code{strata()} was included in the formula, include its original variable or
+variables in \code{newdata}. Otherwise, supply the new strata through \code{strata}.
 }
 
 \examples{
 data("prostate")
-x <- as.matrix(prostate[, 2:8])
-y <- as.numeric(prostate$lpsa)
 
-fit <- mfp2(x, y, verbose = FALSE)
+fit <- mfp2(
+  lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+  data = prostate,
+  keep = c("age", "cavol"),
+  verbose = FALSE
+)
+
+# Predict for the data used to fit the model.
 predict(fit)
-predict(fit, se.fit = TRUE)
-predict(fit, type = "terms")
+
+# Predict for five observations on the response scale.
+predict(fit, newdata = prostate[1:5, ], type = "response")
+
+# Link-scale predictions with standard errors.
+predict(fit, newdata = prostate[1:5, ], se.fit = TRUE)
+
+# Fitted contributions of age and cancer volume.
+predict(
+  fit,
+  type = "terms",
+  terms = c("age", "cavol"),
+  add_intercept = FALSE
+)
+
+# Compare age values with age 50 and cancer volume values with 1.
+# The references are supplied on the original variable scale.
+predict(
+  fit,
+  type = "contrasts",
+  terms = c("age", "cavol"),
+  ref = list(age = 50, cavol = 1)
+)
 
 \dontrun{
-# Formula factors are supplied in their original form for prediction.
+# A formula offset is evaluated from newdata.
 set.seed(1)
 d <- data.frame(
-  y = rnorm(45),
-  age = runif(45, 30, 75),
-  race = factor(rep(c("A", "B", "C"), each = 15)),
-  severity = ordered(
-    rep(c("mild", "moderate", "severe"), length.out = 45),
-    levels = c("mild", "moderate", "severe")
-  )
-)
-fit_factor <- mfp2(
-  y ~ age + race + severity, data = d,
-  keep = c("race", "severity"), verbose = FALSE
-)
-predict(fit_factor, newdata = d[1:4, ])
-predict(fit_factor, newdata = d[1:4, ], type = "terms", terms = "race")
-predict(
-  fit_factor,
-  newdata = d[1:4, ],
-  type = "contrasts",
-  terms = "race",
-  ref = list(race = "A")
+  y = rpois(80, 2),
+  age = runif(80, 30, 75),
+  exposure = runif(80, 0.5, 3)
 )
 
-# Cox lp/risk predictions are relative; reference changes their origin.
+fit_offset <- mfp2(
+  y ~ fp(age) + offset(log(exposure)),
+  data = d,
+  family = "poisson",
+  verbose = FALSE
+)
+
+predict(
+  fit_offset,
+  newdata = d[1:4, c("age", "exposure")],
+  type = "response"
+)
+
+# An offset supplied separately must be supplied again for new rows.
+fit_external_offset <- mfp2(
+  y ~ fp(age),
+  data = d,
+  family = "poisson",
+  offset = log(d$exposure),
+  verbose = FALSE
+)
+
+predict(
+  fit_external_offset,
+  newdata = d[1:4, "age", drop = FALSE],
+  newoffset = log(d$exposure[1:4]),
+  type = "response"
+)
+
+# Spike-at-zero references are supplied on the original scale.
+d_spike <- data.frame(
+  y = rnorm(120),
+  exposure = c(rep(0, 35), runif(85, 0.1, 8))
+)
+
+fit_spike <- mfp2(
+  y ~ fp(exposure, spike = TRUE),
+  data = d_spike,
+  keep = "exposure",
+  verbose = FALSE
+)
+
+predict(
+  fit_spike,
+  newdata = data.frame(exposure = c(0, 1, 4)),
+  type = "contrasts",
+  terms = "exposure",
+  ref = list(exposure = 0)
+)
+
+# Cox predictions.
 data("gbsg")
+
 fit_cox <- mfp2(
-  survival::Surv(rectime, censrec) ~ age + nodes,
+  survival::Surv(rectime, censrec) ~ fp(age) + fp(nodes),
   data = gbsg,
   family = "cox",
   df = 1,
@@ -324,32 +434,22 @@ fit_cox <- mfp2(
   alpha = 1,
   verbose = FALSE
 )
-profiles <- gbsg[1:3, c("age", "nodes")]
-predict(fit_cox, profiles, type = "lp")
-predict(fit_cox, profiles, type = "lp", reference = "sample")
 
-# Absolute predictions also need the follow-up time from the response side.
-absolute_profiles <- gbsg[1:3, c("rectime", "censrec", "age", "nodes")]
+relative_profiles <- gbsg[1:3, c("age", "nodes")]
+predict(fit_cox, relative_profiles, type = "lp")
+predict(fit_cox, relative_profiles, type = "risk")
+
+# Survival predictions also need the original follow-up variables.
+absolute_profiles <- gbsg[
+  1:3,
+  c("rectime", "censrec", "age", "nodes")
+]
 predict(fit_cox, absolute_profiles, type = "survival")
 predict(fit_cox, absolute_profiles, type = "expected")
-
-# After matrix-interface fitting, embed one Surv column in newdata.
-x_cox <- as.matrix(gbsg[, c("age", "nodes")])
-y_cox <- survival::Surv(gbsg$rectime, gbsg$censrec)
-fit_cox_matrix <- mfp2(
-  x_cox, y_cox, family = "cox", df = 1, select = 1, alpha = 1,
-  verbose = FALSE
-)
-matrix_profiles <- data.frame(
-  age = gbsg$age[1:3],
-  nodes = gbsg$nodes[1:3]
-)
-matrix_profiles$followup <- I(y_cox[1:3])
-predict(fit_cox_matrix, matrix_profiles, type = "survival")
-
 }
 
 }
 \seealso{
-\code{mfp2()}, \code{\link[stats:predict.glm]{stats::predict.glm()}}, \code{\link[survival:predict.coxph]{survival::predict.coxph()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[stats:predict.glm]{stats::predict.glm()}},
+\code{\link[survival:predict.coxph]{survival::predict.coxph()}}
 }

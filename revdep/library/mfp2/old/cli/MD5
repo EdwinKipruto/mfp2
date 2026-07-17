@@ -1,4 +1,4 @@
-06fa7e89731b355a61b001f4b7b52fb3 *DESCRIPTION
+9f9ff778e59e66ebb925d8c9b9a4189b *DESCRIPTION
 5cf0014fae20ca5af633e548274ccfb1 *INDEX
 41f560d172a5e26a6183620c419814fb *LICENSE
 86f68c74c23891d0e0cf715e59495784 *Meta/Rd.rds
@@ -6,12 +6,12 @@
 326a70f4a4b8225aefa80cd16d971979 *Meta/hsearch.rds
 008713b1037613cb8cbfb32504c81d33 *Meta/links.rds
 046b5289bdbbfff689bc4a0dea5ce0b7 *Meta/nsInfo.rds
-9409d80e8126fd94857a6e4de0c07698 *Meta/package.rds
+d72dcf367ae7d17ef7cade8f11dc6968 *Meta/package.rds
 67bf9da24d70edfab77849bce5a9dcd1 *NAMESPACE
 f36574edf65d8c57fd09a8f946fe6ae6 *NEWS.md
 d6c68f1fe41ced6e98a766a3757313da *R/cli
-9c34a6f207c3cd8818676f8d2486be17 *R/cli.rdb
-4e7498b98e09797c5e0b0a7a8c157318 *R/cli.rdx
+656c625da6a456760b436648d3bdbf57 *R/cli.rdb
+fcd916fc3ad20d074bf963660681b211 *R/cli.rdx
 a06af9de1fd9f405c85baf58d64f4259 *R/sysdata.rdb
 39cb7dd03a1fc8dba34f228710dd745a *R/sysdata.rdx
 f9bfeba22c0de768c4bbe2da27d8df8c *README.md
@@ -25,8 +25,8 @@ d0cceafe8a5757542eccfb7fe3ee7633 *exec/search.R
 3423fd5fe409e42c8e13163679f8117b *exec/up.R
 a5b6973539e263dfe4db4dc3da4a64c5 *help/AnIndex
 59b2f93b6f8a4010662e626b2cc12474 *help/aliases.rds
-2673345dd4954831b5e8b1796eb213ad *help/cli.rdb
-da9b1e6a1218054fd61fe3b2459ed9db *help/cli.rdx
+2e350f4dd678f14c2c7989e79f0d6298 *help/cli.rdb
+39cd43230a1e4fd2e7b71674ad31bb74 *help/cli.rdx
 bd84cb28693c63aa23bbe74512417665 *help/figures/demo-spinners.svg
 ab6de8f8eec056c56e44b5de2edca236 *help/figures/get-spinner.svg
 e7bad1f8dceb766729a88ab41beb7deb *help/figures/make-spinner-custom.svg
@@ -49,11 +49,11 @@ e19cc09fc7bd3dd9e6da86b8867db773 *help/figures/progress-output2.svg
 6b058035deee58362c340d48cb07d43c *help/figures/progress-step-spin.svg
 6bdd5f1d130daa4fb09acdefd9a0d0a0 *help/figures/progress-step.svg
 f2e74e2e161402e874a8b7e168fcf250 *help/figures/progress-tasks.svg
-935c20ee5cbcfd5b70807e2cd3d094b3 *help/paths.rds
+61a6c0d4023ae4d9e89db6eb0af45b15 *help/paths.rds
 0451086a66abb95d94e8240d43a2946c *html/00Index.html
 ee41876c0116916bb04bcf4fe3e43d78 *html/R.css
 f07e6e168985b8a6dd63dafd2894d514 *include/cli/progress.h
-07d43da94692f166176550864d7b7169 *libs/x64/cli.dll
+1d0f38181aa382e2bfb0c0bbccf7a9d6 *libs/x64/cli.dll
 9e2ba900ec9344c7e4fe17e1c9d99cdf *libs/x64/symbols.rds
 aaffd10fd0246bb9d2333d0d2c920093 *logo.txt
 d39a9839b83b899498c309f4856b72be *shiny/along/app.R

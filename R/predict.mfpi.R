@@ -318,310 +318,468 @@ build_group_fp_basis <- function(cont_mat,
 
 #' Predict from an MFPI Model
 #'
-#' Computes predictions from an object of class \code{"mfpi"}.The main prediction
-#'  target is the group-specific MFPI fitted function \eqn{f_j(x)}. For each 
-#'  requested continuous variable, the method can return
-#' fitted functions, pointwise standard errors, confidence intervals, and
-#' contrasts between fitted functions. Ordinary link- and response-scale
-#' prediction from the term-specific interaction model is also supported.
+#' Obtain group-specific fitted curves, differences between group curves, or
+#' predictions for individual observations from a model fitted with [mfpi()].
 #'
-#' @section Prediction targets:
-#' \describe{
-#'   \item{\code{type = "function"}}{Returns the group-specific fitted
-#'   functions \eqn{f_j(x)}. The \code{functions} component contains one row
-#'   for every evaluation \eqn{x} value and every group. When
-#'   \code{se.fit = TRUE}, pointwise standard errors and confidence intervals
-#'   are included.}
-#'   \item{\code{type = "difference"}}{Returns fitted-function contrasts
-#'   \eqn{f_j(x) - f_r(x)} relative to a reference group \eqn{r}. The
-#'   \code{differences} component contains one row for every evaluation
-#'   \eqn{x} value and every non-reference contrast.}
-#'   \item{\code{type = "both"}}{Returns both group-specific fitted functions
-#'   and fitted-function differences. This is the default fitted-function
-#'   prediction target.}
-#'   \item{\code{type = "link"}}{Returns ordinary subject-level linear
-#'   predictor values from the term-specific interaction model. This target
-#'   returns one prediction per row of the fitting data or \code{newdata}.}
-#'   \item{\code{type = "response"}}{Returns ordinary subject-level
-#'   response-scale predictions. For Gaussian models this is the fitted mean,
-#'   for binomial models the fitted probability, for Poisson models the fitted
-#'   mean count or rate, and for Cox models the relative risk score
-#'   \eqn{\exp(\eta)}. Cox response prediction is not an absolute survival
-#'   probability.}
-#' }
+#' @details
+#' MFPI fits a separate interaction model for each continuous variable examined
+#' through `cont_vars`. Predictions are therefore produced separately for each
+#' requested variable. Predictions for two different terms come from two
+#' different term-specific models; they are not parts of one combined model.
 #'
-#' @section Term-specific prediction:
-#' MFPI fits one interaction model per tested continuous variable. Predictions
-#' are therefore term-specific. If one term is requested, the method returns one
-#' object of class \code{"mfpi_prediction"}. If multiple terms are requested,
-#' it returns a named list of such objects with class
-#' \code{"mfpi_prediction_list"}.
+#' Supply continuous predictors on their original scale. Stored shifts, scales,
+#' fractional-polynomial functions, centering values, zero handling, and
+#' Winsorisation limits are applied automatically.
 #'
-#' @section Choosing terms and model scope:
-#' Each tested continuous variable has a single fitted interaction model,
-#' compared against its main-effects-only counterpart using the model's
-#' selection \code{criterion} (AIC, BIC, or p-value) at fit time.
-#' \code{model = "best"} restricts prediction to variables whose interaction
-#' was retained by that criterion in the final selected model. \code{model =
-#' "all"} widens this to every tested variable's fitted interaction model,
-#' including variables that were not retained, as long as a fitted model was
-#' stored for that variable.
+#' The default `type = NULL` is equivalent to `type = "both"`. Supplying
+#' `newdata` by itself does not change this default. To obtain one prediction per
+#' row, explicitly use `type = "link"`, `"response"`, or one of the Cox
+#' prediction types.
 #'
-#' \code{terms} and \code{model} work together: \code{terms} picks which
-#' variables to predict, while \code{model} determines which pool of fitted
-#' models those variables are drawn from. If \code{terms = NULL}, all
-#' variables available within the requested \code{model} scope are used. If
-#' \code{terms} is supplied, every requested variable must have a fitted model
-#' within that scope, or the call fails with the names of the missing
-#' variable(s); this is most likely to happen when a variable's interaction
-#' was not retained and \code{model = "best"} is used.
+#' @section Common calls:
+#' - `predict(fit, terms = "age")` returns the fitted group curves for age and
+#'   their differences.
+#' - `predict(fit, terms = "age", type = "function", grid = TRUE)` returns
+#'   group-specific fitted curves on an equally spaced grid.
+#' - `predict(fit, terms = "age", type = "difference", grid = TRUE)` returns
+#'   differences between each comparison-group curve and the reference-group
+#'   curve.
+#' - `predict(fit, terms = "age", type = "response", newdata = new_data)`
+#'   returns one response-scale prediction per row for a GLM.
+#' - `predict(fit, terms = "age", type = "risk", newdata = new_data)` returns
+#'   one relative-risk prediction per row for a Cox model.
 #'
-#' @section Fitted-function prediction:
-#' Fitted-function prediction reconstructs only the group-specific FP basis
-#' needed for \eqn{f_j(x)} and combines that basis with the fitted
-#' interaction-model coefficients and covariance matrix. This target is for
-#' plotting and interpretation, not subject-level risk or mean prediction.
+#' @section Selecting terms and models:
+#' Use `terms` to select continuous variables that were examined by [mfpi()].
+#' These are normally names supplied through `cont_vars`, not adjustment-variable
+#' names.
 #'
-#' Each group-specific function is evaluated at every supplied \eqn{x} value.
-#' Therefore, if there are \eqn{n} evaluation values and \eqn{k} groups, the
-#' \code{functions} component contains \eqn{n \times k} rows. With
-#' \code{grid = FALSE}, evaluation values are the observed or supplied values
-#' in their original row order; duplicates are retained. With
-#' \code{grid = TRUE}, values are replaced by an equally spaced grid. For
-#' zero-handled variables, the grid is built over the positive part and includes
-#' a structural zero point if structural zeros are present.
+#' MFPI stores one term-specific interaction model for each evaluated continuous
+#' variable. The `model` argument determines which of these models can be used:
 #'
-#' Fitted-function differences are computed relative to a reference group.
-#' Unless \code{reference} is supplied, the reference group used at model fitting
-#' is reused. Supplying \code{reference} only changes the contrast baseline for
-#' fitted-function differences returned by \code{type = "difference"} or
-#' \code{type = "both"}; it does not refit the model or change the fit-time
-#' group coding used by ordinary prediction.
+#' - `model = "best"` uses only variables whose interaction was retained by the
+#'   MFPI selection criterion. This is the default.
+#' - `model = "all"` uses the stored model for every evaluated continuous
+#'   variable for which a model is available, including interactions that were
+#'   not retained.
 #'
-#' @section Ordinary link and response prediction:
-#' Ordinary \code{type = "link"} and \code{type = "response"} prediction are
-#' subject-level targets. For \code{newdata = NULL} and \code{newoffset = NULL},
-#' the stored fitted model's own prediction method is used. If
-#' \code{newdata = NULL} but a replacement \code{newoffset} is supplied, the
-#' stored training design is reconstructed so that the supplied new offset is used
-#' explicitly. For supplied \code{newdata}, the method reconstructs the full
-#' term-specific interaction-model matrix, including group dummies, the
-#' row-specific group interaction block, selected adjustment covariates, and
-#' offsets when applicable. Formula-level offsets are reconstructed from
-#' \code{newdata} when possible; an explicitly supplied \code{newoffset}
-#' takes precedence. The reconstructed matrix is then multiplied by the fitted
-#' coefficient vector.
+#' `model = "all"` does not return every candidate model considered during
+#' fitting. It returns the stored term-specific model for each evaluated
+#' continuous variable.
 #'
-#' Ordinary prediction uses the group coding, reference level, contrasts, and
-#' centering conventions stored at model fitting. New observations must belong
-#' to group levels observed during fitting. New group levels are rejected
-#' because no fitted coefficients exist for groups outside the fit-time design.
+#' When `terms = NULL`, all terms available under the selected `model` setting
+#' are used. If no interactions were retained, `model = "best"` has no models
+#' available; use `model = "all"` to inspect the evaluated terms.
 #'
-#' @section Categorical adjustment variables in prediction:
-#' For formula fits, \code{newdata} should contain the original factor columns,
-#' not manually created dummy columns. The stored predictor terms, factor
-#' levels, and contrasts are used to recreate the fit-time design. All contrast
-#' columns belonging to a selected categorical adjustment term are then
-#' transformed and inserted together. Unseen factor levels are rejected.
+#' @section Choosing the prediction type:
+#' Use the following types for fitted curves:
 #'
-#' For default-interface fits using \code{term_groups}, \code{newdata} must
-#' contain every raw member column of each selected grouped term. Supplying only
-#' part of a block is an error. Categorical adjustment columns are reused as
-#' fixed linear columns; no FP, ACD, zero, catzero, or spike transformation is
-#' applied at prediction time.
+#' - `type = "function"` returns the fitted curve for each group.
+#' - `type = "difference"` returns each comparison-group curve minus the
+#'   reference-group curve at the same continuous-variable value.
+#' - `type = "both"` returns both fitted curves and their differences. This is
+#'   the default when `type = NULL`.
 #'
-#' @section Cox models:
-#' For Cox models, \code{type = "link"} returns the zero-reference linear
-#' predictor and \code{type = "response"} returns the relative risk score
-#' \eqn{\exp(\eta)}. Baseline survival, cumulative-hazard, expected-event, and
-#' absolute-risk prediction are not currently implemented. Formula-level Cox
-#' strata used during fitting affect the partial likelihood and
-#' stratum-specific baseline hazards. Prediction-time strata for new
-#' observations are supplied via the \code{strata} argument; see below.
+#' Use the following types for predictions for individual observations:
+#'
+#' - For Gaussian, binomial, and Poisson models, `type = "link"` returns the
+#'   linear predictor and `type = "response"` applies the inverse link function.
+#'   `"lp"` is accepted as another name for `"link"`.
+#' - For Cox models, `type = "lp"` returns the relative log-hazard,
+#'   `type = "risk"` returns relative hazard, `type = "expected"` returns the
+#'   predicted cumulative hazard up to the supplied follow-up time, and
+#'   `type = "survival"` returns the estimated survival probability at that
+#'   time. `"link"` is accepted as another name for `"lp"`.
+#'
+#' For Cox models, `type = "risk"` is not the same as a GLM response
+#' prediction.
+#'
+#' @section Fitted curves and group differences:
+#' For `type = "function"`, `"difference"`, or `"both"`, only the requested
+#' continuous variable is required in `newdata`. The grouping variable and
+#' adjustment variables are not required because the function is evaluated for
+#' every fitted group at each supplied value.
+#'
+#' A group-specific fitted curve contains the part of the term-specific model
+#' defined by the continuous variable and group. For a GLM, it also includes the
+#' model intercept and the group's main effect. Adjustment variables and offsets
+#' are not included in fitted-curve output.
+#'
+#' A fitted difference is the comparison-group curve minus the reference-group
+#' curve at the same value. It therefore includes both the group main-effect
+#' difference and any difference in the fitted continuous-variable functions.
+#'
+#' The reference group is the reference level used when [mfpi()] was fitted.
+#' For more than two groups, one difference is returned for every non-reference
+#' group. Original group labels are used in the returned tables when available.
+#'
+#' Fitted curves and differences are always reported on the model's
+#' linear-predictor scale. With the standard links, this is:
+#'
+#' - the outcome scale for a Gaussian identity-link model;
+#' - the log-odds scale for a binomial logit model;
+#' - the log-mean scale for a Poisson log-link model;
+#' - a partial log-hazard scale for a Cox model.
+#'
+#' For a Cox model, these fitted curves do not include the baseline hazard and
+#' are not survival probabilities.
+#'
+#' @section Evaluation values and grids:
+#' When `grid = FALSE`, fitted curves are evaluated at the requested variable
+#' values in `newdata`, or at the values used to fit the model when
+#' `newdata = NULL`.
+#'
+#' When `grid = TRUE`, an equally spaced grid is created between the smallest
+#' and largest available values. The range is based on `newdata` when supplied
+#' and on the fitting data otherwise. `n_grid` controls the number of grid
+#' points.
+#'
+#' For a variable fitted with structural-zero handling, the grid is constructed
+#' over the positive values. A zero point is also included when structural zeros
+#' are present, so the result can contain `n_grid + 1` distinct values.
+#'
+#' If Winsorisation was used during fitting, the same limits are applied to new
+#' values before prediction. Values outside the fitted limits are replaced by
+#' the relevant limit. The returned `x` column shows the value actually used for
+#' prediction after Winsorisation.
+#'
+#' `grid` is used only for fitted curves. It is ignored with a warning for
+#' predictions for individual observations.
+#'
+#' @section Predictions for individual observations:
+#' For `type = "link"`, `"response"`, `"lp"`, `"risk"`, `"expected"`, or
+#' `"survival"`, one prediction is returned for each row.
+#'
+#' These predictions use the complete term-specific interaction model. Supply:
+#'
+#' - the continuous variable named in `terms`;
+#' - the grouping variable used in the MFPI analysis;
+#' - every adjustment variable retained in that term-specific model;
+#' - any offset, strata, or follow-up information required for the selected
+#'   prediction type.
+#'
+#' Different terms can require different prediction columns because the tested
+#' continuous variable is removed from its own adjustment set.
+#'
+#' For a model fitted with a formula, normally supply the original variables.
+#' Factors and retained formula expressions are reconstructed automatically.
+#'
+#' For a model fitted from a matrix, supply the required columns with the same
+#' names and coding used during fitting. If adjustment columns were grouped with
+#' `term_groups`, every member column of a required group must be supplied.
+#'
+#' New group levels and new factor levels are not supported. Required prediction
+#' values must not be missing and numeric values must be finite. Extra columns
+#' not used by the selected term-specific model are ignored.
+#'
+#' Stored transformations and Winsorisation limits are applied automatically.
+#' Do not create transformed or group-interaction columns yourself.
+#'
+#' When `newdata = NULL`, predictions are returned for the observations used to
+#' fit each term-specific model.
+#'
+#' @section Offsets:
+#' Offsets are used only for predictions for individual observations. They are
+#' not included in fitted curves or fitted differences.
+#'
+#' When `newdata = NULL`, the fitted offset is used unless `newoffset` is
+#' supplied to replace it. A replacement offset must contain one value for each
+#' fitting observation.
+#'
+#' When `newdata` is supplied:
+#'
+#' - If the fitted formula contains `offset(...)`, include the source variable
+#'   or variables needed by that expression in `newdata`. The offset is
+#'   evaluated automatically.
+#' - If the offset was supplied through the separate `offset` argument, supply
+#'   the offset for the new rows through `newoffset`.
+#' - A supplied `newoffset` takes precedence over a formula offset.
+#'
+#' Supply one finite `newoffset` value for each prediction row. `newoffset`
+#' cannot be used when the relevant interaction model was fitted without an
+#' offset.
+#'
+#' @section Cox predictions:
+#' Cox predictions with `type = "lp"` and `type = "risk"` are relative
+#' quantities. They are not absolute hazards or survival probabilities.
+#'
+#' Use `cox_reference` to choose the covariate reference for these predictions:
+#'
+#' - `"zero"` uses zero on the fitted predictor scale and is the default.
+#' - `"sample"` uses the fitted-sample predictor means.
+#' - `"strata"` uses fitted-sample means within each stratum.
+#'
+#' Changing `cox_reference` changes the displayed linear predictors and risks,
+#' but comparisons made using the same reference remain unchanged.
+#'
+#' `cox_reference` does not change the group used by
+#' `type = "difference"`. It applies only to observation-level Cox predictions
+#' with `type = "lp"` or `type = "risk"`.
+#'
+#' Cox predictions with `type = "expected"` or `type = "survival"` also need
+#' follow-up information for every prediction row.
+#'
+#' For a model fitted with a formula, include the variables used in the fitted
+#' `Surv()` response. Alternatively, include exactly one column that is a
+#' right-censored `Surv` object. Wrap it in `I()` when constructing a data frame,
+#' for example:
+#'
+#' `data.frame(age = age, group = group, followup = I(survival::Surv(time, event)))`.
+#'
+#' Do not use `cox_reference` with `type = "expected"` or
+#' `type = "survival"`.
+#'
+#' For a stratified Cox model, each prediction row must have valid stratum
+#' information. If `strata()` was included in the fitted formula, include its
+#' original variable or variables in `newdata`. Otherwise, supply new stratum
+#' values through `strata`.
 #'
 #' @section Standard errors and confidence intervals:
-#' \code{se.fit} and \code{level} apply to both prediction targets, but the
-#' quantity they describe differs between them. For fitted functions and
-#' fitted-function differences, \code{se.fit = TRUE} adds pointwise standard
-#' errors on the model scale, together with \code{lower}/\code{upper}
-#' confidence limits at the requested \code{level}; these describe the
-#' precision of \eqn{f_j(x)} or \eqn{f_j(x) - f_r(x)} at each evaluation
-#' point, not a simultaneous confidence band. For ordinary \code{"link"} and
-#' \code{"response"} prediction, \code{se.fit = TRUE} adds a single
-#' \code{se.fit} column to \code{predictions}; \code{level} is not used here,
-#' since no interval is returned for ordinary prediction. Response-scale
-#' standard errors follow the same inverse-link delta-method convention as
-#' \code{predict.glm()}, and Cox response-scale standard errors follow the
-#' zero-reference relative-risk convention described under \emph{Cox models}.
+#' For fitted curves and fitted differences, `se.fit = TRUE` returns pointwise
+#' standard errors and confidence intervals with confidence level `level`.
 #'
-#' @section Required object metadata:
-#' New-data prediction assumes that the \code{"mfpi"} object stores prediction
-#' metadata created at fit time. In particular, fitted-function prediction with
-#' \code{newdata = NULL} and ordinary prediction with \code{newdata = NULL}
-#' plus a replacement \code{newoffset} require \code{object$x_train_internal},
-#' the post-preprocessing training matrix containing shifted/scaled predictors
-#' and internally remapped \code{group_var} codes. New-data ordinary prediction
-#' additionally relies on stored shift, scale, winsorisation limits, group-level
-#' mapping, the conceptual-term-to-column lookup, selected adjustment-model
-#' powers, centering constants, formula factor levels and contrasts when
-#' applicable, and each flex result's \code{coefficient_groups}.
+#' For predictions for individual observations, `se.fit = TRUE` requests the
+#' standard errors supported by the underlying GLM or Cox prediction method.
+#' The `level` argument is not used for these predictions.
 #'
-#' @param object An object of class \code{"mfpi"}.
-#' @param newdata Optional matrix or data frame. For fitted-function prediction
-#'   (\code{type = "function"}, \code{"difference"}, or \code{"both"}), it
-#'   must contain the requested continuous-variable columns on their original
-#'   raw scale. The grouping variable is not required for fitted-function
-#'   prediction because all group-specific functions are evaluated at each
-#'   supplied \eqn{x} value. For ordinary prediction (\code{type = "link"} or
-#'   \code{"response"}), \code{newdata} must also contain the grouping variable
-#'   and all selected adjustment variables required by the term-specific
-#'   interaction model. Other predictors from the original formula may be
-#'   omitted. For formula fits, supply original factor-valued columns; for
-#'   default-interface grouped terms, supply every raw member column. Group
-#'   values and factor values used by selected terms must use levels observed
-#'   during fitting.
-#' @param terms Character vector of continuous variables to predict. If
-#'   \code{NULL}, terms are selected from the requested \code{model} scope. See
-#'   \emph{Choosing terms and model scope}.
-#' @param model Character scalar, either \code{"best"} (retained interaction
-#'   models only) or \code{"all"} (every tested variable's fitted interaction
-#'   model). See \emph{Choosing terms and model scope}.
-#' @param type Character scalar. One of \code{"both"}, \code{"function"},
-#'   \code{"difference"}, \code{"link"}, or \code{"response"}.
-#' @param se.fit Logical scalar. Whether to compute pointwise standard errors.
-#'   For fitted-function targets, these are standard errors of fitted functions
-#'   or function differences on the model scale. For ordinary GLM prediction,
-#'   response-scale standard errors use the same inverse-link derivative
-#'   convention as \code{predict.glm()}. For Cox response prediction,
-#'   \code{fit} is the relative risk score \eqn{\exp(\eta)} and
-#'   \code{se.fit} follows the zero-reference relative-risk convention.
-#' @param level Numeric scalar in \code{(0, 1)}. Confidence level for
-#'   pointwise fitted-function and fitted-difference intervals.
-#' @param grid Logical scalar. If \code{TRUE}, evaluate fitted functions on a
-#'   grid. Ignored for ordinary \code{"link"} and \code{"response"}
-#'   prediction.
-#' @param n_grid Integer scalar. Number of positive-part grid points when
-#'   \code{grid = TRUE}. If a structural zero is added, the returned number of
-#'   \code{x} values can be \code{n_grid + 1}.
-#' @param reference Optional reference group for fitted-function differences.
-#'   May be an internal group label or an original group label if group-level
-#'   metadata are stored in \code{object}. If \code{NULL}, the reference group
-#'   used at model fitting is reused. This argument affects only fitted-function
-#'   differences; it does not change the fit-time reference level used by the
-#'   stored interaction model.
-#' @param strata Optional prediction-time Cox strata for ordinary \code{"link"}
-#'   or \code{"response"} prediction. Ignored for fitted-function prediction.
-#'   Supply one value per row, or a matrix/data frame with one row per prediction
-#'   row for multiple strata variables.
-#' @param newoffset Optional numeric vector for ordinary \code{"link"} or
-#'   \code{"response"} prediction. If \code{newdata} is supplied,
-#'   \code{newoffset} must contain one value per row of \code{newdata}. If
-#'   \code{newdata = NULL}, a supplied \code{newoffset} must contain one value
-#'   per training row; the stored training design is reconstructed and the
-#'   supplied new offset is used instead of delegating to the fitted model's own
-#'   \code{predict()} method. For formula-interface fits with a formula-level
-#'   offset, \code{newoffset} may be omitted when \code{newdata} contains the
-#'   original offset variable(s), because the offset is reconstructed from the
-#'   stored formula metadata. Ignored for fitted-function prediction.
-#' @param ... Reserved for future extensions. Currently unused arguments produce
-#'   a warning. Cox baseline-survival arguments such as prediction times are
-#'   not currently supported.
+#' All standard errors and confidence intervals are conditional on the selected
+#' term-specific model. They do not include uncertainty from adjustment-variable
+#' selection, function selection, interaction selection, or selection among the
+#' evaluated terms.
 #'
-#' @return If one term is requested, an object of class
-#' \code{"mfpi_prediction"}. If multiple terms are requested, a named list of
-#' \code{"mfpi_prediction"} objects with class \code{"mfpi_prediction_list"}.
+#' @param object An object of class `"mfpi"` returned by [mfpi()].
 #'
-#' For \code{type = "function"}, \code{"difference"}, or \code{"both"}, each
-#' prediction object contains:
-#' \describe{
-#'   \item{\code{term}}{Continuous variable for which prediction was computed.}
-#'   \item{\code{type}}{Requested prediction type.}
-#'   \item{\code{x}}{Evaluation values on the original raw scale. With
-#'   \code{grid = FALSE}, these are observed or supplied values in row order,
-#'   including duplicates. With \code{grid = TRUE}, these are grid values.}
-#'   \item{\code{functions}}{Data frame of fitted functions, present for
-#'   \code{type = "function"} and \code{type = "both"}. Columns are
-#'   \code{term}, \code{x}, \code{group}, \code{fit}, and, when
-#'   \code{se.fit = TRUE}, \code{se.fit}, \code{lower}, and \code{upper}.}
-#'   \item{\code{differences}}{Data frame of fitted-function differences,
-#'   present for \code{type = "difference"} and \code{type = "both"}. Columns
-#'   are \code{term}, \code{x}, \code{contrast}, \code{group},
-#'   \code{reference}, \code{fit}, and, when \code{se.fit = TRUE},
-#'   \code{se.fit}, \code{lower}, and \code{upper}.}
-#'   \item{\code{metadata}}{List containing group-specific FP powers,
-#'   centering constants, coefficient groups, reference group, scale and shift
-#'   values, zero-handling flag, confidence level, and \code{se.fit}.}
-#' }
+#' @param newdata An optional data frame or matrix containing values at which to
+#'   predict.
 #'
-#' For \code{type = "link"} or \code{"response"}, each prediction object
-#' contains:
-#' \describe{
-#'   \item{\code{term}}{Continuous variable whose term-specific interaction
-#'   model was used.}
-#'   \item{\code{type}}{Either \code{"link"} or \code{"response"}.}
-#'   \item{\code{predictions}}{Data frame with one row per subject. It
-#'   contains \code{term}, \code{fit}, and, when requested and available,
-#'   \code{se.fit}.}
-#'   \item{\code{design}}{Reconstructed numeric interaction-model matrix.
-#'   Present when ordinary prediction uses the manual reconstructed-design path,
-#'   either because \code{newdata} was supplied or because a replacement
-#'   \code{newoffset} was supplied for training-data prediction. \code{NULL}
-#'   when prediction delegates to the stored fitted model's own \code{predict()}
-#'   method.}
-#'   \item{\code{metadata}}{List describing whether ordinary prediction was
-#'   used, whether \code{newdata} was supplied, whether the design matrix was
-#'   reconstructed, group metadata, offset usage, and response-scale status.}
-#' }
+#'   For fitted curves, only the requested continuous variables are required.
+#'   For predictions for individual observations, also supply the grouping
+#'   variable, retained adjustment variables, and any required offset, strata,
+#'   or Cox follow-up variables. See **Predictions for individual
+#'   observations**.
 #'
-#' @details Fitted-function prediction reuses fit-time centering constants and
-#' never recomputes centers from \code{newdata}. Recomputing centers during
-#' prediction would define a different FP basis and make the reconstructed
-#' fitted functions incompatible with the fitted coefficients.
+#' @param terms An optional character vector naming continuous variables examined
+#'   by [mfpi()]. If `NULL`, all terms available under the selected `model`
+#'   setting are used.
 #'
-#' This method does not call or depend on the legacy fitted-function generator.
-#' Its shared dependency is \code{build_group_fp_basis()}, which must remain
-#' available after \code{gen_fitted_values_per_group()} is removed.
+#' @param model A character value selecting the available term-specific models.
+#'   `"best"` uses only interactions retained by the MFPI selection criterion.
+#'   `"all"` uses the stored model for every evaluated continuous variable.
+#'   The default is `"best"`.
+#'
+#' @param type The prediction type. Use `"function"`, `"difference"`, or
+#'   `"both"` for fitted curves. For predictions for individual observations,
+#'   Gaussian, binomial, and Poisson models support `"link"` and `"response"`,
+#'   while Cox models support `"lp"`, `"risk"`, `"expected"`, and
+#'   `"survival"`. If `NULL`, `"both"` is used.
+#'
+#' @param se.fit A single `TRUE` or `FALSE` value indicating whether standard
+#'   errors should be returned. The default is `TRUE`.
+#'
+#' @param level A number between 0 and 1 giving the confidence level for
+#'   pointwise fitted-curve and fitted-difference intervals. The default is
+#'   0.95. This argument is not used for predictions for individual
+#'   observations.
+#'
+#' @param grid A single `TRUE` or `FALSE` value. If `TRUE`, fitted curves are
+#'   evaluated on an equally spaced grid. If `FALSE`, supplied or fitted data
+#'   values are used. This argument is ignored for predictions for individual
+#'   observations.
+#'
+#' @param n_grid An integer of at least 2 giving the number of grid points when
+#'   `grid = TRUE`. The default is 200. A structural-zero point can be added in
+#'   addition to these grid points.
+#'
+#' @param strata Optional stratum information for predictions for individual
+#'   observations from a stratified Cox model. For one stratification variable,
+#'   supply one value per prediction row. For several variables, supply a matrix
+#'   or data frame with one row per prediction row.
+#'
+#'   This argument is not used for non-Cox models, unstratified Cox models, or
+#'   fitted-curve predictions.
+#'
+#' @param cox_reference A character value selecting the covariate reference for
+#'   Cox observation-level predictions with `type = "lp"` or `type = "risk"`.
+#'   Use `"zero"`, `"sample"`, or `"strata"`. The default is `"zero"`.
+#'
+#' @param newoffset An optional finite numeric vector containing one offset value
+#'   per prediction row. It can be used only for predictions for individual
+#'   observations from a term-specific model fitted with an offset.
+#'
+#' @param ... Reserved for future extensions. Currently, supplied arguments are
+#'   ignored with a warning.
+#'
+#' @return
+#' When one term is requested, an object of class `"mfpi_prediction"` is
+#' returned. When several terms are requested, the result is a named list of
+#' `"mfpi_prediction"` objects with class `"mfpi_prediction_list"`.
+#'
+#' Each result comes from the term-specific interaction model named by `term`.
+#'
+#' For `type = "function"` or `type = "both"`, the `functions` component is a
+#' data frame containing:
+#'
+#' - `term`: the continuous-variable name;
+#' - `x`: the value used to evaluate the fitted curve;
+#' - `group`: the group label;
+#' - `fit`: the fitted curve value;
+#' - `se.fit`, `lower`, and `upper`: the pointwise standard error and confidence
+#'   limits when `se.fit = TRUE`.
+#'
+#' For `type = "difference"` or `type = "both"`, the `differences` component is
+#' a data frame containing:
+#'
+#' - `term`: the continuous-variable name;
+#' - `x`: the value used to evaluate the curves;
+#' - `contrast`: a label identifying the comparison;
+#' - `group`: the comparison group;
+#' - `reference`: the reference group;
+#' - `fit`: the comparison-group curve minus the reference-group curve;
+#' - `se.fit`, `lower`, and `upper`: the pointwise standard error and confidence
+#'   limits when `se.fit = TRUE`.
+#'
+#' For predictions for individual observations, the `predictions` component is a
+#' data frame containing `term` and `fit`, with `se.fit` added when requested and
+#' available.
+#'
+#' Other components contain information used by plotting and internal
+#' prediction checks and should not be treated as a stable public interface.
 #'
 #' @examples
 #' \dontrun{
-#' # Fit an MFPI model. The exact arguments depend on your analysis.
-#' fit <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
+#' data("prostate")
 #'
-#' # Default: selected term(s), fitted functions and differences, observed x.
-#' p1 <- predict(fit)
-#' names(p1)
-#' head(p1$functions)
-#' head(p1$differences)
+#' fit <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   group_var = "svi",
+#'   cont_vars = c("cavol", "age"),
+#'   flex = "flex1",
+#'   include_group_var = TRUE,
+#'   center = FALSE,
+#'   verbose = FALSE
+#' )
 #'
-#' # Smooth fitted-function curves for plotting.
-#' p2 <- predict(fit, terms = "age", type = "both", grid = TRUE)
-#' age_fun <- subset(p2$functions, group == unique(p2$functions$group)[1L])
-#' plot(age_fun$x, age_fun$fit, type = "l")
+#' # By default, return fitted curves and differences for retained interactions.
+#' predict(fit)
 #'
-#' # Fitted functions only.
-#' p3 <- predict(fit, terms = "age", type = "function")
+#' # Inspect the stored model for an evaluated term even if it was not retained.
+#' curves <- predict(
+#'   fit,
+#'   terms = "cavol",
+#'   model = "all",
+#'   type = "both",
+#'   grid = TRUE
+#' )
 #'
-#' # Formula-fitted categorical adjustment variables are supplied on their
-#' # original factor scale; predict.mfpi() recreates the stored contrasts.
-#' nd <- training_data[1:20, c("trt", "age", "stage"), drop = FALSE]
-#' p_factor <- predict(fit_with_stage, newdata = nd, terms = "age",
-#'                     model = "all", type = "link")
+#' curves$functions
+#' curves$differences
 #'
-#' # Differences relative to the fit-time reference group.
-#' p4 <- predict(fit, terms = "age", type = "difference")
+#' # Evaluate fitted curves at selected values. Only cavol is required here.
+#' selected_values <- predict(
+#'   fit,
+#'   newdata = data.frame(cavol = c(0.2, 1, 3)),
+#'   terms = "cavol",
+#'   model = "all",
+#'   type = "function",
+#'   grid = FALSE
+#' )
 #'
-#' # Differences relative to an explicitly chosen observed group.
-#' p5 <- predict(fit, terms = "age", type = "difference", reference = 0)
+#' selected_values$functions
 #'
-#' # Ordinary subject-level response prediction for new observations.
-#' new_x <- x[1:10, , drop = FALSE]
-#' p6 <- predict(fit, terms = "age", type = "response", newdata = new_x)
-#' head(p6$predictions)
+#' # Obtain one prediction per observation from the cavol interaction model.
+#' row_predictions <- predict(
+#'   fit,
+#'   newdata = prostate[1:10, ],
+#'   terms = "cavol",
+#'   model = "all",
+#'   type = "response"
+#' )
 #'
-#' # Multiple terms return a named prediction list.
-#' p7 <- predict(fit, terms = c("age", "bmi"), model = "all", grid = TRUE)
-#' names(p7)
+#' row_predictions$predictions
+#'
+#' # Several terms return a named list. Each element uses a different
+#' # term-specific interaction model.
+#' several_curves <- predict(
+#'   fit,
+#'   terms = c("cavol", "age"),
+#'   model = "all",
+#'   type = "function",
+#'   grid = TRUE
+#' )
+#'
+#' several_curves$cavol$functions
+#' several_curves$age$functions
+#'
+#' # A formula offset is evaluated automatically from newdata.
+#' set.seed(1)
+#' d <- data.frame(
+#'   y = rpois(100, 2),
+#'   group = factor(sample(c("control", "treated"), 100, replace = TRUE)),
+#'   age = runif(100, 30, 75),
+#'   exposure = runif(100, 0.5, 3)
+#' )
+#'
+#' fit_offset <- mfpi(
+#'   y ~ age + group + offset(log(exposure)),
+#'   data = d,
+#'   family = "poisson",
+#'   group_var = "group",
+#'   cont_vars = "age",
+#'   cont_var_forms = c(age = "linear"),
+#'   flex = "flex1",
+#'   p_interact = 1,
+#'   verbose = FALSE
+#' )
+#'
+#' predict(
+#'   fit_offset,
+#'   newdata = d[1:5, c("age", "group", "exposure")],
+#'   terms = "age",
+#'   model = "all",
+#'   type = "response"
+#' )
+#'
+#' # Cox predictions.
+#' lung <- survival::lung
+#' lung$status <- as.integer(lung$status == 2)
+#' lung <- lung[complete.cases(lung[, c("time", "status", "age", "sex")]), ]
+#' lung$sex <- factor(lung$sex)
+#'
+#' fit_cox <- mfpi(
+#'   survival::Surv(time, status) ~ age + sex,
+#'   data = lung,
+#'   family = "cox",
+#'   group_var = "sex",
+#'   cont_vars = "age",
+#'   cont_var_forms = c(age = "linear"),
+#'   flex = "flex1",
+#'   p_interact = 1,
+#'   verbose = FALSE
+#' )
+#'
+#' relative_data <- lung[1:5, c("age", "sex")]
+#' predict(
+#'   fit_cox,
+#'   newdata = relative_data,
+#'   terms = "age",
+#'   model = "all",
+#'   type = "risk"
+#' )
+#'
+#' # Survival predictions also require the fitted follow-up variables.
+#' absolute_data <- lung[1:5, c("time", "status", "age", "sex")]
+#' predict(
+#'   fit_cox,
+#'   newdata = absolute_data,
+#'   terms = "age",
+#'   model = "all",
+#'   type = "survival"
+#' )
 #' }
+#'
+#' @seealso [mfpi()], [plot.mfpi()]
 #'
 #' @method predict mfpi
 #' @export
@@ -629,13 +787,13 @@ predict.mfpi <- function(object,
                          newdata = NULL,
                          terms = NULL,
                          model = c("best", "all"),
-                         type = c("both", "function", "difference", "link", "response"),
+                         type = NULL,
                          se.fit = TRUE,
                          level = 0.95,
                          grid = FALSE,
                          n_grid = 200L,
-                         reference = NULL,
                          strata = NULL,
+                         cox_reference = NULL,
                          newoffset = NULL,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
@@ -646,7 +804,17 @@ predict.mfpi <- function(object,
   }
   
   model <- match.arg(model)
-  type <- match.arg(type)
+  family_string <- mfpi_family_string(object)
+  type <- mfpi_match_prediction_type(type, family_string)
+  
+  function_types <- c("both", "function", "difference")
+  ordinary_types <- if (identical(family_string, "cox")) {
+    c("lp", "risk", "expected", "survival")
+  } else {
+    c("link", "response")
+  }
+  is_function_prediction <- type %in% function_types
+  is_ordinary_prediction <- type %in% ordinary_types
   
   if (!is.logical(se.fit) || length(se.fit) != 1L || anyNA(se.fit)) {
     stop("`se.fit` must be a single non-missing logical value.",
@@ -664,22 +832,73 @@ predict.mfpi <- function(object,
          call. = FALSE)
   }
   
-  n_grid <- as.integer(n_grid)
-  if (length(n_grid) != 1L || is.na(n_grid) || n_grid < 2L) {
+  if (!is.numeric(n_grid) || length(n_grid) != 1L || anyNA(n_grid) ||
+      !is.finite(n_grid) || n_grid < 2 || n_grid != as.integer(n_grid)) {
     stop("`n_grid` must be an integer >= 2.", call. = FALSE)
   }
+  n_grid <- as.integer(n_grid)
   
   dots <- list(...)
   if (length(dots) > 0L) {
+    dot_names <- names(dots)
+    if (is.null(dot_names)) dot_names <- rep("<unnamed>", length(dots))
+    dot_names[!nzchar(dot_names)] <- "<unnamed>"
     warning(
-      "Unused arguments in `...`: ", paste(names(dots), collapse = ", "), ".",
+      "Unused arguments in `...`: ", paste(dot_names, collapse = ", "), ".",
       call. = FALSE
     )
   }
   
-  if (type %in% c("link", "response") && isTRUE(grid)) {
-    warning("`grid` is ignored for `type = \"link\"` and `type = \"response\"`.",
+  if (is_ordinary_prediction && isTRUE(grid)) {
+    warning("`grid` is ignored for ordinary subject-level prediction.",
             call. = FALSE)
+  }
+  
+  if (is_function_prediction) {
+    if (!is.null(strata)) {
+      stop(
+        "`strata` is not used for MFPI fitted-function predictions.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(cox_reference)) {
+      stop(
+        "`cox_reference` is not used for MFPI fitted-function predictions.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(newoffset)) {
+      stop(
+        "`newoffset` is not used for MFPI fitted-function predictions.",
+        call. = FALSE
+      )
+    }
+  }
+  
+  if (!identical(family_string, "cox")) {
+    if (!is.null(strata)) {
+      stop("`strata` is available only for Cox predictions.", call. = FALSE)
+    }
+    if (!is.null(cox_reference)) {
+      stop("`cox_reference` is available only for Cox predictions.",
+           call. = FALSE)
+    }
+  }
+  
+  if (identical(family_string, "cox")) {
+    if (type %in% c("lp", "risk")) {
+      cox_reference <- match_cox_reference(
+        value = cox_reference,
+        default = "zero",
+        argument = "cox_reference"
+      )
+    } else if (!is.null(cox_reference)) {
+      stop(
+        "`cox_reference` applies only to Cox predictions with `type = \"lp\"` ",
+        "or `type = \"risk\"`.",
+        call. = FALSE
+      )
+    }
   }
   
   fits <- mfpi_get_prediction_fits(object = object, terms = terms, model = model)
@@ -688,7 +907,7 @@ predict.mfpi <- function(object,
     lapply(names(fits), function(term) {
       fit_result <- fits[[term]]
       
-      if (type %in% c("function", "difference", "both")) {
+      if (is_function_prediction) {
         # Fitted-function targets evaluate every group-specific function at
         # each requested x value and return long-format function/contrast data.
         pred_data <- mfpi_prepare_prediction_data(
@@ -716,13 +935,42 @@ predict.mfpi <- function(object,
           type = type,
           se.fit = se.fit,
           level = level,
-          reference = reference
+          reference = NULL
         ))
       }
       
+      interaction_model <- fit_result$test_results$interaction_model
+      fit_obj <- interaction_model$fit
+      fit_is_stratified <- mfpi_fit_has_strata(fit_obj)
+      
+      if (!is.null(strata) && !fit_is_stratified) {
+        stop(
+          "`strata` was supplied, but the retained Cox interaction model for ",
+          "term `", term, "` is not stratified.",
+          call. = FALSE
+        )
+      }
+      
+      # Absolute Cox predictions need the response before raw newdata are
+      # reduced to the predictors required by the term-specific design.
+      cox_prediction_response <- if (
+        !is.null(newdata) &&
+        identical(family_string, "cox") &&
+        type %in% c("expected", "survival")
+      ) {
+        reconstruct_cox_prediction_response(
+          object = object,
+          fit_obj = fit_obj,
+          newdata = newdata
+        )
+      } else {
+        NULL
+      }
+      
       # Ordinary prediction is subject-level: each row belongs to one group,
-      # so the reconstructed interaction block is masked row by row. Formula-level
-      # Cox strata are reconstructed from raw newdata unless explicitly supplied.
+      # so the reconstructed interaction block is masked row by row. Formula-
+      # level Cox strata are reconstructed from raw newdata unless explicitly
+      # supplied.
       ordinary_strata <- strata
       if (is.null(ordinary_strata) && !is.null(newdata) &&
           !is.null(object$formula_strata_terms)) {
@@ -738,16 +986,25 @@ predict.mfpi <- function(object,
         newoffset = newoffset
       )
       
-      pred <- mfpi_predict_from_design(
+      if (identical(family_string, "cox") &&
+          type %in% c("expected", "survival") &&
+          !is.null(design$model_newdata)) {
+        response <- if (is.null(newdata)) fit_obj$y else cox_prediction_response
+        design$model_newdata <- attach_cox_prediction_response(
+          fit_obj = fit_obj,
+          newdata = design$model_newdata,
+          response = response
+        )
+      }
+      
+      pred <- mfpi_predict_ordinary(
         object = object,
         term = term,
         fit_result = fit_result,
-        X_new = design$X,
-        offset = design$offset,
         model_newdata = design$model_newdata,
         type = type,
         se.fit = se.fit,
-        use_model_predict = design$use_model_predict
+        cox_reference = cox_reference
       )
       
       pred_df <- data.frame(term = term, fit = pred$fit, stringsAsFactors = FALSE)
@@ -758,17 +1015,27 @@ predict.mfpi <- function(object,
           term = term,
           type = type,
           predictions = pred_df,
-          design = if (!isTRUE(design$use_model_predict)) design$X else NULL,
+          design = if (isTRUE(design$reconstructed)) design$X else NULL,
           metadata = list(
             ordinary_prediction = TRUE,
             newdata = isTRUE(design$newdata),
-            design_matrix_reconstructed = !isTRUE(design$use_model_predict),
+            design_matrix_reconstructed = isTRUE(design$reconstructed),
             group_levels = design$group_levels,
             group_internal = design$group_internal,
             offset_used = design$has_offset,
-            response_scale = type == "response",
+            response_scale = type %in% c("response", "risk"),
+            absolute_cox_prediction = type %in% c("expected", "survival"),
+            cox_reference = if (type %in% c("lp", "risk")) {
+              cox_reference
+            } else {
+              NULL
+            },
             used_model_predict = isTRUE(pred$used_model_predict),
-            model_newdata_columns = if (!is.null(design$model_newdata)) colnames(design$model_newdata) else NULL
+            model_newdata_columns = if (!is.null(design$model_newdata)) {
+              colnames(design$model_newdata)
+            } else {
+              NULL
+            }
           )
         ),
         class = c("mfpi_prediction", "list")
@@ -780,7 +1047,6 @@ predict.mfpi <- function(object,
   if (length(out) == 1L) return(out[[1L]])
   structure(out, class = c("mfpi_prediction_list", "list"))
 }
-
 
 # -----------------------------------------------------------------------------
 # Fit selection and prediction-data preparation --------------------------------
@@ -1504,7 +1770,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 
 
 # -----------------------------------------------------------------------------
-# Ordinary link/response prediction -------------------------------------------
+# Ordinary subject-level prediction -------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Resolve the Adjustment Design Required by One MFPI Interaction Model
@@ -1571,17 +1837,16 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
 
 #' Build the Ordinary Interaction-Model Design Matrix
 #'
-#' Reconstructs the numeric design matrix required for ordinary
-#' \code{type = "link"} or \code{type = "response"} prediction for one MFPI
-#' term. This helper is used only for subject-level prediction. It differs from
+#' Reconstructs the numeric design matrix required for ordinary GLM or Cox
+#' subject-level prediction for one MFPI term. This helper is used only for subject-level prediction. It differs from
 #' fitted-function prediction because each new subject belongs to exactly one
 #' group, so out-of-group interaction blocks must be set to zero row by row.
 #'
 #' @section Training-data path:
-#' If \code{newdata = NULL} and \code{newoffset = NULL}, no matrix is
-#' reconstructed. The returned object tells \code{mfpi_predict_from_design()}
-#' to call the fitted model's own \code{predict()} method. This preserves the
-#' original GLM or Cox fitted-value behavior. If \code{newdata = NULL} but a
+#' If \code{newdata = NULL}, \code{newoffset = NULL}, and no replacement
+#' \code{strata} are supplied, no matrix is reconstructed. The stored model's
+#' own \code{predict()} method is called directly, preserving native GLM and
+#' Cox prediction behavior. If \code{newdata = NULL} but a
 #' replacement \code{newoffset} is supplied, the stored shifted/scaled training
 #' matrix is used to reconstruct the design matrix so the supplied new offset can
 #' be applied explicitly.
@@ -1610,19 +1875,21 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
 #'   supplied \code{newdata}, it must contain one value per new-data row. For
 #'   \code{newdata = NULL}, it must contain one value per training row and
 #'   triggers reconstruction of the stored training design. Required when the
-#'   fitted interaction model used an offset and manual prediction is used.
+#'   fitted interaction model used an offset and reconstructed prediction data
+#'   are needed.
 #'
 #' @return A list with \code{X} (design matrix without intercept, or
 #'   \code{NULL} when prediction delegates to the fitted model),
 #'   \code{offset}, \code{has_offset}, \code{group_internal},
-#'   \code{group_levels}, \code{newdata}, and \code{use_model_predict}.
+#'   \code{group_levels}, \code{newdata}, and \code{reconstructed}.
 #'
 #' @keywords internal
 #' @noRd
 mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
                                        strata = NULL, newoffset = NULL) {
-  # Build the subject-level model matrix only when delegation to the fitted
-  # model is not possible or not appropriate, such as supplied newdata.
+  # Build formula-compatible subject-level prediction data only when new rows,
+  # replacement strata, or a replacement offset must be supplied to the stored
+  # fitted model.
   
   interaction_model <- fit_result$test_results$interaction_model
   if (is.null(interaction_model) || is.null(interaction_model$fit)) {
@@ -1640,11 +1907,9 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # This keeps Cox and GLM fitted-value conventions identical to the original
   # model object when no replacement newoffset is requested.
   #
-  # If a new `newoffset` is supplied with `newdata = NULL`, delegation would ignore
-  # that new offset and use the offset stored at fit time. To honor the supplied
-  # new offset, switch to the same manual reconstructed-design path used for
-  # supplied `newdata`, but start from `x_train_internal`, the
-  # post-preprocessing training matrix.
+  # If a new `newoffset` or replacement `strata` are supplied with
+  # `newdata = NULL`, reconstruct formula-compatible prediction data from
+  # `x_train_internal` so the stored model can consume those replacements.
   newdata_is_training_internal <- FALSE
   if (is.null(newdata)) {
     if (is.null(newoffset) && is.null(strata)) {
@@ -1656,7 +1921,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         group_internal = NULL,
         group_levels = NULL,
         newdata = FALSE,
-        use_model_predict = TRUE
+        reconstructed = FALSE
       ))
     }
     
@@ -1665,10 +1930,11 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     if (is.null(newdata)) {
       stop(
         paste0(
-          "Cannot apply a supplied `newoffset` with `newdata = NULL` because ",
-          "the MFPI object does not store `x_train_internal`, the ",
-          "post-preprocessing training matrix. Refit the model with the current ",
-          "version of `mfpi()` or supply explicit `newdata`."
+          "Cannot reconstruct training prediction data for replacement ",
+          "`newoffset` or `strata` because the MFPI object does not store ",
+          "`x_train_internal`, the post-preprocessing training matrix. Refit ",
+          "the model with the current version of `mfpi()` or supply explicit ",
+          "`newdata`."
         ),
         call. = FALSE
       )
@@ -2128,13 +2394,61 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
                 term, "`."), call. = FALSE)
   }
   
-  has_offset <- mfpi_fit_has_offset(interaction_model$fit)
+  fit_obj <- interaction_model$fit
+  has_offset <- mfpi_fit_has_offset(fit_obj)
+  
+  if (!has_offset && !is.null(newoffset)) {
+    stop(
+      "`newoffset` can be supplied only when the retained interaction model ",
+      "was fitted with an offset.",
+      call. = FALSE
+    )
+  }
+  
+  # When training rows are reconstructed solely to replace strata, preserve the
+  # fitted offset rather than requiring the caller to repeat it. For supplied
+  # newdata, formula offsets are reconstructed earlier; matrix-interface fits
+  # still require an explicit replacement because the raw offset is unavailable.
+  if (has_offset && is.null(newoffset) && isTRUE(newdata_is_training_internal)) {
+    stored_offset <- fit_obj$offset
+    if (!is.null(stored_offset) && inherits(fit_obj, "coxph")) {
+      offset_origin <- object$cox_offset_reference
+      if (!is.numeric(offset_origin) || length(offset_origin) != 1L ||
+          is.na(offset_origin) || !is.finite(offset_origin)) {
+        stop(
+          "The fitted MFPI object lacks valid Cox offset-reference metadata. ",
+          "Refit the model with the current package version.",
+          call. = FALSE
+        )
+      }
+      # coxph stores its fitted offset after subtracting the mean training
+      # offset. New prediction data must contain the original offset scale,
+      # because predict.coxph() performs that centering itself.
+      stored_offset <- stored_offset + unname(offset_origin)
+    }
+    if (is.null(stored_offset)) {
+      fitted_frame <- try(stats::model.frame(fit_obj), silent = TRUE)
+      if (!inherits(fitted_frame, "try-error")) {
+        stored_offset <- stats::model.offset(fitted_frame)
+      }
+    }
+    if (is.null(stored_offset)) {
+      stop(
+        "The retained interaction model used an offset, but its fitted offset ",
+        "could not be recovered. Supply `newoffset` explicitly.",
+        call. = FALSE
+      )
+    }
+    newoffset <- stored_offset
+  }
+  
   if (is.null(newoffset)) {
     if (has_offset) {
       stop(
         paste0(
           "The fitted interaction model used an offset. Supply `newoffset` with ",
-          "one value per row of `newdata`."
+          "one value per row of `newdata`, or include the original formula ",
+          "offset variable(s) in `newdata`."
         ),
         call. = FALSE
       )
@@ -2147,24 +2461,28 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
            call. = FALSE)
     }
     pred_offset <- as.numeric(newoffset)
-    has_offset <- TRUE
   }
   
-  # Build formula-compatible newdata using the raw source-column names. The
-  # manual matrix X uses fitted coefficient names, while model prediction must
-  # receive the names that appeared in the fit-time data frame.
+  # Build formula-compatible newdata using raw source-column names. The
+  # returned diagnostic matrix X uses fitted coefficient names, while native
+  # model prediction must receive source-column names from the fit-time frame.
   model_newdata <- as.data.frame(X_source, check.names = FALSE)
   
-  fit_formula <- stats::formula(interaction_model$fit)
-  formula_text <- paste(deparse(fit_formula), collapse = " ")
-  expects_offset <- grepl("offset\\(offset_\\)", formula_text)
-  expects_strata <- grepl("strata\\(strata_\\)", formula_text)
+  expects_offset <- has_offset
+  expects_strata <- mfpi_fit_has_strata(fit_obj)
   
   if (expects_offset) {
     model_newdata$offset_ <- pred_offset
   }
   
   if (expects_strata) {
+    # Reconstruction of training rows can reuse the fitted stratum membership.
+    # This allows a caller to replace only the offset without redundantly
+    # supplying the original strata.
+    if (is.null(strata) && isTRUE(newdata_is_training_internal)) {
+      strata <- fit_obj$strata
+    }
+    
     if (is.null(strata)) {
       stop(
         paste0(
@@ -2182,6 +2500,15 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
     if (anyNA(strata)) {
       stop("`strata` must not contain missing values.", call. = FALSE)
+    }
+    strata_frame <- as.data.frame(strata, check.names = FALSE)
+    bad_numeric_strata <- names(strata_frame)[vapply(
+      strata_frame,
+      function(column) is.numeric(column) && any(!is.finite(column)),
+      logical(1L)
+    )]
+    if (length(bad_numeric_strata) > 0L) {
+      stop("Numeric `strata` values must be finite.", call. = FALSE)
     }
     
     model_newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
@@ -2202,225 +2529,82 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     group_internal = group_internal,
     group_levels = group_labels,
     newdata = !isTRUE(newdata_is_training_internal),
-    use_model_predict = FALSE
+    reconstructed = TRUE
   )
 }
 
 
-#' Predict Link or Response Values from a Design Matrix
+#' Delegate Ordinary MFPI Prediction to the Stored Model
 #'
-#' Computes ordinary subject-level predictions for one term-specific MFPI
-#' interaction model. When \code{use_model_predict = TRUE}, the helper
-#' delegates to the stored fitted model's \code{predict()} method. Otherwise,
-#' it multiplies the reconstructed design matrix by the fitted coefficient
-#' vector, adds the intercept and offset when applicable, and transforms to
-#' the response scale if requested. GLM offsets are added directly. Cox offsets
-#' are first expressed relative to the mean training offset, matching
-#' `predict.coxph(reference = "zero")`.
+#' Ordinary subject-level predictions are calculated exclusively by the stored
+#' `glm` or `coxph` object. MFPI reconstructs formula-compatible `newdata`, but
+#' it does not reproduce native prediction, centering, offset, baseline-hazard,
+#' or standard-error calculations manually.
 #'
-#' @section Standard errors:
-#' For manual prediction, the helper first computes the standard error of the
-#' linear predictor, \eqn{se_\eta}, as a row-wise quadratic form using the
-#' fitted covariance matrix. For GLM response-scale prediction, it then matches
-#' \code{predict.glm()} by multiplying \eqn{se_\eta} by
-#' \code{abs(family$mu.eta(eta))}. For Cox response prediction,
-#' \code{fit} is the relative risk score \eqn{\exp(\eta)} and
-#' \code{se.fit} follows \code{predict.coxph(type = "risk",
-#' reference = "zero")}: \eqn{se_\eta \sqrt{\exp(\eta)}}. This Cox
-#' convention differs from the ordinary inverse-link delta-method value
-#' \eqn{se_\eta \exp(\eta)}.
-#'
-#' @param object Object of class \code{"mfpi"}.
+#' @param object Object of class `"mfpi"`.
 #' @param term Character scalar naming the continuous variable whose
 #'   term-specific model is being used.
-#' @param fit_result Stored term-specific flex fit result containing the fitted
-#'   interaction model.
-#' @param X_new Reconstructed design matrix without an intercept column, or
-#'   \code{NULL} when \code{use_model_predict = TRUE}.
-#' @param offset Numeric offset vector for manual prediction, or \code{NULL}
-#'   when the fitted model's own prediction method is used. For manually
-#'   reconstructed training-data prediction, this can be a replacement newoffset
-#'   supplied with \code{newdata = NULL}.
-#' @param type Character scalar, either \code{"link"} or \code{"response"}.
-#' @param se.fit Logical scalar. Whether to compute standard errors.
-#' @param use_model_predict Logical scalar. If \code{TRUE}, call the stored
-#'   fitted model's \code{predict()} method instead of manual multiplication.
+#' @param fit_result Stored term-specific flex fit result.
+#' @param model_newdata Reconstructed formula-compatible prediction data, or
+#'   `NULL` to predict on the stored fitting data.
+#' @param type Validated family-native prediction type.
+#' @param se.fit Logical scalar. Whether to request standard errors.
+#' @param cox_reference Cox covariate reference for `"lp"` or `"risk"`, or
+#'   `NULL` for other prediction types and GLMs.
 #'
-#' @return List with \code{fit}, optional \code{se.fit}, and \code{link} when
-#'   the linear predictor is computed manually.
+#' @return List with numeric `fit`, optional numeric `se.fit`, and
+#'   `used_model_predict = TRUE`.
 #'
 #' @keywords internal
 #' @noRd
-mfpi_predict_from_design <- function(object, term, fit_result, X_new, offset,
-                                     model_newdata = NULL, type, se.fit,
-                                     use_model_predict = FALSE) {
-  # Final ordinary-prediction step. Either delegate to the fitted model's
-  # predict() method or multiply the reconstructed design by the coefficients.
-  
+mfpi_predict_ordinary <- function(object,
+                                  term,
+                                  fit_result,
+                                  model_newdata = NULL,
+                                  type,
+                                  se.fit,
+                                  cox_reference = NULL) {
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
   family_string <- mfpi_family_string(object)
   
-  if (isTRUE(use_model_predict) || !is.null(model_newdata)) {
-    # Training-data prediction without a replacement newoffset delegates to the
-    # fitted model. Cox uses reference = "zero" so delegated predictions
-    # agree with the manual covariate scale; both paths also use the same
-    # mean-training-offset origin.
-    if (identical(family_string, "cox")) {
-      pred_type <- if (type == "link") "lp" else "risk"
-      
-      predict_args <- list(
-        object = fit_obj,
-        type = pred_type,
-        se.fit = se.fit,
-        reference = "zero"
-      )
-      if (!is.null(model_newdata)) predict_args$newdata <- model_newdata
-      pred <- do.call(stats::predict, predict_args)
-      
-      if (is.list(pred)) {
-        fit <- as.numeric(pred$fit)
-        
-        return(list(
-          fit    = fit,
-          se.fit = if (!is.null(pred$se.fit)) as.numeric(pred$se.fit) else NULL,
-          link   = if (type == "link") fit else NULL,
-          used_model_predict = TRUE
-        ))
-      }
-      
-      fit <- as.numeric(pred)
-      
-      return(list(
-        fit    = fit,
-        se.fit = NULL,
-        link   = if (type == "link") fit else NULL,
-        used_model_predict = TRUE
-      ))
-    }
-    
-    predict_args <- list(object = fit_obj, type = type, se.fit = se.fit)
-    if (!is.null(model_newdata)) predict_args$newdata <- model_newdata
-    pred <- do.call(stats::predict, predict_args)
-    if (is.list(pred)) {
-      return(list(
-        fit = as.numeric(pred$fit),
-        se.fit = if (!is.null(pred$se.fit)) as.numeric(pred$se.fit) else NULL,
-        link = NULL,
-        used_model_predict = TRUE
-      ))
-    }
-    return(list(fit = as.numeric(pred), se.fit = NULL, link = NULL,
-                used_model_predict = TRUE))
-  }
-  
-  coef_vec <- interaction_model$coefficients
-  coef_vec <- stats::setNames(as.numeric(coef_vec), names(coef_vec))
-  vcov_mat <- stats::vcov(fit_obj)
-  
-  has_intercept <- !identical(family_string, "cox") &&
-    "(Intercept)" %in% names(coef_vec)
-  beta_names <- setdiff(names(coef_vec), "(Intercept)")
-  
-  mfpi_validate_required_coefficients(
-    coef_vec = coef_vec,
-    vcov_mat = vcov_mat,
-    required_names = unique(c(if (has_intercept) "(Intercept)", beta_names)),
-    context = paste0("ordinary MFPI prediction for term `", term, "`")
-  )
-  
-  if (!identical(colnames(X_new), beta_names)) {
-    missing <- setdiff(beta_names, colnames(X_new))
-    if (length(missing) > 0L) {
-      stop(paste0("Prediction matrix is missing coefficient column(s): ",
-                  paste(missing, collapse = ", "), "."), call. = FALSE)
-    }
-    X_new <- X_new[, beta_names, drop = FALSE]
-  }
-  
-  # Manual path: construct the linear predictor from the reconstructed
-  # design matrix. Cox offsets follow survival::predict.coxph(): the supplied
-  # prediction offset is expressed relative to the mean offset in the fitting
-  # data, independently of reference = "zero" for the covariates. GLM offsets
-  # retain their ordinary uncentred interpretation.
-  prediction_offset <- offset
-  if (identical(family_string, "cox")) {
-    prediction_offset <- offset - mfpi_cox_offset_reference(object)
-  }
-  
-  eta <- as.vector(X_new %*% coef_vec[beta_names]) + prediction_offset
-  if (has_intercept) eta <- eta + unname(coef_vec["(Intercept)"])
-  
-  fam <- object$family
-  if (is.function(fam)) fam <- fam()
-  
-  # Convert the linear predictor to the requested scale. For Cox,
-  # response-scale prediction is the relative risk score exp(eta).
-  if (type == "link") {
-    fit <- eta
-  } else if (identical(family_string, "cox")) {
-    fit <- exp(eta)
-  } else if (is.list(fam) && is.function(fam$linkinv)) {
-    fit <- fam$linkinv(eta)
-  } else {
-    fit <- switch(
-      family_string,
-      gaussian = eta,
-      binomial = stats::binomial()$linkinv(eta),
-      poisson = stats::poisson()$linkinv(eta),
-      stop("Unsupported family for response-scale prediction.", call. = FALSE)
+  if (is.null(fit_obj)) {
+    stop(
+      "No stored fitted interaction model is available for term `", term, "`.",
+      call. = FALSE
     )
   }
   
-  se_out <- NULL
-  if (se.fit) {
-    # First compute SE(eta). Response-scale SEs are transformations of this
-    # quantity; the Cox risk transformation intentionally follows coxph.
-    X_vcov <- X_new
-    if (has_intercept) X_vcov <- cbind("(Intercept)" = 1, X_vcov)
-    v_sub <- vcov_mat[colnames(X_vcov), colnames(X_vcov), drop = FALSE]
-    var_eta <- rowSums((X_vcov %*% v_sub) * X_vcov)
-    se_eta <- sqrt(mfpi_sanitize_variance(
-      var_eta,
-      context = paste0("ordinary MFPI prediction for term `", term, "`")
-    ))
-    
-    if (type == "link") {
-      se_out <- se_eta
-    } else if (identical(family_string, "cox")) {
-      # Match survival::predict.coxph(type = "risk", se.fit = TRUE,
-      # reference = "zero"). Cox response prediction returns exp(eta), but
-      # coxph reports the risk-score SE as se_eta * sqrt(exp(eta)), not as
-      # the ordinary inverse-link delta-method value se_eta * exp(eta).
-      se_out <- sqrt(fit) * se_eta
-    } else if (is.list(fam) && is.function(fam$mu.eta)) {
-      se_out <- abs(fam$mu.eta(eta)) * se_eta
-    } else {
-      deriv <- switch(
-        family_string,
-        gaussian = rep(1, length(eta)),
-        binomial = stats::binomial()$mu.eta(eta),
-        poisson = stats::poisson()$mu.eta(eta),
-        stop("Unsupported family for response-scale standard errors.",
-             call. = FALSE)
-      )
-      se_out <- abs(deriv) * se_eta
-    }
+  predict_args <- list(
+    object = fit_obj,
+    type = type,
+    se.fit = se.fit
+  )
+  
+  if (!is.null(model_newdata)) {
+    predict_args$newdata <- model_newdata
   }
   
-  # Match the delegated predict.glm()/predict.coxph() branches: ordinary
-  # prediction outputs are plain unnamed numeric vectors. Matrix row names can
-  # otherwise propagate through rowSums() into se_eta and se_out.
-  if (!is.null(se_out)) se_out <- as.numeric(se_out)
+  if (identical(family_string, "cox") && type %in% c("lp", "risk")) {
+    predict_args$reference <- cox_reference
+  }
+  
+  pred <- do.call(stats::predict, predict_args)
+  
+  if (is.list(pred)) {
+    return(list(
+      fit = as.numeric(pred$fit),
+      se.fit = if (is.null(pred$se.fit)) NULL else as.numeric(pred$se.fit),
+      used_model_predict = TRUE
+    ))
+  }
   
   list(
-    fit = as.numeric(fit),
-    se.fit = se_out,
-    link = as.numeric(eta),
-    used_model_predict = FALSE
+    fit = as.numeric(pred),
+    se.fit = NULL,
+    used_model_predict = TRUE
   )
 }
-
 
 # -----------------------------------------------------------------------------
 # Validation and scalar helpers ------------------------------------------------
@@ -2478,11 +2662,70 @@ mfpi_family_string <- function(object) {
   # Prefer the normalized family string stored by mfpi(); fall back only for
   # older or manually constructed objects.
   
-  if (!is.null(object$family_string)) return(as.character(object$family_string)[1L])
+  if (!is.null(object$family_string)) {
+    return(unname(as.character(object$family_string)[1L]))
+  }
   fam <- object$family
-  if (is.character(fam)) return(fam[1L])
-  if (is.list(fam) && !is.null(fam$family)) return(as.character(fam$family)[1L])
+  if (is.character(fam)) return(unname(as.character(fam)[1L]))
+  if (is.list(fam) && !is.null(fam$family)) {
+    return(unname(as.character(fam$family)[1L]))
+  }
   stop("Cannot determine the model family from the MFPI object.", call. = FALSE)
+}
+
+
+#' Resolve an MFPI Prediction Type for the Fitted Family
+#'
+#' @param type Character scalar or `NULL`. `NULL` selects `"both"`.
+#' @param family_string Character scalar identifying the fitted family.
+#'
+#' @return A validated, family-native prediction type.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_match_prediction_type <- function(type, family_string) {
+  if (is.null(type)) {
+    return("both")
+  }
+  
+  type <- normalize_prediction_type(type, family_string)
+  
+  choices <- if (identical(family_string, "cox")) {
+    c("both", "function", "difference", "lp", "risk", "expected", "survival")
+  } else {
+    c("both", "function", "difference", "link", "response")
+  }
+  
+  tryCatch(
+    match.arg(type, choices),
+    error = function(e) {
+      alias_note <- if (identical(family_string, "cox")) {
+        " The alias 'link' is also accepted for 'lp'."
+      } else {
+        " The alias 'lp' is also accepted for 'link'."
+      }
+      stop(
+        "For ", if (identical(family_string, "cox")) "Cox" else "GLM",
+        " MFPI models, `type` must be one of: ",
+        paste(shQuote(choices), collapse = ", "),
+        ".", alias_note,
+        call. = FALSE
+      )
+    }
+  )
+}
+
+
+#' Detect Stratification in a Stored Cox Model
+#'
+#' @param fit_obj Fitted model object.
+#'
+#' @return Logical scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_fit_has_strata <- function(fit_obj) {
+  prediction_fit_has_strata(fit_obj)
 }
 
 
@@ -2718,37 +2961,6 @@ mfpi_resolve_reference_group <- function(reference, group_labels, object) {
 }
 
 
-#' Retrieve the Cox Offset Reference Stored at Fit Time
-#'
-#' `survival::predict.coxph()` subtracts the mean training offset from every
-#' prediction offset, including when `reference = "zero"`. All Cox models
-#' The final adjustment fit calculates that scalar once and the top-level
-#' MFPI object stores it as `cox_offset_reference` for every interaction model.
-#'
-#' @param object A fitted `mfpi` object.
-#'
-#' @return Finite numeric scalar.
-#'
-#' @keywords internal
-#' @noRd
-mfpi_cox_offset_reference <- function(object) {
-  reference <- object$cox_offset_reference
-  
-  if (!is.numeric(reference) || length(reference) != 1L ||
-      is.na(reference) || !is.finite(reference)) {
-    stop(
-      paste0(
-        "The fitted MFPI object lacks valid Cox offset-reference metadata. ",
-        "Refit the MFPI object with the current package version."
-      ),
-      call. = FALSE
-    )
-  }
-  
-  unname(reference)
-}
-
-
 #' Detect Whether a Fitted Model Used an Offset
 #'
 #' Inspects a fitted GLM or Cox model object for stored offset information. The
@@ -2763,7 +2975,7 @@ mfpi_cox_offset_reference <- function(object) {
 #' @noRd
 mfpi_fit_has_offset <- function(fit_obj) {
   # Detect offsets both from fitted-object storage and from the model terms.
-  # This determines whether manual newdata prediction must require an offset.
+  # This determines whether reconstructed prediction data require an offset.
   
   if (!is.null(fit_obj$offset)) return(TRUE)
   trm <- try(stats::terms(fit_obj), silent = TRUE)

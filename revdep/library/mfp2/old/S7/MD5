@@ -1,4 +1,4 @@
-690bd357b6facc46ef8d0af77d8216c7 *DESCRIPTION
+06bc7551358314911ab9008707657aa5 *DESCRIPTION
 5f2c979baf1f16a1a49b9e9505577306 *INDEX
 55a910047be2c2d8749573ab45ad345f *LICENSE
 646286ecf6719f837344f77f3c901120 *Meta/Rd.rds
@@ -6,7 +6,7 @@
 f75dd931b6d14811a59ab3a825ee785c *Meta/hsearch.rds
 54040bdbdc10cd74305ab7a9bc66f489 *Meta/links.rds
 f305e5d349347d3a7fe7abdcbaff9824 *Meta/nsInfo.rds
-f8004b997cd94687e6016609e4583ba5 *Meta/package.rds
+b93cd71f531b8c7b15d5f7a3f7504c87 *Meta/package.rds
 d1b6f10ad0f5be4b35e935a2088c217b *Meta/vignette.rds
 f0f73e043f0370460e786e36b513fd6a *NAMESPACE
 f1ac2389d935b9075fb823ffde2ce3b6 *NEWS.md
@@ -37,11 +37,11 @@ ed472ce2aa8de172529397bd4a67c3f7 *doc/motivation.R
 a81efab9e80a24528974c3c9c2f217ba *doc/performance.Rmd
 b9815e7634f16ba0cb5143c7cfcf61b6 *doc/performance.html
 b79736679683fc69221bd1641bbeb861 *help/AnIndex
-d6ad4b3052be3bb76f24e9d2221b6a5d *help/S7.rdb
-dd35a6a4eddfc1121f857f2ee83b5990 *help/S7.rdx
+af012f0492713dd0c6a37c84729f909c *help/S7.rdb
+cdb6caccc1416be997fde8851cb0fa8d *help/S7.rdx
 6fca3d5248b5985d8f5f96b0fc2efa58 *help/aliases.rds
-d058a300464f0bac76335439303af7b0 *help/paths.rds
+671975a694c53ac80a554f99c6952831 *help/paths.rds
 05d7268fd9b7cd1573c18a7a09d06641 *html/00Index.html
 ee41876c0116916bb04bcf4fe3e43d78 *html/R.css
-569808fff1924d36d0ae0b533c316d5b *libs/x64/S7.dll
+1f6f51d8d42fa88accfb8c68090b938f *libs/x64/S7.dll
 3f90f543ca3a6d457059f312826d072a *libs/x64/symbols.rds

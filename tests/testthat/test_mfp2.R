@@ -2,6 +2,13 @@
 # Comprehensive tests for the mfp2 package
 # =============================================================================
 #
+# Version 6 preprocessing regression coverage
+# --------------------------------------------
+# This revision documents and tests the matrix-interface contract that unnamed
+# scalar shift/scale values are global, while named vectors may specify a subset
+# of columns. Unspecified named-vector entries remain automatic. It also verifies
+# that insufficient explicit shifts fail instead of being silently enlarged.
+#
 # File organization
 # -----------------
 # Tests are grouped by feature area. Keep new tests inside the most specific
@@ -13,6 +20,9 @@
 #   2.  mfp2.formula() - formula parsing, fp()/fp2(), factor handling, strata
 #   3.  Family and response validation
 #   4.  Preprocessing - shift, scale, centering
+#       4.1 Shared shift/scale fixtures and validation expectations
+#       4.2 mfp2 shift/scale matrix and formula interfaces
+#       4.3 mfpi shift/scale matrix and formula interfaces
 #   5.  Candidate-power validation and custom powers
 #   6.  SAZ (spike-at-zero) - eligibility, cascade, reset, prediction
 #   7.  ACD transformation - fitting, validation, prediction, stored parameters
@@ -26,7 +36,7 @@
 #  12.  Weights and offsets
 #  13.  Convergence and cycles
 #  14.  zero_vars and catzero_vars
-#  15.  force_max_fp
+#  15.  force_max_fp_vars and formula-term force_max_fp
 #  16.  mfpi() - basic interaction fitting
 #       16.1 Grouped categorical adjustment terms
 #  17.  predict.mfpi()
@@ -758,6 +768,30 @@ test_that("find_scale_factor() returns 1 for binary variables", {
   expect_equal(find_scale_factor(c(0, 1, 0, 1)), 1)
 })
 
+# Test purpose: An explicitly supplied scale must not rescale a binary
+# predictor. Binary variables retain neutral preprocessing factors regardless
+# of user-supplied shift and scale values.
+test_that("mfp2.default() resets supplied scale for binary variables", {
+  n <- 80L
+  svi <- rep(c(0, 1), each = n / 2L)
+  x <- cbind(svi = svi)
+  y <- 1 + 2 * svi + sin(seq_len(n) / 5)
+  
+  fit <- mfp2(
+    x = x,
+    y = y,
+    shift = c(svi = 10),
+    scale = c(svi = 1000),
+    df = 1,
+    keep = "svi",
+    center = FALSE,
+    verbose = FALSE
+  )
+  
+  expect_equal(as.numeric(fit$transformations["svi", "shift"]), 0)
+  expect_equal(as.numeric(fit$transformations["svi", "scale"]), 1)
+})
+
 # Test purpose: Checks automatic power-of-10 scaling for a known numeric range.
 test_that("find_scale_factor() returns correct power-of-10 scaling", {
   # range = 999, log10(999) ~ 2.999, floor = 2, so scale = 100
@@ -791,6 +825,1171 @@ test_that("centering can be disabled", {
   expect_s3_class(fit, "mfp2")
   expect_null(fit$centers)
   expect_true(all(fit$transformations$center == FALSE))
+})
+
+
+# =============================================================================
+# 4.1 Shift and scale safety contract - shared setup
+# =============================================================================
+# Review objective
+# ----------------
+# The tests in Sections 4.2 and 4.3 verify the complete user-input contract for
+# shift and scale without changing the existing preprocessing calculations:
+#
+#   1. NULL keeps automatic shift/scale selection.
+#   2. A single finite numeric value is recycled to every matrix column.
+#   3. A multi-value vector must be fully and uniquely named.
+#   4. Named values are matched to colnames(x), not to supplied position.
+#   5. Missing, unknown, duplicate, or empty names are rejected.
+#   6. shift values must be finite numeric values with no missing values.
+#   7. scale values must additionally be strictly positive.
+#   8. Formula-level scalar and per-variable fp() settings remain compatible.
+#   9. Correctly specified models retain identical fits and predictions when
+#      the same named settings are supplied in a different order.
+#
+# Sections 4.2 and 4.3 are intentionally separate. MFPI has an additional
+# grouping-variable column that must participate in matrix-name validation but
+# is subsequently handled as categorical metadata by the fitting procedure.
+
+# -----------------------------------------------------------------------------
+# 4.1.1 Deterministic shared data
+# -----------------------------------------------------------------------------
+# Expected use:
+# - setting_x and setting_y exercise the ordinary mfp2 matrix interface.
+# - mfpi_setting_x adds the MFPI grouping variable "svi" as a matrix column.
+# - The response contains nonlinear signal so stored transformations and
+#   predictions are meaningful integration checks rather than validation-only
+#   calls.
+
+set.seed(20260717)
+setting_n <- 96L
+setting_x <- cbind(
+  age = runif(setting_n, 20, 80),
+  weight = runif(setting_n, 45, 105)
+)
+setting_y <-
+  1.5 * sqrt(setting_x[, "age"] + 2) -
+  2.0 * log(setting_x[, "weight"] + 3) +
+  rnorm(setting_n, sd = 0.15)
+
+mfpi_setting_x <- cbind(
+  svi = rep(c(0, 1), each = setting_n / 2),
+  age = setting_x[, "age"],
+  weight = setting_x[, "weight"]
+)
+mfpi_setting_y <-
+  setting_y +
+  0.4 * mfpi_setting_x[, "svi"] * sqrt(mfpi_setting_x[, "age"] + 2)
+
+# -----------------------------------------------------------------------------
+# 4.1.2 Shared fitting helpers
+# -----------------------------------------------------------------------------
+# Expected use:
+# - Keep model specifications identical across ordered and reverse-ordered
+#   setting vectors.
+# - Limit differences between compared fits to the order in which named shift
+#   or scale values were supplied.
+
+fit_mfp2_settings <- function(shift = NULL, scale = NULL) {
+  mfp2(
+    x = setting_x,
+    y = setting_y,
+    shift = shift,
+    scale = scale,
+    df = 2,
+    select = 1,
+    alpha = 1,
+    force_max_fp_vars = colnames(setting_x),
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+}
+
+fit_mfpi_settings <- function(shift = NULL, scale = NULL) {
+  mfpi(
+    x = mfpi_setting_x,
+    y = mfpi_setting_y,
+    group_var = "svi",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    shift = shift,
+    scale = scale,
+    df = 2,
+    select = 1,
+    alpha = 1,
+    force_max_fp_vars = c("age", "weight"),
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+}
+
+# -----------------------------------------------------------------------------
+# 4.1.3 Shared validation-call helpers
+# -----------------------------------------------------------------------------
+# Expected use:
+# - Reach the public matrix interfaces with the smallest practical fit.
+# - Keep validation tests focused on shift/scale errors rather than FP model
+#   selection behavior.
+
+mfp2_validation_call <- function(argument, value) {
+  args <- list(
+    x = setting_x,
+    y = setting_y,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 1,
+    verbose = FALSE
+  )
+  args[[argument]] <- value
+  do.call(mfp2, args)
+}
+
+mfpi_validation_call <- function(argument, value) {
+  args <- list(
+    x = mfpi_setting_x,
+    y = mfpi_setting_y,
+    group_var = "svi",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 1,
+    verbose = FALSE
+  )
+  args[[argument]] <- value
+  do.call(mfpi, args)
+}
+
+# -----------------------------------------------------------------------------
+# 4.1.4 Shared malformed-input fixtures
+# -----------------------------------------------------------------------------
+# Each fixture represents one distinct part of the public input contract. The
+# same cases are applied separately to mfp2.default() and mfpi.default().
+
+invalid_named_settings <- function(column_names) {
+  n <- length(column_names)
+  values <- seq_len(n)
+  
+  partially_named <- stats::setNames(values, column_names)
+  names(partially_named)[2L] <- ""
+  
+  duplicated_names <- stats::setNames(values, column_names)
+  names(duplicated_names)[2L] <- column_names[[1L]]
+  
+  unknown_replacement <- stats::setNames(values, column_names)
+  names(unknown_replacement)[n] <- "replacement_column"
+  
+  list(
+    # More than one value with no names must never be matched by position.
+    unnamed = unname(values),
+    
+    # Every element of a multi-value vector must have a non-empty name.
+    partially_named = partially_named,
+    
+    # Ambiguous duplicate names cannot identify one value per matrix column.
+    duplicated = duplicated_names,
+    
+    # Replacing a valid name introduces an unknown supplied column. The
+    # omitted known column itself is valid under the partial-vector contract.
+    unknown_replacement = unknown_replacement,
+    
+    # A complete required set plus an extra name must be rejected.
+    unknown_extra = stats::setNames(
+      c(values, n + 1L),
+      c(column_names, "unknown_column")
+    ),
+    
+    # Extra named values fail because their names are not matrix columns.
+    extra_unknown_names = stats::setNames(
+      c(values, n + 1L, n + 2L),
+      c(column_names, "unknown_column_1", "unknown_column_2")
+    ),
+    
+    # Explicit numerical settings must be finite and nonmissing.
+    non_finite = stats::setNames(
+      replace(as.numeric(values), 1L, Inf),
+      column_names
+    ),
+    missing_value = stats::setNames(
+      replace(as.numeric(values), 1L, NA_real_),
+      column_names
+    ),
+    
+    # Logical values must not be silently coerced into numeric settings.
+    logical = stats::setNames(rep(TRUE, n), column_names)
+  )
+}
+
+# -----------------------------------------------------------------------------
+# 4.1.5 Shared expectation helpers for malformed names
+# -----------------------------------------------------------------------------
+# These expectations are deliberately explicit. A review can therefore map
+# every required naming failure to one assertion while still applying the same
+# contract consistently to the two public matrix interfaces.
+
+expect_setting_name_errors <- function(call_setting, column_names) {
+  invalid <- invalid_named_settings(column_names)
+  
+  # Shift and scale accept named subsets, but never unnamed multi-value
+  # vectors, incomplete names, duplicate names, or names outside colnames(x).
+  expect_error(
+    call_setting("shift", invalid$unnamed),
+    "`shift` must be a single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    call_setting("shift", invalid$partially_named),
+    "`shift` must be a single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    call_setting("shift", invalid$duplicated),
+    "`shift` names must be unique"
+  )
+  for (invalid_shift in invalid[c(
+    "unknown_replacement", "unknown_extra", "extra_unknown_names"
+  )]) {
+    expect_error(
+      call_setting("shift", invalid_shift),
+      "`shift` contains unknown column name"
+    )
+  }
+  
+  expect_error(
+    call_setting("scale", invalid$unnamed),
+    "`scale` must be a single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    call_setting("scale", invalid$partially_named),
+    "`scale` must be a single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    call_setting("scale", invalid$duplicated),
+    "`scale` names must be unique"
+  )
+  for (invalid_scale in invalid[c(
+    "unknown_replacement", "unknown_extra", "extra_unknown_names"
+  )]) {
+    expect_error(
+      call_setting("scale", invalid_scale),
+      "`scale` contains unknown column name"
+    )
+  }
+}
+
+# -----------------------------------------------------------------------------
+# 4.1.6 Shared expectation helpers for invalid values
+# -----------------------------------------------------------------------------
+# Numerical validation is common to shift and scale. Positivity is tested
+# separately because it is an additional requirement that applies only to scale.
+
+expect_setting_numeric_errors <- function(call_setting, column_names) {
+  invalid <- invalid_named_settings(column_names)
+  
+  for (argument in c("shift", "scale")) {
+    # Requirement: Inf and -Inf are not valid explicit settings.
+    expect_error(
+      call_setting(argument, invalid$non_finite),
+      paste0("`", argument, "` must contain only finite values")
+    )
+    
+    # Requirement: direct matrix settings cannot contain NA values.
+    expect_error(
+      call_setting(argument, invalid$missing_value),
+      paste0("`", argument, "` must not contain missing values")
+    )
+    
+    # Requirement: TRUE/FALSE must not be accepted as 1/0 settings.
+    expect_error(
+      call_setting(argument, invalid$logical),
+      paste0("`", argument, "` must contain numeric values")
+    )
+  }
+}
+
+expect_nonpositive_scale_errors <- function(call_setting, column_names) {
+  zero_scale <- stats::setNames(rep(1, length(column_names)), column_names)
+  zero_scale[[1L]] <- 0
+  
+  negative_scale <- stats::setNames(rep(1, length(column_names)), column_names)
+  negative_scale[[1L]] <- -1
+  
+  # Requirement: zero is not a valid divisor for scaling, including when
+  # supplied through the named-partial interface.
+  expect_error(
+    call_setting("scale", zero_scale),
+    "`scale` must contain only strictly positive values"
+  )
+  expect_error(
+    call_setting("scale", stats::setNames(0, column_names[[1L]])),
+    "`scale` must contain only strictly positive values"
+  )
+  
+  # Requirement: negative scales are not valid transformation settings.
+  expect_error(
+    call_setting("scale", negative_scale),
+    "`scale` must contain only strictly positive values"
+  )
+  expect_error(
+    call_setting("scale", stats::setNames(-1, column_names[[1L]])),
+    "`scale` must contain only strictly positive values"
+  )
+}
+
+
+# -----------------------------------------------------------------------------
+# 4.1.7-4.1.8 Direct normalization regression tests
+# -----------------------------------------------------------------------------
+# These tests isolate argument normalization from model fitting. They protect
+# the precise distinction that caused the original bug: a named length-one
+# vector is partial and variable-specific, while an unnamed length-one vector
+# is global.
+
+test_that("4.1.7 named scalar settings are partial, not global", {
+  columns <- c("cavol", "age", "weight")
+  normalized_shift <- mfp2:::normalize_named_numeric_setting(
+    value = c(age = 20),
+    column_names = columns,
+    argument_name = "shift",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = FALSE,
+    allow_na = FALSE,
+    allow_partial_named = TRUE
+  )
+  normalized_scale <- mfp2:::normalize_named_numeric_setting(
+    value = c(age = 10),
+    column_names = columns,
+    argument_name = "scale",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = TRUE,
+    allow_na = FALSE,
+    allow_partial_named = TRUE
+  )
+  
+  expect_identical(
+    normalized_shift,
+    c(cavol = NA_real_, age = 20, weight = NA_real_)
+  )
+  expect_identical(
+    normalized_scale,
+    c(cavol = NA_real_, age = 10, weight = NA_real_)
+  )
+})
+
+test_that("4.1.8 unnamed scalar settings remain global", {
+  columns <- c("cavol", "age", "weight")
+  normalized_shift <- mfp2:::normalize_named_numeric_setting(
+    value = 20,
+    column_names = columns,
+    argument_name = "shift",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = FALSE,
+    allow_na = FALSE,
+    allow_partial_named = TRUE
+  )
+  normalized_scale <- mfp2:::normalize_named_numeric_setting(
+    value = 10,
+    column_names = columns,
+    argument_name = "scale",
+    allow_null = TRUE,
+    scalar_recycle = TRUE,
+    strictly_positive = TRUE,
+    allow_na = FALSE,
+    allow_partial_named = TRUE
+  )
+  
+  expect_identical(normalized_shift, c(cavol = 20, age = 20, weight = 20))
+  expect_identical(normalized_scale, c(cavol = 10, age = 10, weight = 10))
+})
+
+
+# =============================================================================
+# 4.2 mfp2 shift and scale behavior
+# =============================================================================
+# Scope
+# -----
+# This section tests the ordinary mfp2 matrix interface first, followed by the
+# formula interface. Each test title is numbered so a reviewer can trace the
+# expected behavior directly to the corresponding requirement above.
+
+# -----------------------------------------------------------------------------
+# 4.2.1 NULL keeps automatic preprocessing
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that leaving both arguments as NULL still delegates shift and scale
+#   selection to the package's existing automatic preprocessing logic.
+# - Protect against the new normalization helper accidentally treating NULL as
+#   an invalid or incomplete user-supplied vector.
+# - Confirm that automatic preprocessing produces usable settings for every
+#   matrix column before fractional-polynomial fitting begins.
+#
+# Expected output:
+# - fit$transformations contains rows named "age" and "weight".
+# - The selected shift and scale cells contain no NA values.
+# - Every selected shift and scale value is finite.
+# - Both scale values are greater than zero.
+
+test_that("4.2.1 mfp2.default() keeps automatic shift and scale for NULL", {
+  fit <- fit_mfp2_settings()
+  transformations <- fit$transformations[
+    colnames(setting_x), c("shift", "scale"), drop = FALSE
+  ]
+  
+  expect_false(anyNA(transformations))
+  expect_true(all(is.finite(as.matrix(transformations))))
+  expect_true(all(transformations$scale > 0))
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.2 Scalars are recycled to every matrix column
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that a single finite numeric shift remains a global matrix setting.
+# - Verify that a single positive numeric scale remains a global matrix setting.
+# - Protect the documented scalar interface while tightening validation for
+#   vectors containing more than one value.
+#
+# Expected output:
+# - In colnames(setting_x) order, the stored shifts are c(2, 2).
+# - In colnames(setting_x) order, the stored scales are c(10, 10).
+# - No name matching is required from the user for these scalar inputs.
+
+test_that("4.2.2 mfp2.default() recycles scalar shift and scale", {
+  fit <- fit_mfp2_settings(shift = 2, scale = 10)
+  transformations <- fit$transformations[
+    colnames(setting_x), c("shift", "scale"), drop = FALSE
+  ]
+  
+  expect_equal(unname(transformations$shift), rep(2, ncol(setting_x)))
+  expect_equal(unname(transformations$scale), rep(10, ncol(setting_x)))
+})
+
+
+# -----------------------------------------------------------------------------
+# 4.2.2a Named partial settings fix supplied columns and estimate the rest
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that c(age = 20) and c(age = 100) apply only to age rather than
+#   being recycled as global shift and scale settings.
+# - Verify that an unspecified nonlinear predictor retains internal NA
+#   sentinels until the ordinary shift and scale estimation steps.
+# - Exercise the public matrix interface through stored transformation metadata.
+
+test_that("4.2.2a mfp2.default() estimates unspecified named partial settings", {
+  index <- seq_len(60L)
+  partial_x <- cbind(
+    age = seq(20, 79),
+    weight = -30 + ((17 * index) %% 60)
+  )
+  expected_weight_shift <- mfp2:::find_shift_factor(partial_x[, "weight"])
+  expected_weight_scale <- mfp2:::find_scale_factor(
+    partial_x[, "weight"] + expected_weight_shift
+  )
+  partial_y <-
+    1.2 * sqrt(partial_x[, "age"] + 20) -
+    0.7 * log(partial_x[, "weight"] + expected_weight_shift) +
+    0.05 * sin(index / 4)
+  
+  fit <- mfp2(
+    x = partial_x,
+    y = partial_y,
+    shift = c(age = 20),
+    scale = c(age = 100),
+    df = 2,
+    select = 1,
+    alpha = 1,
+    force_max_fp_vars = colnames(partial_x),
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  transformations <- fit$transformations[
+    colnames(partial_x), c("shift", "scale"), drop = FALSE
+  ]
+  expect_equal(unname(transformations["age", "shift"]), 20)
+  expect_equal(
+    unname(transformations["weight", "shift"]),
+    expected_weight_shift
+  )
+  expect_equal(unname(transformations["age", "scale"]), 100)
+  expect_equal(
+    unname(transformations["weight", "scale"]),
+    expected_weight_scale
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.2b Insufficient explicit shifts fail before FP fitting
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that a supplied named shift is not silently increased.
+# - Verify that the existing positivity check reports the affected variable when
+#   the shifted nonlinear predictor still contains zero or negative values.
+
+test_that("4.2.2b mfp2.default() rejects insufficient named partial shifts", {
+  index <- seq_len(60L)
+  insufficient_x <- cbind(
+    age = -30 + ((17 * index) %% 60),
+    weight = 40 + ((23 * index) %% 60)
+  )
+  insufficient_y <-
+    0.3 * insufficient_x[, "age"] +
+    0.2 * sqrt(insufficient_x[, "weight"]) +
+    sin(index / 5)
+  
+  expect_error(
+    mfp2(
+      x = insufficient_x,
+      y = insufficient_y,
+      shift = c(age = 30),
+      scale = 1,
+      df = 2,
+      select = 1,
+      alpha = 1,
+      force_max_fp_vars = colnames(insufficient_x),
+      center = FALSE,
+      cycles = 5,
+      xorder = "original",
+      verbose = FALSE
+    ),
+    "Problematic variables: age"
+  )
+})
+
+
+# -----------------------------------------------------------------------------
+# 4.2.2c Partial scale keeps mapped-term automatic defaults
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that an unspecified grouped design block still receives scale = 1.
+# - Verify that an explicit partial scale remains authoritative for its column.
+
+test_that("4.2.2c partial scale preserves mapped-term defaults", {
+  normalized_scale <- c(group_b = NA_real_, group_c = NA_real_, age = 100)
+  term_to_columns <- list(
+    group = c("group_b", "group_c"),
+    age = "age"
+  )
+  
+  result <- mfp2:::expand_scale_for_mapped_terms(
+    scale = normalized_scale,
+    vnames = names(normalized_scale),
+    term_to_columns = term_to_columns,
+    automatic = is.na(normalized_scale)
+  )
+  
+  expect_equal(
+    result,
+    c(group_b = 1, group_c = 1, age = 100)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.3 Ordered named vectors are stored against the matching columns
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify the accepted multi-value form: one numeric value for every matrix
+#   column, with complete and unique names.
+# - Confirm that normalization returns the settings in colnames(setting_x)
+#   order and that downstream transformation metadata preserves those values.
+# - Establish the reference fit used conceptually by the reordered-input test.
+#
+# Expected output:
+# - The "age" transformation row stores shift = 1 and scale = 10.
+# - The "weight" transformation row stores shift = 2 and scale = 100.
+# - Reading the two rows in matrix-column order returns shifts c(1, 2) and
+#   scales c(10, 100).
+
+test_that("4.2.3 mfp2.default() accepts fully named shift and scale", {
+  fit <- fit_mfp2_settings(
+    shift = c(age = 1, weight = 2),
+    scale = c(age = 10, weight = 100)
+  )
+  transformations <- fit$transformations[
+    colnames(setting_x), c("shift", "scale"), drop = FALSE
+  ]
+  
+  expect_equal(unname(transformations$shift), c(1, 2))
+  expect_equal(unname(transformations$scale), c(10, 100))
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.4 Named-vector order does not change the fitted model
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Reproduce the original failure mode by supplying the same named settings in
+#   matrix order and then in reverse order.
+# - Verify that values are matched by their names rather than silently relabeled
+#   according to their supplied positions.
+# - Exercise the complete path from normalization through FP transformation,
+#   model fitting, stored metadata, and prediction.
+#
+# Expected output:
+# - The ordered and reversed fits have identical transformation tables.
+# - Their coefficient vectors and fitted values are numerically identical.
+# - Predictions for the first 12 rows of setting_x are numerically identical.
+# - In particular, age always receives shift = 1 and scale = 10, while weight
+#   always receives shift = 2 and scale = 100, regardless of input order.
+
+test_that("4.2.4 mfp2.default() matches shift and scale by name", {
+  ordered <- fit_mfp2_settings(
+    shift = c(age = 1, weight = 2),
+    scale = c(age = 10, weight = 100)
+  )
+  reversed <- fit_mfp2_settings(
+    shift = c(weight = 2, age = 1),
+    scale = c(weight = 100, age = 10)
+  )
+  
+  expect_equal(ordered$transformations, reversed$transformations)
+  expect_equal(unname(stats::coef(ordered)), unname(stats::coef(reversed)))
+  expect_equal(unname(stats::fitted(ordered)), unname(stats::fitted(reversed)))
+  
+  new_x <- setting_x[1:12, , drop = FALSE]
+  expect_equal(
+    unname(stats::predict(ordered, newdata = new_x)),
+    unname(stats::predict(reversed, newdata = new_x))
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.5 Invalid multi-value names are rejected
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that positional matching is no longer available for multi-value
+#   matrix settings.
+# - Verify that every accepted multi-value vector identifies only known columns,
+#   with no ambiguity or surplus entries.
+# - Apply the same naming contract independently to shift and scale.
+#
+# Expected output for each argument:
+# - Unnamed multi-value vectors and vectors containing empty element names
+#   error with the single-unnamed-or-named-vector message.
+# - Duplicate names error with "`<argument>` names must be unique".
+# - Named vectors containing unknown columns error with
+#   "`<argument>` contains unknown column name".
+# - No model is fitted for any invalid input.
+
+test_that("4.2.5 mfp2.default() rejects invalid shift and scale names", {
+  expect_setting_name_errors(mfp2_validation_call, colnames(setting_x))
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.6 Missing, non-finite, and logical values are rejected
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that direct matrix settings are genuine numeric configuration values,
+#   not logical vectors that R could silently coerce to 0 and 1.
+# - Verify that explicit values are complete and finite before transformation or
+#   model fitting is attempted.
+# - Apply the same numeric validation to shift and scale.
+#
+# Expected output for each argument:
+# - A vector containing Inf errors with
+#   "`<argument>` must contain only finite values".
+# - A vector containing NA errors with
+#   "`<argument>` must not contain missing values".
+# - A logical vector errors with
+#   "`<argument>` must contain numeric values".
+# - No invalid value reaches the transformation table.
+
+test_that("4.2.6 mfp2.default() rejects invalid numeric settings", {
+  expect_setting_numeric_errors(mfp2_validation_call, colnames(setting_x))
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.7 Scale must be strictly positive
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify the scale-specific constraint that every explicit divisor is greater
+#   than zero, in addition to being numeric and finite.
+# - Protect transformation calculations from division by zero and from a sign
+#   reversal introduced by a negative scale.
+#
+# Expected output:
+# - A named scale vector containing 0 errors with
+#   "`scale` must contain only strictly positive values".
+# - A named scale vector containing -1 produces the same error.
+# - Validation fails before an mfp2 model is fitted.
+
+test_that("4.2.7 mfp2.default() rejects nonpositive scale values", {
+  expect_nonpositive_scale_errors(mfp2_validation_call, colnames(setting_x))
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.8 Formula-level scalar settings remain global
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Confirm that the matrix-interface safety change does not impose a new naming
+#   requirement on the established top-level formula scalar interface.
+# - Verify that formula preprocessing expands one global scalar to each modeled
+#   numeric variable before calling the default method.
+#
+# Expected output:
+# - The fitted transformation rows for age and weight both store shift = 2.
+# - The fitted transformation rows for age and weight both store scale = 10.
+# - The formula fit completes without requiring named top-level vectors.
+
+test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
+  data("prostate", package = "mfp2")
+  
+  fit <- mfp2(
+    lpsa ~ fp(age, df = 2, force_max_fp = TRUE) +
+      fp(weight, df = 2, force_max_fp = TRUE),
+    data = prostate,
+    shift = 2,
+    scale = 10,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 5,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  expect_equal(
+    unname(fit$transformations[c("age", "weight"), "shift"]),
+    c(2, 2)
+  )
+  expect_equal(
+    unname(fit$transformations[c("age", "weight"), "scale"]),
+    c(10, 10)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.9 Per-variable fp() settings remain supported
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Confirm that variable-specific shift and scale values supplied inside fp()
+#   remain part of the supported formula interface.
+# - Verify that formula preprocessing creates internally named vectors and that
+#   the default method matches those values to the correct model-matrix columns.
+# - Protect against a regression where formula-generated vectors become unnamed
+#   and are rejected by the stricter matrix-interface validation.
+#
+# Expected output:
+# - The age transformation row stores shift = 1 and scale = 10.
+# - The weight transformation row stores shift = 2 and scale = 100.
+# - Reading rows c("age", "weight") returns shifts c(1, 2) and scales
+#   c(10, 100), with no positional reassignment.
+
+test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
+  data("prostate", package = "mfp2")
+  
+  fit <- mfp2(
+    lpsa ~ fp(
+      age,
+      df = 2,
+      shift = 1,
+      scale = 10,
+      force_max_fp = TRUE
+    ) + fp(
+      weight,
+      df = 2,
+      shift = 2,
+      scale = 100,
+      force_max_fp = TRUE
+    ),
+    data = prostate,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 5,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  expect_equal(
+    unname(fit$transformations[c("age", "weight"), "shift"]),
+    c(1, 2)
+  )
+  expect_equal(
+    unname(fit$transformations[c("age", "weight"), "scale"]),
+    c(10, 100)
+  )
+})
+
+
+# =============================================================================
+# 4.3 mfpi shift and scale behavior
+# =============================================================================
+# MFPI-specific review notes
+# --------------------------
+# The MFPI matrix contains the grouping variable "svi" in addition to ordinary
+# covariates. Named shift and scale vectors may specify any subset of its columns;
+# unspecified entries remain automatic. Downstream MFPI code continues to treat
+# svi as categorical grouping metadata, so its final shift and scale are 0 and 1.
+#
+# The tests below are intentionally separate from mfp2 tests because MFPI also
+# builds an adjustment model, removes or specially handles the grouping column,
+# computes interaction metrics, and has its own prediction method.
+
+# -----------------------------------------------------------------------------
+# 4.3.1 NULL keeps automatic preprocessing for MFPI covariates
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that NULL retains MFPI's existing automatic preprocessing for the
+#   ordinary continuous covariates after the grouping column is identified.
+# - Protect the separate MFPI normalization and adjustment-model path from
+#   receiving unresolved or invalid settings.
+# - Confirm that the new validation does not alter automatic shift/scale choice.
+#
+# Expected output:
+# - fit$shift[c("age", "weight")] contains two non-missing finite values.
+# - fit$scale[c("age", "weight")] contains two non-missing finite values.
+# - Both continuous-variable scales are strictly greater than zero.
+# - The fit completes with the existing categorical handling of svi unchanged.
+
+test_that("4.3.1 mfpi.default() keeps automatic shift and scale for NULL", {
+  fit <- fit_mfpi_settings()
+  
+  expect_false(anyNA(fit$shift[c("age", "weight")]))
+  expect_false(anyNA(fit$scale[c("age", "weight")]))
+  expect_true(all(is.finite(fit$shift[c("age", "weight")])))
+  expect_true(all(is.finite(fit$scale[c("age", "weight")])))
+  expect_true(all(fit$scale[c("age", "weight")] > 0))
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.2 Scalars are recycled to ordinary MFPI covariates
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that a scalar remains a valid global MFPI setting even though the
+#   matrix also contains the grouping variable svi.
+# - Confirm that scalar expansion survives grouping-column handling and reaches
+#   both ordinary continuous covariates used by the adjustment model.
+#
+# Expected output:
+# - fit$shift[c("age", "weight")] equals c(2, 2).
+# - fit$scale[c("age", "weight")] equals c(10, 10).
+# - The test intentionally leaves svi to MFPI's existing categorical metadata
+#   rules rather than treating it as an ordinary transformed covariate.
+
+test_that("4.3.2 mfpi.default() recycles scalar shift and scale", {
+  fit <- fit_mfpi_settings(shift = 2, scale = 10)
+  
+  expect_equal(unname(fit$shift[c("age", "weight")]), c(2, 2))
+  expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 10))
+})
+
+
+# -----------------------------------------------------------------------------
+# 4.3.2a MFPI uses the same named partial-setting contract
+# -----------------------------------------------------------------------------
+
+test_that("4.3.2a mfpi.default() estimates unspecified named partial settings", {
+  fit <- fit_mfpi_settings(shift = c(age = 2), scale = c(age = 100))
+  
+  expect_equal(unname(fit$shift["age"]), 2)
+  expect_equal(
+    unname(fit$shift["weight"]),
+    mfp2:::find_shift_factor(mfpi_setting_x[, "weight"])
+  )
+  expect_equal(unname(fit$shift["svi"]), 0)
+  expect_equal(unname(fit$scale["age"]), 100)
+  expect_equal(
+    unname(fit$scale["weight"]),
+    mfp2:::find_scale_factor(
+      mfpi_setting_x[, "weight"] + fit$shift[["weight"]]
+    )
+  )
+  expect_equal(unname(fit$scale["svi"]), 1)
+})
+
+# Test purpose: MFPI must neutralize explicitly supplied preprocessing values
+# for an ordinary binary adjustment covariate, not only for the group variable.
+test_that("4.3.2b mfpi.default() resets supplied scale for binary covariates", {
+  binary_adjustment <- rep(c(0, 1), length.out = setting_n)
+  x <- cbind(mfpi_setting_x, binary_adjustment = binary_adjustment)
+  y <- mfpi_setting_y + 0.3 * binary_adjustment
+  
+  fit <- mfpi(
+    x = x,
+    y = y,
+    group_var = "svi",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    shift = c(binary_adjustment = 10),
+    scale = c(binary_adjustment = 1000),
+    df = 2,
+    select = 1,
+    alpha = 1,
+    force_max_fp_vars = c("age", "weight"),
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  expect_equal(unname(fit$shift["binary_adjustment"]), 0)
+  expect_equal(unname(fit$scale["binary_adjustment"]), 1)
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.3 Fully named vectors include the MFPI grouping column
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that complete named vectors remain accepted at the public matrix
+#   boundary, including an explicit value for the grouping column svi.
+# - Confirm that, after MFPI applies its special grouping-variable handling, the
+#   values for age and weight remain aligned with their names.
+#
+# Expected output:
+# - The complete inputs use names c("svi", "age", "weight").
+# - fit$shift[c("age", "weight")] equals c(1, 2).
+# - fit$scale[c("age", "weight")] equals c(10, 100).
+# - The grouping column does not cause either continuous-variable value to move
+#   to the wrong variable.
+
+test_that("4.3.3 mfpi.default() accepts fully named shift and scale", {
+  fit <- fit_mfpi_settings(
+    shift = c(svi = 0, age = 1, weight = 2),
+    scale = c(svi = 1, age = 10, weight = 100)
+  )
+  
+  expect_equal(unname(fit$shift[c("age", "weight")]), c(1, 2))
+  expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 100))
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.4 Named-vector order does not change MFPI results
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Reproduce the positional-matching risk in the more complex MFPI path by
+#   reversing named settings that include the grouping variable.
+# - Verify alignment before and after MFPI handles or removes svi from ordinary
+#   transformation processing.
+# - Exercise normalized settings, adjustment-model transformations, fitted
+#   coefficients, interaction metrics, and MFPI prediction in one regression
+#   test.
+#
+# Expected output:
+# - ordered$shift and reversed$shift are identical named vectors.
+# - ordered$scale and reversed$scale are identical named vectors.
+# - The two adjustment-model transformation tables and coefficient vectors are
+#   numerically identical.
+# - ordered$all_model_metrics and reversed$all_model_metrics are identical.
+# - Link-scale predictions for the age term and all interaction models are
+#   identical for the first 12 rows of mfpi_setting_x.
+# - Age retains shift = 1 and scale = 10; weight retains shift = 2 and
+#   scale = 100, regardless of the supplied order around svi.
+
+test_that("4.3.4 mfpi.default() matches shift and scale by name", {
+  ordered <- fit_mfpi_settings(
+    shift = c(svi = 0, age = 1, weight = 2),
+    scale = c(svi = 1, age = 10, weight = 100)
+  )
+  reversed <- fit_mfpi_settings(
+    shift = c(weight = 2, age = 1, svi = 0),
+    scale = c(weight = 100, age = 10, svi = 1)
+  )
+  
+  expect_equal(ordered$shift, reversed$shift)
+  expect_equal(ordered$scale, reversed$scale)
+  expect_equal(
+    ordered$adjustment_model$transformations,
+    reversed$adjustment_model$transformations
+  )
+  expect_equal(
+    unname(stats::coef(ordered$adjustment_model)),
+    unname(stats::coef(reversed$adjustment_model))
+  )
+  expect_equal(ordered$all_model_metrics, reversed$all_model_metrics)
+  
+  new_x <- as.data.frame(mfpi_setting_x[1:12, , drop = FALSE])
+  pred_ordered <- predict(
+    ordered,
+    newdata = new_x,
+    terms = "age",
+    model = "all",
+    type = "link"
+  )
+  pred_reversed <- predict(
+    reversed,
+    newdata = new_x,
+    terms = "age",
+    model = "all",
+    type = "link"
+  )
+  
+  expect_equal(
+    pred_ordered$predictions$fit,
+    pred_reversed$predictions$fit
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.5 Invalid MFPI multi-value names are rejected
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that MFPI rejects unnamed multi-value vectors, empty element names,
+#   duplicate names, and names outside its public matrix columns.
+# - Confirm that any supplied names are validated before special treatment of
+#   the grouping variable begins.
+# - Apply the same partial, unique naming contract to shift and scale.
+#
+# Expected output for each argument:
+# - Unnamed multi-value vectors and empty element names produce the
+#   single-unnamed-or-named-vector error.
+# - Duplicate names produce the unique-names error.
+# - Supplying an unknown name produces the unknown-column error; omitting
+#   otherwise valid columns leaves those settings automatic.
+# - No adjustment or interaction model is fitted for invalid inputs.
+
+test_that("4.3.5 mfpi.default() rejects invalid shift and scale names", {
+  expect_setting_name_errors(
+    mfpi_validation_call,
+    colnames(mfpi_setting_x)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.6 Missing, non-finite, and logical MFPI values are rejected
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that MFPI uses the same finite, nonmissing numeric-value contract as
+#   the ordinary mfp2 matrix interface.
+# - Ensure invalid values fail before settings are separated into grouping and
+#   adjustment-model components.
+#
+# Expected output for both shift and scale:
+# - Inf produces the finite-values error.
+# - NA produces the no-missing-values error.
+# - TRUE/FALSE vectors produce the numeric-values error.
+# - No invalid value is stored in fit$shift, fit$scale, or the adjustment model.
+
+test_that("4.3.6 mfpi.default() rejects invalid numeric settings", {
+  expect_setting_numeric_errors(
+    mfpi_validation_call,
+    colnames(mfpi_setting_x)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.7 MFPI scale values must be strictly positive
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that MFPI enforces the scale-specific positivity rule on each explicit
+#   named setting before grouping-variable handling or adjustment fitting.
+# - Prevent zero divisors and negative rescaling from entering any MFPI model.
+#
+# Expected output:
+# - A named scale vector containing 0 errors with
+#   "`scale` must contain only strictly positive values".
+# - A named scale vector containing -1 produces the same error.
+# - Neither the adjustment model nor the interaction models are fitted.
+
+test_that("4.3.7 mfpi.default() rejects nonpositive scale values", {
+  expect_nonpositive_scale_errors(
+    mfpi_validation_call,
+    colnames(mfpi_setting_x)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.8 Formula-level scalar settings remain global in MFPI
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Confirm that the stricter MFPI matrix-vector contract does not alter the
+#   documented top-level formula scalar interface.
+# - Verify that formula preprocessing applies global scalar values to ordinary
+#   continuous variables while continuing to handle svi as the group variable.
+#
+# Expected output:
+# - fit$shift[c("age", "weight")] equals c(2, 2).
+# - fit$scale[c("age", "weight")] equals c(10, 10).
+# - The formula fit succeeds without a named top-level vector or an explicit
+#   scalar setting for svi.
+
+test_that("4.3.8 mfpi.formula() keeps scalar shift and scale compatible", {
+  data("prostate", package = "mfp2")
+  
+  fit <- mfpi(
+    lpsa ~ svi + fp(age, df = 2, force_max_fp = TRUE) +
+      fp(weight, df = 2, force_max_fp = TRUE),
+    data = prostate,
+    group_var = "svi",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    shift = 2,
+    scale = 10,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 5,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  expect_equal(unname(fit$shift[c("age", "weight")]), c(2, 2))
+  expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 10))
+})
+
+# -----------------------------------------------------------------------------
+# 4.3.9 Per-variable fp() settings remain supported in MFPI formulas
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Confirm that per-variable settings inside fp() remain supported when the
+#   formula also contains the MFPI grouping variable.
+# - Verify that formula preprocessing generates correctly named internal
+#   settings and that MFPI's grouping-column handling does not shift them.
+# - Protect compatibility for existing formula calls that intentionally assign
+#   different preprocessing values to different continuous variables.
+#
+# Expected output:
+# - fit$shift[c("age", "weight")] equals c(1, 2).
+# - fit$scale[c("age", "weight")] equals c(10, 100).
+# - Age receives only the values declared in fp(age, ...), and weight receives
+#   only the values declared in fp(weight, ...).
+
+test_that("4.3.9 mfpi.formula() keeps per-variable fp() settings compatible", {
+  data("prostate", package = "mfp2")
+  
+  fit <- mfpi(
+    lpsa ~ svi +
+      fp(
+        age,
+        df = 2,
+        shift = 1,
+        scale = 10,
+        force_max_fp = TRUE
+      ) + fp(
+        weight,
+        df = 2,
+        shift = 2,
+        scale = 100,
+        force_max_fp = TRUE
+      ),
+    data = prostate,
+    group_var = "svi",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    cycles = 5,
+    xorder = "original",
+    verbose = FALSE
+  )
+  
+  expect_equal(unname(fit$shift[c("age", "weight")]), c(1, 2))
+  expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 100))
 })
 
 # =============================================================================
@@ -2078,7 +3277,7 @@ test_that("predict.mfp2() works for Cox models", {
   expect_true(all(is.finite(preds)))
 })
 
-# Test purpose: Checks that default Cox predictions use reference = "zero".
+# Test purpose: Checks that default Cox predictions use cox_reference = "zero".
 # On this scale the linear predictor is the uncentered matrix product X beta,
 # rather than the sample-centered predictor returned by another reference mode.
 test_that("predict.mfp2() for Cox equals manual X beta on reference-zero scale", {
@@ -3970,7 +5169,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   )
   
   # predict.coxph() always recentres an offset by subtracting its mean in the
-  # training model frame. This applies even when reference = "zero"; that
+  # training model frame. This applies even when cox_reference = "zero"; that
   # option controls covariate centering, not offset centering. Reproduce that
   # convention explicitly in the independent oracle.
   if (is.null(new_offset)) {
@@ -4996,16 +6195,16 @@ test_that("formula interface fp(catzero = TRUE) enables catzero and zero handlin
 })
 
 # =============================================================================
-# 15. force_max_fp
+# 15. force_max_fp_vars and formula-term force_max_fp
 # =============================================================================
 
-# Test purpose: Checks that force_max_fp uses the requested maximum FP complexity 
-# for selected variables under AIC.
-test_that("force_max_fp forces maximum FP degree with AIC/BIC", {
+# Test purpose: Checks that force_max_fp_vars uses the requested maximum FP
+# complexity for named predictors under AIC.
+test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
   fit_force <- mfp2(
     x_prostate, y_prostate,
     criterion = "aic",
-    force_max_fp = TRUE,
+    force_max_fp_vars = colnames(x_prostate),
     select = 1,
     verbose = FALSE
   )
@@ -5029,6 +6228,62 @@ test_that("force_max_fp forces maximum FP degree with AIC/BIC", {
     )
   }
 })
+
+
+# Test purpose: Verifies that force_max_fp_vars translates to select = 1 and
+# alpha = 1 under p-value selection in the matrix interface.
+test_that("force_max_fp_vars forces maximum FP degree with p-value selection", {
+  set.seed(1501)
+  
+  dat <- data.frame(
+    x = seq(0.5, 6, length.out = 250)
+  )
+  dat$y <- 1 + 1.5 / dat$x - 0.7 * dat$x^2 +
+    rnorm(nrow(dat), sd = 0.05)
+  
+  fit <- mfp2(
+    x = as.matrix(dat["x"]),
+    y = dat$y,
+    criterion = "pvalue",
+    df = 4,
+    select = 0.05,
+    alpha = 0.05,
+    force_max_fp_vars = "x",
+    verbose = FALSE
+  )
+  
+  expect_equal(as.numeric(fit$fp_terms["x", "select"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["x", "alpha"]), 1)
+  expect_true(fit$fp_terms["x", "selected"])
+  expect_equal(sum(!is.na(fit$fp_powers[["x"]])), 2)
+})
+
+# Test purpose: Verifies that fp(force_max_fp = TRUE) reaches the same
+# p-value forcing logic through mfp2.formula().
+test_that("formula force_max_fp uses p-value forcing from mfp2.default", {
+  set.seed(1502)
+  
+  dat <- data.frame(
+    x = seq(0.5, 6, length.out = 250)
+  )
+  dat$y <- 1 + 1.5 / dat$x - 0.7 * dat$x^2 +
+    rnorm(nrow(dat), sd = 0.05)
+  
+  fit <- mfp2(
+    y ~ fp(x, df = 4, force_max_fp = TRUE),
+    data = dat,
+    criterion = "pvalue",
+    select = 0.05,
+    alpha = 0.05,
+    verbose = FALSE
+  )
+  
+  expect_equal(as.numeric(fit$fp_terms["x", "select"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["x", "alpha"]), 1)
+  expect_true(fit$fp_terms["x", "selected"])
+  expect_equal(sum(!is.na(fit$fp_powers[["x"]])), 2)
+})
+
 
 # =============================================================================
 # 16. mfpi() — basic interaction fitting
@@ -5058,6 +6313,49 @@ make_mfpi_factor_data <- function(n = 240L, ordered_stage = FALSE) {
     z = z
   )
 }
+
+
+# Test purpose: Verifies that force_max_fp_vars applies only to MFPI's
+# adjustment-model selection and sets both select and alpha to 1 under the
+# p-value criterion.
+test_that("MFPI force_max_fp_vars forces p-value adjustment variables", {
+  dat <- make_mfpi_factor_data()
+  
+  # Replace z after generating y so that z is a positive, unassociated
+  # adjustment variable. Its retention therefore depends on force_max_fp_vars,
+  # while no shift is needed for the FP transformation.
+  set.seed(1503)
+  dat$z <- runif(nrow(dat), min = 0.5, max = 3)
+  
+  fit <- mfpi(
+    y ~ trt + x + z,
+    data = dat,
+    group_var = "trt",
+    cont_vars = "x",
+    cont_var_forms = c(x = "linear"),
+    flex = "flex3",
+    criterion = "pvalue",
+    force_max_fp_vars = "z",
+    df = 4,
+    select = 0.05,
+    alpha = 0.05,
+    center = FALSE,
+    cycles = 5,
+    p_interact = 1,
+    verbose = FALSE
+  )
+  
+  adjustment_terms <- fit$adjustment_model$fp_terms
+  
+  expect_equal(as.numeric(adjustment_terms["z", "select"]), 1)
+  expect_equal(as.numeric(adjustment_terms["z", "alpha"]), 1)
+  expect_true(adjustment_terms["z", "selected"])
+  expect_equal(
+    sum(!is.na(fit$adjustment_model$fp_powers[["z"]])),
+    2
+  )
+})
+
 
 # -----------------------------------------------------------------------------
 # 16.1 Grouped categorical adjustment terms
@@ -6631,10 +7929,10 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
   }
 })
 
-# Test purpose: Verifies both Cox ordinary prediction scales without strata.
-# MFPI link maps to coxph type = "lp" and response maps to type = "risk";
-# both must use reference = "zero" to preserve the X beta convention.
-test_that("17.1.9 unstratified Cox MFPI link and response match stored coxph", {
+# Test purpose: Verifies native Cox ordinary prediction types without strata.
+# "link" is accepted as an alias for "lp"; "response" is not an alias for
+# "risk". Every result is delegated to the stored coxph model.
+test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
@@ -6664,12 +7962,23 @@ test_that("17.1.9 unstratified Cox MFPI link and response match stored coxph", {
   design <- mfp2:::mfpi_build_ordinary_design(fit, "age", fit_result, nd)
   stored <- fit_result$test_results$interaction_model$fit
   
-  cases <- list(link = "lp", response = "risk")
-  for (mfpi_type in names(cases)) {
+  cases <- list(
+    lp = "lp",
+    link = "lp",
+    named_link = c(alias = "link"),
+    risk = "risk"
+  )
+  for (case_name in names(cases)) {
+    mfpi_type <- cases[[case_name]]
+    native_type <- if (identical(unname(mfpi_type), "link")) {
+      "lp"
+    } else {
+      unname(mfpi_type)
+    }
     direct <- stats::predict(
       stored,
       newdata = design$model_newdata,
-      type = cases[[mfpi_type]],
+      type = native_type,
       se.fit = TRUE,
       reference = "zero"
     )
@@ -6679,54 +7988,54 @@ test_that("17.1.9 unstratified Cox MFPI link and response match stored coxph", {
       terms = "age",
       model = "all",
       type = mfpi_type,
+      cox_reference = "zero",
       se.fit = TRUE
     )
     
     expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
     expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+    expect_true(got$metadata$used_model_predict)
   }
   
-  # Manual Cox oracle for the link scale. With reference = "zero", the stored
-  # model's LP is exactly X beta and its SE is sqrt(diag(X V X')).
+  expect_error(
+    predict(
+      fit, newdata = nd, terms = "age", model = "all",
+      type = "response"
+    ),
+    "Cox MFPI models"
+  )
+  
+  # Independent zero-reference oracle for the linear predictor.
   reference_terms <- stats::delete.response(stats::terms(stored))
   manual_x <- stats::model.matrix(
     reference_terms,
     data = design$model_newdata,
     contrasts.arg = stored$contrasts
   )
-  # stats::model.matrix() follows the terms intercept attribute, whereas a Cox
-  # model has no estimated intercept. Remove that structural column before the
-  # positional X beta and X V X' calculations.
-  manual_x <- manual_x[
-    , colnames(manual_x) != "(Intercept)",
-    drop = FALSE
-  ]
+  manual_x <- manual_x[, colnames(manual_x) != "(Intercept)", drop = FALSE]
   beta <- stats::coef(stored)
   beta_vcov <- stats::vcov(stored)
-  expect_equal(ncol(manual_x), length(beta))
-  expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
   manual_lp <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
   
-  got_link <- predict(
+  got_lp <- predict(
     fit,
     newdata = nd,
     terms = "age",
     model = "all",
-    type = "link",
+    type = "lp",
+    cox_reference = "zero",
     se.fit = TRUE
   )
-  expect_equal(got_link$predictions$fit, manual_lp, tolerance = 1e-8)
-  expect_equal(got_link$predictions$se.fit, manual_se, tolerance = 1e-8)
+  expect_equal(got_lp$predictions$fit, manual_lp, tolerance = 1e-8)
+  expect_equal(got_lp$predictions$se.fit, manual_se, tolerance = 1e-8)
 })
 
-# Test purpose: Verifies that the package-owned manual MFPI Cox prediction path
-# uses the same offset origin as survival::predict.coxph(). With
-# reference = "zero", covariates remain uncentred but each prediction offset is
-# reduced by the mean training offset stored on the fitted interaction model.
-test_that("17.1.9b Cox MFPI manual offsets follow stored coxph reference", {
+# Test purpose: Verifies Cox offsets and every covariate-reference choice by
+# comparing MFPI directly with the retained coxph model. No manual prediction
+# branch is exercised or retained.
+test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
   set.seed(17109)
   n <- 320
   
@@ -6742,7 +8051,6 @@ test_that("17.1.9b Cox MFPI manual offsets follow stored coxph reference", {
   dat$time <- pmin(event_time, censor_time)
   dat$status <- as.integer(event_time <= censor_time)
   
-  training_offset <- log(dat$exposure)
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -6750,7 +8058,7 @@ test_that("17.1.9b Cox MFPI manual offsets follow stored coxph reference", {
     group_var = "sex",
     cont_vars = "age",
     cont_var_forms = c(age = "linear"),
-    offset = training_offset,
+    offset = log(dat$exposure),
     flex = "flex1",
     df = 1,
     select = 1,
@@ -6767,70 +8075,36 @@ test_that("17.1.9b Cox MFPI manual offsets follow stored coxph reference", {
   new_offset <- log(nd$exposure)
   fit_result <- fit$var_winners[["age"]]$fit
   design <- mfp2:::mfpi_build_ordinary_design(
-    fit,
-    "age",
-    fit_result,
-    nd,
-    newoffset = new_offset
+    fit, "age", fit_result, nd, newoffset = new_offset
   )
   stored <- fit_result$test_results$interaction_model$fit
   
-  expect_equal(
-    fit$cox_offset_reference,
-    mean(training_offset),
-    tolerance = 1e-12
-  )
-  
-  for (prediction_type in c("link", "response")) {
-    coxph_type <- if (prediction_type == "link") "lp" else "risk"
-    direct <- stats::predict(
-      stored,
-      newdata = design$model_newdata,
-      type = coxph_type,
-      se.fit = TRUE,
-      reference = "zero"
-    )
-    
-    manual_path <- mfp2:::mfpi_predict_from_design(
-      object = fit,
-      term = "age",
-      fit_result = fit_result,
-      X_new = design$X,
-      offset = design$offset,
-      model_newdata = NULL,
-      type = prediction_type,
-      se.fit = TRUE,
-      use_model_predict = FALSE
-    )
-    
-    expect_equal(manual_path$fit, as.numeric(direct$fit), tolerance = 1e-8)
-    expect_equal(manual_path$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+  for (prediction_type in c("lp", "risk")) {
+    for (reference_value in c("zero", "sample", "strata")) {
+      direct <- stats::predict(
+        stored,
+        newdata = design$model_newdata,
+        type = prediction_type,
+        se.fit = TRUE,
+        reference = reference_value
+      )
+      got <- predict(
+        fit,
+        newdata = nd,
+        terms = "age",
+        model = "all",
+        type = prediction_type,
+        newoffset = new_offset,
+        cox_reference = reference_value,
+        se.fit = TRUE
+      )
+      
+      expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
+      expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+      expect_identical(got$metadata$cox_reference, reference_value)
+    }
   }
-  
-  beta <- stats::coef(stored)
-  beta_vcov <- stats::vcov(stored)
-  manual_x <- design$X[, names(beta), drop = FALSE]
-  centered_offset <- new_offset - mean(training_offset)
-  manual_lp <- as.numeric(manual_x %*% beta + centered_offset)
-  manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
-  manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
-  manual_link <- mfp2:::mfpi_predict_from_design(
-    object = fit,
-    term = "age",
-    fit_result = fit_result,
-    X_new = design$X,
-    offset = design$offset,
-    model_newdata = NULL,
-    type = "link",
-    se.fit = TRUE,
-    use_model_predict = FALSE
-  )
-  
-  expect_equal(manual_link$fit, manual_lp, tolerance = 1e-8)
-  expect_equal(manual_link$se.fit, manual_se, tolerance = 1e-8)
 })
-
 
 # Test purpose: Verifies formula-interface strata reconstruction. The caller
 # supplies only ordinary newdata; predict.mfpi() must recover the original
@@ -7013,6 +8287,15 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
       strata = bad_strata
     ),
     "must not contain missing values"
+  )
+  bad_strata_inf <- as.numeric(nd$inst)
+  bad_strata_inf[1] <- Inf
+  expect_error(
+    predict(
+      fit, newdata = nd, terms = "age", model = "all", type = "link",
+      strata = bad_strata_inf
+    ),
+    "strata.*finite"
   )
 })
 
@@ -8288,8 +9571,9 @@ test_that("23.2 strong logarithmic signal selects FP1 power zero", {
                tolerance = 1e-8)
 })
 
-# Test purpose: With a single non-unity candidate and force_max_fp = TRUE, the
-# selected FP2 basis must be the repeated-power pair (2, 2), corresponding to
+# Test purpose: With a single non-unity candidate and x named in
+# force_max_fp_vars, the selected FP2 basis must be the repeated-power pair
+# (2, 2), corresponding to
 # x^2 and x^2 log(x). This exercises repeated-power use in the complete fitter.
 test_that("23.3 forced repeated FP2 uses the expected power pair and basis", {
   set.seed(2303)
@@ -8305,7 +9589,7 @@ test_that("23.3 forced repeated FP2 uses the expected power pair and basis", {
     df = 4,
     select = 1,
     criterion = "aic",
-    force_max_fp = TRUE,
+    force_max_fp_vars = "x",
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -9733,7 +11017,7 @@ test_that("24.19 formula subset rebuilds inline, binary, and interaction coding"
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -9833,7 +11117,7 @@ test_that("24.21 formula subset aligns external weights and offsets", {
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -9865,7 +11149,7 @@ test_that("24.21 formula subset aligns external weights and offsets", {
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -9924,7 +11208,7 @@ test_that("24.22 subset aligns grouped-binomial response and formula offset", {
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -9984,7 +11268,7 @@ test_that("24.23 subset aligns external and formula Cox strata", {
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -10001,7 +11285,7 @@ test_that("24.23 subset aligns external and formula Cox strata", {
     df = 1,
     select = 1,
     alpha = 1,
-    cycles = 1,
+    cycles = 5,
     shift = 0,
     scale = 1,
     center = FALSE,
@@ -10024,7 +11308,7 @@ test_that("24.23 subset aligns external and formula Cox strata", {
   
   nd <- retained[1:15, c("x", "z", "stratum"), drop = FALSE]
   expect_equal(
-    unname(predict(fit_formula, newdata = nd, type = "lp", reference = "zero")),
+    unname(predict(fit_formula, newdata = nd, type = "lp", cox_reference = "zero")),
     unname(predict(reference, newdata = nd, type = "lp", reference = "zero")),
     tolerance = 1e-8
   )
@@ -10377,7 +11661,7 @@ prepare_formula_cox_newdata_v1 <- function(object,
   )
   
   if (include_response) {
-    response_name <- mfp2_cox_internal_response_name(object)
+    response_name <- cox_internal_response_name(object)
     prepared[[response_name]] <- I(
       survival::Surv(newdata$time, newdata$status)
     )
@@ -10435,7 +11719,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         newdata = prediction_x,
         type = "lp",
         se.fit = TRUE,
-        reference = reference_value
+        cox_reference = reference_value
       )
       expected_lp <- predict(
         fit_coxph,
@@ -10461,7 +11745,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         newdata = prediction_x,
         type = "risk",
         se.fit = TRUE,
-        reference = reference_value
+        cox_reference = reference_value
       )
       expected_risk <- predict(
         fit_coxph,
@@ -10487,13 +11771,13 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
       fit_mfp2,
       prediction_x,
       type = "lp",
-      reference = "zero"
+      cox_reference = "zero"
     )
     lp_sample <- predict(
       fit_mfp2,
       prediction_x,
       type = "lp",
-      reference = "sample"
+      cox_reference = "sample"
     )
     
     expected_constant <- sum(
@@ -10547,10 +11831,10 @@ test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
     off = c(0.10, 0.65)
   )
   
-  lp_zero <- predict(fit, nd, type = "lp", reference = "zero")
-  lp_sample <- predict(fit, nd, type = "lp", reference = "sample")
-  risk_zero <- predict(fit, nd, type = "risk", reference = "zero")
-  risk_sample <- predict(fit, nd, type = "risk", reference = "sample")
+  lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
+  lp_sample <- predict(fit, nd, type = "lp", cox_reference = "sample")
+  risk_zero <- predict(fit, nd, type = "risk", cox_reference = "zero")
+  risk_sample <- predict(fit, nd, type = "risk", cox_reference = "sample")
   
   # Use the stripped coxph object as the oracle. This is stronger and safer
   # than recomputing the shift with a positional coef * means expression:
@@ -10614,7 +11898,7 @@ test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
 })
 
 
-# reference = "strata" uses a different weighted training mean in each stratum.
+# cox_reference = "strata" uses a different weighted training mean in each stratum.
 # The resulting shift is constant within a stratum, not across all prediction
 # rows. Relative comparisons remain invariant only within the same stratum.
 test_that("version 1 Cox strata reference is stratum specific", {
@@ -10644,10 +11928,10 @@ test_that("version 1 Cox strata reference is stratum specific", {
     )
   )
   
-  lp_zero <- predict(fit, nd, type = "lp", reference = "zero")
-  lp_strata <- predict(fit, nd, type = "lp", reference = "strata")
-  risk_zero <- predict(fit, nd, type = "risk", reference = "zero")
-  risk_strata <- predict(fit, nd, type = "risk", reference = "strata")
+  lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
+  lp_strata <- predict(fit, nd, type = "lp", cox_reference = "strata")
+  risk_zero <- predict(fit, nd, type = "risk", cox_reference = "zero")
+  risk_strata <- predict(fit, nd, type = "risk", cox_reference = "strata")
   
   prepared <- prepare_formula_cox_newdata_v1(fit, nd)
   base <- strip_mfp2_class_v1(fit)
@@ -10828,7 +12112,7 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
     terms = get_selected_variable_names(fit),
     check_binary = FALSE
   )
-  response_name <- mfp2_cox_internal_response_name(fit)
+  response_name <- cox_internal_response_name(fit)
   prepared[[response_name]] <- I(y[rows])
   
   base <- strip_mfp2_class_v1(fit)
@@ -10846,7 +12130,7 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
   
   expect_error(
     predict(fit, newdata = data.frame(x = newdata$x), type = "expected"),
-    "require the follow-up response information in newdata"
+    "require.*follow-up response information"
   )
   
   ambiguous <- newdata
@@ -10890,9 +12174,11 @@ test_that("version 1 default Cox lp remains aligned with mfp2 terms", {
   
   term_sum <- Reduce(`+`, lapply(term_result, `[[`, "value"))
   lp_default <- predict(fit, nd, type = "lp")
-  lp_zero <- predict(fit, nd, type = "lp", reference = "zero")
-  lp_sample <- predict(fit, nd, type = "lp", reference = "sample")
+  lp_null <- predict(fit, nd, type = "lp", cox_reference = NULL)
+  lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
+  lp_sample <- predict(fit, nd, type = "lp", cox_reference = "sample")
   
+  expect_equal(unname(lp_default), unname(lp_null), tolerance = 1e-10)
   expect_equal(unname(lp_default), unname(lp_zero), tolerance = 1e-10)
   expect_equal(unname(lp_zero), unname(term_sum), tolerance = 1e-8)
   expect_equal(
@@ -10927,33 +12213,33 @@ test_that("version 1 reports clear Cox reference and response errors", {
   
   # This was formerly the unhelpful duplicate-formal-argument crash.
   expect_no_error(
-    predict(fit, nd_relative, type = "lp", reference = "sample")
+    predict(fit, nd_relative, type = "lp", cox_reference = "sample")
   )
   expect_no_error(
-    predict(fit, type = "lp", reference = "sample")
+    predict(fit, type = "lp", cox_reference = "sample")
   )
   base <- strip_mfp2_class_v1(fit)
   expect_equal(
-    unname(predict(fit, type = "lp", reference = "sample")),
+    unname(predict(fit, type = "lp", cox_reference = "sample")),
     unname(predict(base, type = "lp", reference = "sample")),
     tolerance = 1e-8
   )
   
   expect_error(
-    predict(fit, nd_relative, type = "lp", reference = "population"),
+    predict(fit, nd_relative, type = "lp", cox_reference = "population"),
     "must be one of 'zero', 'sample', or 'strata'"
   )
   expect_error(
-    predict(fit, nd_relative, type = "terms", reference = "zero"),
+    predict(fit, nd_relative, type = "terms", cox_reference = "zero"),
     "not used for mfp2 term or contrast predictions"
   )
   expect_error(
-    predict(fit, nd_absolute, type = "survival", reference = "zero"),
+    predict(fit, nd_absolute, type = "survival", cox_reference = "zero"),
     "does not apply to Cox predictions"
   )
   expect_error(
     predict(fit, nd_relative, type = "survival"),
-    "require the follow-up response"
+    "require.*follow-up response"
   )
   expect_error(
     predict(
@@ -10965,15 +12251,869 @@ test_that("version 1 reports clear Cox reference and response errors", {
     "'newy' has been removed"
   )
   
+  expect_error(
+    predict(fit, nd_relative, type = "lp", reference = "zero"),
+    "renamed.*cox_reference"
+  )
+  
   fit_glm <- mfp2(
     x = as.matrix(dat["x"]),
     y = dat$x + stats::rnorm(nrow(dat)),
     verbose = FALSE
   )
   expect_error(
-    predict(fit_glm, nd_relative, reference = "zero"),
+    predict(fit_glm, nd_relative, cox_reference = "zero"),
     "only available for Cox models"
   )
+})
+
+
+# =============================================================================
+# End of tests
+# =============================================================================
+
+# =============================================================================
+# Prediction API regression tests maintained for 1.1.0.9003
+# =============================================================================
+
+test_that("predict.mfp2 normalizes linear-predictor aliases", {
+  data("prostate", package = "mfp2")
+  fit_glm <- mfp2(
+    lpsa ~ fp(age) + svi,
+    data = prostate,
+    verbose = FALSE
+  )
+  nd_glm <- prostate[1:12, c("age", "svi"), drop = FALSE]
+  expect_equal(
+    predict(fit_glm, newdata = nd_glm, type = "lp"),
+    predict(fit_glm, newdata = nd_glm, type = "link")
+  )
+  expect_equal(
+    predict(fit_glm, newdata = nd_glm, type = c(alias = "lp")),
+    predict(fit_glm, newdata = nd_glm, type = "link")
+  )
+  
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
+  fit_cox <- mfp2(
+    survival::Surv(time, status) ~ fp(age) + sex,
+    data = dat,
+    family = "cox",
+    verbose = FALSE
+  )
+  nd_cox <- dat[1:12, c("age", "sex"), drop = FALSE]
+  expect_equal(
+    predict(fit_cox, newdata = nd_cox, type = "link", cox_reference = "zero"),
+    predict(fit_cox, newdata = nd_cox, type = "lp", cox_reference = "zero")
+  )
+  expect_equal(
+    predict(
+      fit_cox,
+      newdata = nd_cox,
+      type = c(alias = "link"),
+      cox_reference = "zero"
+    ),
+    predict(fit_cox, newdata = nd_cox, type = "lp", cox_reference = "zero")
+  )
+})
+
+
+test_that("predict.mfp2 rejects infinite numeric newdata columns", {
+  data("prostate", package = "mfp2")
+  fit <- mfp2(lpsa ~ fp(age) + svi, data = prostate, verbose = FALSE)
+  
+  nd_inf <- prostate[1:6, c("age", "svi"), drop = FALSE]
+  nd_inf$age[2] <- Inf
+  expect_error(
+    predict(fit, newdata = nd_inf, type = "link"),
+    "finite numeric values|Infinite"
+  )
+  
+  nd_ninf <- prostate[1:6, c("age", "svi"), drop = FALSE]
+  nd_ninf$age[2] <- -Inf
+  expect_error(
+    predict(fit, newdata = nd_ninf, type = "link"),
+    "finite numeric values|Infinite"
+  )
+})
+
+
+test_that("predict.mfpi defaults safely and normalizes GLM lp", {
+  data("prostate", package = "mfp2")
+  fit <- mfpi(
+    lpsa ~ fp(age) + svi + fp(cavol),
+    data = prostate,
+    cont_vars = "cavol",
+    group_var = "svi",
+    flex = "flex1",
+    verbose = FALSE
+  )
+  
+  default_pred <- predict(fit, terms = "cavol", model = "all")
+  expect_s3_class(default_pred, "mfpi_prediction")
+  expect_identical(default_pred$type, "both")
+  expect_true(!is.null(default_pred$functions))
+  expect_true(!is.null(default_pred$differences))
+  
+  nd <- prostate[1:10, , drop = FALSE]
+  link_pred <- predict(
+    fit, newdata = nd, terms = "cavol", model = "all",
+    type = "link", se.fit = TRUE
+  )
+  lp_pred <- predict(
+    fit, newdata = nd, terms = "cavol", model = "all",
+    type = "lp", se.fit = TRUE
+  )
+  expect_identical(lp_pred$type, "link")
+  expect_equal(lp_pred$predictions, link_pred$predictions)
+})
+
+
+test_that("predict.mfpi enforces family-specific arguments and types", {
+  data("prostate", package = "mfp2")
+  fit_glm <- mfpi(
+    lpsa ~ fp(age) + svi + fp(cavol),
+    data = prostate,
+    cont_vars = "cavol",
+    group_var = "svi",
+    flex = "flex1",
+    verbose = FALSE
+  )
+  nd_glm <- prostate[1:8, , drop = FALSE]
+  
+  expect_error(
+    predict(fit_glm, newdata = nd_glm, terms = "cavol", model = "all",
+            type = "risk"),
+    "GLM MFPI models"
+  )
+  expect_error(
+    predict(fit_glm, newdata = nd_glm, terms = "cavol", model = "all",
+            type = "link", cox_reference = "zero"),
+    "available only for Cox"
+  )
+  expect_error(
+    predict(fit_glm, newdata = nd_glm, terms = "cavol", model = "all",
+            type = "link", strata = rep(1, nrow(nd_glm))),
+    "available only for Cox"
+  )
+  expect_error(
+    predict(fit_glm, terms = "cavol", model = "all", type = "function",
+            strata = rep(1, nrow(prostate))),
+    "not used for MFPI fitted-function"
+  )
+  
+  nd_bad <- nd_glm
+  nd_bad$cavol[1] <- Inf
+  expect_error(
+    predict(fit_glm, newdata = nd_bad, terms = "cavol", model = "all",
+            type = "link"),
+    "finite"
+  )
+})
+
+
+test_that("predict.mfpi Cox references match the retained coxph model", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
+  dat$sex <- factor(dat$sex)
+  dat$inst <- factor(dat$inst)
+  
+  fit <- mfpi(
+    survival::Surv(time, status) ~ age + sex + strata(inst),
+    data = dat,
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    p_interact = 1,
+    ties = "breslow",
+    verbose = FALSE
+  )
+  
+  nd <- dat[1:18, c("age", "sex", "inst"), drop = FALSE]
+  fit_result <- fit$var_winners[["age"]]$fit
+  stored <- fit_result$test_results$interaction_model$fit
+  strata_new <- mfp2:::reconstruct_formula_strata_newdata(fit, nd)
+  design <- mfp2:::mfpi_build_ordinary_design(
+    fit, "age", fit_result, nd, strata = strata_new
+  )
+  
+  for (prediction_type in c("lp", "risk")) {
+    for (reference_value in c("zero", "sample", "strata")) {
+      direct <- stats::predict(
+        stored,
+        newdata = design$model_newdata,
+        type = prediction_type,
+        se.fit = TRUE,
+        reference = reference_value
+      )
+      got <- predict(
+        fit,
+        newdata = nd,
+        terms = "age",
+        model = "all",
+        type = prediction_type,
+        cox_reference = reference_value,
+        se.fit = TRUE
+      )
+      expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
+      expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+    }
+  }
+})
+
+
+test_that("predict.mfpi Cox expected and survival match stored coxph", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
+  dat$sex <- factor(dat$sex)
+  
+  fit <- mfpi(
+    survival::Surv(time, status) ~ age + sex,
+    data = dat,
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    p_interact = 1,
+    ties = "breslow",
+    verbose = FALSE
+  )
+  
+  fit_result <- fit$var_winners[["age"]]$fit
+  stored <- fit_result$test_results$interaction_model$fit
+  
+  for (prediction_type in c("expected", "survival")) {
+    direct_training <- stats::predict(
+      stored, type = prediction_type, se.fit = FALSE
+    )
+    got_training <- predict(
+      fit, terms = "age", model = "all",
+      type = prediction_type, se.fit = FALSE
+    )
+    expect_equal(
+      got_training$predictions$fit,
+      as.numeric(direct_training),
+      tolerance = 1e-8
+    )
+  }
+  
+  nd <- dat[1:16, c("time", "status", "age", "sex"), drop = FALSE]
+  response <- mfp2:::reconstruct_cox_prediction_response(
+    object = fit,
+    fit_obj = stored,
+    newdata = nd
+  )
+  design <- mfp2:::mfpi_build_ordinary_design(fit, "age", fit_result, nd)
+  direct_data <- mfp2:::attach_cox_prediction_response(
+    fit_obj = stored,
+    newdata = design$model_newdata,
+    response = response
+  )
+  
+  for (prediction_type in c("expected", "survival")) {
+    direct <- stats::predict(
+      stored,
+      newdata = direct_data,
+      type = prediction_type,
+      se.fit = TRUE
+    )
+    got <- predict(
+      fit,
+      newdata = nd,
+      terms = "age",
+      model = "all",
+      type = prediction_type,
+      se.fit = TRUE
+    )
+    expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
+    expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+    expect_true(got$metadata$absolute_cox_prediction)
+  }
+  
+  expect_error(
+    predict(
+      fit, newdata = nd, terms = "age", model = "all",
+      type = "survival", cox_reference = "zero"
+    ),
+    "applies only"
+  )
+  
+  nd_missing_response <- nd[, c("age", "sex"), drop = FALSE]
+  expect_error(
+    predict(
+      fit, newdata = nd_missing_response, terms = "age", model = "all",
+      type = "survival"
+    ),
+    "response information"
+  )
+})
+
+
+test_that("predict.mfpi matrix-interface Cox survival accepts one Surv column", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
+  dat$sex <- factor(dat$sex)
+  
+  fit <- mfpi(
+    x = dat[, c("sex", "age")],
+    y = survival::Surv(dat$time, dat$status),
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    p_interact = 1,
+    ties = "breslow",
+    verbose = FALSE
+  )
+  
+  rows <- 1:12
+  nd <- data.frame(
+    sex = dat$sex[rows],
+    age = dat$age[rows],
+    prediction_response = I(survival::Surv(dat$time[rows], dat$status[rows]))
+  )
+  fit_result <- fit$var_winners[["age"]]$fit
+  stored <- fit_result$test_results$interaction_model$fit
+  response <- mfp2:::reconstruct_cox_prediction_response(fit, stored, nd)
+  design <- mfp2:::mfpi_build_ordinary_design(fit, "age", fit_result, nd)
+  direct_data <- mfp2:::attach_cox_prediction_response(
+    stored, design$model_newdata, response
+  )
+  
+  direct <- stats::predict(
+    stored, newdata = direct_data, type = "survival", se.fit = FALSE
+  )
+  got <- predict(
+    fit, newdata = nd, terms = "age", model = "all",
+    type = "survival", se.fit = FALSE
+  )
+  expect_equal(got$predictions$fit, as.numeric(direct), tolerance = 1e-8)
+})
+
+
+test_that("predict.mfpi rejects irrelevant Cox strata", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
+  dat$sex <- factor(dat$sex)
+  
+  fit <- mfpi(
+    survival::Surv(time, status) ~ age + sex,
+    data = dat,
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    p_interact = 1,
+    verbose = FALSE
+  )
+  nd <- dat[1:8, c("age", "sex"), drop = FALSE]
+  
+  expect_error(
+    predict(
+      fit, newdata = nd, terms = "age", model = "all",
+      type = "lp", strata = rep(1, nrow(nd))
+    ),
+    "not stratified"
+  )
+  expect_error(
+    predict(
+      fit, terms = "age", model = "all",
+      type = "function", strata = rep(1, nrow(dat))
+    ),
+    "not used for MFPI fitted-function"
+  )
+})
+
+
+test_that("predict.mfpi stratified Cox survival matches stored coxph", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
+  dat$sex <- factor(dat$sex)
+  dat$inst <- factor(dat$inst)
+  
+  fit <- mfpi(
+    survival::Surv(time, status) ~ age + sex + strata(inst),
+    data = dat,
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    p_interact = 1,
+    ties = "breslow",
+    verbose = FALSE
+  )
+  
+  nd <- dat[1:14, c("time", "status", "age", "sex", "inst"), drop = FALSE]
+  fit_result <- fit$var_winners[["age"]]$fit
+  stored <- fit_result$test_results$interaction_model$fit
+  response <- mfp2:::reconstruct_cox_prediction_response(fit, stored, nd)
+  strata_new <- mfp2:::reconstruct_formula_strata_newdata(fit, nd)
+  design <- mfp2:::mfpi_build_ordinary_design(
+    fit, "age", fit_result, nd, strata = strata_new
+  )
+  direct_data <- mfp2:::attach_cox_prediction_response(
+    stored, design$model_newdata, response
+  )
+  
+  for (prediction_type in c("expected", "survival")) {
+    direct <- stats::predict(
+      stored,
+      newdata = direct_data,
+      type = prediction_type,
+      se.fit = TRUE
+    )
+    got <- predict(
+      fit,
+      newdata = nd,
+      terms = "age",
+      model = "all",
+      type = prediction_type,
+      se.fit = TRUE
+    )
+    expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
+    expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+  }
+})
+
+
+test_that("predict.mfpi rejects replacement offsets for models without offsets", {
+  data("prostate", package = "mfp2")
+  fit <- mfpi(
+    lpsa ~ fp(age) + svi + fp(cavol),
+    data = prostate,
+    cont_vars = "cavol",
+    group_var = "svi",
+    flex = "flex1",
+    verbose = FALSE
+  )
+  
+  nd <- prostate[1:7, , drop = FALSE]
+  expect_error(
+    predict(
+      fit,
+      newdata = nd,
+      terms = "cavol",
+      model = "all",
+      type = "link",
+      newoffset = rep(0, nrow(nd))
+    ),
+    "fitted with an offset"
+  )
+})
+
+
+test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
+  set.seed(19003)
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
+  dat$sex <- factor(dat$sex)
+  dat$inst <- factor(dat$inst)
+  dat$exposure <- stats::runif(nrow(dat), 0.7, 2.4)
+  
+  fit <- mfpi(
+    survival::Surv(time, status) ~ age + sex + offset(log(exposure)) + strata(inst),
+    data = dat,
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    p_interact = 1,
+    ties = "breslow",
+    verbose = FALSE
+  )
+  
+  fit_result <- fit$var_winners[["age"]]$fit
+  stored <- fit_result$test_results$interaction_model$fit
+  replacement_offset <- log(dat$exposure)
+  
+  design <- mfp2:::mfpi_build_ordinary_design(
+    fit,
+    "age",
+    fit_result,
+    newdata = NULL,
+    newoffset = replacement_offset
+  )
+  expect_true("strata_" %in% names(design$model_newdata))
+  expect_true("offset_" %in% names(design$model_newdata))
+  
+  direct <- stats::predict(
+    stored,
+    newdata = design$model_newdata,
+    type = "lp",
+    se.fit = TRUE,
+    reference = "zero"
+  )
+  got <- predict(
+    fit,
+    terms = "age",
+    model = "all",
+    type = "lp",
+    newoffset = replacement_offset,
+    cox_reference = "zero",
+    se.fit = TRUE
+  )
+  
+  expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
+  expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
+  
+  # Reconstructing the training rows solely to resupply their fitted strata
+  # must also recover the original, uncentred offset scale. The resulting
+  # prediction should therefore equal direct prediction on the stored fit.
+  fitted_strata <- stored$strata
+  direct_training <- stats::predict(
+    stored,
+    type = "lp",
+    se.fit = TRUE,
+    reference = "zero"
+  )
+  got_strata_only <- predict(
+    fit,
+    terms = "age",
+    model = "all",
+    type = "lp",
+    strata = fitted_strata,
+    cox_reference = "zero",
+    se.fit = TRUE
+  )
+  expect_equal(
+    got_strata_only$predictions$fit,
+    as.numeric(direct_training$fit),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    got_strata_only$predictions$se.fit,
+    as.numeric(direct_training$se.fit),
+    tolerance = 1e-8
+  )
+})
+
+
+
+# =============================================================================
+# Prediction argument and non-finite validation regressions
+# =============================================================================
+
+test_that("predict.mfp2 validates only required missing predictors", {
+  data("prostate", package = "mfp2")
+  fit <- mfp2(
+    lpsa ~ fp(age) + svi,
+    data = prostate,
+    keep = "age",
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+  nd <- prostate[1:8, c("age", "svi"), drop = FALSE]
+  expected <- predict(fit, newdata = nd, type = "link")
+  
+  nd_extra <- nd
+  nd_extra$unused_na <- NA_real_
+  nd_extra$unused_nan <- NaN
+  expect_equal(
+    predict(fit, newdata = nd_extra, type = "link"),
+    expected,
+    tolerance = 1e-12
+  )
+  
+  for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
+    nd_bad <- nd
+    nd_bad$age[2] <- bad_value
+    expect_error(
+      predict(fit, newdata = nd_bad, type = "link"),
+      "missing|finite"
+    )
+  }
+  
+  fit_matrix <- mfp2(
+    x = as.matrix(prostate[, c("age", "svi")]),
+    y = prostate$lpsa,
+    verbose = FALSE
+  )
+  nd_matrix <- data.frame(
+    age = prostate$age[1:8],
+    svi = prostate$svi[1:8],
+    unused_na = NA_real_,
+    unused_nan = NaN
+  )
+  expect_equal(
+    predict(fit_matrix, newdata = nd_matrix, type = "link"),
+    predict(
+      fit_matrix,
+      newdata = nd_matrix[, c("age", "svi"), drop = FALSE],
+      type = "link"
+    ),
+    tolerance = 1e-12
+  )
+})
+
+
+test_that("predict.mfp2 rejects irrelevant strata arguments", {
+  data("prostate", package = "mfp2")
+  fit_glm <- mfp2(lpsa ~ fp(age) + svi, data = prostate, verbose = FALSE)
+  nd_glm <- prostate[1:6, c("age", "svi"), drop = FALSE]
+  expect_error(
+    predict(fit_glm, newdata = nd_glm, strata = rep(1, nrow(nd_glm))),
+    "only for Cox"
+  )
+  
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
+  fit_cox <- mfp2(
+    survival::Surv(time, status) ~ age + sex,
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+  nd_cox <- dat[1:8, c("age", "sex"), drop = FALSE]
+  
+  expect_error(
+    predict(
+      fit_cox,
+      newdata = nd_cox,
+      type = "lp",
+      strata = rep(1, nrow(nd_cox))
+    ),
+    "not stratified"
+  )
+  expect_error(
+    predict(
+      fit_cox,
+      newdata = nd_cox,
+      type = "terms",
+      strata = rep(1, nrow(nd_cox))
+    ),
+    "not used.*term or contrast"
+  )
+  expect_error(
+    predict(fit_cox, type = "lp", strata = rep(1, nrow(dat))),
+    "together with.*newdata"
+  )
+  
+  dat$stratum <- factor(rep(c("A", "B"), length.out = nrow(dat)))
+  fit_stratified <- mfp2(
+    survival::Surv(time, status) ~ age + sex + strata(stratum),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+  nd_stratified <- dat[1:8, c("age", "sex", "stratum"), drop = FALSE]
+  bad_strata <- as.numeric(nd_stratified$stratum)
+  bad_strata[2] <- Inf
+  expect_error(
+    predict(
+      fit_stratified,
+      newdata = nd_stratified,
+      type = "lp",
+      strata = bad_strata
+    ),
+    "strata.*finite"
+  )
+})
+
+
+test_that("predict.mfp2 rejects irrelevant and non-finite replacement offsets", {
+  data("prostate", package = "mfp2")
+  fit_plain <- mfp2(lpsa ~ fp(age) + svi, data = prostate, verbose = FALSE)
+  nd_plain <- prostate[1:7, c("age", "svi"), drop = FALSE]
+  expect_error(
+    predict(
+      fit_plain,
+      newdata = nd_plain,
+      type = "link",
+      newoffset = rep(0, nrow(nd_plain))
+    ),
+    "used an offset"
+  )
+  
+  set.seed(21001)
+  dat <- prostate
+  dat$exposure <- stats::runif(nrow(dat), 0.7, 2.2)
+  fit_offset <- mfp2(
+    lpsa ~ fp(age) + svi + offset(log(exposure)),
+    data = dat,
+    verbose = FALSE
+  )
+  nd <- dat[1:7, c("age", "svi", "exposure"), drop = FALSE]
+  good_offset <- log(nd$exposure)
+  
+  expect_error(
+    predict(
+      fit_offset,
+      newdata = nd,
+      type = "terms",
+      newoffset = good_offset
+    ),
+    "not used.*term or contrast"
+  )
+  expect_error(
+    predict(fit_offset, type = "link", newoffset = log(dat$exposure)),
+    "together with.*newdata"
+  )
+  
+  for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
+    bad_offset <- good_offset
+    bad_offset[2] <- bad_value
+    expect_error(
+      predict(
+        fit_offset,
+        newdata = nd,
+        type = "link",
+        newoffset = bad_offset
+      ),
+      "finite numeric"
+    )
+  }
+})
+
+
+
+test_that("predict.mfpi validates required predictors but ignores irrelevant extras", {
+  data("prostate", package = "mfp2")
+  fit <- mfpi(
+    lpsa ~ age + svi + cavol,
+    data = prostate,
+    group_var = "svi",
+    cont_vars = "cavol",
+    cont_var_forms = c(cavol = "linear"),
+    flex = "flex1",
+    cycles = 1,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    keep = "age",
+    p_interact = 1,
+    verbose = FALSE
+  )
+  nd <- prostate[1:8, c("age", "svi", "cavol"), drop = FALSE]
+  expected <- predict(
+    fit, newdata = nd, terms = "cavol", model = "all", type = "link"
+  )
+  nd_extra <- nd
+  nd_extra$unused_na <- NA_real_
+  nd_extra$unused_nan <- NaN
+  expect_equal(
+    predict(
+      fit, newdata = nd_extra, terms = "cavol", model = "all", type = "link"
+    )$predictions,
+    expected$predictions,
+    tolerance = 1e-12
+  )
+  
+  for (column in c("cavol", "age", "svi")) {
+    for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
+      nd_bad <- nd
+      nd_bad[[column]][2] <- bad_value
+      expect_error(
+        predict(
+          fit, newdata = nd_bad, terms = "cavol", model = "all", type = "link"
+        ),
+        "finite|missing|NA"
+      )
+    }
+  }
+})
+
+
+test_that("formula-derived offsets reject missing and non-finite inputs", {
+  data("prostate", package = "mfp2")
+  set.seed(21002)
+  dat <- prostate
+  dat$exposure <- stats::runif(nrow(dat), 0.7, 2.2)
+  
+  fit_mfp2 <- mfp2(
+    lpsa ~ age + svi + offset(log(exposure)),
+    data = dat,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+  fit_mfpi <- mfpi(
+    lpsa ~ age + svi + cavol + offset(log(exposure)),
+    data = dat,
+    group_var = "svi",
+    cont_vars = "cavol",
+    cont_var_forms = c(cavol = "linear"),
+    flex = "flex1",
+    cycles = 1,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    keep = "age",
+    p_interact = 1,
+    verbose = FALSE
+  )
+  nd <- dat[1:7, c("age", "svi", "cavol", "exposure"), drop = FALSE]
+  
+  for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
+    nd_bad <- nd
+    nd_bad$exposure[2] <- bad_value
+    expect_error(
+      predict(fit_mfp2, newdata = nd_bad, type = "link"),
+      "offset|missing|finite"
+    )
+    expect_error(
+      predict(
+        fit_mfpi,
+        newdata = nd_bad,
+        terms = "cavol",
+        model = "all",
+        type = "link"
+      ),
+      "offset|missing|finite"
+    )
+  }
 })
 
 # =============================================================================

@@ -10,8 +10,8 @@
 |collate  |English_United Kingdom.utf8                                         |
 |ctype    |English_United Kingdom.utf8                                         |
 |tz       |Europe/Berlin                                                       |
-|date     |2026-07-11                                                          |
-|rstudio  |2026.06.0+242 Blue Plumbago (desktop)                               |
+|date     |2026-07-16                                                          |
+|rstudio  |2026.07.0+139 Pacific Dogwood (desktop)                             |
 |pandoc   |NA                                                                  |
 |quarto   |1.9.38 @ C:\PROGRA~1\RStudio\RESOUR~1\app\bin\quarto\bin\quarto.exe |
 

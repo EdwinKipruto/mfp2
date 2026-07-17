@@ -1,30 +1,17 @@
-#' Verbose printing of the function selection procedure (FSP)
+#' Print intermediate MFP selection results
 #'
-#' This function prints intermediate results from the fractional polynomial
-#' function selection process, including details of the spike-at-zero algorithm
-#' when relevant. It is primarily called from within `mfp_step` during model
-#' selection. 
+#' Internal helper used when verbose output is requested during model
+#' selection.
 #'
-#' @param xi Character string. The name of the covariate currently being tested.
-#' @param criterion Character string. The selection criterion, either `"pvalue"`
-#'   or `"aic"`/`"bic"` (depending on implementation in
-#'   `print_mfp_ic_step()`).
-#' @param fit A list containing the intermediate fit for the current variable.
-#'   Typically produced by `mfp_step`.
-#' @param stage2 Logical. When `FALSE` (default), only Stage 1 results of the 
-#'   spike-at-zero (SAZ) procedure are printed, or the usual FSP output for 
-#'   `xi` when `fit$spike[xi] = FALSE`. When `TRUE`, Stage 1 results are printed, 
-#'   and if `fit$spike[xi] = TRUE` and the Stage 1 selected model is not `"null"`, 
-#'   the Stage 2 spike-at-zero results are printed immediately after Stage 1.
-#'   
-#' @details
-#' Printing is split into two parts:
-#' - **Stage 1**: All candidate FP/ACD models for `xi` are listed with their powers,
-#'   degrees of freedom, and criterion-specific statistics. If `fit$spike[xi] = TRUE`,
-#'   this corresponds to the first stage of the spike-at-zero (SAZ) algorithm.
-#' - **Stage 2**: If `stage2 = TRUE` and the Stage 1 selected model for `xi` is
-#'   not `"null"`, the results of the spike-at-zero are printed immediately
-#'   after Stage 1. The chosen model is highlighted at the end of the table.
+#' @param xi Name of the variable currently being evaluated.
+#' @param criterion Model-selection criterion.
+#' @param fit Intermediate model-selection results.
+#' @param stage2 Whether to print Stage 2 of the spike-at-zero procedure.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
   
   print_mat_fct <- switch(
@@ -108,9 +95,7 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
   }
 }
 
-#' @param spike Logical. Indicates whether `xi` was treated as a spike-at-zero 
-#' variable. Default is `FALSE`.
-#' @describeIn print_mfp_step Helper for verbose printing based on p-value.
+# Internal helper for constructing p-value selection output.
 print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
   
   fpmax <- rownames(fit$metrics)[1]
@@ -150,7 +135,7 @@ print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
   return(mat)
 }
 
-#' @describeIn print_mfp_step Helper for verbose printing based on information criterion.
+# Internal helper for constructing AIC or BIC selection output.
 print_mfp_ic_step <- function(xi, fit, criterion, spike = FALSE) {
   
   if (spike){

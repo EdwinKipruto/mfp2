@@ -1,4 +1,4 @@
-eabf083043b08f39ad5b22d89fa8e887 *DESCRIPTION
+e164b8a4270913c9c8551c5ec8059130 *DESCRIPTION
 a4536f7b9b358ad5f5786886b0800fd4 *INDEX
 1f499192f1ff89906a62ec66c81ab99b *Meta/Rd.rds
 65cfdc4d0cb177be827b7ffc2baf830e *Meta/data.rds
@@ -6,13 +6,13 @@ a4536f7b9b358ad5f5786886b0800fd4 *INDEX
 bf2a666f678b7171105ede23ced3a00d *Meta/hsearch.rds
 1ca225ae88468aa2ff920aba45b21817 *Meta/links.rds
 3bc8b922c1027ee08933886211a57b28 *Meta/nsInfo.rds
-e54fcdea2673f6b5150cbb8e7bdf819a *Meta/package.rds
+c440984e97ee6f022b80be8d3c634a07 *Meta/package.rds
 a0a86997eb0ae90051a48f794193ceff *Meta/vignette.rds
 80213ad0385b985fad581b469be3cbd5 *NAMESPACE
 ca803c99759fffa50d5368e9c4d000ad *NEWS.md
 d6c68f1fe41ced6e98a766a3757313da *R/mfp2
-6f8659222c16da6d79f47c3f634dd94b *R/mfp2.rdb
-7726a6583b0faaceb976c28e22981147 *R/mfp2.rdx
+abf74032f731b51b9c88ecde54a9c060 *R/mfp2.rdb
+c61d9975a812487ab4fd521c9e573663 *R/mfp2.rdx
 6764b926457aab299189fb348ca2e4db *README.md
 76736545e734ba21ebe8b60ec88f612f *data/art.rda
 8449af4856d0de0f83a9c2a57a944fe2 *data/gbsg.rda
@@ -24,8 +24,8 @@ b0288a4c6886aa2e583c86a09ff21513 *doc/mfp2.Rmd
 c7edf156ae37b8187dc9c4e368074b42 *doc/mfp2.html
 1d63e4aa18811142549538ffc66aa5b8 *help/AnIndex
 351f380deef7efacf6a2ea579da38d5e *help/aliases.rds
-9ca96e6f97f7f64b2dcfd51cd669a7ce *help/mfp2.rdb
-46134c4d0e2f18866c7d085a5f61dd56 *help/mfp2.rdx
-7eec661e4a663baa4c877545263ce31c *help/paths.rds
+8a884a82421050404051a77480d947e1 *help/mfp2.rdb
+c2ee4e036820d0bc14a445d26b0d1f0d *help/mfp2.rdx
+599b2cbbf49960751b6404e5a83466b3 *help/paths.rds
 e5cb536f6c32ebc362e270c7659d26f1 *html/00Index.html
 ee41876c0116916bb04bcf4fe3e43d78 *html/R.css

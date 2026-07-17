@@ -1,199 +1,228 @@
-# -----------------------------------------------------------------------------
-# plot.mfpi() -----------------------------------------------------------------
-# -----------------------------------------------------------------------------
-
-#' Plot MFPI Fitted Functions and Fitted-Function Differences
+#' Plot Fitted Functions from an MFPI Model
 #'
-#' Produces diagnostic plots for selected or requested continuous variables in an
-#' object of class \code{"mfpi"}. The method can display group-specific fitted
-#' functions, fitted-function differences between a comparison group and the
-#' reference group, or both plot types side by side.
+#' Produces group-specific fitted-function plots, between-group difference
+#' plots, or both for continuous variables evaluated by [mfpi()].
 #'
-#' The plotting method is deliberately prediction-based. It does not rely on
-#' precomputed fitted-function matrices stored in the fitted \code{"mfpi"}
-#' object. Instead, plotting data are generated on demand by
-#' \code{predict.mfpi()} using the same prediction path used for ordinary MFPI
-#' prediction. This keeps plotting consistent with prediction and avoids storing
-#' large plotting grids inside the fitted model object.
+#' The plotted functions are shown on the model's linear-predictor scale.
+#' They represent the fitted contribution of the selected continuous variable,
+#' rather than a complete predicted response.
 #'
 #' @section Plot types:
-#' Three plot types are available through \code{plot_type}.
+#' Three plot types are available through `plot_type`.
 #'
 #' \describe{
 #'   \item{\code{"fitted"}}{
-#'     Plots the group-specific fitted functions for the reference group and one
-#'     comparison group on shared axes. For a continuous variable \eqn{x}, the
-#'     plotted curves correspond to \eqn{\hat f_r(x)} for the reference group
-#'     and \eqn{\hat f_j(x)} for comparison group \eqn{j}. Confidence bands for
-#'     these group-specific fitted functions are controlled by
-#'     \code{show_ci_fitted}. The y-axis label identifies the model scale of
-#'     the covariate function, for example outcome scale, log-odds, log-mean,
-#'     or log-hazard.
+#'     Plots the fitted covariate function separately for the reference group
+#'     and one comparison group on shared axes.
+#'
+#'     Confidence bands for the group-specific functions are controlled by
+#'     `show_ci_fitted`.
 #'   }
+#'
 #'   \item{\code{"difference"}}{
-#'     Plots the pointwise fitted-function difference
-#'     \eqn{\hat f_j(x) - \hat f_r(x)} for one comparison group \eqn{j} versus
-#'     the reference group \eqn{r}. A horizontal zero line is added to make the
-#'     absence of a fitted-function difference visually explicit. Confidence
-#'     bands for the difference curve are controlled by \code{show_ci_diff}.
-#'     The y-axis keeps the explicit contrast, \eqn{\hat f_j(x) - \hat f_r(x)},
-#'     and appends the model scale in parentheses.
+#'     Plots the pointwise difference between the comparison-group and
+#'     reference-group fitted functions:
+#'
+#'     \deqn{\hat f_j(x) - \hat f_r(x)}
+#'
+#'     A horizontal reference line at zero represents no difference between
+#'     the fitted functions at that covariate value.
+#'
+#'     The confidence band for the difference curve is controlled by
+#'     `show_ci_diff`.
 #'   }
+#'
 #'   \item{\code{"both"}}{
-#'     Places the fitted-function plot and the fitted-function difference plot
-#'     side by side for each variable and group contrast. This option requires
-#'     the \pkg{patchwork} package.
+#'     Places the group-specific fitted-function plot and the corresponding
+#'     difference plot side by side. This option requires the \pkg{patchwork}
+#'     package.
 #'   }
 #' }
 #'
 #' @section Model scale and interpretation:
-#' The plotted values are estimated covariate functions, not full fitted
-#' responses. For Gaussian models the fitted function is on the outcome scale.
-#' For binomial models it is on the log-odds scale. For Poisson models it is on
-#' the log-mean scale. For Cox models it is on the log-hazard scale.
-#'
-#' Difference plots show differences between estimated covariate functions on
-#' the same model scale. They should not be interpreted as probabilities, odds
-#' ratios, rate ratios, hazard ratios, survival probabilities, or complete
-#' predicted responses unless a separate transformation is explicitly applied.
-#'
-#' @section Prediction source:
-#' For each plotted variable, the method calls \code{predict.mfpi()} with
-#' \code{type = "both"} and \code{grid = TRUE}. Standard errors are requested
-#' only when at least one requested plot requires confidence bands. The plotting
-#' data are taken from the long-format \code{functions} and \code{differences}
-#' components returned by \code{predict.mfpi()}.
-#'
-#' The \code{functions} component contains one row per evaluation value and
-#' group, with columns such as \code{term}, \code{x}, \code{group}, and
-#' \code{fit}. The \code{differences} component contains one row per
-#' evaluation value and non-reference contrast, with columns such as
-#' \code{term}, \code{x}, \code{contrast}, \code{group}, \code{reference},
-#' and \code{fit}. Confidence limits are read from \code{lower} and
-#' \code{upper} when standard errors were requested.
-#'
-#' @section Group labels and reference group:
-#' MFPI stores group information in two forms. Internal group codes, usually
-#' \code{0}, \code{1}, ..., are used in coefficient names and prediction
-#' metadata. Original group labels, such as \code{"Placebo"} and
-#' \code{"Treatment"}, are used for display. If the fitted object contains a
-#' \code{group_level_map} component, plotting uses that mapping preferentially.
-#' Otherwise it falls back to \code{group_levels_original} and
-#' \code{group_levels_new}.
-#'
-#' Plot list names are intentionally based on internal group codes, for example
-#' \code{"grp1_vs_grp0"}. This keeps returned object names syntactically stable
-#' even when original group labels contain spaces, punctuation, or non-standard
-#' characters. The visual labels inside the plots use the original group labels.
-#'
-#' @section Term selection:
-#' If \code{terms = NULL}, only selected interaction terms are plotted. Selected
-#' variables are obtained from \code{x$best_interaction_model}, and prediction is
-#' requested with \code{model = "best"}.
-#'
-#' If \code{terms} is supplied, the requested variables are plotted from the
-#' full stored winner set using \code{model = "all"}. This allows inspection of
-#' non-selected variables, provided the corresponding term-specific winner models
-#' are stored in the fitted object.
-#'
-#' @section Confidence bands:
-#' Confidence-band controls are separate because fitted-function plots and
-#' difference plots have different inferential roles.
+#' The plotted functions are expressed on the model's linear-predictor scale:
 #'
 #' \itemize{
-#'   \item \code{show_ci_fitted} controls confidence bands around the
-#'     group-specific fitted functions. The default is \code{FALSE} to keep the
-#'     fitted-function display visually simple.
-#'   \item \code{show_ci_diff} controls the confidence band around the
-#'     fitted-function difference curve. The default is \code{TRUE} because the
-#'     difference curve is usually the primary interaction display.
+#'   \item Gaussian models: outcome scale;
+#'   \item binomial models: log-odds scale;
+#'   \item Poisson models: log-mean scale;
+#'   \item Cox models: log-hazard scale.
 #' }
 #'
-#' @section Return value:
-#' The method returns a nested named list invisibly. Outer names are continuous
-#' variable names. Inner names are contrast labels of the form
-#' \code{"grp<j>_vs_grp<r>"}, where \code{j} is the internal code of the
-#' comparison group and \code{r} is the internal code of the reference group.
-#' Each leaf is a \code{ggplot} object when \code{plot_type = "fitted"} or
-#' \code{plot_type = "difference"}, and a \code{patchwork} object when
-#' \code{plot_type = "both"} and both component plots are available.
+#' A difference plot therefore displays a difference between fitted covariate
+#' functions on the relevant model scale. It should not be interpreted directly
+#' as a probability, odds ratio, rate ratio, hazard ratio, survival probability,
+#' or complete predicted response.
 #'
-#' @param x Object of class \code{"mfpi"}.
-#' @param terms Optional character vector of continuous variables to plot. If
-#'   \code{NULL}, only selected interaction terms are plotted. If supplied, the
-#'   requested terms are plotted regardless of selection status, provided stored
-#'   term-specific winner models are available.
-#' @param plot_type Character scalar. One of \code{"fitted"},
-#'   \code{"difference"}, or \code{"both"}.
-#' @param auto_print Logical scalar. If \code{TRUE}, each plot is printed as it
-#'   is created. If \code{FALSE}, plots are returned invisibly for manual
-#'   printing, modification, or saving.
-#' @param show_title Logical scalar. If \code{TRUE}, plot titles and subtitles
-#'   are added. Subtitles include interaction type, group contrast, and the
-#'   selection metric available for the plotted variable.
-#' @param show_rug Logical scalar. If \code{TRUE}, rug marks for the plotted
-#'   \eqn{x} grid values are added at the bottom of each plot.
-#' @param show_ci_fitted Logical scalar. If \code{TRUE}, confidence bands are
-#'   shown around the group-specific fitted functions.
-#' @param show_ci_diff Logical scalar. If \code{TRUE}, a confidence band is
-#'   shown around the fitted-function difference curve.
-#' @param legend_position Character scalar. Legend position for fitted-function
-#'   plots. One of \code{"inside"}, \code{"right"}, \code{"left"},
-#'   \code{"bottom"}, \code{"top"}, or \code{"none"}.
-#' @param legend_inside Numeric vector of length 2 giving the legend position
-#'   inside the plotting panel when \code{legend_position = "inside"}. Values
-#'   are interpreted in normalized parent coordinates.
-#' @param legend_justification Numeric vector of length 2 giving legend
-#'   justification when \code{legend_position = "inside"}.
-#' @param colour_ref Character scalar. Colour for the reference-group fitted
-#'   function and its confidence band.
-#' @param colour_grp Character scalar. Colour for the comparison-group fitted
-#'   function and its confidence band.
-#' @param line_types Optional character vector of linetypes for the two fitted
-#'   functions. If unnamed, it must have length 2 and is interpreted as
-#'   reference group followed by comparison group. If named, names must match the
-#'   original group labels shown in the legend.
-#' @param colour_diff Character scalar. Colour for the difference curve and its
-#'   confidence band.
-#' @param linewidth Positive numeric scalar. Line width for fitted-function and
-#'   difference curves.
-#' @param ribbon_alpha Numeric scalar in \eqn{[0, 1]}. Transparency of confidence
-#'   bands.
-#' @param rug_alpha Numeric scalar in \eqn{[0, 1]}. Transparency of rug marks.
-#' @param ... Currently unused. Supplied arguments trigger a warning.
+#' Group labels shown in the plots correspond to the original values or factor
+#' levels supplied through `group_var`.
 #'
-#' @return Invisibly returns a nested named list of \code{ggplot} or
-#'   \code{patchwork} objects.
+#' When confidence intervals are displayed, they are pointwise intervals for
+#' the fitted function or fitted-function difference. They do not account for
+#' uncertainty introduced by variable selection, functional-form selection, or
+#' interaction selection.
 #'
-#' @seealso \code{mfpi()}, \code{predict.mfpi()}
+#' @section Term selection:
+#' If `terms = NULL`, plots are produced for interactions retained by the
+#' selected MFPI criterion.
+#'
+#' If `terms` is supplied, the requested continuous variables are plotted
+#' regardless of whether their interactions were retained, provided that the
+#' corresponding fitted models are available in the `mfpi` object.
+#'
+#' @section Confidence bands:
+#' Confidence bands for the two plot types are controlled separately:
+#'
+#' \itemize{
+#'   \item `show_ci_fitted` controls confidence bands around the
+#'     group-specific fitted functions;
+#'   \item `show_ci_diff` controls the confidence band around the
+#'     fitted-function difference.
+#' }
+#'
+#' The default suppresses confidence bands for the group-specific functions
+#' and displays them for the difference curve.
+#'
+#' @param x An object of class `"mfpi"`.
+#'
+#' @param terms Optional character vector naming the continuous variables to
+#'   plot. If `NULL`, only retained interaction terms are plotted. If supplied,
+#'   the requested terms are plotted when their fitted models are available.
+#'
+#' @param plot_type Character scalar specifying the plot to produce. One of
+#'   `"fitted"`, `"difference"`, or `"both"`.
+#'
+#' @param auto_print Logical scalar. If `TRUE`, each plot is printed when it is
+#'   created. If `FALSE`, plots are returned invisibly for manual printing,
+#'   modification, or saving.
+#'
+#' @param show_title Logical scalar. If `TRUE`, titles and subtitles are added.
+#'   Subtitles may include the interaction type, group contrast, and available
+#'   selection result.
+#'
+#' @param show_rug Logical scalar. If `TRUE`, rug marks are added along the
+#'   horizontal axis to show the covariate evaluation values.
+#'
+#' @param show_ci_fitted Logical scalar. If `TRUE`, confidence bands are shown
+#'   around the group-specific fitted functions.
+#'
+#' @param show_ci_diff Logical scalar. If `TRUE`, a confidence band is shown
+#'   around the fitted-function difference.
+#'
+#' @param legend_position Character scalar specifying the legend position for
+#'   fitted-function plots. One of `"inside"`, `"right"`, `"left"`,
+#'   `"bottom"`, `"top"`, or `"none"`.
+#'
+#' @param legend_inside Numeric vector of length two giving the legend position
+#'   inside the plotting panel when `legend_position = "inside"`. Values are
+#'   interpreted as normalized parent coordinates.
+#'
+#' @param legend_justification Numeric vector of length two giving the legend
+#'   justification when `legend_position = "inside"`.
+#'
+#' @param colour_ref Character scalar specifying the colour of the
+#'   reference-group fitted function and confidence band.
+#'
+#' @param colour_grp Character scalar specifying the colour of the
+#'   comparison-group fitted function and confidence band.
+#'
+#' @param line_types Optional character vector specifying the line types of the
+#'   two group-specific functions. If unnamed, it must have length two and is
+#'   interpreted as the reference group followed by the comparison group. If
+#'   named, its names must match the original group labels shown in the legend.
+#'
+#' @param colour_diff Character scalar specifying the colour of the difference
+#'   curve and its confidence band.
+#'
+#' @param linewidth Positive numeric scalar specifying the width of the fitted
+#'   and difference curves.
+#'
+#' @param ribbon_alpha Numeric scalar in \eqn{[0,1]} specifying the transparency
+#'   of confidence bands.
+#'
+#' @param rug_alpha Numeric scalar in \eqn{[0,1]} specifying the transparency
+#'   of rug marks.
+#'
+#' @param ... Currently unused. Supplied arguments generate a warning.
+#'
+#' @return
+#' Invisibly returns a nested named list of plots.
+#'
+#' The outer list is named by continuous variable. Within each variable, the
+#' inner list contains one element for each displayed group contrast.
+#'
+#' Each element is:
+#'
+#' \itemize{
+#'   \item a `ggplot` object when `plot_type = "fitted"` or
+#'     `plot_type = "difference"`;
+#'   \item a `patchwork` object when `plot_type = "both"`.
+#' }
+#'
+#' Returned plots can be printed, modified with \pkg{ggplot2}, combined with
+#' \pkg{patchwork}, or saved with [ggplot2::ggsave()].
+#'
+#' @seealso [mfpi()], [predict.mfpi()]
 #'
 #' @import ggplot2
 #' @importFrom ggplot2 .data
-#' @export
 #'
 #' @examples
 #' \dontrun{
-#' fit <- mfpi(x, y, group_var = "trt", cont_vars = c("age", "bmi"))
+#' data("prostate")
 #'
-#' # Plot selected fitted functions.
-#' plot(fit)
+#' # Investigate whether the fitted effects of cavol and age differ by svi.
+#' fit <- mfpi(
+#'   lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
+#'     fp(bph) + fp(cp),
+#'   data = prostate,
+#'   group_var = "svi",
+#'   cont_vars = c("cavol", "age"),
+#'   flex = "flex1",
+#'   include_group_var = TRUE,
+#'   center = FALSE,
+#'   verbose = FALSE
+#' )
 #'
-#' # Return selected difference plots without printing.
-#' plots <- plot(fit, plot_type = "difference", auto_print = FALSE)
+#' # Plot retained group-specific fitted functions.
+#' plot(fit, plot_type = "fitted")
 #'
-#' # Plot a non-selected variable if its winner model is stored.
-#' plot(fit, terms = "age", plot_type = "both")
+#' # Plot retained fitted-function differences.
+#' plot(fit, plot_type = "difference")
 #'
-#' # Add confidence bands to group-specific fitted functions.
-#' plot(fit, plot_type = "fitted", show_ci_fitted = TRUE)
+#' # Return plots without printing them.
+#' plots <- plot(
+#'   fit,
+#'   terms = "cavol",
+#'   plot_type = "difference",
+#'   auto_print = FALSE
+#' )
 #'
-#' # Use named line types matching original group labels.
-#' plot(fit, plot_type = "fitted",
-#'      line_types = c(Placebo = "solid", Treatment = "dashed"))
+#' # Print the first returned contrast plot for cavol.
+#' print(plots[["cavol"]][[1]])
 #'
-#' # Save a returned plot.
-#' ggplot2::ggsave("age_difference.pdf", plots$age$grp1_vs_grp0)
+#' # Display fitted and difference plots side by side.
+#' if (requireNamespace("patchwork", quietly = TRUE)) {
+#'   plot(fit, terms = "cavol", plot_type = "both")
 #' }
+#'
+#' # Add confidence bands to the group-specific fitted functions.
+#' plot(
+#'   fit,
+#'   terms = "cavol",
+#'   plot_type = "fitted",
+#'   show_ci_fitted = TRUE
+#' )
+#'
+#' # Use line types named according to the original group labels.
+#' plot(
+#'   fit,
+#'   terms = "cavol",
+#'   plot_type = "fitted",
+#'   line_types = c("0" = "solid", "1" = "dashed")
+#' )
+#' }
+#'
 #' @method plot mfpi
 #' @export
 plot.mfpi <- function(x,

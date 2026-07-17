@@ -378,8 +378,16 @@ fit_mfp <- function(x,
   select       <- setNames(select,  variables_x)[variables_ordered]
   df           <- setNames(df,      variables_x)[variables_ordered]
   center       <- setNames(center,  variables_x)[variables_ordered]
-  shift        <- setNames(shift,   variables_x)[variables_ordered]
-  scale        <- setNames(scale,   variables_x)[variables_ordered]
+  shift        <- if (!is.null(names(shift))) {
+    shift[variables_ordered]
+  } else {
+    setNames(shift, variables_x)[variables_ordered]
+  }
+  scale        <- if (!is.null(names(scale))) {
+    scale[variables_ordered]
+  } else {
+    setNames(scale, variables_x)[variables_ordered]
+  }
   acdx         <- setNames(acdx,    variables_x)[variables_ordered]
   zero         <- setNames(zero,    variables_x)[variables_ordered]
   catzero      <- setNames(catzero, variables_x)[variables_ordered]

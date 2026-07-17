@@ -492,61 +492,19 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   )
 }
 
-
-# -----------------------------------------------------------------------------
-# print.best_model_metrics() --------------------------------------------
-# -----------------------------------------------------------------------------
-
-#' Print Method for Model Evaluation Metrics
+#' Print MFPI model-evaluation metrics
 #'
-#' Formats the list-columns `fp_powers_main` and `fp_powers_int` of a
-#' `"best_model_metrics"` tibble as human-readable strings, then
-#' delegates to [print.data.frame()].
+#' Internal S3 method used to format model-evaluation results displayed by
+#' [mfpi()] and its print methods.
 #'
-#' @section Output columns:
-#' The printed table contains the following columns:
-#' \describe{
-#'   \item{`type`}{Functional form tested for the continuous variable.}
-#'   \item{`variable`}{Name of the continuous variable tested.}
-#'   \item{`fp_powers_main`}{FP powers in the main-effects model, formatted as
-#'     `"(p1)"` (FP1) or `"(p1, p2)"` (FP2).}
-#'   \item{`fp_powers_int`}{FP powers in the interaction model, formatted as one
-#'     parenthesised tuple per group, comma-separated.}
-#'   \item{`deviance_int`}{\eqn{-2\ell_{\text{int}}}: deviance of the interaction
-#'     model.}
-#'   \item{`deviance_diff`}{\eqn{T = -2\ell_{\text{main}} - (-2\ell_{\text{int}})
-#'     \geq 0}: likelihood-ratio test statistic.}
-#'   \item{`df_int`}{\eqn{df_{\text{int}} = (K-1)m}: degrees of freedom for the
-#'     LRT (may differ for `flex3`/`flex4`).}
-#'   \item{`pvalue`}{\eqn{p = \Pr[\chi^2(df_{\text{int}}) > T]}.}
-#'   \item{`df_total`}{Total parameters in the interaction model (excluding
-#'     intercept and adjustment terms).}
-#'   \item{`AIC_main`}{\eqn{\mathrm{AIC}_{\text{main}} =
-#'     -2\ell_{\text{main}} + 2\,p_{\text{main}}}: AIC of the main-effects
-#'     model (no interaction).}
-#'   \item{`AIC_interaction`}{\eqn{\mathrm{AIC}_{\text{int}} =
-#'     -2\ell_{\text{int}} + 2\,p_{\text{int}}}.}
-#'   \item{`AIC_main_minus_int`}{\eqn{\mathrm{AIC}_{\text{main}} -
-#'     \mathrm{AIC}_{\text{int}}}. Positive values favour the interaction
-#'     model.}
-#'   \item{`BIC_main`}{\eqn{\mathrm{BIC}_{\text{main}} =
-#'     -2\ell_{\text{main}} + p_{\text{main}}\log(n^*)}: BIC of the main-effects
-#'     model (no interaction).}
-#'   \item{`BIC_interaction`}{\eqn{\mathrm{BIC}_{\text{int}} =
-#'     -2\ell_{\text{int}} + p_{\text{int}}\log(n^*)}.}
-#'   \item{`BIC_main_minus_int`}{\eqn{\mathrm{BIC}_{\text{main}} -
-#'     \mathrm{BIC}_{\text{int}}}. Positive values favour the interaction
-#'     model.}
-#' }
-#'
-#' @param x An object of class `"best_model_metrics"`, as returned by
-#'   \code{test_interaction()}.
+#' @param x An object of class `"best_model_metrics"`.
 #' @param ... Additional arguments passed to [print.data.frame()].
 #'
 #' @return Invisibly returns `x`.
 #'
 #' @method print best_model_metrics
 #' @export
+#' @noRd
 print.best_model_metrics <- function(x, ...) {
   # Guard: power columns may be absent if the user subset the data frame
   # (e.g. `x[, c("type", "pvalue")]` drops fp_powers_main / fp_powers_int).

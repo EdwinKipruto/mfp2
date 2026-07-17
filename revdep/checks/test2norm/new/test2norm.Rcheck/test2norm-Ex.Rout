@@ -43,7 +43,7 @@ Type 'q()' to quit R.
 +           test.min = 0, test.max = 36, test.better = "High",
 +           group.id = "group", control.id = "control",
 +           demographics = c("age", "male"))
-Warning in mfp2.default(x = x, y = y, weights = weights, offset = offset,  :
+Warning in mfp2.default(x = x, y = y, term_groups = grouped_formula_terms,  :
   i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().
 i This applies to the following variables: male.
 $rawscore
@@ -218,7 +218,7 @@ $SS.maps
 > score2adjust(data = PsychTestData, test.score = "scaledscore",
 +              group.id = "group", control.id = "control",
 +              demographics = c("age", "male"))
-Warning in mfp2.default(x = x, y = y, weights = weights, offset = offset,  :
+Warning in mfp2.default(x = x, y = y, term_groups = grouped_formula_terms,  :
   i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().
 i This applies to the following variables: male.
 $scaledscore
@@ -295,7 +295,7 @@ male      1     NA
 +           test.min = 0, test.max = 36, test.better = "High",
 +           group.id = "group", control.id = "control",
 +           demographics = c("age", "male"))
-Warning in mfp2.default(x = x, y = y, weights = weights, offset = offset,  :
+Warning in mfp2.default(x = x, y = y, term_groups = grouped_formula_terms,  :
   i For any variable with fewer than 4 unique values the df are set to 1 (linear) by mfp2().
 i This applies to the following variables: male.
 $rawscore
@@ -393,7 +393,7 @@ $MFP.formulas$residual.SD
 > cleanEx()
 > options(digits = 7L)
 > base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
-Time elapsed:  1.91 0.28 2.2 NA NA 
+Time elapsed:  1.92 0.19 2.11 NA NA 
 > grDevices::dev.off()
 null device 
           1 

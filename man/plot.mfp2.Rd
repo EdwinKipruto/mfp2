@@ -127,5 +127,5 @@ plots[[1]]
 
 }
 \seealso{
-\code{\link{predict.mfp2}}, \code{\link{fracplot}}
+\code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=mfp2]{mfp2()}}
 }

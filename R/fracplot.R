@@ -78,7 +78,7 @@
 #' plots <- plot(fit)
 #' plots[[1]]
 #'
-#' @seealso \code{\link{predict.mfp2}}, \code{\link{fracplot}}
+#' @seealso [predict.mfp2()], [mfp2()]
 #' @importFrom ggplot2 .data
 #' @method plot mfp2
 #' @export
@@ -398,34 +398,41 @@ plot_mfp2_impl <- function(model,
   plots
 }
 
-#' Deprecated fractional-polynomial plotting interface
+#' Deprecated Fractional-Polynomial Plotting Interface
 #'
-#' @description
-#' \code{fracplot()} is deprecated. Use \code{plot()} on a fitted \code{mfp2}
-#' object instead. The deprecated function remains available temporarily for
-#' backward compatibility and returns the same plot list as \code{plot()}.
+#' `fracplot()` is retained temporarily for compatibility with code written
+#' for earlier versions of `mfp2`. Use [plot.mfp2()] or `plot()` instead.
+#'
+#' The function forwards its arguments to [plot.mfp2()] and returns the same
+#' plot objects.
 #'
 #' @inheritParams plot.mfp2
-#' @param model A fitted \code{mfp2} object.
+#' @param model A fitted object of class `"mfp2"`.
 #'
-#' @return A named list of \code{ggplot2} objects, identical to the result from
-#'   \code{plot(model, ...)}.
+#' @return
+#' A named list of `ggplot2` objects, one for each plotted term, identical to
+#' the result returned by [plot.mfp2()].
+#'
+#' @seealso [plot.mfp2()]
 #'
 #' @examples
 #' data("prostate")
-#' x <- as.matrix(prostate[, 2:8])
-#' y <- as.numeric(prostate$lpsa)
-#' fit <- mfp2(x, y, verbose = FALSE)
 #'
-#' # Preferred interface
-#' plots <- plot(fit)
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + fp(cavol) + fp(weight) + svi,
+#'   data = prostate,
+#'   verbose = FALSE
+#' )
+#'
+#' # Recommended interface
+#' plots <- plot(fit, terms = "age")
+#' plots
 #'
 #' \dontrun{
 #' # Deprecated compatibility interface
-#' old_plots <- fracplot(fit)
+#' old_plots <- fracplot(fit, terms = "age")
 #' }
 #'
-#' @seealso \code{\link{plot.mfp2}}
 #' @export
 fracplot <- function(model,
                      terms = NULL,
@@ -458,13 +465,12 @@ fracplot <- function(model,
     )
   )
   
-  plot_mfp2_impl(
-    model = model,
+  plot_args <- list(
+    x = model,
     terms = terms,
     partial_only = partial_only,
     type = type,
     ref = ref,
-    terms_seq = terms_seq,
     alpha = alpha,
     show_titles = show_titles,
     color_points = color_points,
@@ -476,7 +482,13 @@ fracplot <- function(model,
     size_points_spike = size_points_spike,
     linetype = linetype,
     linewidth = linewidth,
-    alpha_fill = alpha_fill,
-    terms_seq_missing = terms_seq_missing
+    alpha_fill = alpha_fill
   )
+  
+  # Preserve plot.mfp2()'s type-dependent default when terms_seq was omitted.
+  if (!terms_seq_missing) {
+    plot_args$terms_seq <- terms_seq
+  }
+  
+  do.call(plot.mfp2, plot_args)
 }

@@ -393,7 +393,7 @@ $MFP.formulas$residual.SD
 > cleanEx()
 > options(digits = 7L)
 > base::cat("Time elapsed: ", proc.time() - base::get("ptime", pos = 'CheckExEnv'),"\n")
-Time elapsed:  2.05 0.27 2.31 NA NA 
+Time elapsed:  1.89 0.31 2.22 NA NA 
 > grDevices::dev.off()
 null device 
           1 

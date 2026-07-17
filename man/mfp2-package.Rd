@@ -3,17 +3,67 @@
 \docType{package}
 \name{mfp2-package}
 \alias{mfp2-package}
-\title{mfp2}
+\title{mfp2: Multivariable Fractional Polynomial Models and Extensions}
 \description{
-Internal package-level documentation.
+The \code{mfp2} package fits multivariable fractional polynomial models with
+simultaneous selection of variables and functional forms for continuous
+predictors.
 }
-\seealso{
-Useful links:
+\section{Main functions}{
+
 \itemize{
-  \item \url{https://github.com/EdwinKipruto/mfp2}
-  \item Report bugs at \url{https://github.com/EdwinKipruto/mfp2/issues}
+\item \code{\link[=mfp2]{mfp2()}} fits multivariable fractional polynomial models.
+\item \code{\link[=fp]{fp()}} specifies fractional-polynomial and related modelling options
+within a formula.
+\item \code{\link[=mfpi]{mfpi()}} investigates interactions between a categorical grouping
+variable and continuous covariates.
 }
 
+Fitted models can be examined using \code{print()}, \code{summary()}, and \code{coef()},
+used for prediction with \code{predict()}, and visualised with \code{plot()}.
+}
+
+\section{Supported models}{
+
+\code{\link[=mfp2]{mfp2()}} supports Gaussian, binomial, and Poisson regression, together
+with Cox proportional hazards models for right-censored survival outcomes.
+}
+
+\section{Modelling extensions}{
+
+In addition to standard fractional-polynomial modelling, \code{mfp2} provides:
+\itemize{
+\item approximate cumulative distribution (ACD) transformations for selected
+continuous predictors;
+\item spike-at-zero (SAZ) modelling for semi-continuous predictors that contain
+a distinct zero component and a positive continuous component;
+\item interaction analysis between continuous predictors and categorical groups
+through \code{\link[=mfpi]{mfpi()}}.
+}
+
+Spike-at-zero modelling can be requested in the formula interface with
+\code{fp(x, spike = TRUE)} or in the matrix interface with
+\code{spike_vars = "x"}. The procedure assesses whether the final model should
+retain both the zero-component indicator and the positive continuous
+component, or only one of them.
+}
+
+\section{Getting started}{
+
+See \code{vignette("mfp2_introduction", package = "mfp2")} for an introduction
+to model fitting, interpretation, prediction, and plotting.
+
+Further guidance is available in:
+\itemize{
+\item \code{vignette("MFP_Introduction", package = "mfp2")} for MFP methodology;
+\item \code{vignette("mfp2_ACD", package = "mfp2")} for ACD transformations;
+\item \code{vignette("mfp2_spike", package = "mfp2")} for spike-at-zero modelling;
+\item \code{vignette("mfpi", package = "mfp2")} for interaction analysis.
+}
+}
+
+\seealso{
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=plot.mfp2]{plot.mfp2()}}
 }
 \author{
 \strong{Maintainer}: Edwin Kipruto \email{edwin.kipruto@uniklinik-freiburg.de}
@@ -27,4 +77,4 @@ Authors:
 }
 
 }
-\keyword{internal}
+\keyword{package}

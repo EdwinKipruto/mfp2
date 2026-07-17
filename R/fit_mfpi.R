@@ -57,14 +57,12 @@
 #' @param keep Character vector naming conceptual adjustment terms or raw
 #'   member columns that are forced into the adjustment model. Naming one
 #'   member of a grouped categorical term retains the complete block.
-#' @param force_max_fp Named logical vector of length \eqn{p}. For each
-#'   variable, if \code{TRUE}, forces \code{select_ic()} to select the most
-#'   complex functional form at the degree specified by \code{df}, bypassing
-#'   AIC/BIC competition against simpler forms. Expanded from a scalar or
-#'   validated as a named vector of length \eqn{p} by \code{mfpi.default()}
-#'   before being passed here. Passed directly to \code{fit_adjustment_model()};
-#'   not forwarded to the flex functions, which construct their own internal
-#'   \code{force_max_fp} vectors from \code{vnames}.
+#' \code{force_max_fp} is a named logical vector already subsetted by
+#' \code{fit_mfpi()} to match the adjustment-model columns of \code{x}.
+#' Under p-value selection, the corresponding \code{select} and \code{alpha}
+#' values have already been set to \code{1} by \code{mfpi.default()}. Under
+#' AIC/BIC, this vector directly prevents simplification of the named
+#' adjustment variables.
 #' @param df Named integer vector of length \eqn{p}. Degrees of freedom per
 #'   predictor (1 = linear, 2m = FP of degree m), after cardinality-based
 #'   overrides by \code{assign_df()}.

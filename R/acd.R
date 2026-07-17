@@ -58,74 +58,139 @@ reset_acd <- function(x, acdx) {
 }
 
 
-#' Function to estimate approximate cumulative distribution (ACD)
-#' 
-#' Fits ACD transformation as outlined in Royston (2014). The ACD transformation 
-#' smoothly maps the observed distribution of a continuous covariate x onto one scale,
-#' namely, that of an approximate uniform distribution on the interval (0, 1). 
-#' 
-#' @details 
-#' Briefly, the estimation works as follows. First, the input data are shifted
-#' to positive values and scaled as requested. Then 
-#' \deqn{z = \Phi^{-1}(\frac{rank(x) - 0.5}{n}) }
-#' is computed, where \eqn{n} is the number of elements in `x`, 
-#' with ties in the ranks handled as averages. To approximate \eqn{z}, 
-#' an FP1 model (least squares) is used, i.e. 
-#' \eqn{E(z) = \beta_0 + \beta_1 (x)^p}, where \eqn{p} is chosen such that it 
-#' provides the best fitting model among all possible FP1 models. 
-#' The ACD transformation is then given as
-#' \deqn{acd(x) = \Phi(\hat{z}),}
-#' where the fitted values of the estimated model are used. 
-#' If the relationship between a response Y and acd(x) is linear,
-#' say, \eqn{E(Y) = \beta_0 + \beta_1 acd(x)}, the relationship between Y 
-#' and x is nonlinear and is typically sigmoid in shape.  
-#' The parameters \eqn{\beta_0} and \eqn{\beta_0 + \beta_1} in such a model are 
-#' interpreted as the expected values of Y at the minimum and maximum of x,
-#' that is, at acd(x) = 0 and 1, respectively. 
-#' The parameter \eqn{\beta_1} represents the range of predictions of \eqn{E(Y)} 
-#' across the whole observed distribution of x (Royston 2014).
-#' 
-#' @param x a numeric vector.
-#' @param powers a vector of allowed FP powers. The default value is `NULL`,
-#' meaning that the set \eqn{S = (-2, -1, -0.5, 0, 0.5, 1, 2, 3)} is used.
-#' @param shift a numeric that is used to shift the values of `x` to positive
-#' values. The default value is 0, meaning no shifting is conducted. 
-#' If `NULL`, then the program will estimate an appropriate shift automatically
-#' (see \code{find_shift_factor()}).
-#' @param scale a numeric used to scale `x`. The default value is 1, meaning 
-#' no scaling is conducted. If `NULL`, then the program will estimate 
-#' an appropriate scaling factor automatically (see \code{find_scale_factor()}).
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive 
-#' values are replaced with zero before transformation. If \code{FALSE} (default),
-#' all values are shifted (if needed) to ensure positivity before transformation.
-#' @examples
+#' Fit an Approximate Cumulative Distribution Transformation
 #'
-#'set.seed(42)
-#' x = apply_shift_scale(rnorm(100))
-#' fit_acd(x)
-#' 
-#' @return 
-#' A list is returned with components
-#' 
-#' * `acd`: the acd transformed input data.
-#' * `beta0`: intercept of estimated model.
-#' * `beta1`: coefficient of estimated model.
-#' * `power`: estimated power.
-#' * `shift`: shift value used for computations.
-#' * `scale`: scaling factor used for computations. 
-#' 
-#' @references 
-#' Royston, P. and Sauerbrei, W. (2016). \emph{mfpa: Extension of mfp using the
-#' ACD covariate transformation for enhanced parametric multivariable modeling. 
-#' The Stata Journal, 16(1), pp.72-87.}
-#' 
-#' Royston, P. (2014). \emph{A smooth covariate rank transformation for use in 
-#' regression models with a sigmoid dose-response function. The Stata Journal,
-#'  14(2), 329-341}. 
-#' 
-#' @export
+#' Estimates the approximate cumulative distribution (ACD) transformation
+#' described by Royston (2014). The transformation maps the observed
+#' distribution of a continuous covariate approximately onto the interval
+#' `(0, 1)`.
+#'
+#' @details
+#' The observed values are first shifted and scaled according to `shift` and
+#' `scale`. The function then calculates the normal-score rank transformation
+#'
+#' \deqn{
+#' z_i = \Phi^{-1}\left\{\frac{\operatorname{rank}(x_i)-0.5}{n}\right\},
+#' }
+#'
+#' where tied observations receive average ranks.
+#'
+#' An FP1 model is fitted for each candidate power:
+#'
+#' \deqn{
+#' E(z_i) = \beta_0 + \beta_1 x_i^p.
+#' }
+#'
+#' The power giving the best fit is selected, and the resulting ACD
+#' transformation is:
+#'
+#' \deqn{
+#' \operatorname{ACD}(x_i) =
+#' \Phi\left(\hat{\beta}_0 + \hat{\beta}_1 x_i^p\right).
+#' }
+#'
+#' The transformed values lie between zero and one and can be used to represent
+#' a smooth sigmoid-shaped covariate effect in a regression model.
+#'
+#' Most users do not need to call `fit_acd()` directly because ACD modelling
+#' can be requested through [mfp2()]. This function is useful for inspecting,
+#' reproducing, or applying an ACD transformation in a custom workflow.
+#'
+#' If `shift = NULL`, an appropriate shift is estimated automatically using
+#' \code{find_shift_factor()}. If `scale = NULL`, an appropriate scale is estimated
+#' automatically using \code{find_scale_factor()}.
+#'
+#' When `zero = TRUE`, only positive values are used in the continuous
+#' transformation. Nonpositive values are assigned a transformed value of zero,
+#' and no shift is applied.
+#'
+#' @param x Numeric vector containing the covariate values. Missing values are
+#'   not allowed.
+#'
+#' @param powers Optional numeric vector containing the candidate FP1 powers.
+#'   If `NULL`, the standard set
+#'   `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` is used. Power zero represents
+#'   the logarithmic transformation.
+#'
+#' @param shift Numeric scalar used to shift `x` before transformation.
+#'   The default, `0`, applies no shift. Use `NULL` to estimate a suitable
+#'   shift automatically.
+#'
+#' @param scale Positive numeric scalar used to scale the shifted values.
+#'   The default, `1`, applies no scaling. Use `NULL` to estimate a suitable
+#'   scale automatically.
+#'
+#' @param zero Logical scalar. If `TRUE`, the ACD transformation is fitted to
+#'   the positive values and nonpositive values are assigned zero. If `FALSE`,
+#'   all observations are included after any requested shifting and scaling.
+#'
+#' @return
+#' A list containing:
+#'
+#' \describe{
+#'   \item{\code{acd}}{
+#'     Numeric vector containing the fitted ACD-transformed values.
+#'   }
+#'
+#'   \item{\code{beta0}}{
+#'     Estimated intercept of the selected FP1 approximation.
+#'   }
+#'
+#'   \item{\code{beta1}}{
+#'     Estimated coefficient of the selected FP1 approximation.
+#'   }
+#'
+#'   \item{\code{power}}{
+#'     Selected FP1 power.
+#'   }
+#'
+#'   \item{\code{shift}}{
+#'     Shift applied before fitting the transformation.
+#'   }
+#'
+#'   \item{\code{scale}}{
+#'     Scale applied before fitting the transformation.
+#'   }
+#' }
+#'
+#' @references
+#' Royston, P. (2014). A smooth covariate rank transformation for use in
+#' regression models with a sigmoid dose-response function.
+#' \emph{The Stata Journal}, 14(2), 329--341.
+#'
+#' Royston, P. and Sauerbrei, W. (2016). mfpa: Extension of mfp using the ACD
+#' covariate transformation for enhanced parametric multivariable modeling.
+#' \emph{The Stata Journal}, 16(1), 72--87.
+#'
+#' @examples
+#' set.seed(42)
+#'
+#' # Positive-valued covariate requiring no shift.
+#' x <- rgamma(100, shape = 2, rate = 0.5)
+#' acd_fit <- fit_acd(x)
+#'
+#' acd_fit$power
+#' head(acd_fit$acd)
+#'
+#' # Estimate the shift and scale automatically.
+#' x_unscaled <- rnorm(100, mean = 10, sd = 20)
+#' acd_auto <- fit_acd(
+#'   x_unscaled,
+#'   shift = NULL,
+#'   scale = NULL
+#' )
+#'
+#' \dontrun{
+#' # ACD can ordinarily be requested directly during MFP fitting.
+#' fit <- mfp2(
+#'   outcome ~ fp(exposure, acd = TRUE) + fp(age),
+#'   data = analysis_data,
+#'   verbose = FALSE
+#' )
+#' }
+#'
+#' @keywords internal
+#' @noRd
 fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   
   # --- Input checks ---

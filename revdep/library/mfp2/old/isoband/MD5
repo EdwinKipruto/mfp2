@@ -1,4 +1,4 @@
-5edb0e884898dd9fe6525004d1b92bfa *DESCRIPTION
+fa736d92a5f8c63c9bd0cd80e03ab96d *DESCRIPTION
 7c45b73b2f88ed25f25c5b951041e99d *INDEX
 fd29f135e91475dab010d4c458350167 *LICENSE
 7288cae790f3163c47e53cafb3afb872 *Meta/Rd.rds
@@ -6,7 +6,7 @@ fd29f135e91475dab010d4c458350167 *LICENSE
 e3a5b5b49b38217296d245db3fcc38e6 *Meta/hsearch.rds
 e7e90cd07d630fc928f2754d1e9dceba *Meta/links.rds
 d5a372d4b84e5ab0717385ab208bf861 *Meta/nsInfo.rds
-5748e7a02f3bb7a344d0f6221970f704 *Meta/package.rds
+63bec7b5f66e4a28347825e914e87d70 *Meta/package.rds
 520ee083c227b2596e8349c3f5939f95 *Meta/vignette.rds
 0b08cb67c371aa5ae6e4086a96a6003e *NAMESPACE
 327f04a312d477d45476892b2a928cdb *NEWS.md
@@ -27,10 +27,10 @@ e711b1cc1c2c501c62a89b74e6e5c9ce *help/aliases.rds
 24646c0a709860a5ee51db8c96b1901b *help/figures/README-basic-example-plot-1.png
 42b0b694b0e4a7e98c9a7db659b6b468 *help/figures/README-volcano-1.png
 b1b0065382a9ba25acf3d9d848ddaced *help/figures/logo.png
-742853f7b938b0dfde39a1c0a04c2806 *help/isoband.rdb
-2fab00db13df856adcab523fda6db62f *help/isoband.rdx
-2434fe1b524983e2eef5ee3f305f0f9e *help/paths.rds
+344ea3cc16d6dd396ad200246534b94a *help/isoband.rdb
+89683a112bffd32997434763f33b49c8 *help/isoband.rdx
+8307fe043f33c9fe163db2348dfd2cec *help/paths.rds
 93223674ed2bc50d27ff321ffc68a1eb *html/00Index.html
 ee41876c0116916bb04bcf4fe3e43d78 *html/R.css
-f634d75051ad5a6d1669c569abcd4d0b *libs/x64/isoband.dll
+5354bdb220ede134d252891bc95d6060 *libs/x64/isoband.dll
 83dbcf699a9ec498f4464caf96b20fb8 *libs/x64/symbols.rds

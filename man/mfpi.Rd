@@ -4,7 +4,7 @@
 \alias{mfpi}
 \alias{mfpi.default}
 \alias{mfpi.formula}
-\title{Model Interactions Between a Categorical and Continuous Covariates}
+\title{Model Interactions Between a Categorical Variable and Continuous Variables}
 \usage{
 mfpi(x, ...)
 
@@ -101,570 +101,274 @@ mfpi(x, ...)
 )
 }
 \arguments{
-\item{x}{For \code{mfpi.default()} only. A numeric matrix or data frame of predictor
-variables. If \code{x} is a data frame, \code{group_var} may be factor,
-character, logical, integer, or numeric. All non-group variables must be
-numeric, integer, or logical. Internally, \code{group_var} is remapped to
-consecutive integer levels, while its original labels are preserved for
-printing, summaries, plotting, and prediction metadata. The matrix must not contain an intercept
-column; binary variables should be coded as 0/1. Multi-level categorical
-adjustment variables must be expanded into design columns and supplied as
-one conceptual block through \code{term_groups}. Must be free of missing
+\item{x}{For \code{mfpi.default()}, a numeric matrix or data frame containing the
+predictors. It must have column names and must not contain missing or
+non-finite values. Do not add an intercept column. In a data frame, only
+\code{group_var} may be categorical; all other columns must be numeric, integer,
+or logical.}
+
+\item{...}{Additional arguments are not currently supported and produce an
+error.}
+
+\item{y}{For \code{mfpi.default()}, the response. Supply a finite numeric vector
+for Gaussian or Poisson models, a valid binomial response for binomial
+models, or a right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox models. It
+must have the same number of observations as \code{x}.}
+
+\item{group_var}{A single character string naming the categorical grouping
+variable. It must have at least two observed groups and must not appear in
+\code{cont_vars} or \code{term_groups}.}
+
+\item{cont_vars}{A non-empty character vector naming the continuous variables
+whose interactions with \code{group_var} are evaluated. Each variable must be a
+single numeric column with more than two distinct values.}
+
+\item{cont_var_forms}{An optional named character vector specifying
+\code{"linear"}, \code{"fp1"}, or \code{"fp2"} for variables in \code{cont_vars}.
+Every supplied entry must be named. Variables not named use \code{"fp1"}.
+The default \code{NULL} uses \code{"fp1"} for every tested variable.}
+
+\item{flex}{A character string specifying how FP powers are chosen across
+groups: \code{"flex1"}, \code{"flex2"}, \code{"flex3"}, or \code{"flex4"}. The
+default is \code{"flex3"}. See \strong{Choosing the flexibility level}.}
+
+\item{p_interact}{A finite number in \verb{(0, 1]}. With
+\code{criterion = "pvalue"}, an interaction is selected only when its raw or
+adjusted p-value is strictly below this value. The default is \code{0.05}.}
+
+\item{min_improvement}{A positive number giving the minimum AIC or BIC
+improvement required to select an interaction. The interaction is selected
+only when the relevant improvement is strictly greater than this value.
+The default is 2 for \code{criterion = "aic"} or \code{"bic"}. It is ignored for
+p-value selection.}
+
+\item{include_group_var}{A single logical value. If \code{TRUE}, the group term is
+forced into the first-stage MFP adjustment model. Group main effects are
+included in the interaction models regardless of this setting. The default
+is \code{FALSE}.}
+
+\item{show_models}{A single logical value. If \code{TRUE} and \code{verbose = TRUE},
+print the regression summary for each selected interaction model. The
+default is \code{FALSE}.}
+
+\item{weights}{An optional finite, non-negative numeric vector with one value
+per observation. The weights are used in both the adjustment and
+interaction models.}
+
+\item{offset}{An optional finite numeric vector with one value per
+observation, added to the linear predictor in both fitting stages. A formula
+\code{offset(...)} term takes precedence over this argument.}
+
+\item{cycles}{A positive integer giving the maximum number of MFP fitting
+cycles. The default is 10.}
+
+\item{scale}{For \code{mfpi.default()}, \code{NULL}, a single unnamed positive numeric
+value, or a named positive numeric vector for one or more columns of \code{x}.
+An unnamed scalar is applied to every column. Named values are matched to
+\code{colnames(x)}, so their order does not matter; names must be non-empty,
+unique, and known columns. A named partial vector fixes only the specified
+scales, while scales for unspecified columns are estimated automatically.
+Unnamed multi-value vectors are not accepted. \code{NULL} estimates every scale
+automatically and \code{scale = 1} disables scaling globally. Binary predictors,
+including factor dummy columns, are always assigned scale \code{1}, even when
+another value is supplied. The MFPI grouping column remains unscaled under the
+existing categorical-group handling. In \code{mfpi.formula()}, the top-level
+value is a scalar global default; use \code{fp()} or \code{fp2()} for
+variable-specific values.}
+
+\item{shift}{For \code{mfpi.default()}, \code{NULL}, a single unnamed finite numeric
+value, or a named finite numeric vector for one or more columns of \code{x}.
+An unnamed scalar is applied to every column. Named values are matched to
+\code{colnames(x)}, so their order does not matter; names must be non-empty,
+unique, and known columns. A named partial vector fixes only the specified
+shifts, while shifts for unspecified columns are estimated automatically.
+Unnamed multi-value vectors are not accepted. \code{NULL} estimates every shift
+automatically and \code{shift = 0} disables shifting globally. Binary
+predictors, including factor dummy columns, are always assigned shift \code{0},
+even when another value is supplied. Each explicit
+shift used for a nonlinear FP term must make that predictor strictly
+positive; otherwise fitting fails and identifies the affected variable.
+Linear and explicitly zero-handled variables still use a shift of zero,
+as does the MFPI grouping column. In \code{mfpi.formula()}, the top-level value
+is a scalar global default; use \code{fp()} or \code{fp2()} for variable-specific
 values.}
 
-\item{...}{For S3 method compatibility only. Additional arguments are not currently
-used; supplying arguments through \code{...} is an error. In the formula
-interface, variable-specific FP options should be supplied inside
-\code{fp()} or \code{fp2()}.}
+\item{df}{A positive integer or one value per predictor specifying the
+maximum FP complexity considered in the MFP adjustment model. Valid values
+are 1 for linear or an even positive integer: 2 for FP1, 4 for FP2, and so
+on. Variables with few distinct values can be restricted automatically to
+a simpler form. \code{df} does not choose the MFPI interaction form; use
+\code{cont_var_forms} for that. The default is 4.}
 
-\item{y}{For \code{mfpi.default()} only. The response object. For Gaussian models,
-supply a finite numeric vector of length \eqn{n}. For Poisson models,
-supply a finite non-negative numeric vector of length \eqn{n}. For binomial
-models, supply a numeric vector with values in \eqn{[0, 1]}, a two-level
-factor, or a two-column numeric matrix \code{cbind(successes, failures)}.
-For Cox models, supply a right-censored \code{survival::Surv()} object.
-Must have the same number of observations as \code{x}.}
+\item{center}{A logical scalar or one value per predictor indicating whether
+transformed predictors are centered. The default is \code{TRUE}.}
 
-\item{group_var}{Character scalar identifying the categorical grouping
-variable. In \code{mfpi.default()}, this variable may be factor,
-character, logical, integer, or numeric when \code{x} is a data frame. It
-is converted to internal consecutive integer levels for fitting. For a
-factor \code{group_var}, the first element of \code{levels(group_var)} is
-used as the reference level. For a character \code{group_var}, the first
-distinct value encountered in the data is used as the reference level. For
-logical, integer, or numeric \code{group_var}, the smallest observed value
-is used as the reference level. The original labels are preserved for
-printing, summaries, plotting, and prediction metadata.}
+\item{subset}{An optional logical vector or vector of unique positive row
+indices selecting observations for fitting. In the formula interface, an
+expression using columns of \code{data} is also accepted. At least five
+observations and two groups must remain.}
 
-\item{cont_vars}{A non-empty character vector naming singleton continuous columns of
-\code{x} whose interactions with \code{group_var} are to be
-investigated. Each name must identify an existing numeric column. A
-conceptual grouped term, or any raw column belonging to one, is not
-permitted because categorical blocks are adjustment terms only. Binary
-variables (2 or fewer unique values) are not permitted and cause an error.
-Variables with 5 or fewer unique values trigger a warning because FP
-transformation may be unreliable for near-categorical variables.}
-
-\item{cont_var_forms}{Optional named character vector specifying the functional form to use for
-each variable in \code{cont_vars}. Names must be a subset of
-\code{cont_vars}; values must each be one of \code{"linear"},
-\code{"fp1"}, or \code{"fp2"}. Variables in \code{cont_vars} that are not
-named in \code{cont_var_forms} are assigned \code{"fp1"} by default.
-\code{NULL} (the default) assigns \code{"fp1"} to all variables.
-
-Each variable is tested using exactly the pre-specified functional form;
-no data-driven selection among forms is performed. This avoids the
-inflated Type I error and selection bias that arise when the functional
-form is chosen by comparing linear, FP1, and FP2 candidates on the same
-data.
-
-Unnamed vectors and scalars are not accepted; every entry must carry the
-name of the target variable to ensure the specification is unambiguous.
-
-Example: to test \code{age} as FP2 while leaving all other
-\code{cont_vars} at the default (\code{"fp1"}):
-\preformatted{cont_var_forms = c(age = "fp2")}}
-
-\item{flex}{A character string controlling how FP powers are estimated and constrained
-across groups. One of \code{"flex1"}, \code{"flex2"}, \code{"flex3"} (default), or
-\code{"flex4"}. See the \emph{Flexibility levels} section for details.}
-
-\item{p_interact}{Numeric in \eqn{(0, 1]}. Nominal significance level for the interaction
-test when \code{criterion = "pvalue"}. The interaction model for a variable
-is retained only if its p-value is strictly below \code{p_interact}. Default
-is \code{0.05}. Ignored when \code{criterion} is \code{"aic"} or
-\code{"bic"}. The functional form tested is the one pre-specified in
-\code{cont_var_forms}; no selection among forms takes place.}
-
-\item{min_improvement}{Numeric. Minimum improvement in the selection criterion required to retain
-an interaction term. Interpretation depends on \code{criterion}:
-\itemize{
-\item \code{"pvalue"}: not used directly (the threshold is \code{p_interact});
-\code{min_improvement} defaults to \code{p_interact} for consistency.
-\item \code{"aic"}: minimum required \code{AIC_main_minus_int}
-(\eqn{= \mathrm{AIC}_\text{main} - \mathrm{AIC}_\text{int}}).
-Must be positive. Default is \code{2}.
-\item \code{"bic"}: same as \code{"aic"} using \code{BIC_main_minus_int}. Default is \code{2}.
-}
-Among candidates that clear \code{min_improvement}, the one with the
-\strong{largest improvement} (largest \code{AIC_main_minus_int} or \code{BIC_main_minus_int})
-is chosen as the final functional form. Small differences in AIC or BIC
-provide little evidence for preferring one model over another; values
-around 2 are often used as a rough guide rather than a strict cutoff.}
-
-\item{include_group_var}{Logical. Whether \code{group_var} should enter the stage-one MFP
-adjustment model. Default is \code{FALSE}. When \code{TRUE}, the
-non-reference group dummy columns are registered as one conceptual
-categorical term named by \code{group_var} and forced into the adjustment
-model with \code{select = 1}. The block is excluded from the ordinary
-stage-two adjustment matrix because the interaction models add the group
-main effects separately.}
-
-\item{show_models}{Logical. If \code{TRUE} and \code{verbose = TRUE}, prints the full
-regression coefficient table (via \code{summary()}) for the winning
-interaction model of each variable in \code{cont_vars} that cleared the
-selection threshold. Has no effect when \code{verbose = FALSE}. When no
-variable is selected nothing is printed. Default \code{FALSE}.}
-
-\item{weights}{An optional numeric vector of non-negative observation weights of length
-\eqn{n}. Applied to both the adjustment model (MFP step) and the
-interaction model fitting step. Default \code{NULL} (all weights equal
-to 1).}
-
-\item{offset}{An optional numeric vector of length \eqn{n} to be added to the linear
-predictor. Applied to both the adjustment model (MFP step) and the
-interaction model fitting step. Useful for Poisson models (e.g. log of
-exposure time). Default \code{NULL} (zero offset for all observations).}
-
-\item{cycles}{A positive integer. Maximum number of iteration cycles for the MFP
-algorithm. Default is \code{10}.}
-
-\item{scale}{A numeric vector of length \eqn{p} or a single numeric giving scaling
-factors for the columns of \code{x}. Default is \code{NULL}, which lets
-the program estimate scaling factors automatically via
-\code{\link[=find_scale_factor]{find_scale_factor()}}. Set \code{scale = 1} to disable scaling.
-
-Internally, \code{x} is divided by \code{scale} before model fitting for
-numerical stability during FP power selection. The scale factors are then
-passed through the call chain so that both the adjustment model and the
-interaction model backscale before their final fit. This ensures all
-returned model coefficients are on the \eqn{\phi(x + \text{shift})} scale.}
-
-\item{shift}{A numeric vector of length \eqn{p} or a single numeric giving shift terms
-added to columns of \code{x} before scaling. Default is \code{NULL}, which lets
-the program estimate shifting factors automatically via
-\code{\link[=find_shift_factor]{find_shift_factor()}}. Set \code{shift = 0} to disable
-shifting. For \code{zero_vars}, \code{catzero_vars}, and linear variables
-(\code{df = 1}), shift is forced to 0.}
-
-\item{df}{A numeric vector of length \eqn{p} or a single positive integer setting
-the default degrees of freedom for each predictor. Degrees of freedom
-equal twice the FP degree (e.g. \code{df = 1} for linear, \code{df = 2} for FP1,
-\code{df = 4} for FP2). Regardless of the supplied value, the program overrides
-\code{df} per variable based on the number of distinct values \eqn{u}:
-\itemize{
-\item \eqn{u \le 3}: \code{df} is set to \code{1} (linear). Too few values to
-estimate a curve.
-\item \eqn{4 \le u \le 5}: \code{df} is capped at \code{min(2, df)} (FP1 at
-most). Enough variation for a simple curve but not for FP2.
-\item \eqn{u \ge 6}: \code{df} is retained as supplied.
-}
-Default is \code{4}.}
-
-\item{center}{Logical or a logical vector of length \eqn{p}. Whether to mean-centre
-predictors before fitting the final interaction model and adjustment model.
-Binary covariates are centered at the lower of their two values rather than
-the mean. Default is \code{TRUE}.}
-
-\item{subset}{Optional subset of observations used for model selection and fitting. In
-the formula interface, this may be an expression involving columns of
-\code{data} and objects in the formula environment; it is evaluated exactly once,
-with data columns taking precedence. In the matrix interface, it is an
-ordinary logical vector with one value per observation or a numeric vector
-of positive integer row indices evaluated in the caller. Missing,
-non-finite, zero, negative, out-of-range, non-integer, and duplicated
-indices are not allowed. Unique numeric indices retain their supplied order.
-Default is \code{NULL}, meaning that all observations
-are used. Automatic shift and scale values for continuous predictors are
-computed from the full data. The formula method then drops unused factor
-levels and rebuilds categorical design columns from the retained
-observations. The matrix method cannot reconstruct factor contrasts and
-stops if a mapped \code{term_groups} block loses estimable dimension after
-subsetting.}
-
-\item{family}{Model family specification. May be one of the character strings
-\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or \code{"cox"}; a GLM family function
-such as \code{stats::binomial}; or a GLM family object such as
-\code{stats::binomial(link = "probit")}. Cox models must be specified as
+\item{family}{The model family. Use \code{"gaussian"}, \code{"binomial"},
+\code{"poisson"}, or \code{"cox"}; a GLM family function; or a GLM family object.
+Custom GLM links are supported through family objects. Cox models require
 \code{family = "cox"}.}
 
-\item{criterion}{A character string specifying the criterion used in two distinct places:
-\enumerate{
-\item \strong{Adjustment-variable selection} (Step 1): governs which
-predictors and FP degrees survive MFP backfitting.
-\item \strong{Interaction test} (Step 2): for each variable in \code{cont_vars},
-the pre-specified functional form (see \code{cont_var_forms}) is tested
-against its main-effects counterpart using this criterion.
-}
-One of \code{"pvalue"} (default), \code{"aic"}, or \code{"bic"}.}
+\item{criterion}{The selection criterion used for the MFP adjustment model
+and the interaction comparisons: \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
+The default is \code{"pvalue"}.}
 
-\item{select}{A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
-giving the nominal significance level used during MFP backfitting to
-decide whether each predictor is retained in the adjustment model.
-At each cycle, a variable is kept only if its contribution is significant
-at this level; otherwise it is set to zero (excluded). Setting a
-variable's level to \code{1} forces it into the model. Default is
-\code{0.05}.}
+\item{select}{A value in \verb{[0, 1]}, or one value per predictor, controlling
+variable selection in the MFP adjustment model. With p-value selection,
+\code{select = 1} forces a variable into that model. The default is \code{0.05}.}
 
-\item{alpha}{A numeric vector of length \eqn{p} or a single value in \eqn{[0, 1]}
-giving the significance level for choosing between FP degrees for each
-predictor. Default is \code{0.05}.}
+\item{alpha}{A value in \verb{[0, 1]}, or one value per predictor, controlling FP
+degree selection in the MFP adjustment model when
+\code{criterion = "pvalue"}. The default is \code{0.05}.}
 
-\item{keep}{An optional character vector of variable names to retain in the adjustment
-model regardless of selection criteria. When \code{criterion = "pvalue"},
-equivalent to setting \code{select = 1} for those variables; also effective
-under AIC and BIC criteria.}
+\item{keep}{An optional character vector naming adjustment variables or
+grouped adjustment terms that must be included in the adjustment model.}
 
-\item{force_max_fp_vars}{An optional character vector naming variables for which the algorithm
-should select the most complex FP functional form at the degree specified
-by \code{df}, preventing simplification to a lower degree. The best power
-combination within that degree is still selected by the criterion
-(equivalently, by deviance minimisation at fixed df).
+\item{force_max_fp_vars}{An optional character vector naming adjustment
+variables that must use the maximum FP degree allowed by \code{df}. The best
+powers within that degree are still chosen. In a formula, this can also be
+specified with \code{fp(force_max_fp = TRUE)} or
+\code{fp2(force_max_fp = TRUE)}.}
 
-The mechanism depends on the selection criterion:
-\itemize{
-\item \code{criterion = "pvalue"}: \code{alpha} is automatically set
-to 1 for the named variables, so the significance test always
-accepts the most complex form.
-\item \code{criterion = "aic"} or \code{"bic"}:
-\code{select_ic()} normally competes null, linear, FP1, and
-FP2 against each other and may simplify the functional form;
-listing a variable here suppresses this simplification.
-}
-Default \code{NULL} (no variables forced). In the formula interface,
-per-variable control is also available via
-\code{fp(force_max_fp = TRUE)} or \code{fp2(force_max_fp = TRUE)}.}
+\item{xorder}{The order used by the MFP adjustment algorithm:
+\code{"ascending"}, \code{"descending"}, or \code{"original"}. The default is
+\code{"ascending"}.}
 
-\item{xorder}{A character string controlling the order in which adjustment covariates
-enter the MFP selection algorithm. \code{"ascending"} (default) enters
-variables from most to least significant in a full multiple regression;
-\code{"descending"} reverses this order; \code{"original"} uses the column order of
-\code{x}.}
+\item{powers}{An optional named list of candidate FP power sets. The default
+uses \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where zero represents the
+natural logarithm. These candidates are used when FP powers are selected
+for both adjustment and interaction functions.}
 
-\item{powers}{A named list of numeric vectors giving the candidate FP powers for each
-variable. Default is \code{NULL}, which uses the standard set proposed by
-Royston and Altman (1994): \eqn{\{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}, where
-0 denotes the natural logarithm. Each element must be named after the
-corresponding column of \code{x} and must contain at least one finite value.
-A single non-unity candidate power is valid (e.g. \code{powers = list(x = 2)});
-see the \code{powers} argument of \code{mfp2()} for details.}
+\item{ties}{The method for handling tied event times in Cox models:
+\code{"breslow"}, \code{"efron"}, or \code{"exact"}. The default is
+\code{"breslow"}. It is ignored for other families.}
 
-\item{ties}{A character string specifying the method for handling tied event times in
-Cox regression. One of \code{"breslow"} (default), \code{"efron"}, or \code{"exact"}.
-Ignored for non-Cox families. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+\item{strata}{Optional Cox strata with one value or row per observation. A
+vector, factor, matrix, data frame, or \code{\link[survival:strata]{survival::strata()}} object is
+accepted. Formula \code{strata(...)} terms take precedence over this argument.}
 
-\item{strata}{Optional stratification factor(s) for Cox models. May be a vector, factor,
-matrix, data frame, or \code{survival::strata()} object with one row per
-observation. Multiple supplied columns are combined with
-\code{survival::strata(shortlabel = TRUE)}. Default \code{NULL} means no
-stratification. Ordinary vector/factor strata are kept as high-level
-values for formula-based Cox fitting; integer conversion is restricted to
-the low-level \code{coxph.fit()} path. In the formula interface,
-\code{strata()} and \code{survival::strata()} terms may also be supplied
-directly in the formula; formula strata take precedence over this argument.}
+\item{nocenter}{A numeric vector passed to \code{\link[survival:coxph]{survival::coxph()}} to control its
+internal centering. It is used only for Cox models.}
 
-\item{nocenter}{A numeric vector of values passed to \code{\link[survival:coxph]{survival::coxph()}}. Cox models only;
-ignored otherwise.}
+\item{acd_vars}{For \code{mfpi.default()}, an optional character vector naming
+adjustment variables that use the ACD transformation. ACD is disabled for
+variables in \code{cont_vars}. In the formula interface, use
+\code{fp(variable, acd = TRUE)} or \code{fp2(variable, acd = TRUE)} instead.}
 
-\item{acd_vars}{For \code{mfpi.default()} only; not a parameter of \code{mfpi.formula()}
-(passing it there raises an error). An optional character vector naming
-continuous variables to be transformed
-via the approximate cumulative distribution (ACD) transformation before FP
-selection. The transformed variable is named \code{A(x)}. ACD transformation is
-disabled for variables listed in \code{cont_vars}. In the formula interface, use
-\code{fp(variable, acd = TRUE)} or \code{fp2(variable, acd = TRUE)} instead.
-See \code{\link[=mfp2]{mfp2()}} for details.}
+\item{zero_vars}{An optional character vector naming variables for which
+non-positive values are treated as structural zero. This option can be used
+for variables in \code{cont_vars} and for adjustment variables.}
 
-\item{zero_vars}{An optional character vector naming variables for which non-positive values
-should be treated as structural zero. FP transformations are applied only
-to strictly positive values; non-positive values are represented as zero in
-the transformed columns. This treatment is compatible with
-\code{cont_vars} and is preserved for interaction variables when explicitly
-requested through \code{zero_vars}. See the \emph{Handling non-positive
-values} section for details.}
+\item{catzero_vars}{An optional character vector naming adjustment variables
+that use both a positive-part FP function and a structural-zero indicator.
+This option is disabled with a warning for variables in \code{cont_vars}.}
 
-\item{catzero_vars}{An optional character vector naming variables for which a binary structural
-zero indicator \eqn{I(x \le 0)} should be added to the adjustment model
-alongside the FP terms for the positive part. For adjustment variables,
-\code{spike_vars} implies \code{catzero_vars} and therefore \code{zero_vars}
-while the SAZ algorithm remains active after eligibility checks. A variable
-that is not in \code{cont_vars} may not appear in both \code{zero_vars} and
-\code{catzero_vars}. \strong{Note:} if a variable also appears in
-\code{cont_vars}, the structural-zero indicator is dropped and
-\code{catzero} is set to \code{FALSE} for that variable in both the
-adjustment model and the interaction stage, with a warning. Explicit
-\code{zero_vars} handling is preserved if the variable was also listed in
-\code{zero_vars}; zero handling implied only by \code{catzero_vars} is not
-retained for variables in \code{cont_vars}.}
+\item{spike_vars}{An optional character vector naming adjustment variables to
+assess with the spike-at-zero procedure. This option is disabled with a
+warning for variables in \code{cont_vars}.}
 
-\item{spike_vars}{An optional character vector naming variables to be assessed for a spike at
-zero using the SAZ algorithm. For adjustment variables, \code{spike_vars}
-implies \code{catzero_vars} and therefore \code{zero_vars}. \strong{Note:}
-if a variable also appears in \code{cont_vars}, spike-at-zero handling is
-dropped and both \code{spike} and the implied \code{catzero} indicator are
-set to \code{FALSE} for that variable in both the adjustment model and the
-interaction stage, with a warning. Explicit \code{zero_vars} handling is
-preserved if the variable was also listed in \code{zero_vars}; zero handling
-implied only by \code{spike_vars} is not retained for variables in
-\code{cont_vars}.}
+\item{min_saz_component_prop}{A finite number in \verb{(0, 0.5)} giving the
+minimum proportion required in both components of a spike-at-zero
+adjustment variable. The default is \code{0.10}.}
 
-\item{min_saz_component_prop}{Numeric in \eqn{(0, 0.5)}. Minimum required proportion in each component of
-a spike-at-zero covariate: the structural-zero component and the positive
-continuous component. Default \code{0.10}. A requested spike-at-zero
-adjustment variable is retained for SAZ modelling only if both the
-structural-zero proportion and the positive-observation proportion are at
-least this value.}
+\item{ftest}{A single logical value. For Gaussian models with
+\code{criterion = "pvalue"}, use F-tests instead of chi-square tests in the
+adjustment and interaction steps. The default is \code{FALSE}. It is ignored
+for non-Gaussian families.}
 
-\item{ftest}{Logical. Whether to use an F-test rather than a chi-square
-likelihood-ratio test when computing p-values for Gaussian models.
-When \code{TRUE} and \code{family = "gaussian"}, the F-test is applied
-to both the adjustment-variable selection step and the interaction test
-for each variable in \code{cont_vars}. Recommended when the sample size is
-small. Default \code{FALSE}. Has no effect for non-Gaussian families or
-when \code{criterion} is not \code{"pvalue"}.}
+\item{control}{Control settings for the underlying fit, usually from
+\code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}. \code{NULL} uses the
+relevant defaults.}
 
-\item{control}{A list of control parameters for the underlying fitting routine, as
-returned by \code{\link[stats:glm.control]{stats::glm.control()}} (non-Cox families) or
-\code{\link[survival:coxph.control]{survival::coxph.control()}} (Cox). Default is \code{NULL}, which uses the
-default control parameters for the chosen family.}
+\item{winsorize}{A single logical value. If \code{TRUE}, Winsorise variables in
+\code{cont_vars} before fitting. The default is \code{FALSE}.}
 
-\item{winsorize}{Logical. Whether to Winsorise the continuous variables in \code{cont_vars}
-before fitting, to reduce the influence of extreme observations on the
-selected FP functional form. Default is \code{FALSE}. See the
-\emph{Influential observations} section.}
+\item{winsorize_probs}{A numeric vector of length two giving the lower and
+upper probabilities used for Winsorisation. The values must be in \verb{[0, 1]}
+and in increasing order. The default is \code{c(0.01, 0.99)}.}
 
-\item{winsorize_probs}{Numeric vector of length 2 giving the lower and upper percentile
-cutoffs used for Winsorisation. Default is \code{c(0.01, 0.99)}, which
-truncates approximately the bottom and top 1\\% of values for each
-\code{cont_var}. Ignored when \code{winsorize = FALSE}.}
+\item{center_type}{How interaction functions are centered when
+\code{center = TRUE}: \code{"grand"} or \code{"group"}. The default is \code{"grand"}.}
 
-\item{center_type}{Character string controlling how the FP-transformed continuous variables
-are centered in the \strong{interaction model} when \code{center = TRUE}.
-Has no effect on the adjustment model, which uses standard per-variable
-centering via \code{fit_mfp()}. One of:
-\describe{
-\item{\code{"grand"} (default)}{For each variable in \code{cont_vars},
-center each column of the group-specific block matrix by the grand
-mean of the FP-transformed variable across all observations.}
-\item{\code{"group"}}{Center each group's columns by the within-group
-mean, the mean of in-group observations only. Removes
-group-specific location effects from the FP-transformed variable
-before fitting the interaction model.}
-}
-The centering constants computed at fit time are stored in
-\code{center_vals_list} on the returned object and reused exactly
-during evaluation of fitted functions.}
+\item{p_adjust_method}{A character string accepted by \code{\link[stats:p.adjust]{stats::p.adjust()}}.
+It controls multiplicity adjustment across the variables in \code{cont_vars}
+when \code{criterion = "pvalue"}. The default is \code{"none"}.}
 
-\item{p_adjust_method}{Character string specifying the method for adjusting p-values when
-\code{criterion = "pvalue"}. Passed to \code{\link[stats]{p.adjust}}.
-Accepted values include \code{"none"} (default, no adjustment),
-\code{"holm"}, \code{"bonferroni"}, \code{"hochberg"}, \code{"BH"},
-and \code{"BY"}. P-values are adjusted over the planned family of
-interaction tests, namely one test for each variable in \code{cont_vars}.
-Variables for which no valid p-value can be computed remain \code{NA}
-and are not selected, but they are still counted in the multiplicity
-adjustment. The argument has no effect on AIC/BIC-based selection
-decisions.}
+\item{verbose}{A single logical value indicating whether progress information
+is printed. The default is \code{TRUE}.}
 
-\item{verbose}{Logical. Whether to print progress information during model fitting.
-Default is \code{TRUE}.}
+\item{digits}{A positive integer controlling the number of significant digits
+used in printed interaction results. The default is 3.}
 
-\item{digits}{A positive integer. Minimum number of significant digits displayed when
-printing interaction-test results. Default is \code{3}.}
+\item{term_groups}{For \code{mfpi.default()}, an optional named list that groups
+numeric columns representing one categorical adjustment term. For example,
+\code{list(stage = c("stageII", "stageIII"))}. Each member column can belong
+to only one group. Grouped terms are fitted as fixed linear blocks and
+cannot be used in \code{cont_vars}. Formula factors are grouped automatically.}
 
-\item{term_groups}{For \code{mfpi.default()} only. Optional named list defining conceptual
-categorical adjustment terms. Each list name is the term name and each
-value is a character vector of one or more columns of \code{x}; for
-example, \code{list(stage = c("stageII", "stageIII"))}. A one-column
-mapping supports a binary factor whose conceptual name differs from its
-dummy column name. The columns must exist, must be unique within and across
-groups, and may not
-include \code{group_var}. Unlisted columns remain singleton terms. Each
-grouped block is selected jointly and fitted as a fixed linear effect. It
-cannot be listed in \code{cont_vars} or use ACD, zero, catzero,
-spike-at-zero, or \code{force_max_fp}. Formula factors are grouped
-automatically, so this argument is not available in \code{mfpi.formula()}.}
+\item{formula}{For \code{mfpi.formula()}, a model formula containing the response,
+\code{group_var}, the variables in \code{cont_vars}, and any adjustment variables.
+Use \code{fp()} or \code{fp2()} for variable-specific adjustment-model settings.
+Specify the interaction forms separately through \code{cont_var_forms}.}
 
-\item{formula}{For \code{mfpi.formula()} only. A formula object describing the model.
-Continuous predictors to be FP-transformed should be wrapped in
-\code{fp()} or \code{fp2()}, e.g.
-\code{Surv(t, d) ~ fp(age, df = 4) + trt + strata(centre)}.
-Variables not wrapped in \code{fp()} or \code{fp2()} receive the global scalar defaults
-for \code{df}, \code{alpha}, \code{select}, \code{center}, \code{shift},
-and \code{scale}. See the \emph{Argument precedence} section in
-\code{mfpi.formula()} for full rules.}
-
-\item{data}{For \code{mfpi.formula()} only. A data frame containing all variables
-named in \code{formula}. Unordered and ordered factors other than
-\code{group_var} are expanded by \code{model.matrix()} and their contrast
-columns are treated as one fixed linear adjustment term for joint selection.}
+\item{data}{For \code{mfpi.formula()}, a data frame containing the variables used
+in \code{formula}.}
 }
 \value{
-An object of class \code{"mfpi"}. The object is a list with the following
-components:
+An object of class \code{"mfpi"}. Use \code{print()}, \code{summary()}, \code{predict()}, and
+\code{plot()} for the main results.
 
-\describe{
-\item{\code{best_model_metrics}}{A data frame of evaluation metrics for
-the retained interaction models. Each row corresponds to one selected
-continuous variable. The column \code{type} gives the tested functional
-form, one of \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. The
-metrics include the main and interaction FP powers and the
-criterion-specific interaction evaluation columns. For
-\code{criterion = "pvalue"}, the metrics include \code{pvalue} and,
-when applicable, \code{p_adjusted}. For \code{criterion = "aic"} or
-\code{criterion = "bic"}, p-value columns are omitted and the reported
-interaction metrics are based on AIC/BIC only. If no interaction is
-retained, this is an empty data frame. The reported AIC/BIC columns are
-interaction-specific comparison criteria, not full fitted-model AIC/BIC
-values; see \code{test_interaction()} for details.}
-\item{\code{all_model_metrics}}{A data frame with the same columns as
-\code{best_model_metrics} but containing metrics for the interaction
-model evaluated for each variable in \code{cont_vars}, using the form
-specified by \code{cont_var_forms}.}
-\item{\code{best_interaction_model}}{A named list of fitted interaction
-model objects for the continuous variables whose interactions were
-retained by the selection criterion. Each element is named by the
-corresponding variable in \code{cont_vars} and contains the fitted
-interaction-model object returned by the interaction test, typically
-with the underlying regression fit stored in its \code{fit} component.
-If no interaction is retained, this is an empty list.}
-\item{\code{all_interaction_models}}{A named list with one element per
-\code{cont_var}. Each element is itself a named list containing the
-fitted interaction model for the functional form specified in
-\code{cont_var_forms} for that variable, for example
-\code{object$all_interaction_models$age$fp2}.}
-\item{\code{center_vals_list}}{A named list (one element per
-\code{cont_var}) of centering constants used when fitting the
-interaction model. These are the exact values subtracted from the
-FP-transformed variables during model fitting and must be reused
-(not recomputed) during prediction. \code{NULL} when
-\code{center = FALSE}.}
-\item{\code{adjust_terms}}{A data frame describing the FP terms
-selected for the adjustment model.}
-\item{\code{adjustment_model}}{The full grouped adjustment model object
-returned by the MFP core. Its \code{fp_terms} component has one row per
-conceptual term, including one row for each categorical block.}
-\item{\code{term_to_columns}}{Named list mapping conceptual adjustment
-terms to the raw predictor columns used by the fitted object. Singleton
-entries contain one column; categorical entries contain the complete
-contrast block.}
-\item{\code{adjustment_term_to_columns}}{The same mapping restricted to
-terms available to the stage-one adjustment model after preprocessing.}
-\item{\code{univariable_interactions}}{The full return value of the
-internal \code{evaluate_interactions()} call. Contains all
-intermediate results and is useful for programmatic access.}
-\item{\code{group_var}}{The name of the grouping variable.}
-\item{\code{group_levels_new}}{A zero-based integer index
-(0, 1, 2, \ldots) used internally after \code{group_var} is remapped by
-\code{preprocess_data()}.}
-\item{\code{group_levels_original}}{User-facing labels of
-\code{group_var}, used for printing, summaries, plotting, and prediction
-metadata.}
-\item{\code{group_level_map}}{A data frame mapping user-facing
-\code{group_var} labels to input values and internal integer levels.}
-\item{\code{flex}}{The flexibility level used (\code{"flex1"} through
-\code{"flex4"}).}
-\item{\code{family}}{The regression family used for fitting: a GLM
-family object for Gaussian, binomial, and Poisson models, or the
-character string \code{"cox"} for Cox models.}
-\item{\code{family_string}}{Character scalar giving the normalized family
-name used internally for family-specific branching. One of
-\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
-\code{"cox"}.}
-\item{\code{scale}}{Named numeric vector of scale factors used to transform
-continuous predictors onto the shifted/scaled FP fitting scale. These
-values are reused by \code{predict.mfpi()} and \code{plot.mfpi()} and
-should not be recomputed from new data.}
-\item{\code{shift}}{Named numeric vector of shifts added to continuous
-predictors before scaling. These values define the FP transformation
-scale used during fitting and are reused during prediction.}
-\item{\code{center_type}}{Character scalar describing the centering
-convention used for FP-transformed terms.}
-\item{\code{zero_vars}}{Named logical vector indicating which variables
-used structural-zero handling during FP transformation.}
-\item{\code{cont_vars}}{Character vector of continuous variables tested for
-interaction with \code{group_var}.}
-\item{\code{cont_var_forms}}{Named character vector giving the requested
-interaction functional form for each variable in \code{cont_vars}, for
-example \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.}
-\item{\code{x_train_internal}}{Numeric matrix containing the
-post-preprocessing training predictor matrix used by MFPI. This matrix
-contains shifted/scaled predictors and the internally remapped
-\code{group_var} codes produced by \code{preprocess_data()}. It is used
-by \code{predict.mfpi()} when manual reconstruction of training-data
-predictions is required, for example when \code{newdata = NULL} and a
-replacement \code{newoffset} is supplied.}
-\item{\code{digits}}{Integer giving the number of significant digits used
-when printing interaction-test results.}
-\item{\code{nobs}}{Number of observations used in model fitting.}
-\item{\code{show_models}}{Value of the \code{show_models} argument.}
-\item{\code{winsorize}}{Logical; whether Winsorisation was applied.}
-\item{\code{winsorize_probs}}{The probability cutoffs used for
-Winsorisation, or \code{NULL} when \code{winsorize = FALSE}.}
-\item{\code{winsorize_limits}}{A numeric matrix of Winsorisation limits,
-with rows \code{"lower"} and \code{"upper"} and columns named by
-\code{cont_vars}. Entries are \code{NA} for variables excluded from
-Winsorisation, for example zero-handled variables. \code{NULL} when
-\code{winsorize = FALSE}.}
-\item{\code{p_adjust_method}}{Character string: the multiplicity
-adjustment method used (e.g. \code{"none"}, \code{"holm"}).}
-\item{\code{p_interact}}{Numeric: the significance threshold for
-interaction selection.}
-\item{\code{min_improvement}}{Numeric: the threshold for AIC/BIC
-selection. Only relevant when \code{criterion = "aic"} or
-\code{"bic"}.}
-\item{\code{var_winners}}{A named list (one element per \code{cont_var})
-storing the best candidate for each variable regardless of whether
-it was selected. Each element contains \code{fit} (the fitted model),
-\code{metric} (evaluation metrics), \code{type} (winning functional
-form), \code{score} (the decisive metric value), and
-\code{center_vals} (centering constants).}
-\item{\code{criterion}}{character specifying criterion used for adjustment
-and interaction models}
-\item{\code{call}}{The matched call to \code{mfpi()}.}
-\item{\code{formula_interface}}{Logical; \code{TRUE} if the model was
-fitted via \code{mfpi.formula()}. Not present when fitted via
-\code{mfpi.default()}.}
-\item{\code{formula}}{The formula supplied to \code{mfpi.formula()}.
-Only present when fitted via the formula interface.}
-\item{\code{formula_terms}}{The \code{terms} object for the predictors
-(response removed), as used to build the model matrix. Only present
-when fitted via the formula interface.}
-\item{\code{formula_contrasts}}{The \code{contrasts} attribute of the
-model matrix built from \code{formula}/\code{data}, as needed to
-reconstruct the same design from new data. Only present when fitted
-via the formula interface.}
-\item{\code{formula_xlevels}}{Factor levels recorded from the training
-model frame (via \code{.getXlevels()}), needed to reconstruct the same
-design from new data. Only present when fitted via the formula
-interface.}
-\item{\code{formula_design_columns}}{Character vector of the final
-fit-time column names of \code{x}, after intercept removal,
-group-variable replacement, and \code{fp()}/\code{fp2()} renaming. Only
-present when fitted via the formula interface.}
-\item{\code{formula_term_to_columns}}{Named list mapping each conceptual
-predictor term to the design columns it generated. Simple factor wrappers
-are named by their source variable; their raw design-column names remain
-unchanged. Entries are used to reconstruct complete categorical
-adjustment blocks during prediction. Only present for formula fits.}
-\item{\code{formula_prediction_term_names}}{Named character vector mapping
-original formula term labels to the conceptual names used by MFPI
-selection and prediction. Only present for formula fits.}
-\item{\code{formula_factor_terms}}{Character vector naming the conceptual
-unordered and ordered factor terms treated as fixed-linear adjustment
-blocks. Only present for formula fits.}
-\item{\code{formula_offset_terms}, \code{formula_offset_xlevels}}{Formula
-offset metadata used by \code{predict.mfpi()} to reconstruct a
-formula-level offset from raw \code{newdata}. Only present when fitted
-via the formula interface; values are \code{NULL} when no formula offset
-was used.}
-\item{\code{formula_strata_terms}, \code{formula_strata_xlevels}}{Formula
-Cox-strata metadata corresponding to any \code{strata()} term supplied
-in the formula. Only present when fitted via the formula interface; values
-are \code{NULL} when no formula strata were used.}
+Important components include:
+\itemize{
+\item \code{best_model_metrics}: results for interactions selected by the chosen
+criterion;
+\item \code{all_model_metrics}: results for every variable evaluated in \code{cont_vars};
+\item \code{best_interaction_model}: fitted models for selected interactions;
+\item \code{all_interaction_models}: stored interaction models for every evaluated
+continuous variable, including interactions that were not selected;
+\item \code{adjustment_model}: the fitted MFP adjustment model;
+\item \code{cont_var_forms}: the interaction form specified for each tested variable;
+\item \code{group_level_map}: the mapping between internal group codes and the
+original group labels;
+\item \code{winsorize_limits}: the Winsorisation limits on the processed scale used
+for fitting, when Winsorisation was requested;
+\item \code{call}: the matched model call.
 }
+
+Additional components are stored for prediction, plotting, and summaries and
+should not be treated as a stable public interface.
 }
 \description{
-\code{mfpi()} investigates interactions between a categorical variable
-(\code{group_var}) and one or more continuous covariates, using fractional
-polynomial (FP) transformations to capture nonlinear effects. The categorical
-variable is treated as a factor internally; in a typical randomised controlled
-trial it represents treatment allocation, with the lowest value as the control
-arm. Confounders and other prognostic variables are adjusted for via FP
-transformations selected by the MFP algorithm implemented in the
-\code{mfp2()}.
+Use \code{mfpi()} to investigate whether the relationship between an outcome and
+one or more continuous variables differs across the levels of a categorical
+grouping variable.
 }
 \details{
+The function supports Gaussian, binomial, Poisson, and Cox models. Nonlinear
+relationships can be modelled with fractional polynomials.
+
+\code{mfpi()} evaluates each variable in \code{cont_vars} separately. For every
+continuous variable, it compares:
+\itemize{
+\item a model in which the continuous-variable function is the same across
+groups; and
+\item a model in which the function can differ across groups.
+}
+
+The result is one term-specific interaction model for each variable in
+\code{cont_vars}. The function does not fit all tested interactions together in
+one final model.
+
+Before testing the interactions, \code{mfpi()} builds an MFP adjustment model from
+the supplied predictors. Variables selected in this first step are used as
+adjustment variables in the interaction analyses. The continuous variable
+currently being tested is excluded from its own adjustment set because it is
+already represented by its main effect and interaction.
+
 The default method accepts a numeric matrix \code{x} and response vector
 \code{y}.
 }
@@ -677,318 +381,246 @@ predictor variables (including any \code{fp()} or \code{fp2()} terms), and fits 
 model by calling \code{mfpi.default()} internally.
 
 }}
-\section{The MFPI approach}{
+\section{Basic use}{
 
-The MFPI procedure assesses whether the association between a continuous
-covariate and the outcome differs across levels of \code{group_var}. For each
-variable in \code{cont_vars}, the functional form is specified through
-\code{cont_var_forms} as \code{"linear"}, \code{"fp1"}, or \code{"fp2"}.
-Fractional polynomial powers are selected according to the requested
-\code{flex} level, and the interaction is evaluated using the selection
-criterion specified by \code{criterion}. For methodological background and
-examples, see the mfpi vignette.
+The main arguments are:
+\itemize{
+\item \code{group_var}: the categorical variable defining the groups;
+\item \code{cont_vars}: the continuous variables to test for interaction with
+\code{group_var};
+\item \code{cont_var_forms}: the form used for each tested interaction;
+\item \code{flex}: how fractional-polynomial powers are chosen across groups;
+\item \code{criterion}: how the interaction and adjustment models are selected.
 }
 
-\section{Flexibility levels (\code{flex})}{
+For example:
 
-The MFPI procedure allows four levels of flexibility in how FP powers are
-selected and constrained across levels of the treatment variable. These
-variants are available for FP1 and FP2 functions; linear interaction models
-are fitted without FP power selection. The appropriate flexibility level is
-chosen by the analyst based on subject-matter knowledge and sample-size
-considerations. The functional form tested for each variable in
-\code{cont_vars} is the one specified in \code{cont_var_forms}; no
-data-driven selection among linear, FP1, and FP2 candidates is performed.
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{fit <- mfpi(
+  outcome ~ treatment + fp(age) + fp(biomarker) + stage,
+  data = dat,
+  group_var = "treatment",
+  cont_vars = c("age", "biomarker"),
+  cont_var_forms = c(age = "linear", biomarker = "fp1")
+)
+}\if{html}{\out{</div>}}
 
-\strong{\code{flex1} (least flexible).} FP powers are selected for the main
-effect of the continuous covariate \eqn{z} in a model that excludes the
-treatment-by-covariate interaction. The same selected powers are then used at
-each level of the treatment variable \eqn{t}. The interaction is assessed by
-a likelihood ratio test comparing the main effect model with the interaction
-model. For FP1, the interaction model has 3 degrees of freedom: one power
-and two regression coefficients, \eqn{\beta}. For FP2, it has 6
-degrees of freedom: two powers and four regression coefficients. The
-corresponding main-effect models have 2 and 4 degrees of freedom,
-respectively. Therefore, the interaction test has \eqn{3-2 = 1} degree of
-freedom for FP1 and \eqn{6-4 = 2} degrees of freedom for FP2.
-
-\strong{\code{flex2}.} FP powers are selected in a model that includes the interaction,
-with the powers of \eqn{z} constrained to be the same at each level of the
-treatment variable \eqn{t}. These same powers are then also used for the
-main effect model. Because the selected powers may differ from those obtained
-under flex1, the interaction test result may also differ. The degrees of
-freedom for the interaction test are the same as for flex1: 1 for FP1 and 2
-for FP2.
-
-\strong{\code{flex3} (default).} Separate FP powers are estimated for the main-effects
-model and for the within-group functions, though the within-group powers are
-still constrained to be equal across groups. Because the main-effects and
-interaction models may use different FP families, they are non-nested. The
-interaction test has 1 degree of freedom for FP1 and 2 degrees of freedom for
-FP2.
-
-\strong{\code{flex4} (most flexible).} FP powers are selected for the main effect and
-separately at each level of the treatment variable. Unlike \code{flex3}, the FP
-powers for \eqn{z} are allowed to differ between treatment groups. The
-interaction test has 2 degrees of freedom for FP1 and 4 degrees of freedom
-for FP2.
-
-Significance tests for interaction are based on a chi-square distribution
-with the stated degrees of freedom. For flex3 and flex4, some comparisons
-may be non-nested when different fractional-polynomial powers are estimated
-for the main effects and interaction models. In those cases, the resulting
-P-values may lack a formal theoretical underpinning and the significance
-levels may be liberal or conservative. As an alternative, information
-criteria such as AIC or BIC may be used to compare the fitted main-effects
-and interaction models.
+This fits one interaction analysis for \code{age} and another for \code{biomarker}.
 }
 
-\section{Prespecified and exploratory interaction analyses}{
+\section{Choosing the interaction form}{
 
-\code{mfpi()} may be used either to test a pre-specified interaction or to
-screen several candidate interactions. In a pre-specified analysis, one or
-more interactions have been chosen in advance, for example from prior
-evidence or a study protocol, and the reported p-values can be interpreted
-directly without adjustment.
-
-In an exploratory analysis, several variables in \code{cont_vars} are tested
-for interaction with \code{group_var}. In this setting, the reported p-values
-are not adjusted for multiplicity unless \code{p_adjust_method} is set, for
-example to \code{"holm"}. Exploratory findings should therefore be treated as
-candidate interactions requiring further assessment or validation.
-
-When multiplicity adjustment is requested, adjustment is performed over the
-planned family of tests, one for each variable in \code{cont_vars}. Failed or
-undefined interaction tests remain \code{NA} and cannot be selected, but they
-are still counted in the adjustment family.
-
-In both settings, the functional form for each variable should be specified
-in advance using \code{cont_var_forms}. Each variable may be assigned
-\code{"linear"}, \code{"fp1"}, or \code{"fp2"}; variables not named in
-\code{cont_var_forms} default to \code{"fp1"}. Data-driven selection among
-these forms is not conducted by \code{mfpi()}, because it can inflate Type I
-error and introduce selection bias.
+Use \code{cont_var_forms} to specify the form tested for each variable in
+\code{cont_vars}:
+\itemize{
+\item \code{"linear"}: a linear group-by-variable interaction;
+\item \code{"fp1"}: a first-degree fractional-polynomial interaction;
+\item \code{"fp2"}: a second-degree fractional-polynomial interaction.
 }
 
-\section{Influential observations or Outliers}{
+The form is specified before fitting. \code{mfpi()} does not compare linear, FP1,
+and FP2 forms and choose among them. A variable not named in
+\code{cont_var_forms} uses \code{"fp1"}.
 
-FP models are sensitive to outliers or influential observations in the
-continuous predictor. A small number of influential observations in the tails
-of \code{cont_vars} can disproportionately determine the chosen functional
-form and may produce \strong{spuriously significant interactions}. It is
-therefore important to assess whether extreme values may influence the
-results before fitting the model. Before running \code{mfpi()}, examine the
-data for influential points using standard diagnostic approaches
-(e.g. univariable plots).
-
-To reduce the potential influence of outliers, \code{mfpi()} provides the
-option \code{winsorize = TRUE} to apply
-\strong{Winsorisation} to each variable in \code{cont_vars}. Values below
-the lower percentile and above the upper percentile (specified by
-\code{winsorize_probs}, with default \code{c(0.01, 0.99)}) are replaced by
-the corresponding percentile cutoff values. Winsorisation preserves the
-number of observations (i.e. no rows are removed) and only truncates extreme
-values; the bulk of the distribution remains unaffected.
-
-Variables with final \code{zero_vars} handling are \strong{excluded from
-Winsorisation} so that structural-zero values and the positive distribution
-are preserved. For variables in \code{cont_vars}, \code{catzero_vars} and
-\code{spike_vars} are first suppressed; therefore they exclude a variable
-from Winsorisation only when explicit \code{zero_vars} handling remains.
-
-The Winsorisation cutoffs actually applied are returned in the
-\code{winsorize_limits} component of the fitted object for transparency.
-To disable Winsorisation entirely, set \code{winsorize = FALSE}. Any trimming or Winsorisation applied
-should be reported transparently as part of the initial data analysis.
+In the formula interface, wrapping a variable in \code{fp()} or \code{fp2()} does not
+set its MFPI interaction form. The wrappers provide variable-specific FP and
+preprocessing settings. Some of those settings are also reused when the
+interaction function is fitted, but the interaction degree itself is chosen
+only through \code{cont_var_forms}.
 }
 
-\section{Regression families (\code{family})}{
+\section{Choosing the flexibility level}{
 
-\code{mfpi()} accepts family specifications as character strings, GLM family
-functions, or GLM family objects. Use \code{family = "gaussian"} or
-\code{family = stats::gaussian()} for linear regression, \code{family = "binomial"}
-or \code{family = stats::binomial()} for logistic regression, and
-\code{family = "poisson"} or \code{family = stats::poisson()} for Poisson regression.
-Custom links may be supplied through family objects, for example
-\code{stats::binomial(link = "probit")}. For Cox proportional-hazards models,
-set \code{family = "cox"} and supply a \code{survival::Surv()} response.
+The \code{flex} argument controls how FP powers are chosen for variables specified
+as \code{"fp1"} or \code{"fp2"}. It has no effect on variables specified as
+\code{"linear"}.
+\itemize{
+\item \code{"flex1"}: FP powers are chosen from the model without interaction and
+then used for every group. This is the most restrictive option.
+\item \code{"flex2"}: FP powers are chosen using the interaction model, but the same
+powers are used for every group and for the model without interaction.
+\item \code{"flex3"}: powers for the model without interaction and the interaction
+model are chosen separately, but all groups share the same interaction
+powers. This is the default.
+\item \code{"flex4"}: each group can have different interaction powers. This is the
+most flexible option.
+}
+
+More flexible choices use more information from the data and can be less
+stable in small samples. For \code{flex2}, power selection is not fully reflected
+in the interaction p-value. For \code{flex3} and \code{flex4}, the compared models can
+be non-nested when different powers are chosen. Interpret p-values from these
+options with care. See the MFPI vignette for methodological details.
+}
+
+\section{Selecting interactions}{
+
+The \code{criterion} argument is used both to build the MFP adjustment model and
+to decide whether each term-specific interaction model is selected.
+\itemize{
+\item With \code{criterion = "pvalue"}, an interaction is selected when its raw or
+adjusted p-value is strictly below \code{p_interact}.
+\item With \code{criterion = "aic"}, an interaction is selected when
+\code{AIC_main_minus_int} is strictly greater than \code{min_improvement}.
+\item With \code{criterion = "bic"}, an interaction is selected when
+\code{BIC_main_minus_int} is strictly greater than \code{min_improvement}.
+}
+
+The default \code{min_improvement} is 2 for AIC and BIC. \code{p_interact} is used only
+for p-value selection.
+
+The AIC and BIC columns reported by \code{mfpi()} are interaction-comparison
+quantities. Do not compare their individual \code{AIC_main}, \code{AIC_interaction},
+\code{BIC_main}, or \code{BIC_interaction} values with values returned by
+\code{\link[stats:AIC]{stats::AIC()}} or \code{\link[stats:BIC]{stats::BIC()}}. Use \code{AIC_main_minus_int} or
+\code{BIC_main_minus_int} for the MFPI comparison.
+}
+
+\section{Multiple interaction tests}{
+
+When several variables are listed in \code{cont_vars}, the default p-values are
+not adjusted for multiple testing. Set \code{p_adjust_method} to a method accepted
+by \code{\link[stats:p.adjust]{stats::p.adjust()}}, such as \code{"holm"}, \code{"bonferroni"}, or \code{"BH"},
+when adjustment is appropriate.
+
+Adjustment is applied to the planned set of tests: one test for each variable
+in \code{cont_vars}. A failed test remains \code{NA} and cannot be selected, but it is
+still counted in the number of planned tests.
+
+\code{p_adjust_method} affects only \code{criterion = "pvalue"}.
 }
 
 \section{Adjustment variables}{
 
-Adjustment variables are selected once using \code{mfp2::mfp2()} on
-\code{x}. The selected variables and their transformations are then used as
-covariates in the main-effects and interaction models.
+The adjustment model is fitted once using the MFP procedure from \code{\link[=mfp2]{mfp2()}}.
+The selected adjustment terms and their fitted transformations are reused in
+every term-specific interaction model.
 
-For each variable tested in \code{cont_vars}, that variable is removed from
-its own adjustment set because it is already included in the interaction
-model. The grouping factor, represented by \code{group_var} and any required
-internal dummy coding, is also excluded from the adjustment set. Therefore,
-different variables in \code{cont_vars} may be tested with different
-adjustment sets. If no adjustment variables are selected, interaction tests
-are fitted without adjustment.
+The tested continuous variable is removed from its own adjustment set. The
+group variable is also excluded from the ordinary adjustment matrix because
+group main effects are included directly in every interaction comparison.
 
-To force adjustment variables into the adjustment model, use the corresponding
-arguments passed to \code{mfp2::mfp2()}, such as \code{select}, \code{alpha},
-\code{keep}, and \code{df}.
+Set \code{include_group_var = TRUE} only when the grouping variable should also be
+forced into the first-stage MFP adjustment model. This does not control
+whether group main effects appear in the interaction models; those main
+effects are always included.
+
+The arguments \code{select}, \code{alpha}, \code{df}, \code{keep}, \code{force_max_fp_vars},
+\code{xorder}, and related FP settings control the MFP adjustment step. They
+do not replace \code{cont_var_forms}, which controls the tested interaction form.
+
+If the adjustment model selects no covariates, the interaction models are
+fitted without adjustment variables.
 }
 
-\section{Details on the \code{subset} argument}{
+\section{Shift and scale settings}{
 
-In \code{mfpi.formula()}, the supplied subset expression is evaluated exactly once
-using standard formula lookup: names are resolved first from columns of \code{data}
-and then from the formula environment. Therefore expressions such as
-\code{subset = age >= 50}, a logical data column such as \code{subset = eligible}, and
-caller-defined row indices are supported; the subset does not itself have to
-be stored in \code{data}.
+In \code{mfpi.default()}, an unnamed scalar is a global setting. A named vector is
+matched to \code{colnames(x)} and may specify only a subset of columns. Thus,
+\code{shift = c(age = 20)} fixes only the shift for \code{age}, and
+\code{scale = c(age = 10)} fixes only its scale. Unspecified settings remain
+automatic and are estimated through the existing preprocessing pipeline.
+User-supplied values must be finite, scales must be strictly positive, and
+explicit \code{NA} values are not accepted.
 
-In \code{mfpi.default()}, there is no formula data mask. The supplied logical or
-numeric/integer vector is evaluated normally in the caller, and matrix column
-names are not exposed as standalone variables. Use an explicit expression
-such as \code{subset = x[, "age"] >= 50} when deriving the subset from a matrix
-column. In both interfaces, continuous shift and scale calculations retain
-their full-data source, while model selection and fitting use only the
-retained observations. Numeric row positions must be unique; unique positions
-retain the order supplied by the user and are not sorted automatically.
-
-When \code{subset = NULL}, the formula interface reuses the complete evaluated
-model frame directly. It does not invoke retained-row resolution or rebuild
-factor coding. Subset-specific row and factor processing occurs only when a
-non-\code{NULL} subset is supplied.
+Explicit shifts are not increased automatically. If a supplied shift leaves
+zero or negative values for a predictor fitted with a nonlinear FP form,
+fitting stops and identifies the affected variable. The MFPI grouping column
+and predictors handled as linear or structural-zero terms retain their
+existing special shift and scale rules.
 }
 
-\section{Categorical adjustment terms}{
+\section{Supplying data}{
 
-Categorical predictors other than \code{group_var} are adjustment terms;
-they are not candidates for the MFPI interaction test. In the formula
-interface, unordered and ordered factors are expanded using the fitted
-\code{model.matrix()} contrasts, and all contrast columns generated by one
-factor are represented by one conceptual term. The complete block is
-retained or removed by a joint adjustment-model test. Ordered factors retain
-their polynomial contrasts unless the formula specifies another contrast.
-Simple wrappers such as \code{factor(stage)} and \code{ordered(stage)}
-use \code{stage} as the conceptual adjustment-term name. The generated
-design columns and fitted coefficient names retain their standard
-\code{model.matrix()} names.
+With the formula interface, supply the original variables in \code{data}.
+Categorical adjustment variables can be factors and are handled as complete
+terms. Their contrast columns are selected or excluded together. The
+\code{group_var} and every variable in \code{cont_vars} must be included in the model
+formula.
 
-In the default matrix interface, categorical columns must already be encoded
-numerically and grouped with \code{term_groups}. For example,
-\code{term_groups = list(stage = c("stageII", "stageIII"))}
-declares the two columns to be one adjustment term named \code{stage}.
-With \code{subset}, automatic continuous shift and scale calculations retain
-their full-data source. The formula interface performs extra factor processing
-only for a non-\code{NULL} subset. It preserves factor-specific custom contrasts when
-all levels remain, and it drops unused levels and regenerates default treatment
-or ordered polynomial contrasts when no custom contrast was supplied. If a
-predictor with factor-specific custom contrasts loses a level, fitting stops
-because a unique reduced contrast basis cannot be inferred safely. The matrix
-interface has only the supplied numeric columns and cannot reconstruct their
-factor origin; it rejects a grouped block whose estimable dimension decreases
-after subsetting. Formula and matrix results may therefore differ when a subset
-removes factor levels.
+With the default matrix or data-frame interface, all non-group predictors
+must be numeric. The grouping variable may be factor, character, logical,
+integer, or numeric when \code{x} is a data frame. When a categorical adjustment
+variable is represented by several numeric columns, use \code{term_groups} to
+identify those columns as one adjustment term.
 
-Columns not mentioned in \code{term_groups} remain singleton terms. Group
-names and member columns must be unique, and a column cannot belong to more
-than one group.
+Variables in \code{cont_vars} must be single numeric columns. They cannot be
+binary or members of a grouped categorical term. A variable with five or
+fewer distinct values produces a warning because FP modelling can be
+unreliable for a near-categorical variable.
 
-Grouped categorical terms are fixed linear blocks. Their effective settings
-are \code{df = 1}, power 1, shift 0, scale 1, no centering, and no ACD,
-zero, catzero, spike-at-zero, or \code{force_max_fp} processing.
-\code{keep} may name the conceptual term or one of its member columns; in
-either case the complete block is retained. A grouped term or member column
-cannot be listed in \code{cont_vars}, because MFPI interaction candidates
-must be singleton continuous variables.
+The reference group is determined as follows:
+\itemize{
+\item for a factor, the first factor level;
+\item for a character variable, the first distinct value in the supplied data
+that remains in the analysis;
+\item for logical, integer, or numeric input, the smallest observed value.
 }
 
-\section{Shifting, scaling, and centering}{
+To choose a specific reference group, convert \code{group_var} to a factor and set
+its levels before fitting.
 
-Fractional polynomials require strictly positive input values. \code{mfpi()}
-estimates a shift for each variable to ensure positivity, then scales the
-shifted values to a convenient range, following the same procedure as
-\code{\link[=mfp2]{mfp2()}}. Centering is applied after FP powers are estimated.
-Variables with final \code{zero_vars} or \code{catzero_vars} handling, and
-linear terms (\code{df = 1}), have their shift automatically set to zero
-because only the positive values are transformed in these cases, or because
-no nonlinear transformation is applied. For variables in \code{cont_vars},
-\code{catzero_vars} and \code{spike_vars} are first suppressed; therefore
-shift is forced to zero only when explicit \code{zero_vars} handling remains
-or the variable is treated as linear.
+Missing and non-finite values are not allowed in variables used for fitting.
+Use \code{subset} to fit the model to selected observations. The selected rows are
+used for model fitting and for calculating Winsorisation limits.
 }
 
-\section{Handling non-positive values}{
+\section{Non-positive values and special transformations}{
 
-Non-positive values in continuous predictors can be handled using the
-\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars} options passed
-to \code{mfp2::mfp2()}.
+Explicit \code{zero_vars} handling is supported for variables in \code{cont_vars}.
+Non-positive values are then treated as structural zero, and the selected
+linear or FP function is applied to the positive values.
 
-\describe{
-\item{\code{zero_vars}}{FP transformations are applied to the positive
-values only; non-positive values are set to zero in the transformed
-variable.}
-\item{\code{catzero_vars}}{As \code{zero_vars}, with an additional
-indicator for zero values.}
-\item{\code{spike_vars}}{Uses the spike-at-zero algorithm and implies
-\code{catzero_vars} while SAZ remains active after eligibility checks.}
+\code{catzero_vars}, \code{spike_vars}, and ACD transformations are supported for
+adjustment variables but not for variables being tested in \code{cont_vars}.
+When one of these settings is requested for a tested variable, it is disabled
+with a warning. An explicit \code{zero_vars} setting for that variable is
+preserved.
+
+Spike-at-zero adjustment variables must have enough observations in both the
+non-positive and positive components. \code{min_saz_component_prop} sets the
+minimum required proportion in each component.
 }
 
-Variables listed in \code{catzero_vars} or \code{spike_vars} are supported
-during stage 1 adjustment selection. However, they cannot also be listed in
-\code{cont_vars}, because the additional indicator variables created for
-\code{catzero_vars} and \code{spike_vars} are not supported in the stage 2
-of the mfpi algorithm.
+\section{Winsorisation}{
 
-Therefore, if a variable appears in both \code{cont_vars} and
-\code{spike_vars} or \code{catzero_vars}, the following happens
-automatically (with a warning):
-\enumerate{
-\item The \code{spike} and \code{catzero} flags are set to \code{FALSE}
-for that variable in both the adjustment model and the interaction
-stage.
-\item Explicit \code{zero_vars} handling is preserved: if the variable is
-also listed in \code{zero_vars}, non-positive values are still recoded to
-zero before FP transformation. Zero handling implied only by
-\code{catzero_vars} or \code{spike_vars} is not retained for variables in
-\code{cont_vars}.
+Set \code{winsorize = TRUE} to limit the influence of extreme values in
+\code{cont_vars}. Values below and above the probabilities in \code{winsorize_probs}
+are replaced by the corresponding cutoffs. No observations are removed.
+
+The default probabilities are \code{c(0.01, 0.99)}. The cutoffs are calculated
+from the observations used for fitting, after the model's shift and scale
+have been applied. The same cutoffs are applied automatically during
+prediction.
+
+Variables that remain under structural-zero handling are not Winsorised, so
+their structural-zero and positive components remain unchanged.
+
+Inspect continuous variables for influential observations even when
+Winsorisation is used. Any Winsorisation should be reported with the analysis.
 }
 
-Variables in \code{spike_vars} or \code{catzero_vars} that are
-\strong{not} in \code{cont_vars} are fully respected in the adjustment
-model as documented in \code{\link[=mfp2]{mfp2()}}.
+\section{Centering}{
+
+\code{center} controls whether transformed predictors are centered. For the
+interaction functions, \code{center_type} determines the centering reference:
+\itemize{
+\item \code{"grand"} uses one mean across all observations;
+\item \code{"group"} uses a separate mean within each group.
 }
 
-\section{Spike-at-zero eligibility}{
-
-Spike-at-zero handling in \code{mfpi()} follows the same eligibility rule as
-in \code{mfp2()}. A requested spike-at-zero adjustment variable remains
-eligible only if both the structural-zero component and the positive
-continuous component are sufficiently represented. Let \eqn{p_0} be the
-structural-zero proportion and \eqn{p_+ = 1 - p_0} be the positive-observation
-proportion. SAZ is applied only if both \eqn{p_0} and \eqn{p_+} are at least
-\code{min_saz_component_prop}.
-
-Variables in \code{cont_vars}, which define the continuous variables tested
-for interaction with the grouping variable, are not treated as spike-at-zero
-variables during the MFPI interaction test. Spike-at-zero handling applies to
-eligible adjustment variables.
+The default is \code{"grand"}. The fitted centering values are reused for
+prediction and plotting.
 }
 
-\section{Information criteria}{
+\section{Formula offsets and Cox strata}{
 
-The individual \code{AIC_main}, \code{AIC_interaction},
-\code{BIC_main}, and \code{BIC_interaction} values reported here are not
-the actual AIC/BIC values of the fitted models. They are
-interaction-specific comparison criteria computed from the model deviances
-and from the degrees of freedom returned by \code{interaction_model_df()},
-which count only the interaction-related terms and exclude the intercept
-and adjustment-model parameters.
+An offset can be supplied through the \code{offset} argument or included in the
+formula with \code{offset(...)}. A formula offset takes precedence when both are
+supplied. The offset is used in both the adjustment and interaction models.
 
-Therefore, these individual AIC/BIC values should not be compared with
-AIC/BIC values returned by \code{stats::AIC()}, \code{stats::BIC()}, or
-other model-fitting functions.
-
-The differences \code{AIC_main_minus_int} and
-\code{BIC_main_minus_int} are correct for comparing the main-effects and
-interaction candidates because the shared model terms cancel.
+For Cox models, strata can be supplied through \code{strata} or included in the
+formula with \code{strata(...)}. Formula strata take precedence when both are
+supplied. Only right-censored \code{\link[survival:Surv]{survival::Surv()}} responses are supported.
 }
 
 \section{Argument precedence (fp()/fp2() vs global)}{
@@ -1035,12 +667,11 @@ The fitted terms, contrasts, levels, and term-to-column mapping are stored so
 
 \section{Strata and offset in the formula}{
 
-For Cox models, \code{strata()} or \code{survival::strata()} terms may be
-included directly in the formula, for example
-\code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata variables are
-combined using \code{survival::strata(shortlabel = TRUE)}. If \code{strata}
-is also supplied as an argument, the formula value is used and a warning is
-issued. Similarly, an \code{offset()} or \code{stats::offset()} term in the
+For Cox models, \code{strata()} terms may be included directly in the formula,
+for example \code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata
+variables are combined using \code{survival::strata(shortlabel = TRUE)}. If
+\code{strata} is also supplied as an argument, the formula value is used and
+a warning is issued. Similarly, an \code{offset()} term in the
 formula takes precedence over the \code{offset} argument. Formula-offset
 metadata are stored on the fitted object so \code{predict.mfpi()} can
 reconstruct the offset from raw prediction \code{newdata}; if the needed raw
@@ -1051,106 +682,106 @@ offset variables are absent, supply \code{newoffset} to \code{predict()}.
 \dontrun{
 data("prostate")
 
-# Basic MFPI fit using the simplest interaction structure.
+# Test whether the effects of cavol and age differ between svi groups.
 fit <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
+  lpsa ~ svi + fp(age) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
   data = prostate,
-  cont_vars = c("cavol", "age"),
   group_var = "svi",
-  center = FALSE,
+  cont_vars = c("cavol", "age"),
+  cont_var_forms = c(cavol = "fp1", age = "linear"),
   flex = "flex1",
-  include_group_var = TRUE,
-  show_models = FALSE,
   verbose = FALSE
 )
 
-# Plot group-specific fitted functions and fitted-function differences.
-# The difference plot is on the model scale, not a probability, odds ratio,
-# rate ratio, hazard ratio, or full predicted response.
+# Interaction results for all evaluated variables.
+fit$all_model_metrics
+
+# Results and fitted models for selected interactions.
+fit$best_model_metrics
+summary(fit)
+
+# Fitted group functions and their differences.
+pred <- predict(
+  fit,
+  terms = "cavol",
+  model = "all",
+  type = "both",
+  grid = TRUE
+)
+
+pred$functions
+pred$differences
+
 if (requireNamespace("patchwork", quietly = TRUE)) {
-  plot(fit, terms = "cavol", plot_type = "both")
+  plot(fit, terms = "cavol", model = "all", plot_type = "both")
 }
 
-# Pre-specify functional forms: cavol as FP2, age uses the default search.
-fit_prespecified <- mfpi(
-  lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
-    fp(bph) + fp(cp),
-  data = prostate,
-  cont_vars = c("cavol", "age"),
-  cont_var_forms = c(cavol = "fp2"),
-  group_var = "svi",
-  center = FALSE,
-  flex = "flex1",
-  include_group_var = TRUE,
-  verbose = FALSE
-)
-
-# Formula factors are grouped automatically in the adjustment model.
+# Formula factors are treated as complete adjustment terms.
+set.seed(1)
 dat <- data.frame(
   y = rnorm(180),
   trt = factor(rep(c("control", "active"), each = 90)),
   age = runif(180, 30, 80),
   stage = factor(rep(c("I", "II", "III"), length.out = 180))
 )
+
 fit_factor <- mfpi(
   y ~ trt + fp(age) + stage,
   data = dat,
   group_var = "trt",
   cont_vars = "age",
+  cont_var_forms = c(age = "fp1"),
   keep = "stage",
   verbose = FALSE
 )
-fit_factor$term_to_columns$stage
 
-# Matrix-interface categorical columns are grouped explicitly.
-mm <- model.matrix(~ stage, data = dat)[, -1, drop = FALSE]
-x <- cbind(trt = as.integer(dat$trt) - 1L, age = dat$age, mm)
+summary(fit_factor)
+
+# In the matrix interface, group dummy columns for a categorical adjustment
+# variable with term_groups so they are handled together.
+stage_matrix <- stats::model.matrix(~ stage, data = dat)[, -1, drop = FALSE]
+x <- cbind(
+  trt = as.integer(dat$trt) - 1L,
+  age = dat$age,
+  stage_matrix
+)
+
 fit_matrix <- mfpi(
-  x, dat$y,
+  x = x,
+  y = dat$y,
   group_var = "trt",
   cont_vars = "age",
-  term_groups = list(stage = colnames(mm)),
+  cont_var_forms = c(age = "fp1"),
+  term_groups = list(stage = colnames(stage_matrix)),
   keep = "stage",
+  shift = c(age = 20),
+  scale = c(age = 10),
   verbose = FALSE
 )
+
+# Only age uses the explicit settings; other adjustment columns remain
+# automatic and the grouping column retains MFPI's categorical defaults.
+fit_matrix$shift
+fit_matrix$scale
+summary(fit_matrix)
 }
+
 }
 \references{
 Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
 interactions between treatment and continuous covariates in clinical trials
-by using fractional polynomials. \emph{Statistics in Medicine}, 23,
-2509--2525.
-
-Royston, P. and Sauerbrei, W. (2008). Interactions between treatment and
-continuous covariates -- a step towards individualising therapy (Editorial).
-\emph{Journal of Clinical Oncology}, 26, 1397--1399.
+by using fractional polynomials. \emph{Statistics in Medicine}, 23, 2509-2525.
 
 Royston, P. and Sauerbrei, W. (2013). Interaction of treatment with a
 continuous variable: simulation study of significance level for several
-methods of analysis. \emph{Statistics in Medicine}, 32, 3788--3803.
+methods of analysis. \emph{Statistics in Medicine}, 32, 3788-3803.
 
 Royston, P. and Sauerbrei, W. (2014). Interaction of treatment with a
 continuous variable: simulation study of power for several methods of
-analysis. \emph{Statistics in Medicine}, 33, 4695--4708.
-
-Royston, P., Sauerbrei, W. and Ritchie, A. (2004). Is treatment with
-interferon-alpha effective in all patients with metastatic renal carcinoma?
-A new approach to the investigation of interactions. \emph{British Journal
-of Cancer}, 90, 794--799.
-
-Sauerbrei, W., Royston, P. and Zapien, K. (2007). Detecting an interaction
-between treatment and a continuous covariate: a comparison of two
-approaches. \emph{Computational Statistics and Data Analysis}, 51,
-4054--4063.
-
-Royston, P. and Sauerbrei, W. (2008). \emph{Multivariable Model-Building: A
-Pragmatic Approach to Regression Analysis Based on Fractional Polynomials
-for Modelling Continuous Variables}. John Wiley & Sons.
+analysis. \emph{Statistics in Medicine}, 33, 4695-4708.
 }
 \seealso{
-\code{\link{summary.mfpi}}, \code{\link{mfp2}},
-\code{\link{print.mfpi}}, and \code{\link{plot.mfpi}}.
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=fp]{fp()}}
 
 \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}},
 \code{\link[=mfp2]{mfp2()}}

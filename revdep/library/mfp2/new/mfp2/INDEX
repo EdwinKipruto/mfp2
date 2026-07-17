@@ -12,8 +12,6 @@ find_scale_factor       Calculate a scaling factor for a predictor
                         variable
 find_shift_factor       Calculate a shift factor for a predictor
                         variable
-fit_acd                 Function to estimate approximate cumulative
-                        distribution (ACD)
 fp                      Helper to assign attributes to a variable
                         undergoing FP-transformation
 fracplot                Deprecated fractional-polynomial plotting

@@ -92,7 +92,7 @@ Generating Conditional probability of agreement plot
 **************************************************************
 
 Saving 7 x 7 in image
-Conditional probability of agreement plot exported to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpQ9d5d2\file4a2448a7161f\ctl_outputs\cpa_plot.pdf
+Conditional probability of agreement plot exported to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpgTawRK\file462c22fb25a1\ctl_outputs\cpa_plot.pdf
 
 Use of Clinical Tolerance Limits (CTL) for assessing agreement
 **************************************************************
@@ -138,7 +138,7 @@ diff_bias=3.34827252747801, 95%CI=[1.60863961315311;5.0879054418029]
 prop_bias=0.833226011639255, 95%CI=[0.787687600410943;0.878764422867566]
 
 
-Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpQ9d5d2\file4a2451ea4cd8\ctl_outputs\ctl_results.rda
+Results saved to C:\Users\Edwin Kipruto\AppData\Local\Temp\RtmpgTawRK\file462c7512328e\ctl_outputs\ctl_results.rda
 
 Use of Clinical Tolerance Limits (CTL) for assessing agreement
 **************************************************************
@@ -162,4 +162,4 @@ prop_bias=0.79538824468499, 95%CI=[0.734754456891755;0.856022032478225]
 > 
 > proc.time()
    user  system elapsed 
-   5.40    0.56    5.95 
+   5.31    0.57    5.90 

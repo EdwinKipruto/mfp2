@@ -4,6 +4,11 @@
 #' `fracgen` in Stata. 
 #' 
 #' @details 
+#' This is a low-level utility for constructing fractional-polynomial design
+#' columns from specified powers. It does not perform model or power selection.
+#' Most users should specify continuous variables with [fp()] inside an
+#' [mfp2()] formula instead.
+#' 
 #' The fp transformation generally transforms `x` as follows. For each pi in
 #' `power` = (p1, p2, ..., pn) it creates a variable x^pi and returns the
 #' collection of variables as a matrix. It may process the data using 
@@ -1681,33 +1686,111 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
   }
 }
 
-#' Simple function to create dummy variables for ordinal and nominal variables
-#' 
-#' @param data A dataframe containing the ordinal variable. 
-#' @param var_ordinal Names of ordinal variables in the data for which dummy variables should be created.
-#' @param var_nominal Names of nominal variables in the data for which dummy variables should be created.
-#' @param drop_variables Specifies whether to drop the original variables after dummy variables have
-#'  been created. The default value is FALSE, and the original variables are kept in the data.
-#' @details 
-#' This function creates dummy variables based on ordinal and categorical coding described in
-#' the Royston and Sauerbrei (2008) book (Chapter 3, Table 3.5). It uses the levels of
-#' the categorical variable if they exist; otherwise, it will extract the unique values of the
-#' variable, sort them, and use them as levels. We recommend that the user sets the levels of
-#' categorical variables and specifies their reference group. You can use the factor() function in
-#' base R. If the levels are 1, 2, and 3, then 1 will be the reference group. On the other hand,
-#' if the levels are 3, 2, and 1, then 3 will be the reference group. In brief, the first
-#' level will be taken as the reference group.
-#' 
+#' Create Indicator Variables for Categorical Predictors
+#'
+#' Creates numeric indicator columns for ordinal or nominal variables.
+#'
+#' Ordinal variables are encoded using cumulative threshold indicators.
+#' Nominal variables are encoded using treatment contrasts, with the first
+#' factor level used as the reference category.
+#'
+#' @details
+#' This function is primarily useful when preparing predictors for the matrix
+#' interfaces of [mfp2()] or [mfpi()].
+#'
+#' When using the formula interface, categorical variables can usually be
+#' supplied directly as factors. The formula interface constructs the required
+#' contrast columns and treats all columns belonging to the factor as one
+#' conceptual model term.
+#'
+#' For an ordinal variable with ordered levels `A < B < C < D`, the function
+#' creates cumulative indicators corresponding to:
+#'
+#' \itemize{
+#'   \item `B`, `C`, or `D` versus `A`;
+#'   \item `C` or `D` versus `A` or `B`;
+#'   \item `D` versus `A`, `B`, or `C`.
+#' }
+#'
+#' The level order determines the comparisons. Users should therefore convert
+#' categorical variables to factors with explicitly defined levels before
+#' calling this function.
+#'
+#' A variable cannot be specified in both `var_ordinal` and `var_nominal`.
+#'
+#' When the resulting columns are passed to the matrix interface, use
+#' `term_groups` to identify all indicator columns derived from the same
+#' categorical variable. This ensures that they are selected or retained
+#' jointly.
+#'
+#' @param data A data frame containing the variables to encode.
+#'
+#' @param var_ordinal Optional character vector naming ordinal variables.
+#'   Variables are encoded using cumulative threshold indicators according to
+#'   their factor-level order. If a variable is not a factor, its sorted unique
+#'   values determine the order.
+#'
+#' @param var_nominal Optional character vector naming nominal variables.
+#'   Variables are encoded using treatment contrasts, with the first factor
+#'   level as the reference category.
+#'
+#' @param drop_variables Logical scalar. If `TRUE`, the original categorical
+#'   variables are removed after the indicator columns are created. The default
+#'   is `FALSE`.
+#'
+#' @return
+#' A data frame containing the original data and the newly created indicator
+#' columns. When `drop_variables = TRUE`, the encoded source variables are
+#' omitted.
+#'
 #' @examples
 #' data("gbsg")
-#' # create dummy variable for grade using ordinal coding
-#' gbsg <- create_dummy_variables(gbsg, var_ordinal = "grade", drop_variables = TRUE)
-#' head(gbsg)
-#' 
-#' @return 
-#' A dataframe with new dummy variables.
-#' 
-#' @export
+#'
+#' # Define the intended ordering explicitly.
+#' gbsg$grade <- ordered(
+#'   gbsg$grade,
+#'   levels = sort(unique(gbsg$grade))
+#' )
+#'
+#' # Create cumulative indicators for tumour grade.
+#' gbsg_encoded <- create_dummy_variables(
+#'   data = gbsg,
+#'   var_ordinal = "grade",
+#'   drop_variables = TRUE
+#' )
+#'
+#' head(gbsg_encoded)
+#'
+#' \dontrun{
+#' # Formula-interface users can ordinarily supply the factor directly.
+#' fit_formula <- mfp2(
+#'   survival::Surv(rectime, censrec) ~ fp(age) + grade,
+#'   data = gbsg,
+#'   family = "cox",
+#'   keep = "grade",
+#'   verbose = FALSE
+#' )
+#'
+#' # For a matrix interface, group the generated grade indicators as one term.
+#' grade_columns <- grep("^grade_", names(gbsg_encoded), value = TRUE)
+#'
+#' x <- as.matrix(
+#'   gbsg_encoded[, c("age", "nodes", grade_columns), drop = FALSE]
+#' )
+#' y <- survival::Surv(gbsg_encoded$rectime, gbsg_encoded$censrec)
+#'
+#' fit_matrix <- mfp2(
+#'   x = x,
+#'   y = y,
+#'   family = "cox",
+#'   term_groups = list(grade = grade_columns),
+#'   keep = "grade",
+#'   verbose = FALSE
+#' )
+#' }
+#'
+#' @keywords internal
+#' @noRd
 create_dummy_variables <- function(data, 
                                    var_ordinal = NULL, 
                                    var_nominal = NULL, 

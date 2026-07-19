@@ -2,20 +2,22 @@
 % Please edit documentation in R/mfp2.R
 \name{coef.mfp2}
 \alias{coef.mfp2}
-\title{Extract coefficients from object of class \code{mfp2}}
+\title{Extract Coefficients from an \code{mfp2} Model}
 \usage{
 \method{coef}{mfp2}(object, ...)
 }
 \arguments{
-\item{object}{an object of class \code{mfp2}, usually, a result of a call to
-\code{mfp2()}.}
+\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
 
-\item{...}{not used.}
+\item{...}{Not used.}
 }
 \value{
-Named numeric vector of coefficients extracted from the model \code{object}.
+Named numeric vector of coefficients from the final selected model.
 }
 \description{
-This function is a method for the generic \code{\link[stats:coef]{stats::coef()}} function for
-objects of class \code{mfp2}.
+Returns the named coefficient vector from a fitted \code{\link[=mfp2]{mfp2()}} model. This is a
+method for the generic \code{\link[stats:coef]{stats::coef()}} function.
+}
+\seealso{
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}
 }

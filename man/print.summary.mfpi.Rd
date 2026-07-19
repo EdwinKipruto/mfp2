@@ -9,9 +9,11 @@
 \arguments{
 \item{x}{An object of class \code{"summary.mfpi"}.}
 
-\item{digits}{Optional non-negative integer controlling the number of decimal
-places used when printing numeric output. If \code{NULL}, \code{x$digits}
-is used when available; otherwise the print helper default is used.}
+\item{digits}{Optional non-negative integer controlling printing precision.
+MFPI metric tables are rounded to this many decimal places, and retained
+regression summaries receive the same \code{digits} value. If \code{NULL},
+\code{x$digits} is used when available; otherwise the print helper default
+is used.}
 
 \item{...}{Currently unused.}
 }
@@ -24,8 +26,9 @@ Displays the structured MFPI summary.
 \details{
 The printed summary first reuses \code{print.mfpi()} to display the
 model-building output. This includes the adjustment model, all interaction
-candidates, the candidate interaction FP powers by group level, optional
-p-value adjustment, and the final interaction summary.
+candidates, the candidate interaction FP powers by group level, and the
+final interaction summary. For p-value selection, raw and adjusted p-values
+are reported together in Step 3.
 
 After the model-building output, the summary print method appends:
 

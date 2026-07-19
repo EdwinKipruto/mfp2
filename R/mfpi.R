@@ -260,8 +260,11 @@
 #' @param term_groups For `mfpi.default()`, an optional named list that groups
 #'   numeric columns representing one categorical adjustment term. For example,
 #'   `list(stage = c("stageII", "stageIII"))`. Each member column can belong
-#'   to only one group. Grouped terms are fitted as fixed linear blocks and
-#'   cannot be used in `cont_vars`. Formula factors are grouped automatically.
+#'   to only one group. Grouped terms are fitted as fixed linear blocks: they
+#'   are not eligible for FP transformation searches and cannot be used in
+#'   `cont_vars`, `zero_vars`, `catzero_vars`, `spike_vars`, `acd_vars`, or
+#'   `force_max_fp_vars`. In `mfpi.formula()`, factor predictors are grouped
+#'   automatically; this argument is not needed.
 #'
 #' @param group_var A single character string naming the categorical grouping
 #'   variable. It must have at least two observed groups and must not appear in
@@ -284,11 +287,13 @@
 #'   `criterion = "pvalue"`, an interaction is selected only when its raw or
 #'   adjusted p-value is strictly below this value. The default is `0.05`.
 #'
-#' @param min_improvement A positive number giving the minimum AIC or BIC
-#'   improvement required to select an interaction. The interaction is selected
-#'   only when the relevant improvement is strictly greater than this value.
-#'   The default is 2 for `criterion = "aic"` or `"bic"`. It is ignored for
-#'   p-value selection.
+#' @param min_improvement `NULL` or a single positive number giving the minimum
+#'   AIC or BIC improvement required to select an interaction. The interaction
+#'   is selected only when the relevant `AIC_main_minus_int` or
+#'   `BIC_main_minus_int` is strictly greater than this value. When `NULL`
+#'   (the default), the threshold is 2 for `criterion = "aic"` or `"bic"`.
+#'   This argument is used only with AIC or BIC selection and has no effect
+#'   when `criterion = "pvalue"`.
 #'
 #' @param include_group_var A single logical value. If `TRUE`, the group term is
 #'   forced into the first-stage MFP adjustment model. Group main effects are
@@ -341,15 +346,21 @@
 #'   is a scalar global default; use `fp()` or `fp2()` for variable-specific
 #'   values.
 #'
-#' @param df A positive integer or one value per predictor specifying the
-#'   maximum FP complexity considered in the MFP adjustment model. Valid values
-#'   are 1 for linear or an even positive integer: 2 for FP1, 4 for FP2, and so
-#'   on. Variables with few distinct values can be restricted automatically to
-#'   a simpler form. `df` does not choose the MFPI interaction form; use
-#'   `cont_var_forms` for that. The default is 4.
+#' @param df A positive integer, or in `mfpi.default()` one value per predictor
+#'   column, specifying the maximum FP complexity considered in the MFP
+#'   adjustment model. Valid values are 1 for linear or an even positive
+#'   integer: 2 for FP1, 4 for FP2, and so on. Variables with few distinct
+#'   values may be restricted automatically to a simpler form. `df` controls the
+#'   adjustment model only and does not set the MFPI interaction form; use
+#'   `cont_var_forms` for that. The default is 4. In `mfpi.formula()`, only a
+#'   scalar is accepted; use `fp(variable, df = ...)` for per-variable values.
 #'
-#' @param center A logical scalar or one value per predictor indicating whether
-#'   transformed predictors are centered. The default is `TRUE`.
+#' @param center A single logical value, or in `mfpi.default()` one value per
+#'   predictor column, indicating whether transformed predictors are centered
+#'   before fitting. The default is `TRUE`. In `mfpi.formula()`, only a scalar
+#'   is accepted; use `fp(variable, center = ...)` for per-variable values.
+#'   See `center_type` for how centering references are computed in the
+#'   interaction models.
 #'
 #' @param subset An optional logical vector or vector of unique positive row
 #'   indices selecting observations for fitting. In the formula interface, an
@@ -361,30 +372,50 @@
 #'   Custom GLM links are supported through family objects. Cox models require
 #'   `family = "cox"`.
 #'
-#' @param criterion The selection criterion used for the MFP adjustment model
-#'   and the interaction comparisons: `"pvalue"`, `"aic"`, or `"bic"`.
-#'   The default is `"pvalue"`.
+#' @param criterion The selection criterion used for both the MFP adjustment
+#'   model and the interaction comparisons: `"pvalue"`, `"aic"`, or `"bic"`.
+#'   With `"pvalue"`, variable retention and FP degree selection are governed
+#'   by `select` and `alpha`; interactions are selected when the interaction
+#'   p-value is below `p_interact`. With `"aic"` or `"bic"`, the corresponding
+#'   information criterion drives both adjustment-model construction and
+#'   interaction selection via `min_improvement`. The default is `"pvalue"`.
 #'
-#' @param select A value in `[0, 1]`, or one value per predictor, controlling
-#'   variable selection in the MFP adjustment model. With p-value selection,
-#'   `select = 1` forces a variable into that model. The default is `0.05`.
+#' @param select A numeric value in `[0, 1]`, or in `mfpi.default()` one value
+#'   per predictor column, controlling variable selection in the MFP adjustment
+#'   model. With `criterion = "pvalue"`, `select` is the p-value threshold for
+#'   retaining a variable; setting `select = 1` forces a variable into the
+#'   model. With AIC or BIC selection, `select` is not used directly for
+#'   thresholding but variables named in `force_max_fp_vars` are still forced
+#'   to `select = 1`. The default is `0.05`. In `mfpi.formula()`, only a scalar
+#'   is accepted; use `fp(variable, select = ...)` for per-variable values.
 #'
-#' @param alpha A value in `[0, 1]`, or one value per predictor, controlling FP
-#'   degree selection in the MFP adjustment model when
-#'   `criterion = "pvalue"`. The default is `0.05`.
+#' @param alpha A numeric value in `[0, 1]`, or in `mfpi.default()` one value
+#'   per predictor column, controlling the significance level for FP degree
+#'   selection in the MFP adjustment model. It is used only when
+#'   `criterion = "pvalue"`. Setting `alpha = 1` forces the maximum FP degree
+#'   allowed by `df`. The default is `0.05`. In `mfpi.formula()`, only a scalar
+#'   is accepted; use `fp(variable, alpha = ...)` for per-variable values.
 #'
 #' @param keep An optional character vector naming adjustment variables or
 #'   grouped adjustment terms that must be included in the adjustment model.
+#'   For `mfpi.default()`, grouped-term names created by `term_groups` are
+#'   accepted. For `mfpi.formula()`, factor variable names are accepted and
+#'   all contrast columns of that factor are retained together.
 #'
 #' @param force_max_fp_vars An optional character vector naming adjustment
 #'   variables that must use the maximum FP degree allowed by `df`. The best
-#'   powers within that degree are still chosen. In a formula, this can also be
-#'   specified with `fp(force_max_fp = TRUE)` or
-#'   `fp2(force_max_fp = TRUE)`.
+#'   powers within that degree are still chosen by the data. Under
+#'   `criterion = "pvalue"`, this also forces `select = 1` and `alpha = 1` for
+#'   the named variables, so they are both retained and kept at full FP
+#'   complexity. In a formula, the corresponding option is
+#'   `fp(variable, force_max_fp = TRUE)` or
+#'   `fp2(variable, force_max_fp = TRUE)`.
 #'
-#' @param xorder The order used by the MFP adjustment algorithm:
-#'   `"ascending"`, `"descending"`, or `"original"`. The default is
-#'   `"ascending"`.
+#' @param xorder The order in which variables are processed by the MFP
+#'   adjustment algorithm: `"ascending"` orders by increasing univariate
+#'   significance, `"descending"` by decreasing significance, and `"original"`
+#'   preserves the column order of `x` or the formula term order. The default
+#'   is `"ascending"`.
 #'
 #' @param powers An optional named list of candidate FP power sets. The default
 #'   uses `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where zero represents the
@@ -403,21 +434,38 @@
 #'   internal centering. It is used only for Cox models.
 #'
 #' @param acd_vars For `mfpi.default()`, an optional character vector naming
-#'   adjustment variables that use the ACD transformation. ACD is disabled for
-#'   variables in `cont_vars`. In the formula interface, use
-#'   `fp(variable, acd = TRUE)` or `fp2(variable, acd = TRUE)` instead.
+#'   adjustment variables that use the approximate cumulative distribution
+#'   (ACD) transformation instead of a standard FP transformation. ACD is
+#'   disabled with a warning for variables in `cont_vars` because it would
+#'   conflict with the interaction-form search. In `mfpi.formula()`, this
+#'   argument is not available; use `fp(variable, acd = TRUE)` or
+#'   `fp2(variable, acd = TRUE)` in the formula instead.
 #'
 #' @param zero_vars An optional character vector naming variables for which
-#'   non-positive values are treated as structural zero. This option can be used
-#'   for variables in `cont_vars` and for adjustment variables.
+#'   non-positive values are treated as structural zeros. When enabled, the
+#'   selected FP or linear function is applied only to positive values, while
+#'   non-positive values receive a separate fixed contribution. The shift for
+#'   a zero-handled variable is set to 0. This option can be used for
+#'   variables in `cont_vars` and for adjustment variables. In the formula
+#'   interface, this can also be specified with `fp(variable, zero = TRUE)`.
 #'
 #' @param catzero_vars An optional character vector naming adjustment variables
-#'   that use both a positive-part FP function and a structural-zero indicator.
-#'   This option is disabled with a warning for variables in `cont_vars`.
+#'   that use both a positive-part FP function and a binary structural-zero
+#'   indicator as an additional covariate. Setting `catzero_vars` implies
+#'   `zero_vars` for the same variables. This option is disabled with a
+#'   warning for variables in `cont_vars`; only explicit `zero_vars` settings
+#'   are preserved for those. In the formula interface, use
+#'   `fp(variable, catzero = TRUE)`.
 #'
 #' @param spike_vars An optional character vector naming adjustment variables to
-#'   assess with the spike-at-zero procedure. This option is disabled with a
-#'   warning for variables in `cont_vars`.
+#'   assess with the spike-at-zero procedure. Spike-at-zero testing requires
+#'   enough observations in both the non-positive and positive components (see
+#'   `min_saz_component_prop`). Setting `spike_vars` implies both
+#'   `catzero_vars` and `zero_vars` for the same variables. Variables that fail
+#'   the component-proportion check are automatically downgraded to `catzero`
+#'   or `zero` handling. This option is disabled with a warning for variables
+#'   in `cont_vars`. In the formula interface, use
+#'   `fp(variable, spike = TRUE)`.
 #'
 #' @param min_saz_component_prop A finite number in `(0, 0.5)` giving the
 #'   minimum proportion required in both components of a spike-at-zero
@@ -461,18 +509,25 @@
 #'
 #' Important components include:
 #'
-#' - `best_model_metrics`: results for interactions selected by the chosen
-#'   criterion;
-#' - `all_model_metrics`: results for every variable evaluated in `cont_vars`;
-#' - `best_interaction_model`: fitted models for selected interactions;
-#' - `all_interaction_models`: stored interaction models for every evaluated
-#'   continuous variable, including interactions that were not selected;
-#' - `adjustment_model`: the fitted MFP adjustment model;
-#' - `cont_var_forms`: the interaction form specified for each tested variable;
+#' - `best_model_metrics`: a data frame of results for interactions selected
+#'   by the chosen criterion. Contains columns such as the deviance, degrees
+#'   of freedom, p-values, AIC and BIC comparisons, and selected powers;
+#' - `all_model_metrics`: the same columns for every variable evaluated in
+#'   `cont_vars`, regardless of whether its interaction was selected;
+#' - `best_interaction_model`: a named list of fitted model objects for
+#'   selected interactions;
+#' - `all_interaction_models`: a named list of fitted model objects for every
+#'   evaluated continuous variable, including interactions that were not
+#'   selected;
+#' - `adjustment_model`: the fitted [mfp2()] adjustment model;
+#' - `cont_var_forms`: the interaction form (`"linear"`, `"fp1"`, or `"fp2"`)
+#'   specified for each tested variable;
 #' - `group_level_map`: the mapping between internal group codes and the
 #'   original group labels;
 #' - `winsorize_limits`: the Winsorisation limits on the processed scale used
 #'   for fitting, when Winsorisation was requested;
+#' - `criterion`: the selection criterion used;
+#' - `p_adjust_method`: the multiplicity adjustment method applied;
 #' - `call`: the matched model call.
 #'
 #' Additional components are stored for prediction, plotting, and summaries and
@@ -492,10 +547,9 @@
 #' analysis. *Statistics in Medicine*, 33, 4695-4708.
 #'
 #' @examples
-#' \dontrun{
+#' # --- Formula interface: test interactions with fp() adjustment terms ---
 #' data("prostate")
 #'
-#' # Test whether the effects of cavol and age differ between svi groups.
 #' fit <- mfpi(
 #'   lpsa ~ svi + fp(age) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
 #'   data = prostate,
@@ -525,11 +579,13 @@
 #' pred$functions
 #' pred$differences
 #'
+#' \donttest{
 #' if (requireNamespace("patchwork", quietly = TRUE)) {
 #'   plot(fit, terms = "cavol", model = "all", plot_type = "both")
 #' }
+#' }
 #'
-#' # Formula factors are treated as complete adjustment terms.
+#' # --- Formula with factor adjustment term ---
 #' set.seed(1)
 #' dat <- data.frame(
 #'   y = rnorm(180),
@@ -550,8 +606,7 @@
 #'
 #' summary(fit_factor)
 #'
-#' # In the matrix interface, group dummy columns for a categorical adjustment
-#' # variable with term_groups so they are handled together.
+#' # --- Matrix interface with term_groups and explicit shift/scale ---
 #' stage_matrix <- stats::model.matrix(~ stage, data = dat)[, -1, drop = FALSE]
 #' x <- cbind(
 #'   trt = as.integer(dat$trt) - 1L,
@@ -577,24 +632,20 @@
 #' fit_matrix$shift
 #' fit_matrix$scale
 #' summary(fit_matrix)
-#' }
 #'
-#' @seealso [mfp2()], [predict.mfpi()], [plot.mfpi()], [summary.mfpi()], [fp()]
+#' @seealso [mfp2()], [fp()], [predict.mfpi()], [plot.mfpi()],
+#'   [summary.mfpi()], [print.mfpi()]
 #'
 #' @export
 mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
 }
 
-#' @rdname mfpi
-#'
-#' @details
-#' The default method accepts a numeric matrix \code{x} and response vector
-#' \code{y}.
+#' @describeIn mfpi Default method accepting a numeric matrix or data frame
+#'   \code{x} and response vector \code{y}.
 #'
 #' @method mfpi default
 #' @export
-
 mfpi.default <- function(
     x,
     y,
@@ -1821,6 +1872,12 @@ mfpi.default <- function(
   fit$term_to_columns <- fit$adjustment_term_to_columns
   fit$call <- cl
   
+  # Compute the number of events for survival models so that
+  # print.mfpi() can display it alongside n.
+  if (identical(family_string, "cox")) {
+    fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)
+  }
+  
   class(fit) <- "mfpi"
   fit
 }
@@ -1877,8 +1934,6 @@ mfpi.default <- function(
 #' reconstruct the offset from raw prediction \code{newdata}; if the needed raw
 #' offset variables are absent, supply \code{newoffset} to \code{predict()}.
 #'
-#' @seealso [print.mfpi()], [summary.mfpi()], [plot.mfpi()], 
-#' [mfp2()]
 #' @method mfpi formula
 #' @export
 mfpi.formula <- function(formula,

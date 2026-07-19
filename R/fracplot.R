@@ -428,7 +428,7 @@ plot_mfp2_impl <- function(model,
 #' plots <- plot(fit, terms = "age")
 #' plots
 #'
-#' \dontrun{
+#' \donttest{
 #' # Deprecated compatibility interface
 #' old_plots <- fracplot(fit, terms = "age")
 #' }

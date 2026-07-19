@@ -87,6 +87,41 @@ has_retained_model_summaries <- function(model_summaries) {
 }
 
 
+#' Print a Retained MFPI Regression Summary with Caller-Scoped S3 Dispatch
+#'
+#' Prints a retained regression-summary object with the requested
+#' \code{digits} value while preserving ordinary S3 dispatch.
+#'
+#' The generic is evaluated in a small environment whose parent is the
+#' environment from which \code{print.summary.mfpi()} was called. This allows
+#' locally defined downstream \code{print.<class>()} methods to participate in
+#' dispatch, while registered package methods continue to use the normal S3
+#' method table and retain support for \code{NextMethod()}.
+#'
+#' @param x A regression-summary object.
+#' @param digits Non-negative integer controlling printing precision.
+#' @param envir Parent environment used for S3 method lookup.
+#'
+#' @return \code{x} invisibly.
+#'
+#' @keywords internal
+#' @noRd
+print_mfpi_model_summary <- function(x, digits, envir = parent.frame()) {
+  dispatch_env <- new.env(parent = envir)
+  
+  # Give the print call a lexical path to the caller's environment so that
+  # locally defined S3 methods remain discoverable. Using formal arguments
+  # avoids synthetic global bindings that trigger R CMD check notes.
+  printer <- function(object, print_digits) {
+    print(object, digits = print_digits)
+  }
+  environment(printer) <- dispatch_env
+  printer(x, digits)
+  
+  invisible(x)
+}
+
+
 #' Resolve the Regression-Output Step Number for an MFPI Summary
 #'
 #' Computes the numbered step used for the regression-output block appended by
@@ -129,8 +164,8 @@ mfpi_summary_regression_step_number <- function(criterion) {
 #'
 #' \enumerate{
 #'   \item the MFPI model-building output, including the adjustment model,
-#'     candidate interaction models, optional p-value adjustment, and final
-#'     interaction-selection summary;
+#'     candidate interaction models, group-level interaction FP powers, and
+#'     the final interaction-selection summary;
 #'   \item regression summaries for the retained interaction models.
 #' }
 #'
@@ -146,21 +181,16 @@ mfpi_summary_regression_step_number <- function(criterion) {
 #' @return An object of class \code{"summary.mfpi"}. The object is a list
 #'   containing the main printed MFPI components, group-level metadata, retained
 #'   model objects, and ordinary regression summaries for retained interaction
-#'   models.
+#'   models. Print it with \code{print()} or \code{print.summary.mfpi()} to
+#'   display the full MFPI model-building output followed by the regression
+#'   summaries.
+#'
+#' @seealso [mfpi()], [print.summary.mfpi()], [predict.mfpi()], [plot.mfpi()]
 #'
 #' @method summary mfpi
 #' @export
 summary.mfpi <- function(object, ...) {
-  dots <- list(...)
-  
-  if (length(dots) > 0L) {
-    warning(
-      "Unused arguments in `summary.mfpi(...)`: ",
-      paste(names(dots), collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
+  warn_unused_mfpi_dots(list(...), method = "summary.mfpi")
   
   if (!inherits(object, "mfpi")) {
     stop("`object` must be an object of class \"mfpi\".", call. = FALSE)
@@ -222,8 +252,9 @@ summary.mfpi <- function(object, ...) {
 #'
 #' The printed summary first reuses \code{print.mfpi()} to display the
 #' model-building output. This includes the adjustment model, all interaction
-#' candidates, the candidate interaction FP powers by group level, optional
-#' p-value adjustment, and the final interaction summary.
+#' candidates, the candidate interaction FP powers by group level, and the
+#' final interaction summary. For p-value selection, raw and adjusted p-values
+#' are reported together in Step 3.
 #'
 #' After the model-building output, the summary print method appends:
 #'
@@ -242,9 +273,11 @@ summary.mfpi <- function(object, ...) {
 #' labelled Step 4 for all interaction-selection criteria.
 #'
 #' @param x An object of class \code{"summary.mfpi"}.
-#' @param digits Optional non-negative integer controlling the number of decimal
-#'   places used when printing numeric output. If \code{NULL}, \code{x$digits}
-#'   is used when available; otherwise the print helper default is used.
+#' @param digits Optional non-negative integer controlling printing precision.
+#'   MFPI metric tables are rounded to this many decimal places, and retained
+#'   regression summaries receive the same \code{digits} value. If \code{NULL},
+#'   \code{x$digits} is used when available; otherwise the print helper default
+#'   is used.
 #' @param ... Currently unused.
 #'
 #' @return \code{x} invisibly.
@@ -252,16 +285,12 @@ summary.mfpi <- function(object, ...) {
 #' @method print summary.mfpi
 #' @export
 print.summary.mfpi <- function(x, digits = NULL, ...) {
-  dots <- list(...)
+  # Retain the environment from which the summary print method was invoked so
+  # locally defined print methods for custom regression-summary classes remain
+  # discoverable during Step 4.
+  print_method_envir <- parent.frame()
   
-  if (length(dots) > 0L) {
-    warning(
-      "Unused arguments in `print.summary.mfpi(...)`: ",
-      paste(names(dots), collapse = ", "),
-      ".",
-      call. = FALSE
-    )
-  }
+  warn_unused_mfpi_dots(list(...), method = "print.summary.mfpi")
   
   if (!inherits(x, "summary.mfpi")) {
     stop("`x` must be an object of class \"summary.mfpi\".", call. = FALSE)
@@ -284,10 +313,11 @@ print.summary.mfpi <- function(x, digits = NULL, ...) {
   # This complements the all-candidate power table printed by print.mfpi() and
   # places the final selected group-specific FP powers next to the regression
   # summaries.
+  # Do not pass a section ruler here. The detail helper deliberately prints
+  # this table without an underline.
   print_interaction_power_details_step(
     metrics   = x$best_model_metrics,
     group_var = x$group_var,
-    ruler     = ruler,
     title     = "  Retained FP powers by group level"
   )
   
@@ -332,7 +362,11 @@ print.summary.mfpi <- function(x, digits = NULL, ...) {
     
     cat(sprintf("\n  Interaction model (%s, %s):\n", vn, type_label))
     cat(strrep("-", 50), "\n")
-    print(sm)
+    print_mfpi_model_summary(
+      x = sm,
+      digits = digits,
+      envir = print_method_envir
+    )
     cat("\n")
   }
   

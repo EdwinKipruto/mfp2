@@ -39,9 +39,10 @@
 #'
 #' Required values must not be missing. No numeric column in `newdata` may
 #' contain `Inf` or `-Inf`, including unused extra columns. Prediction stops if
-#' a supplied value is outside the valid range of the fitted transformation. For example, some logarithmic or negative-power
-#' functions require a positive value after the fitted shift is applied.
-#'
+#' a supplied value is outside the valid range of the fitted transformation.
+#' For example, some logarithmic or negative-power functions require a
+#' positive value after the fitted shift is applied.
+#' 
 #' @section Choosing the prediction type:
 #' For Gaussian, binomial, and Poisson models:
 #'

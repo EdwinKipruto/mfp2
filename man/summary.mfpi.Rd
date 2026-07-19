@@ -15,7 +15,9 @@
 An object of class \code{"summary.mfpi"}. The object is a list
 containing the main printed MFPI components, group-level metadata, retained
 model objects, and ordinary regression summaries for retained interaction
-models.
+models. Print it with \code{print()} or \code{print.summary.mfpi()} to
+display the full MFPI model-building output followed by the regression
+summaries.
 }
 \description{
 Produces a structured summary of an \code{"mfpi"} fit.
@@ -27,8 +29,8 @@ retained interaction models. It is designed to support a two-layer display:
 
 \enumerate{
 \item the MFPI model-building output, including the adjustment model,
-candidate interaction models, optional p-value adjustment, and final
-interaction-selection summary;
+candidate interaction models, group-level interaction FP powers, and
+the final interaction-selection summary;
 \item regression summaries for the retained interaction models.
 }
 
@@ -37,4 +39,7 @@ but their coefficient-level Wald p-values do not account for fractional
 polynomial power selection. The MFPI interaction decision should be based on
 the interaction summary table and the relevant model-selection metric rather
 than on the regression table alone.
+}
+\seealso{
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=print.summary.mfpi]{print.summary.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
 }

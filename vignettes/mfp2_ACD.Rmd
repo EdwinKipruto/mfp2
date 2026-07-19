@@ -97,7 +97,7 @@ knitr::opts_chunk$set(
   out.width = "100%",
   fig.align = "center",
   dev = "png",
-  dpi = 300
+  dpi = 96
 )
 
 oldwidth <- getOption("width")

@@ -86,8 +86,10 @@
 #' @param x An object of class `"mfpi"`.
 #'
 #' @param terms Optional character vector naming the continuous variables to
-#'   plot. If `NULL`, only retained interaction terms are plotted. If supplied,
-#'   the requested terms are plotted when their fitted models are available.
+#'   plot. If `NULL`, only retained interaction terms are plotted; when no
+#'   interactions were retained, no plots are produced. If supplied, the
+#'   requested terms are plotted when their fitted models are available in the
+#'   `all_interaction_models` component of the `mfpi` object.
 #'
 #' @param plot_type Character scalar specifying the plot to produce. One of
 #'   `"fitted"`, `"difference"`, or `"both"`.
@@ -162,13 +164,12 @@
 #' Returned plots can be printed, modified with \pkg{ggplot2}, combined with
 #' \pkg{patchwork}, or saved with [ggplot2::ggsave()].
 #'
-#' @seealso [mfpi()], [predict.mfpi()]
+#' @seealso [mfpi()], [predict.mfpi()], [summary.mfpi()]
 #'
 #' @import ggplot2
 #' @importFrom ggplot2 .data
 #'
 #' @examples
-#' \dontrun{
 #' data("prostate")
 #'
 #' # Investigate whether the fitted effects of cavol and age differ by svi.
@@ -201,9 +202,11 @@
 #' # Print the first returned contrast plot for cavol.
 #' print(plots[["cavol"]][[1]])
 #'
+#' \donttest{
 #' # Display fitted and difference plots side by side.
 #' if (requireNamespace("patchwork", quietly = TRUE)) {
 #'   plot(fit, terms = "cavol", plot_type = "both")
+#' }
 #' }
 #'
 #' # Add confidence bands to the group-specific fitted functions.
@@ -221,7 +224,6 @@
 #'   plot_type = "fitted",
 #'   line_types = c("0" = "solid", "1" = "dashed")
 #' )
-#' }
 #'
 #' @method plot mfpi
 #' @export

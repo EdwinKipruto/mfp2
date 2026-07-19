@@ -54,17 +54,9 @@ fact for those variables.
 }
 Within every table, selected variables are listed before excluded ones.
 
-Each table's \code{Function} column is a single human-readable label
-(e.g. \code{"linear"}, \code{"FP(1, 2)"}, \code{"FP(0.5) (x > 0)"},
-\code{"FP(-1, -1) (x > 0) + binary"}, \code{"binary indicator only"}, or
-\code{"out"}), built from the selected powers together with the
-\code{zero}/\code{catzero} status.
-
 The subsequent "Detailed Settings" table reproduces the original,
-unabridged \code{fp_terms} columns (renamed only for readability, e.g.
-\code{catzero} -> \code{catzero_final} and \code{spike_dec} ->
-\code{saz_decision}), also sorted with selected variables first. Notes
-about \code{select}/\code{alpha} divergence and the
+unabridged \code{fp_terms} columns, also sorted with selected variables first.
+Notes about \code{select}/\code{alpha} divergence and the
 \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 column whose meaning may not be obvious, are printed immediately below it.
 
@@ -82,17 +74,7 @@ model.
 
 For Cox proportional-hazards models, the reported values are minus twice the
 corresponding null or fitted partial log-likelihood.
-
-The inherited \code{print.glm()} or \code{print.coxph()} method is not used.
-Those methods print family-specific footer information such as residual
-degrees of freedom and AIC, but they do not report the full-linear reference
-model used by the MFP procedure.
-
-The selection criterion is read from \code{x$criterion_mfp} when available.
-For older objects without that field, it is inferred from the
-\code{select} and \code{alpha} columns of \code{x$fp_terms}.
-
-Older serialized \code{mfp2} objects may not contain all three model-fit
-fields. Missing values are printed as \code{NA} rather than causing the
-print method to fail.
+}
+\seealso{
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}
 }

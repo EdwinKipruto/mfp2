@@ -27,27 +27,69 @@ fp2(...)
 \item{x}{A vector representing a continuous variable undergoing
 FP-transformation.}
 
-\item{df, alpha, select, shift, scale, center, acdx}{See \code{\link[=mfp2]{mfp2()}} for
-details.}
+\item{df}{Maximum degrees of freedom for this variable's FP function.
+Must be \code{1} (linear) or a positive even integer. Default \code{4} (FP2).
+See \code{\link[=mfp2]{mfp2()}} for the cardinality-based reduction rules.}
+
+\item{alpha}{Significance level for the closed test between FP functions of
+different degrees. Default \code{0.05}. Overrides the global \code{alpha} from
+\code{\link[=mfp2]{mfp2()}} for this variable.}
+
+\item{select}{Significance level for backward-elimination variable
+selection. Default \code{0.05}. Set to \code{1} to force this variable into the
+model. Overrides the global \code{select} from \code{\link[=mfp2]{mfp2()}}.}
+
+\item{shift}{Numeric shift override for this variable, or \code{NULL} (default)
+to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[=mfp2]{mfp2()}} for details.}
+
+\item{scale}{Numeric scale override for this variable, or \code{NULL} (default)
+to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[=mfp2]{mfp2()}} for details.}
+
+\item{center}{Logical centering override for this variable. Default \code{TRUE}.
+See \code{\link[=mfp2]{mfp2()}} for details.}
+
+\item{acdx}{Logical. If \code{TRUE}, request ACD modelling for this variable.
+Default \code{FALSE}. See the ACD modelling section in \code{\link[=mfp2]{mfp2()}}.}
 
 \item{powers}{Numeric vector of candidate powers to be evaluated for \code{x}.
-Must contain at least two values when supplied. If \code{NULL}, the default
-powers \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)} are used.}
+If \code{NULL} (default), the global candidate set from \code{\link[=mfp2]{mfp2()}} is used,
+which defaults to \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}. When \code{df > 1},
+the candidate set must include at least one power other than \code{1} so the
+algorithm can search over nonlinear forms. Duplicate values are removed
+automatically. Overrides the corresponding entry in the \code{powers} list
+argument of \code{\link[=mfp2]{mfp2()}}.}
 
-\item{zero, catzero, spike}{Logical formula-interface versions of
-\code{zero_vars}, \code{catzero_vars}, and \code{spike_vars}. See
-\code{\link{mfp2}}.}
+\item{zero}{Logical. If \code{TRUE}, only positive values undergo the FP
+function; nonpositive values contribute zero to the linear predictor.
+Default \code{FALSE}. Equivalent to listing the variable in \code{zero_vars} in
+\code{mfp2.default()}.}
+
+\item{catzero}{Logical. If \code{TRUE}, a fixed binary indicator for nonpositive
+values is added alongside the positive-component FP function. Implies
+\code{zero = TRUE}. Default \code{FALSE}. Equivalent to listing the variable in
+\code{catzero_vars} in \code{mfp2.default()}.}
+
+\item{spike}{Logical. If \code{TRUE}, request two-stage spike-at-zero (SAZ)
+selection for this variable. While SAZ remains eligible, implies both
+\code{catzero} and \code{zero}. Default \code{FALSE}. Equivalent to listing the variable
+in \code{spike_vars} in \code{mfp2.default()}. See the SAZ section in \code{\link[=mfp2]{mfp2()}} for
+eligibility requirements.}
 
 \item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
-allowed by \code{df} is selected for this variable. Under p-value
-selection, both \code{select} and \code{alpha} are internally set to
-\code{1} for the variable. Default is \code{FALSE}.}
+allowed by \code{df} is forced for this variable, bypassing both variable
+selection and functional-form simplification. Under \code{criterion = "pvalue"},
+this is implemented by internally setting \code{select = 1} and \code{alpha = 1}
+for the variable; the option also applies under \code{"aic"} and \code{"bic"}.
+Default \code{FALSE}. Equivalent to naming the variable in \code{force_max_fp_vars}
+in \code{mfp2.default()}.}
 
-\item{...}{Used in alias \code{fp2()} to pass arguments.}
+\item{...}{Not used directly by \code{fp()}. Present so that the \code{fp2()} alias
+can forward all arguments.}
 }
 \value{
-A formula term containing the modelling options supplied to \code{fp()}.
-The term is interpreted by \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} during model fitting.
+The input vector \code{x} with modelling options attached as attributes. The
+returned value is interpreted by \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} during model fitting;
+calling \code{fp()} outside a formula has no modelling effect.
 }
 \description{
 Marks a continuous variable for fractional-polynomial modelling by
@@ -91,13 +133,16 @@ fit2 <- mfp2(
   verbose = FALSE
 )
 
-\dontrun{
-# Request spike-at-zero modelling for a semi-continuous exposure.
-fit_spike <- mfp2(
-  outcome ~ fp(exposure, spike = TRUE) + fp(age),
-  data = analysis_data,
+\donttest{
+# Request ACD modelling for a continuous predictor.
+fit_acd <- mfp2(
+  lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + svi,
+  data = prostate,
   verbose = FALSE
 )
 }
 
+}
+\seealso{
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=fp2]{fp2()}}
 }

@@ -296,18 +296,17 @@
 #'   positive; otherwise fitting fails and identifies the affected variable.
 #'   In `mfp2.formula()`, the top-level value is a scalar global default; use
 #'   `fp()` or `fp2()` for variable-specific values.
-#' @param df a numeric vector of length nvars or a single numeric that sets the 
-#' maximum degrees of freedom (df) for each predictor. If a single numeric, 
-#' then the value will be replicated as necessary. The formula interface
-#' `mfp2.formula` only supports single numeric input to set a default value, 
-#' individual values can be set using `fp` terms in the `formula` input. 
-#' The df (not counting the intercept) are twice the degree of a fractional 
-#' polynomial (FP). For example, an FP2 has 4 df, while FPm has 2*m df. 
-#' The program overrides default df based on the number of distinct (unique) 
-#' values for a variable as follows: 
-#' 2-3 distinct values are assigned `df = 1` (linear), 4-5 distinct values are
-#' assigned `df = min(2, default)` and >= 6 distinct values are assigned  
-#' `df = default`. 
+#' @param df Maximum degrees of freedom for each predictor's
+#'   fractional-polynomial function. Must be `1` (linear) or a positive even
+#'   integer (`2` for FP1, `4` for FP2, etc.). Default `4`.
+#'   In `mfp2.default()`, accepts a single value (applied to all predictors) or
+#'   a numeric vector of length `ncol(x)`. In `mfp2.formula()`, only a single
+#'   global default is accepted; override it for individual terms with
+#'   `fp(x, df = value)`.
+#'   The effective `df` may be reduced automatically when a predictor has few
+#'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
+#'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
+#'   requested value unchanged.
 #' @param center Logical value controlling centering of final transformed terms.
 #'   Default `TRUE`. Ordinary continuous transformed terms are centered on their
 #'   mean; zero-handled FP columns use the mean of their nonzero transformed
@@ -318,112 +317,116 @@
 #'   environment. Matrix calls accept a logical vector or unique numeric/integer
 #'   row positions. Automatic shift and scale values are estimated before the
 #'   subset is applied. See the Subsetting section.
-#' @param family Either a character string specifying the model family 
-#'   (e.g., "gaussian", "binomial", "poisson", "cox") or a function that 
-#'   returns a GLM family object, such as `stats::gaussian(link = "identity")` 
-#'   or `stats::binomial(link = "logit")`. For Cox models, only the character 
-#'   string `"cox"` is allowed.
-#' @param criterion a character string specifying the criterion used to select 
-#' variables and FP models of different degrees. 
-#' Default is to use p-values in which case the user can specify
-#' the nominal significance level (or use default level of 0.05) for variable and
-#' functional form selection (see `select` and `alpha` parameters below).
-#' If the user specifies the BIC (`bic`) or AIC (`aic`) criteria the program  
-#' ignores the nominal significance levels and selects variables and functional 
-#' forms using the chosen information criterion.
-#' @param select a numeric vector of length nvars or a single numeric that 
-#' sets the nominal significance levels for variable selection on each predictor
-#' by backward elimination. If a single numeric, then the value will be replicated
-#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using [fp()] terms
-#' in the `formula` input. The default nominal significance level is 0.05 
-#' for all variables. Setting the nominal significance level to be 1 for  
-#' certain variables forces them into the model, leaving all other variables
-#' to be selected. 
-#' @param alpha a numeric vector of length nvars or a single numeric that 
-#' sets the significance levels for testing between FP models of 
-#' different degrees. If a single numeric, then the value will be replicated
-#' as necessary. The formula interface `mfp2.formula` only supports single numeric 
-#' input to set a default value, individual values can be set using [fp()] terms
-#' in the `formula` input. The default nominal significance level is 0.05 for all 
-#' variables. 
-#' @param keep a character vector with names of variables to be kept 
-#' in the model. In case that `criterion = "pvalue"`, this is equivalent to
-#' setting the selection level for the variables in `keep` to 1. 
-#' However, this option also keeps the specified variables in the model when 
-#' using the BIC or AIC criteria. Their functional form may still be selected. Names
-#'  must match formula term names or, for matrix fits, column names or names in
-#' `term_groups`.
-#' @param xorder a string determining the order of entry of the covariates
-#' into the model-selection algorithm (backfitting algorithm). The default is 
-#' `ascending`, which enters them by ascending p-values, or decreasing order of 
-#' significance in a multiple regression (i.e. most significant first).
-#' `descending` places them in reverse significance order, whereas 
-#' `original` respects the original order in `x`.
+#' @param family Model family. Either a character string (`"gaussian"`,
+#'   `"binomial"`, `"poisson"`, or `"cox"`) or a [stats::family()] object such
+#'   as `binomial(link = "logit")`. Cox models accept only the character string
+#'   `"cox"`. Default `"gaussian"`.
+#' @param criterion Selection criterion. One of `"pvalue"` (default), `"aic"`,
+#'   or `"bic"`. With `"pvalue"`, variable inclusion and functional-form
+#'   complexity are controlled by `select` and `alpha` through nested closed
+#'   tests. With `"aic"` or `"bic"`, candidate models are compared directly by
+#'   their information-criterion value and `select`/`alpha` are ignored.
+#' @param select Nominal significance level for variable selection. Default
+#'  `0.05`. In `mfp2.default()`, accepts a single value
+#'   (applied to all predictors) or a numeric vector of length `ncol(x)`. In
+#'   `mfp2.formula()`, only a single global default is accepted; override it
+#'   for individual terms with `fp(x, select = value)`. Setting `select = 1`
+#'   for a predictor forces it into the model (equivalent to naming it in
+#'   `keep`). Ignored when `criterion` is `"aic"` or `"bic"`.
+#' @param alpha Significance level for closed tests between FP functions of
+#'   different degrees (e.g. FP2 versus FP1 versus linear). Default `0.05`.
+#'   In `mfp2.default()`, accepts a single value (applied to all predictors)
+#'   or a numeric vector of length `ncol(x)`. In `mfp2.formula()`, only a
+#'   single global default is accepted; override it for individual terms with
+#'   `fp(x, alpha = value)`. Ignored when `criterion` is `"aic"` or
+#'   `"bic"`.
+#' @param keep Character vector of predictor names that must remain in the final
+#' model regardless of the selection criterion. Under `criterion = "pvalue"`,
+#' this is equivalent to setting `select = 1` for each named variable. The
+#' functional form of kept variables may still be simplified by the
+#' `alpha`-level closed test or information criterion. Names must match
+#' formula term names or, for matrix fits, column names or `term_groups`
+#' names.
+#' @param xorder Order in which predictors enter the backfitting algorithm.
+#' One of `"ascending"` (default), `"descending"`, or `"original"`.
+#' `"ascending"` processes predictors from smallest to largest p-value in an
+#' initial linear model (most significant first). `"descending"` reverses that
+#' order. `"original"` preserves the column order of `x` or the left-to-right
+#' order of formula terms.
 #' @param powers Optional named list of candidate FP powers for individual predictors.
-#'   The default set is `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 stands
-#'   for the logarithm. Names must match the corresponding formula terms or
-#'   matrix column names. For predictors with `df > 1`, the candidate set must
-#'   include at least one power other than 1; the algorithm needs a non-linear 
-#'   candidate to search over. To restrict a predictor to a linear effect, 
-#'   set `df = 1` rather than limiting its power set.Per-term settings in [fp()]
-#'   take precedence over entries in this list.
-#' @param ties a character string specifying the method for tie handling in 
-#' Cox regression. If there are no tied death times all the methods are 
-#' equivalent. Default is the Breslow method. This argument is used for Cox 
-#' models only and has no effect on other model families. 
-#' See \code{survival::coxph()} for details.
+#' The default set is `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 stands
+#' for the logarithm. Names must match the corresponding formula terms or
+#' matrix column names. For predictors with `df > 1`, the candidate set must
+#' include at least one power other than 1; the algorithm needs a non-linear 
+#' candidate to search over. To restrict a predictor to a linear effect, 
+#' set `df = 1` rather than limiting its power set. Per-term settings in
+#' [fp()] take precedence over entries in this list.
+#' @param ties Method for handling tied event times in Cox models. One of
+#' `"breslow"` (default), `"efron"`, or `"exact"`. All methods are equivalent
+#' when no ties exist. Ignored for non-Cox families. See
+#' [survival::coxph()] for details.
 #' @param strata Optional stratification variable(s) for Cox models. Accepts a
-#'  vector, factor, or a matrix/data frame of multiple stratification
-#'  variables. In formula fits, `strata()` terms can be used instead and take
-#'  precedence if both are supplied.
-#' @param nocenter Optional numeric vector with a list of values for fitting Cox 
-#' models. See \code{survival::coxph()} for details.
-#' @param acdx a character vector giving the names of continuous variables to 
-#' undergo the approximate cumulative distribution (ACD) transformation. Using 
-#' this also triggers the function-selection procedure for ACD (FSPA) to 
-#' determine the best-fitting FP1(p1, p2) model (see Details). This argument is 
-#' not available in the formula interface (`mfp2.formula`), where the user
-#' should instead use `fp(x, acdx = TRUE)`. The variable representing the ACD 
-#' transformation of `x` is named `A_x`.
-#' @param ftest a logical indicating whether `mfp2` should use critical values 
-#' from the F-distribution instead of the Chi-Square distribution for small-sample 
-#' normal error models. This affects variable selection, functional form selection, 
-#' and spike-at-zero testing when evaluating fractional polynomial terms. Default 
-#' is `FALSE`, in which case the Chi-Square distribution is used. This argument 
-#' applies only to Gaussian models.
+#' vector, factor, or a matrix/data frame of multiple stratification
+#' variables. In formula fits, `strata()` terms can be used instead and take
+#' precedence if both are supplied.
+#' @param nocenter Optional numeric vector of predictor indices whose columns
+#' should not be internally centered by [survival::coxph()]. Applies to Cox
+#' models only. See [survival::coxph()] for details.
+#' @param acdx Character vector naming continuous predictors to be assessed with
+#' the approximate cumulative distribution (ACD) extension. An ACD request
+#' triggers the function-selection procedure for ACD (FSPA), which evaluates
+#' extended two-component functions alongside simpler alternatives. See the
+#' ACD modelling section. The ACD-transformed version of predictor `x` is
+#' named `A_x` in the model output. This argument applies to
+#' `mfp2.default()` only; in the formula interface use
+#' `fp(x, acdx = TRUE)`.
+#' @param ftest Logical. If `TRUE`, use F-distribution critical values instead
+#' of chi-squared critical values for the selection tests in Gaussian models.
+#' This may improve small-sample behaviour for variable selection,
+#' functional-form selection, and spike-at-zero testing. Default `FALSE`.
+#' Ignored for non-Gaussian families.
 #' @param control Fitting controls from [stats::glm.control()] or
 #' [survival::coxph.control()]. `NULL` uses the relevant defaults.
-#' @param zero_vars Character vector of continuous predictors whose non-positive
-#' values should be set to zero before transformation. Only the positive values
-#' are FP-transformed; non-positive values remain zero. Applies to the matrix 
-#' interface only; in formula interface use `fp(x, zero = TRUE)`.
-#' @param catzero_vars Character vector of continuous predictors that combine
-#' FP transformation of positive values with a binary indicator for
-#' non-positive values. The indicator enters the model as a separate
-#' covariate.  Applies to the matrix interface only; in formulas interface,
-#' use `fp(x, catzero = TRUE)`.
-#' @param spike_vars A character vector specifying the names of continuous
-#' variables to be assessed for a spike at zero. Supplying this triggers the
-#' spike-at-zero (SAZ) algorithm. Applies to the matrix 
-#' interface only; in formula interface use `fp(x, spike = TRUE)`.
-#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
-#' proportion in each component of a spike-at-zero covariate: the zero
-#' component and the positive continuous component. Default \code{0.10}. A
-#' spike-at-zero candidate is retained for SAZ modelling only if both the
-#' zero proportion and the positive-observation proportion meet this
-#' threshold. Variables that fail this check have their spike flag reset to
-#' \code{FALSE}. For large samples the default can be lowered, since even a 
-#' small proportion may yield enough observations for reliable estimation.
-#' @param force_max_fp_vars For \code{mfp2.default()}, an optional character
-#' vector naming predictors for which the most complex FP function allowed by
-#' \code{df} should be forced into the model. For the named predictors,
-#' variable selection and functional-form simplification are bypassed. Under
-#' \code{criterion = "pvalue"}, this is implemented internally by setting
-#' \code{select = 1} and \code{alpha = 1}; the option also applies under
-#' \code{criterion = "aic"} and \code{criterion = "bic"}. The default is
-#' \code{NULL}. For \code{mfp2.formula()}, set this option for individual
-#' terms using \code{fp(x, force_max_fp = TRUE)}.
+#' @param zero_vars Character vector of continuous predictors whose nonpositive
+#' values should be recoded to zero before FP transformation. Only positive
+#' values undergo the FP function; nonpositive values contribute zero to the
+#' linear predictor. The shift for these variables is forced to zero. Applies
+#' to `mfp2.default()` only; in the formula interface use
+#' `fp(x, zero = TRUE)`. See the section on nonpositive values and
+#' spike-at-zero modelling.
+#' @param catzero_vars Character vector of continuous predictors that combine an
+#' FP transformation of their positive values with a binary indicator for
+#' nonpositive values. The indicator enters the model as a separate fixed
+#' covariate. Requesting `catzero` implies `zero` handling for the same
+#' variable. Applies to `mfp2.default()` only; in the formula interface use
+#' `fp(x, catzero = TRUE)`.
+#' @param spike_vars Character vector of continuous predictors to be assessed
+#' with the two-stage spike-at-zero (SAZ) algorithm. SAZ selection determines
+#' whether the final model retains both the binary zero-indicator and
+#' continuous FP component, only the continuous component, or only the binary
+#' indicator. Requesting `spike` implies both `catzero` and `zero` handling
+#' while SAZ remains eligible. A predictor is eligible for SAZ only when both
+#' the nonpositive and positive components meet the `min_saz_component_prop`
+#' threshold and the variable is not binary; ineligible spike requests are
+#' reset. Applies to `mfp2.default()` only; in the formula interface use
+#' `fp(x, spike = TRUE)`.
+#' @param min_saz_component_prop Numeric in `(0, 0.5)`. Minimum required
+#'   proportion in each component of a spike-at-zero covariate: the zero
+#'   component and the positive continuous component. Default `0.10`. A
+#'   spike-at-zero candidate is retained for SAZ modelling only if both the
+#'   zero proportion and the positive-observation proportion meet this
+#'   threshold. Variables that fail this check have their spike flag reset to
+#'   `FALSE`. For large samples the default can be lowered, since even a 
+#'   small proportion may yield enough observations for reliable estimation.
+#' @param force_max_fp_vars For `mfp2.default()`, an optional character
+#'   vector naming predictors for which the most complex FP function allowed by
+#'   `df` should be forced into the model. For the named predictors,
+#'   variable selection and functional-form simplification are bypassed. Under
+#'   `criterion = "pvalue"`, this is implemented internally by setting
+#'   `select = 1` and `alpha = 1`; the option also applies under
+#'   `criterion = "aic"` and `criterion = "bic"`. The default is
+#'   `NULL`. For `mfp2.formula()`, set this option for individual
+#'   terms using `fp(x, force_max_fp = TRUE)`.
 #' @param verbose Logical value indicating whether progress messages are printed.
 #' Default `TRUE`.
 #' @param \dots Additional arguments passed to methods. Variable-specific formula
@@ -465,7 +468,7 @@
 #' )
 #' fit_partial$transformations[c("age", "weight"), c("shift", "scale")]
 #'
-#' \dontrun{
+#' \donttest{
 #' # ACD modelling
 #' fit_acd_formula <- mfp2(
 #'   lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + svi,
@@ -509,6 +512,7 @@
 #' )
 #'
 #' # Unordered factor: all treatment-contrast columns are selected jointly
+#' set.seed(42)
 #' d_factor <- data.frame(
 #'   y = rnorm(60),
 #'   age = runif(60, 20, 80),
@@ -668,9 +672,9 @@
 #' with a spike at zero: simulation study and practical application to survival data. 
 #' Biostatistics & Epidemiology, 3(1), pp.23-37.}
 #' 
-#' @seealso 
-#' \code{summary.mfp2()}, \code{coef.mfp2()}, \code{predict.mfp2()}, \code{fp()},
-#' \code{fp2()}
+#' @seealso
+#' [fp()], [fp2()], [summary.mfp2()], [coef.mfp2()], [predict.mfp2()],
+#' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()]
 #'
 #' @export
 mfp2 <- function(x, ...){
@@ -1482,7 +1486,9 @@ collapse_option_to_terms <- function(values, term_to_columns, setting) {
   out
 }
 
-#' @describeIn mfp2 Default method using input matrix `x` and outcome vector `y`.
+#' @describeIn mfp2 Matrix interface: accepts a numeric predictor matrix `x`
+#' and response vector `y`. Categorical predictors must be pre-coded as
+#' numeric columns; group related columns with `term_groups`.
 #' @export
 mfp2.default <- function(x, 
                          y, 
@@ -2447,7 +2453,9 @@ mfp2.default <- function(x,
 }
 
 
-#' @describeIn mfp2 Provides formula interface for `mfp2`.
+#' @describeIn mfp2 Formula interface: accepts a model formula and data frame.
+#' Factors are expanded automatically. Use [fp()] or [fp2()] to set
+#' variable-specific options.
 #' @importFrom utils modifyList
 #' @export
 mfp2.formula <- function(formula, 
@@ -3520,42 +3528,43 @@ is_fp_term <- function(z) {
   grepl("^(mfp2::)?fp2?\\(.*\\)$", z)
 }
 
-#' Extract coefficients from object of class `mfp2`
-#' 
-#' This function is a method for the generic [stats::coef()] function for 
-#' objects of class `mfp2`. 
-#' 
-#' @param object an object of class `mfp2`, usually, a result of a call to
-#' \code{mfp2()}.
-#' @param ... not used.
-#' 
-#' @return 
-#' Named numeric vector of coefficients extracted from the model `object`.
-#' 
+#' Extract Coefficients from an `mfp2` Model
+#'
+#' Returns the named coefficient vector from a fitted [mfp2()] model. This is a
+#' method for the generic [stats::coef()] function.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param ... Not used.
+#'
+#' @return
+#' Named numeric vector of coefficients from the final selected model.
+#'
+#' @seealso [mfp2()], [summary.mfp2()], [predict.mfp2()]
+#'
 #' @export
 coef.mfp2 <- function(object, ...) {
   object$coefficients
 }
 
-#' Summarizing `mfp2` model fits
-#' 
-#' This function is a method for the generic [base::summary()] function for
-#' objects of class `mfp2`.
-#' 
-#' @param object an object of class `mfp2`, usually, a result of a call to
-#' \code{mfp2()}.
-#' @param ... further arguments passed to the summary functions for `glm()` 
-#' ([stats::summary.glm()], i.e. families supported by `glm()`) or `coxph()` 
-#' ([survival::summary.coxph()], if `object$family = "cox"`).
-#' 
-#' @return 
-#' An object returned from [stats::summary.glm()] or
-#' [survival::summary.coxph()], depending on the family parameter of `object`.
-#' 
-#' @seealso 
-#' \code{mfp2()}, [stats::glm()], [stats::summary.glm()], [survival::coxph()],
+#' Summarize an `mfp2` Model Fit
+#'
+#' Dispatches to [stats::summary.glm()] or [survival::summary.coxph()]
+#' depending on the model family, replacing the internal fitting call with the
+#' original [mfp2()] call for readability.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param ... Further arguments passed to [stats::summary.glm()] or
+#'   [survival::summary.coxph()].
+#'
+#' @return
+#' The summary object returned by the underlying method
+#' ([stats::summary.glm()] or [survival::summary.coxph()]), with its `call`
+#' element replaced by the original `mfp2()` call.
+#'
+#' @seealso
+#' [mfp2()], [print.mfp2()], [stats::summary.glm()],
 #' [survival::summary.coxph()]
-#' 
+#'
 #' @export
 summary.mfp2 <- function(object, ...) {
   # Ensure that the supplied object was created by mfp2().
@@ -3575,6 +3584,7 @@ summary.mfp2 <- function(object, ...) {
   
   result
 }
+
 
 #' Print method for objects of class `mfp2`
 #'
@@ -3600,17 +3610,9 @@ summary.mfp2 <- function(object, ...) {
 #' }
 #' Within every table, selected variables are listed before excluded ones.
 #'
-#' Each table's \code{Function} column is a single human-readable label
-#' (e.g. \code{"linear"}, \code{"FP(1, 2)"}, \code{"FP(0.5) (x > 0)"},
-#' \code{"FP(-1, -1) (x > 0) + binary"}, \code{"binary indicator only"}, or
-#' \code{"out"}), built from the selected powers together with the
-#' \code{zero}/\code{catzero} status.
-#'
 #' The subsequent "Detailed Settings" table reproduces the original,
-#' unabridged \code{fp_terms} columns (renamed only for readability, e.g.
-#' \code{catzero} -> \code{catzero_final} and \code{spike_dec} ->
-#' \code{saz_decision}), also sorted with selected variables first. Notes
-#' about \code{select}/\code{alpha} divergence and the
+#' unabridged \code{fp_terms} columns, also sorted with selected variables first.
+#' Notes about \code{select}/\code{alpha} divergence and the
 #' \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 #' column whose meaning may not be obvious, are printed immediately below it.
 #'
@@ -3629,18 +3631,6 @@ summary.mfp2 <- function(object, ...) {
 #' For Cox proportional-hazards models, the reported values are minus twice the
 #' corresponding null or fitted partial log-likelihood.
 #'
-#' The inherited \code{print.glm()} or \code{print.coxph()} method is not used.
-#' Those methods print family-specific footer information such as residual
-#' degrees of freedom and AIC, but they do not report the full-linear reference
-#' model used by the MFP procedure.
-#'
-#' The selection criterion is read from \code{x$criterion_mfp} when available.
-#' For older objects without that field, it is inferred from the
-#' \code{select} and \code{alpha} columns of \code{x$fp_terms}.
-#'
-#' Older serialized \code{mfp2} objects may not contain all three model-fit
-#' fields. Missing values are printed as \code{NA} rather than causing the
-#' print method to fail.
 #'
 #' @param x An object of class \code{"mfp2"}.
 #' @param detailed_settings Logical. If \code{FALSE}, omits the "Detailed
@@ -3661,6 +3651,8 @@ summary.mfp2 <- function(object, ...) {
 #'   used to format the model-fit values.
 #'
 #' @return Invisibly returns \code{x}.
+#'
+#' @seealso [mfp2()], [summary.mfp2()], [get_selected_variable_names()]
 #'
 #' @export
 print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
@@ -4375,23 +4367,59 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'
 #' @param x A vector representing a continuous variable undergoing
 #'   FP-transformation.
-#' @param df,alpha,select,shift,scale,center,acdx See [mfp2::mfp2()] for
-#'   details.
-#' @param zero,catzero,spike Logical formula-interface versions of
-#'   \code{zero_vars}, \code{catzero_vars}, and \code{spike_vars}. See
-#'   \code{\link{mfp2}}.
-#' @param force_max_fp Logical. If \code{TRUE}, the most complex functional form
-#'   allowed by \code{df} is selected for this variable. Under p-value
-#'   selection, both \code{select} and \code{alpha} are internally set to
-#'   \code{1} for the variable. Default is \code{FALSE}.
+#' @param df Maximum degrees of freedom for this variable's FP function.
+#'   Must be `1` (linear) or a positive even integer. Default `4` (FP2).
+#'   See [mfp2()] for the cardinality-based reduction rules.
+#' @param alpha Significance level for the closed test between FP functions of
+#'   different degrees. Default `0.05`. Overrides the global `alpha` from
+#'   [mfp2()] for this variable.
+#' @param select Significance level for backward-elimination variable
+#'   selection. Default `0.05`. Set to `1` to force this variable into the
+#'   model. Overrides the global `select` from [mfp2()].
+#' @param shift Numeric shift override for this variable, or `NULL` (default)
+#'   to inherit the global setting from [mfp2()]. See [mfp2()] for details.
+#' @param scale Numeric scale override for this variable, or `NULL` (default)
+#'   to inherit the global setting from [mfp2()]. See [mfp2()] for details.
+#' @param center Logical centering override for this variable. Default `TRUE`.
+#'   See [mfp2()] for details.
+#' @param acdx Logical. If `TRUE`, request ACD modelling for this variable.
+#'   Default `FALSE`. See the ACD modelling section in [mfp2()].
+#' @param zero Logical. If `TRUE`, only positive values undergo the FP
+#'   function; nonpositive values contribute zero to the linear predictor.
+#'   Default `FALSE`. Equivalent to listing the variable in `zero_vars` in
+#'   `mfp2.default()`.
+#' @param catzero Logical. If `TRUE`, a fixed binary indicator for nonpositive
+#'   values is added alongside the positive-component FP function. Implies
+#'   `zero = TRUE`. Default `FALSE`. Equivalent to listing the variable in
+#'   `catzero_vars` in `mfp2.default()`.
+#' @param spike Logical. If `TRUE`, request two-stage spike-at-zero (SAZ)
+#'   selection for this variable. While SAZ remains eligible, implies both
+#'   `catzero` and `zero`. Default `FALSE`. Equivalent to listing the variable
+#'   in `spike_vars` in `mfp2.default()`. See the SAZ section in [mfp2()] for
+#'   eligibility requirements.
+#' @param force_max_fp Logical. If `TRUE`, the most complex functional form
+#'   allowed by `df` is forced for this variable, bypassing both variable
+#'   selection and functional-form simplification. Under `criterion = "pvalue"`,
+#'   this is implemented by internally setting `select = 1` and `alpha = 1`
+#'   for the variable; the option also applies under `"aic"` and `"bic"`.
+#'   Default `FALSE`. Equivalent to naming the variable in `force_max_fp_vars`
+#'   in `mfp2.default()`.
 #' @param powers Numeric vector of candidate powers to be evaluated for `x`.
-#'   Must contain at least two values when supplied. If `NULL`, the default
-#'   powers `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)` are used.
-#' @param ... Used in alias `fp2()` to pass arguments.
+#'   If `NULL` (default), the global candidate set from [mfp2()] is used,
+#'   which defaults to `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`. When `df > 1`,
+#'   the candidate set must include at least one power other than `1` so the
+#'   algorithm can search over nonlinear forms. Duplicate values are removed
+#'   automatically. Overrides the corresponding entry in the `powers` list
+#'   argument of [mfp2()].
+#' @param ... Not used directly by `fp()`. Present so that the `fp2()` alias
+#'   can forward all arguments.
 #'
 #' @return
-#' A formula term containing the modelling options supplied to `fp()`.
-#' The term is interpreted by [mfp2()] or [mfpi()] during model fitting.
+#' The input vector `x` with modelling options attached as attributes. The
+#' returned value is interpreted by [mfp2()] or [mfpi()] during model fitting;
+#' calling `fp()` outside a formula has no modelling effect.
+#'
+#' @seealso [mfp2()], [mfpi()], [fp2()]
 #'
 #' @examples
 #' data("prostate")
@@ -4410,11 +4438,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   verbose = FALSE
 #' )
 #'
-#' \dontrun{
-#' # Request spike-at-zero modelling for a semi-continuous exposure.
-#' fit_spike <- mfp2(
-#'   outcome ~ fp(exposure, spike = TRUE) + fp(age),
-#'   data = analysis_data,
+#' \donttest{
+#' # Request ACD modelling for a continuous predictor.
+#' fit_acd <- mfp2(
+#'   lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + svi,
+#'   data = prostate,
 #'   verbose = FALSE
 #' )
 #' }
@@ -4507,27 +4535,29 @@ fp2 <- function(...) {
   fp(...)
 }
 
-#' Helper function to extract selected variables from fitted `mfp2` object
-#' 
-#' Simply extracts all variables for which not all powers are estimated to 
-#' be `NA`. The names refer to the original names in the dataset and do not
-#' include transformations.
-#' 
-#' @param object fitted `mfp2` object.
-#' 
-#' @examples
+#' Extract Names of Selected Variables from an `mfp2` Model
 #'
+#' Returns the names of predictors retained in the final model after MFP
+#' selection. A variable is considered selected when at least one of its
+#' fractional-polynomial powers is not `NA`. Excluded variables have all
+#' powers set to `NA`.
+#'
+#' @param object A fitted [mfp2()] object.
+#'
+#' @examples
 #' # Gaussian model
 #' data("prostate")
-#' x = as.matrix(prostate[,2:8])
-#' y = as.numeric(prostate$lpsa)
-#' # default interface
-#' fit = mfp2(x, y, verbose = FALSE)
+#' x <- as.matrix(prostate[, 2:8])
+#' y <- as.numeric(prostate$lpsa)
+#' fit <- mfp2(x, y, verbose = FALSE)
 #' get_selected_variable_names(fit)
-#' 
-#' @return 
-#' Character vector of names, ordered as defined by `xorder` in \code{mfp2()}.
-#' 
+#'
+#' @return
+#' Character vector of selected predictor names, ordered according to the
+#' `xorder` used in the [mfp2()] call.
+#'
+#' @seealso [mfp2()], [print.mfp2()]
+#'
 #' @export
 get_selected_variable_names <- function(object) {
   nms <- rownames(object$fp_terms)

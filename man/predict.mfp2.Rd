@@ -146,8 +146,9 @@ a formula offset, Cox strata, or an absolute Cox prediction.
 
 Required values must not be missing. No numeric column in \code{newdata} may
 contain \code{Inf} or \code{-Inf}, including unused extra columns. Prediction stops if
-a supplied value is outside the valid range of the fitted transformation. For example, some logarithmic or negative-power
-functions require a positive value after the fitted shift is applied.
+a supplied value is outside the valid range of the fitted transformation.
+For example, some logarithmic or negative-power functions require a
+positive value after the fitted shift is applied.
 }
 
 \section{Choosing the prediction type}{

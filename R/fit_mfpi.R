@@ -6,6 +6,117 @@
 # length, shifted, and scaled.
 
 # -----------------------------------------------------------------------------
+# Adjustment-power extraction -------------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Extract Canonical Powers for Selected MFPI Adjustment Terms
+#'
+#' Uses the fitted adjustment model's `fp_powers` list as the primary source of
+#' selected powers. Unlike the display-oriented `fp_terms` table, this list
+#' preserves structural `NA` positions required by ACD terms. For example, an
+#' ACD-only linear term is represented as `c(NA, 1)`, where the first slot is
+#' the inactive transformation of x and the second slot is the active
+#' transformation of A(x).
+#'
+#' @param adjustment_model Fitted `mfp2` adjustment-model object.
+#' @param selected_vars Character vector of selected conceptual adjustment
+#'   terms.
+#'
+#' @return A named list of numeric power vectors aligned to `selected_vars`.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
+  if (length(selected_vars) == 0L) {
+    return(stats::setNames(vector("list", 0L), character(0L)))
+  }
+  
+  canonical <- adjustment_model$fp_powers
+  
+  if (!is.null(canonical)) {
+    if (is.null(names(canonical))) {
+      stop(
+        "Internal error: adjustment-model `fp_powers` must be named.",
+        call. = FALSE
+      )
+    }
+    
+    missing_vars <- setdiff(selected_vars, names(canonical))
+    if (length(missing_vars) > 0L) {
+      stop(
+        paste0(
+          "Internal error: adjustment-model powers are missing selected term(s): ",
+          paste(missing_vars, collapse = ", "),
+          "."
+        ),
+        call. = FALSE
+      )
+    }
+    
+    powers <- canonical[selected_vars]
+  } else if (!is.null(adjustment_model$fp_terms)) {
+    # Compatibility fallback for older fitted objects. This is adequate for
+    # ordinary FP terms, but display tables may not preserve inactive ACD power
+    # slots; the ACD validation below therefore remains mandatory.
+    powers <- get_fp_powers(selected_vars, adjustment_model$fp_terms)
+  } else {
+    stop(
+      paste0(
+        "Internal error: the adjustment model has neither `fp_powers` nor ",
+        "`fp_terms` metadata."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  powers <- lapply(powers, function(p) {
+    if (is.null(p)) numeric(0L) else unname(as.numeric(p))
+  })
+  names(powers) <- selected_vars
+  
+  missing_power_values <- selected_vars[
+    vapply(powers, length, integer(1L)) == 0L
+  ]
+  if (length(missing_power_values) > 0L) {
+    stop(
+      paste0(
+        "Internal error: selected adjustment term(s) have no stored powers: ",
+        paste(missing_power_values, collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  acd_flags <- adjustment_model$acd
+  acd_selected <- selected_vars[
+    vapply(selected_vars, function(v) {
+      !is.null(acd_flags) &&
+        !is.null(names(acd_flags)) &&
+        v %in% names(acd_flags) &&
+        isTRUE(acd_flags[[v]])
+    }, logical(1L))
+  ]
+  
+  invalid_acd <- acd_selected[
+    vapply(powers[acd_selected], length, integer(1L)) != 2L
+  ]
+  if (length(invalid_acd) > 0L) {
+    stop(
+      paste0(
+        "Internal error: selected ACD adjustment term(s) must retain two ",
+        "power positions (for x and A(x)): ",
+        paste(invalid_acd, collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
+  }
+  
+  powers
+}
+
+# -----------------------------------------------------------------------------
 # fit_mfpi() ------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
@@ -118,8 +229,7 @@
 #'   interaction model. Has no effect when \code{verbose = FALSE}.
 #'   Nothing is printed when no variable is selected.
 #' @param verbose Logical. Whether to print progress messages.
-#' @param quiet Logical. Suppresses per-variable messages when no significant
-#'   interaction is found.
+#' @param quiet Logical. Reserved internal control for non-verbose diagnostics.
 #' @param center_type Character string; \code{"grand"} (default) or
 #'   \code{"group"}. Passed to \code{create_z_variables()} to control the
 #'   centering strategy when \code{center = TRUE}. The constants are stored
@@ -149,16 +259,16 @@
 #'   two retained sub-objects. Top-level fields:
 #' \describe{
 #'   \item{\code{best_model_metrics}}{Data frame of metrics for the best
-#'     interaction model per significant variable.}
+#'     interaction model per selected variable.}
 #'   \item{\code{all_model_metrics}}{Tibble of metrics for the interaction
 #'     model evaluated for each variable in \code{cont_vars}, using the form
 #'     specified by \code{cont_var_forms}.}
 #'   \item{\code{best_interaction_model}}{Named list of fitted interaction model
-#'     objects for the **winning** model per significant variable.}
+#'     objects for the **winning** model per selected variable.}
 #'   \item{\code{all_interaction_models}}{Named list. Names are \code{cont_vars};
 #'     each element is the fitted model object for that variable using the form
 #'     specified in \code{cont_var_forms}, regardless of whether it was selected
-#'     or significant.}
+#'     or selected.}
 #'   \item{\code{center_vals_list}}{Named list (one element per
 #'     \code{cont_var}) of centering constants used when fitting the interaction
 #'     model. \code{NULL} when \code{center = FALSE}.}
@@ -261,7 +371,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     rule_thin  <- strrep("-", 70)
     mfp2_message("")
     mfp2_message(rule_thick)
-    mfp2_message("  STEP 1: Adjustment Model (MFP selection)")
+    mfp2_message("  STEP 1: Selected Adjustment Model (MFP)")
     mfp2_message(rule_thick)
   }
   
@@ -301,37 +411,46 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   }
   
   if (verbose) {
-    mfp2_message_capture(
-      print(adjustment_model$fp_terms)
+    adjustment_info <- mfpi_prepare_adjustment_display(
+      list(
+        criterion = criterion,
+        p_interact = p_interact,
+        min_improvement = min_improvement,
+        p_adjust_method = p_adjust_method,
+        adjust_terms = adjustment_model$fp_terms
+      ),
+      digits = digits
     )
     
-    group_dummy_names <- colnames(processed_data$cat_info$dummies)
-    adj_selected <- setdiff(selected_vars, group_dummy_names)
-    
     mfp2_message("")
-    if (length(adj_selected) > 0L) {
+    for (line in adjustment_info$settings$lines) {
+      mfp2_message("  ", line)
+    }
+    mfp2_message("")
+    
+    if (!is.null(adjustment_info$display) &&
+        nrow(adjustment_info$display) > 0L) {
+      mfp2_message_capture(print(adjustment_info$display))
+      mfp2_message("")
       mfp2_message(
         "  Selected adjustment variables (",
-        length(adj_selected),
+        length(adjustment_info$selected_names),
         "): ",
-        paste(adj_selected, collapse = ", ")
+        paste(adjustment_info$selected_names, collapse = ", ")
       )
     } else {
-      mfp2_message("  Selected adjustment variables: (none)")
+      mfp2_message("  No adjustment variables selected.")
     }
   }
   
-  # `get_fp_powers()` is public and intentionally requires a non-empty
-  # variable vector. Internally, however, an empty selected adjustment model
-  # is valid: interaction models are then fitted without adjustment covariates.
-  adj_fp_powers <- if (length(selected_vars) > 0L) {
-    get_fp_powers(
-      selected_vars,
-      adjustment_model$fp_terms
-    )
-  } else {
-    stats::setNames(vector("list", 0L), character(0L))
-  }
+  # Use the adjustment model's canonical power metadata. In particular,
+  # ACD terms must retain both structural power positions (x and A(x)); the
+  # display-oriented fp_terms table can collapse an inactive NA slot and is
+  # therefore not a safe source for rebuilding the adjustment design matrix.
+  adj_fp_powers <- mfpi_extract_adjustment_powers(
+    adjustment_model = adjustment_model,
+    selected_vars = selected_vars
+  )
   
   # Extract spike decisions from the adjustment model for use when
   # re-transforming adjustment variables inside evaluate_interactions().
@@ -377,12 +496,20 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # ---------------------------------------------------------------------------
   if (verbose) {
     rule_thick <- strrep("=", 70)
+    interaction_settings <- mfpi_interaction_settings(
+      criterion = criterion,
+      p_interact = p_interact,
+      min_improvement = min_improvement,
+      p_adjust_method = p_adjust_method,
+      digits = digits
+    )
+    
     mfp2_message("")
     mfp2_message(rule_thick)
     mfp2_message(
       sprintf(
-        "  STEP 2: Evaluating Interactions  (flex = %s, criterion = '%s')",
-        flex, criterion
+        "  STEP 2: Evaluating Interactions (flex = %s, criterion = '%s')",
+        flex, interaction_settings$criterion_label
       )
     )
     mfp2_message(rule_thick)
@@ -393,10 +520,12 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       group_var,
       "'"
     )
+    mfp2_message("  Interaction selection: ", interaction_settings$selection)
     if (criterion == "pvalue") {
-      mfp2_message("  Threshold: p_interact = ", p_interact)
-    } else {
-      mfp2_message("  Threshold: min_improvement = ", min_improvement)
+      mfp2_message(
+        "  P-value adjustment: ",
+        interaction_settings$p_adjust_method
+      )
     }
   }
   
@@ -441,10 +570,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     verbose            = verbose
   )
   
-  n_significant <- nrow(univ_results$best_model_metrics)
-  if (n_significant == 0L && !quiet) {
-    message("! No significant interactions were found.")
-  }
+  n_selected <- nrow(univ_results$best_model_metrics)
   
   if (verbose) {
     rule_thick <- strrep("=", 70)
@@ -452,10 +578,10 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     mfp2_message(rule_thick)
     mfp2_message(
       "  DONE: ",
-      n_significant,
+      n_selected,
       " of ",
       length(cont_vars),
-      " variable(s) show significant interaction"
+      " interactions selected"
     )
     mfp2_message(rule_thick)
     mfp2_message("")
@@ -1210,8 +1336,9 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #' @param processed_data List returned by \code{preprocess_data()}.
 #' @param selected_vars Character vector of variable names retained by the
 #'   adjustment model.
-#' @param adj_fp_powers Named list of FP powers for the selected adjustment
-#'   variables, as returned by \code{get_fp_powers()}.
+#' @param adj_fp_powers Named list of canonical FP/ACD powers for the
+#'   selected adjustment variables. Structural \code{NA} slots for ACD terms
+#'   are retained.
 #' @param adj_zero Named logical vector for selected adjustment variables,
 #'   giving the final post-fit zero-handling flags from
 #'   \code{adjustment_model$zero}. These are used when rebuilding the selected
@@ -1279,8 +1406,7 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #'   passed to [stats::p.adjust()]. Only applied when `criterion = "pvalue"`.
 #'   Default `"none"`. Adjusted p-values are applied across all variables in
 #'   \code{cont_vars} (one test per variable).
-#' @param quiet Logical. If `TRUE`, suppresses the per-variable message when no
-#'   significant interaction is found. Default is `FALSE`.
+#' @param quiet Logical. Reserved internal control for non-verbose diagnostics.
 #'
 #' @return A list with the following components:
 #' \describe{
@@ -1531,10 +1657,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       center_vals = if (!is.null(res$best_fit)) res$best_fit$center_vals else NULL
     )
     
-    # Immediate final selection when p-values are not being adjusted. Verbose
-    # reporting of this decision already happened inside
-    # evaluate_interaction_for_variable(); here we only need the bookkeeping
-    # into the running best_idx-indexed containers.
+    # Immediate final selection when p-values are not being adjusted. The
+    # decision is stored here but is not printed until the Step 3 summary.
     if (!adjusting_pvals && isTRUE(res$retained)) {
       best_idx <- best_idx + 1L
       best_metrics_list[[best_idx]]      <- res$best_metric
@@ -1544,7 +1668,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     }
     
     # Store the fitted interaction candidate for this variable regardless of
-    # whether it was significant. This supports later inspection/prediction paths.
+    # whether it was selected. This supports later inspection/prediction paths.
     all_interaction_models[[var_name]] <- res$candidate_models
     
     # Replace the all-metrics row with the canonical best_metric object where
@@ -1555,10 +1679,11 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   }
   
   # ===========================================================================
-  # Step 3 summary for AIC/BIC criteria
+  # Step 3 final interaction summary
   # ===========================================================================
-  # This summary is printed only after all variables have been processed, so the
-  # user can see the full ranked/selected set in one place.
+  # Final selection decisions are reported only after all variables have been
+  # evaluated. Step 2 deliberately reports observed statistics without a
+  # provisional selected/not-selected label.
   if (verbose && criterion %in% c("aic", "bic") && !adjusting_pvals) {
     print_interaction_step3_summary(
       var_winners            = var_winners,
@@ -1567,6 +1692,20 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       ic_col                 = ic_col,
       ic_label               = ic_label,
       min_improvement        = min_improvement,
+      digits                 = digits,
+      show_models            = show_models,
+      best_interaction_model = best_interaction_model
+    )
+  }
+  
+  if (verbose && criterion == "pvalue" && !adjusting_pvals) {
+    print_interaction_step3_summary(
+      var_winners            = var_winners,
+      cont_vars              = cont_vars,
+      mode                   = "pvalue",
+      p_interact             = p_interact,
+      p_adjust_method        = p_adjust_method,
+      digits                 = digits,
       show_models            = show_models,
       best_interaction_model = best_interaction_model
     )
@@ -1601,7 +1740,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       print_interaction_step3_summary(
         var_winners            = var_winners,
         cont_vars              = cont_vars,
-        mode                   = "pvalue_adjusted",
+        mode                   = "pvalue",
         p_interact             = p_interact,
         p_adjust_method        = p_adjust_method,
         digits                 = digits,
@@ -1966,7 +2105,7 @@ evaluate_interaction_for_variable <- function(var_name,
   }
   
   # -------------------------------------------------------------------------
-  # Verbose per-variable candidate table and provisional decision line
+  # Verbose per-variable candidate table and observed comparison statistic
   # -------------------------------------------------------------------------
   if (verbose) {
     mfp2_message_capture(
@@ -1978,24 +2117,25 @@ evaluate_interaction_for_variable <- function(var_name,
       )
     )
     
-    if (criterion == "pvalue" && !is.null(best_metric)) {
-      pval_str <- formatC(best_metric$pvalue[1L], format = "g", digits = digits)
-      
-      if (adjusting_pvals) {
-        # Final p-value decision is deferred until all p-values are available.
-        mfp2_message(
-          "        >> provisional: p_raw = ",
-          pval_str,
-          "  (final after adjustment)"
+    if (!is.null(best_metric)) {
+      if (criterion == "pvalue") {
+        pval_str <- formatC(
+          best_metric$pvalue[1L],
+          format = "g",
+          digits = digits
         )
+        mfp2_message("        >> p-value = ", pval_str)
       } else {
-        # No multiplicity adjustment: raw p-value is the final decision metric.
-        passes <- best_metric$pvalue[1L] < p_interact
+        ic_val <- if (ic_col %in% names(best_metric)) {
+          best_metric[[ic_col]][1L]
+        } else {
+          NA_real_
+        }
         mfp2_message(
-          "        >> p_raw = ",
-          pval_str,
-          "  \u2192  ",
-          if (passes) "Selected" else "Not selected"
+          "        >> ",
+          ic_label,
+          " = ",
+          formatC(ic_val, format = "f", digits = digits)
         )
       }
     }
@@ -2007,75 +2147,15 @@ evaluate_interaction_for_variable <- function(var_name,
   retained <- NA
   
   if (!adjusting_pvals && !is.null(best_fit)) {
-    passes_threshold <- if (criterion == "pvalue") {
+    retained <- if (criterion == "pvalue") {
       best_score < p_interact
     } else {
       best_score > min_improvement
     }
-    
-    retained <- passes_threshold
-    
-    if (passes_threshold) {
-      if (verbose && criterion %in% c("aic", "bic")) {
-        ic_val <- if (ic_col %in% names(best_metric)) {
-          best_metric[[ic_col]][1L]
-        } else {
-          NA_real_
-        }
-        
-        mfp2_message(
-          "        >> Selected  (",
-          ic_label,
-          " = ",
-          formatC(ic_val, format = "f", digits = 2),
-          ")"
-        )
-      }
-      
-      # Optional verbose model summary for retained interactions.
-      if (verbose && show_models) {
-        fit_obj <- best_fit$test_results$interaction_model$fit
-        if (!is.null(fit_obj)) {
-          type_label <- format_type_label(best_type)
-          mfp2_message("")
-          mfp2_message("  Interaction model (", var_name, ", ", type_label, "):")
-          mfp2_message(strrep("-", 50))
-          mfp2_message_capture(
-            print(summary(fit_obj))
-          )
-          mfp2_message("")
-        }
-      }
-    } else {
-      # Fitted successfully but did not pass the relevant selection threshold.
-      if (verbose && criterion %in% c("aic", "bic")) {
-        ic_val <- if (ic_col %in% names(best_metric)) {
-          best_metric[[ic_col]][1L]
-        } else {
-          NA_real_
-        }
-        
-        mfp2_message(
-          "        >> Not selected  (",
-          ic_label,
-          " = ",
-          formatC(ic_val, format = "f", digits = 2),
-          ")"
-        )
-      }
-      
-      if (!quiet) {
-        mfp2_message("i No significant interaction retained for '", var_name, "'.")
-      }
-    }
   } else if (!adjusting_pvals && is.null(best_fit)) {
-    # No valid candidate fit was available for this variable.
     retained <- FALSE
     if (verbose) {
-      mfp2_message("        >> Not selected: model failed to fit")
-    }
-    if (!quiet) {
-      mfp2_message("i No significant interaction retained for '", var_name, "'.")
+      mfp2_message("        >> model fit failed")
     }
   }
   
@@ -2221,35 +2301,26 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #' * \code{mode = "ic"}: used for \code{criterion \%in\% c("aic", "bic")}
 #'   without p-value multiplicity adjustment. Columns are Variable, Type, and
 #'   the active information-criterion improvement (dAIC or dBIC).
-#' * \code{mode = "pvalue_adjusted"}: used when p-value multiplicity
-#'   adjustment is active. Columns are Variable, Type, raw p-value, and
-#'   adjusted p-value.
+#' * \code{mode = "pvalue"}: used for p-value selection with or without
+#'   multiplicity adjustment. Columns are Variable, Type, raw p-value,
+#'   adjusted p-value, and the final Yes/No decision.
 #'
-#' This replaces what were previously two independently-maintained,
-#' near-identical print blocks (one per mode) inside
-#' \code{evaluate_interactions()}. Consolidating them into a single function
-#' removes the risk of the two layouts silently drifting apart, and makes the
-#' table format testable independent of the model-fitting loop. Note that no
-#' Step 3 summary is printed at all for \code{criterion == "pvalue"} without
-#' multiplicity adjustment (\code{p_adjust_method == "none"}); in that case
-#' only the per-variable provisional decision lines are shown, matching prior
-#' behavior.
+#' Final decisions are printed only in this summary. The preceding candidate
+#' loop reports observed statistics without provisional selection labels.
 #'
 #' @param var_winners Named list of per-variable winner records (see
 #'   \code{evaluate_interaction_for_variable()}).
 #' @param cont_vars Character vector of tested variable names, in display
 #'   order.
-#' @param mode One of \code{"ic"} or \code{"pvalue_adjusted"}.
+#' @param mode One of \code{"ic"} or \code{"pvalue"}.
 #' @param ic_col,ic_label Used only when \code{mode == "ic"}: the metrics
 #'   column name and short display label for the active information
 #'   criterion.
-#' @param min_improvement Used only when \code{mode == "ic"}: the selection
-#'   threshold shown in the footer and used for the "*" selected flag.
-#' @param p_interact,p_adjust_method Used only when
-#'   \code{mode == "pvalue_adjusted"}: the selection threshold and
-#'   multiplicity-adjustment method shown in the footer/"*" flag.
-#' @param digits Used only when \code{mode == "pvalue_adjusted"}: number of
-#'   significant digits for formatted p-values.
+#' @param min_improvement Used only when \code{mode == "ic"}: the final
+#'   selection threshold.
+#' @param p_interact,p_adjust_method Used only when \code{mode == "pvalue"}:
+#'   the final selection threshold and multiplicity-adjustment method.
+#' @param digits Number of displayed digits for the comparison statistic.
 #' @param show_models,best_interaction_model Optional per-model summaries,
 #'   printed after the table when \code{show_models = TRUE}.
 #'
@@ -2258,7 +2329,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #' @noRd
 print_interaction_step3_summary <- function(var_winners,
                                             cont_vars,
-                                            mode = c("ic", "pvalue_adjusted"),
+                                            mode = c("ic", "pvalue"),
                                             ic_col = NULL,
                                             ic_label = NULL,
                                             min_improvement = NULL,
@@ -2270,7 +2341,7 @@ print_interaction_step3_summary <- function(var_winners,
   mode <- match.arg(mode)
   
   rule_thick <- strrep("=", 70)
-  rule_thin  <- strrep("-", 70)
+  rule_thin <- strrep("-", 70)
   
   mfp2_message("")
   mfp2_message(rule_thick)
@@ -2278,12 +2349,14 @@ print_interaction_step3_summary <- function(var_winners,
   mfp2_message(rule_thick)
   
   if (mode == "ic") {
-    mfp2_message(sprintf("  %-12s %-8s %12s  %s",
-                         "Variable", "Type", ic_label, ""))
+    mfp2_message(sprintf(
+      "  %-12s %-8s %12s %10s",
+      "Variable", "Type", ic_label, "selected"
+    ))
   } else {
     mfp2_message(sprintf(
-      "  %-12s %-8s %12s %12s  %s",
-      "Variable", "Type", "p_raw", "p_adjusted", ""
+      "  %-12s %-8s %12s %12s %10s",
+      "Variable", "Type", "p_raw", "p_adjusted", "selected"
     ))
   }
   mfp2_message(rule_thin)
@@ -2293,9 +2366,15 @@ print_interaction_step3_summary <- function(var_winners,
     
     if (is.null(w$fit) || is.null(w$metric)) {
       if (mode == "ic") {
-        mfp2_message(sprintf("  %-12s %-8s %12s", vn, "---", "NA"))
+        mfp2_message(sprintf(
+          "  %-12s %-8s %12s %10s",
+          vn, "---", "NA", "NA"
+        ))
       } else {
-        mfp2_message(sprintf("  %-12s %-8s %12s %12s", vn, "---", "NA", "NA"))
+        mfp2_message(sprintf(
+          "  %-12s %-8s %12s %12s %10s",
+          vn, "---", "NA", "NA", "NA"
+        ))
       }
       next
     }
@@ -2308,39 +2387,46 @@ print_interaction_step3_summary <- function(var_winners,
       } else {
         NA_real_
       }
-      
-      sel_flag <- if (!is.na(w$score) && w$score > min_improvement) " *" else ""
-      
-      mfp2_message(sprintf(
-        "  %-12s %-8s %12s%s",
-        vn, type_label, formatC(ic_val, format = "f", digits = 2), sel_flag
-      ))
-    } else {
-      sel_flag <- if (!is.na(w$metric$p_adjusted[1L]) &&
-                      w$metric$p_adjusted[1L] < p_interact) " *" else ""
+      selected <- if (is.finite(ic_val) && ic_val > min_improvement) {
+        "Yes"
+      } else {
+        "No"
+      }
       
       mfp2_message(sprintf(
-        "  %-12s %-8s %12s %12s%s",
+        "  %-12s %-8s %12s %10s",
         vn,
         type_label,
-        formatC(w$metric$pvalue[1L], format = "g", digits = digits),
-        formatC(w$metric$p_adjusted[1L], format = "g", digits = digits),
-        sel_flag
+        formatC(ic_val, format = "f", digits = digits),
+        selected
+      ))
+    } else {
+      p_raw <- w$metric$pvalue[1L]
+      p_adjusted <- if ("p_adjusted" %in% names(w$metric)) {
+        w$metric$p_adjusted[1L]
+      } else {
+        p_raw
+      }
+      selected <- if (is.finite(p_adjusted) && p_adjusted < p_interact) {
+        "Yes"
+      } else {
+        "No"
+      }
+      
+      mfp2_message(sprintf(
+        "  %-12s %-8s %12s %12s %10s",
+        vn,
+        type_label,
+        formatC(p_raw, format = "g", digits = digits),
+        formatC(p_adjusted, format = "g", digits = digits),
+        selected
       ))
     }
   }
   
   mfp2_message(rule_thin)
-  
-  if (mode == "ic") {
-    mfp2_message(sprintf("  * = selected (%s > %g)", ic_label, min_improvement))
-  } else {
-    mfp2_message("  p_adjust_method = ", p_adjust_method)
-    mfp2_message("  * = selected at p_interact = ", p_interact)
-  }
   mfp2_message("")
   
-  # Optional summaries of retained interaction models.
   if (show_models) {
     for (vn in names(Filter(Negate(is.null), best_interaction_model))) {
       w <- var_winners[[vn]]
@@ -2349,9 +2435,7 @@ print_interaction_step3_summary <- function(var_winners,
         type_label <- format_type_label(w$type)
         mfp2_message("  Interaction model (", vn, ", ", type_label, "):")
         mfp2_message(strrep("-", 50))
-        mfp2_message_capture(
-          print(summary(fit_obj))
-        )
+        mfp2_message_capture(print(summary(fit_obj)))
         mfp2_message("")
       }
     }

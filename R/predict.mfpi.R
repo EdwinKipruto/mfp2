@@ -646,7 +646,6 @@ build_group_fp_basis <- function(cont_mat,
 #' prediction checks and should not be treated as a stable public interface.
 #'
 #' @examples
-#' \dontrun{
 #' data("prostate")
 #'
 #' fit <- mfpi(
@@ -661,8 +660,9 @@ build_group_fp_basis <- function(cont_mat,
 #'   verbose = FALSE
 #' )
 #'
-#' # By default, return fitted curves and differences for retained interactions.
-#' predict(fit)
+#' # Return fitted curves and differences for all evaluated terms.
+#' # This is robust when the selection criterion retains no interaction.
+#' predict(fit, model = "all")
 #'
 #' # Inspect the stored model for an evaluated term even if it was not retained.
 #' curves <- predict(
@@ -712,6 +712,7 @@ build_group_fp_basis <- function(cont_mat,
 #' several_curves$cavol$functions
 #' several_curves$age$functions
 #'
+#' \donttest{
 #' # A formula offset is evaluated automatically from newdata.
 #' set.seed(1)
 #' d <- data.frame(
@@ -779,7 +780,7 @@ build_group_fp_basis <- function(cont_mat,
 #' )
 #' }
 #'
-#' @seealso [mfpi()], [plot.mfpi()]
+#' @seealso [mfpi()], [plot.mfpi()], [summary.mfpi()]
 #'
 #' @method predict mfpi
 #' @export

@@ -1,7 +1,7 @@
-#' Functions to transform a variable using fractional polynomial powers or acd
+#' Transform a Variable Using Fractional-Polynomial Powers
 #' 
-#' These functions generate fractional polynomials for a variable similar to
-#' `fracgen` in Stata. 
+#' Constructs fractional-polynomial design columns from specified powers,
+#' analogous to `fracgen` in Stata.
 #' 
 #' @details 
 #' This is a low-level utility for constructing fractional-polynomial design
@@ -9,11 +9,11 @@
 #' Most users should specify continuous variables with [fp()] inside an
 #' [mfp2()] formula instead.
 #' 
-#' The fp transformation generally transforms `x` as follows. For each pi in
-#' `power` = (p1, p2, ..., pn) it creates a variable x^pi and returns the
-#' collection of variables as a matrix. It may process the data using 
-#' shifting and scaling as desired. Centering has to be done after the 
-#' data is transformed using these functions, if desired. 
+#' The FP transformation constructs design columns as follows. For each power
+#' pi in `power` = (p1, p2, ..., pn) it computes x^pi and returns the
+#' collection as a matrix. The input may be shifted and scaled before
+#' transformation. Centering, if desired, should be applied separately
+#' after transformation (see the Data processing section).
 #' 
 #' A special case are repeated powers, i.e. when some pi = pj. In this case, 
 #' the fp transformations are given by x^pi and x^pi * log(x). In case
@@ -42,18 +42,15 @@
 #' `check_binary` should always be at its default value.
 #' 
 #' @section Data processing: 
-#' An important note on data processing. Variables are shifted and scaled 
-#' before being transformed by any powers. That is to ensure positive values
-#' and reasonable scales. Note that scaling does not change the estimated 
-#' powers, see also \code{find_scale_factor()}.
+#' Variables are shifted and then scaled before any power transformation is
+#' applied. Shifting ensures positive values; scaling avoids numerically
+#' extreme magnitudes. Scaling does not change the selected powers.
 #' 
-#' However, they may be centered after transformation. This is not done by
-#' these functions.
-#' That is to ensure that the correlation between variables stay intact, 
-#' as centering before transformation would affect them. This is described
-#' in Sauerbrei et al (2006), as well as in the Stata manual of `mfp`.
-#' Also, centering is not recommended, and should only be done for the final
-#' model if desired.
+#' Centering is not performed by this function. When centering is desired, it
+#' should be applied after transformation, because centering before
+#' transformation alters the correlation structure among predictors. In
+#' [mfp2()], centering is applied only to the final selected model when
+#' `center = TRUE`. See Sauerbrei et al (2006) for discussion.
 #' 
 #' If a variable is specified in the \code{zero} or \code{catzero} arguments, 
 #' nonpositive values (zero or negative) are not shifted. Instead, they are replaced 
@@ -96,10 +93,9 @@
 #' an ACD transformation is applied in which case power must be a numeric 
 #' vector of length 2, and `NA` indicated which parts are used for the final 
 #' FP.
-#' @param scale scaling factor for x of interest. Must be a positive integer
-#' or `NULL`. Default is 1, meaning no scaling is applied. 
-#' If `NULL`, then scaling factors are automatically estimated by the
-#' program. 
+#' @param scale Positive numeric scaling factor applied to `x` after shifting.
+#'   Default `1` (no scaling). If `NULL`, the scale factor is estimated
+#'   automatically. Scaling does not change the selected powers.
 #' @param shift shift required for shifting x to positive values. Default is 0, 
 #' meaning no shift is applied. If `NULL` then the shift is estimated 
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.

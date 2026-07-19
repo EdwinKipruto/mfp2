@@ -30,8 +30,10 @@
 \item{x}{An object of class \code{"mfpi"}.}
 
 \item{terms}{Optional character vector naming the continuous variables to
-plot. If \code{NULL}, only retained interaction terms are plotted. If supplied,
-the requested terms are plotted when their fitted models are available.}
+plot. If \code{NULL}, only retained interaction terms are plotted; when no
+interactions were retained, no plots are produced. If supplied, the
+requested terms are plotted when their fitted models are available in the
+\code{all_interaction_models} component of the \code{mfpi} object.}
 
 \item{plot_type}{Character scalar specifying the plot to produce. One of
 \code{"fitted"}, \code{"difference"}, or \code{"both"}.}
@@ -204,7 +206,6 @@ and displays them for the difference curve.
 }
 
 \examples{
-\dontrun{
 data("prostate")
 
 # Investigate whether the fitted effects of cavol and age differ by svi.
@@ -237,9 +238,11 @@ plots <- plot(
 # Print the first returned contrast plot for cavol.
 print(plots[["cavol"]][[1]])
 
+\donttest{
 # Display fitted and difference plots side by side.
 if (requireNamespace("patchwork", quietly = TRUE)) {
   plot(fit, terms = "cavol", plot_type = "both")
+}
 }
 
 # Add confidence bands to the group-specific fitted functions.
@@ -257,9 +260,8 @@ plot(
   plot_type = "fitted",
   line_types = c("0" = "solid", "1" = "dashed")
 )
-}
 
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}
 }

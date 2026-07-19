@@ -21,16 +21,29 @@ when available; otherwise 3 is used.}
 \description{
 Displays the adjustment model, criterion-specific interaction model metrics,
 detailed group-level interaction FP powers, and the final interaction
-decision summary. The printed candidate table shows only the metrics relevant
-to the selected criterion. Full diagnostics remain available in the returned
-object.
+decision summary. The printed candidate table shows the metrics relevant
+to the selected criterion and the main-effect FP powers. Interaction FP
+powers are omitted from that table because the complete group-level mapping
+is printed immediately below it. Full diagnostics remain available in the
+returned object.
 }
 \details{
-For \code{criterion = "pvalue"}, the final interaction summary includes
-both raw and adjusted p-values together with the selection marker and
-adjustment method.
+Step 1 reports the interaction-selection rule in reader-facing language.
+P-value fits print the p-value cutoff and the stored adjustment method,
+including \code{none}, while retaining the variable-specific \code{select} and
+\code{alpha} columns. AIC/BIC fits print the required criterion reduction
+and omit only those two inapplicable columns.
+
+The final interaction summary reports selection explicitly as \code{Yes} or
+\code{No}. Its heading contains the exact criterion-specific rule:
+\code{p_adjusted < p_interact} for \code{criterion = "pvalue"}, or the
+minimum \code{dAIC}/\code{dBIC} improvement for information-criterion
+selection.
 
 Numeric values are rounded for display only. The underlying metrics stored in
 the \code{"mfpi"} object are not modified, and model-selection decisions are
 based on the unrounded values computed during fitting.
+}
+\seealso{
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}
 }

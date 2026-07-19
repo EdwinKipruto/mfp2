@@ -2,29 +2,32 @@
 % Please edit documentation in R/mfp2.R
 \name{get_selected_variable_names}
 \alias{get_selected_variable_names}
-\title{Helper function to extract selected variables from fitted \code{mfp2} object}
+\title{Extract Names of Selected Variables from an \code{mfp2} Model}
 \usage{
 get_selected_variable_names(object)
 }
 \arguments{
-\item{object}{fitted \code{mfp2} object.}
+\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
 }
 \value{
-Character vector of names, ordered as defined by \code{xorder} in \code{mfp2()}.
+Character vector of selected predictor names, ordered according to the
+\code{xorder} used in the \code{\link[=mfp2]{mfp2()}} call.
 }
 \description{
-Simply extracts all variables for which not all powers are estimated to
-be \code{NA}. The names refer to the original names in the dataset and do not
-include transformations.
+Returns the names of predictors retained in the final model after MFP
+selection. A variable is considered selected when at least one of its
+fractional-polynomial powers is not \code{NA}. Excluded variables have all
+powers set to \code{NA}.
 }
 \examples{
-
 # Gaussian model
 data("prostate")
-x = as.matrix(prostate[,2:8])
-y = as.numeric(prostate$lpsa)
-# default interface
-fit = mfp2(x, y, verbose = FALSE)
+x <- as.matrix(prostate[, 2:8])
+y <- as.numeric(prostate$lpsa)
+fit <- mfp2(x, y, verbose = FALSE)
 get_selected_variable_names(fit)
 
+}
+\seealso{
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}
 }

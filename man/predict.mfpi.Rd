@@ -379,7 +379,6 @@ evaluated terms.
 }
 
 \examples{
-\dontrun{
 data("prostate")
 
 fit <- mfpi(
@@ -394,8 +393,9 @@ fit <- mfpi(
   verbose = FALSE
 )
 
-# By default, return fitted curves and differences for retained interactions.
-predict(fit)
+# Return fitted curves and differences for all evaluated terms.
+# This is robust when the selection criterion retains no interaction.
+predict(fit, model = "all")
 
 # Inspect the stored model for an evaluated term even if it was not retained.
 curves <- predict(
@@ -445,6 +445,7 @@ several_curves <- predict(
 several_curves$cavol$functions
 several_curves$age$functions
 
+\donttest{
 # A formula offset is evaluated automatically from newdata.
 set.seed(1)
 d <- data.frame(
@@ -514,5 +515,5 @@ predict(
 
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}
 }

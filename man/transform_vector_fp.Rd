@@ -2,7 +2,7 @@
 % Please edit documentation in R/transformations.R
 \name{transform_vector_fp}
 \alias{transform_vector_fp}
-\title{Functions to transform a variable using fractional polynomial powers or acd}
+\title{Transform a Variable Using Fractional-Polynomial Powers}
 \usage{
 transform_vector_fp(
   x,
@@ -23,10 +23,9 @@ an ACD transformation is applied in which case power must be a numeric
 vector of length 2, and \code{NA} indicated which parts are used for the final
 FP.}
 
-\item{scale}{scaling factor for x of interest. Must be a positive integer
-or \code{NULL}. Default is 1, meaning no scaling is applied.
-If \code{NULL}, then scaling factors are automatically estimated by the
-program.}
+\item{scale}{Positive numeric scaling factor applied to \code{x} after shifting.
+Default \code{1} (no scaling). If \code{NULL}, the scale factor is estimated
+automatically. Scaling does not change the selected powers.}
 
 \item{shift}{shift required for shifting x to positive values. Default is 0,
 meaning no shift is applied. If \code{NULL} then the shift is estimated
@@ -60,8 +59,8 @@ for the ACD transformation, or simply the input \code{acd_parameter} if it was
 not \code{NULL}.
 }
 \description{
-These functions generate fractional polynomials for a variable similar to
-\code{fracgen} in Stata.
+Constructs fractional-polynomial design columns from specified powers,
+analogous to \code{fracgen} in Stata.
 }
 \details{
 This is a low-level utility for constructing fractional-polynomial design
@@ -69,11 +68,11 @@ columns from specified powers. It does not perform model or power selection.
 Most users should specify continuous variables with \code{\link[=fp]{fp()}} inside an
 \code{\link[=mfp2]{mfp2()}} formula instead.
 
-The fp transformation generally transforms \code{x} as follows. For each pi in
-\code{power} = (p1, p2, ..., pn) it creates a variable x^pi and returns the
-collection of variables as a matrix. It may process the data using
-shifting and scaling as desired. Centering has to be done after the
-data is transformed using these functions, if desired.
+The FP transformation constructs design columns as follows. For each power
+pi in \code{power} = (p1, p2, ..., pn) it computes x^pi and returns the
+collection as a matrix. The input may be shifted and scaled before
+transformation. Centering, if desired, should be applied separately
+after transformation (see the Data processing section).
 
 A special case are repeated powers, i.e. when some pi = pj. In this case,
 the fp transformations are given by x^pi and x^pi * log(x). In case
@@ -103,18 +102,15 @@ be transformed as desired by the fitted transformations. For model fit,
 }
 \section{Data processing}{
 
-An important note on data processing. Variables are shifted and scaled
-before being transformed by any powers. That is to ensure positive values
-and reasonable scales. Note that scaling does not change the estimated
-powers, see also \code{find_scale_factor()}.
+Variables are shifted and then scaled before any power transformation is
+applied. Shifting ensures positive values; scaling avoids numerically
+extreme magnitudes. Scaling does not change the selected powers.
 
-However, they may be centered after transformation. This is not done by
-these functions.
-That is to ensure that the correlation between variables stay intact,
-as centering before transformation would affect them. This is described
-in Sauerbrei et al (2006), as well as in the Stata manual of \code{mfp}.
-Also, centering is not recommended, and should only be done for the final
-model if desired.
+Centering is not performed by this function. When centering is desired, it
+should be applied after transformation, because centering before
+transformation alters the correlation structure among predictors. In
+\code{\link[=mfp2]{mfp2()}}, centering is applied only to the final selected model when
+\code{center = TRUE}. See Sauerbrei et al (2006) for discussion.
 
 If a variable is specified in the \code{zero} or \code{catzero} arguments,
 nonpositive values (zero or negative) are not shifted. Instead, they are replaced

@@ -2,27 +2,27 @@
 % Please edit documentation in R/mfp2.R
 \name{summary.mfp2}
 \alias{summary.mfp2}
-\title{Summarizing \code{mfp2} model fits}
+\title{Summarize an \code{mfp2} Model Fit}
 \usage{
 \method{summary}{mfp2}(object, ...)
 }
 \arguments{
-\item{object}{an object of class \code{mfp2}, usually, a result of a call to
-\code{mfp2()}.}
+\item{object}{A fitted \code{\link[=mfp2]{mfp2()}} object.}
 
-\item{...}{further arguments passed to the summary functions for \code{glm()}
-(\code{\link[stats:summary.glm]{stats::summary.glm()}}, i.e. families supported by \code{glm()}) or \code{coxph()}
-(\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, if \code{object$family = "cox"}).}
+\item{...}{Further arguments passed to \code{\link[stats:summary.glm]{stats::summary.glm()}} or
+\code{\link[survival:summary.coxph]{survival::summary.coxph()}}.}
 }
 \value{
-An object returned from \code{\link[stats:summary.glm]{stats::summary.glm()}} or
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, depending on the family parameter of \code{object}.
+The summary object returned by the underlying method
+(\code{\link[stats:summary.glm]{stats::summary.glm()}} or \code{\link[survival:summary.coxph]{survival::summary.coxph()}}), with its \code{call}
+element replaced by the original \code{mfp2()} call.
 }
 \description{
-This function is a method for the generic \code{\link[base:summary]{base::summary()}} function for
-objects of class \code{mfp2}.
+Dispatches to \code{\link[stats:summary.glm]{stats::summary.glm()}} or \code{\link[survival:summary.coxph]{survival::summary.coxph()}}
+depending on the model family, replacing the internal fitting call with the
+original \code{\link[=mfp2]{mfp2()}} call for readability.
 }
 \seealso{
-\code{mfp2()}, \code{\link[stats:glm]{stats::glm()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}}, \code{\link[survival:coxph]{survival::coxph()}},
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}},
 \code{\link[survival:summary.coxph]{survival::summary.coxph()}}
 }

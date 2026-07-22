@@ -355,6 +355,15 @@ fit_mfp <- function(x,
   null_deviance <- ordering_result$null_deviance
   linear_deviance <- ordering_result$linear_deviance
   
+  # Log-likelihood-scale quantities for the Model Fit block of summary.mfp2().
+  # The linear-reference numbers come from the full-linear fit that
+  # order_variables() computed once at the top of the algorithm. `null_logl`
+  # is populated for Cox (returned free by coxph.fit); for GLMs it is filled
+  # in below, once, after backfitting has converged.
+  linear_logl <- ordering_result$linear_logl
+  linear_df   <- ordering_result$linear_df
+  null_logl   <- ordering_result$null_logl
+  
   if (verbose) {
     message(sprintf(
       "Visiting order: %s",
@@ -861,6 +870,43 @@ fit_mfp <- function(x,
   # twice the fitted partial log-likelihood.
   mfp_deviance <- modelfit$model_deviance
   
+  # -- Model Fit display quantities -------------------------------------------
+  # Populate the log-likelihood-scale numbers used by summary.mfp2()'s Model
+  # Fit block. All computation is done here, once, after backfitting has
+  # converged -- never inside the MFP candidate-fitting loop.
+  #
+  # For Cox, null_logl was returned free by coxph.fit() during the
+  # linear-reference fit. For GLMs, fit_model() does not compute it (that
+  # would cost an intercept-only refit inside every interior candidate fit),
+  # so we do it here on demand: a single stats::glm.fit() call on an
+  # intercept-only design, with the same weights and offset used by the MFP
+  # fit. A rare failure yields NA rather than aborting the summary.
+  if (identical(family_string, "cox")) {
+    # already populated from ordering_result$null_logl above
+  } else if (is.null(null_logl) || !is.finite(null_logl)) {
+    null_logl <- tryCatch({
+      null_x <- matrix(
+        rep.int(1, NROW(y)),
+        ncol = 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
+      null_weights <- if (is.null(weights)) rep.int(1, NROW(y)) else weights
+      null_offset  <- if (is.null(offset))  rep.int(0, NROW(y)) else offset
+      null_fit <- stats::glm.fit(
+        x = null_x,
+        y = y,
+        family = family_fit,
+        weights = null_weights,
+        offset = null_offset
+      )
+      null_df_glm <- if (null_fit$family$family == "gaussian") 2L else 1L
+      unname(null_df_glm - null_fit$aic / 2)
+    }, error = function(e) NA_real_)
+  }
+  
+  mfp_logl <- modelfit$logl
+  mfp_df   <- modelfit$df
+  
   # Assemble the mfp2 object: start from the glm/coxph fit object returned by
   # fit_model() and layer on MFP-specific metadata (selected powers, shift/
   # scale/center, zero/catzero/spike status, convergence, etc.) expected by
@@ -874,6 +920,14 @@ fit_mfp <- function(x,
       null_deviance   = null_deviance,
       linear_deviance = linear_deviance,
       mfp_deviance    = mfp_deviance,
+      # Log-likelihood-scale quantities used by summary.mfp2()'s Model Fit
+      # block. All three -2 log L values are on the same convention, so the
+      # summary can render them directly without any per-family adjustment.
+      null_logl       = null_logl,
+      linear_logl     = linear_logl,
+      linear_df       = linear_df,
+      mfp_logl        = mfp_logl,
+      mfp_df          = mfp_df,
       x_original = if (has_mapped_terms) {
         selected_terms <- names(powers_current)[
           !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |

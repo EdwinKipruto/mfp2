@@ -13,13 +13,18 @@
   show_rug = FALSE,
   show_ci_fitted = FALSE,
   show_ci_diff = TRUE,
+  show_null_line = FALSE,
+  show_maineffect_line = TRUE,
+  show_ci_maineffect = FALSE,
   legend_position = c("inside", "right", "left", "bottom", "top", "none"),
   legend_inside = c(0.02, 0.98),
   legend_justification = c(0, 1),
   colour_ref = "#2166AC",
-  colour_grp = "#D6604D",
+  colour_group = "#D6604D",
   line_types = NULL,
   colour_diff = "#1B7837",
+  colour_null = "grey50",
+  colour_maineffect = "grey20",
   linewidth = 1,
   ribbon_alpha = 0.2,
   rug_alpha = 0.4,
@@ -55,6 +60,31 @@ around the group-specific fitted functions.}
 \item{show_ci_diff}{Logical scalar. If \code{TRUE}, a confidence band is shown
 around the fitted-function difference.}
 
+\item{show_null_line}{Logical scalar. If \code{TRUE} (default), a dashed
+horizontal reference line at zero is drawn on difference plots. This line
+marks the null-group-contrast value on the linear-predictor scale. It is
+informative for reading the treatment-effect scale at a given covariate
+value, but it is not an interaction reference (see the plot-type
+documentation).}
+
+\item{show_maineffect_line}{Logical scalar. If \code{TRUE}, a dashed horizontal
+reference line is drawn on difference plots at the constant contrast
+\eqn{\hat\alpha^{(M)}} implied by the no-interaction (main-effects) model.
+Departure of the fitted difference curve from this line is the visual
+analogue of the interaction comparison. Requires that the main-effects
+model has been preserved on the fitted \code{mfpi} object; if it cannot be
+located, the line is silently omitted. Defaults to \code{TRUE}.}
+
+\item{show_ci_maineffect}{Logical scalar. If \code{TRUE}, a pointwise 95\\%
+confidence band is drawn around the main-effects reference line
+\eqn{\hat\alpha^{(M)}} on difference plots, computed as
+\eqn{\hat\alpha^{(M)} \pm z_{0.975} \cdot \mathrm{SE}(\hat\alpha^{(M)})}.
+The standard error is extracted from the variance-covariance matrix of
+the main-effects model. If the standard error cannot be obtained, the
+band is silently omitted. The band is only drawn when
+\code{show_maineffect_line = TRUE} and the main-effects model is available.
+Defaults to \code{FALSE}.}
+
 \item{legend_position}{Character scalar specifying the legend position for
 fitted-function plots. One of \code{"inside"}, \code{"right"}, \code{"left"},
 \code{"bottom"}, \code{"top"}, or \code{"none"}.}
@@ -69,7 +99,7 @@ justification when \code{legend_position = "inside"}.}
 \item{colour_ref}{Character scalar specifying the colour of the
 reference-group fitted function and confidence band.}
 
-\item{colour_grp}{Character scalar specifying the colour of the
+\item{colour_group}{Character scalar specifying the colour of the
 comparison-group fitted function and confidence band.}
 
 \item{line_types}{Optional character vector specifying the line types of the
@@ -79,6 +109,12 @@ named, its names must match the original group labels shown in the legend.}
 
 \item{colour_diff}{Character scalar specifying the colour of the difference
 curve and its confidence band.}
+
+\item{colour_null}{Character scalar specifying the colour of the null
+reference line at zero on difference plots.}
+
+\item{colour_maineffect}{Character scalar specifying the colour of the
+main-effects reference line at \eqn{\hat\alpha^{(M)}} on difference plots.}
 
 \item{linewidth}{Positive numeric scalar specifying the width of the fitted
 and difference curves.}
@@ -138,8 +174,38 @@ reference-group fitted functions:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{\deqn{\hat f_j(x) - \hat f_r(x)}
 
-A horizontal reference line at zero represents no difference between
-the fitted functions at that covariate value.
+Two optional horizontal reference lines can be added, each answering a
+different question about the plot:
+
+\\itemize\{
+  \\item A dashed line at zero, controlled by `show_null_line`, marks
+    the value of the fitted-function difference that corresponds to a
+    null group contrast at that covariate value. On the linear-predictor
+    scale this means equal partial linear predictors; on the response
+    scale it corresponds to a hazard ratio, rate ratio, or odds ratio
+    of one for the applicable family, and to a zero mean difference for
+    Gaussian models. This line is a treatment-effect reference, not an
+    interaction reference: a difference curve can cross zero without
+    implying interaction, and a flat nonzero difference implies no
+    interaction even though it never crosses zero.
+
+  \\item A dashed line at the main-effects contrast \eqn{\hat\alpha^{(M)}},
+    controlled by `show_maineffect_line`, marks the constant fitted
+    difference implied by the no-interaction (main-effects) model. This
+    is the natural interaction reference: departure of the fitted
+    difference curve from this horizontal line is the visual analogue
+    of the Step 2 interaction comparison. When the main-effects and
+    interaction models share the same FP basis (as they do under
+    `flex1` and `flex2`), this comparison is exact. Under `flex3` and
+    `flex4` the two fitted models may use different FP bases, in which
+    case the line still summarises what the no-interaction model
+    concluded but the comparison need not be strictly nested.
+\}
+
+The two lines coincide only when there is no group main effect, which
+is unusual in practice. Drawing `show_maineffect_line = TRUE` requires
+that the main-effects (no-interaction) model has been preserved on the
+`mfpi` object; if it is not available, the line is silently omitted.
 
 The confidence band for the difference curve is controlled by
 `show_ci_diff`.
@@ -192,17 +258,19 @@ corresponding fitted models are available in the \code{mfpi} object.
 
 \section{Confidence bands}{
 
-Confidence bands for the two plot types are controlled separately:
+Confidence bands for the plot elements are controlled separately:
 
 \itemize{
 \item \code{show_ci_fitted} controls confidence bands around the
 group-specific fitted functions;
 \item \code{show_ci_diff} controls the confidence band around the
-fitted-function difference.
+fitted-function difference;
+\item \code{show_ci_maineffect} controls the confidence band around the
+main-effects reference line \eqn{\hat\alpha^{(M)}} on difference plots.
 }
 
 The default suppresses confidence bands for the group-specific functions
-and displays them for the difference curve.
+and the main-effects line, and displays them for the difference curve.
 }
 
 \examples{

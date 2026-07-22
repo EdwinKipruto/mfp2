@@ -254,7 +254,7 @@ make_best_model_metrics <- function(variable,
 #' @param nocenter Numeric vector for Cox centring suppression; see
 #'   [survival::coxph()].
 #'
-#' @return A list with four components:
+#' @return A list with five components:
 #' \describe{
 #'   \item{`evaluation_metrics`}{A data frame of class
 #'     `"best_model_metrics"` with one row per call, containing:
@@ -271,6 +271,10 @@ make_best_model_metrics <- function(variable,
 #'   \item{`interaction_model`}{The fitted interaction model object returned by
 #'     `fit_model()`, with `fast = FALSE` so that the full coefficient
 #'     vector and covariance matrix are available.}
+#'   \item{`main_model`}{The fitted main-effects (no-interaction) model object
+#'     returned by `fit_model()`. Preserved so that `plot.mfpi()` can draw the
+#'     constant contrast \eqn{\hat\alpha^{(M)}} implied by the no-interaction
+#'     model as a horizontal reference line on difference plots.}
 #'   \item{`deviance_models`}{Named list with elements `main`
 #'     (\eqn{-2\ell_{\text{main}}}) and `interaction`
 #'     (\eqn{-2\ell_{\text{int}}}).}
@@ -483,6 +487,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   list(
     evaluation_metrics = metrics,
     interaction_model  = fit_interaction,
+    main_model         = fit_main,
     deviance_models    = list(main = dev_main, interaction = dev_interaction),
     df                 = list(
       main               = df_main,

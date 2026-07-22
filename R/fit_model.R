@@ -475,6 +475,11 @@ fit_cox <- function(x,
   list(
     fit = fit,
     logl = model_logl,
+    # Null (intercept-only) partial log-likelihood, computed by coxph at the
+    # start of Newton-Raphson (`fit$loglik[1L]`). Preserved so downstream code
+    # can build a family-consistent -2 log L for the null row of the Model Fit
+    # summary without an extra refit.
+    null_logl = if (is.finite(null_logl)) unname(null_logl) else NA_real_,
     coefficients = fit$coefficients,
     # Sometimes coefficients can be NA, for example when duplicate or
     # linearly dependent predictors are included in the model.

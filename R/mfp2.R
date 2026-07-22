@@ -3546,46 +3546,6 @@ coef.mfp2 <- function(object, ...) {
   object$coefficients
 }
 
-#' Summarize an `mfp2` Model Fit
-#'
-#' Dispatches to [stats::summary.glm()] or [survival::summary.coxph()]
-#' depending on the model family, replacing the internal fitting call with the
-#' original [mfp2()] call for readability.
-#'
-#' @param object A fitted [mfp2()] object.
-#' @param ... Further arguments passed to [stats::summary.glm()] or
-#'   [survival::summary.coxph()].
-#'
-#' @return
-#' The summary object returned by the underlying method
-#' ([stats::summary.glm()] or [survival::summary.coxph()]), with its `call`
-#' element replaced by the original `mfp2()` call.
-#'
-#' @seealso
-#' [mfp2()], [print.mfp2()], [stats::summary.glm()],
-#' [survival::summary.coxph()]
-#'
-#' @export
-summary.mfp2 <- function(object, ...) {
-  # Ensure that the supplied object was created by mfp2().
-  if (!inherits(object, "mfp2")) {
-    stop("The object is not an mfp2 object.", call. = FALSE)
-  }
-  
-  # Dispatch to the summary method for the underlying fitted model:
-  # summary.glm() for GLMs or summary.coxph() for Cox models.
-  result <- NextMethod("summary")
-  
-  # Replace the internal glm()/coxph() call with the original
-  # user-facing mfp2() call.
-  if (!is.null(object$call_mfp)) {
-    result$call <- object$call_mfp
-  }
-  
-  result
-}
-
-
 #' Print method for objects of class `mfp2`
 #'
 #' Prints a structured summary of an \code{mfp2} model, including the original
@@ -3956,15 +3916,48 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   
   
   # ---------------------------------------------------------------------------
-  # Step 5: Print the original mfp2 call
+  # Step 5: Print the original mfp2 call and one-line meta block
   # ---------------------------------------------------------------------------
+  #
+  # A plain "Call:" label (no dashed rule) opens the output, followed by the
+  # deparsed mfp2() call, a one-line family / criterion / convergence block,
+  # and an observation/event line. This matches the opening produced by
+  # print.summary.mfp2(); the two methods therefore present the call and
+  # top-level metadata identically. The dashed-rule section headings resume
+  # only from Selection Summary onward, where they bracket the more
+  # substantial tabular sections.
   
-  print_section_heading("Model Call")
-  
+  cat("Call:\n")
   if (!is.null(x$call_mfp)) {
     print(x$call_mfp)
   } else {
     cat("(original mfp2 call unavailable)\n")
+  }
+  
+  # Family / Criterion / Converged: three fields on one line, joined by " | "
+  # for compactness. The criterion label was pre-formatted earlier in this
+  # method; convergence uses the same helper the Selection Summary previously
+  # used, so the yes/no wording is unchanged.
+  cat(sprintf(
+    "Family: %s | Criterion: %s | Converged: %s\n",
+    x$family_string,
+    criterion_label,
+    format_convergence(x$convergence_mfp)
+  ))
+  
+  # Observations / Events: for Cox models the number of observed events is
+  # more informative than the total sample size alone, so both are shown.
+  # For non-Cox families only the observation count is meaningful.
+  n_obs <- tryCatch(NROW(x$y), error = function(e) NA_integer_)
+  if (identical(x$family_string, "cox") && inherits(x$y, "Surv")) {
+    status_col <- ncol(x$y)
+    n_events <- tryCatch(
+      sum(x$y[, status_col] == 1, na.rm = TRUE),
+      error = function(e) NA_integer_
+    )
+    cat(sprintf("Observations: %s | Events: %s\n", n_obs, n_events))
+  } else {
+    cat(sprintf("Observations: %s\n", n_obs))
   }
   
   cat("\n")
@@ -3973,11 +3966,13 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   # ---------------------------------------------------------------------------
   # Step 6: Print the model-selection summary
   # ---------------------------------------------------------------------------
+  #
+  # The Selection Summary section previously opened with "Converged:" and
+  # "Criterion:" lines. Both fields are now shown in the top meta block above,
+  # so they are omitted here to avoid duplication. The section retains its
+  # dashed-rule heading and its three "Selected variables" lines.
   
   print_section_heading("Selection Summary")
-  
-  cat("Converged: ", format_convergence(x$convergence_mfp), "\n", sep = "")
-  cat("Criterion: ", criterion_label, "\n", sep = "")
   
   # A variable counts as "linear" if its sole continuous term is FP1 with
   # power exactly 1 (and it is not ACD-transformed), or if it is a
@@ -4284,59 +4279,20 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   
   
   # ---------------------------------------------------------------------------
-  # Step 11: Collect the three stored model-fit values
+  # Step 11: Render the Model Fit block via the shared helper
   # ---------------------------------------------------------------------------
-  
-  get_deviance_value <- function(value) {
-    if (length(value) != 1L) {
-      return(NA_real_)
-    }
-    
-    suppressWarnings(as.numeric(value))
-  }
-  
-  deviance_values <- c(
-    "Null model" = get_deviance_value(x$null_deviance),
-    "Full linear model" = get_deviance_value(x$linear_deviance),
-    "Final MFP model" = get_deviance_value(x$mfp_deviance)
+  #
+  # The Model Fit block (formerly "Model Deviances") is produced by
+  # mfp2_format_model_fit_block(), the same helper called by
+  # print.summary.mfp2(). This guarantees the two methods display the same
+  # three numbers under the same convention (-2 log L on all rows; df on the
+  # MFP-adjusted scale) and the same explanatory note, so there is exactly
+  # one place in the package where the block's format lives.
+  mfp2_format_model_fit_block(
+    values          = mfp2_summary_model_fit_values(x),
+    digits          = digits,
+    heading_printer = print_section_heading
   )
-  
-  
-  # ---------------------------------------------------------------------------
-  # Step 12: Format and print the model-fit values
-  # ---------------------------------------------------------------------------
-  
-  formatted_deviance <- vapply(
-    deviance_values,
-    function(value) {
-      if (is.na(value)) {
-        return("NA")
-      }
-      
-      if (!is.finite(value)) {
-        return(as.character(value))
-      }
-      
-      format(value, digits = digits, trim = TRUE)
-    },
-    character(1L)
-  )
-  
-  deviance_labels <- paste0(trimws(names(formatted_deviance)), ":")
-  label_width <- max(nchar(deviance_labels))
-  
-  print_section_heading("Model Deviances")
-  
-  for (i in seq_along(formatted_deviance)) {
-    cat(
-      sprintf(
-        "%-*s  %s\n",
-        label_width,
-        deviance_labels[[i]],
-        unname(formatted_deviance[[i]])
-      )
-    )
-  }
   
   cat("\n")
   cat(make_boundary("="), "\n", sep = "")

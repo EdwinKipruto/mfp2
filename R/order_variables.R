@@ -164,7 +164,15 @@ order_variables <- function(xorder = "ascending",
   list(
     variables_ordered = variables_ordered,
     null_deviance = full_reference$null_deviance,
-    linear_deviance = full_reference$model_deviance
+    linear_deviance = full_reference$model_deviance,
+    # Additional quantities needed by summary.mfp2()'s Model Fit block. These
+    # come free from the full-linear reference fit, which is computed once at
+    # the start of the MFP algorithm regardless of the requested output. The
+    # Cox branch of fit_model() returns null_logl directly; for GLMs it is
+    # computed once in fit_mfp() after backfitting has converged.
+    linear_logl = full_reference$logl,
+    linear_df   = full_reference$df,
+    null_logl   = full_reference$null_logl
   )
 }
 

@@ -596,15 +596,26 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
 #' @param x An MFPI fit object or print-ready object containing `adjust_terms`.
 #' @param ruler Character scalar printed below the section heading.
 #' @param digits Integer scalar controlling displayed numeric precision.
+#' @param show_settings Logical scalar. Whether to print the interaction-selection
+#'   criterion and threshold before the adjustment table. The top-level print
+#'   method sets this to `FALSE` because it prints the same settings globally.
 #'
 #' @return Invisibly `NULL`.
 #' @keywords internal
 #' @noRd
-print_adjustment_step <- function(x, ruler, digits) {
+print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
   cat("\nStep 1 - Selected Adjustment Model (MFP):\n")
   cat(ruler, "\n")
   
   info <- mfpi_prepare_adjustment_display(x, digits)
+  
+  # State the interaction-selection criterion alongside the adjustment-model
+  # results. Keep this delegated to `mfpi_interaction_settings()` (via
+  # `mfpi_prepare_adjustment_display()`) so p-value adjustment methods and
+  # AIC/BIC thresholds are rendered identically in every output path.
+  if (isTRUE(show_settings)) {
+    cat("\n", paste0(" ", info$settings$lines, "\n"), "\n", sep = "")
+  }
   
   if (!isTRUE(info$model_fitted)) {
     cat("  No adjustment model fitted.\n")
@@ -966,7 +977,7 @@ print.mfpi <- function(x, digits = NULL, ...) {
   ruler4 <- strrep("-", 29)
   
   # Step 1: print adjustment-model MFP selection results.
-  print_adjustment_step(x, ruler2, digits)
+  print_adjustment_step(x, ruler2, digits, show_settings = FALSE)
   
   # Step 2: print all interaction candidates and criterion-specific metrics.
   print_candidates_step(x, ruler3, digits)

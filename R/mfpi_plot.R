@@ -25,8 +25,38 @@
 #'
 #'     \deqn{\hat f_j(x) - \hat f_r(x)}
 #'
-#'     A horizontal reference line at zero represents no difference between
-#'     the fitted functions at that covariate value.
+#'     Two optional horizontal reference lines can be added, each answering a
+#'     different question about the plot:
+#'
+#'     \itemize{
+#'       \item A dashed line at zero, controlled by `show_null_line`, marks
+#'         the value of the fitted-function difference that corresponds to a
+#'         null group contrast at that covariate value. On the linear-predictor
+#'         scale this means equal partial linear predictors; on the response
+#'         scale it corresponds to a hazard ratio, rate ratio, or odds ratio
+#'         of one for the applicable family, and to a zero mean difference for
+#'         Gaussian models. This line is a treatment-effect reference, not an
+#'         interaction reference: a difference curve can cross zero without
+#'         implying interaction, and a flat nonzero difference implies no
+#'         interaction even though it never crosses zero.
+#'
+#'       \item A dashed line at the main-effects contrast \eqn{\hat\alpha^{(M)}},
+#'         controlled by `show_maineffect_line`, marks the constant fitted
+#'         difference implied by the no-interaction (main-effects) model. This
+#'         is the natural interaction reference: departure of the fitted
+#'         difference curve from this horizontal line is the visual analogue
+#'         of the Step 2 interaction comparison. When the main-effects and
+#'         interaction models share the same FP basis (as they do under
+#'         `flex1` and `flex2`), this comparison is exact. Under `flex3` and
+#'         `flex4` the two fitted models may use different FP bases, in which
+#'         case the line still summarises what the no-interaction model
+#'         concluded but the comparison need not be strictly nested.
+#'     }
+#'
+#'     The two lines coincide only when there is no group main effect, which
+#'     is unusual in practice. Drawing `show_maineffect_line = TRUE` requires
+#'     that the main-effects (no-interaction) model has been preserved on the
+#'     `mfpi` object; if it is not available, the line is silently omitted.
 #'
 #'     The confidence band for the difference curve is controlled by
 #'     `show_ci_diff`.
@@ -71,17 +101,19 @@
 #' corresponding fitted models are available in the `mfpi` object.
 #'
 #' @section Confidence bands:
-#' Confidence bands for the two plot types are controlled separately:
+#' Confidence bands for the plot elements are controlled separately:
 #'
 #' \itemize{
 #'   \item `show_ci_fitted` controls confidence bands around the
 #'     group-specific fitted functions;
 #'   \item `show_ci_diff` controls the confidence band around the
-#'     fitted-function difference.
+#'     fitted-function difference;
+#'   \item `show_ci_maineffect` controls the confidence band around the
+#'     main-effects reference line \eqn{\hat\alpha^{(M)}} on difference plots.
 #' }
 #'
 #' The default suppresses confidence bands for the group-specific functions
-#' and displays them for the difference curve.
+#' and the main-effects line, and displays them for the difference curve.
 #'
 #' @param x An object of class `"mfpi"`.
 #'
@@ -111,6 +143,37 @@
 #' @param show_ci_diff Logical scalar. If `TRUE`, a confidence band is shown
 #'   around the fitted-function difference.
 #'
+#' @param show_null_line Logical scalar. If `TRUE` (default), a dashed
+#'   horizontal reference line at zero is drawn on difference plots. This line
+#'   marks the null-group-contrast value on the linear-predictor scale. It is
+#'   informative for reading the treatment-effect scale at a given covariate
+#'   value, but it is not an interaction reference (see the plot-type
+#'   documentation).
+#'
+#' @param show_maineffect_line Logical scalar. If `TRUE`, a dashed horizontal
+#'   reference line is drawn on difference plots at the constant contrast
+#'   \eqn{\hat\alpha^{(M)}} implied by the no-interaction (main-effects) model.
+#'   Departure of the fitted difference curve from this line is the visual
+#'   analogue of the interaction comparison. Requires that the main-effects
+#'   model has been preserved on the fitted `mfpi` object; if it cannot be
+#'   located, the line is silently omitted. Defaults to `TRUE`.
+#'
+#' @param show_ci_maineffect Logical scalar. If `TRUE`, a pointwise 95\%
+#'   confidence band is drawn around the main-effects reference line
+#'   \eqn{\hat\alpha^{(M)}} on difference plots, computed as
+#'   \eqn{\hat\alpha^{(M)} \pm z_{0.975} \cdot \mathrm{SE}(\hat\alpha^{(M)})}.
+#'   The standard error is extracted from the variance-covariance matrix of
+#'   the main-effects model. If the standard error cannot be obtained, the
+#'   band is silently omitted. The band is only drawn when
+#'   `show_maineffect_line = TRUE` and the main-effects model is available.
+#'   Defaults to `FALSE`.
+#'
+#' @param colour_null Character scalar specifying the colour of the null
+#'   reference line at zero on difference plots.
+#'
+#' @param colour_maineffect Character scalar specifying the colour of the
+#'   main-effects reference line at \eqn{\hat\alpha^{(M)}} on difference plots.
+#'
 #' @param legend_position Character scalar specifying the legend position for
 #'   fitted-function plots. One of `"inside"`, `"right"`, `"left"`,
 #'   `"bottom"`, `"top"`, or `"none"`.
@@ -125,7 +188,7 @@
 #' @param colour_ref Character scalar specifying the colour of the
 #'   reference-group fitted function and confidence band.
 #'
-#' @param colour_grp Character scalar specifying the colour of the
+#' @param colour_group Character scalar specifying the colour of the
 #'   comparison-group fitted function and confidence band.
 #'
 #' @param line_types Optional character vector specifying the line types of the
@@ -235,13 +298,18 @@ plot.mfpi <- function(x,
                       show_rug       = FALSE,
                       show_ci_fitted = FALSE,
                       show_ci_diff   = TRUE,
+                      show_null_line       = FALSE,
+                      show_maineffect_line = TRUE,
+                      show_ci_maineffect   = FALSE,
                       legend_position = c("inside", "right", "left", "bottom", "top", "none"),
                       legend_inside  = c(0.02, 0.98),
                       legend_justification = c(0, 1),
                       colour_ref     = "#2166AC",
-                      colour_grp     = "#D6604D",
+                      colour_group   = "#D6604D",
                       line_types     = NULL,
                       colour_diff    = "#1B7837",
+                      colour_null       = "grey50",
+                      colour_maineffect = "grey20",
                       linewidth      = 1,
                       ribbon_alpha   = 0.2,
                       rug_alpha      = 0.4,
@@ -252,16 +320,16 @@ plot.mfpi <- function(x,
   model <- x
   plot_type <- match.arg(plot_type)
   legend_position <- match.arg(legend_position)
-  
+
   if (!inherits(model, "mfpi")) {
     stop("! `x` must be an object of class \"mfpi\".", call. = FALSE)
   }
-  
+
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package `ggplot2` is required for plotting. Please install it.",
          call. = FALSE)
   }
-  
+
   check_logical_scalar <- function(value, name) {
     if (!is.logical(value) || length(value) != 1L || is.na(value)) {
       stop("! `", name, "` must be a single TRUE or FALSE value.",
@@ -269,13 +337,27 @@ plot.mfpi <- function(x,
     }
     invisible(TRUE)
   }
-  
+
   check_logical_scalar(auto_print, "auto_print")
   check_logical_scalar(show_title, "show_title")
   check_logical_scalar(show_rug, "show_rug")
   check_logical_scalar(show_ci_fitted, "show_ci_fitted")
   check_logical_scalar(show_ci_diff, "show_ci_diff")
-  
+  check_logical_scalar(show_null_line, "show_null_line")
+  check_logical_scalar(show_maineffect_line, "show_maineffect_line")
+  check_logical_scalar(show_ci_maineffect, "show_ci_maineffect")
+
+  check_colour_scalar <- function(value, name) {
+    if (!is.character(value) || length(value) != 1L || is.na(value) ||
+        !nzchar(value)) {
+      stop("! `", name, "` must be a single non-empty character string.",
+           call. = FALSE)
+    }
+    invisible(TRUE)
+  }
+  check_colour_scalar(colour_null, "colour_null")
+  check_colour_scalar(colour_maineffect, "colour_maineffect")
+
   if (!is.null(line_types) &&
       (!is.character(line_types) || length(line_types) == 0L ||
        any(is.na(line_types)))) {
@@ -284,7 +366,7 @@ plot.mfpi <- function(x,
       call. = FALSE
     )
   }
-  
+
   if (!is.numeric(legend_inside) || length(legend_inside) != 2L ||
       any(is.na(legend_inside)) || any(legend_inside < 0) ||
       any(legend_inside > 1)) {
@@ -293,7 +375,7 @@ plot.mfpi <- function(x,
       call. = FALSE
     )
   }
-  
+
   if (!is.numeric(legend_justification) ||
       length(legend_justification) != 2L ||
       any(is.na(legend_justification))) {
@@ -302,25 +384,25 @@ plot.mfpi <- function(x,
       call. = FALSE
     )
   }
-  
+
   if (!is.numeric(linewidth) || length(linewidth) != 1L ||
       is.na(linewidth) || linewidth <= 0) {
     stop("! `linewidth` must be a single positive numeric value.",
          call. = FALSE)
   }
-  
+
   if (!is.numeric(ribbon_alpha) || length(ribbon_alpha) != 1L ||
       is.na(ribbon_alpha) || ribbon_alpha < 0 || ribbon_alpha > 1) {
     stop("! `ribbon_alpha` must be a single numeric value in [0, 1].",
          call. = FALSE)
   }
-  
+
   if (!is.numeric(rug_alpha) || length(rug_alpha) != 1L ||
       is.na(rug_alpha) || rug_alpha < 0 || rug_alpha > 1) {
     stop("! `rug_alpha` must be a single numeric value in [0, 1].",
          call. = FALSE)
   }
-  
+
   dots <- list(...)
   if (length(dots) > 0L) {
     warning(
@@ -328,7 +410,7 @@ plot.mfpi <- function(x,
       call. = FALSE
     )
   }
-  
+
   if (plot_type == "both" && !requireNamespace("patchwork", quietly = TRUE)) {
     stop(
       "! `plot_type = \"both\"` requires the patchwork package. ",
@@ -336,7 +418,7 @@ plot.mfpi <- function(x,
       call. = FALSE
     )
   }
-  
+
   # ---------------------------------------------------------------------------
   # Resolve terms and prediction model scope
   # ---------------------------------------------------------------------------
@@ -344,7 +426,7 @@ plot.mfpi <- function(x,
   if (is.null(terms)) {
     selected_terms <- names(model$best_interaction_model)
     selected_terms <- selected_terms[!is.na(selected_terms) & nzchar(selected_terms)]
-    
+
     if (length(selected_terms) == 0L) {
       message(
         "Nothing to plot: no variables in `cont_vars` were selected as\n",
@@ -354,7 +436,7 @@ plot.mfpi <- function(x,
       )
       return(invisible(x))
     }
-    
+
     terms <- selected_terms
     predict_model <- "best"
   } else {
@@ -362,31 +444,31 @@ plot.mfpi <- function(x,
       stop("! `terms` must be a non-empty character vector or NULL.",
            call. = FALSE)
     }
-    
+
     terms <- unique(terms)
     predict_model <- "all"
   }
-  
+
   # ---------------------------------------------------------------------------
   # Metric/subtitle metadata
   # ---------------------------------------------------------------------------
   subtitle_lookup <- mfpi_plot_subtitle_lookup(model)
-  
+
   # Group metadata translates internal prediction codes such as "0" and "1"
   # into the original group labels shown to users in legends and axis labels.
   group_meta <- mfpi_plot_group_metadata(model)
   group_label <- group_meta$group_var
-  
+
   # ---------------------------------------------------------------------------
   # Helper: subtitle for one variable/contrast
   # ---------------------------------------------------------------------------
   make_subtitle <- function(var, grp_label_value, ref_label_value) {
     info <- subtitle_lookup[[var]]
-    
+
     if (is.null(info)) {
       return(var)
     }
-    
+
     type_str <- switch(
       info$type,
       linear = "Linear",
@@ -394,9 +476,9 @@ plot.mfpi <- function(x,
       fp2    = "FP2",
       info$type
     )
-    
+
     lbl <- if (!is.null(info$label)) info$label else "metric"
-    
+
     val_str <- if (is.null(info$metric) || is.na(info$metric)) {
       "NA"
     } else if (lbl %in% c("p", "p_raw")) {
@@ -404,24 +486,24 @@ plot.mfpi <- function(x,
     } else {
       trimws(formatC(info$metric, format = "f", digits = 2))
     }
-    
+
     contrast_text <- sprintf(
       "%s: %s vs %s",
       group_label,
       grp_label_value,
       ref_label_value
     )
-    
+
     metric_text <- sprintf("%s = %s", lbl, val_str)
-    
+
     if (!is.null(info$metric_adj) && !is.na(info$metric_adj)) {
       adj_str <- trimws(formatC(info$metric_adj, format = "g", digits = 3))
       metric_text <- sprintf("%s (p_adj = %s)", metric_text, adj_str)
     }
-    
+
     sprintf("type = %s; %s; %s", type_str, contrast_text, metric_text)
   }
-  
+
   # ---------------------------------------------------------------------------
   # Helper: linetype mapping for fitted-function plots
   # ---------------------------------------------------------------------------
@@ -429,10 +511,10 @@ plot.mfpi <- function(x,
     if (is.null(line_types)) {
       return(stats::setNames(rep("solid", length(labels)), labels))
     }
-    
+
     lt_names <- names(line_types)
     has_names <- !is.null(lt_names) && any(nzchar(lt_names))
-    
+
     if (has_names) {
       missing_labels <- setdiff(labels, lt_names)
       if (length(missing_labels) > 0L) {
@@ -445,17 +527,17 @@ plot.mfpi <- function(x,
       }
       return(stats::setNames(unname(line_types[labels]), labels))
     }
-    
+
     if (length(line_types) != 2L) {
       stop(
         "! Unnamed `line_types` must have length 2: one for the reference group and one for the comparison group.",
         call. = FALSE
       )
     }
-    
+
     stats::setNames(line_types, labels)
   }
-  
+
   # ---------------------------------------------------------------------------
   # Helper: fitted-function plot for one variable and one group contrast
   # ---------------------------------------------------------------------------
@@ -470,11 +552,11 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     needed <- c("x", "group", "fit")
     if (isTRUE(show_ci_fitted)) needed <- c(needed, "lower", "upper")
     missing <- setdiff(needed, names(functions_df))
-    
+
     if (length(missing) > 0L) {
       warning(
         paste0(
@@ -486,7 +568,7 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     # predict.mfpi() now returns fitted functions in long format. Filter the
     # requested term defensively, then split by the user-facing group labels.
     fdat <- functions_df
@@ -494,10 +576,10 @@ plot.mfpi <- function(x,
       fdat <- fdat[fdat$term == var, , drop = FALSE]
     }
     fdat$group <- as.character(fdat$group)
-    
+
     ref_raw <- fdat[fdat$group == ref_label_value, , drop = FALSE]
     grp_raw <- fdat[fdat$group == grp_label_value, , drop = FALSE]
-    
+
     if (nrow(ref_raw) == 0L || nrow(grp_raw) == 0L) {
       warning(
         paste0(
@@ -509,47 +591,47 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     ref_df <- data.frame(
       x = ref_raw$x,
       y = ref_raw$fit,
       stringsAsFactors = FALSE
     )
-    
+
     grp_df <- data.frame(
       x = grp_raw$x,
       y = grp_raw$fit,
       stringsAsFactors = FALSE
     )
-    
+
     if (isTRUE(show_ci_fitted)) {
       ref_df$lo <- ref_raw$lower
       ref_df$hi <- ref_raw$upper
       grp_df$lo <- grp_raw$lower
       grp_df$hi <- grp_raw$upper
     }
-    
+
     # Lines and ribbons must be sorted by x for visually coherent curves.
     ref_df <- ref_df[order(ref_df$x), , drop = FALSE]
     grp_df <- grp_df[order(grp_df$x), , drop = FALSE]
-    
+
     ref_df$group <- ref_label_value
     grp_df$group <- grp_label_value
-    
+
     line_df <- rbind(
       ref_df[, c("x", "y", "group"), drop = FALSE],
       grp_df[, c("x", "y", "group"), drop = FALSE]
     )
-    
+
     line_df$group <- factor(line_df$group,
                             levels = c(ref_label_value, grp_label_value))
-    
+
     group_values <- levels(line_df$group)
-    colour_values <- stats::setNames(c(colour_ref, colour_grp), group_values)
+    colour_values <- stats::setNames(c(colour_ref, colour_group), group_values)
     linetype_values <- resolve_line_types(group_values)
-    
+
     p <- ggplot2::ggplot()
-    
+
     if (isTRUE(show_ci_fitted)) {
       p <- p +
         ggplot2::geom_ribbon(
@@ -562,12 +644,12 @@ plot.mfpi <- function(x,
         ggplot2::geom_ribbon(
           data = grp_df,
           ggplot2::aes(x = .data$x, ymin = .data$lo, ymax = .data$hi),
-          fill = colour_grp,
+          fill = colour_group,
           alpha = ribbon_alpha,
           show.legend = FALSE
         )
     }
-    
+
     p <- p +
       ggplot2::geom_line(
         data = line_df,
@@ -593,7 +675,7 @@ plot.mfpi <- function(x,
         }
       ) +
       ggplot2::theme_bw()
-    
+
     if (legend_position == "inside") {
       p <- p +
         ggplot2::theme(
@@ -607,7 +689,7 @@ plot.mfpi <- function(x,
     } else {
       p <- p + ggplot2::theme(legend.position = legend_position)
     }
-    
+
     if (isTRUE(show_rug)) {
       p <- p +
         ggplot2::geom_rug(
@@ -617,15 +699,17 @@ plot.mfpi <- function(x,
           alpha = rug_alpha
         )
     }
-    
+
     p
   }
-  
+
   # ---------------------------------------------------------------------------
   # Helper: fitted-function difference plot for one group contrast
   # ---------------------------------------------------------------------------
   make_diff_plot <- function(var, differences_df,
-                             ref_label_value, grp_label_value) {
+                             ref_label_value, grp_label_value,
+                             main_effect_value = NA_real_,
+                             main_effect_se    = NA_real_) {
     if (is.null(differences_df) || !is.data.frame(differences_df) ||
         nrow(differences_df) == 0L) {
       warning(
@@ -635,11 +719,11 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     needed <- c("x", "group", "reference", "fit")
     if (isTRUE(show_ci_diff)) needed <- c(needed, "lower", "upper")
     missing <- setdiff(needed, names(differences_df))
-    
+
     if (length(missing) > 0L) {
       warning(
         paste0(
@@ -651,7 +735,7 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     # predict.mfpi() returns differences in long format. Filter by term and
     # display labels instead of reconstructing synthetic matrix column names.
     ddat <- differences_df
@@ -660,13 +744,13 @@ plot.mfpi <- function(x,
     }
     ddat$group <- as.character(ddat$group)
     ddat$reference <- as.character(ddat$reference)
-    
+
     diff_raw <- ddat[
       ddat$group == grp_label_value & ddat$reference == ref_label_value,
       ,
       drop = FALSE
     ]
-    
+
     if (nrow(diff_raw) == 0L) {
       warning(
         paste0(
@@ -678,22 +762,22 @@ plot.mfpi <- function(x,
       )
       return(NULL)
     }
-    
+
     plot_df <- data.frame(
       x = diff_raw$x,
       diff = diff_raw$fit,
       stringsAsFactors = FALSE
     )
-    
+
     if (isTRUE(show_ci_diff)) {
       plot_df$lower <- diff_raw$lower
       plot_df$upper <- diff_raw$upper
     }
-    
+
     plot_df <- plot_df[order(plot_df$x), , drop = FALSE]
-    
+
     p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data$x))
-    
+
     if (isTRUE(show_ci_diff)) {
       p <- p +
         ggplot2::geom_ribbon(
@@ -702,18 +786,59 @@ plot.mfpi <- function(x,
           alpha = ribbon_alpha
         )
     }
-    
+
     p <- p +
-      ggplot2::geom_hline(
-        yintercept = 0,
-        linetype = "dashed",
-        colour = "grey50"
-      ) +
       ggplot2::geom_line(
         ggplot2::aes(y = .data$diff),
         colour = colour_diff,
         linewidth = linewidth
-      ) +
+      )
+
+    # Reference lines. Drawn on top of the ribbon but below the fitted curve
+    # would be preferable; drawn after the curve is acceptable and matches the
+    # legacy behaviour, which placed the zero line just before the curve. The
+    # `after_stat` approach is not needed here because both references are
+    # constants known at plotting time.
+    if (isTRUE(show_null_line)) {
+      p <- p +
+        ggplot2::geom_hline(
+          yintercept = 0,
+          linetype = "dashed",
+          colour = colour_null
+        )
+    }
+
+    if (isTRUE(show_maineffect_line) &&
+        is.finite(main_effect_value)) {
+      # Confidence band for the main-effects contrast alpha^{(M)}.
+      # Drawn before the line so the ribbon sits behind it.
+      if (isTRUE(show_ci_maineffect) && is.finite(main_effect_se)) {
+        me_lower <- main_effect_value - stats::qnorm(0.975) * main_effect_se
+        me_upper <- main_effect_value + stats::qnorm(0.975) * main_effect_se
+        x_range <- range(plot_df$x, na.rm = TRUE)
+        me_band_df <- data.frame(
+          x    = x_range,
+          ymin = rep(me_lower, 2L),
+          ymax = rep(me_upper, 2L)
+        )
+        p <- p +
+          ggplot2::geom_ribbon(
+            data = me_band_df,
+            ggplot2::aes(x = .data$x, ymin = .data$ymin, ymax = .data$ymax),
+            fill = colour_maineffect,
+            alpha = ribbon_alpha,
+            inherit.aes = FALSE
+          )
+      }
+      p <- p +
+        ggplot2::geom_hline(
+          yintercept = main_effect_value,
+          linetype = "dashed",
+          colour = colour_maineffect
+        )
+    }
+
+    p <- p +
       ggplot2::xlab(var) +
       # Keep the original contrast-specific label, but append the model scale so
       # the difference is not mistaken for a response-scale probability, rate,
@@ -735,7 +860,7 @@ plot.mfpi <- function(x,
         }
       ) +
       ggplot2::theme_bw()
-    
+
     if (isTRUE(show_rug)) {
       p <- p +
         ggplot2::geom_rug(
@@ -745,15 +870,15 @@ plot.mfpi <- function(x,
           alpha = rug_alpha
         )
     }
-    
+
     p
   }
-  
+
   # ---------------------------------------------------------------------------
   # Generate prediction objects and build plots
   # ---------------------------------------------------------------------------
   plots <- stats::setNames(vector("list", length(terms)), terms)
-  
+
   for (var in terms) {
     # Developer note:
     # plot.mfpi() intentionally requests grid-based prediction. Observed-row
@@ -761,7 +886,7 @@ plot.mfpi <- function(x,
     # smooth plotting should use the grid output.
     need_se <- (plot_type %in% c("fitted", "both") && isTRUE(show_ci_fitted)) ||
       (plot_type %in% c("difference", "both") && isTRUE(show_ci_diff))
-    
+
     pred <- predict(
       model,
       terms = var,
@@ -770,10 +895,10 @@ plot.mfpi <- function(x,
       se.fit = need_se,
       grid = TRUE
     )
-    
+
     functions_df <- pred$functions
     differences_df <- pred$differences
-    
+
     if (plot_type %in% c("fitted", "both") &&
         (is.null(functions_df) || !is.data.frame(functions_df) ||
          nrow(functions_df) == 0L)) {
@@ -782,7 +907,7 @@ plot.mfpi <- function(x,
         call. = FALSE
       )
     }
-    
+
     if (plot_type %in% c("difference", "both") &&
         (is.null(differences_df) || !is.data.frame(differences_df) ||
          nrow(differences_df) == 0L)) {
@@ -791,10 +916,10 @@ plot.mfpi <- function(x,
         call. = FALSE
       )
     }
-    
+
     display_map <- pred$metadata$group_display_labels
     pred_group_codes <- names(display_map)
-    
+
     if (is.null(pred_group_codes) || anyNA(pred_group_codes) ||
         any(!nzchar(pred_group_codes))) {
       pred_group_codes <- names(pred$metadata$coefficient_groups)
@@ -803,7 +928,7 @@ plot.mfpi <- function(x,
         any(!nzchar(pred_group_codes))) {
       pred_group_codes <- as.character(seq_along(pred$metadata$coefficient_groups) - 1L)
     }
-    
+
     if (is.null(display_map) || length(display_map) != length(pred_group_codes)) {
       display_map <- stats::setNames(
         vapply(
@@ -816,15 +941,33 @@ plot.mfpi <- function(x,
     } else {
       display_map <- stats::setNames(as.character(display_map), pred_group_codes)
     }
-    
+
     ref_code <- as.character(pred$metadata$reference)
     if (is.null(ref_code) || length(ref_code) != 1L || is.na(ref_code) ||
         !nzchar(ref_code)) {
       ref_code <- pred_group_codes[1L]
     }
-    
+
     comparison_codes <- setdiff(pred_group_codes, ref_code)
-    
+
+    # -------------------------------------------------------------------------
+    # Look up the main-effects group contrast alpha^{(M)} for this variable,
+    # one value per comparison group. If the main-effects model is not
+    # preserved on the fitted object, `me_alpha` is NULL and the reference
+    # line is silently skipped.
+    # -------------------------------------------------------------------------
+    me_alpha <- NULL
+    if (isTRUE(show_maineffect_line) &&
+        plot_type %in% c("difference", "both") &&
+        length(comparison_codes) > 0L) {
+      me_alpha <- mfpi_plot_maineffect_alpha(
+        model            = model,
+        var              = var,
+        group_var_name   = group_label,
+        comparison_codes = comparison_codes
+      )
+    }
+
     if (length(comparison_codes) == 0L) {
       warning(
         paste0("No non-reference group contrasts are available for term `", var, "`."),
@@ -833,7 +976,7 @@ plot.mfpi <- function(x,
       plots[[var]] <- list()
       next
     }
-    
+
     # Prediction metadata keeps internal group codes for stable object names and
     # user-facing labels for plot legends, subtitles, and axes. Prefer the
     # labels returned by predict.mfpi(), with fitted-object metadata as fallback.
@@ -847,7 +990,7 @@ plot.mfpi <- function(x,
     } else {
       mfpi_plot_original_group_label(group_meta, ref_code)
     }
-    
+
     comparison_labels <- vapply(
       comparison_codes,
       function(code) {
@@ -859,18 +1002,32 @@ plot.mfpi <- function(x,
       },
       character(1L)
     )
-    
+
     # Keep returned list names based on internal codes. This makes them stable
     # even when original group labels contain spaces or punctuation.
     grp_plots <- stats::setNames(
       vector("list", length(comparison_codes)),
       paste0("grp", comparison_codes, "_vs_grp", ref_code)
     )
-    
+
     for (j in seq_along(comparison_codes)) {
       grp_code <- comparison_codes[j]
       grp_label_value <- comparison_labels[j]
-      
+
+      me_alpha_j <- if (!is.null(me_alpha) &&
+                        grp_code %in% names(me_alpha$estimate)) {
+        me_alpha$estimate[[grp_code]]
+      } else {
+        NA_real_
+      }
+
+      me_se_j <- if (!is.null(me_alpha) &&
+                     grp_code %in% names(me_alpha$se)) {
+        me_alpha$se[[grp_code]]
+      } else {
+        NA_real_
+      }
+
       p_out <- switch(
         plot_type,
         fitted = make_fitted_plot(
@@ -883,7 +1040,9 @@ plot.mfpi <- function(x,
           var = var,
           differences_df = differences_df,
           ref_label_value = ref_label,
-          grp_label_value = grp_label_value
+          grp_label_value = grp_label_value,
+          main_effect_value = me_alpha_j,
+          main_effect_se    = me_se_j
         ),
         both = {
           p_fit <- make_fitted_plot(
@@ -896,9 +1055,11 @@ plot.mfpi <- function(x,
             var = var,
             differences_df = differences_df,
             ref_label_value = ref_label,
-            grp_label_value = grp_label_value
+            grp_label_value = grp_label_value,
+            main_effect_value = me_alpha_j,
+            main_effect_se    = me_se_j
           )
-          
+
           if (!is.null(p_fit) && !is.null(p_diff)) {
             patchwork::wrap_plots(p_fit, p_diff, ncol = 2L)
           } else if (!is.null(p_fit)) {
@@ -908,17 +1069,17 @@ plot.mfpi <- function(x,
           }
         }
       )
-      
+
       grp_plots[[j]] <- p_out
-      
+
       if (isTRUE(auto_print) && !is.null(p_out)) {
         print(p_out)
       }
     }
-    
+
     plots[[var]] <- grp_plots
   }
-  
+
   invisible(plots)
 }
 
@@ -954,7 +1115,7 @@ mfpi_plot_scale_label <- function(model) {
   # rather than $ so missing or partially matching component names do not affect
   # the chosen label.
   family_string <- model[["family_string", exact = TRUE]]
-  
+
   # Older or manually constructed objects may not contain family_string. In that
   # case, fall back to the standard family object structure used by glm-like
   # models. The fallback is also exact to avoid partial-matching surprises.
@@ -964,7 +1125,7 @@ mfpi_plot_scale_label <- function(model) {
       family_string <- family_obj[["family", exact = TRUE]]
     }
   }
-  
+
   # If family information is unavailable or malformed, use the conservative
   # generic label. This keeps plotting robust for older fitted objects while
   # avoiding misleading family-specific labels.
@@ -972,11 +1133,11 @@ mfpi_plot_scale_label <- function(model) {
       is.na(family_string[1L]) || !nzchar(as.character(family_string[1L]))) {
     return("linear predictor")
   }
-  
+
   # Normalise to a single lower-case string. This makes the switch robust to
   # accidental vector values while preserving a safe default for unknown input.
   family_string <- tolower(as.character(family_string[1L]))
-  
+
   switch(
     family_string,
     gaussian = "outcome scale",
@@ -1014,20 +1175,20 @@ mfpi_plot_subtitle_lookup <- function(model) {
   crit_used <- if (is.null(model$criterion)) "pvalue" else model$criterion
   padj <- if (!is.null(model$p_adjust_method)) model$p_adjust_method else "none"
   adjusting <- padj != "none" && crit_used == "pvalue"
-  
+
   out <- list()
   all_metrics <- model$all_model_metrics
-  
+
   if (is.null(all_metrics) || nrow(all_metrics) == 0L) {
     return(out)
   }
-  
+
   for (i in seq_len(nrow(all_metrics))) {
     v <- all_metrics$variable[i]
     form <- if ("type" %in% names(all_metrics)) all_metrics$type[i] else NA_character_
-    
+
     if (is.na(v) || !nzchar(v)) next
-    
+
     if (crit_used == "pvalue") {
       metric <- if ("pvalue" %in% names(all_metrics)) all_metrics$pvalue[i] else NA_real_
       metric_adj <- if (adjusting &&
@@ -1063,7 +1224,7 @@ mfpi_plot_subtitle_lookup <- function(model) {
       out[[v]] <- list(type = form, metric = metric, label = "dBIC")
     }
   }
-  
+
   out
 }
 
@@ -1097,17 +1258,17 @@ mfpi_plot_subtitle_lookup <- function(model) {
 #' @noRd
 mfpi_plot_group_metadata <- function(model) {
   group_var <- model$group_var
-  
+
   if (is.null(group_var) || length(group_var) != 1L || is.na(group_var) ||
       !nzchar(group_var)) {
     stop("! The MFPI object must store a valid `group_var`.", call. = FALSE)
   }
-  
+
   # Prefer the explicit level map when available. This is the most robust
   # representation because it keeps display labels, input values, and internal
   # modelling codes together in one object.
   level_map <- model$group_level_map
-  
+
   if (!is.null(level_map) &&
       is.data.frame(level_map) &&
       all(c("original", "internal") %in% names(level_map))) {
@@ -1117,20 +1278,20 @@ mfpi_plot_group_metadata <- function(model) {
     original <- model$group_levels_original
     internal <- model$group_levels_new
   }
-  
+
   if (is.null(original) || length(original) < 2L) {
     stop(
       "! `model$group_levels_original` must contain at least two group levels.",
       call. = FALSE
     )
   }
-  
+
   # Older fitted objects may not contain stored internal levels. Reconstruct the
   # default internal coding used by MFPI so plotting remains backward-compatible.
   if (is.null(internal) || length(internal) != length(original)) {
     internal <- seq_along(original) - 1L
   }
-  
+
   list(
     group_var = as.character(group_var),
     original  = as.character(original),
@@ -1162,10 +1323,157 @@ mfpi_plot_group_metadata <- function(model) {
 mfpi_plot_original_group_label <- function(group_meta, internal_code) {
   internal_code <- as.character(internal_code)[1L]
   hit <- match(internal_code, group_meta$internal)
-  
+
   if (!is.na(hit)) {
     return(group_meta$original[hit])
   }
-  
+
   internal_code
+}
+
+#' Extract the Main-Effects Group Contrast for a Variable
+#'
+#' Attempts to locate a preserved main-effects (no-interaction) model for the
+#' given continuous variable within an \code{mfpi} object and returns a named
+#' numeric vector giving the estimated group main-effect contrast
+#' \eqn{\hat\alpha^{(M)}} for each internal comparison group code relative to
+#' the reference group.
+#'
+#' The function is deliberately tolerant. It looks in several plausible
+#' locations, and returns \code{NULL} without warning when no main-effects
+#' model can be located. This allows \code{plot.mfpi()} to silently omit the
+#' \eqn{\hat\alpha^{(M)}} reference line for older fitted objects that did not
+#' preserve the main-effects model, while continuing to draw it when the model
+#' is available.
+#'
+#' Searched locations, in order:
+#' \enumerate{
+#'   \item \code{model$best_main_model[[var]]$fit}
+#'   \item \code{model$best_main_model[[var]]}
+#'   \item \code{model$var_winners[[var]]$fit$test_results$main_model$fit}
+#'   \item \code{model$var_winners[[var]]$fit$test_results$main_model}
+#' }
+#'
+#' Group-dummy coefficients are identified by name, matching the naming
+#' convention used elsewhere in \pkg{mfp2}. For a grouping variable
+#' \code{group_var} coded internally as \code{0, 1, ..., K - 1}, the main
+#' effect of internal code \code{k} is expected to appear as a coefficient
+#' named \code{"<group_var><k>"} (for example, \code{"rx1"} for a binary
+#' contrast). Non-matching coefficients are ignored.
+#'
+#' @param model An \code{mfpi} object.
+#' @param var Character scalar naming the continuous variable of interest.
+#' @param group_var_name Character scalar naming the grouping variable.
+#' @param comparison_codes Character vector of internal comparison-group codes
+#'   for which to extract the main-effect estimate.
+#'
+#' @return A list with two named numeric vectors, each with names equal to
+#'   \code{comparison_codes}:
+#'   \describe{
+#'     \item{\code{estimate}}{The estimated group main-effect contrast for
+#'       each comparison group.}
+#'     \item{\code{se}}{The corresponding standard error, obtained from the
+#'       diagonal of the variance-covariance matrix of the main-effects model.
+#'       Elements are \code{NA} when the standard error cannot be extracted.}
+#'   }
+#'   Returns \code{NULL} if no main-effects model can be located.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
+                                       comparison_codes) {
+  # ---------------------------------------------------------------------------
+  # Locate the fitted main-effects model
+  # ---------------------------------------------------------------------------
+  candidates <- list(
+    tryCatch(model$best_main_model[[var]]$fit, error = function(e) NULL),
+    tryCatch(model$best_main_model[[var]],      error = function(e) NULL),
+    tryCatch(model$var_winners[[var]]$fit$test_results$main_model$fit,
+             error = function(e) NULL),
+    tryCatch(model$var_winners[[var]]$fit$test_results$main_model,
+             error = function(e) NULL)
+  )
+
+  main_fit <- NULL
+  for (cand in candidates) {
+    if (!is.null(cand)) {
+      main_fit <- cand
+      break
+    }
+  }
+  if (is.null(main_fit)) return(NULL)
+
+  # ---------------------------------------------------------------------------
+  # Extract coefficients defensively
+  # ---------------------------------------------------------------------------
+  cf <- tryCatch(stats::coef(main_fit), error = function(e) NULL)
+  if (is.null(cf) && is.list(main_fit)) {
+    # Some internal fit objects wrap the model; try likely component names.
+    for (comp in c("coefficients", "coef", "beta")) {
+      if (!is.null(main_fit[[comp]])) {
+        cf <- main_fit[[comp]]
+        break
+      }
+    }
+  }
+  if (is.null(cf) || length(cf) == 0L || is.null(names(cf))) return(NULL)
+
+  # ---------------------------------------------------------------------------
+  # Extract variance-covariance matrix for standard errors.
+  # Some internal fit objects stored by mfpi() have the structure of a glm/lm
+  # but are stored as plain lists without a class attribute. Try vcov() first;
+  # if that fails, check whether the object looks like an unclassed glm/lm
+  # (has qr, residuals, coefficients) and temporarily assign the class so that
+  # stats::vcov.glm / vcov.lm can succeed.
+  # ---------------------------------------------------------------------------
+  vc <- tryCatch(stats::vcov(main_fit), error = function(e) NULL)
+
+  if (is.null(vc) && is.list(main_fit) && is.null(class(main_fit)) ||
+      (is.null(vc) && is.list(main_fit) && identical(class(main_fit), "list"))) {
+    glm_components <- c("coefficients", "residuals", "qr", "rank",
+                        "family", "deviance", "df.residual")
+    if (all(glm_components %in% names(main_fit))) {
+      tmp <- main_fit
+      class(tmp) <- c("glm", "lm")
+      vc <- tryCatch(stats::vcov(tmp), error = function(e) NULL)
+    } else {
+      lm_components <- c("coefficients", "residuals", "qr", "rank",
+                         "df.residual")
+      if (all(lm_components %in% names(main_fit))) {
+        tmp <- main_fit
+        class(tmp) <- "lm"
+        vc <- tryCatch(stats::vcov(tmp), error = function(e) NULL)
+      }
+    }
+  }
+
+  # ---------------------------------------------------------------------------
+  # Match group-dummy coefficient names for each requested comparison code
+  # ---------------------------------------------------------------------------
+  comparison_codes <- as.character(comparison_codes)
+  out_est <- stats::setNames(rep(NA_real_, length(comparison_codes)),
+                             comparison_codes)
+  out_se  <- stats::setNames(rep(NA_real_, length(comparison_codes)),
+                             comparison_codes)
+
+  for (code in comparison_codes) {
+    nm <- paste0(group_var_name, code)
+    if (nm %in% names(cf)) {
+      value <- unname(cf[[nm]])
+      if (is.numeric(value) && length(value) == 1L && !is.na(value)) {
+        out_est[[code]] <- value
+      }
+      # Extract SE from the diagonal of vcov if available.
+      if (!is.null(vc) && nm %in% rownames(vc) && nm %in% colnames(vc)) {
+        var_value <- vc[nm, nm]
+        if (is.numeric(var_value) && length(var_value) == 1L &&
+            is.finite(var_value) && var_value >= 0) {
+          out_se[[code]] <- sqrt(var_value)
+        }
+      }
+    }
+  }
+
+  if (all(is.na(out_est))) return(NULL)
+  list(estimate = out_est, se = out_se)
 }

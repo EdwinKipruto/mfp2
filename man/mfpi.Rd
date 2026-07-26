@@ -52,6 +52,7 @@ mfpi(x, ...)
   verbose = TRUE,
   digits = 3,
   term_groups = NULL,
+  fitter = c("base", "fastglm"),
   ...
 )
 
@@ -97,6 +98,7 @@ mfpi(x, ...)
   p_adjust_method = "none",
   verbose = TRUE,
   digits = 3,
+  fitter = c("base", "fastglm"),
   ...
 )
 }
@@ -111,8 +113,9 @@ or logical.}
 error.}
 
 \item{y}{For \code{mfpi.default()}, the response. Supply a finite numeric vector
-for Gaussian or Poisson models, a valid binomial response for binomial
-models, or a right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox models. It
+for Gaussian models, non-negative counts for Poisson models, non-negative
+integer counts for negative-binomial models, a valid binomial response for
+binomial models, or a right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox models. It
 must have the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical grouping
@@ -217,9 +220,10 @@ expression using columns of \code{data} is also accepted. At least five
 observations and two groups must remain.}
 
 \item{family}{The model family. Use \code{"gaussian"}, \code{"binomial"},
-\code{"poisson"}, or \code{"cox"}; a GLM family function; or a GLM family object.
-Custom GLM links are supported through family objects. Cox models require
-\code{family = "cox"}.}
+\code{"poisson"}, \code{"negbin"}, or \code{"cox"}; a GLM family function; or a GLM
+family object. Custom GLM links are supported through family objects.
+Negative binomial models require \code{family = "negbin"} and
+\code{fitter = "fastglm"}. Cox models require \code{family = "cox"}.}
 
 \item{criterion}{The selection criterion used for both the MFP adjustment
 model and the interaction comparisons: \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
@@ -358,6 +362,14 @@ are not eligible for FP transformation searches and cannot be used in
 \code{force_max_fp_vars}. In \code{mfpi.formula()}, factor predictors are grouped
 automatically; this argument is not needed.}
 
+\item{fitter}{Fitting backend for repeated GLM candidate fits. \code{"base"}
+(default) uses \code{\link[stats:glm.fit]{stats::glm.fit()}}. \code{"fastglm"} uses the compiled
+\code{fastglm::fastglm.default()} fitter and may be faster during FP candidate
+search. The optional \code{fastglm} package must be installed; ordinary GLM
+fits fall back to \code{"base"} with a warning if it is unavailable or a fit
+fails. Cox models are unaffected. Negative binomial models are available
+only with \code{fitter = "fastglm"} and have no base fallback.}
+
 \item{formula}{For \code{mfpi.formula()}, a model formula containing the response,
 \code{group_var}, the variables in \code{cont_vars}, and any adjustment variables.
 Use \code{fp()} or \code{fp2()} for variable-specific adjustment-model settings.
@@ -403,7 +415,7 @@ one or more continuous variables differs across the levels of a categorical
 grouping variable.
 }
 \details{
-The function supports Gaussian, binomial, Poisson, and Cox models. Nonlinear
+The function supports Gaussian, binomial, Poisson, negative-binomial, and Cox models. Nonlinear
 relationships can be modelled with fractional polynomials.
 
 \code{mfpi()} evaluates each variable in \code{cont_vars} separately. For every

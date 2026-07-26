@@ -1,7 +1,7 @@
 # =============================================================================
 # Comprehensive tests for the mfp2 package
 # =============================================================================
-# Consolidated v12: includes MFPI print compatibility and ACD regressions.
+# Consolidated v15: comprehensive public negative-binomial coverage.
 #
 # Version 6 preprocessing regression coverage
 # --------------------------------------------
@@ -17,7 +17,7 @@
 # together, for example 8.1.1, 8.1.2, ... for prediction-equivalence checks.
 #
 # Sections:
-#   1.  mfp2.default() - Gaussian, binomial, Poisson, Cox
+#   1.  mfp2.default() - Gaussian, binomial, Poisson, negative binomial, Cox, fitter
 #   2.  mfp2.formula() - formula parsing, fp()/fp2(), factor handling, strata
 #   3.  Family and response validation
 #   4.  Preprocessing - shift, scale, centering
@@ -87,7 +87,7 @@ expect_mfp2_glm_parameters_equal <- function(fit_mfp2,
   coef_glm <- stats::coef(fit_glm)
   vcov_mfp2 <- stats::vcov(fit_mfp2)
   vcov_glm <- stats::vcov(fit_glm)
-  
+
   expect_length(coef_mfp2, length(coef_glm))
   expect_equal(dim(vcov_mfp2), dim(vcov_glm))
   expect_equal(unname(coef_mfp2), unname(coef_glm), tolerance = tolerance)
@@ -99,18 +99,129 @@ expect_mfp2_glm_parameters_equal <- function(fit_mfp2,
   )
 }
 
+# Generate stable negative-binomial data for public-interface tests. Keeping the
+# signal moderate avoids boundary estimates of theta and makes comparisons with
+# an independent MASS::glm.nb() fit reproducible.
+make_negbin_test_data <- function(n = 240L, seed = 104L) {
+  set.seed(seed)
+  dat <- data.frame(
+    x1 = stats::runif(n, 0.5, 2.5),
+    x2 = stats::rnorm(n),
+    x3 = stats::rbinom(n, 1L, 0.4)
+  )
+  eta <- 0.25 + 0.35 * dat$x1 - 0.25 * dat$x2 + 0.30 * dat$x3
+  dat$y <- stats::rnbinom(n, mu = exp(eta), size = 3)
+  dat
+}
+
+# Cache one independent linear negative-binomial reference problem. Several
+# public-method tests use the same fit so that comprehensive NB coverage does
+# not repeatedly run the full MFP algorithm.
+.negbin_reference_cache <- new.env(parent = emptyenv())
+
+get_negbin_reference_fits <- function() {
+  if (!exists("fits", envir = .negbin_reference_cache, inherits = FALSE)) {
+    dat <- make_negbin_test_data(n = 320L, seed = 1103L)
+
+    fit_mfp2 <- mfp2(
+      y ~ x1 + x2 + x3,
+      data = dat,
+      family = "negbin",
+      fitter = "fastglm",
+      cycles = 1,
+      df = 1,
+      select = 1,
+      alpha = 1,
+      xorder = "original",
+      shift = 0,
+      scale = 1,
+      center = FALSE,
+      verbose = FALSE
+    )
+
+    fit_mass <- MASS::glm.nb(
+      y ~ x1 + x2 + x3,
+      data = dat,
+      link = log,
+      control = stats::glm.control(maxit = 100L)
+    )
+
+    fit_mass_null <- MASS::glm.nb(
+      y ~ 1,
+      data = dat,
+      link = log,
+      control = stats::glm.control(maxit = 100L)
+    )
+
+    assign(
+      "fits",
+      list(
+        data = dat,
+        mfp2 = fit_mfp2,
+        mass = fit_mass,
+        mass_null = fit_mass_null
+      ),
+      envir = .negbin_reference_cache
+    )
+  }
+
+  get("fits", envir = .negbin_reference_cache, inherits = FALSE)
+}
+
+expect_negbin_mfp2_mass_equal <- function(fit_mfp2,
+                                          fit_mass,
+                                          coefficient_tolerance = 1e-4,
+                                          likelihood_tolerance = 1e-3) {
+  expect_equal(
+    unname(stats::coef(fit_mfp2)),
+    unname(stats::coef(fit_mass)),
+    tolerance = coefficient_tolerance
+  )
+  expect_equal(
+    unname(stats::vcov(fit_mfp2)),
+    unname(stats::vcov(fit_mass)),
+    tolerance = coefficient_tolerance
+  )
+  expect_equal(
+    unname(fit_mfp2$fitted.values),
+    unname(stats::fitted(fit_mass)),
+    tolerance = coefficient_tolerance
+  )
+  expect_equal(
+    unname(fit_mfp2$deviance),
+    unname(stats::deviance(fit_mass)),
+    tolerance = likelihood_tolerance
+  )
+  expect_equal(
+    fit_mfp2$theta,
+    fit_mass$theta,
+    tolerance = likelihood_tolerance
+  )
+  expect_equal(
+    fit_mfp2$mfp_logl,
+    as.numeric(stats::logLik(fit_mass)),
+    tolerance = likelihood_tolerance
+  )
+  expect_equal(
+    fit_mfp2$aic,
+    stats::AIC(fit_mass),
+    tolerance = likelihood_tolerance
+  )
+}
+
 # =============================================================================
 # 1. mfp2.default() — core fitting across families
 # =============================================================================
 
-# Test purpose: Fits the default Gaussian model and verifies core classes, 
+# Test purpose: Fits the default Gaussian model and verifies core classes,
 # convergence, and MFP metadata are present.
 test_that("mfp2.default() returns an mfp2 object for Gaussian family", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_s3_class(fit, "glm")
   expect_equal(fit$family_string, "gaussian")
+  expect_identical(fit$fitter, "base")
   expect_true(fit$convergence_mfp)
   expect_true(is.data.frame(fit$fp_terms))
   expect_true(is.list(fit$fp_powers))
@@ -125,9 +236,9 @@ test_that("mfp2.default() returns correct object for binomial family", {
   data("pima", package = "mfp2")
   x_pima <- as.matrix(pima[, c("glucose", "bmi", "age", "pregnant")])
   y_pima <- pima$y
-  
+
   fit <- mfp2(x_pima, y_pima, family = "binomial", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_s3_class(fit, "glm")
   expect_equal(fit$family_string, "binomial")
@@ -140,14 +251,14 @@ test_that("mfp2.default() works with two-level factor binomial response", {
   data("pima", package = "mfp2")
   x_pima <- as.matrix(pima[, c("glucose", "bmi", "age")])
   y_factor <- factor(pima$y, levels = c(0, 1), labels = c("no", "yes"))
-  
+
   fit <- mfp2(x_pima, y_factor, family = "binomial", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(fit$family_string, "binomial")
 })
 
-# Test purpose: Checks that grouped binomial counts supplied as successes/failures 
+# Test purpose: Checks that grouped binomial counts supplied as successes/failures
 # are accepted.
 test_that("mfp2.default() works with grouped binomial response", {
   set.seed(42)
@@ -156,7 +267,7 @@ test_that("mfp2.default() works with grouped binomial response", {
   trials <- sample(10:20, n, replace = TRUE)
   successes <- rbinom(n, trials, plogis(-2 + 0.1 * x[, 1]))
   y <- cbind(successes, trials - successes)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -175,7 +286,7 @@ test_that("mfp2.default() works with grouped binomial response", {
     y = y,
     family = stats::binomial()
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(fit$family_string, "binomial")
   expect_length(stats::coef(fit), length(fit_glm$coefficients))
@@ -186,18 +297,97 @@ test_that("mfp2.default() works with grouped binomial response", {
   )
 })
 
-# Test purpose: Fits a Poisson model on simulated count data and checks the 
+# Test purpose: Fits a Poisson model on simulated count data and checks the
 # resolved family.
 test_that("mfp2.default() works with Poisson family", {
   set.seed(1)
   n <- 200
   x <- cbind(x1 = runif(n, 1, 10), x2 = runif(n, 1, 5))
   y <- rpois(n, exp(0.5 + 0.1 * x[, 1]))
-  
+
   fit <- mfp2(x, y, family = "poisson", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(fit$family_string, "poisson")
+})
+
+# Test purpose: Fits a negative-binomial model through the public matrix
+# interface and checks the family-specific metadata returned by mfp2().
+test_that("mfp2.default() works with negative-binomial family", {
+  skip_if_not_installed("fastglm")
+
+  dat <- make_negbin_test_data(n = 180L, seed = 1101L)
+  x <- as.matrix(dat[, c("x1", "x2", "x3")])
+
+  fit <- mfp2(
+    x,
+    dat$y,
+    family = "negbin",
+    fitter = "fastglm",
+    cycles = 1,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    xorder = "original",
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_s3_class(fit, "fastglm_nb")
+  expect_identical(fit$family_string, "negbin")
+  expect_identical(fit$fitter, "fastglm")
+  expect_true(is.finite(fit$theta) && fit$theta > 0)
+  expect_true(is.finite(fit$mfp_logl))
+  expect_true(is.finite(fit$null_logl))
+  expect_true(fit$convergence_mfp)
+  expect_true(all(fit$fp_terms[c("x1", "x2", "x3"), "selected"]))
+  expect_equal(fit$mfp_df, fit$rank + 1L)
+  expect_equal(fit$aic, -2 * fit$mfp_logl + 2 * fit$mfp_df,
+               tolerance = 1e-10)
+})
+
+# Test purpose: Exercises the repeated FP candidate-search path for negative
+# binomial rather than only the forced-linear special case.
+test_that("negative-binomial fitting completes an FP candidate search", {
+  skip_if_not_installed("fastglm")
+
+  set.seed(1102)
+  n <- 220L
+  x <- cbind(
+    x1 = stats::runif(n, 0.5, 3),
+    x2 = stats::rbinom(n, 1L, 0.45)
+  )
+  mu <- exp(0.2 + 0.8 * log(x[, "x1"]) + 0.35 * x[, "x2"])
+  y <- stats::rnbinom(n, mu = mu, size = 3.5)
+
+  fit <- mfp2(
+    x,
+    y,
+    family = "negbin",
+    fitter = "fastglm",
+    cycles = 5,
+    df = c(x1 = 4, x2 = 1),
+    select = 1,
+    alpha = 0.05,
+    xorder = "original",
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_s3_class(fit, "fastglm_nb")
+  expect_true(fit$convergence_mfp)
+  expect_true(is.finite(fit$theta) && fit$theta > 0)
+  expect_true(is.finite(fit$mfp_logl))
+  expect_true(is.finite(fit$null_logl))
+  expect_true(fit$fp_terms["x1", "selected"])
+  expect_true(length(fit$fp_powers[["x1"]]) %in% c(1L, 2L))
+  expect_equal(fit$mfp_df, fit$rank + 1L)
 })
 
 # Test purpose: Fits a Cox proportional hazards model and checks Cox-specific
@@ -206,13 +396,64 @@ test_that("mfp2.default() works with Cox family", {
   data("gbsg", package = "mfp2")
   x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes", "pgr", "er")])
   y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
-  
+
   fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_s3_class(fit, "coxph")
   expect_equal(fit$family_string, "cox")
   expect_true(fit$convergence_mfp)
+})
+
+# Test purpose: Checks public validation of the fitter argument.
+test_that("mfp2 rejects invalid fitter values", {
+  expect_error(
+    mfp2(
+      x_prostate,
+      y_prostate,
+      fitter = "unknown",
+      verbose = FALSE
+    ),
+    "one of"
+  )
+})
+
+# Test purpose: Negative binomial has no stats::glm.fit() backend capable of
+# estimating theta, so requesting the base fitter must fail clearly.
+test_that("negative binomial rejects the base fitter", {
+  x <- cbind(x1 = seq_len(8L), x2 = rep(c(0, 1), 4L))
+  y <- c(0, 1, 2, 3, 5, 2, 1, 4)
+
+  expect_error(
+    mfp2(
+      x,
+      y,
+      family = "negbin",
+      fitter = "base",
+      verbose = FALSE
+    ),
+    "available only with.*fitter = \"fastglm\""
+  )
+})
+
+# Test purpose: Confirms that NB count validation is enforced through the public
+# mfp2 interface, not only by the internal validation helper.
+test_that("negative binomial rejects non-integer responses publicly", {
+  skip_if_not_installed("fastglm")
+
+  x <- cbind(x1 = seq_len(8L), x2 = rep(c(0, 1), 4L))
+  y <- c(0, 1, 2, 3.5, 5, 2, 1, 4)
+
+  expect_error(
+    mfp2(
+      x,
+      y,
+      family = "negbin",
+      fitter = "fastglm",
+      verbose = FALSE
+    ),
+    "integer"
+  )
 })
 
 # -----------------------------------------------------------------------------
@@ -224,7 +465,7 @@ test_that("mfp2.default() works with Cox family", {
 test_that("mfp2.default() groups manually supplied dummy columns", {
   set.seed(2101)
   n <- 180
-  
+
   group <- factor(rep(c("A", "B", "C"), length.out = n))
   group_mm <- stats::model.matrix(~ group)[, -1L, drop = FALSE]
   x <- cbind(
@@ -235,7 +476,7 @@ test_that("mfp2.default() groups manually supplied dummy columns", {
     0.8 * x[, "groupB"] -
     0.5 * x[, "groupC"] +
     rnorm(n, sd = 0.3)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -244,7 +485,7 @@ test_that("mfp2.default() groups manually supplied dummy columns", {
     term_groups = list(group = c("groupB", "groupC")),
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_identical(
     fit$term_to_columns[["group"]],
@@ -259,7 +500,7 @@ test_that("mfp2.default() groups manually supplied dummy columns", {
 test_that("grouped matrix columns are retained or removed together", {
   set.seed(2102)
   n <- 180
-  
+
   group <- factor(rep(c("A", "B", "C"), length.out = n))
   group_mm <- stats::model.matrix(~ group)[, -1L, drop = FALSE]
   x <- cbind(
@@ -267,14 +508,14 @@ test_that("grouped matrix columns are retained or removed together", {
     group_mm
   )
   y <- 0.5 * x[, "x1"] + rnorm(n)
-  
+
   fit <- mfp2(
     x,
     y,
     term_groups = list(group = c("groupB", "groupC")),
     verbose = FALSE
   )
-  
+
   present <- c("groupB", "groupC") %in% colnames(fit$x_original)
   expect_true(all(present) || !any(present))
   expect_identical(all(present), isTRUE(fit$fp_terms["group", "selected"]))
@@ -294,7 +535,7 @@ test_that("grouped ordered-factor columns are linear under scalar df default", {
   )
   y <- 0.4 * x[, "x1"] + 0.8 * stage_mm[, 1L] -
     0.5 * stage_mm[, 2L] + stats::rnorm(n, sd = 0.3)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -302,7 +543,7 @@ test_that("grouped ordered-factor columns are linear under scalar df default", {
     keep = "stage",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(as.numeric(fit$fp_terms["stage", "df_initial"]), 1)
   expect_true(fit$fp_terms["stage", "selected"])
@@ -323,7 +564,7 @@ test_that("grouped matrix columns default to scale one", {
   )
   y <- 0.4 * x[, "x1"] + 0.001 * stage_mm[, 1L] -
     0.5 * stage_mm[, 2L] + stats::rnorm(n, sd = 0.3)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -331,7 +572,7 @@ test_that("grouped matrix columns default to scale one", {
     keep = "stage",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(as.numeric(fit$transformations["stage", "scale"]), 1)
   expect_true(fit$fp_terms["stage", "selected"])
@@ -347,7 +588,7 @@ test_that("grouped matrix terms report one final df per estimable coefficient", 
   x <- stats::model.matrix(~ group)[, -1L, drop = FALSE]
   y <- 0.9 * x[, "groupB"] - 0.6 * x[, "groupC"] +
     stats::rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -357,13 +598,13 @@ test_that("grouped matrix terms report one final df per estimable coefficient", 
     df = 1,
     verbose = FALSE
   )
-  
+
   transformed_columns <- paste0(fit$term_to_columns[["group"]], ".1")
   coefficient_columns <- unname(
     fit$transformed_to_model_columns[transformed_columns]
   )
   expected_df <- sum(!is.na(stats::coef(fit)[coefficient_columns]))
-  
+
   expect_equal(expected_df, 2)
   expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), expected_df)
 })
@@ -389,7 +630,7 @@ test_that("term metadata expansion is consistent for grouped and singleton terms
     spike_decision = c(x1 = 1L, group = 1L, omitted = 1L),
     acd_parameter = list(x1 = acd_fit, group = acd_fit, omitted = acd_fit)
   )
-  
+
   expect_identical(
     unname(expanded$terms),
     c("group", "x1", "group", "omitted")
@@ -400,7 +641,7 @@ test_that("term metadata expansion is consistent for grouped and singleton terms
   expect_identical(expanded$powers[["x1"]], c(1, 2))
   expect_true(expanded$center[["groupC"]])
   expect_true(expanded$center[["x1"]])
-  
+
   grouped_columns <- c("groupC", "groupB", "omittedB")
   expect_false(any(expanded$acdx[grouped_columns]))
   expect_false(any(expanded$zero[grouped_columns]))
@@ -415,7 +656,7 @@ test_that("term metadata expansion is consistent for grouped and singleton terms
     is.null,
     logical(1L)
   )))
-  
+
   expect_true(expanded$acdx[["x1"]])
   expect_true(expanded$zero[["x1"]])
   expect_true(expanded$catzero[["x1"]])
@@ -450,7 +691,7 @@ test_that("grouped final df excludes non-estimable coefficients", {
       "groupC.1" = NA_real_
     )
   )
-  
+
   expect_equal(as.numeric(fp_terms["group", "df_final"]), 1)
 })
 
@@ -467,10 +708,57 @@ test_that("mfp2.formula() returns an mfp2 object", {
       fp(bph) + fp(cp),
     data = prostate, verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$convergence_mfp)
   expect_true(is.data.frame(fit$fp_terms))
+})
+
+# Test purpose: With all predictors retained and restricted to linear effects,
+# verifies the complete NB fit against the independent MASS implementation,
+# including covariance, likelihood, AIC, theta, model df, and null likelihood.
+test_that("linear negative-binomial mfp2 agrees with MASS::glm.nb()", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  fits <- get_negbin_reference_fits()
+  fit_mfp2 <- fits$mfp2
+  fit_mass <- fits$mass
+
+  expect_s3_class(fit_mfp2, "mfp2")
+  expect_s3_class(fit_mfp2, "fastglm_nb")
+  expect_identical(fit_mfp2$family_string, "negbin")
+  expect_identical(fit_mfp2$fitter, "fastglm")
+  expect_identical(fit_mfp2$family$link, "log")
+  expect_true(all(fit_mfp2$fp_terms[c("x1", "x2", "x3"), "selected"]))
+  expect_true(all(vapply(
+    fit_mfp2$fp_powers[c("x1", "x2", "x3")],
+    function(p) identical(unname(p), 1),
+    logical(1L)
+  )))
+
+  expect_negbin_mfp2_mass_equal(fit_mfp2, fit_mass)
+
+  # Theta is an estimated nuisance parameter. It contributes to AIC/model df,
+  # but not to regression residual degrees of freedom.
+  expect_equal(fit_mfp2$mfp_df, fit_mfp2$rank + 1L)
+  expect_equal(
+    fit_mfp2$aic,
+    -2 * fit_mfp2$mfp_logl + 2 * fit_mfp2$mfp_df,
+    tolerance = 1e-10
+  )
+  # With df = 1 and select = 1, the full-linear reference and final MFP model
+  # are the same statistical model.
+  expect_equal(fit_mfp2$linear_logl, fit_mfp2$mfp_logl, tolerance = 1e-8)
+  expect_equal(fit_mfp2$linear_df, fit_mfp2$mfp_df)
+
+  # mfp2 defines null_logl using a separately fitted intercept-only NB model,
+  # including re-estimation of theta, matching glm.nb(y ~ 1).
+  expect_equal(
+    fit_mfp2$null_logl,
+    as.numeric(stats::logLik(fits$mass_null)),
+    tolerance = 1e-3
+  )
 })
 
 # Test purpose: Compares selected variables from equivalent matrix and formula
@@ -482,20 +770,20 @@ test_that("default and formula interfaces give consistent selected variables", {
       fp(bph) + fp(cp),
     data = prostate, verbose = FALSE
   )
-  
+
   sel_default <- sort(get_selected_variable_names(fit_default))
   sel_formula <- sort(get_selected_variable_names(fit_formula))
   expect_equal(sel_default, sel_formula)
 })
 
-# Test purpose: Checks that df specified inside fp() is propagated to the fitted 
+# Test purpose: Checks that df specified inside fp() is propagated to the fitted
 # term metadata.
 test_that("fp() applies per-variable df correctly", {
   fit <- mfp2(
     lpsa ~ fp(age, df = 2) + fp(svi, df = 1) + fp(cavol, df = 4),
     data = prostate, verbose = FALSE
   )
-  
+
   # svi is binary so df should be 1
   expect_equal(as.numeric(fit$fp_terms["svi", "df_initial"]), 1)
 })
@@ -507,11 +795,11 @@ test_that("fp2() is an alias for fp()", {
     lpsa ~ fp2(age) + fp2(cavol) + fp2(svi, df = 1),
     data = prostate, verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
 })
 
-# Test purpose: Checks that formula-based Cox fitting works with survival responses 
+# Test purpose: Checks that formula-based Cox fitting works with survival responses
 # and covariates.
 test_that("formula interface works with Cox family and strata", {
   data("gbsg", package = "mfp2")
@@ -522,7 +810,7 @@ test_that("formula interface works with Cox family and strata", {
     family = "cox",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_equal(fit$family_string, "cox")
 })
@@ -532,25 +820,25 @@ test_that("formula interface works with Cox family and strata", {
 test_that("formula interface keeps an unordered factor as one grouped term", {
   set.seed(101)
   n <- 120
-  
+
   dat <- data.frame(
     y = rnorm(n),
     x = runif(n, 1, 10),
     group = factor(rep(c("A", "B", "C"), length.out = n))
   )
-  
+
   fit <- mfp2(
     y ~ fp(x) + group,
     data = dat,
     keep = "group",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true("group" %in% rownames(fit$fp_terms))
   expect_true(fit$fp_terms["group", "selected"])
   expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), 2)
-  
+
   expect_true("group" %in% names(fit$term_to_columns))
   expect_setequal(
     fit$term_to_columns[["group"]],
@@ -567,7 +855,7 @@ test_that("formula interface keeps an unordered factor as one grouped term", {
 test_that("2.1 Formula interface supports ordered factors as grouped terms", {
   set.seed(2011)
   n <- 120
-  
+
   dat <- data.frame(
     y = rnorm(n),
     x = runif(n, 1, 10),
@@ -576,21 +864,21 @@ test_that("2.1 Formula interface supports ordered factors as grouped terms", {
       levels = c("low", "medium", "high")
     )
   )
-  
+
   fit <- mfp2(
     y ~ fp(x) + ordered_group,
     data = dat,
     keep = "ordered_group",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true("ordered_group" %in% names(fit$term_to_columns))
   expect_length(fit$term_to_columns[["ordered_group"]], 2L)
   expect_true(fit$fp_terms["ordered_group", "selected"])
   expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_initial"]), 1)
   expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_final"]), 2)
-  
+
   # Continuous-only extensions are disabled for the complete factor block.
   expect_false(fit$fp_terms["ordered_group", "acd"])
   expect_false(fit$fp_terms["ordered_group", "zero"])
@@ -604,24 +892,24 @@ test_that("2.1 Formula interface supports ordered factors as grouped terms", {
 # data, which contains both ordinal and nominal three-level predictors.
 test_that("formula fit with grouped ART terms completes final transformation", {
   data("art", package = "mfp2")
-  
+
   # ART stores x4/x9 as numeric level codes. Convert them explicitly so this
   # regression test exercises formula-factor grouping rather than numeric
   # low-cardinality handling.
   art$x4 <- ordered(art$x4)
   art$x9 <- factor(art$x9)
-  
+
   fit <- mfp2(
     y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
     data = art,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$convergence_mfp)
   expect_true(is.logical(fit$catzero))
   expect_false(anyNA(fit$catzero))
-  
+
   expect_true(all(c("x4", "x9") %in% names(fit$term_to_columns)))
   expect_gt(length(fit$term_to_columns[["x4"]]), 1L)
   expect_gt(length(fit$term_to_columns[["x9"]]), 1L)
@@ -645,7 +933,7 @@ test_that("predict.mfp2 works after fitting with strata()", {
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[stats::complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
@@ -655,15 +943,15 @@ test_that("predict.mfp2 works after fitting with strata()", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   nd <- dat[1:5, c("age", "sex", "inst"), drop = FALSE]
-  
+
   p <- predict(
     fit,
     newdata = nd,
     type = "lp"
   )
-  
+
   expect_length(p, 5)
   expect_true(all(is.finite(p)))
 })
@@ -672,28 +960,28 @@ test_that("predict.mfp2 works after fitting with strata()", {
 # 3. Family and response validation
 # =============================================================================
 
-# Test purpose: Checks that supported character families, family functions, and 
+# Test purpose: Checks that supported character families, family functions, and
 # family objects are normalized correctly.
 test_that("normalize_family_argument() accepts valid families", {
   # Character inputs
-  for (fam in c("gaussian", "binomial", "poisson", "cox")) {
+  for (fam in c("gaussian", "binomial", "poisson", "cox", "negbin")) {
     result <- normalize_family_argument(fam)
     expect_equal(result$family_string, fam)
   }
-  
+
   # Function inputs
   result <- normalize_family_argument(stats::gaussian)
   expect_equal(result$family_string, "gaussian")
-  
+
   result <- normalize_family_argument(stats::binomial)
   expect_equal(result$family_string, "binomial")
-  
+
   # Family object input
   result <- normalize_family_argument(stats::binomial(link = "probit"))
   expect_equal(result$family_string, "binomial")
 })
 
-# Test purpose: Checks that unsupported, ambiguous, or non-scalar family 
+# Test purpose: Checks that unsupported, ambiguous, or non-scalar family
 # specifications are rejected.
 test_that("normalize_family_argument() rejects invalid families", {
   expect_error(normalize_family_argument("gamma"), "Invalid family")
@@ -709,28 +997,50 @@ test_that("cox must be specified as character string, not function", {
   expect_error(normalize_family_argument("cox")$family_string, NA)
 })
 
-# Test purpose: Checks that invalid response values or response classes are 
+# Test purpose: Checks that invalid response values or response classes are
 # rejected for each family.
 test_that("validate_family_response() catches bad responses", {
   # Gaussian: must be numeric
   expect_error(validate_family_response("abc", "gaussian", 3))
   expect_error(validate_family_response(c(1, NA, 3), "gaussian", 3))
-  
+
   # Binomial: numeric must be in [0, 1]
   expect_error(validate_family_response(c(0, 2, 1), "binomial", 3))
   expect_error(validate_family_response(c(-0.1, 0.5, 0.9), "binomial", 3))
-  
+
   # Poisson: must be non-negative
   expect_error(validate_family_response(c(-1, 0, 1), "poisson", 3))
-  
+
+  # Negative binomial: must be finite non-negative integer counts
+  expect_error(
+    validate_family_response(c(-1, 0, 1), "negbin", 3),
+    "non-negative"
+  )
+  expect_error(
+    validate_family_response(c(0, 1.5, 2), "negbin", 3),
+    "integer"
+  )
+  expect_error(
+    validate_family_response(c(0, NA, 2), "negbin", 3),
+    "missing"
+  )
+  expect_error(
+    validate_family_response(c(0, Inf, 2), "negbin", 3),
+    "finite"
+  )
+  expect_error(
+    validate_family_response(c("0", "1", "2"), "negbin", 3),
+    "numeric"
+  )
+
   # Cox: must be Surv
   expect_error(validate_family_response(c(1, 2, 3), "cox", 3))
-  
+
   # Surv for non-cox
   expect_error(validate_family_response(Surv(1:3, c(1,0,1)), "gaussian", 3))
 })
 
-# Test purpose: Checks that valid Gaussian, binomial, Poisson, and Cox responses 
+# Test purpose: Checks that valid Gaussian, binomial, Poisson, and Cox responses
 # pass validation.
 test_that("validate_family_response() accepts valid responses", {
   expect_true(validate_family_response(c(1.5, 2.5, 3.5), "gaussian", 3))
@@ -739,6 +1049,7 @@ test_that("validate_family_response() accepts valid responses", {
     factor(c("a", "b"), levels = c("a", "b")), "binomial", 2
   ))
   expect_true(validate_family_response(c(0, 1, 5), "poisson", 3))
+  expect_true(validate_family_response(c(0, 1, 5), "negbin", 3))
   expect_true(validate_family_response(Surv(1:3, c(1, 0, 1)), "cox", 3))
 })
 
@@ -751,7 +1062,7 @@ test_that("find_shift_factor() returns 0 for all-positive data", {
   expect_equal(find_shift_factor(1:10), 0)
 })
 
-# Test purpose: Checks that the estimated shift makes zero or negative data 
+# Test purpose: Checks that the estimated shift makes zero or negative data
 # strictly positive.
 test_that("find_shift_factor() shifts data containing zero or negatives", {
   x <- c(-1, 0, 1, 2, 3)
@@ -778,7 +1089,7 @@ test_that("mfp2.default() resets supplied scale for binary variables", {
   svi <- rep(c(0, 1), each = n / 2L)
   x <- cbind(svi = svi)
   y <- 1 + 2 * svi + sin(seq_len(n) / 5)
-  
+
   fit <- mfp2(
     x = x,
     y = y,
@@ -789,7 +1100,7 @@ test_that("mfp2.default() resets supplied scale for binary variables", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   expect_equal(as.numeric(fit$transformations["svi", "shift"]), 0)
   expect_equal(as.numeric(fit$transformations["svi", "scale"]), 1)
 })
@@ -805,7 +1116,7 @@ test_that("find_scale_factor() errors on constant input", {
   expect_error(find_scale_factor(rep(5, 10)), "must not be constant")
 })
 
-# Test purpose: Checks that the combined preprocessing helper returns strictly 
+# Test purpose: Checks that the combined preprocessing helper returns strictly
 # positive transformed values.
 test_that("apply_shift_scale() produces positive, scaled output", {
   x <- c(-2, 0, 3, 5, 10)
@@ -819,11 +1130,11 @@ test_that("centering is applied by default", {
   expect_true(!is.null(fit$centers))
 })
 
-# Test purpose: Checks that center = FALSE disables centering and leaves no 
+# Test purpose: Checks that center = FALSE disables centering and leaves no
 # centers stored.
 test_that("centering can be disabled", {
   fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_null(fit$centers)
   expect_true(all(fit$transformations$center == FALSE))
@@ -981,42 +1292,42 @@ mfpi_validation_call <- function(argument, value) {
 invalid_named_settings <- function(column_names) {
   n <- length(column_names)
   values <- seq_len(n)
-  
+
   partially_named <- stats::setNames(values, column_names)
   names(partially_named)[2L] <- ""
-  
+
   duplicated_names <- stats::setNames(values, column_names)
   names(duplicated_names)[2L] <- column_names[[1L]]
-  
+
   unknown_replacement <- stats::setNames(values, column_names)
   names(unknown_replacement)[n] <- "replacement_column"
-  
+
   list(
     # More than one value with no names must never be matched by position.
     unnamed = unname(values),
-    
+
     # Every element of a multi-value vector must have a non-empty name.
     partially_named = partially_named,
-    
+
     # Ambiguous duplicate names cannot identify one value per matrix column.
     duplicated = duplicated_names,
-    
+
     # Replacing a valid name introduces an unknown supplied column. The
     # omitted known column itself is valid under the partial-vector contract.
     unknown_replacement = unknown_replacement,
-    
+
     # A complete required set plus an extra name must be rejected.
     unknown_extra = stats::setNames(
       c(values, n + 1L),
       c(column_names, "unknown_column")
     ),
-    
+
     # Extra named values fail because their names are not matrix columns.
     extra_unknown_names = stats::setNames(
       c(values, n + 1L, n + 2L),
       c(column_names, "unknown_column_1", "unknown_column_2")
     ),
-    
+
     # Explicit numerical settings must be finite and nonmissing.
     non_finite = stats::setNames(
       replace(as.numeric(values), 1L, Inf),
@@ -1026,7 +1337,7 @@ invalid_named_settings <- function(column_names) {
       replace(as.numeric(values), 1L, NA_real_),
       column_names
     ),
-    
+
     # Logical values must not be silently coerced into numeric settings.
     logical = stats::setNames(rep(TRUE, n), column_names)
   )
@@ -1041,7 +1352,7 @@ invalid_named_settings <- function(column_names) {
 
 expect_setting_name_errors <- function(call_setting, column_names) {
   invalid <- invalid_named_settings(column_names)
-  
+
   # Shift and scale accept named subsets, but never unnamed multi-value
   # vectors, incomplete names, duplicate names, or names outside colnames(x).
   expect_error(
@@ -1064,7 +1375,7 @@ expect_setting_name_errors <- function(call_setting, column_names) {
       "`shift` contains unknown column name"
     )
   }
-  
+
   expect_error(
     call_setting("scale", invalid$unnamed),
     "`scale` must be a single unnamed numeric value or a named numeric vector"
@@ -1095,20 +1406,20 @@ expect_setting_name_errors <- function(call_setting, column_names) {
 
 expect_setting_numeric_errors <- function(call_setting, column_names) {
   invalid <- invalid_named_settings(column_names)
-  
+
   for (argument in c("shift", "scale")) {
     # Requirement: Inf and -Inf are not valid explicit settings.
     expect_error(
       call_setting(argument, invalid$non_finite),
       paste0("`", argument, "` must contain only finite values")
     )
-    
+
     # Requirement: direct matrix settings cannot contain NA values.
     expect_error(
       call_setting(argument, invalid$missing_value),
       paste0("`", argument, "` must not contain missing values")
     )
-    
+
     # Requirement: TRUE/FALSE must not be accepted as 1/0 settings.
     expect_error(
       call_setting(argument, invalid$logical),
@@ -1120,10 +1431,10 @@ expect_setting_numeric_errors <- function(call_setting, column_names) {
 expect_nonpositive_scale_errors <- function(call_setting, column_names) {
   zero_scale <- stats::setNames(rep(1, length(column_names)), column_names)
   zero_scale[[1L]] <- 0
-  
+
   negative_scale <- stats::setNames(rep(1, length(column_names)), column_names)
   negative_scale[[1L]] <- -1
-  
+
   # Requirement: zero is not a valid divisor for scaling, including when
   # supplied through the named-partial interface.
   expect_error(
@@ -1134,7 +1445,7 @@ expect_nonpositive_scale_errors <- function(call_setting, column_names) {
     call_setting("scale", stats::setNames(0, column_names[[1L]])),
     "`scale` must contain only strictly positive values"
   )
-  
+
   # Requirement: negative scales are not valid transformation settings.
   expect_error(
     call_setting("scale", negative_scale),
@@ -1177,7 +1488,7 @@ test_that("4.1.7 named scalar settings are partial, not global", {
     allow_na = FALSE,
     allow_partial_named = TRUE
   )
-  
+
   expect_identical(
     normalized_shift,
     c(cavol = NA_real_, age = 20, weight = NA_real_)
@@ -1210,7 +1521,7 @@ test_that("4.1.8 unnamed scalar settings remain global", {
     allow_na = FALSE,
     allow_partial_named = TRUE
   )
-  
+
   expect_identical(normalized_shift, c(cavol = 20, age = 20, weight = 20))
   expect_identical(normalized_scale, c(cavol = 10, age = 10, weight = 10))
 })
@@ -1247,7 +1558,7 @@ test_that("4.2.1 mfp2.default() keeps automatic shift and scale for NULL", {
   transformations <- fit$transformations[
     colnames(setting_x), c("shift", "scale"), drop = FALSE
   ]
-  
+
   expect_false(anyNA(transformations))
   expect_true(all(is.finite(as.matrix(transformations))))
   expect_true(all(transformations$scale > 0))
@@ -1272,7 +1583,7 @@ test_that("4.2.2 mfp2.default() recycles scalar shift and scale", {
   transformations <- fit$transformations[
     colnames(setting_x), c("shift", "scale"), drop = FALSE
   ]
-  
+
   expect_equal(unname(transformations$shift), rep(2, ncol(setting_x)))
   expect_equal(unname(transformations$scale), rep(10, ncol(setting_x)))
 })
@@ -1302,7 +1613,7 @@ test_that("4.2.2a mfp2.default() estimates unspecified named partial settings", 
     1.2 * sqrt(partial_x[, "age"] + 20) -
     0.7 * log(partial_x[, "weight"] + expected_weight_shift) +
     0.05 * sin(index / 4)
-  
+
   fit <- mfp2(
     x = partial_x,
     y = partial_y,
@@ -1316,7 +1627,7 @@ test_that("4.2.2a mfp2.default() estimates unspecified named partial settings", 
     xorder = "original",
     verbose = FALSE
   )
-  
+
   transformations <- fit$transformations[
     colnames(partial_x), c("shift", "scale"), drop = FALSE
   ]
@@ -1350,7 +1661,7 @@ test_that("4.2.2b mfp2.default() rejects insufficient named partial shifts", {
     0.3 * insufficient_x[, "age"] +
     0.2 * sqrt(insufficient_x[, "weight"]) +
     sin(index / 5)
-  
+
   expect_error(
     mfp2(
       x = insufficient_x,
@@ -1384,14 +1695,14 @@ test_that("4.2.2c partial scale preserves mapped-term defaults", {
     group = c("group_b", "group_c"),
     age = "age"
   )
-  
+
   result <- expand_scale_for_mapped_terms(
     scale = normalized_scale,
     vnames = names(normalized_scale),
     term_to_columns = term_to_columns,
     automatic = is.na(normalized_scale)
   )
-  
+
   expect_equal(
     result,
     c(group_b = 1, group_c = 1, age = 100)
@@ -1422,7 +1733,7 @@ test_that("4.2.3 mfp2.default() accepts fully named shift and scale", {
   transformations <- fit$transformations[
     colnames(setting_x), c("shift", "scale"), drop = FALSE
   ]
-  
+
   expect_equal(unname(transformations$shift), c(1, 2))
   expect_equal(unname(transformations$scale), c(10, 100))
 })
@@ -1454,11 +1765,11 @@ test_that("4.2.4 mfp2.default() matches shift and scale by name", {
     shift = c(weight = 2, age = 1),
     scale = c(weight = 100, age = 10)
   )
-  
+
   expect_equal(ordered$transformations, reversed$transformations)
   expect_equal(unname(stats::coef(ordered)), unname(stats::coef(reversed)))
   expect_equal(unname(stats::fitted(ordered)), unname(stats::fitted(reversed)))
-  
+
   new_x <- setting_x[1:12, , drop = FALSE]
   expect_equal(
     unname(stats::predict(ordered, newdata = new_x)),
@@ -1546,7 +1857,7 @@ test_that("4.2.7 mfp2.default() rejects nonpositive scale values", {
 
 test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfp2(
     lpsa ~ fp(age, df = 2, force_max_fp = TRUE) +
       fp(weight, df = 2, force_max_fp = TRUE),
@@ -1560,7 +1871,7 @@ test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   expect_equal(
     unname(fit$transformations[c("age", "weight"), "shift"]),
     c(2, 2)
@@ -1590,7 +1901,7 @@ test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
 
 test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfp2(
     lpsa ~ fp(
       age,
@@ -1613,7 +1924,7 @@ test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   expect_equal(
     unname(fit$transformations[c("age", "weight"), "shift"]),
     c(1, 2)
@@ -1657,7 +1968,7 @@ test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
 
 test_that("4.3.1 mfpi.default() keeps automatic shift and scale for NULL", {
   fit <- fit_mfpi_settings()
-  
+
   expect_false(anyNA(fit$shift[c("age", "weight")]))
   expect_false(anyNA(fit$scale[c("age", "weight")]))
   expect_true(all(is.finite(fit$shift[c("age", "weight")])))
@@ -1682,7 +1993,7 @@ test_that("4.3.1 mfpi.default() keeps automatic shift and scale for NULL", {
 
 test_that("4.3.2 mfpi.default() recycles scalar shift and scale", {
   fit <- fit_mfpi_settings(shift = 2, scale = 10)
-  
+
   expect_equal(unname(fit$shift[c("age", "weight")]), c(2, 2))
   expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 10))
 })
@@ -1694,7 +2005,7 @@ test_that("4.3.2 mfpi.default() recycles scalar shift and scale", {
 
 test_that("4.3.2a mfpi.default() estimates unspecified named partial settings", {
   fit <- fit_mfpi_settings(shift = c(age = 2), scale = c(age = 100))
-  
+
   expect_equal(unname(fit$shift["age"]), 2)
   expect_equal(
     unname(fit$shift["weight"]),
@@ -1717,7 +2028,7 @@ test_that("4.3.2b mfpi.default() resets supplied scale for binary covariates", {
   binary_adjustment <- rep(c(0, 1), length.out = setting_n)
   x <- cbind(mfpi_setting_x, binary_adjustment = binary_adjustment)
   y <- mfpi_setting_y + 0.3 * binary_adjustment
-  
+
   fit <- mfpi(
     x = x,
     y = y,
@@ -1736,7 +2047,7 @@ test_that("4.3.2b mfpi.default() resets supplied scale for binary covariates", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   expect_equal(unname(fit$shift["binary_adjustment"]), 0)
   expect_equal(unname(fit$scale["binary_adjustment"]), 1)
 })
@@ -1762,7 +2073,7 @@ test_that("4.3.3 mfpi.default() accepts fully named shift and scale", {
     shift = c(svi = 0, age = 1, weight = 2),
     scale = c(svi = 1, age = 10, weight = 100)
   )
-  
+
   expect_equal(unname(fit$shift[c("age", "weight")]), c(1, 2))
   expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 100))
 })
@@ -1799,7 +2110,7 @@ test_that("4.3.4 mfpi.default() matches shift and scale by name", {
     shift = c(weight = 2, age = 1, svi = 0),
     scale = c(weight = 100, age = 10, svi = 1)
   )
-  
+
   expect_equal(ordered$shift, reversed$shift)
   expect_equal(ordered$scale, reversed$scale)
   expect_equal(
@@ -1811,7 +2122,7 @@ test_that("4.3.4 mfpi.default() matches shift and scale by name", {
     unname(stats::coef(reversed$adjustment_model))
   )
   expect_equal(ordered$all_model_metrics, reversed$all_model_metrics)
-  
+
   new_x <- as.data.frame(mfpi_setting_x[1:12, , drop = FALSE])
   pred_ordered <- predict(
     ordered,
@@ -1827,7 +2138,7 @@ test_that("4.3.4 mfpi.default() matches shift and scale by name", {
     model = "all",
     type = "link"
   )
-  
+
   expect_equal(
     pred_ordered$predictions$fit,
     pred_reversed$predictions$fit
@@ -1919,7 +2230,7 @@ test_that("4.3.7 mfpi.default() rejects nonpositive scale values", {
 
 test_that("4.3.8 mfpi.formula() keeps scalar shift and scale compatible", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ svi + fp(age, df = 2, force_max_fp = TRUE) +
       fp(weight, df = 2, force_max_fp = TRUE),
@@ -1937,7 +2248,7 @@ test_that("4.3.8 mfpi.formula() keeps scalar shift and scale compatible", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   expect_equal(unname(fit$shift[c("age", "weight")]), c(2, 2))
   expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 10))
 })
@@ -1961,7 +2272,7 @@ test_that("4.3.8 mfpi.formula() keeps scalar shift and scale compatible", {
 
 test_that("4.3.9 mfpi.formula() keeps per-variable fp() settings compatible", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ svi +
       fp(
@@ -1989,7 +2300,7 @@ test_that("4.3.9 mfpi.formula() keeps per-variable fp() settings compatible", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   expect_equal(unname(fit$shift[c("age", "weight")]), c(1, 2))
   expect_equal(unname(fit$scale[c("age", "weight")]), c(10, 100))
 })
@@ -2011,7 +2322,7 @@ test_that("normalize_fp_power_vector() rejects empty or non-numeric input", {
   expect_error(normalize_fp_power_vector(c(1, NA, 2)))
 })
 
-# Test purpose: Checks that a single non-1 candidate power is allowed and can 
+# Test purpose: Checks that a single non-1 candidate power is allowed and can
 # generate repeated-power FP candidates.
 test_that("single non-1 candidate power is valid for df > 1", {
   # A single non-unity power should work — repeated-power FP2 candidate
@@ -2034,7 +2345,7 @@ test_that("candidate power set containing only 1 is invalid for df > 1", {
   )
 })
 
-# Test purpose: Checks that powers = 1 is allowed when the term is restricted 
+# Test purpose: Checks that powers = 1 is allowed when the term is restricted
 # to a linear effect.
 test_that("candidate power set containing only 1 is valid for df = 1", {
   expect_true(
@@ -2045,7 +2356,7 @@ test_that("candidate power set containing only 1 is valid for df = 1", {
   )
 })
 
-# Test purpose: Checks that candidate powers supplied inside fp() are accepted 
+# Test purpose: Checks that candidate powers supplied inside fp() are accepted
 # by the formula interface.
 test_that("custom powers via formula fp() work", {
   fit <- mfp2(
@@ -2059,15 +2370,15 @@ test_that("custom powers via formula fp() work", {
 # power combinations.
 test_that("generate_powers_fp() produces correct number of combinations", {
   powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  
+
   fp1 <- generate_powers_fp(degree = 1, powers = powx)
   expect_equal(nrow(fp1), 8)
   expect_equal(ncol(fp1), 1)
-  
+
   fp2 <- generate_powers_fp(degree = 2, powers = powx)
   expect_equal(nrow(fp2), 36) # C(8+2-1, 2) = C(9,2) = 36
   expect_equal(ncol(fp2), 2)
-  
+
   # Single power with degree 2 gives repeated-power pair
   fp_single <- generate_powers_fp(degree = 2, powers = 2)
   expect_equal(nrow(fp_single), 1)
@@ -2084,7 +2395,7 @@ test_that("generate_powers_fp() degree 0 returns matrix(1)", {
 # 6. SAZ (spike-at-zero) — eligibility, cascade, and reset
 # =============================================================================
 
-# Test purpose: Fits a clear spike-at-zero example and checks that the spike 
+# Test purpose: Fits a clear spike-at-zero example and checks that the spike
 # flag is retained.
 test_that("spike-at-zero basic fitting works", {
   set.seed(123)
@@ -2094,20 +2405,20 @@ test_that("spike-at-zero basic fitting works", {
   zero_idx <- sample(seq_len(n), size = round(n * prop_zero))
   x_val[zero_idx] <- 0
   x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 0.5)
-  
+
   Z <- ifelse(x_val == 0, 1, 0)
   y_val <- 1.5 * Z + 2 * log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(x_mat, y_val, spike_vars = "exposure", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   # spike should be TRUE because the proportion of zeros is well within threshold
   expect_true(fit$fp_terms["exposure", "spike"])
 })
 
-# Test purpose: Checks that SAZ is reset when the zero component fails the 
+# Test purpose: Checks that SAZ is reset when the zero component fails the
 # minimum proportion threshold.
 test_that("spike-at-zero is reset when zero proportion is too low", {
   # Almost no zeros
@@ -2117,14 +2428,14 @@ test_that("spike-at-zero is reset when zero proportion is too low", {
   # Only 2 zeros out of 200 = 1% which is below default 10%
   x_val[1:2] <- 0
   y_val <- 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   expect_warning(
     fit <- mfp2(x_mat, y_val, spike_vars = "exposure", verbose = FALSE),
     "spike"
   )
-  
+
   # Spike should be reset
   expect_false(fit$fp_terms["exposure", "spike"])
 })
@@ -2138,9 +2449,9 @@ test_that("spike cascade restores user-specified zero/catzero on reset", {
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0 # too few zeros => spike reset
   y_val <- 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   suppressWarnings({
     fit <- mfp2(
       x_mat, y_val,
@@ -2149,13 +2460,13 @@ test_that("spike cascade restores user-specified zero/catzero on reset", {
       verbose = FALSE
     )
   })
-  
+
   # Spike should be reset, but zero should be preserved
   expect_false(fit$fp_terms["exposure", "spike"])
   expect_true(fit$zero["exposure"])
 })
 
-# Test purpose: Checks that spike-at-zero handling can be requested inside fp() 
+# Test purpose: Checks that spike-at-zero handling can be requested inside fp()
 # in the formula interface.
 test_that("spike formula interface fp(spike = TRUE) works", {
   set.seed(123)
@@ -2165,17 +2476,17 @@ test_that("spike formula interface fp(spike = TRUE) works", {
   zero_idx <- sample(seq_len(n), size = round(n * prop_zero))
   x_val[zero_idx] <- 0
   x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 0.5)
-  
+
   Z <- ifelse(x_val == 0, 1, 0)
   y_val <- 1.5 * Z + 2 * log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
-  
+
   dat <- data.frame(y = y_val, exposure = x_val)
-  
+
   fit <- mfp2(
     y ~ fp(exposure, spike = TRUE, center = FALSE),
     data = dat, verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
 })
 
@@ -2189,12 +2500,12 @@ test_that("min_saz_component_prop controls eligibility threshold", {
   x_val[sample(n, 30)] <- 0
   y_val <- 0.5 * x_val + rnorm(n)
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   # With default threshold 0.10 it should be eligible
   fit_low <- mfp2(x_mat, y_val, spike_vars = "exposure",
                   min_saz_component_prop = 0.10, verbose = FALSE)
   expect_true(fit_low$fp_terms["exposure", "spike"])
-  
+
   # With high threshold 0.40 it should be ineligible
   expect_warning(
     fit_high <- mfp2(x_mat, y_val, spike_vars = "exposure",
@@ -2209,13 +2520,13 @@ test_that("min_saz_component_prop controls eligibility threshold", {
 test_that("spike-at-zero is reset when positive component proportion is too low", {
   set.seed(104)
   n <- 200
-  
+
   x_val <- numeric(n)
   x_val[1:5] <- rgamma(5, shape = 2, rate = 1)  # 2.5% positive component
   y_val <- 1.5 * (x_val == 0) + 0.2 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   expect_warning(
     fit <- mfp2(
       x_mat,
@@ -2225,7 +2536,7 @@ test_that("spike-at-zero is reset when positive component proportion is too low"
     ),
     "spike"
   )
-  
+
   expect_false(fit$fp_terms["exposure", "spike"])
 })
 
@@ -2234,22 +2545,22 @@ test_that("spike-at-zero is reset when positive component proportion is too low"
 test_that("spike-at-zero counts non-positive values in the zero component", {
   set.seed(105)
   n <- 200
-  
+
   x_val <- numeric(n)
   zero_idx <- sample(seq_len(n), size = 50)
   x_val[zero_idx] <- -1
   x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 1)
-  
+
   y_val <- 1.5 * (x_val <= 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
     spike_vars = "exposure",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["exposure", "spike"])
   expect_true(fit$zero["exposure"])
@@ -2260,13 +2571,13 @@ test_that("spike-at-zero counts non-positive values in the zero component", {
 test_that("spike cascade preserves user-specified catzero on reset", {
   set.seed(106)
   n <- 200
-  
+
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0  # too few zeros for SAZ eligibility
   y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   suppressWarnings({
     fit <- mfp2(
       x_mat,
@@ -2276,7 +2587,7 @@ test_that("spike cascade preserves user-specified catzero on reset", {
       verbose = FALSE
     )
   })
-  
+
   expect_false(fit$fp_terms["exposure", "spike"])
   expect_true(fit$catzero["exposure"])
   expect_true(fit$zero["exposure"])
@@ -2286,11 +2597,11 @@ test_that("spike cascade preserves user-specified catzero on reset", {
 # the positive component is absent.
 test_that("reset_spike() resets all-zero variables", {
   x <- matrix(0, nrow = 100, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   spike <- c(exposure = TRUE)
   user_catzero <- c(exposure = FALSE)
   user_zero <- c(exposure = FALSE)
-  
+
   expect_warning(
     out <- reset_spike(
       x = x,
@@ -2301,7 +2612,7 @@ test_that("reset_spike() resets all-zero variables", {
     ),
     "positive observation proportion"
   )
-  
+
   expect_false(out$spike["exposure"])
   expect_false(out$catzero["exposure"])
   expect_false(out$zero["exposure"])
@@ -2316,11 +2627,11 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   spike <- c(exposure = TRUE)
   catzero <- c(exposure = FALSE)
   zero <- c(exposure = FALSE)
-  
+
   out <- resolve_saz_eligibility(
     x = x,
     spike = spike,
@@ -2328,7 +2639,7 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
     zero = zero,
     min_saz_component_prop = 0.10
   )
-  
+
   expect_true(out$spike["exposure"])
   expect_true(out$catzero["exposure"])
   expect_true(out$zero["exposure"])
@@ -2339,13 +2650,13 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
 test_that("spike-only reset restores ordinary FP handling", {
   set.seed(305)
   n <- 200
-  
+
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0 # too few zeros for SAZ eligibility
   y_val <- 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   expect_warning(
     fit <- mfp2(
       x_mat,
@@ -2355,7 +2666,7 @@ test_that("spike-only reset restores ordinary FP handling", {
     ),
     "spike-at-zero option has been reset"
   )
-  
+
   expect_false(fit$spike["exposure"])
   expect_false(fit$catzero["exposure"])
   expect_false(fit$zero["exposure"])
@@ -2366,13 +2677,13 @@ test_that("spike-only reset restores ordinary FP handling", {
 test_that("spike reset preserves user-specified zero handling", {
   set.seed(306)
   n <- 200
-  
+
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0 # too few zeros for SAZ eligibility
   y_val <- 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   suppressWarnings({
     fit <- mfp2(
       x_mat,
@@ -2382,7 +2693,7 @@ test_that("spike reset preserves user-specified zero handling", {
       verbose = FALSE
     )
   })
-  
+
   expect_false(fit$spike["exposure"])
   expect_false(fit$catzero["exposure"])
   expect_true(fit$zero["exposure"])
@@ -2393,13 +2704,13 @@ test_that("spike reset preserves user-specified zero handling", {
 test_that("spike reset preserves user-specified catzero handling", {
   set.seed(307)
   n <- 200
-  
+
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0 # too few zeros for SAZ eligibility
   y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   suppressWarnings({
     fit <- mfp2(
       x_mat,
@@ -2409,7 +2720,7 @@ test_that("spike reset preserves user-specified catzero handling", {
       verbose = FALSE
     )
   })
-  
+
   expect_false(fit$spike["exposure"])
   expect_true(fit$catzero["exposure"])
   expect_true(fit$zero["exposure"])
@@ -2420,19 +2731,19 @@ test_that("spike reset preserves user-specified catzero handling", {
 test_that("retained spike variable implies catzero and zero handling", {
   set.seed(308)
   n <- 200
-  
+
   x_val <- c(rep(0, 60), rgamma(140, shape = 2, rate = 1))
   y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
     spike_vars = "exposure",
     verbose = FALSE
   )
-  
+
   expect_true(fit$spike["exposure"])
   expect_true(fit$catzero["exposure"])
   expect_true(fit$zero["exposure"])
@@ -2444,20 +2755,20 @@ test_that("retained spike variable implies catzero and zero handling", {
 test_that("formula interface fp(spike = TRUE) activates SAZ handling", {
   set.seed(309)
   n <- 200
-  
+
   exposure <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
   dat <- data.frame(
     y = 2 * (exposure == 0) + log(ifelse(exposure > 0, exposure, 1)) + rnorm(n),
     exposure = exposure,
     z = runif(n, 1, 10)
   )
-  
+
   fit <- mfp2(
     y ~ fp(exposure, spike = TRUE) + fp(z),
     data = dat,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$spike["exposure"])
   expect_true(fit$catzero["exposure"])
@@ -2469,12 +2780,12 @@ test_that("formula interface fp(spike = TRUE) activates SAZ handling", {
 test_that("spike-at-zero works with AIC criterion", {
   set.seed(310)
   n <- 220
-  
+
   x_val <- c(rep(0, 70), rgamma(150, shape = 2, rate = 1))
   y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
@@ -2482,7 +2793,7 @@ test_that("spike-at-zero works with AIC criterion", {
     criterion = "aic",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$spike["exposure"])
   expect_true(fit$fp_terms["exposure", "spike"])
@@ -2493,12 +2804,12 @@ test_that("spike-at-zero works with AIC criterion", {
 test_that("spike-at-zero works with BIC criterion", {
   set.seed(311)
   n <- 220
-  
+
   x_val <- c(rep(0, 70), rgamma(150, shape = 2, rate = 1))
   y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
@@ -2506,7 +2817,7 @@ test_that("spike-at-zero works with BIC criterion", {
     criterion = "bic",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$spike["exposure"])
   expect_true(fit$fp_terms["exposure", "spike"])
@@ -2521,10 +2832,10 @@ test_that("cap_spike_df() forces df = 1 for at most 3 distinct positive values",
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   df <- c(exposure = 4)
   spike <- c(exposure = TRUE)
-  
+
   expect_warning(
     out <- cap_spike_df(
       x = x,
@@ -2533,7 +2844,7 @@ test_that("cap_spike_df() forces df = 1 for at most 3 distinct positive values",
     ),
     "maximum FP df was reduced"
   )
-  
+
   expect_equal(out[["exposure"]], 1)
 })
 
@@ -2545,10 +2856,10 @@ test_that("cap_spike_df() caps df at 2 for 4 or 5 distinct positive values", {
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   df <- c(exposure = 4)
   spike <- c(exposure = TRUE)
-  
+
   expect_warning(
     out <- cap_spike_df(
       x = x,
@@ -2557,7 +2868,7 @@ test_that("cap_spike_df() caps df at 2 for 4 or 5 distinct positive values", {
     ),
     "maximum FP df was reduced"
   )
-  
+
   expect_equal(out[["exposure"]], 2)
 })
 
@@ -2569,10 +2880,10 @@ test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive va
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   df <- c(exposure = 4)
   spike <- c(exposure = TRUE)
-  
+
   expect_warning(
     out <- cap_spike_df(
       x = x,
@@ -2581,7 +2892,7 @@ test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive va
     ),
     NA
   )
-  
+
   expect_equal(out[["exposure"]], 4)
 })
 
@@ -2590,13 +2901,13 @@ test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive va
 test_that("mfp2() applies positive-part df cap for retained spike variables", {
   set.seed(312)
   n <- 180
-  
+
   positive_values <- rep(c(1, 2, 3), each = 40)
   x_val <- c(rep(0, 60), positive_values)
   y_val <- 1.5 * (x_val == 0) + 0.4 * x_val + rnorm(n, sd = 0.2)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   expect_warning(
     fit <- mfp2(
       x_mat,
@@ -2607,7 +2918,7 @@ test_that("mfp2() applies positive-part df cap for retained spike variables", {
     ),
     "maximum FP df was reduced"
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$spike["exposure"])
   expect_equal(fit$fp_terms["exposure", "df_initial"], 1)
@@ -2618,27 +2929,27 @@ test_that("mfp2() applies positive-part df cap for retained spike variables", {
 test_that("predict.mfp2() works for retained spike-at-zero models", {
   set.seed(313)
   n <- 200
-  
+
   x_val <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
   y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n, sd = 0.3)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
     spike_vars = "exposure",
     verbose = FALSE
   )
-  
+
   newx <- matrix(
     c(0, 0, 0.5, 1, 2, 4),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   pred <- predict(fit, newdata = newx)
-  
+
   expect_length(pred, nrow(newx))
   expect_true(all(is.finite(pred)))
 })
@@ -2648,27 +2959,27 @@ test_that("predict.mfp2() works for retained spike-at-zero models", {
 test_that("predict.mfp2() treats negative newdata as zero component for SAZ models", {
   set.seed(314)
   n <- 200
-  
+
   x_val <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
   y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n, sd = 0.3)
-  
+
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     x_mat,
     y_val,
     spike_vars = "exposure",
     verbose = FALSE
   )
-  
+
   newx <- matrix(
     c(-2, -1, 0, 0.5, 2),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   pred <- predict(fit, newdata = newx)
-  
+
   expect_length(pred, nrow(newx))
   expect_true(all(is.finite(pred)))
 })
@@ -2678,19 +2989,19 @@ test_that("predict.mfp2() treats negative newdata as zero component for SAZ mode
 test_that("multiple spike variables are reset independently", {
   set.seed(315)
   n <- 240
-  
+
   eligible <- c(rep(0, 60), rgamma(180, shape = 2, rate = 1))
   ineligible <- rgamma(n, shape = 2, rate = 1)
   ineligible[1:2] <- 0 # too few zeros
-  
+
   y_val <- 1.5 * (eligible == 0) + log(ifelse(eligible > 0, eligible, 1)) +
     0.2 * ineligible + rnorm(n)
-  
+
   x_mat <- cbind(
     eligible = eligible,
     ineligible = ineligible
   )
-  
+
   expect_warning(
     fit <- mfp2(
       x_mat,
@@ -2700,13 +3011,13 @@ test_that("multiple spike variables are reset independently", {
     ),
     "ineligible"
   )
-  
+
   expect_true(fit$spike["eligible"])
   expect_false(fit$spike["ineligible"])
-  
+
   expect_true(fit$catzero["eligible"])
   expect_true(fit$zero["eligible"])
-  
+
   expect_false(fit$catzero["ineligible"])
   expect_false(fit$zero["ineligible"])
 })
@@ -2716,41 +3027,41 @@ test_that("multiple spike variables are reset independently", {
 # 7. ACD transformation
 # =============================================================================
 
-# Test purpose: Checks that ACD can be requested through the default matrix 
+# Test purpose: Checks that ACD can be requested through the default matrix
 # interface.
 test_that("ACD transformation via default interface works", {
   fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])
 })
 
-# Test purpose: Checks that ACD can be requested inside fp() in the formula 
+# Test purpose: Checks that ACD can be requested inside fp() in the formula
 # interface.
 test_that("ACD transformation via formula interface works", {
   fit <- mfp2(
     lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + fp(svi, df = 1),
     data = prostate, verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])
 })
 
-# Test purpose: Checks candidate-power matrix dimensions for ACD degrees 0, 1, 
+# Test purpose: Checks candidate-power matrix dimensions for ACD degrees 0, 1,
 # and 2.
 test_that("ACD power generation produces correct matrix dimensions", {
   powx <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
-  
+
   acd0 <- generate_powers_acd(degree = 0, powers = powx)
   expect_equal(ncol(acd0), 2)
   expect_equal(nrow(acd0), 1)
-  
+
   acd1 <- generate_powers_acd(degree = 1, powers = powx)
   expect_equal(ncol(acd1), 2)
   expect_equal(nrow(acd1), 8)
   expect_true(all(is.na(acd1[, 1]))) # first column all NA
-  
+
   acd2 <- generate_powers_acd(degree = 2, powers = powx)
   expect_equal(ncol(acd2), 2)
   expect_equal(nrow(acd2), 64)
@@ -2763,14 +3074,14 @@ test_that("reset_acd() resets variables with fewer than five unique values", {
     low_unique = rep(1:4, each = 10),
     enough_unique = seq_len(40)
   )
-  
+
   acdx <- c(low_unique = TRUE, enough_unique = TRUE)
-  
+
   expect_warning(
     out <- reset_acd(x, acdx),
     "fewer than 5 unique values"
   )
-  
+
   expect_false(out["low_unique"])
   expect_true(out["enough_unique"])
   expect_equal(names(out), names(acdx))
@@ -2783,14 +3094,14 @@ test_that("reset_acd() aligns acdx by variable name", {
     low_unique = rep(1:4, each = 10),
     enough_unique = seq_len(40)
   )
-  
+
   acdx <- c(enough_unique = TRUE, low_unique = TRUE)
-  
+
   expect_warning(
     out <- reset_acd(x, acdx),
     "low_unique"
   )
-  
+
   expect_true(out["enough_unique"])
   expect_false(out["low_unique"])
   expect_equal(names(out), names(acdx))
@@ -2800,7 +3111,7 @@ test_that("reset_acd() aligns acdx by variable name", {
 # because ACD variables are aligned by name.
 test_that("reset_acd() rejects unnamed acdx vectors", {
   x <- cbind(x1 = seq_len(20), x2 = seq_len(20))
-  
+
   expect_error(
     reset_acd(x, c(TRUE, FALSE)),
     "`acdx` must be a named logical vector"
@@ -2812,7 +3123,7 @@ test_that("reset_acd() rejects unnamed acdx vectors", {
 test_that("reset_acd() rejects missing acdx values", {
   x <- cbind(x1 = seq_len(20), x2 = seq_len(20))
   acdx <- c(x1 = TRUE, x2 = NA)
-  
+
   expect_error(
     reset_acd(x, acdx),
     "`acdx` must not contain missing values"
@@ -2824,13 +3135,13 @@ test_that("reset_acd() rejects missing acdx values", {
 test_that("mfp2() resets ACD for low-cardinality variables", {
   set.seed(401)
   n <- 120
-  
+
   x <- cbind(
     low_unique = rep(1:4, length.out = n),
     z = runif(n, 1, 10)
   )
   y <- 0.5 * x[, "low_unique"] + rnorm(n)
-  
+
   expect_warning(
     fit <- mfp2(
       x,
@@ -2840,7 +3151,7 @@ test_that("mfp2() resets ACD for low-cardinality variables", {
     ),
     "fewer than 5 unique values"
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_false(fit$acd["low_unique"])
   expect_false(fit$fp_terms["low_unique", "acd"])
@@ -2851,14 +3162,14 @@ test_that("mfp2() resets ACD for low-cardinality variables", {
 test_that("mfp2() forces retained ACD variables to df = 4", {
   set.seed(402)
   n <- 160
-  
+
   x1 <- runif(n, 1, 20)
   z <- runif(n, 1, 10)
   x <- cbind(x1 = x1, z = z)
-  
+
   x1_scaled <- as.numeric(scale(x1))
   y <- 2 * pnorm(x1_scaled) + 0.2 * z + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -2869,7 +3180,7 @@ test_that("mfp2() forces retained ACD variables to df = 4", {
     alpha = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$acd["x1"])
   expect_true(fit$fp_terms["x1", "acd"])
@@ -2881,16 +3192,16 @@ test_that("mfp2() forces retained ACD variables to df = 4", {
 test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
   set.seed(403)
   n <- 160
-  
+
   x1 <- runif(n, 1, 20)
   z <- runif(n, 1, 10)
-  
+
   dat <- data.frame(
     y = 2 * pnorm(scale(x1)) + 0.2 * z + rnorm(n, sd = 0.2),
     x1 = x1,
     z = z
   )
-  
+
   fit <- mfp2(
     y ~ fp(x1, acdx = TRUE, df = 2) + fp(z, df = 2),
     data = dat,
@@ -2899,7 +3210,7 @@ test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
     alpha = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$acd["x1"])
   expect_true(fit$fp_terms["x1", "acd"])
@@ -2910,7 +3221,7 @@ test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
 # and directs users to fp(..., acdx = TRUE).
 test_that("formula interface rejects acd_vars argument", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfp2(
       lpsa ~ fp(cavol) + fp(age),
@@ -2927,14 +3238,14 @@ test_that("formula interface rejects acd_vars argument", {
 test_that("mfp2() stores ACD parameters for retained ACD variables", {
   set.seed(404)
   n <- 160
-  
+
   x1 <- runif(n, 1, 20)
   z <- runif(n, 1, 10)
   x <- cbind(x1 = x1, z = z)
-  
+
   x1_scaled <- as.numeric(scale(x1))
   y <- 2 * pnorm(x1_scaled) + 0.2 * z + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -2944,11 +3255,11 @@ test_that("mfp2() stores ACD parameters for retained ACD variables", {
     alpha = 1,
     verbose = FALSE
   )
-  
+
   expect_true(fit$fp_terms["x1", "acd"])
   expect_true("x1" %in% names(fit$acd_parameter))
   expect_true(is.list(fit$acd_parameter[["x1"]]))
-  
+
   expect_true(all(c("beta0", "beta1", "power", "shift", "scale") %in%
                     names(fit$acd_parameter[["x1"]])))
   expect_null(fit$acd_parameter[["x1"]]$acd)
@@ -2959,14 +3270,14 @@ test_that("mfp2() stores ACD parameters for retained ACD variables", {
 test_that("predict.mfp2() works for ACD models with newdata", {
   set.seed(405)
   n <- 160
-  
+
   x1 <- runif(n, 1, 20)
   z <- runif(n, 1, 10)
   x <- cbind(x1 = x1, z = z)
-  
+
   x1_scaled <- as.numeric(scale(x1))
   y <- 2 * pnorm(x1_scaled) + 0.2 * z + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -2976,9 +3287,9 @@ test_that("predict.mfp2() works for ACD models with newdata", {
     alpha = 1,
     verbose = FALSE
   )
-  
+
   pred <- predict(fit, newdata = x[1:10, , drop = FALSE])
-  
+
   expect_length(pred, 10)
   expect_true(all(is.finite(pred)))
 })
@@ -2988,14 +3299,14 @@ test_that("predict.mfp2() works for ACD models with newdata", {
 test_that("predict.mfp2() errors when active ACD parameters are missing", {
   set.seed(406)
   n <- 160
-  
+
   x1 <- runif(n, 1, 20)
   z <- runif(n, 1, 10)
   x <- cbind(x1 = x1, z = z)
-  
+
   x1_scaled <- as.numeric(scale(x1))
   y <- 2 * pnorm(x1_scaled) + 0.2 * z + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -3005,9 +3316,9 @@ test_that("predict.mfp2() errors when active ACD parameters are missing", {
     alpha = 1,
     verbose = FALSE
   )
-  
+
   fit$acd_parameter[["x1"]] <- NULL
-  
+
   expect_error(
     predict(fit, newdata = x[1:10, , drop = FALSE]),
     "Missing stored ACD parameters"
@@ -3019,9 +3330,9 @@ test_that("predict.mfp2() errors when active ACD parameters are missing", {
 test_that("fit_acd() returns ACD values in the unit interval", {
   set.seed(407)
   x <- runif(100, 1, 20)
-  
+
   acd <- fit_acd(x)
-  
+
   expect_true(is.list(acd))
   expect_length(acd$acd, length(x))
   expect_true(all(is.finite(acd$acd)))
@@ -3035,9 +3346,9 @@ test_that("fit_acd() returns ACD values in the unit interval", {
 test_that("apply_acd() reproduces fit_acd() values using stored parameters", {
   set.seed(408)
   x <- runif(100, 1, 20)
-  
+
   acd <- fit_acd(x)
-  
+
   applied <- apply_acd(
     x = x,
     beta0 = acd$beta0,
@@ -3047,7 +3358,7 @@ test_that("apply_acd() reproduces fit_acd() values using stored parameters", {
     scale = acd$scale,
     zero = FALSE
   )
-  
+
   expect_equal(as.numeric(applied), as.numeric(acd$acd), tolerance = 1e-10)
 })
 
@@ -3058,7 +3369,7 @@ test_that("generate_powers_acd() rejects unsupported degrees", {
     generate_powers_acd(degree = 3),
     "degree.*ACD.*0, 1, or 2"
   )
-  
+
   expect_error(
     generate_powers_acd(degree = NA),
     "degree.*ACD.*0, 1, or 2"
@@ -3069,12 +3380,12 @@ test_that("generate_powers_acd() rejects unsupported degrees", {
 # because the first power applies to x and the second to A(x).
 test_that("generate_powers_acd() keeps ordered power pairs", {
   powx <- c(0, 1)
-  
+
   acd2 <- generate_powers_acd(degree = 2, powers = powx)
-  
+
   expect_equal(ncol(acd2), 2)
   expect_equal(nrow(acd2), 4)
-  
+
   expect_true(any(acd2[, 1] == 0 & acd2[, 2] == 1))
   expect_true(any(acd2[, 1] == 1 & acd2[, 2] == 0))
 })
@@ -3085,10 +3396,10 @@ test_that("generate_transformations_acd() reuses stored ACD parameters", {
   set.seed(409)
   x <- runif(80, 1, 20)
   powers <- c(0, 1)
-  
+
   acd_par <- fit_acd(x, powers = powers)
   acd_par$acd <- NULL
-  
+
   out <- generate_transformations_acd(
     x = x,
     degree = 2,
@@ -3096,7 +3407,7 @@ test_that("generate_transformations_acd() reuses stored ACD parameters", {
     zero = FALSE,
     acd_parameter = acd_par
   )
-  
+
   expect_true(is.list(out))
   expect_equal(nrow(out$powers), 4)
   expect_equal(length(out$data), 4)
@@ -3109,7 +3420,7 @@ test_that("generate_transformations_acd() includes catzero column when supplied"
   set.seed(410)
   x <- runif(80, 1, 20)
   catzero <- matrix(as.integer(seq_along(x) <= 10), ncol = 1)
-  
+
   out <- generate_transformations_acd(
     x = x,
     degree = 1,
@@ -3117,10 +3428,10 @@ test_that("generate_transformations_acd() includes catzero column when supplied"
     zero = FALSE,
     catzero = catzero
   )
-  
+
   expect_true(is.list(out))
   expect_equal(length(out$data), 2)
-  
+
   first <- out$data[[1]]
   expect_equal(nrow(first), length(x))
   expect_equal(colnames(first)[1], "catzero")
@@ -3132,22 +3443,22 @@ test_that("fit_acd() validates input arguments", {
     fit_acd(factor(c("a", "b", "c"))),
     "`x` must be a numeric vector"
   )
-  
+
   expect_error(
     fit_acd(c(1, NA, 3)),
     "missing values"
   )
-  
+
   expect_error(
     fit_acd(1),
     "at least two values"
   )
-  
+
   expect_error(
     fit_acd(1:10, scale = 0),
     "`scale` must be a single positive numeric value"
   )
-  
+
   expect_error(
     fit_acd(1:10, zero = NA),
     "`zero` must be a single logical value"
@@ -3159,11 +3470,11 @@ test_that("fit_acd() validates input arguments", {
 # 8. predict.mfp2()
 # =============================================================================
 
-# Test purpose: Checks default Gaussian predictions are finite and have one 
+# Test purpose: Checks default Gaussian predictions are finite and have one
 # value per observation.
 test_that("predict.mfp2() returns predictions for Gaussian model", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   preds <- predict(fit)
   expect_length(preds, nrow(x_prostate))
   expect_true(all(is.finite(preds)))
@@ -3184,32 +3495,150 @@ test_that("predict.mfp2() Gaussian fit and SE equal manual matrix calculation", 
     xorder = "original",
     verbose = FALSE
   )
-  
+
   result <- predict(fit, type = "link", se.fit = TRUE)
   beta <- stats::coef(fit)
   beta_vcov <- stats::vcov(fit)
   manual_x <- cbind(`(Intercept)` = 1, x_prostate)
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_fit <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   expect_true(is.list(result))
   expect_named(result, c("fit", "se.fit", "residual.scale"))
   expect_equal(as.numeric(result$fit), manual_fit, tolerance = 1e-8)
   expect_equal(as.numeric(result$se.fit), manual_se, tolerance = 1e-8)
 })
 
-# Test purpose: Checks that predicting on the original design matrix matches 
-# training-data predictions.
+# Test purpose: Independently validates negative-binomial link and response
+# predictions, including standard errors, against MASS::predict.glm().
+test_that("negative-binomial predictions and SEs agree with MASS::glm.nb()", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  fits <- get_negbin_reference_fits()
+  newdata <- fits$data[seq_len(24L), c("x1", "x2", "x3"), drop = FALSE]
+
+  mfp_link <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "link",
+    se.fit = TRUE
+  )
+  mass_link <- stats::predict(
+    fits$mass,
+    newdata = newdata,
+    type = "link",
+    se.fit = TRUE
+  )
+
+  expect_named(mfp_link, c("fit", "se.fit", "residual.scale"))
+  expect_equal(
+    unname(mfp_link$fit),
+    unname(mass_link$fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_link$se.fit),
+    unname(mass_link$se.fit),
+    tolerance = 1e-4
+  )
+  expect_equal(mfp_link$residual.scale, 1, tolerance = 1e-12)
+
+  mfp_response <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "response",
+    se.fit = TRUE
+  )
+  mass_response <- stats::predict(
+    fits$mass,
+    newdata = newdata,
+    type = "response",
+    se.fit = TRUE
+  )
+
+  expect_equal(
+    unname(mfp_response$fit),
+    unname(mass_response$fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_response$se.fit),
+    unname(mass_response$se.fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_response$fit),
+    exp(unname(mfp_link$fit)),
+    tolerance = 1e-10
+  )
+
+  # Prediction without newdata must reproduce the stored training means.
+  expect_equal(
+    unname(predict(fits$mfp2, type = "response")),
+    unname(fits$mfp2$fitted.values),
+    tolerance = 1e-10
+  )
+
+  # Term and contrast predictions use the same selected linear function and
+  # covariance matrix. Check them independently on the link scale.
+  term <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "terms",
+    terms = "x1",
+    terms_seq = "data",
+    add_intercept = FALSE
+  )
+  coefficient_name <- unname(
+    fits$mfp2$transformed_to_model_columns[["x1.1"]]
+  )
+  beta_x1 <- stats::coef(fits$mfp2)[[coefficient_name]]
+  se_beta_x1 <- sqrt(stats::vcov(fits$mfp2)[coefficient_name, coefficient_name])
+
+  expect_named(term, "x1")
+  expect_equal(
+    unname(term$x1$value),
+    unname(newdata$x1 * beta_x1),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    unname(term$x1$se),
+    unname(abs(newdata$x1) * se_beta_x1),
+    tolerance = 1e-8
+  )
+
+  contrast <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "contrasts",
+    terms = "x1",
+    terms_seq = "data",
+    ref = list(x1 = 1)
+  )
+  expect_named(contrast, "x1")
+  expect_equal(
+    unname(contrast$x1$value),
+    unname((newdata$x1 - 1) * beta_x1),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    unname(contrast$x1$se),
+    unname(abs(newdata$x1 - 1) * se_beta_x1),
+    tolerance = 1e-8
+  )
+})
+
 test_that("predict.mfp2() with newdata reproduces training predictions", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   preds_train <- predict(fit)
   preds_new <- predict(fit, newdata = x_prostate)
-  
+
   expect_equal(as.numeric(preds_train), as.numeric(preds_new),
                tolerance = 1e-10)
 })
@@ -3217,10 +3646,10 @@ test_that("predict.mfp2() with newdata reproduces training predictions", {
 # Test purpose: Checks that term-level predictions return per-term data frames with values and standard errors.
 test_that("predict.mfp2() type = 'terms' returns list of data frames", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   terms_result <- predict(fit, type = "terms")
   expect_true(is.list(terms_result))
-  
+
   for (nm in names(terms_result)) {
     expect_true(is.data.frame(terms_result[[nm]]))
     expect_true("value" %in% colnames(terms_result[[nm]]))
@@ -3231,10 +3660,10 @@ test_that("predict.mfp2() type = 'terms' returns list of data frames", {
 # Test purpose: Checks that contrast predictions return per-term data-frame outputs.
 test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   contrasts_result <- predict(fit, type = "contrasts")
   expect_true(is.list(contrasts_result))
-  
+
   for (nm in names(contrasts_result)) {
     expect_true(is.data.frame(contrasts_result[[nm]]))
   }
@@ -3244,7 +3673,7 @@ test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
 test_that("predict.mfp2() stops on domain violation in newdata", {
   x <- cbind(x1 = seq(1, 100, length.out = 100))
   y <- log(x[, "x1"]) + rnorm(100, sd = 0.01)
-  
+
   fit <- mfp2(
     x, y,
     select = 1,
@@ -3255,11 +3684,11 @@ test_that("predict.mfp2() stops on domain violation in newdata", {
     scale = 1,
     verbose = FALSE
   )
-  
+
   # create bad data
   bad_data <- x[1:5, , drop = FALSE]
   bad_data[, "x1"] <- -1
-  
+
   expect_error(
     predict(fit, newdata = bad_data),
     "non-positive"
@@ -3271,9 +3700,9 @@ test_that("predict.mfp2() works for Cox models", {
   data("gbsg", package = "mfp2")
   x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes", "pgr", "er")])
   y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
-  
+
   fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
-  
+
   preds <- predict(fit)
   expect_length(preds, nrow(x_gbsg))
   expect_true(all(is.finite(preds)))
@@ -3286,7 +3715,7 @@ test_that("predict.mfp2() for Cox equals manual X beta on reference-zero scale",
   data("gbsg", package = "mfp2")
   x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
   y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
-  
+
   fit <- mfp2(
     x_gbsg,
     y_gbsg,
@@ -3299,18 +3728,18 @@ test_that("predict.mfp2() for Cox equals manual X beta on reference-zero scale",
     xorder = "original",
     verbose = FALSE
   )
-  
+
   got <- predict(fit, type = "lp", se.fit = TRUE)
   beta <- stats::coef(fit)
   beta_vcov <- stats::vcov(fit)
   manual_x <- x_gbsg
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_lp <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   expect_equal(as.numeric(got$fit), manual_lp, tolerance = 1e-8)
   expect_equal(as.numeric(got$se.fit), manual_se, tolerance = 1e-8)
 })
@@ -3319,19 +3748,19 @@ test_that("predict.mfp2() for Cox equals manual X beta on reference-zero scale",
 # predict.glm(se.fit = TRUE) behavior.
 test_that("predict.mfp2() with se.fit = TRUE works for factor binomial response", {
   data("pima", package = "mfp2")
-  
+
   x_pima <- as.matrix(pima[, c("glucose", "bmi", "age")])
   y_factor <- factor(pima$y, levels = c(0, 1), labels = c("no", "yes"))
-  
+
   fit <- mfp2(
     x_pima,
     y_factor,
     family = "binomial",
     verbose = FALSE
   )
-  
+
   result <- predict(fit, se.fit = TRUE)
-  
+
   expect_true(is.list(result))
   expect_true("fit" %in% names(result))
   expect_true("se.fit" %in% names(result))
@@ -3345,11 +3774,11 @@ test_that("predict.mfp2() with se.fit = TRUE works for factor binomial response"
 test_that("predict.mfp2() requires newoffset when fitted model used offset", {
   set.seed(107)
   n <- 150
-  
+
   x <- cbind(x1 = runif(n, 1, 10), x2 = runif(n, 1, 5))
   exposure <- runif(n, 0.5, 2)
   y <- rpois(n, exposure * exp(0.5 + 0.1 * x[, "x1"]))
-  
+
   fit <- mfp2(
     x,
     y,
@@ -3357,7 +3786,7 @@ test_that("predict.mfp2() requires newoffset when fitted model used offset", {
     offset = log(exposure),
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, newdata = x[1:5, , drop = FALSE]),
     "newoffset"
@@ -3369,21 +3798,21 @@ test_that("predict.mfp2() requires newoffset when fitted model used offset", {
 test_that("predict.mfp2() returns newdata-length predictions for intercept-only formula models", {
   set.seed(109)
   n <- 120
-  
+
   dat <- data.frame(
     y = rnorm(n),
     x = runif(n, 1, 10),
     group = factor(rep(c("A", "B", "C"), length.out = n))
   )
-  
+
   fit <- mfp2(
     y ~ fp(x) + group,
     data = dat,
     verbose = FALSE
   )
-  
+
   pred <- predict(fit, newdata = dat[1:10, ])
-  
+
   expect_length(pred, 10)
   expect_true(all(is.finite(pred)))
 })
@@ -3393,21 +3822,21 @@ test_that("predict.mfp2() returns newdata-length predictions for intercept-only 
 test_that("predict.mfp2() returns newdata-length predictions for intercept-only matrix models", {
   set.seed(110)
   n <- 120
-  
+
   x <- cbind(
     x1 = runif(n, 1, 10),
     x2 = runif(n, 1, 10)
   )
   y <- rnorm(n)
-  
+
   fit <- mfp2(
     x,
     y,
     verbose = FALSE
   )
-  
+
   pred <- predict(fit, newdata = x[1:10, , drop = FALSE])
-  
+
   expect_length(pred, 10)
   expect_true(all(is.finite(pred)))
 })
@@ -3423,7 +3852,7 @@ test_that("predict.mfp2() formula prediction requires only selected terms", {
     group = factor(rep(c("A", "B", "C"), length.out = n))
   )
   dat$y <- 1 + 0.8 * dat$x + rnorm(n, sd = 0.15)
-  
+
   fit <- mfp2(
     y ~ fp(x) + group,
     data = dat,
@@ -3431,11 +3860,11 @@ test_that("predict.mfp2() formula prediction requires only selected terms", {
     select = 0,
     verbose = FALSE
   )
-  
+
   expect_true(fit$fp_terms["x", "selected"])
   expect_false(fit$fp_terms["group", "selected"])
   expect_identical(fit$formula_prediction_term_names[["fp(x)"]], "x")
-  
+
   nd_minimal <- dat[1:12, "x", drop = FALSE]
   pred_minimal <- predict(fit, newdata = nd_minimal)
   pred_complete <- predict(fit, newdata = dat[1:12, c("x", "group")])
@@ -3451,7 +3880,7 @@ test_that("predict.mfp2() formula prediction requires only selected terms", {
     terms = "x",
     terms_seq = "data"
   )
-  
+
   expect_equal(pred_minimal, pred_complete, tolerance = 1e-12)
   expect_equal(pred_minimal, pred_unseen_dropped, tolerance = 1e-12)
   expect_named(term_minimal, "x")
@@ -3470,7 +3899,7 @@ test_that("predict.mfp2() reconstructs only a selected factor block", {
   )
   group_effect <- c(A = 0, B = 1, C = -0.7)[as.character(dat$group)]
   dat$y <- group_effect + rnorm(n, sd = 0.15)
-  
+
   fit <- mfp2(
     y ~ x + group,
     data = dat,
@@ -3478,14 +3907,14 @@ test_that("predict.mfp2() reconstructs only a selected factor block", {
     select = 0,
     verbose = FALSE
   )
-  
+
   expect_false(fit$fp_terms["x", "selected"])
   expect_true(fit$fp_terms["group", "selected"])
-  
+
   nd_minimal <- dat[1:12, "group", drop = FALSE]
   pred_minimal <- predict(fit, newdata = nd_minimal)
   pred_complete <- predict(fit, newdata = dat[1:12, c("x", "group")])
-  
+
   expect_equal(pred_minimal, pred_complete, tolerance = 1e-12)
 })
 
@@ -3502,7 +3931,7 @@ test_that("predict.mfp2() preserves active interaction design with minimal newda
   )
   group_slope <- c(A = 0.2, B = 0.8, C = -0.5)[as.character(dat$group)]
   dat$y <- group_slope * dat$x + rnorm(n, sd = 0.1)
-  
+
   fit <- mfp2(
     y ~ x + group + x:group + z,
     data = dat,
@@ -3510,17 +3939,17 @@ test_that("predict.mfp2() preserves active interaction design with minimal newda
     select = 0,
     verbose = FALSE
   )
-  
+
   expect_true(fit$fp_terms["x:group", "selected"])
   expect_false(fit$fp_terms["z", "selected"])
-  
+
   nd_minimal <- dat[1:15, c("x", "group"), drop = FALSE]
   pred_minimal <- predict(fit, newdata = nd_minimal)
   pred_complete <- predict(
     fit,
     newdata = dat[1:15, c("x", "group", "z"), drop = FALSE]
   )
-  
+
   expect_equal(pred_minimal, pred_complete, tolerance = 1e-12)
 })
 
@@ -3536,7 +3965,7 @@ test_that("predict.mfp2() matrix prediction ignores eliminated grouped columns",
     groupC = rep(c(0, 0, 1), length.out = n)
   )
   y <- 1 + 0.7 * x[, "x1"] + rnorm(n, sd = 0.15)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -3546,15 +3975,15 @@ test_that("predict.mfp2() matrix prediction ignores eliminated grouped columns",
     df = 1,
     verbose = FALSE
   )
-  
+
   expect_true(fit$fp_terms["x1", "selected"])
   expect_false(fit$fp_terms["group", "selected"])
   expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), 0)
-  
+
   nd_minimal <- x[1:12, "x1", drop = FALSE]
   pred_minimal <- predict(fit, newdata = nd_minimal)
   pred_complete <- predict(fit, newdata = x[1:12, , drop = FALSE])
-  
+
   expect_equal(pred_minimal, pred_complete, tolerance = 1e-12)
 })
 
@@ -3569,7 +3998,7 @@ test_that("predict.mfp2() intercept-only models accept zero-column newdata", {
     x = runif(n, 1, 10),
     group = factor(rep(c("A", "B", "C"), length.out = n))
   )
-  
+
   fit_formula <- mfp2(
     y ~ x + group,
     data = dat,
@@ -3582,10 +4011,10 @@ test_that("predict.mfp2() intercept-only models accept zero-column newdata", {
     select = 0,
     verbose = FALSE
   )
-  
+
   expect_length(get_selected_variable_names(fit_formula), 0L)
   expect_length(get_selected_variable_names(fit_matrix), 0L)
-  
+
   nd_empty <- data.frame(row.names = seq_len(9L))
   expect_length(predict(fit_formula, newdata = nd_empty), 9L)
   expect_length(predict(fit_matrix, newdata = nd_empty), 9L)
@@ -3607,26 +4036,26 @@ test_that("predict.mfp2() intercept-only models accept zero-column newdata", {
 test_that("predict.mfp2() reconstructs formula-interface newdata with retained factors", {
   set.seed(111)
   n <- 120
-  
+
   x <- runif(n, 1, 10)
   group <- factor(rep(c("A", "B", "C"), length.out = n))
   group_effect <- c(A = 0, B = 1, C = 2)[as.character(group)]
-  
+
   dat <- data.frame(
     y = 0.2 * x + 0.5 * group_effect + rnorm(n, sd = 0.2),
     x = x,
     group = group
   )
-  
+
   fit <- mfp2(
     y ~ fp(x) + group,
     data = dat,
     keep = c("x", "group"),
     verbose = FALSE
   )
-  
+
   pred <- predict(fit, newdata = dat[1:10, ])
-  
+
   expect_length(pred, 10)
   expect_true(all(is.finite(pred)))
 })
@@ -3637,14 +4066,14 @@ test_that("predict.mfp2() reconstructs formula-interface newdata with retained f
 test_that("predict.mfp2() returns a complete unordered-factor term block", {
   set.seed(2201)
   n <- 150
-  
+
   dat <- data.frame(
     group = factor(rep(c("A", "B", "C"), length.out = n)),
     x = runif(n, 1, 10)
   )
   effect <- c(A = 0, B = 1, C = -0.5)[as.character(dat$group)]
   dat$y <- 0.3 * dat$x + effect + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     y ~ x + group,
     data = dat,
@@ -3652,14 +4081,14 @@ test_that("predict.mfp2() returns a complete unordered-factor term block", {
     verbose = FALSE
   )
   nd <- dat[1:12, c("x", "group"), drop = FALSE]
-  
+
   out <- predict(
     fit,
     newdata = nd,
     type = "terms",
     terms = "group"
   )
-  
+
   expect_named(out, "group")
   expect_s3_class(out$group, "data.frame")
   expect_equal(nrow(out$group), nrow(nd))
@@ -3678,14 +4107,14 @@ test_that("predict.mfp2() returns a complete unordered-factor term block", {
 test_that("predict.mfp2() computes factor contrasts from a level reference", {
   set.seed(2202)
   n <- 150
-  
+
   dat <- data.frame(
     group = factor(rep(c("A", "B", "C"), length.out = n)),
     x = runif(n, 1, 10)
   )
   effect <- c(A = 0, B = 1, C = -0.5)[as.character(dat$group)]
   dat$y <- 0.3 * dat$x + effect + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     y ~ x + group,
     data = dat,
@@ -3693,7 +4122,7 @@ test_that("predict.mfp2() computes factor contrasts from a level reference", {
     verbose = FALSE
   )
   nd <- dat[1:12, c("x", "group"), drop = FALSE]
-  
+
   out <- predict(
     fit,
     newdata = nd,
@@ -3701,7 +4130,7 @@ test_that("predict.mfp2() computes factor contrasts from a level reference", {
     terms = "group",
     ref = list(group = "A")
   )
-  
+
   expect_named(out, "group")
   expect_equal(nrow(out$group), nrow(nd))
   expect_true(all(is.finite(out$group$value)))
@@ -3718,7 +4147,7 @@ test_that("predict.mfp2() computes factor contrasts from a level reference", {
 test_that("predict.mfp2() reconstructs ordered-factor contrasts", {
   set.seed(2203)
   n <- 180
-  
+
   dat <- data.frame(
     severity = ordered(
       rep(c("low", "medium", "high"), length.out = n),
@@ -3730,7 +4159,7 @@ test_that("predict.mfp2() reconstructs ordered-factor contrasts", {
     as.character(dat$severity)
   ]
   dat$y <- 0.2 * dat$x + severity_effect + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     y ~ x + severity,
     data = dat,
@@ -3738,7 +4167,7 @@ test_that("predict.mfp2() reconstructs ordered-factor contrasts", {
     verbose = FALSE
   )
   nd <- dat[1:15, c("x", "severity"), drop = FALSE]
-  
+
   ordinary <- predict(fit, newdata = nd)
   term_output <- predict(
     fit,
@@ -3746,7 +4175,7 @@ test_that("predict.mfp2() reconstructs ordered-factor contrasts", {
     type = "terms",
     terms = "severity"
   )
-  
+
   expect_length(ordinary, nrow(nd))
   expect_true(all(is.finite(ordinary)))
   expect_named(term_output, "severity")
@@ -3763,7 +4192,7 @@ test_that("mfp2 stores complete identity term mappings", {
     x1 = runif(80, 1, 4),
     x2 = runif(80, 2, 6)
   )
-  
+
   fit <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -3771,7 +4200,7 @@ test_that("mfp2 stores complete identity term mappings", {
     select = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(fit$term_to_columns$x1, "x1")
   expect_identical(fit$term_to_columns$x2, "x2")
   expect_length(predict(fit, newdata = dat[1:5, ]), 5L)
@@ -3785,14 +4214,14 @@ test_that("simple factor wrappers use source-variable conceptual names", {
     y = rnorm(90),
     x = rep(1:3, length.out = 90)
   )
-  
+
   fit <- mfp2(
     y ~ as.factor(x),
     data = dat,
     keep = "x",
     verbose = FALSE
   )
-  
+
   expect_identical(
     fit$term_to_columns$x,
     c("as.factor(x)2", "as.factor(x)3")
@@ -3807,21 +4236,21 @@ test_that("simple factor wrappers use source-variable conceptual names", {
 test_that("formula interface names inline factors by their source variable", {
   set.seed(2204)
   n <- 150
-  
+
   dat <- data.frame(
     x1 = runif(n, 1, 10),
     x2 = rep(1:3, length.out = n)
   )
   x2_effect <- c(`1` = 0, `2` = 0.8, `3` = -0.4)[as.character(dat$x2)]
   dat$y <- 0.3 * dat$x1 + x2_effect + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     y ~ x1 + factor(x2),
     data = dat,
     keep = "x2",
     verbose = FALSE
   )
-  
+
   expect_true("x2" %in% names(fit$term_to_columns))
   expect_false("factor(x2)" %in% names(fit$term_to_columns))
   expect_identical(
@@ -3830,10 +4259,10 @@ test_that("formula interface names inline factors by their source variable", {
   )
   expect_true("x2" %in% rownames(fit$fp_terms))
   expect_false("factor(x2)" %in% rownames(fit$fp_terms))
-  
+
   coefficient_names <- gsub("`", "", names(stats::coef(fit)), fixed = TRUE)
   expect_true(all(c("factor(x2)2.1", "factor(x2)3.1") %in% coefficient_names))
-  
+
   nd <- dat[1:10, c("x1", "x2"), drop = FALSE]
   pred <- predict(fit, newdata = nd)
   term_pred <- predict(
@@ -3842,7 +4271,7 @@ test_that("formula interface names inline factors by their source variable", {
     type = "terms",
     terms = "x2"
   )
-  
+
   expect_length(pred, 10L)
   expect_true(all(is.finite(pred)))
   expect_named(term_pred, "x2")
@@ -3855,24 +4284,24 @@ test_that("formula interface names inline factors by their source variable", {
 test_that("binary inline factors retain a source-name singleton mapping", {
   set.seed(22041)
   n <- 140
-  
+
   dat <- data.frame(
     x1 = runif(n, 1, 10),
     x2 = rep(1:2, length.out = n)
   )
   dat$y <- 0.4 * dat$x1 + 0.9 * (dat$x2 == 2) + rnorm(n, sd = 0.2)
-  
+
   fit <- mfp2(
     y ~ x1 + factor(x2),
     data = dat,
     keep = "x2",
     verbose = FALSE
   )
-  
+
   expect_identical(fit$term_to_columns[["x2"]], "factor(x2)2")
   expect_true(fit$fp_terms["x2", "selected"])
   expect_equal(as.numeric(fit$fp_terms["x2", "df_final"]), 1)
-  
+
   nd <- dat[1:12, c("x1", "x2"), drop = FALSE]
   out <- predict(fit, newdata = nd, type = "terms", terms = "x2")
   expect_named(out, "x2")
@@ -3887,7 +4316,7 @@ test_that("formula interface rejects duplicate conceptual source variables", {
     y = rnorm(60),
     x2 = rep(1:3, length.out = 60)
   )
-  
+
   expect_error(
     mfp2(y ~ x2 + factor(x2), data = dat, verbose = FALSE),
     "same conceptual variable"
@@ -3899,7 +4328,7 @@ test_that("formula interface rejects duplicate conceptual source variables", {
 test_that("predict.mfp2() rejects unseen factor levels", {
   set.seed(2205)
   n <- 120
-  
+
   dat <- data.frame(
     y = rnorm(n),
     group = factor(rep(c("A", "B", "C"), length.out = n))
@@ -3913,7 +4342,7 @@ test_that("predict.mfp2() rejects unseen factor levels", {
   nd <- data.frame(
     group = factor("D", levels = c("A", "B", "C", "D"))
   )
-  
+
   expect_error(
     predict(fit, newdata = nd),
     "new level|factor level|levels",
@@ -3926,7 +4355,7 @@ test_that("predict.mfp2() rejects unseen factor levels", {
 test_that("matrix prediction requires every grouped-term column", {
   set.seed(2206)
   n <- 120
-  
+
   x <- cbind(
     groupB = rep(c(0, 1, 0), length.out = n),
     groupC = rep(c(0, 0, 1), length.out = n),
@@ -3934,7 +4363,7 @@ test_that("matrix prediction requires every grouped-term column", {
   )
   y <- x[, "groupB"] - x[, "groupC"] +
     0.2 * x[, "x1"] + rnorm(n)
-  
+
   fit <- mfp2(
     x,
     y,
@@ -3944,7 +4373,7 @@ test_that("matrix prediction requires every grouped-term column", {
     verbose = FALSE
   )
   incomplete <- x[1:5, c("groupB", "x1"), drop = FALSE]
-  
+
   expect_error(
     predict(fit, newdata = incomplete),
     "groupC|grouped term|grouped-term",
@@ -3993,7 +4422,7 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     poisson = stats::poisson(),
     stop("Unsupported test family: ", family_name, call. = FALSE)
   )
-  
+
   fit_mfp2 <- mfp2(
     formula,
     data = dat,
@@ -4007,15 +4436,15 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     formula,
     data = dat,
     family = family_fun
   )
-  
+
   nd <- dat[1:25, newdata_cols, drop = FALSE]
-  
+
   # Request link-scale standard errors from both methods. Standard errors are
   # naturally calculated on the linear-predictor scale by predict.glm().
   pred_mfp2_link <- predict(
@@ -4030,7 +4459,7 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     type = "link",
     se.fit = TRUE
   )
-  
+
   pred_mfp2_response <- predict(
     fit_mfp2,
     newdata = nd,
@@ -4041,7 +4470,7 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     newdata = nd,
     type = "response"
   )
-  
+
   # Build the reference model frame from raw newdata. This evaluates factor
   # contrasts and formula offsets with the same terms object used by glm().
   reference_terms <- stats::delete.response(stats::terms(fit_glm))
@@ -4056,28 +4485,28 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     data = reference_frame,
     contrasts.arg = fit_glm$contrasts
   )
-  
+
   beta <- stats::coef(fit_glm)
   beta_vcov <- stats::vcov(fit_glm)
-  
+
   # xorder = "original" makes the model-matrix and coefficient order
   # positional, so no name-based reordering is required.
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   # model.offset() returns NULL when the formula has no offset. In that case the
   # additive offset contribution is exactly zero for every prediction row.
   manual_offset <- stats::model.offset(reference_frame)
   if (is.null(manual_offset)) {
     manual_offset <- rep(0, nrow(manual_x))
   }
-  
+
   # Independent prediction calculations.
   manual_link <- as.numeric(manual_x %*% beta + manual_offset)
   manual_response <- as.numeric(fit_glm$family$linkinv(manual_link))
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   # Fitted-model equivalence checks. These detect differences that may be hidden
   # when predictions happen to be evaluated at only a small set of rows.
   expect_mfp2_glm_parameters_equal(
@@ -4100,7 +4529,7 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     unname(fit_glm$linear.predictors),
     tolerance = tolerance
   )
-  
+
   # mfp2() must agree with glm() for both prediction scales and link-scale SEs.
   expect_equal(
     unname(pred_mfp2_link$fit),
@@ -4117,7 +4546,7 @@ expect_mfp2_glm_predictions_equal <- function(dat,
     unname(pred_glm_response),
     tolerance = tolerance
   )
-  
+
   # Both methods must also agree with the independently constructed oracle.
   expect_equal(unname(pred_mfp2_link$fit), manual_link, tolerance = tolerance)
   expect_equal(unname(pred_glm_link$fit), manual_link, tolerance = tolerance)
@@ -4148,7 +4577,7 @@ expect_glm_objects_and_manual_prediction_equal <- function(fit_mfp2,
   )
   pred_mfp2_response <- predict(fit_mfp2, newdata = newdata, type = "response")
   pred_glm_response <- predict(fit_glm, newdata = newdata, type = "response")
-  
+
   reference_terms <- stats::delete.response(stats::terms(fit_glm))
   reference_frame <- stats::model.frame(
     reference_terms,
@@ -4161,22 +4590,22 @@ expect_glm_objects_and_manual_prediction_equal <- function(fit_mfp2,
     data = reference_frame,
     contrasts.arg = fit_glm$contrasts
   )
-  
+
   beta <- stats::coef(fit_glm)
   beta_vcov <- stats::vcov(fit_glm)
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_offset <- stats::model.offset(reference_frame)
   if (is.null(manual_offset)) {
     manual_offset <- rep(0, nrow(manual_x))
   }
-  
+
   manual_link <- as.numeric(manual_x %*% beta + manual_offset)
   manual_response <- as.numeric(fit_glm$family$linkinv(manual_link))
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   expect_mfp2_glm_parameters_equal(
     fit_mfp2,
     fit_glm,
@@ -4189,11 +4618,11 @@ expect_glm_objects_and_manual_prediction_equal <- function(fit_mfp2,
     unname(fit_glm$linear.predictors),
     tolerance = tolerance
   )
-  
+
   expect_equal(unname(pred_mfp2_link$fit), unname(pred_glm_link$fit), tolerance = tolerance)
   expect_equal(unname(pred_mfp2_link$se.fit), unname(pred_glm_link$se.fit), tolerance = tolerance)
   expect_equal(unname(pred_mfp2_response), unname(pred_glm_response), tolerance = tolerance)
-  
+
   expect_equal(unname(pred_mfp2_link$fit), manual_link, tolerance = tolerance)
   expect_equal(unname(pred_mfp2_link$se.fit), manual_se, tolerance = tolerance)
   expect_equal(unname(pred_mfp2_response), manual_response, tolerance = tolerance)
@@ -4202,13 +4631,13 @@ expect_glm_objects_and_manual_prediction_equal <- function(fit_mfp2,
 # Test purpose: 8.1.1 Gaussian GLM equivalence without offset.
 test_that("8.1.1 Gaussian: mfp2 predictions match glm without offset", {
   set.seed(8011)
-  
+
   dat <- data.frame(
     y = rnorm(160),
     x1 = runif(160, 1, 5),
     x2 = rnorm(160)
   )
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2,
@@ -4220,14 +4649,14 @@ test_that("8.1.1 Gaussian: mfp2 predictions match glm without offset", {
 # Test purpose: 8.1.2 Gaussian GLM equivalence with a formula offset.
 test_that("8.1.2 Gaussian: mfp2 predictions match glm with formula offset", {
   set.seed(8012)
-  
+
   dat <- data.frame(
     x1 = runif(160, 1, 5),
     x2 = rnorm(160),
     off = rnorm(160, mean = 0.2, sd = 0.1)
   )
   dat$y <- 0.5 + 0.8 * dat$x1 - 0.4 * dat$x2 + dat$off + rnorm(160, sd = 0.5)
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2 + offset(off),
@@ -4239,14 +4668,14 @@ test_that("8.1.2 Gaussian: mfp2 predictions match glm with formula offset", {
 # Test purpose: 8.1.3 Binomial GLM equivalence without offset.
 test_that("8.1.3 Binomial: mfp2 predictions match glm without offset", {
   set.seed(8013)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220)
   )
   eta <- -0.6 + 0.35 * dat$x1 - 0.55 * dat$x2
   dat$y <- stats::rbinom(nrow(dat), size = 1, prob = stats::plogis(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2,
@@ -4258,7 +4687,7 @@ test_that("8.1.3 Binomial: mfp2 predictions match glm without offset", {
 # Test purpose: 8.1.4 Binomial GLM equivalence with a formula offset.
 test_that("8.1.4 Binomial: mfp2 predictions match glm with formula offset", {
   set.seed(8014)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220),
@@ -4266,7 +4695,7 @@ test_that("8.1.4 Binomial: mfp2 predictions match glm with formula offset", {
   )
   eta <- -0.6 + 0.35 * dat$x1 - 0.55 * dat$x2 + dat$off
   dat$y <- stats::rbinom(nrow(dat), size = 1, prob = stats::plogis(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2 + offset(off),
@@ -4282,7 +4711,7 @@ test_that("8.1.4 Binomial: mfp2 predictions match glm with formula offset", {
 # and an independent manual calculation of eta = X beta and its standard error.
 test_that("8.1.5 Binomial matrix response: mfp2 matches glm and manual calculation without offset", {
   set.seed(8015)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220),
@@ -4295,7 +4724,7 @@ test_that("8.1.5 Binomial matrix response: mfp2 matches glm and manual calculati
     prob = stats::plogis(eta)
   )
   dat$failures <- dat$trials - dat$successes
-  
+
   fit_mfp2 <- mfp2(
     cbind(successes, failures) ~ x1 + x2,
     data = dat,
@@ -4309,45 +4738,45 @@ test_that("8.1.5 Binomial matrix response: mfp2 matches glm and manual calculati
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     cbind(successes, failures) ~ x1 + x2,
     data = dat,
     family = stats::binomial()
   )
-  
+
   # Both fitters should estimate the same model, not merely produce similar
   # predictions on one selected set of rows.
   expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
   expect_equal(as.numeric(stats::logLik(fit_mfp2)), as.numeric(stats::logLik(fit_glm)), tolerance = 1e-8)
   expect_equal(unname(stats::fitted(fit_mfp2)), unname(stats::fitted(fit_glm)), tolerance = 1e-8)
-  
+
   nd <- dat[1:25, c("x1", "x2"), drop = FALSE]
-  
+
   pred_mfp2_link <- predict(fit_mfp2, newdata = nd, type = "link", se.fit = TRUE)
   pred_glm_link <- predict(fit_glm, newdata = nd, type = "link", se.fit = TRUE)
   pred_mfp2_response <- predict(fit_mfp2, newdata = nd, type = "response")
   pred_glm_response <- predict(fit_glm, newdata = nd, type = "response")
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), as.numeric(pred_glm_link$fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), as.numeric(pred_glm_link$se.fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_response), as.numeric(pred_glm_response), tolerance = 1e-8)
-  
+
   # Independent manual calculation. model.matrix() creates the intercept and
   # linear predictor columns, but the multiplication below is performed
   # directly rather than by predict.glm().
   manual_x <- stats::model.matrix(~ x1 + x2, data = nd)
   beta <- stats::coef(fit_mfp2)
   beta_vcov <- stats::vcov(fit_mfp2)
-  
+
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_link <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
   manual_response <- stats::plogis(manual_link)
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), manual_link, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), manual_se, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_response), manual_response, tolerance = 1e-10)
@@ -4359,7 +4788,7 @@ test_that("8.1.5 Binomial matrix response: mfp2 matches glm and manual calculati
 # so the test independently verifies the formula-offset prediction contract.
 test_that("8.1.6 Binomial matrix response: mfp2 matches glm and manual calculation with formula offset", {
   set.seed(8016)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220),
@@ -4373,7 +4802,7 @@ test_that("8.1.6 Binomial matrix response: mfp2 matches glm and manual calculati
     prob = stats::plogis(eta)
   )
   dat$failures <- dat$trials - dat$successes
-  
+
   fit_mfp2 <- mfp2(
     cbind(successes, failures) ~ x1 + x2 + offset(off),
     data = dat,
@@ -4387,42 +4816,42 @@ test_that("8.1.6 Binomial matrix response: mfp2 matches glm and manual calculati
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     cbind(successes, failures) ~ x1 + x2 + offset(off),
     data = dat,
     family = stats::binomial()
   )
-  
+
   expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
   expect_equal(as.numeric(stats::logLik(fit_mfp2)), as.numeric(stats::logLik(fit_glm)), tolerance = 1e-8)
   expect_equal(unname(stats::fitted(fit_mfp2)), unname(stats::fitted(fit_glm)), tolerance = 1e-8)
-  
+
   nd <- dat[1:25, c("x1", "x2", "off"), drop = FALSE]
-  
+
   pred_mfp2_link <- predict(fit_mfp2, newdata = nd, type = "link", se.fit = TRUE)
   pred_glm_link <- predict(fit_glm, newdata = nd, type = "link", se.fit = TRUE)
   pred_mfp2_response <- predict(fit_mfp2, newdata = nd, type = "response")
   pred_glm_response <- predict(fit_glm, newdata = nd, type = "response")
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), as.numeric(pred_glm_link$fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), as.numeric(pred_glm_link$se.fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_response), as.numeric(pred_glm_response), tolerance = 1e-8)
-  
+
   # The offset is fixed, so it changes the linear predictor but contributes no
   # coefficient uncertainty. Therefore the manual variance uses X V X' only.
   manual_x <- stats::model.matrix(~ x1 + x2, data = nd)
   beta <- stats::coef(fit_mfp2)
   beta_vcov <- stats::vcov(fit_mfp2)
-  
+
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_link <- as.numeric(manual_x %*% beta + nd$off)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
   manual_response <- stats::plogis(manual_link)
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), manual_link, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), manual_se, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_response), manual_response, tolerance = 1e-10)
@@ -4431,14 +4860,14 @@ test_that("8.1.6 Binomial matrix response: mfp2 matches glm and manual calculati
 # Test purpose: 8.1.7 Poisson GLM equivalence without offset.
 test_that("8.1.7 Poisson: mfp2 predictions match glm without offset", {
   set.seed(8017)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220)
   )
   eta <- 0.15 + 0.12 * dat$x1 - 0.25 * dat$x2
   dat$y <- stats::rpois(nrow(dat), lambda = exp(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2,
@@ -4450,7 +4879,7 @@ test_that("8.1.7 Poisson: mfp2 predictions match glm without offset", {
 # Test purpose: 8.1.8 Poisson GLM equivalence with a formula offset expression.
 test_that("8.1.8 Poisson: mfp2 predictions match glm with formula offset", {
   set.seed(8018)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220),
@@ -4458,7 +4887,7 @@ test_that("8.1.8 Poisson: mfp2 predictions match glm with formula offset", {
   )
   eta <- 0.15 + 0.12 * dat$x1 - 0.25 * dat$x2 + log(dat$exposure)
   dat$y <- stats::rpois(nrow(dat), lambda = exp(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x1 + x2 + offset(log(exposure)),
@@ -4474,7 +4903,7 @@ test_that("8.1.8 Poisson: mfp2 predictions match glm with formula offset", {
 # calculation verifies eta = X beta + offset and mu = exp(eta).
 test_that("8.1.9 Poisson matrix interface: mfp2 offset model matches glm and manual calculation", {
   set.seed(8019)
-  
+
   dat <- data.frame(
     x1 = runif(220, 1, 5),
     x2 = rnorm(220),
@@ -4482,10 +4911,10 @@ test_that("8.1.9 Poisson matrix interface: mfp2 offset model matches glm and man
   )
   eta <- 0.15 + 0.12 * dat$x1 - 0.25 * dat$x2 + log(dat$exposure)
   dat$y <- stats::rpois(nrow(dat), lambda = exp(eta))
-  
+
   x <- as.matrix(dat[, c("x1", "x2")])
   training_offset <- log(dat$exposure)
-  
+
   fit_mfp2 <- mfp2(
     x = x,
     y = dat$y,
@@ -4500,22 +4929,22 @@ test_that("8.1.9 Poisson matrix interface: mfp2 offset model matches glm and man
     xorder = "original",
     verbose = FALSE
   )
-  
+
   dat$log_exposure <- training_offset
   fit_glm <- stats::glm(
     y ~ x1 + x2 + offset(log_exposure),
     data = dat,
     family = stats::poisson()
   )
-  
+
   expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
   expect_equal(as.numeric(stats::logLik(fit_mfp2)), as.numeric(stats::logLik(fit_glm)), tolerance = 1e-8)
   expect_equal(unname(stats::fitted(fit_mfp2)), unname(stats::fitted(fit_glm)), tolerance = 1e-8)
-  
+
   nd <- dat[1:25, , drop = FALSE]
   newx <- as.matrix(nd[, c("x1", "x2")])
   newoffset <- log(nd$exposure)
-  
+
   pred_mfp2_link <- predict(
     fit_mfp2,
     newdata = newx,
@@ -4531,25 +4960,25 @@ test_that("8.1.9 Poisson matrix interface: mfp2 offset model matches glm and man
     type = "response"
   )
   pred_glm_response <- predict(fit_glm, newdata = nd, type = "response")
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), as.numeric(pred_glm_link$fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), as.numeric(pred_glm_link$se.fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_response), as.numeric(pred_glm_response), tolerance = 1e-8)
-  
+
   # Manual offset calculation. The offset is added after X beta and has no
   # variance term because it is supplied as known data rather than estimated.
   manual_x <- cbind(`(Intercept)` = 1, newx)
   beta <- stats::coef(fit_mfp2)
   beta_vcov <- stats::vcov(fit_mfp2)
-  
+
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_link <- as.numeric(manual_x %*% beta + newoffset)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
   manual_response <- exp(manual_link)
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), manual_link, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), manual_se, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_response), manual_response, tolerance = 1e-10)
@@ -4561,7 +4990,7 @@ test_that("8.1.9 Poisson matrix interface: mfp2 offset model matches glm and man
 # manually from X beta + offset, including link-scale standard errors.
 test_that("8.1.10 Binomial matrix response and offset: mfp2 matches glm and manual calculation", {
   set.seed(8020)
-  
+
   dat <- data.frame(
     x1 = runif(240, 1, 5),
     x2 = rnorm(240),
@@ -4575,10 +5004,10 @@ test_that("8.1.10 Binomial matrix response and offset: mfp2 matches glm and manu
     prob = stats::plogis(eta)
   )
   dat$failures <- dat$trials - dat$successes
-  
+
   x <- as.matrix(dat[, c("x1", "x2")])
   y <- cbind(dat$successes, dat$failures)
-  
+
   fit_mfp2 <- mfp2(
     x = x,
     y = y,
@@ -4593,21 +5022,21 @@ test_that("8.1.10 Binomial matrix response and offset: mfp2 matches glm and manu
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     cbind(successes, failures) ~ x1 + x2 + offset(off),
     data = dat,
     family = stats::binomial()
   )
-  
+
   expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
   expect_equal(as.numeric(stats::logLik(fit_mfp2)), as.numeric(stats::logLik(fit_glm)), tolerance = 1e-8)
   expect_equal(unname(stats::fitted(fit_mfp2)), unname(stats::fitted(fit_glm)), tolerance = 1e-8)
-  
+
   nd <- dat[1:25, , drop = FALSE]
   newx <- as.matrix(nd[, c("x1", "x2")])
   newoffset <- nd$off
-  
+
   pred_mfp2_link <- predict(
     fit_mfp2,
     newdata = newx,
@@ -4623,26 +5052,26 @@ test_that("8.1.10 Binomial matrix response and offset: mfp2 matches glm and manu
     type = "response"
   )
   pred_glm_response <- predict(fit_glm, newdata = nd, type = "response")
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), as.numeric(pred_glm_link$fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), as.numeric(pred_glm_link$se.fit), tolerance = 1e-8)
   expect_equal(as.numeric(pred_mfp2_response), as.numeric(pred_glm_response), tolerance = 1e-8)
-  
+
   # Manual grouped-binomial prediction. Trial counts affect estimation but do
   # not enter the newdata linear predictor; response predictions are event
   # probabilities obtained by applying plogis() to X beta + offset.
   manual_x <- cbind(`(Intercept)` = 1, newx)
   beta <- stats::coef(fit_mfp2)
   beta_vcov <- stats::vcov(fit_mfp2)
-  
+
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_link <- as.numeric(manual_x %*% beta + newoffset)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
   manual_response <- stats::plogis(manual_link)
-  
+
   expect_equal(as.numeric(pred_mfp2_link$fit), manual_link, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_link$se.fit), manual_se, tolerance = 1e-10)
   expect_equal(as.numeric(pred_mfp2_response), manual_response, tolerance = 1e-10)
@@ -4651,14 +5080,14 @@ test_that("8.1.10 Binomial matrix response and offset: mfp2 matches glm and manu
 # Test purpose: 8.1.11 Gaussian GLM equivalence with a non-default log link.
 test_that("8.1.11 Gaussian log link: mfp2 predictions match glm", {
   set.seed(8021)
-  
+
   dat <- data.frame(
     x1 = runif(180, 1, 5),
     x2 = rnorm(180)
   )
   eta <- 0.2 + 0.10 * dat$x1 - 0.08 * dat$x2
   dat$y <- exp(eta + rnorm(nrow(dat), sd = 0.05))
-  
+
   fit_mfp2 <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -4672,32 +5101,32 @@ test_that("8.1.11 Gaussian log link: mfp2 predictions match glm", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x1 + x2,
     data = dat,
     family = stats::gaussian(link = "log")
   )
-  
+
   nd <- dat[1:25, c("x1", "x2"), drop = FALSE]
-  
+
   # The shared oracle checks coefficients, covariance, fitted values, both
   # prediction scales, link-scale SEs, and the manual inverse-link calculation.
   expect_glm_objects_and_manual_prediction_equal(fit_mfp2, fit_glm, nd)
-  
+
 })
 
 # Test purpose: 8.1.12 Binomial GLM equivalence with a non-default probit link.
 test_that("8.1.12 Binomial probit link: mfp2 predictions match glm", {
   set.seed(8022)
-  
+
   dat <- data.frame(
     x1 = runif(240, 1, 5),
     x2 = rnorm(240)
   )
   eta <- -0.6 + 0.25 * dat$x1 - 0.35 * dat$x2
   dat$y <- stats::rbinom(nrow(dat), size = 1, prob = stats::pnorm(eta))
-  
+
   fit_mfp2 <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -4711,32 +5140,32 @@ test_that("8.1.12 Binomial probit link: mfp2 predictions match glm", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x1 + x2,
     data = dat,
     family = stats::binomial(link = "probit")
   )
-  
+
   nd <- dat[1:25, c("x1", "x2"), drop = FALSE]
-  
+
   # The shared oracle checks coefficients, covariance, fitted values, both
   # prediction scales, link-scale SEs, and the manual inverse-link calculation.
   expect_glm_objects_and_manual_prediction_equal(fit_mfp2, fit_glm, nd)
-  
+
 })
 
 # Test purpose: 8.1.13 Poisson GLM equivalence with a non-default sqrt link.
 test_that("8.1.13 Poisson sqrt link: mfp2 predictions match glm", {
   set.seed(8023)
-  
+
   dat <- data.frame(
     x1 = runif(240, 1, 5),
     x2 = runif(240, 0, 2)
   )
   eta <- 1.5 + 0.12 * dat$x1 + 0.10 * dat$x2
   dat$y <- stats::rpois(nrow(dat), lambda = eta^2)
-  
+
   fit_mfp2 <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -4750,19 +5179,19 @@ test_that("8.1.13 Poisson sqrt link: mfp2 predictions match glm", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x1 + x2,
     data = dat,
     family = stats::poisson(link = "sqrt")
   )
-  
+
   nd <- dat[1:25, c("x1", "x2"), drop = FALSE]
-  
+
   # The shared oracle checks coefficients, covariance, fitted values, both
   # prediction scales, link-scale SEs, and the manual inverse-link calculation.
   expect_glm_objects_and_manual_prediction_equal(fit_mfp2, fit_glm, nd)
-  
+
 })
 
 # Test purpose: 8.1.14 Formula-interface factor expansion should match glm()
@@ -4770,14 +5199,14 @@ test_that("8.1.13 Poisson sqrt link: mfp2 predictions match glm", {
 test_that("8.1.14 Gaussian categorical predictor: coefficients, LPs, SEs, and predictions match glm", {
   set.seed(8024)
   n <- 180
-  
+
   dat <- data.frame(
     x = runif(n, 1, 10),
     group = factor(rep(c("A", "B", "C"), length.out = n))
   )
   group_effect <- c(A = 0, B = 0.6, C = -0.4)[as.character(dat$group)]
   dat$y <- 0.5 + 0.3 * dat$x + group_effect + rnorm(n, sd = 0.3)
-  
+
   fit_mfp2 <- mfp2(
     y ~ x + group,
     data = dat,
@@ -4791,15 +5220,15 @@ test_that("8.1.14 Gaussian categorical predictor: coefficients, LPs, SEs, and pr
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x + group,
     data = dat,
     family = stats::gaussian()
   )
-  
+
   nd <- dat[1:25, c("x", "group"), drop = FALSE]
-  
+
   # The manual model matrix verifies the treatment-contrast dummy columns and
   # their coefficient ordering, not only the final delegated predictions.
   expect_glm_objects_and_manual_prediction_equal(fit_mfp2, fit_glm, nd)
@@ -4809,17 +5238,17 @@ test_that("8.1.14 Gaussian categorical predictor: coefficients, LPs, SEs, and pr
 # mfp2() to true formula-offset semantics, matching glm() with bare offset().
 test_that("8.1.15 stats::offset expression: mfp2 predictions match glm offset semantics", {
   set.seed(8015)
-  
+
   n <- 220
   dat <- data.frame(
     x1 = runif(n, 1, 8),
     x2 = rnorm(n),
     exposure = runif(n, 0.5, 2.5)
   )
-  
+
   eta <- 0.25 + 0.08 * dat$x1 - 0.27 * dat$x2 + log(dat$exposure)
   dat$y <- stats::rpois(n, lambda = exp(eta))
-  
+
   fit_mfp2 <- mfp2(
     y ~ fp(x1, df = 1, center = FALSE) +
       fp(x2, df = 1, center = FALSE) +
@@ -4835,15 +5264,15 @@ test_that("8.1.15 stats::offset expression: mfp2 predictions match glm offset se
     center = FALSE,
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x1 + x2 + offset(log(exposure)),
     data = dat,
     family = stats::poisson()
   )
-  
+
   nd <- dat[1:25, c("x1", "x2", "exposure"), drop = FALSE]
-  
+
   # The manual oracle evaluates log(exposure) from raw newdata and verifies
   # eta = X beta + log(exposure), mu = exp(eta), and X V X' standard errors.
   expect_glm_objects_and_manual_prediction_equal(fit_mfp2, fit_glm, nd)
@@ -4853,13 +5282,13 @@ test_that("8.1.15 stats::offset expression: mfp2 predictions match glm offset se
 # equivalence when mfp2() is forced to the same linear model as glm().
 test_that("8.1.16 Gaussian: mfp2 coefficients and logLik match glm", {
   set.seed(8026)
-  
+
   dat <- data.frame(
     y = rnorm(160),
     x1 = runif(160, 1, 5),
     x2 = rnorm(160)
   )
-  
+
   fit_mfp2 <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -4873,13 +5302,13 @@ test_that("8.1.16 Gaussian: mfp2 coefficients and logLik match glm", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   fit_glm <- stats::glm(
     y ~ x1 + x2,
     data = dat,
     family = stats::gaussian()
   )
-  
+
   # Use the complete training data as the prediction set so this test also
   # verifies the design matrix and direct X beta calculation.
   nd <- dat[, c("x1", "x2"), drop = FALSE]
@@ -4894,7 +5323,7 @@ test_that("8.1.16 Gaussian: mfp2 coefficients and logLik match glm", {
 test_that("8.1.17 Binomial categorical predictor: coefficients, LPs, SEs, and predictions match glm", {
   set.seed(8017)
   n <- 420
-  
+
   dat <- data.frame(
     x = stats::rnorm(n),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE))
@@ -4902,7 +5331,7 @@ test_that("8.1.17 Binomial categorical predictor: coefficients, LPs, SEs, and pr
   group_effect <- c(A = 0, B = 0.65, C = -0.45)[as.character(dat$group)]
   eta <- -0.35 + 0.55 * dat$x + group_effect
   dat$y <- stats::rbinom(n, size = 1, prob = stats::plogis(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x + group,
@@ -4918,7 +5347,7 @@ test_that("8.1.17 Binomial categorical predictor: coefficients, LPs, SEs, and pr
 test_that("8.1.18 Poisson categorical predictor: coefficients, LPs, SEs, and predictions match glm", {
   set.seed(8018)
   n <- 360
-  
+
   dat <- data.frame(
     x = stats::runif(n, -1, 1),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE))
@@ -4926,7 +5355,7 @@ test_that("8.1.18 Poisson categorical predictor: coefficients, LPs, SEs, and pre
   group_effect <- c(A = 0, B = 0.30, C = -0.25)[as.character(dat$group)]
   eta <- 0.40 + 0.35 * dat$x + group_effect
   dat$y <- stats::rpois(n, lambda = exp(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x + group,
@@ -4943,7 +5372,7 @@ test_that("8.1.18 Poisson categorical predictor: coefficients, LPs, SEs, and pre
 test_that("8.1.19 Gaussian categorical predictor with offset matches glm completely", {
   set.seed(8119)
   n <- 260
-  
+
   dat <- data.frame(
     x = stats::runif(n, -1, 2),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE)),
@@ -4952,7 +5381,7 @@ test_that("8.1.19 Gaussian categorical predictor with offset matches glm complet
   group_effect <- c(A = 0, B = 0.70, C = -0.45)[as.character(dat$group)]
   dat$y <- 0.6 + 0.35 * dat$x + group_effect + dat$off +
     stats::rnorm(n, sd = 0.35)
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x + group + offset(off),
@@ -4967,7 +5396,7 @@ test_that("8.1.19 Gaussian categorical predictor with offset matches glm complet
 test_that("8.1.20 Binomial categorical predictor with offset matches glm completely", {
   set.seed(8120)
   n <- 440
-  
+
   dat <- data.frame(
     x = stats::rnorm(n),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE)),
@@ -4976,7 +5405,7 @@ test_that("8.1.20 Binomial categorical predictor with offset matches glm complet
   group_effect <- c(A = 0, B = 0.55, C = -0.50)[as.character(dat$group)]
   eta <- -0.35 + 0.50 * dat$x + group_effect + dat$off
   dat$y <- stats::rbinom(n, size = 1, prob = stats::plogis(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x + group + offset(off),
@@ -4990,7 +5419,7 @@ test_that("8.1.20 Binomial categorical predictor with offset matches glm complet
 test_that("8.1.21 Poisson categorical predictor with offset matches glm completely", {
   set.seed(8121)
   n <- 380
-  
+
   dat <- data.frame(
     x = stats::runif(n, -1, 1),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE)),
@@ -4999,7 +5428,7 @@ test_that("8.1.21 Poisson categorical predictor with offset matches glm complete
   group_effect <- c(A = 0, B = 0.30, C = -0.25)[as.character(dat$group)]
   eta <- 0.30 + 0.32 * dat$x + group_effect + log(dat$exposure)
   dat$y <- stats::rpois(n, lambda = exp(eta))
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = y ~ x + group + offset(log(exposure)),
@@ -5014,7 +5443,7 @@ test_that("8.1.21 Poisson categorical predictor with offset matches glm complete
 test_that("8.1.22 Grouped binomial categorical predictor with offset matches glm completely", {
   set.seed(8122)
   n <- 360
-  
+
   dat <- data.frame(
     x = stats::rnorm(n),
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE)),
@@ -5029,7 +5458,7 @@ test_that("8.1.22 Grouped binomial categorical predictor with offset matches glm
     prob = stats::plogis(eta)
   )
   dat$failures <- dat$trials - dat$successes
-  
+
   expect_mfp2_glm_predictions_equal(
     dat = dat,
     formula = cbind(successes, failures) ~ x + group + offset(off),
@@ -5066,7 +5495,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   coef_coxph <- stats::coef(fit_coxph)
   vcov_mfp2 <- stats::vcov(fit_mfp2)
   vcov_coxph <- stats::vcov(fit_coxph)
-  
+
   expect_length(coef_mfp2, length(coef_coxph))
   expect_equal(dim(vcov_mfp2), dim(vcov_coxph))
   expect_equal(unname(coef_mfp2), unname(coef_coxph), tolerance = tolerance)
@@ -5081,7 +5510,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
     as.numeric(stats::logLik(fit_coxph)),
     tolerance = tolerance
   )
-  
+
   # Training predictions verify that fitted offsets and strata are stored and
   # applied consistently without requiring any newdata reconstruction.
   training_lp_mfp2 <- predict(fit_mfp2, type = "lp")
@@ -5095,7 +5524,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
     unname(training_lp_coxph),
     tolerance = tolerance
   )
-  
+
   # Formula fits reconstruct strata and offsets from raw newdata. Matrix fits
   # supply them explicitly through mfp2_predict_args.
   pred_mfp2 <- do.call(
@@ -5134,7 +5563,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
     type = "risk",
     reference = "zero"
   )
-  
+
   # model.matrix.coxph() removes the non-estimated intercept and formula
   # specials such as strata() and offset(), leaving the coefficient design in
   # its fitted order. This is the independent X beta oracle for newdata.
@@ -5144,7 +5573,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   }
   expect_equal(ncol(manual_x), length(coef_coxph))
   expect_equal(dim(vcov_coxph), c(length(coef_coxph), length(coef_coxph)))
-  
+
   reference_terms <- stats::delete.response(stats::terms(fit_coxph))
   reference_frame <- stats::model.frame(
     reference_terms,
@@ -5160,7 +5589,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   } else {
     mean(training_offset)
   }
-  
+
   # fit_mfp() stores the same offset origin used internally by
   # predict.coxph() once on the final mfp2 object. Package-owned manual Cox
   # prediction paths reuse this scalar rather than recomputing it in fit_model().
@@ -5169,7 +5598,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
     unname(expected_offset_reference),
     tolerance = tolerance
   )
-  
+
   # predict.coxph() always recentres an offset by subtracting its mean in the
   # training model frame. This applies even when cox_reference = "zero"; that
   # option controls covariate centering, not offset centering. Reproduce that
@@ -5180,12 +5609,12 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
     expect_false(is.null(training_offset))
     manual_offset <- as.numeric(new_offset - expected_offset_reference)
   }
-  
+
   manual_lp <- as.numeric(manual_x %*% coef_coxph + manual_offset)
   manual_risk <- exp(manual_lp)
   manual_variance <- rowSums((manual_x %*% vcov_coxph) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   expect_equal(
     unname(pred_mfp2$fit),
     unname(pred_coxph$fit),
@@ -5210,7 +5639,7 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
 # equivalence tests use different subsets of these model components.
 make_cox_equivalence_data <- function(n = 480L, seed = 8200L) {
   set.seed(seed)
-  
+
   dat <- data.frame(
     x1 = stats::rnorm(n),
     x2 = stats::runif(n, -1, 1),
@@ -5219,7 +5648,7 @@ make_cox_equivalence_data <- function(n = 480L, seed = 8200L) {
     stratum2 = factor(sample(c("T1", "T2"), n, replace = TRUE)),
     off = stats::rnorm(n, mean = 0, sd = 0.25)
   )
-  
+
   group_effect <- c(A = 0, B = 0.45, C = -0.35)[as.character(dat$group)]
   baseline_multiplier <-
     c(S1 = 0.75, S2 = 1.00, S3 = 1.35)[as.character(dat$stratum1)] *
@@ -5240,7 +5669,7 @@ make_cox_equivalence_data <- function(n = 480L, seed = 8200L) {
 # newdata LP/risk predictions, and prediction SEs.
 test_that("8.2.1 Cox single formula strata matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8201)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + x2 + strata(stratum1),
     data = dat,
@@ -5263,7 +5692,7 @@ test_that("8.2.1 Cox single formula strata matches coxph completely", {
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "x2", "stratum1"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5271,7 +5700,7 @@ test_that("8.2.1 Cox single formula strata matches coxph completely", {
 # combined identically to coxph() for fitting and prediction.
 test_that("8.2.3 Cox multiple formula strata match coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8203)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + x2 +
       strata(stratum1) + strata(stratum2),
@@ -5296,7 +5725,7 @@ test_that("8.2.3 Cox multiple formula strata match coxph completely", {
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "x2", "stratum1", "stratum2"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5306,7 +5735,7 @@ test_that("8.2.4 Cox matrix-interface strata matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8204)
   x <- as.matrix(dat[, c("x1", "x2")])
   y <- survival::Surv(dat$time, dat$status)
-  
+
   fit_mfp2 <- mfp2(
     x = x,
     y = y,
@@ -5331,7 +5760,7 @@ test_that("8.2.4 Cox matrix-interface strata matches coxph completely", {
   )
   nd <- dat[1:30, c("x1", "x2", "stratum1"), drop = FALSE]
   newx <- as.matrix(nd[, c("x1", "x2")])
-  
+
   expect_mfp2_cox_predictions_equal(
     fit_mfp2,
     fit_coxph,
@@ -5345,7 +5774,7 @@ test_that("8.2.4 Cox matrix-interface strata matches coxph completely", {
 # training and newdata Cox linear predictors exactly as in coxph().
 test_that("8.2.5 Cox formula offset matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8205)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + x2 + offset(off),
     data = dat,
@@ -5368,7 +5797,7 @@ test_that("8.2.5 Cox formula offset matches coxph completely", {
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "x2", "off"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5376,7 +5805,7 @@ test_that("8.2.5 Cox formula offset matches coxph completely", {
 # offset should match coxph() completely.
 test_that("8.2.6 Cox categorical predictor matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8206)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + group,
     data = dat,
@@ -5399,7 +5828,7 @@ test_that("8.2.6 Cox categorical predictor matches coxph completely", {
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "group"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5407,7 +5836,7 @@ test_that("8.2.6 Cox categorical predictor matches coxph completely", {
 # should preserve both grouped contrasts and stratum-specific risk sets.
 test_that("8.2.7 Cox categorical predictor with strata matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8207)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + group + strata(stratum1),
     data = dat,
@@ -5430,7 +5859,7 @@ test_that("8.2.7 Cox categorical predictor with strata matches coxph completely"
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "group", "stratum1"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5438,7 +5867,7 @@ test_that("8.2.7 Cox categorical predictor with strata matches coxph completely"
 # should match coxph() in all fitted and predicted quantities.
 test_that("8.2.8 Cox categorical predictor with offset matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8208)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + group + offset(off),
     data = dat,
@@ -5461,7 +5890,7 @@ test_that("8.2.8 Cox categorical predictor with offset matches coxph completely"
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "group", "off"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5470,7 +5899,7 @@ test_that("8.2.8 Cox categorical predictor with offset matches coxph completely"
 # coxph() fit or predictions.
 test_that("8.2.9 Cox categorical predictor with strata and offset matches coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8209)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + group +
       strata(stratum1) + offset(off),
@@ -5495,7 +5924,7 @@ test_that("8.2.9 Cox categorical predictor with strata and offset matches coxph 
     y = TRUE
   )
   nd <- dat[1:30, c("x1", "group", "stratum1", "off"), drop = FALSE]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5503,7 +5932,7 @@ test_that("8.2.9 Cox categorical predictor with strata and offset matches coxph 
 # coxph() simultaneously, including the offset contribution to LP and risk.
 test_that("8.2.10 Cox multiple strata with offset match coxph completely", {
   dat <- make_cox_equivalence_data(seed = 8210)
-  
+
   fit_mfp2 <- mfp2(
     survival::Surv(time, status) ~ x1 + x2 +
       strata(stratum1) + strata(stratum2) + offset(off),
@@ -5532,7 +5961,7 @@ test_that("8.2.10 Cox multiple strata with offset match coxph completely", {
     c("x1", "x2", "stratum1", "stratum2", "off"),
     drop = FALSE
   ]
-  
+
   expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
 })
 
@@ -5542,7 +5971,7 @@ test_that("8.2.11 Cox matrix-interface strata and offset match coxph completely"
   dat <- make_cox_equivalence_data(seed = 8211)
   x <- as.matrix(dat[, c("x1", "x2")])
   y <- survival::Surv(dat$time, dat$status)
-  
+
   fit_mfp2 <- mfp2(
     x = x,
     y = y,
@@ -5568,7 +5997,7 @@ test_that("8.2.11 Cox matrix-interface strata and offset match coxph completely"
   )
   nd <- dat[1:30, c("x1", "x2", "stratum1", "off"), drop = FALSE]
   newx <- as.matrix(nd[, c("x1", "x2")])
-  
+
   expect_mfp2_cox_predictions_equal(
     fit_mfp2,
     fit_coxph,
@@ -5595,7 +6024,7 @@ test_that("8.3.1 Formula-level strata missing from newdata errors clearly", {
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[stats::complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
@@ -5609,7 +6038,7 @@ test_that("8.3.1 Formula-level strata missing from newdata errors clearly", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, newdata = dat[1:5, c("age", "sex"), drop = FALSE], type = "lp"),
     "formula-level Cox strata|strata term could not be reconstructed"
@@ -5620,7 +6049,7 @@ test_that("8.3.1 Formula-level strata missing from newdata errors clearly", {
 # the dedicated reconstruction message.
 test_that("8.3.2 Formula-level offset missing from newdata errors clearly", {
   set.seed(8032)
-  
+
   dat <- data.frame(
     x1 = runif(180, 1, 5),
     x2 = rnorm(180),
@@ -5628,7 +6057,7 @@ test_that("8.3.2 Formula-level offset missing from newdata errors clearly", {
   )
   eta <- 0.15 + 0.12 * dat$x1 - 0.25 * dat$x2 + log(dat$exposure)
   dat$y <- stats::rpois(nrow(dat), lambda = exp(eta))
-  
+
   fit <- mfp2(
     y ~ x1 + x2 + stats::offset(log(exposure)),
     data = dat,
@@ -5641,7 +6070,7 @@ test_that("8.3.2 Formula-level offset missing from newdata errors clearly", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, newdata = dat[1:5, c("x1", "x2"), drop = FALSE], type = "link"),
     "formula-level offset|offset could not be reconstructed"
@@ -5668,10 +6097,10 @@ test_that("criterion = 'bic' runs without error", {
 test_that("BIC selects equal or fewer variables than AIC", {
   fit_aic <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE)
   fit_bic <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE)
-  
+
   n_aic <- sum(fit_aic$fp_terms[, "selected"])
   n_bic <- sum(fit_bic$fp_terms[, "selected"])
-  
+
   # BIC penalizes more heavily so typically selects <= AIC variables
   # This may not always hold for every dataset, but is generally expected
   expect_true(n_bic <= n_aic + 1) # allow slack of 1
@@ -5705,7 +6134,7 @@ test_that("ftest argument works for Gaussian family", {
 test_that("term_groups rejects unknown columns", {
   x <- cbind(x1 = 1:20, groupB = rep(0:1, 10))
   y <- rnorm(20)
-  
+
   expect_error(
     mfp2(
       x,
@@ -5725,7 +6154,7 @@ test_that("term_groups rejects columns in more than one group", {
     other = 1:20
   )
   y <- rnorm(20)
-  
+
   expect_error(
     mfp2(
       x,
@@ -5749,7 +6178,7 @@ test_that("grouped terms require df = 1 for every member column", {
     x1 = seq(0.5, 10, length.out = 20)
   )
   y <- rnorm(20)
-  
+
   expect_error(
     mfp2(
       x,
@@ -5775,14 +6204,14 @@ test_that("grouped terms reject continuous-only processing options", {
   )
   y <- rnorm(24)
   grouped <- list(group = c("groupB", "groupC"))
-  
+
   cases <- list(
     acdx = list(acdx = "groupB"),
     zero_vars = list(zero_vars = "groupB"),
     catzero_vars = list(catzero_vars = "groupB"),
     spike_vars = list(spike_vars = "groupB")
   )
-  
+
   for (setting in names(cases)) {
     args <- c(
       list(x = x, y = y, term_groups = grouped),
@@ -5809,13 +6238,13 @@ test_that("grouped mappings use explicit arguments instead of matrix attributes"
     x1 = c(1, 2, 3, 4)
   )
   attr(x, "mfp2_term_to_columns") <- list(stale = "missing_column")
-  
+
   term_to_columns <- list(
     group = c("groupB", "groupC"),
     x1 = "x1"
   )
   term_names <- names(term_to_columns)
-  
+
   out <- build_adjustment_step(
     x = x,
     xi = "x1",
@@ -5830,7 +6259,7 @@ test_that("grouped mappings use explicit arguments instead of matrix attributes"
     prev_adj_params = stats::setNames(vector("list", 2L), term_names),
     term_to_columns = term_to_columns
   )
-  
+
   expect_identical(colnames(out$data_adj), c("groupB", "groupC"))
   expect_equal(
     unname(out$data_adj),
@@ -5847,7 +6276,7 @@ test_that("grouped mappings use explicit arguments instead of matrix attributes"
 # validator and confirms that both option classes receive an actionable reason.
 test_that("grouped-setting errors explain why MFPI options are unsupported", {
   term_to_columns <- list(group = c("groupB", "groupC"))
-  
+
   expect_error(
     validate_grouped_term_setting(
       term_to_columns = term_to_columns,
@@ -5862,7 +6291,7 @@ test_that("grouped-setting errors explain why MFPI options are unsupported", {
     ),
     ignore.case = TRUE
   )
-  
+
   expect_error(
     validate_grouped_term_setting(
       term_to_columns = term_to_columns,
@@ -5904,18 +6333,18 @@ test_that("mfp2() rejects character data in x", {
   expect_error(mfp2(x_bad, y_prostate), "character")
 })
 
-# Test purpose: Checks that response length must match the number of predictor 
+# Test purpose: Checks that response length must match the number of predictor
 # rows.
 test_that("mfp2() rejects mismatched y length", {
   expect_error(mfp2(x_prostate, y_prostate[1:10]), "must match")
 })
 
-# Test purpose: Checks that numeric subsetting fits the model on the selected 
+# Test purpose: Checks that numeric subsetting fits the model on the selected
 # observations.
 test_that("subset argument works correctly", {
   idx <- 1:50
   fit <- mfp2(x_prostate, y_prostate, subset = idx, verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   # The model should be fitted on the subset
   expect_equal(length(fit$residuals), length(idx))
@@ -5927,11 +6356,11 @@ test_that("subset with logical vector works", {
   log_sub <- rep(FALSE, nrow(x_prostate))
   log_sub[1:50] <- TRUE
   fit <- mfp2(x_prostate, y_prostate, subset = log_sub, verbose = FALSE)
-  
+
   expect_equal(length(fit$residuals), 50)
 })
 
-# Test purpose: Checks that all supported covariate-entry order options run 
+# Test purpose: Checks that all supported covariate-entry order options run
 # successfully.
 test_that("xorder options work without error", {
   for (ord in c("ascending", "descending", "original")) {
@@ -5954,7 +6383,7 @@ test_that("grouped significance ordering uses fitted rank difference", {
     group = c("groupB", "groupC"),
     z = "z"
   )
-  
+
   testthat::local_mocked_bindings(
     fit_model = function(x, ...) {
       remaining <- colnames(x)
@@ -5971,7 +6400,7 @@ test_that("grouped significance ordering uses fitted rank difference", {
     },
     .package = "mfp2"
   )
-  
+
   common_args <- list(
     x = x,
     y = rep(0, nrow(x)),
@@ -5986,7 +6415,7 @@ test_that("grouped significance ordering uses fitted rank difference", {
     full_reference = list(logl = 100, df = 2),
     term_to_columns = term_to_columns
   )
-  
+
   ascending <- do.call(
     order_variables_by_significance,
     c(list(xorder = "ascending"), common_args)
@@ -5995,12 +6424,12 @@ test_that("grouped significance ordering uses fitted rank difference", {
     order_variables_by_significance,
     c(list(xorder = "descending"), common_args)
   )
-  
+
   expect_identical(ascending, c("group", "z"))
   expect_identical(descending, c("z", "group"))
 })
 
-# Test purpose: Checks df down-capping rules for binary, ternary, few-level, and 
+# Test purpose: Checks df down-capping rules for binary, ternary, few-level, and
 # continuous variables.
 test_that("assign_df() correctly limits df for low-cardinality variables", {
   x <- cbind(
@@ -6009,7 +6438,7 @@ test_that("assign_df() correctly limits df for low-cardinality variables", {
     few = c(1, 2, 3, 4, 5, 1, 2, 3, 4, 5),
     continuous = 1:10
   )
-  
+
   df <- assign_df(x, df_default = 4)
   expect_equal(df[["binary"]], 1)    # <= 3 unique -> 1
   expect_equal(df[["ternary"]], 1)   # <= 3 unique -> 1
@@ -6017,11 +6446,11 @@ test_that("assign_df() correctly limits df for low-cardinality variables", {
   expect_equal(df[["continuous"]], 4) # >= 6 unique -> 4
 })
 
-# Test purpose: Checks that the selected-variable accessor returns valid predictor 
+# Test purpose: Checks that the selected-variable accessor returns valid predictor
 # names.
 test_that("get_selected_variable_names() returns correct names", {
   fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE)
-  
+
   sel <- get_selected_variable_names(fit)
   expect_true(is.character(sel))
   expect_true(length(sel) > 0)
@@ -6045,10 +6474,36 @@ test_that("summary.mfp2() works for Cox", {
   data("gbsg", package = "mfp2")
   x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
   y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
-  
+
   fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
+})
+
+# Test purpose: Verifies that negative-binomial summary inference agrees with
+# MASS and uses z rather than t statistics after theta has been estimated.
+test_that("summary.mfp2() reports correct negative-binomial inference", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  fits <- get_negbin_reference_fits()
+  summary_mfp2 <- summary(fits$mfp2, raw = TRUE)
+  summary_mass <- summary(fits$mass)
+
+  expect_true(!is.null(summary_mfp2))
+  expect_true(is.matrix(summary_mfp2$coefficients))
+  expect_true(any(grepl("^z($| value)", colnames(summary_mfp2$coefficients))))
+  expect_false(any(grepl("^t($| value)", colnames(summary_mfp2$coefficients))))
+  expect_equal(
+    unname(summary_mfp2$coefficients[, 1:2, drop = FALSE]),
+    unname(summary_mass$coefficients[, 1:2, drop = FALSE]),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(summary_mfp2$coefficients[, 3:4, drop = FALSE]),
+    unname(summary_mass$coefficients[, 3:4, drop = FALSE]),
+    tolerance = 1e-3
+  )
 })
 
 # Test purpose: Checks that coef() returns named numeric coefficients.
@@ -6077,7 +6532,7 @@ test_that("weights argument is accepted and used", {
   expect_s3_class(fit, "mfp2")
 })
 
-# Test purpose: Checks that Poisson offsets are accepted and recorded in the 
+# Test purpose: Checks that Poisson offsets are accepted and recorded in the
 # fitted object.
 test_that("offset argument is accepted for Poisson", {
   set.seed(1)
@@ -6085,17 +6540,107 @@ test_that("offset argument is accepted for Poisson", {
   x <- cbind(x1 = runif(n, 1, 10), x2 = runif(n, 1, 5))
   exposure <- runif(n, 0.5, 2)
   y <- rpois(n, exposure * exp(0.5 + 0.1 * x[, 1]))
-  
+
   fit <- mfp2(x, y, family = "poisson", offset = log(exposure), verbose = FALSE)
   expect_s3_class(fit, "mfp2")
   expect_true(fit$has_offset)
 })
 
+# Test purpose: Verifies that negative-binomial weights and offsets are passed
+# consistently through fitting and prediction by comparison with glm.nb().
+test_that("negative-binomial weights and offsets agree with MASS::glm.nb()", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  set.seed(1201)
+  n <- 280L
+  dat <- data.frame(
+    x1 = stats::runif(n, 0.5, 2.5),
+    x2 = stats::rnorm(n),
+    exposure = stats::runif(n, 0.6, 2.2),
+    w = sample(c(1, 2), n, replace = TRUE)
+  )
+  dat$log_exposure <- log(dat$exposure)
+  dat$y <- stats::rnbinom(
+    n,
+    mu = exp(0.15 + 0.4 * dat$x1 - 0.2 * dat$x2 + dat$log_exposure),
+    size = 3.2
+  )
+
+  fit_mfp2 <- mfp2(
+    y ~ x1 + x2,
+    data = dat,
+    family = "negbin",
+    fitter = "fastglm",
+    weights = dat$w,
+    offset = dat$log_exposure,
+    cycles = 1,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    xorder = "original",
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+  fit_mass <- MASS::glm.nb(
+    y ~ x1 + x2 + offset(log_exposure),
+    data = dat,
+    weights = w,
+    link = log,
+    control = stats::glm.control(maxit = 100L)
+  )
+
+  expect_negbin_mfp2_mass_equal(
+    fit_mfp2,
+    fit_mass,
+    coefficient_tolerance = 5e-4,
+    likelihood_tolerance = 2e-3
+  )
+  expect_equal(unname(fit_mfp2$prior.weights), dat$w)
+
+  nd <- dat[seq_len(20L), c("x1", "x2", "log_exposure"), drop = FALSE]
+  pred_mfp2 <- predict(
+    fit_mfp2,
+    newdata = nd[, c("x1", "x2"), drop = FALSE],
+    newoffset = nd$log_exposure,
+    type = "link",
+    se.fit = TRUE
+  )
+  pred_mass <- stats::predict(
+    fit_mass,
+    newdata = nd,
+    type = "link",
+    se.fit = TRUE
+  )
+
+  expect_equal(unname(pred_mfp2$fit), unname(pred_mass$fit), tolerance = 5e-4)
+  expect_equal(
+    unname(pred_mfp2$se.fit),
+    unname(pred_mass$se.fit),
+    tolerance = 5e-4
+  )
+
+  shifted <- predict(
+    fit_mfp2,
+    newdata = nd[, c("x1", "x2"), drop = FALSE],
+    newoffset = nd$log_exposure + 0.35,
+    type = "link"
+  )
+  expect_equal(
+    unname(shifted - pred_mfp2$fit),
+    rep(0.35, nrow(nd)),
+    tolerance = 1e-10
+  )
+})
+
+
 # =============================================================================
 # 13. Convergence and cycles
 # =============================================================================
 
-# Test purpose: Checks that the default maximum number of cycles is sufficient 
+# Test purpose: Checks that the default maximum number of cycles is sufficient
 # for convergence on the prostate data.
 test_that("mfp2() converges within default cycles", {
   fit <- mfp2(x_prostate, y_prostate, cycles = 5, verbose = FALSE)
@@ -6109,7 +6654,7 @@ test_that("mfp2() with cycles = 1 still returns a result", {
     fit <- mfp2(x_prostate, y_prostate, cycles = 1, verbose = FALSE),
     "No convergence after 1 cycles"
   )
-  
+
   expect_s3_class(fit, "mfp2")
 })
 
@@ -6117,7 +6662,7 @@ test_that("mfp2() with cycles = 1 still returns a result", {
 # 14. zero_vars and catzero_vars
 # =============================================================================
 
-# Test purpose: Checks that zero_vars activates zero-component handling for 
+# Test purpose: Checks that zero_vars activates zero-component handling for
 # nonpositive values.
 test_that("zero_vars recodes non-positive values to zero", {
   set.seed(1)
@@ -6125,14 +6670,14 @@ test_that("zero_vars recodes non-positive values to zero", {
   x_val <- rnorm(n, mean = 5, sd = 3) # some values may be <= 0
   x_mat <- cbind(exposure = x_val, x2 = runif(n, 1, 10))
   y_val <- 2 * pmax(x_val, 0) + rnorm(n)
-  
+
   fit <- mfp2(x_mat, y_val, zero_vars = "exposure", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$zero["exposure"])
 })
 
-# Test purpose: Checks that catzero_vars adds a zero-component indicator and 
+# Test purpose: Checks that catzero_vars adds a zero-component indicator and
 # implies zero handling.
 test_that("catzero_vars creates binary indicator", {
   set.seed(1)
@@ -6140,9 +6685,9 @@ test_that("catzero_vars creates binary indicator", {
   x_val <- rnorm(n, mean = 5, sd = 3)
   x_mat <- cbind(exposure = x_val, x2 = runif(n, 1, 10))
   y_val <- 2 * pmax(x_val, 0) + 1.5 * (x_val <= 0) + rnorm(n)
-  
+
   fit <- mfp2(x_mat, y_val, catzero_vars = "exposure", verbose = FALSE)
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$catzero["exposure"])
   # zero should also be TRUE (catzero implies zero)
@@ -6154,20 +6699,20 @@ test_that("catzero_vars creates binary indicator", {
 test_that("formula interface fp(zero = TRUE) enables zero handling", {
   set.seed(102)
   n <- 200
-  
+
   exposure <- rnorm(n, mean = 5, sd = 3)
   dat <- data.frame(
     y = 2 * pmax(exposure, 0) + rnorm(n),
     exposure = exposure,
     x2 = runif(n, 1, 10)
   )
-  
+
   fit <- mfp2(
     y ~ fp(exposure, zero = TRUE) + fp(x2),
     data = dat,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$zero["exposure"])
 })
@@ -6177,20 +6722,20 @@ test_that("formula interface fp(zero = TRUE) enables zero handling", {
 test_that("formula interface fp(catzero = TRUE) enables catzero and zero handling", {
   set.seed(103)
   n <- 200
-  
+
   exposure <- rnorm(n, mean = 5, sd = 3)
   dat <- data.frame(
     y = 2 * pmax(exposure, 0) + 1.5 * (exposure <= 0) + rnorm(n),
     exposure = exposure,
     x2 = runif(n, 1, 10)
   )
-  
+
   fit <- mfp2(
     y ~ fp(exposure, catzero = TRUE) + fp(x2),
     data = dat,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_true(fit$catzero["exposure"])
   expect_true(fit$zero["exposure"])
@@ -6210,19 +6755,19 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
     select = 1,
     verbose = FALSE
   )
-  
+
   for (v in get_selected_variable_names(fit_force)) {
     powers <- fit_force$fp_powers[[v]]
     requested_df <- as.numeric(fit_force$fp_terms[v, "df_initial"])
-    
+
     expected_n_powers <- if (requested_df <= 1) {
       1
     } else {
       requested_df / 2
     }
-    
+
     n_powers <- sum(!is.na(powers))
-    
+
     expect_equal(
       n_powers,
       expected_n_powers,
@@ -6236,13 +6781,13 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
 # alpha = 1 under p-value selection in the matrix interface.
 test_that("force_max_fp_vars forces maximum FP degree with p-value selection", {
   set.seed(1501)
-  
+
   dat <- data.frame(
     x = seq(0.5, 6, length.out = 250)
   )
   dat$y <- 1 + 1.5 / dat$x - 0.7 * dat$x^2 +
     rnorm(nrow(dat), sd = 0.05)
-  
+
   fit <- mfp2(
     x = as.matrix(dat["x"]),
     y = dat$y,
@@ -6253,7 +6798,7 @@ test_that("force_max_fp_vars forces maximum FP degree with p-value selection", {
     force_max_fp_vars = "x",
     verbose = FALSE
   )
-  
+
   expect_equal(as.numeric(fit$fp_terms["x", "select"]), 1)
   expect_equal(as.numeric(fit$fp_terms["x", "alpha"]), 1)
   expect_true(fit$fp_terms["x", "selected"])
@@ -6264,13 +6809,13 @@ test_that("force_max_fp_vars forces maximum FP degree with p-value selection", {
 # p-value forcing logic through mfp2.formula().
 test_that("formula force_max_fp uses p-value forcing from mfp2.default", {
   set.seed(1502)
-  
+
   dat <- data.frame(
     x = seq(0.5, 6, length.out = 250)
   )
   dat$y <- 1 + 1.5 / dat$x - 0.7 * dat$x^2 +
     rnorm(nrow(dat), sd = 0.05)
-  
+
   fit <- mfp2(
     y ~ fp(x, df = 4, force_max_fp = TRUE),
     data = dat,
@@ -6279,7 +6824,7 @@ test_that("formula force_max_fp uses p-value forcing from mfp2.default", {
     alpha = 0.05,
     verbose = FALSE
   )
-  
+
   expect_equal(as.numeric(fit$fp_terms["x", "select"]), 1)
   expect_equal(as.numeric(fit$fp_terms["x", "alpha"]), 1)
   expect_true(fit$fp_terms["x", "selected"])
@@ -6293,7 +6838,7 @@ test_that("formula force_max_fp uses p-value forcing from mfp2.default", {
 
 make_mfpi_factor_data <- function(n = 240L, ordered_stage = FALSE) {
   set.seed(9101)
-  
+
   trt <- factor(rep(c("control", "treated"), length.out = n))
   stage_values <- rep(c("I", "II", "III"), length.out = n)
   stage <- if (ordered_stage) {
@@ -6301,11 +6846,11 @@ make_mfpi_factor_data <- function(n = 240L, ordered_stage = FALSE) {
   } else {
     factor(stage_values, levels = c("I", "II", "III"))
   }
-  
+
   x <- runif(n, 1, 8)
   z <- rnorm(n)
   stage_effect <- c(I = 0, II = 0.7, III = -0.5)[as.character(stage)]
-  
+
   data.frame(
     y = 1 + 0.4 * x + 0.9 * x * (trt == "treated") +
       stage_effect + 0.2 * z + rnorm(n, sd = 0.25),
@@ -6322,13 +6867,13 @@ make_mfpi_factor_data <- function(n = 240L, ordered_stage = FALSE) {
 # p-value criterion.
 test_that("MFPI force_max_fp_vars forces p-value adjustment variables", {
   dat <- make_mfpi_factor_data()
-  
+
   # Replace z after generating y so that z is a positive, unassociated
   # adjustment variable. Its retention therefore depends on force_max_fp_vars,
   # while no shift is needed for the FP transformation.
   set.seed(1503)
   dat$z <- runif(nrow(dat), min = 0.5, max = 3)
-  
+
   fit <- mfpi(
     y ~ trt + x + z,
     data = dat,
@@ -6346,9 +6891,9 @@ test_that("MFPI force_max_fp_vars forces p-value adjustment variables", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   adjustment_terms <- fit$adjustment_model$fp_terms
-  
+
   expect_equal(as.numeric(adjustment_terms["z", "select"]), 1)
   expect_equal(as.numeric(adjustment_terms["z", "alpha"]), 1)
   expect_true(adjustment_terms["z", "selected"])
@@ -6370,7 +6915,7 @@ test_that("MFPI force_max_fp_vars forces p-value adjustment variables", {
 # and selected as one conceptual MFPI adjustment term.
 test_that("MFPI formula groups unordered-factor adjustment columns", {
   dat <- make_mfpi_factor_data()
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -6387,11 +6932,11 @@ test_that("MFPI formula groups unordered-factor adjustment columns", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_true("stage" %in% names(fit$term_to_columns))
   expect_setequal(fit$term_to_columns[["stage"]], c("stageII", "stageIII"))
-  
+
   expect_true("stage" %in% rownames(fit$adjustment_model$fp_terms))
   expect_true(fit$adjustment_model$fp_terms["stage", "selected"])
   expect_equal(
@@ -6406,7 +6951,7 @@ test_that("MFPI formula groups unordered-factor adjustment columns", {
 # and grouped as one fixed linear MFPI adjustment term.
 test_that("MFPI formula groups ordered-factor polynomial contrasts", {
   dat <- make_mfpi_factor_data(ordered_stage = TRUE)
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -6423,7 +6968,7 @@ test_that("MFPI formula groups ordered-factor polynomial contrasts", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_true("stage" %in% names(fit$term_to_columns))
   expect_setequal(fit$term_to_columns[["stage"]], c("stage.L", "stage.Q"))
@@ -6440,7 +6985,7 @@ test_that("MFPI formula groups ordered-factor polynomial contrasts", {
 test_that("MFPI names inline factor adjustments by their source variable", {
   dat <- make_mfpi_factor_data()
   dat$stage_code <- as.integer(dat$stage)
-  
+
   fit <- mfpi(
     y ~ trt + x + factor(stage_code) + z,
     data = dat,
@@ -6457,7 +7002,7 @@ test_that("MFPI names inline factor adjustments by their source variable", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_true("stage_code" %in% names(fit$term_to_columns))
   expect_false("factor(stage_code)" %in% names(fit$term_to_columns))
   expect_identical(
@@ -6476,7 +7021,7 @@ test_that("MFPI names inline factor adjustments by their source variable", {
 test_that("MFPI retains binary inline factors as source-name mappings", {
   dat <- make_mfpi_factor_data()
   dat$binary_stage <- rep(c(1, 1, 2, 1, 2, 2), length.out = nrow(dat))
-  
+
   fit <- mfpi(
     y ~ trt + x + factor(binary_stage) + z,
     data = dat,
@@ -6493,13 +7038,13 @@ test_that("MFPI retains binary inline factors as source-name mappings", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(
     fit$term_to_columns[["binary_stage"]],
     "factor(binary_stage)2"
   )
   expect_true(fit$adjustment_model$fp_terms["binary_stage", "selected"])
-  
+
   nd <- dat[1:18, c("trt", "x", "binary_stage", "z"), drop = FALSE]
   fit_result <- fit$var_winners[["x"]]$fit
   design <- mfpi_build_ordinary_design(fit, "x", fit_result, nd)
@@ -6511,14 +7056,14 @@ test_that("MFPI retains binary inline factors as source-name mappings", {
 test_that("MFPI matrix interface accepts manual grouped adjustment columns", {
   dat <- make_mfpi_factor_data()
   stage_mm <- stats::model.matrix(~ stage, dat)[, -1L, drop = FALSE]
-  
+
   x <- cbind(
     trt = as.numeric(dat$trt) - 1,
     x = dat$x,
     stage_mm,
     z = dat$z
   )
-  
+
   fit <- mfpi(
     x,
     dat$y,
@@ -6536,7 +7081,7 @@ test_that("MFPI matrix interface accepts manual grouped adjustment columns", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(
     fit$term_to_columns[["stage"]],
     c("stageII", "stageIII")
@@ -6554,7 +7099,7 @@ test_that("MFPI grouped ordered-factor columns are linear under scalar df defaul
   stage <- ordered(rep(LETTERS[1:4], length.out = n))
   stage_mm <- stats::model.matrix(~ stage)[, -1L, drop = FALSE]
   z <- stats::rnorm(n)
-  
+
   x <- cbind(
     trt = trt,
     x = x_cont,
@@ -6563,7 +7108,7 @@ test_that("MFPI grouped ordered-factor columns are linear under scalar df defaul
   )
   y <- 0.5 * x_cont + 0.7 * stage_mm[, 1L] -
     0.4 * stage_mm[, 2L] + 0.2 * z + stats::rnorm(n, sd = 0.5)
-  
+
   fit <- mfpi(
     x,
     y,
@@ -6575,7 +7120,7 @@ test_that("MFPI grouped ordered-factor columns are linear under scalar df defaul
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(
     as.numeric(fit$adjustment_model$fp_terms["stage", "df_initial"]),
@@ -6596,7 +7141,7 @@ test_that("MFPI grouped matrix columns default to scale one", {
   stage_mm <- stats::model.matrix(~ stage)[, -1L, drop = FALSE]
   stage_mm[, 1L] <- 1000 * stage_mm[, 1L]
   z <- stats::rnorm(n)
-  
+
   x <- cbind(
     trt = trt,
     x = x_cont,
@@ -6605,7 +7150,7 @@ test_that("MFPI grouped matrix columns default to scale one", {
   )
   y <- 0.5 * x_cont + 0.001 * stage_mm[, 1L] -
     0.4 * stage_mm[, 2L] + 0.2 * z + stats::rnorm(n, sd = 0.5)
-  
+
   fit <- mfpi(
     x,
     y,
@@ -6617,7 +7162,7 @@ test_that("MFPI grouped matrix columns default to scale one", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(
     unname(fit$scale[colnames(stage_mm)]),
@@ -6636,13 +7181,13 @@ test_that("MFPI grouped matrix columns default to scale one", {
 test_that("MFPI grouped terms cannot be used as cont_vars", {
   dat <- make_mfpi_factor_data()
   stage_mm <- stats::model.matrix(~ stage, dat)[, -1L, drop = FALSE]
-  
+
   x <- cbind(
     trt = as.numeric(dat$trt) - 1,
     x = dat$x,
     stage_mm
   )
-  
+
   expect_error(
     mfpi(
       x,
@@ -6666,7 +7211,7 @@ test_that("include_group_var stores group dummies as one conceptual term", {
     rep(c("A", "A", "B", "C", "B", "C"), length.out = nrow(dat)),
     levels = c("A", "B", "C")
   )
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -6684,10 +7229,10 @@ test_that("include_group_var stores group dummies as one conceptual term", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_true("trt" %in% names(fit$adjustment_model$term_to_columns))
   expect_length(fit$adjustment_model$term_to_columns[["trt"]], 2L)
-  
+
   selected_for_stage2 <- fit$univariable_interactions$selected_vars
   if (!is.null(selected_for_stage2)) {
     expect_false("trt" %in% selected_for_stage2)
@@ -6699,7 +7244,7 @@ test_that("include_group_var stores group dummies as one conceptual term", {
 # object with expected metadata.
 test_that("mfpi.default() runs and returns an mfpi object", {
   data("prostate", package = "mfp2")
-  
+
   x_p <- data.frame(
     svi = prostate$svi,
     age = prostate$age,
@@ -6709,7 +7254,7 @@ test_that("mfpi.default() runs and returns an mfpi object", {
     bph = prostate$bph,
     cp = prostate$cp
   )
-  
+
   fit <- mfpi(
     x_p, y_prostate,
     group_var = "svi",
@@ -6717,7 +7262,7 @@ test_that("mfpi.default() runs and returns an mfpi object", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_true(!is.null(fit$all_model_metrics))
   expect_true(!is.null(fit$adjustment_model))
@@ -6725,11 +7270,11 @@ test_that("mfpi.default() runs and returns an mfpi object", {
   expect_equal(fit$cont_vars, c("cavol", "age"))
 })
 
-# Test purpose: Checks that the formula MFPI interface parses fp() terms and 
+# Test purpose: Checks that the formula MFPI interface parses fp() terms and
 # returns an mfpi object.
 test_that("mfpi.formula() runs and returns an mfpi object", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
       fp(bph) + fp(cp),
@@ -6739,15 +7284,15 @@ test_that("mfpi.formula() runs and returns an mfpi object", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
 })
 
-# Test purpose: Checks that requested interaction functional forms are stored for 
+# Test purpose: Checks that requested interaction functional forms are stored for
 # continuous variables.
 test_that("mfpi() cont_var_forms specifies functional form correctly", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -6757,7 +7302,7 @@ test_that("mfpi() cont_var_forms specifies functional form correctly", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp2"))
   expect_equal(fit$cont_var_forms["age"], c(age = "linear"))
@@ -6767,7 +7312,7 @@ test_that("mfpi() cont_var_forms specifies functional form correctly", {
 # assessment.
 test_that("mfpi() with criterion = 'aic' works", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -6776,15 +7321,15 @@ test_that("mfpi() with criterion = 'aic' works", {
     criterion = "aic",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
 })
 
-# Test purpose: Checks that all supported MFPI flexibility settings fit without 
+# Test purpose: Checks that all supported MFPI flexibility settings fit without
 # error.
 test_that("mfpi() flexibility levels run without error", {
   data("prostate", package = "mfp2")
-  
+
   for (fl in c("flex1", "flex2", "flex3", "flex4")) {
     fit <- mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -6818,7 +7363,7 @@ test_that("mfpi() defaults to flex3", {
 # for every variable listed in cont_vars.
 test_that("mfpi() defaults missing cont_var_forms to linear", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -6826,7 +7371,7 @@ test_that("mfpi() defaults missing cont_var_forms to linear", {
     group_var = "svi",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp1"))
   expect_equal(fit$cont_var_forms["age"], c(age = "fp1"))
@@ -6836,7 +7381,7 @@ test_that("mfpi() defaults missing cont_var_forms to linear", {
 # omitted cont_vars are filled with "linear" and ordering follows cont_vars.
 test_that("mfpi() fills missing cont_var_forms entries with linear", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -6845,7 +7390,7 @@ test_that("mfpi() fills missing cont_var_forms entries with linear", {
     group_var = "svi",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(names(fit$cont_var_forms), c("cavol", "age"))
   expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp2"))
@@ -6856,7 +7401,7 @@ test_that("mfpi() fills missing cont_var_forms entries with linear", {
 # and "fp2".
 test_that("mfpi() rejects invalid cont_var_forms values", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -6875,7 +7420,7 @@ test_that("mfpi() rejects invalid cont_var_forms values", {
 # form is explicitly tied to a variable in cont_vars.
 test_that("mfpi() rejects unnamed cont_var_forms", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -6894,7 +7439,7 @@ test_that("mfpi() rejects unnamed cont_var_forms", {
 # being tested as continuous interaction variables.
 test_that("mfpi() rejects cont_var_forms names not in cont_vars", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -6913,14 +7458,14 @@ test_that("mfpi() rejects cont_var_forms names not in cont_vars", {
 test_that("mfpi() rejects group_var included in cont_vars", {
   set.seed(204)
   n <- 120
-  
+
   x <- data.frame(
     group = rep(1:4, length.out = n),
     x1 = runif(n, 1, 10),
     x2 = runif(n, 1, 10)
   )
   y <- rnorm(n)
-  
+
   expect_error(
     mfpi(
       x,
@@ -6937,7 +7482,7 @@ test_that("mfpi() rejects group_var included in cont_vars", {
 # because MFPI requires continuous variables for FP interaction forms.
 test_that("mfpi.formula() rejects a binary variable in cont_vars", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -6956,14 +7501,14 @@ test_that("mfpi.formula() rejects a binary variable in cont_vars", {
 test_that("mfpi.formula() rejects a simulated binary variable in cont_vars", {
   set.seed(201)
   n <- 100
-  
+
   dat <- data.frame(
     y = rnorm(n),
     group = rep(0:1, length.out = n),
     binary_x = rep(0:1, length.out = n),
     x = runif(n, 1, 10)
   )
-  
+
   expect_error(
     mfpi(
       y ~ group + binary_x + fp(x),
@@ -6981,7 +7526,7 @@ test_that("mfpi.formula() rejects a simulated binary variable in cont_vars", {
 # stats::p.adjust.methods.
 test_that("mfpi() rejects invalid p_adjust_method", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -7000,7 +7545,7 @@ test_that("mfpi() rejects invalid p_adjust_method", {
 # and stored on the returned mfpi object.
 test_that("mfpi() stores valid p_adjust_method", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7009,7 +7554,7 @@ test_that("mfpi() stores valid p_adjust_method", {
     p_adjust_method = "holm",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(fit$p_adjust_method, "holm")
 })
@@ -7018,7 +7563,7 @@ test_that("mfpi() stores valid p_adjust_method", {
 # pvalue uses p_interact, while AIC and BIC default to 2.
 test_that("mfpi() sets criterion-specific default min_improvement", {
   data("prostate", package = "mfp2")
-  
+
   fit_p <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7028,7 +7573,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
     p_interact = 0.10,
     verbose = FALSE
   )
-  
+
   fit_aic <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7037,7 +7582,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
     criterion = "aic",
     verbose = FALSE
   )
-  
+
   fit_bic <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7046,7 +7591,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
     criterion = "bic",
     verbose = FALSE
   )
-  
+
   expect_equal(fit_p$min_improvement, 0.10)
   expect_equal(fit_aic$min_improvement, 2)
   expect_equal(fit_bic$min_improvement, 2)
@@ -7056,7 +7601,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
 # for information-criterion based MFPI selection.
 test_that("mfpi() stores explicit min_improvement for AIC", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7066,7 +7611,7 @@ test_that("mfpi() stores explicit min_improvement for AIC", {
     min_improvement = 3.5,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(fit$min_improvement, 3.5)
 })
@@ -7075,7 +7620,7 @@ test_that("mfpi() stores explicit min_improvement for AIC", {
 # finite numeric value.
 test_that("mfpi() rejects invalid min_improvement", {
   data("prostate", package = "mfp2")
-  
+
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
@@ -7094,7 +7639,7 @@ test_that("mfpi() rejects invalid min_improvement", {
 # recorded on the returned mfpi object.
 test_that("mfpi() accepts include_group_var = TRUE", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7103,7 +7648,7 @@ test_that("mfpi() accepts include_group_var = TRUE", {
     include_group_var = TRUE,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_true(isTRUE(fit$include_group_var))
 })
@@ -7111,7 +7656,7 @@ test_that("mfpi() accepts include_group_var = TRUE", {
 # Test purpose: Ensures group-specific centering mode is accepted and stored.
 test_that("mfpi() accepts group-specific centering", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7120,7 +7665,7 @@ test_that("mfpi() accepts group-specific centering", {
     center_type = "group",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_equal(fit$center_type, "group")
 })
@@ -7130,14 +7675,14 @@ test_that("mfpi() accepts group-specific centering", {
 test_that("mfpi.default() rejects non-group categorical predictors", {
   set.seed(202)
   n <- 100
-  
+
   x <- data.frame(
     group = factor(rep(c("A", "B"), length.out = n)),
     x = runif(n, 1, 10),
     bad_factor = factor(rep(c("low", "high"), length.out = n))
   )
   y <- rnorm(n)
-  
+
   expect_error(
     mfpi(
       x,
@@ -7155,14 +7700,14 @@ test_that("mfpi.default() rejects non-group categorical predictors", {
 test_that("mfpi.default() stores original group levels", {
   set.seed(203)
   n <- 120
-  
+
   x <- data.frame(
     group = factor(rep(c("control", "treated"), length.out = n)),
     x = runif(n, 1, 10),
     z = runif(n, 1, 10)
   )
   y <- 0.2 * x$x + 0.5 * (x$group == "treated") + rnorm(n)
-  
+
   fit <- mfpi(
     x,
     y,
@@ -7170,7 +7715,7 @@ test_that("mfpi.default() stores original group levels", {
     cont_vars = "x",
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_true(!is.null(fit$group_levels_original))
   expect_true(all(c("control", "treated") %in% fit$group_levels_original))
@@ -7180,7 +7725,7 @@ test_that("mfpi.default() stores original group levels", {
 # logical value.
 test_that("predict.mfpi() rejects invalid se.fit", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7189,7 +7734,7 @@ test_that("predict.mfpi() rejects invalid se.fit", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, terms = "cavol", type = "function", model = "all", se.fit = NA),
     "`se.fit` must be"
@@ -7200,7 +7745,7 @@ test_that("predict.mfpi() rejects invalid se.fit", {
 # numeric value in (0, 1).
 test_that("predict.mfpi() rejects invalid confidence level", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7209,7 +7754,7 @@ test_that("predict.mfpi() rejects invalid confidence level", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, terms = "cavol", type = "function", model = "all", level = 1),
     "`level` must be"
@@ -7220,7 +7765,7 @@ test_that("predict.mfpi() rejects invalid confidence level", {
 # no stored MFPI interaction model in the requested model scope.
 test_that("predict.mfpi() rejects unknown prediction terms", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7229,7 +7774,7 @@ test_that("predict.mfpi() rejects unknown prediction terms", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(fit, terms = "age", type = "function", model = "all"),
     "requested terms"
@@ -7240,7 +7785,7 @@ test_that("predict.mfpi() rejects unknown prediction terms", {
 # the requested continuous variable.
 test_that("predict.mfpi() requires fitted-function newdata to contain requested term", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7249,7 +7794,7 @@ test_that("predict.mfpi() requires fitted-function newdata to contain requested 
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_error(
     predict(
       fit,
@@ -7266,7 +7811,7 @@ test_that("predict.mfpi() requires fitted-function newdata to contain requested 
 # a term-specific interaction model using supplied newdata.
 test_that("predict.mfpi() type = 'link' returns subject-level predictions", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7275,7 +7820,7 @@ test_that("predict.mfpi() type = 'link' returns subject-level predictions", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   p <- predict(
     fit,
     terms = "cavol",
@@ -7284,7 +7829,7 @@ test_that("predict.mfpi() type = 'link' returns subject-level predictions", {
     newdata = prostate[1:10, ],
     se.fit = FALSE
   )
-  
+
   expect_s3_class(p, "mfpi_prediction")
   expect_true(!is.null(p$predictions))
   expect_equal(nrow(p$predictions), 10)
@@ -7295,7 +7840,7 @@ test_that("predict.mfpi() type = 'link' returns subject-level predictions", {
 # using supplied newdata.
 test_that("predict.mfpi() type = 'response' returns subject-level predictions", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7304,7 +7849,7 @@ test_that("predict.mfpi() type = 'response' returns subject-level predictions", 
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   p <- predict(
     fit,
     terms = "cavol",
@@ -7313,7 +7858,7 @@ test_that("predict.mfpi() type = 'response' returns subject-level predictions", 
     newdata = prostate[1:10, ],
     se.fit = FALSE
   )
-  
+
   expect_s3_class(p, "mfpi_prediction")
   expect_true(!is.null(p$predictions))
   expect_equal(nrow(p$predictions), 10)
@@ -7324,7 +7869,7 @@ test_that("predict.mfpi() type = 'response' returns subject-level predictions", 
 # values on the requested evaluation grid.
 test_that("predict.mfpi() fitted-function grid uses requested n_grid", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7333,7 +7878,7 @@ test_that("predict.mfpi() fitted-function grid uses requested n_grid", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   p <- predict(
     fit,
     terms = "cavol",
@@ -7343,7 +7888,7 @@ test_that("predict.mfpi() fitted-function grid uses requested n_grid", {
     n_grid = 25,
     se.fit = FALSE
   )
-  
+
   expect_s3_class(p, "mfpi_prediction")
   expect_true(!is.null(p$functions))
   expect_true(length(unique(p$functions$x)) <= 25)
@@ -7354,7 +7899,7 @@ test_that("predict.mfpi() fitted-function grid uses requested n_grid", {
 # subject-level MFPI prediction types.
 test_that("predict.mfpi() warns when grid is used with link prediction", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7363,7 +7908,7 @@ test_that("predict.mfpi() warns when grid is used with link prediction", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   expect_warning(
     predict(
       fit,
@@ -7382,11 +7927,11 @@ test_that("predict.mfpi() warns when grid is used with link prediction", {
 # 17. predict.mfpi()
 # =============================================================================
 
-# Test purpose: Checks that MFPI fitted-function predictions are returned in 
+# Test purpose: Checks that MFPI fitted-function predictions are returned in
 # the expected structure.
 test_that("predict.mfpi() returns fitted-function predictions", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7395,9 +7940,9 @@ test_that("predict.mfpi() returns fitted-function predictions", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   p <- predict(fit, terms = "cavol", type = "function", model = "all")
-  
+
   if (inherits(p, "mfpi_prediction")) {
     expect_true(!is.null(p$functions))
     expect_true(is.data.frame(p$functions))
@@ -7407,11 +7952,11 @@ test_that("predict.mfpi() returns fitted-function predictions", {
   }
 })
 
-# Test purpose: Checks that MFPI prediction can return both fitted functions 
+# Test purpose: Checks that MFPI prediction can return both fitted functions
 # and group differences.
 test_that("predict.mfpi() type = 'both' returns functions and differences", {
   data("prostate", package = "mfp2")
-  
+
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
@@ -7420,9 +7965,9 @@ test_that("predict.mfpi() type = 'both' returns functions and differences", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   p <- predict(fit, terms = "cavol", type = "both", model = "all")
-  
+
   if (inherits(p, "mfpi_prediction")) {
     expect_true(!is.null(p$functions))
     expect_true(!is.null(p$differences))
@@ -7460,7 +8005,7 @@ test_that("predict.mfpi ordinary Gaussian prediction matches stored glm", {
   expect_equal(got_link$predictions$fit, as.numeric(direct_link$fit))
   expect_equal(got_link$predictions$se.fit, as.numeric(direct_link$se.fit))
   expect_true(got_link$metadata$used_model_predict)
-  
+
   direct_response <- stats::predict(
     fit_result$test_results$interaction_model$fit,
     newdata = design$model_newdata,
@@ -7472,7 +8017,7 @@ test_that("predict.mfpi ordinary Gaussian prediction matches stored glm", {
     type = "response", se.fit = FALSE
   )
   expect_equal(got_response$predictions$fit, as.numeric(direct_response))
-  
+
   # Independent oracle: reconstruct the interaction model matrix and calculate
   # eta = X beta and sqrt(diag(X V X')) directly. This avoids relying solely on
   # predict.glm(), which is also used internally by ordinary MFPI prediction.
@@ -7493,11 +8038,11 @@ test_that("predict.mfpi ordinary Gaussian prediction matches stored glm", {
   beta_vcov <- stats::vcov(stored)
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_link <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   expect_equal(got_link$predictions$fit, manual_link, tolerance = 1e-8)
   expect_equal(got_link$predictions$se.fit, manual_se, tolerance = 1e-8)
   expect_equal(got_response$predictions$fit, manual_link, tolerance = 1e-8)
@@ -7527,7 +8072,7 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
     fit, "age", fit_result, nd, strata = nd$inst
   )
   expect_identical(design$model_newdata$strata_, nd$inst)
-  
+
   direct <- stats::predict(
     fit_result$test_results$interaction_model$fit,
     newdata = design$model_newdata,
@@ -7568,7 +8113,7 @@ test_that("17.1.1 ordinary FP1 powers equal their mathematical definitions", {
     `2` = x^2,
     `3` = x^3
   )
-  
+
   for (power in powers) {
     got <- transform_vector_fp(
       x,
@@ -7577,7 +8122,7 @@ test_that("17.1.1 ordinary FP1 powers equal their mathematical definitions", {
       scale = 1,
       check_binary = FALSE
     )
-    
+
     expect_equal(
       as.numeric(got[, 1]),
       expected[[as.character(power)]],
@@ -7592,7 +8137,7 @@ test_that("17.1.1 ordinary FP1 powers equal their mathematical definitions", {
 # stronger check than the existing FP2-only repeated-power tests.
 test_that("17.1.2 repeated FP powers follow the logarithmic multiplier rule", {
   x <- c(0.5, 1, 2, 4)
-  
+
   got <- transform_vector_fp(
     x,
     power = c(2, 2, 2),
@@ -7600,13 +8145,13 @@ test_that("17.1.2 repeated FP powers follow the logarithmic multiplier rule", {
     scale = 1,
     check_binary = FALSE
   )
-  
+
   expected <- cbind(
     x^2,
     x^2 * log(x),
     x^2 * log(x)^2
   )
-  
+
   expect_equal(unname(got), expected, tolerance = 1e-12)
 })
 
@@ -7616,7 +8161,7 @@ test_that("17.1.2 repeated FP powers follow the logarithmic multiplier rule", {
 test_that("17.1.3 C++ and public FP transformation paths agree", {
   x <- c(0.5, 1, 2, 4, 8)
   candidates <- list(c(-1), c(0), c(0.5), c(1, 1), c(0, 0), c(2, 2))
-  
+
   for (power in candidates) {
     cpp <- transform_fp_core(
       x_raw = x,
@@ -7632,7 +8177,7 @@ test_that("17.1.3 C++ and public FP transformation paths agree", {
       scale = 1,
       check_binary = FALSE
     )
-    
+
     expect_equal(
       unname(cpp),
       unname(public),
@@ -7651,11 +8196,11 @@ test_that("17.1.4 MFPI interaction degrees of freedom follow group and FP degree
   linear_3 <- interaction_model_df(n_groups = 3, degree = 0, flex = "flex1")
   expect_equal(linear_2$dfint, 1)
   expect_equal(linear_3$dfint, 2)
-  
+
   # FP1 with common powers in flex1/flex2 adds K - 1 slope parameters.
   fp1_3 <- interaction_model_df(n_groups = 3, degree = 1, flex = "flex1")
   expect_equal(fp1_3$dfint, 2)
-  
+
   # FP2 with common powers adds two group-specific slope differences per
   # non-reference group.
   fp2_3 <- interaction_model_df(n_groups = 3, degree = 2, flex = "flex2")
@@ -7678,7 +8223,7 @@ test_that("17.1.5 two-group linear MFPI equals an explicit Gaussian interaction 
     0.4 * dat$x +
     1.1 * dat$x * (dat$group == "treated") +
     rnorm(n, sd = 0.15)
-  
+
   fit_mfpi <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -7696,10 +8241,10 @@ test_that("17.1.5 two-group linear MFPI equals an explicit Gaussian interaction 
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   fit_reference <- stats::glm(y ~ group * x, data = dat)
   stored <- fit_mfpi$var_winners[["x"]]$fit$test_results$interaction_model$fit
-  
+
   expect_equal(
     unname(stats::fitted(stored)),
     unname(stats::fitted(fit_reference)),
@@ -7710,7 +8255,7 @@ test_that("17.1.5 two-group linear MFPI equals an explicit Gaussian interaction 
     as.numeric(stats::logLik(fit_reference)),
     tolerance = 1e-8
   )
-  
+
   nd <- dat[c(1, 30, 121, 180), c("group", "x"), drop = FALSE]
   got <- predict(
     fit_mfpi,
@@ -7721,7 +8266,7 @@ test_that("17.1.5 two-group linear MFPI equals an explicit Gaussian interaction 
     se.fit = FALSE
   )
   expected <- stats::predict(fit_reference, newdata = nd, type = "link")
-  
+
   expect_equal(got$predictions$fit, unname(expected), tolerance = 1e-8)
 })
 
@@ -7739,7 +8284,7 @@ test_that("17.1.6 three-group linear MFPI equals an explicit Gaussian interactio
   slope_shift <- c(A = 0, B = 0.8, C = -0.5)[as.character(dat$group)]
   dat$y <- 1 + intercept_shift + (0.5 + slope_shift) * dat$x +
     rnorm(nrow(dat), sd = 0.15)
-  
+
   fit_mfpi <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -7757,10 +8302,10 @@ test_that("17.1.6 three-group linear MFPI equals an explicit Gaussian interactio
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   fit_reference <- stats::glm(y ~ group * x, data = dat)
   stored <- fit_mfpi$var_winners[["x"]]$fit$test_results$interaction_model$fit
-  
+
   expect_equal(
     unname(stats::fitted(stored)),
     unname(stats::fitted(fit_reference)),
@@ -7771,7 +8316,7 @@ test_that("17.1.6 three-group linear MFPI equals an explicit Gaussian interactio
     as.numeric(stats::logLik(fit_reference)),
     tolerance = 1e-8
   )
-  
+
   nd <- dat[c(1, 101, 201), c("group", "x"), drop = FALSE]
   got <- predict(
     fit_mfpi,
@@ -7782,7 +8327,7 @@ test_that("17.1.6 three-group linear MFPI equals an explicit Gaussian interactio
     se.fit = FALSE
   )
   expected <- stats::predict(fit_reference, newdata = nd, type = "response")
-  
+
   expect_equal(got$predictions$fit, unname(expected), tolerance = 1e-8)
 })
 
@@ -7799,7 +8344,7 @@ test_that("17.1.7 MFPI detects a strong prespecified linear interaction", {
   )
   dat$y <- 1 + 0.3 * dat$x + 2.0 * dat$x * (dat$group == "treated") +
     rnorm(n, sd = 0.2)
-  
+
   fit <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -7816,7 +8361,7 @@ test_that("17.1.7 MFPI detects a strong prespecified linear interaction", {
     p_interact = 0.05,
     verbose = FALSE
   )
-  
+
   metric <- fit$all_model_metrics[fit$all_model_metrics$variable == "x", , drop = FALSE]
   expect_equal(nrow(metric), 1)
   expect_true(is.finite(metric$pvalue))
@@ -7839,7 +8384,7 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
   eta <- 0.2 + 0.12 * dat$x + 0.35 * (dat$group == "B") +
     0.18 * dat$x * (dat$group == "B") + log(dat$exposure)
   dat$y <- rpois(n, exp(eta))
-  
+
   fit <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -7858,7 +8403,7 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   nd <- dat[1:18, c("group", "x", "exposure"), drop = FALSE]
   fit_result <- fit$var_winners[["x"]]$fit
   design <- mfpi_build_ordinary_design(
@@ -7869,10 +8414,10 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
     newoffset = log(nd$exposure)
   )
   stored <- fit_result$test_results$interaction_model$fit
-  
+
   expect_true("offset_" %in% names(design$model_newdata))
   expect_equal(design$model_newdata$offset_, log(nd$exposure))
-  
+
   # Build the interaction design directly from the stored formula. The offset
   # is not a coefficient column; it is added to X beta after multiplication.
   reference_terms <- stats::delete.response(stats::terms(stored))
@@ -7891,19 +8436,19 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
   beta_vcov <- stats::vcov(stored)
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   manual_offset <- stats::model.offset(reference_frame)
   expect_equal(manual_offset, log(nd$exposure))
-  
+
   manual_link <- as.numeric(manual_x %*% beta + manual_offset)
   manual_link_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_link_se <- as.numeric(sqrt(pmax(manual_link_variance, 0)))
   manual_response <- as.numeric(stored$family$linkinv(manual_link))
-  
+
   # predict.glm(type = "response", se.fit = TRUE) applies the delta method:
   # response-scale SE = link-scale SE * abs(d mu / d eta).
   manual_response_se <- manual_link_se * abs(stored$family$mu.eta(manual_link))
-  
+
   for (prediction_type in c("link", "response")) {
     direct <- stats::predict(
       stored,
@@ -7920,10 +8465,10 @@ test_that("17.1.8 Poisson MFPI offset predictions match the stored glm", {
       newoffset = log(nd$exposure),
       se.fit = TRUE
     )
-    
+
     expected_fit <- if (prediction_type == "link") manual_link else manual_response
     expected_se <- if (prediction_type == "link") manual_link_se else manual_response_se
-    
+
     expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
     expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
     expect_equal(got$predictions$fit, expected_fit, tolerance = 1e-8)
@@ -7939,7 +8484,7 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -7958,12 +8503,12 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:15, c("age", "sex"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
   design <- mfpi_build_ordinary_design(fit, "age", fit_result, nd)
   stored <- fit_result$test_results$interaction_model$fit
-  
+
   cases <- list(
     lp = "lp",
     link = "lp",
@@ -7993,12 +8538,12 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
       cox_reference = "zero",
       se.fit = TRUE
     )
-    
+
     expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
     expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
     expect_true(got$metadata$used_model_predict)
   }
-  
+
   expect_error(
     predict(
       fit, newdata = nd, terms = "age", model = "all",
@@ -8006,7 +8551,7 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
     ),
     "Cox MFPI models"
   )
-  
+
   # Independent zero-reference oracle for the linear predictor.
   reference_terms <- stats::delete.response(stats::terms(stored))
   manual_x <- stats::model.matrix(
@@ -8020,7 +8565,7 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
   manual_lp <- as.numeric(manual_x %*% beta)
   manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   got_lp <- predict(
     fit,
     newdata = nd,
@@ -8040,7 +8585,7 @@ test_that("17.1.9 unstratified Cox MFPI lp and risk match stored coxph", {
 test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
   set.seed(17109)
   n <- 320
-  
+
   dat <- data.frame(
     age = stats::rnorm(n, mean = 55, sd = 9),
     sex = factor(sample(c("female", "male"), n, replace = TRUE)),
@@ -8052,7 +8597,7 @@ test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
   censor_time <- stats::rexp(n, rate = 0.012)
   dat$time <- pmin(event_time, censor_time)
   dat$status <- as.integer(event_time <= censor_time)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -8072,7 +8617,7 @@ test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:24, c("age", "sex", "exposure"), drop = FALSE]
   new_offset <- log(nd$exposure)
   fit_result <- fit$var_winners[["age"]]$fit
@@ -8080,7 +8625,7 @@ test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
     fit, "age", fit_result, nd, newoffset = new_offset
   )
   stored <- fit_result$test_results$interaction_model$fit
-  
+
   for (prediction_type in c("lp", "risk")) {
     for (reference_value in c("zero", "sample", "strata")) {
       direct <- stats::predict(
@@ -8100,7 +8645,7 @@ test_that("17.1.9b Cox MFPI offsets and references match stored coxph", {
         cox_reference = reference_value,
         se.fit = TRUE
       )
-      
+
       expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
       expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
       expect_identical(got$metadata$cox_reference, reference_value)
@@ -8118,7 +8663,7 @@ test_that("17.1.10 formula-stratified Cox MFPI reconstructs strata from newdata"
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
   dat$sex <- factor(dat$sex)
   dat$inst <- factor(dat$inst)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
@@ -8137,7 +8682,7 @@ test_that("17.1.10 formula-stratified Cox MFPI reconstructs strata from newdata"
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:15, c("age", "sex", "inst"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
   reconstructed <- reconstruct_formula_strata_newdata(fit, nd)
@@ -8149,9 +8694,9 @@ test_that("17.1.10 formula-stratified Cox MFPI reconstructs strata from newdata"
     strata = reconstructed
   )
   stored <- fit_result$test_results$interaction_model$fit
-  
+
   expect_identical(design$model_newdata$strata_, nd$inst)
-  
+
   direct <- stats::predict(
     stored,
     newdata = design$model_newdata,
@@ -8167,7 +8712,7 @@ test_that("17.1.10 formula-stratified Cox MFPI reconstructs strata from newdata"
     type = "link",
     se.fit = TRUE
   )
-  
+
   expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
   expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
 })
@@ -8183,7 +8728,7 @@ test_that("17.1.11 multiple Cox strata columns are combined once in MFPI predict
     dat[, c("time", "status", "age", "sex", "inst", "ph.ecog")]
   ), ]
   dat$sex <- factor(dat$sex)
-  
+
   strata_fit <- data.frame(inst = dat$inst, ecog = dat$ph.ecog)
   fit <- mfpi(
     x = dat[, c("sex", "age")],
@@ -8204,7 +8749,7 @@ test_that("17.1.11 multiple Cox strata columns are combined once in MFPI predict
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:15, c("sex", "age", "inst", "ph.ecog"), drop = FALSE]
   strata_new <- nd[, c("inst", "ph.ecog"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
@@ -8215,14 +8760,14 @@ test_that("17.1.11 multiple Cox strata columns are combined once in MFPI predict
     nd,
     strata = strata_new
   )
-  
+
   expected_strata <- do.call(
     survival::strata,
     c(as.list(strata_new), list(shortlabel = TRUE))
   )
   expect_equal(design$model_newdata$strata_, expected_strata)
   expect_s3_class(design$model_newdata$strata_, "factor")
-  
+
   stored <- fit_result$test_results$interaction_model$fit
   direct <- stats::predict(
     stored,
@@ -8239,7 +8784,7 @@ test_that("17.1.11 multiple Cox strata columns are combined once in MFPI predict
     strata = strata_new,
     se.fit = FALSE
   )
-  
+
   expect_equal(got$predictions$fit, as.numeric(direct), tolerance = 1e-8)
 })
 
@@ -8251,7 +8796,7 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -8269,7 +8814,7 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
     verbose = FALSE
   )
   nd <- dat[1:8, c("age", "sex", "inst"), drop = FALSE]
-  
+
   expect_error(
     predict(fit, newdata = nd, terms = "age", model = "all", type = "link"),
     "stratified|strata"
@@ -8313,7 +8858,7 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
   )
   dat$y <- 1 + 0.4 * dat$x + 1.0 * dat$x * (dat$group == "B") +
     rnorm(n, sd = 0.2)
-  
+
   fit <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -8330,7 +8875,7 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   eval_x <- data.frame(x = c(1.5, 3, 6))
   pred <- predict(
     fit,
@@ -8341,7 +8886,7 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
     grid = FALSE,
     se.fit = FALSE
   )
-  
+
   fit_result <- fit$var_winners[["x"]]$fit
   prepared <- mfpi_prepare_prediction_data(
     object = fit,
@@ -8358,7 +8903,7 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
     x_display = prepared$x_display
   )
   coefficients <- fit_result$test_results$interaction_model$coefficients
-  
+
   group_internal <- names(basis$coefficient_groups)
   group_display <- mfpi_prediction_group_display_labels(
     fit,
@@ -8369,13 +8914,13 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
   } else {
     0
   }
-  
+
   expected <- do.call(rbind, lapply(seq_along(group_internal), function(i) {
     g <- group_internal[i]
     cols <- basis$coefficient_groups[[g]]
     dummy_name <- if (i > 1L) paste0(fit$group_var, g) else NULL
     dummy_effect <- if (!is.null(dummy_name)) unname(coefficients[dummy_name]) else 0
-    
+
     data.frame(
       x = prepared$x_display,
       group = group_display[i],
@@ -8385,11 +8930,11 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
       stringsAsFactors = FALSE
     )
   }))
-  
+
   observed_key <- paste(pred$functions$x, pred$functions$group, sep = "::")
   expected_key <- paste(expected$x, expected$group, sep = "::")
   expected <- expected[match(observed_key, expected_key), , drop = FALSE]
-  
+
   expect_false(anyNA(expected$fit))
   expect_equal(pred$functions$fit, expected$fit, tolerance = 1e-10)
 })
@@ -8404,7 +8949,7 @@ test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tab
     dat[, c("time", "status", "age", "sex", "inst", "ph.ecog")]
   ), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     x = dat[, c("sex", "age")],
     y = survival::Surv(dat$time, dat$status),
@@ -8421,15 +8966,15 @@ test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tab
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   nd <- dat[1:8, c("sex", "age", "inst", "ph.ecog"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
-  
+
   vector_design <- mfpi_build_ordinary_design(
     fit, "age", fit_result, nd, strata = factor(nd$inst)
   )
   expect_identical(vector_design$model_newdata$strata_, factor(nd$inst))
-  
+
   tabular_strata <- nd[, c("inst", "ph.ecog"), drop = FALSE]
   tabular_design <- mfpi_build_ordinary_design(
     fit, "age", fit_result, nd, strata = tabular_strata
@@ -8451,7 +8996,7 @@ test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tab
 # from ordinary factor-valued formula newdata.
 test_that("MFPI prediction reconstructs grouped factor adjustments", {
   dat <- make_mfpi_factor_data()
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -8468,7 +9013,7 @@ test_that("MFPI prediction reconstructs grouped factor adjustments", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   nd <- dat[1:20, c("trt", "x", "stage", "z"), drop = FALSE]
   fit_result <- fit$var_winners[["x"]]$fit
   design <- mfpi_build_ordinary_design(
@@ -8477,14 +9022,14 @@ test_that("MFPI prediction reconstructs grouped factor adjustments", {
     fit_result,
     nd
   )
-  
+
   stored <- fit_result$test_results$interaction_model$fit
   direct <- stats::predict(
     stored,
     newdata = design$model_newdata,
     type = "link"
   )
-  
+
   got <- predict(
     fit,
     newdata = nd,
@@ -8493,7 +9038,7 @@ test_that("MFPI prediction reconstructs grouped factor adjustments", {
     type = "link",
     se.fit = FALSE
   )
-  
+
   expect_equal(got$predictions$fit, as.numeric(direct), tolerance = 1e-8)
   expect_true(all(c("stageII.1", "stageIII.1") %in%
                     names(design$model_newdata)))
@@ -8505,7 +9050,7 @@ test_that("MFPI prediction reconstructs grouped factor adjustments", {
 test_that("MFPI prediction reconstructs inline factor adjustments", {
   dat <- make_mfpi_factor_data()
   dat$stage_code <- as.integer(dat$stage)
-  
+
   fit <- mfpi(
     y ~ trt + x + factor(stage_code) + z,
     data = dat,
@@ -8522,14 +9067,14 @@ test_that("MFPI prediction reconstructs inline factor adjustments", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   nd <- dat[1:20, c("trt", "x", "stage_code", "z"), drop = FALSE]
   fit_result <- fit$var_winners[["x"]]$fit
   design <- mfpi_build_ordinary_design(fit, "x", fit_result, nd)
-  
+
   expect_true(all(c("factor(stage_code)2.1", "factor(stage_code)3.1") %in%
                     names(design$model_newdata)))
-  
+
   out <- predict(
     fit,
     newdata = nd,
@@ -8556,7 +9101,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
     ),
     levels = c("low", "middle", "high")
   )
-  
+
   fit <- mfpi(
     y ~ trt + x + w + stage + z + nuisance,
     data = dat,
@@ -8573,7 +9118,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   selected <- get_selected_variables(fit$adjustment_model)
   expect_true("stage" %in% selected)
   expect_false(any(c("z", "nuisance") %in% selected))
@@ -8581,7 +9126,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
     unname(fit$formula_prediction_term_names[["nuisance"]]),
     "nuisance"
   )
-  
+
   nd_full <- dat[
     1:18,
     c("trt", "x", "w", "stage", "z", "nuisance"),
@@ -8589,7 +9134,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
   ]
   nd_x <- nd_full[, c("trt", "x", "stage"), drop = FALSE]
   nd_w <- nd_full[, c("trt", "w", "stage"), drop = FALSE]
-  
+
   pred_x_full <- predict(
     fit, newdata = nd_full, terms = "x", model = "all",
     type = "link", se.fit = TRUE
@@ -8606,7 +9151,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
     fit, newdata = nd_w, terms = "w", model = "all",
     type = "link", se.fit = TRUE
   )
-  
+
   expect_equal(
     pred_x_minimal$predictions,
     pred_x_full$predictions,
@@ -8617,7 +9162,7 @@ test_that("MFPI formula prediction omits unrelated original predictors", {
     pred_w_full$predictions,
     tolerance = 1e-10
   )
-  
+
   nd_unseen <- nd_full
   nd_unseen$z <- NA_real_
   nd_unseen$nuisance <- factor(
@@ -8645,7 +9190,7 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
     c(1L, 2L, 3L, 2L, 3L, 1L, 3L, 1L, 2L),
     length.out = nrow(dat)
   )
-  
+
   fit <- mfpi(
     y ~ trt + x + factor(stage_code) + factor(nuisance_code) + z,
     data = dat,
@@ -8662,7 +9207,7 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(
     unname(fit$formula_prediction_term_names[["factor(stage_code)"]]),
     "stage_code"
@@ -8673,7 +9218,7 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
   )
   expect_true("stage_code" %in% get_selected_variables(fit$adjustment_model))
   expect_false("nuisance_code" %in% get_selected_variables(fit$adjustment_model))
-  
+
   nd_full <- dat[
     1:20,
     c("trt", "x", "stage_code", "nuisance_code", "z"),
@@ -8682,7 +9227,7 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
   nd_minimal <- nd_full[, c("trt", "x", "stage_code"), drop = FALSE]
   nd_unseen <- nd_full
   nd_unseen$nuisance_code <- 99L
-  
+
   pred_full <- predict(
     fit, newdata = nd_full, terms = "x", model = "all",
     type = "link", se.fit = FALSE
@@ -8695,7 +9240,7 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
     fit, newdata = nd_unseen, terms = "x", model = "all",
     type = "link", se.fit = FALSE
   )
-  
+
   expect_equal(pred_minimal$predictions, pred_full$predictions,
                tolerance = 1e-10)
   expect_equal(pred_unseen$predictions, pred_minimal$predictions,
@@ -8713,12 +9258,12 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
 # 18. Reproducibility — same seed gives same result
 # =============================================================================
 
-# Test purpose: Checks that repeated fits on the same data produce identical 
+# Test purpose: Checks that repeated fits on the same data produce identical
 # selected powers, coefficients, and metadata.
 test_that("mfp2() is deterministic across repeated calls", {
   fit1 <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   fit2 <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  
+
   expect_equal(fit1$fp_powers, fit2$fp_powers)
   expect_equal(coef(fit1), coef(fit2))
   expect_equal(fit1$fp_terms, fit2$fp_terms)
@@ -8728,7 +9273,7 @@ test_that("mfp2() is deterministic across repeated calls", {
 # 19. Transformation helpers
 # =============================================================================
 
-# Test purpose: Checks that the exported FP transformation helper computes a 
+# Test purpose: Checks that the exported FP transformation helper computes a
 # log transform for power 0.
 test_that("transform_vector_fp() is exported and works", {
   # Basic FP1 transformation
@@ -8740,7 +9285,7 @@ test_that("transform_vector_fp() is exported and works", {
   expect_equal(as.numeric(result[, 1]), log(x), tolerance = 1e-10)
 })
 
-# Test purpose: Checks that repeated FP powers produce the standard x and 
+# Test purpose: Checks that repeated FP powers produce the standard x and
 # x log(x) basis.
 test_that("transform_vector_fp() handles repeated powers", {
   x <- seq(0.1, 10, length.out = 50)
@@ -8755,18 +9300,18 @@ test_that("transform_vector_fp() handles repeated powers", {
 # 20. Likelihood-ratio and F-test helpers
 # =============================================================================
 
-# Test purpose: Checks that the likelihood-ratio helper returns a valid 
+# Test purpose: Checks that the likelihood-ratio helper returns a valid
 # nonnegative statistic and p-value.
 test_that("calculate_lr_test() returns correct p-value for nested models", {
   # Fit two nested models manually
   fit_null <- glm(y_prostate ~ 1)
   fit_full <- glm(y_prostate ~ x_prostate[, "cavol"])
-  
+
   lr <- calculate_lr_test(
     logl = c(logLik(fit_null), logLik(fit_full)),
     dfs = c(1, 2)
   )
-  
+
   expect_true(lr$pvalue >= 0 && lr$pvalue <= 1)
   expect_true(lr$statistic >= 0)
 })
@@ -8780,18 +9325,18 @@ test_that("calculate_lr_test() errors when df ordering is wrong", {
   )
 })
 
-# Test purpose: Checks that the F-test helper returns valid statistic, deviance 
+# Test purpose: Checks that the F-test helper returns valid statistic, deviance
 # difference, and p-value.
 test_that("calculate_f_test() returns correct p-value", {
   fit_null <- glm(y_prostate ~ 1)
   fit_full <- glm(y_prostate ~ x_prostate[, "cavol"])
-  
+
   f_result <- calculate_f_test(
     deviances = c(deviance(fit_null), deviance(fit_full)),
     dfs_resid = c(df.residual(fit_null), df.residual(fit_full)),
     n_obs = length(y_prostate)
   )
-  
+
   expect_true(f_result$pvalue >= 0 && f_result$pvalue <= 1)
   expect_true(f_result$statistic >= 0)
   expect_true(f_result$dev_diff >= 0)
@@ -8809,7 +9354,7 @@ test_that("plot() runs without error for Gaussian model", {
     y_prostate,
     verbose = FALSE
   )
-  
+
   expect_error(
     plot(fit),
     NA
@@ -8824,12 +9369,12 @@ test_that("plot() runs without warning for Gaussian models", {
     y_prostate,
     verbose = FALSE
   )
-  
+
   expect_warning(
     plots <- plot(fit),
     NA
   )
-  
+
   expect_type(plots, "list")
 })
 
@@ -8841,13 +9386,13 @@ test_that("fracplot() is deprecated but still works for Gaussian models", {
     y_prostate,
     verbose = FALSE
   )
-  
+
   expect_warning(
     plots <- fracplot(fit),
     regexp = "fracplot.*deprecated.*plot",
     ignore.case = TRUE
   )
-  
+
   expect_type(plots, "list")
 })
 
@@ -8858,7 +9403,7 @@ test_that("fracplot() is deprecated but still works for Gaussian models", {
 test_that("C++ FP core computes ordinary FP transformations", {
   x <- c(1, 2, 4)
   p <- c(1, 0)
-  
+
   out <- transform_fp_core(
     x_raw = x,
     power = p,
@@ -8866,12 +9411,12 @@ test_that("C++ FP core computes ordinary FP transformations", {
     scale_val = 1,
     zero = FALSE
   )
-  
+
   expected <- cbind(
     x,
     log(x)
   )
-  
+
   expect_true(is.matrix(out))
   expect_equal(
     unname(out, force = TRUE),
@@ -8884,7 +9429,7 @@ test_that("C++ FP core computes ordinary FP transformations", {
 test_that("C++ FP core handles repeated powers", {
   x <- c(1, 2, 4)
   p <- c(0, 0)
-  
+
   out <- transform_fp_core(
     x_raw = x,
     power = p,
@@ -8892,12 +9437,12 @@ test_that("C++ FP core handles repeated powers", {
     scale_val = 1,
     zero = FALSE
   )
-  
+
   expected <- cbind(
     log(x),
     log(x)^2
   )
-  
+
   expect_true(is.matrix(out))
   expect_equal(unname(out), expected, tolerance = 1e-12)
 })
@@ -8909,7 +9454,7 @@ test_that("C++ FP core applies shift and scale", {
   shift <- 1
   scale <- 2
   x_scaled <- (x + shift) / scale
-  
+
   out <- transform_fp_core(
     x_raw = x,
     power = c(1, 0),
@@ -8917,12 +9462,12 @@ test_that("C++ FP core applies shift and scale", {
     scale_val = scale,
     zero = FALSE
   )
-  
+
   expected <- cbind(
     x_scaled,
     log(x_scaled)
   )
-  
+
   expect_equal(
     unname(out, force = TRUE),
     unname(expected, force = TRUE),
@@ -8935,7 +9480,7 @@ test_that("C++ FP core applies shift and scale", {
 # rows when zero handling is active.
 test_that("C++ FP core handles zero mode", {
   x <- c(-2, 0, 1, 4)
-  
+
   out <- transform_fp_core(
     x_raw = x,
     power = c(1, 0),
@@ -8943,14 +9488,14 @@ test_that("C++ FP core handles zero mode", {
     scale_val = 1,
     zero = TRUE
   )
-  
+
   expected <- rbind(
     c(0, 0),
     c(0, 0),
     c(1, log(1)),
     c(4, log(4))
   )
-  
+
   expect_equal(unname(out), expected, tolerance = 1e-12)
 })
 
@@ -8961,7 +9506,7 @@ test_that("C++ FP core handles zero mode", {
 test_that("C++ FP core preserves missing and non-finite values", {
   x <- c(1, NA_real_, NaN, Inf, 4)
   p <- c(1, 0)
-  
+
   out <- transform_fp_core(
     x_raw = x,
     power = p,
@@ -8969,7 +9514,7 @@ test_that("C++ FP core preserves missing and non-finite values", {
     scale_val = 1,
     zero = FALSE
   )
-  
+
   expect_equal(out[1, ], c(1, 0))
   expect_true(is.na(out[2, 1]))
   expect_true(is.na(out[2, 2]))
@@ -8985,7 +9530,7 @@ test_that("C++ FP core preserves missing and non-finite values", {
 # variable naming.
 test_that("transform_vector_fp keeps expected column names with C++ core", {
   x <- c(1, 2, 4)
-  
+
   out <- transform_vector_fp(
     x = x,
     power = c(1, 0),
@@ -8995,7 +9540,7 @@ test_that("transform_vector_fp keeps expected column names with C++ core", {
     zero = FALSE,
     check_binary = FALSE
   )
-  
+
   expect_true(is.matrix(out))
   expect_equal(ncol(out), 2L)
   expect_equal(unname(out[, 2]), x)
@@ -9013,29 +9558,29 @@ test_that("generate_transformations_fp_cpp returns one matrix per power row", {
     c(0, 0),
     c(1, 0)
   )
-  
+
   out <- generate_transformations_fp_cpp(
     x = x,
     powers = powers,
     zero = FALSE,
     catzero = NULL
   )
-  
+
   expect_type(out, "list")
   expect_length(out, nrow(powers))
-  
+
   expect_equal(
     unname(out[[1]]),
     unname(cbind(x, x * log(x))),
     tolerance = 1e-12
   )
-  
+
   expect_equal(
     unname(out[[2]]),
     cbind(log(x), log(x)^2),
     tolerance = 1e-12
   )
-  
+
   expect_equal(
     unname(out[[3]]),
     unname(cbind(x, log(x))),
@@ -9052,14 +9597,14 @@ test_that("generate_transformations_fp_cpp uses binary shortcut", {
     c(1, 1),
     c(0, 0)
   )
-  
+
   out <- generate_transformations_fp_cpp(
     x = x,
     powers = powers,
     zero = FALSE,
     catzero = NULL
   )
-  
+
   expect_length(out, 2L)
   expect_equal(unname(out[[1]]), matrix(x, ncol = 1L))
   expect_equal(unname(out[[2]]), matrix(x, ncol = 1L))
@@ -9072,14 +9617,14 @@ test_that("generate_transformations_fp_cpp prepends catzero", {
   x <- c(1, 2, 4)
   powers <- rbind(c(1, 0))
   catzero <- matrix(c(0, 1, 0), ncol = 1L)
-  
+
   out <- generate_transformations_fp_cpp(
     x = x,
     powers = powers,
     zero = FALSE,
     catzero = catzero
   )
-  
+
   expect_length(out, 1L)
   expect_equal(ncol(out[[1]]), 3L)
   expect_equal(unname(out[[1]][, 1]), as.numeric(catzero[, 1]))
@@ -9094,7 +9639,7 @@ test_that("generate_transformations_fp_cpp prepends catzero", {
 test_that("C++ adjustment-step bridge handles no adjustment variables", {
   x <- matrix(c(1, 2, 3), ncol = 1L)
   colnames(x) <- "x1"
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = character(0),
@@ -9112,7 +9657,7 @@ test_that("C++ adjustment-step bridge handles no adjustment variables", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expect_equal(out$data_adj_list, list())
   expect_null(out$data_adj)
 })
@@ -9125,7 +9670,7 @@ test_that("C++ adjustment-step bridge builds FP adjustment columns", {
     x1 = c(1, 2, 4),
     x2 = c(2, 3, 5)
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = c("x1", "x2"),
@@ -9143,15 +9688,15 @@ test_that("C++ adjustment-step bridge builds FP adjustment columns", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected_x1 <- matrix(x[, "x1"], ncol = 1L)
   colnames(expected_x1) <- "x1_adj1"
-  
+
   expected_x2 <- cbind(log(x[, "x2"]), log(x[, "x2"])^2)
   colnames(expected_x2) <- c("x2_adj1", "x2_adj2")
-  
+
   expected <- cbind(expected_x1, expected_x2)
-  
+
   expect_equal(names(out$data_adj_list), c("x1", "x2"))
   expect_equal(out$data_adj_list$x1, expected_x1, tolerance = 1e-12)
   expect_equal(out$data_adj_list$x2, expected_x2, tolerance = 1e-12)
@@ -9164,7 +9709,7 @@ test_that("C++ adjustment-step bridge builds FP adjustment columns", {
 test_that("C++ adjustment-step bridge prepends catzero for non-spike variable", {
   x <- cbind(x1 = c(1, 2, 4, 8))
   cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9182,10 +9727,10 @@ test_that("C++ adjustment-step bridge prepends catzero for non-spike variable", 
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected <- cbind(cz[, 1], x[, "x1"])
   colnames(expected) <- c("x1_adj1", "x1_adj2")
-  
+
   expect_equal(out$data_adj_list$x1, expected)
   expect_equal(out$data_adj, expected)
 })
@@ -9196,7 +9741,7 @@ test_that("C++ adjustment-step bridge prepends catzero for non-spike variable", 
 test_that("C++ adjustment-step bridge handles spike decision 1", {
   x <- cbind(x1 = c(1, 2, 4, 8))
   cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9214,10 +9759,10 @@ test_that("C++ adjustment-step bridge handles spike decision 1", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected <- cbind(cz[, 1], x[, "x1"])
   colnames(expected) <- c("x1_adj1", "x1_adj2")
-  
+
   expect_equal(out$data_adj, expected)
 })
 
@@ -9227,7 +9772,7 @@ test_that("C++ adjustment-step bridge handles spike decision 1", {
 test_that("C++ adjustment-step bridge handles spike decision 2", {
   x <- cbind(x1 = c(1, 2, 4, 8))
   cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9245,10 +9790,10 @@ test_that("C++ adjustment-step bridge handles spike decision 2", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected <- matrix(x[, "x1"], ncol = 1L)
   colnames(expected) <- "x1_adj1"
-  
+
   expect_equal(out$data_adj, expected)
 })
 
@@ -9258,7 +9803,7 @@ test_that("C++ adjustment-step bridge handles spike decision 2", {
 test_that("C++ adjustment-step bridge handles spike decision 3", {
   x <- cbind(x1 = c(1, 2, 4, 8))
   cz <- matrix(c(0, 1, 0, 1), ncol = 1L)
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9276,10 +9821,10 @@ test_that("C++ adjustment-step bridge handles spike decision 3", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected <- matrix(cz[, 1], ncol = 1L)
   colnames(expected) <- "x1_adj1"
-  
+
   expect_equal(out$data_adj, expected)
 })
 
@@ -9291,7 +9836,7 @@ test_that("C++ adjustment-step bridge handles all-eliminated adjustment variable
     x1 = c(1, 2, 4),
     x2 = c(2, 3, 5)
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = c("x1", "x2"),
@@ -9309,7 +9854,7 @@ test_that("C++ adjustment-step bridge handles all-eliminated adjustment variable
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expect_true(is.matrix(out$data_adj))
   expect_equal(nrow(out$data_adj), nrow(x))
   expect_equal(ncol(out$data_adj), 0L)
@@ -9323,15 +9868,15 @@ test_that("C++ adjustment-step bridge handles all-eliminated adjustment variable
 # matrix when normalized powers and spike decision are unchanged.
 test_that("C++ adjustment-step bridge reuses cache on cache hit", {
   x <- cbind(x1 = c(1, 2, 4))
-  
+
   cached <- matrix(c(99, 98, 97), ncol = 1L)
   colnames(cached) <- "old_name"
-  
+
   prev_xi <- list(
     data_adj_list = list(x1 = cached),
     spike_decision_adj = c(x1 = 2L)
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9349,10 +9894,10 @@ test_that("C++ adjustment-step bridge reuses cache on cache hit", {
     prev_xi = prev_xi,
     has_prev = TRUE
   )
-  
+
   expected <- cached
   colnames(expected) <- "x1_adj1"
-  
+
   expect_equal(out$data_adj, expected)
   expect_equal(out$data_adj_list$x1, expected)
 })
@@ -9362,14 +9907,14 @@ test_that("C++ adjustment-step bridge reuses cache on cache hit", {
 # when the normalized power key changes.
 test_that("C++ adjustment-step bridge recomputes on power-key cache miss", {
   x <- cbind(x1 = c(1, 2, 4))
-  
+
   cached <- matrix(c(99, 98, 97), ncol = 1L)
-  
+
   prev_xi <- list(
     data_adj_list = list(x1 = cached),
     spike_decision_adj = c(x1 = 2L)
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9387,10 +9932,10 @@ test_that("C++ adjustment-step bridge recomputes on power-key cache miss", {
     prev_xi = prev_xi,
     has_prev = TRUE
   )
-  
+
   expected <- matrix(log(x[, "x1"]), ncol = 1L)
   colnames(expected) <- "x1_adj1"
-  
+
   expect_equal(out$data_adj, expected, tolerance = 1e-12)
 })
 
@@ -9400,14 +9945,14 @@ test_that("C++ adjustment-step bridge recomputes on power-key cache miss", {
 test_that("C++ adjustment-step bridge recomputes on spike-decision cache miss", {
   x <- cbind(x1 = c(1, 2, 4))
   cz <- matrix(c(0, 1, 0), ncol = 1L)
-  
+
   cached <- matrix(c(99, 98, 97), ncol = 1L)
-  
+
   prev_xi <- list(
     data_adj_list = list(x1 = cached),
     spike_decision_adj = c(x1 = 2L)
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9425,10 +9970,10 @@ test_that("C++ adjustment-step bridge recomputes on spike-decision cache miss", 
     prev_xi = prev_xi,
     has_prev = TRUE
   )
-  
+
   expected <- cbind(cz[, 1], x[, "x1"])
   colnames(expected) <- c("x1_adj1", "x1_adj2")
-  
+
   expect_equal(out$data_adj, expected)
 })
 
@@ -9437,7 +9982,7 @@ test_that("C++ adjustment-step bridge recomputes on spike-decision cache miss", 
 # parameters without fitting ACD inside build_adjustment_step().
 test_that("C++ adjustment-step bridge builds stored-ACD adjustment columns", {
   x <- cbind(x1 = c(1, 2, 4, 8))
-  
+
   acd_parameter <- list(
     beta0 = 0,
     beta1 = 1,
@@ -9445,7 +9990,7 @@ test_that("C++ adjustment-step bridge builds stored-ACD adjustment columns", {
     shift = 0,
     scale = 1
   )
-  
+
   out <- mfp2_build_adjustment_step_loop(
     x = x,
     vars_adj = "x1",
@@ -9463,13 +10008,13 @@ test_that("C++ adjustment-step bridge builds stored-ACD adjustment columns", {
     prev_xi = NULL,
     has_prev = FALSE
   )
-  
+
   expected <- cbind(
     x[, "x1"],
     stats::pnorm(x[, "x1"])
   )
   colnames(expected) <- c("x1_adj1", "x1_adj2")
-  
+
   expect_equal(out$data_adj, expected, tolerance = 1e-12)
 })
 
@@ -9478,7 +10023,7 @@ test_that("C++ adjustment-step bridge builds stored-ACD adjustment columns", {
 # without stored ACD parameters.
 test_that("C++ adjustment-step bridge rejects missing stored ACD parameters", {
   x <- cbind(x1 = c(1, 2, 4, 8))
-  
+
   expect_error(
     mfp2_build_adjustment_step_loop(
       x = x,
@@ -9518,7 +10063,7 @@ test_that("23.1 strong linear signal is selected as linear and matches glm", {
   x <- seq(0.5, 10, length.out = n)
   y <- 1.25 + 2.4 * x + rnorm(n, sd = 0.02)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "x"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9533,7 +10078,7 @@ test_that("23.1 strong linear signal is selected as linear and matches glm", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ x)
-  
+
   expect_true(fit$fp_terms["x", "selected"])
   expect_equal(as.numeric(fit$fp_powers[["x"]]), 1)
   expect_equal(unname(stats::fitted(fit)), unname(stats::fitted(reference)),
@@ -9551,7 +10096,7 @@ test_that("23.2 strong logarithmic signal selects FP1 power zero", {
   x <- exp(seq(log(0.4), log(20), length.out = n))
   y <- 0.8 + 3.1 * log(x) + rnorm(n, sd = 0.02)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "x"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9566,7 +10111,7 @@ test_that("23.2 strong logarithmic signal selects FP1 power zero", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ log(x))
-  
+
   expect_true(fit$fp_terms["x", "selected"])
   expect_equal(as.numeric(fit$fp_powers[["x"]]), 0)
   expect_equal(unname(stats::fitted(fit)), unname(stats::fitted(reference)),
@@ -9583,7 +10128,7 @@ test_that("23.3 forced repeated FP2 uses the expected power pair and basis", {
   x <- seq(0.5, 6, length.out = n)
   y <- 1 + 1.8 * x^2 - 0.7 * x^2 * log(x) + rnorm(n, sd = 0.02)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "x"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9598,7 +10143,7 @@ test_that("23.3 forced repeated FP2 uses the expected power pair and basis", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ I(x^2) + I(x^2 * log(x)))
-  
+
   expect_equal(as.numeric(fit$fp_powers[["x"]]), c(2, 2))
   expect_equal(unname(stats::fitted(fit)), unname(stats::fitted(reference)),
                tolerance = 1e-8)
@@ -9614,7 +10159,7 @@ test_that("23.4 SAZ decision 1 retains binary and continuous components", {
   z <- as.numeric(x <= 0)
   y <- 1 + 4.5 * z + 2.2 * x + rnorm(length(x), sd = 0.03)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9629,7 +10174,7 @@ test_that("23.4 SAZ decision 1 retains binary and continuous components", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ z + x)
-  
+
   expect_equal(as.integer(fit$spike_dec[["exposure"]]), 1L)
   expect_true(fit$catzero[["exposure"]])
   expect_false(all(is.na(fit$fp_powers[["exposure"]])))
@@ -9645,7 +10190,7 @@ test_that("23.5 SAZ decision 2 retains only the continuous component", {
   x <- c(rep(0, 140), positive)
   y <- 1 + 2.4 * x + rnorm(length(x), sd = 0.03)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9660,7 +10205,7 @@ test_that("23.5 SAZ decision 2 retains only the continuous component", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ x)
-  
+
   expect_equal(as.integer(fit$spike_dec[["exposure"]]), 2L)
   expect_false(fit$catzero[["exposure"]])
   expect_equal(as.numeric(fit$fp_powers[["exposure"]]), 1)
@@ -9677,7 +10222,7 @@ test_that("23.6 SAZ decision 3 retains only the binary zero indicator", {
   z <- as.numeric(x <= 0)
   y <- 1 + 4.2 * z + rnorm(length(x), sd = 0.03)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9692,7 +10237,7 @@ test_that("23.6 SAZ decision 3 retains only the binary zero indicator", {
     verbose = FALSE
   )
   reference <- stats::glm(y ~ z)
-  
+
   expect_equal(as.integer(fit$spike_dec[["exposure"]]), 3L)
   expect_true(fit$catzero[["exposure"]])
   expect_true(all(is.na(fit$fp_powers[["exposure"]])))
@@ -9713,21 +10258,21 @@ test_that("23.6 SAZ decision 3 retains only the binary zero indicator", {
 #   - link-scale standard errors use the stored coefficient covariance matrix.
 test_that("23.7 SAZ newdata prediction matches stored model and manual matrix calculation", {
   set.seed(2307)
-  
+
   x <- c(rep(0, 120), seq(0.5, 8, length.out = 300))
   z <- as.numeric(x <= 0)
-  
+
   y <- 1 +
     3.5 * z +
     1.7 * x +
     rnorm(length(x), sd = 0.04)
-  
+
   xmat <- matrix(
     x,
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   fit <- mfp2(
     xmat,
     y,
@@ -9741,18 +10286,18 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
     center = FALSE,
     verbose = FALSE
   )
-  
+
   # The data-generating model contains both a structural-zero effect and a
   # continuous positive-part effect. Therefore SAZ decision 1 must be retained:
   # binary indicator plus continuous component.
   expect_equal(unname(fit$spike_dec["exposure"]), 1L)
-  
+
   newx <- matrix(
     c(-2, 0, 0.5, 2, 6),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
-  
+
   # Public mfp2 prediction.
   got <- predict(
     fit,
@@ -9760,7 +10305,7 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
     type = "link",
     se.fit = TRUE
   )
-  
+
   # Because power = 1, shift = 0, scale = 1, and center = FALSE, the final
   # non-intercept design columns are exactly:
   #   exposure_bin = I(exposure <= 0)
@@ -9770,44 +10315,44 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
     exposure.1 = pmax(newx[, "exposure"], 0),
     check.names = FALSE
   )
-  
+
   # Remove the mfp2 class so prediction dispatches directly to predict.glm()
   # using the already fitted final model.
   fit_glm <- fit
   class(fit_glm) <- setdiff(class(fit_glm), "mfp2")
-  
+
   expected <- stats::predict(
     fit_glm,
     newdata = expected_design,
     type = "link",
     se.fit = TRUE
   )
-  
+
   # Construct the complete model matrix manually, including the intercept.
   manual_x <- cbind(
     `(Intercept)` = 1,
     exposure.1 = expected_design$exposure.1,
     exposure_bin = expected_design$exposure_bin
   )
-  
+
   beta <- stats::coef(fit_glm)
   beta_vcov <- stats::vcov(fit_glm)
-  
+
   # The manually constructed design matrix is already in the fitted
   # coefficient order, so the numerical calculation is directly positional.
   expect_true(all(names(beta) %in% colnames(manual_x)))
-  
+
   expect_equal(ncol(manual_x), length(beta))
   expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
-  
+
   # Guard against any remaining coefficient-name or ordering mismatch.
   expect_identical(colnames(manual_x), names(beta))
   expect_identical(rownames(beta_vcov), names(beta))
   expect_identical(colnames(beta_vcov), names(beta))
-  
+
   # Manual link prediction: eta = X beta.
   manual_fit <- as.numeric(manual_x %*% beta)
-  
+
   # Manual link-scale standard error:
   # se_i = sqrt(x_i' Var(beta) x_i).
   #
@@ -9817,40 +10362,40 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
     (manual_x %*% beta_vcov) * manual_x
   )
   manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
-  
+
   # Public mfp2 prediction must equal direct predict.glm().
   expect_equal(
     as.numeric(got$fit),
     as.numeric(expected$fit),
     tolerance = 1e-8
   )
-  
+
   expect_equal(
     as.numeric(got$se.fit),
     as.numeric(expected$se.fit),
     tolerance = 1e-8
   )
-  
+
   # Public mfp2 prediction must also equal the independent matrix calculation.
   expect_equal(
     as.numeric(got$fit),
     manual_fit,
     tolerance = 1e-10
   )
-  
+
   expect_equal(
     as.numeric(got$se.fit),
     manual_se,
     tolerance = 1e-10
   )
-  
+
   # Direct predict.glm() must agree with the same manual calculation.
   expect_equal(
     as.numeric(expected$fit),
     manual_fit,
     tolerance = 1e-10
   )
-  
+
   expect_equal(
     as.numeric(expected$se.fit),
     manual_se,
@@ -9871,7 +10416,7 @@ test_that("23.8 MFPI does not retain a deterministic no-interaction effect", {
     data.frame(group = factor("B", levels = c("A", "B")), x = x_base,
                y = 1.7 + 0.5 * x_base + residual_pattern)
   )
-  
+
   fit <- mfpi(
     dat[, c("group", "x")],
     dat$y,
@@ -9887,7 +10432,7 @@ test_that("23.8 MFPI does not retain a deterministic no-interaction effect", {
     p_interact = 0.05,
     verbose = FALSE
   )
-  
+
   metric <- fit$all_model_metrics[fit$all_model_metrics$variable == "x", , drop = FALSE]
   expect_equal(nrow(metric), 1L)
   expect_gt(metric$pvalue, 0.05)
@@ -9906,7 +10451,7 @@ test_that("23.9 weighted Gaussian mfp2 equals weighted glm", {
     w = runif(n, 0.5, 3)
   )
   dat$y <- 0.7 + 1.1 * dat$x1 - 0.6 * dat$x2 + rnorm(n, sd = 0.4)
-  
+
   fit_mfp2 <- mfp2(
     y ~ x1 + x2,
     data = dat,
@@ -9922,7 +10467,7 @@ test_that("23.9 weighted Gaussian mfp2 equals weighted glm", {
   )
   fit_glm <- stats::glm(y ~ x1 + x2, data = dat, weights = w)
   nd <- dat[1:20, c("x1", "x2"), drop = FALSE]
-  
+
   expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
   expect_equal(unname(fitted(fit_mfp2)), unname(fitted(fit_glm)), tolerance = 1e-8)
   expect_equal(
@@ -9944,13 +10489,13 @@ test_that("23.10 mfp2 serialization preserves prediction behavior", {
   )
   nd <- prostate[1:15, c("age", "cavol", "svi"), drop = FALSE]
   before <- predict(fit, newdata = nd, type = "link", se.fit = TRUE)
-  
+
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
   saveRDS(fit, path)
   restored <- readRDS(path)
   after <- predict(restored, newdata = nd, type = "link", se.fit = TRUE)
-  
+
   expect_s3_class(restored, "mfp2")
   expect_equal(restored$fp_powers, fit$fp_powers)
   expect_equal(coef(restored), coef(fit))
@@ -9979,7 +10524,7 @@ test_that("23.11 mfpi serialization preserves ordinary and fitted-function predi
     fit, terms = "cavol", model = "all", type = "function",
     grid = TRUE, n_grid = 20, se.fit = TRUE
   )
-  
+
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
   saveRDS(fit, path)
@@ -9992,7 +10537,7 @@ test_that("23.11 mfpi serialization preserves ordinary and fitted-function predi
     restored, terms = "cavol", model = "all", type = "function",
     grid = TRUE, n_grid = 20, se.fit = TRUE
   )
-  
+
   expect_s3_class(restored, "mfpi")
   expect_equal(after_link$predictions, before_link$predictions, tolerance = 1e-12)
   expect_equal(after_fun$functions, before_fun$functions, tolerance = 1e-12)
@@ -10019,18 +10564,18 @@ test_that("23.12 legacy continuous formula objects reconstruct prediction mappin
   expected_term <- predict(
     fit, newdata = nd, type = "terms", terms = "age", se.fit = TRUE
   )
-  
+
   legacy <- fit
   legacy$term_to_columns <- NULL
   legacy$formula_term_to_columns <- NULL
   legacy$transformed_to_model_columns <- NULL
   legacy$formula_prediction_term_names <- NULL
-  
+
   got <- predict(legacy, newdata = nd, type = "link", se.fit = TRUE)
   got_term <- predict(
     legacy, newdata = nd, type = "terms", terms = "age", se.fit = TRUE
   )
-  
+
   expect_equal(as.numeric(got$fit), as.numeric(expected$fit), tolerance = 1e-12)
   expect_equal(
     as.numeric(got$se.fit), as.numeric(expected$se.fit), tolerance = 1e-12
@@ -10062,7 +10607,7 @@ test_that("23.13 legacy matrix objects preserve non-syntactic coefficient names"
   expected_term <- predict(
     fit, newdata = nd, type = "terms", terms = "age years", se.fit = TRUE
   )
-  
+
   legacy <- fit
   legacy$term_to_columns <- NULL
   legacy$transformed_to_model_columns <- NULL
@@ -10070,7 +10615,7 @@ test_that("23.13 legacy matrix objects preserve non-syntactic coefficient names"
   got_term <- predict(
     legacy, newdata = nd, type = "terms", terms = "age years", se.fit = TRUE
   )
-  
+
   expect_equal(as.numeric(got$fit), as.numeric(expected$fit), tolerance = 1e-12)
   expect_equal(
     as.numeric(got$se.fit), as.numeric(expected$se.fit), tolerance = 1e-12
@@ -10102,7 +10647,7 @@ test_that("23.14 grouped matrix objects require their member-column mapping", {
   )
   legacy <- fit
   legacy$term_to_columns <- NULL
-  
+
   expect_error(
     predict(legacy, newdata = mm[1:10, , drop = FALSE]),
     "lacks grouped-term mapping metadata"
@@ -10130,7 +10675,7 @@ test_that("24.1 mfp2 formula rebuilds categorical coding after subset", {
     stage = stage
   )
   fit_rows <- dat$stage != "D"
-  
+
   fit <- mfp2(
     y ~ x + stage,
     data = dat,
@@ -10142,10 +10687,10 @@ test_that("24.1 mfp2 formula rebuilds categorical coding after subset", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   dat_fit <- droplevels(dat[fit_rows, , drop = FALSE])
   expected_x <- stats::model.matrix(~ x + stage, data = dat_fit)[, -1L, drop = FALSE]
-  
+
   expect_identical(fit$formula_xlevels$stage, levels(dat_fit$stage))
   expect_identical(fit$formula_model_matrix_columns, colnames(expected_x))
   expect_identical(fit$term_to_columns$stage, c("stage.L", "stage.Q"))
@@ -10177,7 +10722,7 @@ test_that("24.2 mfp2 formula rejects a one-level factor after subset", {
     x = runif(60, 1, 5),
     group = factor(rep(c("A", "B", "C"), each = 20))
   )
-  
+
   expect_error(
     mfp2(
       y ~ x + group,
@@ -10201,7 +10746,7 @@ test_that("24.3 mfp2 matrix rejects grouped rank loss after subset", {
   stage_mm <- stats::model.matrix(~ stage)[, -1L, drop = FALSE]
   x <- cbind(z = runif(length(stage), 1, 4), stage_mm)
   y <- rnorm(length(stage))
-  
+
   expect_error(
     mfp2(
       x,
@@ -10234,7 +10779,7 @@ test_that("24.4 MFPI formula rebuilds categorical coding after subset", {
   y <- 1 + 0.4 * x + 0.7 * x * (trt == "treated") + 0.2 * z + rnorm(length(stage), sd = 0.3)
   dat <- data.frame(y = y, trt = trt, x = x, stage = stage, z = z)
   fit_rows <- dat$stage != "D"
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -10252,7 +10797,7 @@ test_that("24.4 MFPI formula rebuilds categorical coding after subset", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(fit$formula_xlevels$stage, c("A", "B", "C"))
   expect_identical(fit$term_to_columns$stage, c("stage.L", "stage.Q"))
   expect_false("stage.C" %in% fit$formula_design_columns)
@@ -10263,7 +10808,7 @@ test_that("24.4 MFPI formula rebuilds categorical coding after subset", {
 test_that("24.5 MFPI formula rejects a one-level factor after subset", {
   set.seed(2405)
   dat <- make_mfpi_factor_data(n = 120L)
-  
+
   expect_error(
     mfpi(
       y ~ trt + x + stage + z,
@@ -10297,7 +10842,7 @@ test_that("24.6 MFPI matrix rejects grouped rank loss after subset", {
   x_cont <- runif(length(stage), 1, 6)
   x <- cbind(trt = trt, x = x_cont, stage_mm, z = rnorm(length(stage)))
   y <- 1 + 0.4 * x_cont + 0.6 * x_cont * trt + rnorm(length(stage), sd = 0.3)
-  
+
   expect_error(
     mfpi(
       x,
@@ -10334,7 +10879,7 @@ test_that("24.7 MFPI matrix rejects a predictor with no post-subset variation", 
     z = rnorm(n)
   )
   y <- 1 + 0.3 * x_cont + 0.5 * x_cont * trt + rnorm(n, sd = 0.3)
-  
+
   expect_error(
     mfpi(
       x,
@@ -10369,7 +10914,7 @@ test_that("24.8 mfp2 formula rebuilds treatment contrasts when reference is remo
     group = group
   )
   fit_rows <- dat$group != "A"
-  
+
   fit <- mfp2(
     y ~ x + group,
     data = dat,
@@ -10383,10 +10928,10 @@ test_that("24.8 mfp2 formula rebuilds treatment contrasts when reference is remo
     alpha = 1,
     verbose = FALSE
   )
-  
+
   dat_fit <- droplevels(dat[fit_rows, , drop = FALSE])
   expected_x <- stats::model.matrix(~ x + group, dat_fit)[, -1L, drop = FALSE]
-  
+
   expect_identical(fit$formula_xlevels$group, c("B", "C"))
   expect_identical(fit$term_to_columns$group, "groupC")
   expect_equal(
@@ -10410,7 +10955,7 @@ test_that("24.9 formula methods bypass subset helpers when subset is NULL", {
     stage = factor(rep(c("A", "B", "C"), length.out = n)),
     z = rnorm(n)
   )
-  
+
   testthat::local_mocked_bindings(
     formula_subset_rows = function(...) {
       stop("row resolver must not be called for subset = NULL", call. = FALSE)
@@ -10420,7 +10965,7 @@ test_that("24.9 formula methods bypass subset helpers when subset is NULL", {
     },
     .package = "mfp2"
   )
-  
+
   fit_mfp2 <- mfp2(
     y ~ x + stage,
     data = dat,
@@ -10433,7 +10978,7 @@ test_that("24.9 formula methods bypass subset helpers when subset is NULL", {
     verbose = FALSE
   )
   expect_s3_class(fit_mfp2, "mfp2")
-  
+
   fit_mfpi <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -10470,7 +11015,7 @@ test_that("24.10 mfp2 formula evaluates subset once with data precedence", {
     evaluations <<- evaluations + 1L
     value
   }
-  
+
   fit <- mfp2(
     y ~ x,
     data = dat,
@@ -10483,7 +11028,7 @@ test_that("24.10 mfp2 formula evaluates subset once with data precedence", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   expect_identical(evaluations, 1L)
   expect_equal(nrow(fit$x_original), sum(dat$keep))
 })
@@ -10508,7 +11053,7 @@ test_that("24.11 MFPI formula evaluates subset once with data precedence", {
     evaluations <<- evaluations + 1L
     value
   }
-  
+
   fit <- mfpi(
     y ~ trt + x + z,
     data = dat,
@@ -10526,7 +11071,7 @@ test_that("24.11 MFPI formula evaluates subset once with data precedence", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(evaluations, 1L)
   expect_equal(fit$nobs, sum(dat$keep))
 })
@@ -10545,7 +11090,7 @@ test_that("24.12 formula methods accept caller-scoped subset row indices", {
     z = rnorm(n)
   )
   rows <- which(rep(c(TRUE, TRUE, FALSE), length.out = n))
-  
+
   fit_mfp2 <- mfp2(
     y ~ x + z,
     data = dat,
@@ -10559,7 +11104,7 @@ test_that("24.12 formula methods accept caller-scoped subset row indices", {
     verbose = FALSE
   )
   expect_equal(nrow(fit_mfp2$x_original), length(rows))
-  
+
   fit_mfpi <- mfpi(
     y ~ trt + x + z,
     data = dat,
@@ -10593,10 +11138,10 @@ test_that("24.13 all subset interfaces reject duplicated numeric row indices", {
     rnorm(n, sd = 0.3)
   duplicate_rows <- c(seq_len(80L), 80L)
   duplicate_message <- "must not contain duplicated row indices"
-  
+
   x_matrix <- cbind(trt = trt_numeric, x = x_cont, z = z)
   dat <- data.frame(y = y, trt = trt_factor, x = x_cont, z = z)
-  
+
   expect_error(
     mfp2(
       x_matrix[, c("x", "z"), drop = FALSE],
@@ -10610,7 +11155,7 @@ test_that("24.13 all subset interfaces reject duplicated numeric row indices", {
     ),
     duplicate_message
   )
-  
+
   expect_error(
     mfp2(
       y ~ x + z,
@@ -10624,7 +11169,7 @@ test_that("24.13 all subset interfaces reject duplicated numeric row indices", {
     ),
     duplicate_message
   )
-  
+
   expect_error(
     mfpi(
       x_matrix,
@@ -10642,7 +11187,7 @@ test_that("24.13 all subset interfaces reject duplicated numeric row indices", {
     ),
     duplicate_message
   )
-  
+
   expect_error(
     mfpi(
       y ~ trt + x + z,
@@ -10674,7 +11219,7 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
   y <- 1 + 0.02 * x[, "x"] + rnorm(n, sd = 0.2)
   dat <- data.frame(y = y, x = x[, "x"], z = x[, "z"])
   rows <- c(51:100, 1:50)
-  
+
   expect_identical(formula_subset_rows(rows, n), as.integer(rows))
   expect_error(
     formula_subset_rows(c(1L, 2L, 2L), n),
@@ -10687,7 +11232,7 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
     ),
     "unique valid integer model-frame positions"
   )
-  
+
   fit_matrix <- mfp2(
     x,
     y,
@@ -10707,7 +11252,7 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
     unname(x[rows, "x"]),
     tolerance = 0
   )
-  
+
   fit_formula <- mfp2(
     y ~ x + z,
     data = dat,
@@ -10727,12 +11272,12 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
     unname(dat$x[rows]),
     tolerance = 0
   )
-  
+
   trt_factor <- factor(rep(c("control", "treated"), length.out = n))
   trt_numeric <- as.numeric(trt_factor == "treated")
   x_mfpi <- cbind(trt = trt_numeric, x = x[, "x"], z = x[, "z"])
   dat_mfpi <- data.frame(y = y, trt = trt_factor, x = x[, "x"], z = x[, "z"])
-  
+
   fit_mfpi_matrix <- mfpi(
     x_mfpi,
     y,
@@ -10754,7 +11299,7 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
     unname(x_mfpi[rows, "x"]),
     tolerance = 0
   )
-  
+
   fit_mfpi_formula <- mfpi(
     y ~ trt + x + z,
     data = dat_mfpi,
@@ -10786,15 +11331,15 @@ test_that("24.15 formula subset helper preserves custom contrasts when all level
   dat <- data.frame(y = rnorm(length(stage)), stage = stage)
   mf <- stats::model.frame(y ~ stage, data = dat)
   rows <- c(1:8, 13:20, 25:32)
-  
+
   retained <- subset_formula_model_frame(mf, rows)
-  
+
   expect_identical(levels(retained$stage), levels(mf$stage))
   expect_identical(
     attr(retained$stage, "contrasts", exact = TRUE),
     attr(mf$stage, "contrasts", exact = TRUE)
   )
-  
+
   mf_c <- stats::model.frame(y ~ C(stage, stats::contr.sum), data = dat)
   retained_c <- subset_formula_model_frame(mf_c, rows)
   factor_name <- setdiff(names(mf_c), "y")
@@ -10821,13 +11366,13 @@ test_that("24.16 formula methods retain custom contrasts when all levels remain"
     z = rnorm(n),
     keep_row = rep(c(TRUE, TRUE, FALSE, TRUE), length.out = n)
   )
-  
+
   expected_mf <- stats::model.frame(
     y ~ x + stage,
     data = dat[dat$keep_row, , drop = FALSE]
   )
   expected_mm <- stats::model.matrix(y ~ x + stage, data = expected_mf)
-  
+
   fit_mfp2 <- mfp2(
     y ~ x + stage,
     data = dat,
@@ -10841,7 +11386,7 @@ test_that("24.16 formula methods retain custom contrasts when all levels remain"
     center = FALSE,
     verbose = FALSE
   )
-  
+
   expect_identical(
     fit_mfp2$formula_contrasts$stage,
     attr(expected_mm, "contrasts")$stage
@@ -10851,7 +11396,7 @@ test_that("24.16 formula methods retain custom contrasts when all levels remain"
     unname(expected_mm[, c("stage1", "stage2"), drop = FALSE]),
     tolerance = 1e-12
   )
-  
+
   expected_mfpi_mf <- stats::model.frame(
     y ~ trt + x + stage + z,
     data = dat[dat$keep_row, , drop = FALSE]
@@ -10860,7 +11405,7 @@ test_that("24.16 formula methods retain custom contrasts when all levels remain"
     y ~ trt + x + stage + z,
     data = expected_mfpi_mf
   )
-  
+
   fit_mfpi <- mfpi(
     y ~ trt + x + stage + z,
     data = dat,
@@ -10878,7 +11423,7 @@ test_that("24.16 formula methods retain custom contrasts when all levels remain"
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(
     fit_mfpi$formula_contrasts$stage,
     attr(expected_mfpi_mm, "contrasts")$stage
@@ -10908,7 +11453,7 @@ test_that("24.17 formula methods reject ambiguous custom contrasts after level r
   )
   keep_rows <- dat$stage != "C"
   message <- "Custom contrasts for factor `stage` cannot be reconstructed safely"
-  
+
   expect_error(
     mfp2(
       y ~ x + stage,
@@ -10926,7 +11471,7 @@ test_that("24.17 formula methods reject ambiguous custom contrasts after level r
     message,
     fixed = TRUE
   )
-  
+
   expect_error(
     mfpi(
       y ~ trt + x + stage + z,
@@ -10958,14 +11503,14 @@ test_that("24.18 subset NULL bypasses custom contrast processing", {
   stage <- factor(rep(c("A", "B", "C"), length.out = n))
   contrasts(stage) <- stats::contr.sum(3L)
   dat <- data.frame(y = rnorm(n), x = runif(n, 1, 5), stage = stage)
-  
+
   testthat::local_mocked_bindings(
     subset_formula_factor_column = function(...) {
       stop("factor subset helper must not be called for subset = NULL", call. = FALSE)
     },
     .package = "mfp2"
   )
-  
+
   fit <- mfp2(
     y ~ x + stage,
     data = dat,
@@ -10978,7 +11523,7 @@ test_that("24.18 subset NULL bypasses custom contrast processing", {
     center = FALSE,
     verbose = FALSE
   )
-  
+
   expect_s3_class(fit, "mfp2")
   expect_identical(
     fit$formula_contrasts$stage,
@@ -11009,7 +11554,7 @@ test_that("24.19 formula subset rebuilds inline, binary, and interaction coding"
     0.15 * dat$x * (dat$group == "C") +
     rnorm(nrow(dat), sd = 0.25)
   dat$keep_row <- seq_len(nrow(dat)) %% 7L != 0L
-  
+
   fit <- mfp2(
     y ~ x + factor(stage_code) + as.factor(binary_code) +
       group + x:group,
@@ -11026,14 +11571,14 @@ test_that("24.19 formula subset rebuilds inline, binary, and interaction coding"
     xorder = "original",
     verbose = FALSE
   )
-  
+
   retained <- droplevels(dat[dat$keep_row, , drop = FALSE])
   expected <- stats::model.matrix(
     ~ x + factor(stage_code) + as.factor(binary_code) +
       group + x:group,
     data = retained
   )[, -1L, drop = FALSE]
-  
+
   expect_identical(fit$formula_model_matrix_columns, colnames(expected))
   expect_equal(
     unname(fit$x_original[, colnames(expected), drop = FALSE]),
@@ -11056,7 +11601,7 @@ test_that("24.20 formula subset preserves full-data shift and scale", {
     x = x
   )
   rows <- 2:(n - 1L)
-  
+
   fit <- mfp2(
     y ~ x,
     data = dat,
@@ -11072,12 +11617,12 @@ test_that("24.20 formula subset preserves full-data shift and scale", {
     xorder = "original",
     verbose = FALSE
   )
-  
+
   full_shift <- find_shift_factor(dat$x)
   full_scale <- find_scale_factor(dat$x + full_shift)
   retained_shift <- find_shift_factor(dat$x[rows])
   retained_scale <- find_scale_factor(dat$x[rows] + retained_shift)
-  
+
   expect_equal(
     as.numeric(fit$transformations["x", "shift"]),
     full_shift,
@@ -11108,7 +11653,7 @@ test_that("24.21 formula subset aligns external weights and offsets", {
   dat$y <- 0.8 + 0.5 * dat$x - 0.35 * dat$z + dat$off +
     rnorm(n, sd = 0.3)
   rows <- c(121:150, 1:90)
-  
+
   fit_mfp2 <- mfp2(
     y ~ x + z,
     data = dat,
@@ -11132,12 +11677,12 @@ test_that("24.21 formula subset aligns external weights and offsets", {
     weights = w,
     offset = off
   )
-  
+
   expect_mfp2_glm_parameters_equal(fit_mfp2, reference, tolerance = 1e-8)
   expect_equal(unname(fit_mfp2$prior.weights), unname(dat$w[rows]), tolerance = 0)
   expect_equal(unname(fit_mfp2$offset), unname(dat$off[rows]), tolerance = 0)
   expect_equal(unname(fitted(fit_mfp2)), unname(fitted(reference)), tolerance = 1e-8)
-  
+
   fit_mfpi <- mfpi(
     y ~ trt + x + z,
     data = dat,
@@ -11158,7 +11703,7 @@ test_that("24.21 formula subset aligns external weights and offsets", {
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_equal(
     unname(fit_mfpi$adjustment_model$prior.weights),
     unname(dat$w[rows]),
@@ -11169,7 +11714,7 @@ test_that("24.21 formula subset aligns external weights and offsets", {
     unname(dat$off[rows]),
     tolerance = 0
   )
-  
+
   interaction_fit <-
     fit_mfpi$var_winners[["x"]]$fit$test_results$interaction_model$fit
   expect_equal(
@@ -11200,7 +11745,7 @@ test_that("24.22 subset aligns grouped-binomial response and formula offset", {
   dat$successes <- stats::rbinom(n, size = dat$trials, prob = stats::plogis(eta))
   dat$failures <- dat$trials - dat$successes
   dat$keep_row <- rep(c(TRUE, TRUE, FALSE, TRUE), length.out = n)
-  
+
   fit <- mfp2(
     cbind(successes, failures) ~ x + z + offset(off),
     data = dat,
@@ -11223,7 +11768,7 @@ test_that("24.22 subset aligns grouped-binomial response and formula offset", {
     data = retained,
     family = stats::binomial()
   )
-  
+
   expect_mfp2_glm_parameters_equal(fit, reference, tolerance = 1e-8)
   expect_equal(unname(fitted(fit)), unname(fitted(reference)), tolerance = 1e-8)
   expect_equal(
@@ -11259,7 +11804,7 @@ test_that("24.23 subset aligns external and formula Cox strata", {
   dat$status <- as.integer(event_time <= censor_time)
   rows <- c(121:180, 1:90)
   retained <- dat[rows, , drop = FALSE]
-  
+
   fit_external <- mfp2(
     survival::Surv(time, status) ~ x + z,
     data = dat,
@@ -11302,19 +11847,19 @@ test_that("24.23 subset aligns external and formula Cox strata", {
     x = TRUE,
     y = TRUE
   )
-  
+
   expect_equal(unname(coef(fit_external)), unname(coef(reference)), tolerance = 1e-8)
   expect_equal(unname(coef(fit_formula)), unname(coef(reference)), tolerance = 1e-8)
   expect_equal(as.numeric(logLik(fit_external)), as.numeric(logLik(reference)), tolerance = 1e-8)
   expect_equal(as.numeric(logLik(fit_formula)), as.numeric(logLik(reference)), tolerance = 1e-8)
-  
+
   nd <- retained[1:15, c("x", "z", "stratum"), drop = FALSE]
   expect_equal(
     unname(predict(fit_formula, newdata = nd, type = "lp", cox_reference = "zero")),
     unname(predict(reference, newdata = nd, type = "lp", reference = "zero")),
     tolerance = 1e-8
   )
-  
+
   fit_mfpi <- mfpi(
     survival::Surv(time, status) ~ trt + x + z + strata(stratum),
     data = dat,
@@ -11337,7 +11882,7 @@ test_that("24.23 subset aligns external and formula Cox strata", {
   )
   expect_s3_class(fit_mfpi, "mfpi")
   expect_false(is.null(fit_mfpi$formula_strata_terms))
-  
+
   mfpi_nd <- retained[1:12, c("trt", "x", "z", "stratum"), drop = FALSE]
   mfpi_prediction <- predict(
     fit_mfpi,
@@ -11361,16 +11906,16 @@ test_that("24.24 matrix grouped terms that retain rank keep supplied coding", {
   x_cont <- runif(n, 1, 5)
   z <- rnorm(n)
   rows <- seq_len(n) %% 5L != 0L
-  
+
   x_mfp2 <- cbind(x = x_cont, stage_mm, z = z)
   y <- 1 + 0.45 * x_cont + 0.6 * stage_mm[, 1L] -
     0.25 * stage_mm[, 2L] + 0.2 * z + rnorm(n, sd = 0.3)
-  
+
   expect_equal(
     qr(cbind(1, stage_mm))$rank,
     qr(cbind(1, stage_mm[rows, , drop = FALSE]))$rank
   )
-  
+
   fit_mfp2 <- mfp2(
     x_mfp2,
     y,
@@ -11392,7 +11937,7 @@ test_that("24.24 matrix grouped terms that retain rank keep supplied coding", {
     unname(x_mfp2[rows, , drop = FALSE]),
     tolerance = 0
   )
-  
+
   trt <- rep(c(0, 1), length.out = n)
   x_mfpi <- cbind(trt = trt, x = x_cont, stage_mm, z = z)
   fit_mfpi <- mfpi(
@@ -11437,7 +11982,7 @@ test_that("24.25 subset-fitted mfp2 prediction uses retained factor levels", {
   dat$y <- 1 + 0.4 * dat$x + 0.7 * (dat$stage == "B") +
     rnorm(n, sd = 0.25)
   fit_rows <- dat$stage != "C"
-  
+
   fit <- mfp2(
     y ~ x + stage,
     data = dat,
@@ -11454,7 +11999,7 @@ test_that("24.25 subset-fitted mfp2 prediction uses retained factor levels", {
     verbose = FALSE
   )
   retained <- droplevels(dat[fit_rows, , drop = FALSE])
-  
+
   training <- predict(fit, type = "link", se.fit = TRUE)
   reconstructed <- predict(
     fit,
@@ -11464,17 +12009,17 @@ test_that("24.25 subset-fitted mfp2 prediction uses retained factor levels", {
   )
   expect_equal(unname(reconstructed$fit), unname(training$fit), tolerance = 1e-10)
   expect_equal(unname(reconstructed$se.fit), unname(training$se.fit), tolerance = 1e-10)
-  
+
   retained_row <- retained[retained$stage == "B", , drop = FALSE][1L, ]
   expect_length(predict(fit, newdata = retained_row), 1L)
-  
+
   removed_row <- dat[dat$stage == "C", , drop = FALSE][1L, ]
   expect_error(
     predict(fit, newdata = removed_row),
     "new level|new levels|factor",
     ignore.case = TRUE
   )
-  
+
   unseen_row <- retained_row
   unseen_row$stage <- factor("D", levels = c("A", "B", "D"))
   expect_error(
@@ -11482,7 +12027,7 @@ test_that("24.25 subset-fitted mfp2 prediction uses retained factor levels", {
     "new level|new levels|factor",
     ignore.case = TRUE
   )
-  
+
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
   saveRDS(fit, path)
@@ -11515,7 +12060,7 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
     0.4 * (dat$stage == "B") + 0.2 * dat$z + dat$off +
     rnorm(n, sd = 0.3)
   fit_rows <- dat$stage != "C"
-  
+
   fit <- mfpi(
     y ~ trt + x + stage + z + offset(off),
     data = dat,
@@ -11534,12 +12079,12 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
     p_interact = 1,
     verbose = FALSE
   )
-  
+
   expect_identical(fit$formula_xlevels$stage, c("A", "B"))
   expect_false(is.null(fit$formula_offset_terms))
   expect_true("stageB" %in% fit$formula_design_columns)
   expect_false("stageC" %in% fit$formula_design_columns)
-  
+
   retained <- droplevels(
     dat[fit_rows, c("trt", "x", "stage", "z", "off"), drop = FALSE]
   )
@@ -11563,7 +12108,7 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
     training$predictions,
     tolerance = 1e-10
   )
-  
+
   retained_row <- retained[retained$stage == "B", , drop = FALSE][1L, ]
   retained_prediction <- predict(
     fit,
@@ -11574,7 +12119,7 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
     se.fit = FALSE
   )
   expect_true(all(is.finite(retained_prediction$predictions$fit)))
-  
+
   removed_row <- dat[
     dat$stage == "C",
     c("trt", "x", "stage", "z", "off"),
@@ -11592,7 +12137,7 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
     "new level|new levels|factor",
     ignore.case = TRUE
   )
-  
+
   unseen_row <- retained_row
   unseen_row$stage <- factor("D", levels = c("A", "B", "D"))
   expect_error(
@@ -11613,16 +12158,16 @@ test_that("24.26 MFPI subset prediction uses retained metadata and formula offse
 
 make_cox_reference_v1_data <- function(n = 480L, seed = 11001L) {
   set.seed(seed)
-  
+
   stratum <- factor(rep(c("A", "B"), length.out = n))
   x_mean <- ifelse(stratum == "A", 4, 9)
   x <- stats::rnorm(n, mean = x_mean, sd = 1.15)
   off <- stats::rnorm(n, mean = 0.35, sd = 0.12)
-  
+
   eta <- 0.48 * (x - 6) + 0.30 * (stratum == "B") + off
   event_time <- stats::rexp(n, rate = 0.025 * exp(eta))
   censor_time <- stats::rexp(n, rate = 0.012)
-  
+
   data.frame(
     time = pmin(event_time, censor_time),
     status = as.integer(event_time <= censor_time),
@@ -11643,16 +12188,16 @@ prepare_formula_cox_newdata_v1 <- function(object,
                                            newdata,
                                            include_response = FALSE) {
   selected_terms <- get_selected_variable_names(object)
-  
+
   predictor_data <- reconstruct_formula_newdata(
     object,
     newdata,
     terms = selected_terms
   )
-  
+
   prediction_strata <- reconstruct_formula_strata_newdata(object, newdata)
   prediction_offset <- reconstruct_formula_offset_newdata(object, newdata)
-  
+
   prepared <- prepare_newdata_for_predict(
     object,
     predictor_data,
@@ -11661,14 +12206,14 @@ prepare_formula_cox_newdata_v1 <- function(object,
     offset = prediction_offset,
     check_binary = FALSE
   )
-  
+
   if (include_response) {
     response_name <- cox_internal_response_name(object)
     prepared[[response_name]] <- I(
       survival::Surv(newdata$time, newdata$status)
     )
   }
-  
+
   prepared
 }
 
@@ -11679,7 +12224,7 @@ prepare_formula_cox_newdata_v1 <- function(object,
 test_that("version 1 Cox lp and risk references match an equivalent coxph fit", {
   dat <- make_cox_reference_v1_data(seed = 11002L)
   prediction_x <- data.frame(x = c(2.75, 4.5, 7.25, 10.5))
-  
+
   for (center_value in c(TRUE, FALSE)) {
     fit_mfp2 <- mfp2(
       x = as.matrix(dat["x"]),
@@ -11696,16 +12241,16 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
       ties = "breslow",
       verbose = FALSE
     )
-    
+
     fitted_center <- if (center_value) {
       unname(fit_mfp2$centers[[1L]])
     } else {
       0
     }
-    
+
     dat_cox <- transform(dat, z = x - fitted_center)
     prediction_cox <- data.frame(z = prediction_x$x - fitted_center)
-    
+
     fit_coxph <- survival::coxph(
       survival::Surv(time, status) ~ z,
       data = dat_cox,
@@ -11714,7 +12259,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
       x = TRUE,
       y = TRUE
     )
-    
+
     for (reference_value in c("zero", "sample", "strata")) {
       got_lp <- predict(
         fit_mfp2,
@@ -11730,7 +12275,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         se.fit = TRUE,
         reference = reference_value
       )
-      
+
       expect_equal(
         unname(got_lp$fit),
         unname(expected_lp$fit),
@@ -11741,7 +12286,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         unname(expected_lp$se.fit),
         tolerance = 1e-8
       )
-      
+
       got_risk <- predict(
         fit_mfp2,
         newdata = prediction_x,
@@ -11756,7 +12301,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         se.fit = TRUE,
         reference = reference_value
       )
-      
+
       expect_equal(
         unname(got_risk$fit),
         unname(expected_risk$fit),
@@ -11768,7 +12313,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
         tolerance = 1e-8
       )
     }
-    
+
     lp_zero <- predict(
       fit_mfp2,
       prediction_x,
@@ -11781,18 +12326,18 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
       type = "lp",
       cox_reference = "sample"
     )
-    
+
     expected_constant <- sum(
       stats::coef(fit_coxph) * fit_coxph$means,
       na.rm = TRUE
     )
-    
+
     expect_equal(
       unname(lp_zero - lp_sample),
       rep(unname(expected_constant), nrow(prediction_x)),
       tolerance = 1e-8
     )
-    
+
     if (center_value) {
       expect_equal(
         unname(lp_zero),
@@ -11811,7 +12356,7 @@ test_that("version 1 Cox lp and risk references match an equivalent coxph fit", 
 # offsets differ from row to row.
 test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
   dat <- make_cox_reference_v1_data(seed = 11003L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ x + offset(off),
     data = dat,
@@ -11827,24 +12372,24 @@ test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- data.frame(
     x = c(3.5, 8.5),
     off = c(0.10, 0.65)
   )
-  
+
   lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
   lp_sample <- predict(fit, nd, type = "lp", cox_reference = "sample")
   risk_zero <- predict(fit, nd, type = "risk", cox_reference = "zero")
   risk_sample <- predict(fit, nd, type = "risk", cox_reference = "sample")
-  
+
   # Use the stripped coxph object as the oracle. This is stronger and safer
   # than recomputing the shift with a positional coef * means expression:
   # predict.coxph() owns the exact model-matrix reconstruction and offset
   # centering rules for the fitted object.
   prepared <- prepare_formula_cox_newdata_v1(fit, nd)
   base <- strip_mfp2_class_v1(fit)
-  
+
   base_lp_zero <- predict(
     base,
     newdata = prepared,
@@ -11869,12 +12414,12 @@ test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
     type = "risk",
     reference = "sample"
   )
-  
+
   expect_equal(unname(lp_zero), unname(base_lp_zero), tolerance = 1e-8)
   expect_equal(unname(lp_sample), unname(base_lp_sample), tolerance = 1e-8)
   expect_equal(unname(risk_zero), unname(base_risk_zero), tolerance = 1e-8)
   expect_equal(unname(risk_sample), unname(base_risk_sample), tolerance = 1e-8)
-  
+
   reference_shift <- unname(base_lp_zero - base_lp_sample)
   expect_equal(
     unname(lp_zero - lp_sample),
@@ -11905,7 +12450,7 @@ test_that("version 1 Cox hazard ratios are reference invariant with offsets", {
 # rows. Relative comparisons remain invariant only within the same stratum.
 test_that("version 1 Cox strata reference is stratum specific", {
   dat <- make_cox_reference_v1_data(seed = 11004L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ x + strata(stratum),
     data = dat,
@@ -11921,7 +12466,7 @@ test_that("version 1 Cox strata reference is stratum specific", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- data.frame(
     x = c(3.25, 7.75, 5.25, 10.75),
     stratum = factor(
@@ -11929,15 +12474,15 @@ test_that("version 1 Cox strata reference is stratum specific", {
       levels = levels(dat$stratum)
     )
   )
-  
+
   lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
   lp_strata <- predict(fit, nd, type = "lp", cox_reference = "strata")
   risk_zero <- predict(fit, nd, type = "risk", cox_reference = "zero")
   risk_strata <- predict(fit, nd, type = "risk", cox_reference = "strata")
-  
+
   prepared <- prepare_formula_cox_newdata_v1(fit, nd)
   base <- strip_mfp2_class_v1(fit)
-  
+
   expect_equal(
     unname(lp_zero),
     unname(predict(base, prepared, type = "lp", reference = "zero")),
@@ -11948,13 +12493,13 @@ test_that("version 1 Cox strata reference is stratum specific", {
     unname(predict(base, prepared, type = "lp", reference = "strata")),
     tolerance = 1e-8
   )
-  
+
   reference_shift <- unname(lp_zero - lp_strata)
-  
+
   expect_equal(reference_shift[1L], reference_shift[2L], tolerance = 1e-10)
   expect_equal(reference_shift[3L], reference_shift[4L], tolerance = 1e-10)
   expect_gt(abs(reference_shift[1L] - reference_shift[3L]), 1e-4)
-  
+
   expect_equal(
     unname(lp_zero[2L] - lp_zero[1L]),
     unname(lp_strata[2L] - lp_strata[1L]),
@@ -11983,7 +12528,7 @@ test_that("version 1 Cox strata reference is stratum specific", {
 # are independently reconstructed on the stored transformed design scale.
 test_that("version 1 Cox expected and survival newdata predictions match coxph", {
   dat <- make_cox_reference_v1_data(seed = 11005L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~
       x + strata(stratum) + offset(off),
@@ -12000,18 +12545,18 @@ test_that("version 1 Cox expected and survival newdata predictions match coxph",
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[c(7, 41, 88, 133, 207, 319),
             c("time", "status", "x", "stratum", "off"),
             drop = FALSE]
-  
+
   prepared <- prepare_formula_cox_newdata_v1(
     fit,
     nd,
     include_response = TRUE
   )
   base <- strip_mfp2_class_v1(fit)
-  
+
   for (prediction_type in c("expected", "survival")) {
     got <- predict(
       fit,
@@ -12025,7 +12570,7 @@ test_that("version 1 Cox expected and survival newdata predictions match coxph",
       type = prediction_type,
       se.fit = TRUE
     )
-    
+
     expect_equal(
       unname(got$fit),
       unname(expected$fit),
@@ -12037,7 +12582,7 @@ test_that("version 1 Cox expected and survival newdata predictions match coxph",
       tolerance = 1e-8
     )
   }
-  
+
   got_expected <- predict(fit, nd, type = "expected")
   got_survival <- predict(fit, nd, type = "survival")
   expect_equal(
@@ -12050,7 +12595,7 @@ test_that("version 1 Cox expected and survival newdata predictions match coxph",
 
 test_that("version 1 Cox expected and survival training predictions match coxph", {
   dat <- make_cox_reference_v1_data(seed = 11006L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ x,
     data = dat,
@@ -12066,9 +12611,9 @@ test_that("version 1 Cox expected and survival training predictions match coxph"
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   base <- strip_mfp2_class_v1(fit)
-  
+
   for (prediction_type in c("expected", "survival")) {
     expect_equal(
       unname(predict(fit, type = prediction_type)),
@@ -12087,7 +12632,7 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
   dat <- make_cox_reference_v1_data(seed = 11007L)
   x <- as.matrix(dat["x"])
   y <- survival::Surv(dat$time, dat$status)
-  
+
   fit <- mfp2(
     x = x,
     y = y,
@@ -12103,11 +12648,11 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   rows <- c(4, 29, 74, 151)
   newdata <- data.frame(x = x[rows, "x"])
   newdata$prediction_response <- I(y[rows])
-  
+
   prepared <- prepare_newdata_for_predict(
     fit,
     newdata,
@@ -12116,9 +12661,9 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
   )
   response_name <- cox_internal_response_name(fit)
   prepared[[response_name]] <- I(y[rows])
-  
+
   base <- strip_mfp2_class_v1(fit)
-  
+
   expect_equal(
     unname(predict(fit, newdata = newdata, type = "expected")),
     unname(predict(base, newdata = prepared, type = "expected")),
@@ -12129,12 +12674,12 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
     unname(predict(base, newdata = prepared, type = "survival")),
     tolerance = 1e-8
   )
-  
+
   expect_error(
     predict(fit, newdata = data.frame(x = newdata$x), type = "expected"),
     "require.*follow-up response information"
   )
-  
+
   ambiguous <- newdata
   ambiguous$second_response <- I(y[rows])
   expect_error(
@@ -12149,7 +12694,7 @@ test_that("version 1 matrix-interface absolute Cox predictions derive response f
 # documented common constant when transformed columns have nonzero means.
 test_that("version 1 default Cox lp remains aligned with mfp2 terms", {
   dat <- make_cox_reference_v1_data(seed = 11008L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ x,
     data = dat,
@@ -12165,7 +12710,7 @@ test_that("version 1 default Cox lp remains aligned with mfp2 terms", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- data.frame(x = c(3, 5, 7, 9))
   term_result <- predict(
     fit,
@@ -12173,13 +12718,13 @@ test_that("version 1 default Cox lp remains aligned with mfp2 terms", {
     type = "terms",
     terms_seq = "data"
   )
-  
+
   term_sum <- Reduce(`+`, lapply(term_result, `[[`, "value"))
   lp_default <- predict(fit, nd, type = "lp")
   lp_null <- predict(fit, nd, type = "lp", cox_reference = NULL)
   lp_zero <- predict(fit, nd, type = "lp", cox_reference = "zero")
   lp_sample <- predict(fit, nd, type = "lp", cox_reference = "sample")
-  
+
   expect_equal(unname(lp_default), unname(lp_null), tolerance = 1e-10)
   expect_equal(unname(lp_default), unname(lp_zero), tolerance = 1e-10)
   expect_equal(unname(lp_zero), unname(term_sum), tolerance = 1e-8)
@@ -12193,7 +12738,7 @@ test_that("version 1 default Cox lp remains aligned with mfp2 terms", {
 
 test_that("version 1 reports clear Cox reference and response errors", {
   dat <- make_cox_reference_v1_data(seed = 11009L)
-  
+
   fit <- mfp2(
     survival::Surv(time, status) ~ x,
     data = dat,
@@ -12209,10 +12754,10 @@ test_that("version 1 reports clear Cox reference and response errors", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd_relative <- data.frame(x = dat$x[1:4])
   nd_absolute <- dat[1:4, c("time", "status", "x"), drop = FALSE]
-  
+
   # This was formerly the unhelpful duplicate-formal-argument crash.
   expect_no_error(
     predict(fit, nd_relative, type = "lp", cox_reference = "sample")
@@ -12226,7 +12771,7 @@ test_that("version 1 reports clear Cox reference and response errors", {
     unname(predict(base, type = "lp", reference = "sample")),
     tolerance = 1e-8
   )
-  
+
   expect_error(
     predict(fit, nd_relative, type = "lp", cox_reference = "population"),
     "must be one of 'zero', 'sample', or 'strata'"
@@ -12252,12 +12797,12 @@ test_that("version 1 reports clear Cox reference and response errors", {
     ),
     "'newy' has been removed"
   )
-  
+
   expect_error(
     predict(fit, nd_relative, type = "lp", reference = "zero"),
     "renamed.*cox_reference"
   )
-  
+
   fit_glm <- mfp2(
     x = as.matrix(dat["x"]),
     y = dat$x + stats::rnorm(nrow(dat)),
@@ -12294,7 +12839,7 @@ test_that("predict.mfp2 normalizes linear-predictor aliases", {
     predict(fit_glm, newdata = nd_glm, type = c(alias = "lp")),
     predict(fit_glm, newdata = nd_glm, type = "link")
   )
-  
+
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
@@ -12324,14 +12869,14 @@ test_that("predict.mfp2 normalizes linear-predictor aliases", {
 test_that("predict.mfp2 rejects infinite numeric newdata columns", {
   data("prostate", package = "mfp2")
   fit <- mfp2(lpsa ~ fp(age) + svi, data = prostate, verbose = FALSE)
-  
+
   nd_inf <- prostate[1:6, c("age", "svi"), drop = FALSE]
   nd_inf$age[2] <- Inf
   expect_error(
     predict(fit, newdata = nd_inf, type = "link"),
     "finite numeric values|Infinite"
   )
-  
+
   nd_ninf <- prostate[1:6, c("age", "svi"), drop = FALSE]
   nd_ninf$age[2] <- -Inf
   expect_error(
@@ -12351,13 +12896,13 @@ test_that("predict.mfpi defaults safely and normalizes GLM lp", {
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   default_pred <- predict(fit, terms = "cavol", model = "all")
   expect_s3_class(default_pred, "mfpi_prediction")
   expect_identical(default_pred$type, "both")
   expect_true(!is.null(default_pred$functions))
   expect_true(!is.null(default_pred$differences))
-  
+
   nd <- prostate[1:10, , drop = FALSE]
   link_pred <- predict(
     fit, newdata = nd, terms = "cavol", model = "all",
@@ -12383,7 +12928,7 @@ test_that("predict.mfpi enforces family-specific arguments and types", {
     verbose = FALSE
   )
   nd_glm <- prostate[1:8, , drop = FALSE]
-  
+
   expect_error(
     predict(fit_glm, newdata = nd_glm, terms = "cavol", model = "all",
             type = "risk"),
@@ -12404,7 +12949,7 @@ test_that("predict.mfpi enforces family-specific arguments and types", {
             strata = rep(1, nrow(prostate))),
     "not used for MFPI fitted-function"
   )
-  
+
   nd_bad <- nd_glm
   nd_bad$cavol[1] <- Inf
   expect_error(
@@ -12421,7 +12966,7 @@ test_that("predict.mfpi Cox references match the retained coxph model", {
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
   dat$sex <- factor(dat$sex)
   dat$inst <- factor(dat$inst)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
@@ -12440,7 +12985,7 @@ test_that("predict.mfpi Cox references match the retained coxph model", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:18, c("age", "sex", "inst"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
   stored <- fit_result$test_results$interaction_model$fit
@@ -12448,7 +12993,7 @@ test_that("predict.mfpi Cox references match the retained coxph model", {
   design <- mfpi_build_ordinary_design(
     fit, "age", fit_result, nd, strata = strata_new
   )
-  
+
   for (prediction_type in c("lp", "risk")) {
     for (reference_value in c("zero", "sample", "strata")) {
       direct <- stats::predict(
@@ -12479,7 +13024,7 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -12498,10 +13043,10 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   fit_result <- fit$var_winners[["age"]]$fit
   stored <- fit_result$test_results$interaction_model$fit
-  
+
   for (prediction_type in c("expected", "survival")) {
     direct_training <- stats::predict(
       stored, type = prediction_type, se.fit = FALSE
@@ -12516,7 +13061,7 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
       tolerance = 1e-8
     )
   }
-  
+
   nd <- dat[1:16, c("time", "status", "age", "sex"), drop = FALSE]
   response <- reconstruct_cox_prediction_response(
     object = fit,
@@ -12529,7 +13074,7 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
     newdata = design$model_newdata,
     response = response
   )
-  
+
   for (prediction_type in c("expected", "survival")) {
     direct <- stats::predict(
       stored,
@@ -12549,7 +13094,7 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
     expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
     expect_true(got$metadata$absolute_cox_prediction)
   }
-  
+
   expect_error(
     predict(
       fit, newdata = nd, terms = "age", model = "all",
@@ -12557,7 +13102,7 @@ test_that("predict.mfpi Cox expected and survival match stored coxph", {
     ),
     "applies only"
   )
-  
+
   nd_missing_response <- nd[, c("age", "sex"), drop = FALSE]
   expect_error(
     predict(
@@ -12574,7 +13119,7 @@ test_that("predict.mfpi matrix-interface Cox survival accepts one Surv column", 
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     x = dat[, c("sex", "age")],
     y = survival::Surv(dat$time, dat$status),
@@ -12593,7 +13138,7 @@ test_that("predict.mfpi matrix-interface Cox survival accepts one Surv column", 
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   rows <- 1:12
   nd <- data.frame(
     sex = dat$sex[rows],
@@ -12607,7 +13152,7 @@ test_that("predict.mfpi matrix-interface Cox survival accepts one Surv column", 
   direct_data <- attach_cox_prediction_response(
     stored, design$model_newdata, response
   )
-  
+
   direct <- stats::predict(
     stored, newdata = direct_data, type = "survival", se.fit = FALSE
   )
@@ -12624,7 +13169,7 @@ test_that("predict.mfpi rejects irrelevant Cox strata", {
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
   dat$sex <- factor(dat$sex)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex,
     data = dat,
@@ -12637,7 +13182,7 @@ test_that("predict.mfpi rejects irrelevant Cox strata", {
     verbose = FALSE
   )
   nd <- dat[1:8, c("age", "sex"), drop = FALSE]
-  
+
   expect_error(
     predict(
       fit, newdata = nd, terms = "age", model = "all",
@@ -12661,7 +13206,7 @@ test_that("predict.mfpi stratified Cox survival matches stored coxph", {
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
   dat$sex <- factor(dat$sex)
   dat$inst <- factor(dat$inst)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
@@ -12680,7 +13225,7 @@ test_that("predict.mfpi stratified Cox survival matches stored coxph", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   nd <- dat[1:14, c("time", "status", "age", "sex", "inst"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
   stored <- fit_result$test_results$interaction_model$fit
@@ -12692,7 +13237,7 @@ test_that("predict.mfpi stratified Cox survival matches stored coxph", {
   direct_data <- attach_cox_prediction_response(
     stored, design$model_newdata, response
   )
-  
+
   for (prediction_type in c("expected", "survival")) {
     direct <- stats::predict(
       stored,
@@ -12724,7 +13269,7 @@ test_that("predict.mfpi rejects replacement offsets for models without offsets",
     flex = "flex1",
     verbose = FALSE
   )
-  
+
   nd <- prostate[1:7, , drop = FALSE]
   expect_error(
     predict(
@@ -12748,7 +13293,7 @@ test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
   dat$sex <- factor(dat$sex)
   dat$inst <- factor(dat$inst)
   dat$exposure <- stats::runif(nrow(dat), 0.7, 2.4)
-  
+
   fit <- mfpi(
     survival::Surv(time, status) ~ age + sex + offset(log(exposure)) + strata(inst),
     data = dat,
@@ -12767,11 +13312,11 @@ test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
     ties = "breslow",
     verbose = FALSE
   )
-  
+
   fit_result <- fit$var_winners[["age"]]$fit
   stored <- fit_result$test_results$interaction_model$fit
   replacement_offset <- log(dat$exposure)
-  
+
   design <- mfpi_build_ordinary_design(
     fit,
     "age",
@@ -12781,7 +13326,7 @@ test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
   )
   expect_true("strata_" %in% names(design$model_newdata))
   expect_true("offset_" %in% names(design$model_newdata))
-  
+
   direct <- stats::predict(
     stored,
     newdata = design$model_newdata,
@@ -12798,10 +13343,10 @@ test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
     cox_reference = "zero",
     se.fit = TRUE
   )
-  
+
   expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
   expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
-  
+
   # Reconstructing the training rows solely to resupply their fitted strata
   # must also recover the original, uncentred offset scale. The resulting
   # prediction should therefore equal direct prediction on the stored fit.
@@ -12851,7 +13396,7 @@ test_that("predict.mfp2 validates only required missing predictors", {
   )
   nd <- prostate[1:8, c("age", "svi"), drop = FALSE]
   expected <- predict(fit, newdata = nd, type = "link")
-  
+
   nd_extra <- nd
   nd_extra$unused_na <- NA_real_
   nd_extra$unused_nan <- NaN
@@ -12860,7 +13405,7 @@ test_that("predict.mfp2 validates only required missing predictors", {
     expected,
     tolerance = 1e-12
   )
-  
+
   for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
     nd_bad <- nd
     nd_bad$age[2] <- bad_value
@@ -12869,7 +13414,7 @@ test_that("predict.mfp2 validates only required missing predictors", {
       "missing|finite"
     )
   }
-  
+
   fit_matrix <- mfp2(
     x = as.matrix(prostate[, c("age", "svi")]),
     y = prostate$lpsa,
@@ -12901,7 +13446,7 @@ test_that("predict.mfp2 rejects irrelevant strata arguments", {
     predict(fit_glm, newdata = nd_glm, strata = rep(1, nrow(nd_glm))),
     "only for Cox"
   )
-  
+
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(dat[, c("time", "status", "age", "sex")]), ]
@@ -12915,7 +13460,7 @@ test_that("predict.mfp2 rejects irrelevant strata arguments", {
     verbose = FALSE
   )
   nd_cox <- dat[1:8, c("age", "sex"), drop = FALSE]
-  
+
   expect_error(
     predict(
       fit_cox,
@@ -12938,7 +13483,7 @@ test_that("predict.mfp2 rejects irrelevant strata arguments", {
     predict(fit_cox, type = "lp", strata = rep(1, nrow(dat))),
     "together with.*newdata"
   )
-  
+
   dat$stratum <- factor(rep(c("A", "B"), length.out = nrow(dat)))
   fit_stratified <- mfp2(
     survival::Surv(time, status) ~ age + sex + strata(stratum),
@@ -12977,7 +13522,7 @@ test_that("predict.mfp2 rejects irrelevant and non-finite replacement offsets", 
     ),
     "used an offset"
   )
-  
+
   set.seed(21001)
   dat <- prostate
   dat$exposure <- stats::runif(nrow(dat), 0.7, 2.2)
@@ -12988,7 +13533,7 @@ test_that("predict.mfp2 rejects irrelevant and non-finite replacement offsets", 
   )
   nd <- dat[1:7, c("age", "svi", "exposure"), drop = FALSE]
   good_offset <- log(nd$exposure)
-  
+
   expect_error(
     predict(
       fit_offset,
@@ -13002,7 +13547,7 @@ test_that("predict.mfp2 rejects irrelevant and non-finite replacement offsets", 
     predict(fit_offset, type = "link", newoffset = log(dat$exposure)),
     "together with.*newdata"
   )
-  
+
   for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
     bad_offset <- good_offset
     bad_offset[2] <- bad_value
@@ -13051,7 +13596,7 @@ test_that("predict.mfpi validates required predictors but ignores irrelevant ext
     expected$predictions,
     tolerance = 1e-12
   )
-  
+
   for (column in c("cavol", "age", "svi")) {
     for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
       nd_bad <- nd
@@ -13072,7 +13617,7 @@ test_that("formula-derived offsets reject missing and non-finite inputs", {
   set.seed(21002)
   dat <- prostate
   dat$exposure <- stats::runif(nrow(dat), 0.7, 2.2)
-  
+
   fit_mfp2 <- mfp2(
     lpsa ~ age + svi + offset(log(exposure)),
     data = dat,
@@ -13097,7 +13642,7 @@ test_that("formula-derived offsets reject missing and non-finite inputs", {
     verbose = FALSE
   )
   nd <- dat[1:7, c("age", "svi", "cavol", "exposure"), drop = FALSE]
-  
+
   for (bad_value in list(NA_real_, NaN, Inf, -Inf)) {
     nd_bad <- nd
     nd_bad$exposure[2] <- bad_value
@@ -13132,7 +13677,7 @@ make_mfpi_print_metrics <- function(n_groups = 2L) {
     lapply(seq_len(n_groups), function(i) c(i)),
     group_names
   )
-  
+
   out <- data.frame(
     variable = "x",
     type = "fp1",
@@ -13192,13 +13737,13 @@ test_that("small interaction-power sets print inline and large sets summarize", 
     max_inline_int_powers = 2L
   )
   expect_identical(small$fp_powers_int, "A: (1); B: (2)")
-  
+
   large <- format_mfpi_powers(
     make_mfpi_print_metrics(3L),
     max_inline_int_powers = 2L
   )
   expect_identical(large$fp_powers_int, "3 group-specific FPs")
-  
+
   singleton <- format_mfpi_powers(
     make_mfpi_print_metrics(1L),
     max_inline_int_powers = 0L
@@ -13208,7 +13753,7 @@ test_that("small interaction-power sets print inline and large sets summarize", 
 
 test_that("inline interaction-power threshold is validated", {
   metrics <- make_mfpi_print_metrics(2L)
-  
+
   expect_error(
     format_mfpi_powers(metrics, max_inline_int_powers = -1L),
     "single non-negative integer",
@@ -13230,7 +13775,7 @@ test_that("p-value Step 1 prints the cutoff, adjustment method, select, and alph
   )
   printed <- paste(output, collapse = "\n")
   table_header <- output[grepl("df_initial", output, fixed = TRUE)]
-  
+
   expect_match(printed, " criterion             : p-value", fixed = TRUE)
   expect_match(
     printed,
@@ -13255,7 +13800,7 @@ test_that("p-value Step 1 prints the active adjustment method dynamically", {
     print_adjustment_step(x, ruler = "-----", digits = 3L)
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(
     printed,
     " interaction selection : adjusted p-value < 0.01",
@@ -13278,7 +13823,7 @@ test_that("AIC and BIC Step 1 use dynamic human-readable thresholds", {
     printed <- paste(output, collapse = "\n")
     table_header <- output[grepl("df_initial", output, fixed = TRUE)]
     criterion_label <- toupper(criterion)
-    
+
     expect_match(
       printed,
       sprintf(" criterion             : %s", criterion_label),
@@ -13303,12 +13848,12 @@ test_that("AIC and BIC Step 1 use dynamic human-readable thresholds", {
 test_that("candidate output omits interaction powers shown in the detail table", {
   x <- make_minimal_mfpi_print_object()
   x$all_model_metrics <- make_mfpi_print_metrics(2L)
-  
+
   output <- capture.output(
     print_candidates_step(x, ruler = "-----", digits = 3L)
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(printed, "fp_powers_main", fixed = TRUE)
   expect_false(grepl("fp_powers_int", printed, fixed = TRUE))
   expect_false(grepl("A: (1); B: (2)", printed, fixed = TRUE))
@@ -13322,7 +13867,7 @@ test_that("interaction-power detail output has no underline", {
       title = "  FP powers by group level"
     )
   )
-  
+
   expect_match(paste(output, collapse = "\n"), "FP powers by group level:", fixed = TRUE)
   expect_false(any(grepl("^-+$", trimws(output))))
 })
@@ -13331,7 +13876,7 @@ test_that("main header ruler matches the displayed header width", {
   x <- make_minimal_mfpi_print_object()
   x$nevents <- 7L
   output <- capture.output(print(x))
-  
+
   expect_identical(output[[1L]], output[[3L]])
   expect_identical(
     nchar(output[[1L]], type = "width"),
@@ -13346,7 +13891,7 @@ test_that("main header uses reader-facing criterion labels", {
     x$criterion <- criterion
     output <- capture.output(print(x))
     expected <- if (criterion == "pvalue") "p-value" else toupper(criterion)
-    
+
     expect_match(
       output[[2L]],
       sprintf("criterion: %s", expected),
@@ -13358,7 +13903,7 @@ test_that("main header uses reader-facing criterion labels", {
 
 test_that("MFPI methods warn consistently about unused dots", {
   x <- make_minimal_mfpi_print_object()
-  
+
   expect_warning(
     capture.output(print(x, unused_argument = TRUE)),
     "Unused arguments in `print.mfpi(...)`: unused_argument.",
@@ -13379,16 +13924,16 @@ test_that("summary regression output receives the requested digits", {
     cat(sprintf("TEST SUMMARY DIGITS: %s\n", digits))
     invisible(x)
   }
-  
+
   x <- make_minimal_mfpi_print_object()
   x$model_summaries <- list(
     x = structure(list(), class = "mfpi_test_summary")
   )
   x$var_winners <- list(x = list(type = "fp1"))
   class(x) <- "summary.mfpi"
-  
+
   output <- capture.output(print(x, digits = 2L))
-  
+
   expect_match(
     paste(output, collapse = "\n"),
     "TEST SUMMARY DIGITS: 2",
@@ -13403,7 +13948,7 @@ make_mfpi_interaction_summary_object <- function(criterion = "pvalue") {
   x$p_adjust_method <- "holm"
   x$p_interact <- 0.05
   x$min_improvement <- 2
-  
+
   if (criterion == "pvalue") {
     age_metric <- data.frame(pvalue = 0.01, p_adjusted = 0.02)
     wt_metric <- data.frame(pvalue = 0.20, p_adjusted = 0.20)
@@ -13414,7 +13959,7 @@ make_mfpi_interaction_summary_object <- function(criterion = "pvalue") {
     age_metric <- data.frame(BIC_main_minus_int = 4.0)
     wt_metric <- data.frame(BIC_main_minus_int = 0.5)
   }
-  
+
   x$var_winners <- list(
     age = list(fit = list(ok = TRUE), metric = age_metric, type = "fp2"),
     wt = list(fit = list(ok = TRUE), metric = wt_metric, type = "fp1")
@@ -13437,7 +13982,7 @@ test_that("Step 3 reports Yes and No and embeds the p-value rule in its heading"
     )
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(
     printed,
     "Step 3 - Interaction Summary (selected when p_adjusted < 0.05):",
@@ -13463,7 +14008,7 @@ test_that("Step 3 embeds the AIC and BIC rules and uses Yes and No", {
     )
     printed <- paste(output, collapse = "\n")
     label <- if (criterion == "aic") "dAIC" else "dBIC"
-    
+
     expect_match(
       printed,
       sprintf(
@@ -13492,9 +14037,9 @@ test_that("shared adjustment display contains selected variables only", {
     check.names = FALSE
   )
   x$adjust_terms <- rbind(x$adjust_terms, dropped)
-  
+
   info <- mfpi_prepare_adjustment_display(x, digits = 3L)
-  
+
   expect_identical(rownames(info$display), c("hx", "age"))
   expect_identical(info$selected_names, c("hx", "age"))
   expect_false("selected" %in% names(info$display))
@@ -13520,9 +14065,9 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
     row.names = c("cavol", "pgg45", "age"),
     check.names = FALSE
   )
-  
+
   info <- mfpi_prepare_adjustment_display(x, digits = 3L)
-  
+
   expect_true("catzero_final" %in% names(info$display))
   expect_true("saz_decision" %in% names(info$display))
   expect_false("catzero" %in% names(info$display))
@@ -13531,12 +14076,12 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
     info$display$saz_decision,
     c("not SAZ", "continuous + binary", "not SAZ")
   )
-  
+
   output <- capture.output(
     print_adjustment_step(x, ruler = "-----", digits = 3L)
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(printed, "catzero_final", fixed = TRUE)
   expect_match(printed, "saz_decision", fixed = TRUE)
   expect_match(printed, "not SAZ", fixed = TRUE)
@@ -13559,7 +14104,7 @@ test_that("verbose Step 3 reports final p-value decisions without stars", {
       score = 0.663
     )
   )
-  
+
   output <- capture.output(
     print_interaction_step3_summary(
       var_winners = winners,
@@ -13571,7 +14116,7 @@ test_that("verbose Step 3 reports final p-value decisions without stars", {
     )
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(printed, "p_raw", fixed = TRUE)
   expect_match(printed, "p_adjusted", fixed = TRUE)
   expect_match(printed, "selected", fixed = TRUE)
@@ -13596,7 +14141,7 @@ test_that("verbose Step 3 reports final AIC decisions without stars", {
       score = -1.824
     )
   )
-  
+
   output <- capture.output(
     print_interaction_step3_summary(
       var_winners = winners,
@@ -13609,7 +14154,7 @@ test_that("verbose Step 3 reports final AIC decisions without stars", {
     )
   )
   printed <- paste(output, collapse = "\n")
-  
+
   expect_match(printed, "dAIC", fixed = TRUE)
   expect_match(printed, "selected", fixed = TRUE)
   expect_match(printed, "Yes", fixed = TRUE)
@@ -13622,7 +14167,7 @@ test_that("verbose candidate evaluation contains no provisional decision text", 
     deparse(body(evaluate_interaction_for_variable)),
     collapse = "\n"
   )
-  
+
   expect_match(body_text, "p-value =", fixed = TRUE)
   expect_false(grepl("provisional", body_text, fixed = TRUE))
   expect_false(grepl("No significant interaction retained", body_text, fixed = TRUE))
@@ -13647,12 +14192,12 @@ test_that("MFPI preserves structural ACD power positions", {
     ),
     acd = c(age = TRUE, cavol = FALSE)
   )
-  
+
   powers <- mfpi_extract_adjustment_powers(
     adjustment_model,
     c("age", "cavol")
   )
-  
+
   expect_named(powers, c("age", "cavol"))
   expect_length(powers$age, 2L)
   expect_true(is.na(powers$age[[1L]]))
@@ -13672,7 +14217,7 @@ test_that("MFPI rejects malformed one-slot ACD adjustment powers", {
     ),
     acd = c(age = TRUE)
   )
-  
+
   expect_error(
     mfpi_extract_adjustment_powers(adjustment_model, "age"),
     "must retain two power positions"
@@ -13685,7 +14230,7 @@ test_that("MFPI rejects malformed one-slot ACD adjustment powers", {
 # transform_vector_acd().
 test_that("MFPI rebuilds selected ACD adjustment terms during interaction fitting", {
   data("prostate", package = "mfp2")
-  
+
   fit <- NULL
   expect_error(
     fit <- mfpi(
@@ -13705,7 +14250,7 @@ test_that("MFPI rebuilds selected ACD adjustment terms during interaction fittin
     ),
     NA
   )
-  
+
   expect_s3_class(fit, "mfpi")
   expect_length(fit$adjustment_model$fp_powers$age, 2L)
 })

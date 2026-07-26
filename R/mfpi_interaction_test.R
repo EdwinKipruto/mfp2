@@ -69,10 +69,10 @@ make_best_model_metrics <- function(variable,
     stringsAsFactors   = FALSE,
     check.names        = FALSE
   )
-  
+
   out$fp_powers_main <- I(list(fp_powers_main))
   out$fp_powers_int  <- I(list(fp_powers_int))
-  
+
   out <- out[
     c(
       "type",
@@ -92,7 +92,7 @@ make_best_model_metrics <- function(variable,
       "BIC_main_minus_int"
     )
   ]
-  
+
   class(out) <- c("best_model_metrics", "data.frame")
   out
 }
@@ -243,7 +243,7 @@ make_best_model_metrics <- function(variable,
 #'   fitted interaction model to correctly account for adjustment variables.
 #'   Ignored (chi-square used) for non-Gaussian families. Default \code{FALSE}.
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
-#'   or `"cox"`.
+#'   `"negbin"`, or `"cox"`.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
 #' @param ties Character string; Cox tie-handling method - `"breslow"`,
@@ -289,11 +289,11 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
                              flex, use_ftest, family, family_string,
                              weights, offset, ties, strata, control,
-                             nocenter, has_offset) {
-  
+                             nocenter, has_offset, fitter = "base") {
+
   cont_name  <- colnames(cont_var)
   n_groups   <- length(unique(as.vector(group_var)))
-  
+
   # ---------------------------------------------------------------------------
   # Fit main-effects and interaction models
   # ---------------------------------------------------------------------------
@@ -302,6 +302,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     y        = y,
     family   = family,
     family_string = family_string,
+    fitter   = fitter,
     weights  = weights,
     offset   = offset,
     method   = ties,
@@ -312,12 +313,13 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     has_offset = has_offset,
     fast     = TRUE    # log-likelihood only; no vcov needed
   )
-  
+
   fit_interaction <- fit_model(
     x        = xinteraction,
     y        = y,
     family   = family,
     family_string = family_string,
+    fitter   = fitter,
     weights  = weights,
     offset   = offset,
     method   = ties,
@@ -328,14 +330,14 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     has_offset = has_offset,
     fast     = FALSE   # full fit: coefficients and vcov required downstream
   )
-  
+
   # ---------------------------------------------------------------------------
   # Deviance: -2 * log-likelihood
   # ---------------------------------------------------------------------------
   dev_main        <- -2 * fit_main$logl
   dev_interaction <- -2 * fit_interaction$logl
   deviance_diff   <- dev_main - dev_interaction   # T = -2(l_main - l_int) >= 0
-  
+
   # ---------------------------------------------------------------------------
   # Degrees of freedom
   # df_int  = (K-1)*m  for flex1/flex2 (nested models)
@@ -345,7 +347,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   df_main     <- deg_freedom$dfmain       # p_main (excl. intercept & adj.)
   df_total    <- deg_freedom$total_df     # p_interaction (excl. intercept & adj.)
   df_int      <- deg_freedom$dfint        # df_total - df_main = (K-1)*m
-  
+
   # ---------------------------------------------------------------------------
   # P-value: F-test (Gaussian only) or chi-square LRT
   # ---------------------------------------------------------------------------
@@ -353,7 +355,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # P-value: F-test (Gaussian only) or chi-square LRT
   # ---------------------------------------------------------------------------
   if (deviance_diff < -sqrt(.Machine$double.eps)) {
-    
+
     warning(
       sprintf(
         paste0(
@@ -374,26 +376,26 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
       ),
       call. = FALSE
     )
-    
+
     pvalue <- NA_real_
-    
+
   } else {
-    
+
     deviance_diff <- max(deviance_diff, 0)
-    
+
     if (use_ftest && family_string == "gaussian") {
-      
+
       # MFP2-style Gaussian deviance, not -2 * logLik
       dev_main_f <- deviance_gaussian(
         residuals = fit_main$residuals,
         weights   = fit_main$weights
       )
-      
+
       dev_int_f <- deviance_gaussian(
         residuals = fit_interaction$residuals,
         weights   = fit_interaction$weights
       )
-      
+
       power_df_interaction <- switch(
         flex,
         flex0 = 0L,
@@ -403,20 +405,20 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
         flex4 = n_groups * degree,
         stop("Internal error: unknown flexibility level.", call. = FALSE)
       )
-      
+
       df_resid_int <- fit_interaction$fit$df.residual - power_df_interaction
-      
+
       ftest_result <- calculate_f_test(
         deviances = c(dev_main_f, dev_int_f),
         dfs_resid = df_resid_int,
         n_obs     = nrow(xinteraction),
         d1        = df_int
       )
-      
+
       pvalue <- ftest_result$pvalue
-      
+
     } else {
-      
+
       pvalue <- stats::pchisq(
         deviance_diff,
         df = df_int,
@@ -424,7 +426,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
       )
     }
   }
-  
+
   # ---------------------------------------------------------------------------
   # AIC and BIC
   # AIC = -2l + 2p;  BIC = -2l + p * log(n*)
@@ -438,7 +440,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     # positionally rather than y[, "status"].
     status <- y[, ncol(y)]
     n_eff <- sum(!is.na(status) & status > 0)
-    
+
     if (!is.finite(n_eff) || n_eff <= 0L) {
       stop(
         "Cox BIC requires at least one observed event.",
@@ -448,18 +450,18 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   } else {
     n_eff <- NROW(y)
   }
-  
+
   AIC_main           <- dev_main        + 2          * df_main
   AIC_interaction    <- dev_interaction + 2          * df_total
   BIC_main           <- dev_main        + log(n_eff) * df_main
   BIC_interaction    <- dev_interaction + log(n_eff) * df_total
-  
+
   # ---------------------------------------------------------------------------
   # Assemble evaluation metrics tibble
   # ---------------------------------------------------------------------------
   #fp_powers_main <- setNames(list(bestfp_main), cont_name)
   #fp_powers_int  <- bestfp_interaction
-  
+
   metric_type <- switch(
     as.character(degree),
     `0` = "linear",
@@ -467,7 +469,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     `2` = "fp2",
     paste0("fp", degree)
   )
-  
+
   metrics <- make_best_model_metrics(
     variable        = cont_name,
     type            = metric_type,
@@ -483,7 +485,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     BIC_main        = BIC_main,
     BIC_interaction = BIC_interaction
   )
-  
+
   list(
     evaluation_metrics = metrics,
     interaction_model  = fit_interaction,
@@ -520,7 +522,7 @@ print.best_model_metrics <- function(x, ...) {
       else paste0("(", paste(p, collapse = ", "), ")")
     }, character(1L))
   }
-  
+
   if (!is.null(x$fp_powers_int) && length(x$fp_powers_int) > 0L) {
     x$fp_powers_int <- vapply(x$fp_powers_int, function(p_list) {
       if (is.null(p_list) || length(p_list) == 0L) return("()")
@@ -538,7 +540,7 @@ print.best_model_metrics <- function(x, ...) {
       }
     }, character(1L))
   }
-  
+
   print.data.frame(as.data.frame(x), row.names = FALSE, ...)
   invisible(x)
 }

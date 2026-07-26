@@ -71,40 +71,40 @@ build_group_fp_basis <- function(cont_mat,
   # This helper has one job: rebuild the exact FP columns that the fitted
   # interaction model estimated. It therefore validates names, group order,
   # and per-group block sizes before doing any transformation.
-  
+
   if (!is.character(cont_name) || length(cont_name) != 1L ||
       is.na(cont_name) || !nzchar(cont_name)) {
     stop("`cont_name` must be a single non-empty character string.",
          call. = FALSE)
   }
-  
+
   if (!is.logical(transform_basis) || length(transform_basis) != 1L ||
       anyNA(transform_basis)) {
     stop("`transform_basis` must be a single non-missing logical value.",
          call. = FALSE)
   }
-  
+
   if (!is.logical(zero_var) || length(zero_var) != 1L || anyNA(zero_var)) {
     stop("`zero_var` must be a single non-missing logical value.",
          call. = FALSE)
   }
-  
+
   if (!is.logical(check_binary) || length(check_binary) != 1L ||
       anyNA(check_binary)) {
     stop("`check_binary` must be a single non-missing logical value.",
          call. = FALSE)
   }
-  
+
   if (missing(group_levels) || length(group_levels) == 0L ||
       anyNA(group_levels)) {
     stop("`group_levels` must be a non-empty vector without missing values.",
          call. = FALSE)
   }
-  
+
   group_labels <- as.character(group_levels)
   n_groups <- length(group_labels)
   temp_names <- paste0(cont_name, group_labels, "1")
-  
+
   # Coefficient groups are the authoritative mapping from group to fitted model
   # columns. They prevent regex-based name parsing and are required for FP2 and
   # flex4, where groups can have different basis sizes.
@@ -112,13 +112,13 @@ build_group_fp_basis <- function(cont_mat,
     stop("`coefficient_groups` must be a list with one element per group.",
          call. = FALSE)
   }
-  
+
   if (!is.null(names(coefficient_groups)) &&
       anyDuplicated(names(coefficient_groups))) {
     stop("`coefficient_groups` must not contain duplicated names.",
          call. = FALSE)
   }
-  
+
   if (is.null(names(coefficient_groups))) {
     names(coefficient_groups) <- group_labels
   } else {
@@ -138,18 +138,18 @@ build_group_fp_basis <- function(cont_mat,
       )
     }
   }
-  
+
   if (!is.list(group_fp_powers) || length(group_fp_powers) != n_groups) {
     stop("`group_fp_powers` must be a list with one element per group.",
          call. = FALSE)
   }
-  
+
   if (!is.null(names(group_fp_powers)) &&
       anyDuplicated(names(group_fp_powers))) {
     stop("`group_fp_powers` must not contain duplicated names.",
          call. = FALSE)
   }
-  
+
   if (!is.null(names(group_fp_powers))) {
     gp_names <- names(group_fp_powers)
     if (setequal(gp_names, group_labels)) {
@@ -166,33 +166,33 @@ build_group_fp_basis <- function(cont_mat,
       )
     }
   }
-  
+
   group_fp_powers_by_group <- stats::setNames(group_fp_powers, group_labels)
-  
+
   expected_group_sizes <- vapply(coefficient_groups, length, integer(1L))
   power_group_sizes <- vapply(group_fp_powers_by_group, length, integer(1L))
-  
+
   if (any(expected_group_sizes <= 0L)) {
     stop("Each element of `coefficient_groups` must be non-empty.",
          call. = FALSE)
   }
-  
+
   if (any(power_group_sizes <= 0L)) {
     stop("Each element of `group_fp_powers` must contain at least one power.",
          call. = FALSE)
   }
-  
+
   bad_power <- vapply(
     group_fp_powers_by_group,
     function(p) !is.numeric(p) || length(p) == 0L || anyNA(p) || any(!is.finite(p)),
     logical(1L)
   )
-  
+
   if (any(bad_power)) {
     stop("`group_fp_powers` must contain finite numeric FP power vectors.",
          call. = FALSE)
   }
-  
+
   if (!identical(as.integer(expected_group_sizes),
                  as.integer(power_group_sizes))) {
     stop(
@@ -203,26 +203,26 @@ build_group_fp_basis <- function(cont_mat,
       call. = FALSE
     )
   }
-  
+
   x_split_names <- unlist(coefficient_groups, use.names = FALSE)
-  
+
   if (!is.character(x_split_names) || anyNA(x_split_names) ||
       any(!nzchar(x_split_names))) {
     stop("`coefficient_groups` must contain non-empty coefficient names.",
          call. = FALSE)
   }
-  
+
   if (anyDuplicated(x_split_names)) {
     stop("`coefficient_groups` must not contain duplicated coefficient names.",
          call. = FALSE)
   }
-  
+
   if (!transform_basis) {
     if (!is.matrix(cont_mat) || !is.numeric(cont_mat)) {
       stop("`cont_mat` must be a numeric matrix when `transform_basis = FALSE`.",
            call. = FALSE)
     }
-    
+
     if (ncol(cont_mat) != length(x_split_names)) {
       stop(
         paste0(
@@ -232,11 +232,11 @@ build_group_fp_basis <- function(cont_mat,
         call. = FALSE
       )
     }
-    
+
     if (anyNA(cont_mat) || any(!is.finite(cont_mat))) {
       stop("`cont_mat` contains non-finite values.", call. = FALSE)
     }
-    
+
     out <- as.matrix(cont_mat)
     storage.mode(out) <- "double"
     colnames(out) <- x_split_names
@@ -245,32 +245,32 @@ build_group_fp_basis <- function(cont_mat,
     attr(out, "group_levels") <- group_labels
     return(out)
   }
-  
+
   if (!is.matrix(cont_mat) || ncol(cont_mat) != 1L || !is.numeric(cont_mat)) {
     stop("`cont_mat` must be a one-column numeric matrix.", call. = FALSE)
   }
-  
+
   if (is.null(colnames(cont_mat)) || length(colnames(cont_mat)) != 1L) {
     stop("`cont_mat` must have exactly one column name.", call. = FALSE)
   }
-  
+
   if (anyNA(cont_mat) || any(!is.finite(cont_mat))) {
     stop("`cont_mat` must contain only finite numeric values.", call. = FALSE)
   }
-  
+
   # transform_matrix() requires names(power_list) to match colnames(x). The
   # temporary input names are discarded after transformation; final coefficient
   # names come from coefficient_groups.
   x_in <- cont_mat[, rep(1L, n_groups), drop = FALSE]
   colnames(x_in) <- temp_names
-  
+
   group_fp_powers_tm <- group_fp_powers_by_group
   names(group_fp_powers_tm) <- temp_names
-  
+
   center_map <- stats::setNames(rep(FALSE, n_groups), temp_names)
   acd_map <- stats::setNames(rep(FALSE, n_groups), temp_names)
   zero_map <- stats::setNames(rep(isTRUE(zero_var), n_groups), temp_names)
-  
+
   x_out <- transform_matrix(
     x = x_in,
     power_list = group_fp_powers_tm,
@@ -279,15 +279,15 @@ build_group_fp_basis <- function(cont_mat,
     zero = zero_map,
     check_binary = check_binary
   )$x_transformed
-  
+
   if (is.null(x_out)) {
     stop("FP basis construction returned no transformed columns.",
          call. = FALSE)
   }
-  
+
   x_out <- as.matrix(x_out)
   storage.mode(x_out) <- "double"
-  
+
   if (ncol(x_out) != sum(power_group_sizes)) {
     stop(
       paste0(
@@ -297,17 +297,17 @@ build_group_fp_basis <- function(cont_mat,
       call. = FALSE
     )
   }
-  
+
   if (length(x_split_names) != ncol(x_out)) {
     stop("Fitted-function basis columns do not match coefficient groups.",
          call. = FALSE)
   }
-  
+
   if (anyNA(x_out) || any(!is.finite(x_out))) {
     stop("Non-finite values were produced in the fitted-function basis.",
          call. = FALSE)
   }
-  
+
   colnames(x_out) <- x_split_names
   attr(x_out, "coefficient_groups") <- coefficient_groups
   attr(x_out, "group_fp_powers") <- group_fp_powers_by_group
@@ -382,7 +382,7 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' Use the following types for predictions for individual observations:
 #'
-#' - For Gaussian, binomial, and Poisson models, `type = "link"` returns the
+#' - For Gaussian, binomial, Poisson, and negative-binomial models, `type = "link"` returns the
 #'   linear predictor and `type = "response"` applies the inverse link function.
 #'   `"lp"` is accepted as another name for `"link"`.
 #' - For Cox models, `type = "lp"` returns the relative log-hazard,
@@ -418,7 +418,7 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' - the outcome scale for a Gaussian identity-link model;
 #' - the log-odds scale for a binomial logit model;
-#' - the log-mean scale for a Poisson log-link model;
+#' - the log-mean scale for Poisson and negative-binomial log-link models;
 #' - a partial log-hazard scale for a Cox model.
 #'
 #' For a Cox model, these fitted curves do not include the baseline hazard and
@@ -569,7 +569,8 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' @param type The prediction type. Use `"function"`, `"difference"`, or
 #'   `"both"` for fitted curves. For predictions for individual observations,
-#'   Gaussian, binomial, and Poisson models support `"link"` and `"response"`,
+#'   Gaussian, binomial, Poisson, and negative-binomial models support
+#'   `"link"` and `"response"`,
 #'   while Cox models support `"lp"`, `"risk"`, `"expected"`, and
 #'   `"survival"`. If `NULL`, `"both"` is used.
 #'
@@ -799,15 +800,15 @@ predict.mfpi <- function(object,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
   # either the fitted-function path or the ordinary subject-level path.
-  
+
   if (!inherits(object, "mfpi")) {
     stop("`object` must be an object of class \"mfpi\".", call. = FALSE)
   }
-  
+
   model <- match.arg(model)
   family_string <- mfpi_family_string(object)
   type <- mfpi_match_prediction_type(type, family_string)
-  
+
   function_types <- c("both", "function", "difference")
   ordinary_types <- if (identical(family_string, "cox")) {
     c("lp", "risk", "expected", "survival")
@@ -816,29 +817,29 @@ predict.mfpi <- function(object,
   }
   is_function_prediction <- type %in% function_types
   is_ordinary_prediction <- type %in% ordinary_types
-  
+
   if (!is.logical(se.fit) || length(se.fit) != 1L || anyNA(se.fit)) {
     stop("`se.fit` must be a single non-missing logical value.",
          call. = FALSE)
   }
-  
+
   if (!is.numeric(level) || length(level) != 1L || anyNA(level) ||
       !is.finite(level) || level <= 0 || level >= 1) {
     stop("`level` must be a single numeric value in (0, 1).",
          call. = FALSE)
   }
-  
+
   if (!is.logical(grid) || length(grid) != 1L || anyNA(grid)) {
     stop("`grid` must be a single non-missing logical value.",
          call. = FALSE)
   }
-  
+
   if (!is.numeric(n_grid) || length(n_grid) != 1L || anyNA(n_grid) ||
       !is.finite(n_grid) || n_grid < 2 || n_grid != as.integer(n_grid)) {
     stop("`n_grid` must be an integer >= 2.", call. = FALSE)
   }
   n_grid <- as.integer(n_grid)
-  
+
   dots <- list(...)
   if (length(dots) > 0L) {
     dot_names <- names(dots)
@@ -849,12 +850,12 @@ predict.mfpi <- function(object,
       call. = FALSE
     )
   }
-  
+
   if (is_ordinary_prediction && isTRUE(grid)) {
     warning("`grid` is ignored for ordinary subject-level prediction.",
             call. = FALSE)
   }
-  
+
   if (is_function_prediction) {
     if (!is.null(strata)) {
       stop(
@@ -875,7 +876,7 @@ predict.mfpi <- function(object,
       )
     }
   }
-  
+
   if (!identical(family_string, "cox")) {
     if (!is.null(strata)) {
       stop("`strata` is available only for Cox predictions.", call. = FALSE)
@@ -885,7 +886,7 @@ predict.mfpi <- function(object,
            call. = FALSE)
     }
   }
-  
+
   if (identical(family_string, "cox")) {
     if (type %in% c("lp", "risk")) {
       cox_reference <- match_cox_reference(
@@ -901,13 +902,13 @@ predict.mfpi <- function(object,
       )
     }
   }
-  
+
   fits <- mfpi_get_prediction_fits(object = object, terms = terms, model = model)
-  
+
   out <- stats::setNames(
     lapply(names(fits), function(term) {
       fit_result <- fits[[term]]
-      
+
       if (is_function_prediction) {
         # Fitted-function targets evaluate every group-specific function at
         # each requested x value and return long-format function/contrast data.
@@ -919,7 +920,7 @@ predict.mfpi <- function(object,
           n_grid = n_grid,
           purpose = "function"
         )
-        
+
         basis <- mfpi_build_function_basis(
           object = object,
           term = term,
@@ -927,7 +928,7 @@ predict.mfpi <- function(object,
           cont_var_scaled = pred_data$cont_var_scaled,
           x_display = pred_data$x_display
         )
-        
+
         return(mfpi_compute_function_prediction(
           object = object,
           term = term,
@@ -939,11 +940,11 @@ predict.mfpi <- function(object,
           reference = NULL
         ))
       }
-      
+
       interaction_model <- fit_result$test_results$interaction_model
       fit_obj <- interaction_model$fit
       fit_is_stratified <- mfpi_fit_has_strata(fit_obj)
-      
+
       if (!is.null(strata) && !fit_is_stratified) {
         stop(
           "`strata` was supplied, but the retained Cox interaction model for ",
@@ -951,7 +952,7 @@ predict.mfpi <- function(object,
           call. = FALSE
         )
       }
-      
+
       # Absolute Cox predictions need the response before raw newdata are
       # reduced to the predictors required by the term-specific design.
       cox_prediction_response <- if (
@@ -967,7 +968,7 @@ predict.mfpi <- function(object,
       } else {
         NULL
       }
-      
+
       # Ordinary prediction is subject-level: each row belongs to one group,
       # so the reconstructed interaction block is masked row by row. Formula-
       # level Cox strata are reconstructed from raw newdata unless explicitly
@@ -977,7 +978,7 @@ predict.mfpi <- function(object,
           !is.null(object$formula_strata_terms)) {
         ordinary_strata <- reconstruct_formula_strata_newdata(object, newdata)
       }
-      
+
       design <- mfpi_build_ordinary_design(
         object = object,
         term = term,
@@ -986,7 +987,7 @@ predict.mfpi <- function(object,
         strata = ordinary_strata,
         newoffset = newoffset
       )
-      
+
       if (identical(family_string, "cox") &&
           type %in% c("expected", "survival") &&
           !is.null(design$model_newdata)) {
@@ -997,20 +998,22 @@ predict.mfpi <- function(object,
           response = response
         )
       }
-      
+
       pred <- mfpi_predict_ordinary(
         object = object,
         term = term,
         fit_result = fit_result,
         model_newdata = design$model_newdata,
+        design_matrix = design$X,
+        offset = design$offset,
         type = type,
         se.fit = se.fit,
         cox_reference = cox_reference
       )
-      
+
       pred_df <- data.frame(term = term, fit = pred$fit, stringsAsFactors = FALSE)
       if (se.fit && !is.null(pred$se.fit)) pred_df$se.fit <- pred$se.fit
-      
+
       structure(
         list(
           term = term,
@@ -1044,7 +1047,7 @@ predict.mfpi <- function(object,
     }),
     names(fits)
   )
-  
+
   if (length(out) == 1L) return(out[[1L]])
   structure(out, class = c("mfpi_prediction_list", "list"))
 }
@@ -1075,7 +1078,7 @@ predict.mfpi <- function(object,
 mfpi_get_prediction_fits <- function(object, terms, model) {
   # Decide which term-specific fitted interaction models are eligible for
   # prediction before any prediction matrices are constructed.
-  
+
   if (model == "best") {
     available <- names(object$best_interaction_model)
   } else {
@@ -1085,21 +1088,21 @@ mfpi_get_prediction_fits <- function(object, terms, model) {
         !is.null(w$fit$test_results$interaction_model)
     }, logical(1L))]
   }
-  
+
   available <- available[!is.na(available) & nzchar(available)]
-  
+
   if (length(available) == 0L) {
     stop(paste0("No ", model, " MFPI interaction models are available."),
          call. = FALSE)
   }
-  
+
   if (!is.null(terms)) {
     if (!is.character(terms) || length(terms) == 0L || anyNA(terms) ||
         any(!nzchar(terms))) {
       stop("`terms` must be a non-empty character vector or NULL.",
            call. = FALSE)
     }
-    
+
     missing_terms <- setdiff(terms, available)
     if (length(missing_terms) > 0L) {
       stop(
@@ -1112,7 +1115,7 @@ mfpi_get_prediction_fits <- function(object, terms, model) {
     }
     available <- unique(terms)
   }
-  
+
   out <- stats::setNames(vector("list", length(available)), available)
   for (term in available) {
     w <- object$var_winners[[term]]
@@ -1122,7 +1125,7 @@ mfpi_get_prediction_fits <- function(object, terms, model) {
     }
     out[[term]] <- w$fit
   }
-  
+
   out
 }
 
@@ -1171,16 +1174,16 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
   # Fitted-function prediction needs only one continuous variable at a time.
   # This helper returns that variable on both the stored scaled scale and the
   # raw display scale used in returned tables and plots.
-  
+
   if (!identical(purpose, "function")) {
     stop("Internal error: unsupported prediction-data preparation purpose.",
          call. = FALSE)
   }
-  
+
   scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
   shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
   zero_var <- mfpi_get_zero_var(object, term)
-  
+
   apply_winsor <- function(x_scaled_one, var) {
     lim <- object$winsorize_limits
     if (is.null(lim) || is.null(colnames(lim)) || !(var %in% colnames(lim))) {
@@ -1192,7 +1195,7 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
     if (is.finite(hi)) x_scaled_one[x_scaled_one > hi, 1L] <- hi
     x_scaled_one
   }
-  
+
   as_numeric_matrix <- function(x, arg) {
     if (is.data.frame(x)) x <- data.matrix(x)
     if (is.vector(x) && is.null(dim(x))) x <- matrix(x, ncol = 1L)
@@ -1206,10 +1209,10 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
     storage.mode(x) <- "double"
     x
   }
-  
+
   if (is.null(newdata)) {
     x_train <- object$x_train_internal
-    
+
     if (is.null(x_train)) {
       stop(
         paste0(
@@ -1221,13 +1224,13 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
         call. = FALSE
       )
     }
-    
+
     if (!is.matrix(x_train) || is.null(colnames(x_train)) ||
         !(term %in% colnames(x_train))) {
       stop(paste0("Stored training matrix does not contain term `", term, "`."),
            call. = FALSE)
     }
-    
+
     cont_scaled <- x_train[, term, drop = FALSE]
   } else {
     nd <- as_numeric_matrix(newdata, "newdata")
@@ -1244,13 +1247,13 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
     colnames(cont_scaled) <- term
     cont_scaled <- apply_winsor(cont_scaled, term)
   }
-  
+
   cont_scaled <- as.matrix(cont_scaled)
   storage.mode(cont_scaled) <- "double"
   colnames(cont_scaled) <- term
-  
+
   cont_plus <- cont_scaled * scale_var
-  
+
   if (grid) {
     cont_vec <- as.vector(cont_plus)
     if (isTRUE(zero_var)) {
@@ -1260,7 +1263,7 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
       zero_present <- FALSE
       grid_source <- cont_vec[is.finite(cont_vec)]
     }
-    
+
     if (length(grid_source) == 0L) {
       msg <- if (isTRUE(zero_var)) {
         "Cannot construct MFPI prediction grid: no finite positive values are available."
@@ -1269,16 +1272,16 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
       }
       stop(msg, call. = FALSE)
     }
-    
+
     rg <- range(grid_source, na.rm = TRUE)
     grid_plus <- seq(rg[1L], rg[2L], length.out = n_grid)
     if (isTRUE(zero_var) && zero_present) grid_plus <- c(0, grid_plus)
-    
+
     cont_scaled <- matrix(grid_plus / scale_var, ncol = 1L)
     colnames(cont_scaled) <- term
     cont_plus <- cont_scaled * scale_var
   }
-  
+
   list(
     cont_var_scaled = cont_scaled,
     x_display = as.vector(cont_plus - shift_var),
@@ -1330,31 +1333,31 @@ mfpi_build_function_basis <- function(object, term, fit_result,
                                       cont_var_scaled, x_display) {
   # Rebuild the group-specific FP block using only fit-time metadata. Centers
   # are reused exactly; they are never recomputed from prediction data.
-  
+
   interaction_model <- fit_result$test_results$interaction_model
   if (is.null(interaction_model)) {
     stop(paste0("No interaction model is stored for term `", term, "`."),
          call. = FALSE)
   }
-  
+
   group_fp_powers <- fit_result$bestfp_interaction
   if (!is.list(group_fp_powers) || length(group_fp_powers) == 0L) {
     stop(paste0("Term `", term, "` does not contain `bestfp_interaction`."),
          call. = FALSE)
   }
-  
+
   coefficient_groups <- fit_result$coefficient_groups
   if (is.null(coefficient_groups)) {
     coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
   }
   mfpi_validate_coefficient_groups(coefficient_groups, term = term)
-  
+
   group_labels <- names(coefficient_groups)
   if (is.null(group_labels) || anyNA(group_labels) || any(!nzchar(group_labels))) {
     group_labels <- as.character(seq_along(coefficient_groups) - 1L)
     names(coefficient_groups) <- group_labels
   }
-  
+
   if (length(group_fp_powers) != length(coefficient_groups)) {
     stop(
       paste0(
@@ -1364,21 +1367,21 @@ mfpi_build_function_basis <- function(object, term, fit_result,
       call. = FALSE
     )
   }
-  
+
   if (!is.matrix(cont_var_scaled) || ncol(cont_var_scaled) != 1L ||
       !is.numeric(cont_var_scaled) || anyNA(cont_var_scaled) ||
       any(!is.finite(cont_var_scaled))) {
     stop("`cont_var_scaled` must be a finite one-column numeric matrix.",
          call. = FALSE)
   }
-  
+
   scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
   shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
   zero_var <- mfpi_get_zero_var(object, term)
-  
+
   cont_plus <- cont_var_scaled * scale_var
   colnames(cont_plus) <- term
-  
+
   transformed <- build_group_fp_basis(
     cont_mat = cont_plus,
     group_fp_powers = group_fp_powers,
@@ -1389,16 +1392,16 @@ mfpi_build_function_basis <- function(object, term, fit_result,
     zero_var = zero_var,
     check_binary = FALSE
   )
-  
+
   centers <- fit_result$center_vals
   centered <- !is.null(centers)
-  
+
   if (centered) {
     if (!is.numeric(centers) || length(centers) == 0L) {
       stop(paste0("For term `", term, "`, `center_vals` must be numeric."),
            call. = FALSE)
     }
-    
+
     if (is.null(names(centers))) {
       if (length(centers) != ncol(transformed)) {
         stop(
@@ -1423,16 +1426,16 @@ mfpi_build_function_basis <- function(object, term, fit_result,
       }
       centers <- centers[colnames(transformed)]
     }
-    
+
     if (anyNA(centers) || any(!is.finite(centers))) {
       stop("`center_vals` must contain finite values.", call. = FALSE)
     }
-    
+
     transformed <- sweep(transformed, 2L, centers, "-", check.margin = FALSE)
   } else {
     centers <- NULL
   }
-  
+
   # Structural zeros must be restored after centering; otherwise zero rows would
   # incorrectly receive minus the centering constant as their FP contribution.
   zero_rows <- if (isTRUE(zero_var)) {
@@ -1441,12 +1444,12 @@ mfpi_build_function_basis <- function(object, term, fit_result,
     rep(FALSE, nrow(cont_plus))
   }
   if (isTRUE(zero_var) && any(zero_rows)) transformed[zero_rows, ] <- 0
-  
+
   if (anyNA(transformed) || any(!is.finite(transformed))) {
     stop(paste0("Non-finite values remain in the basis for term `", term, "`."),
          call. = FALSE)
   }
-  
+
   list(
     x = transformed,
     x_display = x_display,
@@ -1482,11 +1485,11 @@ mfpi_build_function_basis <- function(object, term, fit_result,
 mfpi_prediction_group_display_labels <- function(object, group_labels) {
   # Keep coefficient lookup on internal labels, but return user-facing labels
   # for long-format prediction tables whenever a stored mapping is available.
-  
+
   group_labels <- as.character(group_labels)
   display_labels <- group_labels
   if (length(group_labels) == 0L) return(display_labels)
-  
+
   level_map <- object$group_level_map
   if (is.data.frame(level_map) &&
       all(c("original", "internal") %in% names(level_map))) {
@@ -1497,7 +1500,7 @@ mfpi_prediction_group_display_labels <- function(object, group_labels) {
     display_labels[mapped] <- original[hit[mapped]]
     return(display_labels)
   }
-  
+
   original <- object$group_levels_original
   internal <- object$group_levels_new
   if (!is.null(original) && !is.null(internal) &&
@@ -1506,7 +1509,7 @@ mfpi_prediction_group_display_labels <- function(object, group_labels) {
     mapped <- !is.na(hit)
     display_labels[mapped] <- as.character(original)[hit[mapped]]
   }
-  
+
   display_labels
 }
 
@@ -1548,7 +1551,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
                                              type, se.fit, level, reference) {
   # Convert a reconstructed FP basis into long-format fitted functions and
   # long-format group contrasts. No historical wide matrix is built here.
-  
+
   interaction_model <- fit_result$test_results$interaction_model
   coef_vec <- interaction_model$coefficients
   if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
@@ -1557,7 +1560,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
   }
   coef_vec <- stats::setNames(as.numeric(coef_vec), names(coef_vec))
   vcov_mat <- stats::vcov(interaction_model$fit)
-  
+
   family_string <- mfpi_family_string(object)
   group_labels <- names(basis$coefficient_groups)
   group_display_labels <- mfpi_prediction_group_display_labels(
@@ -1567,20 +1570,20 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
   k <- length(group_labels)
   n <- nrow(basis$x)
   crit <- stats::qnorm((1 + level) / 2)
-  
+
   ref_pos <- mfpi_resolve_reference_group(
     reference = reference,
     group_labels = group_labels,
     object = object
   )
-  
+
   has_intercept <- !identical(family_string, "cox") &&
     "(Intercept)" %in% names(coef_vec)
   intercept <- if (has_intercept) unname(coef_vec["(Intercept)"]) else 0
-  
+
   group_name <- object$group_var
   group_dummy_names <- if (k > 1L) paste0(group_name, group_labels[-1L]) else character(0L)
-  
+
   required <- unique(c(
     if (has_intercept) "(Intercept)",
     unlist(basis$coefficient_groups, use.names = FALSE),
@@ -1592,26 +1595,26 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
     required_names = required,
     context = paste0("MFPI fitted-function prediction for term `", term, "`")
   )
-  
+
   fit_mat <- matrix(NA_real_, nrow = n, ncol = k)
   se_mat <- if (se.fit) matrix(NA_real_, nrow = n, ncol = k) else NULL
   colnames(fit_mat) <- paste0("f", group_labels)
   if (se.fit) colnames(se_mat) <- paste0("se(f", group_labels, ")")
-  
+
   for (g in seq_len(k)) {
     cols_g <- basis$coefficient_groups[[g]]
     x_g <- basis$x[, cols_g, drop = FALSE]
     beta_g <- coef_vec[cols_g]
-    
+
     x_var <- x_g
     x_var_names <- cols_g
     dummy_offset <- 0
-    
+
     if (has_intercept) {
       x_var <- cbind("(Intercept)" = 1, x_var)
       x_var_names <- c("(Intercept)", x_var_names)
     }
-    
+
     if (g > 1L) {
       dummy_name <- group_dummy_names[g - 1L]
       dummy_offset <- unname(coef_vec[dummy_name])
@@ -1619,9 +1622,9 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
       colnames(x_var)[ncol(x_var)] <- dummy_name
       x_var_names <- c(x_var_names, dummy_name)
     }
-    
+
     fit_mat[, g] <- intercept + as.vector(x_g %*% beta_g) + dummy_offset
-    
+
     if (se.fit) {
       v_sub <- vcov_mat[x_var_names, x_var_names, drop = FALSE]
       var_g <- rowSums((x_var %*% v_sub) * x_var)
@@ -1632,7 +1635,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
       ))
     }
   }
-  
+
   # Long fitted-function output.
   function_rows <- vector("list", k)
   for (g in seq_len(k)) {
@@ -1651,14 +1654,14 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
     function_rows[[g]] <- df_g
   }
   functions_df <- do.call(rbind, function_rows)
-  
+
   # Long fitted-function-difference output. The returned table is
   # intentionally long-format rather than matrix-shaped: group and reference
   # labels remain explicit data columns instead of being encoded in column names
   # such as f1-f0.
   compare_pos <- setdiff(seq_len(k), ref_pos)
   diff_rows <- vector("list", length(compare_pos))
-  
+
   if (length(compare_pos) > 0L) {
     contrast_labels <- paste0(group_labels[compare_pos], "-", group_labels[ref_pos])
     contrast_display_labels <- paste0(
@@ -1666,11 +1669,11 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
       "-",
       group_display_labels[ref_pos]
     )
-    
+
     for (ii in seq_along(compare_pos)) {
       g <- compare_pos[ii]
       diff_vec <- fit_mat[, g] - fit_mat[, ref_pos]
-      
+
       df_d <- data.frame(
         term = term,
         x = basis$x_display,
@@ -1680,11 +1683,11 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
         fit = diff_vec,
         stringsAsFactors = FALSE
       )
-      
+
       if (se.fit) {
         ref_cols <- basis$coefficient_groups[[ref_pos]]
         grp_cols <- basis$coefficient_groups[[g]]
-        
+
         # Derivative of f_g(x) - f_ref(x) with respect to the FP coefficients:
         # -X_ref(x) for the reference group and +X_g(x) for the comparison group.
         d_mat <- cbind(
@@ -1692,7 +1695,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
           basis$x[, grp_cols, drop = FALSE]
         )
         d_names <- c(ref_cols, grp_cols)
-        
+
         # Add derivatives for group-dummy offsets. These terms are needed when
         # the comparison group or chosen reference group is not the model's
         # baseline group.
@@ -1713,7 +1716,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
           }
         }
         colnames(d_mat) <- d_names
-        
+
         mfpi_validate_required_coefficients(
           coef_vec = coef_vec,
           vcov_mat = vcov_mat,
@@ -1721,7 +1724,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
           context = paste0("MFPI difference prediction for term `", term,
                            "`, contrast `", contrast_labels[ii], "`")
         )
-        
+
         v_sub <- vcov_mat[colnames(d_mat), colnames(d_mat), drop = FALSE]
         var_d <- rowSums((d_mat %*% v_sub) * d_mat)
         se_d <- sqrt(mfpi_sanitize_variance(
@@ -1733,13 +1736,13 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
         df_d$lower <- df_d$fit - crit * df_d$se.fit
         df_d$upper <- df_d$fit + crit * df_d$se.fit
       }
-      
+
       diff_rows[[ii]] <- df_d
     }
   }
-  
+
   differences_df <- if (length(diff_rows) > 0L) do.call(rbind, diff_rows) else data.frame()
-  
+
   structure(
     list(
       term = term,
@@ -1784,19 +1787,19 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
     coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
   }
   mfpi_validate_coefficient_groups(coefficient_groups, term = term)
-  
+
   group_labels <- names(coefficient_groups)
   if (is.null(group_labels) || anyNA(group_labels) || any(!nzchar(group_labels))) {
     group_labels <- as.character(seq_along(coefficient_groups) - 1L)
     names(coefficient_groups) <- group_labels
   }
-  
+
   adj_model <- object$adjustment_model
   adj_terms <- character(0L)
   if (!is.null(adj_model)) {
     adj_terms <- get_selected_variables(adj_model)
   }
-  
+
   adjustment_lookup <- if (!is.null(adj_model$term_to_columns)) {
     adj_model$term_to_columns
   } else if (!is.null(object$adjustment_term_to_columns)) {
@@ -1804,12 +1807,12 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
   } else {
     stats::setNames(as.list(adj_terms), adj_terms)
   }
-  
+
   group_var <- object$group_var
   group_dummy_names <- paste0(group_var, group_labels[-1L])
   adj_terms <- setdiff(adj_terms, c(term, group_var, group_dummy_names))
   adj_terms <- unique(adj_terms[!is.na(adj_terms) & nzchar(adj_terms)])
-  
+
   missing_terms <- setdiff(adj_terms, names(adjustment_lookup))
   if (length(missing_terms) > 0L) {
     stop(
@@ -1820,12 +1823,12 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
       call. = FALSE
     )
   }
-  
+
   raw_adj_cols <- unique(unlist(
     adjustment_lookup[adj_terms],
     use.names = FALSE
   ))
-  
+
   list(
     coefficient_groups = coefficient_groups,
     group_labels = group_labels,
@@ -1891,19 +1894,19 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # Build formula-compatible subject-level prediction data only when new rows,
   # replacement strata, or a replacement offset must be supplied to the stored
   # fitted model.
-  
+
   interaction_model <- fit_result$test_results$interaction_model
   if (is.null(interaction_model) || is.null(interaction_model$fit)) {
     stop(paste0("No fitted interaction model is stored for term `", term, "`."),
          call. = FALSE)
   }
-  
+
   coef_vec <- interaction_model$coefficients
   if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
     stop("Interaction-model coefficients must be a named numeric vector.",
          call. = FALSE)
   }
-  
+
   # Training-data ordinary prediction usually delegates to the fitted model.
   # This keeps Cox and GLM fitted-value conventions identical to the original
   # model object when no replacement newoffset is requested.
@@ -1925,9 +1928,9 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         reconstructed = FALSE
       ))
     }
-    
+
     newdata <- object$x_train_internal
-    
+
     if (is.null(newdata)) {
       stop(
         paste0(
@@ -1940,13 +1943,13 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         call. = FALSE
       )
     }
-    
+
     newdata_is_training_internal <- TRUE
   }
-  
+
   coef_names <- names(coef_vec)
   target_cols <- setdiff(coef_names, "(Intercept)")
-  
+
   # Resolve the selected adjustment recipe before formula reconstruction.
   # Prediction should evaluate only formula expressions needed by this stored
   # term-specific interaction model, not every predictor offered at fit time.
@@ -1961,24 +1964,24 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   adjustment_lookup <- prediction_spec$adjustment_lookup
   adj_terms <- prediction_spec$adjustment_terms
   raw_adj_cols <- prediction_spec$raw_adjustment_columns
-  
+
   n_raw <- if (is.data.frame(newdata)) nrow(newdata) else NROW(newdata)
   if (n_raw == 0L) {
     stop("`newdata` must contain at least one row.", call. = FALSE)
   }
-  
+
   # Keep the raw user-supplied data frame for formula-level offset
   # reconstruction. Formula design reconstruction may add/replace columns, but
   # offset expressions such as offset(log(exposure)) must be evaluated against
   # the original newdata variables.
   newdata_raw <- newdata
-  
+
   # Formula-interface prediction should replay the fit-time formula design
   # recipe before numeric coercion. This rebuilds formula-derived columns such
   # as factor dummies using stored terms, contrasts, and xlevels, while preserving
   # raw group and continuous variables needed for MFPI-specific reconstruction.
   required_input_columns <- unique(c(term, object$group_var, raw_adj_cols))
-  
+
   if (!isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
       is.data.frame(newdata)) {
@@ -1989,7 +1992,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       required_columns = required_input_columns
     )
   }
-  
+
   # Ignore extra supplied columns before numeric validation. In particular,
   # missing values or unseen levels in formula predictors that are absent from
   # this selected interaction model must not affect prediction.
@@ -2000,34 +2003,34 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     keep_input <- intersect(required_input_columns, colnames(newdata))
     newdata <- newdata[, keep_input, drop = FALSE]
   }
-  
+
   # Local conversion helper. At this point, formula-interface data frames have
   # already been expanded with fit-time formula metadata. Plain matrix-interface
   # input remains unchanged.
   as_prediction_matrix <- function(data) {
     if (is.data.frame(data)) data <- data.matrix(data)
     if (is.vector(data) && is.null(dim(data))) data <- matrix(data, ncol = 1L)
-    
+
     if (!is.matrix(data) || !is.numeric(data)) {
       stop("`newdata` must be a numeric matrix or coercible data frame.",
            call. = FALSE)
     }
-    
+
     if (is.null(colnames(data))) {
       stop("`newdata` must have column names.", call. = FALSE)
     }
-    
+
     if (anyNA(data) || any(!is.finite(data))) {
       stop("`newdata` must contain only finite numeric values.", call. = FALSE)
     }
-    
+
     storage.mode(data) <- "double"
     data
   }
-  
+
   nd <- as_prediction_matrix(newdata)
   n <- nrow(nd)
-  
+
   if (is.null(newoffset) &&
       !isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
@@ -2038,13 +2041,13 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       newdata = newdata_raw
     )
   }
-  
+
   # Local scaling helper applies the same raw -> shifted/scaled transformation
   # used at fit time and then applies stored winsorisation limits if present.
   scale_vars <- function(vars) {
     vars <- unique(vars[!is.na(vars) & nzchar(vars)])
     if (length(vars) == 0L) return(matrix(nrow = n, ncol = 0L))
-    
+
     missing_vars <- setdiff(vars, colnames(nd))
     if (length(missing_vars) > 0L) {
       stop(
@@ -2053,7 +2056,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         call. = FALSE
       )
     }
-    
+
     # When a replacement newoffset is supplied with `newdata = NULL`, `nd` is
     # `x_train_internal`. It has already been shifted, scaled, winsorised, and
     # internally group-remapped at fit time. Do not transform it a second time.
@@ -2062,7 +2065,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       storage.mode(out) <- "double"
       return(out)
     }
-    
+
     out <- nd[, vars, drop = FALSE]
     for (v in vars) {
       shift_v <- mfpi_named_scalar(object$shift, v, default = 0)
@@ -2072,7 +2075,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
              call. = FALSE)
       }
       out[, v] <- (out[, v] + shift_v) / scale_v
-      
+
       lim <- object$winsorize_limits
       if (!is.null(lim) && !is.null(colnames(lim)) && v %in% colnames(lim)) {
         lo <- lim["lower", v]
@@ -2084,14 +2087,14 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     storage.mode(out) <- "double"
     out
   }
-  
+
   # Group values are read from the original data frame when available to avoid
   # losing factor labels during numeric matrix conversion.
   group_var <- object$group_var
   if (is.null(group_var) || length(group_var) != 1L || !nzchar(group_var)) {
     stop("The MFPI object does not store a valid `group_var`.", call. = FALSE)
   }
-  
+
   if (is.data.frame(newdata) && group_var %in% names(newdata)) {
     group_raw <- as.vector(newdata[[group_var]])
   } else {
@@ -2101,7 +2104,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
     group_raw <- as.vector(nd[, group_var])
   }
-  
+
   if (isTRUE(newdata_is_training_internal)) {
     # `x_train_internal` already contains MFPI's internal numeric group codes.
     # Do not match these values against original labels such as "Placebo" and
@@ -2139,7 +2142,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       }
     }
   }
-  
+
   group_levels_numeric <- suppressWarnings(as.numeric(group_labels))
   if (anyNA(group_levels_numeric)) {
     stop(
@@ -2148,7 +2151,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   # Numeric fallback only proves that `newdata` group values can be interpreted
   # as internal numeric group codes. It does not prove that those codes were
   # observed when the model was fitted.
@@ -2156,10 +2159,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # New group levels must be rejected because the fitted MFPI model has no
   # group-specific interaction coefficients for unseen groups.
   unknown_group <- !group_internal %in% group_levels_numeric
-  
+
   if (any(unknown_group)) {
     unknown_values <- unique(group_internal[unknown_group])
-    
+
     stop(
       paste0(
         "`newdata` contains group level(s) not seen at fit time: ",
@@ -2169,27 +2172,27 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   group_mat <- matrix(group_internal, ncol = 1L)
   colnames(group_mat) <- group_var
   group_dummies <- create_group_dummies(
-    group_mat, 
+    group_mat,
     levels = group_levels_numeric,
     quiet  = TRUE
   )
-  
+
   # Interaction block: first evaluate all group-specific functions at each row's
   # x value, then zero out FP blocks that do not correspond to the row's group.
   if (!(term %in% colnames(nd))) {
     stop(paste0("`newdata` must contain the interaction term `", term, "`."),
          call. = FALSE)
   }
-  
+
   term_scaled <- scale_vars(term)
   scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
   shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
   x_display <- as.vector(term_scaled[, term, drop = FALSE] * scale_var - shift_var)
-  
+
   basis <- mfpi_build_function_basis(
     object = object,
     term = term,
@@ -2197,7 +2200,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     cont_var_scaled = term_scaled[, term, drop = FALSE],
     x_display = x_display
   )
-  
+
   z_interaction <- basis$x
   group_chr <- as.character(group_internal)
   for (g in seq_along(basis$coefficient_groups)) {
@@ -2206,7 +2209,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       z_interaction[rows_outside_g, basis$coefficient_groups[[g]]] <- 0
     }
   }
-  
+
   # Adjustment block. The adjustment model stores one row per conceptual term,
   # while prediction data contain the raw design columns. Expand selected terms
   # through term_to_columns so categorical contrast blocks are reconstructed and
@@ -2229,21 +2232,21 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       )
     }
   }
-  
+
   x_adjustment <- NULL
   if (length(adj_terms) > 0L) {
     if (is.null(adj_model)) {
       stop("Selected adjustment variables require `object$adjustment_model`.",
            call. = FALSE)
     }
-    
+
     x_scaled <- scale_vars(raw_adj_cols)
     x_plus <- x_scaled
     for (col in raw_adj_cols) {
       x_plus[, col] <- x_plus[, col] *
         mfpi_named_scalar(object$scale, col, default = 1)
     }
-    
+
     powers_term <- if (!is.null(adj_model$fp_powers)) {
       adj_model$fp_powers[adj_terms]
     } else if (!is.null(adj_model$fp_terms)) {
@@ -2251,13 +2254,13 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     } else {
       NULL
     }
-    
+
     if (is.null(powers_term) || length(powers_term) != length(adj_terms) ||
         any(vapply(powers_term, length, integer(1L)) == 0L)) {
       stop("Adjustment model is missing FP powers required for prediction.",
            call. = FALSE)
     }
-    
+
     expanded_adjustment <- expand_term_metadata_to_columns(
       term_to_columns = adjustment_lookup[adj_terms],
       powers = powers_term,
@@ -2276,7 +2279,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     spike_cols <- expanded_adjustment$spike
     spike_decision_cols <- expanded_adjustment$spike_decision
     acd_parameter_cols <- expanded_adjustment$acd_parameter
-    
+
     x_trans <- transform_matrix(
       x = x_plus,
       power_list = power_cols,
@@ -2291,12 +2294,12 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       reset_zero = FALSE,
       check_binary = TRUE
     )
-    
+
     if (!is.null(x_trans) && !is.null(x_trans$x_transformed) &&
         ncol(x_trans$x_transformed) > 0L) {
       x_adjustment <- as.matrix(x_trans$x_transformed)
       storage.mode(x_adjustment) <- "double"
-      
+
       centers <- adj_model$centers
       if (!is.null(centers)) {
         missing_centers <- setdiff(colnames(x_adjustment), names(centers))
@@ -2309,7 +2312,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
             call. = FALSE
           )
         }
-        
+
         zero_expanded <- x_trans$zero_expanded[colnames(x_adjustment)]
         if (is.null(zero_expanded) || anyNA(zero_expanded)) {
           zero_expanded <- stats::setNames(
@@ -2317,35 +2320,35 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
             colnames(x_adjustment)
           )
         }
-        
+
         x_adjustment <- center_matrix(
           mat = x_adjustment,
           centers = centers[colnames(x_adjustment)],
           zero = zero_expanded
         )
       }
-      
+
       if (anyNA(x_adjustment) || any(!is.finite(x_adjustment))) {
         stop("Non-finite values were produced in the adjustment prediction matrix.",
              call. = FALSE)
       }
     }
   }
-  
+
   pieces <- list(group_dummies, z_interaction)
   if (!is.null(x_adjustment) && ncol(x_adjustment) > 0L) {
     pieces <- c(pieces, list(x_adjustment))
   }
-  
+
   X <- do.call(cbind, pieces)
   X <- as.matrix(X)
   storage.mode(X) <- "double"
-  
+
   if (is.null(colnames(X)) || anyNA(colnames(X)) || any(!nzchar(colnames(X)))) {
     stop("Reconstructed prediction design has missing column names.",
          call. = FALSE)
   }
-  
+
   # Resolve source design columns to the exact names used by the fitted model.
   # Formula-based fits may quote non-syntactic coefficient names, whereas
   # predict.glm()/predict.coxph() still require raw source-column names in
@@ -2360,7 +2363,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   missing_model_cols <- setdiff(target_cols, unname(column_map))
   if (length(missing_model_cols) > 0L) {
     stop(
@@ -2372,7 +2375,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   source_cols <- names(column_map)[match(target_cols, unname(column_map))]
   missing_source_cols <- setdiff(source_cols, colnames(X))
   if (length(missing_source_cols) > 0L) {
@@ -2385,19 +2388,19 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   X_source <- X[, source_cols, drop = FALSE]
   X <- X_source
   colnames(X) <- target_cols
-  
+
   if (anyNA(X) || any(!is.finite(X))) {
     stop(paste0("Non-finite values were produced in the prediction matrix for term `",
                 term, "`."), call. = FALSE)
   }
-  
+
   fit_obj <- interaction_model$fit
   has_offset <- mfpi_fit_has_offset(fit_obj)
-  
+
   if (!has_offset && !is.null(newoffset)) {
     stop(
       "`newoffset` can be supplied only when the retained interaction model ",
@@ -2405,7 +2408,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       call. = FALSE
     )
   }
-  
+
   # When training rows are reconstructed solely to replace strata, preserve the
   # fitted offset rather than requiring the caller to repeat it. For supplied
   # newdata, formula offsets are reconstructed earlier; matrix-interface fits
@@ -2442,7 +2445,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
     newoffset <- stored_offset
   }
-  
+
   if (is.null(newoffset)) {
     if (has_offset) {
       stop(
@@ -2463,19 +2466,19 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
     pred_offset <- as.numeric(newoffset)
   }
-  
+
   # Build formula-compatible newdata using raw source-column names. The
   # returned diagnostic matrix X uses fitted coefficient names, while native
   # model prediction must receive source-column names from the fit-time frame.
   model_newdata <- as.data.frame(X_source, check.names = FALSE)
-  
+
   expects_offset <- has_offset
   expects_strata <- mfpi_fit_has_strata(fit_obj)
-  
+
   if (expects_offset) {
     model_newdata$offset_ <- pred_offset
   }
-  
+
   if (expects_strata) {
     # Reconstruction of training rows can reuse the fitted stratum membership.
     # This allows a caller to replace only the offset without redundantly
@@ -2483,7 +2486,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     if (is.null(strata) && isTRUE(newdata_is_training_internal)) {
       strata <- fit_obj$strata
     }
-    
+
     if (is.null(strata)) {
       stop(
         paste0(
@@ -2494,7 +2497,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         call. = FALSE
       )
     }
-    
+
     strata_n <- if (is.vector(strata) || is.factor(strata)) length(strata) else NROW(strata)
     if (strata_n != n) {
       stop("`strata` must have one value or row per prediction row.", call. = FALSE)
@@ -2511,7 +2514,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     if (length(bad_numeric_strata) > 0L) {
       stop("Numeric `strata` values must be finite.", call. = FALSE)
     }
-    
+
     model_newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
       do.call(
         survival::strata,
@@ -2521,7 +2524,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       strata
     }
   }
-  
+
   list(
     X = X,
     offset = pred_offset,
@@ -2537,10 +2540,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 
 #' Delegate Ordinary MFPI Prediction to the Stored Model
 #'
-#' Ordinary subject-level predictions are calculated exclusively by the stored
-#' `glm` or `coxph` object. MFPI reconstructs formula-compatible `newdata`, but
-#' it does not reproduce native prediction, centering, offset, baseline-hazard,
-#' or standard-error calculations manually.
+#' Ordinary subject-level predictions are normally delegated to the stored
+#' `glm` or `coxph` object. Negative-binomial fits use the stored `fastglm`
+#' coefficients and covariance with MFPI's reconstructed matrix because
+#' `fastglm` has no formula interface and does not apply prediction offsets.
 #'
 #' @param object Object of class `"mfpi"`.
 #' @param term Character scalar naming the continuous variable whose
@@ -2548,13 +2551,16 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 #' @param fit_result Stored term-specific flex fit result.
 #' @param model_newdata Reconstructed formula-compatible prediction data, or
 #'   `NULL` to predict on the stored fitting data.
+#' @param design_matrix Reconstructed numeric design matrix without an
+#'   intercept, used for matrix-based negative-binomial fits.
+#' @param offset Numeric prediction offset aligned with `design_matrix`.
 #' @param type Validated family-native prediction type.
 #' @param se.fit Logical scalar. Whether to request standard errors.
 #' @param cox_reference Cox covariate reference for `"lp"` or `"risk"`, or
 #'   `NULL` for other prediction types and GLMs.
 #'
-#' @return List with numeric `fit`, optional numeric `se.fit`, and
-#'   `used_model_predict = TRUE`.
+#' @return List with numeric `fit`, optional numeric `se.fit`, and a logical
+#'   `used_model_predict` flag.
 #'
 #' @keywords internal
 #' @noRd
@@ -2562,36 +2568,62 @@ mfpi_predict_ordinary <- function(object,
                                   term,
                                   fit_result,
                                   model_newdata = NULL,
+                                  design_matrix = NULL,
+                                  offset = NULL,
                                   type,
                                   se.fit,
                                   cox_reference = NULL) {
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
   family_string <- mfpi_family_string(object)
-  
+
   if (is.null(fit_obj)) {
     stop(
       "No stored fitted interaction model is available for term `", term, "`.",
       call. = FALSE
     )
   }
-  
+
+  if (inherits(fit_obj, "fastglm")) {
+    pred <- mfp2_predict_fastglm_matrix(
+      object = fit_obj,
+      newx = design_matrix,
+      offset = offset,
+      type = type,
+      se.fit = se.fit
+    )
+
+    if (is.list(pred)) {
+      return(list(
+        fit = as.numeric(pred$fit),
+        se.fit = as.numeric(pred$se.fit),
+        used_model_predict = FALSE
+      ))
+    }
+
+    return(list(
+      fit = as.numeric(pred),
+      se.fit = NULL,
+      used_model_predict = FALSE
+    ))
+  }
+
   predict_args <- list(
     object = fit_obj,
     type = type,
     se.fit = se.fit
   )
-  
+
   if (!is.null(model_newdata)) {
     predict_args$newdata <- model_newdata
   }
-  
+
   if (identical(family_string, "cox") && type %in% c("lp", "risk")) {
     predict_args$reference <- cox_reference
   }
-  
+
   pred <- do.call(stats::predict, predict_args)
-  
+
   if (is.list(pred)) {
     return(list(
       fit = as.numeric(pred$fit),
@@ -2599,7 +2631,7 @@ mfpi_predict_ordinary <- function(object,
       used_model_predict = TRUE
     ))
   }
-  
+
   list(
     fit = as.numeric(pred),
     se.fit = NULL,
@@ -2628,7 +2660,7 @@ mfpi_predict_ordinary <- function(object,
 mfpi_named_scalar <- function(x, name, default) {
   # Metadata such as shift and scale may be stored as named vectors, length-one
   # vectors, or absent values. Normalize those cases to one finite scalar.
-  
+
   if (is.null(x)) return(default)
   if (!is.null(names(x)) && name %in% names(x)) {
     val <- x[[name]]
@@ -2637,7 +2669,7 @@ mfpi_named_scalar <- function(x, name, default) {
   } else {
     return(default)
   }
-  
+
   if (!is.numeric(val) || length(val) != 1L || anyNA(val) || !is.finite(val)) {
     stop(paste0("Stored scalar for `", name, "` is not finite."),
          call. = FALSE)
@@ -2655,14 +2687,14 @@ mfpi_named_scalar <- function(x, name, default) {
 #' @param object Object of class \code{"mfpi"}.
 #'
 #' @return Character scalar family name, such as \code{"gaussian"},
-#'   \code{"binomial"}, \code{"poisson"}, or \code{"cox"}.
+#'   \code{"binomial"}, \code{"poisson"}, \code{"negbin"}, or \code{"cox"}.
 #'
 #' @keywords internal
 #' @noRd
 mfpi_family_string <- function(object) {
   # Prefer the normalized family string stored by mfpi(); fall back only for
   # older or manually constructed objects.
-  
+
   if (!is.null(object$family_string)) {
     return(unname(as.character(object$family_string)[1L]))
   }
@@ -2688,15 +2720,15 @@ mfpi_match_prediction_type <- function(type, family_string) {
   if (is.null(type)) {
     return("both")
   }
-  
+
   type <- normalize_prediction_type(type, family_string)
-  
+
   choices <- if (identical(family_string, "cox")) {
     c("both", "function", "difference", "lp", "risk", "expected", "survival")
   } else {
     c("both", "function", "difference", "link", "response")
   }
-  
+
   tryCatch(
     match.arg(type, choices),
     error = function(e) {
@@ -2747,7 +2779,7 @@ mfpi_fit_has_strata <- function(fit_obj) {
 mfpi_get_zero_var <- function(object, term) {
   # Structural-zero flags may live in newer prediction metadata or in older
   # adjustment-model metadata. Check both locations for backward compatibility.
-  
+
   z <- NULL
   if (!is.null(object$zero_vars)) z <- object$zero_vars
   if (is.null(z) && !is.null(object$adjustment_model$zero)) z <- object$adjustment_model$zero
@@ -2777,7 +2809,7 @@ mfpi_get_zero_var <- function(object, term) {
 mfpi_validate_coefficient_groups <- function(groups, term = NULL) {
   # A valid coefficient map is essential: every group must have at least one
   # fitted FP coefficient and no coefficient may belong to two groups.
-  
+
   label <- if (is.null(term)) "`coefficient_groups`" else paste0("`coefficient_groups` for term `", term, "`")
   if (!is.list(groups) || length(groups) < 2L) {
     stop(paste0(label, " must be a list with at least two groups."),
@@ -2821,18 +2853,18 @@ mfpi_validate_required_coefficients <- function(coef_vec, vcov_mat,
                                                 required_names, context) {
   # Prediction is name-driven. Fail early if any required coefficient or
   # covariance entry is missing, non-finite, or non-estimable.
-  
+
   required_names <- unique(required_names)
   if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
     stop("Model coefficients must be a named numeric vector.", call. = FALSE)
   }
-  
+
   missing_coef <- setdiff(required_names, names(coef_vec))
   if (length(missing_coef) > 0L) {
     stop(paste0("Cannot perform ", context, ": missing coefficients: ",
                 paste(missing_coef, collapse = ", "), "."), call. = FALSE)
   }
-  
+
   bad_coef <- required_names[is.na(coef_vec[required_names]) |
                                !is.finite(coef_vec[required_names])]
   if (length(bad_coef) > 0L) {
@@ -2845,14 +2877,14 @@ mfpi_validate_required_coefficients <- function(coef_vec, vcov_mat,
       call. = FALSE
     )
   }
-  
+
   if (!is.matrix(vcov_mat) || !is.numeric(vcov_mat) ||
       nrow(vcov_mat) != ncol(vcov_mat) || is.null(rownames(vcov_mat)) ||
       is.null(colnames(vcov_mat))) {
     stop("Model covariance matrix must be a named square numeric matrix.",
          call. = FALSE)
   }
-  
+
   missing_cov <- union(setdiff(required_names, rownames(vcov_mat)),
                        setdiff(required_names, colnames(vcov_mat)))
   if (length(missing_cov) > 0L) {
@@ -2860,7 +2892,7 @@ mfpi_validate_required_coefficients <- function(coef_vec, vcov_mat,
                 ": covariance matrix is missing entries for: ",
                 paste(missing_cov, collapse = ", "), "."), call. = FALSE)
   }
-  
+
   v_sub <- vcov_mat[required_names, required_names, drop = FALSE]
   if (anyNA(v_sub) || any(!is.finite(v_sub))) {
     stop(
@@ -2871,7 +2903,7 @@ mfpi_validate_required_coefficients <- function(coef_vec, vcov_mat,
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -2895,7 +2927,7 @@ mfpi_sanitize_variance <- function(v, context,
                                    tol = sqrt(.Machine$double.eps)) {
   # Variances should be non-negative. Tiny negative values can arise from
   # floating-point roundoff; materially negative values indicate a real problem.
-  
+
   if (anyNA(v) || any(!is.finite(v))) {
     stop(paste0("Non-finite variances produced during ", context, "."),
          call. = FALSE)
@@ -2935,13 +2967,13 @@ mfpi_sanitize_variance <- function(v, context,
 mfpi_resolve_reference_group <- function(reference, group_labels, object) {
   # Users may specify the reference using internal codes or original labels;
   # prediction calculations need the corresponding internal group position.
-  
+
   if (is.null(reference)) return(1L)
-  
+
   ref_chr <- as.character(reference)
   hit <- match(ref_chr, group_labels)
   if (!is.na(hit)) return(hit)
-  
+
   orig <- object$group_levels_original
   new <- object$group_levels_new
   if (!is.null(orig) && !is.null(new) && length(orig) == length(new)) {
@@ -2951,7 +2983,7 @@ mfpi_resolve_reference_group <- function(reference, group_labels, object) {
       if (!is.na(hit_new)) return(hit_new)
     }
   }
-  
+
   stop(
     paste0(
       "`reference` does not match an internal or original group level. ",
@@ -2977,7 +3009,7 @@ mfpi_resolve_reference_group <- function(reference, group_labels, object) {
 mfpi_fit_has_offset <- function(fit_obj) {
   # Detect offsets both from fitted-object storage and from the model terms.
   # This determines whether reconstructed prediction data require an offset.
-  
+
   if (!is.null(fit_obj$offset)) return(TRUE)
   trm <- try(stats::terms(fit_obj), silent = TRUE)
   if (!inherits(trm, "try-error")) {
@@ -3017,7 +3049,7 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
   if (!is.data.frame(newdata)) {
     return(newdata)
   }
-  
+
   terms_obj <- object$formula_terms
   if (is.null(terms_obj)) {
     stop(
@@ -3025,14 +3057,14 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
       call. = FALSE
     )
   }
-  
+
   xlevels <- object$formula_xlevels
   if (is.null(xlevels)) {
     xlevels <- list()
   }
-  
+
   xcontrasts <- object$formula_contrasts
-  
+
   if (is.null(terms)) {
     active_terms <- terms_obj
   } else {
@@ -3043,7 +3075,7 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
     }
     active_terms <- prediction_formula_terms(object, terms)
   }
-  
+
   active_factors <- attr(active_terms, "factors")
   active_frame_variables <- if (is.null(active_factors)) {
     character(0L)
@@ -3051,7 +3083,7 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
     rownames(active_factors)[rowSums(active_factors != 0) > 0L]
   }
   active_xlevels <- xlevels[intersect(names(xlevels), active_frame_variables)]
-  
+
   expected_cols <- required_columns
   if (is.null(expected_cols)) {
     if (is.null(terms)) {
@@ -3073,7 +3105,7 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
       all(expected_cols %in% names(newdata))) {
     return(newdata)
   }
-  
+
   mf <- tryCatch(
     stats::model.frame(
       active_terms,
@@ -3092,11 +3124,11 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
       )
     }
   )
-  
+
   active_contrasts <- xcontrasts[
     intersect(names(xcontrasts), names(mf))
   ]
-  
+
   mm <- tryCatch(
     {
       if (length(active_contrasts) == 0L) {
@@ -3119,23 +3151,23 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
       )
     }
   )
-  
+
   if ("(Intercept)" %in% colnames(mm)) {
     mm <- mm[, setdiff(colnames(mm), "(Intercept)"), drop = FALSE]
   }
-  
+
   out <- newdata
-  
+
   if (ncol(mm) > 0L) {
     mm_df <- as.data.frame(mm, optional = TRUE)
     names(mm_df) <- colnames(mm)
-    
+
     add_cols <- setdiff(names(mm_df), names(out))
     if (length(add_cols) > 0L) {
       out <- cbind(out, mm_df[, add_cols, drop = FALSE])
     }
   }
-  
+
   if (length(expected_cols) > 0L) {
     missing_cols <- setdiff(expected_cols, names(out))
     if (length(missing_cols) > 0L) {
@@ -3150,6 +3182,6 @@ mfpi_prepare_formula_newdata <- function(object, newdata, terms = NULL,
       )
     }
   }
-  
+
   out
 }

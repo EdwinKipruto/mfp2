@@ -15,8 +15,10 @@
 #' used for prediction with `predict()`, and visualised with `plot()`.
 #'
 #' @section Supported models:
-#' [mfp2()] supports Gaussian, binomial, and Poisson regression, together
-#' with Cox proportional hazards models for right-censored survival outcomes.
+#' [mfp2()] supports Gaussian, binomial, Poisson, and optional
+#' negative-binomial regression, together with Cox proportional hazards models
+#' for right-censored survival outcomes. Negative-binomial fitting requires the
+#' optional `fastglm` package.
 #'
 #' @section Modelling extensions:
 #' In addition to standard fractional-polynomial modelling, `mfp2` provides:

@@ -70,7 +70,7 @@ fitted model used an offset and \code{newdata} is supplied.}
 used when \code{terms_seq = "equidistant"}. The default is 100.}
 
 \item{add_intercept}{A single \code{TRUE} or \code{FALSE} value. For term predictions
-from Gaussian, binomial, and Poisson models, \code{TRUE} includes the fitted
+from Gaussian, binomial, Poisson, and negative-binomial models, \code{TRUE} includes the fitted
 intercept in each result. The default is \code{TRUE}. It has no effect for Cox
 models or contrasts.}
 
@@ -153,7 +153,7 @@ positive value after the fitted shift is applied.
 
 \section{Choosing the prediction type}{
 
-For Gaussian, binomial, and Poisson models:
+For Gaussian, binomial, Poisson, and negative-binomial models:
 \itemize{
 \item \code{type = "link"} returns predictions on the link scale.
 \item \code{type = "response"} returns predictions on the response scale.
@@ -174,7 +174,7 @@ supplied follow-up time.
 For all supported models:
 \itemize{
 \item \code{type = "terms"} returns a fitted value for each requested term on the
-linear-predictor scale. For Gaussian, binomial, and Poisson models, the
+linear-predictor scale. For Gaussian, binomial, Poisson, and negative-binomial models, the
 intercept is included by default.
 \item \code{type = "contrasts"} compares each fitted term value with a reference
 value.
@@ -205,7 +205,7 @@ when \code{newdata = NULL}.
 
 Factors and other grouped terms are evaluated row by row.
 
-For Gaussian, binomial, and Poisson models, \code{add_intercept = TRUE} includes
+For Gaussian, binomial, Poisson, and negative-binomial models, \code{add_intercept = TRUE} includes
 the fitted intercept in each term result. Set \code{add_intercept = FALSE} to
 return only the contribution from the requested term. This argument does not
 affect Cox models or contrasts.

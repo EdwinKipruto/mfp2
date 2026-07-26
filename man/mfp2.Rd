@@ -39,6 +39,7 @@ mfp2(x, ...)
   force_max_fp_vars = NULL,
   term_groups = NULL,
   verbose = TRUE,
+  fitter = c("base", "fastglm"),
   ...
 )
 
@@ -67,6 +68,7 @@ mfp2(x, ...)
   control = NULL,
   min_saz_component_prop = 0.1,
   verbose = TRUE,
+  fitter = c("base", "fastglm"),
   ...
 )
 }
@@ -78,8 +80,9 @@ observation and one column per design variable.}
 options should be supplied inside \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}}.}
 
 \item{y}{Response for \code{mfp2.default()}. Gaussian models require a finite
-numeric vector, and Poisson models require a finite nonnegative numeric
-vector. Binomial models accept a numeric binary vector of 0s and 1s, a
+numeric vector, Poisson models require a finite nonnegative numeric
+vector, and negative-binomial models require finite nonnegative integer
+counts. Binomial models accept a numeric binary vector of 0s and 1s, a
 two-level factor, or a two-column matrix of successes and failures. Cox
 models require a two-column right-censored \code{\link[survival:Surv]{survival::Surv()}} object.}
 
@@ -147,9 +150,11 @@ row positions. Automatic shift and scale values are estimated before the
 subset is applied. See the Subsetting section.}
 
 \item{family}{Model family. Either a character string (\code{"gaussian"},
-\code{"binomial"}, \code{"poisson"}, or \code{"cox"}) or a \code{\link[stats:family]{stats::family()}} object such
-as \code{binomial(link = "logit")}. Cox models accept only the character string
-\code{"cox"}. Default \code{"gaussian"}.}
+\code{"binomial"}, \code{"poisson"}, \code{"negbin"}, or \code{"cox"}) or a
+\code{\link[stats:family]{stats::family()}} object such as \code{binomial(link = "logit")}. Negative
+binomial models require \code{family = "negbin"} and \code{fitter = "fastglm"}.
+Cox models accept only the character string \code{"cox"}. Default
+\code{"gaussian"}.}
 
 \item{criterion}{Selection criterion. One of \code{"pvalue"} (default), \code{"aic"},
 or \code{"bic"}. With \code{"pvalue"}, variable inclusion and functional-form
@@ -283,6 +288,14 @@ catzero, or SAZ handling. Unmapped columns are treated as separate terms.}
 \item{verbose}{Logical value indicating whether progress messages are printed.
 Default \code{TRUE}.}
 
+\item{fitter}{Fitting backend for repeated GLM candidate fits. \code{"base"}
+(default) uses \code{\link[stats:glm.fit]{stats::glm.fit()}}. \code{"fastglm"} uses the compiled
+\code{fastglm::fastglm.default()} fitter and may be faster during FP candidate
+search. The optional \code{fastglm} package must be installed; ordinary GLM
+fits fall back to \code{"base"} with a warning if it is unavailable or a fit
+fails. Cox models are unaffected. Negative binomial models are available
+only with \code{fitter = "fastglm"} and have no base fallback.}
+
 \item{formula}{For \code{mfp2.formula()}, a model formula. Use \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}}
 to set variable-specific FP, ACD, zero, catzero, or SAZ options.}
 
@@ -295,12 +308,13 @@ class:
 
 \itemize{
 \item \code{glm} for Gaussian, binomial, and Poisson models;
+\item \code{fastglm_nb} and \code{fastglm} for negative-binomial models;
 \item \code{coxph} for Cox proportional hazards models.
 }
 
 Standard fitted-model components, such as coefficients, residuals, fitted
 values, and the model call, can be accessed using the usual methods for
-\code{glm} or \code{coxph} objects.
+\code{glm}, \code{fastglm}, or \code{coxph} objects.
 
 The following additional components are part of the user-facing \code{mfp2}
 result:
@@ -373,7 +387,7 @@ spike-at-zero (SAZ) modelling for semi-continuous predictors. Models may be
 specified with a formula and data frame or with a numeric predictor matrix
 and response. Both interfaces provide the same core modelling capabilities
 but differ in input handling as described below. Supported families are
-Gaussian, binomial, and Poisson. Cox proportional hazards models are also
+Gaussian, binomial, Poisson, and negative binomial. Cox proportional hazards models are also
 supported, currently limited to right-censored data specified as
 \code{survival::Surv(time, event)}.
 }
@@ -442,13 +456,16 @@ terms, matrix columns, or \code{term_groups}; unknown names cause an error.
 
 \section{Model families and responses}{
 
-Supported families are \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, and
-\code{"cox"}. Gaussian, binomial, and Poisson models accept either a character
-family name or a corresponding family object, including supported alternative
-links. See \code{\link[stats:family]{stats::family()}} and \code{\link[stats:glm]{stats::glm()}} for general GLM behaviour.
+Supported families are \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
+\code{"negbin"}, and \code{"cox"}. Gaussian, binomial, and Poisson models accept
+either a character family name or a corresponding family object, including
+supported alternative links. Negative binomial is selected with the character
+name \code{"negbin"} and requires \code{fitter = "fastglm"}. See \code{\link[stats:family]{stats::family()}}
+and \code{\link[stats:glm]{stats::glm()}} for general GLM behaviour.
 
 Gaussian models use a finite numeric response vector. Poisson models use a
-finite, nonnegative numeric response vector. Binomial models accept a numeric
+finite, nonnegative numeric response vector; negative-binomial models require
+nonnegative integer counts. Binomial models accept a numeric
 response in \verb{[0, 1]}, a two-level factor, or a two-column numeric matrix of
 nonnegative grouped counts with a positive row total. Cox models require
 \code{family = "cox"} and an ordinary

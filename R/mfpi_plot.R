@@ -1143,6 +1143,7 @@ mfpi_plot_scale_label <- function(model) {
     gaussian = "outcome scale",
     binomial = "log-odds",
     poisson  = "log-mean",
+    negbin   = "log-mean",
     cox      = "log-hazard",
     "linear predictor"
   )

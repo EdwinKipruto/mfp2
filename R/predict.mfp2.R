@@ -42,9 +42,9 @@
 #' a supplied value is outside the valid range of the fitted transformation.
 #' For example, some logarithmic or negative-power functions require a
 #' positive value after the fitted shift is applied.
-#' 
+#'
 #' @section Choosing the prediction type:
-#' For Gaussian, binomial, and Poisson models:
+#' For Gaussian, binomial, Poisson, and negative-binomial models:
 #'
 #' - `type = "link"` returns predictions on the link scale.
 #' - `type = "response"` returns predictions on the response scale.
@@ -63,7 +63,7 @@
 #' For all supported models:
 #'
 #' - `type = "terms"` returns a fitted value for each requested term on the
-#'   linear-predictor scale. For Gaussian, binomial, and Poisson models, the
+#'   linear-predictor scale. For Gaussian, binomial, Poisson, and negative-binomial models, the
 #'   intercept is included by default.
 #' - `type = "contrasts"` compares each fitted term value with a reference
 #'   value.
@@ -90,7 +90,7 @@
 #'
 #' Factors and other grouped terms are evaluated row by row.
 #'
-#' For Gaussian, binomial, and Poisson models, `add_intercept = TRUE` includes
+#' For Gaussian, binomial, Poisson, and negative-binomial models, `add_intercept = TRUE` includes
 #' the fitted intercept in each term result. Set `add_intercept = FALSE` to
 #' return only the contribution from the requested term. This argument does not
 #' affect Cox models or contrasts.
@@ -249,7 +249,7 @@
 #'   used when `terms_seq = "equidistant"`. The default is 100.
 #'
 #' @param add_intercept A single `TRUE` or `FALSE` value. For term predictions
-#'   from Gaussian, binomial, and Poisson models, `TRUE` includes the fitted
+#'   from Gaussian, binomial, Poisson, and negative-binomial models, `TRUE` includes the fitted
 #'   intercept in each result. The default is `TRUE`. It has no effect for Cox
 #'   models or contrasts.
 #'
@@ -410,27 +410,27 @@
 #'
 #' @method predict mfp2
 #' @export
-predict.mfp2 <- function(object, 
-                         newdata = NULL, 
+predict.mfp2 <- function(object,
+                         newdata = NULL,
                          type = NULL,
                          se.fit = FALSE,
                          terms = NULL,
                          terms_seq = c("equidistant", "data"),
                          alpha = 0.05,
-                         ref = NULL, 
-                         strata = NULL, 
-                         newoffset = NULL, 
+                         ref = NULL,
+                         strata = NULL,
+                         newoffset = NULL,
                          nseq = 100,
                          add_intercept = TRUE,
                          cox_reference = NULL,
                          ...) {
-  
+
   # Record whether the caller supplied a non-NULL Cox covariate reference.
   # NULL follows predict.mfpi() semantics and means "use the method default".
   # The explicit-supply distinction is essential for expected/survival
   # predictions, where the underlying Cox method fixes its own sample reference.
   cox_reference_supplied <- !missing(cox_reference) && !is.null(cox_reference)
-  
+
   # `newy` was considered during development but is intentionally not part of
   # the public API. Absolute Cox prediction data belong in `newdata`, matching
   # the data-oriented convention used by predict.coxph(). Catch legacy draft
@@ -451,37 +451,37 @@ predict.mfp2 <- function(object,
       call. = FALSE
     )
   }
-  
+
   terms_seq <- match.arg(terms_seq)
-  
+
   if (!is.numeric(alpha) || alpha <= 0 || alpha >= 1) {
     stop("'alpha' must be between 0 and 1.", call. = FALSE)
   }
-  
+
   if (!is.numeric(nseq) || nseq <= 0) {
     stop("'nseq' must be a positive integer.", call. = FALSE)
   }
-  
+
   if (!is.logical(se.fit) || length(se.fit) != 1L || is.na(se.fit)) {
     stop("'se.fit' must be a single TRUE or FALSE value.", call. = FALSE)
   }
-  
+
   # Prediction metadata and fitted-model methods are defined only for mfp2 objects.
-  if (!inherits(object, "mfp2")) { 
+  if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
   }
-  
+
   # Resolve the prediction scale. Formula fits store the same conceptual term
   # names used by selection and printing, including source-variable names for
   # simple wrappers such as factor(x9).
   if (is.null(type)) {
     type <- ifelse(object$family_string == "cox", "lp", "link")
   }
-  
+
   if (!is.character(type) || length(type) != 1L || is.na(type)) {
     stop("'type' must be a single non-missing character value.", call. = FALSE)
   }
-  
+
   # `link` and `lp` are family-specific names for the same linear-predictor
   # quantity. Normalize that unambiguous alias before method-specific type
   # matching so users receive the intended prediction rather than a downstream
@@ -490,7 +490,7 @@ predict.mfp2 <- function(object,
     type = type,
     family_string = object$family_string
   )
-  
+
   # Cox prediction types are resolved here rather than left to
   # predict.coxph(). This lets mfp2 distinguish its own term/contrast paths from
   # the relative and absolute full-model paths and report argument conflicts
@@ -512,12 +512,12 @@ predict.mfp2 <- function(object,
       )
     }
   }
-  
+
   # `strata` and `newoffset` alter only native full-model predictions on
   # supplied rows. Reject irrelevant combinations before formula evaluation or
   # transformation so that an accepted argument is never silently ignored.
   full_model_prediction <- !type %in% c("terms", "contrasts")
-  
+
   if (!is.null(strata)) {
     if (!identical(object$family_string, "cox")) {
       stop("'strata' is available only for Cox predictions.", call. = FALSE)
@@ -541,7 +541,7 @@ predict.mfp2 <- function(object,
       )
     }
   }
-  
+
   if (!is.null(newoffset)) {
     if (!full_model_prediction) {
       stop(
@@ -575,25 +575,25 @@ predict.mfp2 <- function(object,
       )
     }
   }
-  
+
   selected_internal_terms <- get_selected_variable_names(object)
-  
+
   if (is.null(terms)) {
     terms <- selected_internal_terms
   }
-  
+
   if (is.null(ref)) {
     ref <- stats::setNames(lapply(terms, function(v) NULL), terms)
   }
-  
+
   # Preserve the user's original formula-style data for factor labels, offsets,
   # and strata. Formula fits are then rebuilt on their fitted model-matrix scale.
   if (!is.null(newdata) && is.null(colnames(newdata))) {
     stop("Newdata must have column names", call. = FALSE)
   }
-  
+
   newdata_raw <- newdata
-  
+
   # Reject infinite numeric values before formula reconstruction can discard
   # unselected columns or model.matrix() can propagate them into derived terms.
   # Missing-value validation remains limited to the reconstructed predictors
@@ -604,7 +604,7 @@ predict.mfp2 <- function(object,
       check_missing = FALSE
     )
   }
-  
+
   # Absolute Cox predictions with newdata need a Surv response because
   # predict.coxph() evaluates the cumulative baseline hazard at the supplied
   # time or interval. Reconstruct it before formula newdata are reduced to the
@@ -622,13 +622,13 @@ predict.mfp2 <- function(object,
   } else {
     NULL
   }
-  
+
   prediction_terms <- if (type %in% c("terms", "contrasts")) {
     intersect(terms, selected_internal_terms)
   } else {
     selected_internal_terms
   }
-  
+
   if (!is.null(newdata)) {
     newdata <- reconstruct_formula_newdata(
       object,
@@ -636,7 +636,7 @@ predict.mfp2 <- function(object,
       terms = prediction_terms
     )
   }
-  
+
   if (!is.null(newdata)) {
     # Validate only the reconstructed predictors used by the requested
     # prediction. Matrix-interface callers may include irrelevant extra columns
@@ -651,7 +651,7 @@ predict.mfp2 <- function(object,
       newdata[, validation_columns, drop = FALSE]
     )
   }
-  
+
   if (type == "contrasts" && length(ref) != sum(names(ref) != "", na.rm = TRUE)) {
     warning(
       paste0(
@@ -663,14 +663,14 @@ predict.mfp2 <- function(object,
       call. = FALSE
     )
   }
-  
+
   # Term and contrast prediction is handled term by term. A conceptual term
   # may correspond to one transformed continuous predictor or to a block of
   # dummy/contrast columns for a categorical term.
   if (type %in% c("terms", "contrasts")) {
     requested_terms <- terms
     internal_terms <- requested_terms
-    
+
     selected <- internal_terms %in% selected_internal_terms
     if (!any(selected)) {
       warning(
@@ -687,10 +687,10 @@ predict.mfp2 <- function(object,
         call. = FALSE
       )
     }
-    
+
     requested_terms <- requested_terms[selected]
     internal_terms <- internal_terms[selected]
-    
+
     valid_reference_names <- requested_terms
     if (!all(vapply(ref, is.null, logical(1L))) &&
         any(!names(ref) %in% valid_reference_names)) {
@@ -699,7 +699,7 @@ predict.mfp2 <- function(object,
         call. = FALSE
       )
     }
-    
+
     # The intercept contributes to GLM term predictions only when requested.
     # It cancels from contrasts and is not present in Cox partial predictors.
     cf <- coef(object)
@@ -707,12 +707,12 @@ predict.mfp2 <- function(object,
     if (is.na(intercept) || !add_intercept || type == "contrasts") {
       intercept <- 0
     }
-    
+
     # Resolve conceptual prediction terms once. Each element names the raw
     # design-matrix columns that must be transformed and combined for that term.
     lookup <- prediction_term_to_columns(object)
     res_list <- list()
-    
+
     for (term_index in seq_along(internal_terms)) {
       t <- internal_terms[[term_index]]
       display_term <- requested_terms[[term_index]]
@@ -723,7 +723,7 @@ predict.mfp2 <- function(object,
         NULL
       }
       block_term <- term_uses_column_mapping(t, term_columns) || !is.null(factor_info)
-      
+
       if (block_term) {
         # Grouped terms are predicted as complete design blocks. This includes
         # multi-column factors and one-column formula factors carrying factor
@@ -733,7 +733,7 @@ predict.mfp2 <- function(object,
         # the shifted-but-not-scaled final-fitting scale, so its shift must not
         # be applied a second time.
         source_needs_preprocessing <- !is.null(newdata)
-        
+
         source_block <- if (!is.null(newdata)) {
           missing_columns <- setdiff(term_columns, colnames(newdata))
           if (length(missing_columns) > 0L) {
@@ -755,7 +755,7 @@ predict.mfp2 <- function(object,
           }
           object$x_original[, term_columns, drop = FALSE]
         }
-        
+
         source_block <- as.matrix(source_block)
         x_trafo <- as.matrix(prepare_newdata_for_predict(
           object,
@@ -765,20 +765,20 @@ predict.mfp2 <- function(object,
           allow_missing_predictors = TRUE,
           check_binary = FALSE
         ))
-        
+
         model_columns <- prediction_model_column_names(
           object,
           colnames(x_trafo)
         )
         term_coef <- stats::coef(object)[model_columns]
         term_coef[is.na(term_coef)] <- 0
-        
+
         labels <- decode_grouped_term_values(
           object,
           term = t,
           block = source_block
         )
-        
+
         res <- data.frame(
           variable = labels,
           variable_pre = labels,
@@ -787,7 +787,7 @@ predict.mfp2 <- function(object,
           check.names = FALSE,
           stringsAsFactors = FALSE
         )
-        
+
         x_ref_trafo <- NULL
         if (type == "contrasts") {
           reference_block <- resolve_grouped_reference(
@@ -816,13 +816,13 @@ predict.mfp2 <- function(object,
           } else {
             x_range <- range(object$x_original[, t])
           }
-          
+
           x_seq <- matrix(
             seq(x_range[1L], x_range[2L], length.out = nseq),
             ncol = 1L,
             dimnames = list(NULL, t)
           )
-          
+
           x_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_seq,
@@ -840,7 +840,7 @@ predict.mfp2 <- function(object,
           } else {
             object$x_original[, t, drop = FALSE]
           }
-          
+
           x_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
             x_seq,
@@ -849,28 +849,28 @@ predict.mfp2 <- function(object,
             allow_missing_predictors = TRUE
           ))
         }
-        
+
         model_columns <- prediction_model_column_names(
           object,
           colnames(x_trafo)
         )
         term_coef <- stats::coef(object)[model_columns]
         term_coef[is.na(term_coef)] <- 0
-        
+
         variable <- as.numeric(x_seq) - object$transformations[t, "shift"]
         variable_pre <- as.numeric(x_seq)
-        
+
         if (object$spike_dec[t] == saz_decision_codes[["binary_only"]]) {
           variable <- as.integer(x_seq[, t] <= 0)
           variable_pre <- variable
         }
-        
+
         res <- data.frame(
           variable = variable,
           variable_pre = variable_pre,
           value = as.numeric(x_trafo %*% term_coef + intercept)
         )
-        
+
         x_ref_trafo <- NULL
         if (type == "contrasts") {
           x_ref <- if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]]
@@ -888,7 +888,7 @@ predict.mfp2 <- function(object,
           } else {
             x_ref <- x_ref + object$transformations[t, "shift"]
           }
-          
+
           x_ref <- matrix(x_ref, nrow = 1L, ncol = 1L, dimnames = list(NULL, t))
           x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
             object,
@@ -902,7 +902,7 @@ predict.mfp2 <- function(object,
           res$value <- res$value - as.numeric(x_ref_trafo %*% term_coef)
         }
       }
-      
+
       # Standard errors use the coefficient covariance block corresponding to
       # the transformed columns for this conceptual term.
       res$se <- calculate_standard_error(
@@ -916,16 +916,16 @@ predict.mfp2 <- function(object,
       res$upper <- res$value + mult * res$se
       res_list[[display_term]] <- res
     }
-    
+
     return(res_list)
   }
-  
+
   # Full-model prediction reconstructs every required raw design column,
   # applies the fitted transformations, and then delegates to the underlying
   # glm or coxph prediction method.
-  
+
   if (!is.null(newdata)) {
-    
+
     if (
       is.null(newoffset) &&
       !is.null(newdata_raw) &&
@@ -933,7 +933,7 @@ predict.mfp2 <- function(object,
     ) {
       newoffset <- reconstruct_formula_offset_newdata(object, newdata_raw)
     }
-    
+
     # Formula offsets are reconstructed automatically when possible; otherwise
     # an offset must be supplied explicitly for models fitted with one.
     has_offset <- isTRUE(object$has_offset)
@@ -944,7 +944,7 @@ predict.mfp2 <- function(object,
           call. = FALSE
         )
       }
-      
+
       if (!is.numeric(newoffset) || anyNA(newoffset) ||
           any(!is.finite(newoffset))) {
         stop(
@@ -952,18 +952,18 @@ predict.mfp2 <- function(object,
           call. = FALSE
         )
       }
-      
+
       if (length(newoffset) != nrow(newdata)) {
         stop(
           "The length of newoffset must be equal to the number of rows of newdata",
           call. = FALSE
         )
       }
-      
+
     } else {
       newoffset <- NULL
     }
-    
+
     if (
       object$family_string == "cox" &&
       is.null(strata) &&
@@ -972,7 +972,7 @@ predict.mfp2 <- function(object,
     ) {
       strata <- reconstruct_formula_strata_newdata(object, newdata_raw)
     }
-    
+
     newdata <- prepare_newdata_for_predict(
       object,
       newdata,
@@ -981,7 +981,7 @@ predict.mfp2 <- function(object,
       offset = newoffset,
       check_binary = FALSE
     )
-    
+
     if (!is.null(cox_prediction_response)) {
       newdata <- attach_cox_prediction_response(
         fit_obj = object,
@@ -989,7 +989,7 @@ predict.mfp2 <- function(object,
         response = cox_prediction_response
       )
     }
-    
+
     if (identical(object$family_string, "cox")) {
       return(
         mfp2_predict_cox_base(
@@ -1002,12 +1002,39 @@ predict.mfp2 <- function(object,
         )
       )
     }
-    
+
+    if (inherits(object, "fastglm")) {
+      prediction_data <- as.data.frame(newdata, check.names = FALSE)
+      prediction_offset <- if ("offset_" %in% names(prediction_data)) {
+        prediction_data$offset_
+      } else {
+        rep(0, nrow(prediction_data))
+      }
+      prediction_data$offset_ <- NULL
+      prediction_matrix <- as.matrix(prediction_data)
+      model_columns <- prediction_model_column_names(
+        object,
+        colnames(prediction_matrix)
+      )
+      colnames(prediction_matrix) <- model_columns
+
+      return(
+        mfp2_predict_fastglm_matrix(
+          object = object,
+          newx = prediction_matrix,
+          offset = prediction_offset,
+          type = type,
+          se.fit = se.fit,
+          ...
+        )
+      )
+    }
+
     # Strip "mfp2" so S3 dispatch reaches predict.glm() rather than recursively
     # entering predict.mfp2().
     obj_base <- object
     class(obj_base) <- setdiff(class(obj_base), "mfp2")
-    
+
     return(
       stats::predict(
         obj_base,
@@ -1018,7 +1045,7 @@ predict.mfp2 <- function(object,
       )
     )
   }
-  
+
   # With no newdata, the fitted base object already contains the training
   # response, transformed design, strata, and offsets required by its native
   # prediction method.
@@ -1033,7 +1060,18 @@ predict.mfp2 <- function(object,
       )
     )
   }
-  
+
+  if (inherits(object, "fastglm")) {
+    return(
+      mfp2_predict_fastglm_matrix(
+        object = object,
+        type = type,
+        se.fit = se.fit,
+        ...
+      )
+    )
+  }
+
   obj_base <- object
   class(obj_base) <- setdiff(class(obj_base), "mfp2")
   stats::predict(
@@ -1066,7 +1104,7 @@ predict.mfp2 <- function(object,
 #' @noRd
 mfp2_match_cox_prediction_type <- function(type) {
   choices <- c("lp", "risk", "expected", "survival", "terms", "contrasts")
-  
+
   tryCatch(
     match.arg(type, choices),
     error = function(e) {
@@ -1096,7 +1134,7 @@ mfp2_match_cox_prediction_type <- function(type) {
 #' @noRd
 mfp2_match_glm_prediction_type <- function(type) {
   choices <- c("link", "response", "terms", "contrasts")
-  
+
   if (identical(type, "risk")) {
     stop(
       "For GLM models, type = 'risk' is not supported. Use type = ",
@@ -1105,7 +1143,7 @@ mfp2_match_glm_prediction_type <- function(type) {
       call. = FALSE
     )
   }
-  
+
   tryCatch(
     match.arg(type, choices),
     error = function(e) {
@@ -1143,9 +1181,9 @@ mfp2_validate_prediction_newdata <- function(newdata, check_missing = TRUE) {
     stop("Internal error: `check_missing` must be TRUE or FALSE.",
          call. = FALSE)
   }
-  
+
   newdata <- as.data.frame(newdata, check.names = FALSE)
-  
+
   if (isTRUE(check_missing) && anyNA(newdata)) {
     stop(
       "! newdata must not contain any NA (missing data).\n",
@@ -1153,7 +1191,7 @@ mfp2_validate_prediction_newdata <- function(newdata, check_missing = TRUE) {
       call. = FALSE
     )
   }
-  
+
   non_finite_columns <- names(newdata)[vapply(
     newdata,
     function(column) {
@@ -1169,7 +1207,7 @@ mfp2_validate_prediction_newdata <- function(newdata, check_missing = TRUE) {
     },
     logical(1L)
   )]
-  
+
   if (length(non_finite_columns) > 0L) {
     stop(
       "! newdata must contain only finite numeric values.\n",
@@ -1179,7 +1217,7 @@ mfp2_validate_prediction_newdata <- function(newdata, check_missing = TRUE) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -1216,7 +1254,7 @@ mfp2_validate_cox_reference <- function(type,
       is.na(cox_reference_supplied)) {
     stop("Internal error: invalid cox_reference-supply flag.", call. = FALSE)
   }
-  
+
   if (type %in% c("terms", "contrasts")) {
     if (cox_reference_supplied) {
       stop(
@@ -1227,7 +1265,7 @@ mfp2_validate_cox_reference <- function(type,
     }
     return(NULL)
   }
-  
+
   if (type %in% c("expected", "survival")) {
     if (cox_reference_supplied) {
       stop(
@@ -1240,13 +1278,13 @@ mfp2_validate_cox_reference <- function(type,
     }
     return(NULL)
   }
-  
+
   # The public NULL default resolves to "zero" for relative Cox predictions.
   # A non-NULL user value must be scalar and is validated below.
   if (!cox_reference_supplied) {
     return("zero")
   }
-  
+
   match_cox_reference(
     value = cox_reference,
     default = "zero",
@@ -1296,19 +1334,19 @@ mfp2_predict_cox_base <- function(object,
       !identical(object$family_string, "cox")) {
     stop("Internal error: a fitted mfp2 Cox object is required.", call. = FALSE)
   }
-  
+
   if (!type %in% c("lp", "risk", "expected", "survival")) {
     stop("Internal error: unsupported delegated Cox prediction type.",
          call. = FALSE)
   }
-  
+
   if (isTRUE(object$has_offset)) {
     mfp2_cox_offset_reference(object)
   }
-  
+
   obj_base <- object
   class(obj_base) <- setdiff(class(obj_base), "mfp2")
-  
+
   # Keep the native Cox method authoritative for both covariate-reference and
   # offset origins. In particular, do not add or subtract
   # object$cox_offset_reference here: predict.coxph() reconstructs the fitted
@@ -1321,7 +1359,7 @@ mfp2_predict_cox_base <- function(object,
       stop("Internal error: relative Cox prediction lacks a reference.",
            call. = FALSE)
     }
-    
+
     if (is.null(newdata)) {
       return(stats::predict(
         obj_base,
@@ -1331,7 +1369,7 @@ mfp2_predict_cox_base <- function(object,
         ...
       ))
     }
-    
+
     return(stats::predict(
       obj_base,
       newdata = newdata,
@@ -1341,7 +1379,7 @@ mfp2_predict_cox_base <- function(object,
       ...
     ))
   }
-  
+
   if (is.null(newdata)) {
     return(stats::predict(
       obj_base,
@@ -1350,7 +1388,7 @@ mfp2_predict_cox_base <- function(object,
       ...
     ))
   }
-  
+
   stats::predict(
     obj_base,
     newdata = newdata,
@@ -1376,14 +1414,14 @@ mfp2_predict_cox_base <- function(object,
 #' @noRd
 prediction_term_to_columns <- function(object, terms = NULL) {
   fitted_terms <- rownames(object$transformations)
-  
+
   if (is.null(fitted_terms) || length(fitted_terms) == 0L) {
     stop("The fitted object does not contain transformation term names.",
          call. = FALSE)
   }
-  
+
   lookup <- object$term_to_columns
-  
+
   if (is.null(lookup)) {
     # Objects created before grouped categorical support did not store an
     # explicit conceptual-term lookup. Formula fits from newer releases may
@@ -1391,7 +1429,7 @@ prediction_term_to_columns <- function(object, terms = NULL) {
     # available. Otherwise a continuous-only legacy object has an identity
     # relationship between conceptual terms and raw predictor columns.
     lookup <- object$formula_term_to_columns
-    
+
     if (is.null(lookup)) {
       selected_terms <- tryCatch(
         get_selected_variable_names(object),
@@ -1402,7 +1440,7 @@ prediction_term_to_columns <- function(object, terms = NULL) {
       } else {
         colnames(object$x_original)
       }
-      
+
       # A retained grouped term cannot be reconstructed safely without its
       # stored member-column mapping. Fail explicitly rather than silently
       # treating the conceptual name as a raw design column.
@@ -1415,15 +1453,15 @@ prediction_term_to_columns <- function(object, terms = NULL) {
           call. = FALSE
         )
       }
-      
+
       lookup <- stats::setNames(as.list(fitted_terms), fitted_terms)
     }
   }
-  
+
   if (!is.list(lookup) || is.null(names(lookup)) || anyDuplicated(names(lookup))) {
     stop("The fitted grouped-term lookup is malformed.", call. = FALSE)
   }
-  
+
   missing_terms <- setdiff(fitted_terms, names(lookup))
   if (length(missing_terms) > 0L) {
     stop(
@@ -1432,9 +1470,9 @@ prediction_term_to_columns <- function(object, terms = NULL) {
       call. = FALSE
     )
   }
-  
+
   lookup <- lookup[fitted_terms]
-  
+
   invalid <- vapply(
     lookup,
     function(columns) {
@@ -1443,12 +1481,12 @@ prediction_term_to_columns <- function(object, terms = NULL) {
     },
     logical(1L)
   )
-  
+
   if (any(invalid) || anyDuplicated(unlist(lookup, use.names = FALSE))) {
     stop("The fitted grouped-term lookup contains invalid raw columns.",
          call. = FALSE)
   }
-  
+
   if (!is.null(terms)) {
     terms <- unique(as.character(terms))
     unknown <- setdiff(terms, names(lookup))
@@ -1461,7 +1499,7 @@ prediction_term_to_columns <- function(object, terms = NULL) {
     }
     lookup <- lookup[terms]
   }
-  
+
   lookup
 }
 
@@ -1471,7 +1509,7 @@ prediction_term_to_columns <- function(object, terms = NULL) {
 # not need to quote, unquote, sanitize, or otherwise guess model column names.
 prediction_model_column_names <- function(object, transformed_columns) {
   column_map <- object$transformed_to_model_columns
-  
+
   if (is.null(column_map)) {
     # Legacy continuous-only objects predate the explicit map. Recreate the
     # complete transformed source-column order from the stored training data,
@@ -1479,7 +1517,7 @@ prediction_model_column_names <- function(object, transformed_columns) {
     # glm()/coxph() fits preserve formula-column order, including aliased
     # coefficients, so this recovers exact quoted or non-syntactic names.
     selected_terms <- get_selected_variable_names(object)
-    
+
     if (length(selected_terms) == 0L) {
       if (length(transformed_columns) > 0L) {
         stop(
@@ -1489,14 +1527,14 @@ prediction_model_column_names <- function(object, transformed_columns) {
       }
       return(character(0L))
     }
-    
+
     if (is.null(object$x_original)) {
       stop(
         "The legacy fitted object lacks training predictors needed to reconstruct coefficient-column metadata.",
         call. = FALSE
       )
     }
-    
+
     reconstructed <- prepare_newdata_for_predict(
       object,
       object$x_original,
@@ -1508,23 +1546,23 @@ prediction_model_column_names <- function(object, transformed_columns) {
     if (is.null(source_columns)) {
       source_columns <- character(0L)
     }
-    
+
     fitted_columns <- names(stats::coef(object))
     if (is.null(fitted_columns)) {
       fitted_columns <- character(0L)
     }
     fitted_columns <- fitted_columns[fitted_columns != "(Intercept)"]
-    
+
     if (length(source_columns) != length(fitted_columns)) {
       stop(
         "The legacy fitted object does not contain enough metadata to align transformed columns with fitted coefficients.",
         call. = FALSE
       )
     }
-    
+
     column_map <- stats::setNames(fitted_columns, source_columns)
   }
-  
+
   if (!is.character(column_map) || is.null(names(column_map)) ||
       anyDuplicated(names(column_map))) {
     stop(
@@ -1532,7 +1570,7 @@ prediction_model_column_names <- function(object, transformed_columns) {
       call. = FALSE
     )
   }
-  
+
   model_columns <- unname(column_map[transformed_columns])
   if (anyNA(model_columns)) {
     stop(
@@ -1541,7 +1579,7 @@ prediction_model_column_names <- function(object, transformed_columns) {
       call. = FALSE
     )
   }
-  
+
   model_columns
 }
 
@@ -1568,7 +1606,7 @@ expand_prediction_metadata <- function(object, raw_columns) {
   } else {
     object$fp_terms[, "spike"]
   }
-  
+
   expanded <- expand_term_metadata_to_columns(
     term_to_columns = lookup,
     powers = object$fp_powers,
@@ -1580,7 +1618,7 @@ expand_prediction_metadata <- function(object, raw_columns) {
     spike_decision = object$spike_dec,
     acd_parameter = object$acd_parameter
   )
-  
+
   raw_terms <- unname(expanded$terms)
   shifts <- stats::setNames(
     vapply(
@@ -1590,7 +1628,7 @@ expand_prediction_metadata <- function(object, raw_columns) {
     ),
     raw_columns
   )
-  
+
   list(
     terms = expanded$terms,
     powers = expanded$powers,
@@ -1623,11 +1661,11 @@ decode_grouped_term_values <- function(object, term, block) {
   } else {
     NULL
   }
-  
+
   if (!is.null(info) && !is.null(info$design_by_level)) {
     design <- as.matrix(info$design_by_level)
     out <- rep(NA_character_, nrow(block))
-    
+
     for (i in seq_len(nrow(block))) {
       matches <- which(vapply(
         seq_len(nrow(design)),
@@ -1642,17 +1680,17 @@ decode_grouped_term_values <- function(object, term, block) {
         },
         logical(1L)
       ))
-      
+
       if (length(matches) > 0L) {
         out[[i]] <- rownames(design)[matches[[1L]]]
       }
     }
-    
+
     if (all(!is.na(out))) {
       return(out)
     }
   }
-  
+
   # Non-factor grouped terms have no level labels; expose their design row as
   # a compact signature so the returned value remains identifiable.
   apply(
@@ -1683,10 +1721,10 @@ resolve_grouped_reference <- function(object, term, reference, block) {
   } else {
     NULL
   }
-  
+
   if (!is.null(info)) {
     level <- if (is.null(reference)) info$levels[[1L]] else as.character(reference)
-    
+
     if (length(level) == 1L && level %in% rownames(info$design_by_level)) {
       values <- info$design_by_level[level, columns, drop = FALSE]
       if (anyNA(values)) {
@@ -1698,7 +1736,7 @@ resolve_grouped_reference <- function(object, term, reference, block) {
       }
       return(values)
     }
-    
+
     if (!is.numeric(reference)) {
       stop(
         "Reference for factor term '", term, "' must be one of: ",
@@ -1707,13 +1745,13 @@ resolve_grouped_reference <- function(object, term, reference, block) {
       )
     }
   }
-  
+
   # For manually grouped terms, default to the first observed complete design
   # row when no explicit reference is supplied.
   if (is.null(reference)) {
     reference <- block[1L, , drop = FALSE]
   }
-  
+
   if (is.data.frame(reference) || is.matrix(reference)) {
     reference <- as.matrix(reference)
     if (nrow(reference) != 1L) {
@@ -1733,7 +1771,7 @@ resolve_grouped_reference <- function(object, term, reference, block) {
   } else {
     reference_names <- names(reference)
     reference <- as.numeric(reference)
-    
+
     if (!is.null(reference_names) && all(nzchar(reference_names))) {
       missing <- setdiff(columns, reference_names)
       if (length(missing) > 0L) {
@@ -1746,7 +1784,7 @@ resolve_grouped_reference <- function(object, term, reference, block) {
       names(reference) <- reference_names
       reference <- reference[columns]
     }
-    
+
     if (length(reference) != length(columns)) {
       stop(
         "Reference for grouped term '", term, "' must contain ",
@@ -1756,19 +1794,19 @@ resolve_grouped_reference <- function(object, term, reference, block) {
     }
     reference <- matrix(reference, nrow = 1L, dimnames = list(NULL, columns))
   }
-  
+
   storage.mode(reference) <- "double"
   reference
 }
 
 
 #' Transform Linear Predictor to Response or Risk
-#' 
+#'
 #' Converts linear predictors (`nfit`) from a model to the appropriate scale
 #' for interpretation or prediction, depending on the model family, link function,
 #' and type of prediction. This is an internal helper function for GLMs, survival models,
 #' used by mfp2 prediction helpers.
-#' 
+#'
 #' @param nfit Numeric vector of linear predictors \eqn{X\beta}.
 #' @param family Character string specifying the model family. Supported families include:
 #'   - `"gaussian"`: linear regression
@@ -1777,29 +1815,29 @@ resolve_grouped_reference <- function(object, term, reference, block) {
 #'   - `"cox"`: proportional hazards model
 #'   - other families fallback to returning `nfit`
 #' @param link Character string specifying the link function. Defaults:
-#'   - Gaussian: `"identity"`  
-#'   - Binomial: `"logit"`  
-#'   - Poisson: `"log"`  
+#'   - Gaussian: `"identity"`
+#'   - Binomial: `"logit"`
+#'   - Poisson: `"log"`
 #'   Supported links:
-#'   - Gaussian: `"identity"`, `"log"`, `"inverse"`  
-#'   - Binomial: `"logit"`, `"probit"`, `"cloglog"`, `"cauchit"`, `"identity"`, `"log"`  
+#'   - Gaussian: `"identity"`, `"log"`, `"inverse"`
+#'   - Binomial: `"logit"`, `"probit"`, `"cloglog"`, `"cauchit"`, `"identity"`, `"log"`
 #'   - Poisson: `"log"`, `"identity"`, `"sqrt"`
 #' @param type Character string specifying the type of prediction:
 #'   - `"response"` or `"risk"`: returns predictions on the response/probability scale
 #'   - `NULL` (default): returns the linear predictor itself
-#' 
+#'
 #' @return Numeric vector of predictions on the requested scale.
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' # Binomial example
 #' lp_bin <- c(-1, 0, 1)
 #' transform_linear_predictor(lp_bin, family = "binomial", link = "logit", type = "response")
-#' 
+#'
 #' # Poisson example
 #' lp_pois <- c(0.5, 1, 1.5)
 #' transform_linear_predictor(lp_pois, family = "poisson", link = "log", type = "response")
-#' 
+#'
 #' # Gaussian example
 #' lp_gauss <- c(1, 2, 3)
 #' transform_linear_predictor(lp_gauss, family = "gaussian", link = "log", type = "response")
@@ -1807,18 +1845,19 @@ resolve_grouped_reference <- function(object, term, reference, block) {
 #' @keywords internal
 #' @noRd
 transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
-  
+
   # Use the canonical link for supported families when the fitted link is absent.
   if (is.null(link)) {
     link <- switch(family,
                    gaussian = "identity",
                    binomial = "logit",
                    poisson  = "log",
+                   negbin   = "log",
                    NULL)
   }
-  
+
   switch(family,
-         
+
          # Gaussian family with multiple links
          gaussian = {
            if (!is.null(type) && type == "response") {
@@ -1829,7 +1868,7 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
                     stop("Unknown Gaussian link"))
            } else nfit
          },
-         
+
          # Binomial family with multiple links
          binomial = {
            if (!is.null(type) && type == "response") {
@@ -1843,8 +1882,8 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
                     stop("Unknown binomial link"))
            } else nfit
          },
-         
-         # Poisson family with multiple links
+
+         # Poisson and negative-binomial count models use the same links.
          poisson = {
            if (!is.null(type) && type == "response") {
              switch(link,
@@ -1854,12 +1893,22 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
                     stop("Unknown Poisson link"))
            } else nfit
          },
-         
+
+         negbin = {
+           if (!is.null(type) && type == "response") {
+             switch(link,
+                    log      = exp(nfit),
+                    identity = nfit,
+                    sqrt     = nfit^2,
+                    stop("Unknown negative-binomial link"))
+           } else nfit
+         },
+
          # Cox proportional hazards: exponentiate for risk
          cox = {
            if (!is.null(type) && type %in% c("response", "risk")) exp(nfit) else nfit
          },
-         
+
          # Unknown families remain on the linear-predictor scale.
          nfit
   )
@@ -1895,26 +1944,26 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
 #' @noRd
 requires_positive_raw_input <- function(object, v) {
   powers <- object$fp_powers[[v]]
-  
+
   if (is.null(powers) || all(is.na(powers))) {
     return(FALSE)
   }
-  
+
   if (!is.null(object$zero) && isTRUE(object$zero[[v]])) {
     return(FALSE)
   }
-  
+
   if (!is.null(object$spike_dec) &&
       v %in% names(object$spike_dec) &&
       !is.na(object$spike_dec[[v]]) &&
       as.integer(object$spike_dec[[v]]) == saz_decision_codes[["binary_only"]]) {
     return(FALSE)
   }
-  
+
   is_acd <- !is.null(object$acd) &&
     v %in% names(object$acd) &&
     isTRUE(object$acd[[v]])
-  
+
   raw_powers <- if (is_acd) {
     # For ACD terms:
     #   powers[1] applies to raw x
@@ -1926,7 +1975,7 @@ requires_positive_raw_input <- function(object, v) {
   } else {
     powers
   }
-  
+
   fp_power_requires_positive_input(raw_powers)
 }
 
@@ -1943,7 +1992,7 @@ prediction_formula_source_name <- function(term_label) {
   if (!is.null(factor_source)) {
     return(factor_source)
   }
-  
+
   formula_fp_source_name(term_label)
 }
 
@@ -1951,7 +2000,7 @@ prediction_formula_source_name <- function(term_label) {
 prediction_formula_term_map <- function(object) {
   map <- object$formula_prediction_term_names
   labels <- attr(object$formula_terms, "term.labels")
-  
+
   if (!is.null(map)) {
     if (!is.character(map) || is.null(names(map)) || anyDuplicated(names(map))) {
       stop("The fitted formula prediction-term map is malformed.",
@@ -1967,7 +2016,7 @@ prediction_formula_term_map <- function(object) {
     }
     return(map[labels])
   }
-  
+
   # Backward-compatible fallback for objects fitted before the explicit map was
   # stored. Bare terms and simple factor wrappers can be resolved safely. More
   # complex legacy formula objects retain the previous complete-formula replay.
@@ -1993,7 +2042,7 @@ prediction_formula_terms <- function(object, terms) {
   labels <- attr(terms_object, "term.labels")
   active_labels <- names(term_map)[unname(term_map) %in% terms]
   keep_labels <- active_labels
-  
+
   # Preserve lower-order terms that use only variables from an active term.
   # model.matrix() uses the term hierarchy when deciding factor contrast coding;
   # retaining these support terms reproduces the fit-time columns for active
@@ -2016,12 +2065,12 @@ prediction_formula_terms <- function(object, terms) {
       keep_labels <- union(keep_labels, support_labels)
     }
   }
-  
+
   drop_indices <- which(!labels %in% keep_labels)
   if (length(drop_indices) > 0L) {
     terms_object <- terms_object[-drop_indices]
   }
-  
+
   terms_object
 }
 
@@ -2042,24 +2091,24 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   if (!isTRUE(object$formula_interface)) {
     return(newdata)
   }
-  
+
   if (is.null(terms)) {
     terms <- get_selected_variable_names(object)
   }
   lookup <- prediction_term_to_columns(object, terms = terms)
   expected <- unlist(lookup, use.names = FALSE)
-  
+
   # A final intercept-only model has no predictor dependencies. Preserve the
   # requested row count without evaluating any original formula expression.
   if (length(expected) == 0L) {
     return(data.frame(row.names = seq_len(nrow(newdata))))
   }
-  
+
   # Accept callers that already supplied the exact active model-matrix columns.
   if (all(expected %in% colnames(newdata))) {
     return(newdata[, expected, drop = FALSE])
   }
-  
+
   if (is.null(object$formula_terms)) {
     stop(
       "! This object was fitted using the formula interface, but formula terms ",
@@ -2067,7 +2116,7 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
       call. = FALSE
     )
   }
-  
+
   newdata_df <- as.data.frame(newdata)
   active_formula_terms <- prediction_formula_terms(object, terms)
   active_factors <- attr(active_formula_terms, "factors")
@@ -2079,7 +2128,7 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
   active_xlevels <- object$formula_xlevels[
     intersect(names(object$formula_xlevels), active_frame_variables)
   ]
-  
+
   # model.frame() evaluates only active formula expressions and enforces their
   # fitted factor levels; model.matrix() recreates the fitted contrast coding.
   mf <- stats::model.frame(
@@ -2096,10 +2145,10 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
     data = mf,
     contrasts.arg = active_contrasts
   )
-  
+
   keep_cols <- colnames(mm) != "(Intercept)"
   mm <- mm[, keep_cols, drop = FALSE]
-  
+
   # Restore the exact column names used by the fitted object after formula
   # sanitisation or internal fp()/fp2() renaming.
   column_map <- object$formula_column_map
@@ -2107,7 +2156,7 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
     mapped <- unname(column_map[colnames(mm)])
     colnames(mm) <- ifelse(is.na(mapped), colnames(mm), mapped)
   }
-  
+
   missing <- setdiff(expected, colnames(mm))
   if (length(missing) > 0L) {
     stop(
@@ -2116,7 +2165,7 @@ reconstruct_formula_newdata <- function(object, newdata, terms = NULL) {
       call. = FALSE
     )
   }
-  
+
   mm[, expected, drop = FALSE]
 }
 
@@ -2153,9 +2202,9 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
       is.null(object$formula_strata_terms)) {
     return(NULL)
   }
-  
+
   newdata_df <- as.data.frame(newdata)
-  
+
   mf <- tryCatch(
     stats::model.frame(
       object$formula_strata_terms,
@@ -2175,14 +2224,14 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
       )
     }
   )
-  
+
   if (NROW(mf) != NROW(newdata_df)) {
     stop(
       "! Formula-level Cox strata reconstruction returned the wrong number of rows.",
       call. = FALSE
     )
   }
-  
+
   if (anyNA(mf)) {
     stop(
       "! Reconstructed Cox strata contain missing values.\n",
@@ -2190,7 +2239,7 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
       call. = FALSE
     )
   }
-  
+
   if (NCOL(mf) == 1L) {
     mf[[1L]]
   } else {
@@ -2228,7 +2277,7 @@ reconstruct_formula_strata_newdata <- function(object, newdata) {
 #' @noRd
 mfp2_cox_offset_reference <- function(object) {
   reference <- object$cox_offset_reference
-  
+
   if (!is.numeric(reference) || length(reference) != 1L ||
       is.na(reference) || !is.finite(reference)) {
     stop(
@@ -2239,7 +2288,7 @@ mfp2_cox_offset_reference <- function(object) {
       call. = FALSE
     )
   }
-  
+
   unname(reference)
 }
 
@@ -2275,9 +2324,9 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
       is.null(object$formula_offset_terms)) {
     return(NULL)
   }
-  
+
   newdata_df <- as.data.frame(newdata)
-  
+
   # Validate the raw numeric variables used by the stored offset expression
   # before model.frame() evaluates transformations such as log(). This gives
   # missing and non-finite inputs a deterministic prediction error and prevents
@@ -2294,7 +2343,7 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
       newdata_df[, offset_source_columns, drop = FALSE]
     )
   }
-  
+
   mf <- tryCatch(
     stats::model.frame(
       object$formula_offset_terms,
@@ -2314,39 +2363,39 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
       )
     }
   )
-  
+
   out <- stats::model.offset(mf)
-  
+
   if (is.null(out)) {
     stop(
       "! Formula-level offset could not be evaluated from `newdata`.",
       call. = FALSE
     )
   }
-  
+
   out <- as.vector(out)
-  
+
   if (length(out) != NROW(newdata_df)) {
     stop(
       "! Formula-level offset reconstruction returned the wrong number of rows.",
       call. = FALSE
     )
   }
-  
+
   if (anyNA(out) || any(!is.finite(out))) {
     stop(
       "! Reconstructed offset contains missing or non-finite values.",
       call. = FALSE
     )
   }
-  
+
   out
 }
 
 #' Helper function to prepare newdata for predict function
-#' 
+#'
 #' To be used in \code{predict.mfp2()}.
-#' 
+#'
 #' @param object fitted `mfp2` model object.
 #' @param newdata Numeric design data on the raw model-matrix scale. Full-model
 #'   prediction requires every fitted term. Internal term prediction may supply
@@ -2395,11 +2444,11 @@ prepare_newdata_for_predict <- function(object,
   # selected. Predictor isolation therefore precedes matrix conversion.
   newdata <- as.data.frame(newdata, check.names = FALSE)
   n_newdata <- nrow(newdata)
-  
+
   if (is.null(colnames(newdata)) || any(colnames(newdata) == "")) {
     stop("! newdata must have non-empty column names.", call. = FALSE)
   }
-  
+
   # Resolve the conceptual-term lookup once. Full prediction requires every raw
   # member column; term-specific prediction may include complete term subsets.
   if (is.null(terms)) {
@@ -2408,7 +2457,7 @@ prepare_newdata_for_predict <- function(object,
   lookup <- prediction_term_to_columns(object, terms = terms)
   expected <- unlist(lookup, use.names = FALSE)
   missing <- setdiff(expected, colnames(newdata))
-  
+
   if (length(missing) > 0L && !isTRUE(allow_missing_predictors)) {
     stop(
       "! Missing required predictor column(s) in newdata: ",
@@ -2416,7 +2465,7 @@ prepare_newdata_for_predict <- function(object,
       call. = FALSE
     )
   }
-  
+
   # Count supplied raw columns per conceptual term. Partial categorical blocks
   # are invalid because they would change the fitted parameterisation.
   present_by_term <- vapply(
@@ -2427,7 +2476,7 @@ prepare_newdata_for_predict <- function(object,
   partial_terms <- names(lookup)[
     present_by_term > 0L & present_by_term < lengths(lookup)
   ]
-  
+
   if (length(partial_terms) > 0L) {
     details <- vapply(
       partial_terms,
@@ -2443,19 +2492,19 @@ prepare_newdata_for_predict <- function(object,
       call. = FALSE
     )
   }
-  
+
   active_terms <- names(lookup)[present_by_term == lengths(lookup)]
-  
+
   # Expand complete conceptual terms in lookup order. This keeps every grouped
   # block contiguous and gives transform_matrix() raw-column metadata in the
   # same order as the supplied design block.
   raw_columns <- unlist(lookup[active_terms], use.names = FALSE)
-  
+
   if (length(raw_columns) == 0L) {
     newdata <- data.frame(row.names = seq_len(n_newdata))
   } else {
     newdata <- newdata[, raw_columns, drop = FALSE]
-    
+
     non_numeric <- raw_columns[
       !vapply(newdata, is.numeric, logical(1L))
     ]
@@ -2466,20 +2515,20 @@ prepare_newdata_for_predict <- function(object,
         call. = FALSE
       )
     }
-    
+
     # Keep this guard immediately before shifting and transformation. It also
     # protects internal callers that bypass the public method's earlier check.
     mfp2_validate_prediction_newdata(newdata)
-    
+
     newdata <- as.matrix(newdata)
     storage.mode(newdata) <- "double"
     metadata <- expand_prediction_metadata(object, raw_columns)
-    
+
     # Apply the fitted shift only to raw user data. Stored x_original data and
     # internally generated term grids are already on the shifted prediction scale.
     if (apply_pre) {
       newdata <- sweep(newdata, 2L, metadata$shift[raw_columns], "+")
-      
+
       positive_terms <- active_terms[
         vapply(
           active_terms,
@@ -2489,7 +2538,7 @@ prepare_newdata_for_predict <- function(object,
           logical(1L)
         )
       ]
-      
+
       if (length(positive_terms) > 0L) {
         bad_terms <- positive_terms[
           vapply(
@@ -2501,7 +2550,7 @@ prepare_newdata_for_predict <- function(object,
             logical(1L)
           )
         ]
-        
+
         if (length(bad_terms) > 0L) {
           bad_summary <- vapply(
             bad_terms,
@@ -2512,7 +2561,7 @@ prepare_newdata_for_predict <- function(object,
             },
             character(1L)
           )
-          
+
           stop(
             "After applying the shift values learned during fitting, some values in ",
             "`newdata` remain non-positive for terms whose fitted transformation ",
@@ -2523,7 +2572,7 @@ prepare_newdata_for_predict <- function(object,
         }
       }
     }
-    
+
     # ACD prediction needs the parameters estimated at fit time for each active
     # singleton ACD term.
     active_acd <- raw_columns[
@@ -2537,7 +2586,7 @@ prepare_newdata_for_predict <- function(object,
         logical(1L)
       )
     ]
-    
+
     if (length(missing_acd) > 0L) {
       stop(
         "Missing stored ACD parameters for prediction column(s): ",
@@ -2545,7 +2594,7 @@ prepare_newdata_for_predict <- function(object,
         call. = FALSE
       )
     }
-    
+
     # Recreate the exact uncentred transformed columns used by the final model.
     x_trans <- transform_matrix(
       newdata,
@@ -2561,12 +2610,12 @@ prepare_newdata_for_predict <- function(object,
       spike_decision = metadata$spike_decision,
       reset_zero = reset_zero
     )
-    
+
     if (is.null(x_trans)) {
       newdata <- matrix(numeric(0L), nrow = n_newdata, ncol = 0L)
     } else {
       newdata <- x_trans$x_transformed
-      
+
       # Apply the stored final-model centres after transformation.
       if (apply_center && !is.null(object$centers)) {
         newdata <- center_matrix(
@@ -2576,14 +2625,14 @@ prepare_newdata_for_predict <- function(object,
         )
       }
     }
-    
+
     if (NCOL(newdata) == 0L) {
       newdata <- data.frame(row.names = seq_len(n_newdata))
     } else {
       newdata <- data.frame(newdata, check.names = FALSE)
     }
   }
-  
+
   # Attach high-level strata and offset variables expected by the stored model
   # formula after the predictor design has been reconstructed.
   if (object$family_string == "cox" && !is.null(strata)) {
@@ -2603,7 +2652,7 @@ prepare_newdata_for_predict <- function(object,
     if (length(bad_numeric_strata) > 0L) {
       stop("! Numeric `strata` values must be finite.", call. = FALSE)
     }
-    
+
     newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
       do.call(
         survival::strata,
@@ -2613,7 +2662,7 @@ prepare_newdata_for_predict <- function(object,
       strata
     }
   }
-  
+
   if (!is.null(offset)) {
     if (!is.numeric(offset) || anyNA(offset) || any(!is.finite(offset))) {
       stop("! offset must be a finite numeric vector.", call. = FALSE)
@@ -2623,54 +2672,54 @@ prepare_newdata_for_predict <- function(object,
     }
     newdata$offset_ <- offset
   }
-  
+
   newdata
 }
 #' Helper function to compute standard error of a partial predictor
-#' 
+#'
 #' To be used in \code{predict.mfp2()}.
-#' 
+#'
 #' @param model fitted `mfp2` object.
 #' @param X transformed input matrix with variables of interest for partial predictor.
 #' @param xref transformed reference value for variable of interest. Default is
-#'  `NULL`, in which case this function computes standard errors without reference 
+#'  `NULL`, in which case this function computes standard errors without reference
 #' values.
 #' @param include_intercept logical indicating whether intercept variance and
 #' covariance should be included when no reference value is supplied. This must
 #' match the `add_intercept` choice used for term predictions.
-#' 
-#' @details 
+#'
+#' @details
 #' See pages 91-92 and following in the book by Royston and Sauerbrei 2008
 #' for the formulas and mathematical details.
-#' 
-#' @return 
+#'
+#' @return
 #' Numeric vector of conditional standard errors.
-#' 
+#'
 #' @references
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 #' @keywords internal
 #' @noRd
-calculate_standard_error <- function(model, 
-                                     X, 
+calculate_standard_error <- function(model,
+                                     X,
                                      xref = NULL,
-                                     include_intercept = TRUE) { 
-  
+                                     include_intercept = TRUE) {
+
   vcovx <- vcov(object = model)
-  
+
   # Small or rank-deficient fitted samples can yield undefined covariance entries.
   if (any(is.nan(vcovx)))
     warning("i NaN detected in the covariance matrix of the model.",
             "i Standard errors for calculation of confidence intervals may not exist")
-  
+
   # Use the exact fit-time mapping between transformed matrix columns and
   # fitted coefficient names. This handles non-syntactic formula terms without
   # modifying either the transformed matrix names or the model covariance names.
   xnames <- colnames(X)
   model_columns <- prediction_model_column_names(model, xnames)
   ind <- match(model_columns, colnames(vcovx))
-  
+
   if (anyNA(ind)) {
     stop(
       "Cannot compute SE; covariance matrix lacks mapped columns: ",
@@ -2678,12 +2727,12 @@ calculate_standard_error <- function(model,
       call. = FALSE
     )
   }
-  
+
   if (!is.null(xref)) {
     # Subtract the reference value: f(x)-f(xref)
     X <- sweep(X, 2, xref, "-")
   }
-  
+
   # Augment X by the intercept only when the reported term value includes
   # the intercept. Contrasts and Cox partial predictors do not include intercept
   # variance.
@@ -2698,10 +2747,10 @@ calculate_standard_error <- function(model,
     X <- cbind("(Intercept)" = 1, X)
     ind <- c(intercept_ind, ind)
   }
-  
+
   # Compute diag(X V X') without constructing the full n-by-n product.
   vcovx <- vcovx[ind, ind, drop = FALSE]
   v <- rowSums((X %*% vcovx) * X)
-  
+
   sqrt(v)
 }

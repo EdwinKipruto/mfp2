@@ -44,137 +44,149 @@
 #' @keywords internal
 #' @noRd
 deviance_gaussian <- function(residuals, weights) {
-  
+
   if (is.null(residuals) || is.null(weights)) {
     return(NULL)
   }
-  
+
   if (length(residuals) != length(weights)) {
     stop(
       "`residuals` and `weights` must have the same length.",
       call. = FALSE
     )
   }
-  
+
   ok <- !is.na(residuals) & !is.na(weights) &
     is.finite(residuals) & is.finite(weights)
-  
+
   residuals <- residuals[ok]
   weights <- weights[ok]
-  
+
   if (!length(residuals)) {
     return(NULL)
   }
-  
+
   if (any(weights < 0)) {
     stop("`weights` must be non-negative.", call. = FALSE)
   }
-  
+
   if (!any(weights > 0)) {
     return(NULL)
   }
-  
+
   # Zero-weight observations do not contribute to the weighted RSS and cannot
   # enter log(weights / mean(weights)); exclude them consistently.
   positive <- weights > 0
   residuals <- residuals[positive]
   weights <- weights[positive]
-  
+
   rss <- sum(weights * residuals^2)
   n <- length(residuals)
-  
+
   if (!is.finite(rss) || rss <= 0) {
     return(NULL)
   }
-  
+
   meanwts <- mean(log(weights / mean(weights)))
   k <- log((2 * pi * rss) / n)
-  
+
   n * (1 - meanwts + k)
 }
 
 
 
 #' Function to compute model metrics to be used within `mfp2`
-#' 
+#'
 #' Mostly used within an mfp step to compare between the different fp models
-#' of a variable. 
-#' 
+#' of a variable.
+#'
 #' @param obj a list returned by \code{fit_model()} representing a glm or Cox model
 #' fit.
 #' @param n_obs a numeric value indicating the number of observations for the
 #' data used to fit `obj`.
 #' @param df_additional a numeric value indicating the number of additional
-#' degrees of freedom to be accounted for in the computations of AIC and BIC. 
+#' degrees of freedom to be accounted for in the computations of AIC and BIC.
 #' These may be necessary when a model uses FP terms, as these add another
-#' degree of freedom per estimated power. 
-#' 
-#' @return 
+#' degree of freedom per estimated power.
+#'
+#' @return
 #' A numeric vector with the following entries:
-#' 
-#' * `df`: number of degrees of freedom of model (i.e. coefficients plus 
+#'
+#' * `df`: number of degrees of freedom of model (i.e. coefficients plus
 #' `df_additional`).
-#' * `deviance_rs`: "deviance", i.e. minus twice the log likelihood. 
-#' This is not the usual definition of deviance used by R, which is defined as 
+#' * `deviance_rs`: "deviance", i.e. minus twice the log likelihood.
+#' This is not the usual definition of deviance used by R, which is defined as
 #' twice the difference between the log likelihoods of the saturated model
-#' (one parameter per observation) and the null (or reduced) model. 
-#' It is, however, the definition used in Royston and Sauerbrei (2008) and in 
-#' `mfp`. For selection of fps this does not really play a role, as the common 
-#' factor would be cancelled anyway when comparing models based on deviances. 
-#' * `sse`: sum of squared residuals as returned by \code{fit_model()}.
-#' * `deviance_gaussian`: deviance computed by \code{deviance_gaussian()}, 
+#' (one parameter per observation) and the null (or reduced) model.
+#' It is, however, the definition used in Royston and Sauerbrei (2008) and in
+#' `mfp`. For selection of fps this does not really play a role, as the common
+#' factor would be cancelled anyway when comparing models based on deviances.
+#' * `sse`: weighted sum of squared residuals for Gaussian models; `NA` for
+#' other families.
+#' * `deviance_gaussian`: deviance computed by \code{deviance_gaussian()},
 #' applicable to Gaussian models and used for F-test computations.
 #' * `aic`: Akaike information criterion, defined as
 #' `-2logL + 2(df + df_additional)`.
-#' * `bic`: Bayesian information criterion, defined as 
+#' * `bic`: Bayesian information criterion, defined as
 #' `-2logL + log(n_obs)(df + df_additional)`.
-#' * `df_resid`: residual degrees of freedom, defined as `n_obs - df`. 
-#' For consistency with stata we subtract the scale parameter from `df`. 
-#' 
-#' @references 
-#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials 
+#' * `df_resid`: residual degrees of freedom. Gaussian scale and negative-
+#' binomial theta are excluded, while regression and FP transformation degrees
+#' of freedom are subtracted from `n_obs`.
+#'
+#' @references
+#' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
 #' @keywords internal
 #' @noRd
-calculate_model_metrics <- function(obj, 
-                                    n_obs, 
+calculate_model_metrics <- function(obj,
+                                    n_obs,
                                     df_additional = 0) {
   # Collect the core model metrics returned by fit_model().
   #
   # obj$df is the model degrees of freedom reported by fit_model().
   # For Gaussian models, fit_model() includes the estimated scale parameter
-  # in obj$df, so obj$df = regression rank + 1.
-  #
-  # For non-Gaussian GLMs and Cox models, there is no estimated scale
-  # parameter included, so obj$df is just the regression-model df.
+  # in obj$df, and negative-binomial models include theta. Their nuisance-df
+  # contribution is derived below from obj$df and the fitted regression rank.
   #
   # df_additional is used to add extra degrees of freedom for FP/ACD
   # transformations when the fitted model has more transformation parameters
   # than ordinary linear terms.
   res <- c(
     logl = obj$logl,
-    df = obj$df + df_additional, 
-    deviance_rs = -2 * obj$logl, 
+    df = obj$df + df_additional,
+    deviance_rs = -2 * obj$logl,
     sse = obj$sse
   )
-  
-  # Residual df should subtract only model/regression parameters from n_obs.
-  # Gaussian obj$df includes one additional scale parameter, so remove it.
-  # Non-Gaussian and Cox obj$df do not include a scale parameter.
-  df_for_resid <- if (isTRUE(obj$has_scale_parameter)) {
-    res[["df"]] - 1
+
+  # Residual df should subtract only regression and transformation
+  # parameters. Gaussian scale and negative-binomial theta are nuisance
+  # parameters included in obj$df but not in the regression residual df.
+  # Derive their count from the fitted regression rank rather than carrying
+  # family-specific boolean flags in every fit_model() result.
+  fit_rank <- obj$fit$rank
+  regression_df <- if (is.numeric(fit_rank) && length(fit_rank) == 1L &&
+                       !is.na(fit_rank) && is.finite(fit_rank)) {
+    unname(fit_rank)
   } else {
-    res[["df"]]
+    sum(!is.na(obj$coefficients))
   }
-  
-  c(res, 
-    deviance_gaussian = deviance_gaussian(
-      residuals = obj$fit$residuals,
-      weights = obj$weights
-    ), 
+
+  nuisance_df <- max(0, obj$df - regression_df)
+  df_for_resid <- res[["df"]] - nuisance_df
+
+  gaussian_deviance <- deviance_gaussian(
+    residuals = obj$residuals,
+    weights = obj$weights
+  )
+  if (is.null(gaussian_deviance)) {
+    gaussian_deviance <- NA_real_
+  }
+
+  c(res,
+    deviance_gaussian = gaussian_deviance,
     aic = res[["deviance_rs"]] + 2 * res[["df"]],
-    bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]], 
+    bic = res[["deviance_rs"]] + log(n_obs) * res[["df"]],
     df_resid = n_obs - df_for_resid
   )
 }

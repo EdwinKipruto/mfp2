@@ -43,7 +43,8 @@ The default is \code{"best"}.}
 
 \item{type}{The prediction type. Use \code{"function"}, \code{"difference"}, or
 \code{"both"} for fitted curves. For predictions for individual observations,
-Gaussian, binomial, and Poisson models support \code{"link"} and \code{"response"},
+Gaussian, binomial, Poisson, and negative-binomial models support
+\code{"link"} and \code{"response"},
 while Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and
 \code{"survival"}. If \code{NULL}, \code{"both"} is used.}
 
@@ -195,7 +196,7 @@ the default when \code{type = NULL}.
 
 Use the following types for predictions for individual observations:
 \itemize{
-\item For Gaussian, binomial, and Poisson models, \code{type = "link"} returns the
+\item For Gaussian, binomial, Poisson, and negative-binomial models, \code{type = "link"} returns the
 linear predictor and \code{type = "response"} applies the inverse link function.
 \code{"lp"} is accepted as another name for \code{"link"}.
 \item For Cox models, \code{type = "lp"} returns the relative log-hazard,
@@ -234,7 +235,7 @@ linear-predictor scale. With the standard links, this is:
 \itemize{
 \item the outcome scale for a Gaussian identity-link model;
 \item the log-odds scale for a binomial logit model;
-\item the log-mean scale for a Poisson log-link model;
+\item the log-mean scale for Poisson and negative-binomial log-link models;
 \item a partial log-hazard scale for a Cox model.
 }
 

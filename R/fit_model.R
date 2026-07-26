@@ -1,8 +1,8 @@
 #' Function that fits models supported by `mfp2`
-#' 
-#' Fits generalized linear models and Cox proportional hazard models. 
-#' 
-#' @details 
+#'
+#' Fits generalized linear models and Cox proportional hazard models.
+#'
+#' @details
 #' Computations rely on \code{fit_glm()} and \code{fit_cox()}.
 #'
 #' @param x a matrix of predictors (excluding intercept) with column names.
@@ -12,25 +12,26 @@
 #' response accepted by [stats::glm()], or for binomial models a two-column
 #' matrix of grouped counts `cbind(successes, failures)`. For Cox models, this
 #' must be a [survival::Surv()] object.
-#' @param method a character string specifying the method for tie handling. 
+#' @param method a character string specifying the method for tie handling.
 #' See [survival::coxph()].
 #' @param family a character strong specifying glm family to be used, or "cox"
 #' for Cox models. The default family is set to 'Gaussian'.
-#' @param strata,control,weights,offset,rownames,nocenter parameters for Cox 
+#' @param strata,control,weights,offset,rownames,nocenter parameters for Cox
 #' or glm. See [survival::coxph()] or [stats::glm()] for details.
 #' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
+#' @param fitter GLM fitting backend; ignored for Cox models.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
 #' `x` as an already-intercepted model matrix. Must be FALSE for Cox models.
-#' 
-#' @return 
-#' A list with the following components: 
-#' 
+#'
+#' @return
+#' A list with the following components:
+#'
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: residual sum of squares.
+#' * `sse`: weighted residual sum of squares for Gaussian models; `NA` otherwise.
 #' * `null_deviance`: family-specific deviance of the null model. For GLMs,
 #'   this is the `null.deviance` returned by [stats::glm.fit()] or
 #'   [stats::glm()]. For Cox models, it is minus twice the null partial
@@ -41,7 +42,7 @@
 #' * `fit`: the object returned by the fitting procedure.
 #' * `transformed_to_model_columns`: for full fits, a named character vector
 #'   mapping source design columns to the exact fitted coefficient names.
-#' 
+#'
 #' @importFrom stats family
 #' @keywords internal
 #' @noRd
@@ -58,13 +59,13 @@ fit_model <- function(x,
                       nocenter = NULL,
                       fast = TRUE,
                       has_offset = FALSE,
-                      x_has_intercept = FALSE) {
-  
+                      x_has_intercept = FALSE,
+                      fitter = "base") {
   # Set column names if not provided
   if (!is.null(dim(x)) && is.null(colnames(x))) {
     colnames(x) <- colnames(x, do.NULL = FALSE)
   }
-  
+
   if (identical(family_string, "cox")) {
     if (isTRUE(x_has_intercept)) {
       stop(
@@ -72,7 +73,7 @@ fit_model <- function(x,
         call. = FALSE
       )
     }
-    
+
     fit <- fit_cox(
       x = x,
       y = y,
@@ -94,12 +95,14 @@ fit_model <- function(x,
       weights = weights,
       offset = offset,
       fast = fast,
+      fitter = fitter,
       has_offset = has_offset,
-      x_has_intercept = x_has_intercept
+      x_has_intercept = x_has_intercept,
+      family_string = family_string
     )
   }
-  
-  
+
+
   # Full formula-based fits may quote non-syntactic source-column names in
   # their coefficient vectors. Store the exact positional relationship once at
   # fit time so prediction code never has to add or remove backticks.
@@ -109,68 +112,70 @@ fit_model <- function(x,
     } else {
       colnames(x)
     }
-    
+
     if (isTRUE(x_has_intercept) && length(source_columns) > 0L &&
         identical(source_columns[[1L]], "(Intercept)")) {
       source_columns <- source_columns[-1L]
     }
-    
+
     fitted_columns <- names(fit$coefficients)
     if (is.null(fitted_columns)) {
       fitted_columns <- character(0L)
     }
     fitted_columns <- setdiff(fitted_columns, "(Intercept)")
-    
+
     if (length(source_columns) != length(fitted_columns)) {
       stop(
         "Internal error: fitted coefficient names do not align with source columns.",
         call. = FALSE
       )
     }
-    
+
     fit$transformed_to_model_columns <- stats::setNames(
       fitted_columns,
       source_columns
     )
   }
-  
+
   fit
 }
 
-#' Function that fits generalized linear models 
+#' Function that fits generalized linear models
 #'
 #' @param x a matrix of predictors with nobs observations.
 #' @param y Response variable. For GLMs, this may be a numeric vector, a factor
 #' response accepted by [stats::glm()], or for binomial models a two-column
-#' matrix of grouped counts `cbind(successes, failures)`. 
-#' @param family a family function e.g. `stats::gaussian()`.  
-#' @param weights a numeric vector of length nobs of 'prior weights' to be used 
+#' matrix of grouped counts `cbind(successes, failures)`.
+#' @param family a family function e.g. `stats::gaussian()`.
+#' @param weights a numeric vector of length nobs of 'prior weights' to be used
 #' in the fitting process. see [stats::glm()] for details.
-#' @param offset a numeric vector of length nobs of of a priori known component 
-#' to be included in the linear predictor during fitting. 
+#' @param offset a numeric vector of length nobs of of a priori known component
+#' to be included in the linear predictor during fitting.
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
 #' uses the normal fitting routines ([stats::glm()]) (used for the final output
-#' of `mfp2`). 
+#' of `mfp2`).
 #' The difference is mainly due to the fact that normal fitting routines have
 #' to handle data.frames, which is a lot slower than using the model matrix
-#' and outcome vectors directly. 
+#' and outcome vectors directly.
+#' @param fitter GLM fitting backend for the matrix fast path.
+#' @param family_string Normalized family name supplied by `fit_model()`.
 #' @param has_offset logical indicating whether `offset` should be included in
 #' the final formula-based fit when `fast = FALSE`.
 #' @param x_has_intercept internal logical. If TRUE, `x` is already the full
 #' model matrix including an intercept column named `"(Intercept)"`.
-#' 
-#' @return 
-#' A list with the following components: 
-#' 
+#'
+#' @return
+#' A list with the following components:
+#'
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: residual sum of squares.
+#' * `sse`: weighted residual sum of squares for Gaussian models; `NA` otherwise.
 #' * `null_deviance`: null-model deviance returned by the fitted GLM.
 #' * `model_deviance`: residual deviance returned by the fitted GLM.
 #' * `fit`: the fitted model object.
-#' 
+#'
 #' @import stats
 #' @keywords internal
 #' @noRd
@@ -181,12 +186,20 @@ fit_glm <- function(x,
                     offset,
                     fast = TRUE,
                     has_offset = FALSE,
-                    x_has_intercept = FALSE) {
-  
+                    x_has_intercept = FALSE,
+                    fitter = "base",
+                    family_string = NULL) {
+  if (is.null(family_string)) {
+    family_string <- if (is.character(family) && length(family) == 1L) {
+      family
+    } else {
+      family$family
+    }
+  }
   nobs <- NROW(y)
-  
+
   has_predictors <- !is.null(x) && NCOL(x) > 0L
-  
+
   if (isTRUE(x_has_intercept)) {
     if (!has_predictors) {
       stop(
@@ -194,7 +207,7 @@ fit_glm <- function(x,
         call. = FALSE
       )
     }
-    
+
     if (is.null(colnames(x)) || colnames(x)[1L] != "(Intercept)") {
       stop(
         "Internal error: x_has_intercept = TRUE requires first column '(Intercept)'.",
@@ -202,9 +215,9 @@ fit_glm <- function(x,
       )
     }
   }
-  
+
   if (fast) {
-    
+
     if (isTRUE(x_has_intercept)) {
       xx <- x
     } else if (has_predictors) {
@@ -216,25 +229,48 @@ fit_glm <- function(x,
         dimnames = list(NULL, "(Intercept)")
       )
     }
-    
-    fit <- stats::glm.fit(
-      x = xx,
-      y = y,
-      family = family,
-      weights = weights,
-      offset = offset
-    )
-    
+
+    fit <- if (identical(family_string, "negbin")) {
+      fit_glm_fastglm_nb(xx, y, weights, offset)
+    } else if (identical(fitter, "fastglm")) {
+      fit_glm_fastglm(xx, y, family, weights, offset)
+    } else {
+      stats::glm.fit(
+        x = xx,
+        y = y,
+        family = family,
+        weights = weights,
+        offset = offset
+      )
+    }
+
+  } else if (identical(family_string, "negbin")) {
+    # Negative-binomial fitting has no stats::glm() formula equivalent because
+    # theta is estimated jointly. Use the same rank-revealing matrix fitter for
+    # the single final fit while leaving all other families on stats::glm().
+    if (isTRUE(x_has_intercept)) {
+      xx <- x
+    } else if (has_predictors) {
+      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
+    } else {
+      xx <- matrix(
+        rep.int(1, nobs),
+        ncol = 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
+    }
+    fit <- fit_glm_fastglm_nb(xx, y, weights, offset)
+
   } else {
-    
+
     x_formula <- if (isTRUE(x_has_intercept)) {
       x[, -1L, drop = FALSE]
     } else {
       x
     }
-    
+
     has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
-    
+
     if (has_formula_predictors) {
       if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
         stop(
@@ -242,60 +278,60 @@ fit_glm <- function(x,
           call. = FALSE
         )
       }
-      
+
       data <- data.frame(x_formula, check.names = FALSE)
       rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
-      
+
     } else {
       data <- data.frame(row.names = seq_len(nobs))
       rhs <- "1"
     }
-    
+
     if (is.matrix(y)) {
       response_cols <- c("..mfp2_successes", "..mfp2_failures")
-      
+
       if (any(response_cols %in% names(data))) {
         stop(
           "Internal error: response column names conflict with design matrix names.",
           call. = FALSE
         )
       }
-      
+
       data[[response_cols[1L]]] <- y[, 1L]
       data[[response_cols[2L]]] <- y[, 2L]
-      
+
       lhs <- sprintf(
         "cbind(%s, %s)",
         response_cols[1L],
         response_cols[2L]
       )
-      
+
     } else {
       response_col <- "..mfp2_y"
-      
+
       if (response_col %in% names(data)) {
         stop(
           "Internal error: response column name conflicts with design matrix names.",
           call. = FALSE
         )
       }
-      
+
       data[[response_col]] <- y
       lhs <- response_col
     }
-    
+
     if (isTRUE(has_offset)) {
       data$offset_ <- offset
-      
+
       rhs <- if (identical(rhs, "1")) {
         "offset(offset_)"
       } else {
         paste(rhs, "+ offset(offset_)")
       }
     }
-    
+
     formula <- stats::as.formula(paste(lhs, "~", rhs))
-    
+
     fit <- stats::glm(
       formula = formula,
       data = data,
@@ -305,35 +341,50 @@ fit_glm <- function(x,
       y = TRUE
     )
   }
-  
-  # account for estimation of variance parameter in gaussian models
-  # computation as in logLik.glm using rank
-  df <- if (fit$family$family == "gaussian") fit$rank + 1 else fit$rank
-  
-  # we need weighted rss for gaussian
-  fit_weights <- fit$prior.weights
-  if (is.null(fit_weights)) {
-    fit_weights <- weights
+
+  # Gaussian scale and negative-binomial theta are estimated nuisance
+  # parameters in addition to the regression rank.
+  is_gaussian <- identical(family_string, "gaussian")
+  is_negbin <- identical(family_string, "negbin")
+  df <- fit$rank + as.integer(is_gaussian || is_negbin)
+
+  # Residuals, prior weights, and weighted RSS are needed only for Gaussian
+  # F-tests. Do not duplicate them in the fit_model() wrapper for binomial,
+  # Poisson, negative-binomial, or Cox models.
+  fit_residuals <- NULL
+  fit_weights <- NULL
+  sse <- NA_real_
+
+  if (is_gaussian) {
+    fit_residuals <- fit$residuals
+    fit_weights <- fit$prior.weights
+    if (is.null(fit_weights)) {
+      fit_weights <- weights
+    }
+
+    if (!is.numeric(fit_residuals) || !is.numeric(fit_weights) ||
+        length(fit_weights) != length(fit_residuals)) {
+      stop(
+        "Internal error: Gaussian residuals and weights are unavailable or ",
+        "have different lengths.",
+        call. = FALSE
+      )
+    }
+
+    sse <- sum(fit_weights * fit_residuals^2, na.rm = TRUE)
   }
-  
-  if (length(fit_weights) != length(fit$residuals)) {
-    stop(
-      "Internal error: fitted residuals and weights have different lengths.",
-      call. = FALSE
-    )
-  }
-  
+
   list(
     fit = fit,
-    # Log-likelihood computed as in stats::logLik.glm(). This remains the
-    # quantity used for likelihood-ratio tests and information criteria.
-    logl = df - fit$aic / 2,
+    # fastglm_nb() reports the maximized twice-log-likelihood directly. Its
+    # stored AIC does not include theta, so deriving logL from AIC would be off
+    # by one parameter. Other GLMs retain stats::logLik.glm()'s convention.
+    logl = if (is_negbin) fit$twologlik / 2 else df - fit$aic / 2,
     coefficients = fit$coefficients,
     df = df,
-    sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
-    residuals = fit$residuals,
+    sse = sse,
+    residuals = fit_residuals,
     weights = fit_weights,
-    has_scale_parameter = fit$family$family == "gaussian",
     # Use the family-specific deviances already computed by glm.fit()/glm().
     # These are not, in general, equal to minus twice the log-likelihood.
     null_deviance = unname(fit$null.deviance),
@@ -341,15 +392,351 @@ fit_glm <- function(x,
   )
 }
 
+#' Check whether the optional fastglm package is available
+#' @keywords internal
+#' @noRd
+fastglm_available <- function() {
+  requireNamespace("fastglm", quietly = TRUE)
+}
+
+#' Return functions exported by the installed fastglm package
+#' @keywords internal
+#' @noRd
+fastglm_exports <- function() {
+  getNamespaceExports("fastglm")
+}
+
+#' Resolve the effective GLM fitting backend once per top-level fit
+#'
+#' Ordinary GLMs fall back to the base fitter with one warning when fastglm is
+#' unavailable or does not expose the required matrix fitter. Negative-binomial
+#' models have no base fallback and therefore fail before candidate fitting.
+#' Cox models do not use a GLM fitter and always resolve to "base".
+#'
+#' @param fitter Requested fitter, "base" or "fastglm".
+#' @param family_string Normalized family name.
+#'
+#' @return The effective fitter, either "base" or "fastglm".
+#' @keywords internal
+#' @noRd
+resolve_fitter <- function(fitter, family_string) {
+  fitter <- match.arg(fitter, c("base", "fastglm"))
+
+  if (identical(family_string, "cox")) {
+    return("base")
+  }
+
+  if (identical(family_string, "negbin") &&
+      !identical(fitter, "fastglm")) {
+    stop(
+      "`family = \"negbin\"` is available only with `fitter = \"fastglm\"`; ",
+      "stats::glm.fit() cannot estimate the negative-binomial dispersion parameter.",
+      call. = FALSE
+    )
+  }
+
+  if (identical(fitter, "base")) {
+    return("base")
+  }
+
+  if (!fastglm_available()) {
+    if (identical(family_string, "negbin")) {
+      stop(
+        "`family = \"negbin\"` requires the optional 'fastglm' package. ",
+        "Install it with install.packages(\"fastglm\").",
+        call. = FALSE
+      )
+    }
+
+    warning(
+      "`fitter = \"fastglm\"` was requested but the 'fastglm' package is ",
+      "not installed; using `stats::glm.fit()` instead.",
+      call. = FALSE
+    )
+    return("base")
+  }
+
+  exports <- fastglm_exports()
+  has_glm <- "fastglm" %in% exports
+  has_nb <- "fastglm_nb" %in% exports
+
+  if (!has_glm) {
+    if (identical(family_string, "negbin")) {
+      stop(
+        "The installed 'fastglm' package does not export `fastglm()`; ",
+        "update fastglm before using `family = \"negbin\"`.",
+        call. = FALSE
+      )
+    }
+
+    warning(
+      "The installed 'fastglm' package does not export `fastglm()`; ",
+      "using `stats::glm.fit()` instead.",
+      call. = FALSE
+    )
+    return("base")
+  }
+
+  if (identical(family_string, "negbin") && !has_nb) {
+    stop(
+      "The installed 'fastglm' package does not export `fastglm_nb()`; ",
+      "update fastglm before using `family = \"negbin\"`.",
+      call. = FALSE
+    )
+  }
+
+  "fastglm"
+}
+
+#' Test whether a value is one finite numeric scalar
+#' @keywords internal
+#' @noRd
+is_finite_numeric_scalar <- function(value) {
+  is.numeric(value) && length(value) == 1L && !is.na(value) && is.finite(value)
+}
+
+#' Fit a GLM with fastglm and safely fall back to stats::glm.fit
+#'
+#' Package availability is resolved once by `resolve_fitter()` before entering
+#' the candidate-search path. This helper retains only candidate-specific error
+#' and return-value checks.
+#'
+#' @keywords internal
+#' @noRd
+fit_glm_fastglm <- function(x, y, family, weights, offset) {
+  fallback <- function() {
+    stats::glm.fit(
+      x = x,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset
+    )
+  }
+
+  fit_error <- NULL
+  fit <- tryCatch(
+    fastglm::fastglm(
+      x = x,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset,
+      method = 0L
+    ),
+    error = function(e) {
+      fit_error <<- e
+      NULL
+    }
+  )
+
+  family_name <- if (!is.null(fit) && is.list(fit$family)) {
+    fit$family$family
+  } else {
+    NULL
+  }
+  is_gaussian <- is.character(family_name) &&
+    length(family_name) == 1L && identical(family_name, "gaussian")
+
+  fit_is_usable <- !is.null(fit) &&
+    all(vapply(
+      list(fit$deviance, fit$aic, fit$rank, fit$null.deviance),
+      is_finite_numeric_scalar,
+      logical(1L)
+    )) &&
+    is.character(family_name) &&
+    length(family_name) == 1L &&
+    is.numeric(fit$coefficients)
+
+  # Only Gaussian candidate comparisons require residuals and weights for the
+  # package's F-test deviance. Other GLM families are compared by likelihood.
+  if (fit_is_usable && is_gaussian) {
+    fit_weights <- fit$prior.weights
+    if (is.null(fit_weights)) fit_weights <- fit$weights
+
+    fit_is_usable <- is.numeric(fit$residuals) &&
+      length(fit$residuals) == NROW(y) &&
+      is.numeric(fit_weights) &&
+      length(fit_weights) == NROW(y)
+  }
+
+  if (!fit_is_usable) {
+    if (!is.null(fit_error)) {
+      warning(
+        "fastglm failed for this candidate (", conditionMessage(fit_error),
+        "); falling back to stats::glm.fit().",
+        call. = FALSE
+      )
+    } else {
+      warning(
+        "fastglm returned a non-finite fit for this candidate; falling back ",
+        "to stats::glm.fit().",
+        call. = FALSE
+      )
+    }
+    return(fallback())
+  }
+
+  fit
+}
+
+#' Fit a negative-binomial GLM with fastglm
+#'
+#' Package and export availability are resolved once by `resolve_fitter()`.
+#' Negative-binomial fitting has no base fallback, so candidate-specific errors
+#' remain fatal.
+#'
+#' @keywords internal
+#' @noRd
+fit_glm_fastglm_nb <- function(x, y, weights, offset) {
+  fit <- tryCatch(
+    fastglm::fastglm_nb(
+      x = x,
+      y = y,
+      weights = weights,
+      offset = offset,
+      method = 0L
+    ),
+    error = function(e) {
+      stop(
+        "fastglm could not fit the requested negative-binomial model: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+
+  # fastglm_nb() does not return glm.fit()-style working residuals. They
+  # are not needed for negative-binomial candidate selection, which is based on
+  # the maximized likelihood, rank, deviance, and theta, so do not fabricate or
+  # store them in the fit_model() wrapper.
+
+  # fastglm_nb()'s stored aic counts the regression rank but not the jointly
+  # estimated dispersion parameter. Recalculate it before validating the fit.
+  if (is_finite_numeric_scalar(fit$twologlik) &&
+      is_finite_numeric_scalar(fit$rank)) {
+    fit$aic <- -fit$twologlik + 2 * (fit$rank + 1L)
+  }
+
+  scalar_fields_are_finite <- all(vapply(
+    list(
+      fit$deviance, fit$aic, fit$rank,
+      fit$theta, fit$twologlik
+    ),
+    is_finite_numeric_scalar,
+    logical(1L)
+  ))
+
+  vector_fields_are_usable <-
+    is.numeric(fit$coefficients) &&
+    is.numeric(fit$fitted.values) &&
+    length(fit$fitted.values) == NROW(y) &&
+    all(is.finite(fit$fitted.values)) &&
+    is.numeric(fit$linear.predictors) &&
+    length(fit$linear.predictors) == NROW(y) &&
+    all(is.finite(fit$linear.predictors)) &&
+    is.numeric(fit$prior.weights) &&
+    length(fit$prior.weights) == NROW(y) &&
+    all(is.finite(fit$prior.weights))
+
+  family_is_usable <-
+    is.list(fit$family) &&
+    is.character(fit$family$family) &&
+    length(fit$family$family) == 1L
+
+  if (!(scalar_fields_are_finite && vector_fields_are_usable &&
+        family_is_usable)) {
+    stop(
+      "fastglm returned an incomplete or non-finite negative-binomial fit; ",
+      "no base fitter fallback is available for `family = \"negbin\"`.",
+      call. = FALSE
+    )
+  }
+
+  # The rank + 1 AIC convention above matches MASS::glm.nb() and counts
+  # theta without over-counting aliased regression columns.
+  fit
+}
+
+
+#' Fit an intercept-only GLM and return its maximized log-likelihood
+#'
+#' This helper is called once for the full linear reference model. It must not
+#' be called from `fit_model()` itself because `fit_model()` is used throughout
+#' the repeated candidate-search hot path.
+#'
+#' Cox models already expose their null partial log-likelihood from the full
+#' fit and are therefore not supported here. For negative-binomial models,
+#' `fastglm_nb()` re-estimates theta for the intercept-only reference model.
+#'
+#' @param y Response used for fitting.
+#' @param family GLM family object, or the internal `"negbin"` sentinel.
+#' @param family_string Normalized family name.
+#' @param weights Optional prior weights.
+#' @param offset Optional linear-predictor offset.
+#'
+#' @return A finite numeric scalar containing the maximized log-likelihood.
+#'
+#' @keywords internal
+#' @noRd
+fit_null_model_logl <- function(y,
+                                family,
+                                family_string,
+                                weights = NULL,
+                                offset = NULL) {
+  if (identical(family_string, "cox")) {
+    stop(
+      "Internal error: Cox null log-likelihood is supplied by coxph.fit().",
+      call. = FALSE
+    )
+  }
+
+  null_x <- matrix(
+    rep.int(1, NROW(y)),
+    ncol = 1L,
+    dimnames = list(NULL, "(Intercept)")
+  )
+
+  logl <- if (identical(family_string, "negbin")) {
+    fit <- fit_glm_fastglm_nb(
+      x = null_x,
+      y = y,
+      weights = weights,
+      offset = offset
+    )
+    unname(fit$twologlik / 2)
+  } else {
+    fit <- stats::glm.fit(
+      x = null_x,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset
+    )
+
+    # AIC = -2 log L + 2k. The Gaussian null model estimates an intercept and
+    # a scale parameter; binomial and Poisson null models estimate only the
+    # intercept.
+    null_df <- if (identical(family_string, "gaussian")) 2L else 1L
+    unname(null_df - fit$aic / 2)
+  }
+
+  if (!is_finite_numeric_scalar(logl)) {
+    stop("The null-model log-likelihood is non-finite.", call. = FALSE)
+  }
+
+  logl
+}
+
 #' Function that fits Cox proportional hazards models
 #'
 #' @param x a matrix of predictors excluding intercept with nobs observations.
 #' @param y a `Surv` object.
-#' @param weights a numeric vector of length nobs of 'prior weights' to be used 
+#' @param weights a numeric vector of length nobs of 'prior weights' to be used
 #' in the fitting process.
-#' @param offset a numeric vector of length nobs of of a priori known component 
-#' to be included in the linear predictor during fitting. 
-#' @param method a character string specifying the method for tie handling. 
+#' @param offset a numeric vector of length nobs of of a priori known component
+#' to be included in the linear predictor during fitting.
+#' @param method a character string specifying the method for tie handling.
 #' See [survival::coxph()].
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
@@ -358,101 +745,101 @@ fit_glm <- function(x,
 #' @param has_offset logical indicating whether `offset` should be included in
 #' the final formula-based fit when `fast = FALSE`.
 #' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
-#' 
-#' @return 
-#' A list with the following components: 
-#' 
+#'
+#' @return
+#' A list with the following components:
+#'
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: residual sum of squares (not used).
+#' * `sse`: `NA`; Cox comparisons use partial likelihood.
 #' * `null_deviance`: minus twice the null partial log-likelihood.
 #' * `model_deviance`: minus twice the fitted partial log-likelihood.
 #' * `fit`: the fitted model object.
-#' 
+#'
 #' @import survival
 #' @keywords internal
 #' @noRd
-fit_cox <- function(x, 
-                    y, 
-                    strata, 
-                    weights, 
-                    offset, 
-                    control, 
-                    method, 
-                    rownames, 
-                    nocenter, 
+fit_cox <- function(x,
+                    y,
+                    strata,
+                    weights,
+                    offset,
+                    control,
+                    method,
+                    rownames,
+                    nocenter,
                     fast = TRUE,
                     has_offset = FALSE) {
-  
+
   # Set default for control
-  if (is.null(control)) { 
+  if (is.null(control)) {
     control <- survival::coxph.control()
   }
   has_predictors <- !is.null(x) && NCOL(x) > 0
-  
+
   istrata <- if (!is.null(strata)) {
     as.integer(strata)
   } else {
     NULL
   }
-  
+
   if (fast) {
     fit <- survival::coxph.fit(
       x = x,
-      y = y, 
+      y = y,
       strata = istrata,
       offset = offset,
-      control = control, 
+      control = control,
       weights = weights,
-      method = method, 
-      rownames = rownames, 
-      resid = TRUE,
+      method = method,
+      rownames = rownames,
+      resid = FALSE,
       nocenter = nocenter
     )
   } else {
     # construct appropriate formula incorporating offset and strata terms
     # cbinding y will lead to two variables: time and status
-    
+
     if (!has_predictors) {
       d <- data.frame(y = y)
       rhs <- "1"
     } else {
       d <- data.frame(x, y = y, check.names = FALSE)
-      
+
       if (is.null(colnames(x)) || any(colnames(x) == "")) {
         stop("! Internal error: x must have non-empty column names.", call. = FALSE)
       }
-      
+
       rhs <- paste(sprintf("`%s`", colnames(x)), collapse = " + ")
     }
-    
+
     # Add offset only when the model was structurally specified with one.
     # This distinguishes no-offset models from all-zero offset models.
     if (isTRUE(has_offset)) {
       d$offset_ <- offset
       rhs <- paste(rhs, "+ offset(offset_)")
     }
-    
+
     if (!is.null(strata)) {
       d$strata_ <- strata
       rhs <- paste(rhs, "+ strata(strata_)")
     }
-    
+
     ff <- stats::as.formula(paste("y ~", rhs))
-    
+
     fit <- survival::coxph(
       ff,
-      data = d, 
-      weights = weights, 
+      data = d,
+      weights = weights,
       control = control,
-      method = method, 
-      nocenter = nocenter, 
+      method = method,
+      nocenter = nocenter,
       x = TRUE,
       y = TRUE
     )
   }
-  
+
   # coxph.fit()/coxph() normally return the null and fitted partial
   # log-likelihoods in positions 1 and 2, respectively. Preserve both so the
   # caller can report null and fitted-model deviances without another fit.
@@ -465,13 +852,7 @@ fit_cox <- function(x,
     null_logl <- NA_real_
     model_logl <- fit$loglik[1L]
   }
-  
-  fit_weights <- fit$prior.weights
-  
-  if (is.null(fit_weights)) {
-    fit_weights <- weights
-  }
-  
+
   list(
     fit = fit,
     logl = model_logl,
@@ -484,10 +865,11 @@ fit_cox <- function(x,
     # Sometimes coefficients can be NA, for example when duplicate or
     # linearly dependent predictors are included in the model.
     df = length(fit$coefficients[!is.na(fit$coefficients)]),
-    weights = fit_weights,
-    sse = sum(fit_weights * fit$residuals^2, na.rm = TRUE),
-    residuals = fit$residuals,
-    has_scale_parameter = FALSE,
+    # SSE and duplicated residual/weight vectors are required only by Gaussian
+    # F-tests, never by Cox likelihood comparisons.
+    weights = NULL,
+    sse = NA_real_,
+    residuals = NULL,
     null_deviance = if (is.finite(null_logl)) {
       unname(-2 * null_logl)
     } else {

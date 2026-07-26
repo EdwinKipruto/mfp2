@@ -25,8 +25,10 @@ used for prediction with \code{predict()}, and visualised with \code{plot()}.
 
 \section{Supported models}{
 
-\code{\link[=mfp2]{mfp2()}} supports Gaussian, binomial, and Poisson regression, together
-with Cox proportional hazards models for right-censored survival outcomes.
+\code{\link[=mfp2]{mfp2()}} supports Gaussian, binomial, Poisson, and optional
+negative-binomial regression, together with Cox proportional hazards models
+for right-censored survival outcomes. Negative-binomial fitting requires the
+optional \code{fastglm} package.
 }
 
 \section{Modelling extensions}{

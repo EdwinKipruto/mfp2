@@ -28,7 +28,9 @@ Suggests:
     xfun,
     rmarkdown,
     formatR,
-    patchwork
+    patchwork,
+    fastglm (>=	0.1.1),
+    MASS
 Description: Fits multivariable fractional polynomial models with simultaneous
     selection of variables and functional forms for generalized linear models
     and Cox proportional hazards models. Key references are Royston and Altman

@@ -94,39 +94,39 @@ summary.mfp2 <- function(object,
   if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
   }
-  
+
   # ---------------------------------------------------------------------------
   # raw = TRUE: fall back to the underlying model's summary method.
   # ---------------------------------------------------------------------------
   if (isTRUE(raw)) {
-    result <- NextMethod("summary")
+    result <- NextMethod_summary(object, ...)
     if (!is.null(object$call_mfp)) {
       result$call <- object$call_mfp
     }
     return(result)
   }
-  
+
   # ---------------------------------------------------------------------------
   # Gather the pieces.
   # ---------------------------------------------------------------------------
   classified <- mfp2_summary_classify_terms(object)
   raw_summary <- mfp2_summary_raw(object)
-  
+
   linear_terms <- mfp2_summary_linear_table(object, classified, raw_summary)
   nonlinear_terms <- mfp2_summary_nonlinear_table(object, classified)
-  
+
   basis_table <- if (isTRUE(basis)) {
     mfp2_summary_basis_table(object, classified)
   } else {
     NULL
   }
-  
+
   formula_strings <- if (isTRUE(formulas)) {
     mfp2_summary_formula_strings(object, classified)
   } else {
     NULL
   }
-  
+
   out <- list(
     call            = object$call_mfp,
     family          = object$family_string,
@@ -203,7 +203,7 @@ mfp2_summary_raw <- function(object) {
 
 # NextMethod() only works inside a method; this dispatches manually to the
 # next class after "mfp2" so the raw summary can be built from a helper.
-NextMethod_summary <- function(object) {
+NextMethod_summary <- function(object, ...) {
   cls <- class(object)
   next_classes <- cls[which(cls == "mfp2")[1L] + 1L]
   next_classes <- next_classes[!is.na(next_classes)]
@@ -213,7 +213,17 @@ NextMethod_summary <- function(object) {
   # Temporarily strip "mfp2" so summary() dispatches to the underlying class.
   obj2 <- object
   class(obj2) <- cls[cls != "mfp2"]
-  summary(obj2)
+
+  # A negative-binomial GLM has fixed unit GLM dispersion after theta
+  # has been estimated. Force dispersion = 1 so summary.fastglm() uses
+  # normal/z inference, matching MASS::summary.negbin(), rather than
+  # estimating a second dispersion and reporting t statistics.
+  dots <- list(...)
+  if (identical(object$family_string, "negbin") &&
+      inherits(obj2, "fastglm")) {
+    dots$dispersion <- 1
+  }
+  do.call(summary, c(list(object = obj2), dots))
 }
 
 # ---------------------------------------------------------------------------
@@ -226,62 +236,62 @@ NextMethod_summary <- function(object) {
 mfp2_summary_classify_terms <- function(object) {
   fp_terms <- object$fp_terms
   variable_names <- rownames(fp_terms)
-  
+
   selected <- if ("selected" %in% names(fp_terms)) {
     as.logical(fp_terms[["selected"]])
   } else {
     rep(TRUE, nrow(fp_terms))
   }
   selected[is.na(selected)] <- FALSE
-  
+
   acd     <- mfp2_summary_flag(fp_terms, "acd")
   zero    <- mfp2_summary_flag(fp_terms, "zero")
   catzero <- mfp2_summary_flag(fp_terms, "catzero")
   spike   <- mfp2_summary_flag(fp_terms, "spike")
-  
+
   df_final <- if ("df_final" %in% names(fp_terms)) {
     as.numeric(fp_terms[["df_final"]])
   } else {
     rep(NA_real_, nrow(fp_terms))
   }
-  
+
   power_cols <- grep("^power[0-9]+$", names(fp_terms), value = TRUE)
   powers_by_var <- lapply(seq_len(nrow(fp_terms)), function(i) {
     p <- suppressWarnings(as.numeric(fp_terms[i, power_cols]))
     p[!is.na(p)]
   })
   names(powers_by_var) <- variable_names
-  
+
   # Map variable -> transformed coefficient column names, by stripping the
   # ".<index>" suffix from the fitted design column names.
   design_cols <- colnames(object$x)
   if (is.null(design_cols)) design_cols <- names(object$coefficients)
   base_names <- sub("\\.[0-9]+$", "", design_cols)
   cols_by_var <- split(design_cols, base_names)
-  
+
   # SAZ decision code -> is this a "binary only" outcome?
   spike_dec <- if ("spike_dec" %in% names(fp_terms)) {
     suppressWarnings(as.integer(fp_terms[["spike_dec"]]))
   } else {
     rep(NA_integer_, nrow(fp_terms))
   }
-  
+
   # Classify each selected variable.
   is_linear <- logical(length(variable_names))
   is_nonlinear <- logical(length(variable_names))
   binary_only <- logical(length(variable_names))
-  
+
   for (i in seq_along(variable_names)) {
     if (!selected[i]) next
-    
+
     p <- powers_by_var[[i]]
     plain_linear <- (length(p) == 1L && isTRUE(p == 1)) &&
       !acd[i] && !zero[i] && !catzero[i] && !spike[i]
-    
+
     # Binary-only spike: no continuous component survived.
     saz_binary_only <- spike[i] &&
       mfp2_summary_saz_is_binary_only(spike_dec[i])
-    
+
     if (plain_linear) {
       is_linear[i] <- TRUE
     } else if (saz_binary_only) {
@@ -291,12 +301,12 @@ mfp2_summary_classify_terms <- function(object) {
       is_nonlinear[i] <- TRUE
     }
   }
-  
+
   function_table <- mfp2_summary_function_overview(
     variable_names, selected, df_final, powers_by_var,
     acd, zero, catzero, spike, spike_dec
   )
-  
+
   list(
     variable_names = variable_names,
     selected       = selected,
@@ -334,14 +344,14 @@ mfp2_summary_saz_is_binary_only <- function(code) {
 mfp2_summary_form_label <- function(powers, acd, zero, catzero, spike,
                                     spike_dec, selected) {
   if (!isTRUE(selected)) return("out")
-  
+
   has_cont <- length(powers) > 0L
-  
+
   if (!has_cont) {
     if (catzero || spike) return("binary indicator only")
     return("out")
   }
-  
+
   base <- if (length(powers) == 1L && isTRUE(powers == 1)) {
     "linear"
   } else {
@@ -363,9 +373,9 @@ mfp2_summary_function_overview <- function(variable_names, selected, df_final,
       spike[i], spike_dec[i], selected[i]
     )
   }, character(1L))
-  
+
   df <- ifelse(is.na(df_final), ".", format(df_final, trim = TRUE))
-  
+
   data.frame(
     Variable = variable_names,
     Selected = ifelse(selected, "yes", "no"),
@@ -397,18 +407,18 @@ mfp2_summary_function_overview <- function(variable_names, selected, df_final,
 mfp2_summary_coef_to_display <- function(object) {
   t2c <- object$term_to_columns
   tmc <- object$transformed_to_model_columns
-  
+
   if (is.null(t2c) || is.null(tmc)) {
     return(stats::setNames(character(0L), character(0L)))
   }
-  
+
   out_names  <- character(0L)
   out_values <- character(0L)
-  
+
   for (v in names(t2c)) {
     raw_cols <- as.character(t2c[[v]])
     if (length(raw_cols) == 0L) next
-    
+
     # Rule: single raw column whose name equals v -> display is v.
     # Otherwise display is the raw column name (preserves factor levels
     # and any renaming the fitter did between user and raw column).
@@ -417,7 +427,7 @@ mfp2_summary_coef_to_display <- function(object) {
     } else {
       stats::setNames(raw_cols, raw_cols)
     }
-    
+
     for (raw_col in raw_cols) {
       # transformed_to_model_columns is keyed by raw column; its value is the
       # final fitted coefficient name. Names and values can be identical for
@@ -430,7 +440,7 @@ mfp2_summary_coef_to_display <- function(object) {
       out_values <- c(out_values, rep(display_for_raw[[raw_col]], length(fitted_names)))
     }
   }
-  
+
   stats::setNames(out_values, out_names)
 }
 
@@ -444,13 +454,13 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   if (is.null(coefs) || length(coefs) == 0L) {
     return(data.frame())
   }
-  
+
   # Column names of the fitted design.
   design_cols <- names(coefs)
-  
+
   # Which fitted columns belong to linear-classified variables?
   linear_vars <- classified$variable_names[classified$is_linear]
-  
+
   keep_cols <- unlist(
     classified$cols_by_var[linear_vars],
     use.names = FALSE
@@ -459,21 +469,21 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   if (length(keep_cols) == 0L) {
     return(data.frame())
   }
-  
+
   # Extract coef / se / stat / p from the raw summary coefficient matrix.
   cmat <- mfp2_summary_coef_matrix(object, raw_summary)
   rows <- match(keep_cols, rownames(cmat))
   valid <- !is.na(rows)
   keep_cols <- keep_cols[valid]
   rows <- rows[valid]
-  
+
   est <- cmat[rows, "estimate"]
   se  <- cmat[rows, "se"]
   stat <- cmat[rows, "statistic"]
   pval <- cmat[rows, "pvalue"]
-  
+
   is_gaussian <- identical(object$family_string, "gaussian")
-  
+
   # -------------------------------------------------------------------------
   # Build a display name for each fitted coefficient.
   #
@@ -505,7 +515,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   # the previous regex strip; this preserves user-visible behaviour rather
   # than emitting cryptic internal names.
   coef_to_display <- mfp2_summary_coef_to_display(object)
-  
+
   display_variable <- vapply(
     keep_cols,
     function(nm) {
@@ -519,7 +529,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
     character(1L),
     USE.NAMES = FALSE
   )
-  
+
   df <- data.frame(
     term = keep_cols,
     variable = display_variable,
@@ -530,7 +540,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
     row.names = NULL,
     stringsAsFactors = FALSE
   )
-  
+
   if (!is_gaussian) {
     df$exp_coef <- exp(est)
     df$ci_lower <- exp(est - 1.96 * se)
@@ -539,7 +549,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
     df$ci_lower <- est - 1.96 * se
     df$ci_upper <- est + 1.96 * se
   }
-  
+
   df
 }
 
@@ -552,10 +562,10 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   if (!is.null(raw_summary) && !is.null(raw_summary$coefficients)) {
     cmat <- raw_summary$coefficients
   }
-  
+
   est <- object$coefficients
   nm <- names(est)
-  
+
   if (!is.null(cmat) && nrow(cmat) == length(est)) {
     # Cox: columns are coef, exp(coef), se(coef), z, Pr(>|z|)
     # GLM: columns are Estimate, Std. Error, z/t value, Pr(>|.|)
@@ -564,7 +574,7 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
     stat_col <- grep("^z$|value|^t$", cn, ignore.case = TRUE)[1]
     p_col <- grep("Pr|p.?value", cn, ignore.case = TRUE)[1]
     est_col <- grep("coef|Estimate", cn, ignore.case = TRUE)[1]
-    
+
     out <- cbind(
       estimate  = cmat[, est_col],
       se        = cmat[, se_col],
@@ -574,13 +584,13 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
     rownames(out) <- rownames(cmat)
     return(out)
   }
-  
+
   # Fallback: compute from vcov().
   V <- tryCatch(stats::vcov(object), error = function(e) NULL)
   se <- if (!is.null(V)) sqrt(diag(V)) else rep(NA_real_, length(est))
   stat <- est / se
   pval <- 2 * stats::pnorm(abs(stat), lower.tail = FALSE)
-  
+
   out <- cbind(
     estimate  = est,
     se        = se,
@@ -600,7 +610,7 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
   if (length(nl_vars) == 0L) {
     return(data.frame())
   }
-  
+
   rows <- lapply(nl_vars, function(v) {
     idx <- match(v, classified$variable_names)
     form <- mfp2_summary_form_label(
@@ -610,7 +620,7 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
       classified$spike_dec[idx], TRUE
     )
     lrt <- mfp2_summary_lrt_drop_variable(object, classified, v)
-    
+
     data.frame(
       variable = v,
       form     = form,
@@ -621,7 +631,7 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
       stringsAsFactors = FALSE
     )
   })
-  
+
   do.call(rbind, rows)
 }
 
@@ -634,17 +644,17 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
   idx <- match(v, classified$variable_names)
   df_v <- classified$df_final[idx]
   if (is.na(df_v)) df_v <- length(cols_v)
-  
+
   na_result <- list(lr = NA_real_, df = df_v, p = NA_real_)
-  
+
   x_full <- object$x
   if (is.null(x_full) || length(cols_v) == 0L) {
     return(na_result)
   }
-  
+
   keep <- setdiff(colnames(x_full), cols_v)
   x_reduced <- x_full[, keep, drop = FALSE]
-  
+
   refit <- function(x) {
     tryCatch(
       fit_model(
@@ -652,13 +662,15 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
         y = object$y,
         family = object$family,
         family_string = object$family_string,
+        fitter = if (is.null(object$fitter)) "base" else object$fitter,
+        weights = object$prior.weights,
         offset = object$offset,
         fast = TRUE
       ),
       error = function(e) NULL
     )
   }
-  
+
   # Refit BOTH models with the same routine so the deviance scale matches.
   fit_full <- refit(x_full)
   fit_red  <- if (ncol(x_reduced) == 0L) {
@@ -666,16 +678,16 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
   } else {
     refit(x_reduced)
   }
-  
+
   if (is.null(fit_full) || is.null(fit_red) ||
       is.null(fit_full$logl) || is.null(fit_red$logl)) {
     return(na_result)
   }
-  
+
   lr <- 2 * (fit_full$logl - fit_red$logl)
   if (!is.finite(lr) || lr < 0) lr <- max(lr, 0)
   p <- stats::pchisq(lr, df = df_v, lower.tail = FALSE)
-  
+
   list(lr = lr, df = df_v, p = p)
 }
 
@@ -686,7 +698,7 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
 mfp2_summary_basis_table <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) return(NULL)
-  
+
   coefs <- object$coefficients
   rows <- list()
   for (v in nl_vars) {
@@ -713,22 +725,22 @@ mfp2_summary_term_label <- function(object, classified, v, col) {
   cols_v <- classified$cols_by_var[[v]]
   k <- match(col, cols_v)
   powers <- classified$powers_by_var[[match(v, classified$variable_names)]]
-  
+
   ss <- mfp2_summary_shift_scale(object, v)
   inner <- mfp2_summary_inner_expr(v, ss$shift, ss$scale)
-  
+
   acd <- classified$acd[match(v, classified$variable_names)]
   acd_wrap <- function(s) if (isTRUE(acd)) sub("\\(", "A(", s) else s
-  
+
   # Repeated FP2 powers: second term carries a log() factor.
   repeated <- length(powers) == 2L && isTRUE(powers[1] == powers[2])
-  
+
   if (length(powers) == 0L) {
     return(sprintf("I(%s > 0)", v))
   }
-  
+
   p <- if (k <= length(powers)) powers[k] else powers[length(powers)]
-  
+
   power_expr <- function(base, power) {
     # Wrap the inner expression in parentheses so the exponent applies to the
     # whole scaled quantity, e.g. ((age)/10)^(3), not (age)/10^(3).
@@ -741,7 +753,7 @@ mfp2_summary_term_label <- function(object, classified, v, col) {
       sprintf("%s^(%s)", wrapped, format(power, trim = TRUE))
     }
   }
-  
+
   if (repeated && k == 2L) {
     return(acd_wrap(sprintf("%s*log(.)", power_expr(inner, p))))
   }
@@ -781,7 +793,7 @@ mfp2_summary_shift_scale <- function(object, v) {
 mfp2_summary_formula_strings <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) return(NULL)
-  
+
   coefs <- object$coefficients
   out <- character(length(nl_vars))
   for (i in seq_along(nl_vars)) {
@@ -856,18 +868,19 @@ mfp2_summary_model_fit_values <- function(object) {
   null_logl   <- mfp2_summary_num(object$null_logl)
   linear_logl <- mfp2_summary_num(object$linear_logl)
   mfp_logl    <- mfp2_summary_num(object$mfp_logl)
-  
+
   # The df column follows a single convention: number of regression
   # coefficients, EXCLUDING the intercept. `linear_df` as stored comes from
   # fit_model()$df, which follows logLik.glm()'s convention -- it counts the
-  # intercept for GLMs (Cox has none) and adds +1 for the Gaussian residual
-  # variance sigma^2. Both adjustments are stripped here so the number the
+  # intercept for GLMs (Cox has none) and adds +1 for either the
+  # Gaussian residual variance sigma^2 or negative-binomial theta. These
+  # adjustments are stripped here so the number the
   # user sees matches the promise made in the note.
   family_string <- object$family_string
   linear_df <- if (!is.null(object$linear_df)) {
     d <- as.integer(object$linear_df)
-    if (identical(family_string, "gaussian")) {
-      # Strip 1 for the intercept AND 1 for sigma^2.
+    if (family_string %in% c("gaussian", "negbin")) {
+      # Strip 1 for the intercept AND 1 for sigma^2 or theta.
       d <- d - 2L
     } else if (!identical(family_string, "cox")) {
       # Non-Gaussian GLM: strip the intercept only.
@@ -878,11 +891,11 @@ mfp2_summary_model_fit_values <- function(object) {
     NA_integer_
   }
   if (!is.na(linear_df) && linear_df < 0L) linear_df <- 0L
-  
+
   # The MFP row uses the FP-adjusted convention (sum of df_final over selected
   # variables), which is already intercept- and sigma-free by construction.
   mfp_df <- mfp2_summary_model_df(object)
-  
+
   data.frame(
     label       = c("Null model", "Full linear model", "MFP model"),
     minus2_logL = c(-2 * null_logl, -2 * linear_logl, -2 * mfp_logl),
@@ -902,7 +915,7 @@ mfp2_summary_model_fit_values <- function(object) {
 # the summary path. summary()'s printer supplies its own rule-based heading.
 mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
   heading_printer("Model Fit")
-  
+
   # Right-align numeric columns; left-align the label. Column widths are
   # chosen from the widest formatted value so the note below reads under the
   # correct table width regardless of magnitude.
@@ -914,24 +927,24 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
     if (is.na(v)) return("NA")
     format(v, trim = TRUE)
   }, character(1L))
-  
+
   label_width <- max(nchar(values$label))
   m2ll_width  <- max(nchar("-2 log L"), max(nchar(m2ll)))
   df_width    <- max(nchar("df"), max(nchar(df_fmt)))
-  
+
   # Column separators: two spaces after the label, four spaces before df.
   header_fmt <- sprintf(
     "%%-%ds  %%%ds    %%%ds\n",
     label_width, m2ll_width, df_width
   )
   row_fmt <- header_fmt
-  
+
   cat(sprintf(header_fmt, "", "-2 log L", "df"))
   for (i in seq_len(nrow(values))) {
     cat(sprintf(row_fmt, values$label[i], m2ll[i], df_fmt[i]))
   }
   cat("\n")
-  
+
   # Note about the df column. Kept identical between print.mfp2() and
   # print.summary.mfp2() so users see one consistent explanation.
   note_lines <- c(
@@ -960,14 +973,14 @@ print.summary.mfp2 <- function(x, ...) {
   width <- 78L
   rule_eq <- paste(rep("=", width), collapse = "")
   rule_dash <- paste(rep("-", width), collapse = "")
-  
+
   section <- function(title) {
     cat(rule_dash, "\n", title, "\n", rule_dash, "\n", sep = "")
   }
-  
+
   # --- Banner --------------------------------------------------------------
   cat(rule_eq, "\n", "MFP Model Summary", "\n", rule_eq, "\n\n", sep = "")
-  
+
   # --- Call ----------------------------------------------------------------
   #
   # The summary opens with a plain "Call:" label rather than the boxed
@@ -980,7 +993,7 @@ print.summary.mfp2 <- function(x, ...) {
     print(x$call)
     cat("\n")
   }
-  
+
   # --- One-line meta -------------------------------------------------------
   meta <- sprintf(
     "Family: %s | Criterion: %s | Converged: %s",
@@ -993,7 +1006,7 @@ print.summary.mfp2 <- function(x, ...) {
     cat(sprintf("Observations: %s\n", x$n))
   }
   cat("\n")
-  
+
   # --- Selection overview --------------------------------------------------
   section("Selection Overview")
   ft <- x$function_table
@@ -1001,7 +1014,7 @@ print.summary.mfp2 <- function(x, ...) {
   ft <- ft[order(ft$Selected != "yes"), , drop = FALSE]
   print.data.frame(ft, row.names = FALSE, right = FALSE)
   cat("\n")
-  
+
   # --- Linear terms --------------------------------------------------------
   section("Linear Terms")
   if (nrow(x$linear_terms) == 0L) {
@@ -1010,7 +1023,7 @@ print.summary.mfp2 <- function(x, ...) {
     is_gaussian <- identical(x$family, "gaussian")
     lt <- x$linear_terms
     fmt <- function(v, d = digits) formatC(v, format = "g", digits = d)
-    
+
     disp <- data.frame(
       # Show the user-facing variable name, not the internal fitted-column
       # name. `lt$variable` is populated by mfp2_summary_linear_table() with
@@ -1026,17 +1039,17 @@ print.summary.mfp2 <- function(x, ...) {
     )
     stat_name <- if (is_gaussian) "t" else "z"
     names(disp)[names(disp) == "stat"] <- stat_name
-    
+
     if (!is_gaussian && !is.null(lt$exp_coef)) {
       disp[["exp(coef)"]] <- fmt(lt$exp_coef)
       disp[["[95% CI]"]] <- sprintf("[%s, %s]", fmt(lt$ci_lower), fmt(lt$ci_upper))
     } else {
       disp[["[95% CI]"]] <- sprintf("[%s, %s]", fmt(lt$ci_lower), fmt(lt$ci_upper))
     }
-    
+
     print.data.frame(disp, row.names = FALSE, right = FALSE)
     cat("\n")
-    
+
     if (!is_gaussian) {
       exp_name <- switch(x$family,
                          "binomial" = "odds ratio",
@@ -1052,7 +1065,7 @@ print.summary.mfp2 <- function(x, ...) {
       cat("Coefficients are on the outcome scale (mean difference).\n\n")
     }
   }
-  
+
   # --- Nonlinear terms -----------------------------------------------------
   section("Nonlinear Terms")
   if (nrow(x$nonlinear_terms) == 0L) {
@@ -1079,14 +1092,14 @@ print.summary.mfp2 <- function(x, ...) {
       "Use plot() to interpret the fitted function.\n\n",
       sep = ""
     )
-    
+
     # Optional: fitted-function formulas.
     if (!is.null(x$formulas)) {
       cat("Fitted functions:\n")
       for (f in x$formulas) cat("  ", f, "\n", sep = "")
       cat("\n")
     }
-    
+
     # Optional: raw basis coefficients.
     if (!is.null(x$basis)) {
       cat("Basis coefficients:\n")
@@ -1102,7 +1115,7 @@ print.summary.mfp2 <- function(x, ...) {
       cat("\n")
     }
   }
-  
+
   # --- Model fit -----------------------------------------------------------
   #
   # The Model Fit block is rendered by the shared helper
@@ -1116,7 +1129,7 @@ print.summary.mfp2 <- function(x, ...) {
     digits          = digits,
     heading_printer = section
   )
-  
+
   cat("\n", rule_eq, "\n", sep = "")
   invisible(x)
 }

@@ -55,7 +55,7 @@ saz_decision_label <- function(decision,
                                unknown = "unknown") {
   style <- match.arg(style)
   decision_int <- as.integer(decision)
-  
+
   # "print" is the only vectorized style: it is used to label a whole column
   # of spike_dec values in fp_terms (one row per variable), so it must accept
   # and return a vector rather than a single decision. The other two styles
@@ -69,11 +69,11 @@ saz_decision_label <- function(decision,
     out[decision_int == saz_decision_codes[["binary_only"]]] <- "binary only"
     return(out)
   }
-  
+
   if (length(decision_int) != 1L || is.na(decision_int)) {
     return(unknown)
   }
-  
+
   # binary_only (decision 3): only the structural-zero indicator survives
   # stage 2; there is no continuous component to name, so continuous_label is
   # never referenced in this branch.
@@ -81,10 +81,10 @@ saz_decision_label <- function(decision,
     if (style == "plot_title") {
       return("spike: zero indicator only")
     }
-    
+
     return(binary_label)
   }
-  
+
   # cont_binary (decision 1): both components survive. Note that `full_label`
   # has no default value of its own kind (default NULL) - callers using
   # style = "stage2_model" are expected to always supply it explicitly (see
@@ -99,10 +99,10 @@ saz_decision_label <- function(decision,
         " + zero indicator"
       ))
     }
-    
+
     return(full_label)
   }
-  
+
   # continuous_only (decision 2): only the continuous FP/linear/ACD component
   # survives; the binary zero indicator is dropped, so binary_label is never
   # referenced in this branch.
@@ -110,10 +110,10 @@ saz_decision_label <- function(decision,
     if (style == "plot_title") {
       return(paste0("spike: positive-part only ", continuous_label))
     }
-    
+
     return(continuous_label)
   }
-  
+
   # decision_int matched none of the three known codes (e.g. corrupted data);
   # fall back to the generic placeholder rather than erroring, since this
   # function is used in display/labeling contexts, not validation contexts.
@@ -213,16 +213,16 @@ saz_decision_label <- function(decision,
 #' @noRd
 reset_spike <- function(x, spike, user_catzero, user_zero,
                         min_saz_component_prop = 0.10) {
-  
+
   # Early exit: no spike variables to evaluate. In this case there was no
   # spike-implied cascade to preserve, so return the user's original zero and
   # catzero settings unchanged.
   if (!any(spike)) {
     return(list(spike = spike, catzero = user_catzero, zero = user_zero))
   }
-  
+
   names_spike <- names(spike)[spike]
-  
+
   # Component proportions for each requested spike-at-zero variable.
   # At this point fit_mfp() has already recoded nonpositive values to zero for
   # zero/catzero/spike variables, so x == 0 represents the structural-zero group
@@ -241,7 +241,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
     },
     integer(1L)
   )
-  
+
   n_positive <- vapply(
     names_spike,
     function(v) {
@@ -249,12 +249,12 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
     },
     integer(1L)
   )
-  
+
   n_observed <- n_zero + n_positive
-  
+
   prop_zero <- n_zero / n_observed
   prop_positive <- n_positive / n_observed
-  
+
   # Binary variables are not eligible for spike-at-zero modelling. A binary
   # covariate already represents a two-level effect, so adding a separate zero
   # spike indicator would be redundant or non-identifiable.
@@ -265,7 +265,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
     },
     logical(1L)
   )
-  
+
   # Identify variables whose spike option must be reset, by reason. A
   # variable can fail for either or both reasons; to_reset is the union so
   # each ineligible variable is only reset once regardless of how many
@@ -277,10 +277,10 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
       prop_zero < min_saz_component_prop |
       prop_positive < min_saz_component_prop
   ]
-  
+
   to_reset_binary <- names_spike[is_binary]
   to_reset <- union(to_reset_component, to_reset_binary)
-  
+
   # Warn about component-representation resets. This walks through several
   # specific, mutually-exclusive causes (in order of how "extreme" the
   # shortfall is: no data at all, all-one-component, then falling just short
@@ -296,25 +296,25 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
         nz <- n_zero[[v]]
         np <- n_positive[[v]]
         no <- n_observed[[v]]
-        
+
         if (is.na(no) || no == 0L) {
           return("no finite zero or positive observations are available")
         }
-        
+
         if (nz == 0L && np > 0L) {
           return(sprintf(
             "all observed values are positive; zero proportion is 0 < `min_saz_component_prop = %s`",
             min_saz_component_prop
           ))
         }
-        
+
         if (np == 0L && nz > 0L) {
           return(sprintf(
             "all observed values are structural zeros; positive observation proportion is 0 < `min_saz_component_prop = %s`",
             min_saz_component_prop
           ))
         }
-        
+
         if (is.na(p0) || p0 < min_saz_component_prop) {
           return(sprintf(
             "zero proportion is %.4g < `min_saz_component_prop = %s`",
@@ -322,7 +322,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
             min_saz_component_prop
           ))
         }
-        
+
         if (is.na(pp) || pp < min_saz_component_prop) {
           return(sprintf(
             "positive observation proportion is %.4g < `min_saz_component_prop = %s`",
@@ -330,12 +330,12 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
             min_saz_component_prop
           ))
         }
-        
+
         "component representation is insufficient"
       },
       character(1L)
     )
-    
+
     warning(
       paste(
         c(
@@ -347,7 +347,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
       call. = FALSE
     )
   }
-  
+
   # IMPORTANT: initialise from the post-cascade state, not from the raw user
   # inputs. For every spike variable that remains eligible, the internal state
   # must satisfy:
@@ -361,11 +361,11 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   zero    <- user_zero
   catzero[spike] <- TRUE
   zero[catzero]  <- TRUE
-  
+
   if (length(to_reset) > 0L) {
     # Reset spike only for variables that failed eligibility checks.
     spike[to_reset] <- FALSE
-    
+
     # For reset variables only, restore catzero and zero to the user's explicit
     # pre-cascade choices. This undoes the spike-implied cascade only where the
     # spike option was rejected. Eligible spike variables keep catzero = TRUE
@@ -373,7 +373,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
     catzero[to_reset] <- user_catzero[to_reset]
     zero[to_reset]    <- user_zero[to_reset]
   }
-  
+
   # Re-apply the ordinary catzero -> zero cascade after restoring user choices.
   # This second application is necessary (not redundant with the one above):
   # for a variable in to_reset, catzero was just overwritten with
@@ -382,7 +382,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   # case zero must be forced back to TRUE for it too, because catzero_vars
   # always implies zero_vars regardless of what happens to the spike request.
   zero[catzero] <- TRUE
-  
+
   # Defensive internal consistency checks. These should never fail if the
   # cascade above has been applied correctly.
   if (any(spike & !catzero)) {
@@ -391,7 +391,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   if (any(catzero & !zero)) {
     stop("Internal error: catzero variables must also have zero = TRUE.", call. = FALSE)
   }
-  
+
   list(spike = spike, catzero = catzero, zero = zero)
 }
 
@@ -443,12 +443,12 @@ resolve_saz_eligibility <- function(x,
       zero = zero
     ))
   }
-  
+
   # Save the user's pre-cascade choices so reset_spike() can restore them
   # for any variable that turns out ineligible.
   user_catzero <- catzero
   user_zero <- zero
-  
+
   # Apply a temporary cascade only for eligibility checking: spike implies
   # catzero implies zero, exactly mirroring the cascade fit_mfp() applies
   # later, so that the component proportions checked below are computed under
@@ -456,19 +456,19 @@ resolve_saz_eligibility <- function(x,
   # eligible.
   catzero_for_spike <- catzero
   zero_for_spike <- zero
-  
+
   catzero_for_spike[spike] <- TRUE
   zero_for_spike[catzero_for_spike] <- TRUE
-  
+
   # Build temporary data for the eligibility check. This does not modify the
   # original x used for fitting or preprocessing.
   x_for_spike <- x
-  
+
   zero_vars <- intersect(
     names(zero_for_spike)[zero_for_spike],
     colnames(x_for_spike)
   )
-  
+
   # Temporarily recode nonpositive values to zero for every zero-cascade
   # variable, matching what fit_mfp() will eventually do to the real x. This
   # is what lets reset_spike() (called next) count the zero vs. positive
@@ -476,7 +476,7 @@ resolve_saz_eligibility <- function(x,
   for (v in zero_vars) {
     x_for_spike[x_for_spike[, v] <= 0, v] <- 0
   }
-  
+
   # Delegate the actual eligibility rule (component proportions, binary
   # check, cascade restoration for ineligible variables) to reset_spike();
   # this function's job is only to prepare the right temporary inputs for it.
@@ -523,17 +523,17 @@ cap_spike_df <- function(x, df, spike) {
   if (!any(spike)) {
     return(df)
   }
-  
+
   # Only cap df for variables that are both flagged as spike (post-eligibility
   # resolution) and present in df's names; the intersect() guards against
   # spike containing names that df doesn't track (shouldn't normally happen,
   # but keeps this defensive rather than erroring on a name mismatch).
   spike_vars <- intersect(names(spike)[spike], names(df))
-  
+
   if (length(spike_vars) == 0L) {
     return(df)
   }
-  
+
   # Accumulate a record of every variable whose df was actually reduced, so a
   # single combined warning can be issued at the end (rather than one warning
   # per variable), and so the message can report the before/after df and the
@@ -542,7 +542,7 @@ cap_spike_df <- function(x, df, spike) {
   old_values <- integer(0L)
   new_values <- integer(0L)
   unique_values <- integer(0L)
-  
+
   for (v in spike_vars) {
     # Cardinality is assessed only over the *positive* values of x[, v], not
     # the full column, because for a spike variable the FP/linear component is
@@ -557,12 +557,12 @@ cap_spike_df <- function(x, df, spike) {
     positive_values <- positive_values[
       is.finite(positive_values) & positive_values > 0
     ]
-    
+
     u_positive <- length(unique(positive_values))
-    
+
     old_df <- as.integer(df[[v]])
     new_df <- old_df
-    
+
     # Same three-tier rule as assign_df(), just applied to the positive-only
     # count: <=3 distinct positive values forces linear (df=1); 4-5 caps at
     # FP1 (df=2, but never *raising* df, hence min(2L, old_df)); >=6 leaves
@@ -572,7 +572,7 @@ cap_spike_df <- function(x, df, spike) {
     } else if (u_positive <= 5L) {
       new_df <- min(2L, old_df)
     }
-    
+
     if (!identical(new_df, old_df)) {
       changed <- c(changed, v)
       old_values <- c(old_values, old_df)
@@ -581,7 +581,7 @@ cap_spike_df <- function(x, df, spike) {
       df[[v]] <- new_df
     }
   }
-  
+
   if (length(changed) > 0L) {
     warning(
       "For the following spike-at-zero variable(s), the maximum FP df was ",
@@ -601,7 +601,7 @@ cap_spike_df <- function(x, df, spike) {
       call. = FALSE
     )
   }
-  
+
   df
 }
 
@@ -681,17 +681,18 @@ fit_saz_reduced_models <- function(stage1_selection,
                                    nocenter,
                                    control,
                                    rownames,
-                                   has_offset) {
+                                   has_offset,
+                                   fitter = "base") {
   # Step 1: Recover xi's already-transformed stage-1 design from the cache --
   # find_best_fpm_step() (called during stage 1) stores the winning
   # transformed xi matrix under current_adj_params[[xi]]$data_xi precisely so
   # that stage 2 can reuse it here instead of re-deriving the FP/ACD
   # transformation and re-shifting/scaling xi from scratch.
   params_xi <- stage1_selection$current_adj_params[[xi]]
-  
+
   data_xi <- params_xi$data_xi
   data_xi_colnames <- colnames(data_xi)
-  
+
   # This should be unreachable in normal operation: evaluate_saz_stage2() is
   # only invoked (from find_best_fp_step()) when xi is both a spike variable
   # and was selected in stage 1, which guarantees a "catzero" column was
@@ -704,20 +705,20 @@ fit_saz_reduced_models <- function(stage1_selection,
       call. = FALSE
     )
   }
-  
+
   # Split xi's stage-1 design into its two components: the continuous
   # FP/linear/ACD column(s), and the single "catzero" binary indicator
   # column. Model 2 uses only the former, Model 3 uses only the latter (see
   # the function documentation for the three-model comparison).
   xi_continuous <- data_xi[, data_xi_colnames != "catzero", drop = FALSE]
   xi_binary <- data_xi[, "catzero", drop = FALSE]
-  
+
   # Step 2: Recover the (also already-transformed) adjustment matrix --------
   # Reused from stage 1 for the same reason as data_xi: adjustment-variable
   # transformations don't depend on which SAZ component of xi is retained, so
   # there is no need to recompute them for Model 2/Model 3.
   adjustment_matrix <- params_xi$data_adj
-  
+
   # Normalize the "no adjustment variables" case: build_adjustment_step()'s
   # return contract allows either NULL or an n x 0 matrix depending on
   # whether there were adjustment variables at all; treat both as NULL here
@@ -725,7 +726,7 @@ fit_saz_reduced_models <- function(stage1_selection,
   if (is.null(adjustment_matrix) || ncol(adjustment_matrix) == 0L) {
     adjustment_matrix <- NULL
   }
-  
+
   # Step 3: Assemble the design matrices for Model 2 and Model 3 -----------
   if (is.null(adjustment_matrix)) {
     x_fit2 <- xi_continuous
@@ -734,12 +735,13 @@ fit_saz_reduced_models <- function(stage1_selection,
     x_fit2 <- cbind(xi_continuous, adjustment_matrix)
     x_fit3 <- cbind(xi_binary, adjustment_matrix)
   }
-  
+
   # Step 4: Fit both reduced models with the shared fitting arguments -------
   fit_args <- list(
     y = y,
     family = family,
     family_string = family_string,
+    fitter = fitter,
     weights = weights,
     offset = offset,
     method = method,
@@ -749,10 +751,10 @@ fit_saz_reduced_models <- function(stage1_selection,
     control = control,
     rownames = rownames
   )
-  
+
   fit2 <- do.call(fit_model, c(list(x = x_fit2), fit_args))
   fit3 <- do.call(fit_model, c(list(x = x_fit3), fit_args))
-  
+
   # Step 5: Return everything compute_saz_stage2_metrics()/decision-making
   # downstream will need: the three fits (fit1 is just an alias for the
   # unmodified stage1_selection, included for a uniform fit1/fit2/fit3
@@ -773,10 +775,10 @@ fit_saz_reduced_models <- function(stage1_selection,
 }
 #' Compute Model Metrics for Candidate Spike-at-zero Models
 #'
-#' This function computes fit statistics for the three candidate models 
-#' used in the spike-at-zero (SAZ) algorithm. Model 1 metrics are extracted 
-#' directly from the previously fitted model, while metrics for Model 2 
-#' (FPm/linear only) and Model 3 (binary-only) are computed using 
+#' This function computes fit statistics for the three candidate models
+#' used in the spike-at-zero (SAZ) algorithm. Model 1 metrics are extracted
+#' directly from the previously fitted model, while metrics for Model 2
+#' (FPm/linear only) and Model 3 (binary-only) are computed using
 #' `calculate_model_metrics`.
 #'
 #' @param fit1 Fitted object for Model 1 (complex model from stage 1 of SAZ).
@@ -787,8 +789,8 @@ fit_saz_reduced_models <- function(stage1_selection,
 #' from stage 1 of SAZ algorithm.
 #'
 #' @details
-#' The function determines the degree of the fractional polynomial based on `power_best`. 
-#' Model 1 metrics are retrieved from the best-fit row of the `fit1` object. 
+#' The function determines the degree of the fractional polynomial based on `power_best`.
+#' Model 1 metrics are retrieved from the best-fit row of the `fit1` object.
 #' Metrics for Models 2 and 3 are calculated using `calculate_model_metrics`.
 #'
 #' @return A list with three elements:
@@ -799,7 +801,7 @@ fit_saz_reduced_models <- function(stage1_selection,
 #' @keywords internal
 #' @noRd
 compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
-  
+
   # power_best is stage 1's selected power vector for xi, which can contain
   # NA components for inactive ACD terms (e.g. c(NA, 1) for "linear only in
   # A(x)", where the x-component was dropped). Dropping NAs and counting what
@@ -811,21 +813,21 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   # this case additional parameters = 0 since the power = 1, see mfpa paper
   power_best <- power_best[!is.na(power_best)]
   degree <- length(power_best)
-  
+
   # Extract Model 1 metrics safely
   if (is.null(fit1$metrics) || is.null(fit1$model_best)) {
     stop("fit1 must contain 'metrics' and 'model_best' elements.")
   }
-  
+
   if (fit1$model_best > nrow(fit1$metrics) || fit1$model_best < 1) {
     stop("fit1$model_best is out of bounds for fit1$metrics.")
   }
-  
+
   # Model 1's metrics were already computed during stage 1 model selection;
   # just pick out the row for whichever candidate stage 1 actually selected
   # (fit1$model_best), rather than recomputing.
   metrics1 <- fit1$metrics[fit1$model_best, ]
-  
+
   # Compute Model 2 metrics with degree adjustment: deg2 = 0 only in the
   # special case where the surviving continuous component is exactly linear
   # (a single power equal to 1) - a linear term is an ordinary regression
@@ -838,12 +840,12 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   } else {
     degree
   }
-  
+
   metrics2 <- tryCatch(
     calculate_model_metrics(fit2, n_obs, deg2),
     error = function(e) stop("Failed to compute metrics for fit2: ", e$message)
   )
-  
+
   # Compute Model 3 metrics: no df_additional argument is passed here (it
   # defaults to 0 in calculate_model_metrics()), because Model 3 is just the
   # binary zero-indicator - a single ordinary coefficient, with no FP power to
@@ -956,14 +958,14 @@ compute_saz_stage2_decision <- function(metrics,
                                         n_obs,
                                         ftest = FALSE) {
   criterion <- tolower(criterion)
-  
+
   if (!criterion %in% c("pvalue", "aic", "bic")) {
     stop(
       "! criterion must be one of 'pvalue', 'aic', or 'bic'.",
       call. = FALSE
     )
   }
-  
+
   if (criterion == "pvalue") {
     if (ftest) {
       # Test whether the binary zero-indicator component is needed.
@@ -980,7 +982,7 @@ compute_saz_stage2_decision <- function(metrics,
         ),
         n_obs = n_obs
       )
-      
+
       # Test whether the continuous FP/linear/ACD component is needed.
       # Reduced model: Model 3 = binary zero-indicator only.
       # Full model:    Model 1 = continuous FP/linear/ACD + binary.
@@ -1003,7 +1005,7 @@ compute_saz_stage2_decision <- function(metrics,
         logl = c(metrics$metrics2["logl"], metrics$metrics1["logl"]),
         dfs = c(metrics$metrics2["df"], metrics$metrics1["df"])
       )
-      
+
       # Test whether the continuous FP/linear/ACD component is needed.
       # Reduced model: Model 3 = binary zero-indicator only.
       # Full model:    Model 1 = continuous FP/linear/ACD + binary.
@@ -1012,10 +1014,10 @@ compute_saz_stage2_decision <- function(metrics,
         dfs = c(metrics$metrics3["df"], metrics$metrics1["df"])
       )
     }
-    
+
     p_drop_binary <- stats1$pvalue
     p_drop_continuous <- stats2$pvalue
-    
+
     # This mirrors the decision table in the function documentation above:
     # a small p-value means dropping that component makes the model
     # significantly worse, i.e. that component must be *kept*. So:
@@ -1042,7 +1044,7 @@ compute_saz_stage2_decision <- function(metrics,
         saz_decision_codes[["binary_only"]]
       }
     }
-    
+
     return(list(
       decision = decision,
       pvalue = c(
@@ -1051,7 +1053,7 @@ compute_saz_stage2_decision <- function(metrics,
       )
     ))
   }
-  
+
   # For AIC/BIC there is no hypothesis test at all: simply compute the
   # criterion for all three models and take whichever is smallest. Naming
   # the values by saz_decision_codes' names (in the same order the values are
@@ -1065,12 +1067,12 @@ compute_saz_stage2_decision <- function(metrics,
       metrics$metrics3["aic"]
     )
     names(aic_values) <- names(saz_decision_codes)
-    
+
     decision <- saz_decision_codes[[names(which.min(aic_values))]]
-    
+
     return(list(decision = decision, pvalue = NA_real_))
   }
-  
+
   # criterion == "bic": identical logic to the AIC branch above, just using
   # the BIC column instead.
   bic_values <- c(
@@ -1079,9 +1081,9 @@ compute_saz_stage2_decision <- function(metrics,
     metrics$metrics3["bic"]
   )
   names(bic_values) <- names(saz_decision_codes)
-  
+
   decision <- saz_decision_codes[[names(which.min(bic_values))]]
-  
+
   list(decision = decision, pvalue = NA_real_)
 }
 
@@ -1147,14 +1149,15 @@ evaluate_saz_stage2 <- function(fit1,
                                 select,
                                 ftest,
                                 spike_decision,
-                                verbose) {
-  
+                                verbose,
+                                fitter = "base") {
+
   # evaluate_saz_stage2() is the single entry point find_best_fp_step() calls
   # for SAZ stage 2 (see its own documentation): it orchestrates fitting the
   # two reduced models, scoring all three, deciding which to keep, and
   # building the printable summary - stitching together the four smaller
   # functions above into the one operation callers actually need.
-  
+
   # Step 1: Fit the two reduced SAZ candidate models. Model 1 (full continuous +
   # binary) is already available via fit1 and is not refitted here.
   models <- fit_saz_reduced_models(
@@ -1165,6 +1168,7 @@ evaluate_saz_stage2 <- function(fit1,
     offset = offset,
     family = family,
     family_string = family_string,
+    fitter = fitter,
     method = method,
     strata = strata,
     nocenter = nocenter,
@@ -1172,7 +1176,7 @@ evaluate_saz_stage2 <- function(fit1,
     rownames = rownames,
     has_offset = has_offset
   )
-  
+
   # Step 2: Score all three models on a comparable basis (log-likelihood,
   # AIC, BIC, etc., with the correct df_additional penalty for each).
   metrics <- compute_saz_stage2_metrics(
@@ -1182,19 +1186,19 @@ evaluate_saz_stage2 <- function(fit1,
     n_obs = n_obs,
     power_best = power_best
   )
-  
+
   # Step 3: Decide whether both components, continuous-only, or binary-only
   # is needed, and record that decision for xi (all other variables' entries
   # in spike_decision are left untouched).
   decision <- compute_saz_stage2_decision(metrics, criterion, select, n_obs, ftest)
   spike_decision[xi] <- decision$decision
-  
+
   # Step 4: Build the printable stage-2 metrics table, matching model labels
   # from stage 1, so the table reads consistently with what stage 1 already
   # printed for xi (e.g. "FP2 + Binary" rather than an unrelated label).
   f_names <- rownames(fit1$metrics)[fit1$model_best]
   spike_metrics_mat <- do.call(rbind, metrics)
-  
+
   # Stage 1's row label for a SAZ variable's selected model is built as
   # "<continuous label> + Binary" (see select_ra2()/select_ic() and friends,
   # where has_binary_xi appends " + Binary" to model names). Splitting on
@@ -1202,7 +1206,7 @@ evaluate_saz_stage2 <- function(fit1,
   # continuous-only and binary-only rows with matching terminology, e.g.
   # "FP2 + Binary" splits into "FP2" and "Binary".
   stage2_names <- strsplit(f_names, " \\+ ")[[1]]
-  
+
   # For df = 1, stage 1 can be a linear SAZ model whose label has only one
   # component name. Ensure the full-model label always shows an explicit
   # binary component, so the three stage-2 rows read as: full model,
@@ -1211,18 +1215,18 @@ evaluate_saz_stage2 <- function(fit1,
     f_names <- paste0(stage2_names, " + Binary")
     stage2_names <- c(stage2_names, "Binary")
   }
-  
+
   # Row order matches compute_saz_stage2_metrics()'s list order
   # (metrics1, metrics2, metrics3): full model first, then continuous-only,
   # then binary-only.
   rownames(spike_metrics_mat) <- c(f_names, stage2_names)
-  
+
   spike_metrics <- list(
     metrics = spike_metrics_mat,
     spike_decision = spike_decision[xi],
     pvalue = decision$pvalue
   )
-  
+
   # Printing (if requested) is done here, immediately after the decision is
   # finalized, rather than deferred to the caller, because the caller
   # (find_best_fp_step()) doesn't otherwise have a natural point at which to
@@ -1232,7 +1236,7 @@ evaluate_saz_stage2 <- function(fit1,
     fit1$spike_metrics <- spike_metrics
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1, stage2 = TRUE)
   }
-  
+
   list(
     spike_decision = spike_decision,
     spike_metrics = spike_metrics

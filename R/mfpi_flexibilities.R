@@ -45,7 +45,7 @@
 #' @param degree Integer; FP degree - `0` (linear), `1` (FP1), or `2` (FP2).
 #'   Values below 1 are silently treated as `0` and routed to `flex0`.
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
-#'   or `"cox"`.
+#'   `"negbin"`, or `"cox"`.
 #' @param fp_cand Numeric vector of candidate FP powers for `cont_var`.
 #'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()]. When
 #'   `degree == 1` (FP1), power = 1 is automatically excluded from `fp_cand`
@@ -133,15 +133,15 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
                      min_saz_component_prop = 0.10,
                      flex, scale_var = 1, shift_var = 0,
                      center_type = c("grand", "group"), has_offset,
-                     run_test = TRUE) {
-  
+                     run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
+
   # Input validation -----------------------------------------------------------
   if (!is.character(flex) || length(flex) != 1L) {
     stop("`flex` must be a single character string.", call. = FALSE)
   }
-  
+
   valid_flex <- c("flex0", "flex1", "flex2", "flex3", "flex4")
   if (!flex %in% valid_flex) {
     stop(
@@ -149,20 +149,20 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
       call. = FALSE
     )
   }
-  
+
   if (!is.character(cont_var) || length(cont_var) != 1L || !cont_var %in% colnames(x)) {
     stop("`cont_var` must be a single character string naming a column of `x`.",
          call. = FALSE)
   }
-  
+
   if (!is.character(group_var) || length(group_var) != 1L || !group_var %in% colnames(x)) {
     stop("`group_var` must be a single character string naming a column of `x`.",
          call. = FALSE)
   }
-  
+
   # Linear degree always uses flex0, regardless of the flex setting
   if (degree < 1L) flex <- "flex0"
-  
+
   # For FP1 (degree = 1), exclude power = 1 from the candidate set so that
   # the FP1 search cannot collapse to a linear fit. Linear is already handled
   # separately by flex0 (degree = 0), so testing it again as FP1 with power 1
@@ -179,7 +179,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
       )
     }
   }
-  
+
   # Build shared argument list and dispatch ------------------------------------
   common_args <- list(
     x              = x,
@@ -193,6 +193,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     degree         = degree,
     family         = family,
     family_string  = family_string,
+    fitter         = fitter,
     fp_cand        = fp_cand,
     use_ftest      = use_ftest,
     center         = center,
@@ -212,7 +213,7 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     run_test       = run_test,
     has_offset     = has_offset
   )
-  
+
   do.call(get(flex, mode = "function"), common_args)
 }
 
@@ -240,24 +241,24 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE) {
-  
+                  run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
-  
+
+
   if (!is.null(xadj)) {
     if (!is.matrix(xadj)) stop("`xadj` must be a matrix.", call. = FALSE)
     if (is.null(colnames(xadj))) stop("`xadj` must have column names.", call. = FALSE)
   }
-  
+
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
   group_levels <- sort(unique(groupvar_vec))
   k            <- length(group_levels)
-  
+
   # Design matrices ------------------------------------------------------------
-  
+
   z_vars <- create_z_variables(
     cont_var  = contvar_vec,
     group_var = groupvar_vec,
@@ -269,7 +270,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     center_type = center_type,
     scale_var   = scale_var
   )
-  
+
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
   x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
   center_vals   <- z_vars$center_vals
@@ -278,7 +279,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   znames              <- sprintf("%s%d%d", cont_var, group_levels, 1L)
   bestfp_main         <- 1L
   bestfp_interaction  <- setNames(replicate(k, 1L, simplify = FALSE), znames)
-  
+
   # Interaction test -----------------------------------------------------------
   test_results <- NULL
   if (run_test) {
@@ -295,6 +296,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       use_ftest          = use_ftest,
       family             = family,
       family_string      = family_string,
+      fitter             = fitter,
       weights            = weights,
       offset             = offset,
       ties               = ties,
@@ -304,8 +306,8 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-  
-  
+
+
   list(
     bestfp_main        = bestfp_main,
     bestfp_interaction = bestfp_interaction,
@@ -346,22 +348,22 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE) {
-  
+                  run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
-  
+
+
   if (degree < 1L) {
     stop("! `degree` must be >= 1 for flex1; use flex0 for linear models.",
          call. = FALSE)
   }
-  
+
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
   group_levels <- sort(unique(groupvar_vec))
   k            <- length(group_levels)
-  
+
   # Step 1: Fit pooled main-effects MFP model to find best FP powers ----------
   # All variables are forced in (select = alpha = 1, keep = vnames).
   # force_max_fp: named logical vector, TRUE for cont_var only.
@@ -374,18 +376,18 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   xnew    <- cbind(contvar_vec, group_dummies, xadj)
   vnames  <- colnames(xnew)
   n_adj   <- if (is.null(xadj)) 0L else ncol(xadj)
-  
+
   df_vec <- c(
     2L * degree,               # cont_var: FP of requested degree
     rep(1L, k - 1L),           # group dummies: linear
     if (n_adj > 0L) rep(1L, n_adj)
   )
-  
+
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   pw_list <- setNames(replicate(length(vnames), default_powers, simplify = FALSE),
                       vnames)
   pw_list[[cont_var]] <- fp_cand
-  
+
   n_total      <- length(vnames)
   center_vec   <- c(center,    rep(FALSE, n_total - 1L))
   zero_vec     <- c(zero_var,  rep(FALSE, n_total - 1L))
@@ -395,7 +397,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # force_max_fp: TRUE only for cont_var; dummies and adj have df = 1
   # so there is no simpler form to downgrade to.
   force_max_fp <- setNames(c(TRUE, rep(FALSE, n_total - 1L)), vnames)
-  
+
   # x is already shifted upstream so shift is
   # intentionally set to 0. This call is for power
   # selection only; coefficients are not used.
@@ -414,11 +416,12 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     method        = ties,
     family        = family,
     family_string = family_string,
+    fitter        = fitter,
     powers        = pw_list,
     ftest         = use_ftest,
     center        = center_vec,
-    shift         = rep(0, n_total),   
-    scale         = rep(1, n_total),  
+    shift         = rep(0, n_total),
+    scale         = rep(1, n_total),
     acdx          = acd_vec,
     xorder        = xorder,
     weights       = weights,
@@ -435,10 +438,10 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     has_offset    = has_offset,
     verbose       = FALSE
   )
-  
+
   # Step 2: Extract best FP powers for cont_var --------------------------------
   bestfp <- unlist(get_fp_powers(cont_var, fit_main_pool$fp_terms))
-  
+
   # Defensive guard: if fit_mfp returned an unexpected linear or empty result for
   # an FP1 search (despite force_max_fp = TRUE and power = 1 excluded from
   # fp_cand by flex_fit()), perform a direct deviance-minimization search over
@@ -448,7 +451,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     length(bestfp) == 0L ||
       (length(bestfp) == 1L && isTRUE(bestfp == 1))
   )
-  
+
   if (needs_fallback) {
     nonunit_cand <- setdiff(fp_cand, 1)
     if (length(nonunit_cand) == 0L) {
@@ -457,7 +460,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         call. = FALSE
       )
     }
-    
+
     # Fit a one-term FP transformation at each candidate power and choose the
     # lowest-deviance fit. Adjustment columns and group dummies are included as
     # covariates so the comparison is on equal footing with the MFP-fitted model.
@@ -482,6 +485,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         y             = y,
         family        = family,
         family_string = family_string,
+        fitter        = fitter,
         weights       = weights,
         offset        = offset,
         method        = ties,
@@ -496,13 +500,13 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     }, numeric(1L))
     bestfp <- nonunit_cand[which.min(dev_vec)]
   }
-  
+
   # Step 3: Build interaction terms using the pooled FP powers ----------------
   znames             <- sprintf("%s%d1", cont_var, group_levels)
   bestfp_interaction <- setNames(
     replicate(length(znames), bestfp, simplify = FALSE), znames
   )
-  
+
   z_vars <- create_z_variables(
     cont_var    = contvar_vec,
     group_var   = groupvar_vec,
@@ -514,7 +518,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     center_type = center_type,
     scale_var   = scale_var
   )
-  
+
   x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
   x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
   center_vals   <- z_vars$center_vals
@@ -535,6 +539,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       use_ftest          = use_ftest,
       family             = family,
       family_string      = family_string,
+      fitter             = fitter,
       weights            = weights,
       offset             = offset,
       ties               = ties,
@@ -544,7 +549,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-  
+
   list(
     bestfp_main        = bestfp,
     bestfp_interaction = bestfp_interaction,
@@ -584,15 +589,15 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE) {
-  
+                  run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
-  
+
+
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
-  
+
   # Step 1: Generate all candidate within-group transformed variables ----------
   # transform_z_variables() tries every combination of powers from fp_cand,
   # applies the chosen centering (center_type) using the group membership mask
@@ -610,13 +615,13 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero        = zero_var,
     scale_var   = scale_var
   )
-  
+
   power_matrix       <- transformed$powers_matrix
   transformed_groups <- transformed$z_transformed
   znames             <- transformed$znames
   center_vals_list   <- transformed$center_vals_list   # NULL when center = FALSE
   column_groups_list  <- transformed$column_groups_list
-  
+
   # Step 2: Select the power combination with the lowest deviance -------------
   # Each candidate within-group FP basis is fitted with the same adjustment
   # columns and group dummies. The candidate with the smallest deviance supplies
@@ -627,7 +632,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # consistent across the MFPI codebase and to preserve correct behaviour if the
   # implementation later switches to a formula-based fit.
   fixed_x <- cbind(group_dummies, xadj)
-  
+
   deviance_vec <- vapply(transformed_groups, function(z) {
     if (anyNA(z)) {
       stop("! Internal error: NA values in flex2 candidate design matrix.", call. = FALSE)
@@ -637,6 +642,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       y             = y,
       family        = family,
       family_string = family_string,
+      fitter        = fitter,
       weights       = weights,
       offset        = offset,
       method        = ties,
@@ -649,14 +655,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     )
     -2 * fit$logl
   }, numeric(1L))
-  
+
   best_idx <- which.min(deviance_vec)
   bestfp   <- power_matrix[best_idx, ]
   coefficient_groups <- column_groups_list[[best_idx]]
-  
+
   # Extract the centering constants for the selected combination --------------
   center_vals <- if (center) center_vals_list[[best_idx]] else NULL
-  
+
   # Step 3: Build contvar_transformed for the main-effects model --------------
   # Developer note:
   # flex2 selects FP powers from the interaction model, then reuses those same
@@ -670,12 +676,12 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # Do not call create_z_variables() here: flex2 only needs the pooled main-effect
   # basis, not the full group-specific interaction design.
   contvar_main <- contvar_vec
-  
+
   if (!is.null(scale_var) && length(scale_var) == 1L &&
       is.finite(scale_var) && scale_var != 1) {
     contvar_main <- contvar_main * scale_var
   }
-  
+
   contvar_transformed <- transform_vector_fp(
     x            = contvar_main,
     power        = bestfp,
@@ -685,16 +691,16 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero         = zero_var,
     check_binary = FALSE
   )
-  
+
   contvar_transformed <- as.matrix(contvar_transformed)
   storage.mode(contvar_transformed) <- "double"
-  
+
   ct_names <- colnames(contvar_transformed)
   if (is.null(ct_names)) {
     ct_names <- paste0(cont_var, seq_len(ncol(contvar_transformed)))
   }
   colnames(contvar_transformed) <- ct_names
-  
+
   if (center) {
     if (isTRUE(zero_var)) {
       # Developer note:
@@ -702,14 +708,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       # part only. Otherwise, a large structural-zero mass can dominate the mean
       # and distort the centered FP function for the positive distribution.
       positive_rows <- as.vector(contvar_main) > 0
-      
+
       if (!any(positive_rows)) {
         stop(
           "! No positive values are available to centre the flex2 main-effect FP transformation.",
           call. = FALSE
         )
       }
-      
+
       ct_means <- colMeans(
         contvar_transformed[positive_rows, , drop = FALSE],
         na.rm = TRUE
@@ -717,14 +723,14 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     } else {
       ct_means <- colMeans(contvar_transformed, na.rm = TRUE)
     }
-    
+
     if (any(!is.finite(ct_means))) {
       stop(
         "! Could not compute finite centering constants for the flex2 main-effect FP transformation.",
         call. = FALSE
       )
     }
-    
+
     contvar_transformed <- sweep(
       contvar_transformed,
       2L,
@@ -733,7 +739,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       check.margin = FALSE
     )
   }
-  
+
   # Developer note:
   # Structural-zero rows represent absence of the positive-part FP contribution.
   # Restore them after centering; otherwise centering would assign non-zero
@@ -744,9 +750,9 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       contvar_transformed[zero_rows, ] <- 0
     }
   }
-  
+
   z_best <- transformed_groups[[best_idx]]
-  
+
   if (
     is.null(coefficient_groups) ||
     !identical(
@@ -759,7 +765,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       call. = FALSE
     )
   }
-  
+
   # Developer note:
   # transform_z_variables() should return a finite design matrix: inactive group
   # blocks and structural-zero rows are coded as 0. NA, Inf, or -Inf here indicate
@@ -770,15 +776,15 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       call. = FALSE
     )
   }
-  
+
   # Step 4: Assemble design matrices -------------------------------------------
   x_main        <- cbind(group_dummies, contvar_transformed, xadj)
   x_interaction <- cbind(group_dummies, z_best,              xadj)
-  
+
   bestfp_interaction <- setNames(
     replicate(length(znames), bestfp, simplify = FALSE), znames
   )
-  
+
   # Step 5: Interaction test ---------------------------------------------------
   test_results <- NULL
   if (run_test) {
@@ -795,6 +801,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       use_ftest          = use_ftest,
       family             = family,
       family_string      = family_string,
+      fitter             = fitter,
       weights            = weights,
       offset             = offset,
       ties               = ties,
@@ -804,7 +811,7 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-  
+
   list(
     bestfp_main        = bestfp,
     bestfp_interaction = bestfp_interaction,
@@ -845,16 +852,17 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE) {
-  
+                  run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
+
   # Shared arguments for flex1 and flex2 calls ---------------------------------
   shared <- list(
     x             = x, y = y, cont_var = cont_var, group_var = group_var,
     group_dummies = group_dummies,
     xadj          = xadj, criterion = criterion, ties = ties, degree = degree,
-    family        = family, family_string = family_string, fp_cand = fp_cand,
+    family        = family, family_string = family_string, fitter = fitter,
+    fp_cand       = fp_cand,
     use_ftest     = use_ftest, center = center, center_type = center_type,
     scale_var     = scale_var, shift_var = shift_var,
     xorder        = xorder,
@@ -865,12 +873,12 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     has_offset    = has_offset,
     run_test      = FALSE
   )
-  
+
   # Step 1: Main-effects design matrix from flex1 (pooled FP powers) ----------
   fit_flex1   <- do.call(flex1, shared)
   x_main      <- fit_flex1$xmain
   bestfp_main <- fit_flex1$bestfp_main
-  
+
   # Step 2: Interaction design matrix from flex2 (within-group FP powers) -----
   fit_flex2          <- do.call(flex2, shared)
   x_interaction      <- fit_flex2$xinteraction
@@ -878,11 +886,11 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   center_vals        <- fit_flex2$center_vals
   znames             <- fit_flex2$znames
   coefficient_groups <- fit_flex2$coefficient_groups
-  
+
   # Step 3: Interaction test using the two separate design matrices ------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
-  
+
   test_results <- NULL
   if (run_test) {
     test_results <- test_interaction(
@@ -898,6 +906,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       use_ftest          = use_ftest,
       family             = family,
       family_string      = family_string,
+      fitter             = fitter,
       weights            = weights,
       offset             = offset,
       ties               = ties,
@@ -907,7 +916,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-  
+
   list(
     bestfp_main        = bestfp_main,
     bestfp_interaction = bestfp_interaction,
@@ -930,7 +939,7 @@ flex3 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 #' The most flexible strategy. FP powers for the interaction model are
 #' estimated independently within each group, so the functional form of
 #' `cont_var` can differ across groups. The main-effects model uses pooled
-#' powers estimated by `flex1`. 
+#' powers estimated by `flex1`.
 #'
 #' @inheritParams flex_fit
 #' @return See \code{flex_fit()} for the return structure.
@@ -944,16 +953,16 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE) {
-  
+                  run_test = TRUE, fitter = "base") {
+
   center_type <- match.arg(center_type)
-  
-  
+
+
   # Extract column vectors -----------------------------------------------------
   contvar_vec  <- x[, cont_var,  drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
   k            <- length(unique(groupvar_vec))
-  
+
   # Step 1: Build untransformed group-wise variables (linear placeholder) ------
   # Two versions are needed:
   #   z_linear         - built from scaled contvar_vec (no backscaling) for
@@ -973,7 +982,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     scale_var = 1          # no backscaling for power selection
   )$z
   znames <- colnames(z_linear)
-  
+
   # Backscaled version for final model fit and centering
   z_linear_bs <- create_z_variables(
     cont_var  = contvar_vec,
@@ -984,7 +993,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     center    = FALSE,
     scale_var = scale_var  # backscale: cont_var * scale_var = x + shift
   )$z
-  
+
   # Step 2: Fit group-specific FP model via MFP --------------------------------
   # Each group's column is allowed its own FP powers (no equality constraint).
   # Non-positive values within groups are handled via zero = TRUE.
@@ -992,17 +1001,17 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   vnames <- colnames(xnew)
   n_adj  <- if (is.null(xadj)) 0L else ncol(xadj)
   n_total <- length(vnames)
-  
+
   df_vec <- c(
     rep(2L * degree, k),     # one FP term per group
     rep(1L, k - 1L),         # group dummies
     if (n_adj > 0L) rep(1L, n_adj)
   )
-  
+
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   pw_list <- setNames(replicate(n_total, default_powers, simplify = FALSE), vnames)
   pw_list[znames] <- replicate(k, fp_cand, simplify = FALSE)
-  
+
   # Centre only the within-group cont_var columns; adjustment already centred
   center_vec  <- c(rep(center,    k), rep(FALSE, n_total - k))
   # Developer note: Non-positive values within groups are handled via zero = TRUE"),
@@ -1015,8 +1024,8 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # columns, FALSE for group dummies and adjustment variables (df = 1,
   # nothing to force). Same rationale as flex1.
   force_max_fp <- setNames(c(rep(TRUE, k), rep(FALSE, n_total - k)), vnames)
-  
-  
+
+
   fit_int <- fit_mfp(
     x             = xnew,
     y             = y,
@@ -1029,6 +1038,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     method        = ties,
     family        = family,
     family_string = family_string,
+    fitter        = fitter,
     powers        = pw_list,
     shift         = rep(0, n_total),   # x already shifted upstream
     scale         = rep(1, n_total),   # intentionally 1: power selection only;
@@ -1050,9 +1060,9 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     has_offset    = has_offset,
     verbose       = FALSE
   )
-  
+
   bestfp_interaction <- get_fp_powers(znames, fit_int$fp_terms)
-  
+
   # Step 3: Apply group-specific FP powers to build the interaction matrix -----
   # Use z_linear_bs (backscaled) so the final model is on phi(x + shift) scale.
   transformed <- transform_matrix(
@@ -1063,7 +1073,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     zero       = setNames(rep(TRUE,  k), znames),
     catzero    = setNames(rep(FALSE, k), znames)
   )$x_transformed
-  
+
   # transform_matrix() should already return a finite matrix here.  In
   # particular, structural-zero rows for zero-handled variables are coded as 0,
   # not as Inf/NA.  Treat any remaining non-finite value as an internal
@@ -1074,7 +1084,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       call. = FALSE
     )
   }
-  
+
   # ---------------------------------------------------------------------------
   # Centering for flex4
   # ---------------------------------------------------------------------------
@@ -1086,35 +1096,35 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   #   * apply centering only to rows belonging to the corresponding group block;
   #   * restore structural-zero rows to 0 after centering;
   #   * fail on unexpected non-finite transformed values.
-  
+
   group_levels <- sort(unique(as.vector(groupvar_vec)))
   group_idx    <- match(as.vector(groupvar_vec), group_levels)
-  
+
   # Backscaled full cont_var for centering.  contvar_vec has already been
   # shifted and divided by scale_var upstream; multiplying by scale_var restores
   # x + shift, matching the basis used in z_linear_bs and transform_matrix().
   contvar_bs <- contvar_vec * scale_var
   zero_rows  <- if (isTRUE(zero_var)) as.vector(contvar_bs) <= 0 else rep(FALSE, nrow(contvar_bs))
   valid_rows <- !zero_rows
-  
+
   if (!any(valid_rows)) {
     stop(
       "! No valid rows are available for flex4 FP transformation/centering.",
       call. = FALSE
     )
   }
-  
+
   if (center) {
     center_vals <- numeric(ncol(transformed))
     names(center_vals) <- colnames(transformed)
-    
+
     for (gi in seq_len(k)) {
       grp_name <- znames[gi]
       pw       <- bestfp_interaction[[grp_name]]
       n_terms  <- length(pw)
       cols_g   <- seq.int((gi - 1L) * n_terms + 1L, gi * n_terms)
       in_grp   <- group_idx == gi
-      
+
       # FP-transform the full backscaled cont_var with this group's powers.
       # Passing zero = zero_var is essential: otherwise log/negative powers of
       # structural zeros can create non-finite centers, and zeros can influence
@@ -1127,26 +1137,26 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         zero         = isTRUE(zero_var),
         check_binary = FALSE
       )
-      
+
       x_fp_full <- as.matrix(x_fp_full)
       storage.mode(x_fp_full) <- "double"
-      
+
       if (ncol(x_fp_full) != n_terms) {
         stop(
           "! Internal flex4 centering error: transformed column count does not match selected powers.",
           call. = FALSE
         )
       }
-      
+
       if (any(!is.finite(x_fp_full[valid_rows, , drop = FALSE]))) {
         stop(
           "! Non-finite values were produced among valid rows during flex4 centering.",
           call. = FALSE
         )
       }
-      
+
       center_rows <- if (center_type == "grand") valid_rows else in_grp & valid_rows
-      
+
       if (!any(center_rows)) {
         stop(
           paste0(
@@ -1156,9 +1166,9 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
           call. = FALSE
         )
       }
-      
+
       centers_g <- colMeans(x_fp_full[center_rows, , drop = FALSE])
-      
+
       if (any(!is.finite(centers_g))) {
         stop(
           paste0(
@@ -1168,9 +1178,9 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
           call. = FALSE
         )
       }
-      
+
       center_vals[cols_g] <- centers_g
-      
+
       # Centre active rows in this group block only.  Out-of-group rows remain
       # zero because they encode inactive group blocks, not observed values.
       transformed[in_grp, cols_g] <- sweep(
@@ -1180,7 +1190,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
         "-",
         check.margin = FALSE
       )
-      
+
       # Structural zeros encode absence of the positive-part FP contribution.
       # They must stay at 0 after centering; otherwise they become -center.
       if (isTRUE(zero_var) && any(in_grp & zero_rows)) {
@@ -1190,41 +1200,41 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   } else {
     center_vals <- NULL
   }
-  
+
   x_interaction <- cbind(group_dummies, transformed, xadj)
-  
+
   # group names
   coefficient_groups <- stats::setNames(
     vector("list", k),
     as.character(group_levels)
   )
-  
+
   col_pos <- 1L
-  
+
   for (gi in seq_len(k)) {
     grp_name <- znames[gi]
     n_cols_g <- length(bestfp_interaction[[grp_name]])
-    
+
     cols_g <- seq.int(col_pos, col_pos + n_cols_g - 1L)
-    
+
     coefficient_groups[[gi]] <- colnames(transformed)[cols_g]
-    
+
     col_pos <- col_pos + n_cols_g
   }
-  
+
   if (col_pos != ncol(transformed) + 1L) {
     stop(
       "! Internal flex4 error: coefficient_groups do not cover the full interaction design.",
       call. = FALSE
     )
   }
-  
+
   # Step 4: Main-effects design matrix via flex1 (pooled FP powers) -----------
   fit_main <- flex1(
     x             = x, y = y, cont_var = cont_var, group_var = group_var,
     group_dummies = group_dummies,
     xadj          = xadj, criterion = criterion, ties = ties, degree = degree,
-    family        = family, family_string = family_string,
+    family        = family, family_string = family_string, fitter = fitter,
     fp_cand       = fp_cand, use_ftest = use_ftest,
     center        = center, center_type = center_type,
     scale_var     = scale_var,
@@ -1235,10 +1245,10 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     has_offset    = has_offset,
     run_test = FALSE
   )
-  
+
   x_main      <- fit_main$xmain
   bestfp_main <- fit_main$bestfp_main
-  
+
   # Step 5: Interaction test ---------------------------------------------------
   test_results <- NULL
   if (run_test) {
@@ -1255,6 +1265,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       use_ftest          = use_ftest,
       family             = family,
       family_string      = family_string,
+      fitter             = fitter,
       weights            = weights,
       offset             = offset,
       ties               = ties,
@@ -1264,7 +1275,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       has_offset         = has_offset
     )
   }
-  
+
   list(
     bestfp_main        = bestfp_main,
     bestfp_interaction = bestfp_interaction,

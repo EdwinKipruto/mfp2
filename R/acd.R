@@ -1,49 +1,49 @@
 #' Helper to reset acd transformation for variables with few values
-#' 
+#'
 #' To be used in \code{fit_mfp()}.
 #' This function resets the `acdx` parameter (logical vector) of variables with
 #' less than 5 distinct values to `FALSE`.
-#' 
-#' @param x a design matrix of dimension nobs x nvars where nvars is the number 
-#' of predictors excluding an intercept.  
+#'
+#' @param x a design matrix of dimension nobs x nvars where nvars is the number
+#' of predictors excluding an intercept.
 #' @param acdx a named logical vector of length nvars indicating which continuous
-#' variables should undergo the approximate cumulative distribution (ACD) 
+#' variables should undergo the approximate cumulative distribution (ACD)
 #' transformation. May be ordered differently than the columns of `x`.
-#' 
-#' @return 
+#'
+#' @return
 #' Logical vector of same length as `acdx`.
 #' @keywords internal
 #' @noRd
 reset_acd <- function(x, acdx) {
-  
+
   if (!is.logical(acdx) || is.null(names(acdx))) {
     stop("`acdx` must be a named logical vector.", call. = FALSE)
   }
-  
+
   if (anyNA(acdx)) {
     stop("`acdx` must not contain missing values.", call. = FALSE)
   }
-  
+
   # exit early if all acdx values are FALSE
   if (!any(acdx)) {
     return(acdx)
   }
-  
+
   names_acd <- names(acdx)[acdx]
-  
+
   # number of unique values of each column in acdx
   n_unique <- apply(
     x[, names_acd, drop = FALSE],
     2,
     function(col) length(unique(col))
   )
-  
+
   ind_reset <- which(n_unique < 5)
-  
+
   if (length(ind_reset) > 0L) {
     vars_reset <- names_acd[ind_reset]
     acdx[vars_reset] <- FALSE
-    
+
     warning(
       "i For any variable with fewer than 5 unique values no acd transformation can be performed.\n",
       sprintf(
@@ -53,7 +53,7 @@ reset_acd <- function(x, acdx) {
       call. = FALSE
     )
   }
-  
+
   acdx
 }
 
@@ -191,8 +191,10 @@ reset_acd <- function(x, acdx) {
 #'
 #' @keywords internal
 #' @noRd
-fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
-  
+fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
+                    fitter = c("base", "fastglm")) {
+  fitter <- match.arg(fitter)
+
   # --- Input checks ---
   if (!is.numeric(x)) {
     stop("`x` must be a numeric vector.")
@@ -206,7 +208,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   if (anyNA(x)) {
     stop("`x` contains missing values. Please remove or impute them before calling fit_acd().")
   }
-  
+
   if (!is.null(powers)) {
     if (!is.numeric(powers) || any(!is.finite(powers))) {
       stop("`powers` must be a numeric vector of finite values or NULL.")
@@ -214,36 +216,36 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   } else {
     powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
-  
+
   if (!is.null(shift) && (!is.numeric(shift) || length(shift) != 1 || is.na(shift))) {
     stop("`shift` must be a single numeric value or NULL.")
   }
-  
+
   if (!is.null(scale) && (!is.numeric(scale) || length(scale) != 1 || scale <= 0 || is.na(scale))) {
     stop("`scale` must be a single positive numeric value or NULL.")
   }
-  
+
   if (!is.logical(zero) || length(zero) != 1 || is.na(zero)) {
     stop("`zero` must be a single logical value (TRUE or FALSE).")
   }
-  
+
   # --- Preprocessing ---
   if (is.null(shift)) {
     shift <- find_shift_factor(x)
-  } 
-  
+  }
+
   if (zero) {
     x[x <= 0] <- 0
     # zero transformation overrides shift
     shift <- 0
   }
-  
+
   if (is.null(scale)) {
     scale <- find_scale_factor(x)
   }
-  
+
   x <- (x + shift) / scale
-  
+
   # check whether acd is estimable
   #if (!all(x > 0) && !zero) {
   #  warning("All values of `x` must be positive after shifting. ",
@@ -255,50 +257,52 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE) {
   z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
-  fit <- find_best_fp1_for_acd(y = z, x = x, powers = powers, zero = zero)
-  
+  fit <- find_best_fp1_for_acd(
+    y = z, x = x, powers = powers, zero = zero, fitter = fitter
+  )
+
   coefx <- fit$fit$coefficients
   zhat <- fit$fit$fitted.values
 
-  list(acd = stats::pnorm(zhat), 
-       beta0 = coefx[1], 
-       beta1 = coefx[2], 
-       power = fit$power, 
-       shift = shift, 
+  list(acd = stats::pnorm(zhat),
+       beta0 = coefx[1],
+       beta1 = coefx[2],
+       power = fit$power,
+       shift = shift,
        scale = scale)
 }
 
 #' Function to apply Approximate Cumulative Distribution (ACD)
-#' 
-#' Applies the acd transformation as outlined in Royston (2014) and Royston and 
-#' Sauerbrei (2016). 
+#'
+#' Applies the acd transformation as outlined in Royston (2014) and Royston and
+#' Sauerbrei (2016).
 #' Designed to work with the output of \code{fit_acd()}, Please refer to the corresponding
 #' documentation for more details.
-#' 
+#'
 #' @param x a numeric vector.
-#' @param beta0,beta1 each a numeric value, representing the coefficients of 
+#' @param beta0,beta1 each a numeric value, representing the coefficients of
 #' the FP1 model for the ACD transformation.
-#' @param power a numeric value, estimated power to be used in the FP1 model for 
+#' @param power a numeric value, estimated power to be used in the FP1 model for
 #' the ACD transformation.
 #' @param shift a numeric value that is used to shift the values of `x` to
-#' positive values. 
-#' @param scale a numeric value used to scale `x`. 
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
+#' positive values.
+#' @param scale a numeric value used to scale `x`.
+#' @param zero Logical indicating whether only positive values of the variable
+#' should be transformed, with nonpositive values (zero or negative) set to zero.
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values
 #' are replaced with zero before transformation.
 #' @param ... not used.
-#' 
-#' @return 
+#'
+#' @return
 #' The transformed input vector `x`.
 #' @keywords internal
 #' @noRd
 apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
-  
+
   if (length(power) != 1) {
     stop("! `power` must be a single numeric value.")
   }
-  
+
   x_power <- transform_vector_fp(
     x            = x,
     power        = power,
@@ -307,32 +311,34 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
     zero         = zero,
     check_binary = FALSE
   )
-  
+
   zhat <- beta0 + beta1 * x_power[, 1L]
-  
+
   stats::pnorm(zhat)
 }
 
 #' Function to fit univariable FP1 models for acd transformation
-#' 
+#'
 #' To be used in \code{fit_acd()}.
-#' 
+#'
 #' @inheritParams fit_acd
 #' @param y normal cdf of rank transform of `x`.
-#' 
-#' @return 
+#'
+#' @return
 #' The best FP power with smallest deviance and the fitted model.
 #' @keywords internal
 #' @noRd
 find_best_fp1_for_acd <- function(x,
                                   y,
                                   powers,
-                                  zero) {
-  
+                                  zero,
+                                  fitter = c("base", "fastglm")) {
+  fitter <- match.arg(fitter)
+
   if (!is.null(dim(x))) {
     stop("! `x` must be a vector.")
   }
-  
+
   # Generate all possible FP1 transformations.
   trafo <- generate_transformations_fp(
     x = x,
@@ -340,12 +346,12 @@ find_best_fp1_for_acd <- function(x,
     powers = powers,
     zero = zero
   )$data
-  
+
   # Fit linear Gaussian models for each FP1 function.
   n_powers <- length(powers)
   family_gaussian <- stats::gaussian()
   family_string_gaussian <- family_gaussian$family
-  
+
   # Reuse one intercept-augmented design matrix across candidate fits.
   #
   # Only the intercept name is required by fit_glm(..., x_has_intercept = TRUE).
@@ -354,39 +360,40 @@ find_best_fp1_for_acd <- function(x,
   # coefficient names and avoids relying on colnames(trafo[[i]]), which may be
   # NULL.
   first_trafo <- trafo[[1L]]
-  
+
   design_mat <- cbind(
     "(Intercept)" = rep.int(1, NROW(first_trafo)),
     "fp1" = first_trafo[, 1L]
   )
-  
+
   fp_col <- 2L
-  
+
   # Store deviance and model object for each candidate power.
   devs <- vector("numeric", n_powers)
   fits <- vector("list", n_powers)
-  
+
   for (i in seq_len(n_powers)) {
     data_xi <- trafo[[i]]
-    
+
     # Replace only the numeric contents of the FP column.
     # Do not update the column name: "fp1" is intentionally stable.
     design_mat[, fp_col] <- data_xi[, 1L]
-    
+
     fit <- fit_model(
       x = design_mat,
       y = y,
       family = family_gaussian,
       family_string = family_string_gaussian,
+      fitter = fitter,
       x_has_intercept = TRUE
     )
-    
+
     devs[i] <- -2 * fit$logl
     fits[[i]] <- fit$fit
   }
-  
+
   index <- which.min(devs)
-  
+
   list(
     power = powers[[index]],
     fit = fits[[index]]

@@ -2,8 +2,8 @@
 #
 # The full linear model has two distinct roles in mfp2:
 #
-#   1. It provides the null- and full-linear-model deviances retained for later
-#      reporting.
+#   1. It provides the null/full-linear model fit statistics retained for later
+#      reporting, including the null and fitted log-likelihoods.
 #   2. When significance-based ordering is requested, it is the reference model
 #      against which each leave-one-predictor-out model is compared.
 #
@@ -24,7 +24,9 @@
 #'
 #' @details
 #' The full linear reference model is fitted unconditionally because its null
-#' and fitted-model deviances are retained by \code{fit_mfp()}.
+#' and fitted-model statistics are retained by \code{fit_mfp()}. For GLMs,
+#' one intercept-only fit is also performed here to obtain the null-model
+#' log-likelihood used by \code{summary.mfp2()}.
 #' This fit is invariant to \code{xorder}: changing the visiting order does not
 #' change the predictors, likelihood, coefficients, or deviance of the full
 #' linear model.
@@ -79,8 +81,8 @@
 #' @param family GLM family object used by \code{fit_model()}, or character
 #'   \code{"cox"} for a Cox proportional-hazards model.
 #' @param family_string Normalized character family name, for example
-#'   \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, or
-#'   \code{"cox"}.
+#'   \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
+#'   \code{"negbin"}, or \code{"cox"}.
 #' @param weights Optional observation weights passed to \code{fit_model()}.
 #' @param offset Optional linear-predictor offset passed to \code{fit_model()}.
 #' @param strata Optional Cox stratification object. Ignored for GLMs.
@@ -97,6 +99,12 @@
 #'     associated with the full linear reference fit.}
 #'   \item{\code{linear_deviance}}{Family-specific deviance of the full
 #'     linear reference model.}
+#'   \item{\code{linear_logl}}{Maximized log-likelihood of the full linear
+#'     reference model.}
+#'   \item{\code{linear_df}}{Model degrees of freedom for the full linear
+#'     reference model.}
+#'   \item{\code{null_logl}}{Maximized log-likelihood of the intercept-only
+#'     reference model, or the null partial log-likelihood for Cox models.}
 #' }
 #'
 #' @keywords internal
@@ -112,14 +120,15 @@ order_variables <- function(xorder = "ascending",
                             method = NULL,
                             control = NULL,
                             nocenter = NULL,
-                            term_to_columns = NULL) {
+                            term_to_columns = NULL,
+                            fitter = "base") {
   if (is.null(term_to_columns)) {
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
   }
-  
+
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
-  
+
   # The full linear reference model is required independently of predictor
   # ordering. Fit it once and reuse its log-likelihood for all reduced-model
   # comparisons below.
@@ -128,6 +137,7 @@ order_variables <- function(xorder = "ascending",
     y = y,
     family = family,
     family_string = family_string,
+    fitter = fitter,
     weights = weights,
     offset = offset,
     strata = strata,
@@ -135,12 +145,12 @@ order_variables <- function(xorder = "ascending",
     control = control,
     nocenter = nocenter
   )
-  
+
   # No reduced-model fits are needed when the user requests the original order
   # or when only one predictor is available. The full reference fit above is
   # nevertheless retained because its deviance is required for reporting.
   rank_predictors <- n_predictors > 1L && !identical(xorder, "original")
-  
+
   variables_ordered <- if (rank_predictors) {
     order_variables_by_significance(
       xorder = xorder,
@@ -149,6 +159,7 @@ order_variables <- function(xorder = "ascending",
       y = y,
       family = family,
       family_string = family_string,
+      fitter = fitter,
       weights = weights,
       offset = offset,
       strata = strata,
@@ -160,16 +171,15 @@ order_variables <- function(xorder = "ascending",
   } else {
     predictor_names
   }
-  
+
   list(
     variables_ordered = variables_ordered,
     null_deviance = full_reference$null_deviance,
     linear_deviance = full_reference$model_deviance,
-    # Additional quantities needed by summary.mfp2()'s Model Fit block. These
-    # come free from the full-linear reference fit, which is computed once at
-    # the start of the MFP algorithm regardless of the requested output. The
-    # Cox branch of fit_model() returns null_logl directly; for GLMs it is
-    # computed once in fit_mfp() after backfitting has converged.
+    # Additional quantities needed by summary.mfp2()'s Model Fit block. The
+    # full-linear likelihood comes from the reference fit. Cox supplies its
+    # null partial likelihood from that same fit; GLMs use one intercept-only
+    # fit inside fit_full_linear_reference().
     linear_logl = full_reference$logl,
     linear_df   = full_reference$df,
     null_logl   = full_reference$null_logl
@@ -192,7 +202,7 @@ order_variables <- function(xorder = "ascending",
 #' @inheritParams order_variables
 #'
 #' @return A model-fit wrapper returned by \code{fit_model()}, including
-#'   \code{logl}, \code{df}, \code{null_deviance},
+#'   \code{logl}, \code{null_logl}, \code{df}, \code{null_deviance},
 #'   \code{model_deviance}, coefficients, residual information, and the
 #'   underlying fitted object.
 #'
@@ -207,12 +217,14 @@ fit_full_linear_reference <- function(x,
                                       strata,
                                       method,
                                       control,
-                                      nocenter) {
-  fit_model(
+                                      nocenter,
+                                      fitter = "base") {
+  reference <- fit_model(
     x = x,
     y = y,
     family = family,
     family_string = family_string,
+    fitter = fitter,
     weights = weights,
     offset = offset,
     method = method,
@@ -222,6 +234,24 @@ fit_full_linear_reference <- function(x,
     nocenter = nocenter,
     fast = TRUE
   )
+
+  # coxph.fit() returns the null partial log-likelihood with the full fit. GLM
+  # fitters do not expose the maximized intercept-only log-likelihood directly,
+  # so compute it once here rather than in fit_mfp() or the candidate hot path.
+  if (!identical(family_string, "cox")) {
+    reference$null_logl <- tryCatch(
+      fit_null_model_logl(
+        y = y,
+        family = family,
+        family_string = family_string,
+        weights = weights,
+        offset = offset
+      ),
+      error = function(e) NA_real_
+    )
+  }
+
+  reference
 }
 
 
@@ -271,11 +301,12 @@ order_variables_by_significance <- function(xorder,
                                             control,
                                             nocenter,
                                             full_reference,
-                                            term_to_columns = NULL) {
+                                            term_to_columns = NULL,
+                                            fitter = "base") {
   if (is.null(term_to_columns)) {
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
   }
-  
+
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
   has_mapped_terms <- any(vapply(
@@ -286,14 +317,14 @@ order_variables_by_significance <- function(xorder,
     },
     logical(1L)
   ))
-  
+
   # Initialize with NA rather than zero. A failed or non-identifiable comparison
   # must not be interpreted as overwhelming evidence against the predictor.
   p_values <- stats::setNames(
     rep(NA_real_, n_predictors),
     predictor_names
   )
-  
+
   for (predictor_index in seq_len(n_predictors)) {
     term <- predictor_names[[predictor_index]]
     drop_columns <- if (has_mapped_terms) {
@@ -301,7 +332,7 @@ order_variables_by_significance <- function(xorder,
     } else {
       colnames(x)[predictor_index]
     }
-    
+
     # Preserve the historical positional drop for singleton-only fits. In the
     # grouped path, remove the complete raw design block for the current term.
     reduced_x <- if (has_mapped_terms) {
@@ -309,12 +340,13 @@ order_variables_by_significance <- function(xorder,
     } else {
       x[, -predictor_index, drop = FALSE]
     }
-    
+
     reduced_fit <- fit_model(
       x = reduced_x,
       y = y,
       family = family,
       family_string = family_string,
+      fitter = fitter,
       weights = weights,
       offset = offset,
       method = method,
@@ -324,13 +356,13 @@ order_variables_by_significance <- function(xorder,
       nocenter = nocenter,
       fast = TRUE
     )
-    
+
     # Use the fitted rank contribution of the omitted conceptual term. Raw
     # design-block width can exceed this difference when one or more grouped
     # columns are aliased or otherwise non-estimable in the fitted model.
     lrt_df <- full_reference$df - reduced_fit$df
     lrt_statistic <- 2 * (full_reference$logl - reduced_fit$logl)
-    
+
     # A valid nested-model likelihood-ratio test requires a positive df
     # difference and finite likelihoods. Small negative statistics can occur
     # from numerical rounding, so truncate such values to zero.
@@ -342,7 +374,7 @@ order_variables_by_significance <- function(xorder,
       )
     }
   }
-  
+
   # Convert the requested p-value direction into a single ascending score.
   # A secondary index keeps the original conceptual-term order when p-values are tied.
   ordering_score <- if (identical(xorder, "descending")) {
@@ -350,12 +382,12 @@ order_variables_by_significance <- function(xorder,
   } else {
     p_values
   }
-  
+
   ordering_index <- order(
     ordering_score,
     seq_along(ordering_score),
     na.last = TRUE
   )
-  
+
   predictor_names[ordering_index]
 }

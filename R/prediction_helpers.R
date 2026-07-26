@@ -19,22 +19,22 @@ normalize_prediction_type <- function(type, family_string) {
   if (!is.character(type) || length(type) != 1L || is.na(type) || !nzchar(type)) {
     stop("`type` must be a single non-missing character value.", call. = FALSE)
   }
-  
+
   # Prediction types occasionally arrive as named scalar character vectors
   # (for example when selected from a named lookup in user code or tests).
   # Names are irrelevant to dispatch but make identical(type, "link") false,
   # so normalize both inputs to unclassed, unnamed scalar strings first.
   type <- unname(as.character(type)[1L])
   family_string <- unname(as.character(family_string)[1L])
-  
+
   if (identical(family_string, "cox") && identical(type, "link")) {
     return("lp")
   }
-  
+
   if (!identical(family_string, "cox") && identical(type, "lp")) {
     return("link")
   }
-  
+
   type
 }
 
@@ -56,13 +56,13 @@ match_cox_reference <- function(value,
                                 default = "zero",
                                 argument = "reference") {
   choices <- c("zero", "sample", "strata")
-  
+
   if (is.null(value)) {
     value <- default
   }
-  
+
   choice_text <- "'zero', 'sample', or 'strata'"
-  
+
   if (!is.character(value) || length(value) != 1L ||
       is.na(value) || !nzchar(value)) {
     stop(
@@ -70,9 +70,9 @@ match_cox_reference <- function(value,
       call. = FALSE
     )
   }
-  
+
   value <- unname(as.character(value)[1L])
-  
+
   tryCatch(
     match.arg(value, choices),
     error = function(e) {
@@ -98,7 +98,7 @@ cox_internal_response_name <- function(fit_obj) {
   terms_object <- fit_obj$terms
   response_index <- attr(terms_object, "response")
   variables <- attr(terms_object, "variables")
-  
+
   if (is.null(terms_object) ||
       is.null(response_index) ||
       length(response_index) != 1L ||
@@ -111,7 +111,7 @@ cox_internal_response_name <- function(fit_obj) {
       call. = FALSE
     )
   }
-  
+
   response_expression <- variables[[response_index + 1L]]
   if (!is.symbol(response_expression)) {
     stop(
@@ -120,7 +120,7 @@ cox_internal_response_name <- function(fit_obj) {
       call. = FALSE
     )
   }
-  
+
   as.character(response_expression)
 }
 
@@ -142,13 +142,13 @@ cox_internal_response_name <- function(fit_obj) {
 #' @noRd
 reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
   newdata_df <- as.data.frame(newdata, check.names = FALSE)
-  
+
   surv_columns <- names(newdata_df)[vapply(
     newdata_df,
     function(column) inherits(column, "Surv"),
     logical(1L)
   )]
-  
+
   if (length(surv_columns) > 1L) {
     stop(
       "Cox predictions of type 'expected' or 'survival' found more than ",
@@ -157,13 +157,13 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   response <- if (length(surv_columns) == 1L) {
     newdata_df[[surv_columns]]
   } else {
     NULL
   }
-  
+
   if (is.null(response) && isTRUE(object$formula_interface)) {
     if (!inherits(object$formula, "formula")) {
       stop(
@@ -173,10 +173,10 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
         call. = FALSE
       )
     }
-    
+
     response_formula <- object$formula
     response_formula[[3L]] <- 1
-    
+
     formula_environment <- environment(response_formula)
     if (is.null(formula_environment)) {
       formula_environment <- parent.frame()
@@ -186,7 +186,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       response_environment$Surv <- survival::Surv
       environment(response_formula) <- response_environment
     }
-    
+
     response <- tryCatch(
       stats::model.response(
         stats::model.frame(
@@ -206,7 +206,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       }
     )
   }
-  
+
   if (is.null(response)) {
     stop(
       "Cox predictions of type 'expected' or 'survival' require the follow-up ",
@@ -216,7 +216,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   if (!inherits(response, "Surv")) {
     stop(
       "The Cox prediction response derived from `newdata` is not a ",
@@ -224,14 +224,14 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   if (NROW(response) != NROW(newdata_df)) {
     stop(
       "The Cox prediction response must have one row per row of `newdata`.",
       call. = FALSE
     )
   }
-  
+
   response_matrix <- unclass(response)
   if (anyNA(response_matrix) || any(!is.finite(response_matrix))) {
     stop(
@@ -240,12 +240,12 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   fitted_response <- fit_obj$y
   if (is.null(fitted_response)) {
     fitted_response <- object$y_original
   }
-  
+
   if (!inherits(fitted_response, "Surv")) {
     stop(
       "The fitted Cox model lacks a valid stored Surv response. Refit the ",
@@ -253,7 +253,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   if (!identical(attr(response, "type"), attr(fitted_response, "type")) ||
       NCOL(response) != NCOL(fitted_response)) {
     stop(
@@ -262,7 +262,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
       call. = FALSE
     )
   }
-  
+
   response
 }
 
@@ -280,7 +280,7 @@ reconstruct_cox_prediction_response <- function(object, fit_obj, newdata) {
 attach_cox_prediction_response <- function(fit_obj, newdata, response) {
   newdata <- as.data.frame(newdata, check.names = FALSE)
   response_name <- cox_internal_response_name(fit_obj)
-  
+
   if (response_name %in% names(newdata)) {
     stop(
       "The reconstructed prediction data already contain the internal Cox ",
@@ -288,12 +288,12 @@ attach_cox_prediction_response <- function(fit_obj, newdata, response) {
       call. = FALSE
     )
   }
-  
+
   if (!inherits(response, "Surv") || NROW(response) != nrow(newdata)) {
     stop("Internal error: invalid or misaligned Cox prediction response.",
          call. = FALSE)
   }
-  
+
   newdata[[response_name]] <- I(response)
   newdata
 }
@@ -314,11 +314,11 @@ prediction_fit_has_strata <- function(fit_obj) {
   if (!inherits(fit_obj, "coxph")) {
     return(FALSE)
   }
-  
+
   if (!is.null(fit_obj$strata) && length(fit_obj$strata) > 0L) {
     return(TRUE)
   }
-  
+
   trm <- fit_obj$terms
   if (is.null(trm)) {
     trm <- try(stats::terms(fit_obj), silent = TRUE)
@@ -326,12 +326,12 @@ prediction_fit_has_strata <- function(fit_obj) {
       return(FALSE)
     }
   }
-  
+
   specials <- attr(trm, "specials")
   if (!is.null(specials$strata) && length(specials$strata) > 0L) {
     return(TRUE)
   }
-  
+
   labels <- attr(trm, "term.labels")
   if (is.null(labels)) {
     return(FALSE)
@@ -339,3 +339,157 @@ prediction_fit_has_strata <- function(fit_obj) {
   any(grepl("(^|:)strata\\(", labels))
 }
 
+
+#' Predict from a Matrix-Based fastglm Fit
+#'
+#' Reconstructs the small amount of prediction logic needed for final
+#' matrix-based fits. This is used by negative-binomial models because
+#' `fastglm` has no formula interface and its prediction method neither adds an
+#' intercept column nor applies an offset to supplied prediction rows.
+#'
+#' @param object A fitted object inheriting from `"fastglm"`.
+#' @param newx Optional numeric design matrix without an intercept column.
+#'   `NULL` uses the stored fitting design and linear predictors.
+#' @param offset Optional finite numeric offset for `newx`. Ignored when
+#'   `newx = NULL` because the stored linear predictors already contain the
+#'   fitting offset.
+#' @param type Prediction scale, either `"link"` or `"response"`.
+#' @param se.fit Logical scalar indicating whether prediction standard errors
+#'   should be returned.
+#' @param dispersion Optional finite positive dispersion multiplier. The fitted
+#'   object's value is used by default; negative-binomial fits store 1.
+#'
+#' @return A numeric vector, or a list with `fit`, `se.fit`, and
+#'   `residual.scale` when `se.fit = TRUE`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_predict_fastglm_matrix <- function(object,
+                                        newx = NULL,
+                                        offset = NULL,
+                                        type = c("link", "response"),
+                                        se.fit = FALSE,
+                                        dispersion = NULL) {
+  type <- match.arg(type)
+
+  if (!inherits(object, "fastglm")) {
+    stop("`object` must inherit from class 'fastglm'.", call. = FALSE)
+  }
+
+  beta <- object$coefficients
+  if (!is.numeric(beta) || is.null(names(beta)) || anyDuplicated(names(beta))) {
+    stop("The fitted fastglm object lacks valid named coefficients.",
+         call. = FALSE)
+  }
+
+  if (is.null(dispersion)) {
+    dispersion <- object$dispersion
+    if (is.null(dispersion) || is.nan(dispersion)) dispersion <- 1
+  }
+  if (!is.numeric(dispersion) || length(dispersion) != 1L ||
+      is.na(dispersion) || !is.finite(dispersion) || dispersion <= 0) {
+    stop("`dispersion` must be a positive finite numeric scalar.",
+         call. = FALSE)
+  }
+
+  if (is.null(newx)) {
+    X <- object$x
+    eta <- object$linear.predictors
+    if (is.null(X)) {
+      stop("The fitted fastglm object does not store its design matrix.",
+           call. = FALSE)
+    }
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+    if (is.null(eta)) {
+      keep <- !is.na(beta)
+      eta <- drop(X[, keep, drop = FALSE] %*% beta[keep])
+    }
+  } else {
+    X <- as.matrix(newx)
+    if (!is.numeric(X)) {
+      stop("`newx` must be a numeric matrix.", call. = FALSE)
+    }
+    storage.mode(X) <- "double"
+    if (is.null(colnames(X)) || anyNA(colnames(X)) ||
+        any(!nzchar(colnames(X))) || anyDuplicated(colnames(X))) {
+      stop("`newx` must have unique, non-missing column names.",
+           call. = FALSE)
+    }
+    if (anyNA(X) || any(!is.finite(X))) {
+      stop("`newx` must contain only finite, non-missing values.",
+           call. = FALSE)
+    }
+
+    if ("(Intercept)" %in% names(beta) &&
+        !"(Intercept)" %in% colnames(X)) {
+      X <- cbind("(Intercept)" = 1, X)
+    }
+
+    missing_columns <- setdiff(names(beta), colnames(X))
+    if (length(missing_columns) > 0L) {
+      stop(
+        "Prediction data are missing fitted-model column(s): ",
+        paste(missing_columns, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+    X <- X[, names(beta), drop = FALSE]
+
+    if (is.null(offset)) offset <- rep(0, nrow(X))
+    if (!is.numeric(offset) || length(offset) != nrow(X) || anyNA(offset) ||
+        any(!is.finite(offset))) {
+      stop("`offset` must be finite numeric with one value per prediction row.",
+           call. = FALSE)
+    }
+
+    keep <- !is.na(beta)
+    eta <- drop(X[, keep, drop = FALSE] %*% beta[keep]) + as.numeric(offset)
+  }
+
+  eta <- as.numeric(eta)
+  if (length(eta) != nrow(X) || anyNA(eta) || any(!is.finite(eta))) {
+    stop("The fastglm prediction produced non-finite linear predictors.",
+         call. = FALSE)
+  }
+
+  result <- eta
+  if (isTRUE(se.fit)) {
+    covariance <- object$cov.unscaled
+    if (is.null(covariance)) {
+      stop(
+        "Standard errors of prediction require `cov.unscaled` in the fitted fastglm object.",
+        call. = FALSE
+      )
+    }
+    covariance <- as.matrix(covariance)
+    keep <- !is.na(beta)
+    covariance <- covariance[keep, keep, drop = FALSE] * dispersion
+    X_estimable <- X[, keep, drop = FALSE]
+    variances <- rowSums((X_estimable %*% covariance) * X_estimable)
+    variances <- pmax(variances, 0)
+    result <- list(
+      fit = eta,
+      se.fit = sqrt(variances),
+      residual.scale = sqrt(dispersion)
+    )
+  }
+
+  if (identical(type, "response")) {
+    family <- object$family
+    if (!is.list(family) || !is.function(family$linkinv) ||
+        !is.function(family$mu.eta)) {
+      stop("The fitted fastglm object lacks a valid family object.",
+           call. = FALSE)
+    }
+    if (isTRUE(se.fit)) {
+      result$se.fit <- result$se.fit * abs(family$mu.eta(result$fit))
+      result$fit <- family$linkinv(result$fit)
+    } else {
+      result <- family$linkinv(result)
+    }
+  }
+
+  result
+}

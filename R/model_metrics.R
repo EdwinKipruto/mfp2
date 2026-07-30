@@ -172,12 +172,20 @@ calculate_model_metrics <- function(obj,
   nuisance_df <- max(0, obj$df - regression_df)
   df_for_resid <- res[["df"]] - nuisance_df
 
-  gaussian_deviance <- deviance_gaussian(
-    residuals = obj$residuals,
-    weights = obj$weights
-  )
-  if (is.null(gaussian_deviance)) {
+  # fit_model() computes this scalar only when the caller requests Gaussian
+  # F-test support. LR, AIC, and BIC paths deliberately leave it unavailable
+  # so they avoid unnecessary O(n) work and residual/weight-vector copies.
+  gaussian_deviance <- obj$deviance_gaussian
+  if (is.null(gaussian_deviance) || length(gaussian_deviance) == 0L) {
     gaussian_deviance <- NA_real_
+  } else if (!is.numeric(gaussian_deviance) ||
+             length(gaussian_deviance) != 1L) {
+    stop(
+      "Internal error: `deviance_gaussian` must be a numeric scalar.",
+      call. = FALSE
+    )
+  } else {
+    gaussian_deviance <- unname(gaussian_deviance)
   }
 
   c(res,

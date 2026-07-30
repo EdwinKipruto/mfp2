@@ -129,11 +129,25 @@ order_variables <- function(xorder = "ascending",
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
 
+  # GLM ordering fits all use the same intercept-augmented source matrix.
+  # Allocate and fill it once, then form reduced models by dropping columns.
+  # Cox models remain intercept-free and can reuse x directly.
+  use_glm_intercept_template <- !identical(family_string, "cox")
+  x_fit <- if (use_glm_intercept_template) {
+    assemble_design_matrix(
+      blocks = list(x),
+      nobs = NROW(x),
+      intercept = TRUE
+    )
+  } else {
+    x
+  }
+
   # The full linear reference model is required independently of predictor
   # ordering. Fit it once and reuse its log-likelihood for all reduced-model
   # comparisons below.
   full_reference <- fit_full_linear_reference(
-    x = x,
+    x = x_fit,
     y = y,
     family = family,
     family_string = family_string,
@@ -143,7 +157,8 @@ order_variables <- function(xorder = "ascending",
     strata = strata,
     method = method,
     control = control,
-    nocenter = nocenter
+    nocenter = nocenter,
+    x_has_intercept = use_glm_intercept_template
   )
 
   # No reduced-model fits are needed when the user requests the original order
@@ -154,7 +169,7 @@ order_variables <- function(xorder = "ascending",
   variables_ordered <- if (rank_predictors) {
     order_variables_by_significance(
       xorder = xorder,
-      x = x,
+      x = x_fit,
       term_to_columns = term_to_columns,
       y = y,
       family = family,
@@ -166,7 +181,8 @@ order_variables <- function(xorder = "ascending",
       method = method,
       control = control,
       nocenter = nocenter,
-      full_reference = full_reference
+      full_reference = full_reference,
+      x_has_intercept = use_glm_intercept_template
     )
   } else {
     predictor_names
@@ -207,8 +223,8 @@ order_variables <- function(xorder = "ascending",
 #'
 #' @return A lightweight model-fit wrapper returned by \code{fit_model()},
 #'   including \code{logl}, \code{df}, \code{rank}, \code{null_deviance},
-#'   \code{model_deviance}, coefficients, and residual information. Cox fits
-#'   additionally include \code{null_logl}. The underlying fast-fit object is
+#'   \code{model_deviance}, coefficients, rank, and degrees of freedom. Cox
+#'   fits additionally include \code{null_logl}. The underlying fast-fit object is
 #'   not retained.
 #'
 #' @keywords internal
@@ -223,7 +239,8 @@ fit_full_linear_reference <- function(x,
                                       method,
                                       control,
                                       nocenter,
-                                      fitter = "base") {
+                                      fitter = "base",
+                                      x_has_intercept = FALSE) {
   fit_model(
     x = x,
     y = y,
@@ -239,7 +256,8 @@ fit_full_linear_reference <- function(x,
     nocenter = nocenter,
     fast = TRUE,
     calculate_fit_statistics = TRUE,
-    keep_fit = FALSE
+    keep_fit = FALSE,
+    x_has_intercept = x_has_intercept
   )
 }
 
@@ -291,9 +309,18 @@ order_variables_by_significance <- function(xorder,
                                             nocenter,
                                             full_reference,
                                             term_to_columns = NULL,
-                                            fitter = "base") {
+                                            fitter = "base",
+                                            x_has_intercept = FALSE) {
   if (is.null(term_to_columns)) {
-    term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
+    predictor_columns <- if (isTRUE(x_has_intercept)) {
+      colnames(x)[-1L]
+    } else {
+      colnames(x)
+    }
+    term_to_columns <- stats::setNames(
+      as.list(predictor_columns),
+      predictor_columns
+    )
   }
 
   predictor_names <- names(term_to_columns)
@@ -327,7 +354,8 @@ order_variables_by_significance <- function(xorder,
     reduced_x <- if (has_mapped_terms) {
       x[, setdiff(colnames(x), drop_columns), drop = FALSE]
     } else {
-      x[, -predictor_index, drop = FALSE]
+      drop_index <- predictor_index + as.integer(isTRUE(x_has_intercept))
+      x[, -drop_index, drop = FALSE]
     }
 
     reduced_fit <- fit_model(
@@ -343,7 +371,8 @@ order_variables_by_significance <- function(xorder,
       control = control,
       rownames = rownames(x),
       nocenter = nocenter,
-      fast = TRUE
+      fast = TRUE,
+      x_has_intercept = x_has_intercept
     )
 
     # Use the fitted rank contribution of the omitted conceptual term. Raw

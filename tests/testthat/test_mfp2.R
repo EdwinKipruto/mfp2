@@ -6474,7 +6474,7 @@ test_that("Model Fit reports deviance for GLMs", {
   expect_identical(attr(values, "statistic_label"), "Deviance")
   expect_equal(
     values$fit_statistic,
-    c(fit$null_deviance, fit$linear_deviance, fit$mfp_deviance)
+    c(fit$linear_deviance, fit$mfp_deviance)
   )
   output <- capture.output(print(fit))
   expect_true(any(grepl("Deviance", output, fixed = TRUE)))
@@ -6494,7 +6494,7 @@ test_that("Model Fit keeps -2 log L for Cox models", {
   expect_identical(attr(values, "statistic_label"), "-2 log L")
   expect_equal(
     values$fit_statistic,
-    c(fit$null_deviance, fit$linear_deviance, fit$mfp_deviance)
+    c(fit$linear_deviance, fit$mfp_deviance)
   )
   output <- capture.output(print(fit))
   expect_true(any(grepl("-2 log L", output, fixed = TRUE)))

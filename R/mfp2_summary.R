@@ -42,9 +42,9 @@
 #'     selection-adjusted degrees of freedom stored in \code{fp_terms}. The
 #'     LRT compares the final MFP model with the model obtained by dropping
 #'     that variable's columns while holding all other functional forms fixed.
-#'   \item \strong{Model Fit}: null, full-linear, and final-MFP deviances for
-#'     GLMs, or minus twice the partial log-likelihood for Cox models, with
-#'     model degrees of freedom.
+#'   \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
+#'     or minus twice the partial log-likelihood for Cox models, with model
+#'     degrees of freedom.
 #' }
 #'
 #' The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -862,14 +862,13 @@ mfp2_summary_model_df <- function(object) {
 # object. Used by both print.mfp2() and print.summary.mfp2() so the two
 # methods display exactly the same family-specific fit statistics.
 #
-# Returns a data frame with three rows (Null / Full linear / MFP), and columns
+# Returns a data frame with two rows (Full linear / MFP), and columns
 # `fit_statistic` (numeric) and `df` (integer). The `statistic_label` attribute
 # is "Deviance" for GLMs and "-2 log L" for Cox models. The Model Fit block
 # renderer, mfp2_format_model_fit_block(), formats and prints it.
 mfp2_summary_model_fit_values <- function(object) {
   family_string <- object$family_string
   fit_statistic <- c(
-    mfp2_summary_num(object$null_deviance),
     mfp2_summary_num(object$linear_deviance),
     mfp2_summary_num(object$mfp_deviance)
   )
@@ -901,9 +900,9 @@ mfp2_summary_model_fit_values <- function(object) {
   mfp_df <- mfp2_summary_model_df(object)
 
   values <- data.frame(
-    label         = c("Null model", "Full linear model", "MFP model"),
+    label         = c("Full linear model", "MFP model"),
     fit_statistic = fit_statistic,
-    df            = c(0L, linear_df, mfp_df),
+    df            = c(linear_df, mfp_df),
     stringsAsFactors = FALSE
   )
   attr(values, "statistic_label") <- if (identical(family_string, "cox")) {
@@ -926,12 +925,22 @@ mfp2_summary_model_fit_values <- function(object) {
 mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
   heading_printer("Model Fit")
 
+  # Model-fit statistics use a fixed number of decimal places. The `digits`
+  # argument controls decimal places here, rather than significant digits, so
+  # values in the Deviance / -2 log L column remain vertically consistent.
+  decimal_places <- suppressWarnings(as.integer(digits[1L]))
+  if (length(decimal_places) != 1L ||
+      is.na(decimal_places) ||
+      decimal_places < 0L) {
+    decimal_places <- 3L
+  }
+
   # Right-align numeric columns; left-align the label. Column widths are
   # chosen from the widest formatted value so the note below reads under the
   # correct table width regardless of magnitude.
   statistic <- vapply(values$fit_statistic, function(v) {
     if (is.na(v) || !is.finite(v)) return("NA")
-    format(v, digits = digits, trim = TRUE)
+    formatC(v, format = "f", digits = decimal_places)
   }, character(1L))
   df_fmt <- vapply(values$df, function(v) {
     if (is.na(v)) return("NA")

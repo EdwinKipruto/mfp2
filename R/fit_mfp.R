@@ -625,10 +625,10 @@ fit_mfp <- function(x,
   j         <- 1L
   converged <- FALSE
 
-  prev_adj_params       <- vector("list", length = length(variables_ordered))
+  prev_adj_params        <- vector("list", length = length(variables_ordered))
   names(prev_adj_params) <- variables_ordered
 
-  while (j <= cycles) {
+  while (!converged && j <= cycles) {
     if (verbose) {
       message(sprintf(
         "%s\nRunning MFP Cycle %d\n%s",
@@ -671,32 +671,46 @@ fit_mfp <- function(x,
       verbose         = verbose
     )
 
-    powers_updated        <- fit_best_cycle$powers_current
+    powers_updated         <- fit_best_cycle$powers_current
     spike_decision_updated <- fit_best_cycle$spike_decision
-    prev_adj_params       <- fit_best_cycle$prev_adj_params
+    prev_adj_params        <- fit_best_cycle$prev_adj_params
 
     # Compare powers after normalizing away the stored-but-inactive continuous
     # power of binary-only spike variables (spike_decision = 3), since that
     # power does not affect the fitted adjustment matrix and would otherwise
     # cause spurious non-convergence.
     powers_same <- identical(
-      normalize_powers_for_convergence(powers_current, spike_decision),
-      normalize_powers_for_convergence(powers_updated, spike_decision_updated)
+      normalize_powers_for_convergence(
+        powers_current,
+        spike_decision
+      ),
+      normalize_powers_for_convergence(
+        powers_updated,
+        spike_decision_updated
+      )
     )
 
-    spike_same <- identical(spike_decision, spike_decision_updated)
+    spike_same <- identical(
+      spike_decision,
+      spike_decision_updated
+    )
 
-    if (powers_same && spike_same) {
-      converged <- TRUE
-      if (verbose)
+    # Store the results from the completed cycle before deciding whether another
+    # cycle is required. This also ensures that the final cycle's results are
+    # retained when the maximum number of cycles is reached.
+    powers_current <- powers_updated
+    spike_decision <- spike_decision_updated
+
+    converged <- powers_same && spike_same
+
+    if (converged) {
+      if (verbose) {
         message(sprintf(
           "Fractional polynomial fitting algorithm converged after %d cycle(s).",
           j
         ))
-      break
+      }
     } else {
-      powers_current <- powers_updated
-      spike_decision <- spike_decision_updated
       j <- j + 1L
     }
   }
@@ -901,6 +915,7 @@ fit_mfp <- function(x,
       linear_df       = linear_df,
       mfp_logl        = mfp_logl,
       mfp_df          = mfp_df,
+      family_string   = family_string,
       x_original = if (has_mapped_terms) {
         selected_terms <- names(powers_current)[
           !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |

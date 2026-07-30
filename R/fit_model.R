@@ -22,6 +22,10 @@
 #' @param calculate_fit_statistics logical. If `TRUE`, return the
 #' family-specific null and fitted-model statistics used for final reporting.
 #' Candidate-selection fits leave this `FALSE`.
+#' @param calculate_gaussian_deviance logical. If `TRUE` for a Gaussian GLM,
+#' compute and retain the scalar Stata-style Gaussian deviance used by F-tests.
+#' Leave this `FALSE` for likelihood-ratio, AIC, and BIC selection so candidate
+#' fits do not copy residual and weight vectors into the lightweight wrapper.
 #' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' Defaults to `!fast`, so ordinary final fits are retained and fast candidate
 #' fits are discarded unless a caller explicitly needs the fitted object.
@@ -38,6 +42,8 @@
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
 #' * `rank`: fitted regression rank.
+#' * `deviance_gaussian`: when `calculate_gaussian_deviance = TRUE` for a
+#'   Gaussian GLM, the scalar Stata-style Gaussian deviance.
 #' * `null_deviance`: when `calculate_fit_statistics = TRUE`, family-specific
 #'   deviance of the null model. For GLMs,
 #'   this is the `null.deviance` returned by [stats::glm.fit()] or
@@ -70,6 +76,7 @@ fit_model <- function(x,
                       nocenter = NULL,
                       fast = TRUE,
                       calculate_fit_statistics = FALSE,
+                      calculate_gaussian_deviance = FALSE,
                       keep_fit = !fast,
                       has_offset = FALSE,
                       x_has_intercept = FALSE,
@@ -111,6 +118,7 @@ fit_model <- function(x,
       offset = offset,
       fast = fast,
       calculate_fit_statistics = calculate_fit_statistics,
+      calculate_gaussian_deviance = calculate_gaussian_deviance,
       keep_fit = keep_fit,
       fitter = fitter,
       has_offset = has_offset,
@@ -157,6 +165,96 @@ fit_model <- function(x,
   fit
 }
 
+#' Assemble a Design Matrix from Reusable Column Blocks
+#'
+#' Allocates the destination matrix once and fills contiguous column ranges
+#' from the supplied blocks. This avoids constructing intermediate matrices
+#' when an intercept and multiple predictor blocks must be combined.
+#'
+#' @param blocks list of matrix-like predictor blocks. NULL and zero-column
+#'   blocks are ignored.
+#' @param nobs number of rows in the resulting matrix.
+#' @param intercept logical; prepend a column named `(Intercept)` when TRUE.
+#'
+#' @return A numeric matrix containing the optional intercept and all blocks in
+#'   list order.
+#' @keywords internal
+#' @noRd
+assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
+  keep <- vapply(
+    blocks,
+    function(block) !is.null(block) && NCOL(block) > 0L,
+    logical(1L)
+  )
+  blocks <- blocks[keep]
+
+  if (length(blocks) > 0L) {
+    block_nrows <- vapply(blocks, NROW, integer(1L))
+    if (any(block_nrows != nobs)) {
+      stop("Internal error: design-matrix blocks have inconsistent rows.", call. = FALSE)
+    }
+  }
+
+  block_ncols <- if (length(blocks) > 0L) {
+    vapply(blocks, NCOL, integer(1L))
+  } else {
+    integer(0L)
+  }
+
+  block_names <- unlist(
+    lapply(blocks, function(block) {
+      names <- colnames(block)
+      if (is.null(names)) {
+        names <- colnames(block, do.NULL = FALSE)
+      }
+      names
+    }),
+    use.names = FALSE
+  )
+
+  row_names <- NULL
+  if (length(blocks) > 0L) {
+    row_name_index <- which(vapply(
+      blocks,
+      function(block) !is.null(rownames(block)),
+      logical(1L)
+    ))
+    if (length(row_name_index) > 0L) {
+      row_names <- rownames(blocks[[row_name_index[[1L]]]])
+    }
+  }
+
+  intercept_width <- as.integer(isTRUE(intercept))
+  result <- matrix(
+    0,
+    nrow = nobs,
+    ncol = intercept_width + sum(block_ncols),
+    dimnames = list(
+      row_names,
+      c(if (isTRUE(intercept)) "(Intercept)", block_names)
+    )
+  )
+
+  next_column <- 1L
+  if (isTRUE(intercept)) {
+    result[, 1L] <- 1
+    next_column <- 2L
+  }
+
+  if (length(blocks) > 0L) {
+    for (block_index in seq_along(blocks)) {
+      columns <- seq.int(
+        from = next_column,
+        length.out = block_ncols[[block_index]]
+      )
+      result[, columns] <- blocks[[block_index]]
+      next_column <- next_column + block_ncols[[block_index]]
+    }
+  }
+
+  result
+}
+
 #' Function that fits generalized linear models
 #'
 #' @param x a matrix of predictors with nobs observations.
@@ -177,6 +275,9 @@ fit_model <- function(x,
 #' and outcome vectors directly.
 #' @param calculate_fit_statistics logical. If `TRUE`, return the null and
 #' fitted-model deviances required for final reporting.
+#' @param calculate_gaussian_deviance logical. If `TRUE` for a Gaussian GLM,
+#' compute and retain the scalar Stata-style Gaussian deviance required by
+#' F-tests. Residual and weight vectors are not retained in the wrapper.
 #' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' @param fitter GLM fitting backend for the matrix fast path.
 #' @param family_string Normalized family name supplied by `fit_model()`.
@@ -192,6 +293,8 @@ fit_model <- function(x,
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
 #' * `rank`: fitted regression rank.
+#' * `deviance_gaussian`: when `calculate_gaussian_deviance = TRUE`, the
+#'   scalar Stata-style Gaussian deviance.
 #' * `null_deviance`: when `calculate_fit_statistics = TRUE`, the null-model
 #'   deviance returned by the fitted GLM.
 #' * `model_deviance`: when `calculate_fit_statistics = TRUE`, the residual
@@ -208,6 +311,7 @@ fit_glm <- function(x,
                     offset,
                     fast = TRUE,
                     calculate_fit_statistics = FALSE,
+                    calculate_gaussian_deviance = FALSE,
                     keep_fit = !fast,
                     has_offset = FALSE,
                     x_has_intercept = FALSE,
@@ -244,13 +348,11 @@ fit_glm <- function(x,
 
     if (isTRUE(x_has_intercept)) {
       xx <- x
-    } else if (has_predictors) {
-      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
     } else {
-      xx <- matrix(
-        rep.int(1, nobs),
-        ncol = 1L,
-        dimnames = list(NULL, "(Intercept)")
+      xx <- assemble_design_matrix(
+        blocks = list(x),
+        nobs = nobs,
+        intercept = TRUE
       )
     }
 
@@ -274,13 +376,11 @@ fit_glm <- function(x,
     # the single final fit while leaving all other families on stats::glm().
     if (isTRUE(x_has_intercept)) {
       xx <- x
-    } else if (has_predictors) {
-      xx <- cbind("(Intercept)" = rep.int(1, nobs), x)
     } else {
-      xx <- matrix(
-        rep.int(1, nobs),
-        ncol = 1L,
-        dimnames = list(NULL, "(Intercept)")
+      xx <- assemble_design_matrix(
+        blocks = list(x),
+        nobs = nobs,
+        intercept = TRUE
       )
     }
     fit <- fit_glm_fastglm_nb(xx, y, weights, offset)
@@ -372,13 +472,13 @@ fit_glm <- function(x,
   is_negbin <- identical(family_string, "negbin")
   df <- fit$rank + as.integer(is_gaussian || is_negbin)
 
-  # Residuals and prior weights are needed only for Gaussian F-tests. Do not
-  # duplicate them in the fit_model() wrapper for binomial, Poisson,
-  # negative-binomial, or Cox models.
-  fit_residuals <- NULL
-  fit_weights <- NULL
+  # The Stata-style Gaussian deviance is needed only for Gaussian F-tests.
+  # Compute it here while the fitted object is available, then retain only the
+  # scalar. This avoids copying observation-length residual and weight vectors
+  # into every candidate fit used by LR, AIC, or BIC selection.
+  gaussian_deviance <- NA_real_
 
-  if (is_gaussian) {
+  if (is_gaussian && isTRUE(calculate_gaussian_deviance)) {
     fit_residuals <- fit$residuals
     fit_weights <- fit$prior.weights
     if (is.null(fit_weights)) {
@@ -394,6 +494,14 @@ fit_glm <- function(x,
       )
     }
 
+    gaussian_deviance <- deviance_gaussian(
+      residuals = fit_residuals,
+      weights = fit_weights
+    )
+
+    if (is.null(gaussian_deviance)) {
+      gaussian_deviance <- NA_real_
+    }
   }
 
   result <- list(
@@ -403,10 +511,12 @@ fit_glm <- function(x,
     logl = if (is_negbin) fit$twologlik / 2 else df - fit$aic / 2,
     coefficients = fit$coefficients,
     rank = unname(fit$rank),
-    df = df,
-    residuals = fit_residuals,
-    weights = fit_weights
+    df = df
   )
+
+  if (is_gaussian && isTRUE(calculate_gaussian_deviance)) {
+    result$deviance_gaussian <- gaussian_deviance
+  }
 
   if (isTRUE(keep_fit)) {
     result$fit <- fit

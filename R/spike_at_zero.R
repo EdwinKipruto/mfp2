@@ -647,6 +647,8 @@ cap_spike_df <- function(x, df, spike) {
 #' @param y,weights,offset,family,family_string,method,strata,nocenter,control,
 #'   rownames,has_offset Passed through to \code{fit_model()} for fitting
 #'   Model 2 and Model 3.
+#' @param calculate_gaussian_deviance Logical. If `TRUE`, compute the scalar
+#'   Gaussian deviance required for stage-2 F-tests.
 #'
 #' @return A list with:
 #'   \itemize{
@@ -682,6 +684,7 @@ fit_saz_reduced_models <- function(stage1_selection,
                                    control,
                                    rownames,
                                    has_offset,
+                                   calculate_gaussian_deviance = FALSE,
                                    fitter = "base") {
   # Step 1: Recover xi's already-transformed stage-1 design from the cache --
   # find_best_fpm_step() (called during stage 1) stores the winning
@@ -748,6 +751,7 @@ fit_saz_reduced_models <- function(stage1_selection,
     strata = strata,
     nocenter = nocenter,
     has_offset = has_offset,
+    calculate_gaussian_deviance = calculate_gaussian_deviance,
     control = control,
     rownames = rownames
   )
@@ -1174,7 +1178,8 @@ evaluate_saz_stage2 <- function(fit1,
     nocenter = nocenter,
     control = control,
     rownames = rownames,
-    has_offset = has_offset
+    has_offset = has_offset,
+    calculate_gaussian_deviance = isTRUE(ftest)
   )
 
   # Step 2: Score all three models on a comparable basis (log-likelihood,

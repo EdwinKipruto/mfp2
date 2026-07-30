@@ -312,6 +312,9 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     nocenter = nocenter,
     has_offset = has_offset,
     fast     = TRUE,
+    calculate_gaussian_deviance = isTRUE(
+      use_ftest && identical(family_string, "gaussian")
+    ),
     keep_fit = TRUE    # retained for downstream coefficient/vcov extraction
   )
 
@@ -329,6 +332,9 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     rownames = NULL,
     nocenter = nocenter,
     has_offset = has_offset,
+    calculate_gaussian_deviance = isTRUE(
+      use_ftest && identical(family_string, "gaussian")
+    ),
     fast     = FALSE   # full fit: coefficients and vcov required downstream
   )
 
@@ -386,16 +392,17 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
 
     if (use_ftest && family_string == "gaussian") {
 
-      # MFP2-style Gaussian deviance, not -2 * logLik
-      dev_main_f <- deviance_gaussian(
-        residuals = fit_main$residuals,
-        weights   = fit_main$weights
-      )
+      # MFP2-style Gaussian deviance, not -2 * logLik. fit_model() computes
+      # and stores only the scalar when F-test support is requested.
+      dev_main_f <- fit_main$deviance_gaussian
+      dev_int_f <- fit_interaction$deviance_gaussian
 
-      dev_int_f <- deviance_gaussian(
-        residuals = fit_interaction$residuals,
-        weights   = fit_interaction$weights
-      )
+      if (!is.finite(dev_main_f) || !is.finite(dev_int_f)) {
+        stop(
+          "Internal error: Gaussian deviance is unavailable for MFPI F-test.",
+          call. = FALSE
+        )
+      }
 
       power_df_interaction <- switch(
         flex,

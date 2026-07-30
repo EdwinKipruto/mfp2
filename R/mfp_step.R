@@ -232,7 +232,8 @@ find_best_fp_step <- function(x,
     control = control, rownames = rownames, zero = zero, catzero = catzero,
     spike = spike, spike_decision = spike_decision, has_offset = has_offset,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
-    term_to_columns = term_to_columns
+    term_to_columns = term_to_columns,
+    calculate_gaussian_deviance = isTRUE(ftest)
   )
 
   if (verbose) {
@@ -460,25 +461,24 @@ find_best_fpm_step <- function(x,
   x_has_intercept <- FALSE
 
   if (use_glm_intercept_template) {
-    # For GLM candidate fits, build the full model matrix including the
-    # intercept once. fit_glm() is told that the intercept is already present,
-    # so it does not cbind another intercept for every candidate.
-    intercept_col <- matrix(
-      rep.int(1, nrow(first_xi)),
-      ncol = 1L,
-      dimnames = list(NULL, "(Intercept)")
+    # For GLM candidate fits, allocate the complete destination once and fill
+    # the intercept, current-variable, and adjustment blocks directly. The xi
+    # columns are overwritten for each candidate below.
+    design_mat <- assemble_design_matrix(
+      blocks = list(first_xi, data_adj),
+      nobs = nrow(first_xi),
+      intercept = TRUE
     )
-    design_mat <- if (has_adj) {
-      cbind(intercept_col, first_xi, data_adj)
-    } else {
-      cbind(intercept_col, first_xi)
-    }
     xi_cols <- seq_len(n_xi_cols) + 1L
     x_has_intercept <- TRUE
   } else if (has_adj) {
-    # Cox models must not include an intercept. Copy the adjustment block once
-    # and overwrite only the current-variable block per candidate.
-    design_mat <- cbind(first_xi, data_adj)
+    # Cox models must not include an intercept. Allocate the combined matrix
+    # once, retain the adjustment block, and overwrite only the xi block.
+    design_mat <- assemble_design_matrix(
+      blocks = list(first_xi, data_adj),
+      nobs = nrow(first_xi),
+      intercept = FALSE
+    )
     xi_cols <- seq_len(n_xi_cols)
   }
   # Step 4: Fit one model per candidate FP power set and score it ------------
@@ -501,16 +501,18 @@ find_best_fpm_step <- function(x,
         ...
       )
     } else {
-      if (has_adj) {
-        # Defensive fallback: candidate generation should produce a fixed
-        # number of xi columns within one degree, but preserve behaviour if it
-        # ever does not.
-        x_fit <- cbind(data_xi, data_adj)
-      } else {
+      # Defensive fallback: candidate generation should produce a fixed
+      # number of xi columns within one degree, but preserve behaviour if it
+      # ever does not. Build the destination in one allocation rather than
+      # chaining cbind() calls.
+      if (!use_glm_intercept_template && !has_adj) {
         x_fit <- data_xi
-      }
-      if (use_glm_intercept_template) {
-        x_fit <- cbind("(Intercept)" = rep.int(1, nrow(data_xi)), x_fit)
+      } else {
+        x_fit <- assemble_design_matrix(
+          blocks = list(data_xi, data_adj),
+          nobs = nrow(data_xi),
+          intercept = use_glm_intercept_template
+        )
       }
       fit <- fit_model(
         x               = x_fit,
@@ -720,19 +722,16 @@ fit_linear_step <- function(x,
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
   use_glm_intercept_template <- !identical(family_string, "cox")
 
-  if (has_adj) {
-    x_fit <- cbind(data_xi, data_adj)
-  } else {
+  # Build the final matrix in one allocation. GLM fits receive a leading
+  # intercept and set x_has_intercept below; Cox fits remain intercept-free.
+  # When a Cox fit has no adjustment block, reuse data_xi without copying it.
+  if (!use_glm_intercept_template && !has_adj) {
     x_fit <- data_xi
-  }
-
-  # GLM fits need an intercept. Add it here and tell fit_model()/fit_glm()
-  # that the intercept is already present, so fit_glm() does not add it again.
-  # Cox models must not include an intercept.
-  if (use_glm_intercept_template) {
-    x_fit <- cbind(
-      "(Intercept)" = rep.int(1, nrow(data_xi)),
-      x_fit
+  } else {
+    x_fit <- assemble_design_matrix(
+      blocks = list(data_xi, data_adj),
+      nobs = nrow(data_xi),
+      intercept = use_glm_intercept_template
     )
   }
 

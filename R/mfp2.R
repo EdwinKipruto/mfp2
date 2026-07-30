@@ -4308,7 +4308,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   # The Model Fit block (formerly "Model Deviances") is produced by
   # mfp2_format_model_fit_block(), the same helper called by
   # print.summary.mfp2(). This guarantees the two methods display the same
-  # three family-specific fit statistics (GLM deviance or Cox -2 log L; df on
+  # two family-specific fit statistics (GLM deviance or Cox -2 log L; df on
   # the MFP-adjusted scale) and the same explanatory note, so there is exactly
   # one place in the package where the block's format lives.
   mfp2_format_model_fit_block(

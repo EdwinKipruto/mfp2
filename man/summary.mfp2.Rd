@@ -65,8 +65,9 @@ likelihood-ratio test (LRT) of all of that variable's terms, using the
 selection-adjusted degrees of freedom stored in \code{fp_terms}. The
 LRT compares the final MFP model with the model obtained by dropping
 that variable's columns while holding all other functional forms fixed.
-\item \strong{Model Fit}: null, full-linear, and final-MFP deviances plus
-an overall likelihood-ratio test (and R-squared for Gaussian models).
+\item \strong{Model Fit}: null, full-linear, and final-MFP deviances for
+GLMs, or minus twice the partial log-likelihood for Cox models, with
+model degrees of freedom.
 }
 
 The joint LRT is a diagnostic: the variable was selected by the MFP

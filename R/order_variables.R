@@ -103,8 +103,8 @@
 #'     reference model.}
 #'   \item{\code{linear_df}}{Model degrees of freedom for the full linear
 #'     reference model.}
-#'   \item{\code{null_logl}}{Maximized log-likelihood of the intercept-only
-#'     reference model, or the null partial log-likelihood for Cox models.}
+#'   \item{\code{null_logl}}{Null partial log-likelihood for Cox models;
+#'     \code{NA_real_} for GLMs.}
 #' }
 #'
 #' @keywords internal
@@ -176,13 +176,17 @@ order_variables <- function(xorder = "ascending",
     variables_ordered = variables_ordered,
     null_deviance = full_reference$null_deviance,
     linear_deviance = full_reference$model_deviance,
-    # Additional quantities needed by summary.mfp2()'s Model Fit block. The
-    # full-linear likelihood comes from the reference fit. Cox supplies its
-    # null partial likelihood from that same fit; GLMs use one intercept-only
-    # fit inside fit_full_linear_reference().
+    # Likelihood-scale quantities retained for downstream inference and object
+    # compatibility. Cox supplies its null partial likelihood from the full
+    # reference fit. GLMs report their stored deviances and therefore do not
+    # require an intercept-only likelihood fit.
     linear_logl = full_reference$logl,
     linear_df   = full_reference$df,
-    null_logl   = full_reference$null_logl
+    null_logl   = if (identical(family_string, "cox")) {
+      full_reference$null_logl
+    } else {
+      NA_real_
+    }
   )
 }
 
@@ -201,10 +205,11 @@ order_variables <- function(xorder = "ascending",
 #'
 #' @inheritParams order_variables
 #'
-#' @return A model-fit wrapper returned by \code{fit_model()}, including
-#'   \code{logl}, \code{null_logl}, \code{df}, \code{null_deviance},
-#'   \code{model_deviance}, coefficients, residual information, and the
-#'   underlying fitted object.
+#' @return A lightweight model-fit wrapper returned by \code{fit_model()},
+#'   including \code{logl}, \code{df}, \code{rank}, \code{null_deviance},
+#'   \code{model_deviance}, coefficients, and residual information. Cox fits
+#'   additionally include \code{null_logl}. The underlying fast-fit object is
+#'   not retained.
 #'
 #' @keywords internal
 #' @noRd
@@ -219,7 +224,7 @@ fit_full_linear_reference <- function(x,
                                       control,
                                       nocenter,
                                       fitter = "base") {
-  reference <- fit_model(
+  fit_model(
     x = x,
     y = y,
     family = family,
@@ -232,26 +237,10 @@ fit_full_linear_reference <- function(x,
     control = control,
     rownames = rownames(x),
     nocenter = nocenter,
-    fast = TRUE
+    fast = TRUE,
+    calculate_fit_statistics = TRUE,
+    keep_fit = FALSE
   )
-
-  # coxph.fit() returns the null partial log-likelihood with the full fit. GLM
-  # fitters do not expose the maximized intercept-only log-likelihood directly,
-  # so compute it once here rather than in fit_mfp() or the candidate hot path.
-  if (!identical(family_string, "cox")) {
-    reference$null_logl <- tryCatch(
-      fit_null_model_logl(
-        y = y,
-        family = family,
-        family_string = family_string,
-        weights = weights,
-        offset = offset
-      ),
-      error = function(e) NA_real_
-    )
-  }
-
-  reference
 }
 
 

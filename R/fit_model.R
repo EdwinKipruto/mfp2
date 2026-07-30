@@ -1,6 +1,6 @@
 #' Function that fits models supported by `mfp2`
 #'
-#' Fits generalized linear models and Cox proportional hazard models.
+#' Fits generalized linear models and Cox proportional-hazards models.
 #'
 #' @details
 #' Computations rely on \code{fit_glm()} and \code{fit_cox()}.
@@ -14,11 +14,17 @@
 #' must be a [survival::Surv()] object.
 #' @param method a character string specifying the method for tie handling.
 #' See [survival::coxph()].
-#' @param family a character strong specifying glm family to be used, or "cox"
-#' for Cox models. The default family is set to 'Gaussian'.
+#' @param family a character string specifying the GLM family to be used, or
+#' "cox" for Cox models. The default family is set to 'Gaussian'.
 #' @param strata,control,weights,offset,rownames,nocenter parameters for Cox
 #' or glm. See [survival::coxph()] or [stats::glm()] for details.
 #' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
+#' @param calculate_fit_statistics logical. If `TRUE`, return the
+#' family-specific null and fitted-model statistics used for final reporting.
+#' Candidate-selection fits leave this `FALSE`.
+#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
+#' Defaults to `!fast`, so ordinary final fits are retained and fast candidate
+#' fits are discarded unless a caller explicitly needs the fitted object.
 #' @param fitter GLM fitting backend; ignored for Cox models.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
@@ -31,15 +37,20 @@
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: weighted residual sum of squares for Gaussian models; `NA` otherwise.
-#' * `null_deviance`: family-specific deviance of the null model. For GLMs,
+#' * `rank`: fitted regression rank.
+#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, family-specific
+#'   deviance of the null model. For GLMs,
 #'   this is the `null.deviance` returned by [stats::glm.fit()] or
 #'   [stats::glm()]. For Cox models, it is minus twice the null partial
 #'   log-likelihood.
-#' * `model_deviance`: family-specific deviance of the fitted model. For GLMs,
+#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, family-specific
+#'   deviance of the fitted model. For GLMs,
 #'   this is the `deviance` returned by [stats::glm.fit()] or [stats::glm()].
 #'   For Cox models, it is minus twice the fitted partial log-likelihood.
-#' * `fit`: the object returned by the fitting procedure.
+#' * `null_logl`: when `calculate_fit_statistics = TRUE` for a Cox model, the
+#'   null partial log-likelihood.
+#' * `fit`: when `keep_fit = TRUE`, the object returned by the fitting
+#'   procedure.
 #' * `transformed_to_model_columns`: for full fits, a named character vector
 #'   mapping source design columns to the exact fitted coefficient names.
 #'
@@ -58,6 +69,8 @@ fit_model <- function(x,
                       rownames = NULL,
                       nocenter = NULL,
                       fast = TRUE,
+                      calculate_fit_statistics = FALSE,
+                      keep_fit = !fast,
                       has_offset = FALSE,
                       x_has_intercept = FALSE,
                       fitter = "base") {
@@ -85,6 +98,8 @@ fit_model <- function(x,
       rownames = rownames,
       nocenter = nocenter,
       fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
       has_offset = has_offset
     )
   } else {
@@ -95,6 +110,8 @@ fit_model <- function(x,
       weights = weights,
       offset = offset,
       fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
       fitter = fitter,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept,
@@ -158,6 +175,9 @@ fit_model <- function(x,
 #' The difference is mainly due to the fact that normal fitting routines have
 #' to handle data.frames, which is a lot slower than using the model matrix
 #' and outcome vectors directly.
+#' @param calculate_fit_statistics logical. If `TRUE`, return the null and
+#' fitted-model deviances required for final reporting.
+#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' @param fitter GLM fitting backend for the matrix fast path.
 #' @param family_string Normalized family name supplied by `fit_model()`.
 #' @param has_offset logical indicating whether `offset` should be included in
@@ -171,10 +191,12 @@ fit_model <- function(x,
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: weighted residual sum of squares for Gaussian models; `NA` otherwise.
-#' * `null_deviance`: null-model deviance returned by the fitted GLM.
-#' * `model_deviance`: residual deviance returned by the fitted GLM.
-#' * `fit`: the fitted model object.
+#' * `rank`: fitted regression rank.
+#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, the null-model
+#'   deviance returned by the fitted GLM.
+#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, the residual
+#'   deviance returned by the fitted GLM.
+#' * `fit`: when `keep_fit = TRUE`, the fitted model object.
 #'
 #' @import stats
 #' @keywords internal
@@ -185,6 +207,8 @@ fit_glm <- function(x,
                     weights,
                     offset,
                     fast = TRUE,
+                    calculate_fit_statistics = FALSE,
+                    keep_fit = !fast,
                     has_offset = FALSE,
                     x_has_intercept = FALSE,
                     fitter = "base",
@@ -348,12 +372,11 @@ fit_glm <- function(x,
   is_negbin <- identical(family_string, "negbin")
   df <- fit$rank + as.integer(is_gaussian || is_negbin)
 
-  # Residuals, prior weights, and weighted RSS are needed only for Gaussian
-  # F-tests. Do not duplicate them in the fit_model() wrapper for binomial,
-  # Poisson, negative-binomial, or Cox models.
+  # Residuals and prior weights are needed only for Gaussian F-tests. Do not
+  # duplicate them in the fit_model() wrapper for binomial, Poisson,
+  # negative-binomial, or Cox models.
   fit_residuals <- NULL
   fit_weights <- NULL
-  sse <- NA_real_
 
   if (is_gaussian) {
     fit_residuals <- fit$residuals
@@ -371,25 +394,32 @@ fit_glm <- function(x,
       )
     }
 
-    sse <- sum(fit_weights * fit_residuals^2, na.rm = TRUE)
   }
 
-  list(
-    fit = fit,
+  result <- list(
     # fastglm_nb() reports the maximized twice-log-likelihood directly. Its
     # stored AIC does not include theta, so deriving logL from AIC would be off
     # by one parameter. Other GLMs retain stats::logLik.glm()'s convention.
     logl = if (is_negbin) fit$twologlik / 2 else df - fit$aic / 2,
     coefficients = fit$coefficients,
+    rank = unname(fit$rank),
     df = df,
-    sse = sse,
     residuals = fit_residuals,
-    weights = fit_weights,
+    weights = fit_weights
+  )
+
+  if (isTRUE(keep_fit)) {
+    result$fit <- fit
+  }
+
+  if (isTRUE(calculate_fit_statistics)) {
     # Use the family-specific deviances already computed by glm.fit()/glm().
     # These are not, in general, equal to minus twice the log-likelihood.
-    null_deviance = unname(fit$null.deviance),
-    model_deviance = unname(fit$deviance)
-  )
+    result$null_deviance <- unname(fit$null.deviance)
+    result$model_deviance <- unname(fit$deviance)
+  }
+
+  result
 }
 
 #' Check whether the optional fastglm package is available
@@ -659,75 +689,6 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset) {
 }
 
 
-#' Fit an intercept-only GLM and return its maximized log-likelihood
-#'
-#' This helper is called once for the full linear reference model. It must not
-#' be called from `fit_model()` itself because `fit_model()` is used throughout
-#' the repeated candidate-search hot path.
-#'
-#' Cox models already expose their null partial log-likelihood from the full
-#' fit and are therefore not supported here. For negative-binomial models,
-#' `fastglm_nb()` re-estimates theta for the intercept-only reference model.
-#'
-#' @param y Response used for fitting.
-#' @param family GLM family object, or the internal `"negbin"` sentinel.
-#' @param family_string Normalized family name.
-#' @param weights Optional prior weights.
-#' @param offset Optional linear-predictor offset.
-#'
-#' @return A finite numeric scalar containing the maximized log-likelihood.
-#'
-#' @keywords internal
-#' @noRd
-fit_null_model_logl <- function(y,
-                                family,
-                                family_string,
-                                weights = NULL,
-                                offset = NULL) {
-  if (identical(family_string, "cox")) {
-    stop(
-      "Internal error: Cox null log-likelihood is supplied by coxph.fit().",
-      call. = FALSE
-    )
-  }
-
-  null_x <- matrix(
-    rep.int(1, NROW(y)),
-    ncol = 1L,
-    dimnames = list(NULL, "(Intercept)")
-  )
-
-  logl <- if (identical(family_string, "negbin")) {
-    fit <- fit_glm_fastglm_nb(
-      x = null_x,
-      y = y,
-      weights = weights,
-      offset = offset
-    )
-    unname(fit$twologlik / 2)
-  } else {
-    fit <- stats::glm.fit(
-      x = null_x,
-      y = y,
-      family = family,
-      weights = weights,
-      offset = offset
-    )
-
-    # AIC = -2 log L + 2k. The Gaussian null model estimates an intercept and
-    # a scale parameter; binomial and Poisson null models estimate only the
-    # intercept.
-    null_df <- if (identical(family_string, "gaussian")) 2L else 1L
-    unname(null_df - fit$aic / 2)
-  }
-
-  if (!is_finite_numeric_scalar(logl)) {
-    stop("The null-model log-likelihood is non-finite.", call. = FALSE)
-  }
-
-  logl
-}
-
 #' Function that fits Cox proportional hazards models
 #'
 #' @param x a matrix of predictors excluding intercept with nobs observations.
@@ -742,6 +703,10 @@ fit_null_model_logl <- function(y,
 #' `TRUE` uses fast fitting routines (i.e. [survival::coxph.fit()]), while
 #' `FALSE`uses the normal fitting routines ([survival::coxph()]) (used for
 #'  the final output of `mfp2`).
+#' @param calculate_fit_statistics logical. If `TRUE`, return the null
+#' partial log-likelihood and the null and fitted-model statistics required for
+#' final reporting.
+#' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' @param has_offset logical indicating whether `offset` should be included in
 #' the final formula-based fit when `fast = FALSE`.
 #' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
@@ -752,10 +717,14 @@ fit_null_model_logl <- function(y,
 #' * `logl`: the log likelihood of the fitted model.
 #' * `coefficients`: regression coefficients.
 #' * `df`: number of parameters (degrees of freedom).
-#' * `sse`: `NA`; Cox comparisons use partial likelihood.
-#' * `null_deviance`: minus twice the null partial log-likelihood.
-#' * `model_deviance`: minus twice the fitted partial log-likelihood.
-#' * `fit`: the fitted model object.
+#' * `rank`: fitted regression rank.
+#' * `null_logl`: when `calculate_fit_statistics = TRUE`, the null partial
+#'   log-likelihood.
+#' * `null_deviance`: when `calculate_fit_statistics = TRUE`, minus twice the
+#'   null partial log-likelihood.
+#' * `model_deviance`: when `calculate_fit_statistics = TRUE`, minus twice the
+#'   fitted partial log-likelihood.
+#' * `fit`: when `keep_fit = TRUE`, the fitted model object.
 #'
 #' @import survival
 #' @keywords internal
@@ -770,6 +739,8 @@ fit_cox <- function(x,
                     rownames,
                     nocenter,
                     fast = TRUE,
+                    calculate_fit_statistics = FALSE,
+                    keep_fit = !fast,
                     has_offset = FALSE) {
 
   # Set default for control
@@ -853,28 +824,39 @@ fit_cox <- function(x,
     model_logl <- fit$loglik[1L]
   }
 
-  list(
-    fit = fit,
+  model_df <- length(fit$coefficients[!is.na(fit$coefficients)])
+  result <- list(
     logl = model_logl,
-    # Null (intercept-only) partial log-likelihood, computed by coxph at the
-    # start of Newton-Raphson (`fit$loglik[1L]`). Preserved so downstream code
-    # can build a family-consistent -2 log L for the null row of the Model Fit
-    # summary without an extra refit.
-    null_logl = if (is.finite(null_logl)) unname(null_logl) else NA_real_,
     coefficients = fit$coefficients,
     # Sometimes coefficients can be NA, for example when duplicate or
     # linearly dependent predictors are included in the model.
-    df = length(fit$coefficients[!is.na(fit$coefficients)]),
-    # SSE and duplicated residual/weight vectors are required only by Gaussian
-    # F-tests, never by Cox likelihood comparisons.
+    rank = model_df,
+    df = model_df,
+    # Duplicated residual/weight vectors are required only by Gaussian F-tests,
+    # never by Cox likelihood comparisons.
     weights = NULL,
-    sse = NA_real_,
-    residuals = NULL,
-    null_deviance = if (is.finite(null_logl)) {
+    residuals = NULL
+  )
+
+  if (isTRUE(keep_fit)) {
+    result$fit <- fit
+  }
+
+  if (isTRUE(calculate_fit_statistics)) {
+    # The null partial log-likelihood is computed by coxph at the start of
+    # Newton-Raphson and can therefore be reported without another fit.
+    result$null_logl <- if (is.finite(null_logl)) {
+      unname(null_logl)
+    } else {
+      NA_real_
+    }
+    result$null_deviance <- if (is.finite(null_logl)) {
       unname(-2 * null_logl)
     } else {
       NA_real_
-    },
-    model_deviance = unname(-2 * model_logl)
-  )
+    }
+    result$model_deviance <- unname(-2 * model_logl)
+  }
+
+  result
 }

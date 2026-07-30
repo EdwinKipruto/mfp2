@@ -60,7 +60,7 @@ around the group-specific fitted functions.}
 \item{show_ci_diff}{Logical scalar. If \code{TRUE}, a confidence band is shown
 around the fitted-function difference.}
 
-\item{show_null_line}{Logical scalar. If \code{TRUE} (default), a dashed
+\item{show_null_line}{Logical scalar. If \code{TRUE}, a dashed
 horizontal reference line at zero is drawn on difference plots. This line
 marks the null-group-contrast value on the linear-predictor scale. It is
 informative for reading the treatment-effect scale at a given covariate
@@ -149,9 +149,9 @@ Produces group-specific fitted-function plots, between-group difference
 plots, or both for continuous variables evaluated by \code{\link[=mfpi]{mfpi()}}.
 }
 \details{
-The plotted functions are shown on the model's linear-predictor scale.
-They represent the fitted contribution of the selected continuous variable,
-rather than a complete predicted response.
+The plotted quantities are shown on the model's linear-predictor scale.
+They are term-specific partial linear predictors rather than complete
+predicted responses.
 }
 \section{Plot types}{
 
@@ -159,20 +159,29 @@ Three plot types are available through \code{plot_type}.
 
 \describe{
 \item{\code{"fitted"}}{
-Plots the fitted covariate function separately for the reference group
-and one comparison group on shared axes.
+Plots the group-specific partial linear predictor for the selected
+continuous variable separately for the reference group and one comparison
+group on shared axes. For a GLM, each curve includes the model intercept,
+the relevant group main effect, and the group-specific covariate function.
+For a Cox model, it includes the group main effect and the group-specific
+covariate function. Adjustment-variable contributions, offsets, and the
+Cox baseline hazard are not included.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{Confidence bands for the group-specific functions are controlled by
+\if{html}{\out{<div class="sourceCode">}}\preformatted{Confidence bands for the group-specific curves are controlled by
 `show_ci_fitted`.
 }\if{html}{\out{</div>}}
 
 }
 
 \item{\code{"difference"}}{
-Plots the pointwise difference between the comparison-group and
-reference-group fitted functions:
+Plots the pointwise comparison-group minus reference-group contrast:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{\deqn{\hat f_j(x) - \hat f_r(x)}
+\if{html}{\out{<div class="sourceCode">}}\preformatted{\deqn{\hat\Delta_{j,r}(x) =
+      (\hat\alpha_j - \hat\alpha_r) +
+      \hat f_j(x) - \hat f_r(x)}
+
+Thus, the plotted difference includes both the group main-effect contrast
+and the difference between the group-specific covariate functions.
 
 Two optional horizontal reference lines can be added, each answering a
 different question about the plot:
@@ -223,19 +232,25 @@ package.
 
 \section{Model scale and interpretation}{
 
-The plotted functions are expressed on the model's linear-predictor scale:
+The plotted quantities are expressed on the model's linear-predictor scale.
+With the standard links, this is:
 
 \itemize{
-\item Gaussian models: outcome scale;
-\item binomial models: log-odds scale;
-\item Poisson models: log-mean scale;
-\item Cox models: log-hazard scale.
+\item the outcome scale for Gaussian identity-link models;
+\item the log-odds scale for binomial logit-link models;
+\item the log-mean scale for Poisson and negative-binomial log-link models;
+\item a partial log-relative-hazard scale for Cox models.
 }
 
-A difference plot therefore displays a difference between fitted covariate
-functions on the relevant model scale. It should not be interpreted directly
-as a probability, odds ratio, rate ratio, hazard ratio, survival probability,
-or complete predicted response.
+For other GLM links, plots are labelled using the corresponding link scale.
+Under the standard links, a difference plot represents a mean difference for
+Gaussian models, a log odds ratio for binomial models, a log mean ratio for
+Poisson and negative-binomial models, and a log hazard ratio for Cox models.
+With an exposure offset in a Poisson or negative-binomial model, the log mean
+ratio is interpreted as a log rate ratio. Exponentiating a log-scale contrast
+gives the corresponding odds, mean, rate, or hazard ratio. The group-specific
+curves remain partial linear predictors and are not complete predicted
+responses, probabilities, rates, hazards, or survival probabilities.
 
 Group labels shown in the plots correspond to the original values or factor
 levels supplied through \code{group_var}.

@@ -3,27 +3,36 @@
 #' Produces group-specific fitted-function plots, between-group difference
 #' plots, or both for continuous variables evaluated by [mfpi()].
 #'
-#' The plotted functions are shown on the model's linear-predictor scale.
-#' They represent the fitted contribution of the selected continuous variable,
-#' rather than a complete predicted response.
+#' The plotted quantities are shown on the model's linear-predictor scale.
+#' They are term-specific partial linear predictors rather than complete
+#' predicted responses.
 #'
 #' @section Plot types:
 #' Three plot types are available through `plot_type`.
 #'
 #' \describe{
 #'   \item{\code{"fitted"}}{
-#'     Plots the fitted covariate function separately for the reference group
-#'     and one comparison group on shared axes.
+#'     Plots the group-specific partial linear predictor for the selected
+#'     continuous variable separately for the reference group and one comparison
+#'     group on shared axes. For a GLM, each curve includes the model intercept,
+#'     the relevant group main effect, and the group-specific covariate function.
+#'     For a Cox model, it includes the group main effect and the group-specific
+#'     covariate function. Adjustment-variable contributions, offsets, and the
+#'     Cox baseline hazard are not included.
 #'
-#'     Confidence bands for the group-specific functions are controlled by
+#'     Confidence bands for the group-specific curves are controlled by
 #'     `show_ci_fitted`.
 #'   }
 #'
 #'   \item{\code{"difference"}}{
-#'     Plots the pointwise difference between the comparison-group and
-#'     reference-group fitted functions:
+#'     Plots the pointwise comparison-group minus reference-group contrast:
 #'
-#'     \deqn{\hat f_j(x) - \hat f_r(x)}
+#'     \deqn{\hat\Delta_{j,r}(x) =
+#'       (\hat\alpha_j - \hat\alpha_r) +
+#'       \hat f_j(x) - \hat f_r(x)}
+#'
+#'     Thus, the plotted difference includes both the group main-effect contrast
+#'     and the difference between the group-specific covariate functions.
 #'
 #'     Two optional horizontal reference lines can be added, each answering a
 #'     different question about the plot:
@@ -70,19 +79,25 @@
 #' }
 #'
 #' @section Model scale and interpretation:
-#' The plotted functions are expressed on the model's linear-predictor scale:
+#' The plotted quantities are expressed on the model's linear-predictor scale.
+#' With the standard links, this is:
 #'
 #' \itemize{
-#'   \item Gaussian models: outcome scale;
-#'   \item binomial models: log-odds scale;
-#'   \item Poisson models: log-mean scale;
-#'   \item Cox models: log-hazard scale.
+#'   \item the outcome scale for Gaussian identity-link models;
+#'   \item the log-odds scale for binomial logit-link models;
+#'   \item the log-mean scale for Poisson and negative-binomial log-link models;
+#'   \item a partial log-relative-hazard scale for Cox models.
 #' }
 #'
-#' A difference plot therefore displays a difference between fitted covariate
-#' functions on the relevant model scale. It should not be interpreted directly
-#' as a probability, odds ratio, rate ratio, hazard ratio, survival probability,
-#' or complete predicted response.
+#' For other GLM links, plots are labelled using the corresponding link scale.
+#' Under the standard links, a difference plot represents a mean difference for
+#' Gaussian models, a log odds ratio for binomial models, a log mean ratio for
+#' Poisson and negative-binomial models, and a log hazard ratio for Cox models.
+#' With an exposure offset in a Poisson or negative-binomial model, the log mean
+#' ratio is interpreted as a log rate ratio. Exponentiating a log-scale contrast
+#' gives the corresponding odds, mean, rate, or hazard ratio. The group-specific
+#' curves remain partial linear predictors and are not complete predicted
+#' responses, probabilities, rates, hazards, or survival probabilities.
 #'
 #' Group labels shown in the plots correspond to the original values or factor
 #' levels supplied through `group_var`.
@@ -143,7 +158,7 @@
 #' @param show_ci_diff Logical scalar. If `TRUE`, a confidence band is shown
 #'   around the fitted-function difference.
 #'
-#' @param show_null_line Logical scalar. If `TRUE` (default), a dashed
+#' @param show_null_line Logical scalar. If `TRUE`, a dashed
 #'   horizontal reference line at zero is drawn on difference plots. This line
 #'   marks the null-group-contrast value on the linear-predictor scale. It is
 #'   informative for reading the treatment-effect scale at a given covariate
@@ -660,12 +675,9 @@ plot.mfpi <- function(x,
       ggplot2::scale_colour_manual(values = colour_values, name = group_label) +
       ggplot2::scale_linetype_manual(values = linetype_values, name = group_label) +
       ggplot2::xlab(var) +
-      # Make the model scale explicit. These curves are covariate functions,
-      # not full fitted responses; for non-Gaussian families they are plotted
-      # on the corresponding link/linear-predictor scale.
-      ggplot2::ylab(
-        paste0("Covariate function: ", mfpi_plot_scale_label(model))
-      ) +
+      # These are group-specific partial linear predictors, not complete
+      # fitted responses. The helper reports the family-appropriate link scale.
+      ggplot2::ylab(mfpi_plot_fitted_ylabel(model)) +
       ggplot2::labs(
         title = if (show_title) "Group-specific fitted functions" else NULL,
         subtitle = if (show_title) {
@@ -840,17 +852,16 @@ plot.mfpi <- function(x,
 
     p <- p +
       ggplot2::xlab(var) +
-      # Keep the original contrast-specific label, but append the model scale so
-      # the difference is not mistaken for a response-scale probability, rate,
-      # ratio, survival probability, or complete prediction.
-      ggplot2::ylab(sprintf(
-        "f(%s = %s) - f(%s = %s) (%s)",
-        group_label,
-        grp_label_value,
-        group_label,
-        ref_label_value,
-        mfpi_plot_scale_label(model)
-      )) +
+      # The difference includes the group main-effect contrast as well as the
+      # difference between group-specific covariate functions. Label the
+      # resulting family-specific contrast directly.
+      ggplot2::ylab(
+        mfpi_plot_difference_ylabel(
+          model = model,
+          group = grp_label_value,
+          reference = ref_label_value
+        )
+      ) +
       ggplot2::labs(
         title = if (show_title) "Difference in fitted functions" else NULL,
         subtitle = if (show_title) {
@@ -1088,64 +1099,151 @@ plot.mfpi <- function(x,
 # plot.mfpi() helper functions ------------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Return the Plot Scale Label for an MFPI Model
+#' Determine the Link Used for MFPI Plot Labels
 #'
-#' Determines the short model-scale label used on MFPI plot y-axes. The helper
-#' intentionally returns compact labels because axis titles must remain readable
-#' when plots are displayed side by side. Longer interpretation details are kept
-#' in the \code{plot.mfpi()} documentation.
+#' Extracts the fitted GLM link for use in plot-axis labels. Cox models use a
+#' dedicated value because they do not store a GLM family object, and
+#' negative-binomial models use their supported log link.
 #'
-#' The returned scale describes the scale of the estimated covariate function
-#' produced by MFPI prediction. It does not describe a full fitted response. In
-#' particular, binomial curves are labelled as log-odds, Poisson curves as
-#' log-mean, and Cox curves as log-hazard.
+#' @param model Object of class \code{"mfpi"}.
 #'
-#' @param model Object of class \code{"mfpi"}. The helper reads
-#'   \code{model$family_string} when available and falls back to
-#'   \code{model$family$family} for older objects.
+#' @return Character scalar naming the link or \code{"cox"}.
 #'
-#' @return Character scalar. One of \code{"outcome scale"},
-#'   \code{"log-odds"}, \code{"log-mean"}, \code{"log-hazard"}, or
-#'   \code{"linear predictor"} for unrecognised families.
+#' @keywords internal
+#' @noRd
+mfpi_plot_link_name <- function(model) {
+  family_string <- tolower(mfpi_family_string(model))
+
+  if (identical(family_string, "cox")) {
+    return("cox")
+  }
+  if (identical(family_string, "negbin")) {
+    return("log")
+  }
+
+  family_obj <- model[["family", exact = TRUE]]
+  if (is.list(family_obj)) {
+    link <- family_obj[["link", exact = TRUE]]
+    if (!is.null(link) && length(link) > 0L && !is.na(link[1L]) &&
+        nzchar(as.character(link[1L]))) {
+      return(tolower(as.character(link[1L])))
+    }
+  }
+
+  switch(
+    family_string,
+    gaussian = "identity",
+    binomial = "logit",
+    poisson  = "log",
+    "unknown"
+  )
+}
+
+
+#' Build the Fitted-Curve Y-Axis Label
+#'
+#' Returns a family- and link-specific label for the group-specific partial
+#' linear predictors displayed by \code{plot.mfpi()}.
+#'
+#' @param model Object of class \code{"mfpi"}.
+#'
+#' @return Character scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_plot_fitted_ylabel <- function(model) {
+  family_string <- tolower(mfpi_family_string(model))
+  link <- mfpi_plot_link_name(model)
+
+  if (identical(family_string, "cox")) {
+    return("Partial linear predictor (log relative hazard)")
+  }
+
+  scale_label <- switch(
+    link,
+    identity = "outcome scale",
+    logit    = "log odds",
+    log      = "log mean",
+    probit   = "probit scale",
+    cloglog  = "complementary log-log scale",
+    cauchit  = "cauchit scale",
+    inverse  = "inverse-mean scale",
+    sqrt     = "square-root mean scale",
+    if (identical(link, "unknown")) "link scale" else paste0(link, " scale")
+  )
+
+  paste0("Partial linear predictor (", scale_label, ")")
+}
+
+
+#' Build the Difference-Plot Y-Axis Label
+#'
+#' Returns the family-specific interpretation of the comparison-group minus
+#' reference-group contrast displayed by \code{plot.mfpi()}.
+#'
+#' @param model Object of class \code{"mfpi"}.
+#' @param group Character scalar giving the comparison-group label.
+#' @param reference Character scalar giving the reference-group label.
+#'
+#' @return Character scalar.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_plot_difference_ylabel <- function(model, group, reference) {
+  family_string <- tolower(mfpi_family_string(model))
+  link <- mfpi_plot_link_name(model)
+
+  measure <- if (identical(family_string, "cox")) {
+    "Log hazard ratio"
+  } else if (identical(family_string, "gaussian") &&
+             identical(link, "identity")) {
+    "Mean difference"
+  } else if (identical(family_string, "binomial") &&
+             identical(link, "logit")) {
+    "Log odds ratio"
+  } else if (family_string %in% c("poisson", "negbin") &&
+             identical(link, "log")) {
+    "Log mean ratio"
+  } else {
+    "Link-scale difference"
+  }
+
+  sprintf("%s: %s vs %s", measure, group, reference)
+}
+
+
+#' Return the Compact Plot Scale Label for an MFPI Model
+#'
+#' Backward-compatible internal helper returning a compact scale label. New
+#' plot axes use \code{mfpi_plot_fitted_ylabel()} and
+#' \code{mfpi_plot_difference_ylabel()} so that the plotted quantity, rather
+#' than only its scale, is identified.
+#'
+#' @param model Object of class \code{"mfpi"}.
+#'
+#' @return Character scalar.
 #'
 #' @keywords internal
 #' @noRd
 mfpi_plot_scale_label <- function(model) {
-  # Prefer the explicit family string stored by mfpi(). Use [[, exact = TRUE]]
-  # rather than $ so missing or partially matching component names do not affect
-  # the chosen label.
-  family_string <- model[["family_string", exact = TRUE]]
+  family_string <- tolower(mfpi_family_string(model))
+  link <- mfpi_plot_link_name(model)
 
-  # Older or manually constructed objects may not contain family_string. In that
-  # case, fall back to the standard family object structure used by glm-like
-  # models. The fallback is also exact to avoid partial-matching surprises.
-  if (is.null(family_string)) {
-    family_obj <- model[["family", exact = TRUE]]
-    if (is.list(family_obj)) {
-      family_string <- family_obj[["family", exact = TRUE]]
-    }
+  if (identical(family_string, "cox")) {
+    return("log relative hazard")
   }
-
-  # If family information is unavailable or malformed, use the conservative
-  # generic label. This keeps plotting robust for older fitted objects while
-  # avoiding misleading family-specific labels.
-  if (is.null(family_string) || length(family_string) == 0L ||
-      is.na(family_string[1L]) || !nzchar(as.character(family_string[1L]))) {
-    return("linear predictor")
-  }
-
-  # Normalise to a single lower-case string. This makes the switch robust to
-  # accidental vector values while preserving a safe default for unknown input.
-  family_string <- tolower(as.character(family_string[1L]))
 
   switch(
-    family_string,
-    gaussian = "outcome scale",
-    binomial = "log-odds",
-    poisson  = "log-mean",
-    negbin   = "log-mean",
-    cox      = "log-hazard",
-    "linear predictor"
+    link,
+    identity = "outcome scale",
+    logit    = "log odds",
+    log      = "log mean",
+    probit   = "probit scale",
+    cloglog  = "complementary log-log scale",
+    cauchit  = "cauchit scale",
+    inverse  = "inverse-mean scale",
+    sqrt     = "square-root mean scale",
+    if (identical(link, "unknown")) "linear predictor" else paste0(link, " scale")
   )
 }
 

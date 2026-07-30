@@ -42,8 +42,9 @@
 #'     selection-adjusted degrees of freedom stored in \code{fp_terms}. The
 #'     LRT compares the final MFP model with the model obtained by dropping
 #'     that variable's columns while holding all other functional forms fixed.
-#'   \item \strong{Model Fit}: null, full-linear, and final-MFP deviances plus
-#'     an overall likelihood-ratio test (and R-squared for Gaussian models).
+#'   \item \strong{Model Fit}: null, full-linear, and final-MFP deviances for
+#'     GLMs, or minus twice the partial log-likelihood for Cox models, with
+#'     model degrees of freedom.
 #' }
 #'
 #' The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -859,15 +860,19 @@ mfp2_summary_model_df <- function(object) {
 
 # Assemble the Model Fit rows (values only, no formatting) from a fitted mfp2
 # object. Used by both print.mfp2() and print.summary.mfp2() so the two
-# methods display exactly the same numbers under exactly the same convention.
+# methods display exactly the same family-specific fit statistics.
 #
-# Returns a data frame with three rows (Null / Full linear / MFP), and
-# columns `minus2_logL` (numeric) and `df` (integer). The Model Fit block
+# Returns a data frame with three rows (Null / Full linear / MFP), and columns
+# `fit_statistic` (numeric) and `df` (integer). The `statistic_label` attribute
+# is "Deviance" for GLMs and "-2 log L" for Cox models. The Model Fit block
 # renderer, mfp2_format_model_fit_block(), formats and prints it.
 mfp2_summary_model_fit_values <- function(object) {
-  null_logl   <- mfp2_summary_num(object$null_logl)
-  linear_logl <- mfp2_summary_num(object$linear_logl)
-  mfp_logl    <- mfp2_summary_num(object$mfp_logl)
+  family_string <- object$family_string
+  fit_statistic <- c(
+    mfp2_summary_num(object$null_deviance),
+    mfp2_summary_num(object$linear_deviance),
+    mfp2_summary_num(object$mfp_deviance)
+  )
 
   # The df column follows a single convention: number of regression
   # coefficients, EXCLUDING the intercept. `linear_df` as stored comes from
@@ -876,7 +881,6 @@ mfp2_summary_model_fit_values <- function(object) {
   # Gaussian residual variance sigma^2 or negative-binomial theta. These
   # adjustments are stripped here so the number the
   # user sees matches the promise made in the note.
-  family_string <- object$family_string
   linear_df <- if (!is.null(object$linear_df)) {
     d <- as.integer(object$linear_df)
     if (family_string %in% c("gaussian", "negbin")) {
@@ -896,12 +900,18 @@ mfp2_summary_model_fit_values <- function(object) {
   # variables), which is already intercept- and sigma-free by construction.
   mfp_df <- mfp2_summary_model_df(object)
 
-  data.frame(
-    label       = c("Null model", "Full linear model", "MFP model"),
-    minus2_logL = c(-2 * null_logl, -2 * linear_logl, -2 * mfp_logl),
-    df          = c(0L, linear_df, mfp_df),
+  values <- data.frame(
+    label         = c("Null model", "Full linear model", "MFP model"),
+    fit_statistic = fit_statistic,
+    df            = c(0L, linear_df, mfp_df),
     stringsAsFactors = FALSE
   )
+  attr(values, "statistic_label") <- if (identical(family_string, "cox")) {
+    "-2 log L"
+  } else {
+    "Deviance"
+  }
+  values
 }
 
 # Print the Model Fit block: heading, table, and note. Shared by print.mfp2()
@@ -919,7 +929,7 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
   # Right-align numeric columns; left-align the label. Column widths are
   # chosen from the widest formatted value so the note below reads under the
   # correct table width regardless of magnitude.
-  m2ll <- vapply(values$minus2_logL, function(v) {
+  statistic <- vapply(values$fit_statistic, function(v) {
     if (is.na(v) || !is.finite(v)) return("NA")
     format(v, digits = digits, trim = TRUE)
   }, character(1L))
@@ -928,20 +938,25 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
     format(v, trim = TRUE)
   }, character(1L))
 
+  statistic_label <- attr(values, "statistic_label", exact = TRUE)
+  if (is.null(statistic_label) || length(statistic_label) != 1L) {
+    statistic_label <- "Deviance"
+  }
+
   label_width <- max(nchar(values$label))
-  m2ll_width  <- max(nchar("-2 log L"), max(nchar(m2ll)))
-  df_width    <- max(nchar("df"), max(nchar(df_fmt)))
+  statistic_width <- max(nchar(statistic_label), max(nchar(statistic)))
+  df_width <- max(nchar("df"), max(nchar(df_fmt)))
 
   # Column separators: two spaces after the label, four spaces before df.
   header_fmt <- sprintf(
     "%%-%ds  %%%ds    %%%ds\n",
-    label_width, m2ll_width, df_width
+    label_width, statistic_width, df_width
   )
   row_fmt <- header_fmt
 
-  cat(sprintf(header_fmt, "", "-2 log L", "df"))
+  cat(sprintf(header_fmt, "", statistic_label, "df"))
   for (i in seq_len(nrow(values))) {
-    cat(sprintf(row_fmt, values$label[i], m2ll[i], df_fmt[i]))
+    cat(sprintf(row_fmt, values$label[i], statistic[i], df_fmt[i]))
   }
   cat("\n")
 
@@ -1120,10 +1135,10 @@ print.summary.mfp2 <- function(x, ...) {
   #
   # The Model Fit block is rendered by the shared helper
   # mfp2_format_model_fit_block(), which is called identically by
-  # print.mfp2(). This ensures the two methods display the same numbers
-  # under the same convention (-2 log L; df on the MFP-adjusted scale) and
-  # the same note. The `section()` helper defined above draws the
-  # dash-rule heading used elsewhere in the summary output.
+  # print.mfp2(). This ensures the two methods display the same family-specific
+  # fit statistic and df convention, together with the same note. The
+  # `section()` helper defined above draws the dash-rule heading used elsewhere
+  # in the summary output.
   mfp2_format_model_fit_block(
     values          = x$fit$model_fit,
     digits          = digits,

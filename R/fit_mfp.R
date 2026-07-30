@@ -357,10 +357,9 @@ fit_mfp <- function(x,
   null_deviance <- ordering_result$null_deviance
   linear_deviance <- ordering_result$linear_deviance
 
-  # Log-likelihood-scale quantities for the Model Fit block of summary.mfp2().
-  # order_variables() obtains these once from the full linear reference fit.
-  # Cox supplies null_logl from coxph.fit(); GLMs use one intercept-only fit
-  # performed by fit_full_linear_reference().
+  # Likelihood-scale quantities retained for model comparison and object
+  # compatibility. Cox supplies null_logl from coxph.fit(); GLMs report their
+  # stored deviances and retain null_logl as NA_real_.
   linear_logl <- ordering_result$linear_logl
   linear_df   <- ordering_result$linear_df
   null_logl   <- ordering_result$null_logl
@@ -845,6 +844,8 @@ fit_mfp <- function(x,
     rownames      = rownames(data_transformed$x_transformed),
     nocenter      = nocenter,
     fast          = FALSE,
+    calculate_fit_statistics = TRUE,
+    keep_fit      = TRUE,
     has_offset    = has_offset
   )
 
@@ -874,8 +875,8 @@ fit_mfp <- function(x,
   # twice the fitted partial log-likelihood.
   mfp_deviance <- modelfit$model_deviance
 
-  # The null and full-linear reference likelihoods were computed once by
-  # order_variables(); fit_mfp() only assembles them with the final-model fit.
+  # The full-linear reference likelihood was computed once by order_variables().
+  # Cox also supplies its null partial likelihood from that same fit.
   mfp_logl <- modelfit$logl
   mfp_df   <- modelfit$df
 
@@ -892,9 +893,9 @@ fit_mfp <- function(x,
       null_deviance   = null_deviance,
       linear_deviance = linear_deviance,
       mfp_deviance    = mfp_deviance,
-      # Log-likelihood-scale quantities used by summary.mfp2()'s Model Fit
-      # block. All three -2 log L values are on the same convention, so the
-      # summary can render them directly without any per-family adjustment.
+      # Likelihood-scale quantities retained for inference and compatibility.
+      # GLM Model Fit reporting uses the deviance fields above; Cox reporting
+      # uses the equivalent -2 partial-log-likelihood deviances.
       null_logl       = null_logl,
       linear_logl     = linear_logl,
       linear_df       = linear_df,

@@ -1,14 +1,6 @@
 # =============================================================================
 # Comprehensive tests for the mfp2 package
 # =============================================================================
-# Consolidated v15: comprehensive public negative-binomial coverage.
-#
-# Version 6 preprocessing regression coverage
-# --------------------------------------------
-# This revision documents and tests the matrix-interface contract that unnamed
-# scalar shift/scale values are global, while named vectors may specify a subset
-# of columns. Unspecified named-vector entries remain automatic. It also verifies
-# that insufficient explicit shifts fail instead of being silently enlarged.
 #
 # File organization
 # -----------------
@@ -146,20 +138,12 @@ get_negbin_reference_fits <- function() {
       control = stats::glm.control(maxit = 100L)
     )
 
-    fit_mass_null <- MASS::glm.nb(
-      y ~ 1,
-      data = dat,
-      link = log,
-      control = stats::glm.control(maxit = 100L)
-    )
-
     assign(
       "fits",
       list(
         data = dat,
         mfp2 = fit_mfp2,
-        mass = fit_mass,
-        mass_null = fit_mass_null
+        mass = fit_mass
       ),
       envir = .negbin_reference_cache
     )
@@ -341,7 +325,7 @@ test_that("mfp2.default() works with negative-binomial family", {
   expect_identical(fit$fitter, "fastglm")
   expect_true(is.finite(fit$theta) && fit$theta > 0)
   expect_true(is.finite(fit$mfp_logl))
-  expect_true(is.finite(fit$null_logl))
+  expect_true(is.na(fit$null_logl))
   expect_true(fit$convergence_mfp)
   expect_true(all(fit$fp_terms[c("x1", "x2", "x3"), "selected"]))
   expect_equal(fit$mfp_df, fit$rank + 1L)
@@ -384,7 +368,7 @@ test_that("negative-binomial fitting completes an FP candidate search", {
   expect_true(fit$convergence_mfp)
   expect_true(is.finite(fit$theta) && fit$theta > 0)
   expect_true(is.finite(fit$mfp_logl))
-  expect_true(is.finite(fit$null_logl))
+  expect_true(is.na(fit$null_logl))
   expect_true(fit$fp_terms["x1", "selected"])
   expect_true(length(fit$fp_powers[["x1"]]) %in% c(1L, 2L))
   expect_equal(fit$mfp_df, fit$rank + 1L)
@@ -752,11 +736,12 @@ test_that("linear negative-binomial mfp2 agrees with MASS::glm.nb()", {
   expect_equal(fit_mfp2$linear_logl, fit_mfp2$mfp_logl, tolerance = 1e-8)
   expect_equal(fit_mfp2$linear_df, fit_mfp2$mfp_df)
 
-  # mfp2 defines null_logl using a separately fitted intercept-only NB model,
-  # including re-estimation of theta, matching glm.nb(y ~ 1).
+  # GLM null_logl is retained as NA for compatibility because Model Fit now
+  # reports the already-computed family-specific deviance instead.
+  expect_true(is.na(fit_mfp2$null_logl))
   expect_equal(
-    fit_mfp2$null_logl,
-    as.numeric(stats::logLik(fits$mass_null)),
+    fit_mfp2$null_deviance,
+    fit_mass$null.deviance,
     tolerance = 1e-3
   )
 })
@@ -6478,6 +6463,110 @@ test_that("summary.mfp2() works for Cox", {
   fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
+})
+
+# Test purpose: Verifies that GLM Model Fit output uses stored deviances and a
+# Deviance header rather than reconstructing minus twice log-likelihood.
+test_that("Model Fit reports deviance for GLMs", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  values <- mfp2_summary_model_fit_values(fit)
+
+  expect_identical(attr(values, "statistic_label"), "Deviance")
+  expect_equal(
+    values$fit_statistic,
+    c(fit$null_deviance, fit$linear_deviance, fit$mfp_deviance)
+  )
+  output <- capture.output(print(fit))
+  expect_true(any(grepl("Deviance", output, fixed = TRUE)))
+  expect_false(any(grepl("-2 log L", output, fixed = TRUE)))
+})
+
+# Test purpose: Verifies that Cox Model Fit output remains on the existing
+# minus-twice-partial-log-likelihood scale.
+test_that("Model Fit keeps -2 log L for Cox models", {
+  data("gbsg", package = "mfp2")
+  x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
+  y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
+
+  fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
+  values <- mfp2_summary_model_fit_values(fit)
+
+  expect_identical(attr(values, "statistic_label"), "-2 log L")
+  expect_equal(
+    values$fit_statistic,
+    c(fit$null_deviance, fit$linear_deviance, fit$mfp_deviance)
+  )
+  output <- capture.output(print(fit))
+  expect_true(any(grepl("-2 log L", output, fixed = TRUE)))
+})
+
+# Test purpose: Verifies that internal fast fits retain only lightweight
+# quantities by default and calculate reporting statistics only when requested.
+test_that("fit_model returns only requested internal components", {
+  x <- matrix(
+    c(-2, -1, 0, 1, 2, 3),
+    ncol = 1L,
+    dimnames = list(NULL, "x")
+  )
+  y <- c(-1.8, -0.9, 0.2, 1.1, 1.9, 3.2)
+
+  selection_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE
+  )
+
+  expect_false("fit" %in% names(selection_fit))
+  expect_false("null_deviance" %in% names(selection_fit))
+  expect_false("model_deviance" %in% names(selection_fit))
+  expect_false("sse" %in% names(selection_fit))
+  expect_true(all(c("logl", "coefficients", "rank", "df") %in%
+                    names(selection_fit)))
+
+  metrics <- calculate_model_metrics(selection_fit, n_obs = length(y))
+  expect_true(all(is.finite(metrics[c("logl", "df", "aic", "bic")])))
+
+  reference_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE,
+    calculate_fit_statistics = TRUE
+  )
+
+  expect_false("fit" %in% names(reference_fit))
+  expect_true(all(c("null_deviance", "model_deviance") %in%
+                    names(reference_fit)))
+
+  retained_fast_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE,
+    keep_fit = TRUE
+  )
+
+  expect_true("fit" %in% names(retained_fast_fit))
+
+  full_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = FALSE
+  )
+
+  expect_true("fit" %in% names(full_fit))
+  expect_false("null_deviance" %in% names(full_fit))
+  expect_false("model_deviance" %in% names(full_fit))
+  expect_identical(
+    unname(full_fit$transformed_to_model_columns),
+    "x"
+  )
 })
 
 # Test purpose: Verifies that negative-binomial summary inference agrees with
@@ -14258,4 +14347,3 @@ test_that("MFPI rebuilds selected ACD adjustment terms during interaction fittin
 # =============================================================================
 # End of tests
 # =============================================================================
-

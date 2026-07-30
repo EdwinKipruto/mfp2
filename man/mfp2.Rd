@@ -387,8 +387,8 @@ spike-at-zero (SAZ) modelling for semi-continuous predictors. Models may be
 specified with a formula and data frame or with a numeric predictor matrix
 and response. Both interfaces provide the same core modelling capabilities
 but differ in input handling as described below. Supported families are
-Gaussian, binomial, Poisson, and negative binomial. Cox proportional hazards models are also
-supported, currently limited to right-censored data specified as
+Gaussian, binomial, Poisson, and negative binomial. Cox proportional hazards
+models are also supported, currently limited to right-censored data specified as
 \code{survival::Surv(time, event)}.
 }
 \section{Methods (by class)}{

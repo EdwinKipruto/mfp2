@@ -311,7 +311,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     rownames = NULL,
     nocenter = nocenter,
     has_offset = has_offset,
-    fast     = TRUE    # log-likelihood only; no vcov needed
+    fast     = TRUE,
+    keep_fit = TRUE    # retained for downstream coefficient/vcov extraction
   )
 
   fit_interaction <- fit_model(

@@ -261,8 +261,8 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
     y = z, x = x, powers = powers, zero = zero, fitter = fitter
   )
 
-  coefx <- fit$fit$coefficients
-  zhat <- fit$fit$fitted.values
+  coefx <- fit$coefficients
+  zhat <- fit$fitted_values
 
   list(acd = stats::pnorm(zhat),
        beta0 = coefx[1],
@@ -325,7 +325,8 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
 #' @param y normal cdf of rank transform of `x`.
 #'
 #' @return
-#' The best FP power with smallest deviance and the fitted model.
+#' The best FP power with smallest deviance, together with its coefficients and
+#' fitted values. The temporary candidate fit objects are not retained.
 #' @keywords internal
 #' @noRd
 find_best_fp1_for_acd <- function(x,
@@ -368,9 +369,13 @@ find_best_fp1_for_acd <- function(x,
 
   fp_col <- 2L
 
-  # Store deviance and model object for each candidate power.
-  devs <- vector("numeric", n_powers)
-  fits <- vector("list", n_powers)
+  # Retain only the best candidate's lightweight results. The underlying
+  # glm.fit()/fastglm objects are unnecessary once their likelihood and
+  # selected coefficients and fitted values have been extracted.
+  best_deviance <- Inf
+  best_power <- NULL
+  best_coefficients <- NULL
+  best_fitted_values <- NULL
 
   for (i in seq_len(n_powers)) {
     data_xi <- trafo[[i]]
@@ -385,17 +390,27 @@ find_best_fp1_for_acd <- function(x,
       family = family_gaussian,
       family_string = family_string_gaussian,
       fitter = fitter,
-      x_has_intercept = TRUE
+      x_has_intercept = TRUE,
+      keep_fit = TRUE
     )
 
-    devs[i] <- -2 * fit$logl
-    fits[[i]] <- fit$fit
+    candidate_deviance <- -2 * fit$logl
+    if (is.finite(candidate_deviance) &&
+        candidate_deviance < best_deviance) {
+      best_deviance <- candidate_deviance
+      best_power <- powers[[i]]
+      best_coefficients <- fit$coefficients
+      best_fitted_values <- fit$fit$fitted.values
+    }
   }
 
-  index <- which.min(devs)
+  if (is.null(best_power)) {
+    stop("No finite ACD candidate model was fitted.", call. = FALSE)
+  }
 
   list(
-    power = powers[[index]],
-    fit = fits[[index]]
+    power = best_power,
+    coefficients = best_coefficients,
+    fitted_values = best_fitted_values
   )
 }

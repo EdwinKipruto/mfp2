@@ -121,8 +121,6 @@ deviance_gaussian <- function(residuals, weights) {
 #' It is, however, the definition used in Royston and Sauerbrei (2008) and in
 #' `mfp`. For selection of fps this does not really play a role, as the common
 #' factor would be cancelled anyway when comparing models based on deviances.
-#' * `sse`: weighted sum of squared residuals for Gaussian models; `NA` for
-#' other families.
 #' * `deviance_gaussian`: deviance computed by \code{deviance_gaussian()},
 #' applicable to Gaussian models and used for F-test computations.
 #' * `aic`: Akaike information criterion, defined as
@@ -147,7 +145,7 @@ calculate_model_metrics <- function(obj,
   # obj$df is the model degrees of freedom reported by fit_model().
   # For Gaussian models, fit_model() includes the estimated scale parameter
   # in obj$df, and negative-binomial models include theta. Their nuisance-df
-  # contribution is derived below from obj$df and the fitted regression rank.
+  # contribution is derived below from obj$df and the stored regression rank.
   #
   # df_additional is used to add extra degrees of freedom for FP/ACD
   # transformations when the fitted model has more transformation parameters
@@ -155,16 +153,15 @@ calculate_model_metrics <- function(obj,
   res <- c(
     logl = obj$logl,
     df = obj$df + df_additional,
-    deviance_rs = -2 * obj$logl,
-    sse = obj$sse
+    deviance_rs = -2 * obj$logl
   )
 
   # Residual df should subtract only regression and transformation
   # parameters. Gaussian scale and negative-binomial theta are nuisance
   # parameters included in obj$df but not in the regression residual df.
-  # Derive their count from the fitted regression rank rather than carrying
+  # Derive their count from the stored regression rank rather than carrying
   # family-specific boolean flags in every fit_model() result.
-  fit_rank <- obj$fit$rank
+  fit_rank <- obj$rank
   regression_df <- if (is.numeric(fit_rank) && length(fit_rank) == 1L &&
                        !is.na(fit_rank) && is.finite(fit_rank)) {
     unname(fit_rank)

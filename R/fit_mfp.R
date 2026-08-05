@@ -82,8 +82,9 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'
 #' @param x A numeric design matrix with one row per observation and one or
 #'   more raw columns per conceptual term. It excludes the intercept; categorical
-#'   terms may already be expanded into dummy columns. Data are assumed to be
-#'   shifted and scaled.
+#'   terms may already be expanded into dummy columns. Ordinary FP variables are
+#'   assumed to be shifted and scaled; active ACD variables are shifted but use
+#'   scale 1.
 #' @param term_to_columns Named list mapping every conceptual term to the raw
 #'   columns of \code{x} that represent it. Explicitly mapped entries are fixed
 #'   linear design blocks, including a one-column mapping whose raw column name
@@ -95,8 +96,8 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' @param cycles An integer representing the maximum number of iteration cycles
 #'   during which FP powers for all predictors are updated.
 #' @param scale Named numeric vector with one scaling factor per conceptual
-#'   term. It is not applied during power selection cycles, but is used to
-#'   backscale the corresponding raw column or column block before the final fit.
+#'   term. For ordinary FP terms it is used to backscale the corresponding raw
+#'   column or column block before the final fit. Active ACD terms use scale 1.
 #' @param shift Named numeric vector with one shift per conceptual term. Shifting
 #'   has already been applied upstream; the values are reordered to conform to
 #'   \code{xorder} and stored in the returned object.
@@ -282,7 +283,8 @@ fit_mfp <- function(x,
   # "Algorithm" section above: order variables, pre-process ACD/zero/catzero/
   # spike settings, run backfitting cycles to select FP powers, then transform
   # and fit the final model. mfp2.default()/mfp2.formula() are expected to have
-  # already validated and shifted/scaled all inputs before calling this function.
+  # already validated and preprocessed all inputs: ordinary FP variables are
+  # shifted/scaled, whereas active ACD variables are shifted with scale 1.
 
   if (is.null(term_to_columns)) {
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
@@ -431,8 +433,24 @@ fit_mfp <- function(x,
   # Initial powers_current for ACD variables are set to c(1, NA): a linear
   # term for x and no ACD term yet, to be updated in the first backfitting cycle.
   if (any(acdx)) {
-    acdx           <- reset_acd(x, acdx)
-    variables_acd  <- names(acdx)[acdx]
+    acdx          <- reset_acd(x, acdx)
+    variables_acd <- names(acdx)[acdx]
+
+    # Public mfp2() callers set active ACD variables to scale 1 before entering
+    # fit_mfp(). Keep a defensive path for direct internal callers that supplied
+    # the historical scaled working matrix: restore shifted, unscaled values and
+    # update the preprocessing metadata before any FP/ACD candidate is generated.
+    acd_scaled <- variables_acd[scale[variables_acd] != 1]
+    if (length(acd_scaled) > 0L) {
+      x[, acd_scaled] <- sweep(
+        x[, acd_scaled, drop = FALSE],
+        2,
+        scale[acd_scaled],
+        "*"
+      )
+      scale[acd_scaled] <- 1
+    }
+
     powers_current <- utils::modifyList(
       powers_current,
       sapply(variables_acd, function(v) c(1, NA), simplify = FALSE)
@@ -497,6 +515,15 @@ fit_mfp <- function(x,
     catzero <- result$catzero
     zero    <- result$zero
   }
+
+  # Retain the structural-zero share for the actual fitting sample. This is
+  # descriptive SAZ metadata, not a model-selection result. Non-SAZ terms are
+  # represented by NA and are suppressed by the print methods.
+  prop_zero <- calculate_saz_prop_zero(
+    x = x_for_spike,
+    spike = spike,
+    term_to_columns = term_to_columns
+  )
 
   # For retained spike-at-zero variables, cap the maximum FP df using only the
   # positive component. Ordinary assign_df() uses the full variable,
@@ -740,10 +767,9 @@ fit_mfp <- function(x,
     x <- backscale_matrix(x, scale_for_columns)
   }
 
-  # ACD parameters are estimated on the scaled working x.
-  # Final fitting and prediction later pass shifted-but-not-scaled x into
-  # transform_matrix(). Store the training scale so apply_acd() reconstructs
-  # the same scaled ACD input before using beta0, beta1, and power.
+  # ACD parameters are estimated on shifted, unscaled predictors. New fits
+  # therefore store scale = 1. The field is retained for compatibility with the
+  # existing transformation and prediction helpers and with legacy model objects.
   acd_parameter_final <- acd_parameter
 
   for (v in names(acd_parameter_final)) {
@@ -754,7 +780,7 @@ fit_mfp <- function(x,
       # memory and can cause confusion.
       acd_parameter_final[[v]]$acd <- NULL
       acd_parameter_final[[v]]$shift <- 0
-      acd_parameter_final[[v]]$scale <- scale[[v]]
+      acd_parameter_final[[v]]$scale <- 1
     }
   }
 
@@ -932,6 +958,7 @@ fit_mfp <- function(x,
       fp_terms        = create_fp_terms(
         powers_current, acdx, df, select, alpha, criterion, zero,
         catzero_effective, spike, spike_decision,
+        prop_zero = prop_zero,
         term_to_columns = term_to_columns,
         transformed_to_model_columns = transformed_to_model_columns,
         coefficients = modelfit$fit$coefficients
@@ -1353,7 +1380,11 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' transformation are prefixed by `A_` by the `print` and `summary` methods.
 #' The dataframe comprises the following columns:
 #'
-#' * `df_initial`: initial degrees of freedom.
+#' * `df_setting`: MFP complexity setting supplied to the selection algorithm.
+#'   For explicitly mapped grouped terms, `1` denotes a fixed linear block.
+#' * `df_initial`: degrees of freedom represented by the term in the initial
+#'   MFP model. For grouped terms this is the number of member design columns,
+#'   rather than the fixed-linear `df_setting` value.
 #' * `select`: significance level used for backward elimination (or criterion name if not "pvalue").
 #' * `alpha`: significance level for FP terms (or criterion name if not "pvalue").
 #' * `acd`: logical, whether an ACD transformation was applied.
@@ -1362,6 +1393,8 @@ convert_powers_list_to_matrix <- function(power_list) {
 #'  values greater than zero).
 #' * `catzero`: logical, whether a binary variable for zero values was created.
 #' * `spike`: logical, indicates presence of a spike-at-zero variable.
+#' * `prop_zero`: proportion of finite fitting-sample observations in the
+#'   structural-zero component for retained SAZ terms; `NA` otherwise.
 #' * `spike_decision`: integer code describing how the spike-at-zero variable is modeled.
 #' * `selected`: logical, whether the FP term is included in the final model.
 #' * `df_final`: final estimated degrees of freedom for the variable.
@@ -1374,6 +1407,9 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' model. Used both to derive the \code{selected}/\code{df_final} columns and,
 #' via \code{convert_powers_list_to_matrix()}, the \code{power1, power2, ...}
 #' columns.
+#' @param prop_zero Optional named numeric vector containing the structural-zero
+#'   proportion for each retained SAZ term. Missing or non-SAZ terms are stored
+#'   as `NA_real_`.
 #' @param term_to_columns Optional complete conceptual-term-to-raw-column
 #'   mapping. When supplied, explicitly mapped retained terms report their
 #'   fitted rank contribution rather than one df per stored linear power.
@@ -1394,6 +1430,7 @@ create_fp_terms <- function(fp_powers,
                             catzero,
                             spike,
                             spike_decision,
+                            prop_zero = NULL,
                             term_to_columns = NULL,
                             transformed_to_model_columns = NULL,
                             coefficients = NULL) {
@@ -1405,26 +1442,28 @@ create_fp_terms <- function(fp_powers,
 
   acdx <- acdx[vars]
   df <- df[vars]
+  df_setting <- df
   select <- select[vars]
   alpha <- alpha[vars]
   zero <- zero[vars]
   catzero <- catzero[vars]
   spike <- spike[vars]
   spike_decision <- spike_decision[vars]
+  if (is.null(prop_zero)) {
+    prop_zero <- stats::setNames(rep(NA_real_, length(vars)), vars)
+  } else {
+    prop_zero <- prop_zero[vars]
+  }
+  prop_zero[!spike] <- NA_real_
 
-  # Step 2: Calculate final degrees of freedom. Continuous terms use the MFP
-  # convention implemented by calculate_df(). Explicitly mapped fixed-linear
-  # terms are different: one conceptual term can represent several fitted
-  # design columns, so its final df is the number of estimable coefficients in
-  # that block rather than the single power value stored for selection.
-  df_final <- mapply(
-    calculate_df,
-    fp_powers,
-    spike_decision,
-    catzero,
-    SIMPLIFY = TRUE
-  )
-  names(df_final) <- vars
+  # Step 2: Separate the MFP search setting from the initial model degrees of
+  # freedom. For ordinary continuous terms these values coincide. Explicitly
+  # mapped terms are fixed linear blocks (`df_setting = 1`) but can represent
+  # several raw design columns, all of which contribute to `df_initial`. The
+  # package validates grouped design rank before fitting, so the member-column
+  # count is the initial rank contribution for fitted package objects.
+  df_initial <- df_setting
+  mapped <- stats::setNames(rep(FALSE, length(vars)), vars)
 
   if (!is.null(term_to_columns)) {
     missing_terms <- setdiff(vars, names(term_to_columns))
@@ -1439,6 +1478,26 @@ create_fp_terms <- function(fp_powers,
     }
 
     mapped <- mapped_term_flags(term_to_columns[vars])
+    if (any(mapped)) {
+      df_initial[mapped] <- lengths(term_to_columns[vars][mapped])
+    }
+  }
+
+  # Step 3: Calculate final degrees of freedom. Continuous terms use the MFP
+  # convention implemented by calculate_df(). Explicitly mapped fixed-linear
+  # terms are different: one conceptual term can represent several fitted
+  # design columns, so its final df is the number of estimable coefficients in
+  # that block rather than the single power value stored for selection.
+  df_final <- mapply(
+    calculate_df,
+    fp_powers,
+    spike_decision,
+    catzero,
+    SIMPLIFY = TRUE
+  )
+  names(df_final) <- vars
+
+  if (!is.null(term_to_columns)) {
     mapped_selected <- mapped & !vapply(
       fp_powers,
       function(p) all(is.na(p)),
@@ -1509,16 +1568,18 @@ create_fp_terms <- function(fp_powers,
     }
   }
 
-  # Step 3: Assemble the one-row-per-variable overview table.
+  # Step 4: Assemble the one-row-per-variable overview table.
   fp_terms <- data.frame(
-    # initial degrees of freedom
-    df_initial = df,
+    # MFP search setting and initial model degrees of freedom
+    df_setting = unname(df_setting),
+    df_initial = unname(df_initial),
     select = select,
     alpha = alpha,
     acd = acdx,
     zero = zero,
     catzero = catzero,
     spike = spike,
+    prop_zero = unname(prop_zero),
     # Spike decision
     spike_dec = spike_decision,
 
@@ -1538,7 +1599,7 @@ create_fp_terms <- function(fp_powers,
 
   rownames(fp_terms) <- names(fp_powers)
 
-  # Step 4: For non-p-value criteria, `select`/`alpha` no longer represent
+  # Step 5: For non-p-value criteria, `select`/`alpha` no longer represent
   # significance levels, so replace them with the criterion name (e.g. "AIC")
   # for a clearer summary/print display.
   if (criterion != "pvalue") {

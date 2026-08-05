@@ -104,9 +104,10 @@ unique, and known columns. A named partial vector fixes only the specified
 scales, while scales for unspecified columns are estimated automatically.
 Unnamed multi-value vectors are not accepted. \code{NULL} estimates every scale
 automatically, while \code{scale = 1} disables scaling globally. Binary
-predictors are always assigned scale \code{1}, even when another value is
-supplied, because rescaling a two-level predictor is unnecessary. In
-\code{mfp2.formula()}, the top-level value is a
+predictors and variables that undergo ACD transformation are always assigned
+scale \code{1}, even when another value is supplied. Binary rescaling is
+unnecessary, and the published ACD definition uses shifted but unscaled
+covariate values. In \code{mfp2.formula()}, the top-level value is a
 scalar global default; use \code{fp()} or \code{fp2()} for variable-specific values.
 Final regression coefficients are expressed on the original data scale.}
 
@@ -128,10 +129,12 @@ In \code{mfp2.formula()}, the top-level value is a scalar global default; use
 \item{df}{Maximum degrees of freedom for each predictor's
 fractional-polynomial function. Must be \code{1} (linear) or a positive even
 integer (\code{2} for FP1, \code{4} for FP2, etc.). Default \code{4}.
-In \code{mfp2.default()}, accepts a single value (applied to all predictors) or
-a numeric vector of length \code{ncol(x)}. In \code{mfp2.formula()}, only a single
-global default is accepted; override it for individual terms with
-\code{fp(x, df = value)}.
+In \code{mfp2.default()}, an unnamed scalar is applied to all predictors.
+A named numeric vector may override one or more columns of \code{x}; values are
+matched by \code{colnames(x)}, order does not matter, and omitted columns use
+the default \code{df = 4}. Unnamed multi-value vectors are not accepted. In
+\code{mfp2.formula()}, only a single global default is accepted; override it for
+individual terms with \code{fp(x, df = value)}.
 The effective \code{df} may be reduced automatically when a predictor has few
 distinct values: 2--3 distinct values force \code{df = 1}; 4--5 distinct values
 cap \code{df} at \code{min(2, requested)}; 6 or more distinct values use the
@@ -163,19 +166,24 @@ tests. With \code{"aic"} or \code{"bic"}, candidate models are compared directly
 their information-criterion value and \code{select}/\code{alpha} are ignored.}
 
 \item{select}{Nominal significance level for variable selection. Default
-\code{0.05}. In \code{mfp2.default()}, accepts a single value
-(applied to all predictors) or a numeric vector of length \code{ncol(x)}. In
-\code{mfp2.formula()}, only a single global default is accepted; override it
-for individual terms with \code{fp(x, select = value)}. Setting \code{select = 1}
+\code{0.05}. In \code{mfp2.default()}, an unnamed scalar is applied to all
+predictors. A named numeric vector may override one or more columns of
+\code{x}; values are matched by \code{colnames(x)}, order does not matter, and
+omitted columns use the default \code{select = 0.05}. Unnamed multi-value
+vectors are not accepted. In \code{mfp2.formula()}, only a single global
+default is accepted; override it for individual terms with
+\code{fp(x, select = value)}. Setting \code{select = 1}
 for a predictor forces it into the model (equivalent to naming it in
 \code{keep}). Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.}
 
 \item{alpha}{Significance level for closed tests between FP functions of
 different degrees (e.g. FP2 versus FP1 versus linear). Default \code{0.05}.
-In \code{mfp2.default()}, accepts a single value (applied to all predictors)
-or a numeric vector of length \code{ncol(x)}. In \code{mfp2.formula()}, only a
-single global default is accepted; override it for individual terms with
-\code{fp(x, alpha = value)}. Ignored when \code{criterion} is \code{"aic"} or
+In \code{mfp2.default()}, an unnamed scalar is applied to all predictors.
+A named numeric vector may override one or more columns of \code{x}; values are
+matched by \code{colnames(x)}, order does not matter, and omitted columns use
+the default \code{alpha = 0.05}. Unnamed multi-value vectors are not accepted.
+In \code{mfp2.formula()}, only a single global default is accepted; override it
+for individual terms with \code{fp(x, alpha = value)}. Ignored when \code{criterion} is \code{"aic"} or
 \code{"bic"}.}
 
 \item{keep}{Character vector of predictor names that must remain in the final
@@ -325,10 +333,13 @@ Logical value indicating whether the MFP selection algorithm converged.
 }
 
 \item{fp_terms}{
-A data frame with one row per model term. It summarises the initial and
-final degrees of freedom, selection settings, selected status,
-fractional-polynomial powers, and the effective ACD, zero, catzero, and
-spike flags used after validation and eligibility checks.
+A data frame with one row per model term. It records the MFP complexity
+setting (\code{df_setting}) separately from the initial and final model degrees
+of freedom (\code{df_initial} and \code{df_final}), together with selection settings,
+selected status,
+fractional-polynomial powers, the effective ACD, zero, catzero, and
+spike flags used after validation and eligibility checks, and \code{prop_zero}
+for retained spike-at-zero terms.
 }
 
 \item{fp_powers}{
@@ -477,10 +488,12 @@ follow-up time and event status.
 
 FP transformations involving logarithms, negative powers, or fractional
 powers require positive inputs. By default, \code{mfp2()} estimates a shift where
-needed and a power-of-ten scale factor to avoid numerically extreme values.
-Set \code{shift = 0} or \code{scale = 1} to disable the corresponding automatic step.
-The preprocessing order is shift, scale, FP or ACD transformation, and then
-centering.
+needed and, for ordinary FP variables, a power-of-ten scale factor to avoid
+numerically extreme values. Variables that undergo the ACD transformation are
+shifted but not scaled, following the Royston--Sauerbrei definition; their
+effective scale is always \code{1}. Set \code{shift = 0} or \code{scale = 1} to disable the
+corresponding automatic step for ordinary FP variables. Centering is applied
+after the FP or ACD transformation.
 
 In the matrix interface, an unnamed scalar is a global setting, whereas a
 named vector is variable-specific and may name only a subset of columns. For
@@ -547,9 +560,12 @@ interface, use \code{fp(x, acdx = TRUE)}. Requesting ACD sets the term's maximum
 request is reset to standard MFP handling when the fitting data contain fewer
 than five distinct values for that term. For an eligible ACD term, \code{mfp2()}
 evaluates an ACD-extended two-component function and simpler alternatives,
-including standard FP1, ACD-only, linear, and omitted forms. Selection uses
-the ACD function-selection procedure when \code{criterion = "pvalue"}, or direct
-AIC/BIC comparison for information-criterion selection.
+including standard FP1, ACD-only, linear, and omitted forms. Eligible ACD
+variables are shifted when needed for positive FP inputs but are not scaled;
+this same shifted, unscaled representation is used for both the direct FP
+component and the construction of \code{A(x)}. Selection uses the ACD
+function-selection procedure when \code{criterion = "pvalue"}, or direct AIC/BIC
+comparison for information-criterion selection.
 
 See \code{vignette("mfp2_ACD", package = "mfp2")} for the complete construction
 of the transformation, the six candidate model families, the five-step

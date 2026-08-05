@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Helpers 
+# Helpers
 # -----------------------------------------------------------------------------
 #' Format one fractional polynomial power vector
 #'
@@ -18,24 +18,24 @@ format_power_vector <- function(p) {
   if (is.null(p) || length(p) == 0L || all(is.na(p))) {
     return(".")
   }
-  
+
   # If a one-element list is supplied, unwrap it. This supports future storage
   # such as list(age = c(1, 2)) while still printing only the power vector.
   if (is.list(p) && length(p) == 1L) {
     p <- p[[1L]]
   }
-  
+
   # If the object is still list-like after unwrapping, collapse the unlisted
   # values. This is defensive and mainly protects older or irregular objects.
   if (is.list(p)) {
     p <- unlist(p, use.names = FALSE)
   }
-  
+
   # Re-check after unlisting because the list may have contained only NULL/NA.
   if (length(p) == 0L || all(is.na(p))) {
     return(".")
   }
-  
+
   paste0("(", paste(p, collapse = ", "), ")")
 }
 
@@ -80,30 +80,30 @@ format_interaction_power_label <- function(p_list,
   if (is.null(p_list) || length(p_list) == 0L) {
     return(".")
   }
-  
+
   # A plain numeric vector represents one interaction function. Normalise it to
   # a list so singular/plural handling and inline formatting use one code path.
   if (!is.list(p_list)) {
     p_list <- list(p_list)
   }
-  
+
   n_powers <- length(p_list)
-  
+
   # Small sets are readable inline. Preserve complete group-level names when
   # available so the compact label remains interpretable.
   if (n_powers <= max_inline_int_powers) {
     power_labels <- vapply(p_list, format_power_vector, character(1L))
     group_labels <- names(p_list)
-    
+
     if (!is.null(group_labels) &&
         length(group_labels) == n_powers &&
         all(!is.na(group_labels) & nzchar(group_labels))) {
       power_labels <- paste0(group_labels, ": ", power_labels)
     }
-    
+
     return(paste(power_labels, collapse = "; "))
   }
-  
+
   # Larger sets are summarised wherever this compact label is requested. The
   # complete mapping remains available through the dedicated detail table.
   sprintf(
@@ -151,17 +151,17 @@ format_mfpi_powers <- function(d, max_inline_int_powers = 4L) {
     )
   }
   max_inline_int_powers <- as.integer(max_inline_int_powers)
-  
+
   # Preserve NULL and empty inputs so callers can safely pass optional metric
   # tables without checking them first.
   if (is.null(d) || nrow(d) == 0L) {
     return(d)
   }
-  
+
   # Drop tibble or other data-frame subclasses before printing. This keeps
   # console output based on standard data.frame behavior.
   d <- as.data.frame(d)
-  
+
   # Format main-effect FP powers. Supports both old storage, e.g. c(1, 2), and
   # future named-list storage, e.g. list(age = c(1, 2)).
   if ("fp_powers_main" %in% names(d)) {
@@ -171,7 +171,7 @@ format_mfpi_powers <- function(d, max_inline_int_powers = 4L) {
       character(1L)
     )
   }
-  
+
   # Format interaction FP powers. Large multi-level interactions are deliberately
   # summarised here; the detailed group-level table will show the full mapping.
   if ("fp_powers_int" %in% names(d)) {
@@ -182,7 +182,7 @@ format_mfpi_powers <- function(d, max_inline_int_powers = 4L) {
       max_inline_int_powers = max_inline_int_powers
     )
   }
-  
+
   d
 }
 
@@ -220,11 +220,11 @@ print_interaction_power_details_step <- function(metrics,
     d = metrics,
     group_var = group_var
   )
-  
+
   if (is.null(tab) || nrow(tab) == 0L) {
     return(invisible(NULL))
   }
-  
+
   # Keep the display compact and predictable. The main candidate or retained
   # metric table already shows the main-effect FP powers, so this detail table
   # prints only the interaction-side powers by group level.
@@ -236,10 +236,10 @@ print_interaction_power_details_step <- function(metrics,
     "fp_powers_int"
   )
   tab <- tab[, cols[cols %in% names(tab)], drop = FALSE]
-  
+
   cat(sprintf("\n%s:\n", title))
   print(tab, row.names = FALSE)
-  
+
   invisible(NULL)
 }
 
@@ -248,7 +248,7 @@ warn_unused_mfpi_dots <- function(dots, method) {
   if (length(dots) == 0L) {
     return(invisible(NULL))
   }
-  
+
   dot_names <- names(dots)
   if (is.null(dot_names)) {
     dot_names <- rep("<unnamed>", length(dots))
@@ -256,7 +256,7 @@ warn_unused_mfpi_dots <- function(dots, method) {
     missing_names <- is.na(dot_names) | !nzchar(dot_names)
     dot_names[missing_names] <- "<unnamed>"
   }
-  
+
   warning(
     "Unused arguments in `",
     method,
@@ -265,7 +265,7 @@ warn_unused_mfpi_dots <- function(dots, method) {
     ".",
     call. = FALSE
   )
-  
+
   invisible(NULL)
 }
 
@@ -298,7 +298,7 @@ resolve_print_digits <- function(x, digits = NULL) {
   if (is.null(digits)) {
     digits <- if (!is.null(x$digits)) x$digits else 3L
   }
-  
+
   # Validate that digits is exactly one finite, non-negative integer-valued
   # numeric value. This rejects vectors, NA, Inf, negative values, and decimals.
   if (!is.numeric(digits) ||
@@ -309,7 +309,7 @@ resolve_print_digits <- function(x, digits = NULL) {
       digits != floor(digits)) {
     stop("`digits` must be a single non-negative integer.", call. = FALSE)
   }
-  
+
   # Return a clean integer value for downstream formatting helpers.
   as.integer(digits)
 }
@@ -318,12 +318,12 @@ resolve_print_digits <- function(x, digits = NULL) {
 # This function must never be used upstream for stored metrics or selection.
 round_print_numeric <- function(d, digits) {
   if (is.null(d) || nrow(d) == 0L) return(d)
-  
+
   numeric_cols <- vapply(d, is.numeric, logical(1L))
   if (any(numeric_cols)) {
     d[numeric_cols] <- lapply(d[numeric_cols], round, digits = digits)
   }
-  
+
   d
 }
 
@@ -370,15 +370,15 @@ select_print_metric_columns <- function(d,
   if (is.null(d) || nrow(d) == 0L) {
     return(d)
   }
-  
+
   # Use display labels for interaction type in printed output.
   if ("type" %in% names(d)) {
     d$type <- format_type_label(d$type)
   }
-  
+
   # Default to p-value based output when no criterion is stored on the object.
   criterion <- if (!is.null(criterion)) criterion else "pvalue"
-  
+
   # For AIC-based printing, expose the stored AIC improvement under the compact
   # display name dAIC. Positive values favour the interaction model because the
   # stored value is AIC_main - AIC_interaction.
@@ -387,7 +387,7 @@ select_print_metric_columns <- function(d,
       "AIC_main_minus_int" %in% names(d)) {
     d$dAIC <- d$AIC_main_minus_int
   }
-  
+
   # For BIC-based printing, expose the stored BIC improvement under the compact
   # display name dBIC. Positive values favour the interaction model because the
   # stored value is BIC_main - BIC_interaction.
@@ -396,7 +396,7 @@ select_print_metric_columns <- function(d,
       "BIC_main_minus_int" %in% names(d)) {
     d$dBIC <- d$BIC_main_minus_int
   }
-  
+
   # Select the criterion-specific statistic columns.
   criterion_cols <- switch(
     criterion,
@@ -411,7 +411,7 @@ select_print_metric_columns <- function(d,
     "bic" = c("BIC_main", "BIC_interaction", "dBIC"),
     character(0L)
   )
-  
+
   # Always try to include identifying columns and main-effect FP powers.
   # Interaction FP powers can be suppressed when a separate group-level detail
   # table is printed.
@@ -423,7 +423,7 @@ select_print_metric_columns <- function(d,
     if (isTRUE(include_interaction_powers)) "fp_powers_int"
   )
   cols <- unique(cols[cols %in% names(d)])
-  
+
   d[, cols, drop = FALSE]
 }
 
@@ -440,7 +440,7 @@ mfpi_interaction_settings <- function(criterion = "pvalue",
                                       p_adjust_method = "none",
                                       digits = 3L) {
   crit <- tolower(as.character(criterion)[1L])
-  
+
   if (identical(crit, "pvalue")) {
     method <- as.character(p_adjust_method)[1L]
     if (is.na(method) || !nzchar(method)) method <- "none"
@@ -463,7 +463,7 @@ mfpi_interaction_settings <- function(criterion = "pvalue",
       lines = lines
     ))
   }
-  
+
   if (crit %in% c("aic", "bic")) {
     label <- toupper(crit)
     selection <- sprintf(
@@ -482,7 +482,7 @@ mfpi_interaction_settings <- function(criterion = "pvalue",
       )
     ))
   }
-  
+
   list(
     criterion = crit,
     criterion_label = as.character(criterion)[1L],
@@ -507,7 +507,7 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
     p_adjust_method = if (!is.null(x$p_adjust_method)) x$p_adjust_method else "none",
     digits = digits
   )
-  
+
   fp <- x$adjust_terms
   if (is.null(fp)) {
     return(list(
@@ -517,11 +517,12 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
       model_fitted = FALSE
     ))
   }
-  
+
   selected_rows <- fp[!is.na(fp$selected) & fp$selected, , drop = FALSE]
   selected_names <- rownames(selected_rows)
-  
+
   if (nrow(selected_rows) == 0L) {
+    selected_rows[["df_setting"]] <- NULL
     return(list(
       settings = settings,
       display = selected_rows,
@@ -529,16 +530,19 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
       model_fitted = TRUE
     ))
   }
-  
+
   display <- selected_rows
   display[["selected"]] <- NULL
-  
+  # `df_setting` is retained in the fitted object for internal diagnostics,
+  # but the public table preserves the established df_initial/df_final display.
+  display[["df_setting"]] <- NULL
+
   if (settings$criterion %in% c("aic", "bic")) {
     for (column in intersect(c("select", "alpha"), names(display))) {
       display[[column]] <- NULL
     }
   }
-  
+
   logical_cols <- vapply(display, is.logical, logical(1L))
   if (any(logical_cols)) {
     display[logical_cols] <- lapply(
@@ -546,18 +550,18 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
       function(col) ifelse(col, "yes", "no")
     )
   }
-  
+
   if ("catzero" %in% names(display)) {
     names(display)[names(display) == "catzero"] <- "catzero_final"
   }
-  
+
+  spike_active <- if ("spike" %in% names(display)) {
+    display[["spike"]] == "yes"
+  } else {
+    rep(FALSE, nrow(display))
+  }
+
   if ("spike_dec" %in% names(display)) {
-    spike_active <- if ("spike" %in% names(display)) {
-      display[["spike"]] == "yes"
-    } else {
-      rep(FALSE, nrow(display))
-    }
-    
     dec_labels <- saz_decision_label(
       as.integer(display[["spike_dec"]]),
       style = "print",
@@ -568,7 +572,21 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
     display[["spike_dec"]] <- dec_labels
     names(display)[names(display) == "spike_dec"] <- "saz_decision"
   }
-  
+
+  if ("prop_zero" %in% names(display)) {
+    prop_zero <- suppressWarnings(as.numeric(display[["prop_zero"]]))
+
+    if (any(spike_active)) {
+      display[["prop_zero"]] <- ifelse(
+        spike_active & !is.na(prop_zero),
+        formatC(prop_zero, format = "f", digits = digits),
+        "."
+      )
+    } else {
+      display[["prop_zero"]] <- NULL
+    }
+  }
+
   flag_cols <- intersect(
     c("acd", "zero", "catzero_final", "spike", "saz_decision"),
     names(display)
@@ -579,7 +597,7 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
       display[[fc]] <- NULL
     }
   }
-  
+
   list(
     settings = settings,
     display = round_print_numeric(display, digits),
@@ -606,9 +624,9 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
 print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
   cat("\nStep 1 - Selected Adjustment Model (MFP):\n")
   cat(ruler, "\n")
-  
+
   info <- mfpi_prepare_adjustment_display(x, digits)
-  
+
   # State the interaction-selection criterion alongside the adjustment-model
   # results. Keep this delegated to `mfpi_interaction_settings()` (via
   # `mfpi_prepare_adjustment_display()`) so p-value adjustment methods and
@@ -616,18 +634,18 @@ print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
   if (isTRUE(show_settings)) {
     cat("\n", paste0(" ", info$settings$lines, "\n"), "\n", sep = "")
   }
-  
+
   if (!isTRUE(info$model_fitted)) {
     cat("  No adjustment model fitted.\n")
     return(invisible(NULL))
   }
-  
+
   if (!is.null(info$display) && nrow(info$display) > 0L) {
     print(info$display)
   } else {
     cat("  No adjustment variables selected.\n")
   }
-  
+
   if (length(info$selected_names) > 0L) {
     cat(sprintf(
       "\n  Selected adjustment variables (%d): %s\n",
@@ -635,7 +653,7 @@ print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
       paste(info$selected_names, collapse = ", ")
     ))
   }
-  
+
   invisible(NULL)
 }
 
@@ -666,15 +684,15 @@ print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
 print_candidates_step <- function(x, ruler, digits) {
   cat("\nStep 2 - All Interaction Candidates:\n")
   cat(ruler, "\n")
-  
+
   all_m <- x$all_model_metrics
   if (is.null(all_m) || nrow(all_m) == 0L) {
     cat("  No interaction candidates computed.\n")
     return(invisible(NULL))
   }
-  
+
   crit <- if (!is.null(x$criterion)) x$criterion else "pvalue"
-  
+
   # Remove interaction powers before display formatting. Their complete
   # group-level mapping is printed in the dedicated table immediately below.
   all_m <- select_print_metric_columns(
@@ -684,9 +702,9 @@ print_candidates_step <- function(x, ruler, digits) {
     include_interaction_powers = FALSE
   )
   all_m <- format_mfpi_powers(all_m)
-  
+
   print(round_print_numeric(as.data.frame(all_m), digits), row.names = FALSE)
-  
+
   invisible(NULL)
 }
 
@@ -726,7 +744,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
   # Resolve the criterion used for interaction selection. Fall back to p-value
   # based output for older or partial objects.
   crit <- if (!is.null(x$criterion)) x$criterion else "pvalue"
-  
+
   # Put the exact decision rule in the heading. P-value selection uses the
   # generic displayed field `p_adjusted`, regardless of the adjustment method;
   # AIC/BIC selection uses the stored minimum-improvement threshold.
@@ -742,29 +760,29 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
       format_print_number(min_imp, digits)
     )
   }
-  
+
   heading <- sprintf(
     "Step %d - Interaction Summary (%s):",
     step_no,
     rule
   )
   heading_ruler <- strrep("-", max(nchar(heading), nchar(ruler)))
-  
+
   cat("\n", heading, "\n", sep = "")
   cat(heading_ruler, "\n")
-  
+
   # Extract the per-variable winner list and the final selected interaction
   # metrics.
   vw <- x$var_winners
   best_m <- x$best_model_metrics
-  
+
   # Determine which variables were selected into the final model.
   selected_vars <- if (!is.null(best_m) && nrow(best_m) > 0L) {
     best_m$variable
   } else {
     character(0L)
   }
-  
+
   # Older or partial objects may not contain `var_winners`. In that case, fall
   # back to printing `best_model_metrics` directly when available. Every row in
   # that retained-only table is selected by definition.
@@ -773,23 +791,23 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
       best_m <- format_mfpi_powers(best_m)
       best_m <- select_print_metric_columns(best_m, criterion = crit)
       best_m$selected <- "Yes"
-      
+
       print(round_print_numeric(as.data.frame(best_m), digits), row.names = FALSE)
     } else {
       cat("  No interactions selected.\n")
     }
-    
+
     return(invisible(NULL))
   }
-  
+
   # Names of the continuous variables considered for interaction selection.
   cont_names <- names(vw)
-  
+
   if (crit == "pvalue") {
     # Build one summary row per continuous variable for p-value based selection.
     tab <- do.call(rbind, lapply(cont_names, function(vn) {
       w <- vw[[vn]]
-      
+
       # If no valid winner was fitted for this variable, report the unavailable
       # metrics and an explicit non-selection decision.
       if (is.null(w$fit) || is.null(w$metric)) {
@@ -809,7 +827,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
         } else {
           w$metric$pvalue[1L]
         }
-        
+
         data.frame(
           variable   = vn,
           type       = format_type_label(w$type),
@@ -820,7 +838,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
         )
       }
     }))
-    
+
     print(round_print_numeric(tab, digits), row.names = FALSE)
   } else {
     # Resolve the displayed information-criterion column. The display aliases
@@ -832,11 +850,11 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
     } else {
       "BIC_main_minus_int"
     }
-    
+
     # Build one summary row per continuous variable for AIC/BIC selection.
     tab <- do.call(rbind, lapply(cont_names, function(vn) {
       w <- vw[[vn]]
-      
+
       # If no valid winner was fitted for this variable, report the unavailable
       # score and an explicit non-selection decision.
       if (is.null(w$fit) || is.null(w$metric)) {
@@ -857,7 +875,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
         } else {
           NA_real_
         }
-        
+
         data.frame(
           variable = vn,
           type     = format_type_label(w$type),
@@ -867,13 +885,13 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
         )
       }
     }))
-    
+
     # Rename the generic score column to the criterion-specific display label.
     names(tab)[names(tab) == "score"] <- ic_label
-    
+
     print(round_print_numeric(tab, digits), row.names = FALSE)
   }
-  
+
   invisible(NULL)
 }
 
@@ -892,7 +910,9 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
 #' is printed immediately below it. Full diagnostics remain available in the
 #' returned object.
 #'
-#' Step 1 reports the interaction-selection rule in reader-facing language.
+#' Step 1 reports the interaction-selection rule in reader-facing language and
+#' displays `df_initial` and `df_final`. For a grouped adjustment term,
+#' `df_initial` counts all member design columns in the initial model.
 #' P-value fits print the p-value cutoff and the stored adjustment method,
 #' including \code{none}, while retaining the variable-specific \code{select} and
 #' \code{alpha} columns. AIC/BIC fits print the required criterion reduction
@@ -922,7 +942,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
 #' @export
 print.mfpi <- function(x, digits = NULL, ...) {
   warn_unused_mfpi_dots(list(...), method = "print.mfpi")
-  
+
   # Resolve display metadata from the fitted object. Defaults are used for
   # backward compatibility with older or partially constructed objects.
   crit <- if (!is.null(x$criterion)) tolower(x$criterion) else "pvalue"
@@ -933,10 +953,10 @@ print.mfpi <- function(x, digits = NULL, ...) {
   } else {
     crit
   }
-  
+
   # Resolve and validate the number of digits used for display rounding.
   digits <- resolve_print_digits(x, digits)
-  
+
   # Build the sample-size label. For survival models, include
   # the number of events in brackets so the user sees both n and events.
   n_label <- if (!is.null(x$nevents)) {
@@ -944,7 +964,7 @@ print.mfpi <- function(x, digits = NULL, ...) {
   } else {
     sprintf("n = %d", x$nobs)
   }
-  
+
   # Build the complete header before printing it so the surrounding ruler has
   # exactly the same display width as the text. This avoids an oversized fixed
   # ruler and remains aligned when model metadata changes.
@@ -955,10 +975,10 @@ print.mfpi <- function(x, digits = NULL, ...) {
     x$flex,
     criterion_label
   )
-  
+
   header <- strrep("=", nchar(header_text, type = "width"))
   cat(header, "\n", header_text, "\n", header, "\n", sep = "")
-  
+
   # Print the global analysis settings (criterion, selection rule, adjustment
   # method) between the header and the numbered steps so the reader sees the
   # ground rules before any results appear.
@@ -970,18 +990,18 @@ print.mfpi <- function(x, digits = NULL, ...) {
     digits          = digits
   )
   cat("\n", paste0(" ", settings$lines, "\n"), "\n", sep = "")
-  
+
   # Use a shorter ruler inside individual sections.
   ruler2 <- strrep("-", 41)
   ruler3 <- strrep("-", 36)
   ruler4 <- strrep("-", 29)
-  
+
   # Step 1: print adjustment-model MFP selection results.
   print_adjustment_step(x, ruler2, digits, show_settings = FALSE)
-  
+
   # Step 2: print all interaction candidates and criterion-specific metrics.
   print_candidates_step(x, ruler3, digits)
-  
+
   # Step 2b: print the detailed group-level mapping of interaction FP powers.
   # These powers are deliberately omitted from the candidate table above to
   # avoid duplicating the same information in adjacent sections.
@@ -990,12 +1010,12 @@ print.mfpi <- function(x, digits = NULL, ...) {
     group_var = x$group_var,
     title     = "  FP powers by group level"
   )
-  
+
   # Step 3: print the final interaction summary. For p-value based selection,
   # the summary includes both raw and adjusted p-values, so a separate
   # adjustment-only section would be redundant.
   print_interaction_summary_step(x, ruler4, digits, step_no = 3L)
-  
+
   # Follow the standard print-method convention: return the original object
   # invisibly so it can still be assigned or piped if needed.
   invisible(x)

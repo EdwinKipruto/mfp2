@@ -58,7 +58,8 @@ selected FP or ACD representation and any retained spike-at-zero component.}
 
 \item{color_points}{Colour used for residual points.}
 
-\item{color_line}{Colour used for the fitted continuous curve.}
+\item{color_line}{Colour used for fitted curves and for binary fitted
+points and confidence intervals.}
 
 \item{color_line_spike}{Colour used for the structural-zero point.}
 

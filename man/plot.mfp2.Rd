@@ -59,7 +59,8 @@ selected FP or ACD representation and any retained spike-at-zero component.}
 
 \item{color_points}{Colour used for residual points.}
 
-\item{color_line}{Colour used for the fitted continuous curve.}
+\item{color_line}{Colour used for fitted curves and for binary fitted
+points and confidence intervals.}
 
 \item{color_line_spike}{Colour used for the structural-zero point.}
 
@@ -99,6 +100,12 @@ they may be narrower than intervals obtained from a full bootstrap procedure.
 Component-plus-residual plots are available for \code{type = "terms"}.
 Deviance residuals are used for generalized linear models and martingale
 residuals for Cox regression.
+
+Binary predictors are displayed at their two fitted levels as point estimates
+with vertical confidence intervals. Only those two levels are labelled on the
+x-axis; no interpolating line or confidence ribbon is drawn. For a spike-at-zero
+term retaining only the zero indicator, the internal 0/1 coding is replaced by
+semantic labels such as \code{x = 0} and \code{x > 0}.
 
 Spike-at-zero covariates are displayed according to the representation
 retained by the final model:

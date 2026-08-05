@@ -10,6 +10,9 @@
 
 * Added support in `mfp2()` for modelling semicontinuous covariates using a spike-at-zero approach.
 
+* Added `prop_zero` to retained spike-at-zero term metadata and to the SAZ sections printed by `mfp2()` and `mfpi()`. The value is the proportion of finite observations in the fitted sample that belong to the structural-zero component.
+
+
 * Added the `zero` and `catzero` arguments to `mfp2()` for specifying semicontinuous covariates and modelling their positive components.
 
 * Extended the `family` argument in `mfp2()` to accept GLM family objects and alternative link functions, including specifications such as `stats::binomial(link = "probit")`.
@@ -17,6 +20,9 @@
 * Added `plot.mfp2()`, an S3 `plot()` method for `mfp2` objects. The method provides partial predictor and contrast plots and is now the recommended interface for visualizing fitted `mfp2` models. The existing `fracplot()` function is retained as an alias for backward compatibility.
 
 * Changed per-variable `shift` and `scale` settings in `mfp2.default()` from positional, column-index-based vectors to named vectors matched to `colnames(x)`. Named vectors may specify only a subset of predictors, with unspecified values estimated automatically; their order is irrelevant. Unnamed vectors with more than one value are now rejected to prevent settings from being assigned to the wrong columns.
+
+* Changed per-variable `df`, `select`, and `alpha` settings in `mfp2.default()` and `mfpi.default()` from positional vectors to named overrides matched to `colnames(x)`. Named vectors may specify only a subset of predictors; omitted predictors use the package defaults (`df = 4`, `select = 0.05`, and `alpha = 0.05`). Unnamed vectors with more than one value are now rejected.
+
 
 ## Subsetting and factor handling
 

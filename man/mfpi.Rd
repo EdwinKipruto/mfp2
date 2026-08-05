@@ -198,14 +198,17 @@ as does the MFPI grouping column. In \code{mfpi.formula()}, the top-level value
 is a scalar global default; use \code{fp()} or \code{fp2()} for variable-specific
 values.}
 
-\item{df}{A positive integer, or in \code{mfpi.default()} one value per predictor
-column, specifying the maximum FP complexity considered in the MFP
-adjustment model. Valid values are 1 for linear or an even positive
-integer: 2 for FP1, 4 for FP2, and so on. Variables with few distinct
-values may be restricted automatically to a simpler form. \code{df} controls the
-adjustment model only and does not set the MFPI interaction form; use
-\code{cont_var_forms} for that. The default is 4. In \code{mfpi.formula()}, only a
-scalar is accepted; use \code{fp(variable, df = ...)} for per-variable values.}
+\item{df}{Maximum FP complexity considered in the MFP adjustment model.
+Valid values are 1 for linear or an even positive integer: 2 for FP1, 4
+for FP2, and so on. In \code{mfpi.default()}, an unnamed scalar is applied to
+all predictor columns. A named numeric vector may override one or more
+columns of \code{x}; values are matched by \code{colnames(x)}, order does not matter,
+and omitted columns use the default \code{df = 4}. Unnamed multi-value vectors
+are not accepted. Variables with few distinct values may be restricted
+automatically to a simpler form. \code{df} controls the adjustment model only
+and does not set the MFPI interaction form; use \code{cont_var_forms} for that.
+In \code{mfpi.formula()}, only a scalar is accepted; use
+\code{fp(variable, df = ...)} for per-variable values.}
 
 \item{center}{A single logical value, or in \code{mfpi.default()} one value per
 predictor column, indicating whether transformed predictors are centered
@@ -233,21 +236,27 @@ p-value is below \code{p_interact}. With \code{"aic"} or \code{"bic"}, the corre
 information criterion drives both adjustment-model construction and
 interaction selection via \code{min_improvement}. The default is \code{"pvalue"}.}
 
-\item{select}{A numeric value in \verb{[0, 1]}, or in \code{mfpi.default()} one value
-per predictor column, controlling variable selection in the MFP adjustment
-model. With \code{criterion = "pvalue"}, \code{select} is the p-value threshold for
-retaining a variable; setting \code{select = 1} forces a variable into the
-model. With AIC or BIC selection, \code{select} is not used directly for
-thresholding but variables named in \code{force_max_fp_vars} are still forced
-to \code{select = 1}. The default is \code{0.05}. In \code{mfpi.formula()}, only a scalar
-is accepted; use \code{fp(variable, select = ...)} for per-variable values.}
+\item{select}{Variable-selection threshold for the MFP adjustment model.
+Values must lie in \verb{[0, 1]}. In \code{mfpi.default()}, an unnamed scalar is
+applied to all predictor columns. A named numeric vector may override one
+or more columns of \code{x}; values are matched by \code{colnames(x)}, order does not
+matter, and omitted columns use the default \code{select = 0.05}. Unnamed
+multi-value vectors are not accepted. With \code{criterion = "pvalue"}, setting
+\code{select = 1} forces a variable into the model. With AIC or BIC selection,
+\code{select} is not used directly for thresholding but variables named in
+\code{force_max_fp_vars} are still forced to \code{select = 1}. In \code{mfpi.formula()},
+only a scalar is accepted; use \code{fp(variable, select = ...)} for
+per-variable values.}
 
-\item{alpha}{A numeric value in \verb{[0, 1]}, or in \code{mfpi.default()} one value
-per predictor column, controlling the significance level for FP degree
-selection in the MFP adjustment model. It is used only when
-\code{criterion = "pvalue"}. Setting \code{alpha = 1} forces the maximum FP degree
-allowed by \code{df}. The default is \code{0.05}. In \code{mfpi.formula()}, only a scalar
-is accepted; use \code{fp(variable, alpha = ...)} for per-variable values.}
+\item{alpha}{Significance level for FP-degree selection in the MFP
+adjustment model. Values must lie in \verb{[0, 1]}. In \code{mfpi.default()}, an
+unnamed scalar is applied to all predictor columns. A named numeric vector
+may override one or more columns of \code{x}; values are matched by
+\code{colnames(x)}, order does not matter, and omitted columns use the default
+\code{alpha = 0.05}. Unnamed multi-value vectors are not accepted. It is used
+only when \code{criterion = "pvalue"}; setting \code{alpha = 1} forces the maximum
+FP degree allowed by \code{df}. In \code{mfpi.formula()}, only a scalar is accepted;
+use \code{fp(variable, alpha = ...)} for per-variable values.}
 
 \item{keep}{An optional character vector naming adjustment variables or
 grouped adjustment terms that must be included in the adjustment model.

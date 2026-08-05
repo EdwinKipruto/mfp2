@@ -2625,6 +2625,37 @@ build_adjustment_step <- function(x,
       )
     }
 
+    # -------------------------------------------------------------------------
+    # Whole-matrix cache: skip per-variable loop entirely when nothing changed
+    # -------------------------------------------------------------------------
+    # The per-variable cache inside the C++ loop reuses individual transformed
+    # matrices when their power keys match. But even on a full cache hit, the
+    # loop still allocates a new data_adj matrix and copies every cell into it.
+    #
+    # The assembled data_adj from the previous call is already stored in
+    # prev_xi$data_adj. If every adjustment variable has the same normalized
+    # power key and the same spike decision as the cached values, the assembled
+    # matrix is unchanged — return it directly without entering the loop.
+    #
+    # Cost of this check: O(p) comparisons.
+    # Cost avoided on hit: O(n * total_adj_cols) allocation and cell copy.
+    if (has_prev && !is.null(prev_xi$data_adj)) {
+      all_cache_hit <- all(vapply(vars_adj, function(v) {
+        identical(current_power_keys_adj[[v]], prev_power_keys_adj[[v]]) &&
+          !is.na(prev_spike_decision_int_adj[[v]]) &&
+          spike_decision_int_adj[[v]] == prev_spike_decision_int_adj[[v]]
+      }, logical(1L)))
+
+      if (all_cache_hit) {
+        return(list(
+          powers_adj         = powers_adj,
+          spike_decision_adj = spike_decision_adj,
+          data_adj_list      = prev_xi$data_adj_list,
+          data_adj           = prev_xi$data_adj
+        ))
+      }
+    }
+
     # Step 3: Preserve the historical C++ path only for identity-mapped
     # singleton terms. A categorical term may have one dummy column but a
     # different conceptual name, for example `svi` -> `svi1`; such terms must

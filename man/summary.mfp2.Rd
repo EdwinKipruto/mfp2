@@ -38,7 +38,8 @@ When \code{raw = FALSE}, an object of class \code{"summary.mfp2"}: a list
 with components \code{call}, \code{family}, \code{criterion},
 \code{converged}, \code{n}, \code{nevents}, \code{function_table},
 \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
-\code{formulas} (or \code{NULL}), \code{fit}, and \code{raw_summary}. A
+\code{formulas} (or \code{NULL}), \code{acd_definitions} (or
+\code{NULL}), \code{fit}, and \code{raw_summary}. A
 dedicated \code{print} method renders these. When \code{raw = TRUE}, the
 underlying summary object.
 }
@@ -78,7 +79,9 @@ rather than treating the powers as fixed in advance.
 
 Coefficients for nonlinear terms are omitted from the default output. Set
 \code{formulas = TRUE} to append the fitted-function formulas, or
-\code{basis = TRUE} to append the raw basis coefficients. Set
+\code{basis = TRUE} to append the raw basis coefficients. For an active
+ACD component, either option also prints the stored definition of
+\eqn{A(x)}, including its internal training scale. Set
 \code{raw = TRUE} to obtain the underlying \code{\link[stats:summary.glm]{stats::summary.glm()}} or
 \code{\link[survival:summary.coxph]{survival::summary.coxph()}} object instead.
 }

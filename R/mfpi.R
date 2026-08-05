@@ -347,14 +347,17 @@
 #'   is a scalar global default; use `fp()` or `fp2()` for variable-specific
 #'   values.
 #'
-#' @param df A positive integer, or in `mfpi.default()` one value per predictor
-#'   column, specifying the maximum FP complexity considered in the MFP
-#'   adjustment model. Valid values are 1 for linear or an even positive
-#'   integer: 2 for FP1, 4 for FP2, and so on. Variables with few distinct
-#'   values may be restricted automatically to a simpler form. `df` controls the
-#'   adjustment model only and does not set the MFPI interaction form; use
-#'   `cont_var_forms` for that. The default is 4. In `mfpi.formula()`, only a
-#'   scalar is accepted; use `fp(variable, df = ...)` for per-variable values.
+#' @param df Maximum FP complexity considered in the MFP adjustment model.
+#'   Valid values are 1 for linear or an even positive integer: 2 for FP1, 4
+#'   for FP2, and so on. In `mfpi.default()`, an unnamed scalar is applied to
+#'   all predictor columns. A named numeric vector may override one or more
+#'   columns of `x`; values are matched by `colnames(x)`, order does not matter,
+#'   and omitted columns use the default `df = 4`. Unnamed multi-value vectors
+#'   are not accepted. Variables with few distinct values may be restricted
+#'   automatically to a simpler form. `df` controls the adjustment model only
+#'   and does not set the MFPI interaction form; use `cont_var_forms` for that.
+#'   In `mfpi.formula()`, only a scalar is accepted; use
+#'   `fp(variable, df = ...)` for per-variable values.
 #'
 #' @param center A single logical value, or in `mfpi.default()` one value per
 #'   predictor column, indicating whether transformed predictors are centered
@@ -390,21 +393,27 @@
 #'   information criterion drives both adjustment-model construction and
 #'   interaction selection via `min_improvement`. The default is `"pvalue"`.
 #'
-#' @param select A numeric value in `[0, 1]`, or in `mfpi.default()` one value
-#'   per predictor column, controlling variable selection in the MFP adjustment
-#'   model. With `criterion = "pvalue"`, `select` is the p-value threshold for
-#'   retaining a variable; setting `select = 1` forces a variable into the
-#'   model. With AIC or BIC selection, `select` is not used directly for
-#'   thresholding but variables named in `force_max_fp_vars` are still forced
-#'   to `select = 1`. The default is `0.05`. In `mfpi.formula()`, only a scalar
-#'   is accepted; use `fp(variable, select = ...)` for per-variable values.
+#' @param select Variable-selection threshold for the MFP adjustment model.
+#'   Values must lie in `[0, 1]`. In `mfpi.default()`, an unnamed scalar is
+#'   applied to all predictor columns. A named numeric vector may override one
+#'   or more columns of `x`; values are matched by `colnames(x)`, order does not
+#'   matter, and omitted columns use the default `select = 0.05`. Unnamed
+#'   multi-value vectors are not accepted. With `criterion = "pvalue"`, setting
+#'   `select = 1` forces a variable into the model. With AIC or BIC selection,
+#'   `select` is not used directly for thresholding but variables named in
+#'   `force_max_fp_vars` are still forced to `select = 1`. In `mfpi.formula()`,
+#'   only a scalar is accepted; use `fp(variable, select = ...)` for
+#'   per-variable values.
 #'
-#' @param alpha A numeric value in `[0, 1]`, or in `mfpi.default()` one value
-#'   per predictor column, controlling the significance level for FP degree
-#'   selection in the MFP adjustment model. It is used only when
-#'   `criterion = "pvalue"`. Setting `alpha = 1` forces the maximum FP degree
-#'   allowed by `df`. The default is `0.05`. In `mfpi.formula()`, only a scalar
-#'   is accepted; use `fp(variable, alpha = ...)` for per-variable values.
+#' @param alpha Significance level for FP-degree selection in the MFP
+#'   adjustment model. Values must lie in `[0, 1]`. In `mfpi.default()`, an
+#'   unnamed scalar is applied to all predictor columns. A named numeric vector
+#'   may override one or more columns of `x`; values are matched by
+#'   `colnames(x)`, order does not matter, and omitted columns use the default
+#'   `alpha = 0.05`. Unnamed multi-value vectors are not accepted. It is used
+#'   only when `criterion = "pvalue"`; setting `alpha = 1` forces the maximum
+#'   FP degree allowed by `df`. In `mfpi.formula()`, only a scalar is accepted;
+#'   use `fp(variable, alpha = ...)` for per-variable values.
 #'
 #' @param keep An optional character vector naming adjustment variables or
 #'   grouped adjustment terms that must be included in the adjustment model.
@@ -1091,18 +1100,46 @@ mfpi.default <- function(
   }
 
   # Step 5: Validate alpha/select/df, keep, and force_max_fp_vars -------------
-  # Validate alpha, select, and df --------------------------------------------
+  # Matrix inputs use unnamed global scalars or named partial overrides. All
+  # named values are matched to columns rather than assigned positionally.
+  alpha_setting <- normalize_named_override_setting(
+    value = alpha,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "alpha"
+  )
+  alpha <- alpha_setting$value
+
+  select_setting <- normalize_named_override_setting(
+    value = select,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "select"
+  )
+  select <- select_setting$value
+
+  df_fallback <- expand_scalar_df_for_mapped_terms(
+    df = 4L,
+    vnames = vnames,
+    term_to_columns = term_to_columns
+  )
+  df_setting <- normalize_named_override_setting(
+    value = df,
+    column_names = vnames,
+    default = df_fallback,
+    argument_name = "df"
+  )
+  df <- df_setting$value
+  if (df_setting$global_scalar && length(df) > 0L) {
+    df <- expand_scalar_df_for_mapped_terms(
+      df = unname(df[[1L]]),
+      vnames = vnames,
+      term_to_columns = term_to_columns
+    )
+  }
+
   validate_probability_vector(alpha, "alpha", nvars)
   validate_probability_vector(select, "select", nvars)
-
-  validate_numeric_vector(
-    arg = df,
-    name = "df",
-    nvars = nvars,
-    allow_null = FALSE,
-    allow_na = FALSE,
-    strictly_positive = FALSE
-  )
 
   # Validate keep. A grouped categorical term may be named directly; it is
   # converted to one conceptual keep entry before adjustment-model fitting.
@@ -1229,19 +1266,16 @@ mfpi.default <- function(
          call. = FALSE)
   }
 
-  if (length(df) == 1L) {
-    if (df != 1L && df %% 2L != 0L)
-      stop(paste0("! `df = ", df, "` is invalid. `df` must be 1 (linear) or an even ",
-                  "number 2m for FP degree m."), call. = FALSE)
-  } else {
-    if (length(df) != nvars)
-      stop(paste0("! When `df` is a vector it must have length ", nvars,
-                  "; got length ", length(df), "."), call. = FALSE)
-    invalid_df <- df != 1L & df %% 2L != 0L
-    if (any(invalid_df))
-      stop(paste0("! Each element of `df` must be 1 (linear) or an even number 2m. ",
-                  "Invalid values at positions: ",
-                  paste(which(invalid_df), collapse = ", "), "."), call. = FALSE)
+  invalid_df <- df != 1L & df %% 2L != 0L
+  if (any(invalid_df)) {
+    stop(
+      paste0(
+        "! Each element of `df` must be 1 (linear) or an even number 2m. ",
+        "Invalid variable(s): ",
+        paste(names(df)[invalid_df], collapse = ", "), "."
+      ),
+      call. = FALSE
+    )
   }
 
   # Validate spike-at-zero component proportion -------------------------------
@@ -1375,18 +1409,10 @@ mfpi.default <- function(
 
   if (is.null(offset))  offset  <- rep.int(0, nobs)
 
-  # Small helper to expand a scalar option to one named value per predictor.
-  expand_to_named <- function(val, n, nms) {
-    if (length(val) == 1L) val <- rep(val, n)
-    setNames(val, nms)
-  }
-
-  # Expand scalars and guarantee names on all per-variable vectors.
-  # fit_mfp() and preprocess_data() rely on named vectors for
-  # correct alignment after group_var is removed.
-  select <- expand_to_named(select, nvars, vnames)
-  alpha  <- expand_to_named(alpha,  nvars, vnames)
-  center <- expand_to_named(center, nvars, vnames)
+  # select and alpha were normalized above to complete named vectors.
+  # center retains its existing scalar-or-positional-vector interface.
+  if (length(center) == 1L) center <- rep(center, nvars)
+  center <- setNames(center, vnames)
 
   # For adjustment-model variables under p-value selection, force_max_fp
   # requires both retention of the variable and acceptance of its most complex
@@ -1585,16 +1611,10 @@ mfpi.default <- function(
   # variables (their shift is meaningless since only the positive part, or no
   # nonlinear transform at all, is ever fitted) -------------------------------
   # Set degrees of freedom per variable ----------------------------------------
-  # assign_df() applies the cardinality rules after a scalar default has
-  # been expanded. Explicitly mapped adjustment terms are supplied fixed linear
-  # design blocks, so their columns receive df = 1 under a scalar default.
-  # A per-column df vector is left unchanged and is checked below, preserving
-  # the existing error for an explicitly nonlinear grouped member.
-  df_default <- expand_scalar_df_for_mapped_terms(
-    df = df,
-    vnames = vnames,
-    term_to_columns = term_to_columns
-  )
+  # df was normalized above to a complete named vector. Omitted named
+  # entries already contain ordinary defaults, with explicitly mapped design
+  # blocks receiving their structural df = 1 fallback.
+  df_default <- df
   df_list <- setNames(assign_df(x = preprocess_x, df_default = df_default), vnames)
 
   # Multi-column adjustment terms are fixed linear design blocks. They cannot

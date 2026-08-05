@@ -22,17 +22,17 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
   # so it can be passed unconditionally without altering messages that have
   # none.
   hint_line <- if (!is.null(hint)) paste0("\n", hint) else ""
-  
+
   if (is.null(arg)) {
     if (allow_null) return(invisible(TRUE))
-    
+
     stop(
       sprintf("! `%s` must not be NULL.", name),
       hint_line,
       call. = FALSE
     )
   }
-  
+
   if (!is.logical(arg)) {
     stop(
       sprintf("! `%s` must be logical.", name),
@@ -41,7 +41,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
       call. = FALSE
     )
   }
-  
+
   if (anyNA(arg)) {
     stop(
       sprintf("! `%s` must not contain NA values.", name),
@@ -49,7 +49,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
       call. = FALSE
     )
   }
-  
+
   if (!length(arg) %in% allowed_lengths) {
     stop(
       sprintf(
@@ -62,7 +62,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -84,7 +84,7 @@ validate_logical_vector <- function(arg, name, allowed_lengths,
 #' @noRd
 validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
   hint_line <- if (!is.null(hint)) paste0("\n", hint) else ""
-  
+
   if (!is.numeric(arg)) {
     stop(
       sprintf("! `%s` must be numeric.", name),
@@ -93,7 +93,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
       call. = FALSE
     )
   }
-  
+
   if (anyNA(arg)) {
     stop(
       sprintf("! `%s` must not contain NA values.", name),
@@ -101,7 +101,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
       call. = FALSE
     )
   }
-  
+
   if (any(!is.finite(arg))) {
     stop(
       sprintf("! `%s` must contain only finite values.", name),
@@ -109,7 +109,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
       call. = FALSE
     )
   }
-  
+
   if (!length(arg) %in% c(1L, nvars)) {
     stop(
       sprintf(
@@ -120,7 +120,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
       call. = FALSE
     )
   }
-  
+
   if (any(arg < 0 | arg > 1)) {
     stop(
       sprintf("! `%s` must contain values between 0 and 1.", name),
@@ -128,7 +128,7 @@ validate_probability_vector <- function(arg, name, nvars, hint = NULL) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -162,17 +162,17 @@ validate_numeric_vector <- function(arg,
                                     strictly_positive = FALSE,
                                     hint = NULL) {
   hint_line <- if (!is.null(hint)) paste0("\n", hint) else ""
-  
+
   if (is.null(arg)) {
     if (allow_null) return(invisible(TRUE))
-    
+
     stop(
       sprintf("! `%s` must not be NULL.", name),
       hint_line,
       call. = FALSE
     )
   }
-  
+
   if (!is.numeric(arg)) {
     stop(
       sprintf("! `%s` must be numeric.", name),
@@ -181,7 +181,7 @@ validate_numeric_vector <- function(arg,
       call. = FALSE
     )
   }
-  
+
   if (!length(arg) %in% c(1L, nvars)) {
     # nvars == 1L is the "scalar option" case (e.g. formula-interface globals
     # or fp() term attributes): phrase the allowed shape as a plain single
@@ -193,14 +193,14 @@ validate_numeric_vector <- function(arg,
     } else {
       sprintf("a single number or a numeric vector of length %d", nvars)
     }
-    
+
     stop(
       sprintf("! `%s` must be %s; got length %d.", name, allowed_desc, length(arg)),
       hint_line,
       call. = FALSE
     )
   }
-  
+
   if (!allow_na && anyNA(arg)) {
     stop(
       sprintf("! `%s` must not contain NA values.", name),
@@ -208,9 +208,9 @@ validate_numeric_vector <- function(arg,
       call. = FALSE
     )
   }
-  
+
   finite_values <- if (allow_na) arg[!is.na(arg)] else arg
-  
+
   if (length(finite_values) > 0L && any(!is.finite(finite_values))) {
     stop(
       sprintf("! `%s` must contain only finite values.", name),
@@ -218,7 +218,7 @@ validate_numeric_vector <- function(arg,
       call. = FALSE
     )
   }
-  
+
   if (strictly_positive &&
       length(finite_values) > 0L &&
       any(finite_values <= 0)) {
@@ -228,7 +228,7 @@ validate_numeric_vector <- function(arg,
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -286,21 +286,21 @@ normalize_named_numeric_setting <- function(value,
       argument_name
     )
   }
-  
+
   if (is.null(value)) {
     if (!allow_null) {
       stop(sprintf("`%s` must not be NULL.", argument_name), call. = FALSE)
     }
-    
+
     return(stats::setNames(rep(NA_real_, n_columns), column_names))
   }
-  
+
   # Intercept-only formula models legitimately delegate a zero-column matrix
   # together with zero-length internally constructed setting vectors.
   if (n_columns == 0L && length(value) == 0L) {
     return(stats::setNames(numeric(0L), column_names))
   }
-  
+
   # typeof() deliberately excludes logical and complex values. In particular,
   # TRUE/FALSE must not be accepted as numeric shift/scale settings.
   if (!is.numeric(value) || !typeof(value) %in% c("integer", "double")) {
@@ -310,7 +310,7 @@ normalize_named_numeric_setting <- function(value,
       call. = FALSE
     )
   }
-  
+
   # Missing values supplied at the public interface remain invalid. Missing
   # values introduced below for unspecified partial settings are internal
   # sentinels and are intentionally retained for automatic estimation.
@@ -318,17 +318,17 @@ normalize_named_numeric_setting <- function(value,
     stop(sprintf("`%s` must not contain missing values.", argument_name),
          call. = FALSE)
   }
-  
+
   value_names <- names(value)
   named_partial <- allow_partial_named &&
     !is.null(value_names) &&
     length(value) > 0L
-  
+
   if (length(value) == 1L && !named_partial) {
     if (!scalar_recycle && n_columns != 1L) {
       stop(shape_message, call. = FALSE)
     }
-    
+
     value <- rep(as.numeric(value), n_columns)
     names(value) <- column_names
   } else {
@@ -338,7 +338,7 @@ normalize_named_numeric_setting <- function(value,
         any(!nzchar(value_names))) {
       stop(shape_message, call. = FALSE)
     }
-    
+
     if (anyDuplicated(value_names)) {
       duplicated_names <- unique(value_names[duplicated(value_names)])
       stop(
@@ -350,9 +350,9 @@ normalize_named_numeric_setting <- function(value,
         call. = FALSE
       )
     }
-    
+
     unknown_names <- setdiff(value_names, column_names)
-    
+
     if (allow_partial_named) {
       if (length(unknown_names) > 0L) {
         stop(
@@ -364,13 +364,13 @@ normalize_named_numeric_setting <- function(value,
           call. = FALSE
         )
       }
-      
+
       normalized <- stats::setNames(rep(NA_real_, n_columns), column_names)
       normalized[value_names] <- as.numeric(value)
       value <- normalized
     } else {
       missing_names <- setdiff(column_names, value_names)
-      
+
       if (length(value) != n_columns ||
           length(missing_names) > 0L ||
           length(unknown_names) > 0L) {
@@ -387,13 +387,13 @@ normalize_named_numeric_setting <- function(value,
             sprintf("unknown: %s", paste(unknown_names, collapse = ", "))
           )
         }
-        
+
         detail_suffix <- if (length(details) > 0L) {
           paste0(" (", paste(details, collapse = "; "), ")")
         } else {
           ""
         }
-        
+
         stop(
           sprintf(
             "`%s` names must match `colnames(x)` exactly%s.",
@@ -403,18 +403,18 @@ normalize_named_numeric_setting <- function(value,
           call. = FALSE
         )
       }
-      
+
       value <- as.numeric(value[column_names])
       names(value) <- column_names
     }
   }
-  
+
   finite_values <- value[!is.na(value)]
   if (length(finite_values) > 0L && any(!is.finite(finite_values))) {
     stop(sprintf("`%s` must contain only finite values.", argument_name),
          call. = FALSE)
   }
-  
+
   if (strictly_positive &&
       length(finite_values) > 0L &&
       any(finite_values <= 0)) {
@@ -422,8 +422,173 @@ normalize_named_numeric_setting <- function(value,
                  argument_name),
          call. = FALSE)
   }
-  
+
   value
+}
+
+
+#' Normalize a scalar or named partial override setting
+#'
+#' Matrix interfaces use this helper for settings such as `df`, `select`, and
+#' `alpha`. An unnamed scalar is a global value and is recycled to every column.
+#' A named vector is matched to `column_names`, may specify only a subset of
+#' columns, and fills omitted columns from `default`. Unnamed vectors with more
+#' than one value are rejected so that settings cannot be assigned positionally.
+#'
+#' @param value Numeric scalar or named numeric vector to normalize.
+#' @param column_names Character vector of matrix column names.
+#' @param default Numeric scalar or complete per-column numeric vector used for
+#'   columns omitted from a named input.
+#' @param argument_name Character scalar used in error messages.
+#'
+#' @return A list with three elements: `value`, a complete numeric vector named
+#'   and ordered exactly like `column_names`; `supplied`, a named logical vector
+#'   identifying entries explicitly supplied by name; and `global_scalar`, a
+#'   logical scalar indicating that the caller supplied an unnamed scalar.
+#' @keywords internal
+#' @noRd
+normalize_named_override_setting <- function(value,
+                                             column_names,
+                                             default,
+                                             argument_name) {
+  n_columns <- length(column_names)
+  shape_message <- sprintf(
+    "`%s` must be a single unnamed numeric value or a named numeric vector for one or more columns of `x`.",
+    argument_name
+  )
+
+  # Intercept-only formula models can delegate a zero-column matrix together
+  # with zero-length internally constructed setting vectors.
+  if (n_columns == 0L && length(value) == 0L) {
+    return(list(
+      value = stats::setNames(numeric(0L), column_names),
+      supplied = stats::setNames(logical(0L), column_names),
+      global_scalar = FALSE
+    ))
+  }
+
+  if (!is.numeric(value) || !typeof(value) %in% c("integer", "double")) {
+    stop(
+      sprintf("`%s` must contain numeric values, not %s values.",
+              argument_name, typeof(value)),
+      call. = FALSE
+    )
+  }
+
+  if (length(value) == 0L) {
+    stop(shape_message, call. = FALSE)
+  }
+
+  if (anyNA(value) || any(!is.finite(value))) {
+    stop(
+      sprintf("`%s` must contain only finite, non-missing values.",
+              argument_name),
+      call. = FALSE
+    )
+  }
+
+  normalize_default <- function(x) {
+    if (!is.numeric(x) || !typeof(x) %in% c("integer", "double") ||
+        anyNA(x) || any(!is.finite(x))) {
+      stop(
+        sprintf("Internal default for `%s` is malformed.", argument_name),
+        call. = FALSE
+      )
+    }
+
+    if (length(x) == 1L) {
+      return(stats::setNames(rep(as.numeric(x), n_columns), column_names))
+    }
+
+    if (length(x) != n_columns) {
+      stop(
+        sprintf("Internal default for `%s` has the wrong length.",
+                argument_name),
+        call. = FALSE
+      )
+    }
+
+    x_names <- names(x)
+    if (!is.null(x_names)) {
+      if (anyNA(x_names) || any(!nzchar(x_names)) || anyDuplicated(x_names) ||
+          !setequal(x_names, column_names)) {
+        stop(
+          sprintf("Internal default names for `%s` are malformed.",
+                  argument_name),
+          call. = FALSE
+        )
+      }
+      x <- x[column_names]
+    }
+
+    stats::setNames(as.numeric(x), column_names)
+  }
+
+  value_names <- names(value)
+  named_input <- !is.null(value_names) && length(value_names) > 0L
+
+  if (length(value) == 1L && !named_input) {
+    normalized <- stats::setNames(
+      rep(as.numeric(value), n_columns),
+      column_names
+    )
+    return(list(
+      value = normalized,
+      supplied = stats::setNames(rep(TRUE, n_columns), column_names),
+      global_scalar = TRUE
+    ))
+  }
+
+  if (is.null(value_names) ||
+      length(value_names) != length(value) ||
+      anyNA(value_names) ||
+      any(!nzchar(value_names))) {
+    stop(shape_message, call. = FALSE)
+  }
+
+  if (anyDuplicated(column_names)) {
+    stop(
+      sprintf(
+        "`colnames(x)` must be unique when `%s` is supplied as a named vector.",
+        argument_name
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (anyDuplicated(value_names)) {
+    duplicated_names <- unique(value_names[duplicated(value_names)])
+    stop(
+      sprintf(
+        "`%s` names must be unique; duplicated name(s): %s.",
+        argument_name,
+        paste(duplicated_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  unknown_names <- setdiff(value_names, column_names)
+  if (length(unknown_names) > 0L) {
+    stop(
+      sprintf(
+        "`%s` contains unknown column name(s): %s.",
+        argument_name,
+        paste(unknown_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  normalized <- normalize_default(default)
+  normalized[value_names] <- as.numeric(value)
+  supplied <- stats::setNames(column_names %in% value_names, column_names)
+
+  list(
+    value = normalized,
+    supplied = supplied,
+    global_scalar = FALSE
+  )
 }
 
 
@@ -445,14 +610,14 @@ validate_positive_integer_scalar <- function(arg, name) {
       call. = FALSE
     )
   }
-  
+
   if (arg != as.integer(arg) || arg < 1L) {
     stop(
       sprintf("! `%s` must be a single positive integer.", name),
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -473,13 +638,13 @@ validate_positive_integer_scalar <- function(arg, name) {
 validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
   if (is.null(arg)) {
     if (allow_null) return(invisible(TRUE))
-    
+
     stop(
       sprintf("! `%s` must not be NULL.", name),
       call. = FALSE
     )
   }
-  
+
   if (!is.character(arg)) {
     stop(
       sprintf("! `%s` must be a character vector of column names in `x`.", name),
@@ -487,23 +652,23 @@ validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
       call. = FALSE
     )
   }
-  
+
   if (anyNA(arg)) {
     stop(
       sprintf("! `%s` must not contain NA values.", name),
       call. = FALSE
     )
   }
-  
+
   if (any(arg == "")) {
     stop(
       sprintf("! `%s` must not contain empty strings.", name),
       call. = FALSE
     )
   }
-  
+
   unknown <- setdiff(unique(arg), vnames)
-  
+
   if (length(unknown) > 0L) {
     stop(
       sprintf(
@@ -518,14 +683,14 @@ validate_variable_names <- function(arg, name, vnames, allow_null = TRUE) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
 
 #' Validate a single formula-interface scalar default
 #'
-#' Thin wrapper around \code{validate_numeric_vector()} / 
+#' Thin wrapper around \code{validate_numeric_vector()} /
 #' \code{validate_logical_vector()} for the scalar (\code{nvars = 1L}) options
 #' used as global defaults in \code{mfp2.formula()} (\code{df}, \code{alpha},
 #' \code{select}, \code{shift}, \code{scale}, \code{center}). Adds a `hint`
@@ -596,7 +761,7 @@ validate_formula_probability <- function(arg, arg_name, hint = NULL) {
 
 #' Validate a single scalar attribute supplied inside an `fp()` term
 #'
-#' Thin wrapper around \code{validate_numeric_vector()} / 
+#' Thin wrapper around \code{validate_numeric_vector()} /
 #' \code{validate_logical_vector()} for the scalar (\code{nvars = 1L})
 #' attributes attached to an individual \code{fp()} term (\code{df},
 #' \code{alpha}, \code{select}, \code{shift}, \code{scale}, \code{center},
@@ -625,7 +790,7 @@ validate_formula_probability <- function(arg, arg_name, hint = NULL) {
 validate_scalar_fp <- function(arg, arg_name, var_name, type,
                                allow_null = FALSE, allow_na = FALSE) {
   hint <- sprintf("i This is the `%s` argument inside fp(%s).", arg_name, var_name)
-  
+
   switch(
     type,
     numeric = validate_numeric_vector(
@@ -659,7 +824,7 @@ normalize_formula_special_namespaces <- function(formula) {
   if (!inherits(formula, "formula")) {
     stop("`formula` must be a formula.", call. = FALSE)
   }
-  
+
   is_namespaced_symbol <- function(x, namespace, name) {
     is.call(x) &&
       length(x) == 3L &&
@@ -667,45 +832,45 @@ normalize_formula_special_namespaces <- function(formula) {
       identical(as.character(x[[2L]]), namespace) &&
       identical(as.character(x[[3L]]), name)
   }
-  
+
   rewrite_call <- function(expr) {
     if (!is.call(expr)) {
       return(expr)
     }
-    
+
     fun <- expr[[1L]]
-    
+
     if (is_namespaced_symbol(fun, "survival", "strata")) {
       expr[[1L]] <- as.name("strata")
     } else if (is_namespaced_symbol(fun, "stats", "offset")) {
       expr[[1L]] <- as.name("offset")
     }
-    
+
     if (length(expr) > 1L) {
       for (i in seq.int(2L, length(expr))) {
         expr[[i]] <- rewrite_call(expr[[i]])
       }
     }
-    
+
     expr
   }
-  
+
   out <- formula
-  
+
   if (length(out) >= 2L) {
     out[[2L]] <- rewrite_call(out[[2L]])
   }
-  
+
   if (length(out) >= 3L) {
     out[[3L]] <- rewrite_call(out[[3L]])
   }
-  
+
   # Give model.frame()/terms() a reliable lookup path for the bare specials
   # after rewriting, while preserving all user-scope lookups through the parent.
   env <- new.env(parent = environment(formula))
   env$strata <- survival::strata
   env$offset <- stats::offset
-  
+
   environment(out) <- env
   out
 }

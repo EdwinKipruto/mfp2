@@ -10,7 +10,7 @@
 \item{x}{An object of class \code{"mfp2"}.}
 
 \item{detailed_settings}{Logical. If \code{FALSE}, omits the "Detailed
-Settings" table (the complete, unabridged \code{fp_terms} columns)
+Settings" table
 entirely, along with its associated \code{Note:} lines and column
 definitions (which are controlled independently by \code{notes}, but
 have nothing left to annotate when this table isn't printed). Default is
@@ -36,7 +36,7 @@ Prints a structured summary of an \code{mfp2} model, including the original
 model call, selection criterion, convergence status, selected and excluded
 variables, covariate preprocessing, a readable breakdown of the final
 functional form chosen for every variable (split into standard MFP, ACD,
-and spike-at-zero (SAZ) results), the complete raw settings table, final
+and spike-at-zero (SAZ) results), a detailed settings table, final
 coefficients, and model-fit measures.
 }
 \details{
@@ -54,8 +54,11 @@ fact for those variables.
 }
 Within every table, selected variables are listed before excluded ones.
 
-The subsequent "Detailed Settings" table reproduces the original,
-unabridged \code{fp_terms} columns, also sorted with selected variables first.
+The subsequent "Detailed Settings" table reports the initial-to-final
+model degrees of freedom and is sorted with selected variables first. For
+grouped terms, the initial degrees of freedom count all member design columns.
+The Spike-at-Zero subsection also reports \code{prop_zero}, the proportion of
+finite fitting-sample observations in the structural-zero component.
 Notes about \code{select}/\code{alpha} divergence and the
 \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 column whose meaning may not be obvious, are printed immediately below it.

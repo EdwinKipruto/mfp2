@@ -80,10 +80,12 @@
 #' @section Shifting, scaling, and centering:
 #' FP transformations involving logarithms, negative powers, or fractional
 #' powers require positive inputs. By default, `mfp2()` estimates a shift where
-#' needed and a power-of-ten scale factor to avoid numerically extreme values.
-#' Set `shift = 0` or `scale = 1` to disable the corresponding automatic step.
-#' The preprocessing order is shift, scale, FP or ACD transformation, and then
-#' centering.
+#' needed and, for ordinary FP variables, a power-of-ten scale factor to avoid
+#' numerically extreme values. Variables that undergo the ACD transformation are
+#' shifted but not scaled, following the Royston--Sauerbrei definition; their
+#' effective scale is always `1`. Set `shift = 0` or `scale = 1` to disable the
+#' corresponding automatic step for ordinary FP variables. Centering is applied
+#' after the FP or ACD transformation.
 #'
 #' In the matrix interface, an unnamed scalar is a global setting, whereas a
 #' named vector is variable-specific and may name only a subset of columns. For
@@ -146,9 +148,12 @@
 #' request is reset to standard MFP handling when the fitting data contain fewer
 #' than five distinct values for that term. For an eligible ACD term, `mfp2()`
 #' evaluates an ACD-extended two-component function and simpler alternatives,
-#' including standard FP1, ACD-only, linear, and omitted forms. Selection uses
-#' the ACD function-selection procedure when `criterion = "pvalue"`, or direct
-#' AIC/BIC comparison for information-criterion selection.
+#' including standard FP1, ACD-only, linear, and omitted forms. Eligible ACD
+#' variables are shifted when needed for positive FP inputs but are not scaled;
+#' this same shifted, unscaled representation is used for both the direct FP
+#' component and the construction of `A(x)`. Selection uses the ACD
+#' function-selection procedure when `criterion = "pvalue"`, or direct AIC/BIC
+#' comparison for information-criterion selection.
 #'
 #' See `vignette("mfp2_ACD", package = "mfp2")` for the complete construction
 #' of the transformation, the six candidate model families, the five-step
@@ -281,9 +286,10 @@
 #'   scales, while scales for unspecified columns are estimated automatically.
 #'   Unnamed multi-value vectors are not accepted. `NULL` estimates every scale
 #'   automatically, while `scale = 1` disables scaling globally. Binary
-#'   predictors are always assigned scale `1`, even when another value is
-#'   supplied, because rescaling a two-level predictor is unnecessary. In
-#'   `mfp2.formula()`, the top-level value is a
+#'   predictors and variables that undergo ACD transformation are always assigned
+#'   scale `1`, even when another value is supplied. Binary rescaling is
+#'   unnecessary, and the published ACD definition uses shifted but unscaled
+#'   covariate values. In `mfp2.formula()`, the top-level value is a
 #'   scalar global default; use `fp()` or `fp2()` for variable-specific values.
 #'   Final regression coefficients are expressed on the original data scale.
 #' @param shift For `mfp2.default()`, `NULL`, a single unnamed finite numeric
@@ -303,10 +309,12 @@
 #' @param df Maximum degrees of freedom for each predictor's
 #'   fractional-polynomial function. Must be `1` (linear) or a positive even
 #'   integer (`2` for FP1, `4` for FP2, etc.). Default `4`.
-#'   In `mfp2.default()`, accepts a single value (applied to all predictors) or
-#'   a numeric vector of length `ncol(x)`. In `mfp2.formula()`, only a single
-#'   global default is accepted; override it for individual terms with
-#'   `fp(x, df = value)`.
+#'   In `mfp2.default()`, an unnamed scalar is applied to all predictors.
+#'   A named numeric vector may override one or more columns of `x`; values are
+#'   matched by `colnames(x)`, order does not matter, and omitted columns use
+#'   the default `df = 4`. Unnamed multi-value vectors are not accepted. In
+#'   `mfp2.formula()`, only a single global default is accepted; override it for
+#'   individual terms with `fp(x, df = value)`.
 #'   The effective `df` may be reduced automatically when a predictor has few
 #'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
 #'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
@@ -340,18 +348,23 @@
 #'   tests. With `"aic"` or `"bic"`, candidate models are compared directly by
 #'   their information-criterion value and `select`/`alpha` are ignored.
 #' @param select Nominal significance level for variable selection. Default
-#'  `0.05`. In `mfp2.default()`, accepts a single value
-#'   (applied to all predictors) or a numeric vector of length `ncol(x)`. In
-#'   `mfp2.formula()`, only a single global default is accepted; override it
-#'   for individual terms with `fp(x, select = value)`. Setting `select = 1`
+#'  `0.05`. In `mfp2.default()`, an unnamed scalar is applied to all
+#'   predictors. A named numeric vector may override one or more columns of
+#'   `x`; values are matched by `colnames(x)`, order does not matter, and
+#'   omitted columns use the default `select = 0.05`. Unnamed multi-value
+#'   vectors are not accepted. In `mfp2.formula()`, only a single global
+#'   default is accepted; override it for individual terms with
+#'   `fp(x, select = value)`. Setting `select = 1`
 #'   for a predictor forces it into the model (equivalent to naming it in
 #'   `keep`). Ignored when `criterion` is `"aic"` or `"bic"`.
 #' @param alpha Significance level for closed tests between FP functions of
 #'   different degrees (e.g. FP2 versus FP1 versus linear). Default `0.05`.
-#'   In `mfp2.default()`, accepts a single value (applied to all predictors)
-#'   or a numeric vector of length `ncol(x)`. In `mfp2.formula()`, only a
-#'   single global default is accepted; override it for individual terms with
-#'   `fp(x, alpha = value)`. Ignored when `criterion` is `"aic"` or
+#'   In `mfp2.default()`, an unnamed scalar is applied to all predictors.
+#'   A named numeric vector may override one or more columns of `x`; values are
+#'   matched by `colnames(x)`, order does not matter, and omitted columns use
+#'   the default `alpha = 0.05`. Unnamed multi-value vectors are not accepted.
+#'   In `mfp2.formula()`, only a single global default is accepted; override it
+#'   for individual terms with `fp(x, alpha = value)`. Ignored when `criterion` is `"aic"` or
 #'   `"bic"`.
 #' @param keep Character vector of predictor names that must remain in the final
 #' model regardless of the selection criterion. Under `criterion = "pvalue"`,
@@ -599,10 +612,13 @@
 #'   }
 #'
 #'   \item{fp_terms}{
-#'     A data frame with one row per model term. It summarises the initial and
-#'     final degrees of freedom, selection settings, selected status,
-#'     fractional-polynomial powers, and the effective ACD, zero, catzero, and
-#'     spike flags used after validation and eligibility checks.
+#'     A data frame with one row per model term. It records the MFP complexity
+#'     setting (`df_setting`) separately from the initial and final model degrees
+#'     of freedom (`df_initial` and `df_final`), together with selection settings,
+#'     selected status,
+#'     fractional-polynomial powers, the effective ACD, zero, catzero, and
+#'     spike flags used after validation and eligibility checks, and `prop_zero`
+#'     for retained spike-at-zero terms.
 #'   }
 #'
 #'   \item{fp_powers}{
@@ -1799,7 +1815,25 @@ mfp2.default <- function(x,
   validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
   validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
 
-  # alpha and select are probabilities, either scalar or one value per predictor.
+  # alpha and select accept an unnamed global scalar or named partial
+  # overrides. Omitted named entries use the public defaults and all matching is
+  # by column name rather than by position.
+  alpha_setting <- normalize_named_override_setting(
+    value = alpha,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "alpha"
+  )
+  alpha <- alpha_setting$value
+
+  select_setting <- normalize_named_override_setting(
+    value = select,
+    column_names = vnames,
+    default = 0.05,
+    argument_name = "select"
+  )
+  select <- select_setting$value
+
   validate_probability_vector(alpha, "alpha", nvars)
   validate_probability_vector(select, "select", nvars)
 
@@ -1865,26 +1899,31 @@ mfp2.default <- function(x,
   validate_variable_names(force_max_fp,"force_max_fp_vars", vnames)
 
   # Step 8: Validate `df` ---------------------------------------------------------
+  # df accepts an unnamed global scalar or named partial overrides. Ordinary
+  # omitted columns use df = 4; explicitly mapped design blocks use their
+  # structural linear default df = 1 unless the caller overrides them.
+  df_fallback <- expand_scalar_df_for_mapped_terms(
+    df = 4L,
+    vnames = vnames,
+    term_to_columns = term_to_columns
+  )
+  df_setting <- normalize_named_override_setting(
+    value = df,
+    column_names = vnames,
+    default = df_fallback,
+    argument_name = "df"
+  )
+  df <- df_setting$value
+  df_supplied <- df_setting$supplied
+  df_global_scalar <- df_setting$global_scalar
+  df_scalar_value <- if (df_global_scalar && length(df) > 0L) {
+    unname(df[[1L]])
+  } else {
+    NULL
+  }
+
   # df must translate into a valid FP degree: 1 (linear) or an even positive
   # integer 2, 4, 6, ... (representing FP1, FP2, FP3, ...).
-  if (!is.numeric(df)) {
-    stop(
-      "! `df` must be numeric.",
-      sprintf("i Current type is: %s.", typeof(df)),
-      call. = FALSE
-    )
-  }
-
-  if (!length(df) %in% c(1L, nvars)) {
-    stop(
-      sprintf(
-        "! `df` must be a single number or a numeric vector of length %d; got length %d.",
-        nvars, length(df)
-      ),
-      call. = FALSE
-    )
-  }
-
   if (anyNA(df) || any(!is.finite(df))) {
     stop(
       "! `df` must contain only finite, non-missing values.",
@@ -2011,14 +2050,7 @@ mfp2.default <- function(x,
     offset <- rep.int(0, nobs)
   }
 
-  # Expand scalar select/alpha to one value per predictor.
-  if (length(select) == 1) {
-    select <- rep(select, nvars)
-  }
-
-  if (length(alpha) == 1) {
-    alpha <- rep(alpha, nvars)
-  }
+  # select and alpha were normalized above to complete named vectors.
 
   # `shift` was normalized above. NA marks a variable for automatic shift
   # estimation further below; supplied values are already aligned by name.
@@ -2154,6 +2186,20 @@ mfp2.default <- function(x,
     term_to_columns, force_max_fp, "force_max_fp_vars", function(v) !v, "FALSE"
   )
 
+  # Resolve ACD eligibility on the actual fitting rows before scale factors are
+  # chosen. Matrix-interface subsets are applied later so that automatic
+  # preprocessing can use the full data, but ACD eligibility itself must reflect
+  # the observations entering the model. Formula-interface calls already supply
+  # the subset-specific fitting matrix in `x`.
+  if (any(acdx)) {
+    acd_eligibility_x <- if (is.null(subset)) {
+      x
+    } else {
+      x[subset, , drop = FALSE]
+    }
+    acdx <- reset_acd(acd_eligibility_x, acdx)
+  }
+
   # Identify binary columns, exactly two unique non-missing values.
   # Binary variables are not eligible for zero/catzero/spike handling here:
   #   - zero handling is unnecessary because the variable is already discrete;
@@ -2168,6 +2214,15 @@ mfp2.default <- function(x,
   # Reset it here, before scaling is estimated and applied below.
   if (length(binary_names) > 0L) {
     scale[binary_names] <- 1
+  }
+
+  # ACD uses the shifted covariate directly, without the ordinary MFP scaling
+  # step. Reset active ACD variables to scale 1 before missing scales are
+  # estimated and before the design matrix is divided below. Requests reset by
+  # reset_acd() remain ordinary FP variables and retain their usual scale rule.
+  acd_names <- names(acdx)[acdx]
+  if (length(acd_names) > 0L) {
+    scale[acd_names] <- 1
   }
 
   # Reset zero, catzero, and spike for binary variables, with a single warning.
@@ -2214,15 +2269,16 @@ mfp2.default <- function(x,
   }
 
   # Step 14: Assign effective df per predictor -----------------------------------
-  # A scalar df is adjusted per-variable based on cardinality via assign_df();
-  # an explicit per-variable df vector is instead only downgraded to 1 (linear)
-  # for variables with too few unique values to support a curve.
-  if (length(df) == 1) {
+  # An unnamed scalar retains the historical scalar-default cardinality rules.
+  # For named inputs, explicitly supplied values retain the historical vector
+  # behavior, while omitted values filled from the package default receive the
+  # ordinary scalar-default cardinality reductions.
+  if (df_global_scalar) {
     # A scalar df controls ordinary continuous predictors. Explicitly mapped
     # terms are supplied fixed linear design blocks, so assign df = 1 to their
     # raw columns before applying cardinality rules to the remaining columns.
     df_default <- expand_scalar_df_for_mapped_terms(
-      df = df,
+      df = df_scalar_value,
       vnames = vnames,
       term_to_columns = term_to_columns
     )
@@ -2233,6 +2289,12 @@ mfp2.default <- function(x,
       df.list <- df_default
     }
   } else {
+    defaulted <- !df_supplied
+    if (any(defaulted)) {
+      df_from_defaults <- assign_df(x = preprocess_x, df_default = df)
+      df[defaulted] <- df_from_defaults[defaulted]
+    }
+
     nux <- apply(preprocess_x, 2, function(v) length(unique(v)))
     index <- nux <= 3
 
@@ -2337,7 +2399,8 @@ mfp2.default <- function(x,
   }
 
   # Apply the (possibly estimated) scale factors, after shifting and after the
-  # positivity check above.
+  # positivity check above. Active ACD variables have scale 1 and therefore pass
+  # through unchanged on their shifted scale.
   x <- sweep(x, 2, scale, "/")
 
   # Step 18: Build the Cox stratification object --------------------------------
@@ -2390,10 +2453,10 @@ mfp2.default <- function(x,
   # column-level preprocessing has completed. Grouped members must agree on
   # settings that have a single term-level meaning.
   alpha_term <- collapse_option_to_terms(
-    stats::setNames(alpha, vnames), term_to_columns, "alpha"
+    alpha, term_to_columns, "alpha"
   )
   select_term <- collapse_option_to_terms(
-    stats::setNames(select, vnames), term_to_columns, "select"
+    select, term_to_columns, "select"
   )
   df_term <- collapse_option_to_terms(
     stats::setNames(df.list, vnames), term_to_columns, "df"
@@ -3575,7 +3638,7 @@ coef.mfp2 <- function(object, ...) {
 #' model call, selection criterion, convergence status, selected and excluded
 #' variables, covariate preprocessing, a readable breakdown of the final
 #' functional form chosen for every variable (split into standard MFP, ACD,
-#' and spike-at-zero (SAZ) results), the complete raw settings table, final
+#' and spike-at-zero (SAZ) results), a detailed settings table, final
 #' coefficients, and model-fit measures.
 #'
 #' @details
@@ -3593,8 +3656,11 @@ coef.mfp2 <- function(object, ...) {
 #' }
 #' Within every table, selected variables are listed before excluded ones.
 #'
-#' The subsequent "Detailed Settings" table reproduces the original,
-#' unabridged \code{fp_terms} columns, also sorted with selected variables first.
+#' The subsequent "Detailed Settings" table reports the initial-to-final
+#' model degrees of freedom and is sorted with selected variables first. For
+#' grouped terms, the initial degrees of freedom count all member design columns.
+#' The Spike-at-Zero subsection also reports `prop_zero`, the proportion of
+#' finite fitting-sample observations in the structural-zero component.
 #' Notes about \code{select}/\code{alpha} divergence and the
 #' \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 #' column whose meaning may not be obvious, are printed immediately below it.
@@ -3617,7 +3683,7 @@ coef.mfp2 <- function(object, ...) {
 #'
 #' @param x An object of class \code{"mfp2"}.
 #' @param detailed_settings Logical. If \code{FALSE}, omits the "Detailed
-#'   Settings" table (the complete, unabridged \code{fp_terms} columns)
+#'   Settings" table
 #'   entirely, along with its associated \code{Note:} lines and column
 #'   definitions (which are controlled independently by \code{notes}, but
 #'   have nothing left to annotate when this table isn't printed). Default is
@@ -3869,6 +3935,20 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     rep(NA_integer_, nrow(fp_terms))
   }
 
+  prop_zero_all <- if ("prop_zero" %in% names(fp_terms)) {
+    suppressWarnings(as.numeric(fp_terms[["prop_zero"]]))
+  } else {
+    rep(NA_real_, nrow(fp_terms))
+  }
+
+  format_prop_zero <- function(value) {
+    ifelse(
+      is.na(value),
+      ".",
+      formatC(value, format = "f", digits = digits)
+    )
+  }
+
   power_cols <- grep("^power[0-9]+$", names(fp_terms), value = TRUE)
   powers_by_row <- lapply(seq_len(nrow(fp_terms)), function(i) {
     extract_powers(fp_terms[i, , drop = FALSE], power_cols)
@@ -4071,20 +4151,25 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
   # --- Standard MFP ----------------------------------------------------------
 
-  standard_table <- data.frame(
-    Variable = variable_names[in_standard],
-    Selected = ifelse(selected_status[in_standard], "yes", "no"),
-    `df (init -> final)` = df_change_all[in_standard],
-    Function = unname(function_label_plain[in_standard]),
-    row.names = NULL,
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
-  standard_table <- sort_selected_first(standard_table, selected_status[in_standard])
+  if (any(in_standard)) {
+    standard_table <- data.frame(
+      Variable = variable_names[in_standard],
+      Selected = ifelse(selected_status[in_standard], "yes", "no"),
+      `df (init->final)` = df_change_all[in_standard],
+      Function = unname(function_label_plain[in_standard]),
+      row.names = NULL,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    standard_table <- sort_selected_first(
+      standard_table,
+      selected_status[in_standard]
+    )
 
-  print_subsection_heading("Standard MFP")
-  print.data.frame(standard_table, row.names = FALSE, right = FALSE)
-  cat("\n")
+    print_subsection_heading("Standard MFP")
+    print.data.frame(standard_table, row.names = FALSE, right = FALSE)
+    cat("\n")
+  }
 
   # --- ACD (non-spike) --------------------------------------------------------
 
@@ -4097,7 +4182,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     acd_table <- data.frame(
       Variable = variable_names[in_acd_only],
       Selected = ifelse(selected_status[in_acd_only], "yes", "no"),
-      `df (init -> final)` = df_change_all[in_acd_only],
+      `df (init->final)` = df_change_all[in_acd_only],
       `Power on x` = format_na_dot(power1_all[in_acd_only]),
       `Power on A(x)` = format_na_dot(power2_all[in_acd_only]),
       Function = unname(function_label_plain[in_acd_only]),
@@ -4129,10 +4214,10 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
     saz_table <- data.frame(
       Variable = variable_names[in_saz],
-      Selected = ifelse(selected_status[in_saz], "yes", "no"),
-      `df (init -> final)` = df_change_all[in_saz],
+      prop_zero = format_prop_zero(prop_zero_all[in_saz]),
+      `df (init->final)` = df_change_all[in_saz],
       ACD = ifelse(acd_flag[in_saz], "yes", "no"),
-      Decision = saz_decision_text[in_saz],
+      saz_decision = saz_decision_text[in_saz],
       Function = unname(function_label_saz),
       row.names = NULL,
       check.names = FALSE,
@@ -4158,7 +4243,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
     detailed_table <- data.frame(
       Selected = ifelse(selected_status, "yes", "no"),
-      `df (init -> final)` = df_change_all,
+      `df (init->final)` = df_change_all,
       row.names = variable_names,
       check.names = FALSE,
       stringsAsFactors = FALSE

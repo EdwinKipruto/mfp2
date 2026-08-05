@@ -28,7 +28,9 @@ is printed immediately below it. Full diagnostics remain available in the
 returned object.
 }
 \details{
-Step 1 reports the interaction-selection rule in reader-facing language.
+Step 1 reports the interaction-selection rule in reader-facing language and
+displays \code{df_initial} and \code{df_final}. For a grouped adjustment term,
+\code{df_initial} counts all member design columns in the initial model.
 P-value fits print the p-value cutoff and the stored adjustment method,
 including \code{none}, while retaining the variable-specific \code{select} and
 \code{alpha} columns. AIC/BIC fits print the required criterion reduction

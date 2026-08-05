@@ -55,7 +55,9 @@
 #'
 #' Coefficients for nonlinear terms are omitted from the default output. Set
 #' \code{formulas = TRUE} to append the fitted-function formulas, or
-#' \code{basis = TRUE} to append the raw basis coefficients. Set
+#' \code{basis = TRUE} to append the raw basis coefficients. For an active
+#' ACD component, either option also prints the stored definition of
+#' \eqn{A(x)}, including its internal training scale. Set
 #' \code{raw = TRUE} to obtain the underlying [stats::summary.glm()] or
 #' [survival::summary.coxph()] object instead.
 #'
@@ -78,7 +80,8 @@
 #' with components \code{call}, \code{family}, \code{criterion},
 #' \code{converged}, \code{n}, \code{nevents}, \code{function_table},
 #' \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
-#' \code{formulas} (or \code{NULL}), \code{fit}, and \code{raw_summary}. A
+#' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
+#' \code{NULL}), \code{fit}, and \code{raw_summary}. A
 #' dedicated \code{print} method renders these. When \code{raw = TRUE}, the
 #' underlying summary object.
 #'
@@ -128,6 +131,12 @@ summary.mfp2 <- function(object,
     NULL
   }
 
+  acd_definitions <- if (isTRUE(formulas) || isTRUE(basis)) {
+    mfp2_summary_acd_definitions(object, classified)
+  } else {
+    NULL
+  }
+
   out <- list(
     call            = object$call_mfp,
     family          = object$family_string,
@@ -140,6 +149,7 @@ summary.mfp2 <- function(object,
     nonlinear_terms = nonlinear_terms,
     basis           = basis_table,
     formulas        = formula_strings,
+    acd_definitions = acd_definitions,
     fit             = mfp2_summary_fit_stats(object),
     raw_summary     = raw_summary,
     digits          = digits
@@ -257,18 +267,39 @@ mfp2_summary_classify_terms <- function(object) {
   }
 
   power_cols <- grep("^power[0-9]+$", names(fp_terms), value = TRUE)
-  powers_by_var <- lapply(seq_len(nrow(fp_terms)), function(i) {
-    p <- suppressWarnings(as.numeric(fp_terms[i, power_cols]))
-    p[!is.na(p)]
+
+  # Keep both representations of the selected powers:
+  #
+  # * power_slots_by_var preserves the original positions, including NA. This
+  #   is required for ACD terms because slot 1 applies to x and slot 2 applies
+  #   to A(x); c(NA, 1) is therefore different from c(1, NA).
+  # * powers_by_var removes NA values for the existing selection summaries and
+  #   ordinary FP classification.
+  power_slots_by_var <- lapply(seq_len(nrow(fp_terms)), function(i) {
+    suppressWarnings(as.numeric(unlist(
+      fp_terms[i, power_cols, drop = FALSE],
+      use.names = FALSE
+    )))
   })
-  names(powers_by_var) <- variable_names
+  names(power_slots_by_var) <- variable_names
+
+  powers_by_var <- lapply(power_slots_by_var, function(p) p[!is.na(p)])
 
   # Map variable -> transformed coefficient column names, by stripping the
-  # ".<index>" suffix from the fitted design column names.
+  # ".<index>" suffix from the fitted design column names. ACD component
+  # columns are named A_<variable>.<index>; map those columns back to their
+  # source variable so direct and ACD components are formatted together.
   design_cols <- colnames(object$x)
   if (is.null(design_cols)) design_cols <- names(object$coefficients)
   base_names <- sub("\\.[0-9]+$", "", design_cols)
-  cols_by_var <- split(design_cols, base_names)
+  source_names <- base_names
+
+  acd_variables <- variable_names[acd]
+  for (v in acd_variables) {
+    source_names[base_names == paste0("A_", v)] <- v
+  }
+
+  cols_by_var <- split(design_cols, source_names)
 
   # SAZ decision code -> is this a "binary only" outcome?
   spike_dec <- if ("spike_dec" %in% names(fp_terms)) {
@@ -319,9 +350,10 @@ mfp2_summary_classify_terms <- function(object) {
     catzero        = catzero,
     spike          = spike,
     spike_dec      = spike_dec,
-    df_final       = df_final,
-    powers_by_var  = powers_by_var,
-    cols_by_var    = cols_by_var,
+    df_final          = df_final,
+    powers_by_var     = powers_by_var,
+    power_slots_by_var = power_slots_by_var,
+    cols_by_var       = cols_by_var,
     function_table = function_table
   )
 }
@@ -718,57 +750,93 @@ mfp2_summary_basis_table <- function(object, classified) {
   do.call(rbind, rows)
 }
 
-# Construct a readable transformation label for a single fitted column, e.g.
-# "((age)/10)^3" or "((ap)/1000)^(-1)*log(.)". Uses shift/scale from the
-# transformations table when available.
+# Construct a readable transformation label for a single fitted column.
+#
+# Ordinary final FP coefficients multiply a shifted-but-unscaled basis, because
+# fit_mfp() backscales the working predictors before the final transformation.
+# ACD component columns are functions of A(x). New fits also use shifted,
+# unscaled input for A(x); a stored non-unit ACD scale is honored only so formula
+# output remains correct for legacy serialized model objects.
 mfp2_summary_term_label <- function(object, classified, v, col) {
-  # Index within the variable's columns (1-based).
+  idx <- match(v, classified$variable_names)
   cols_v <- classified$cols_by_var[[v]]
   k <- match(col, cols_v)
-  powers <- classified$powers_by_var[[match(v, classified$variable_names)]]
+  acd <- classified$acd[idx]
 
-  ss <- mfp2_summary_shift_scale(object, v)
-  inner <- mfp2_summary_inner_expr(v, ss$shift, ss$scale)
+  base_col <- sub("\\.[0-9]+$", "", col)
+  is_acd_component <- isTRUE(acd) && isTRUE(base_col == paste0("A_", v))
 
-  acd <- classified$acd[match(v, classified$variable_names)]
-  acd_wrap <- function(s) if (isTRUE(acd)) sub("\\(", "A(", s) else s
+  if (isTRUE(acd)) {
+    slots <- classified$power_slots_by_var[[idx]]
+    if (length(slots) < 2L) slots <- c(slots, rep(NA_real_, 2L - length(slots)))
 
-  # Repeated FP2 powers: second term carries a log() factor.
-  repeated <- length(powers) == 2L && isTRUE(powers[1] == powers[2])
+    if (is_acd_component) {
+      power <- slots[2L]
+      base <- sprintf("A(%s)", v)
+    } else {
+      power <- slots[1L]
+      ss <- mfp2_summary_shift_scale(object, v)
+      base <- mfp2_summary_fp_inner_expr(v, ss$shift)
+    }
 
+    if (is.na(power)) return(base)
+    return(mfp2_summary_power_expr(base, power))
+  }
+
+  powers <- classified$powers_by_var[[idx]]
   if (length(powers) == 0L) {
     return(sprintf("I(%s > 0)", v))
   }
 
-  p <- if (k <= length(powers)) powers[k] else powers[length(powers)]
+  ss <- mfp2_summary_shift_scale(object, v)
+  base <- mfp2_summary_fp_inner_expr(v, ss$shift)
+  power <- if (k <= length(powers)) powers[k] else powers[length(powers)]
 
-  power_expr <- function(base, power) {
-    # Wrap the inner expression in parentheses so the exponent applies to the
-    # whole scaled quantity, e.g. ((age)/10)^(3), not (age)/10^(3).
-    wrapped <- sprintf("(%s)", base)
-    if (isTRUE(power == 0)) {
-      sprintf("log%s", wrapped)
-    } else if (isTRUE(power == 1)) {
-      wrapped
-    } else {
-      sprintf("%s^(%s)", wrapped, format(power, trim = TRUE))
-    }
-  }
-
-  if (repeated && k == 2L) {
-    return(acd_wrap(sprintf("%s*log(.)", power_expr(inner, p))))
-  }
-  acd_wrap(power_expr(inner, p))
+  # Repeated powers have the special FP2 second basis x^p * log(x). This rule
+  # applies only to ordinary FP2 terms; equal ACD powers act on different inputs
+  # (x and A(x)) and must not trigger the repeated-power construction.
+  repeated <- length(powers) == 2L && isTRUE(powers[1L] == powers[2L])
+  mfp2_summary_power_expr(base, power, repeated = repeated && k == 2L)
 }
 
-# Inner expression ((x + shift)/scale) or simpler when shift/scale are trivial.
-mfp2_summary_inner_expr <- function(v, shift, scale) {
-  base <- v
-  if (!is.na(shift) && shift != 0) {
-    base <- sprintf("(%s + %s)", v, format(shift, trim = TRUE))
+# Apply one FP power to a readable base expression.
+mfp2_summary_power_expr <- function(base, power, repeated = FALSE) {
+  wrapped <- sprintf("(%s)", base)
+
+  out <- if (isTRUE(power == 0)) {
+    sprintf("log%s", wrapped)
+  } else if (isTRUE(power == 1)) {
+    wrapped
   } else {
-    base <- sprintf("(%s)", v)
+    sprintf("%s^(%s)", wrapped, format(power, trim = TRUE))
   }
+
+  if (isTRUE(repeated)) {
+    out <- sprintf("%s*log(%s)", out, base)
+  }
+  out
+}
+
+# Inner expression for the final ordinary FP basis. The final fit uses shifted
+# but unscaled predictors, so preprocessing scale is intentionally absent here.
+mfp2_summary_fp_inner_expr <- function(v, shift) {
+  if (!is.na(shift) && shift != 0) {
+    sprintf("(%s + %s)", v, format(shift, trim = TRUE))
+  } else {
+    sprintf("(%s)", v)
+  }
+}
+
+# Inner expression used only by the stored ACD approximation. New model objects
+# store scale = 1 because ACD variables are not scaled. Retain support for a
+# non-unit stored scale so summaries of legacy serialized objects remain exact.
+mfp2_summary_acd_inner_expr <- function(v, shift, scale) {
+  base <- if (!is.na(shift) && shift != 0) {
+    sprintf("(%s + %s)", v, format(shift, trim = TRUE))
+  } else {
+    sprintf("(%s)", v)
+  }
+
   if (!is.na(scale) && scale != 1) {
     base <- sprintf("%s/%s", base, format(scale, trim = TRUE))
   }
@@ -811,6 +879,58 @@ mfp2_summary_formula_strings <- function(object, classified) {
     out[i] <- sprintf("f(%s) = %s", v, body)
   }
   out
+}
+
+# Build explicit definitions for active ACD component columns. Both the ordinary
+# FP term and new ACD fits use shifted, unscaled predictor values. A non-unit
+# stored ACD scale is included only for compatibility with legacy fitted objects.
+mfp2_summary_acd_definitions <- function(object, classified) {
+  acd_vars <- classified$variable_names[
+    classified$is_nonlinear & classified$acd
+  ]
+  if (length(acd_vars) == 0L) return(NULL)
+
+  definitions <- vapply(acd_vars, function(v) {
+    cols_v <- classified$cols_by_var[[v]]
+    base_cols <- sub("\\.[0-9]+$", "", cols_v)
+    if (!any(base_cols == paste0("A_", v))) return(NA_character_)
+    mfp2_summary_acd_definition(object, v)
+  }, character(1L))
+
+  definitions <- definitions[!is.na(definitions) & nzchar(definitions)]
+  if (length(definitions) == 0L) NULL else unname(definitions)
+}
+
+mfp2_summary_acd_definition <- function(object, v) {
+  par <- object$acd_parameter[[v]]
+  if (is.null(par)) return(NA_character_)
+
+  required <- c("beta0", "beta1", "power", "shift", "scale")
+  if (!all(required %in% names(par))) return(NA_character_)
+
+  ss <- mfp2_summary_shift_scale(object, v)
+  preprocessing_shift <- if (is.na(ss$shift)) 0 else ss$shift
+  acd_shift <- suppressWarnings(as.numeric(par$shift)[1L])
+  acd_scale <- suppressWarnings(as.numeric(par$scale)[1L])
+  acd_power <- suppressWarnings(as.numeric(par$power)[1L])
+  beta0 <- suppressWarnings(as.numeric(par$beta0)[1L])
+  beta1 <- suppressWarnings(as.numeric(par$beta1)[1L])
+
+  if (anyNA(c(acd_shift, acd_scale, acd_power, beta0, beta1))) {
+    return(NA_character_)
+  }
+
+  total_shift <- preprocessing_shift + acd_shift
+  inner <- mfp2_summary_acd_inner_expr(v, total_shift, acd_scale)
+  acd_basis <- mfp2_summary_power_expr(inner, acd_power)
+
+  sprintf(
+    "A(%s) = pnorm(%s + %s * %s)",
+    v,
+    format(signif(beta0, 4), trim = TRUE),
+    format(signif(beta1, 4), trim = TRUE),
+    acd_basis
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -1136,6 +1256,17 @@ print.summary.mfp2 <- function(x, ...) {
         stringsAsFactors = FALSE
       )
       print.data.frame(disp_b, row.names = FALSE, right = FALSE)
+      cat("\n")
+    }
+
+    # ACD component labels use the compact A(x) notation above. Print the
+    # stored transformation once so the internal training scale remains
+    # explicit without incorrectly scaling the ordinary FP basis.
+    if (!is.null(x$acd_definitions)) {
+      cat("ACD definitions:\n")
+      for (definition in x$acd_definitions) {
+        cat("  ", definition, "\n", sep = "")
+      }
       cat("\n")
     }
   }

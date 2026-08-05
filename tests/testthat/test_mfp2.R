@@ -529,7 +529,11 @@ test_that("grouped ordered-factor columns are linear under scalar df default", {
   )
 
   expect_s3_class(fit, "mfp2")
-  expect_equal(as.numeric(fit$fp_terms["stage", "df_initial"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["stage", "df_setting"]), 1)
+  expect_equal(
+    as.numeric(fit$fp_terms["stage", "df_initial"]),
+    ncol(stage_mm)
+  )
   expect_true(fit$fp_terms["stage", "selected"])
 })
 
@@ -676,6 +680,8 @@ test_that("grouped final df excludes non-estimable coefficients", {
     )
   )
 
+  expect_equal(as.numeric(fp_terms["group", "df_setting"]), 1)
+  expect_equal(as.numeric(fp_terms["group", "df_initial"]), 2)
   expect_equal(as.numeric(fp_terms["group", "df_final"]), 1)
 })
 
@@ -822,6 +828,8 @@ test_that("formula interface keeps an unordered factor as one grouped term", {
   expect_s3_class(fit, "mfp2")
   expect_true("group" %in% rownames(fit$fp_terms))
   expect_true(fit$fp_terms["group", "selected"])
+  expect_equal(as.numeric(fit$fp_terms["group", "df_setting"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["group", "df_initial"]), 2)
   expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), 2)
 
   expect_true("group" %in% names(fit$term_to_columns))
@@ -861,7 +869,8 @@ test_that("2.1 Formula interface supports ordered factors as grouped terms", {
   expect_true("ordered_group" %in% names(fit$term_to_columns))
   expect_length(fit$term_to_columns[["ordered_group"]], 2L)
   expect_true(fit$fp_terms["ordered_group", "selected"])
-  expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_initial"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_setting"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_initial"]), 2)
   expect_equal(as.numeric(fit$fp_terms["ordered_group", "df_final"]), 2)
 
   # Continuous-only extensions are disabled for the complete factor block.
@@ -2630,6 +2639,23 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
   expect_true(out$zero["exposure"])
 })
 
+# Test purpose: Checks that structural-zero proportions use finite observations
+# and count nonpositive values as the SAZ zero component.
+test_that("calculate_saz_prop_zero() reports retained SAZ proportions", {
+  x <- cbind(
+    exposure = c(-2, 0, 0, 1, 2, 3, NA_real_, Inf),
+    ordinary = seq_len(8)
+  )
+
+  out <- calculate_saz_prop_zero(
+    x = x,
+    spike = c(exposure = TRUE, ordinary = FALSE)
+  )
+
+  expect_equal(out[["exposure"]], 3 / 6)
+  expect_true(is.na(out[["ordinary"]]))
+})
+
 # Test purpose: Ensures that when spike-only handling is reset, the variable
 # returns to ordinary FP handling with no zero or catzero flags.
 test_that("spike-only reset restores ordinary FP handling", {
@@ -3248,6 +3274,92 @@ test_that("mfp2() stores ACD parameters for retained ACD variables", {
   expect_true(all(c("beta0", "beta1", "power", "shift", "scale") %in%
                     names(fit$acd_parameter[["x1"]])))
   expect_null(fit$acd_parameter[["x1"]]$acd)
+})
+
+# Test purpose: Active ACD variables must bypass ordinary MFP scaling in the
+# matrix interface, while non-ACD variables retain their requested scales.
+test_that("matrix-interface ACD variables use scale one", {
+  set.seed(4041)
+  n <- 180
+  x1 <- runif(n, 10, 2000)
+  z <- runif(n, 1, 20)
+  x <- cbind(x1 = x1, z = z)
+  y <- 1.5 * pnorm(as.numeric(scale(x1))) + 0.15 * z + rnorm(n, sd = 0.2)
+
+  fit <- mfp2(
+    x,
+    y,
+    acdx = "x1",
+    scale = c(x1 = 1000, z = 10),
+    keep = "x1",
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+
+  acd_reference <- fit_acd(x1)
+
+  expect_true(fit$acd[["x1"]])
+  expect_equal(unname(fit$transformations["x1", "scale"]), 1)
+  expect_equal(unname(fit$transformations["z", "scale"]), 10)
+  expect_equal(fit$acd_parameter[["x1"]]$scale, 1)
+  expect_equal(fit$acd_parameter[["x1"]]$power, acd_reference$power)
+  expect_equal(fit$acd_parameter[["x1"]]$beta0, acd_reference$beta0, tolerance = 1e-10)
+  expect_equal(fit$acd_parameter[["x1"]]$beta1, acd_reference$beta1, tolerance = 1e-10)
+})
+
+# Test purpose: Formula-level scale settings are also overridden only for terms
+# that remain eligible for ACD modelling.
+test_that("formula-interface ACD variables use scale one", {
+  set.seed(4042)
+  n <- 180
+  dat <- data.frame(
+    x1 = runif(n, 10, 2000),
+    z = runif(n, 1, 20)
+  )
+  dat$y <- 1.5 * pnorm(scale(dat$x1)) + 0.15 * dat$z + rnorm(n, sd = 0.2)
+
+  fit <- mfp2(
+    y ~ fp(x1, acdx = TRUE, scale = 1000) + fp(z, scale = 10),
+    data = dat,
+    keep = "x1",
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+
+  expect_true(fit$acd[["x1"]])
+  expect_equal(unname(fit$transformations["x1", "scale"]), 1)
+  expect_equal(unname(fit$transformations["z", "scale"]), 10)
+  expect_equal(fit$acd_parameter[["x1"]]$scale, 1)
+})
+
+# Test purpose: A request reset for insufficient distinct values reverts to
+# ordinary FP preprocessing and therefore does not have its scale forced to one.
+test_that("reset ACD requests retain ordinary FP scaling", {
+  set.seed(4043)
+  n <- 160
+  x1 <- rep(1:4, length.out = n)
+  z <- runif(n, 1, 20)
+  x <- cbind(x1 = x1, z = z)
+  y <- 0.4 * x1 + 0.1 * z + rnorm(n, sd = 0.2)
+
+  expect_warning(
+    fit <- mfp2(
+      x,
+      y,
+      acdx = "x1",
+      scale = c(x1 = 100, z = 10),
+      df = c(x1 = 2, z = 1),
+      select = 1,
+      alpha = 1,
+      verbose = FALSE
+    ),
+    "fewer than 5 unique values"
+  )
+
+  expect_false(fit$acd[["x1"]])
+  expect_equal(unname(fit$transformations["x1", "scale"]), 100)
 })
 
 # Test purpose: Ensures predict.mfp2() can reuse stored ACD parameters to
@@ -6114,6 +6226,134 @@ test_that("ftest argument works for Gaussian family", {
 # 10. Edge cases and input validation
 # =============================================================================
 
+# Test purpose: Defines the shared scalar-or-named-override contract used by
+# df, select, and alpha in the matrix interfaces.
+test_that("named override settings fill defaults and match by name", {
+  columns <- c("age", "bmi", "weight")
+
+  global <- normalize_named_override_setting(
+    value = 2,
+    column_names = columns,
+    default = 4,
+    argument_name = "df"
+  )
+  expect_equal(global$value, c(age = 2, bmi = 2, weight = 2))
+  expect_true(global$global_scalar)
+  expect_true(all(global$supplied))
+
+  partial <- normalize_named_override_setting(
+    value = c(weight = 1, age = 2),
+    column_names = columns,
+    default = 4,
+    argument_name = "df"
+  )
+  expect_equal(partial$value, c(age = 2, bmi = 4, weight = 1))
+  expect_false(partial$global_scalar)
+  expect_equal(partial$supplied, c(age = TRUE, bmi = FALSE, weight = TRUE))
+})
+
+# Test purpose: Prevents the previous positional assignment behavior and
+# rejects malformed or unknown names.
+test_that("named override settings reject positional and malformed vectors", {
+  columns <- c("age", "bmi", "weight")
+
+  expect_error(
+    normalize_named_override_setting(
+      value = c(1, 2),
+      column_names = columns,
+      default = 4,
+      argument_name = "df"
+    ),
+    "single unnamed numeric value or a named numeric vector"
+  )
+
+  expect_error(
+    normalize_named_override_setting(
+      value = c(age = 1, unknown = 2),
+      column_names = columns,
+      default = 4,
+      argument_name = "df"
+    ),
+    "unknown column name.*unknown"
+  )
+
+  expect_error(
+    normalize_named_override_setting(
+      value = stats::setNames(c(1, 2), c("age", "age")),
+      column_names = columns,
+      default = 4,
+      argument_name = "df"
+    ),
+    "names must be unique"
+  )
+
+  expect_error(
+    normalize_named_override_setting(
+      value = stats::setNames(c(1, 2), c("age", "")),
+      column_names = columns,
+      default = 4,
+      argument_name = "df"
+    ),
+    "single unnamed numeric value or a named numeric vector"
+  )
+})
+
+# Test purpose: Verifies partial named df/select/alpha settings in
+# mfp2.default(), including default filling and cardinality reduction for an
+# omitted five-level predictor.
+test_that("mfp2.default() accepts partial named df select and alpha overrides", {
+  set.seed(10001)
+  n <- 80L
+  x <- cbind(
+    age = stats::runif(n, 1, 8),
+    bmi = rep(1:5, length.out = n),
+    weight = stats::runif(n, 2, 10)
+  )
+  y <- 0.5 * x[, "age"] + stats::rnorm(n, sd = 0.2)
+
+  fit <- mfp2(
+    x,
+    y,
+    cycles = 5,
+    df = c(age = 1),
+    select = c(age = 1),
+    alpha = c(weight = 1),
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expect_equal(as.numeric(fit$fp_terms["age", "df_initial"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["bmi", "df_initial"]), 2)
+  expect_equal(as.numeric(fit$fp_terms["weight", "df_initial"]), 4)
+  expect_equal(as.numeric(fit$fp_terms["age", "select"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["bmi", "select"]), 0.05)
+  expect_equal(as.numeric(fit$fp_terms["age", "alpha"]), 0.05)
+  expect_equal(as.numeric(fit$fp_terms["weight", "alpha"]), 1)
+})
+
+# Test purpose: Checks the public error path rather than only the internal
+# normalizer when an unnamed multi-value vector is supplied.
+test_that("mfp2.default() rejects unnamed multi-value df select and alpha", {
+  x <- cbind(age = 1:30, bmi = seq(2, 8, length.out = 30))
+  y <- stats::rnorm(30)
+
+  expect_error(
+    mfp2(x, y, df = c(1, 4), verbose = FALSE),
+    "single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    mfp2(x, y, select = c(1, 0.05), verbose = FALSE),
+    "single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    mfp2(x, y, alpha = c(1, 0.05), verbose = FALSE),
+    "single unnamed numeric value or a named numeric vector"
+  )
+})
+
 # Test purpose: Checks that every manually grouped member names an existing raw
 # design-matrix column.
 test_that("term_groups rejects unknown columns", {
@@ -6465,6 +6705,138 @@ test_that("summary.mfp2() works for Cox", {
   expect_true(!is.null(s))
 })
 
+
+# Test purpose: Ensures displayed ordinary FP equations use the final
+# shifted-but-unscaled basis rather than reapplying the preprocessing scale.
+test_that("summary FP labels do not reapply preprocessing scale", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = FALSE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 2,
+      power1 = -1,
+      power2 = NA_real_,
+      row.names = "x"
+    ),
+    x = matrix(1, nrow = 1L, dimnames = list(NULL, "x.1")),
+    coefficients = c("x.1" = 2.5),
+    transformations = data.frame(
+      shift = 3,
+      scale = 100,
+      row.names = "x"
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  label <- mfp2_summary_term_label(object, classified, "x", "x.1")
+  formula <- mfp2_summary_formula_strings(object, classified)
+
+  expect_true(grepl("x + 3", label, fixed = TRUE))
+  expect_false(grepl("/100", label, fixed = TRUE))
+  expect_false(any(grepl("/100", formula, fixed = TRUE)))
+})
+
+# Test purpose: Ensures ACD direct and transformed columns remain grouped under
+# one variable and new ACD definitions use shifted, unscaled predictor values.
+test_that("summary shows unscaled ACD definitions for new fits", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = TRUE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 4,
+      power1 = 1,
+      power2 = 1,
+      row.names = "x"
+    ),
+    x = matrix(
+      c(1, 0.5),
+      nrow = 1L,
+      dimnames = list(NULL, c("x.1", "A_x.1"))
+    ),
+    coefficients = c("x.1" = 0.4, "A_x.1" = 1.2),
+    transformations = data.frame(
+      shift = 2,
+      scale = 1,
+      row.names = "x"
+    ),
+    acd_parameter = list(
+      x = list(
+        beta0 = -0.8,
+        beta1 = 1.3,
+        power = 0,
+        shift = 0,
+        scale = 1
+      )
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  direct_label <- mfp2_summary_term_label(object, classified, "x", "x.1")
+  acd_label <- mfp2_summary_term_label(object, classified, "x", "A_x.1")
+  definitions <- mfp2_summary_acd_definitions(object, classified)
+  formulas <- mfp2_summary_formula_strings(object, classified)
+
+  expect_identical(
+    classified$cols_by_var[["x"]],
+    c("x.1", "A_x.1")
+  )
+  expect_true(grepl("x + 2", direct_label, fixed = TRUE))
+  expect_false(grepl("/", direct_label, fixed = TRUE))
+  expect_true(grepl("A(x)", acd_label, fixed = TRUE))
+  expect_false(grepl("log(A(x))", acd_label, fixed = TRUE))
+  expect_true(any(grepl("x + 2", definitions, fixed = TRUE)))
+  expect_false(any(grepl("/", definitions, fixed = TRUE)))
+  expect_true(any(grepl("pnorm", definitions, fixed = TRUE)))
+  expect_true(any(grepl("A(x)", formulas, fixed = TRUE)))
+})
+
+# Test purpose: Ensures ACD power positions are preserved so an ACD-only form
+# c(NA, p) is not mislabeled as a direct ordinary FP term.
+test_that("summary preserves ACD-only power slots", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = TRUE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 2,
+      power1 = NA_real_,
+      power2 = 1,
+      row.names = "x"
+    ),
+    x = matrix(0.5, nrow = 1L, dimnames = list(NULL, "A_x.1")),
+    coefficients = c("A_x.1" = 1.2),
+    transformations = data.frame(
+      shift = 0,
+      scale = 10,
+      row.names = "x"
+    ),
+    acd_parameter = list(
+      x = list(
+        beta0 = 0,
+        beta1 = 1,
+        power = 1,
+        shift = 0,
+        scale = 10
+      )
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  label <- mfp2_summary_term_label(object, classified, "x", "A_x.1")
+
+  expect_equal(classified$power_slots_by_var[["x"]], c(NA_real_, 1))
+  expect_true(grepl("A(x)", label, fixed = TRUE))
+  expect_false(grepl("log(A(x))", label, fixed = TRUE))
+})
+
 # Test purpose: Verifies that GLM Model Fit output uses stored deviances and a
 # Deviance header rather than reconstructing minus twice log-likelihood.
 test_that("Model Fit reports deviance for GLMs", {
@@ -6607,6 +6979,94 @@ test_that("coef.mfp2() returns named numeric vector", {
 test_that("print.mfp2() runs without error", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   expect_output(print(fit))
+})
+
+# Test purpose: Ensures grouped terms print their actual initial and final
+# model degrees of freedom without exposing the internal FP search setting.
+test_that("print.mfp2() reports grouped initial and final df only", {
+  set.seed(91501)
+  n <- 120L
+  group <- factor(rep(c("A", "B", "C"), length.out = n))
+  group_mm <- stats::model.matrix(~ group)[, -1L, drop = FALSE]
+  x <- cbind(x1 = stats::runif(n, 1, 8), group_mm)
+  y <- 0.4 * x[, "x1"] + 0.8 * group_mm[, 1L] -
+    0.5 * group_mm[, 2L] + stats::rnorm(n, sd = 0.3)
+
+  fit <- mfp2(
+    x, y,
+    term_groups = list(group = colnames(group_mm)),
+    keep = "group",
+    verbose = FALSE
+  )
+
+  expect_equal(as.numeric(fit$fp_terms["group", "df_setting"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["group", "df_initial"]), 2)
+  expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), 2)
+
+  output <- capture.output(print(fit, detailed_settings = TRUE, notes = TRUE))
+  printed <- paste(output, collapse = "\n")
+  expect_match(printed, "df (init->final)", fixed = TRUE)
+  expect_match(printed, "2 -> 2", fixed = TRUE)
+  expect_false(grepl("df setting", printed, fixed = TRUE))
+  expect_false(grepl("df_setting", printed, fixed = TRUE))
+})
+
+# Test purpose: Ensures an SAZ-only fit does not print an empty Standard MFP
+# data frame in the function-selection summary.
+test_that("print.mfp2() omits an empty Standard MFP subsection", {
+  fit <- mfp2(
+    lpsa ~ fp(
+      pgg45,
+      df = 4,
+      select = 0.05,
+      alpha = 0.05,
+      spike = TRUE
+    ),
+    data = prostate,
+    family = "gaussian",
+    criterion = "pvalue",
+    verbose = FALSE
+  )
+
+  output <- capture.output(print(fit, detailed_settings = FALSE))
+
+  expect_false(any(output == "Standard MFP"))
+  expect_false(any(grepl("<0 rows>", output, fixed = TRUE)))
+  expect_true(any(grepl("Spike-at-Zero (SAZ)", output, fixed = TRUE)))
+})
+
+# Test purpose: Ensures retained SAZ terms store and print the structural-zero
+# proportion from the actual fitting sample.
+test_that("SAZ metadata and print output include prop_zero", {
+  set.seed(91502)
+  n <- 100L
+  exposure <- c(rep(0, 25L), stats::runif(75L, 0.5, 6))
+  exposure <- sample(exposure)
+  x <- cbind(exposure = exposure, age = stats::runif(n, 20, 70))
+  y <- 1.2 * (exposure == 0) + 0.25 * exposure +
+    0.01 * x[, "age"] + stats::rnorm(n, sd = 0.25)
+
+  fit <- mfp2(
+    x, y,
+    df = c(exposure = 1),
+    spike_vars = "exposure",
+    keep = "exposure",
+    verbose = FALSE
+  )
+
+  expect_equal(fit$fp_terms["exposure", "prop_zero"], 0.25)
+  expect_true(is.na(fit$fp_terms["age", "prop_zero"]))
+
+  output <- capture.output(
+    print(fit, detailed_settings = FALSE, digits = 3L)
+  )
+  printed <- paste(output, collapse = "\n")
+
+  expect_match(printed, "prop_zero", fixed = TRUE)
+  expect_match(printed, "0.250", fixed = TRUE)
+
+  saz_header <- output[grepl("prop_zero", output, fixed = TRUE)][1L]
+  expect_false(grepl("Selected", saz_header, fixed = TRUE))
 })
 
 # =============================================================================
@@ -6847,7 +7307,7 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
 
   for (v in get_selected_variable_names(fit_force)) {
     powers <- fit_force$fp_powers[[v]]
-    requested_df <- as.numeric(fit_force$fp_terms[v, "df_initial"])
+    requested_df <- as.numeric(fit_force$fp_terms[v, "df_setting"])
 
     expected_n_powers <- if (requested_df <= 1) {
       1
@@ -6951,6 +7411,82 @@ make_mfpi_factor_data <- function(n = 240L, ordered_stage = FALSE) {
 }
 
 
+# Test purpose: Verifies that mfpi.default() uses the same partial named
+# override semantics as mfp2.default() for its Stage-1 adjustment model.
+test_that("mfpi.default() accepts partial named df select and alpha overrides", {
+  set.seed(16001)
+  n <- 180L
+  dat <- data.frame(
+    group = factor(rep(c("control", "treated"), length.out = n)),
+    x = stats::runif(n, 1, 8),
+    z = stats::runif(n, 1, 5),
+    w = stats::runif(n, 2, 7)
+  )
+  dat$y <- 1 + 0.4 * dat$x + 0.8 * dat$x * (dat$group == "treated") +
+    0.5 * dat$z + stats::rnorm(n, sd = 0.3)
+
+  fit <- mfpi(
+    dat[, c("group", "x", "z", "w")],
+    dat$y,
+    group_var = "group",
+    cont_vars = "x",
+    cont_var_forms = c(x = "linear"),
+    flex = "flex1",
+    cycles = 5,
+    df = c(z = 1),
+    select = c(z = 1),
+    alpha = c(w = 1),
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    p_interact = 1,
+    verbose = FALSE
+  )
+
+  adjustment_terms <- fit$adjustment_model$fp_terms
+  expect_equal(as.numeric(adjustment_terms["z", "df_initial"]), 1)
+  expect_equal(as.numeric(adjustment_terms["w", "df_initial"]), 4)
+  expect_equal(as.numeric(adjustment_terms["z", "select"]), 1)
+  expect_equal(as.numeric(adjustment_terms["w", "select"]), 0.05)
+  expect_equal(as.numeric(adjustment_terms["z", "alpha"]), 0.05)
+  expect_equal(as.numeric(adjustment_terms["w", "alpha"]), 1)
+})
+
+# Test purpose: Ensures MFPI no longer accepts positional multi-value settings.
+test_that("mfpi.default() rejects unnamed multi-value df select and alpha", {
+  set.seed(16002)
+  n <- 60L
+  x <- data.frame(
+    group = factor(rep(c("control", "treated"), length.out = n)),
+    x = stats::runif(n, 1, 5),
+    z = stats::runif(n, 1, 4)
+  )
+  y <- stats::rnorm(n)
+
+  common <- list(
+    x = x,
+    y = y,
+    group_var = "group",
+    cont_vars = "x",
+    cont_var_forms = c(x = "linear"),
+    verbose = FALSE
+  )
+
+  expect_error(
+    do.call(mfpi, c(common, list(df = c(1, 4, 4)))),
+    "single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    do.call(mfpi, c(common, list(select = c(1, 0.05, 0.05)))),
+    "single unnamed numeric value or a named numeric vector"
+  )
+  expect_error(
+    do.call(mfpi, c(common, list(alpha = c(1, 0.05, 0.05)))),
+    "single unnamed numeric value or a named numeric vector"
+  )
+})
+
 # Test purpose: Verifies that force_max_fp_vars applies only to MFPI's
 # adjustment-model selection and sets both select and alpha to 1 under the
 # p-value criterion.
@@ -7029,6 +7565,14 @@ test_that("MFPI formula groups unordered-factor adjustment columns", {
   expect_true("stage" %in% rownames(fit$adjustment_model$fp_terms))
   expect_true(fit$adjustment_model$fp_terms["stage", "selected"])
   expect_equal(
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_setting"]),
+    1
+  )
+  expect_equal(
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_initial"]),
+    2
+  )
+  expect_equal(
     as.numeric(fit$adjustment_model$fp_terms["stage", "df_final"]),
     2
   )
@@ -7062,6 +7606,14 @@ test_that("MFPI formula groups ordered-factor polynomial contrasts", {
   expect_true("stage" %in% names(fit$term_to_columns))
   expect_setequal(fit$term_to_columns[["stage"]], c("stage.L", "stage.Q"))
   expect_true(fit$adjustment_model$fp_terms["stage", "selected"])
+  expect_equal(
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_setting"]),
+    1
+  )
+  expect_equal(
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_initial"]),
+    2
+  )
   expect_equal(
     as.numeric(fit$adjustment_model$fp_terms["stage", "df_final"]),
     2
@@ -7212,8 +7764,12 @@ test_that("MFPI grouped ordered-factor columns are linear under scalar df defaul
 
   expect_s3_class(fit, "mfpi")
   expect_equal(
-    as.numeric(fit$adjustment_model$fp_terms["stage", "df_initial"]),
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_setting"]),
     1
+  )
+  expect_equal(
+    as.numeric(fit$adjustment_model$fp_terms["stage", "df_initial"]),
+    ncol(stage_mm)
   )
   expect_true(fit$adjustment_model$fp_terms["stage", "selected"])
 })
@@ -12904,6 +13460,111 @@ test_that("version 1 reports clear Cox reference and response errors", {
 })
 
 
+
+# -----------------------------------------------------------------------------
+# 21.1 Binary term plotting
+# -----------------------------------------------------------------------------
+
+# Test purpose: Numeric binary terms must be plotted as two fitted point
+# estimates with vertical confidence intervals, even when an equidistant
+# sequence is requested. No interpolating line or confidence ribbon is drawn.
+test_that("plot() displays numeric binary terms as two point estimates", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(21011)
+  n <- 120L
+  binary <- rep(c(2, 5), each = n / 2L)
+  y <- 1 + 1.8 * (binary == 5) + stats::rnorm(n, sd = 0.4)
+
+  fit <- mfp2(
+    x = cbind(binary = binary),
+    y = y,
+    df = 1,
+    keep = "binary",
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  p <- plot(
+    fit,
+    terms = "binary",
+    partial_only = TRUE,
+    terms_seq = "equidistant"
+  )[["binary"]]
+
+  geom_classes <- vapply(
+    p$layers,
+    function(layer) class(layer$geom)[[1L]],
+    character(1L)
+  )
+
+  expect_true("GeomPoint" %in% geom_classes)
+  expect_true("GeomErrorbar" %in% geom_classes)
+  expect_false("GeomLine" %in% geom_classes)
+  expect_false("GeomRibbon" %in% geom_classes)
+
+  point_layer <- p$layers[[which(geom_classes == "GeomPoint")[[1L]]]]
+  errorbar_layer <- p$layers[[which(geom_classes == "GeomErrorbar")[[1L]]]]
+
+  expect_equal(nrow(point_layer$data), 2L)
+  expect_equal(nrow(errorbar_layer$data), 2L)
+  expect_equal(as.numeric(point_layer$data$variable), c(2, 5))
+
+  x_scale <- p$scales$get_scales("x")
+  expect_equal(as.numeric(x_scale$breaks), c(2, 5))
+})
+
+# Test purpose: Two-level formula factors retain their fitted level labels and
+# use the same point-and-confidence-interval presentation as numeric binaries.
+test_that("plot() displays two-level factors as binary effects", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(21012)
+  n <- 120L
+  group <- factor(
+    rep(c("control", "treated"), each = n / 2L),
+    levels = c("control", "treated")
+  )
+  y <- 0.5 + 1.4 * (group == "treated") + stats::rnorm(n, sd = 0.4)
+  dat <- data.frame(y = y, group = group)
+
+  fit <- mfp2(
+    y ~ group,
+    data = dat,
+    keep = "group",
+    verbose = FALSE
+  )
+
+  p <- plot(
+    fit,
+    terms = "group",
+    partial_only = TRUE,
+    terms_seq = "equidistant"
+  )[["group"]]
+
+  geom_classes <- vapply(
+    p$layers,
+    function(layer) class(layer$geom)[[1L]],
+    character(1L)
+  )
+
+  expect_true("GeomPoint" %in% geom_classes)
+  expect_true("GeomErrorbar" %in% geom_classes)
+  expect_false("GeomLine" %in% geom_classes)
+  expect_false("GeomRibbon" %in% geom_classes)
+
+  point_layer <- p$layers[[which(geom_classes == "GeomPoint")[[1L]]]]
+  expect_equal(nrow(point_layer$data), 2L)
+  expect_equal(
+    as.character(point_layer$data$variable),
+    c("control", "treated")
+  )
+
+  x_scale <- p$scales$get_scales("x")
+  expect_equal(x_scale$breaks, c("control", "treated"))
+  expect_equal(x_scale$limits, c("control", "treated"))
+})
+
 # =============================================================================
 # End of tests
 # =============================================================================
@@ -13807,6 +14468,7 @@ make_mfpi_adjustment_object <- function(criterion = "pvalue") {
   x <- make_minimal_mfpi_print_object()
   x$criterion <- criterion
   x$adjust_terms <- data.frame(
+    df_setting = c(1, 4),
     df_initial = c(1, 4),
     select = if (criterion == "pvalue") c(0.05, 0.10) else toupper(criterion),
     alpha = if (criterion == "pvalue") c(0.05, 0.05) else toupper(criterion),
@@ -13863,7 +14525,13 @@ test_that("p-value Step 1 prints the cutoff, adjustment method, select, and alph
     print_adjustment_step(x, ruler = "-----", digits = 3L)
   )
   printed <- paste(output, collapse = "\n")
-  table_header <- output[grepl("df_initial", output, fixed = TRUE)]
+  info <- mfpi_prepare_adjustment_display(x, digits = 3L)
+  expect_true(all(c("df_initial", "df_final") %in% names(info$display)))
+  expect_false("df_setting" %in% names(info$display))
+  expect_true(all(c("select", "alpha") %in% names(info$display)))
+  expect_false(grepl("df_setting", printed, fixed = TRUE))
+  expect_match(printed, "df_initial", fixed = TRUE)
+  expect_match(printed, "df_final", fixed = TRUE)
 
   expect_match(printed, " criterion             : p-value", fixed = TRUE)
   expect_match(
@@ -13876,9 +14544,8 @@ test_that("p-value Step 1 prints the cutoff, adjustment method, select, and alph
     " p-value adjustment    : none",
     fixed = TRUE
   )
-  expect_true(length(table_header) == 1L)
-  expect_match(table_header, "select", fixed = TRUE)
-  expect_match(table_header, "alpha", fixed = TRUE)
+  expect_match(printed, "select", fixed = TRUE)
+  expect_match(printed, "alpha", fixed = TRUE)
 })
 
 test_that("p-value Step 1 prints the active adjustment method dynamically", {
@@ -13910,7 +14577,7 @@ test_that("AIC and BIC Step 1 use dynamic human-readable thresholds", {
       print_adjustment_step(x, ruler = "-----", digits = 3L)
     )
     printed <- paste(output, collapse = "\n")
-    table_header <- output[grepl("df_initial", output, fixed = TRUE)]
+    info <- mfpi_prepare_adjustment_display(x, digits = 3L)
     criterion_label <- toupper(criterion)
 
     expect_match(
@@ -13924,14 +14591,44 @@ test_that("AIC and BIC Step 1 use dynamic human-readable thresholds", {
       fixed = TRUE
     )
     expect_false(grepl("min_improvement", printed, fixed = TRUE))
-    expect_true(length(table_header) == 1L)
-    expect_false(grepl("select", table_header, fixed = TRUE))
-    expect_false(grepl("alpha", table_header, fixed = TRUE))
-    expect_match(table_header, "df_final", fixed = TRUE)
-    expect_match(table_header, "power1", fixed = TRUE)
-    expect_match(table_header, "power2", fixed = TRUE)
+    expect_false(grepl("df_setting", printed, fixed = TRUE))
+    expect_match(printed, "df_initial", fixed = TRUE)
+    expect_match(printed, "df_final", fixed = TRUE)
+    expect_match(printed, "power1", fixed = TRUE)
+    expect_match(printed, "power2", fixed = TRUE)
+    expect_false("select" %in% names(info$display))
+    expect_false("alpha" %in% names(info$display))
     expect_match(printed, "Selected adjustment variables (2): hx, age", fixed = TRUE)
   }
+})
+
+test_that("MFPI Step 1 prints grouped initial and final df only", {
+  x <- make_minimal_mfpi_print_object()
+  x$adjust_terms <- data.frame(
+    df_setting = 1,
+    df_initial = 2,
+    select = 0.05,
+    alpha = 0.05,
+    selected = TRUE,
+    df_final = 2,
+    power1 = 1,
+    power2 = NA_real_,
+    row.names = "stage",
+    check.names = FALSE
+  )
+
+  info <- mfpi_prepare_adjustment_display(x, digits = 3L)
+  expect_false("df_setting" %in% names(info$display))
+  expect_equal(info$display[["df_initial"]], 2)
+  expect_equal(info$display[["df_final"]], 2)
+
+  output <- capture.output(
+    print_adjustment_step(x, ruler = "-----", digits = 3L)
+  )
+  printed <- paste(output, collapse = "\n")
+  expect_false(grepl("df_setting", printed, fixed = TRUE))
+  expect_match(printed, "df_initial", fixed = TRUE)
+  expect_match(printed, "df_final", fixed = TRUE)
 })
 
 test_that("candidate output omits interaction powers shown in the detail table", {
@@ -14115,6 +14812,7 @@ test_that("Step 3 embeds the AIC and BIC rules and uses Yes and No", {
 test_that("shared adjustment display contains selected variables only", {
   x <- make_mfpi_adjustment_object("pvalue")
   dropped <- data.frame(
+    df_setting = 4,
     df_initial = 4,
     select = 0.05,
     alpha = 0.05,
@@ -14132,6 +14830,7 @@ test_that("shared adjustment display contains selected variables only", {
   expect_identical(rownames(info$display), c("hx", "age"))
   expect_identical(info$selected_names, c("hx", "age"))
   expect_false("selected" %in% names(info$display))
+  expect_false("df_setting" %in% names(info$display))
   expect_false("hg" %in% rownames(info$display))
 })
 
@@ -14139,6 +14838,7 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
   x <- make_minimal_mfpi_print_object()
   x$p_adjust_method <- "none"
   x$adjust_terms <- data.frame(
+    df_setting = c(4, 4, 4),
     df_initial = c(4, 4, 4),
     select = c(0.05, 1.00, 1.00),
     alpha = c(0.05, 0.05, 0.05),
@@ -14146,6 +14846,7 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
     zero = c(FALSE, TRUE, FALSE),
     catzero = c(FALSE, TRUE, FALSE),
     spike = c(FALSE, TRUE, FALSE),
+    prop_zero = c(NA_real_, 0.25, NA_real_),
     spike_dec = c(2L, 1L, 2L),
     selected = c(TRUE, TRUE, TRUE),
     df_final = c(2, 2, 1),
@@ -14158,9 +14859,11 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
   info <- mfpi_prepare_adjustment_display(x, digits = 3L)
 
   expect_true("catzero_final" %in% names(info$display))
+  expect_true("prop_zero" %in% names(info$display))
   expect_true("saz_decision" %in% names(info$display))
   expect_false("catzero" %in% names(info$display))
   expect_false("spike_dec" %in% names(info$display))
+  expect_identical(info$display$prop_zero, c(".", "0.250", "."))
   expect_identical(
     info$display$saz_decision,
     c("not SAZ", "continuous + binary", "not SAZ")
@@ -14172,6 +14875,8 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
   printed <- paste(output, collapse = "\n")
 
   expect_match(printed, "catzero_final", fixed = TRUE)
+  expect_match(printed, "prop_zero", fixed = TRUE)
+  expect_match(printed, "0.250", fixed = TRUE)
   expect_match(printed, "saz_decision", fixed = TRUE)
   expect_match(printed, "not SAZ", fixed = TRUE)
   expect_match(printed, "continuous + binary", fixed = TRUE)
@@ -14342,6 +15047,58 @@ test_that("MFPI rebuilds selected ACD adjustment terms during interaction fittin
 
   expect_s3_class(fit, "mfpi")
   expect_length(fit$adjustment_model$fp_powers$age, 2L)
+})
+
+# Test purpose: A SAZ binary-only plot must not expose the internal indicator
+# coding, where 1 denotes the zero group. The x-axis instead displays the two
+# original-scale groups in the intuitive order zero, then positive.
+test_that("plot() labels SAZ binary-only groups on the original scale", {
+  skip_if_not_installed("ggplot2")
+
+  data("prostate", package = "mfp2")
+  fit <- mfp2(
+    lpsa ~ fp(
+      pgg45,
+      df = 4,
+      select = 0.05,
+      alpha = 0.05,
+      spike = TRUE
+    ),
+    data = prostate,
+    family = "gaussian",
+    criterion = "pvalue",
+    verbose = FALSE
+  )
+
+  expect_identical(
+    as.integer(fit$spike_dec[["pgg45"]]),
+    as.integer(saz_decision_codes[["binary_only"]])
+  )
+
+  p <- plot(
+    fit,
+    terms = "pgg45",
+    partial_only = TRUE
+  )[["pgg45"]]
+
+  expected_labels <- c("pgg45 = 0", "pgg45 > 0")
+  x_scale <- p$scales$get_scales("x")
+
+  expect_equal(x_scale$breaks, expected_labels)
+  expect_equal(x_scale$limits, expected_labels)
+
+  geom_classes <- vapply(
+    p$layers,
+    function(layer) class(layer$geom)[[1L]],
+    character(1L)
+  )
+  point_layer <- p$layers[[which(geom_classes == "GeomPoint")[[1L]]]]
+
+  expect_equal(
+    as.character(point_layer$data$variable),
+    expected_labels
+  )
+  expect_false(any(as.character(point_layer$data$variable) %in% c("0", "1")))
 })
 
 # =============================================================================

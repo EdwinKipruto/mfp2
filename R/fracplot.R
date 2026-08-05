@@ -27,7 +27,8 @@
 #' @param show_titles Logical scalar. If \code{TRUE}, add titles describing the
 #'   selected FP or ACD representation and any retained spike-at-zero component.
 #' @param color_points Colour used for residual points.
-#' @param color_line Colour used for the fitted continuous curve.
+#' @param color_line Colour used for fitted curves and for binary fitted
+#'   points and confidence intervals.
 #' @param color_line_spike Colour used for the structural-zero point.
 #' @param color_fill Fill colour used for confidence ribbons.
 #' @param shape Point shape used for residual observations.
@@ -48,6 +49,12 @@
 #' Component-plus-residual plots are available for \code{type = "terms"}.
 #' Deviance residuals are used for generalized linear models and martingale
 #' residuals for Cox regression.
+#'
+#' Binary predictors are displayed at their two fitted levels as point estimates
+#' with vertical confidence intervals. Only those two levels are labelled on the
+#' x-axis; no interpolating line or confidence ribbon is drawn. For a spike-at-zero
+#' term retaining only the zero indicator, the internal 0/1 coding is replaced by
+#' semantic labels such as \code{x = 0} and \code{x > 0}.
 #'
 #' Spike-at-zero covariates are displayed according to the representation
 #' retained by the final model:
@@ -102,7 +109,7 @@ plot.mfp2 <- function(x,
                       alpha_fill = 0.1,
                       ...) {
   terms_seq_missing <- missing(terms_seq)
-  
+
   plot_mfp2_impl(
     model = x,
     terms = terms,
@@ -123,6 +130,159 @@ plot.mfp2 <- function(x,
     linewidth = linewidth,
     alpha_fill = alpha_fill,
     terms_seq_missing = terms_seq_missing
+  )
+}
+
+# Identify fitted terms that should be displayed as two-level effects rather
+# than as continuous curves. Formula factors use their stored fitted levels;
+# singleton numeric terms are checked on the fitted raw design values.
+mfp2_plot_term_is_binary <- function(model, term) {
+  factor_info <- if (!is.null(model$formula_factor_info)) {
+    model$formula_factor_info[[term]]
+  } else {
+    NULL
+  }
+
+  if (!is.null(factor_info) && length(factor_info$levels) == 2L) {
+    return(TRUE)
+  }
+
+  term_columns <- if (!is.null(model$term_to_columns) &&
+                      term %in% names(model$term_to_columns)) {
+    model$term_to_columns[[term]]
+  } else {
+    term
+  }
+
+  if (length(term_columns) != 1L ||
+      is.null(model$x_original) ||
+      is.null(colnames(model$x_original)) ||
+      !term_columns %in% colnames(model$x_original)) {
+    return(FALSE)
+  }
+
+  values <- model$x_original[, term_columns, drop = TRUE]
+  values <- values[!is.na(values)]
+
+  length(unique(values)) == 2L
+}
+
+# Re-evaluate one binary term on its fitted observations. This keeps the general
+# predict.mfp2() API unchanged while ensuring that plot(..., terms_seq =
+# "equidistant") does not display artificial intermediate binary values.
+mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
+  term_ref <- NULL
+  if (identical(type, "contrasts") &&
+      !is.null(ref) &&
+      term %in% names(ref) &&
+      !is.null(ref[[term]])) {
+    term_ref <- stats::setNames(list(ref[[term]]), term)
+  }
+
+  out <- predict(
+    model,
+    type = type,
+    terms = term,
+    ref = term_ref,
+    terms_seq = "data",
+    alpha = alpha
+  )
+
+  out[[term]]
+}
+
+# Collapse repeated observed-value predictions to one fitted estimate per level
+# and preserve fitted factor-level order for discrete axes. For a SAZ
+# binary-only term, translate the internal indicator I(x <= 0) into semantic
+# labels on the original covariate scale: "x = 0" and "x > 0".
+mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
+  binary_df <- df[!duplicated(df$variable), , drop = FALSE]
+
+  is_saz_binary_only <- FALSE
+  if (!is.null(model$spike_dec) &&
+      term %in% names(model$spike_dec) &&
+      !is.na(model$spike_dec[[term]])) {
+    is_saz_binary_only <- identical(
+      as.integer(model$spike_dec[[term]]),
+      as.integer(saz_decision_codes[["binary_only"]])
+    )
+  }
+
+  if (is_saz_binary_only) {
+    zero_label <- paste0(term, " = 0")
+    positive_label <- paste0(term, " > 0")
+    level_order <- c(zero_label, positive_label)
+
+    saz_label <- function(x) {
+      indicator <- suppressWarnings(as.numeric(as.character(x)))
+      out <- rep(NA_character_, length(indicator))
+      out[indicator == 1] <- zero_label
+      out[indicator == 0] <- positive_label
+      out
+    }
+
+    binary_df$variable <- factor(
+      saz_label(binary_df$variable),
+      levels = level_order
+    )
+    binary_df <- binary_df[order(binary_df$variable), , drop = FALSE]
+
+    if (!is.null(residual_df)) {
+      residual_df$variable <- factor(
+        saz_label(residual_df$variable),
+        levels = level_order
+      )
+    }
+
+    return(list(
+      fitted = binary_df,
+      residual = residual_df,
+      continuous_axis = FALSE,
+      breaks = level_order
+    ))
+  }
+
+  if (is.numeric(binary_df$variable)) {
+    binary_df <- binary_df[order(binary_df$variable), , drop = FALSE]
+    return(list(
+      fitted = binary_df,
+      residual = residual_df,
+      continuous_axis = TRUE,
+      breaks = as.numeric(binary_df$variable)
+    ))
+  }
+
+  factor_info <- if (!is.null(model$formula_factor_info)) {
+    model$formula_factor_info[[term]]
+  } else {
+    NULL
+  }
+
+  level_order <- if (!is.null(factor_info) &&
+                     length(factor_info$levels) == 2L) {
+    as.character(factor_info$levels)
+  } else {
+    unique(as.character(binary_df$variable))
+  }
+
+  binary_df$variable <- factor(
+    as.character(binary_df$variable),
+    levels = level_order
+  )
+  binary_df <- binary_df[order(binary_df$variable), , drop = FALSE]
+
+  if (!is.null(residual_df)) {
+    residual_df$variable <- factor(
+      as.character(residual_df$variable),
+      levels = level_order
+    )
+  }
+
+  list(
+    fitted = binary_df,
+    residual = residual_df,
+    continuous_axis = FALSE,
+    breaks = level_order
   )
 }
 
@@ -149,8 +309,8 @@ plot_mfp2_impl <- function(model,
                            linewidth = 1,
                            alpha_fill = 0.1,
                            terms_seq_missing = FALSE) {
-  
-  
+
+
   # Fail clearly if ggplot2 is unavailable at runtime.
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package \"ggplot2\" needed for this function to work. Please install it.",
@@ -158,17 +318,17 @@ plot_mfp2_impl <- function(model,
     )
   }
   # Validate the fitted object before prediction.
-  if (!inherits(model, "mfp2")) 
+  if (!inherits(model, "mfp2"))
     stop("The model entered is not an mfp2 object.", call. = FALSE)
-  
+
   # Contrast references must be supplied as a named list.
   if (!is.null(ref) && !is.list(ref))
     stop("`ref` must be a list or NULL.", call. = FALSE)
-  
+
   if (!is.logical(show_titles) || length(show_titles) != 1L || is.na(show_titles)) {
     stop("show_titles must be a single non-missing logical value.", call. = FALSE)
   }
-  
+
   # set defaults depending on type
   type <- match.arg(type)
   if (type == "contrasts") {
@@ -176,11 +336,11 @@ plot_mfp2_impl <- function(model,
     if (terms_seq_missing)
       terms_seq <- "equidistant"
   }
-  
+
   terms_seq <- match.arg(terms_seq)
-  
-  pred <- predict(model, 
-                  type = type, 
+
+  pred <- predict(model,
+                  type = type,
                   terms = terms,
                   ref = ref,
                   terms_seq = terms_seq,
@@ -189,18 +349,18 @@ plot_mfp2_impl <- function(model,
   pred_data <- pred
   if (!partial_only && terms_seq != "data") {
     pred_data <- predict(model,
-                         type = "terms", 
-                         terms = terms, 
+                         type = "terms",
+                         terms = terms,
                          terms_seq = "data")
   }
-  
+
   if (length(pred) == 0) {
     warning("Variables specified in `terms` were not retained in the final model.", call. = FALSE)
     return(list())
   }
-  
+
   ylab <- "Partial Predictor"
-  
+
   if (!partial_only) {
     # compute residuals to plot points
     # for glm, deviance residuals are required
@@ -215,15 +375,15 @@ plot_mfp2_impl <- function(model,
     pred_data <- lapply(pred_data, function(v) {
       v$resid <- resid
       v})
-    
+
     # y label for the plot
     ylab <- "Partial Predictor + residuals"
   }
-  
+
   # Preallocate the list for plots
-  plots <- setNames(vector("list", length(names(pred))), names(pred))  
-  
-  # in the calls to ggplot2::aes use the .data pronoun to avoid notes 
+  plots <- setNames(vector("list", length(names(pred))), names(pred))
+
+  # in the calls to ggplot2::aes use the .data pronoun to avoid notes
   # generated by R CMD CHECK about missing bindings of global variables
   for (v in names(pred)) {
     df <- pred[[v]]
@@ -240,7 +400,7 @@ plot_mfp2_impl <- function(model,
                "spike" %in% colnames(model$fp_terms)) {
       is_spike <- isTRUE(model$fp_terms[v, "spike"])
     }
-    
+
     spike_dec_v <- saz_decision_codes[["continuous_only"]]
     if (is_spike &&
         !is.null(model$spike_dec) &&
@@ -248,19 +408,47 @@ plot_mfp2_impl <- function(model,
         !is.na(model$spike_dec[[v]])) {
       spike_dec_v <- as.integer(model$spike_dec[[v]])
     }
-    
+
     is_acd <- !is.null(model$fp_terms) &&
       v %in% rownames(model$fp_terms) &&
       "acd" %in% colnames(model$fp_terms) &&
       isTRUE(model$fp_terms[v, "acd"])
-    
+
+    is_binary <- (is_spike &&
+                    spike_dec_v == saz_decision_codes[["binary_only"]]) ||
+      mfp2_plot_term_is_binary(model, v)
+
+    binary_plot_data <- NULL
+    if (is_binary) {
+      binary_df <- mfp2_plot_binary_prediction(
+        model = model,
+        term = v,
+        type = type,
+        ref = ref,
+        alpha = alpha
+      )
+
+      if (!is.null(binary_df)) {
+        binary_plot_data <- mfp2_plot_prepare_binary_data(
+          model = model,
+          term = v,
+          df = binary_df,
+          residual_df = if (!partial_only) pred_data[[v]] else NULL
+        )
+        df <- binary_plot_data$fitted
+        if (!partial_only) {
+          pred_data[[v]] <- binary_plot_data$residual
+        }
+      }
+    }
+
     power_label <- paste0(model$fp_powers[[v]], collapse = ", ")
     continuous_label <- if (is_acd) {
       sprintf("ACD FP(%s)", power_label)
     } else {
       sprintf("FP(%s)", power_label)
     }
-    
+
     # Title with FP/ACD powers and explicit spike-at-zero representation.
     # The internal spike_dec code is not exposed in the plot title.
     plot_title <- if (is_spike) {
@@ -272,15 +460,15 @@ plot_mfp2_impl <- function(model,
     } else {
       continuous_label
     }
-    
+
     p <- ggplot2::ggplot(data = df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
       ggplot2::theme_bw()
-    
+
     if (show_titles) {
       p <- p + ggplot2::ggtitle(plot_title)
     }
-    
+
     # Residuals go first
     if (!partial_only) {
       p <- p + ggplot2::geom_point(data = pred_data[[v]],
@@ -289,46 +477,48 @@ plot_mfp2_impl <- function(model,
                                    size = size_points,
                                    shape = shape)
     }
-    
+
     # Then fitted line/ribbon on top.
     # For active spike-at-zero covariates, the positive-value FP/ACD curve must
     # not extend through x = 0. The retained representation is handled as one
     # of: both components, positive-part only, or zero-indicator only.
-    if (is_spike && spike_dec_v == saz_decision_codes[["binary_only"]]) {
-      # Binary-only SAZ:
-      # predict.mfp2() represents the x-axis as the structural-zero indicator
-      # I(x <= 0), so the prediction data may contain many repeated 0/1 rows
-      # when terms_seq = "data". Collapse to one row per level before drawing;
-      # otherwise geom_line() may connect duplicated values in data order.
-      bin_df <- df[!duplicated(df$variable), , drop = FALSE]
-      bin_df <- bin_df[order(bin_df$variable), , drop = FALSE]
-      
-      p <- p + ggplot2::geom_line(
+    if (is_binary && !is.null(binary_plot_data)) {
+      # Binary terms are discrete effects. Show one estimate and confidence
+      # interval at each fitted level, without implying values between levels.
+      bin_df <- binary_plot_data$fitted
+
+      p <- p + ggplot2::geom_point(
         data = bin_df,
         ggplot2::aes(x = .data$variable, y = .data$value),
-        linewidth = linewidth,
-        linetype = linetype,
-        color = color_line
+        color = color_line,
+        size = size_points_spike
       ) +
-        ggplot2::geom_point(
-          data = bin_df,
-          ggplot2::aes(x = .data$variable, y = .data$value),
-          color = color_line,
-          size = size_points_spike
-        ) +
         ggplot2::geom_errorbar(
           data = bin_df,
           ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
           width = 0.2,
           color = color_line
         )
-      
+
+      if (isTRUE(binary_plot_data$continuous_axis)) {
+        p <- p + ggplot2::scale_x_continuous(
+          breaks = binary_plot_data$breaks,
+          labels = format(binary_plot_data$breaks, trim = TRUE),
+          minor_breaks = NULL
+        )
+      } else {
+        p <- p + ggplot2::scale_x_discrete(
+          breaks = binary_plot_data$breaks,
+          limits = binary_plot_data$breaks
+        )
+      }
+
     } else if (is_spike && spike_dec_v == saz_decision_codes[["cont_binary"]]) {
       # Cont + binary: FP curve for x > 0, point at x = 0
       pos_df <- df[df$variable > 0, , drop = FALSE]
       pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
       zero_df <- df[df$variable == 0, , drop = FALSE]
-      
+
       p <- p + ggplot2::geom_line(data = pos_df,
                                   ggplot2::aes(x = .data$variable, y = .data$value),
                                   linewidth = linewidth,
@@ -337,7 +527,7 @@ plot_mfp2_impl <- function(model,
         ggplot2::geom_ribbon(data = pos_df,
                              ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                              alpha = alpha_fill, fill = color_fill)
-      
+
       if (nrow(zero_df) > 0) {
         p <- p + ggplot2::geom_point(data = zero_df,
                                      ggplot2::aes(y = .data$value),
@@ -348,13 +538,13 @@ plot_mfp2_impl <- function(model,
                                  width = 0.2,
                                  color = color_line)
       }
-      
+
     } else if (is_spike && spike_dec_v == saz_decision_codes[["continuous_only"]]) {
       # Cont only: FP curve for x > 0, separate reference point at x = 0
       pos_df <- df[df$variable > 0, , drop = FALSE]
       pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
       zero_df <- df[df$variable == 0, , drop = FALSE]
-      
+
       p <- p + ggplot2::geom_line(data = pos_df,
                                   ggplot2::aes(x = .data$variable, y = .data$value),
                                   linewidth = linewidth,
@@ -363,7 +553,7 @@ plot_mfp2_impl <- function(model,
         ggplot2::geom_ribbon(data = pos_df,
                              ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                              alpha = alpha_fill, fill = color_fill)
-      
+
       if (nrow(zero_df) > 0) {
         p <- p + ggplot2::geom_point(data = zero_df,
                                      ggplot2::aes(y = .data$value),
@@ -374,7 +564,7 @@ plot_mfp2_impl <- function(model,
                                  width = 0.2,
                                  color = color_line)
       }
-      
+
     } else {
       # Regular continuous plot (non-spike variable)
       p <- p + ggplot2::geom_line(linewidth = linewidth,
@@ -383,7 +573,7 @@ plot_mfp2_impl <- function(model,
         ggplot2::geom_ribbon(ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                              alpha = alpha_fill, fill = color_fill)
     }
-    
+
     # Add residual points if needed
     # if (!partial_only) {
     #   p <- p + ggplot2::geom_point(data = pred_data[[v]],
@@ -394,7 +584,7 @@ plot_mfp2_impl <- function(model,
     # }
     plots[[v]] <- p
   }
-  
+
   plots
 }
 
@@ -453,7 +643,7 @@ fracplot <- function(model,
                      linewidth = 1,
                      alpha_fill = 0.1) {
   terms_seq_missing <- missing(terms_seq)
-  
+
   .Deprecated(
     new = "plot",
     package = "mfp2",
@@ -464,7 +654,7 @@ fracplot <- function(model,
       "`plot(fit)`."
     )
   )
-  
+
   plot_args <- list(
     x = model,
     terms = terms,
@@ -484,11 +674,11 @@ fracplot <- function(model,
     linewidth = linewidth,
     alpha_fill = alpha_fill
   )
-  
+
   # Preserve plot.mfp2()'s type-dependent default when terms_seq was omitted.
   if (!terms_seq_missing) {
     plot_args$terms_seq <- terms_seq
   }
-  
+
   do.call(plot.mfp2, plot_args)
 }

@@ -64,7 +64,7 @@ saz_decision_label <- function(decision,
   # scalar `unknown` if handed anything other than exactly one, non-NA value.
   if (style == "print") {
     out <- rep(unknown, length(decision_int))
-    out[decision_int == saz_decision_codes[["cont_binary"]]] <- "cont + binary"
+    out[decision_int == saz_decision_codes[["cont_binary"]]] <- "continuous + binary"
     out[decision_int == saz_decision_codes[["continuous_only"]]] <- "continuous only"
     out[decision_int == saz_decision_codes[["binary_only"]]] <- "binary only"
     return(out)
@@ -118,6 +118,68 @@ saz_decision_label <- function(decision,
   # fall back to the generic placeholder rather than erroring, since this
   # function is used in display/labeling contexts, not validation contexts.
   unknown
+}
+
+#' Calculate Spike-at-Zero Structural-Zero Proportions
+#'
+#' Internal helper that reports, for each retained spike-at-zero term, the
+#' proportion of finite observations belonging to the structural-zero
+#' component. Nonpositive values are counted as structural zeros, matching the
+#' temporary recoding used by the SAZ eligibility check. Non-SAZ terms receive
+#' `NA_real_`.
+#'
+#' @param x Numeric design matrix on the actual fitting sample.
+#' @param spike Named logical vector indexed by conceptual term.
+#' @param term_to_columns Optional complete conceptual-term-to-raw-column
+#'   mapping. Active SAZ terms must map to exactly one raw column.
+#'
+#' @return Named numeric vector aligned with `spike`.
+#' @keywords internal
+#' @noRd
+calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
+  if (is.null(names(spike))) {
+    stop("Internal error: `spike` must be a named logical vector.", call. = FALSE)
+  }
+
+  if (is.null(term_to_columns)) {
+    term_to_columns <- stats::setNames(as.list(names(spike)), names(spike))
+  }
+
+  out <- stats::setNames(rep(NA_real_, length(spike)), names(spike))
+  active_terms <- names(spike)[!is.na(spike) & spike]
+
+  for (term in active_terms) {
+    columns <- term_to_columns[[term]]
+
+    if (is.null(columns) || length(columns) != 1L) {
+      stop(
+        sprintf(
+          "Internal error: active SAZ term '%s' must map to exactly one design column.",
+          term
+        ),
+        call. = FALSE
+      )
+    }
+
+    column <- columns[[1L]]
+    if (!column %in% colnames(x)) {
+      stop(
+        sprintf(
+          "Internal error: design column '%s' for SAZ term '%s' is unavailable.",
+          column, term
+        ),
+        call. = FALSE
+      )
+    }
+
+    values <- x[, column]
+    finite <- is.finite(values)
+    if (any(finite)) {
+      out[[term]] <- mean(values[finite] <= 0)
+    }
+  }
+
+  out
 }
 
 #' Reset Spike-at-Zero Indicators and Undo Cascade for Ineligible Variables

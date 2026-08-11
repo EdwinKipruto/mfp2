@@ -66,7 +66,11 @@
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ,
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param prev_adj_params Named list storing adjustment variable transformations
-#' from previous steps for each variable.
+#' from previous steps for each focal variable.
+#' @param transform_cache Named list keyed by variable name. Each populated
+#'   entry stores that variable's normalized power key, spike decision, and
+#'   transformed adjustment block so it can be reused across focal variables
+#'   within one fit_mfp() call.
 #' @param force_max_fp A logical vector of length \code{nvars}, named by
 #'  variable name. If \code{TRUE} for variable \code{xi}, forces
 #' \code{select_ic()} and \code{select_ic_acd()} to select the most complex
@@ -183,6 +187,7 @@ find_best_fp_step <- function(x,
                               spike_decision,
                               acd_parameter,
                               prev_adj_params,
+                              transform_cache = NULL,
                               force_max_fp,
                               has_offset,
                               n_obs,
@@ -233,6 +238,7 @@ find_best_fp_step <- function(x,
     control = control, rownames = rownames, zero = zero, catzero = catzero,
     spike = spike, spike_decision = spike_decision, has_offset = has_offset,
     acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns,
     calculate_gaussian_deviance = isTRUE(ftest)
   )
@@ -274,7 +280,8 @@ find_best_fp_step <- function(x,
     return(list(
       power_best = power_best,
       spike_decision = spike_decision,
-      current_adj_params = fit1$current_adj_params
+      current_adj_params = fit1$current_adj_params,
+      transform_cache = fit1$transform_cache
     ))
   }
 
@@ -286,7 +293,8 @@ find_best_fp_step <- function(x,
     return(list(
       power_best = power_best,
       spike_decision = spike_decision,
-      current_adj_params = fit1$current_adj_params
+      current_adj_params = fit1$current_adj_params,
+      transform_cache = fit1$transform_cache
     ))
   }
 
@@ -325,8 +333,12 @@ find_best_fp_step <- function(x,
     verbose = verbose
   )
 
-  return(list(power_best = power_best, spike_decision = stage2$spike_decision,
-              current_adj_params = fit1$current_adj_params))
+  return(list(
+    power_best = power_best,
+    spike_decision = stage2$spike_decision,
+    current_adj_params = fit1$current_adj_params,
+    transform_cache = fit1$transform_cache
+  ))
 
 }
 
@@ -446,7 +458,10 @@ find_best_fpm_step <- function(x,
   data_adj <- x_transformed$data_adj
   data_fp <- x_transformed$data_fp
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
-  use_glm_intercept_template <- !identical(family_string, "cox")
+
+  # GLMs use an explicit intercept in the design matrix; Cox models do not.
+  # Keep this in one flag so matrix construction and model fitting stay aligned.
+  x_has_intercept <- !identical(family_string, "cox")
 
 
   # Step 3: Build a reusable design-matrix template ---------------------------
@@ -458,29 +473,20 @@ find_best_fpm_step <- function(x,
 
   first_xi <- data_fp[[1L]]
   n_xi_cols <- NCOL(first_xi)
-  design_mat <- NULL
-  x_has_intercept <- FALSE
+  # The xi block starts after the intercept for GLMs and in column 1 for Cox.
+  # Converting the logical flag to 0/1 expresses that offset directly.
+  xi_cols <- seq_len(n_xi_cols) + as.integer(x_has_intercept)
 
-  if (use_glm_intercept_template) {
-    # For GLM candidate fits, allocate the complete destination once and fill
-    # the intercept, current-variable, and adjustment blocks directly. The xi
-    # columns are overwritten for each candidate below.
+  # Reuse one design matrix across FP candidates. GLMs always need it because
+  # it contains the intercept; Cox models need it only when adjustments exist.
+  # A Cox model without adjustments can use data_xi directly, avoiding a copy.
+  design_mat <- NULL
+  if (x_has_intercept || has_adj) {
     design_mat <- assemble_design_matrix(
       blocks = list(first_xi, data_adj),
       nobs = nrow(first_xi),
-      intercept = TRUE
+      intercept = x_has_intercept
     )
-    xi_cols <- seq_len(n_xi_cols) + 1L
-    x_has_intercept <- TRUE
-  } else if (has_adj) {
-    # Cox models must not include an intercept. Allocate the combined matrix
-    # once, retain the adjustment block, and overwrite only the xi block.
-    design_mat <- assemble_design_matrix(
-      blocks = list(first_xi, data_adj),
-      nobs = nrow(first_xi),
-      intercept = FALSE
-    )
-    xi_cols <- seq_len(n_xi_cols)
   }
   # Step 4: Fit one model per candidate FP power set and score it ------------
   metrics <- vector("list", length(data_fp))
@@ -506,13 +512,13 @@ find_best_fpm_step <- function(x,
       # number of xi columns within one degree, but preserve behaviour if it
       # ever does not. Build the destination in one allocation rather than
       # chaining cbind() calls.
-      if (!use_glm_intercept_template && !has_adj) {
+      if (!x_has_intercept && !has_adj) {
         x_fit <- data_xi
       } else {
         x_fit <- assemble_design_matrix(
           blocks = list(data_xi, data_adj),
           nobs = nrow(data_xi),
-          intercept = use_glm_intercept_template
+          intercept = x_has_intercept
         )
       }
       fit <- fit_model(
@@ -521,7 +527,7 @@ find_best_fpm_step <- function(x,
         family          = family,
         family_string   = family_string,
         has_offset      = has_offset,
-        x_has_intercept = use_glm_intercept_template,
+        x_has_intercept = x_has_intercept,
         ...
       )
     }
@@ -838,6 +844,7 @@ select_linear <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
+                          transform_cache = NULL,
                           force_max_fp,
                           has_offset,
                           n_obs,
@@ -870,6 +877,7 @@ select_linear <- function(x,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns
   )
 
@@ -982,7 +990,8 @@ select_linear <- function(x,
     # actually selected (not always fit_linear's), so that the cache stored in
     # prev_adj_params for the *next* cycle correctly reflects xi's current
     # state (excluded vs. included) rather than always assuming inclusion.
-    current_adj_params = if (model_best == 1) fit_null$current_adj_params else fit_linear$current_adj_params
+    current_adj_params = if (model_best == 1) fit_null$current_adj_params else fit_linear$current_adj_params,
+    transform_cache = precomputed_adj$transform_cache
   )
 }
 
@@ -1078,6 +1087,7 @@ select_ra2 <- function(x,
                        spike_decision,
                        acd_parameter,
                        prev_adj_params,
+                       transform_cache = NULL,
                        force_max_fp,
                        has_offset,
                        n_obs,
@@ -1145,7 +1155,8 @@ select_ra2 <- function(x,
     statistic = NULL,
     pvalue = NULL,
     spike = spike[xi],
-    current_adj_params = NULL
+    current_adj_params = NULL,
+    transform_cache = NULL
   )
 
   # Step 2: Build the adjustment matrix (all variables except xi, transformed
@@ -1167,8 +1178,10 @@ select_ra2 <- function(x,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns
   )
+  res$transform_cache <- precomputed_adj$transform_cache
 
   # Step 3: Test null vs. FPm. Asks "is xi associated with the outcome at all,
   # in its most flexible form at this degree?" If not significant (at the
@@ -1419,6 +1432,7 @@ select_ra2_acd <- function(x,
                            spike_decision,
                            acd_parameter,
                            prev_adj_params,
+                           transform_cache = NULL,
                            force_max_fp,
                            has_offset,
                            n_obs,
@@ -1478,7 +1492,8 @@ select_ra2_acd <- function(x,
     statistic = NULL,
     pvalue = NULL,
     spike = spike[xi],
-    current_adj_params = NULL
+    current_adj_params = NULL,
+    transform_cache = NULL
   )
 
   # Build the adjustment matrix (all variables except xi, transformed
@@ -1498,8 +1513,10 @@ select_ra2_acd <- function(x,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns
   )
+  res$transform_cache <- precomputed_adj$transform_cache
 
   # Test 1 (M6 vs M1): null vs. FP1(x, A(x)), df = 4. Asks whether xi (in its
   # most flexible ACD-augmented form) is associated with the outcome at all.
@@ -1822,6 +1839,7 @@ select_ic <- function(x,
                       spike_decision,
                       acd_parameter,
                       prev_adj_params,
+                      transform_cache = NULL,
                       force_max_fp,
                       has_offset,
                       n_obs,
@@ -1863,7 +1881,8 @@ select_ic <- function(x,
     statistic = NA,
     pvalue = NA,
     spike = spike[xi],
-    current_adj_params = NULL
+    current_adj_params = NULL,
+    transform_cache = NULL
   )
 
 
@@ -1881,8 +1900,10 @@ select_ic <- function(x,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns
   )
+  res$transform_cache <- precomputed_adj$transform_cache
   # Step 1: Fit all relevant models (null, linear, FP1..FPm) ------------------
   # Unlike select_ra2(), there's no early-stopping here: every candidate is
   # fit up front and compared at the end, since the decision rule (smallest
@@ -2045,6 +2066,7 @@ select_ic_acd <- function(x,
                           spike_decision,
                           acd_parameter,
                           prev_adj_params,
+                          transform_cache = NULL,
                           force_max_fp,
                           has_offset,
                           n_obs,
@@ -2077,7 +2099,8 @@ select_ic_acd <- function(x,
     statistic = NA,
     pvalue = NA,
     spike = spike[xi],
-    current_adj_params = NULL
+    current_adj_params = NULL,
+    transform_cache = NULL
   )
 
 
@@ -2095,8 +2118,10 @@ select_ic_acd <- function(x,
     spike_decision = spike_decision,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
     term_to_columns = term_to_columns
   )
+  res$transform_cache <- precomputed_adj$transform_cache
   # Step 1: Fit all relevant models: null, linear(x), linear(., A(x)), and the
   # three best FP1 candidates (FP1(x, .), FP1(., A(x)), FP1(x, A(x))) --------
   # As in select_ic(), every candidate is fit up front (no early stopping),
@@ -2303,8 +2328,9 @@ select_ic_acd <- function(x,
 #' @param current_power_keys_adj Named list of normalized current power keys.
 #' @param prev_power_keys_adj Named list of normalized previous power keys, or
 #'   `NULL` if there is no previous cache.
-#' @param prev_xi Previous cache object for the current focal variable, or
-#'   `NULL`.
+#' @param prev_xi Previous per-variable cache object containing aligned
+#'   transformed blocks and spike decisions, or `NULL`. Historically this was
+#'   the cache for the current focal variable; it may now be a shared cache.
 #' @param has_prev Logical scalar; whether `prev_xi` is available.
 #'
 #' @return A list with:
@@ -2468,7 +2494,7 @@ mfp2_build_adjustment_step_loop <- function(x,
 #' variable, powers_current, and spike_decision state.
 #' @inheritParams transform_data_step
 #' @return
-#' A list with four entries:
+#' A list with five entries:
 #' * `powers_adj`: named list of FP powers used for each adjustment variable
 #'   (i.e. \code{powers_current} restricted to variables other than `xi`), or
 #'   `NULL` if there are no adjustment variables.
@@ -2480,6 +2506,7 @@ mfp2_build_adjustment_step_loop <- function(x,
 #' * `data_adj`: the column-bound adjustment design matrix, `NULL` if there are
 #'   no adjustment variables, or an `n x 0` matrix if adjustment variables
 #'   exist but all currently contribute zero columns (e.g. all eliminated).
+#' * `transform_cache`: updated run-scoped per-variable transformation cache.
 #' @keywords internal
 #' @noRd
 build_adjustment_step <- function(x,
@@ -2493,6 +2520,7 @@ build_adjustment_step <- function(x,
                                   spike_decision,
                                   acd_parameter,
                                   prev_adj_params,
+                                  transform_cache = NULL,
                                   term_to_columns) {
   # `term_to_columns` has already been normalized by fit_mfp(); this function
   # only consumes the mapping when assembling singleton and grouped blocks.
@@ -2505,10 +2533,15 @@ build_adjustment_step <- function(x,
   # For focal variable `xi`, the adjustment variables are all variables except
   # `xi`. Their transformed columns are collected into `data_adj`.
   #
-  # This function also maintains a small per-variable cache:
-  # if an adjustment variable has the same FP powers and the same spike decision
-  # as in the previous call for this focal variable, its transformed matrix is
-  # reused instead of recomputed.
+  # Two cache layers are deliberately kept separate:
+  #   * prev_adj_params[[xi]] is focal-variable-specific and can reuse the
+  #     complete assembled data_adj matrix on a later cycle.
+  #   * transform_cache[[v]] is keyed by adjustment variable and can reuse v's
+  #     transformed block across different focal variables in the same fit.
+  #
+  # The shared cache is an ordinary list threaded explicitly through the MFP
+  # call chain. It is created once per fit_mfp() call, so there is no mutable
+  # global/package state and no environment-based side effect.
   #
   # Important internal invariant:
   #   catzero[[varname]] is either NULL or an n x 1 numeric/integer matrix.
@@ -2519,6 +2552,33 @@ build_adjustment_step <- function(x,
   # Use powers_current names for the canonical variable order.
   # Accessing x columns by name avoids copying/reordering the full x matrix.
   names_powers_current <- names(powers_current)
+
+  # Normalize the run-scoped per-variable cache. Keeping all conceptual terms
+  # in a named list makes ownership explicit and lets R share unchanged matrix
+  # objects under copy-on-modify semantics.
+  if (is.null(transform_cache)) {
+    transform_cache <- setNames(
+      vector("list", length(names_powers_current)),
+      names_powers_current
+    )
+  } else {
+    if (!is.list(transform_cache) || is.null(names(transform_cache))) {
+      stop(
+        "Internal error: `transform_cache` must be a named list.",
+        call. = FALSE
+      )
+    }
+
+    missing_cache_names <- setdiff(names_powers_current, names(transform_cache))
+    if (length(missing_cache_names) > 0L) {
+      transform_cache[missing_cache_names] <- vector(
+        "list",
+        length(missing_cache_names)
+      )
+    }
+
+    transform_cache <- transform_cache[names_powers_current]
+  }
 
   # Adjustment variables are all variables except the current focal variable.
   vars_adj <- setdiff(names_powers_current, xi)
@@ -2648,13 +2708,77 @@ build_adjustment_step <- function(x,
       }, logical(1L)))
 
       if (all_cache_hit) {
+        # The focal-specific matrix is already valid. Refresh the shared
+        # per-variable cache as well so later focal variables can reuse these
+        # exact transformed blocks without rebuilding them.
+        for (v in vars_adj) {
+          transform_cache[[v]] <- list(
+            power_key = current_power_keys_adj[[v]],
+            spike_decision = spike_decision_int_adj[[v]],
+            data = prev_xi$data_adj_list[[v]]
+          )
+        }
+
         return(list(
           powers_adj         = powers_adj,
           spike_decision_adj = spike_decision_adj,
           data_adj_list      = prev_xi$data_adj_list,
-          data_adj           = prev_xi$data_adj
+          data_adj           = prev_xi$data_adj,
+          transform_cache    = transform_cache
         ))
       }
+    }
+
+    # -------------------------------------------------------------------------
+    # Shared per-variable cache: reuse blocks across different focal variables
+    # -------------------------------------------------------------------------
+    # Prefer transform_cache[[v]], which follows v across focal-variable
+    # evaluations. If an entry is not available, fall back to the historical
+    # prev_adj_params[[xi]] per-variable block so direct/internal callers retain
+    # the old cache behavior as well. The C++ loop performs the actual validity
+    # check using normalized power keys plus spike decisions.
+    reuse_power_keys_adj <- setNames(
+      vector("list", length(vars_adj)),
+      vars_adj
+    )
+    reuse_data_adj_list <- setNames(
+      vector("list", length(vars_adj)),
+      vars_adj
+    )
+    reuse_spike_decision_adj <- setNames(
+      rep(NA_integer_, length(vars_adj)),
+      vars_adj
+    )
+
+    for (v in vars_adj) {
+      cached <- transform_cache[[v]]
+
+      if (
+        !is.null(cached) &&
+        !is.null(cached$data) &&
+        !is.null(cached$power_key) &&
+        length(cached$spike_decision) == 1L
+      ) {
+        # Use single-bracket list assignment for the key so the aligned list
+        # cannot shrink if a malformed cache entry ever contains NULL.
+        reuse_power_keys_adj[v] <- list(cached$power_key)
+        reuse_data_adj_list[[v]] <- cached$data
+        reuse_spike_decision_adj[[v]] <- as.integer(cached$spike_decision)
+      } else if (has_prev && !is.null(prev_xi$data_adj_list[[v]])) {
+        reuse_power_keys_adj[v] <- list(prev_power_keys_adj[[v]])
+        reuse_data_adj_list[[v]] <- prev_xi$data_adj_list[[v]]
+        reuse_spike_decision_adj[[v]] <- prev_spike_decision_int_adj[[v]]
+      }
+    }
+
+    has_reuse_cache <- any(!vapply(reuse_data_adj_list, is.null, logical(1L)))
+    reuse_cache <- if (has_reuse_cache) {
+      list(
+        data_adj_list = reuse_data_adj_list,
+        spike_decision_adj = reuse_spike_decision_adj
+      )
+    } else {
+      NULL
     }
 
     # Step 3: Preserve the historical C++ path only for identity-mapped
@@ -2686,9 +2810,9 @@ build_adjustment_step <- function(x,
         eliminated                = eliminated,
         spike_binary_only_flags   = spike_binary_only_flags,
         current_power_keys_adj    = current_power_keys_adj,
-        prev_power_keys_adj       = prev_power_keys_adj,
-        prev_xi                   = prev_xi,
-        has_prev                  = has_prev
+        prev_power_keys_adj       = reuse_power_keys_adj,
+        prev_xi                   = reuse_cache,
+        has_prev                  = has_reuse_cache
       )
 
       data_adj_list <- cpp_adj$data_adj_list
@@ -2714,22 +2838,31 @@ build_adjustment_step <- function(x,
           eliminated                = eliminated[direct_vars],
           spike_binary_only_flags   = spike_binary_only_flags[direct_vars],
           current_power_keys_adj    = current_power_keys_adj[direct_vars],
-          prev_power_keys_adj       = if (is.null(prev_power_keys_adj)) {
-            NULL
-          } else {
-            prev_power_keys_adj[direct_vars]
-          },
-          prev_xi                   = prev_xi,
-          has_prev                  = has_prev
+          prev_power_keys_adj       = reuse_power_keys_adj[direct_vars],
+          prev_xi                   = reuse_cache,
+          has_prev                  = has_reuse_cache
         )
         data_adj_list[direct_vars] <- cpp_adj$data_adj_list[direct_vars]
       }
 
       # Fixed categorical blocks are already on their required linear design
-      # scale. This covers both multi-column factors and binary factors whose
-      # single dummy column has a different name from the conceptual term.
+      # scale. Reuse a shared block when its key and spike state still match;
+      # otherwise rebuild it from the mapped raw columns. This covers both
+      # multi-column factors and binary factors whose single dummy column has
+      # a different name from the conceptual term.
       for (term in block_vars) {
-        if (isTRUE(eliminated[[term]])) {
+        block_cache_hit <-
+          !is.null(reuse_data_adj_list[[term]]) &&
+          identical(
+            reuse_power_keys_adj[[term]],
+            current_power_keys_adj[[term]]
+          ) &&
+          !is.na(reuse_spike_decision_adj[[term]]) &&
+          reuse_spike_decision_adj[[term]] == spike_decision_int_adj[[term]]
+
+        if (block_cache_hit) {
+          data_adj_list[[term]] <- reuse_data_adj_list[[term]]
+        } else if (isTRUE(eliminated[[term]])) {
           data_adj_list[[term]] <- matrix(
             numeric(0L),
             nrow = nrow(x),
@@ -2755,11 +2888,25 @@ build_adjustment_step <- function(x,
     }
   }
 
+  # Store the current per-variable blocks after assembly. These entries are
+  # independent of the focal variable, so the next focal evaluation can reuse
+  # them whenever the normalized power key and spike decision still match.
+  if (length(vars_adj) > 0L) {
+    for (v in vars_adj) {
+      transform_cache[[v]] <- list(
+        power_key = current_power_keys_adj[[v]],
+        spike_decision = spike_decision_int_adj[[v]],
+        data = data_adj_list[[v]]
+      )
+    }
+  }
+
   list(
     powers_adj = powers_adj,
     spike_decision_adj = spike_decision_adj,
     data_adj_list = data_adj_list,
-    data_adj = data_adj
+    data_adj = data_adj,
+    transform_cache = transform_cache
   )
 }
 #' Function to extract and transform adjustment variables

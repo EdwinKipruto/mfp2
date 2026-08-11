@@ -655,6 +655,17 @@ fit_mfp <- function(x,
   prev_adj_params        <- vector("list", length = length(variables_ordered))
   names(prev_adj_params) <- variables_ordered
 
+  # Cache individual transformed adjustment-variable blocks across focal
+  # variables. This is separate from prev_adj_params: the latter is keyed by
+  # focal variable and can reuse a complete assembled data_adj matrix, whereas
+  # transform_cache is keyed by the variable being transformed. The ordinary
+  # list is scoped to this fit_mfp() call and threaded explicitly through the
+  # cycle, avoiding global state and environment side effects.
+  transform_cache <- setNames(
+    vector("list", length(variables_ordered)),
+    variables_ordered
+  )
+
   while (!converged && j <= cycles) {
     if (verbose) {
       message(sprintf(
@@ -692,6 +703,7 @@ fit_mfp <- function(x,
       spike_decision  = spike_decision,
       acd_parameter   = acd_parameter,
       prev_adj_params = prev_adj_params,
+      transform_cache = transform_cache,
       force_max_fp    = force_max_fp,
       has_offset      = has_offset,
       n_obs           = n_obs,
@@ -701,6 +713,7 @@ fit_mfp <- function(x,
     powers_updated         <- fit_best_cycle$powers_current
     spike_decision_updated <- fit_best_cycle$spike_decision
     prev_adj_params        <- fit_best_cycle$prev_adj_params
+    transform_cache        <- fit_best_cycle$transform_cache
 
     # Compare powers after normalizing away the stored-but-inactive continuous
     # power of binary-only spike variables (spike_decision = 3), since that
@@ -1056,6 +1069,9 @@ fit_mfp <- function(x,
 #' @param prev_adj_params Named list used to store previously computed adjustment
 #' variable transformations. This is updated at each step and reused in the next
 #' cycle to avoid recomputation.
+#' @param transform_cache Named run-scoped list of individual transformed
+#'   variable blocks, shared across focal-variable evaluations and updated
+#'   explicitly as the MFP cycle proceeds.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param n_obs Numeric; number of observations (or observed events, for Cox
@@ -1096,6 +1112,7 @@ find_best_fp_cycle <- function(x,
                                acd_parameter,
                                acdx,
                                prev_adj_params,
+                               transform_cache = NULL,
                                force_max_fp,
                                has_offset,
                                n_obs,
@@ -1151,6 +1168,7 @@ find_best_fp_cycle <- function(x,
       spike_decision = spike_decision,
       acd_parameter = acd_parameter,
       prev_adj_params = prev_adj_params,
+      transform_cache = transform_cache,
       force_max_fp = force_max_fp,
       has_offset   = has_offset,
       n_obs        = n_obs,
@@ -1167,6 +1185,9 @@ find_best_fp_cycle <- function(x,
     # variable in this loop (and the next cycle) sees xi's latest result.
     powers_current[[xi]] <- power_best
     spike_decision       <- fit_best_fp_step$spike_decision
+    # Carry the run-scoped per-variable cache forward immediately so later
+    # focal variables in this same cycle can reuse unchanged transformations.
+    transform_cache      <- fit_best_fp_step$transform_cache
     # Cache xi's adjustment-variable transformations, keyed by xi, so the next
     # cycle can reuse them instead of recomputing from scratch.
     prev_adj_params[[xi]] <- fit_best_fp_step$current_adj_params[[xi]]
@@ -1174,7 +1195,8 @@ find_best_fp_cycle <- function(x,
 
   list(powers_current  = powers_current,
        spike_decision  = spike_decision,
-       prev_adj_params = prev_adj_params)
+       prev_adj_params = prev_adj_params,
+       transform_cache = transform_cache)
 }
 
 #' Normalize selected powers before checking convergence

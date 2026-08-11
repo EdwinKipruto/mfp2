@@ -134,7 +134,7 @@ plot.mfp2 <- function(x,
 }
 
 # Identify fitted terms that should be displayed as two-level effects rather
-# than as continuous curves. Formula factors use their stored fitted levels;
+# than as continuous curves. Formula factors with two levels are binary;
 # singleton numeric terms are checked on the fitted raw design values.
 mfp2_plot_term_is_binary <- function(model, term) {
   factor_info <- if (!is.null(model$formula_factor_info)) {
@@ -167,7 +167,15 @@ mfp2_plot_term_is_binary <- function(model, term) {
   length(unique(values)) == 2L
 }
 
-# Re-evaluate one binary term on its fitted observations. This keeps the general
+# Formula factors are discrete effects regardless of how many fitted levels
+# they contain. Keep this check separate from binary detection so multi-level
+# factors are never sent through the continuous line/ribbon plotting path.
+mfp2_plot_term_is_factor <- function(model, term) {
+  !is.null(model$formula_factor_info) &&
+    !is.null(model$formula_factor_info[[term]])
+}
+
+# Re-evaluate one discrete term on its fitted observations. This keeps the general
 # predict.mfp2() API unchanged while ensuring that plot(..., terms_seq =
 # "equidistant") does not display artificial intermediate binary values.
 mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
@@ -192,7 +200,8 @@ mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
 }
 
 # Collapse repeated observed-value predictions to one fitted estimate per level
-# and preserve fitted factor-level order for discrete axes. For a SAZ
+# and preserve fitted factor-level order for discrete axes, including factors
+# with more than two levels. For a SAZ
 # binary-only term, translate the internal indicator I(x <= 0) into semantic
 # labels on the original covariate scale: "x = 0" and "x > 0".
 mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
@@ -259,7 +268,9 @@ mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
   }
 
   level_order <- if (!is.null(factor_info) &&
-                     length(factor_info$levels) == 2L) {
+                     length(factor_info$levels) > 0L) {
+    # Use the fitted factor metadata rather than observed ordering so the
+    # reference and non-reference levels appear in their original order.
     as.character(factor_info$levels)
   } else {
     unique(as.character(binary_df$variable))
@@ -418,8 +429,15 @@ plot_mfp2_impl <- function(model,
                     spike_dec_v == saz_decision_codes[["binary_only"]]) ||
       mfp2_plot_term_is_binary(model, v)
 
+    # A formula factor is discrete even when it has more than two levels.
+    # Treat it like a binary effect for plotting purposes: predict only at the
+    # fitted levels and display estimates with confidence intervals, rather
+    # than drawing a continuous curve between category labels.
+    is_factor <- mfp2_plot_term_is_factor(model, v)
+    is_discrete <- is_binary || is_factor
+
     binary_plot_data <- NULL
-    if (is_binary) {
+    if (is_discrete) {
       binary_df <- mfp2_plot_binary_prediction(
         model = model,
         term = v,
@@ -451,7 +469,10 @@ plot_mfp2_impl <- function(model,
 
     # Title with FP/ACD powers and explicit spike-at-zero representation.
     # The internal spike_dec code is not exposed in the plot title.
-    plot_title <- if (is_spike) {
+    # Factor variables get "Categorical" instead of a misleading FP label.
+    plot_title <- if (is_factor) {
+      "Categorical"
+    } else if (is_spike) {
       saz_decision_label(
         spike_dec_v,
         style = "plot_title",
@@ -482,9 +503,10 @@ plot_mfp2_impl <- function(model,
     # For active spike-at-zero covariates, the positive-value FP/ACD curve must
     # not extend through x = 0. The retained representation is handled as one
     # of: both components, positive-part only, or zero-indicator only.
-    if (is_binary && !is.null(binary_plot_data)) {
-      # Binary terms are discrete effects. Show one estimate and confidence
-      # interval at each fitted level, without implying values between levels.
+    if (is_discrete && !is.null(binary_plot_data)) {
+      # Discrete terms (binary variables and formula factors of any size) use
+      # one estimate and confidence interval per fitted level. Do not imply
+      # values between unordered/ordered factor levels with a continuous line.
       bin_df <- binary_plot_data$fitted
 
       p <- p + ggplot2::geom_point(

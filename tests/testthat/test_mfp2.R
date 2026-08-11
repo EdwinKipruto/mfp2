@@ -10890,6 +10890,55 @@ test_that("23.6 SAZ decision 3 retains only the binary zero indicator", {
                tolerance = 1e-8)
 })
 
+# Test purpose: Stage-2 SAZ component selection must use alpha rather than
+# select. keep forces Stage-1 inclusion (equivalent to select = 1), but the
+# binary component should still be removable at alpha = 0.05 when it adds no
+# information beyond the positive continuous component. Setting alpha = 1 on
+# the same data should retain both components, proving that alpha is the Stage-2
+# threshold.
+test_that("23.6.1 SAZ Stage 2 uses alpha when select is forced by keep", {
+  set.seed(23061)
+  positive <- rep(seq(0.5, 8, length.out = 180), each = 2)
+  x <- c(rep(0, 140), positive)
+  y <- 1 + 2.4 * x + rnorm(length(x), sd = 0.03)
+  xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit_alpha_005 <- mfp2(
+    xmat,
+    y,
+    spike_vars = "exposure",
+    powers = list(exposure = 1),
+    df = 1,
+    keep = "exposure",
+    alpha = 0.05,
+    criterion = "pvalue",
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  fit_alpha_1 <- mfp2(
+    xmat,
+    y,
+    spike_vars = "exposure",
+    powers = list(exposure = 1),
+    df = 1,
+    keep = "exposure",
+    alpha = 1,
+    criterion = "pvalue",
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  expect_equal(as.integer(fit_alpha_005$spike_dec[["exposure"]]), 2L)
+  expect_equal(as.integer(fit_alpha_1$spike_dec[["exposure"]]), 1L)
+  expect_true(fit_alpha_005$fp_terms["exposure", "selected"])
+  expect_true(fit_alpha_1$fp_terms["exposure", "selected"])
+})
+
 # Test purpose: For a retained SAZ model, prediction on negative, zero, and
 # positive new values must match both:
 #   1. direct prediction from the final stored GLM; and

@@ -32,8 +32,9 @@ Must be \code{1} (linear) or a positive even integer. Default \code{4} (FP2).
 See \code{\link[=mfp2]{mfp2()}} for the cardinality-based reduction rules.}
 
 \item{alpha}{Significance level for the closed test between FP functions of
-different degrees. Default \code{0.05}. Overrides the global \code{alpha} from
-\code{\link[=mfp2]{mfp2()}} for this variable.}
+different degrees and, when \code{spike = TRUE} with p-value selection, for
+both Stage-2 SAZ component-removal tests. Default \code{0.05}. Overrides the
+global \code{alpha} from \code{\link[=mfp2]{mfp2()}} for this variable.}
 
 \item{select}{Significance level for backward-elimination variable
 selection. Default \code{0.05}. Set to \code{1} to force this variable into the

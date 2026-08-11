@@ -30,9 +30,9 @@ saz_decision_codes <- c(
 
 #' Render Spike-at-Zero Decision Labels
 #'
-#' Maps SAZ decision codes to existing print, plot, and verbose-output labels.
-#' This preserves current user-facing text while keeping the mapping in one
-#' place.
+#' Maps SAZ decision codes to print, plot, and verbose-output labels.
+#' Plot titles use the same component terminology as printed SAZ decisions
+#' while explicitly identifying spike-at-zero terms.
 #'
 #' @param decision Numeric or integer SAZ decision code.
 #' @param style Character scalar. One of \code{"print"}, \code{"plot_title"},
@@ -79,7 +79,7 @@ saz_decision_label <- function(decision,
   # never referenced in this branch.
   if (decision_int == saz_decision_codes[["binary_only"]]) {
     if (style == "plot_title") {
-      return("spike: zero indicator only")
+      return("spike at zero — binary only")
     }
 
     return(binary_label)
@@ -94,9 +94,8 @@ saz_decision_label <- function(decision,
   if (decision_int == saz_decision_codes[["cont_binary"]]) {
     if (style == "plot_title") {
       return(paste0(
-        "spike: both components ",
-        continuous_label,
-        " + zero indicator"
+        "spike at zero — continuous + binary: ",
+        continuous_label
       ))
     }
 
@@ -108,7 +107,7 @@ saz_decision_label <- function(decision,
   # referenced in this branch.
   if (decision_int == saz_decision_codes[["continuous_only"]]) {
     if (style == "plot_title") {
-      return(paste0("spike: positive-part only ", continuous_label))
+      return(paste0("spike at zero — continuous only: ", continuous_label))
     }
 
     return(continuous_label)
@@ -954,8 +953,10 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #'   }
 #' @param criterion Character string specifying the selection criterion. Must be
 #'   one of \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
-#' @param select Numeric significance threshold used when
-#'   \code{criterion = "pvalue"}.
+#' @param alpha Numeric significance threshold used for the Stage-2
+#'   component-removal tests when \code{criterion = "pvalue"}. This is the
+#'   same functional-form significance level used in Stage 1, not the
+#'   variable-inclusion threshold \code{select}.
 #' @param n_obs Integer. Number of observations, used for F-tests.
 #' @param ftest Logical. If \code{TRUE}, use F-tests instead of likelihood-ratio
 #'   tests when \code{criterion = "pvalue"}.
@@ -983,19 +984,19 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' \tabular{llll}{
 #'   \strong{Condition} \tab \strong{Interpretation} \tab
 #'   \strong{Retained component(s)} \tab \strong{Selected model} \cr
-#'   \code{p_drop_binary < select}, \code{p_drop_continuous < select} \tab
+#'   \code{p_drop_binary < alpha}, \code{p_drop_continuous < alpha} \tab
 #'   Both reductions are significantly worse than Model 1 \tab
 #'   Continuous FP/linear/ACD + binary zero indicator \tab
 #'   Model 1 \cr
-#'   \code{p_drop_binary < select}, \code{p_drop_continuous >= select} \tab
+#'   \code{p_drop_binary < alpha}, \code{p_drop_continuous >= alpha} \tab
 #'   Removing the binary component is harmful; removing the continuous component is acceptable \tab
 #'   Binary zero indicator only \tab
 #'   Model 3 \cr
-#'   \code{p_drop_binary >= select}, \code{p_drop_continuous < select} \tab
+#'   \code{p_drop_binary >= alpha}, \code{p_drop_continuous < alpha} \tab
 #'   Removing the continuous component is harmful; removing the binary component is acceptable \tab
 #'   Continuous FP/linear/ACD only \tab
 #'   Model 2 \cr
-#'   \code{p_drop_binary >= select}, \code{p_drop_continuous >= select} \tab
+#'   \code{p_drop_binary >= alpha}, \code{p_drop_continuous >= alpha} \tab
 #'   Neither reduction is significantly worse than Model 1 \tab
 #'   Better-fitting reduced component \tab
 #'   Model 2 if \code{logLik(Model 2) > logLik(Model 3)}, otherwise Model 3 \cr
@@ -1020,7 +1021,7 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' @noRd
 compute_saz_stage2_decision <- function(metrics,
                                         criterion,
-                                        select,
+                                        alpha,
                                         n_obs,
                                         ftest = FALSE) {
   criterion <- tolower(criterion)
@@ -1095,11 +1096,11 @@ compute_saz_stage2_decision <- function(metrics,
     #   neither small -> both components are individually dispensable; break
     #     the tie by whichever reduced model actually fits better (higher
     #     log-likelihood), rather than defaulting to either one arbitrarily.
-    decision <- if (p_drop_binary < select && p_drop_continuous < select) {
+    decision <- if (p_drop_binary < alpha && p_drop_continuous < alpha) {
       saz_decision_codes[["cont_binary"]]  # Model 1: both components
-    } else if (p_drop_binary < select && p_drop_continuous >= select) {
+    } else if (p_drop_binary < alpha && p_drop_continuous >= alpha) {
       saz_decision_codes[["binary_only"]]  # Model 3: binary zero-indicator only
-    } else if (p_drop_binary >= select && p_drop_continuous < select) {
+    } else if (p_drop_binary >= alpha && p_drop_continuous < alpha) {
       saz_decision_codes[["continuous_only"]]  # Model 2: continuous FP/linear/ACD only
     } else {
       # If neither reduced model is significantly worse than the full model,
@@ -1177,8 +1178,10 @@ compute_saz_stage2_decision <- function(metrics,
 #' @param y,weights,offset,family,family_string,method,strata,nocenter,control,
 #'   rownames,has_offset Passed through to \code{fit_saz_reduced_models()}.
 #' @param n_obs Numeric; number of observations (or events, for Cox models).
-#' @param criterion,select,ftest Passed through to
-#'   \code{compute_saz_stage2_decision()}.
+#' @param criterion,alpha,ftest Passed through to
+#'   \code{compute_saz_stage2_decision()}. Stage 2 uses \code{alpha} for
+#'   component-removal tests; \code{select} is used only for Stage-1 variable
+#'   inclusion.
 #' @param spike_decision Named numeric vector of current spike decisions. This
 #'   function only updates \code{spike_decision[[xi]]}; all other entries are
 #'   returned unchanged.
@@ -1212,7 +1215,7 @@ evaluate_saz_stage2 <- function(fit1,
                                 has_offset,
                                 n_obs,
                                 criterion,
-                                select,
+                                alpha,
                                 ftest,
                                 spike_decision,
                                 verbose,
@@ -1257,7 +1260,7 @@ evaluate_saz_stage2 <- function(fit1,
   # Step 3: Decide whether both components, continuous-only, or binary-only
   # is needed, and record that decision for xi (all other variables' entries
   # in spike_decision are left untouched).
-  decision <- compute_saz_stage2_decision(metrics, criterion, select, n_obs, ftest)
+  decision <- compute_saz_stage2_decision(metrics, criterion, alpha, n_obs, ftest)
   spike_decision[xi] <- decision$decision
 
   # Step 4: Build the printable stage-2 metrics table, matching model labels

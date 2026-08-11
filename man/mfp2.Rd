@@ -160,10 +160,11 @@ Cox models accept only the character string \code{"cox"}. Default
 \code{"gaussian"}.}
 
 \item{criterion}{Selection criterion. One of \code{"pvalue"} (default), \code{"aic"},
-or \code{"bic"}. With \code{"pvalue"}, variable inclusion and functional-form
-complexity are controlled by \code{select} and \code{alpha} through nested closed
-tests. With \code{"aic"} or \code{"bic"}, candidate models are compared directly by
-their information-criterion value and \code{select}/\code{alpha} are ignored.}
+or \code{"bic"}. With \code{"pvalue"}, variable inclusion is controlled by \code{select},
+while functional-form comparisons and SAZ Stage-2 component-removal tests
+are controlled by \code{alpha}. With \code{"aic"} or \code{"bic"}, candidate models are
+compared directly by their information-criterion value and \code{select}/\code{alpha}
+are ignored.}
 
 \item{select}{Nominal significance level for variable selection. Default
 \code{0.05}. In \code{mfp2.default()}, an unnamed scalar is applied to all
@@ -174,11 +175,16 @@ vectors are not accepted. In \code{mfp2.formula()}, only a single global
 default is accepted; override it for individual terms with
 \code{fp(x, select = value)}. Setting \code{select = 1}
 for a predictor forces it into the model (equivalent to naming it in
-\code{keep}). Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.}
+\code{keep}). For spike-at-zero terms, \code{select} controls only Stage-1 inclusion;
+Stage-2 component-removal tests use \code{alpha}. Ignored when \code{criterion} is
+\code{"aic"} or \code{"bic"}.}
 
 \item{alpha}{Significance level for closed tests between FP functions of
-different degrees (e.g. FP2 versus FP1 versus linear). Default \code{0.05}.
-In \code{mfp2.default()}, an unnamed scalar is applied to all predictors.
+different degrees (e.g. FP2 versus FP1 versus linear). When
+\code{criterion = "pvalue"}, \code{alpha} is also used for the Stage-2
+component-removal tests of spike-at-zero terms. Default \code{0.05}.
+In \code{mfp2.default()}, an unnamed
+scalar is applied to all predictors.
 A named numeric vector may override one or more columns of \code{x}; values are
 matched by \code{colnames(x)}, order does not matter, and omitted columns use
 the default \code{alpha = 0.05}. Unnamed multi-value vectors are not accepted.
@@ -190,9 +196,12 @@ for individual terms with \code{fp(x, alpha = value)}. Ignored when \code{criter
 model regardless of the selection criterion. Under \code{criterion = "pvalue"},
 this is equivalent to setting \code{select = 1} for each named variable. The
 functional form of kept variables may still be simplified by the
-\code{alpha}-level closed test or information criterion. Names must match
-formula term names or, for matrix fits, column names or \code{term_groups}
-names.}
+\code{alpha}-level closed test or information criterion. For a kept spike-at-zero
+term under \code{criterion = "pvalue"}, Stage 2 still uses \code{alpha}, so either SAZ
+component may be removed while the term itself remains forced into the model.
+Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
+Names must match formula term names or, for matrix fits, column names or
+\code{term_groups} names.}
 
 \item{xorder}{Order in which predictors enter the backfitting algorithm.
 One of \code{"ascending"} (default), \code{"descending"}, or \code{"original"}.
@@ -598,10 +607,12 @@ options, and requests for them are reset. Requests for \code{zero} or \code{catz
 an all-positive predictor are also reset because there is no nonpositive
 component to represent.
 
-SAZ selection has two stages. Stage 1 selects the positive-component
-functional form while retaining the binary component. Stage 2 selects among
-the three retained representations. A requested SAZ variable is eligible only
-when both the nonpositive and positive components contain at least
+SAZ selection has two stages. Stage 1 uses \code{select} for overall term
+inclusion and \code{alpha} for positive-component functional-form comparisons
+while retaining the binary component. Stage 2 selects among the three
+retained representations; under \code{criterion = "pvalue"}, both Stage-2
+component-removal tests are evaluated at \code{alpha}. A requested SAZ variable is
+eligible only when both the nonpositive and positive components contain at least
 \code{min_saz_component_prop} of the observations and the variable is not binary.
 With the default value \code{0.10}, each component must contain at least 10 percent
 of observations. If eligibility fails, the spike request is reset; explicit

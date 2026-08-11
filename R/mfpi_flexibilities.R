@@ -376,11 +376,15 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   xnew    <- cbind(contvar_vec, group_dummies, xadj)
   vnames  <- colnames(xnew)
   n_adj   <- if (is.null(xadj)) 0L else ncol(xadj)
+  n_total <- length(vnames)
 
-  df_vec <- c(
-    2L * degree,               # cont_var: FP of requested degree
-    rep(1L, k - 1L),           # group dummies: linear
-    if (n_adj > 0L) rep(1L, n_adj)
+  df_vec <- stats::setNames(
+    c(
+      2L * degree,               # cont_var: FP of requested degree
+      rep(1L, k - 1L),           # group dummies: linear
+      if (n_adj > 0L) rep(1L, n_adj)
+    ),
+    vnames
   )
 
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
@@ -388,12 +392,24 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                       vnames)
   pw_list[[cont_var]] <- fp_cand
 
-  n_total      <- length(vnames)
-  center_vec   <- c(center,    rep(FALSE, n_total - 1L))
-  zero_vec     <- c(zero_var,  rep(FALSE, n_total - 1L))
-  spike_vec    <- c(spike_var, rep(FALSE, n_total - 1L))
-  acd_vec      <- setNames(rep(FALSE, n_total), vnames)
-  catzero      <- setNames(rep(FALSE, n_total), vnames)
+  select_vec <- stats::setNames(rep(1, n_total), vnames)
+  alpha_vec  <- stats::setNames(rep(1, n_total), vnames)
+  center_vec <- stats::setNames(
+    c(center, rep(FALSE, n_total - 1L)),
+    vnames
+  )
+  shift_vec <- stats::setNames(rep(0, n_total), vnames)
+  scale_vec <- stats::setNames(rep(1, n_total), vnames)
+  zero_vec <- stats::setNames(
+    c(zero_var, rep(FALSE, n_total - 1L)),
+    vnames
+  )
+  spike_vec <- stats::setNames(
+    c(spike_var, rep(FALSE, n_total - 1L)),
+    vnames
+  )
+  acd_vec <- stats::setNames(rep(FALSE, n_total), vnames)
+  catzero <- stats::setNames(rep(FALSE, n_total), vnames)
   # force_max_fp: TRUE only for cont_var; dummies and adj have df = 1
   # so there is no simpler form to downgrade to.
   force_max_fp <- setNames(c(TRUE, rep(FALSE, n_total - 1L)), vnames)
@@ -409,8 +425,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     y             = y,
     df            = df_vec,
     criterion     = criterion,
-    select        = rep(1, n_total),
-    alpha         = rep(1, n_total),
+    select        = select_vec,
+    alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
     method        = ties,
@@ -420,8 +436,8 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     powers        = pw_list,
     ftest         = use_ftest,
     center        = center_vec,
-    shift         = rep(0, n_total),
-    scale         = rep(1, n_total),
+    shift         = shift_vec,
+    scale         = scale_vec,
     acdx          = acd_vec,
     xorder        = xorder,
     weights       = weights,
@@ -1002,24 +1018,40 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   n_adj  <- if (is.null(xadj)) 0L else ncol(xadj)
   n_total <- length(vnames)
 
-  df_vec <- c(
-    rep(2L * degree, k),     # one FP term per group
-    rep(1L, k - 1L),         # group dummies
-    if (n_adj > 0L) rep(1L, n_adj)
+  df_vec <- stats::setNames(
+    c(
+      rep(2L * degree, k),     # one FP term per group
+      rep(1L, k - 1L),         # group dummies
+      if (n_adj > 0L) rep(1L, n_adj)
+    ),
+    vnames
   )
 
   default_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   pw_list <- setNames(replicate(n_total, default_powers, simplify = FALSE), vnames)
   pw_list[znames] <- replicate(k, fp_cand, simplify = FALSE)
 
+  select_vec <- stats::setNames(rep(1, n_total), vnames)
+  alpha_vec  <- stats::setNames(rep(1, n_total), vnames)
   # Centre only the within-group cont_var columns; adjustment already centred
-  center_vec  <- c(rep(center,    k), rep(FALSE, n_total - k))
+  center_vec <- stats::setNames(
+    c(rep(center, k), rep(FALSE, n_total - k)),
+    vnames
+  )
+  shift_vec <- stats::setNames(rep(0, n_total), vnames)
+  scale_vec <- stats::setNames(rep(1, n_total), vnames)
   # Developer note: Non-positive values within groups are handled via zero = TRUE"),
   # this is unrelated to the user's zero_var flag.
-  zero_vec    <- c(rep(TRUE,      k), rep(FALSE, n_total - k))
-  spike_vec   <- c(rep(spike_var, k), rep(FALSE, n_total - k))
-  acd_vec      <- setNames(rep(FALSE, n_total), vnames)
-  catzero_vec  <- setNames(rep(FALSE, n_total), vnames)
+  zero_vec <- stats::setNames(
+    c(rep(TRUE, k), rep(FALSE, n_total - k)),
+    vnames
+  )
+  spike_vec <- stats::setNames(
+    c(rep(spike_var, k), rep(FALSE, n_total - k)),
+    vnames
+  )
+  acd_vec     <- stats::setNames(rep(FALSE, n_total), vnames)
+  catzero_vec <- stats::setNames(rep(FALSE, n_total), vnames)
   # force_max_fp: named logical vector, TRUE for the k per-group cont_var
   # columns, FALSE for group dummies and adjustment variables (df = 1,
   # nothing to force). Same rationale as flex1.
@@ -1031,8 +1063,8 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     y             = y,
     df            = df_vec,
     criterion     = criterion,
-    select        = rep(1, n_total),
-    alpha         = rep(1, n_total),
+    select        = select_vec,
+    alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
     method        = ties,
@@ -1040,8 +1072,8 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     family_string = family_string,
     fitter        = fitter,
     powers        = pw_list,
-    shift         = rep(0, n_total),   # x already shifted upstream
-    scale         = rep(1, n_total),   # intentionally 1: power selection only;
+    shift         = shift_vec,         # x already shifted upstream
+    scale         = scale_vec,         # intentionally 1: power selection only;
     ftest         = use_ftest,         # coefficients not used from this call.
     acdx          = acd_vec,
     center        = center_vec,

@@ -32,8 +32,9 @@
 #'   decide whether the current term `xi` is retained during MFP backfitting.
 #'   For a grouped categorical term, this value applies to the joint test of
 #'   its complete design-matrix block. A value of 1 forces the term to remain.
-#' @param alpha a numeric value indicating the significance level
-#' for tests between FP models of different degrees for `xi`.
+#' @param alpha Numeric significance level for tests between FP models of
+#'   different degrees for `xi` and, for an eligible spike-at-zero term, for
+#'   the Stage-2 component-removal tests.
 #' @param keep a character vector with names of variables to be kept
 #' in the model.
 #' @param powers a named list of numeric values that sets the permitted FP
@@ -318,7 +319,7 @@ find_best_fp_step <- function(x,
     has_offset = has_offset,
     n_obs = n_obs,
     criterion = criterion,
-    select = select,
+    alpha = alpha,
     ftest = ftest,
     spike_decision = spike_decision,
     verbose = verbose

@@ -184,10 +184,12 @@
 #' an all-positive predictor are also reset because there is no nonpositive
 #' component to represent.
 #'
-#' SAZ selection has two stages. Stage 1 selects the positive-component
-#' functional form while retaining the binary component. Stage 2 selects among
-#' the three retained representations. A requested SAZ variable is eligible only
-#' when both the nonpositive and positive components contain at least
+#' SAZ selection has two stages. Stage 1 uses `select` for overall term
+#' inclusion and `alpha` for positive-component functional-form comparisons
+#' while retaining the binary component. Stage 2 selects among the three
+#' retained representations; under `criterion = "pvalue"`, both Stage-2
+#' component-removal tests are evaluated at `alpha`. A requested SAZ variable is
+#' eligible only when both the nonpositive and positive components contain at least
 #' `min_saz_component_prop` of the observations and the variable is not binary.
 #' With the default value `0.10`, each component must contain at least 10 percent
 #' of observations. If eligibility fails, the spike request is reset; explicit
@@ -343,10 +345,11 @@
 #'   fails. Cox models are unaffected. Negative binomial models are available
 #'   only with `fitter = "fastglm"` and have no base fallback.
 #' @param criterion Selection criterion. One of `"pvalue"` (default), `"aic"`,
-#'   or `"bic"`. With `"pvalue"`, variable inclusion and functional-form
-#'   complexity are controlled by `select` and `alpha` through nested closed
-#'   tests. With `"aic"` or `"bic"`, candidate models are compared directly by
-#'   their information-criterion value and `select`/`alpha` are ignored.
+#'   or `"bic"`. With `"pvalue"`, variable inclusion is controlled by `select`,
+#'   while functional-form comparisons and SAZ Stage-2 component-removal tests
+#'   are controlled by `alpha`. With `"aic"` or `"bic"`, candidate models are
+#'   compared directly by their information-criterion value and `select`/`alpha`
+#'   are ignored.
 #' @param select Nominal significance level for variable selection. Default
 #'  `0.05`. In `mfp2.default()`, an unnamed scalar is applied to all
 #'   predictors. A named numeric vector may override one or more columns of
@@ -356,10 +359,15 @@
 #'   default is accepted; override it for individual terms with
 #'   `fp(x, select = value)`. Setting `select = 1`
 #'   for a predictor forces it into the model (equivalent to naming it in
-#'   `keep`). Ignored when `criterion` is `"aic"` or `"bic"`.
+#'   `keep`). For spike-at-zero terms, `select` controls only Stage-1 inclusion;
+#'   Stage-2 component-removal tests use `alpha`. Ignored when `criterion` is
+#'   `"aic"` or `"bic"`.
 #' @param alpha Significance level for closed tests between FP functions of
-#'   different degrees (e.g. FP2 versus FP1 versus linear). Default `0.05`.
-#'   In `mfp2.default()`, an unnamed scalar is applied to all predictors.
+#'   different degrees (e.g. FP2 versus FP1 versus linear). When
+#'   `criterion = "pvalue"`, `alpha` is also used for the Stage-2
+#'   component-removal tests of spike-at-zero terms. Default `0.05`.
+#'    In `mfp2.default()`, an unnamed
+#'   scalar is applied to all predictors.
 #'   A named numeric vector may override one or more columns of `x`; values are
 #'   matched by `colnames(x)`, order does not matter, and omitted columns use
 #'   the default `alpha = 0.05`. Unnamed multi-value vectors are not accepted.
@@ -370,9 +378,12 @@
 #' model regardless of the selection criterion. Under `criterion = "pvalue"`,
 #' this is equivalent to setting `select = 1` for each named variable. The
 #' functional form of kept variables may still be simplified by the
-#' `alpha`-level closed test or information criterion. Names must match
-#' formula term names or, for matrix fits, column names or `term_groups`
-#' names.
+#' `alpha`-level closed test or information criterion. For a kept spike-at-zero
+#' term under `criterion = "pvalue"`, Stage 2 still uses `alpha`, so either SAZ
+#' component may be removed while the term itself remains forced into the model.
+#' Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
+#' Names must match formula term names or, for matrix fits, column names or
+#' `term_groups` names.
 #' @param xorder Order in which predictors enter the backfitting algorithm.
 #' One of `"ascending"` (default), `"descending"`, or `"original"`.
 #' `"ascending"` processes predictors from smallest to largest p-value in an
@@ -4435,8 +4446,9 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   Must be `1` (linear) or a positive even integer. Default `4` (FP2).
 #'   See [mfp2()] for the cardinality-based reduction rules.
 #' @param alpha Significance level for the closed test between FP functions of
-#'   different degrees. Default `0.05`. Overrides the global `alpha` from
-#'   [mfp2()] for this variable.
+#'   different degrees and, when `spike = TRUE` with p-value selection, for
+#'   both Stage-2 SAZ component-removal tests. Default `0.05`. Overrides the
+#'   global `alpha` from [mfp2()] for this variable.
 #' @param select Significance level for backward-elimination variable
 #'   selection. Default `0.05`. Set to `1` to force this variable into the
 #'   model. Overrides the global `select` from [mfp2()].

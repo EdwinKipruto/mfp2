@@ -28,14 +28,14 @@ mfpi_group_row_cache <- function(group_idx,
     seq_along(group_idx),
     factor(group_idx, levels = seq_len(n_groups))
   ))
-  
+
   valid_by_group <- lapply(
     rows_by_group,
     function(rows) {
       rows[valid_rows[rows]]
     }
   )
-  
+
   zero_by_group <- if (isTRUE(zero)) {
     lapply(
       rows_by_group,
@@ -46,7 +46,7 @@ mfpi_group_row_cache <- function(group_idx,
   } else {
     vector("list", n_groups)
   }
-  
+
   list(
     rows_by_group  = rows_by_group,
     valid_by_group = valid_by_group,
@@ -347,59 +347,59 @@ create_z_variables <- function(cont_var,
                                center_type = c("grand", "group"),
                                return_eval = FALSE,
                                scale_var = 1) {
-  
+
   center_type <- match.arg(center_type)
-  
+
   # Input validation -----------------------------------------------------------
-  
+
   if (!is.matrix(cont_var) || ncol(cont_var) != 1L || !is.numeric(cont_var)) {
     stop("cont_var must be a one-column numeric matrix.", call. = FALSE)
   }
-  
+
   xname <- colnames(cont_var)
-  
+
   if (is.null(xname) || length(xname) != 1L) {
     stop("cont_var must have exactly one column name.", call. = FALSE)
   }
-  
+
   if (!is.matrix(group_var) || ncol(group_var) != 1L || !is.numeric(group_var)) {
     stop("group_var must be a one-column numeric matrix.", call. = FALSE)
   }
-  
+
   if (nrow(cont_var) != nrow(group_var)) {
     stop("cont_var and group_var must have the same number of rows.",
          call. = FALSE)
   }
-  
+
   if (!all(is.finite(cont_var))) {
     stop("cont_var must not contain NA, NaN, or infinite values.", call. = FALSE)
   }
-  
+
   if (!all(is.finite(group_var))) {
     stop("group_var must not contain NA, NaN, or infinite values.", call. = FALSE)
   }
-  
+
   if (!is.numeric(power) || length(power) == 0L || anyNA(power)) {
     stop("power must be a non-empty numeric vector with no missing values.",
          call. = FALSE)
   }
-  
+
   group_vec    <- as.vector(group_var)
   group_levels <- sort(unique(group_vec))
   group_idx    <- match(group_vec, group_levels)
   n_groups     <- length(group_levels)
-  
+
   if (n_groups < 2L) {
     stop("group_var must have at least two distinct values.", call. = FALSE)
   }
-  
+
   n <- nrow(cont_var)
-  
+
   if (diff(range(as.vector(cont_var))) == 0) {
     warning("cont_var has zero variance; all values are identical.",
             call. = FALSE)
   }
-  
+
   # Backscale cont_var to match mfp2 convention --------------------------------
   # x was divided by scale_var upstream in mfpi.default for numerical stability
   # during power selection. Multiplying by scale_var here restores the
@@ -418,16 +418,16 @@ create_z_variables <- function(cont_var,
   if (!is.null(scale_var) && any(scale_var != 1)) {
     cont_var <- cont_var * scale_var
   }
-  
+
   # Structural-zero rows from the original continuous variable.
   zero_rows  <- if (zero) as.vector(cont_var) <= 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
-  
+
   if (!any(valid_rows)) {
     stop("No valid rows are available for FP transformation/centering.",
          call. = FALSE)
   }
-  
+
   # Precompute group-specific row indices once. These are reused when filling
   # the block-sparse interaction design and when resetting structural-zero rows.
   row_cache <- mfpi_group_row_cache(
@@ -437,11 +437,11 @@ create_z_variables <- function(cont_var,
     valid_rows = valid_rows,
     zero       = zero
   )
-  
+
   rows_by_group  <- row_cache$rows_by_group
   valid_by_group <- row_cache$valid_by_group
   zero_by_group  <- row_cache$zero_by_group
-  
+
   # Transform full continuous variable first ----------------------------------
   # This avoids applying FP transformations to artificial out-of-group zeros.
   x_fp <- transform_vector_fp(
@@ -453,10 +453,10 @@ create_z_variables <- function(cont_var,
     check_binary = TRUE,
     name         = xname
   )
-  
+
   x_fp <- as.matrix(x_fp)
   storage.mode(x_fp) <- "double"
-  
+
   if (any(!is.finite(x_fp[valid_rows, , drop = FALSE]))) {
     stop(
       "FP transformation produced non-finite values among valid rows. ",
@@ -464,44 +464,44 @@ create_z_variables <- function(cont_var,
       call. = FALSE
     )
   }
-  
+
   n_terms <- ncol(x_fp)
-  
+
   z_names <- paste0(
     xname,
     rep(as.character(group_levels), each = n_terms),
     rep(seq_len(n_terms), times = n_groups)
   )
-  
+
   column_groups <- stats::setNames(
     lapply(seq_len(n_groups), function(g) {
       z_names[seq.int((g - 1L) * n_terms + 1L, g * n_terms)]
     }),
     as.character(group_levels)
   )
-  
+
   z <- matrix(0, nrow = n, ncol = n_groups * n_terms)
   colnames(z) <- z_names
-  
+
   center_vals_work <- numeric(n_groups * n_terms)
   names(center_vals_work) <- z_names
-  
+
   if (center && center_type == "grand") {
     grand_means <- colMeans(x_fp[valid_rows, , drop = FALSE], na.rm = TRUE)
-    
+
     if (any(!is.finite(grand_means))) {
       stop("Could not compute finite grand centering constants.",
            call. = FALSE)
     }
   }
-  
+
   # Fill group-specific fitting design matrix ---------------------------------
   # The fitting design is block-sparse: each group owns one FP block, while rows
   # from other groups remain structural zeros. We still assign group blocks one
   # at a time, but precomputed row indices avoid rebuilding logical masks inside
   # the loop.
   x_fp_shared_centered <- NULL
-  
+
   if (!center) {
     # No centering: every group receives the same uncentered FP basis.
     x_fp_shared_centered <- x_fp
@@ -515,17 +515,17 @@ create_z_variables <- function(cont_var,
       check.margin = FALSE
     )
   }
-  
+
   for (g in seq_len(n_groups)) {
     rows_g_all <- rows_by_group[[g]]
     cols_g     <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
-    
+
     if (center) {
       if (center_type == "grand") {
         centers_g <- grand_means
       } else {
         rows_g_valid <- valid_by_group[[g]]
-        
+
         if (length(rows_g_valid) == 0L) {
           stop(
             paste0(
@@ -535,9 +535,9 @@ create_z_variables <- function(cont_var,
             call. = FALSE
           )
         }
-        
+
         centers_g <- colMeans(x_fp[rows_g_valid, , drop = FALSE], na.rm = TRUE)
-        
+
         if (any(!is.finite(centers_g))) {
           stop(
             paste0(
@@ -551,9 +551,9 @@ create_z_variables <- function(cont_var,
     } else {
       centers_g <- rep(0, n_terms)
     }
-    
+
     center_vals_work[cols_g] <- centers_g
-    
+
     # z_g(x_i) = [B_g(x_i) - center_g] * I(group_i == g).
     # Out-of-group rows remain zero because `z` was initialized as zero.
     if (!center || center_type == "grand") {
@@ -567,20 +567,20 @@ create_z_variables <- function(cont_var,
         check.margin = FALSE
       )
     }
-    
+
     # Restore structural-zero rows after centering. This prevents zero rows
     # from becoming `-center_g` in the active group block.
     if (zero && length(zero_by_group[[g]]) > 0L) {
       z[zero_by_group[[g]], cols_g] <- 0
     }
   }
-  
+
   # Pooled transformed variable for possible main-effect FP terms --------------
   xtransformed <- x_fp
-  
+
   if (center) {
     pooled_centers <- colMeans(x_fp[valid_rows, , drop = FALSE], na.rm = TRUE)
-    
+
     xtransformed <- sweep(
       x_fp,
       2L,
@@ -588,27 +588,27 @@ create_z_variables <- function(cont_var,
       "-",
       check.margin = FALSE
     )
-    
+
     if (zero && any(zero_rows)) {
       xtransformed[zero_rows, ] <- 0
     }
   }
-  
+
   # Optional evaluation matrix -------------------------------------------------
   # Unlike `z`, this evaluates every group-specific function at every observed
   # x value. It does not contain out-of-group structural zeros.
   x_eval <- NULL
-  
+
   if (return_eval) {
     x_eval <- matrix(0, nrow = n, ncol = n_groups * n_terms)
     colnames(x_eval) <- z_names
-    
+
     if (!center || center_type == "grand") {
       # With no centering, every group subtracts zero. With grand centering,
       # every group subtracts the same constants. Therefore all group blocks are
       # identical and can be constructed once, then repeated.
       base_cols <- seq_len(n_terms)
-      
+
       x_eval_base <- sweep(
         x_fp,
         2L,
@@ -616,7 +616,7 @@ create_z_variables <- function(cont_var,
         "-",
         check.margin = FALSE
       )
-      
+
       x_eval[, ] <- x_eval_base[, rep(seq_len(n_terms), times = n_groups),
                                 drop = FALSE]
     } else {
@@ -624,7 +624,7 @@ create_z_variables <- function(cont_var,
       # must still be centered separately.
       for (g in seq_len(n_groups)) {
         cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
-        
+
         x_eval[, cols_g] <- sweep(
           x_fp,
           2L,
@@ -634,53 +634,53 @@ create_z_variables <- function(cont_var,
         )
       }
     }
-    
+
     # Structural-zero rows are zero in every evaluated group-specific function.
     # Reset once across all columns instead of once per group block.
     if (zero && any(zero_rows)) {
       x_eval[zero_rows, ] <- 0
     }
   }
-  
+
   # Restore structural-zero rows explicitly, then fail on any remaining
   # non-finite values. Non-finite values outside structural-zero rows indicate an
   # internal transformation or centering problem and must not be silently repaired.
   if (zero && any(zero_rows)) {
     xtransformed[zero_rows, ] <- 0
-    
+
     if (!is.null(x_eval)) {
       x_eval[zero_rows, ] <- 0
     }
   }
-  
+
   if (any(!is.finite(z))) {
     stop(
       "Non-finite values remain in the group-specific interaction design.",
       call. = FALSE
     )
   }
-  
+
   if (any(!is.finite(xtransformed))) {
     stop(
       "Non-finite values remain in the pooled transformed continuous variable.",
       call. = FALSE
     )
   }
-  
+
   if (!is.null(x_eval) && any(!is.finite(x_eval))) {
     stop(
       "Non-finite values remain in the fitted-function evaluation matrix.",
       call. = FALSE
     )
   }
-  
+
   center_vals <- if (center) center_vals_work else NULL
-  
+
   group_fp_powers <- stats::setNames(
     rep(list(power), n_groups),
     as.character(group_levels)
   )
-  
+
   attr(z, "fp_centers")      <- center_vals
   attr(z, "center")          <- center
   attr(z, "center_type")     <- if (center) center_type else "none"
@@ -688,7 +688,7 @@ create_z_variables <- function(cont_var,
   attr(z, "group_fp_powers") <- group_fp_powers
   attr(z, "power")           <- power
   attr(z, "column_groups") <- column_groups
-  
+
   if (!is.null(x_eval)) {
     attr(x_eval, "fp_centers")      <- center_vals
     attr(x_eval, "center")          <- center
@@ -698,7 +698,7 @@ create_z_variables <- function(cont_var,
     attr(x_eval, "power")           <- power
     attr(x_eval, "column_groups")   <- column_groups
   }
-  
+
   out <- list(
     z              = z,
     xtransformed   = xtransformed,
@@ -707,7 +707,7 @@ create_z_variables <- function(cont_var,
     x_fp           = x_fp,
     column_groups  = column_groups
   )
-  
+
   return(out)
 }# -----------------------------------------------------------------------------
 # transform_z_variables() ------------------------------------------------------
@@ -1015,55 +1015,55 @@ transform_z_variables <- function(cont_var,
                                   zero = FALSE,
                                   return_eval = FALSE,
                                   scale_var = 1) {
-  
+
   center_type <- match.arg(center_type)
-  
+
   # Input validation -----------------------------------------------------------
-  
+
   if (!is.matrix(cont_var) || ncol(cont_var) != 1L || !is.numeric(cont_var)) {
     stop("cont_var must be a one-column numeric matrix.", call. = FALSE)
   }
-  
+
   xname <- colnames(cont_var)
-  
+
   if (is.null(xname) || length(xname) != 1L) {
     stop("cont_var must have exactly one column name.", call. = FALSE)
   }
-  
+
   if (!is.matrix(group_var) || ncol(group_var) != 1L || !is.numeric(group_var)) {
     stop("group_var must be a one-column numeric matrix.", call. = FALSE)
   }
-  
+
   if (nrow(cont_var) != nrow(group_var)) {
     stop("cont_var and group_var must have the same number of rows.",
          call. = FALSE)
   }
-  
+
   if (!all(is.finite(cont_var))) {
     stop("cont_var must not contain NA, NaN, or infinite values.",
          call. = FALSE)
   }
-  
+
   if (!all(is.finite(group_var))) {
     stop("group_var must not contain NA, NaN, or infinite values.", call. = FALSE)
   }
-  
+
   group_vec    <- as.vector(group_var)
   group_levels <- sort(unique(group_vec))
   group_idx    <- match(group_vec, group_levels)
   n_groups     <- length(group_levels)
-  
+
   if (n_groups < 2L) {
     stop("group_var must have at least two distinct values.", call. = FALSE)
   }
-  
+
   if (isTRUE(any(acdx))) {
     stop(
       "acdx = TRUE is not supported in this structural-zero-safe implementation.",
       call. = FALSE
     )
   }
-  
+
   # Backscale cont_var to match mfp2 convention --------------------------------
   # x was divided by scale_var upstream in mfpi.default for numerical stability
   # during power selection. Multiplying by scale_var here restores the
@@ -1082,11 +1082,11 @@ transform_z_variables <- function(cont_var,
   if (!is.null(scale_var) && any(scale_var != 1)) {
     cont_var <- cont_var * scale_var
   }
-  
+
   if (is.null(fp_cand)) {
     fp_cand <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
   }
-  
+
   if (!is.numeric(fp_cand) || length(fp_cand) == 0L ||
       anyNA(fp_cand) || any(!is.finite(fp_cand))) {
     stop(
@@ -1094,23 +1094,23 @@ transform_z_variables <- function(cont_var,
       call. = FALSE
     )
   }
-  
+
   fp_degree <- as.integer(fp_degree)
-  
+
   if (length(fp_degree) != 1L || fp_degree < 1L) {
     stop("fp_degree must be a positive integer.", call. = FALSE)
   }
-  
+
   n <- nrow(cont_var)
-  
+
   zero_rows  <- if (zero) as.vector(cont_var) <= 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
-  
+
   if (!any(valid_rows)) {
     stop("No valid rows are available for FP transformation/centering.",
          call. = FALSE)
   }
-  
+
   # Precompute group-specific row indices once for all FP candidate
   # combinations. This is more valuable here than in create_z_variables(),
   # because the candidate loop below reuses these indices for every power set.
@@ -1121,33 +1121,81 @@ transform_z_variables <- function(cont_var,
     valid_rows = valid_rows,
     zero       = zero
   )
-  
+
   rows_by_group  <- row_cache$rows_by_group
   valid_by_group <- row_cache$valid_by_group
   zero_by_group  <- row_cache$zero_by_group
-  
+
   # Candidate powers -----------------------------------------------------------
   powers_matrix <- generate_powers_fp(
     degree = fp_degree,
     powers = fp_cand
   )
-  
+
   powers_matrix <- as.matrix(powers_matrix)
   storage.mode(powers_matrix) <- "double"
-  
+
   n_combinations <- nrow(powers_matrix)
-  
+
+  # Resolve the FP preprocessing once, then generate every candidate basis in
+  # one R-to-C++ call. This preserves transform_vector_fp() semantics while
+  # avoiding one wrapper/core call per candidate power combination.
+  #
+  # Binary variables are passed through unchanged, matching
+  # transform_vector_fp(..., check_binary = TRUE). For non-binary variables,
+  # shift and scale are applied once here because the batch C++ helper expects
+  # an already shifted/scaled input and therefore uses shift = 0, scale = 1.
+  cont_var_vec <- as.numeric(cont_var)
+
+  binary_cont_var <- !isTRUE(zero) && length(unique(cont_var_vec)) <= 2L
+
+  if (binary_cont_var) {
+    cont_var_batch <- cont_var_vec
+  } else {
+    shift_batch <- if (is.null(shift)) {
+      find_shift_factor(cont_var_vec)
+    } else {
+      shift
+    }
+
+    scale_batch <- if (is.null(scale)) {
+      find_scale_factor(cont_var_vec)
+    } else {
+      scale
+    }
+
+    if (isTRUE(zero)) {
+      shift_batch <- 0
+    }
+
+    cont_var_batch <- (cont_var_vec + shift_batch) / scale_batch
+  }
+
+  fp_transformations <- generate_transformations_fp_cpp(
+    x       = cont_var_batch,
+    powers  = powers_matrix,
+    zero    = isTRUE(zero),
+    catzero = NULL
+  )
+
+  if (length(fp_transformations) != n_combinations) {
+    stop(
+      "Internal error: FP candidate count does not match the power matrix.",
+      call. = FALSE
+    )
+  }
+
   z_transformed      <- vector("list", n_combinations)
   center_vals_list   <- if (center) vector("list", n_combinations) else NULL
   x_eval_transformed <- if (return_eval) vector("list", n_combinations) else NULL
   column_groups_list  <- vector("list", n_combinations)
-  
+
   power_names <- apply(
     powers_matrix,
     1L,
     function(p) paste(p, collapse = ",")
   )
-  
+
   # Build untransformed linear design for compatibility -----------------------
   z_untransformed <- create_z_variables(
     cont_var    = cont_var,
@@ -1160,29 +1208,22 @@ transform_z_variables <- function(cont_var,
     center_type = center_type,
     return_eval = FALSE
   )$z
-  
+
   znames <- colnames(z_untransformed)
-  
+
   # Enumerate FP transformations ----------------------------------------------
   for (i in seq_len(n_combinations)) {
-    
+
     power_i <- as.numeric(powers_matrix[i, ])
-    
-    # Transform full continuous variable first.
-    # Do not transform zero-padded group variables.
-    x_fp <- transform_vector_fp(
-      x            = cont_var,
-      power        = power_i,
-      shift        = shift,
-      scale        = scale,
-      zero         = zero,
-      check_binary = TRUE,
-      name         = xname
-    )
-    
+
+    # Transform the full continuous variable first. Candidate FP bases were
+    # generated together above; zero-padded group variables are never
+    # transformed.
+    x_fp <- fp_transformations[[i]]
+
     x_fp <- as.matrix(x_fp)
     storage.mode(x_fp) <- "double"
-    
+
     if (any(!is.finite(x_fp[valid_rows, , drop = FALSE]))) {
       stop(
         "FP transformation produced non-finite values among valid rows. ",
@@ -1190,15 +1231,15 @@ transform_z_variables <- function(cont_var,
         call. = FALSE
       )
     }
-    
+
     n_terms <- ncol(x_fp)
-    
+
     z_names <- paste0(
       xname,
       rep(as.character(group_levels), each = n_terms),
       rep(seq_len(n_terms), times = n_groups)
     )
-    
+
     column_groups <- stats::setNames(
       lapply(seq_len(n_groups), function(g) {
         cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
@@ -1206,27 +1247,27 @@ transform_z_variables <- function(cont_var,
       }),
       as.character(group_levels)
     )
-    
+
     z <- matrix(0, nrow = n, ncol = n_groups * n_terms)
     colnames(z) <- z_names
-    
+
     center_vals_work <- numeric(n_groups * n_terms)
     names(center_vals_work) <- z_names
-    
+
     if (center && center_type == "grand") {
       grand_means <- colMeans(x_fp[valid_rows, , drop = FALSE], na.rm = TRUE)
-      
+
       if (any(!is.finite(grand_means))) {
         stop("Could not compute finite grand centering constants.",
              call. = FALSE)
       }
     }
-    
+
     # The fitting design is block-sparse: each group owns one FP block,
     # while rows from other groups remain structural zeros. Precomputed row
     # indices avoid repeated logical-mask construction for every power set.
     x_fp_shared_centered <- NULL
-    
+
     if (!center) {
       x_fp_shared_centered <- x_fp
     } else if (center_type == "grand") {
@@ -1238,17 +1279,17 @@ transform_z_variables <- function(cont_var,
         check.margin = FALSE
       )
     }
-    
+
     for (g in seq_len(n_groups)) {
       rows_g_all <- rows_by_group[[g]]
       cols_g     <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
-      
+
       if (center) {
         if (center_type == "grand") {
           centers_g <- grand_means
         } else {
           rows_g_valid <- valid_by_group[[g]]
-          
+
           if (length(rows_g_valid) == 0L) {
             stop(
               paste0(
@@ -1258,9 +1299,9 @@ transform_z_variables <- function(cont_var,
               call. = FALSE
             )
           }
-          
+
           centers_g <- colMeans(x_fp[rows_g_valid, , drop = FALSE], na.rm = TRUE)
-          
+
           if (any(!is.finite(centers_g))) {
             stop(
               paste0(
@@ -1274,9 +1315,9 @@ transform_z_variables <- function(cont_var,
       } else {
         centers_g <- rep(0, n_terms)
       }
-      
+
       center_vals_work[cols_g] <- centers_g
-      
+
       if (!center || center_type == "grand") {
         z[rows_g_all, cols_g] <- x_fp_shared_centered[rows_g_all, , drop = FALSE]
       } else {
@@ -1288,24 +1329,24 @@ transform_z_variables <- function(cont_var,
           check.margin = FALSE
         )
       }
-      
+
       if (zero && length(zero_by_group[[g]]) > 0L) {
         z[zero_by_group[[g]], cols_g] <- 0
       }
     }
-    
+
     # Optional evaluation matrix ----------------------------------------------
     x_eval <- NULL
-    
+
     if (return_eval) {
       x_eval <- matrix(0, nrow = n, ncol = n_groups * n_terms)
       colnames(x_eval) <- z_names
-      
+
       if (!center || center_type == "grand") {
         # All group blocks share the same evaluated FP basis, so compute once
         # and repeat across the group-specific column blocks.
         base_cols <- seq_len(n_terms)
-        
+
         x_eval_base <- sweep(
           x_fp,
           2L,
@@ -1313,14 +1354,14 @@ transform_z_variables <- function(cont_var,
           "-",
           check.margin = FALSE
         )
-        
+
         x_eval[, ] <- x_eval_base[, rep(seq_len(n_terms), times = n_groups),
                                   drop = FALSE]
       } else {
         # Within-group centering gives different centers per group.
         for (g in seq_len(n_groups)) {
           cols_g <- seq.int((g - 1L) * n_terms + 1L, g * n_terms)
-          
+
           x_eval[, cols_g] <- sweep(
             x_fp,
             2L,
@@ -1330,44 +1371,44 @@ transform_z_variables <- function(cont_var,
           )
         }
       }
-      
+
       if (zero && any(zero_rows)) {
         x_eval[zero_rows, ] <- 0
       }
     }
-    
+
     # Restore structural-zero rows explicitly. Active structural-zero rows
     # were already reset inside the group-fill loop; this full-matrix reset is a
     # cheap defensive pass that keeps the invariant obvious.
     if (zero && any(zero_rows)) {
       z[zero_rows, ] <- 0
-      
+
       if (!is.null(x_eval)) {
         x_eval[zero_rows, ] <- 0
       }
     }
-    
+
     if (any(!is.finite(z))) {
       stop(
         "Non-finite values remain in the group-specific interaction design.",
         call. = FALSE
       )
     }
-    
+
     if (!is.null(x_eval) && any(!is.finite(x_eval))) {
       stop(
         "Non-finite values remain in the fitted-function evaluation matrix.",
         call. = FALSE
       )
     }
-    
+
     center_vals <- if (center) center_vals_work else NULL
-    
+
     group_fp_powers <- stats::setNames(
       rep(list(power_i), n_groups),
       as.character(group_levels)
     )
-    
+
     attr(z, "fp_centers")      <- center_vals
     attr(z, "center")          <- center
     attr(z, "center_type")     <- if (center) center_type else "none"
@@ -1375,7 +1416,7 @@ transform_z_variables <- function(cont_var,
     attr(z, "group_fp_powers") <- group_fp_powers
     attr(z, "power")           <- power_i
     attr(z, "column_groups") <- column_groups
-    
+
     if (!is.null(x_eval)) {
       attr(x_eval, "fp_centers")      <- center_vals
       attr(x_eval, "center")          <- center
@@ -1385,29 +1426,29 @@ transform_z_variables <- function(cont_var,
       attr(x_eval, "power")           <- power_i
       attr(x_eval, "column_groups") <- column_groups
     }
-    
+
     z_transformed[[i]] <- z
     column_groups_list[[i]] <- column_groups
-    
+
     if (center) {
       center_vals_list[[i]] <- center_vals
     }
-    
+
     if (return_eval) {
       x_eval_transformed[[i]] <- x_eval
     }
   }
-  
+
   names(z_transformed) <- power_names
   names(column_groups_list) <- power_names
   if (center) {
     names(center_vals_list) <- power_names
   }
-  
+
   if (return_eval) {
     names(x_eval_transformed) <- power_names
   }
-  
+
   out <- list(
     z_transformed      = z_transformed,
     z_untransformed    = z_untransformed,
@@ -1417,7 +1458,7 @@ transform_z_variables <- function(cont_var,
     center_vals_list   = center_vals_list,
     column_groups_list = column_groups_list
   )
-  
+
   return(out)
 }
 
@@ -1466,7 +1507,7 @@ transform_z_variables <- function(cont_var,
 #'   \eqn{K} is the number of unique levels (from `x` or from `levels`). Column
 #'   names follow the pattern `<varname><level>`, e.g. `"trt2"`, `"trt3"` when
 #'   the input column is named `"trt"` and the non-reference levels are 2 and 3.
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' x <- matrix(c(3, 1, 2, 1, 3, 2), ncol = 1)
@@ -1481,18 +1522,18 @@ transform_z_variables <- function(cont_var,
 #' @keywords internal
 #' @noRd
 create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
-  
+
   if (!is.matrix(x))         stop("`x` must be a matrix.",                  call. = FALSE)
   if (ncol(x) != 1L)         stop("`x` must have exactly one column.",      call. = FALSE)
   if (!is.numeric(x))        stop("`x` must be numeric.",                   call. = FALSE)
   if (is.null(colnames(x)))  stop("`x` must have a column name.",           call. = FALSE)
   if (nrow(x) == 0L)         stop("`x` must not be empty.",                 call. = FALSE)
-  
+
   xname <- colnames(x)[1L]
   xvec  <- drop(x)
-  
+
   observed_levels <- sort(unique(xvec))
-  
+
   if (is.null(levels)) {
     all_levels <- observed_levels
   } else {
@@ -1500,12 +1541,12 @@ create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
       stop("`levels` must be a finite numeric vector with no missing values.",
            call. = FALSE)
     }
-    
+
     all_levels <- sort(unique(levels))
-    
+
     extra_in_data   <- setdiff(observed_levels, all_levels)
     missing_in_data <- setdiff(all_levels, observed_levels)
-    
+
     if (length(extra_in_data) > 0L) {
       stop(
         paste0(
@@ -1516,7 +1557,7 @@ create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
         call. = FALSE
       )
     }
-    
+
     if (length(missing_in_data) > 0L && !isTRUE(quiet)) {
       message(
         paste0(
@@ -1527,12 +1568,12 @@ create_group_dummies <- function(x, levels = NULL, quiet = FALSE) {
       )
     }
   }
-  
+
   if (length(all_levels) < 2L) {
     stop("At least two distinct levels are required to create dummy variables.",
          call. = FALSE)
   }
-  
+
   f   <- factor(xvec, levels = all_levels)
   mat <- model.matrix(~ f)[, -1L, drop = FALSE]
   colnames(mat) <- paste0(xname, all_levels[-1L])
@@ -1621,7 +1662,7 @@ var_group <- function(var_prefix,
       call. = FALSE
     )
   }
-  
+
   if (!is.character(var_names) || length(var_names) == 0L ||
       anyNA(var_names)) {
     stop(
@@ -1629,7 +1670,7 @@ var_group <- function(var_prefix,
       call. = FALSE
     )
   }
-  
+
   if (missing(group_codes) || length(group_codes) == 0L ||
       anyNA(group_codes) || !is.atomic(group_codes)) {
     stop(
@@ -1637,7 +1678,7 @@ var_group <- function(var_prefix,
       call. = FALSE
     )
   }
-  
+
   if (length(power_indices) == 0L || anyNA(power_indices) ||
       !is.atomic(power_indices)) {
     stop(
@@ -1645,10 +1686,10 @@ var_group <- function(var_prefix,
       call. = FALSE
     )
   }
-  
+
   group_codes <- unique(as.character(group_codes))
   power_indices <- unique(as.character(power_indices))
-  
+
   # The naming convention stores the FP power-column index as the final single
   # digit. Restricting `power_indices` to one digit avoids ambiguous names such
   # as paste0("age", "1", "10"), where the boundary between group code and
@@ -1660,7 +1701,7 @@ var_group <- function(var_prefix,
       call. = FALSE
     )
   }
-  
+
   groups <- lapply(group_codes, function(g) {
     # Construct the exact names that are valid for this variable and group.
     # This replaces the old regex-based search:
@@ -1670,11 +1711,11 @@ var_group <- function(var_prefix,
     # Exact matching avoids accidental matches when `var_prefix` contains regex
     # metacharacters such as ".", "+", "(", or ")".
     expected <- paste0(var_prefix, g, power_indices)
-    
+
     # Preserve the existing column order from `var_names`, because downstream
     # model-matrix code may rely on the order in which columns appear.
     var_names[var_names %in% expected]
   })
-  
+
   groups[lengths(groups) > 0L]
 }

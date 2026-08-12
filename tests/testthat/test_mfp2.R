@@ -753,13 +753,21 @@ test_that("linear negative-binomial mfp2 agrees with MASS::glm.nb()", {
 })
 
 # Test purpose: Compares selected variables from equivalent matrix and formula
-# interface fits.
+# interface fits. Centering is made explicit on both interfaces because fp()
+# carries its own center setting (default TRUE) rather than inheriting the
+# top-level formula setting.
 test_that("default and formula interfaces give consistent selected variables", {
-  fit_default <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit_default <- mfp2(
+    x_prostate, y_prostate, center = TRUE, verbose = FALSE
+  )
   fit_formula <- mfp2(
-    lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
-      fp(bph) + fp(cp),
-    data = prostate, verbose = FALSE
+    lpsa ~ fp(age, center = TRUE) + fp(svi, df = 1, center = TRUE) +
+      fp(pgg45, center = TRUE) + fp(cavol, center = TRUE) +
+      fp(weight, center = TRUE) + fp(bph, center = TRUE) +
+      fp(cp, center = TRUE),
+    data = prostate,
+    center = TRUE,
+    verbose = FALSE
   )
 
   sel_default <- sort(get_selected_variable_names(fit_default))
@@ -777,6 +785,38 @@ test_that("fp() applies per-variable df correctly", {
 
   # svi is binary so df should be 1
   expect_equal(as.numeric(fit$fp_terms["svi", "df_initial"]), 1)
+})
+
+# Test purpose: Protects formula centering precedence. An fp() term carries its
+# own center setting and defaults to TRUE, so it overrides a top-level
+# center = FALSE. Ordinary numeric terms continue to use the top-level value.
+test_that("fp() center default overrides the global formula center setting", {
+  n <- 90L
+  i <- seq_len(n)
+  dat <- data.frame(
+    x1 = seq(1, 9, length.out = n),
+    x2 = sin(i / 7) + (i %% 5) / 10
+  )
+  dat$y <- 0.8 + 0.25 * sqrt(dat$x1) - 0.4 * dat$x2 +
+    0.01 * cos(i / 3)
+
+  fit <- mfp2(
+    y ~ fp(x1, df = 2, force_max_fp = TRUE) + x2,
+    data = dat,
+    df = 1,
+    keep = c("x1", "x2"),
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expect_true(isTRUE(fit$transformations["x1", "center"]))
+  expect_false(isTRUE(fit$transformations["x2", "center"]))
 })
 
 # Test purpose: Confirms that fp2() can be used as a formula-interface alias for
@@ -1848,13 +1888,16 @@ test_that("4.2.7 mfp2.default() rejects nonpositive scale values", {
 # - The fitted transformation rows for age and weight both store shift = 2.
 # - The fitted transformation rows for age and weight both store scale = 10.
 # - The formula fit completes without requiring named top-level vectors.
+# - `center = FALSE` is repeated inside each fp() term deliberately: fp() has
+#   its own default `center = TRUE`, so the top-level setting alone would not
+#   disable centering for these FP terms. Centering is not under test here.
 
 test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
   data("prostate", package = "mfp2")
 
   fit <- mfp2(
-    lpsa ~ fp(age, df = 2, force_max_fp = TRUE) +
-      fp(weight, df = 2, force_max_fp = TRUE),
+    lpsa ~ fp(age, df = 2, center = FALSE, force_max_fp = TRUE) +
+      fp(weight, df = 2, center = FALSE, force_max_fp = TRUE),
     data = prostate,
     shift = 2,
     scale = 10,
@@ -1892,6 +1935,8 @@ test_that("4.2.8 mfp2.formula() keeps scalar shift and scale compatible", {
 # - The weight transformation row stores shift = 2 and scale = 100.
 # - Reading rows c("age", "weight") returns shifts c(1, 2) and scales
 #   c(10, 100), with no positional reassignment.
+# - `center = FALSE` is specified inside each fp() term so this test isolates
+#   shift/scale behavior instead of inheriting fp()'s default center = TRUE.
 
 test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
   data("prostate", package = "mfp2")
@@ -1902,12 +1947,14 @@ test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
       df = 2,
       shift = 1,
       scale = 10,
+      center = FALSE,
       force_max_fp = TRUE
     ) + fp(
       weight,
       df = 2,
       shift = 2,
       scale = 100,
+      center = FALSE,
       force_max_fp = TRUE
     ),
     data = prostate,
@@ -1927,6 +1974,229 @@ test_that("4.2.9 mfp2.formula() keeps per-variable fp() settings compatible", {
     unname(fit$transformations[c("age", "weight"), "scale"]),
     c(10, 100)
   )
+})
+
+
+# -----------------------------------------------------------------------------
+# 4.2.10 Direct single-shift path matches the historical two-sweep path
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Exercise the actual Step-16 shift optimization with df > 1. Variables with
+#   df = 1 have their shift forced to zero earlier in mfp2.default(), so they do
+#   not test this code path meaningfully.
+# - Compare the optimized direct-matrix branch with the historical two-sweep
+#   branch on the SAME matrix interface. Attaching the private preprocessing
+#   matrix makes mfp2.default() take the historical two-matrix branch while
+#   keeping the fitting matrix and model specification otherwise identical.
+# - This is a direct numerical regression test of the source refactor, not a
+#   comparison between matrix and formula coefficient parameterizations.
+
+test_that("4.2.10 direct single-shift path matches historical two-sweep path", {
+  n <- 96L
+  index <- seq_len(n)
+  x_direct <- cbind(
+    x1 = seq(-8, 12, length.out = n),
+    x2 = -4 + ((17 * index) %% 31)
+  )
+  x_before <- x_direct
+  y <- 1.2 + 0.28 * x_direct[, "x1"] - 0.17 * x_direct[, "x2"] +
+    0.015 * x_direct[, "x1"]^2 + 0.03 * sin(index / 5)
+
+  fit_optimized <- mfp2(
+    x = x_direct,
+    y = y,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = NULL,
+    scale = NULL,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  # Force the historical Step-16 branch with a separate preprocessing source
+  # containing exactly the same numerical matrix. extract_preprocess_matrix()
+  # removes this private attribute before fitting.
+  x_historical <- x_direct
+  attr(x_historical, "mfp2_preprocess_x") <- x_direct
+
+  fit_historical <- mfp2(
+    x = x_historical,
+    y = y,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = NULL,
+    scale = NULL,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expect_equal(
+    fit_optimized$transformations,
+    fit_historical$transformations,
+    tolerance = 0
+  )
+  expect_equal(
+    unname(coef(fit_optimized)),
+    unname(coef(fit_historical)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(fitted(fit_optimized)),
+    unname(fitted(fit_historical)),
+    tolerance = 1e-12
+  )
+  expect_identical(x_direct, x_before)
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.11 Explicit shift/scale path matches the historical two-sweep path
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Verify that sharing the shifted direct matrix does not alter explicit
+#   preprocessing settings or fitted results.
+# - Use non-collinear predictors and df > 1 so the supplied shift values are
+#   actually active (df = 1 would force shift = 0 before Step 16).
+
+test_that("4.2.11 direct single-shift path preserves explicit settings", {
+  n <- 100L
+  index <- seq_len(n)
+  x_direct <- cbind(
+    x1 = seq(-4, 9, length.out = n),
+    x2 = 2 + ((19 * index) %% 37)
+  )
+  y <- 2 + 0.45 * x_direct[, "x1"] + 0.11 * x_direct[, "x2"] +
+    0.02 * cos(index / 7)
+
+  shift <- c(x1 = 5, x2 = 1)
+  scale <- c(x1 = 10, x2 = 20)
+
+  fit_optimized <- mfp2(
+    x = x_direct,
+    y = y,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = shift,
+    scale = scale,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  x_historical <- x_direct
+  attr(x_historical, "mfp2_preprocess_x") <- x_direct
+
+  fit_historical <- mfp2(
+    x = x_historical,
+    y = y,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = shift,
+    scale = scale,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expect_equal(
+    fit_optimized$transformations,
+    fit_historical$transformations,
+    tolerance = 0
+  )
+  expect_equal(
+    unname(coef(fit_optimized)),
+    unname(coef(fit_historical)),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(fitted(fit_optimized)),
+    unname(fitted(fit_historical)),
+    tolerance = 1e-12
+  )
+})
+
+# -----------------------------------------------------------------------------
+# 4.2.12 Direct subset still uses full-data preprocessing
+# -----------------------------------------------------------------------------
+# Test purpose:
+# - Confirm that the optimized direct branch still estimates shift and scale
+#   before applying subset, exactly as the original source does.
+# - Use a full-rank retained design; the previous fixture made the retained x1
+#   and x2 columns affine functions of each other and therefore correctly
+#   triggered mfp2's rank-deficiency validation before this behavior was tested.
+
+test_that("4.2.12 direct subset preserves full-data shift and scale", {
+  n <- 122L
+  interior_index <- seq_len(n - 2L)
+  x1 <- c(-50, seq(-3, 4, length.out = n - 2L), 80)
+  x2 <- c(-20, 2 + ((17 * interior_index) %% 53), 70)
+  x_direct <- cbind(x1 = x1, x2 = x2)
+  y <- 0.7 + 0.22 * x1 - 0.08 * x2 + 0.02 * sin(seq_len(n) / 6)
+  rows <- 2:(n - 1L)
+
+  fit_optimized <- mfp2(
+    x = x_direct,
+    y = y,
+    subset = rows,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = NULL,
+    scale = NULL,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  # Historical two-sweep reference on the same direct matrix and subset.
+  x_historical <- x_direct
+  attr(x_historical, "mfp2_preprocess_x") <- x_direct
+  fit_historical <- mfp2(
+    x = x_historical,
+    y = y,
+    subset = rows,
+    df = 2,
+    keep = colnames(x_direct),
+    shift = NULL,
+    scale = NULL,
+    center = FALSE,
+    cycles = 2,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expected_shift <- apply(x_direct, 2, find_shift_factor)
+  expected_scale <- vapply(
+    seq_len(ncol(x_direct)),
+    function(j) find_scale_factor(x_direct[, j] + expected_shift[j]),
+    numeric(1L)
+  )
+  names(expected_scale) <- colnames(x_direct)
+
+  stored <- fit_optimized$transformations[
+    colnames(x_direct), c("shift", "scale"), drop = FALSE
+  ]
+
+  expect_equal(unname(stored$shift), unname(expected_shift), tolerance = 0)
+  expect_equal(unname(stored$scale), unname(expected_scale), tolerance = 0)
+  expect_equal(
+    fit_optimized$transformations,
+    fit_historical$transformations,
+    tolerance = 0
+  )
+  expect_equal(
+    unname(fitted(fit_optimized)),
+    unname(fitted(fit_historical)),
+    tolerance = 1e-12
+  )
+
+  retained_shift <- apply(x_direct[rows, , drop = FALSE], 2, find_shift_factor)
+  expect_false(isTRUE(all.equal(unname(expected_shift), unname(retained_shift))))
 })
 
 
@@ -2616,8 +2886,10 @@ test_that("reset_spike() resets all-zero variables", {
 # Test purpose: Checks that resolve_saz_eligibility() treats nonpositive values
 # as the structural-zero component without requiring a recoded matrix.
 test_that("resolve_saz_eligibility() counts negative values as zero component", {
+  # Only the zero-component proportion matters here. Use deterministic
+  # positive values so this validation test is independent of RNG state.
   x <- matrix(
-    c(rep(-2, 20), rgamma(180, shape = 2, rate = 1)),
+    c(rep(-2, 20), seq(0.1, 18, length.out = 180)),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
@@ -2944,15 +3216,18 @@ test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive va
   expect_equal(out[["exposure"]], 4)
 })
 
-# Test purpose: SAZ stage 2 must fit the same Model 2/Model 3 designs while
-# avoiding retention of either temporary assembled design matrix.
-test_that("SAZ reduced models do not retain temporary design matrices", {
+# Test purpose: GLM SAZ stage 2 must assemble the final intercept-inclusive
+# Model 2/Model 3 design once and tell fit_model() not to prepend another
+# intercept. This protects the one-allocation GLM path.
+test_that("SAZ reduced GLMs pass final intercept-inclusive designs", {
   seen <- new.env(parent = emptyenv())
   seen$x <- list()
+  seen$x_has_intercept <- logical()
 
   testthat::local_mocked_bindings(
-    fit_model = function(x, ...) {
+    fit_model = function(x, x_has_intercept = FALSE, ...) {
       seen$x[[length(seen$x) + 1L]] <- x
+      seen$x_has_intercept <- c(seen$x_has_intercept, x_has_intercept)
       list(logl = -1, df = NCOL(x))
     },
     .package = "mfp2"
@@ -2985,12 +3260,148 @@ test_that("SAZ reduced models do not retain temporary design matrices", {
     has_offset = FALSE
   )
 
+  expected_fit2 <- cbind(
+    "(Intercept)" = rep(1, 4),
+    fp1 = data_xi[, "fp1"],
+    adjustment
+  )
+  expected_fit3 <- cbind(
+    "(Intercept)" = rep(1, 4),
+    catzero = data_xi[, "catzero"],
+    adjustment
+  )
+
   expect_length(seen$x, 2L)
-  expect_equal(seen$x[[1L]], cbind(fp1 = data_xi[, "fp1"], adjustment))
-  expect_equal(seen$x[[2L]], cbind(catzero = data_xi[, "catzero"], adjustment))
+  expect_equal(seen$x[[1L]], expected_fit2)
+  expect_equal(seen$x[[2L]], expected_fit3)
+  expect_identical(seen$x_has_intercept, c(TRUE, TRUE))
   expect_false("x" %in% names(out))
   expect_identical(out$data_xi, data_xi)
   expect_identical(out$adjustment_matrix, adjustment)
+})
+
+# Test purpose: Cox SAZ stage 2 must preserve the historical no-intercept
+# design contract. The GLM allocation optimization must never add an ordinary
+# intercept to a matrix sent to the Cox fitter.
+test_that("SAZ reduced Cox models remain intercept-free", {
+  seen <- new.env(parent = emptyenv())
+  seen$x <- list()
+  seen$x_has_intercept <- logical()
+
+  testthat::local_mocked_bindings(
+    fit_model = function(x, x_has_intercept = FALSE, ...) {
+      seen$x[[length(seen$x) + 1L]] <- x
+      seen$x_has_intercept <- c(seen$x_has_intercept, x_has_intercept)
+      list(logl = -1, df = NCOL(x))
+    },
+    .package = "mfp2"
+  )
+
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0),
+    fp1 = c(0, 0, 1.2, 2.4)
+  )
+  adjustment <- cbind(z = c(2, 3, 4, 5))
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = rep(0, 4),
+    weights = NULL,
+    offset = NULL,
+    family = NULL,
+    family_string = "cox",
+    method = "efron",
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  expect_length(seen$x, 2L)
+  expect_equal(seen$x[[1L]], cbind(fp1 = data_xi[, "fp1"], adjustment))
+  expect_equal(seen$x[[2L]], cbind(catzero = data_xi[, "catzero"], adjustment))
+  expect_identical(seen$x_has_intercept, c(FALSE, FALSE))
+  expect_false("(Intercept)" %in% colnames(seen$x[[1L]]))
+  expect_false("(Intercept)" %in% colnames(seen$x[[2L]]))
+})
+
+# Test purpose: The optimized GLM SAZ assembly must be numerically identical
+# to the historical path where fit_glm() prepended the intercept itself.
+test_that("SAZ reduced GLM fits match historical assembly numerically", {
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0, 0, 0, 0, 0),
+    fp1 = c(0, 0, 0.3, 0.8, 1.2, 1.7, 2.1, 2.8)
+  )
+  adjustment <- cbind(z = c(-1.2, -0.4, 0.1, 0.7, 1.1, 1.8, 2.3, 3.0))
+  y <- c(0.4, 0.8, 1.2, 1.7, 2.0, 2.6, 3.0, 3.5)
+  family <- stats::gaussian()
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  out <- fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = y,
+    weights = NULL,
+    offset = NULL,
+    family = family,
+    family_string = "gaussian",
+    method = NULL,
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  old_x2 <- cbind(fp1 = data_xi[, "fp1"], adjustment)
+  old_x3 <- cbind(catzero = data_xi[, "catzero"], adjustment)
+
+  expected2 <- fit_model(
+    x = old_x2,
+    y = y,
+    family = family,
+    family_string = "gaussian",
+    weights = NULL,
+    offset = NULL,
+    method = NULL,
+    strata = NULL,
+    control = NULL,
+    rownames = NULL,
+    nocenter = NULL,
+    has_offset = FALSE
+  )
+  expected3 <- fit_model(
+    x = old_x3,
+    y = y,
+    family = family,
+    family_string = "gaussian",
+    weights = NULL,
+    offset = NULL,
+    method = NULL,
+    strata = NULL,
+    control = NULL,
+    rownames = NULL,
+    nocenter = NULL,
+    has_offset = FALSE
+  )
+
+  expect_equal(out$fit2$coefficients, expected2$coefficients, tolerance = 1e-12)
+  expect_equal(out$fit3$coefficients, expected3$coefficients, tolerance = 1e-12)
+  expect_equal(out$fit2$logl, expected2$logl, tolerance = 1e-12)
+  expect_equal(out$fit3$logl, expected3$logl, tolerance = 1e-12)
+  expect_identical(out$fit2$df, expected2$df)
+  expect_identical(out$fit3$df, expected3$df)
 })
 
 # Test purpose: Ensures public mfp2() applies the SAZ positive-part df cap
@@ -4192,7 +4603,9 @@ test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
 # Test purpose: Checks that prediction errors when newdata violates the positive domain required by a fitted log transform.
 test_that("predict.mfp2() stops on domain violation in newdata", {
   x <- cbind(x1 = seq(1, 100, length.out = 100))
-  y <- log(x[, "x1"]) + rnorm(100, sd = 0.01)
+  # A small deterministic perturbation avoids an exact fit while keeping the
+  # fitted transformation reproducible without depending on RNG state.
+  y <- log(x[, "x1"]) + 0.01 * sin(seq_len(nrow(x)))
 
   fit <- mfp2(
     x, y,
@@ -4833,7 +5246,8 @@ test_that("binary inline factors retain a source-name singleton mapping", {
 # variable both directly and through a simple factor wrapper.
 test_that("formula interface rejects duplicate conceptual source variables", {
   dat <- data.frame(
-    y = rnorm(60),
+    # The duplicate-term validation occurs before fitting; no RNG is needed.
+    y = seq_len(60),
     x2 = rep(1:3, length.out = 60)
   )
 
@@ -6761,7 +7175,8 @@ test_that("mfp2.default() accepts partial named df select and alpha overrides", 
 # normalizer when an unnamed multi-value vector is supplied.
 test_that("mfp2.default() rejects unnamed multi-value df select and alpha", {
   x <- cbind(age = 1:30, bmi = seq(2, 8, length.out = 30))
-  y <- stats::rnorm(30)
+  # Response values are irrelevant because validation fails before fitting.
+  y <- seq_len(30)
 
   expect_error(
     mfp2(x, y, df = c(1, 4), verbose = FALSE),
@@ -6781,7 +7196,8 @@ test_that("mfp2.default() rejects unnamed multi-value df select and alpha", {
 # design-matrix column.
 test_that("term_groups rejects unknown columns", {
   x <- cbind(x1 = 1:20, groupB = rep(0:1, 10))
-  y <- rnorm(20)
+  # Response values are irrelevant because validation fails before fitting.
+  y <- seq_len(20)
 
   expect_error(
     mfp2(
@@ -6801,7 +7217,8 @@ test_that("term_groups rejects columns in more than one group", {
     groupC = rep(c(0, 0, 1, 0), 5),
     other = 1:20
   )
-  y <- rnorm(20)
+  # Response values are irrelevant because validation fails before fitting.
+  y <- seq_len(20)
 
   expect_error(
     mfp2(
@@ -6825,7 +7242,8 @@ test_that("grouped terms require df = 1 for every member column", {
     group2 = (1:20)^2,
     x1 = seq(0.5, 10, length.out = 20)
   )
-  y <- rnorm(20)
+  # Response values are irrelevant because validation fails before fitting.
+  y <- seq_len(20)
 
   expect_error(
     mfp2(
@@ -6850,7 +7268,8 @@ test_that("grouped terms reject continuous-only processing options", {
     groupC = rep(c(0, 0, 1), length.out = 24),
     x1 = seq(1, 12, length.out = 24)
   )
-  y <- rnorm(24)
+  # Response values are irrelevant because validation fails before fitting.
+  y <- seq_len(24)
   grouped <- list(group = c("groupB", "groupC"))
 
   cases <- list(
@@ -12181,7 +12600,7 @@ test_that("23.11 mfpi serialization preserves ordinary and fitted-function predi
 # The fallback must also resolve fp()/fp2() formula labels to source variables.
 test_that("23.12 legacy continuous formula objects reconstruct prediction mappings", {
   fit <- mfp2(
-    lpsa ~ fp(age) + fp(cavol) + svi,
+    lpsa ~ fp(age, center = FALSE) + fp(cavol, center = FALSE) + svi,
     data = prostate,
     keep = c("age", "cavol", "svi"),
     select = 1,
@@ -12960,7 +13379,8 @@ test_that("24.14 unique numeric subset indices preserve supplied order", {
 test_that("24.15 formula subset helper preserves custom contrasts when all levels remain", {
   stage <- factor(rep(c("A", "B", "C"), each = 12L))
   contrasts(stage) <- stats::contr.sum(3L)
-  dat <- data.frame(y = rnorm(length(stage)), stage = stage)
+  # Only factor levels/contrasts are under test; keep the response deterministic.
+  dat <- data.frame(y = seq_along(stage), stage = stage)
   mf <- stats::model.frame(y ~ stage, data = dat)
   rows <- c(1:8, 13:20, 25:32)
 
@@ -14437,7 +14857,9 @@ test_that("version 1 reports clear Cox reference and response errors", {
 
   fit_glm <- mfp2(
     x = as.matrix(dat["x"]),
-    y = dat$x + stats::rnorm(nrow(dat)),
+    # This fit only supplies a valid non-Cox object for the error check below.
+    # Use deterministic non-linear variation instead of consuming RNG state.
+    y = dat$x + 0.1 * sin(seq_len(nrow(dat))),
     verbose = FALSE
   )
   expect_error(

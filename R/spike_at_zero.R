@@ -753,12 +753,11 @@ fit_saz_reduced_models <- function(stage1_selection,
     )
   }
 
-  # Split xi's stage-1 design into its two components: the continuous
-  # FP/linear/ACD column(s), and the single "catzero" binary indicator
-  # column. Model 2 uses only the former, Model 3 uses only the latter (see
-  # the function documentation for the three-model comparison).
-  xi_continuous <- data_xi[, data_xi_colnames != "catzero", drop = FALSE]
-  xi_binary <- data_xi[, "catzero", drop = FALSE]
+  # Record the two stage-2 column groups, but do not materialize both
+  # component matrices yet. Model 2 is fitted before Model 3, so extracting
+  # the binary component only after Model 2 has finished avoids keeping an
+  # otherwise-unused n-row copy alive during the first reduced-model fit.
+  continuous_cols <- data_xi_colnames != "catzero"
 
   # Step 2: Recover the (also already-transformed) adjustment matrix --------
   # Reused from stage 1 for the same reason as data_xi: adjustment-variable
@@ -792,25 +791,66 @@ fit_saz_reduced_models <- function(stage1_selection,
   )
 
   # Step 4: Assemble and fit the two reduced models sequentially ----------
-  # The adjustment block is identical in both models, but materializing both
-  # complete cbind() results at once needlessly doubles peak stage-2 design-
-  # matrix memory. Build Model 2, fit it, release its temporary matrix, then do
-  # the same for Model 3. fit_model() is called in its fast candidate-fitting
-  # mode here, so these temporary design matrices are not required downstream.
-  x_fit2 <- if (is.null(adjustment_matrix)) {
-    xi_continuous
-  } else {
-    cbind(xi_continuous, adjustment_matrix)
+  # For GLMs, fit_glm() requires an intercept. The historical path first
+  # materialized [SAZ component | adjustment] here and fit_glm() immediately
+  # copied that whole matrix again merely to prepend the intercept. Assemble
+  # the final [Intercept | SAZ component | adjustment] matrix directly and
+  # tell fit_model() that the intercept is already present. This removes one
+  # full design-matrix allocation whenever adjustment variables are present.
+  #
+  # Cox models are intentionally left on the historical no-intercept path:
+  # coxph.fit() must not receive an ordinary intercept, and when there are no
+  # adjustment variables the component matrix can be passed through without
+  # an additional assembly allocation.
+  is_cox <- identical(family_string, "cox")
+  if (!is_cox) {
+    fit_args$x_has_intercept <- TRUE
   }
+
+  xi_continuous <- data_xi[, continuous_cols, drop = FALSE]
+  x_fit2 <- if (is_cox) {
+    if (is.null(adjustment_matrix)) {
+      xi_continuous
+    } else {
+      cbind(xi_continuous, adjustment_matrix)
+    }
+  } else {
+    assemble_design_matrix(
+      blocks = list(xi_continuous, adjustment_matrix),
+      nobs = NROW(y),
+      intercept = TRUE
+    )
+  }
+  # x_fit2 now owns (or references, for the Cox/no-adjustment case) everything
+  # required for Model 2; the extracted continuous-component copy is no longer
+  # needed as a separate local binding.
+  rm(xi_continuous, envir = environment())
+
   fit2 <- do.call(fit_model, c(list(x = x_fit2), fit_args))
+  # Do not retain Model 2's temporary design while constructing Model 3.
   rm(x_fit2, envir = environment())
 
-  x_fit3 <- if (is.null(adjustment_matrix)) {
-    xi_binary
+  # Materialize the binary component only now, after Model 2 and its temporary
+  # design have been released, to keep the stage-2 live working set small.
+  xi_binary <- data_xi[, "catzero", drop = FALSE]
+  x_fit3 <- if (is_cox) {
+    if (is.null(adjustment_matrix)) {
+      xi_binary
+    } else {
+      cbind(xi_binary, adjustment_matrix)
+    }
   } else {
-    cbind(xi_binary, adjustment_matrix)
+    assemble_design_matrix(
+      blocks = list(xi_binary, adjustment_matrix),
+      nobs = NROW(y),
+      intercept = TRUE
+    )
   }
+  rm(xi_binary, envir = environment())
+
   fit3 <- do.call(fit_model, c(list(x = x_fit3), fit_args))
+  # Neither reduced-model design is consumed after fitting. Release Model 3's
+  # matrix before constructing the compact return value below.
   rm(x_fit3, envir = environment())
 
   # Step 5: Return only objects required by stage-2 scoring/decision-making.

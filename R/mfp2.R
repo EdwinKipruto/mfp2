@@ -2364,8 +2364,25 @@ mfp2.default <- function(x,
   # Shift each column of x so that fractional-polynomial powers (which require
   # positive values) can be computed; see "Details on shifting, scaling,
   # centering" in the documentation above.
-  preprocess_x_shifted <- sweep(preprocess_x, 2, shift, "+")
-  x <- sweep(x, 2, shift, "+")
+  if (formula_generated_settings) {
+    # Formula calls may carry a full-data preprocessing matrix that differs
+    # from the fitting design (for example when `subset` is used). Shift
+    # both matrices independently so full-data preprocessing semantics are
+    # preserved exactly.
+    preprocess_x_shifted <- sweep(preprocess_x, 2, shift, "+")
+    x <- sweep(x, 2, shift, "+")
+  } else {
+    # Direct matrix calls have no separate preprocessing matrix:
+    # extract_preprocess_matrix() returns the same input matrix for both
+    # `x` and `preprocess_x`. Shift that matrix once and let the
+    # shifted-but-unscaled result serve both roles. The later scaling
+    # assignment rebinds `x` to a new matrix, so `preprocess_x_shifted`
+    # remains available for scale estimation and positivity checks.
+    # This removes one redundant O(n * p) sweep and one full temporary
+    # matrix allocation without changing the numerical preprocessing.
+    x <- sweep(x, 2, shift, "+")
+    preprocess_x_shifted <- x
+  }
 
   # Scaling is estimated after shifting because find_scale_factor() operates on
   # shifted values. `scale` is already validated, named, and column-aligned.

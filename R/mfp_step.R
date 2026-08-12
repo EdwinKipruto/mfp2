@@ -96,6 +96,13 @@
 #' \code{select_ra2_acd()}, \code{select_force_max_fp()}, \code{select_ic()},
 #' \code{select_ic_acd()}) use
 #' \code{@@inheritParams find_best_fp_step} and rely on this entry.
+#' @param focal_basis_cache Optional selector-scoped numerical basis for the
+#' focal variable. Information-criterion selectors build this once at their
+#' maximum required degree and pass it to lower-degree searches. Candidate
+#' powers/order are still generated separately for each degree; only the
+#' n-length transformed basis columns are reused. This cache is internal and
+#' must refer to the same training observations, structural-zero handling, and
+#' variable-specific allowed powers as the current focal term.
 #' @param verbose a logical; run in verbose mode.
 #'
 #' @details
@@ -430,6 +437,7 @@ find_best_fpm_step <- function(x,
                                prev_adj_params,
                                has_offset,
                                precomputed_adj = NULL,
+                               focal_basis_cache = NULL,
                                n_obs,
                                term_to_columns,
                                ...
@@ -469,6 +477,7 @@ find_best_fpm_step <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
     precomputed_adj = precomputed_adj,
+    focal_basis_cache = focal_basis_cache,
     term_to_columns = term_to_columns,
     compact_fp = !isTRUE(acdx[[xi]]),
     compact_acd = isTRUE(acdx[[xi]])
@@ -2203,6 +2212,27 @@ select_ic <- function(x,
   res$current_adj_params <- fit_null$current_adj_params
 
 
+  # Build the focal numerical basis once at the maximum requested degree.
+  # select_ic() necessarily evaluates every degree, so this basis will be reused
+  # and there is no RA2-style early-stopping tradeoff. Build from the complete
+  # user-supplied power set (including power 1); find_best_fpm_step() continues
+  # to remove power 1 only from its degree-1 candidate list, exactly as before.
+  xi_cols <- term_to_columns[[xi]]
+  if (is.null(xi_cols) || length(xi_cols) != 1L) {
+    stop(
+      "Internal error: IC FP basis reuse requires one numeric focal column.",
+      call. = FALSE
+    )
+  }
+
+  focal_basis_cache <- build_shared_focal_fp_basis(
+    x = x[, xi_cols, drop = TRUE],
+    max_degree = degree,
+    powers = powers[[xi]],
+    zero = zero[xi],
+    catzero = catzero[[xi]]
+  )
+
   # All FPm models: fit the best FP1, FP2...FPm candidate at each
   # degree in turn (find_best_fpm_step() already picks the best power
   # combination within each fixed degree by deviance, which is equivalent to
@@ -2217,7 +2247,8 @@ select_ic <- function(x,
       family = family, family_string = family_string, zero = zero, catzero = catzero,
       spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
       prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-      precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+      precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
+      term_to_columns = term_to_columns, ...
     )
   }
 
@@ -2428,6 +2459,35 @@ select_ic_acd <- function(x,
 
   res$current_adj_params <- fit_null$current_adj_params
 
+  # Build one joint degree-2 x/A(x) numerical basis for all three nonlinear ACD
+  # competitors below. Its x columns are also valid for FP1(x, .), while its
+  # A(x) columns serve FP1(., A(x)); the joint candidate uses one of each. The
+  # cache is constructed from this variable's actual allowed powers, so custom
+  # and variable-specific power sets do not rely on default column positions.
+  xi_cols <- term_to_columns[[xi]]
+  if (is.null(xi_cols) || length(xi_cols) != 1L) {
+    stop(
+      "Internal error: IC ACD basis reuse requires one numeric focal column.",
+      call. = FALSE
+    )
+  }
+
+  acd_parameter_xi <- acd_parameter[[xi]]
+  acd_training_values_xi <- if (!is.null(acd_parameter_xi)) {
+    acd_parameter_xi[["acd", exact = TRUE]]
+  } else {
+    NULL
+  }
+
+  focal_basis_cache <- build_shared_focal_acd_basis(
+    x = x[, xi_cols, drop = TRUE],
+    powers = powers[[xi]],
+    zero = zero[xi],
+    catzero = catzero[[xi]],
+    acd_parameter = acd_parameter_xi,
+    acd_training_values = acd_training_values_xi
+  )
+
   # The three FP1 variants (in x only, in A(x) only, and jointly FP1(x, A(x)))
   # are computed via find_best_fpm_step() at the appropriate degree (degree 1
   # for the single-transform variants, degree 2 for the joint FP1(x, A(x))
@@ -2444,7 +2504,8 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+        precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
+        term_to_columns = term_to_columns, ...
       ),
       # FP1(., A(x))
       find_best_fpm_step(
@@ -2453,7 +2514,8 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+        precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
+        term_to_columns = term_to_columns, ...
       ),
       # FP1(x, A(x))
       find_best_fpm_step(
@@ -2462,7 +2524,8 @@ select_ic_acd <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+        precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
+        term_to_columns = term_to_columns, ...
       )
     ),
     c(
@@ -3245,6 +3308,7 @@ transform_data_step <- function(x,
                                 acd_parameter,
                                 prev_adj_params,
                                 precomputed_adj = NULL,
+                                focal_basis_cache = NULL,
                                 term_to_columns,
                                 compact_fp = FALSE,
                                 compact_acd = FALSE
@@ -3298,6 +3362,29 @@ transform_data_step <- function(x,
     # Preserve the historical single-column path exactly.
     data_xi <- x[, xi_cols, drop = TRUE]
 
+    # A selector-scoped focal basis is valid only for this exact training
+    # vector and structural-zero representation. Keep these checks O(1): the
+    # optimization is intended to remove repeated n-length transformations, so
+    # we deliberately do not rescan/compare every cached value here.
+    if (!is.null(focal_basis_cache)) {
+      cache_has_catzero <- !is.null(focal_basis_cache$catzero)
+      step_has_catzero <- !is.null(catzero[[xi]])
+
+      if (is.null(focal_basis_cache$basis) ||
+          !is.matrix(focal_basis_cache$basis) ||
+          nrow(focal_basis_cache$basis) != length(data_xi) ||
+          !identical(isTRUE(focal_basis_cache$zero), isTRUE(zero[xi])) ||
+          cache_has_catzero != step_has_catzero) {
+        stop(
+          paste0(
+            "Internal error: `focal_basis_cache` does not match the current ",
+            "focal training data/zero handling."
+          ),
+          call. = FALSE
+        )
+      }
+    }
+
     if (length(unique(data_xi)) <= 3) {
       # Variables with <= 3 distinct values are treated as linear/binary: no FP
       # candidates are generated, but nonpositive values are still recoded to
@@ -3336,15 +3423,27 @@ transform_data_step <- function(x,
         # store each unique transform of x and A(x) once and keep only a small
         # integer candidate map. Degree 0/1 naturally has one active A(x) term.
         if (isTRUE(compact_acd)) {
-          fpd <- generate_transformations_acd_basis(
-            data_xi,
-            degree = floor(df / 2),
-            powers = powers[[xi]],
-            zero = zero[xi],
-            catzero = catzero[[xi]],
-            acd_parameter = acd_parameter_xi,
-            acd_training_values = acd_training_values_xi
-          )
+          if (!is.null(focal_basis_cache)) {
+            # IC selectors may already hold the joint degree-2 x/A(x) basis.
+            # Generate only this degree's ACD candidate specification and map
+            # it onto those existing numerical columns. Custom power sets and
+            # candidate ordering remain controlled by generate_powers_acd().
+            fpd <- view_shared_focal_acd_basis(
+              shared_basis = focal_basis_cache,
+              degree = floor(df / 2),
+              powers = powers[[xi]]
+            )
+          } else {
+            fpd <- generate_transformations_acd_basis(
+              data_xi,
+              degree = floor(df / 2),
+              powers = powers[[xi]],
+              zero = zero[xi],
+              catzero = catzero[[xi]],
+              acd_parameter = acd_parameter_xi,
+              acd_training_values = acd_training_values_xi
+            )
+          }
           acd_basis <- fpd
           data_fp <- NULL
         } else {
@@ -3362,13 +3461,25 @@ transform_data_step <- function(x,
       } else {
         # note that degree is df / 2
         if (isTRUE(compact_fp)) {
-          fpd <- generate_transformations_fp_basis(
-            data_xi,
-            degree = floor(df / 2),
-            powers = powers[[xi]],
-            zero = zero[xi],
-            catzero = catzero[[xi]]
-          )
+          if (!is.null(focal_basis_cache)) {
+            # Reuse the selector's maximum-degree numerical basis. The current
+            # call still generates its own degree-specific candidates (including
+            # FP1's existing removal of power 1) and maps them by explicit
+            # power/repetition metadata rather than fixed column positions.
+            fpd <- view_shared_focal_fp_basis(
+              shared_basis = focal_basis_cache,
+              degree = floor(df / 2),
+              powers = powers[[xi]]
+            )
+          } else {
+            fpd <- generate_transformations_fp_basis(
+              data_xi,
+              degree = floor(df / 2),
+              powers = powers[[xi]],
+              zero = zero[xi],
+              catzero = catzero[[xi]]
+            )
+          }
           fp_basis <- fpd
           data_fp <- NULL
         } else {

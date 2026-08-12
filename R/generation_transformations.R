@@ -208,6 +208,85 @@ materialize_fp_basis_candidate <- function(fp_basis, candidate) {
 }
 
 
+#' Resolve the base ACD values used during candidate generation
+#'
+#' During fit_mfp(), fit_acd() is run once per ACD variable and its fitted
+#' training A(x) vector is retained in acd_parameter$acd. The model-search hot
+#' path can pass that vector explicitly via acd_training_values and avoid
+#' applying the same fitted ACD transformation to the same training x again.
+#'
+#' The cache is deliberately explicit rather than inferred from
+#' acd_parameter$acd. This preserves the existing apply-to-new-x semantics for
+#' direct/internal callers that supply stored ACD parameters with a different x.
+#' If no training cache is supplied, the historical fit/apply behaviour is used.
+#'
+#' @param x Numeric covariate vector used for candidate generation.
+#' @param powers Candidate powers used if ACD parameters must be fitted here.
+#' @param zero Logical indicating zero-component handling.
+#' @param acd_parameter Optional stored ACD parameter list.
+#' @param acd_training_values Optional cached A(x) values for exactly the same
+#'   training observations, in the same order as x.
+#' @return Numeric vector containing the base A(x) values.
+#' @keywords internal
+#' @noRd
+resolve_acd_base_values <- function(x,
+                                    powers,
+                                    zero,
+                                    acd_parameter = NULL,
+                                    acd_training_values = NULL) {
+  # Fast training-data path: reuse fit_acd()$acd instead of recalculating the
+  # FP term, linear predictor, and pnorm() for every focal ACD search.
+  if (!is.null(acd_training_values)) {
+    # Keep validation O(1): scanning the complete cached vector here would add
+    # an n-length pass to the hot path and partly defeat the optimization.
+    if (!is.numeric(acd_training_values) ||
+        !is.null(dim(acd_training_values)) ||
+        length(acd_training_values) != length(x)) {
+      stop(
+        paste0(
+          "Internal error: `acd_training_values` must be a numeric vector ",
+          "with one value per observation in `x`."
+        ),
+        call. = FALSE
+      )
+    }
+
+    return(acd_training_values)
+  }
+
+  # Historical fallback for standalone/internal calls that have no fit-time
+  # training cache. If parameters are absent, fit ACD here as before.
+  if (is.null(acd_parameter)) {
+    acd_parameter_work <- fit_acd(
+      x = x,
+      powers = powers,
+      shift = 0,
+      scale = 1,
+      zero = zero
+    )
+
+    return(acd_parameter_work$acd)
+  }
+
+  # Apply stored parameters to the supplied x. Remove a possibly stored $acd
+  # component so direct callers do not accidentally reuse values belonging to
+  # another data vector with the same length.
+  acd_parameter_apply <- acd_parameter
+  acd_parameter_apply$acd <- NULL
+
+  do.call(
+    apply_acd,
+    utils::modifyList(
+      acd_parameter_apply,
+      list(
+        x = x,
+        zero = zero
+      )
+    )
+  )
+}
+
+
 #' Generate a compact shared basis for ACD candidates
 #'
 #' This is the ACD analogue of \code{generate_transformations_fp_basis()}.
@@ -231,7 +310,8 @@ generate_transformations_acd_basis <- function(x,
                                                powers,
                                                zero,
                                                catzero = NULL,
-                                               acd_parameter = NULL) {
+                                               acd_parameter = NULL,
+                                               acd_training_values = NULL) {
   # Match the validation contract of generate_transformations_acd(). Keeping
   # both interfaces aligned allows the compact path to be substituted only in
   # the model-search hot loop without changing public/internal callers that
@@ -267,34 +347,18 @@ generate_transformations_acd_basis <- function(x,
   }
   n_terms <- n_terms_per_candidate[1L]
 
-  # Compute A(x) exactly once, mirroring generate_transformations_acd(). The
-  # compact optimization is about candidate storage; ACD fitting/application
-  # semantics are intentionally unchanged.
-  if (is.null(acd_parameter)) {
-    acd_parameter_work <- fit_acd(
-      x = x,
-      powers = powers,
-      shift = 0,
-      scale = 1,
-      zero = zero
-    )
-
-    x_acd_base <- acd_parameter_work$acd
-  } else {
-    acd_parameter_apply <- acd_parameter
-    acd_parameter_apply$acd <- NULL
-
-    x_acd_base <- do.call(
-      apply_acd,
-      utils::modifyList(
-        acd_parameter_apply,
-        list(
-          x = x,
-          zero = zero
-        )
-      )
-    )
-  }
+  # Resolve A(x) once for this candidate basis. During normal mfp2 training,
+  # transform_data_step() supplies the A(x) vector already computed by fit_acd(),
+  # so no repeated apply_acd() work is needed for the same training observations.
+  # Direct/internal calls without that explicit cache retain the historical
+  # fit/apply behaviour.
+  x_acd_base <- resolve_acd_base_values(
+    x = x,
+    powers = powers,
+    zero = zero,
+    acd_parameter = acd_parameter,
+    acd_training_values = acd_training_values
+  )
 
   # Store each unique power transform once for each ACD component. The first
   # component is FP(x, p1); the second is FP(A(x), p2). Degree 1 has no active
@@ -413,6 +477,9 @@ materialize_acd_basis_candidate <- function(acd_basis, candidate) {
 #' @describeIn generate_transformations_fp Function to generate acd transformations.
 #' @param acd_parameter Optional named list of ACD parameters, generated by
 #'   \code{fit_acd()}. If `NULL`, the function generates it.
+#' @param acd_training_values Optional cached A(x) vector for the same training
+#'   observations in `x`. This is a fit-time optimization only; leave `NULL`
+#'   when applying stored ACD parameters to different/new data.
 #' @importFrom utils modifyList
 #' @keywords internal
 #' @noRd
@@ -421,7 +488,8 @@ generate_transformations_acd <- function(x,
                                          powers,
                                          zero,
                                          catzero = NULL,
-                                         acd_parameter = NULL) {
+                                         acd_parameter = NULL,
+                                         acd_training_values = NULL) {
 
   # Validate catzero, if provided
   if (!is.null(catzero)) {
@@ -448,44 +516,17 @@ generate_transformations_acd <- function(x,
   nfp <- nrow(combs)
   use_catzero <- !is.null(catzero)
 
-  # Compute the base ACD transformation once.
-  #
-  # The old implementation called transform_vector_acd() once per candidate
-  # power row. When acd_parameter was supplied, that repeatedly called
-  # apply_acd() even though acd(x) is identical for all candidate rows.
-  if (is.null(acd_parameter)) {
-    acd_parameter_work <- fit_acd(
-      x = x,
-      powers = powers,
-      shift = 0,
-      scale = 1,
-      zero = zero
-    )
-
-    x_acd_base <- acd_parameter_work$acd
-
-    # The fitted acd values are not needed after extracting x_acd_base.
-    acd_parameter_work$acd <- NULL
-
-  } else {
-    acd_parameter_work <- acd_parameter
-
-    # Remove any stored fitted acd values before calling apply_acd(); apply_acd()
-    # only needs beta0, beta1, power, shift, scale, and zero.
-    acd_parameter_apply <- acd_parameter_work
-    acd_parameter_apply$acd <- NULL
-
-    x_acd_base <- do.call(
-      apply_acd,
-      modifyList(
-        acd_parameter_apply,
-        list(
-          x = x,
-          zero = zero
-        )
-      )
-    )
-  }
+  # Resolve the base ACD transformation once. During normal mfp2 training,
+  # transform_data_step() passes fit_acd()$acd explicitly, which avoids
+  # recalculating A(x) for the same training observations. Calls that do not
+  # supply that cache keep the historical fit/apply semantics.
+  x_acd_base <- resolve_acd_base_values(
+    x = x,
+    powers = powers,
+    zero = zero,
+    acd_parameter = acd_parameter,
+    acd_training_values = acd_training_values
+  )
 
   # Cache each unique FP transformation of x and acd(x).
   #

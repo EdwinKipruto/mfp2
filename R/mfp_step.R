@@ -485,7 +485,28 @@ find_best_fpm_step <- function(x,
   # The fitting loop is agnostic to whether the shared columns came from an
   # ordinary FP basis or an ACD basis. Both expose the same basis/candidate_map
   # contract and use the same in-place C++ column-copy helper.
-  compact_basis <- if (!is.null(fp_basis)) fp_basis else acd_basis
+  has_fp_basis <- !is.null(fp_basis)
+  has_acd_basis <- !is.null(acd_basis)
+
+  # A focal variable can use either the ordinary FP compact representation
+  # or the ACD compact representation, never both. Both may be NULL when
+  # the historical materialized-candidate path is used. Enforce this
+  # invariant explicitly so a future control-flow change cannot silently
+  # select the wrong compact basis.
+  if (has_fp_basis && has_acd_basis) {
+    stop(
+      "Internal error: both `fp_basis` and `acd_basis` are non-NULL.",
+      call. = FALSE
+    )
+  }
+
+  compact_basis <- if (has_fp_basis) {
+    fp_basis
+  } else if (has_acd_basis) {
+    acd_basis
+  } else {
+    NULL
+  }
   use_compact_basis <- !is.null(compact_basis)
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
 
@@ -3299,6 +3320,18 @@ transform_data_step <- function(x,
 
     } else {
       if (acdx[xi]) {
+        # fit_mfp() estimates ACD once per variable and retains the fitted A(x)
+        # vector in acd_parameter[[xi]]$acd for the training sample. Pass that
+        # vector explicitly to the candidate generator so it can be reused
+        # without calling apply_acd() again. Legacy/direct callers whose stored
+        # parameter list has no $acd value simply fall back to the old apply path.
+        acd_parameter_xi <- acd_parameter[[xi]]
+        acd_training_values_xi <- if (!is.null(acd_parameter_xi)) {
+          acd_parameter_xi[["acd", exact = TRUE]]
+        } else {
+          NULL
+        }
+
         # ACD searches can use the same compact-basis strategy as ordinary FP:
         # store each unique transform of x and A(x) once and keep only a small
         # integer candidate map. Degree 0/1 naturally has one active A(x) term.
@@ -3309,7 +3342,8 @@ transform_data_step <- function(x,
             powers = powers[[xi]],
             zero = zero[xi],
             catzero = catzero[[xi]],
-            acd_parameter = acd_parameter[[xi]]
+            acd_parameter = acd_parameter_xi,
+            acd_training_values = acd_training_values_xi
           )
           acd_basis <- fpd
           data_fp <- NULL
@@ -3320,7 +3354,8 @@ transform_data_step <- function(x,
             powers = powers[[xi]],
             zero = zero[xi],
             catzero = catzero[[xi]],
-            acd_parameter = acd_parameter[[xi]]
+            acd_parameter = acd_parameter_xi,
+            acd_training_values = acd_training_values_xi
           )
           data_fp <- fpd$data
         }

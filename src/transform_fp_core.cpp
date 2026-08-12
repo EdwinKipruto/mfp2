@@ -34,29 +34,29 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
                                                 const double shift_val,
                                                 const double scale_val,
                                                 const bool zero) {
-  
+
   const int n = x_raw.size();
   const int m = power.size();
-  
+
   // An empty power vector gives an n x 0 matrix. The R wrapper normally avoids
   // this case, but returning a valid empty matrix makes the C++ helper safe.
   if (m == 0) {
     return NumericMatrix(n, 0);
   }
-  
+
   // Guard the division below. This is intentionally kept in C++ even if the R
   // wrapper validates scale, because this kernel may be reused by other C++
   // helpers and should never silently divide by zero.
   if (!R_finite(scale_val) || scale_val == 0.0) {
     stop("`scale_val` must be finite and non-zero.");
   }
-  
+
   NumericMatrix out(n, m);
-  
+
   const double inv_scale = 1.0 / scale_val;
-  
+
   for (int i = 0; i < n; ++i) {
-    
+
     // Preserve R-style missing/non-finite propagation.
     //
     // Without this guard, std::log() and std::pow() may turn R's NA_REAL into
@@ -74,19 +74,19 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
       }
       continue;
     }
-    
+
     // In zero mode, non-positive raw values are assigned zero-valued
     // transformation columns. NumericMatrix initializes to zero, so continuing
     // here leaves the whole row at zero.
     if (zero && x_raw[i] <= 0.0) {
       continue;
     }
-    
+
     // Apply the shift/scale convention used by transform_vector_fp(). For the
     // batch generator below, x has already been shifted/scaled in R, so that
     // caller passes shift_val = 0 and scale_val = 1.
     const double xi = (x_raw[i] + shift_val) * inv_scale;
-    
+
     // Preserve missing/non-finite values introduced by shift/scale.
     if (!R_finite(xi)) {
       for (int j = 0; j < m; ++j) {
@@ -94,15 +94,15 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
       }
       continue;
     }
-    
+
     // In zero mode, values that remain non-positive after shift/scale are also
     // assigned zero-valued transformation columns.
     if (zero && xi <= 0.0) {
       continue;
     }
-    
+
     const double log_xi = std::log(xi);
-    
+
     // First FP column. Power 0 represents log(x); every other power represents
     // x^power.
     if (power[0] == 0.0) {
@@ -110,7 +110,7 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
     } else {
       out(i, 0) = std::pow(xi, power[0]);
     }
-    
+
     // Remaining FP columns. Repeated powers follow the standard FP convention:
     // reuse the previous column and multiply by one additional log(x) factor.
     for (int j = 1; j < m; ++j) {
@@ -125,7 +125,7 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
       }
     }
   }
-  
+
   return out;
 }
 
@@ -134,7 +134,7 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
 //
 // The Rcpp export creates an internal R wrapper in R/RcppExports.R. It does not
 // make the function part of the public package API unless it is also exported
-// from NAMESPACE. 
+// from NAMESPACE.
 //
 // [[Rcpp::export]]
 NumericMatrix transform_fp_core(NumericVector x_raw,
@@ -163,73 +163,73 @@ NumericMatrix transform_fp_core(NumericVector x_raw,
 // the old R rule.
 static bool is_binary_vector_cpp(const NumericVector& x) {
   const int n = x.size();
-  
+
   bool seen_missing = false;
   bool seen_first = false;
   bool seen_second = false;
-  
+
   double first = 0.0;
   double second = 0.0;
-  
+
   int n_distinct = 0;
-  
+
   for (int i = 0; i < n; ++i) {
     const double value = x[i];
-    
+
     // Match unique(x): missing values count as one distinct value.
     if (NumericVector::is_na(value)) {
       if (!seen_missing) {
         seen_missing = true;
         ++n_distinct;
-        
+
         if (n_distinct > 2) {
           return false;
         }
       }
-      
+
       continue;
     }
-    
+
     // Existing first non-missing value.
     if (seen_first && value == first) {
       continue;
     }
-    
+
     // Existing second non-missing value.
     if (seen_second && value == second) {
       continue;
     }
-    
+
     // New first non-missing value.
     if (!seen_first) {
       first = value;
       seen_first = true;
       ++n_distinct;
-      
+
       if (n_distinct > 2) {
         return false;
       }
-      
+
       continue;
     }
-    
+
     // New second non-missing value.
     if (!seen_second) {
       second = value;
       seen_second = true;
       ++n_distinct;
-      
+
       if (n_distinct > 2) {
         return false;
       }
-      
+
       continue;
     }
-    
+
     // Any additional distinct value means x is not binary.
     return false;
   }
-  
+
   return true;
 }
 
@@ -259,61 +259,61 @@ List generate_transformations_fp_cpp(const NumericVector& x,
                                      const NumericMatrix& powers,
                                      const bool zero,
                                      Nullable<NumericMatrix> catzero = R_NilValue) {
-  
+
   const int n = x.size();
   const int n_candidates = powers.nrow();
   const int degree = powers.ncol();
-  
+
   // `catzero` is optional. When present, it must be an n x 1 numeric matrix and
   // is copied as the first column of every candidate matrix.
   const bool use_catzero = catzero.isNotNull();
-  
+
   NumericMatrix catzero_mat;
-  
+
   if (use_catzero) {
     catzero_mat = NumericMatrix(catzero);
-    
+
     if (catzero_mat.nrow() != n) {
       stop("`catzero` must have one row per observation in `x`.");
     }
-    
+
     if (catzero_mat.ncol() != 1) {
       stop("`catzero` must be an n x 1 matrix.");
     }
   }
-  
+
   // Match transform_vector_fp(..., check_binary = TRUE): if x is binary and
   // zero = FALSE, return x unchanged rather than applying FP powers. When
   // zero = TRUE, the zero/catzero logic is active and FP transformation should
   // still be applied to the positive part.
   const bool binary_x = (!zero && is_binary_vector_cpp(x));
-  
+
   // Preallocate the output list. Each element is the design matrix for one
   // candidate power row.
   List out(n_candidates);
-  
+
   for (int i = 0; i < n_candidates; ++i) {
     NumericMatrix fp_mat;
-    
+
     if (binary_x) {
       // Binary variables are not FP-transformed. The same one-column matrix is
       // returned for every candidate row, matching transform_vector_fp().
       fp_mat = NumericMatrix(n, 1);
-      
+
       for (int r = 0; r < n; ++r) {
         fp_mat(r, 0) = x[r];
       }
-      
+
     } else {
       // Extract the i-th candidate power row as a vector for the shared FP
       // kernel. The candidate powers are generated and ordered by R before
       // entering this function.
       NumericVector candidate_power(degree);
-      
+
       for (int j = 0; j < degree; ++j) {
         candidate_power[j] = powers(i, j);
       }
-      
+
       // x is already shifted/scaled at the R level for ordinary FP candidate
       // generation. Therefore this batch helper uses shift = 0 and scale = 1,
       // matching the previous call:
@@ -326,46 +326,267 @@ List generate_transformations_fp_cpp(const NumericVector& x,
         zero
       );
     }
-    
+
     if (!use_catzero) {
       out[i] = fp_mat;
       continue;
     }
-    
+
     // Prepend catzero to the candidate FP matrix.
     const int fp_cols = fp_mat.ncol();
-    
+
     NumericMatrix fp_mat_with_catzero(n, fp_cols + 1);
-    
+
     // First column: structural-zero indicator.
     for (int r = 0; r < n; ++r) {
       fp_mat_with_catzero(r, 0) = catzero_mat(r, 0);
     }
-    
+
     // Remaining columns: FP-transformed candidate terms.
     for (int c = 0; c < fp_cols; ++c) {
       for (int r = 0; r < n; ++r) {
         fp_mat_with_catzero(r, c + 1) = fp_mat(r, c);
       }
     }
-    
+
     // Assign stable column names. The first column is the structural-zero
     // indicator; the FP columns are named V1, V2, ..., so the output has explicit
     // and predictable column names.
     CharacterVector col_names(fp_cols + 1);
-    
+
     col_names[0] = "catzero";
-    
+
     for (int c = 0; c < fp_cols; ++c) {
       col_names[c + 1] = "V" + std::to_string(c + 1);
     }
-    
+
     colnames(fp_mat_with_catzero) = col_names;
-    
+
     out[i] = fp_mat_with_catzero;
   }
-  
+
   return out;
+}
+
+
+// Generate a compact reusable basis for ordinary FP candidates.
+//
+// Unlike generate_transformations_fp_cpp(), which materializes one complete
+// n x degree matrix per candidate power row, this helper stores each distinct
+// FP basis term only once and returns an integer map from candidate positions
+// to basis columns.
+//
+// For a power p with maximum repetition r across the candidate matrix, the
+// stored columns are:
+//   p != 0: x^p, x^p * log(x), ..., x^p * log(x)^(r - 1)
+//   p == 0: log(x), log(x)^2, ..., log(x)^r
+//
+// The candidate_map uses 1-based column indices so it can be consumed directly
+// from R. Repetition is based on adjacent equal powers, exactly matching
+// transform_fp_core_internal(). generate_powers_fp() returns sorted rows, so
+// repeated FP powers are adjacent in the normal mfp2 fitting path.
+//
+// [[Rcpp::export]]
+List generate_transformations_fp_basis_cpp(const NumericVector& x,
+                                           const NumericMatrix& powers,
+                                           const bool zero) {
+  const int n = x.size();
+  const int n_candidates = powers.nrow();
+  const int degree = powers.ncol();
+
+  if (n_candidates < 1 || degree < 1) {
+    stop("`powers` must contain at least one candidate and one column.");
+  }
+
+  // Preserve the binary shortcut of transform_vector_fp() for completeness.
+  // The compact path in transform_data_step() is only used for variables with
+  // more than three distinct values, but keeping the helper self-contained
+  // makes its contract safe if it is reused elsewhere.
+  const bool binary_x = (!zero && is_binary_vector_cpp(x));
+
+  if (binary_x) {
+    NumericMatrix basis(n, 1);
+    for (int i = 0; i < n; ++i) {
+      basis(i, 0) = x[i];
+    }
+
+    IntegerMatrix candidate_map(n_candidates, 1);
+    std::fill(candidate_map.begin(), candidate_map.end(), 1);
+
+    return List::create(
+      _["basis"] = basis,
+      _["candidate_map"] = candidate_map
+    );
+  }
+
+  // Collect distinct powers in first-occurrence order. Powers entering this
+  // helper are generated internally by generate_powers_fp() and are expected
+  // to be finite. Reject non-finite values defensively because they cannot be
+  // represented reliably as lookup keys and are not valid ordinary FP powers.
+  std::vector<double> unique_powers;
+
+  auto find_power_index = [&unique_powers](const double p) -> int {
+    for (std::size_t k = 0; k < unique_powers.size(); ++k) {
+      if (unique_powers[k] == p) {
+        return static_cast<int>(k);
+      }
+    }
+    return -1;
+  };
+
+  for (int i = 0; i < n_candidates; ++i) {
+    for (int j = 0; j < degree; ++j) {
+      const double p = powers(i, j);
+
+      if (!R_finite(p)) {
+        stop("Internal error: ordinary FP candidate powers must be finite.");
+      }
+
+      if (find_power_index(p) < 0) {
+        unique_powers.push_back(p);
+      }
+    }
+  }
+
+  const int n_unique = static_cast<int>(unique_powers.size());
+
+  // For every candidate position, record which distinct power is used and
+  // which adjacent repetition of that power it represents. At the same time,
+  // determine how many repeated-power columns each distinct power needs in the
+  // shared basis.
+  IntegerMatrix power_index(n_candidates, degree);
+  IntegerMatrix repetition_index(n_candidates, degree);
+  std::vector<int> max_repetition(n_unique, 0);
+
+  for (int i = 0; i < n_candidates; ++i) {
+    int previous_power_index = -1;
+    int repetition = 0;
+
+    for (int j = 0; j < degree; ++j) {
+      const int p_index = find_power_index(powers(i, j));
+
+      if (p_index == previous_power_index) {
+        ++repetition;
+      } else {
+        repetition = 1;
+        previous_power_index = p_index;
+      }
+
+      power_index(i, j) = p_index;
+      repetition_index(i, j) = repetition;
+
+      if (repetition > max_repetition[p_index]) {
+        max_repetition[p_index] = repetition;
+      }
+    }
+  }
+
+  // Assign one contiguous block of basis columns to each distinct power.
+  std::vector<int> basis_start(n_unique, 0);
+  int n_basis = 0;
+
+  for (int k = 0; k < n_unique; ++k) {
+    basis_start[k] = n_basis;
+    n_basis += max_repetition[k];
+  }
+
+  NumericMatrix basis(n, n_basis);
+  IntegerMatrix candidate_map(n_candidates, degree);
+
+  for (int i = 0; i < n_candidates; ++i) {
+    for (int j = 0; j < degree; ++j) {
+      const int p_index = power_index(i, j);
+      const int repetition = repetition_index(i, j);
+
+      // R receives 1-based matrix-column indices.
+      candidate_map(i, j) = basis_start[p_index] + repetition;
+    }
+  }
+
+  // Compute the basis in one observation pass. log(x) is evaluated once per
+  // observation, each distinct nonzero power is evaluated with pow() once, and
+  // repeated-power columns are generated by recurrence.
+  for (int i = 0; i < n; ++i) {
+    const double x_i = x[i];
+
+    if (!R_finite(x_i)) {
+      for (int c = 0; c < n_basis; ++c) {
+        basis(i, c) = x_i;
+      }
+      continue;
+    }
+
+    if (zero && x_i <= 0.0) {
+      // NumericMatrix is initialized to zero, matching the ordinary FP kernel.
+      continue;
+    }
+
+    const double log_x_i = std::log(x_i);
+
+    for (int k = 0; k < n_unique; ++k) {
+      const double p = unique_powers[k];
+      const int start = basis_start[k];
+
+      if (p == 0.0) {
+        basis(i, start) = log_x_i;
+      } else {
+        basis(i, start) = std::pow(x_i, p);
+      }
+
+      for (int repetition = 1; repetition < max_repetition[k]; ++repetition) {
+        basis(i, start + repetition) =
+          basis(i, start + repetition - 1) * log_x_i;
+      }
+    }
+  }
+
+  return List::create(
+    _["basis"] = basis,
+    _["candidate_map"] = candidate_map
+  );
+}
+
+
+// Copy one compact FP candidate from a shared basis into an already allocated
+// design matrix. Both column-index vectors are 1-based because this helper is
+// called from R. The target matrix is intentionally modified in place; callers
+// must pass a fresh, private working matrix rather than a shared user object.
+//
+// [[Rcpp::export]]
+NumericMatrix copy_fp_basis_candidate_cpp(NumericMatrix target,
+                                          const NumericMatrix& basis,
+                                          const IntegerVector& source_cols,
+                                          const IntegerVector& target_cols) {
+  if (target.nrow() != basis.nrow()) {
+    stop("Internal error: FP basis and target matrix have different row counts.");
+  }
+
+  if (source_cols.size() != target_cols.size()) {
+    stop("Internal error: FP source and target column maps have different lengths.");
+  }
+
+  const int n = target.nrow();
+  const int n_source_cols = basis.ncol();
+  const int n_target_cols = target.ncol();
+
+  for (R_xlen_t j = 0; j < source_cols.size(); ++j) {
+    const int source_col = source_cols[j] - 1;
+    const int target_col = target_cols[j] - 1;
+
+    if (source_col < 0 || source_col >= n_source_cols) {
+      stop("Internal error: FP basis source column is out of range.");
+    }
+
+    if (target_col < 0 || target_col >= n_target_cols) {
+      stop("Internal error: FP target column is out of range.");
+    }
+
+    for (int i = 0; i < n; ++i) {
+      target(i, target_col) = basis(i, source_col);
+    }
+  }
+
+  return target;
 }
 
 
@@ -405,11 +626,11 @@ static NumericMatrix mfp2_empty_matrix_cpp(const int n) {
 static NumericMatrix mfp2_vector_to_matrix_cpp(const NumericVector& x) {
   const int n = x.size();
   NumericMatrix out(n, 1);
-  
+
   for (int i = 0; i < n; ++i) {
     out(i, 0) = x[i];
   }
-  
+
   return out;
 }
 
@@ -424,28 +645,28 @@ static NumericMatrix mfp2_vector_to_matrix_cpp(const NumericVector& x) {
 static NumericMatrix mfp2_cbind_two_cpp(const NumericMatrix& a,
                                         const NumericMatrix& b) {
   const int n = a.nrow();
-  
+
   if (b.nrow() != n) {
     stop("Internal error: matrices to cbind have incompatible row counts.");
   }
-  
+
   const int pa = a.ncol();
   const int pb = b.ncol();
-  
+
   NumericMatrix out(n, pa + pb);
-  
+
   for (int j = 0; j < pa; ++j) {
     for (int i = 0; i < n; ++i) {
       out(i, j) = a(i, j);
     }
   }
-  
+
   for (int j = 0; j < pb; ++j) {
     for (int i = 0; i < n; ++i) {
       out(i, pa + j) = b(i, j);
     }
   }
-  
+
   return out;
 }
 
@@ -464,34 +685,34 @@ static bool mfp2_numeric_keys_identical_cpp(SEXP a, SEXP b) {
   if (Rf_isNull(a) && Rf_isNull(b)) {
     return true;
   }
-  
+
   if (Rf_isNull(a) || Rf_isNull(b)) {
     return false;
   }
-  
+
   NumericVector x(a);
   NumericVector y(b);
-  
+
   if (x.size() != y.size()) {
     return false;
   }
-  
+
   for (int i = 0; i < x.size(); ++i) {
     const bool x_na = NumericVector::is_na(x[i]);
     const bool y_na = NumericVector::is_na(y[i]);
-    
+
     if (x_na || y_na) {
       if (!(x_na && y_na)) {
         return false;
       }
       continue;
     }
-    
+
     if (x[i] != y[i]) {
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -505,25 +726,25 @@ static NumericVector mfp2_clean_sorted_power_cpp(SEXP power_sexp) {
   if (Rf_isNull(power_sexp)) {
     return NumericVector(0);
   }
-  
+
   NumericVector power(power_sexp);
   std::vector<double> clean;
   clean.reserve(power.size());
-  
+
   for (int i = 0; i < power.size(); ++i) {
     if (!NumericVector::is_na(power[i])) {
       clean.push_back(power[i]);
     }
   }
-  
+
   std::sort(clean.begin(), clean.end());
-  
+
   NumericVector out(clean.size());
-  
+
   for (int i = 0; i < static_cast<int>(clean.size()); ++i) {
     out[i] = clean[i];
   }
-  
+
   return out;
 }
 
@@ -539,18 +760,18 @@ static NumericMatrix mfp2_transform_fp_adjustment_cpp(const NumericVector& x,
                                                       const bool zero) {
   const int n = x.size();
   NumericVector power = mfp2_clean_sorted_power_cpp(power_sexp);
-  
+
   if (power.size() == 0) {
     return mfp2_empty_matrix_cpp(n);
   }
-  
+
   // Match transform_vector_fp(..., check_binary = TRUE) behaviour.
   // Binary variables are kept as a single untransformed column when zero
   // handling is not active.
   if (!zero && is_binary_vector_cpp(x)) {
     return mfp2_vector_to_matrix_cpp(x);
   }
-  
+
   return transform_fp_core_internal(
     x,
     power,
@@ -576,17 +797,17 @@ static NumericMatrix mfp2_transform_fp_one_cpp(const NumericVector& x,
                                                const bool zero,
                                                const bool check_binary) {
   const int n = x.size();
-  
+
   if (NumericVector::is_na(power)) {
     return mfp2_empty_matrix_cpp(n);
   }
-  
+
   if (check_binary && !zero && is_binary_vector_cpp(x)) {
     return mfp2_vector_to_matrix_cpp(x);
   }
-  
+
   NumericVector power_one = NumericVector::create(power);
-  
+
   return transform_fp_core_internal(
     x,
     power_one,
@@ -628,15 +849,15 @@ static NumericVector mfp2_apply_acd_stored_cpp(const NumericVector& x,
       !acd_parameter.containsElementNamed("scale")) {
       stop("Internal error: stored ACD parameters are incomplete.");
   }
-  
+
   const double beta0 = as<double>(acd_parameter["beta0"]);
   const double beta1 = as<double>(acd_parameter["beta1"]);
   const double power = as<double>(acd_parameter["power"]);
   const double scale = as<double>(acd_parameter["scale"]);
-  
+
   // Match transform_vector_fp(): when zero = TRUE, shift is ignored/forced to 0.
   const double shift = zero ? 0.0 : as<double>(acd_parameter["shift"]);
-  
+
   NumericMatrix x_power = mfp2_transform_fp_one_cpp(
     x,
     power,
@@ -645,19 +866,19 @@ static NumericVector mfp2_apply_acd_stored_cpp(const NumericVector& x,
     zero,
     false
   );
-  
+
   if (x_power.ncol() != 1) {
     stop("Internal error: stored ACD application must produce one FP column.");
   }
-  
+
   const int n = x.size();
   NumericVector out(n);
-  
+
   for (int i = 0; i < n; ++i) {
     const double zhat = beta0 + beta1 * x_power(i, 0);
     out[i] = R::pnorm5(zhat, 0.0, 1.0, 1, 0);
   }
-  
+
   return out;
 }
 
@@ -684,34 +905,34 @@ static NumericMatrix mfp2_transform_acd_adjustment_apply_cpp(
     SEXP power_sexp,
     SEXP acd_parameter_sexp,
     const bool zero) {
-  
+
   const int n = x.size();
-  
+
   if (Rf_isNull(acd_parameter_sexp)) {
     stop(
       "Internal error: ACD adjustment variables require stored acd_parameter "
       "values in build_adjustment_step()."
     );
   }
-  
+
   NumericVector power(power_sexp);
-  
+
   if (power.size() != 2) {
     stop("Internal error: ACD adjustment powers must have length two.");
   }
-  
+
   if (NumericVector::is_na(power[0]) && NumericVector::is_na(power[1])) {
     return mfp2_empty_matrix_cpp(n);
   }
-  
+
   List acd_parameter(acd_parameter_sexp);
-  
+
   NumericVector x_acd_raw = mfp2_apply_acd_stored_cpp(
     x,
     acd_parameter,
     zero
   );
-  
+
   // First component: ordinary FP transform of x.
   NumericMatrix x_fp = mfp2_transform_fp_one_cpp(
     x,
@@ -721,7 +942,7 @@ static NumericMatrix mfp2_transform_acd_adjustment_apply_cpp(
          zero,
          true
   );
-  
+
   // Second component: FP transform of acd(x).
   NumericMatrix x_acd = mfp2_transform_fp_one_cpp(
     x_acd_raw,
@@ -731,7 +952,7 @@ static NumericMatrix mfp2_transform_acd_adjustment_apply_cpp(
          false,
          true
   );
-  
+
   return mfp2_cbind_two_cpp(x_fp, x_acd);
 }
 
@@ -750,7 +971,7 @@ static NumericMatrix mfp2_catzero_to_numeric_matrix_cpp(SEXP cz_sexp,
   if (Rf_isNull(cz_sexp)) {
     return mfp2_empty_matrix_cpp(n);
   }
-  
+
   if (!Rf_isMatrix(cz_sexp)) {
     stop(
       "Internal error: catzero for variable '" +
@@ -758,9 +979,9 @@ static NumericMatrix mfp2_catzero_to_numeric_matrix_cpp(SEXP cz_sexp,
         "' must be a matrix."
     );
   }
-  
+
   IntegerVector dims = Rf_getAttrib(cz_sexp, R_DimSymbol);
-  
+
   if (dims.size() != 2 || dims[0] != n || dims[1] != 1) {
     stop(
       "Internal error: catzero for variable '" +
@@ -768,41 +989,41 @@ static NumericMatrix mfp2_catzero_to_numeric_matrix_cpp(SEXP cz_sexp,
         "' must be an n x 1 matrix."
     );
   }
-  
+
   NumericMatrix out(n, 1);
-  
+
   switch (TYPEOF(cz_sexp)) {
   case REALSXP: {
     NumericMatrix cz(cz_sexp);
-    
+
     for (int i = 0; i < n; ++i) {
       out(i, 0) = cz(i, 0);
     }
-    
+
     break;
   }
   case INTSXP: {
     IntegerMatrix cz(cz_sexp);
-    
+
     for (int i = 0; i < n; ++i) {
       const int value = cz(i, 0);
       out(i, 0) = IntegerVector::is_na(value) ?
       NA_REAL :
         static_cast<double>(value);
     }
-    
+
     break;
   }
   case LGLSXP: {
     LogicalMatrix cz(cz_sexp);
-    
+
     for (int i = 0; i < n; ++i) {
       const int value = cz(i, 0);
       out(i, 0) = LogicalVector::is_na(value) ?
       NA_REAL :
         static_cast<double>(value);
     }
-    
+
     break;
   }
   default:
@@ -812,7 +1033,7 @@ static NumericMatrix mfp2_catzero_to_numeric_matrix_cpp(SEXP cz_sexp,
         "' must be numeric, integer, or logical."
     );
   }
-  
+
   return out;
 }
 
@@ -827,17 +1048,17 @@ static NumericMatrix mfp2_catzero_to_numeric_matrix_cpp(SEXP cz_sexp,
 static void mfp2_set_adjustment_colnames_cpp(NumericMatrix& mat,
                                              const std::string& varname) {
   const int p = mat.ncol();
-  
+
   if (p == 0) {
     return;
   }
-  
+
   CharacterVector names(p);
-  
+
   for (int j = 0; j < p; ++j) {
     names[j] = varname + "_adj" + std::to_string(j + 1);
   }
-  
+
   colnames(mat) = names;
 }
 // -----------------------------------------------------------------------------
@@ -898,11 +1119,11 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
                                     const List& prev_data_adj_list,
                                     const IntegerVector& prev_spike_decision_int_adj,
                                     const bool has_prev) {
-  
+
   const int n = x.nrow();
   const int p_x = x.ncol();
   const int n_vars = vars_adj.size();
-  
+
   // --------------------------------------------------------------------------
   // Defensive alignment checks
   // --------------------------------------------------------------------------
@@ -924,24 +1145,24 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
       prev_spike_decision_int_adj.size() != n_vars) {
     stop("Internal error: build_adjustment_step_loop_cpp() inputs are not aligned.");
   }
-  
+
   // Per-variable matrices to return for cache reuse in later MFP iterations.
   List data_adj_list(n_vars);
   CharacterVector data_adj_names(n_vars);
-  
+
   // Total number of columns across all per-variable adjustment matrices.
   // Needed to allocate final data_adj once.
   int total_cols = 0;
-  
+
   // --------------------------------------------------------------------------
   // First pass: build or reuse each per-variable adjustment matrix
   // --------------------------------------------------------------------------
   for (int v = 0; v < n_vars; ++v) {
     const std::string varname = as<std::string>(vars_adj[v]);
     data_adj_names[v] = varname;
-    
+
     const int col = x_col_index[v];
-    
+
     if (col < 0 || col >= p_x) {
       stop(
         "Internal error: invalid column index for adjustment variable '" +
@@ -949,9 +1170,9 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
           "'."
       );
     }
-    
+
     const int spike_current = spike_decision_int_adj[v];
-    
+
     // ------------------------------------------------------------------------
     // Previous cache entry
     // ------------------------------------------------------------------------
@@ -962,12 +1183,12 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
     //
     SEXP prev_data_sexp = R_NilValue;
     int prev_spike_decision = NA_INTEGER;
-    
+
     if (has_prev) {
       prev_data_sexp = prev_data_adj_list[v];
       prev_spike_decision = prev_spike_decision_int_adj[v];
     }
-    
+
     // ------------------------------------------------------------------------
     // Cache invalidation
     // ------------------------------------------------------------------------
@@ -978,22 +1199,22 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
     // This mirrors the current R logic using identical() for normalized power
     // keys and integer spike decisions.
     bool recompute = true;
-    
+
     if (has_prev && !Rf_isNull(prev_data_sexp)) {
       const bool powers_same = mfp2_numeric_keys_identical_cpp(
         prev_power_keys_adj[v],
                            current_power_keys_adj[v]
       );
-      
+
       const bool spike_decision_same =
         !IntegerVector::is_na(prev_spike_decision) &&
         prev_spike_decision == spike_current;
-      
+
       recompute = !(powers_same && spike_decision_same);
     }
-    
+
     NumericMatrix adj_mat;
-    
+
     // ------------------------------------------------------------------------
     // Build or reuse this variable's adjustment matrix
     // ------------------------------------------------------------------------
@@ -1003,7 +1224,7 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
       // before eliminated variables because powers are intentionally irrelevant
       // when spike_decision == 3.
       SEXP cz_sexp = catzero_adj[v];
-      
+
       if (Rf_isNull(cz_sexp)) {
         stop(
           "Internal error: binary-only spike variable '" +
@@ -1011,18 +1232,18 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
             "' has no catzero indicator."
         );
       }
-      
+
       adj_mat = mfp2_catzero_to_numeric_matrix_cpp(
         cz_sexp,
         n,
         varname
       );
-      
+
     } else if (static_cast<bool>(eliminated[v])) {
       // Eliminated non-binary-only variable:
       // contributes no adjustment columns.
       adj_mat = mfp2_empty_matrix_cpp(n);
-      
+
     } else if (!recompute) {
       // Cache hit:
       // reuse the previous transformed matrix for this variable.
@@ -1033,9 +1254,9 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
             "' has NULL cached adjustment data."
         );
       }
-      
+
       adj_mat = NumericMatrix(prev_data_sexp);
-      
+
       if (adj_mat.nrow() != n) {
         stop(
           "Internal error: cached adjustment matrix for '" +
@@ -1043,16 +1264,16 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
             "' has the wrong number of rows."
         );
       }
-      
+
     } else {
       // Cache miss:
       // recompute the continuous/FP or stored-ACD part.
       NumericVector xvec(n);
-      
+
       for (int i = 0; i < n; ++i) {
         xvec[i] = x(i, col);
       }
-      
+
       if (static_cast<bool>(acdx_adj[v])) {
         // ACD adjustment variable:
         // build cbind(FP(x), FP(acd(x))) using stored ACD parameters.
@@ -1071,7 +1292,7 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
                     static_cast<bool>(zero_adj[v])
         );
       }
-      
+
       // ----------------------------------------------------------------------
       // Add structural-zero indicator if needed
       // ----------------------------------------------------------------------
@@ -1083,14 +1304,14 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
       //
       // Non-spike variables with catzero get catzero prepended.
       SEXP cz_sexp = catzero_adj[v];
-      
+
       if (!Rf_isNull(cz_sexp)) {
         NumericMatrix cz_mat = mfp2_catzero_to_numeric_matrix_cpp(
           cz_sexp,
           n,
           varname
         );
-        
+
         if (static_cast<bool>(spike_adj[v])) {
           if (spike_current == 1) {
             adj_mat = mfp2_cbind_two_cpp(cz_mat, adj_mat);
@@ -1104,19 +1325,19 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
         }
       }
     }
-    
+
     // Assign informative column names:
     //   varname_adj1, varname_adj2, ...
     //
     // This preserves the current R naming convention before the final cbind.
     mfp2_set_adjustment_colnames_cpp(adj_mat, varname);
-    
+
     data_adj_list[v] = adj_mat;
     total_cols += adj_mat.ncol();
   }
-  
+
   data_adj_list.attr("names") = data_adj_names;
-  
+
   // --------------------------------------------------------------------------
   // Second pass: cbind all per-variable matrices into final data_adj
   // --------------------------------------------------------------------------
@@ -1127,18 +1348,18 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
   // Empty n x 0 matrices contribute no columns.
   NumericMatrix data_adj(n, total_cols);
   CharacterVector data_adj_colnames(total_cols);
-  
+
   int out_col = 0;
-  
+
   for (int v = 0; v < n_vars; ++v) {
     NumericMatrix mat(data_adj_list[v]);
     CharacterVector cn = colnames(mat);
-    
+
     for (int j = 0; j < mat.ncol(); ++j) {
       for (int i = 0; i < n; ++i) {
         data_adj(i, out_col) = mat(i, j);
       }
-      
+
       if (cn.size() == mat.ncol()) {
         data_adj_colnames[out_col] = cn[j];
       } else {
@@ -1146,15 +1367,15 @@ List build_adjustment_step_loop_cpp(const NumericMatrix& x,
         data_adj_colnames[out_col] =
           varname + "_adj" + std::to_string(j + 1);
       }
-      
+
       ++out_col;
     }
   }
-  
+
   if (total_cols > 0) {
     colnames(data_adj) = data_adj_colnames;
   }
-  
+
   return List::create(
     _["data_adj_list"] = data_adj_list,
     _["data_adj"]      = data_adj

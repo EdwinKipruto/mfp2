@@ -202,8 +202,9 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #' \enumerate{
 #'   \item The cascade is enforced: \code{catzero[spike] <- TRUE} and
 #'     \code{zero[catzero] <- TRUE}.
-#'   \item A temporary recoded copy of \code{x} is created for spike-specific
-#'     checks and positive-part df capping.
+#'   \item Spike-specific eligibility checks and positive-part df capping are
+#'     evaluated directly with \code{x <= 0} / \code{x > 0} predicates, so no
+#'     temporary recoded copy of the full design matrix is required.
 #'   \item If \code{saz_pre_resolved = FALSE}, \code{reset_spike()} is called as
 #'     a defensive fallback for internal callers that have not resolved SAZ
 #'     eligibility before preprocessing.
@@ -473,25 +474,10 @@ fit_mfp <- function(x,
   catzero[spike] <- TRUE    # spike implies catzero
   zero[catzero]  <- TRUE    # catzero implies zero
 
-  # Temporary recoded data used only for spike eligibility checks.
-  # Do not mutate the real x here.
-  x_for_spike <- x
-
-  zero_aligned_for_spike <- if (has_mapped_terms) {
-    stats::setNames(
-      rep(unname(zero[names(term_to_columns)]), lengths(term_to_columns)),
-      unlist(term_to_columns, use.names = FALSE)
-    )[colnames(x_for_spike)]
-  } else {
-    zero[colnames(x_for_spike)]
-  }
-  cols_to_zero_for_spike <- which(zero_aligned_for_spike)
-
-  if (length(cols_to_zero_for_spike) > 0L) {
-    for (j in cols_to_zero_for_spike) {
-      x_for_spike[x_for_spike[, j] <= 0, j] <- 0
-    }
-  }
+  # No temporary zero-recoded copy is needed for SAZ eligibility. The helper
+  # functions below interpret finite x <= 0 directly as the structural-zero
+  # component, exactly matching the old temporary recoding while avoiding a
+  # copy-on-modify duplication of the full design matrix.
 
   # Defensive reset for ineligible spike variables.
   #
@@ -504,7 +490,7 @@ fit_mfp <- function(x,
   # pre-resolved SAZ eligibility.
   if (!isTRUE(saz_pre_resolved) && any(spike)) {
     result <- reset_spike(
-      x                      = x_for_spike,
+      x                      = x,
       spike                  = spike,
       user_catzero           = user_catzero,
       user_zero              = user_zero,
@@ -520,17 +506,17 @@ fit_mfp <- function(x,
   # descriptive SAZ metadata, not a model-selection result. Non-SAZ terms are
   # represented by NA and are suppressed by the print methods.
   prop_zero <- calculate_saz_prop_zero(
-    x = x_for_spike,
+    x = x,
     spike = spike,
     term_to_columns = term_to_columns
   )
 
   # For retained spike-at-zero variables, cap the maximum FP df using only the
   # positive component. Ordinary assign_df() uses the full variable,
-  # but for SAZ the relevant information for the FP part is x > 0 after
-  # temporary zero recoding.
+  # but for SAZ the relevant information for the FP part is x > 0; no
+  # temporary zero recoding is required for that predicate.
   df <- cap_spike_df(
-    x     = x_for_spike,
+    x     = x,
     df    = df,
     spike = spike
   )
@@ -657,10 +643,13 @@ fit_mfp <- function(x,
 
   # Cache individual transformed adjustment-variable blocks across focal
   # variables. This is separate from prev_adj_params: the latter is keyed by
-  # focal variable and can reuse a complete assembled data_adj matrix, whereas
-  # transform_cache is keyed by the variable being transformed. The ordinary
-  # list is scoped to this fit_mfp() call and threaded explicitly through the
-  # cycle, avoiding global state and environment side effects.
+  # focal variable and retains only the metadata/per-variable blocks needed as
+  # a fallback on the next cycle. It deliberately does NOT retain the complete
+  # assembled data_adj matrix, because doing so for every focal variable grows
+  # retained memory approximately as O(n * p^2). transform_cache is keyed by
+  # the variable being transformed and remains the primary reuse mechanism.
+  # The ordinary list is scoped to this fit_mfp() call and threaded explicitly
+  # through the cycle, avoiding global state and environment side effects.
   transform_cache <- setNames(
     vector("list", length(variables_ordered)),
     variables_ordered
@@ -1066,9 +1055,10 @@ fit_mfp <- function(x,
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ,
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
 #' @param rownames passed to \code{survival::coxph.fit()}.
-#' @param prev_adj_params Named list used to store previously computed adjustment
-#' variable transformations. This is updated at each step and reused in the next
-#' cycle to avoid recomputation.
+#' @param prev_adj_params Named focal-variable cache of previously computed
+#' adjustment metadata and per-variable transformed blocks. Complete assembled
+#' adjustment matrices are deliberately excluded to limit retained memory. The
+#' cache is updated at each step and reused in the next cycle.
 #' @param transform_cache Named run-scoped list of individual transformed
 #'   variable blocks, shared across focal-variable evaluations and updated
 #'   explicitly as the MFP cycle proceeds.
@@ -1189,14 +1179,59 @@ find_best_fp_cycle <- function(x,
     # focal variables in this same cycle can reuse unchanged transformations.
     transform_cache      <- fit_best_fp_step$transform_cache
     # Cache xi's adjustment-variable transformations, keyed by xi, so the next
-    # cycle can reuse them instead of recomputing from scratch.
-    prev_adj_params[[xi]] <- fit_best_fp_step$current_adj_params[[xi]]
+    # cycle can reuse unchanged per-variable blocks instead of recomputing them.
+    #
+    # Important memory rule: current_adj_params must contain data_adj/data_xi
+    # while find_best_fp_step() is running because SAZ stage 2 reuses those
+    # matrices. Once the focal-variable step is complete they are disposable.
+    # Persisting the complete n x adjustment matrix for every xi makes
+    # prev_adj_params scale approximately as O(n * p^2), so strip those two
+    # focal-step matrices before carrying the cache into the next cycle.
+    prev_adj_params[[xi]] <- compact_prev_adj_cache_entry(
+      fit_best_fp_step$current_adj_params[[xi]]
+    )
   }
 
   list(powers_current  = powers_current,
        spike_decision  = spike_decision,
        prev_adj_params = prev_adj_params,
        transform_cache = transform_cache)
+}
+
+#' Compact a focal-variable adjustment cache entry
+#'
+#' The active focal-variable step temporarily needs the assembled adjustment
+#' matrix (`data_adj`) and, for SAZ stage 2, the selected focal design (`data_xi`).
+#' Neither matrix is needed after that step has finished. Keeping them inside
+#' `prev_adj_params` for every focal variable retains an n-by-p-scale matrix p
+#' times and can therefore make cache memory grow approximately as O(n * p^2).
+#'
+#' This helper releases only those disposable whole-step matrices. The smaller
+#' metadata and `data_adj_list` blocks are retained so the historical per-focal
+#' fallback cache remains available when the shared `transform_cache` does not
+#' contain a reusable entry.
+#'
+#' @param params_xi Adjustment-cache entry for one focal variable.
+#' @return `params_xi` with `data_adj` and `data_xi` retained as explicit
+#'   named `NULL` entries, so their large matrix payloads are released without
+#'   exposing the cache to R's partial `$` matching.
+#' @keywords internal
+#' @noRd
+compact_prev_adj_cache_entry <- function(params_xi) {
+  if (is.null(params_xi)) {
+    return(NULL)
+  }
+
+  # Keep explicit named NULL slots rather than removing the elements.
+  #
+  # This is important because `$` performs partial matching on lists. If the
+  # `data_adj` element were removed while `data_adj_list` remained, an access
+  # such as `params_xi$data_adj` could silently resolve to `data_adj_list` and
+  # leak a list into code that requires a numeric matrix. Single-bracket list
+  # assignment preserves the exact names while releasing the large matrices.
+  params_xi["data_adj"] <- list(NULL)
+  params_xi["data_xi"] <- list(NULL)
+  params_xi
 }
 
 #' Normalize selected powers before checking convergence

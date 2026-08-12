@@ -2613,8 +2613,8 @@ test_that("reset_spike() resets all-zero variables", {
 })
 
 
-# Test purpose: Checks that resolve_saz_eligibility() temporarily recodes
-# nonpositive values to zero before testing SAZ component proportions.
+# Test purpose: Checks that resolve_saz_eligibility() treats nonpositive values
+# as the structural-zero component without requiring a recoded matrix.
 test_that("resolve_saz_eligibility() counts negative values as zero component", {
   x <- matrix(
     c(rep(-2, 20), rgamma(180, shape = 2, rate = 1)),
@@ -2637,6 +2637,43 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
   expect_true(out$spike["exposure"])
   expect_true(out$catzero["exposure"])
   expect_true(out$zero["exposure"])
+})
+
+# Test purpose: The raw-predicate reset must be exactly equivalent to the old
+# temporary x[x <= 0] <- 0 representation, including binary detection after
+# multiple distinct nonpositive values collapse to one structural-zero level.
+test_that("reset_spike raw predicates match zero-recoded eligibility", {
+  x_raw <- cbind(
+    exposure = c(-3, -2, -1, 0, rep(2, 16)),
+    eligible = c(rep(-2, 4), rep(1:4, each = 4))
+  )
+  x_recoded <- x_raw
+  x_recoded[x_recoded <= 0] <- 0
+
+  spike <- c(exposure = TRUE, eligible = TRUE)
+  user_catzero <- c(exposure = FALSE, eligible = FALSE)
+  user_zero <- c(exposure = FALSE, eligible = FALSE)
+
+  raw <- suppressWarnings(reset_spike(
+    x = x_raw,
+    spike = spike,
+    user_catzero = user_catzero,
+    user_zero = user_zero,
+    min_saz_component_prop = 0.10
+  ))
+  recoded <- suppressWarnings(reset_spike(
+    x = x_recoded,
+    spike = spike,
+    user_catzero = user_catzero,
+    user_zero = user_zero,
+    min_saz_component_prop = 0.10
+  ))
+
+  expect_identical(raw, recoded)
+  # exposure has one effective zero level plus one positive level, so it is
+  # binary after structural-zero collapsing and must be reset.
+  expect_false(raw$spike[["exposure"]])
+  expect_true(raw$spike[["eligible"]])
 })
 
 # Test purpose: Checks that structural-zero proportions use finite observations
@@ -2905,6 +2942,55 @@ test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive va
   )
 
   expect_equal(out[["exposure"]], 4)
+})
+
+# Test purpose: SAZ stage 2 must fit the same Model 2/Model 3 designs while
+# avoiding retention of either temporary assembled design matrix.
+test_that("SAZ reduced models do not retain temporary design matrices", {
+  seen <- new.env(parent = emptyenv())
+  seen$x <- list()
+
+  testthat::local_mocked_bindings(
+    fit_model = function(x, ...) {
+      seen$x[[length(seen$x) + 1L]] <- x
+      list(logl = -1, df = NCOL(x))
+    },
+    .package = "mfp2"
+  )
+
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0),
+    fp1 = c(0, 0, 1.2, 2.4)
+  )
+  adjustment <- cbind(z = c(2, 3, 4, 5))
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  out <- fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = rep(0, 4),
+    weights = NULL,
+    offset = NULL,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    method = NULL,
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  expect_length(seen$x, 2L)
+  expect_equal(seen$x[[1L]], cbind(fp1 = data_xi[, "fp1"], adjustment))
+  expect_equal(seen$x[[2L]], cbind(catzero = data_xi[, "catzero"], adjustment))
+  expect_false("x" %in% names(out))
+  expect_identical(out$data_xi, data_xi)
+  expect_identical(out$adjustment_matrix, adjustment)
 })
 
 # Test purpose: Ensures public mfp2() applies the SAZ positive-part df cap
@@ -3438,6 +3524,166 @@ test_that("fit_acd() returns ACD values in the unit interval", {
 })
 
 
+# Test purpose: Internal GLM candidate searches can request fitted values without
+# retaining the complete backend fit object. The lightweight vector must be
+# exactly the one produced by the same fitting backend.
+test_that("fit_model() can retain fitted values without retaining the GLM fit", {
+  set.seed(701)
+  x <- cbind(
+    "(Intercept)" = 1,
+    "x" = stats::runif(40, 0.5, 3)
+  )
+  y <- 1.5 + 0.8 * x[, "x"] + stats::rnorm(40, sd = 0.2)
+  fam <- stats::gaussian()
+
+  retained <- fit_model(
+    x = x,
+    y = y,
+    family = fam,
+    family_string = fam$family,
+    fitter = "base",
+    x_has_intercept = TRUE,
+    keep_fit = TRUE,
+    keep_fitted_values = FALSE
+  )
+
+  lightweight <- fit_model(
+    x = x,
+    y = y,
+    family = fam,
+    family_string = fam$family,
+    fitter = "base",
+    x_has_intercept = TRUE,
+    keep_fit = FALSE,
+    keep_fitted_values = TRUE
+  )
+
+  expect_false("fit" %in% names(lightweight))
+  expect_true("fitted_values" %in% names(lightweight))
+  expect_identical(lightweight$fitted_values, retained$fit$fitted.values)
+  expect_identical(lightweight$coefficients, retained$coefficients)
+  expect_identical(lightweight$logl, retained$logl)
+})
+
+# Test purpose: The ACD FP1 search must use the lightweight fit_model() contract
+# for every candidate and must not accidentally thread outcome-model weights or
+# offsets into the distribution-based ACD auxiliary regression.
+test_that("find_best_fp1_for_acd() requests only lightweight fitted values", {
+  calls <- new.env(parent = emptyenv())
+  calls$n <- 0L
+  calls$keep_fit <- logical()
+  calls$keep_fitted_values <- logical()
+  calls$weights <- list()
+  calls$offset <- list()
+
+  testthat::local_mocked_bindings(
+    # This helper should use the compact FP basis path introduced for mfp2
+    # candidate fitting, not recreate the legacy list of n x 1 FP matrices.
+    generate_transformations_fp = function(...) {
+      stop("legacy FP materialization should not be used", call. = FALSE)
+    },
+    generate_transformations_fp_basis = function(x, degree, powers, zero, ...) {
+      expect_equal(degree, 1L)
+      expect_false(zero)
+      list(
+        basis = cbind(x^-1, log(x), x),
+        candidate_map = matrix(1:3, ncol = 1L),
+        powers = matrix(powers, ncol = 1L),
+        catzero = NULL
+      )
+    },
+    fit_model = function(x,
+                         y,
+                         weights = NULL,
+                         offset = NULL,
+                         keep_fit,
+                         keep_fitted_values,
+                         ...) {
+      calls$n <- calls$n + 1L
+      i <- calls$n
+      calls$keep_fit[[i]] <- keep_fit
+      calls$keep_fitted_values[[i]] <- keep_fitted_values
+      calls$weights[i] <- list(weights)
+      calls$offset[i] <- list(offset)
+
+      logl <- c(-5, -1, -3)[[i]]
+      list(
+        logl = logl,
+        coefficients = c("(Intercept)" = i, "fp1" = i + 1),
+        fitted_values = rep.int(as.numeric(i), NROW(x))
+      )
+    },
+    .package = "mfp2"
+  )
+
+  out <- find_best_fp1_for_acd(
+    x = seq(1, 6),
+    y = seq(-1, 1, length.out = 6),
+    powers = c(-1, 0, 1),
+    zero = FALSE,
+    fitter = "base"
+  )
+
+  expect_equal(calls$n, 3L)
+  expect_true(all(!calls$keep_fit))
+  expect_true(all(calls$keep_fitted_values))
+  expect_true(all(vapply(calls$weights, is.null, logical(1L))))
+  expect_true(all(vapply(calls$offset, is.null, logical(1L))))
+  expect_equal(out$power, 0)
+  expect_equal(out$coefficients, c("(Intercept)" = 2, "fp1" = 3))
+  expect_equal(out$fitted_values, rep(2, 6))
+})
+
+# Test purpose: Removing the retained backend object must not change the ACD
+# candidate selected, its coefficients, or its fitted values relative to the
+# previous keep_fit = TRUE implementation.
+test_that("find_best_fp1_for_acd() preserves previous fitted results", {
+  x <- seq(0.5, 8, length.out = 60)
+  y <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / length(x))
+  powers <- c(-1, 0, 0.5, 1, 2)
+  fam <- stats::gaussian()
+  trafo <- generate_transformations_fp(
+    x = x,
+    degree = 1L,
+    powers = powers,
+    zero = FALSE
+  )$data
+
+  reference <- lapply(seq_along(powers), function(i) {
+    design <- cbind(
+      "(Intercept)" = 1,
+      "fp1" = trafo[[i]][, 1L]
+    )
+    fit <- fit_model(
+      x = design,
+      y = y,
+      family = fam,
+      family_string = fam$family,
+      fitter = "base",
+      x_has_intercept = TRUE,
+      keep_fit = TRUE
+    )
+    list(
+      deviance = -2 * fit$logl,
+      coefficients = fit$coefficients,
+      fitted_values = fit$fit$fitted.values
+    )
+  })
+
+  best <- which.min(vapply(reference, `[[`, numeric(1L), "deviance"))
+  out <- find_best_fp1_for_acd(
+    x = x,
+    y = y,
+    powers = powers,
+    zero = FALSE,
+    fitter = "base"
+  )
+
+  expect_identical(out$power, powers[[best]])
+  expect_identical(out$coefficients, reference[[best]]$coefficients)
+  expect_identical(out$fitted_values, reference[[best]]$fitted_values)
+})
+
 # Test purpose: Ensures apply_acd() reproduces the training ACD transformation
 # when supplied with parameters from fit_acd().
 test_that("apply_acd() reproduces fit_acd() values using stored parameters", {
@@ -3533,6 +3779,183 @@ test_that("generate_transformations_acd() includes catzero column when supplied"
   expect_equal(nrow(first), length(x))
   expect_equal(colnames(first)[1], "catzero")
 })
+
+# Test purpose: Checks that compact ACD degree-2 generation reconstructs every
+# materialized candidate while storing only the unique x/A(x) transformations.
+test_that("compact ACD basis reconstructs materialized degree-2 candidates", {
+  x <- seq(1, 8, length.out = 40)
+  allowed_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+
+  # Supply fixed ACD parameters so both representations use exactly the same
+  # A(x) values and the test isolates candidate storage/reconstruction.
+  acd_par <- list(
+    beta0 = -1,
+    beta1 = 0.25,
+    power = 1,
+    shift = 0,
+    scale = 1
+  )
+
+  materialized <- generate_transformations_acd(
+    x = x,
+    degree = 2,
+    powers = allowed_powers,
+    zero = FALSE,
+    acd_parameter = acd_par
+  )
+
+  compact <- generate_transformations_acd_basis(
+    x = x,
+    degree = 2,
+    powers = allowed_powers,
+    zero = FALSE,
+    acd_parameter = acd_par
+  )
+
+  expect_equal(compact$powers, materialized$powers)
+  expect_equal(dim(compact$candidate_map), c(64L, 2L))
+  expect_equal(ncol(compact$basis), 16L)
+
+  for (i in seq_len(nrow(compact$candidate_map))) {
+    expect_equal(
+      unname(materialize_acd_basis_candidate(compact, i)),
+      unname(materialized$data[[i]]),
+      tolerance = 1e-12
+    )
+  }
+})
+
+
+# Test purpose: Checks the one-term ACD degree-1 representation and verifies
+# that the invariant catzero indicator is stored once rather than per candidate.
+test_that("compact ACD basis preserves degree-1 catzero candidates", {
+  x <- seq(1, 6, length.out = 30)
+  catzero <- matrix(as.integer(seq_along(x) <= 5L), ncol = 1L)
+  powers <- c(0, 1)
+  acd_par <- list(
+    beta0 = -1,
+    beta1 = 0.25,
+    power = 1,
+    shift = 0,
+    scale = 1
+  )
+
+  materialized <- generate_transformations_acd(
+    x = x,
+    degree = 1,
+    powers = powers,
+    zero = FALSE,
+    catzero = catzero,
+    acd_parameter = acd_par
+  )
+
+  compact <- generate_transformations_acd_basis(
+    x = x,
+    degree = 1,
+    powers = powers,
+    zero = FALSE,
+    catzero = catzero,
+    acd_parameter = acd_par
+  )
+
+  expect_equal(dim(compact$candidate_map), c(2L, 1L))
+  expect_equal(ncol(compact$basis), 2L)
+  expect_equal(compact$catzero, catzero)
+
+  for (i in seq_len(nrow(compact$candidate_map))) {
+    reconstructed <- materialize_acd_basis_candidate(compact, i)
+    expect_equal(
+      unname(reconstructed),
+      unname(materialized$data[[i]]),
+      tolerance = 1e-12
+    )
+    expect_equal(colnames(reconstructed), c("catzero", "V1"))
+  }
+})
+
+
+# Test purpose: Checks that compact ACD generation preserves zero-mode
+# semantics for nonpositive x values as well as positive transformed values.
+test_that("compact ACD basis preserves zero-mode transformations", {
+  x <- c(-2, 0, 1, 2, 4, 8)
+  powers <- c(0, 1)
+  acd_par <- list(
+    beta0 = -1,
+    beta1 = 0.25,
+    power = 1,
+    shift = 0,
+    scale = 1
+  )
+
+  materialized <- generate_transformations_acd(
+    x = x,
+    degree = 2,
+    powers = powers,
+    zero = TRUE,
+    acd_parameter = acd_par
+  )
+
+  compact <- generate_transformations_acd_basis(
+    x = x,
+    degree = 2,
+    powers = powers,
+    zero = TRUE,
+    acd_parameter = acd_par
+  )
+
+  for (i in seq_len(nrow(compact$candidate_map))) {
+    expect_equal(
+      unname(materialize_acd_basis_candidate(compact, i)),
+      unname(materialized$data[[i]]),
+      tolerance = 1e-12
+    )
+  }
+})
+
+
+# Test purpose: Confirms the model-search transformation wrapper actually uses
+# the compact ACD representation instead of returning a materialized data list.
+test_that("transform_data_step() returns compact ACD basis when requested", {
+  x_vec <- seq(1, 5, length.out = 25)
+  x <- matrix(x_vec, ncol = 1L, dimnames = list(NULL, "x"))
+  acd_par <- list(
+    beta0 = -1,
+    beta1 = 0.25,
+    power = 1,
+    shift = 0,
+    scale = 1
+  )
+
+  out <- transform_data_step(
+    x = x,
+    xi = "x",
+    powers_current = list(x = c(1, 1)),
+    df = 4,
+    powers = list(x = c(0, 1)),
+    acdx = c(x = TRUE),
+    zero = c(x = FALSE),
+    catzero = list(x = NULL),
+    spike = c(x = FALSE),
+    spike_decision = c(x = 2),
+    acd_parameter = list(x = acd_par),
+    prev_adj_params = list(),
+    precomputed_adj = list(
+      powers_adj = list(),
+      spike_decision_adj = numeric(0),
+      data_adj_list = list(),
+      data_adj = NULL
+    ),
+    term_to_columns = list(x = 1L),
+    compact_acd = TRUE
+  )
+
+  expect_null(out$data_fp)
+  expect_null(out$fp_basis)
+  expect_true(is.list(out$acd_basis))
+  expect_equal(dim(out$acd_basis$candidate_map), c(4L, 2L))
+  expect_equal(ncol(out$acd_basis$basis), 4L)
+})
+
 
 # Test purpose: Checks important fit_acd() input validation branches.
 test_that("fit_acd() validates input arguments", {
@@ -7326,6 +7749,325 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
 })
 
 
+# Test purpose: force_max_fp has one dedicated selector for p-value, AIC, and
+# BIC selection. It fits only the predetermined maximum ordinary FP form;
+# null, linear, and lower-degree FP models cannot affect a forced result.
+test_that("force-max selector fits only the maximum ordinary FP form", {
+  calls <- new.env(parent = emptyenv())
+  calls$degrees <- integer(0)
+
+  metric_names <- c(
+    "logl", "df", "deviance_rs", "deviance_gaussian",
+    "aic", "bic", "df_resid"
+  )
+
+  testthat::local_mocked_bindings(
+    build_adjustment_step = function(...) {
+      list(
+        data_adj = NULL,
+        current_params = list(),
+        transform_cache = list(reused = TRUE)
+      )
+    },
+    find_best_fpm_step = function(..., degree) {
+      calls$degrees <- c(calls$degrees, degree)
+
+      metrics <- matrix(
+        c(
+          -20, 4, 40, 40, 48, 50, 96,
+          -18, 4, 36, 36, 44, 46, 96
+        ),
+        nrow = 2,
+        byrow = TRUE,
+        dimnames = list(NULL, metric_names)
+      )
+
+      list(
+        powers = rbind(c(-1, -1), c(-1, 2)),
+        power_best = c(-1, 2),
+        metrics = metrics,
+        model_best = 2L,
+        current_adj_params = list(x = list(data_adj = NULL))
+      )
+    },
+    .package = "mfp2"
+  )
+
+  out <- select_force_max_fp(
+    x = matrix(1:8, ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x",
+    keep = character(0),
+    degree = 2,
+    acdx = c(x = FALSE),
+    y = 1:8,
+    powers_current = list(x = c(1, 1)),
+    powers = list(x = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)),
+    criterion = "aic",
+    ftest = FALSE,
+    select = 0.05,
+    alpha = 0.05,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    zero = c(x = FALSE),
+    catzero = list(x = NULL),
+    spike = list(x = FALSE),
+    spike_decision = c(x = 2),
+    acd_parameter = list(x = NULL),
+    prev_adj_params = list(x = NULL),
+    transform_cache = NULL,
+    force_max_fp = c(x = TRUE),
+    has_offset = FALSE,
+    n_obs = 8,
+    term_to_columns = list(x = "x")
+  )
+
+  expect_equal(calls$degrees, 2)
+  expect_identical(out$model_best, 1L)
+  expect_identical(rownames(out$metrics), "FP2")
+  expect_identical(rownames(out$powers), "FP2")
+  expect_equal(unname(out$power_best), c(-1, 2))
+  expect_true(out$transform_cache$reused)
+})
+
+# Test purpose: The dedicated selector itself accepts p-value forcing. This
+# verifies that p-value forcing no longer relies on select = 1 / alpha = 1 to
+# walk the RA2 closed-test sequence before reaching the predetermined FPm.
+test_that("force-max selector accepts p-value criterion directly", {
+  calls <- new.env(parent = emptyenv())
+  calls$degrees <- integer(0)
+
+  metric_names <- c(
+    "logl", "df", "deviance_rs", "deviance_gaussian",
+    "aic", "bic", "df_resid"
+  )
+
+  testthat::local_mocked_bindings(
+    build_adjustment_step = function(...) {
+      list(
+        data_adj = NULL,
+        current_params = list(),
+        transform_cache = list(pvalue = TRUE)
+      )
+    },
+    find_best_fpm_step = function(..., degree) {
+      calls$degrees <- c(calls$degrees, degree)
+      metrics <- matrix(
+        c(-18, 4, 36, 36, 44, 46, 96),
+        nrow = 1,
+        dimnames = list(NULL, metric_names)
+      )
+      list(
+        powers = matrix(c(-1, 2), nrow = 1),
+        power_best = c(-1, 2),
+        metrics = metrics,
+        model_best = 1L,
+        current_adj_params = list(x = list(data_adj = NULL))
+      )
+    },
+    .package = "mfp2"
+  )
+
+  out <- select_force_max_fp(
+    x = matrix(1:8, ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x",
+    keep = character(0),
+    degree = 2,
+    acdx = c(x = FALSE),
+    y = 1:8,
+    powers_current = list(x = c(1, 1)),
+    powers = list(x = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)),
+    criterion = "pvalue",
+    ftest = FALSE,
+    select = 1,
+    alpha = 1,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    zero = c(x = FALSE),
+    catzero = list(x = NULL),
+    spike = list(x = FALSE),
+    spike_decision = c(x = 2),
+    acd_parameter = list(x = NULL),
+    prev_adj_params = list(x = NULL),
+    transform_cache = NULL,
+    force_max_fp = c(x = TRUE),
+    has_offset = FALSE,
+    n_obs = 8,
+    term_to_columns = list(x = "x")
+  )
+
+  expect_equal(calls$degrees, 2)
+  expect_identical(out$model_best, 1L)
+  expect_identical(rownames(out$metrics), "FP2")
+  expect_equal(unname(out$power_best), c(-1, 2))
+  expect_length(out$pvalue, 0L)
+  expect_true(out$transform_cache$pvalue)
+})
+
+# Test purpose: The same criterion-independent selector handles forced ACD terms
+# without fitting reduced ACD alternatives. The maximum ACD form is always
+# FP1(x, A(x)), represented by the degree-2 ACD candidate search.
+test_that("force-max selector fits only the full ACD form", {
+  calls <- new.env(parent = emptyenv())
+  calls$degrees <- integer(0)
+
+  metric_names <- c(
+    "logl", "df", "deviance_rs", "deviance_gaussian",
+    "aic", "bic", "df_resid"
+  )
+
+  testthat::local_mocked_bindings(
+    build_adjustment_step = function(...) {
+      list(
+        data_adj = NULL,
+        current_params = list(),
+        transform_cache = list(acd = TRUE)
+      )
+    },
+    find_best_fpm_step = function(..., degree) {
+      calls$degrees <- c(calls$degrees, degree)
+      metrics <- matrix(
+        c(-10, 4, 20, 20, 28, 30, 96),
+        nrow = 1,
+        dimnames = list(NULL, metric_names)
+      )
+
+      list(
+        powers = matrix(c(-1, 2), nrow = 1),
+        power_best = c(-1, 2),
+        metrics = metrics,
+        model_best = 1L,
+        current_adj_params = list(x = list(data_adj = NULL))
+      )
+    },
+    .package = "mfp2"
+  )
+
+  out <- select_force_max_fp(
+    x = matrix(1:8, ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x",
+    keep = character(0),
+    degree = 2,
+    acdx = c(x = TRUE),
+    y = 1:8,
+    powers_current = list(x = c(1, 1)),
+    powers = list(x = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)),
+    criterion = "pvalue",
+    ftest = FALSE,
+    select = 1,
+    alpha = 1,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    zero = c(x = FALSE),
+    catzero = list(x = NULL),
+    spike = list(x = FALSE),
+    spike_decision = c(x = 2),
+    acd_parameter = list(x = list()),
+    prev_adj_params = list(x = NULL),
+    transform_cache = NULL,
+    force_max_fp = c(x = TRUE),
+    has_offset = FALSE,
+    n_obs = 8,
+    term_to_columns = list(x = "x")
+  )
+
+  expect_equal(calls$degrees, 2)
+  expect_true(out$acd)
+  expect_identical(out$model_best, 1L)
+  expect_identical(rownames(out$metrics), "FP1(x, A(x))")
+  expect_identical(rownames(out$powers), "FP1(x, A(x))")
+})
+
+# Test purpose: find_best_fp_step() must dispatch every forced non-linear term
+# to select_force_max_fp(), including criterion = "pvalue". The ordinary RA2
+# and IC selectors must not run when the final functional complexity is forced.
+test_that("force-max dispatch bypasses RA2 and IC selectors for all criteria", {
+  calls <- new.env(parent = emptyenv())
+  calls$criteria <- character(0)
+
+  testthat::local_mocked_bindings(
+    select_force_max_fp = function(..., criterion) {
+      calls$criteria <- c(calls$criteria, criterion)
+      metrics <- matrix(
+        c(-10, 4, 20, 20, 28, 30, 96),
+        nrow = 1,
+        dimnames = list(
+          "FP2",
+          c("logl", "df", "deviance_rs", "deviance_gaussian",
+            "aic", "bic", "df_resid")
+        )
+      )
+      list(
+        keep = FALSE,
+        acd = FALSE,
+        powers = matrix(c(-1, 2), nrow = 1, dimnames = list("FP2", NULL)),
+        power_best = c(-1, 2),
+        metrics = metrics,
+        model_best = 1L,
+        statistic = NA,
+        pvalue = NA,
+        spike = FALSE,
+        current_adj_params = list(),
+        transform_cache = list()
+      )
+    },
+    select_ra2 = function(...) {
+      stop("ordinary RA2 selector must not run", call. = FALSE)
+    },
+    select_ra2_acd = function(...) {
+      stop("ACD RA2 selector must not run", call. = FALSE)
+    },
+    select_ic = function(...) {
+      stop("ordinary IC selector must not run", call. = FALSE)
+    },
+    select_ic_acd = function(...) {
+      stop("ACD IC selector must not run", call. = FALSE)
+    },
+    .package = "mfp2"
+  )
+
+  for (criterion_value in c("pvalue", "aic", "bic")) {
+    out <- find_best_fp_step(
+      x = matrix(seq_len(8), ncol = 1, dimnames = list(NULL, "x")),
+      y = seq_len(8),
+      xi = "x",
+      weights = NULL,
+      offset = NULL,
+      df = 4,
+      powers_current = list(x = c(1, 1)),
+      family = stats::gaussian(),
+      family_string = "gaussian",
+      criterion = criterion_value,
+      select = 1,
+      alpha = 1,
+      keep = character(0),
+      powers = list(x = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)),
+      method = NULL,
+      strata = NULL,
+      nocenter = FALSE,
+      acdx = c(x = FALSE),
+      ftest = FALSE,
+      control = list(),
+      rownames = as.character(seq_len(8)),
+      zero = c(x = FALSE),
+      catzero = list(x = NULL),
+      spike = list(x = FALSE),
+      spike_decision = c(x = 2),
+      acd_parameter = list(x = NULL),
+      prev_adj_params = list(x = NULL),
+      transform_cache = NULL,
+      force_max_fp = c(x = TRUE),
+      has_offset = FALSE,
+      n_obs = 8,
+      verbose = FALSE,
+      term_to_columns = list(x = "x")
+    )
+
+    expect_equal(unname(out$power_best), c(-1, 2))
+  }
+
+  expect_identical(calls$criteria, c("pvalue", "aic", "bic"))
+})
+
 # Test purpose: Verifies that force_max_fp_vars translates to select = 1 and
 # alpha = 1 under p-value selection in the matrix interface.
 test_that("force_max_fp_vars forces maximum FP degree with p-value selection", {
@@ -10278,6 +11020,126 @@ test_that("generate_transformations_fp_cpp prepends catzero", {
   expect_equal(colnames(out[[1]]), c("catzero", "V1", "V2"))
 })
 
+# Test purpose: Checks that the compact ordinary-FP basis reconstructs every
+# degree-2 candidate exactly while storing only the unique repeated-power terms.
+test_that("compact FP basis reconstructs materialized degree-2 candidates", {
+  x <- c(1, 2, 4, 8, 16)
+  allowed_powers <- c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)
+
+  materialized <- generate_transformations_fp(
+    x = x,
+    degree = 2,
+    powers = allowed_powers,
+    zero = FALSE
+  )
+
+  compact <- generate_transformations_fp_basis(
+    x = x,
+    degree = 2,
+    powers = allowed_powers,
+    zero = FALSE
+  )
+
+  expect_equal(nrow(compact$candidate_map), 36L)
+  expect_equal(ncol(compact$candidate_map), 2L)
+  expect_equal(ncol(compact$basis), 16L)
+  expect_equal(compact$powers, materialized$powers)
+
+  for (i in seq_len(nrow(compact$candidate_map))) {
+    expect_equal(
+      unname(materialize_fp_basis_candidate(compact, i)),
+      unname(materialized$data[[i]]),
+      tolerance = 1e-12
+    )
+  }
+})
+
+
+# Test purpose: Checks repeated zero powers and structural-zero indicators in
+# the compact representation, including the column names required by SAZ stage 2.
+test_that("compact FP basis preserves repeated zero powers and catzero", {
+  x <- c(1, 2, 4, 8)
+  catzero <- matrix(c(0, 1, 0, 1), ncol = 1L)
+
+  compact <- generate_transformations_fp_basis(
+    x = x,
+    degree = 2,
+    powers = 0,
+    zero = FALSE,
+    catzero = catzero
+  )
+
+  out <- materialize_fp_basis_candidate(compact, 1L)
+
+  expect_equal(ncol(compact$basis), 2L)
+  expect_equal(unname(compact$basis[, 1L]), log(x), tolerance = 1e-12)
+  expect_equal(unname(compact$basis[, 2L]), log(x)^2, tolerance = 1e-12)
+  expect_equal(unname(out[, 1L]), as.numeric(catzero[, 1L]))
+  expect_equal(unname(out[, 2L]), log(x), tolerance = 1e-12)
+  expect_equal(unname(out[, 3L]), log(x)^2, tolerance = 1e-12)
+  expect_equal(colnames(out), c("catzero", "V1", "V2"))
+})
+
+
+# Test purpose: Checks zero-mode semantics in the compact basis. Nonpositive
+# values must remain zero while positive observations use ordinary FP terms.
+test_that("compact FP basis preserves zero-mode transformations", {
+  x <- c(-2, 0, 1, 2, 4)
+  powers <- rbind(c(-1, -1), c(0, 0), c(1, 2))
+
+  old <- generate_transformations_fp_cpp(
+    x = x,
+    powers = powers,
+    zero = TRUE,
+    catzero = NULL
+  )
+  compact <- generate_transformations_fp_basis_cpp(
+    x = x,
+    powers = powers,
+    zero = TRUE
+  )
+
+  for (i in seq_len(nrow(powers))) {
+    reconstructed <- compact$basis[
+      , compact$candidate_map[i, ], drop = FALSE
+    ]
+    expect_equal(
+      unname(reconstructed),
+      unname(old[[i]]),
+      tolerance = 1e-12
+    )
+  }
+})
+
+
+# Test purpose: Checks that compact candidate columns can be copied into a
+# reusable design matrix without allocating/materializing the complete candidate.
+test_that("compact FP candidate copies into reusable design matrix", {
+  x <- c(1, 2, 4, 8)
+  powers <- rbind(c(0, 0), c(1, 2))
+  compact <- generate_transformations_fp_basis_cpp(
+    x = x,
+    powers = powers,
+    zero = FALSE
+  )
+
+  target <- matrix(-1, nrow = length(x), ncol = 4L)
+  target[, 1L] <- 1
+  target[, 4L] <- 99
+
+  target <- copy_fp_basis_candidate_cpp(
+    target = target,
+    basis = compact$basis,
+    source_cols = as.integer(compact$candidate_map[1L, ]),
+    target_cols = c(2L, 3L)
+  )
+
+  expect_equal(target[, 1L], rep(1, length(x)))
+  expect_equal(target[, 2L], log(x), tolerance = 1e-12)
+  expect_equal(target[, 3L], log(x)^2, tolerance = 1e-12)
+  expect_equal(target[, 4L], rep(99, length(x)))
+})
+
 
 # Test purpose: Checks that the C++ adjustment-step bridge returns NULL when
 # there are no adjustment variables.
@@ -10506,6 +11368,82 @@ test_that("C++ adjustment-step bridge handles all-eliminated adjustment variable
   expect_equal(NCOL(out$data_adj), 0L)
   expect_equal(ncol(out$data_adj_list$x1), 0L)
   expect_equal(ncol(out$data_adj_list$x2), 0L)
+})
+
+
+# Test purpose: The persistent focal-variable cache must drop whole-step
+# matrices after a focal fit finishes, while retaining the per-variable blocks
+# and metadata needed for fallback reuse in a later cycle.
+test_that("persistent adjustment cache drops assembled matrices", {
+  cached_block <- matrix(c(1, 2, 3), ncol = 1L)
+  assembled <- cbind(cached_block, cached_block)
+
+  params_xi <- list(
+    powers_adj = list(x1 = 1),
+    spike_decision_adj = c(x1 = 2L),
+    data_adj_list = list(x1 = cached_block),
+    data_adj = assembled,
+    data_xi = matrix(c(4, 5, 6), ncol = 1L)
+  )
+
+  out <- compact_prev_adj_cache_entry(params_xi)
+
+  # Keep exact named NULL entries. If `data_adj` were removed entirely, R's
+  # partial `$` matching could resolve `out$data_adj` to `out$data_adj_list`.
+  expect_true("data_adj" %in% names(out))
+  expect_true("data_xi" %in% names(out))
+  expect_null(out[["data_adj", exact = TRUE]])
+  expect_null(out[["data_xi", exact = TRUE]])
+  expect_null(out$data_adj)
+  expect_null(out$data_xi)
+  expect_identical(out$powers_adj, params_xi$powers_adj)
+  expect_identical(out$spike_decision_adj, params_xi$spike_decision_adj)
+  expect_identical(out$data_adj_list$x1, cached_block)
+})
+
+
+# Test purpose: build_adjustment_step() must still be able to reuse a historical
+# per-focal block when prev_adj_params no longer contains a complete data_adj
+# matrix. This protects the compatibility fallback after cache compaction.
+test_that("adjustment fallback works without cached assembled matrix", {
+  x <- cbind(
+    x1 = c(1, 2, 4),
+    x2 = c(3, 5, 7)
+  )
+
+  cached <- matrix(c(99, 98, 97), ncol = 1L)
+  colnames(cached) <- "cached_x1"
+
+  prev_adj_params <- list(
+    x1 = NULL,
+    x2 = list(
+      powers_adj = list(x1 = c(1)),
+      spike_decision_adj = c(x1 = 2L),
+      data_adj_list = list(x1 = cached)
+    )
+  )
+
+  out <- build_adjustment_step(
+    x = x,
+    xi = "x2",
+    powers_current = list(x1 = c(1), x2 = c(1)),
+    powers = list(x1 = c(-2, -1, 0, 1, 2), x2 = c(-2, -1, 0, 1, 2)),
+    acdx = c(x1 = FALSE, x2 = FALSE),
+    zero = c(x1 = FALSE, x2 = FALSE),
+    catzero = list(x1 = NULL, x2 = NULL),
+    spike = c(x1 = FALSE, x2 = FALSE),
+    spike_decision = c(x1 = 2L, x2 = 2L),
+    acd_parameter = list(x1 = NULL, x2 = NULL),
+    prev_adj_params = prev_adj_params,
+    transform_cache = list(x1 = NULL, x2 = NULL),
+    term_to_columns = list(x1 = "x1", x2 = "x2")
+  )
+
+  expected <- cached
+  colnames(expected) <- "x1_adj1"
+
+  expect_equal(out$data_adj, expected)
+  expect_equal(out$data_adj_list$x1, expected)
 })
 
 

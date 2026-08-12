@@ -29,6 +29,9 @@
 #' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' Defaults to `!fast`, so ordinary final fits are retained and fast candidate
 #' fits are discarded unless a caller explicitly needs the fitted object.
+#' @param keep_fitted_values logical. If `TRUE` for a GLM, retain only the
+#' fitted-values vector in the lightweight wrapper. This is useful for internal
+#' candidate searches that need predictions but not the complete backend fit.
 #' @param fitter GLM fitting backend; ignored for Cox models.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
@@ -55,6 +58,8 @@
 #'   For Cox models, it is minus twice the fitted partial log-likelihood.
 #' * `null_logl`: when `calculate_fit_statistics = TRUE` for a Cox model, the
 #'   null partial log-likelihood.
+#' * `fitted_values`: for GLMs, when `keep_fitted_values = TRUE`, the backend
+#'   fitted-values vector without retaining the complete fitted object.
 #' * `fit`: when `keep_fit = TRUE`, the object returned by the fitting
 #'   procedure.
 #' * `transformed_to_model_columns`: for full fits, a named character vector
@@ -80,13 +85,21 @@ fit_model <- function(x,
                       keep_fit = !fast,
                       has_offset = FALSE,
                       x_has_intercept = FALSE,
-                      fitter = "base") {
+                      fitter = "base",
+                      keep_fitted_values = FALSE) {
   # Set column names if not provided
   if (!is.null(dim(x)) && is.null(colnames(x))) {
     colnames(x) <- colnames(x, do.NULL = FALSE)
   }
 
   if (identical(family_string, "cox")) {
+    if (isTRUE(keep_fitted_values)) {
+      stop(
+        "Internal error: keep_fitted_values is available only for GLMs.",
+        call. = FALSE
+      )
+    }
+
     if (isTRUE(x_has_intercept)) {
       stop(
         "Internal error: Cox model matrix must not include an intercept.",
@@ -120,6 +133,7 @@ fit_model <- function(x,
       calculate_fit_statistics = calculate_fit_statistics,
       calculate_gaussian_deviance = calculate_gaussian_deviance,
       keep_fit = keep_fit,
+      keep_fitted_values = keep_fitted_values,
       fitter = fitter,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept,
@@ -279,6 +293,8 @@ assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
 #' compute and retain the scalar Stata-style Gaussian deviance required by
 #' F-tests. Residual and weight vectors are not retained in the wrapper.
 #' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
+#' @param keep_fitted_values logical. If `TRUE`, retain only the backend
+#' fitted-values vector in the lightweight return object.
 #' @param fitter GLM fitting backend for the matrix fast path.
 #' @param family_string Normalized family name supplied by `fit_model()`.
 #' @param has_offset logical indicating whether `offset` should be included in
@@ -299,6 +315,8 @@ assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
 #'   deviance returned by the fitted GLM.
 #' * `model_deviance`: when `calculate_fit_statistics = TRUE`, the residual
 #'   deviance returned by the fitted GLM.
+#' * `fitted_values`: when `keep_fitted_values = TRUE`, the backend
+#'   fitted-values vector without retaining that full object.
 #' * `fit`: when `keep_fit = TRUE`, the fitted model object.
 #'
 #' @import stats
@@ -316,7 +334,8 @@ fit_glm <- function(x,
                     has_offset = FALSE,
                     x_has_intercept = FALSE,
                     fitter = "base",
-                    family_string = NULL) {
+                    family_string = NULL,
+                    keep_fitted_values = FALSE) {
   if (is.null(family_string)) {
     family_string <- if (is.character(family) && length(family) == 1L) {
       family
@@ -516,6 +535,20 @@ fit_glm <- function(x,
 
   if (is_gaussian && isTRUE(calculate_gaussian_deviance)) {
     result$deviance_gaussian <- gaussian_deviance
+  }
+
+  if (isTRUE(keep_fitted_values)) {
+    # Some internal searches need only the n-length fitted-value vector.
+    # Retain that lightweight result before the backend fit goes out of scope
+    # instead of forcing callers to retain the complete fit object.
+    fitted_values <- fit$fitted.values
+    if (!is.numeric(fitted_values) || length(fitted_values) != nobs) {
+      stop(
+        "Internal error: GLM backend did not return usable fitted values.",
+        call. = FALSE
+      )
+    }
+    result$fitted_values <- fitted_values
   }
 
   if (isTRUE(keep_fit)) {

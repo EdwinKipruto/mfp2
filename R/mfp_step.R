@@ -65,24 +65,23 @@
 #' variables are handled. Each element corresponds to a variable and encodes
 #' the selected strategy: `1` = include FP for positive values plus binary SAZ,
 #' `2` = treat as continuous FP only, `3` = include binary SAZ only.
-#' @param prev_adj_params Named list storing adjustment variable transformations
-#' from previous steps for each focal variable.
+#' @param prev_adj_params Named list storing adjustment metadata and reusable
+#' per-variable transformed blocks from previous steps for each focal variable.
+#' Complete assembled adjustment matrices are not retained between cycles.
 #' @param transform_cache Named list keyed by variable name. Each populated
 #'   entry stores that variable's normalized power key, spike decision, and
 #'   transformed adjustment block so it can be reused across focal variables
 #'   within one fit_mfp() call.
 #' @param force_max_fp A logical vector of length \code{nvars}, named by
-#'  variable name. If \code{TRUE} for variable \code{xi}, forces
-#' \code{select_ic()} and \code{select_ic_acd()} to select the most complex
-#' functional form available-the highest-likelihood FP model at the degree
-#'   specified by \code{df} for non-ACD variables, or \code{FP1(x, A(x))} for
-#'   ACD variables-without competing it against simpler forms (null, linear,
-#'   or lower-degree FP) under AIC/BIC. The best power combination within the
-#'   selected form is still determined by \code{find_best_fpm_step()} via
-#'   deviance minimisation, which is equivalent to AIC/BIC minimisation at
-#'   fixed degrees of freedom. Has no effect when \code{criterion = "pvalue"}
-#'   since \code{select_ra2()} is used in that case and \code{alpha = 1}
-#'   already guarantees acceptance of the most complex form.
+#'   variable name. If \code{TRUE} for a non-linear variable \code{xi},
+#'   \code{select_force_max_fp()} fits only the most complex functional form
+#'   allowed by \code{df}: the highest-likelihood FP model at the requested
+#'   degree for ordinary FP variables, or \code{FP1(x, A(x))} for ACD
+#'   variables. Null, linear, and lower-degree alternatives are not fitted
+#'   because variable selection and functional-form simplification are
+#'   explicitly bypassed for forced terms under p-value, AIC, and BIC
+#'   selection. The best power combination within the forced form is still
+#'   determined by \code{find_best_fpm_step()}.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param n_obs Numeric; number of observations (or observed events, for Cox
@@ -94,7 +93,8 @@
 #' take this argument; it is documented here because several sibling
 #' functions below (\code{find_best_fpm_step()}, \code{fit_null_step()},
 #' \code{fit_linear_step()}, \code{select_linear()}, \code{select_ra2()},
-#' \code{select_ra2_acd()}, \code{select_ic()}, \code{select_ic_acd()}) use
+#' \code{select_ra2_acd()}, \code{select_force_max_fp()}, \code{select_ic()},
+#' \code{select_ic_acd()}) use
 #' \code{@@inheritParams find_best_fp_step} and rely on this entry.
 #' @param verbose a logical; run in verbose mode.
 #'
@@ -139,9 +139,13 @@
 #' extended for ACD transformation in \code{select_ra2_acd()} according to
 #' Royston and Sauerbrei (2016).
 #'
-#' For the other criteria `aic` and `bic` all FP models up to the desired degree
-#' are fitted and the model with the lowest value for the information criteria
-#' is chosen as the final one. This is implemented in \code{select_ic()}.
+#' For the other criteria `aic` and `bic`, ordinary selection fits FP models
+#' up to the desired degree and chooses the model with the lowest information
+#' criterion via \code{select_ic()} (or \code{select_ic_acd()} for ACD).
+#' Across all three criteria, `force_max_fp` is handled before the ordinary
+#' selectors are dispatched: \code{select_force_max_fp()} fits only the
+#' predetermined maximum functional form and therefore avoids model fits that
+#' cannot affect the result.
 #'
 #' @return
 #' A numeric vector indicating the best powers for `xi`. Entries can be
@@ -206,21 +210,34 @@ find_best_fp_step <- function(x,
   degree <- as.numeric(df / 2)
 
   # Step 1: Choose the appropriate selection function for xi ------------------
-  # Linear (df = 1), ACD, or ordinary FP case, each further split by
-  # criterion (p-value closed-test vs. AIC/BIC).
+  # Linear-only terms retain their historical selector. For every non-linear
+  # term with force_max_fp = TRUE, selection is already predetermined by the
+  # public option: retain xi at its maximum permitted functional complexity.
+  # Use one dedicated selector for p-value, AIC, and BIC so RA2/IC machinery
+  # never fits null, linear, or lower-degree alternatives that cannot win.
+  criterion_lower <- tolower(criterion)
+  force_max_active <- df > 1 && isTRUE(force_max_fp[xi])
+
   if (df == 1) {
-    # linear case
+    # Linear-only terms keep their historical selector.
     select_fct <- select_linear
+  } else if (force_max_active) {
+    # All criteria plus force_max_fp: fit only the required maximum form.
+    select_fct <- select_force_max_fp
   } else if (acdx[xi]) {
-    # acd case
-    if (tolower(criterion) == "pvalue") {
+    # ACD case.
+    if (criterion_lower == "pvalue") {
       select_fct <- select_ra2_acd
-    } else select_fct <- select_ic_acd
+    } else {
+      select_fct <- select_ic_acd
+    }
   } else {
-    # usual mfp case
-    if (tolower(criterion) == "pvalue") {
+    # Ordinary MFP case.
+    if (criterion_lower == "pvalue") {
       select_fct <- select_ra2
-    } else select_fct <- select_ic
+    } else {
+      select_fct <- select_ic
+    }
   }
 
   # Step 2: Run the selected routine and optionally print progress -----------
@@ -442,8 +459,9 @@ find_best_fpm_step <- function(x,
 
   # Step 2: Generate candidate FP/ACD transformations for xi and the current
   # adjustment set (or reuse precomputed_adj if the caller already built it).
-  # generate FP data for x of interest (xi) and adjustment variables
-  # Takes into account variables that should not be shifted thru 'zero'
+  # Both ordinary FP and ACD searches now use compact shared bases. Only the
+  # winning candidate is materialized after the search for downstream SAZ/cache
+  # consumers that genuinely need a complete focal matrix.
   x_transformed <- transform_data_step(
     x = x, xi = xi, df = 2 * degree, powers_current = powers_current,
     powers = powers, acdx = acdx, zero = zero, catzero = catzero,
@@ -451,12 +469,24 @@ find_best_fpm_step <- function(x,
     acd_parameter = acd_parameter,
     prev_adj_params = prev_adj_params,
     precomputed_adj = precomputed_adj,
-    term_to_columns = term_to_columns
-
+    term_to_columns = term_to_columns,
+    compact_fp = !isTRUE(acdx[[xi]]),
+    compact_acd = isTRUE(acdx[[xi]])
   )
 
-  data_adj <- x_transformed$data_adj
+  # Use exact list extraction: persistent cache entries intentionally retain
+  # `data_adj = NULL` beside `data_adj_list`, and partial `$` matching must
+  # never substitute the per-variable list for the assembled numeric matrix.
+  data_adj <- x_transformed[["data_adj", exact = TRUE]]
   data_fp <- x_transformed$data_fp
+  fp_basis <- x_transformed$fp_basis
+  acd_basis <- x_transformed$acd_basis
+
+  # The fitting loop is agnostic to whether the shared columns came from an
+  # ordinary FP basis or an ACD basis. Both expose the same basis/candidate_map
+  # contract and use the same in-place C++ column-copy helper.
+  compact_basis <- if (!is.null(fp_basis)) fp_basis else acd_basis
+  use_compact_basis <- !is.null(compact_basis)
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
 
   # GLMs use an explicit intercept in the design matrix; Cox models do not.
@@ -465,88 +495,176 @@ find_best_fpm_step <- function(x,
 
 
   # Step 3: Build a reusable design-matrix template ---------------------------
-  # All FP candidates for xi within this degree share the same number of
-  # columns (n_xi_cols) and the same adjustment block, so build the
-  # intercept + adjustment part of the design matrix once here, and just
-  # overwrite the xi block for each candidate in the loop below. This avoids
-  # reallocating/cbind-ing the full matrix once per candidate.
+  # Compact FP and ACD candidates no longer exist as lists of complete n x
+  # degree matrices. All unique transformed terms live in one shared basis, and
+  # each candidate is represented by one row of a small integer candidate_map.
+  # The design matrix is allocated once and its focal columns are overwritten
+  # directly from that basis in C++ for each candidate.
+  if (use_compact_basis) {
+    basis <- compact_basis$basis
+    candidate_map <- compact_basis$candidate_map
+    n_candidates <- nrow(candidate_map)
+    n_candidate_cols <- ncol(candidate_map)
+    use_catzero <- !is.null(compact_basis$catzero)
+    n_xi_cols <- n_candidate_cols + as.integer(use_catzero)
 
-  first_xi <- data_fp[[1L]]
-  n_xi_cols <- NCOL(first_xi)
-  # The xi block starts after the intercept for GLMs and in column 1 for Cox.
-  # Converting the logical flag to 0/1 expresses that offset directly.
-  xi_cols <- seq_len(n_xi_cols) + as.integer(x_has_intercept)
-
-  # Reuse one design matrix across FP candidates. GLMs always need it because
-  # it contains the intercept; Cox models need it only when adjustments exist.
-  # A Cox model without adjustments can use data_xi directly, avoiding a copy.
-  design_mat <- NULL
-  if (x_has_intercept || has_adj) {
-    design_mat <- assemble_design_matrix(
-      blocks = list(first_xi, data_adj),
-      nobs = nrow(first_xi),
-      intercept = x_has_intercept
+    # Placeholder focal block used only to allocate the reusable design matrix.
+    # catzero is invariant across candidates, so copy it once here rather than
+    # once per candidate.
+    xi_template <- matrix(
+      0,
+      nrow = nrow(basis),
+      ncol = n_xi_cols
     )
-  }
-  # Step 4: Fit one model per candidate FP power set and score it ------------
-  metrics <- vector("list", length(data_fp))
-  for (i in seq_along(data_fp)) {
-    # combine FP variables for x of interest with adjustment variables.
-    # The adjustment block is identical for all candidates, so copy it into the
-    # working design matrix once and overwrite only the xi block per candidate.
-    # For GLMs, the reusable matrix also includes the intercept column.
-    data_xi <- data_fp[[i]]
-    if (!is.null(design_mat) && NCOL(data_xi) == n_xi_cols) {
-      design_mat[, xi_cols] <- data_xi
-      fit <- fit_model(
-        x               = design_mat, # catzero plays a role here thru data_fp and data_adj
-        y               = y,
-        family          = family,
-        family_string   = family_string,
-        has_offset      = has_offset,
-        x_has_intercept = x_has_intercept,
-        ...
-      )
-    } else {
-      # Defensive fallback: candidate generation should produce a fixed
-      # number of xi columns within one degree, but preserve behaviour if it
-      # ever does not. Build the destination in one allocation rather than
-      # chaining cbind() calls.
-      if (!x_has_intercept && !has_adj) {
-        x_fit <- data_xi
-      } else {
-        x_fit <- assemble_design_matrix(
-          blocks = list(data_xi, data_adj),
-          nobs = nrow(data_xi),
-          intercept = x_has_intercept
-        )
-      }
-      fit <- fit_model(
-        x               = x_fit,
-        y               = y,
-        family          = family,
-        family_string   = family_string,
-        has_offset      = has_offset,
-        x_has_intercept = x_has_intercept,
-        ...
+
+    if (use_catzero) {
+      xi_template[, 1L] <- compact_basis$catzero[, 1L]
+      colnames(xi_template) <- c(
+        "catzero",
+        paste0("V", seq_len(n_candidate_cols))
       )
     }
 
-    metrics[[i]] <- calculate_model_metrics(
-      fit, # fit will include df of binary when catzero is used so this part does not change
+    xi_cols <- seq_len(n_xi_cols) + as.integer(x_has_intercept)
+    basis_target_cols <- if (use_catzero) {
+      xi_cols[-1L]
+    } else {
+      xi_cols
+    }
+
+    if (x_has_intercept || has_adj) {
+      design_mat <- assemble_design_matrix(
+        blocks = list(xi_template, data_adj),
+        nobs = nrow(xi_template),
+        intercept = x_has_intercept
+      )
+    } else {
+      # Cox without adjustment variables still needs one reusable focal working
+      # matrix because compact candidates are not separately materialized.
+      design_mat <- xi_template
+    }
+
+  } else {
+    # Historical materialized representation retained only for defensive
+    # fallback paths that explicitly opt out of compact candidate generation.
+    first_xi <- data_fp[[1L]]
+    n_xi_cols <- NCOL(first_xi)
+    n_candidates <- length(data_fp)
+
+    # The xi block starts after the intercept for GLMs and in column 1 for Cox.
+    xi_cols <- seq_len(n_xi_cols) + as.integer(x_has_intercept)
+
+    design_mat <- NULL
+    if (x_has_intercept || has_adj) {
+      design_mat <- assemble_design_matrix(
+        blocks = list(first_xi, data_adj),
+        nobs = nrow(first_xi),
+        intercept = x_has_intercept
+      )
+    }
+  }
+
+  # Step 4: Fit one model per candidate FP power set and score it ------------
+  metric_names <- c(
+    "logl",
+    "df",
+    "deviance_rs",
+    "deviance_gaussian",
+    "aic",
+    "bic",
+    "df_resid"
+  )
+  metrics <- matrix(
+    NA_real_,
+    nrow = n_candidates,
+    ncol = length(metric_names),
+    dimnames = list(NULL, metric_names)
+  )
+
+  for (i in seq_len(n_candidates)) {
+    if (use_compact_basis) {
+      # Copy only the degree-sized column map. The n-length transformed values
+      # remain in the shared FP/ACD basis and are copied directly into the
+      # reusable design matrix in C++, avoiding an n x degree temporary matrix.
+      design_mat <- copy_fp_basis_candidate_cpp(
+        target = design_mat,
+        basis = basis,
+        source_cols = as.integer(candidate_map[i, ]),
+        target_cols = as.integer(basis_target_cols)
+      )
+
+      fit <- fit_model(
+        x               = design_mat,
+        y               = y,
+        family          = family,
+        family_string   = family_string,
+        has_offset      = has_offset,
+        x_has_intercept = x_has_intercept,
+        ...
+      )
+
+    } else {
+      # Defensive materialized-candidate fallback.
+      data_xi <- data_fp[[i]]
+
+      if (!is.null(design_mat) && NCOL(data_xi) == n_xi_cols) {
+        design_mat[, xi_cols] <- data_xi
+        fit <- fit_model(
+          x               = design_mat,
+          y               = y,
+          family          = family,
+          family_string   = family_string,
+          has_offset      = has_offset,
+          x_has_intercept = x_has_intercept,
+          ...
+        )
+      } else {
+        # Defensive fallback: candidate generation should produce a fixed
+        # number of xi columns within one degree, but preserve behaviour if it
+        # ever does not. Build the destination in one allocation rather than
+        # chaining cbind() calls.
+        if (!x_has_intercept && !has_adj) {
+          x_fit <- data_xi
+        } else {
+          x_fit <- assemble_design_matrix(
+            blocks = list(data_xi, data_adj),
+            nobs = nrow(data_xi),
+            intercept = x_has_intercept
+          )
+        }
+        fit <- fit_model(
+          x               = x_fit,
+          y               = y,
+          family          = family,
+          family_string   = family_string,
+          has_offset      = has_offset,
+          x_has_intercept = x_has_intercept,
+          ...
+        )
+      }
+    }
+
+    metrics[i, ] <- calculate_model_metrics(
+      fit, # fit includes catzero df when used, so this part does not change
       n_obs,
       degree
     )
-
   }
-
-  metrics <- do.call(rbind, metrics)
 
   # Step 5: Pick the candidate with the highest log-likelihood ---------------
   # (equivalent to lowest deviance/AIC/BIC here, since all candidates in this
   # call share the same degrees of freedom; see @details above).
   model_best <- as.numeric(which.max(metrics[, "logl"]))
-  x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[model_best]]
+
+  # SAZ stage 2 needs the complete winning xi matrix. Under either compact
+  # representation, materialize exactly that one candidate after model selection.
+  x_transformed$current_params[[xi]]$data_xi <- if (!is.null(fp_basis)) {
+    materialize_fp_basis_candidate(fp_basis, model_best)
+  } else if (!is.null(acd_basis)) {
+    materialize_acd_basis_candidate(acd_basis, model_best)
+  } else {
+    data_fp[[model_best]]
+  }
 
   list(
     acd = acdx[xi],
@@ -631,14 +749,17 @@ fit_null_step <- function(x,
     powers_adj = adj$powers_adj,
     spike_decision_adj = adj$spike_decision_adj,
     data_adj_list = adj$data_adj_list,
-    data_adj = adj$data_adj
+    data_adj = adj[["data_adj", exact = TRUE]]
   )
 
   # Step 2: Fit the null model (adjustment variables only, xi excluded) -----
   # An empty matrix can be returned which creates problem for cox model
   # convert it to NULL
-  x_tran <- adj$data_adj
-  if (is.null(x_tran) || ncol(x_tran) == 0L) {
+  x_tran <- adj[["data_adj", exact = TRUE]]
+  if (!is.null(x_tran) && !is.matrix(x_tran)) {
+    stop("Internal error: adjustment data must be a matrix or NULL.", call. = FALSE)
+  }
+  if (is.null(x_tran) || NCOL(x_tran) == 0L) {
     x_tran <- NULL
   }
 
@@ -724,7 +845,7 @@ fit_linear_step <- function(x,
   # If catzero or spike-at-zero is active for xi, the corresponding binary
   # component is already included in data_xi.
   data_xi <- x_transformed$data_fp[[1L]]
-  data_adj <- x_transformed$data_adj
+  data_adj <- x_transformed[["data_adj", exact = TRUE]]
 
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
   use_glm_intercept_template <- !identical(family_string, "cox")
@@ -1752,6 +1873,136 @@ select_ra2_acd <- function(x,
   res
 }
 
+#' Select a forced maximum FP form
+#'
+#' Internal selector used when `force_max_fp` is active for a non-linear term
+#' under p-value, AIC, or BIC selection. Because the public option explicitly
+#' bypasses variable selection and functional-form simplification, the maximum
+#' functional form is predetermined. Fitting the null, linear, lower-degree FP,
+#' or reduced ACD alternatives therefore cannot change the result. This helper
+#' builds the adjustment set once and fits only the required maximum form.
+#'
+#' For an ordinary FP term, the required model is the best FP of the requested
+#' `degree`.  For an ACD term, the required model is the full
+#' `FP1(x, A(x))` form, represented internally by the degree-2 ACD search.
+#' The best power combination within that fixed form is still chosen by
+#' `find_best_fpm_step()`.
+#'
+#' The returned object deliberately has the same shape as the other selectors,
+#' but `metrics` and `powers` contain only the single model that was actually
+#' fitted.  This is sufficient for verbose printing and SAZ stage 2, both of
+#' which consume the selected row rather than requiring discarded competitors.
+#'
+#' @inheritParams find_best_fp_step
+#' @param degree integer > 0 giving the requested ordinary FP degree.
+#' @param ... passed to fitting functions.
+#' @keywords internal
+#' @noRd
+select_force_max_fp <- function(x,
+                                xi,
+                                keep,
+                                degree,
+                                acdx,
+                                y,
+                                powers_current,
+                                powers,
+                                criterion,
+                                ftest,
+                                select,
+                                alpha,
+                                family,
+                                family_string,
+                                zero,
+                                catzero,
+                                spike,
+                                spike_decision,
+                                acd_parameter,
+                                prev_adj_params,
+                                transform_cache = NULL,
+                                force_max_fp,
+                                has_offset,
+                                n_obs,
+                                term_to_columns,
+                                ...) {
+
+  # Keep the guard explicit because direct internal calls should never skip
+  # model comparisons unless the caller has actually requested force_max_fp.
+  # The criterion itself is deliberately unrestricted: forcing has the same
+  # documented meaning for p-value, AIC, and BIC selection.
+  if (!isTRUE(force_max_fp[xi])) {
+    stop(
+      "select_force_max_fp() requires force_max_fp = TRUE for `xi`.",
+      call. = FALSE
+    )
+  }
+
+  is_acd <- isTRUE(acdx[xi])
+  has_binary_xi <- isTRUE(spike[[xi]]) || !is.null(catzero[[xi]])
+  binary_suffix <- if (has_binary_xi) " + Binary" else ""
+
+  # Adjustment-variable transformations are invariant across candidate forms.
+  # Build/reuse them once, exactly as the ordinary IC selectors do.
+  precomputed_adj <- build_adjustment_step(
+    x = x,
+    xi = xi,
+    powers_current = powers_current,
+    powers = powers,
+    acdx = acdx,
+    zero = zero,
+    catzero = catzero,
+    spike = spike,
+    spike_decision = spike_decision,
+    acd_parameter = acd_parameter,
+    prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache,
+    term_to_columns = term_to_columns
+  )
+
+  # ACD's maximum model is FP1(x, A(x)); internally it occupies two power
+  # slots, so degree = 2 is the fixed search used to identify its best powers.
+  # Ordinary FP uses the requested maximum degree directly.
+  forced_degree <- if (is_acd) 2 else degree
+
+  fit_max <- find_best_fpm_step(
+    x = x, xi = xi, degree = forced_degree, y = y,
+    powers_current = powers_current, powers = powers, acdx = acdx,
+    family = family, family_string = family_string, zero = zero, catzero = catzero,
+    spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
+    prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+  )
+
+  # Keep only the winning fixed-form row.  No null, linear, lower-degree FP,
+  # or reduced ACD models are fitted or materialized by this selector.
+  model_label <- if (is_acd) {
+    paste0("FP1(x, A(x))", binary_suffix)
+  } else {
+    paste0("FP", degree, binary_suffix)
+  }
+
+  powers_best <- fit_max$powers[fit_max$model_best, , drop = FALSE]
+  metrics_best <- fit_max$metrics[fit_max$model_best, , drop = FALSE]
+  rownames(powers_best) <- model_label
+  rownames(metrics_best) <- model_label
+
+  list(
+    keep = xi %in% keep,
+    acd = is_acd,
+    powers = powers_best,
+    power_best = fit_max$power_best,
+    metrics = metrics_best,
+    model_best = 1L,
+    # No pairwise test is performed on the forced path. For p-value printing,
+    # use a zero-length p-value vector so the one-row metrics table remains
+    # one row rather than recycling an artificial NA comparison row.
+    statistic = if (tolower(criterion) == "pvalue") numeric(0) else NA_real_,
+    pvalue = if (tolower(criterion) == "pvalue") numeric(0) else NA_real_,
+    spike = spike[xi],
+    current_adj_params = fit_max$current_adj_params,
+    transform_cache = precomputed_adj$transform_cache
+  )
+}
+
 #' Function selection procedure based on information criteria
 #'
 #' Used in \code{find_best_fp_step()} when `criterion = "aic"` or `"bic"`.
@@ -1846,8 +2097,9 @@ select_ic <- function(x,
                       term_to_columns,
                       ...) {
 
-  # select_ic() implements AIC/BIC-based selection (criterion = "aic"/"bic"),
-  # the simpler alternative to select_ra2()'s sequential closed-test
+  # select_ic() implements ordinary (non-forced) AIC/BIC-based selection
+  # (criterion = "aic"/"bic"), the simpler alternative to select_ra2()'s
+  # sequential closed-test
   # procedure: instead of a chain of pairwise significance tests, every
   # relevant model (null, linear, FP1, FP2, ..., FPm) is fit once and
   # the one with the smallest AIC/BIC is chosen directly. There is no
@@ -1993,20 +2245,13 @@ select_ic <- function(x,
   )
   rownames(res$metrics) <- candidate_names
 
-  # Step 3: Select the best model by AIC/BIC, respecting force_max_fp/keep --
-  # Three mutually exclusive selection modes, in priority order:
-  if (isTRUE(force_max_fp[xi])) {
-    # 1. force_max_fp: bypass model comparison entirely and always take the
-    # most complex FP model at the requested degree (the last row inserted:
-    # null, linear, FP1, ..., FPm, so nrow(res$metrics) is FPm(degree)).
-    # Skip functional form competition: always select the most complex FP model
-    # at the requested degree (last row of res$metrics = FPm or FPm + Binary).
-    # The best power combination within that degree was already found by
-    # find_best_fpm_step() via deviance minimisation, which is equivalent to
-    # AIC/BIC minimisation at fixed df (same penalty for all power combinations).
-    res$model_best <- nrow(res$metrics)
-  } else if (xi %in% keep) {
-    # 2. keep: xi must remain in the model, so the null-model row (row 1) is
+  # Step 3: Select the best model by AIC/BIC -----------------------------
+  # force_max_fp is handled before this function is dispatched, by
+  # select_force_max_fp(). Consequently every model fitted above is a genuine
+  # competitor here; the only special restriction is whether `keep` excludes
+  # the null model from consideration.
+  if (xi %in% keep) {
+    # keep: xi must remain in the model, so the null-model row (row 1) is
     # excluded from the comparison before taking which.min(); the resulting
     # index is then shifted by +1 to account for the excluded row and land
     # back on the correct row of the full res$metrics/res$powers.
@@ -2017,8 +2262,8 @@ select_ic <- function(x,
     )
     # shift by 1 since null row was excluded
     res$model_best <- res$model_best + 1
-  }else{
-    # 3. Unrestricted: every candidate (including null) is eligible; simply
+  } else {
+    # Unrestricted: every candidate (including null) is eligible; simply
     # take whichever row has the smallest AIC/BIC.
     # Unrestricted: choose best among null through FPm.
     ind_select <- 1:nrow(res$metrics)
@@ -2073,7 +2318,8 @@ select_ic_acd <- function(x,
                           term_to_columns,
                           ...) {
 
-  # select_ic_acd() is the AIC/BIC counterpart of select_ra2_acd(): instead of
+  # select_ic_acd() is the ordinary (non-forced) AIC/BIC counterpart of
+  # select_ra2_acd(): instead of
   # the 5-test closed sequence over M1-M6, it fits the 6 relevant ACD
   # sub-models directly (null, linear(x), linear(., A(x)), FP1(x, .),
   # FP1(., A(x)), FP1(x, A(x))) and picks whichever has the smallest AIC/BIC.
@@ -2251,20 +2497,12 @@ select_ic_acd <- function(x,
     )
   )
   rownames(res$metrics) <- candidate_names
-  # Step 3: Select the best model by AIC/BIC, respecting force_max_fp/keep --
-  # Same three mutually exclusive selection modes as select_ic(), just over
-  # the 6-row ACD candidate set instead of degree + 2 rows.
-  if (isTRUE(force_max_fp[xi])) {
-    # 1. force_max_fp: always take the most complex ACD model, FP1(x, A(x)),
-    # which is the last row inserted (null, linear, linear(., A(x)), FP1(x,.),
-    # FP1(., A(x)), FP1(x, A(x))).
-    # Skip functional form competition: always select the most complex ACD
-    # model - FP1(x, A(x)) - which is the last row of res$metrics.
-    # The best power combination within it was already found by
-    # find_best_fpm_step() via deviance minimisation.
-    res$model_best <- nrow(res$metrics)
-  } else if (xi %in% keep) {
-    # 2. keep: exclude the null row, take which.min() over the rest, then
+  # Step 3: Select the best model by AIC/BIC -----------------------------
+  # force_max_fp is handled by select_force_max_fp() before this function is
+  # dispatched. All six models above therefore remain genuine competitors;
+  # `keep` only determines whether the null row is eligible.
+  if (xi %in% keep) {
+    # keep: exclude the null row, take which.min() over the rest, then
     # shift the index by +1 to land back on the correct row of the full
     # res$metrics/res$powers.
     # Prevent selection of null model; choose best among linear through FP1(x, A(x)).
@@ -2273,8 +2511,8 @@ select_ic_acd <- function(x,
       res$metrics[ind_select, tolower(criterion), drop = TRUE]
     )
     res$model_best <- res$model_best + 1L
-  }else{
-    # 3. Unrestricted: every candidate (including null) is eligible.
+  } else {
+    # Unrestricted: every candidate (including null) is eligible.
     # Unrestricted: choose best among null through FP1(x, A(x))
     ind_select = 1:nrow(res$metrics)
     res$model_best <- which.min(
@@ -2483,7 +2721,7 @@ mfp2_build_adjustment_step_loop <- function(x,
 
   list(
     data_adj_list = data_adj_list,
-    data_adj      = cpp_adj$data_adj
+    data_adj      = cpp_adj[["data_adj", exact = TRUE]]
   )
 }
 
@@ -2534,8 +2772,9 @@ build_adjustment_step <- function(x,
   # `xi`. Their transformed columns are collected into `data_adj`.
   #
   # Two cache layers are deliberately kept separate:
-  #   * prev_adj_params[[xi]] is focal-variable-specific and can reuse the
-  #     complete assembled data_adj matrix on a later cycle.
+  #   * prev_adj_params[[xi]] is focal-variable-specific and retains metadata
+  #     plus per-variable transformed blocks as a fallback on a later cycle.
+  #     It intentionally does not retain the complete assembled data_adj matrix.
   #   * transform_cache[[v]] is keyed by adjustment variable and can reuse v's
   #     transformed block across different focal variables in the same fit.
   #
@@ -2687,47 +2926,15 @@ build_adjustment_step <- function(x,
     }
 
     # -------------------------------------------------------------------------
-    # Whole-matrix cache: skip per-variable loop entirely when nothing changed
+    # No focal-level whole-matrix cache
     # -------------------------------------------------------------------------
-    # The per-variable cache inside the C++ loop reuses individual transformed
-    # matrices when their power keys match. But even on a full cache hit, the
-    # loop still allocates a new data_adj matrix and copies every cell into it.
-    #
-    # The assembled data_adj from the previous call is already stored in
-    # prev_xi$data_adj. If every adjustment variable has the same normalized
-    # power key and the same spike decision as the cached values, the assembled
-    # matrix is unchanged — return it directly without entering the loop.
-    #
-    # Cost of this check: O(p) comparisons.
-    # Cost avoided on hit: O(n * total_adj_cols) allocation and cell copy.
-    if (has_prev && !is.null(prev_xi$data_adj)) {
-      all_cache_hit <- all(vapply(vars_adj, function(v) {
-        identical(current_power_keys_adj[[v]], prev_power_keys_adj[[v]]) &&
-          !is.na(prev_spike_decision_int_adj[[v]]) &&
-          spike_decision_int_adj[[v]] == prev_spike_decision_int_adj[[v]]
-      }, logical(1L)))
-
-      if (all_cache_hit) {
-        # The focal-specific matrix is already valid. Refresh the shared
-        # per-variable cache as well so later focal variables can reuse these
-        # exact transformed blocks without rebuilding them.
-        for (v in vars_adj) {
-          transform_cache[[v]] <- list(
-            power_key = current_power_keys_adj[[v]],
-            spike_decision = spike_decision_int_adj[[v]],
-            data = prev_xi$data_adj_list[[v]]
-          )
-        }
-
-        return(list(
-          powers_adj         = powers_adj,
-          spike_decision_adj = spike_decision_adj,
-          data_adj_list      = prev_xi$data_adj_list,
-          data_adj           = prev_xi$data_adj,
-          transform_cache    = transform_cache
-        ))
-      }
-    }
+    # Older versions retained prev_xi$data_adj and returned that assembled
+    # n x adjustment matrix directly when every adjustment transformation was
+    # unchanged. Although this avoided one matrix assembly on a full cache hit,
+    # keeping one such matrix for every focal variable makes retained memory
+    # grow approximately as O(n * p^2). The persistent cache now keeps only
+    # per-variable blocks/metadata, and the adjustment matrix is assembled once
+    # for the current focal evaluation from reusable blocks below.
 
     # -------------------------------------------------------------------------
     # Shared per-variable cache: reuse blocks across different focal variables
@@ -2816,7 +3023,7 @@ build_adjustment_step <- function(x,
       )
 
       data_adj_list <- cpp_adj$data_adj_list
-      data_adj      <- cpp_adj$data_adj
+      data_adj      <- cpp_adj[["data_adj", exact = TRUE]]
     } else {
       direct_vars <- vars_adj[!mapped_as_block]
       block_vars  <- vars_adj[mapped_as_block]
@@ -2956,6 +3163,10 @@ build_adjustment_step <- function(x,
 #' \code{build_adjustment_step()}. When supplied, adjustment-variable
 #' transformations are reused and only current-variable candidate
 #' transformations are generated.
+#' @param compact_fp Logical; use the shared-basis representation for ordinary
+#'   FP candidates instead of materializing every candidate matrix.
+#' @param compact_acd Logical; use the shared-basis representation for ACD
+#'   candidates instead of materializing every candidate matrix.
 #' @details
 #' This function extracts the adjustment variables and applies the corresponding
 #' FP or ACD transformations based on `powers_current`. When evaluating the variable
@@ -2975,11 +3186,11 @@ build_adjustment_step <- function(x,
 #' possible to model spike-at-zero behavior directly in the adjustment matrix,
 #' while preserving flexibility in how variables are included.
 #'
-#' The function also returns the FP data for predictor `xi` of interest, which
-#' depends on the specified degrees of freedom. For example,
-#' `df = 2` is equivalent to FP degree one, resulting in the generation of 8
-#' variables. If `acdx` for the current variables of interest is set to `TRUE`,
-#' however, 64 variables are generated.
+#' The function also returns candidate information for predictor `xi`. In the
+#' historical materialized mode, `data_fp` contains one matrix per candidate.
+#' In compact mode, candidate values are represented by a shared basis plus a
+#' small integer map. For default ACD degree 2 this means 16 unique basis
+#' columns plus a 64 x 2 map instead of 64 separate n x 2 matrices.
 #'
 #' When `df = 1`, this function returns data unchanged, i.e. a "linear"
 #' transformation with power equal to 1. In case `acdx[xi] = TRUE`, the
@@ -2990,7 +3201,9 @@ build_adjustment_step <- function(x,
 #' possibly including `NA`), `spike_decision` (updated spike-at-zero strategy),
 #' and `current_adj_params` (adjustment variable transformations used in this step).
 #' \item{powers_fp}{Numeric vector of FP powers used for `xi`.}
-#' \item{data_fp}{List of transformed data for `xi`.}
+#' \item{data_fp}{List of transformed data for `xi`, or `NULL` in compact mode.}
+#' \item{fp_basis}{Compact ordinary-FP basis, or `NULL`.}
+#' \item{acd_basis}{Compact ACD basis, or `NULL`.}
 #' \item{powers_adj}{Named list of FP powers used for adjustment variables.}
 #' \item{data_adj}{Matrix of transformed adjustment variables, or `NULL` if none.}
 #' \item{current_params}{Named list containing adjustment variable parameters
@@ -3011,7 +3224,9 @@ transform_data_step <- function(x,
                                 acd_parameter,
                                 prev_adj_params,
                                 precomputed_adj = NULL,
-                                term_to_columns
+                                term_to_columns,
+                                compact_fp = FALSE,
+                                compact_acd = FALSE
 ) {
   # `term_to_columns` is supplied by the fitting call chain and maps the focal
   # conceptual term to the raw column block used below.
@@ -3038,6 +3253,12 @@ transform_data_step <- function(x,
   }
 
   # Step 2: Generate the FP/ACD candidate transformations for xi itself -----
+  # `fp_basis` and `acd_basis` are compact hot-loop representations. Linear,
+  # categorical, low-cardinality, and callers that do not request compact mode
+  # retain the historical materialized `data_fp` representation.
+  fp_basis <- NULL
+  acd_basis <- NULL
+
   xi_cols <- term_to_columns[[xi]]
   if (is.null(xi_cols)) {
     stop(
@@ -3078,27 +3299,55 @@ transform_data_step <- function(x,
 
     } else {
       if (acdx[xi]) {
-        # when df = 1 -> degree = 0
-        # and we return the data unchanged, i.e. with power = 1
-        fpd <- generate_transformations_acd(
-          data_xi,
-          degree = floor(df / 2),
-          powers = powers[[xi]],
-          zero = zero[xi],
-          catzero = catzero[[xi]],
-          acd_parameter = acd_parameter[[xi]]
-        )
+        # ACD searches can use the same compact-basis strategy as ordinary FP:
+        # store each unique transform of x and A(x) once and keep only a small
+        # integer candidate map. Degree 0/1 naturally has one active A(x) term.
+        if (isTRUE(compact_acd)) {
+          fpd <- generate_transformations_acd_basis(
+            data_xi,
+            degree = floor(df / 2),
+            powers = powers[[xi]],
+            zero = zero[xi],
+            catzero = catzero[[xi]],
+            acd_parameter = acd_parameter[[xi]]
+          )
+          acd_basis <- fpd
+          data_fp <- NULL
+        } else {
+          fpd <- generate_transformations_acd(
+            data_xi,
+            degree = floor(df / 2),
+            powers = powers[[xi]],
+            zero = zero[xi],
+            catzero = catzero[[xi]],
+            acd_parameter = acd_parameter[[xi]]
+          )
+          data_fp <- fpd$data
+        }
       } else {
         # note that degree is df / 2
-        fpd <- generate_transformations_fp(
-          data_xi,
-          degree = floor(df / 2),
-          powers = powers[[xi]],
-          zero = zero[xi],
-          catzero = catzero[[xi]]
-        )
+        if (isTRUE(compact_fp)) {
+          fpd <- generate_transformations_fp_basis(
+            data_xi,
+            degree = floor(df / 2),
+            powers = powers[[xi]],
+            zero = zero[xi],
+            catzero = catzero[[xi]]
+          )
+          fp_basis <- fpd
+          data_fp <- NULL
+        } else {
+          fpd <- generate_transformations_fp(
+            data_xi,
+            degree = floor(df / 2),
+            powers = powers[[xi]],
+            zero = zero[xi],
+            catzero = catzero[[xi]]
+          )
+          data_fp <- fpd$data
+        }
       }
-      data_fp <- fpd$data
+
       powers_fp <- fpd$powers
     }
   }
@@ -3110,15 +3359,17 @@ transform_data_step <- function(x,
     powers_adj = adj$powers_adj,
     spike_decision_adj = adj$spike_decision_adj,
     data_adj_list = adj$data_adj_list,
-    data_adj = adj$data_adj
+    data_adj = adj[["data_adj", exact = TRUE]]
   )
 
   # Return results and current parameters for next step
   list(
     powers_fp = powers_fp,
     data_fp = data_fp,
+    fp_basis = fp_basis,
+    acd_basis = acd_basis,
     powers_adj = adj$powers_adj,
-    data_adj = adj$data_adj,
+    data_adj = adj[["data_adj", exact = TRUE]],
     current_params = current_params
   )
 }

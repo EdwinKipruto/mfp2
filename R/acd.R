@@ -340,33 +340,41 @@ find_best_fp1_for_acd <- function(x,
     stop("! `x` must be a vector.")
   }
 
-  # Generate all possible FP1 transformations.
-  trafo <- generate_transformations_fp(
+  # Build one compact FP1 basis instead of a list of n x 1 candidate matrices.
+  # For degree 1 the arithmetic count is already close to minimal, but the
+  # compact representation still avoids one R matrix object per power and
+  # lets the candidate loop copy directly from one contiguous shared basis.
+  # This is the same representation used by the ordinary mfp2 FP search.
+  fp_basis <- generate_transformations_fp_basis(
     x = x,
     degree = 1L,
     powers = powers,
     zero = zero
-  )$data
+  )
+  basis <- fp_basis$basis
+  candidate_map <- fp_basis$candidate_map
 
   # Fit linear Gaussian models for each FP1 function.
   n_powers <- length(powers)
+  if (NROW(candidate_map) != n_powers || NCOL(candidate_map) != 1L) {
+    stop("Internal error: compact FP1 candidate map has unexpected dimensions.",
+         call. = FALSE)
+  }
+
   family_gaussian <- stats::gaussian()
   family_string_gaussian <- family_gaussian$family
 
   # Reuse one intercept-augmented design matrix across candidate fits.
-  #
-  # Only the intercept name is required by fit_glm(..., x_has_intercept = TRUE).
-  # The FP column does not need candidate-specific names because the selected
-  # power is returned separately. A stable "fp1" name is enough for readable
-  # coefficient names and avoids relying on colnames(trafo[[i]]), which may be
-  # NULL.
-  first_trafo <- trafo[[1L]]
-
-  design_mat <- cbind(
-    "(Intercept)" = rep.int(1, NROW(first_trafo)),
-    "fp1" = first_trafo[, 1L]
+  # Only the numeric FP column changes; the intercept and column names remain
+  # fixed for the entire search. copy_fp_basis_candidate_cpp() mutates this
+  # private matrix in place, so no n-length candidate matrix is materialized.
+  design_mat <- matrix(
+    0,
+    nrow = NROW(basis),
+    ncol = 2L,
+    dimnames = list(NULL, c("(Intercept)", "fp1"))
   )
-
+  design_mat[, 1L] <- 1
   fp_col <- 2L
 
   # Retain only the best candidate's lightweight results. The underlying
@@ -378,12 +386,25 @@ find_best_fp1_for_acd <- function(x,
   best_fitted_values <- NULL
 
   for (i in seq_len(n_powers)) {
-    data_xi <- trafo[[i]]
+    # Copy the one mapped FP1 basis column into the reusable design matrix.
+    # The helper writes directly into design_mat[, fp_col] and therefore avoids
+    # allocating trafo[[i]] or another n-length temporary candidate matrix.
+    copy_fp_basis_candidate_cpp(
+      target = design_mat,
+      basis = basis,
+      source_cols = as.integer(candidate_map[i, 1L]),
+      target_cols = fp_col
+    )
 
-    # Replace only the numeric contents of the FP column.
-    # Do not update the column name: "fp1" is intentionally stable.
-    design_mat[, fp_col] <- data_xi[, 1L]
-
+    # Keep the generic fit_model() abstraction so base and fastglm candidate
+    # fits continue to share exactly the same fitting and likelihood handling.
+    # The ACD auxiliary regression is intentionally unweighted and has no
+    # outcome-model offset: it approximates the normal-score transform of x,
+    # rather than fitting the user's outcome model.
+    #
+    # Only the fitted-values vector is needed for the winning FP1 candidate.
+    # Ask fit_model() for that lightweight vector directly and discard the
+    # complete glm.fit()/fastglm object before returning to this candidate loop.
     fit <- fit_model(
       x = design_mat,
       y = y,
@@ -391,7 +412,8 @@ find_best_fp1_for_acd <- function(x,
       family_string = family_string_gaussian,
       fitter = fitter,
       x_has_intercept = TRUE,
-      keep_fit = TRUE
+      keep_fit = FALSE,
+      keep_fitted_values = TRUE
     )
 
     candidate_deviance <- -2 * fit$logl
@@ -400,7 +422,7 @@ find_best_fp1_for_acd <- function(x,
       best_deviance <- candidate_deviance
       best_power <- powers[[i]]
       best_coefficients <- fit$coefficients
-      best_fitted_values <- fit$fit$fitted.values
+      best_fitted_values <- fit$fitted_values
     }
   }
 

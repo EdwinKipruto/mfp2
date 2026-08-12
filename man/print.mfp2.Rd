@@ -47,10 +47,10 @@ has to be crammed into the same columns as ordinary variables:
 \item \strong{Standard MFP}: variables that used neither ACD nor SAZ.
 \item \strong{Approximate Cumulative Distribution (ACD), non-spike
 variables}: ACD variables not assessed by the SAZ algorithm.
-\item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables,
-including ones that were also ACD-transformed (marked via their own
-\code{ACD} column), since the SAZ decision is the more consequential
-fact for those variables.
+\item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables.
+When at least one SAZ variable also underwent ACD transformation, an
+\code{ACD} column is added to this sub-table to identify the overlap;
+otherwise that column is omitted to keep the summary concise.
 }
 Within every table, selected variables are listed before excluded ones.
 

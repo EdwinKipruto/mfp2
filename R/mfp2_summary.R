@@ -29,8 +29,8 @@
 #' @details
 #' The summary is organised into the following sections:
 #' \itemize{
-#'   \item \strong{Selection Overview}: the same selection overview shown by
-#'     [print.mfp2()].
+#'   \item \strong{Selection Overview}: a compact overview of the selected
+#'     functional form for each variable.
 #'   \item \strong{Linear Terms}: variables entering the model as a single
 #'     linear term (including binary-only spike variables and factor levels),
 #'     with the coefficient, standard error, test statistic, p-value, and --

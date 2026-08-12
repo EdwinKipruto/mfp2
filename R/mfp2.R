@@ -3660,10 +3660,10 @@ coef.mfp2 <- function(object, ...) {
 #'   \item \strong{Standard MFP}: variables that used neither ACD nor SAZ.
 #'   \item \strong{Approximate Cumulative Distribution (ACD), non-spike
 #'     variables}: ACD variables not assessed by the SAZ algorithm.
-#'   \item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables,
-#'     including ones that were also ACD-transformed (marked via their own
-#'     \code{ACD} column), since the SAZ decision is the more consequential
-#'     fact for those variables.
+#'   \item \strong{Spike-at-Zero (SAZ)}: all spike-eligible variables.
+#'     When at least one SAZ variable also underwent ACD transformation, an
+#'     \code{ACD} column is added to this sub-table to identify the overlap;
+#'     otherwise that column is omitted to keep the summary concise.
 #' }
 #' Within every table, selected variables are listed before excluded ones.
 #'
@@ -4223,22 +4223,33 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
       SIMPLIFY = TRUE
     )
 
+    # Build the SAZ table from columns that are always relevant. The ACD
+    # indicator is intentionally omitted by default: an all-"no" column can
+    # imply that ACD played a role even when no SAZ variable actually used it.
     saz_table <- data.frame(
       Variable = variable_names[in_saz],
       prop_zero = format_prop_zero(prop_zero_all[in_saz]),
       `df (init->final)` = df_change_all[in_saz],
-      ACD = ifelse(acd_flag[in_saz], "yes", "no"),
       saz_decision = saz_decision_text[in_saz],
       Function = unname(function_label_saz),
       row.names = NULL,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
+
+    # Add ACD only for an actual ACD/SAZ overlap. Restricting the check to
+    # in_saz prevents ACD use elsewhere from adding an irrelevant SAZ column.
+    if (any(acd_flag[in_saz])) {
+      saz_table$ACD <- ifelse(acd_flag[in_saz], "yes", "no")
+      saz_table <- saz_table[, c(
+        "Variable", "prop_zero", "df (init->final)", "ACD",
+        "saz_decision", "Function"
+      ), drop = FALSE]
+    }
+
     saz_table <- sort_selected_first(saz_table, selected_status[in_saz])
 
-    print_subsection_heading(
-      "Spike-at-Zero (SAZ) -- may include ACD variables"
-    )
+    print_subsection_heading("Spike-at-Zero (SAZ)")
     print.data.frame(saz_table, row.names = FALSE, right = FALSE)
     cat("\n")
   }
@@ -4345,8 +4356,8 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
           "distribution\n  (ACD) transformation. acd and spike are independent ",
           "settings, so a\n  variable can be yes for both; ACD variables that ",
           "were also assessed by\n  the spike-at-zero algorithm are listed in ",
-          "the SAZ table above (with an\n  ACD column marking them), not in the ",
-          "ACD table.\n\n",
+          "the SAZ table above, not in the ACD table. When such an overlap ",
+          "exists,\n  the SAZ table includes an ACD column to mark it.\n\n",
           sep = ""
         )
       }

@@ -79,7 +79,7 @@ saz_decision_label <- function(decision,
   # never referenced in this branch.
   if (decision_int == saz_decision_codes[["binary_only"]]) {
     if (style == "plot_title") {
-      return("spike at zero — binary only")
+      return("spike at zero \u2014 binary only")
     }
 
     return(binary_label)
@@ -94,7 +94,7 @@ saz_decision_label <- function(decision,
   if (decision_int == saz_decision_codes[["cont_binary"]]) {
     if (style == "plot_title") {
       return(paste0(
-        "spike at zero — continuous + binary: ",
+        "spike at zero \u2014 continuous + binary: ",
         continuous_label
       ))
     }
@@ -107,7 +107,7 @@ saz_decision_label <- function(decision,
   # referenced in this branch.
   if (decision_int == saz_decision_codes[["continuous_only"]]) {
     if (style == "plot_title") {
-      return(paste0("spike at zero — continuous only: ", continuous_label))
+      return(paste0("spike at zero \u2014 continuous only: ", continuous_label))
     }
 
     return(continuous_label)
@@ -123,8 +123,9 @@ saz_decision_label <- function(decision,
 #'
 #' Internal helper that reports, for each retained spike-at-zero term, the
 #' proportion of finite observations belonging to the structural-zero
-#' component. Nonpositive values are counted as structural zeros, matching the
-#' temporary recoding used by the SAZ eligibility check. Non-SAZ terms receive
+#' component. Nonpositive values are counted directly as structural zeros,
+#' matching the zero-recoded semantics without materializing a recoded copy.
+#' Non-SAZ terms receive
 #' `NA_real_`.
 #'
 #' @param x Numeric design matrix on the actual fitting sample.
@@ -207,9 +208,10 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #' \code{spike} is reset.
 #'
 #' @param x A numeric matrix or data frame with column names. Only columns named
-#'   in \code{spike} are examined. For variables undergoing spike-at-zero
-#'   eligibility checks, nonpositive values should already have been temporarily
-#'   recoded to zero by \code{fit_mfp()}.
+#'   in \code{spike} are examined. Values are interpreted on the raw structural-
+#'   zero scale: finite values \code{<= 0} belong to the zero component and
+#'   finite values \code{> 0} belong to the positive component. The caller does
+#'   not need to materialize a temporarily zero-recoded copy.
 #' @param spike A named logical vector. \code{TRUE} indicates the column was
 #'   flagged as a spike-at-zero variable. Should be the post-cascade version
 #'   after \code{catzero[spike] <- TRUE} has been applied in \code{fit_mfp()}.
@@ -264,8 +266,9 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #'   \item \strong{Insufficient component representation} -- either the
 #'     structural-zero proportion or the positive-observation proportion is
 #'     below \code{min_saz_component_prop}.
-#'   \item \strong{Binary variable} -- exactly two unique finite values. The
-#'     positive part would contain a single unique value, making FP
+#'   \item \strong{Binary variable} -- exactly two effective finite values
+#'     after all nonpositive values are collapsed to the structural-zero level.
+#'     The positive part would then contain a single unique value, making FP
 #'     transformation degenerate.
 #' }
 #' A warning is issued for each reset reason, identifying the affected variables.
@@ -285,9 +288,10 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   names_spike <- names(spike)[spike]
 
   # Component proportions for each requested spike-at-zero variable.
-  # At this point fit_mfp() has already recoded nonpositive values to zero for
-  # zero/catzero/spike variables, so x == 0 represents the structural-zero group
-  # and x > 0 represents the positive continuous component.
+  # Work directly on the unre-coded values: x <= 0 is exactly the set that a
+  # temporary zero-recoding pass would collapse to zero, while x > 0 is left
+  # unchanged. Avoiding that physical rewrite prevents copy-on-modify from
+  # duplicating the full design matrix solely for this eligibility check.
   #
   # is.finite() excludes NA/NaN/Inf from both counts, so n_observed below can
   # be smaller than nrow(x) if any values are non-finite; prop_zero/
@@ -298,7 +302,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   n_zero <- vapply(
     names_spike,
     function(v) {
-      sum(is.finite(x[, v]) & x[, v] == 0)
+      sum(is.finite(x[, v]) & x[, v] <= 0)
     },
     integer(1L)
   )
@@ -316,13 +320,21 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   prop_zero <- n_zero / n_observed
   prop_positive <- n_positive / n_observed
 
-  # Binary variables are not eligible for spike-at-zero modelling. A binary
-  # covariate already represents a two-level effect, so adding a separate zero
-  # spike indicator would be redundant or non-identifiable.
+  # Binary variables are not eligible for spike-at-zero modelling. Match the
+  # old temporarily-recoded definition without constructing that vector: all
+  # finite nonpositive values collapse to one effective zero level, while each
+  # distinct positive value remains a separate level.
   is_binary <- vapply(
     names_spike,
     function(v) {
-      length(unique(x[is.finite(x[, v]), v])) == 2L
+      values <- x[, v]
+      values <- values[is.finite(values)]
+
+      has_zero_component <- any(values <= 0)
+      n_positive_levels <- length(unique(values[values > 0]))
+      n_effective_levels <- as.integer(has_zero_component) + n_positive_levels
+
+      n_effective_levels == 2L
     },
     logical(1L)
   )
@@ -510,39 +522,12 @@ resolve_saz_eligibility <- function(x,
   user_catzero <- catzero
   user_zero <- zero
 
-  # Apply a temporary cascade only for eligibility checking: spike implies
-  # catzero implies zero, exactly mirroring the cascade fit_mfp() applies
-  # later, so that the component proportions checked below are computed under
-  # the same zero-recoding a variable would actually receive if judged
-  # eligible.
-  catzero_for_spike <- catzero
-  zero_for_spike <- zero
-
-  catzero_for_spike[spike] <- TRUE
-  zero_for_spike[catzero_for_spike] <- TRUE
-
-  # Build temporary data for the eligibility check. This does not modify the
-  # original x used for fitting or preprocessing.
-  x_for_spike <- x
-
-  zero_vars <- intersect(
-    names(zero_for_spike)[zero_for_spike],
-    colnames(x_for_spike)
-  )
-
-  # Temporarily recode nonpositive values to zero for every zero-cascade
-  # variable, matching what fit_mfp() will eventually do to the real x. This
-  # is what lets reset_spike() (called next) count the zero vs. positive
-  # component using x == 0 / x > 0 directly, as documented there.
-  for (v in zero_vars) {
-    x_for_spike[x_for_spike[, v] <= 0, v] <- 0
-  }
-
-  # Delegate the actual eligibility rule (component proportions, binary
-  # check, cascade restoration for ineligible variables) to reset_spike();
-  # this function's job is only to prepare the right temporary inputs for it.
+  # Delegate directly on the raw matrix. reset_spike() interprets finite
+  # nonpositive values as one structural-zero component, which is exactly the
+  # result of the old temporary x[x <= 0] <- 0 preprocessing but without
+  # allocating and rewriting a full copy of x.
   reset_spike(
-    x = x_for_spike,
+    x = x,
     spike = spike,
     user_catzero = user_catzero,
     user_zero = user_zero,
@@ -569,9 +554,9 @@ resolve_saz_eligibility <- function(x,
 #'   \item 6 or more distinct positive values: keep the requested df.
 #' }
 #'
-#' @param x Numeric matrix or data frame after temporary zero recoding for spike
-#'   eligibility. For spike variables, nonpositive values should already be
-#'   represented as zero.
+#' @param x Numeric matrix or data frame on the fitting scale. For spike
+#'   variables, only finite positive values are used to determine the positive-
+#'   component cardinality; nonpositive values need not be physically recoded.
 #' @param df Named integer vector of current maximum df values.
 #' @param spike Named logical vector indicating final retained spike-at-zero
 #'   variables after \code{reset_spike()}.
@@ -720,8 +705,6 @@ cap_spike_df <- function(x, df, spike) {
 #'       plus adjustment variables).
 #'     \item \code{fit3}: fitted Model 3 (binary zero-indicator only, plus
 #'       adjustment variables).
-#'     \item \code{x}: a list with \code{model2} and \code{model3}, the design
-#'       matrices used to fit \code{fit2} and \code{fit3} respectively.
 #'     \item \code{data_xi}: the reused stage-1 transformed design matrix for
 #'       \code{xi} (continuous FP/ACD column(s) plus the \code{"catzero"}
 #'       column).
@@ -791,16 +774,7 @@ fit_saz_reduced_models <- function(stage1_selection,
     adjustment_matrix <- NULL
   }
 
-  # Step 3: Assemble the design matrices for Model 2 and Model 3 -----------
-  if (is.null(adjustment_matrix)) {
-    x_fit2 <- xi_continuous
-    x_fit3 <- xi_binary
-  } else {
-    x_fit2 <- cbind(xi_continuous, adjustment_matrix)
-    x_fit3 <- cbind(xi_binary, adjustment_matrix)
-  }
-
-  # Step 4: Fit both reduced models with the shared fitting arguments -------
+  # Step 3: Prepare the shared fitting arguments --------------------------
   fit_args <- list(
     y = y,
     family = family,
@@ -817,23 +791,36 @@ fit_saz_reduced_models <- function(stage1_selection,
     rownames = rownames
   )
 
+  # Step 4: Assemble and fit the two reduced models sequentially ----------
+  # The adjustment block is identical in both models, but materializing both
+  # complete cbind() results at once needlessly doubles peak stage-2 design-
+  # matrix memory. Build Model 2, fit it, release its temporary matrix, then do
+  # the same for Model 3. fit_model() is called in its fast candidate-fitting
+  # mode here, so these temporary design matrices are not required downstream.
+  x_fit2 <- if (is.null(adjustment_matrix)) {
+    xi_continuous
+  } else {
+    cbind(xi_continuous, adjustment_matrix)
+  }
   fit2 <- do.call(fit_model, c(list(x = x_fit2), fit_args))
-  fit3 <- do.call(fit_model, c(list(x = x_fit3), fit_args))
+  rm(x_fit2, envir = environment())
 
-  # Step 5: Return everything compute_saz_stage2_metrics()/decision-making
-  # downstream will need: the three fits (fit1 is just an alias for the
-  # unmodified stage1_selection, included for a uniform fit1/fit2/fit3
-  # naming convention), the two design matrices actually used, and the
-  # reused stage-1 pieces (data_xi, adjustment_matrix) in case a caller needs
-  # to inspect them directly.
+  x_fit3 <- if (is.null(adjustment_matrix)) {
+    xi_binary
+  } else {
+    cbind(xi_binary, adjustment_matrix)
+  }
+  fit3 <- do.call(fit_model, c(list(x = x_fit3), fit_args))
+  rm(x_fit3, envir = environment())
+
+  # Step 5: Return only objects required by stage-2 scoring/decision-making.
+  # In particular, do not retain the two temporary reduced-model design
+  # matrices: they can be much larger than the fit statistics and are never
+  # consumed by production code after fit2/fit3 have been obtained.
   list(
     fit1 = stage1_selection,
     fit2 = fit2,
     fit3 = fit3,
-    x = list(
-      model2 = x_fit2,
-      model3 = x_fit3
-    ),
     data_xi = data_xi,
     adjustment_matrix = adjustment_matrix
   )

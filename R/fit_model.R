@@ -892,10 +892,15 @@ fit_cox <- function(x,
   }
   has_predictors <- !is.null(x) && NCOL(x) > 0
 
-  istrata <- if (!is.null(strata)) {
-    as.integer(strata)
-  } else {
+  # coxph.fit() requires integer stratum identifiers. Many internal fast-fit
+  # calls already pass an integer vector, so avoid repeatedly coercing an
+  # observation-length object and creating unnecessary allocation/GC pressure.
+  istrata <- if (is.null(strata)) {
     NULL
+  } else if (is.integer(strata)) {
+    strata
+  } else {
+    as.integer(strata)
   }
 
   if (fast) {

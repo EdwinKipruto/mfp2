@@ -363,10 +363,13 @@
 #'   Stage-2 component-removal tests use `alpha`. Ignored when `criterion` is
 #'   `"aic"` or `"bic"`.
 #' @param alpha Significance level for closed tests between FP functions of
-#'   different degrees (e.g. FP2 versus FP1 versus linear). When
-#'   `criterion = "pvalue"`, `alpha` is also used for the Stage-2
-#'   component-removal tests of spike-at-zero terms. Default `0.05`.
-#'    In `mfp2.default()`, an unnamed
+#'   different degrees (e.g. FP2 versus FP1 versus linear). Under
+#'   `criterion = "pvalue"`, simplification occurs only when the comparison
+#'   p-value is strictly greater than `alpha`, matching the original MFP
+#'   endpoint convention. Thus `alpha = 1` prevents functional-form
+#'   simplification, including the exact boundary case `p = 1`. `alpha` is
+#'   also used for the Stage-2 component-removal tests of spike-at-zero terms.
+#'   Default `0.05`. In `mfp2.default()`, an unnamed
 #'   scalar is applied to all predictors.
 #'   A named numeric vector may override one or more columns of `x`; values are
 #'   matched by `colnames(x)`, order does not matter, and omitted columns use
@@ -461,9 +464,14 @@
 #'   variable selection and functional-form simplification are bypassed. Under
 #'   `criterion = "pvalue"`, this is implemented internally by setting
 #'   `select = 1` and `alpha = 1`; the option also applies under
-#'   `criterion = "aic"` and `criterion = "bic"`. The default is
-#'   `NULL`. For `mfp2.formula()`, set this option for individual
-#'   terms using `fp(x, force_max_fp = TRUE)`.
+#'   `criterion = "aic"` and `criterion = "bic"`. For an eligible
+#'   spike-at-zero predictor, forcing applies to the complete maximum SAZ
+#'   representation: the maximum permitted positive-component FP form plus the
+#'   binary zero indicator. SAZ Stage 2 is skipped for forced terms under all
+#'   three criteria because its reduced representations are not allowed to
+#'   replace the requested maximum representation. The default is `NULL`. For
+#'   `mfp2.formula()`, set this option for individual terms using
+#'   `fp(x, force_max_fp = TRUE)`.
 #' @param verbose Logical value indicating whether progress messages are printed.
 #' Default `TRUE`.
 #' @param \dots Additional arguments passed to methods. Variable-specific formula
@@ -4475,8 +4483,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   See [mfp2()] for the cardinality-based reduction rules.
 #' @param alpha Significance level for the closed test between FP functions of
 #'   different degrees and, when `spike = TRUE` with p-value selection, for
-#'   both Stage-2 SAZ component-removal tests. Default `0.05`. Overrides the
-#'   global `alpha` from [mfp2()] for this variable.
+#'   both Stage-2 SAZ component-removal tests. Under p-value selection, reduced
+#'   forms are accepted only when their comparison p-value is strictly greater
+#'   than `alpha`; therefore `alpha = 1` prevents simplification, including at
+#'   an exact p-value of `1`. Default `0.05`. Overrides the global `alpha` from
+#'   [mfp2()] for this variable.
 #' @param select Significance level for backward-elimination variable
 #'   selection. Default `0.05`. Set to `1` to force this variable into the
 #'   model. Overrides the global `select` from [mfp2()].
@@ -4506,8 +4517,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   selection and functional-form simplification. Under `criterion = "pvalue"`,
 #'   this is implemented by internally setting `select = 1` and `alpha = 1`
 #'   for the variable; the option also applies under `"aic"` and `"bic"`.
-#'   Default `FALSE`. Equivalent to naming the variable in `force_max_fp_vars`
-#'   in `mfp2.default()`.
+#'   If `spike = TRUE` remains eligible, the forced representation includes
+#'   both the maximum permitted positive-component FP form and the binary zero
+#'   indicator, and SAZ Stage 2 is bypassed under all three criteria. Default
+#'   `FALSE`. Equivalent to naming the variable in `force_max_fp_vars` in
+#'   `mfp2.default()`.
 #' @param powers Numeric vector of candidate powers to be evaluated for `x`.
 #'   If `NULL` (default), the global candidate set from [mfp2()] is used,
 #'   which defaults to `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`. When `df > 1`,

@@ -981,8 +981,11 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' @param criterion Character string specifying the selection criterion. Must be
 #'   one of \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
 #' @param alpha Numeric significance threshold used for the Stage-2
-#'   component-removal tests when \code{criterion = "pvalue"}. This is the
-#'   same functional-form significance level used in Stage 1, not the
+#'   component-removal tests when \code{criterion = "pvalue"}. A component is
+#'   removed only when its comparison p-value is strictly greater than
+#'   \code{alpha}; therefore \code{alpha = 1} also preserves both SAZ
+#'   components at the exact \code{p = 1} boundary. This is the same
+#'   functional-form significance level used in Stage 1, not the
 #'   variable-inclusion threshold \code{select}.
 #' @param n_obs Integer. Number of observations, used for F-tests.
 #' @param ftest Logical. If \code{TRUE}, use F-tests instead of likelihood-ratio
@@ -1011,19 +1014,19 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' \tabular{llll}{
 #'   \strong{Condition} \tab \strong{Interpretation} \tab
 #'   \strong{Retained component(s)} \tab \strong{Selected model} \cr
-#'   \code{p_drop_binary < alpha}, \code{p_drop_continuous < alpha} \tab
+#'   \code{p_drop_binary <= alpha}, \code{p_drop_continuous <= alpha} \tab
 #'   Both reductions are significantly worse than Model 1 \tab
 #'   Continuous FP/linear/ACD + binary zero indicator \tab
 #'   Model 1 \cr
-#'   \code{p_drop_binary < alpha}, \code{p_drop_continuous >= alpha} \tab
+#'   \code{p_drop_binary <= alpha}, \code{p_drop_continuous > alpha} \tab
 #'   Removing the binary component is harmful; removing the continuous component is acceptable \tab
 #'   Binary zero indicator only \tab
 #'   Model 3 \cr
-#'   \code{p_drop_binary >= alpha}, \code{p_drop_continuous < alpha} \tab
+#'   \code{p_drop_binary > alpha}, \code{p_drop_continuous <= alpha} \tab
 #'   Removing the continuous component is harmful; removing the binary component is acceptable \tab
 #'   Continuous FP/linear/ACD only \tab
 #'   Model 2 \cr
-#'   \code{p_drop_binary >= alpha}, \code{p_drop_continuous >= alpha} \tab
+#'   \code{p_drop_binary > alpha}, \code{p_drop_continuous > alpha} \tab
 #'   Neither reduction is significantly worse than Model 1 \tab
 #'   Better-fitting reduced component \tab
 #'   Model 2 if \code{logLik(Model 2) > logLik(Model 3)}, otherwise Model 3 \cr
@@ -1112,9 +1115,12 @@ compute_saz_stage2_decision <- function(metrics,
     p_drop_binary <- stats1$pvalue
     p_drop_continuous <- stats2$pvalue
 
-    # This mirrors the decision table in the function documentation above:
-    # a small p-value means dropping that component makes the model
-    # significantly worse, i.e. that component must be *kept*. So:
+    # This mirrors the decision table in the function documentation above.
+    # Reduced components are accepted only when their p-value strictly exceeds
+    # alpha. This deliberately follows the MFP endpoint convention used by the
+    # Stage-1 closed tests: alpha = 1 is a forcing value, so an exact p = 1
+    # retains the corresponding full-model component by convention rather than
+    # triggering simplification. So:
     #   both p-values small  -> neither component can be safely dropped -> Model 1
     #   only p_drop_binary small -> the binary component is needed but the
     #     continuous one isn't -> keep binary only -> Model 3
@@ -1123,11 +1129,11 @@ compute_saz_stage2_decision <- function(metrics,
     #   neither small -> both components are individually dispensable; break
     #     the tie by whichever reduced model actually fits better (higher
     #     log-likelihood), rather than defaulting to either one arbitrarily.
-    decision <- if (p_drop_binary < alpha && p_drop_continuous < alpha) {
+    decision <- if (p_drop_binary <= alpha && p_drop_continuous <= alpha) {
       saz_decision_codes[["cont_binary"]]  # Model 1: both components
-    } else if (p_drop_binary < alpha && p_drop_continuous >= alpha) {
+    } else if (p_drop_binary <= alpha && p_drop_continuous > alpha) {
       saz_decision_codes[["binary_only"]]  # Model 3: binary zero-indicator only
-    } else if (p_drop_binary >= alpha && p_drop_continuous < alpha) {
+    } else if (p_drop_binary > alpha && p_drop_continuous <= alpha) {
       saz_decision_codes[["continuous_only"]]  # Model 2: continuous FP/linear/ACD only
     } else {
       # If neither reduced model is significantly worse than the full model,

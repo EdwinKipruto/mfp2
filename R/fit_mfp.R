@@ -158,9 +158,12 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'   If \code{FALSE}, \code{fit_mfp()} performs a defensive late eligibility
 #'   reset for internal callers that have not yet been updated.
 #' @param force_max_fp Named logical vector with one value per conceptual term.
-#'   If \code{TRUE} for a term, forces selection of the most complex functional form at the
-#'   degree specified by \code{df}, bypassing AIC/BIC comparison against
-#'   simpler forms. Has no effect when \code{criterion = "pvalue"}.
+#'   If \code{TRUE} for a non-linear term, forces selection of the most complex
+#'   functional form allowed by \code{df} under p-value, AIC, or BIC selection,
+#'   bypassing variable elimination and simpler-form comparisons. For an
+#'   eligible spike-at-zero term, the forced result is the complete maximum SAZ
+#'   representation (maximum positive-component form plus binary zero indicator),
+#'   so the reduced-component comparisons in SAZ Stage 2 are not run.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
@@ -1441,7 +1444,8 @@ convert_powers_list_to_matrix <- function(power_list) {
 #'   For explicitly mapped grouped terms, `1` denotes a fixed linear block.
 #' * `df_initial`: degrees of freedom represented by the term in the initial
 #'   MFP model. For grouped terms this is the number of member design columns,
-#'   rather than the fixed-linear `df_setting` value.
+#'   rather than the fixed-linear `df_setting` value. For an eligible SAZ term,
+#'   this also includes the one-df structural-zero binary indicator.
 #' * `select`: significance level used for backward elimination (or criterion name if not "pvalue").
 #' * `alpha`: significance level for FP terms (or criterion name if not "pvalue").
 #' * `acd`: logical, whether an ACD transformation was applied.
@@ -1538,6 +1542,17 @@ create_fp_terms <- function(fp_powers,
     if (any(mapped)) {
       df_initial[mapped] <- lengths(term_to_columns[vars][mapped])
     }
+  }
+
+  # Every eligible SAZ term enters the MFP procedure with the structural-zero
+  # binary indicator in addition to its continuous FP/ACD component. `spike`
+  # has already been eligibility-resolved upstream, whereas `catzero` here is
+  # final/effective metadata and may be FALSE after Stage 2 removes the binary
+  # component. Count the indicator from `spike` so `df_initial` describes the
+  # model that was actually entered into selection (for example, df = 4 starts
+  # as 5 df: FP2 contributes 4 df and the zero indicator contributes 1 df).
+  if (any(spike)) {
+    df_initial[spike] <- df_initial[spike] + 1L
   }
 
   # Step 3: Calculate final degrees of freedom. Continuous terms use the MFP

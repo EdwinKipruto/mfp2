@@ -33,8 +33,11 @@ See \code{\link[=mfp2]{mfp2()}} for the cardinality-based reduction rules.}
 
 \item{alpha}{Significance level for the closed test between FP functions of
 different degrees and, when \code{spike = TRUE} with p-value selection, for
-both Stage-2 SAZ component-removal tests. Default \code{0.05}. Overrides the
-global \code{alpha} from \code{\link[=mfp2]{mfp2()}} for this variable.}
+both Stage-2 SAZ component-removal tests. Under p-value selection, reduced
+forms are accepted only when their comparison p-value is strictly greater
+than \code{alpha}; therefore \code{alpha = 1} prevents simplification, including at
+an exact p-value of \code{1}. Default \code{0.05}. Overrides the global \code{alpha} from
+\code{\link[=mfp2]{mfp2()}} for this variable.}
 
 \item{select}{Significance level for backward-elimination variable
 selection. Default \code{0.05}. Set to \code{1} to force this variable into the
@@ -81,8 +84,11 @@ allowed by \code{df} is forced for this variable, bypassing both variable
 selection and functional-form simplification. Under \code{criterion = "pvalue"},
 this is implemented by internally setting \code{select = 1} and \code{alpha = 1}
 for the variable; the option also applies under \code{"aic"} and \code{"bic"}.
-Default \code{FALSE}. Equivalent to naming the variable in \code{force_max_fp_vars}
-in \code{mfp2.default()}.}
+If \code{spike = TRUE} remains eligible, the forced representation includes
+both the maximum permitted positive-component FP form and the binary zero
+indicator, and SAZ Stage 2 is bypassed under all three criteria. Default
+\code{FALSE}. Equivalent to naming the variable in \code{force_max_fp_vars} in
+\code{mfp2.default()}.}
 
 \item{...}{Not used directly by \code{fp()}. Present so that the \code{fp2()} alias
 can forward all arguments.}

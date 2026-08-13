@@ -80,8 +80,12 @@
 #'   variables. Null, linear, and lower-degree alternatives are not fitted
 #'   because variable selection and functional-form simplification are
 #'   explicitly bypassed for forced terms under p-value, AIC, and BIC
-#'   selection. The best power combination within the forced form is still
-#'   determined by \code{find_best_fpm_step()}.
+#'   selection. For an eligible spike-at-zero term, forcing applies to the
+#'   complete maximum SAZ representation: the maximum continuous component
+#'   plus its binary zero indicator. SAZ stage 2 is therefore skipped because
+#'   its only purpose is to compare reduced component representations. The best
+#'   power combination within the forced form is still determined by
+#'   \code{find_best_fpm_step()}.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param n_obs Numeric; number of observations (or observed events, for Cox
@@ -152,7 +156,10 @@
 #' Across all three criteria, `force_max_fp` is handled before the ordinary
 #' selectors are dispatched: \code{select_force_max_fp()} fits only the
 #' predetermined maximum functional form and therefore avoids model fits that
-#' cannot affect the result.
+#' cannot affect the result. For an eligible spike-at-zero variable, the forced
+#' result is the complete maximum SAZ representation (maximum continuous form
+#' plus binary zero indicator), so the reduced-component comparisons of SAZ
+#' stage 2 are also bypassed.
 #'
 #' @return
 #' A numeric vector indicating the best powers for `xi`. Entries can be
@@ -322,7 +329,26 @@ find_best_fp_step <- function(x,
     ))
   }
 
-  # Step 6: xi is a selected spike variable, so run SAZ stage 2 --------------
+  # Step 6: Forced spike terms already have their final representation -------
+  if (force_max_active) {
+    # select_force_max_fp() has already fitted the maximum permitted continuous
+    # form together with the binary zero indicator for an eligible spike term.
+    # SAZ stage 2 exists only to ask whether either component can be removed.
+    # Running those reduced-model comparisons would therefore contradict the
+    # explicit force_max_fp request and, under AIC/BIC, could undo the forced
+    # representation. It would also perform two model fits whose results are
+    # not allowed to change the answer. Mark the full representation directly.
+    spike_decision[[xi]] <- saz_decision_codes[["cont_binary"]]
+
+    return(list(
+      power_best = power_best,
+      spike_decision = spike_decision,
+      current_adj_params = fit1$current_adj_params,
+      transform_cache = fit1$transform_cache
+    ))
+  }
+
+  # Step 7: xi is a selected non-forced spike variable, so run SAZ stage 2 ----
   # If we get here:
   # power_best is not NA
   # and xi is a spike variable
@@ -330,8 +356,9 @@ find_best_fp_step <- function(x,
   # ----------------------------------------------------------------------------
   # Evaluate spike at zero (SAZ) variables to update spike_decision.
   # This is stage 2 of the SAZ algorithm, computed only when the variable was
-  # selected in stage 1. See evaluate_saz_stage2() (spike_at_zero.R) for the
-  # reduced-model fitting, decision rule, and stage-2 printing.
+  # selected in stage 1 and is not force_max_fp. See evaluate_saz_stage2()
+  # (spike_at_zero.R) for reduced-model fitting, the decision rule, and
+  # stage-2 printing.
   # ----------------------------------------------------------------------------
   stage2 <- evaluate_saz_stage2(
     fit1 = fit1,
@@ -1110,16 +1137,18 @@ select_linear <- function(x,
   if (xi %in% keep) {
     model_best <- 2
   } else {
-    # For "pvalue": xi is dropped (null) unless the null-vs-linear test is
-    # significant at the `select` threshold - this mirrors Test 1 of the FP
-    # closed-test procedure (see select_ra2()), just with only one candidate
+    # For "pvalue": drop xi only when the null-vs-linear p-value strictly
+    # exceeds `select`. The strict `>` is intentional and matches the original
+    # Stata/CRAN MFP endpoint convention: select = 1 is a forcing value, so even
+    # an exact p-value of 1 does not remove the term. This mirrors Test 1 of the
+    # FP closed-test procedure (see select_ra2()), just with only one candidate
     # non-null model instead of several FP degrees.
     # For "aic"/"bic": simply pick whichever of the two rows has the smaller
     # criterion value; there's no separate functional-form step because a
     # linear-only variable has no functional form to choose between.
     model_best <- switch(
       tolower(criterion),
-      "pvalue" = ifelse(pvalue >= select, 1, 2),
+      "pvalue" = ifelse(pvalue > select, 1, 2),
       "aic" = which.min(metrics[, "aic", drop = TRUE]),
       "bic" = which.min(metrics[, "bic", drop = TRUE])
     )
@@ -1171,6 +1200,12 @@ select_linear <- function(x,
 #' down to \eqn{\mathrm{FP}_{m-1}}, which is tested with 2 degrees of freedom.
 #' If the final test is not significant, retain the best \eqn{\mathrm{FP}_{m-1}}
 #' model; otherwise, retain the best FP\emph{m} model.
+#'
+#' MFP uses a strict boundary when deciding that a simpler model is adequate:
+#' simplification/removal occurs only when the comparison p-value is strictly
+#' greater than the relevant threshold. Consequently, `select = 1` forces
+#' inclusion and `alpha = 1` prevents functional-form simplification, including
+#' the exact boundary case where a comparison yields `p = 1`.
 #'
 #' Note that the "best" FP\emph{x} model used in each step refers to the model
 #' that applies an FP\emph{x} transformation to the variable of interest and
@@ -1379,7 +1414,10 @@ select_ra2 <- function(x,
   # Ensure keep is not NULL
   current_keep <- if (is.null(keep)) character(0) else keep
 
-  if (stats$pvalue >= select && !(xi %in% current_keep)) {
+  # MFP uses a strict upper-tail boundary for simplification/removal. Therefore
+  # select = 1 truly forces inclusion: p = 1 is retained, and only p > select
+  # can trigger removal. The same convention is used for alpha below.
+  if (stats$pvalue > select && !(xi %in% current_keep)) {
     # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
     # the null row).
     # not selected and not forced into model
@@ -1423,7 +1461,7 @@ select_ra2 <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue >= alpha) {
+  if (stats$pvalue > alpha) {
     # Test 2 not significant: the extra flexibility beyond linear is not
     # needed. Accept linear and stop (model_best = 3: rows were inserted in
     # order FPm(degree), null, linear).
@@ -1486,7 +1524,7 @@ select_ra2 <- function(x,
       names(res$pvalue) <- names(res$statistic)
 
       # Stop early if non-linearity detected
-      if (stats$pvalue >= alpha) {
+      if (stats$pvalue > alpha) {
         # FPm(current_degree) is not significantly worse than FPm(degree):
         # accept it and stop climbing further; model_best is the row just
         # appended (the last row of res$metrics at this point).
@@ -1713,7 +1751,10 @@ select_ra2_acd <- function(x,
   # Ensure keep is not NULL
   current_keep <- if (is.null(keep)) character(0) else keep
 
-  if (stats$pvalue >= select && !(xi %in% current_keep)) {
+  # Preserve the same strict MFP endpoint convention as select_ra2(): select = 1
+  # forces inclusion even at p = 1, and alpha = 1 below prevents simplification
+  # at the exact upper boundary.
+  if (stats$pvalue > select && !(xi %in% current_keep)) {
     # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
     # the null/M6 row).
     # not selected and not forced into model
@@ -1753,7 +1794,7 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue >= alpha) {
+  if (stats$pvalue > alpha) {
     # Test 2 not significant: plain linear(x) (M4) is not significantly worse
     # than M1. Accept it and stop (model_best = 3: rows inserted in order M1,
     # null/M6, linear/M4).
@@ -1795,7 +1836,7 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue >= alpha) {
+  if (stats$pvalue > alpha) {
     # Test 3 not significant: ordinary FP1(x, .) (M2) is not significantly
     # worse than M1. Accept it and stop (model_best = 4).
     # FP1(x, .) is good enough
@@ -1920,8 +1961,10 @@ select_ra2_acd <- function(x,
 #'
 #' The returned object deliberately has the same shape as the other selectors,
 #' but `metrics` and `powers` contain only the single model that was actually
-#' fitted.  This is sufficient for verbose printing and SAZ stage 2, both of
-#' which consume the selected row rather than requiring discarded competitors.
+#' fitted. This is sufficient for verbose printing. When the forced term is an
+#' eligible spike-at-zero variable, \code{find_best_fp_step()} retains this full
+#' continuous-plus-binary representation directly and skips SAZ stage 2 because
+#' no reduced component representation is permitted to replace it.
 #'
 #' @inheritParams find_best_fp_step
 #' @param degree integer > 0 giving the requested ordinary FP degree.

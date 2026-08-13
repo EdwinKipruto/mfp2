@@ -739,9 +739,13 @@ The argument `force_max_fp` can be used to force selection of the most
 complex permitted FP function for a covariate. For example, if the
 maximum complexity allowed for a covariate $z$ is FP2, setting
 `force_max_fp = TRUE` for $z$ forces the best FP2 function to be
-selected when `criterion = "aic"` or `criterion = "bic"`. This is
-analogous to setting `select = 1` and `alpha = 1` when
-`criterion = "pvalue"`.
+selected under p-value, AIC, or BIC selection. Under the p-value
+criterion this is analogous to setting `select = 1` and `alpha = 1`.
+For an eligible spike-at-zero covariate, forcing applies to the complete
+maximum representation: the maximum positive-component FP function plus
+the binary zero indicator. The Stage 2 SAZ reduction step is skipped for
+a forced term, because none of its reduced representations is allowed to
+replace the requested maximum representation.
 
 The following R code demonstrates how to implement this approach using
 both the default and formula interfaces, as well as how to force

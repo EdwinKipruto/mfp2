@@ -156,9 +156,11 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
 #'   \code{flex4()} - used only to estimate FP powers for \code{cont_var} -
 #'   the user criterion is passed alongside \code{force_max_fp = TRUE}, which
-#'   prevents AIC/BIC from simplifying the functional form below the requested
-#'   degree. The best power combination within that degree is still selected by
-#'   the criterion (equivalently, by deviance minimization at fixed df).
+#'   prevents p-value, AIC, or BIC selection from simplifying the functional
+#'   form below the requested degree. The best power combination within that
+#'   degree is still selected by the criterion (equivalently, by deviance
+#'   minimization at fixed df). For an eligible SAZ adjustment term, forcing
+#'   also retains the binary zero indicator and bypasses Stage 2 reduction.
 #' @param select Named numeric vector of length \eqn{p}. Nominal significance
 #'   levels used by the MFP variable-selection tests for adjustment terms.
 #' @param alpha Named numeric vector of length \eqn{p}. Significance levels
@@ -1087,7 +1089,9 @@ preprocess_data <- function(x, group_var, include_group_var,
 #' (the default), all elements are \code{FALSE} and \code{select_ic()} runs its
 #' normal degree competition - correct behaviour for full adjustment-model
 #' selection. \code{force_max_fp = TRUE} for specific variables forces the most
-#' complex functional form for those variables in the adjustment model.
+#' complex functional form for those variables in the adjustment model. If such
+#' a variable is an eligible spike-at-zero term, the full maximum continuous +
+#' binary representation is retained and SAZ Stage 2 is skipped.
 #' @keywords internal
 #' @noRd
 fit_adjustment_model <- function(x, y, weights, offset, cycles, family,

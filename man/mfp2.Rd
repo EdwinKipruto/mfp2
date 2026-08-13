@@ -180,10 +180,13 @@ Stage-2 component-removal tests use \code{alpha}. Ignored when \code{criterion} 
 \code{"aic"} or \code{"bic"}.}
 
 \item{alpha}{Significance level for closed tests between FP functions of
-different degrees (e.g. FP2 versus FP1 versus linear). When
-\code{criterion = "pvalue"}, \code{alpha} is also used for the Stage-2
-component-removal tests of spike-at-zero terms. Default \code{0.05}.
-In \code{mfp2.default()}, an unnamed
+different degrees (e.g. FP2 versus FP1 versus linear). Under
+\code{criterion = "pvalue"}, simplification occurs only when the comparison
+p-value is strictly greater than \code{alpha}, matching the original MFP
+endpoint convention. Thus \code{alpha = 1} prevents functional-form
+simplification, including the exact boundary case \code{p = 1}. \code{alpha} is
+also used for the Stage-2 component-removal tests of spike-at-zero terms.
+Default \code{0.05}. In \code{mfp2.default()}, an unnamed
 scalar is applied to all predictors.
 A named numeric vector may override one or more columns of \code{x}; values are
 matched by \code{colnames(x)}, order does not matter, and omitted columns use
@@ -292,9 +295,14 @@ vector naming predictors for which the most complex FP function allowed by
 variable selection and functional-form simplification are bypassed. Under
 \code{criterion = "pvalue"}, this is implemented internally by setting
 \code{select = 1} and \code{alpha = 1}; the option also applies under
-\code{criterion = "aic"} and \code{criterion = "bic"}. The default is
-\code{NULL}. For \code{mfp2.formula()}, set this option for individual
-terms using \code{fp(x, force_max_fp = TRUE)}.}
+\code{criterion = "aic"} and \code{criterion = "bic"}. For an eligible
+spike-at-zero predictor, forcing applies to the complete maximum SAZ
+representation: the maximum permitted positive-component FP form plus the
+binary zero indicator. SAZ Stage 2 is skipped for forced terms under all
+three criteria because its reduced representations are not allowed to
+replace the requested maximum representation. The default is \code{NULL}. For
+\code{mfp2.formula()}, set this option for individual terms using
+\code{fp(x, force_max_fp = TRUE)}.}
 
 \item{term_groups}{For \code{mfp2.default()}, an optional named list mapping a
 conceptual term to one or more columns of \code{x}, for example

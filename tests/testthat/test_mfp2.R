@@ -686,6 +686,43 @@ test_that("grouped final df excludes non-estimable coefficients", {
 })
 
 
+# Test purpose: Eligible SAZ terms enter selection with both the continuous
+# component and the structural-zero indicator. Initial df must therefore count
+# the binary indicator even when Stage 2 subsequently removes it.
+test_that("eligible SAZ initial df includes the binary indicator", {
+  fp_terms <- create_fp_terms(
+    fp_powers = list(
+      saz_full = c(1, 3),
+      saz_continuous = c(1, 3),
+      ordinary = c(1, 3)
+    ),
+    acdx = c(
+      saz_full = FALSE,
+      saz_continuous = FALSE,
+      ordinary = FALSE
+    ),
+    df = c(saz_full = 4, saz_continuous = 4, ordinary = 4),
+    select = c(saz_full = 1, saz_continuous = 1, ordinary = 1),
+    alpha = c(saz_full = 1, saz_continuous = 1, ordinary = 1),
+    criterion = "pvalue",
+    zero = c(saz_full = TRUE, saz_continuous = TRUE, ordinary = FALSE),
+    # catzero is final/effective metadata: Stage 2 removed the binary indicator
+    # from saz_continuous, but its initial SAZ candidate still contained it.
+    catzero = c(saz_full = TRUE, saz_continuous = FALSE, ordinary = FALSE),
+    spike = c(saz_full = TRUE, saz_continuous = TRUE, ordinary = FALSE),
+    spike_decision = c(
+      saz_full = saz_decision_codes[["cont_binary"]],
+      saz_continuous = saz_decision_codes[["continuous_only"]],
+      ordinary = saz_decision_codes[["continuous_only"]]
+    )
+  )
+
+  expect_equal(fp_terms$df_setting, c(4, 4, 4))
+  expect_equal(fp_terms$df_initial, c(5, 5, 4))
+  expect_equal(fp_terms$df_final, c(5, 4, 4))
+})
+
+
 # =============================================================================
 # 2. mfp2.formula() — equivalence and fp() terms
 # =============================================================================
@@ -3429,7 +3466,13 @@ test_that("mfp2() applies positive-part df cap for retained spike variables", {
 
   expect_s3_class(fit, "mfp2")
   expect_true(fit$spike["exposure"])
-  expect_equal(fit$fp_terms["exposure", "df_initial"], 1)
+
+  # The positive-part cap reduces the continuous FP complexity to one df, but
+  # an eligible SAZ term enters selection with its one-df zero indicator as
+  # well. Keep these two quantities distinct: df_setting describes the capped
+  # continuous component, while df_initial is the total initial SAZ term df.
+  expect_equal(fit$fp_terms["exposure", "df_setting"], 1)
+  expect_equal(fit$fp_terms["exposure", "df_initial"], 2)
 })
 
 # Test purpose: Ensures prediction works for retained SAZ models, including
@@ -3530,6 +3573,43 @@ test_that("multiple spike variables are reset independently", {
   expect_false(fit$zero["ineligible"])
 })
 
+
+# Test purpose: Guards the MFP endpoint convention for SAZ Stage 2. With
+# alpha = 1, an exact p-value of 1 must not simplify the two-component SAZ
+# representation; simplification occurs only when p is strictly greater than
+# alpha.
+test_that("SAZ Stage 2 retains both components at alpha = 1 and p = 1", {
+  metric <- c(
+    logl = 0,
+    df = 1,
+    aic = 0,
+    bic = 0,
+    deviance_gaussian = 1,
+    df_resid = 10
+  )
+
+  testthat::local_mocked_bindings(
+    calculate_lr_test = function(...) {
+      list(statistic = 0, pvalue = 1)
+    },
+    .package = "mfp2"
+  )
+
+  out <- compute_saz_stage2_decision(
+    metrics = list(
+      metrics1 = metric,
+      metrics2 = metric,
+      metrics3 = metric
+    ),
+    criterion = "pvalue",
+    alpha = 1,
+    n_obs = 10,
+    ftest = FALSE
+  )
+
+  expect_equal(out$decision, saz_decision_codes[["cont_binary"]])
+  expect_equal(unname(out$pvalue), c(1, 1))
+})
 
 # =============================================================================
 # 7. ACD transformation
@@ -7046,6 +7126,93 @@ test_that("select = 1 forces all variables into model", {
   expect_true(all(fit$fp_terms[, "selected"]))
 })
 
+# Test purpose: Guards the Stata/CRAN MFP endpoint convention. For p-value
+# selection, select = 1 and alpha = 1 are forcing values: a term is removed or
+# simplified only when its p-value is strictly greater than the threshold.
+# Therefore, even exact p-values of 1 must retain a degree-2 (df = 4) FP as FP2.
+test_that("RA2 keeps FP2 when select = alpha = 1 and every test has p = 1", {
+  metric_row <- function(df = 1) {
+    matrix(
+      c(
+        logl = 0,
+        df = df,
+        aic = 0,
+        bic = 0,
+        deviance_gaussian = 1,
+        df_resid = 10
+      ),
+      nrow = 1,
+      dimnames = list(NULL, c(
+        "logl", "df", "aic", "bic", "deviance_gaussian", "df_resid"
+      ))
+    )
+  }
+
+  testthat::local_mocked_bindings(
+    build_adjustment_step = function(...) {
+      list(transform_cache = NULL)
+    },
+    find_best_fpm_step = function(..., degree) {
+      power <- rep(1, degree)
+      list(
+        metrics = metric_row(df = 2 * degree),
+        model_best = 1L,
+        power_best = power,
+        powers = matrix(power, nrow = 1),
+        current_adj_params = NULL
+      )
+    },
+    fit_null_step = function(...) {
+      list(
+        metrics = metric_row(df = 0),
+        powers = NA_real_,
+        current_adj_params = NULL
+      )
+    },
+    fit_linear_step = function(...) {
+      list(
+        metrics = metric_row(df = 1),
+        powers = 1,
+        current_adj_params = NULL
+      )
+    },
+    calculate_lr_test = function(...) {
+      list(statistic = 0, pvalue = 1)
+    },
+    .package = "mfp2"
+  )
+
+  out <- select_ra2(
+    x = matrix(1, nrow = 4, ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x",
+    keep = character(0),
+    degree = 2,
+    acdx = c(x = FALSE),
+    y = 1:4,
+    powers_current = matrix(c(1, NA), nrow = 1, dimnames = list("x", NULL)),
+    powers = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3),
+    criterion = "pvalue",
+    ftest = FALSE,
+    select = 1,
+    alpha = 1,
+    family = gaussian(),
+    family_string = "gaussian",
+    zero = c(x = FALSE),
+    catzero = list(x = NULL),
+    spike = list(x = FALSE),
+    spike_decision = c(x = 0L),
+    acd_parameter = NULL,
+    prev_adj_params = NULL,
+    force_max_fp = c(x = FALSE),
+    has_offset = FALSE,
+    n_obs = 4,
+    term_to_columns = list(x = "x")
+  )
+
+  expect_equal(out$model_best, 1)
+  expect_equal(as.numeric(out$pvalue), c(1, 1, 1))
+})
+
 # Test purpose: Checks that variables listed in keep remain selected in the final model.
 test_that("keep argument retains specified variables", {
   fit <- mfp2(x_prostate, y_prostate, keep = c("age", "bph"), verbose = FALSE)
@@ -8485,6 +8652,99 @@ test_that("force-max dispatch bypasses RA2 and IC selectors for all criteria", {
   }
 
   expect_identical(calls$criteria, c("pvalue", "aic", "bic"))
+})
+
+# Test purpose: A forced eligible spike-at-zero term already has its final
+# maximum representation after select_force_max_fp(): maximum continuous FP
+# form plus binary zero indicator. SAZ Stage 2 must therefore be bypassed for
+# p-value, AIC, and BIC so reduced component models cannot undo the force.
+test_that("force-max spike terms bypass SAZ stage 2 for all criteria", {
+  calls <- new.env(parent = emptyenv())
+  calls$stage2 <- 0L
+  calls$criteria <- character(0)
+
+  testthat::local_mocked_bindings(
+    select_force_max_fp = function(..., criterion) {
+      calls$criteria <- c(calls$criteria, criterion)
+
+      list(
+        keep = FALSE,
+        acd = FALSE,
+        powers = matrix(c(-1, 2), nrow = 1,
+                        dimnames = list("FP2 + Binary", NULL)),
+        power_best = c(-1, 2),
+        metrics = matrix(
+          c(-10, 5, 20, 20, 30, 33, 95),
+          nrow = 1,
+          dimnames = list(
+            "FP2 + Binary",
+            c("logl", "df", "deviance_rs", "deviance_gaussian",
+              "aic", "bic", "df_resid")
+          )
+        ),
+        model_best = 1L,
+        statistic = numeric(0),
+        pvalue = numeric(0),
+        spike = TRUE,
+        current_adj_params = list(forced = TRUE),
+        transform_cache = list(forced = TRUE)
+      )
+    },
+    evaluate_saz_stage2 = function(...) {
+      calls$stage2 <- calls$stage2 + 1L
+      stop("SAZ stage 2 must not run for force_max_fp", call. = FALSE)
+    },
+    .package = "mfp2"
+  )
+
+  for (criterion_value in c("pvalue", "aic", "bic")) {
+    out <- find_best_fp_step(
+      x = matrix(seq_len(8), ncol = 1, dimnames = list(NULL, "x")),
+      y = seq_len(8),
+      xi = "x",
+      weights = NULL,
+      offset = NULL,
+      df = 4,
+      powers_current = list(x = c(1, 1)),
+      family = stats::gaussian(),
+      family_string = "gaussian",
+      criterion = criterion_value,
+      select = 1,
+      alpha = 1,
+      keep = character(0),
+      powers = list(x = c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)),
+      method = NULL,
+      strata = NULL,
+      nocenter = FALSE,
+      acdx = c(x = FALSE),
+      ftest = FALSE,
+      control = list(),
+      rownames = as.character(seq_len(8)),
+      zero = c(x = TRUE),
+      catzero = list(x = "x_binary"),
+      spike = list(x = TRUE),
+      spike_decision = c(x = saz_decision_codes[["binary_only"]]),
+      acd_parameter = list(x = NULL),
+      prev_adj_params = list(x = NULL),
+      transform_cache = NULL,
+      force_max_fp = c(x = TRUE),
+      has_offset = FALSE,
+      n_obs = 8,
+      verbose = FALSE,
+      term_to_columns = list(x = "x")
+    )
+
+    expect_equal(unname(out$power_best), c(-1, 2))
+    expect_identical(
+      unname(out$spike_decision[["x"]]),
+      saz_decision_codes[["cont_binary"]]
+    )
+    expect_true(out$current_adj_params$forced)
+    expect_true(out$transform_cache$forced)
+  }
+
+  expect_identical(calls$criteria, c("pvalue", "aic", "bic"))
+  expect_identical(calls$stage2, 0L)
 })
 
 # Test purpose: Verifies that force_max_fp_vars translates to select = 1 and

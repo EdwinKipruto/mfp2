@@ -417,6 +417,10 @@ representation with the best FP1 representation, again keeping the binary
 zero-component term in both representations. If FP2 is not significantly better
 than FP1, the FP1 form is selected; otherwise, the FP2 form is retained.
 
+If `force_max_fp = TRUE`, these Stage 1 simplification comparisons are bypassed.
+The maximum permitted positive-component form is fitted directly together with
+the binary zero-component term.
+
 With `criterion = "aic"` or `criterion = "bic"`, the same candidate
 representations are compared using the selected information criterion rather
 than the closed-test sequence. Under the FP2 assumption above, these are the
@@ -430,10 +434,10 @@ representation is passed to Stage 2.
 
 ## Stage 2: choose the retained SAZ representation
 
-Stage 2 is run only if Stage 1 retains the SAZ variable. The selected
-positive-component function \(f^+(x_i)\) from Stage 1 is treated as fixed for
-this component-selection step. Stage 2 then compares three Stage 2 candidate
-representations:
+Stage 2 is run only if Stage 1 retains the SAZ variable and the term is not
+forced with `force_max_fp = TRUE`. The selected positive-component function
+\(f^+(x_i)\) from Stage 1 is treated as fixed for this component-selection
+step. Stage 2 then compares three Stage 2 candidate representations:
 
 \[
 M_{BP}: \quad \eta_i = \alpha + \gamma Z_i + f^+(x_i),
@@ -489,6 +493,14 @@ representation with the larger log-likelihood.
 With `criterion = "aic"` or `criterion = "bic"`, Stage 2 does not use hypothesis
 tests. Instead, \(M_{BP}\), \(M_P\), and \(M_B\) are compared directly, and the
 representation with the smallest selected information criterion is retained.
+
+`force_max_fp = TRUE` is an explicit exception to all of these Stage 2
+comparisons. For an eligible SAZ term, the requested maximum representation is
+\(M_{BP}\) with the maximum permitted positive-component FP form. Because Stage
+2 only asks whether one of the two components can be removed, running it would
+contradict the forcing request and could let AIC or BIC undo the maximum
+representation selected in Stage 1. `mfp2` therefore records `cont + binary`
+directly and does not fit the two reduced Stage 2 models for a forced SAZ term.
 
 # Model formulation
 

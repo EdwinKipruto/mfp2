@@ -426,7 +426,10 @@
 #'   powers within that degree are still chosen by the data. Under
 #'   `criterion = "pvalue"`, this also forces `select = 1` and `alpha = 1` for
 #'   the named variables, so they are both retained and kept at full FP
-#'   complexity. In a formula, the corresponding option is
+#'   complexity. Under AIC and BIC the same maximum-degree requirement is
+#'   enforced directly. If a forced adjustment variable is also an eligible
+#'   spike-at-zero term, its complete maximum SAZ representation is retained
+#'   and SAZ Stage 2 is skipped. In a formula, the corresponding option is
 #'   `fp(variable, force_max_fp = TRUE)` or
 #'   `fp2(variable, force_max_fp = TRUE)`.
 #'

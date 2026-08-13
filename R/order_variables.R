@@ -25,8 +25,8 @@
 #' @details
 #' The full linear reference model is fitted unconditionally because its null
 #' and fitted-model statistics are retained by \code{fit_mfp()}. For GLMs,
-#' one intercept-only fit is also performed here to obtain the null-model
-#' log-likelihood used by \code{summary.mfp2()}.
+#' the null deviance reported by the full reference fit is retained directly;
+#' no separate intercept-only likelihood fit is required here.
 #' This fit is invariant to \code{xorder}: changing the visiting order does not
 #' change the predictors, likelihood, coefficients, or deviance of the full
 #' linear model.
@@ -129,6 +129,16 @@ order_variables <- function(xorder = "ascending",
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
 
+  # Cox fast fits require integer stratum identifiers. Convert an observation-
+  # length factor/other strata object once for the complete ordering operation
+  # rather than repeating the same coercion in every leave-one-term-out fit.
+  strata_ordering <- if (identical(family_string, "cox") &&
+                         !is.null(strata) && !is.integer(strata)) {
+    as.integer(strata)
+  } else {
+    strata
+  }
+
   # GLM ordering fits all use the same intercept-augmented source matrix.
   # Allocate and fill it once, then form reduced models by dropping columns.
   # Cox models remain intercept-free and can reuse x directly.
@@ -154,7 +164,7 @@ order_variables <- function(xorder = "ascending",
     fitter = fitter,
     weights = weights,
     offset = offset,
-    strata = strata,
+    strata = strata_ordering,
     method = method,
     control = control,
     nocenter = nocenter,
@@ -177,7 +187,7 @@ order_variables <- function(xorder = "ascending",
       fitter = fitter,
       weights = weights,
       offset = offset,
-      strata = strata,
+      strata = strata_ordering,
       method = method,
       control = control,
       nocenter = nocenter,
@@ -334,6 +344,39 @@ order_variables_by_significance <- function(xorder,
     logical(1L)
   ))
 
+  # Cache matrix metadata and full-reference scalars once. These values are
+  # invariant across all leave-one-term-out fits and may otherwise be looked up
+  # repeatedly inside the hot loop.
+  x_colnames <- colnames(x)
+  x_rownames <- rownames(x)
+  full_df <- full_reference$df
+  full_logl <- full_reference$logl
+  descending <- identical(xorder, "descending")
+
+  # Precompute integer column positions to drop. Integer subsetting avoids
+  # rebuilding character keep-vectors with setdiff() on every iteration and
+  # avoids repeated name-to-position matching during matrix subsetting.
+  if (has_mapped_terms) {
+    drop_indices <- lapply(term_to_columns, function(columns) {
+      indices <- match(columns, x_colnames)
+
+      if (anyNA(indices)) {
+        stop(
+          "Internal error: term-to-column mapping does not match design matrix.",
+          call. = FALSE
+        )
+      }
+
+      indices
+    })
+  } else {
+    intercept_offset <- as.integer(isTRUE(x_has_intercept))
+    drop_indices <- lapply(
+      seq_len(n_predictors),
+      function(index) index + intercept_offset
+    )
+  }
+
   # Initialize with NA rather than zero. A failed or non-identifiable comparison
   # must not be interpreted as overwhelming evidence against the predictor.
   p_values <- stats::setNames(
@@ -342,21 +385,14 @@ order_variables_by_significance <- function(xorder,
   )
 
   for (predictor_index in seq_len(n_predictors)) {
-    term <- predictor_names[[predictor_index]]
-    drop_columns <- if (has_mapped_terms) {
-      term_to_columns[[term]]
-    } else {
-      colnames(x)[predictor_index]
-    }
-
-    # Preserve the historical positional drop for singleton-only fits. In the
-    # grouped path, remove the complete raw design block for the current term.
-    reduced_x <- if (has_mapped_terms) {
-      x[, setdiff(colnames(x), drop_columns), drop = FALSE]
-    } else {
-      drop_index <- predictor_index + as.integer(isTRUE(x_has_intercept))
-      x[, -drop_index, drop = FALSE]
-    }
+    # Materialize only the reduced matrix needed for the current test. Matrix
+    # subsetting necessarily allocates here, so keep this large temporary alive
+    # for the shortest possible interval to reduce peak memory and GC pressure.
+    reduced_x <- x[
+      ,
+      -drop_indices[[predictor_index]],
+      drop = FALSE
+    ]
 
     reduced_fit <- fit_model(
       x = reduced_x,
@@ -369,17 +405,30 @@ order_variables_by_significance <- function(xorder,
       method = method,
       strata = strata,
       control = control,
-      rownames = rownames(x),
+      rownames = x_rownames,
       nocenter = nocenter,
       fast = TRUE,
       x_has_intercept = x_has_intercept
     )
 
+    # fast = TRUE does not retain the supplied design matrix in the returned
+    # wrapper. Drop our reference immediately so the previous reduced matrix is
+    # collectible before the next large subset is allocated. Do not force gc()
+    # here; allowing R to collect naturally avoids a full GC on every predictor.
+    reduced_x <- NULL
+
+    # Copy the two scalar results that are needed below, then release the fit
+    # wrapper as well. This shortens the lifetime of any backend temporaries
+    # reachable from it without changing the likelihood-ratio calculation.
+    reduced_df <- reduced_fit$df
+    reduced_logl <- reduced_fit$logl
+    reduced_fit <- NULL
+
     # Use the fitted rank contribution of the omitted conceptual term. Raw
     # design-block width can exceed this difference when one or more grouped
     # columns are aliased or otherwise non-estimable in the fitted model.
-    lrt_df <- full_reference$df - reduced_fit$df
-    lrt_statistic <- 2 * (full_reference$logl - reduced_fit$logl)
+    lrt_df <- full_df - reduced_df
+    lrt_statistic <- 2 * (full_logl - reduced_logl)
 
     # A valid nested-model likelihood-ratio test requires a positive df
     # difference and finite likelihoods. Small negative statistics can occur
@@ -393,18 +442,14 @@ order_variables_by_significance <- function(xorder,
     }
   }
 
-  # Convert the requested p-value direction into a single ascending score.
-  # A secondary index keeps the original conceptual-term order when p-values are tied.
-  ordering_score <- if (identical(xorder, "descending")) {
-    -p_values
-  } else {
-    p_values
-  }
-
+  # Radix ordering is stable, so tied p-values retain the original conceptual-
+  # term order without allocating an additional seq_along() tie-break vector.
+  # Direct decreasing order also avoids allocating a negated copy of p_values.
   ordering_index <- order(
-    ordering_score,
-    seq_along(ordering_score),
-    na.last = TRUE
+    p_values,
+    decreasing = descending,
+    na.last = TRUE,
+    method = "radix"
   )
 
   predictor_names[ordering_index]

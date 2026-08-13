@@ -309,29 +309,17 @@ fit_mfp <- function(x,
     logical(1L)
   ))
 
-  # Step 1: Resolve the family object and optionally report initial df --------
+  # Step 1: Resolve the family object -----------------------------------------
   # Resolve GLM family objects once for all repeated internal model fits.
   # Public mfp2.default() already does this, but keeping it here makes direct
   # internal calls to fit_mfp() avoid repeated stats::gaussian()/binomial()/
   # poisson() construction as well. Cox remains the character string "cox".
   family_fit <- resolve_fit_model_family(family)
 
-  # Print the starting df for each variable before the backfitting cycles
-  # begin, so users can see what df each predictor was assigned prior to any
-  # cardinality-based or SAZ-based capping performed later in this function.
-  if (isTRUE(verbose)) {
-    df_text <- utils::capture.output(
-      print(
-        matrix(df, nrow = 1, dimnames = list("df", variables_x)),
-        quote = FALSE
-      )
-    )
-
-    message(
-      "Initial degrees of freedom:\n",
-      paste(df_text, collapse = "\n")
-    )
-  }
+  # Initial df are reported later, after visiting order, ACD handling, SAZ
+  # eligibility, and positive-part df capping have been resolved. Printing the
+  # raw user/search df here would under-count eligible SAZ terms by one binary
+  # indicator and would not align the displayed columns with the visiting order.
 
   # Step 2: Fit the full linear reference and determine visiting order -------
   # order_variables() always fits the model containing every candidate
@@ -370,12 +358,9 @@ fit_mfp <- function(x,
   linear_df   <- ordering_result$linear_df
   null_logl   <- ordering_result$null_logl
 
-  if (verbose) {
-    message(sprintf(
-      "Visiting order: %s",
-      paste0(variables_ordered, collapse = ", ")
-    ))
-  }
+  # The visiting order is reported together with the effective initial df
+  # after early preprocessing below. This keeps the two verbose summaries in
+  # the same variable order and avoids showing pre-cap/pre-SAZ df values.
 
   # Step 3: Initialize FP powers and align all per-variable vectors/x to order
   # Every variable starts the first cycle as linear (power = 1); the
@@ -530,6 +515,52 @@ fit_mfp <- function(x,
     powers = powers,
     df = df
   )
+
+  if (isTRUE(verbose)) {
+    # `df` is the effective continuous FP/ACD search setting after all early
+    # capping. For display, convert it to the degrees of freedom actually
+    # represented by each term when selection starts. Explicitly mapped fixed
+    # terms contribute one df per raw design column, and every eligible SAZ
+    # term contributes one additional df for its structural-zero indicator.
+    # This mirrors create_fp_terms()$df_initial without changing `df` itself,
+    # because the latter must continue to control the FP power search.
+    df_initial_display <- df
+
+    mapped_display <- mapped_term_flags(term_to_columns[variables_ordered])
+    if (any(mapped_display)) {
+      df_initial_display[mapped_display] <- lengths(
+        term_to_columns[variables_ordered][mapped_display]
+      )
+    }
+
+    if (any(spike)) {
+      df_initial_display[spike] <- df_initial_display[spike] + 1L
+    }
+
+    # All per-variable vectors were reordered to `variables_ordered` in Step 3,
+    # so print the visiting sequence and its df vector together. Users can then
+    # read each df directly against the order in which terms will be visited.
+    message(sprintf(
+      "Visiting order: %s",
+      paste0(variables_ordered, collapse = ", ")
+    ))
+
+    df_text <- utils::capture.output(
+      print(
+        matrix(
+          df_initial_display[variables_ordered],
+          nrow = 1,
+          dimnames = list("df", variables_ordered)
+        ),
+        quote = FALSE
+      )
+    )
+
+    message(
+      "Initial degrees of freedom:\n",
+      paste(df_text, collapse = "\n")
+    )
+  }
 
   # Spike decision initialisation.
   # continuous_only means standard FP algorithm by default.

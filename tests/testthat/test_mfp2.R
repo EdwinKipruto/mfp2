@@ -16798,18 +16798,29 @@ test_that("main header ruler matches the displayed header width", {
 })
 
 
-test_that("main header uses reader-facing criterion labels", {
+test_that("criterion labels are shown in settings, not the main header", {
   for (criterion in c("aic", "bic", "pvalue")) {
     x <- make_minimal_mfpi_print_object()
     x$criterion <- criterion
     output <- capture.output(print(x))
     expected <- if (criterion == "pvalue") "p-value" else toupper(criterion)
 
+    # The main header identifies the fit only; criterion details are printed
+    # once in the settings block below the ruler.
+    expect_false(grepl("criterion:", output[[2L]], fixed = TRUE))
     expect_match(
-      output[[2L]],
-      sprintf("criterion: %s", expected),
+      paste(output, collapse = "\n"),
+      sprintf("criterion             : %s", expected),
       fixed = TRUE
     )
+
+    # The criterion should not be duplicated elsewhere in the printed output.
+    criterion_lines <- grep(
+      "^\\s*criterion\\s*:",
+      output,
+      value = TRUE
+    )
+    expect_length(criterion_lines, 1L)
     expect_false(grepl("p-adjust:", output[[2L]], fixed = TRUE))
   }
 })

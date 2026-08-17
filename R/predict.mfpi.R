@@ -400,10 +400,9 @@ build_group_fp_basis <- function(cont_mat,
 #' adjustment variables are not required because the function is evaluated for
 #' every fitted group at each supplied value.
 #'
-#' A group-specific fitted curve contains the part of the term-specific model
-#' defined by the continuous variable and group. For a GLM, it also includes the
-#' model intercept and the group's main effect. Adjustment variables and offsets
-#' are not included in fitted-curve output.
+#' A group-specific partial fitted curve comprises the model intercept (when
+#' present), group main effect, and group-specific FP function estimated from
+#' the adjusted interaction model.
 #'
 #' A fitted difference is the comparison-group curve minus the reference-group
 #' curve at the same value. It therefore includes both the group main-effect
@@ -477,6 +476,61 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' When `newdata = NULL`, predictions are returned for the observations used to
 #' fit each term-specific model.
+#'
+#' @section Reproducing predictions for individual observations manually:
+#' Ordinary predictions use the complete term-specific interaction design, not
+#' only the partial fitted-function block. To reproduce an ordinary prediction,
+#' reconstruct each row with the same group dummy coding, group-specific FP
+#' columns for the requested term, selected adjustment-variable columns,
+#' transformations, centering constants, strata information, and offset used by
+#' the stored interaction model. Column names and coding must match the fitted
+#' coefficient vector exactly.
+#'
+#' For a GLM, if `X_i` is the reconstructed row excluding the intercept and
+#' `o_i` is the prediction offset, the linear predictor is the usual fitted
+#' model quantity
+#'
+#' `eta_i = beta_0 + X_i %*% beta + o_i`,
+#'
+#' with the intercept omitted for a model fitted without one. `type = "link"`
+#' returns this value and `type = "response"` applies the fitted inverse-link
+#' function. MFPI delegates these predictions to the stored fitted model when
+#' possible, so manual calculations should use the same coefficient ordering and
+#' offset convention.
+#'
+#' For a Cox model, let `eta_i` denote the subject's fitted linear predictor on
+#' the Cox scale. `type = "lp"` returns the linear predictor relative to the
+#' reference selected by `cox_reference`, and `type = "risk"` is its
+#' exponential. Thus, using the same reference convention,
+#'
+#' `risk_i = exp(lp_i)`.
+#'
+#' `cox_reference = "zero"`, `"sample"`, and `"strata"` correspond to the
+#' same reference conventions used by `predict.coxph()`. Reproducing `lp` or
+#' `risk` numerically therefore requires using the same reference centering.
+#'
+#' Absolute Cox predictions additionally use the fitted baseline cumulative
+#' hazard in the appropriate stratum and the row's follow-up time. In the usual
+#' Cox notation,
+#'
+#' `H_i(t) = H_0,s(t) * exp(eta_i)`
+#'
+#' and
+#'
+#' `S_i(t) = exp(-H_i(t))`.
+#'
+#' Accordingly, `type = "expected"` returns the predicted cumulative hazard
+#' `H_i(t)` and `type = "survival"` returns `S_i(t)`. Exact numerical
+#' reproduction should use the baseline-hazard and centering conventions of the
+#' stored `coxph` fit; `predict.mfpi()` delegates these calculations to
+#' `predict.coxph()`.
+#'
+#' When `predict.mfpi()` reconstructs an ordinary prediction design, the
+#' returned `design` component contains the aligned numeric design columns used
+#' for prediction, excluding the model intercept. It can be compared with the
+#' coefficient names of the stored interaction model when auditing a manual
+#' calculation. The prediction metadata records whether an offset was used and,
+#' for `lp` or `risk`, which Cox reference convention was requested.
 #'
 #' @section Offsets:
 #' Offsets are used only for predictions for individual observations. They are
@@ -743,40 +797,88 @@ build_group_fp_basis <- function(cont_mat,
 #'   type = "response"
 #' )
 #'
-#' # Cox predictions.
-#' lung <- survival::lung
-#' lung$status <- as.integer(lung$status == 2)
-#' lung <- lung[complete.cases(lung[, c("time", "status", "age", "sex")]), ]
-#' lung$sex <- factor(lung$sex)
+#' # Cox survival-model predictions using advanced_prostate_cancer.
+#' data("advanced_prostate_cancer")
 #'
+#' advanced_prostate_cancer$rx <- factor(
+#'   advanced_prostate_cancer$rx,
+#'   levels = c(0, 1),
+#'   labels = c("Placebo", "Treatment")
+#' )
+#'
+#' # Fit an age-by-treatment interaction model adjusted for several prognostic
+#' # variables. select = 1 keeps the adjustment variables in the Step 1 model,
+#' # so the ordinary-prediction examples below have a stable set of covariates.
 #' fit_cox <- mfpi(
-#'   survival::Surv(time, status) ~ age + sex,
-#'   data = lung,
+#'   survival::Surv(survtime, cens) ~
+#'     rx + fp(age) + fp(wt) + fp(hg) + stage,
+#'   data = advanced_prostate_cancer,
 #'   family = "cox",
-#'   group_var = "sex",
+#'   group_var = "rx",
 #'   cont_vars = "age",
 #'   cont_var_forms = c(age = "linear"),
 #'   flex = "flex1",
+#'   select = 1,
 #'   p_interact = 1,
 #'   verbose = FALSE
 #' )
 #'
-#' relative_data <- lung[1:5, c("age", "sex")]
+#' # Fitted-function predictions vary the selected continuous term only.
+#' # Weight, haemoglobin, and stage remain part of the adjusted interaction
+#' # model, but their contribution is held constant for these partial curves.
+#' curve_data <- data.frame(age = c(50, 60, 70))
+#'
+#' # Group-specific partial fitted functions on the linear-predictor scale.
 #' predict(
-#'   fit_cox,
-#'   newdata = relative_data,
-#'   terms = "age",
-#'   model = "all",
+#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
+#'   type = "function"
+#' )
+#'
+#' # Treatment-minus-reference fitted-function differences at each age.
+#' predict(
+#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
+#'   type = "difference"
+#' )
+#'
+#' # Return both the fitted functions and their group differences.
+#' predict(
+#'   fit_cox, newdata = curve_data, terms = "age", model = "all",
+#'   type = "both"
+#' )
+#'
+#' # Ordinary Cox predictions are observation-level predictions. Supply the
+#' # group and all adjustment variables required by the age interaction model.
+#' relative_data <- advanced_prostate_cancer[
+#'   1:5, c("age", "rx", "wt", "hg", "stage")
+#' ]
+#'
+#' # Relative log-hazard for each covariate profile.
+#' predict(
+#'   fit_cox, newdata = relative_data, terms = "age", model = "all",
+#'   type = "lp"
+#' )
+#'
+#' # Relative hazard for the same covariate profiles.
+#' predict(
+#'   fit_cox, newdata = relative_data, terms = "age", model = "all",
 #'   type = "risk"
 #' )
 #'
-#' # Survival predictions also require the fitted follow-up variables.
-#' absolute_data <- lung[1:5, c("time", "status", "age", "sex")]
+#' # Absolute Cox predictions additionally need follow-up information from the
+#' # Surv() response. The adjustment profile is otherwise the same.
+#' absolute_data <- advanced_prostate_cancer[
+#'   1:5, c("survtime", "cens", "age", "rx", "wt", "hg", "stage")
+#' ]
+#'
+#' # Predicted cumulative hazard up to each row's follow-up time.
 #' predict(
-#'   fit_cox,
-#'   newdata = absolute_data,
-#'   terms = "age",
-#'   model = "all",
+#'   fit_cox, newdata = absolute_data, terms = "age", model = "all",
+#'   type = "expected"
+#' )
+#'
+#' # Estimated survival probability at each row's follow-up time.
+#' predict(
+#'   fit_cox, newdata = absolute_data, terms = "age", model = "all",
 #'   type = "survival"
 #' )
 #' }
@@ -1985,6 +2087,32 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   if (!isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
       is.data.frame(newdata)) {
+    # Validate the raw variables required by this term-specific interaction
+    # model before model.frame() evaluates the stored formula. Otherwise a
+    # missing variable is surfaced as an opaque formula-reconstruction error
+    # such as "object 'rx' not found" rather than a prediction-data error.
+    active_prediction_terms <- prediction_formula_terms(
+      object,
+      unique(c(term, object$group_var, adj_terms))
+    )
+    required_raw_variables <- unique(all.vars(
+      stats::delete.response(active_prediction_terms)
+    ))
+    missing_raw_variables <- setdiff(required_raw_variables, names(newdata))
+
+    if (length(missing_raw_variables) > 0L) {
+      quoted_missing <- paste0("`", missing_raw_variables, "`")
+      stop(
+        paste0(
+          "`newdata` is missing required variable(s) for prediction from the `",
+          term, "` interaction model: ",
+          paste(quoted_missing, collapse = ", "),
+          ". Supply all variables required by this interaction model in `newdata`."
+        ),
+        call. = FALSE
+      )
+    }
+
     newdata <- mfpi_prepare_formula_newdata(
       object = object,
       newdata = newdata,

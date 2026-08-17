@@ -946,13 +946,6 @@ print.mfpi <- function(x, digits = NULL, ...) {
   # Resolve display metadata from the fitted object. Defaults are used for
   # backward compatibility with older or partially constructed objects.
   crit <- if (!is.null(x$criterion)) tolower(x$criterion) else "pvalue"
-  criterion_label <- if (crit %in% c("aic", "bic")) {
-    toupper(crit)
-  } else if (crit == "pvalue") {
-    "p-value"
-  } else {
-    crit
-  }
 
   # Resolve and validate the number of digits used for display rounding.
   digits <- resolve_print_digits(x, digits)
@@ -969,11 +962,10 @@ print.mfpi <- function(x, digits = NULL, ...) {
   # exactly the same display width as the text. This avoids an oversized fixed
   # ruler and remains aligned when model metadata changes.
   header_text <- sprintf(
-    "MFPI  |  group: '%s'  |  %s  |  %s  |  criterion: %s",
+    "MFPI  |  group: '%s'  |  %s  |  %s",
     x$group_var,
     n_label,
-    x$flex,
-    criterion_label
+    x$flex
   )
 
   header <- strrep("=", nchar(header_text, type = "width"))
@@ -1018,5 +1010,207 @@ print.mfpi <- function(x, digits = NULL, ...) {
 
   # Follow the standard print-method convention: return the original object
   # invisibly so it can still be assigned or piped if needed.
+  invisible(x)
+}
+# -----------------------------------------------------------------------------
+# print.mfpi_prediction()
+# -----------------------------------------------------------------------------
+
+# Format one MFPI prediction table for console display without changing the
+# stored prediction object. The public object retains its original column names
+# (`fit`, `se.fit`, and `x`) for backwards compatibility; only the printed labels
+# are made more descriptive. For fitted-function output, `x` is displayed using
+# the actual term name (for example, `age`).
+format_mfpi_prediction_table <- function(d, digits, term = NULL) {
+  if (is.null(d)) {
+    return(NULL)
+  }
+
+  d <- as.data.frame(d)
+
+  # A single mfpi_prediction is term-specific, so repeating the term in every
+  # printed row adds noise. Keep it in the object but show it once in the header.
+  if ("term" %in% names(d)) {
+    d$term <- NULL
+  }
+
+  if (nrow(d) == 0L) {
+    return(d)
+  }
+
+  display_names <- names(d)
+  display_names[display_names == "fit"] <- "estimate"
+  display_names[display_names == "se.fit"] <- "SE"
+  if (!is.null(term) && length(term) == 1L && !is.na(term) && nzchar(term)) {
+    display_names[display_names == "x"] <- term
+  }
+  names(d) <- display_names
+
+  round_print_numeric(d, digits)
+}
+
+
+# Print a compact dynamic ruler around an MFPI prediction heading.
+print_mfpi_prediction_header <- function(title, term, detail = NULL) {
+  pieces <- c(title, paste0("term: ", term))
+  if (!is.null(detail) && length(detail) == 1L && !is.na(detail) && nzchar(detail)) {
+    pieces <- c(pieces, detail)
+  }
+
+  header_text <- paste(pieces, collapse = "  |  ")
+  header <- strrep("=", nchar(header_text, type = "width"))
+  cat(header, "\n", header_text, "\n", header, "\n", sep = "")
+
+  invisible(NULL)
+}
+
+
+#' Print an MFPI Prediction
+#'
+#' Prints the user-facing prediction results from an \code{"mfpi_prediction"}
+#' object without exposing internal prediction metadata by default.
+#'
+#' For fitted-function predictions, the displayed curves are group-specific
+#' partial fitted functions on the linear-predictor scale. Partial fitted
+#' functions comprise the intercept (when present), group main effect, and
+#' group-specific FP function estimated from the adjusted interaction model.
+#'
+#' The stored prediction object is not modified. In particular, the underlying
+#' result tables retain the programmatic column names \code{fit},
+#' \code{se.fit}, and \code{x}; these are printed as \code{estimate},
+#' \code{SE}, and the actual term name (for example, \code{age}) only for
+#' readability. Internal components such as \code{metadata} remain accessible
+#' explicitly from the returned object.
+#'
+#' @param x An object of class \code{"mfpi_prediction"}, as returned by
+#'   \code{predict.mfpi()}.
+#' @param digits Optional non-negative integer controlling printed numeric
+#'   precision. If \code{NULL}, 3 digits are used.
+#' @param ... Currently unused.
+#'
+#' @return \code{x} invisibly.
+#'
+#' @method print mfpi_prediction
+#' @export
+print.mfpi_prediction <- function(x, digits = NULL, ...) {
+  warn_unused_mfpi_dots(list(...), method = "print.mfpi_prediction")
+  digits <- resolve_print_digits(x, digits)
+
+  term <- if (!is.null(x$term) && length(x$term) > 0L) {
+    paste(x$term, collapse = ", ")
+  } else {
+    "<unknown>"
+  }
+  type <- if (!is.null(x$type) && length(x$type) == 1L) x$type else "<unknown>"
+
+  if (type %in% c("function", "difference", "both")) {
+    print_mfpi_prediction_header(
+      title = "MFPI prediction",
+      term = term,
+      detail = "scale: linear predictor"
+    )
+
+    if (type %in% c("function", "both")) {
+      cat("\nPartial fitted functions:\n")
+      tab <- format_mfpi_prediction_table(x$functions, digits, term = term)
+      if (is.null(tab) || nrow(tab) == 0L) {
+        cat("  No fitted-function results.\n")
+      } else {
+        print(tab, row.names = FALSE)
+      }
+    }
+
+    if (type %in% c("difference", "both")) {
+      cat("\nDifferences:\n")
+      tab <- format_mfpi_prediction_table(x$differences, digits, term = term)
+      if (is.null(tab) || nrow(tab) == 0L) {
+        cat("  No fitted-function differences.\n")
+      } else {
+        print(tab, row.names = FALSE)
+      }
+    }
+
+    if (type == "function") {
+      cat(
+        "\nNote: Partial fitted functions comprise the intercept (when present), ",
+        "group main effect,\n",
+        "and group-specific FP function estimated from the adjusted interaction ",
+        "model.\n",
+        sep = ""
+      )
+    } else if (type == "difference") {
+      cat(
+        "\nNote: Differences are comparison-group minus reference-group partial ",
+        "fitted functions.\n",
+        "Partial fitted functions comprise the intercept (when present), group ",
+        "main effect, and\n",
+        "group-specific FP function estimated from the adjusted interaction ",
+        "model.\n",
+        sep = ""
+      )
+    } else if (type == "both") {
+      cat(
+        "\nNote: Partial fitted functions comprise the intercept (when present), ",
+        "group main effect,\n",
+        "and group-specific FP function estimated from the adjusted interaction ",
+        "model.\n",
+        "Differences are comparison-group minus reference-group partial fitted ",
+        "functions.\n",
+        sep = ""
+      )
+    }
+
+    return(invisible(x))
+  }
+
+  # Ordinary subject-level prediction. These predictions use the complete
+  # term-specific interaction model, so the prediction type itself identifies
+  # the relevant output scale (for example, link or response).
+  print_mfpi_prediction_header(
+    title = "MFPI prediction",
+    term = term,
+    detail = paste0("type: ", type)
+  )
+  cat("\n")
+
+  tab <- format_mfpi_prediction_table(x$predictions, digits)
+  if (is.null(tab) || nrow(tab) == 0L) {
+    cat("  No prediction results.\n")
+  } else {
+    print(tab, row.names = FALSE)
+  }
+
+  invisible(x)
+}
+
+
+#' Print a List of MFPI Predictions
+#'
+#' Prints each term-specific \code{"mfpi_prediction"} in an
+#' \code{"mfpi_prediction_list"} using the compact prediction print method.
+#'
+#' @param x An object of class \code{"mfpi_prediction_list"}.
+#' @param digits Optional non-negative integer controlling printed numeric
+#'   precision. If \code{NULL}, 3 digits are used.
+#' @param ... Currently unused.
+#'
+#' @return \code{x} invisibly.
+#'
+#' @method print mfpi_prediction_list
+#' @export
+print.mfpi_prediction_list <- function(x, digits = NULL, ...) {
+  warn_unused_mfpi_dots(list(...), method = "print.mfpi_prediction_list")
+  digits <- resolve_print_digits(x, digits)
+
+  if (length(x) == 0L) {
+    cat("MFPI prediction list: no results.\n")
+    return(invisible(x))
+  }
+
+  for (i in seq_along(x)) {
+    if (i > 1L) cat("\n")
+    print.mfpi_prediction(x[[i]], digits = digits)
+  }
+
   invisible(x)
 }

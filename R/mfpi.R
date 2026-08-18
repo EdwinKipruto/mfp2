@@ -526,8 +526,8 @@
 #'   error.
 #'
 #' @return
-#' An object of class `"mfpi"`. Use `print()`, `summary()`, `predict()`, and
-#' `plot()` for the main results.
+#' An object of class `"mfpi"`. Use `print()`, `summary()`, `coef()`, `vcov()`,
+#' `predict()`, and `plot()` for the main results.
 #'
 #' Important components include:
 #'
@@ -541,7 +541,10 @@
 #' - `all_interaction_models`: a named list of fitted model objects for every
 #'   evaluated continuous variable, including interactions that were not
 #'   selected;
-#' - `adjustment_model`: the fitted [mfp2()] adjustment model;
+#' - `adjustment_model`: the fitted [mfp2()] adjustment model. Its
+#'   preprocessing metadata are restored to the MFPI-level shifts after Stage 1,
+#'   so printing reports the shifts applied to the raw covariates and direct
+#'   `predict()` calls on this nested model correctly preprocess raw `newdata`;
 #' - `cont_var_forms`: the interaction form (`"linear"`, `"fp1"`, or `"fp2"`)
 #'   specified for each tested variable;
 #' - `group_level_map`: the mapping between internal group codes and the
@@ -655,8 +658,8 @@
 #' fit_matrix$scale
 #' summary(fit_matrix)
 #'
-#' @seealso [mfp2()], [fp()], [predict.mfpi()], [plot.mfpi()],
-#'   [summary.mfpi()], [print.mfpi()]
+#' @seealso [mfp2()], [fp()], [coef.mfpi()], [vcov.mfpi()], [predict.mfpi()],
+#'   [plot.mfpi()], [summary.mfpi()], [print.mfpi()]
 #'
 #' @export
 mfpi <- function(x, ...) {

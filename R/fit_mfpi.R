@@ -238,10 +238,9 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   in \code{center_vals_list} on the returned list.
 #' @param scale Named numeric vector of per-variable scale factors (one per
 #'   column of \code{x}), as computed and applied in \code{mfpi.default()}.
-#'   Passed to \code{flex_fit()} as \code{scale_var} so that
-#'   \code{create_z_variables()} and \code{transform_z_variables()} can
-#'   backscale \code{cont_var} (multiply by the scale factor) before FP
-#'   transformation. This ensures interaction model coefficients are on the
+#'   Passed to \code{flex_fit()} as \code{scale_var} so the continuous
+#'   covariate is backscaled (multiplied by the scale factor) before the final
+#'   FP transformation. This ensures interaction model coefficients are on the
 #'   \eqn{\phi(x + \text{shift})} scale, matching the adjustment model and
 #'   standalone \pkg{mfp2}. \code{NULL} or 1 means no backscaling.
 #' @param shift Named numeric vector of per-variable shift factors (one per
@@ -401,6 +400,23 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     has_offset     = has_offset,
     term_to_columns = processed_data$term_to_columns,
     verbose        = FALSE
+  )
+
+  # `mfpi.default()` applies the covariate-wide shifts before `fit_mfpi()` is
+  # called. Consequently, `fit_adjustment_model()` must pass shift = 0 to
+  # `fit_mfp()` so that those shifts are not applied a second time during Stage 1.
+  # The zero values stored by `fit_mfp()`, however, describe only that internal
+  # fitting step. The returned adjustment model is an ordinary `mfp2` object and
+  # must describe preprocessing relative to raw covariate values, because
+  # `print.mfp2()` reports `transformations` and `predict.mfp2(newdata = ...)`
+  # uses the stored shifts to transform raw new data. Restore the actual MFPI
+  # shifts now that fitting is complete. This does not alter fitted coefficients
+  # or the training design; it only makes the returned model metadata consistent
+  # with the shifted, unscaled scale on which its final FP terms were fitted.
+  adjustment_model <- restore_mfpi_adjustment_shifts(
+    adjustment_model = adjustment_model,
+    shift = shift,
+    term_to_columns = processed_data$term_to_columns
   )
 
   # Identify variables retained by the adjustment model
@@ -1010,14 +1026,106 @@ preprocess_data <- function(x, group_var, include_group_var,
 }
 
 # -----------------------------------------------------------------------------
+# restore_mfpi_adjustment_shifts() -------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Restore MFPI Shifts on the Returned Stage-1 Adjustment Model
+#'
+#' The matrix passed from \code{mfpi.default()} to Stage 1 has already been
+#' shifted and scaled. Stage 1 therefore calls \code{fit_mfp()} with zero
+#' shifts to avoid applying the MFPI shifts twice. After fitting, those internal
+#' zero shifts must be replaced by the original MFPI shifts so that the returned
+#' \code{mfp2} adjustment model reports the preprocessing actually applied to
+#' raw covariates and can transform raw \code{newdata} correctly in
+#' \code{predict.mfp2()}.
+#'
+#' @param adjustment_model Fitted Stage-1 \code{mfp2} model.
+#' @param shift Named numeric vector of MFPI-level shifts indexed by raw
+#'   predictor columns.
+#' @param term_to_columns Conceptual-term to raw-column mapping used by the
+#'   Stage-1 adjustment model.
+#'
+#' @return \code{adjustment_model} with the \code{shift} column of
+#'   \code{$transformations} restored to the MFPI-level values.
+#' @keywords internal
+#' @noRd
+restore_mfpi_adjustment_shifts <- function(adjustment_model,
+                                           shift,
+                                           term_to_columns) {
+  if (is.null(adjustment_model$transformations) ||
+      is.null(rownames(adjustment_model$transformations)) ||
+      !"shift" %in% colnames(adjustment_model$transformations) ||
+      is.null(shift) || length(shift) == 0L) {
+    return(adjustment_model)
+  }
+
+  if (is.null(names(shift)) || anyNA(names(shift)) || any(!nzchar(names(shift)))) {
+    stop(
+      "Internal error: MFPI shift values must be named before restoring adjustment-model metadata.",
+      call. = FALSE
+    )
+  }
+
+  transformation_terms <- rownames(adjustment_model$transformations)
+
+  for (term in transformation_terms) {
+    # A singleton conceptual term normally has the same name as its raw column.
+    # Prefer that direct lookup because it also covers formula-created singleton
+    # terms whose mapping is intentionally simple.
+    if (term %in% names(shift)) {
+      term_shift <- unname(shift[[term]])
+    } else {
+      cols <- term_to_columns[[term]]
+      cols <- intersect(cols, names(shift))
+
+      # The MFPI grouping term can be represented by internally created dummy
+      # columns that have no entry in the original shift vector. Its shift must
+      # remain the Stage-1 value (zero), so simply skip terms with no source shift.
+      if (length(cols) == 0L) next
+
+      values <- unname(shift[cols])
+      if (length(values) > 1L && !all(values == values[[1L]])) {
+        stop(
+          sprintf(
+            "Internal error: grouped adjustment term '%s' has inconsistent MFPI shift values.",
+            term
+          ),
+          call. = FALSE
+        )
+      }
+      term_shift <- values[[1L]]
+    }
+
+    if (length(term_shift) != 1L || is.na(term_shift) || !is.finite(term_shift)) {
+      stop(
+        sprintf(
+          "Internal error: adjustment term '%s' does not have a finite MFPI shift.",
+          term
+        ),
+        call. = FALSE
+      )
+    }
+
+    adjustment_model$transformations[term, "shift"] <- term_shift
+  }
+
+  adjustment_model
+}
+
+
+# -----------------------------------------------------------------------------
 # fit_adjustment_model() ------------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Fit the MFP Adjustment Model
 #'
 #' A thin wrapper around `fit_mfp()` that selects adjustment variables
-#' and their FP transformations. Scale and shift are set to 1 and 0
-#' respectively because \code{mfpi()} has already applied them to `x`.
+#' and their FP transformations. The working matrix has already been shifted
+#' and scaled by \code{mfpi()}. Stage 1 therefore passes zero shifts to
+#' \code{fit_mfp()} to avoid shifting twice, while retaining the MFPI scale
+#' factors so \code{fit_mfp()} can backscale before constructing the final FP
+#' terms. The actual MFPI shifts are restored on the returned adjustment model
+#' after fitting.
 #'
 #' @param x Numeric matrix of predictor variables passed to
 #'   \code{fit_mfp()} for adjustment-variable selection. It is the
@@ -1031,8 +1139,9 @@ preprocess_data <- function(x, group_var, include_group_var,
 #'       set of binary dummy columns (one per non-reference level), with
 #'       \code{select = 1} to force them into the adjustment model.
 #'     \item All columns have already been shifted and scaled by
-#'       \code{mfpi.default()} - shift and scale are therefore passed as 0
-#'       and 1 respectively to \code{fit_mfp()} inside this function.
+#'       \code{mfpi.default()}. Zero shifts are passed to \code{fit_mfp()} to
+#'       prevent a second shift, while the MFPI scale factors are retained so
+#'       the final selected terms can be backscaled before model fitting.
 #'   }
 #' @param y Response vector or Surv object.
 #' @param weights Numeric vector of observation weights.

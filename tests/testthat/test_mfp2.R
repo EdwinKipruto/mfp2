@@ -2418,6 +2418,19 @@ test_that("4.3.4 mfpi.default() matches shift and scale by name", {
     ordered$adjustment_model$transformations,
     reversed$adjustment_model$transformations
   )
+
+  # Stage 1 is fitted after MFPI has already shifted/scaled the working matrix.
+  # Its returned mfp2 object must nevertheless restore the original MFPI shifts
+  # so that the preprocessing table and direct prediction from raw newdata are
+  # both expressed relative to the user's covariate scale.
+  expect_equal(
+    unname(ordered$adjustment_model$transformations[c("age", "weight"), "shift"]),
+    c(1, 2)
+  )
+  expect_equal(
+    unname(ordered$adjustment_model$transformations[c("age", "weight"), "scale"]),
+    c(10, 100)
+  )
   expect_equal(
     unname(stats::coef(ordered$adjustment_model)),
     unname(stats::coef(reversed$adjustment_model))
@@ -2443,6 +2456,19 @@ test_that("4.3.4 mfpi.default() matches shift and scale by name", {
   expect_equal(
     pred_ordered$predictions$fit,
     pred_reversed$predictions$fit
+  )
+
+  adjustment_newdata <- as.data.frame(
+    mfpi_setting_x[1:12, c("age", "weight"), drop = FALSE]
+  )
+  adjustment_prediction <- predict(
+    ordered$adjustment_model,
+    newdata = adjustment_newdata
+  )
+  expect_equal(
+    unname(adjustment_prediction),
+    unname(ordered$adjustment_model$linear.predictors[1:12]),
+    tolerance = 1e-8
   )
 })
 
@@ -16839,32 +16865,6 @@ test_that("MFPI methods warn consistently about unused dots", {
     fixed = TRUE
   )
 })
-
-test_that("summary regression output receives the requested digits", {
-  # Deliberately define an unregistered local S3 method. The source-level
-  # Step 4 dispatcher must resolve it from the calling environment and pass the
-  # requested digits value rather than falling back to print.default().
-  print.mfpi_test_summary <- function(x, digits = NULL, ...) {
-    cat(sprintf("TEST SUMMARY DIGITS: %s\n", digits))
-    invisible(x)
-  }
-
-  x <- make_minimal_mfpi_print_object()
-  x$model_summaries <- list(
-    x = structure(list(), class = "mfpi_test_summary")
-  )
-  x$var_winners <- list(x = list(type = "fp1"))
-  class(x) <- "summary.mfpi"
-
-  output <- capture.output(print(x, digits = 2L))
-
-  expect_match(
-    paste(output, collapse = "\n"),
-    "TEST SUMMARY DIGITS: 2",
-    fixed = TRUE
-  )
-})
-
 
 make_mfpi_interaction_summary_object <- function(criterion = "pvalue") {
   x <- make_minimal_mfpi_print_object()

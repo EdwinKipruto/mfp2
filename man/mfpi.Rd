@@ -391,8 +391,8 @@ Specify the interaction forms separately through \code{cont_var_forms}.}
 in \code{formula}.}
 }
 \value{
-An object of class \code{"mfpi"}. Use \code{print()}, \code{summary()}, \code{predict()}, and
-\code{plot()} for the main results.
+An object of class \code{"mfpi"}. Use \code{print()}, \code{summary()}, \code{coef()}, \code{vcov()},
+\code{predict()}, and \code{plot()} for the main results.
 
 Important components include:
 \itemize{
@@ -406,7 +406,10 @@ selected interactions;
 \item \code{all_interaction_models}: a named list of fitted model objects for every
 evaluated continuous variable, including interactions that were not
 selected;
-\item \code{adjustment_model}: the fitted \code{\link[=mfp2]{mfp2()}} adjustment model;
+\item \code{adjustment_model}: the fitted \code{\link[=mfp2]{mfp2()}} adjustment model. Its
+preprocessing metadata are restored to the MFPI-level shifts after Stage 1,
+so printing reports the shifts applied to the raw covariates and direct
+\code{predict()} calls on this nested model correctly preprocess raw \code{newdata};
 \item \code{cont_var_forms}: the interaction form (\code{"linear"}, \code{"fp1"}, or \code{"fp2"})
 specified for each tested variable;
 \item \code{group_level_map}: the mapping between internal group codes and the
@@ -859,6 +862,6 @@ continuous variable: simulation study of power for several methods of
 analysis. \emph{Statistics in Medicine}, 33, 4695-4708.
 }
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}},
-\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}},
+\code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}
 }

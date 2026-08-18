@@ -590,6 +590,250 @@ NumericMatrix copy_fp_basis_candidate_cpp(NumericMatrix target,
 }
 
 
+
+/**
+ * Populate one MFPI fractional-polynomial candidate in a reusable design matrix.
+ *
+ * This is the performance-critical scatter kernel used by `flex2()`.  The R
+ * layer first creates a compact FP basis containing each distinct transformed
+ * column once.  For candidate i, `source_cols` identifies the d compact-basis
+ * columns corresponding to that candidate's selected powers.  This function
+ * expands those d columns into G mutually exclusive group blocks directly inside
+ * `target`, avoiding construction of a separate n x (G * d) matrix for every
+ * candidate.
+ *
+ * Design layout
+ * -------------
+ * The focal part of `target` is group-major:
+ *
+ *   [group 1: term 1 ... term d | group 2: term 1 ... term d | ...]
+ *
+ * Observation r writes only to the block indicated by `group_idx[r]`; all
+ * other group blocks for that observation are structural zeros.  The focal
+ * block MUST therefore be initialized to zero before the first call, and group
+ * membership must remain unchanged while the same target matrix is reused.
+ * Between candidates we only overwrite each row's active block.
+ *
+ * Centering semantics
+ * -------------------
+ * `valid_rows` defines observations that participate in the positive-part FP
+ * basis and in centering.  When zero handling is active, rows with x <= 0 are
+ * passed as invalid and are written as exact zeros after centering.
+ *
+ * If `center == true` and `group_center == false`, one mean is computed for each
+ * FP term over all valid observations and repeated for every group block.  If
+ * `group_center == true`, each group/term block receives its own mean computed
+ * from valid observations in that group.  The returned `centers` vector uses the
+ * same group-major order as the focal columns.
+ *
+ * Indexing convention
+ * -------------------
+ * R passes 1-based `source_cols`, `group_idx`, and `target_start_col`.  They are
+ * converted to zero-based C++ indices exactly once before the hot write loop.
+ *
+ * Mutation and return value
+ * -------------------------
+ * `target` is an Rcpp `NumericMatrix` handle and is modified while building the
+ * candidate.  The matrix is also returned explicitly so the R caller does not
+ * depend on implicit mutation semantics across the R/C++ boundary.
+ *
+ * Complexity
+ * ----------
+ * For n observations and d FP terms, candidate filling is O(n * d).  Memory
+ * overhead is O(G * d) for centering accumulators rather than O(n * G * d) per
+ * candidate.
+ *
+ * @param target Reusable model matrix containing a zero-initialized focal block.
+ * @param basis Compact n x B FP basis produced by
+ *   `generate_transformations_fp_basis_cpp()`.
+ * @param source_cols 1-based compact-basis columns for the current candidate.
+ * @param group_idx Dense 1-based group index of length n.
+ * @param n_groups Number of groups G represented in `group_idx`.
+ * @param target_start_col 1-based first column of the focal block in `target`.
+ * @param center Whether centering should be applied.
+ * @param group_center Whether centering is within group (`true`) or grand
+ *   (`false`). Ignored when `center == false`.
+ * @param valid_rows Logical vector of length n indicating rows eligible for the
+ *   FP transform/centering; invalid rows are written as structural zeros.
+ * @return List with `target` (the populated reusable matrix) and `centers`
+ *   (group-major centering constants; zeros when centering is disabled).
+ */
+// [[Rcpp::export]]
+List fill_mfpi_fp_candidate_cpp(NumericMatrix target,
+                                const NumericMatrix& basis,
+                                const IntegerVector& source_cols,
+                                const IntegerVector& group_idx,
+                                const int n_groups,
+                                const int target_start_col,
+                                const bool center,
+                                const bool group_center,
+                                const LogicalVector& valid_rows) {
+  const int n = target.nrow();
+  const int n_terms = source_cols.size();
+
+  // Validate all dimensions and index vectors before touching the target.
+  // These checks keep failures deterministic and prevent partial candidate
+  // writes when an internal caller supplies inconsistent metadata.
+  if (basis.nrow() != n) {
+    stop("Internal error: MFPI FP basis and target matrix have different row counts.");
+  }
+
+  if (group_idx.size() != n || valid_rows.size() != n) {
+    stop("Internal error: MFPI group/valid-row vectors have the wrong length.");
+  }
+
+  if (n_groups < 1 || n_terms < 1) {
+    stop("Internal error: MFPI candidate must contain at least one group and one FP term.");
+  }
+
+  const int target_start = target_start_col - 1;
+  const int focal_width = n_groups * n_terms;
+
+  if (target_start < 0 || target_start + focal_width > target.ncol()) {
+    stop("Internal error: MFPI focal target columns are out of range.");
+  }
+
+  // Convert candidate-map columns once. This avoids repeated subtraction inside
+  // the O(n * d) loops below.
+  std::vector<int> source_zero_based(n_terms);
+  for (int j = 0; j < n_terms; ++j) {
+    const int source_col = source_cols[j] - 1;
+    if (source_col < 0 || source_col >= basis.ncol()) {
+      stop("Internal error: MFPI FP basis source column is out of range.");
+    }
+    source_zero_based[j] = source_col;
+  }
+
+  for (int i = 0; i < n; ++i) {
+    if (group_idx[i] == NA_INTEGER || group_idx[i] < 1 || group_idx[i] > n_groups) {
+      stop("Internal error: MFPI group index is missing or out of range.");
+    }
+    if (valid_rows[i] == NA_LOGICAL) {
+      stop("Internal error: MFPI valid-row indicator contains NA.");
+    }
+  }
+
+  // Rcpp initializes NumericVector storage to zero. That is also the correct
+  // return value when centering is disabled.
+  NumericVector centers(focal_width);
+
+  if (center) {
+    if (group_center) {
+      // Within-group centering. Accumulate one sum per group/term combination
+      // and one valid-row count per group. Only the row's active group block is
+      // touched, so this remains O(n * d), not O(n * G * d).
+      std::vector<double> sums(focal_width, 0.0);
+      std::vector<int> counts(n_groups, 0);
+
+      for (int i = 0; i < n; ++i) {
+        if (!valid_rows[i]) {
+          continue;
+        }
+
+        const int g = group_idx[i] - 1;
+        ++counts[g];
+        const int block_start = g * n_terms;
+
+        for (int j = 0; j < n_terms; ++j) {
+          const double value = basis(i, source_zero_based[j]);
+          if (!R_finite(value)) {
+            stop("FP transformation produced non-finite values among valid MFPI rows.");
+          }
+          sums[block_start + j] += value;
+        }
+      }
+
+      for (int g = 0; g < n_groups; ++g) {
+        if (counts[g] == 0) {
+          stop("Cannot compute within-group MFPI centering constants: a group has no valid rows.");
+        }
+        const int block_start = g * n_terms;
+        for (int j = 0; j < n_terms; ++j) {
+          centers[block_start + j] = sums[block_start + j] / counts[g];
+        }
+      }
+    } else {
+      // Grand centering. A candidate's d FP columns are common across groups,
+      // so compute one mean per term on all valid rows and replicate those means
+      // into each group block.
+      std::vector<double> sums(n_terms, 0.0);
+      int count = 0;
+
+      for (int i = 0; i < n; ++i) {
+        if (!valid_rows[i]) {
+          continue;
+        }
+
+        ++count;
+        for (int j = 0; j < n_terms; ++j) {
+          const double value = basis(i, source_zero_based[j]);
+          if (!R_finite(value)) {
+            stop("FP transformation produced non-finite values among valid MFPI rows.");
+          }
+          sums[j] += value;
+        }
+      }
+
+      if (count == 0) {
+        stop("Cannot compute grand MFPI centering constants: no valid rows.");
+      }
+
+      for (int g = 0; g < n_groups; ++g) {
+        const int block_start = g * n_terms;
+        for (int j = 0; j < n_terms; ++j) {
+          centers[block_start + j] = sums[j] / count;
+        }
+      }
+    }
+  } else {
+    // Even without centering, validate the candidate basis on rows that are
+    // expected to contribute to the fitted design.
+    for (int i = 0; i < n; ++i) {
+      if (!valid_rows[i]) {
+        continue;
+      }
+      for (int j = 0; j < n_terms; ++j) {
+        if (!R_finite(basis(i, source_zero_based[j]))) {
+          stop("FP transformation produced non-finite values among valid MFPI rows.");
+        }
+      }
+    }
+  }
+
+  // Scatter the candidate into the reusable focal block.
+  //
+  // Crucial invariant: inactive blocks were zero in the initial target and are
+  // never active for that row in later calls because group membership is fixed.
+  // Therefore they do not need to be cleared between candidate fits. This is
+  // what makes candidate reuse safe while avoiding a full focal-block memset.
+  for (int i = 0; i < n; ++i) {
+    const int g = group_idx[i] - 1;
+    const int block_start = g * n_terms;
+    const int target_block_start = target_start + block_start;
+
+    for (int j = 0; j < n_terms; ++j) {
+      // Invalid rows represent structural zeros: leave `value` at exactly 0.
+      // Valid rows receive the selected FP basis value and optional center.
+      double value = 0.0;
+      if (valid_rows[i]) {
+        value = basis(i, source_zero_based[j]);
+        if (center) {
+          value -= centers[block_start + j];
+        }
+      }
+      target(i, target_block_start + j) = value;
+    }
+  }
+
+  // Return both products needed by R. During candidate search only `target` is
+  // used; after selection `flex2()` also retains `centers` for the fitted object.
+  return List::create(
+    _["target"] = target,
+    _["centers"] = centers
+  );
+}
+
+
 // CODES FOR BUILDING ADJUSTMENT VARIABLE STEP IN TRANSFORM_DATA_STEP()
 // -----------------------------------------------------------------------------
 // build_adjustment_step() C++ utility helpers ---------------------------------

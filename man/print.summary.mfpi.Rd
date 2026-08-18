@@ -10,10 +10,8 @@
 \item{x}{An object of class \code{"summary.mfpi"}.}
 
 \item{digits}{Optional non-negative integer controlling printing precision.
-MFPI metric tables are rounded to this many decimal places, and retained
-regression summaries receive the same \code{digits} value. If \code{NULL},
-\code{x$digits} is used when available; otherwise the print helper default
-is used.}
+If \code{NULL}, \code{x$digits} is used when available; otherwise the MFPI
+print-helper default is used.}
 
 \item{...}{Currently unused.}
 }
@@ -21,28 +19,38 @@ is used.}
 \code{x} invisibly.
 }
 \description{
-Displays the structured MFPI summary.
+Displays the four-step MFPI summary produced by \code{\link[=summary.mfpi]{summary.mfpi()}}.
 }
 \details{
-The printed summary first reuses \code{print.mfpi()} to display the
-model-building output. This includes the adjustment model, all interaction
-candidates, the candidate interaction FP powers by group level, and the
-final interaction summary. For p-value selection, raw and adjusted p-values
-are reported together in Step 3.
+Steps 1--3 are delegated to \code{\link[=print.mfpi]{print.mfpi()}} so that \code{print(fit)} and
+\code{print(summary(fit))} use the same adjustment-model and interaction-
+selection output. Step 4 adds a compact regression display for each retained
+interaction model.
 
-After the model-building output, the summary print method appends:
+Step 4 uses readable group labels and FP transformations rather than internal
+design-column names. The grouping variable and FLEX setting are already shown
+in the main MFPI header and are not repeated for every retained interaction.
+Each retained interaction is introduced by an underlined heading. Interaction
+powers are always printed by group level, including when the selected FLEX
+strategy gives all groups the same powers. Group-variable coefficients and
+adjustment coefficients are displayed in separate tables. For models with an
+intercept, it is displayed separately.
 
-\enumerate{
-\item an unnumbered retained-only detail table showing the group-specific
-interaction-side FP powers for retained interaction models;
-\item ordinary regression summaries for retained interaction models.
+When one or more retained interaction variables have a nonzero MFPI shift,
+Step 4 prints one clarification immediately below the first shifted
+interaction's group-specific FP table. The constant shown inside an FP
+transformation is the shifting factor applied to all observations before the
+group-specific FP terms are constructed; structural zeros remain
+untransformed. Later shifted interactions retain the explicit constant in
+their transformation labels, but the note is not repeated. No shift note is
+printed when all retained interactions have zero shift.
+
+The method intentionally does not print the underlying model call,
+exponentiated-coefficient tables, significance stars, concordance, or global
+likelihood-ratio/Wald/score tests. Those quantities remain available from the
+stored fitted regression model when required, but they are not part of the
+MFPI interaction-selection result.
 }
-
-The retained-power table is intentionally not printed as a numbered step. It
-is a detail table that explains the retained models before the regression
-output. This avoids confusing labels such as \code{"Step 2b"} when there is
-no visible \code{"Step 2a"}.
-
-The regression output is printed after \code{print.mfpi()}'s Step 3 and is
-labelled Step 4 for all interaction-selection criteria.
+\seealso{
+\code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}
 }

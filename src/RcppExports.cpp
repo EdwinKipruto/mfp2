@@ -66,6 +66,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// fill_mfpi_fp_candidate_cpp
+List fill_mfpi_fp_candidate_cpp(NumericMatrix target, const NumericMatrix& basis, const IntegerVector& source_cols, const IntegerVector& group_idx, const int n_groups, const int target_start_col, const bool center, const bool group_center, const LogicalVector& valid_rows);
+RcppExport SEXP _mfp2_fill_mfpi_fp_candidate_cpp(SEXP targetSEXP, SEXP basisSEXP, SEXP source_colsSEXP, SEXP group_idxSEXP, SEXP n_groupsSEXP, SEXP target_start_colSEXP, SEXP centerSEXP, SEXP group_centerSEXP, SEXP valid_rowsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type target(targetSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis(basisSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type source_cols(source_colsSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type group_idx(group_idxSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_groups(n_groupsSEXP);
+    Rcpp::traits::input_parameter< const int >::type target_start_col(target_start_colSEXP);
+    Rcpp::traits::input_parameter< const bool >::type center(centerSEXP);
+    Rcpp::traits::input_parameter< const bool >::type group_center(group_centerSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type valid_rows(valid_rowsSEXP);
+    rcpp_result_gen = Rcpp::wrap(fill_mfpi_fp_candidate_cpp(target, basis, source_cols, group_idx, n_groups, target_start_col, center, group_center, valid_rows));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_adjustment_step_loop_cpp
 List build_adjustment_step_loop_cpp(const NumericMatrix& x, const IntegerVector& x_col_index, const CharacterVector& vars_adj, const List& powers_adj, const LogicalVector& acdx_adj, const LogicalVector& zero_adj, const List& catzero_adj, const LogicalVector& spike_adj, const IntegerVector& spike_decision_int_adj, const List& acd_parameter_adj, const LogicalVector& eliminated, const LogicalVector& spike_binary_only_flags, const List& current_power_keys_adj, const List& prev_power_keys_adj, const List& prev_data_adj_list, const IntegerVector& prev_spike_decision_int_adj, const bool has_prev);
 RcppExport SEXP _mfp2_build_adjustment_step_loop_cpp(SEXP xSEXP, SEXP x_col_indexSEXP, SEXP vars_adjSEXP, SEXP powers_adjSEXP, SEXP acdx_adjSEXP, SEXP zero_adjSEXP, SEXP catzero_adjSEXP, SEXP spike_adjSEXP, SEXP spike_decision_int_adjSEXP, SEXP acd_parameter_adjSEXP, SEXP eliminatedSEXP, SEXP spike_binary_only_flagsSEXP, SEXP current_power_keys_adjSEXP, SEXP prev_power_keys_adjSEXP, SEXP prev_data_adj_listSEXP, SEXP prev_spike_decision_int_adjSEXP, SEXP has_prevSEXP) {
@@ -99,6 +118,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_mfp2_generate_transformations_fp_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_cpp, 4},
     {"_mfp2_generate_transformations_fp_basis_cpp", (DL_FUNC) &_mfp2_generate_transformations_fp_basis_cpp, 3},
     {"_mfp2_copy_fp_basis_candidate_cpp", (DL_FUNC) &_mfp2_copy_fp_basis_candidate_cpp, 4},
+    {"_mfp2_fill_mfpi_fp_candidate_cpp", (DL_FUNC) &_mfp2_fill_mfpi_fp_candidate_cpp, 9},
     {"_mfp2_build_adjustment_step_loop_cpp", (DL_FUNC) &_mfp2_build_adjustment_step_loop_cpp, 17},
     {NULL, NULL, 0}
 };

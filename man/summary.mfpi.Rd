@@ -12,34 +12,78 @@
 \item{...}{Currently unused.}
 }
 \value{
-An object of class \code{"summary.mfpi"}. The object is a list
-containing the main printed MFPI components, group-level metadata, retained
-model objects, and ordinary regression summaries for retained interaction
-models. Print it with \code{print()} or \code{print.summary.mfpi()} to
-display the full MFPI model-building output followed by the regression
-summaries.
+An object of class \code{"summary.mfpi"}. In addition to the fields
+needed to reproduce the MFPI Steps 1--3 display, the object contains
+\code{regression_displays}, a named list of structured coefficient displays
+for retained interaction models. Each display contains readable coefficient
+metadata and the corresponding model-conditional coefficient statistics.
+Printing the object produces the four-step summary described above.
 }
 \description{
 Produces a structured summary of an \code{"mfpi"} fit.
 }
 \details{
-The summary object contains the model-building information printed by
-\code{print.mfpi()}, together with ordinary regression summaries for the
-retained interaction models. It is designed to support a two-layer display:
+The printed summary has four steps. Steps 1--3 are the same model-building
+display produced by \code{\link[=print.mfpi]{print.mfpi()}}: the selected adjustment model, all
+interaction candidates, and the final interaction-selection summary. Step 4
+reports regression results for retained interaction models using MFPI-specific
+labels rather than the raw output of the underlying regression model.
+
+The main MFPI header already reports the grouping variable and FLEX setting.
+Step 4 therefore avoids repeating those fit-level properties within each
+retained model. Instead, each retained interaction is introduced by an
+underlined interaction heading and reports its FP form and interaction powers
+for every group level. Regression coefficients are then separated into:
 
 \enumerate{
-\item the MFPI model-building output, including the adjustment model,
-candidate interaction models, group-level interaction FP powers, and
-the final interaction-selection summary;
-\item regression summaries for the retained interaction models.
+\item group-specific FP terms, displayed using the original group labels
+and readable FP transformations;
+\item group-variable coefficients, with the fitted reference level stated
+explicitly;
+\item a model intercept when the underlying model contains one; and
+\item adjustment coefficients.
 }
 
-The regression summaries are useful for inspecting the final fitted models,
-but their coefficient-level Wald p-values do not account for fractional
-polynomial power selection. The MFPI interaction decision should be based on
-the interaction summary table and the relevant model-selection metric rather
-than on the regression table alone.
+Each coefficient table includes the estimate, standard error, model-specific
+test statistic (for example, \code{z} or \code{t}), and p-value. Significance
+stars, exponentiated coefficients, confidence-interval tables, the raw model
+call, and model-level likelihood-ratio/Wald/score tests are intentionally not
+printed. In particular, the usual global model tests condition on the
+selected regression specification and their standard degrees of freedom do
+not represent the additional model-selection complexity introduced by FP
+power selection.
+
+Group-variable coefficients are coefficients of the fitted regression
+parameterization. When a group-by-continuous interaction is present, they are
+not overall comparisons between group levels; group comparisons depend on
+the interacting variable and should be obtained from \code{\link[=predict.mfpi]{predict.mfpi()}}.
+
+Coefficient-level p-values are also conditional on the selected functional
+forms and do not account for uncertainty introduced by adjustment-model, FP,
+or interaction selection. They should therefore not be used for the MFPI
+interaction decision. The criterion reported in Step 3 is the relevant MFPI
+selection result.
+}
+\examples{
+\donttest{
+data("prostate", package = "mfp2")
+
+fit <- mfpi(
+  lpsa ~ fp(age) + svi + fp(cavol),
+  data = prostate,
+  group_var = "svi",
+  cont_vars = "cavol",
+  cont_var_forms = c(cavol = "fp2"),
+  flex = "flex4",
+  p_interact = 1,
+  verbose = FALSE
+)
+
+summary(fit)
+}
+
 }
 \seealso{
-\code{\link[=mfpi]{mfpi()}}, \code{\link[=print.summary.mfpi]{print.summary.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
+\code{\link[=mfpi]{mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}},
+\code{\link[=predict.mfpi]{predict.mfpi()}}, \code{\link[=plot.mfpi]{plot.mfpi()}}
 }

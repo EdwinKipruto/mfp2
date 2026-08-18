@@ -17,6 +17,10 @@ copy_fp_basis_candidate_cpp <- function(target, basis, source_cols, target_cols)
     .Call(`_mfp2_copy_fp_basis_candidate_cpp`, target, basis, source_cols, target_cols)
 }
 
+fill_mfpi_fp_candidate_cpp <- function(target, basis, source_cols, group_idx, n_groups, target_start_col, center, group_center, valid_rows) {
+    .Call(`_mfp2_fill_mfpi_fp_candidate_cpp`, target, basis, source_cols, group_idx, n_groups, target_start_col, center, group_center, valid_rows)
+}
+
 build_adjustment_step_loop_cpp <- function(x, x_col_index, vars_adj, powers_adj, acdx_adj, zero_adj, catzero_adj, spike_adj, spike_decision_int_adj, acd_parameter_adj, eliminated, spike_binary_only_flags, current_power_keys_adj, prev_power_keys_adj, prev_data_adj_list, prev_spike_decision_int_adj, has_prev) {
     .Call(`_mfp2_build_adjustment_step_loop_cpp`, x, x_col_index, vars_adj, powers_adj, acdx_adj, zero_adj, catzero_adj, spike_adj, spike_decision_int_adj, acd_parameter_adj, eliminated, spike_binary_only_flags, current_power_keys_adj, prev_power_keys_adj, prev_data_adj_list, prev_spike_decision_int_adj, has_prev)
 }

@@ -210,12 +210,16 @@ and does not set the MFPI interaction form; use \code{cont_var_forms} for that.
 In \code{mfpi.formula()}, only a scalar is accepted; use
 \code{fp(variable, df = ...)} for per-variable values.}
 
-\item{center}{A single logical value, or in \code{mfpi.default()} one value per
-predictor column, indicating whether transformed predictors are centered
-before fitting. The default is \code{TRUE}. In \code{mfpi.formula()}, only a scalar
-is accepted; use \code{fp(variable, center = ...)} for per-variable values.
-See \code{center_type} for how centering references are computed in the
-interaction models.}
+\item{center}{Controls whether transformed predictors are centered before
+fitting. In \code{mfpi.default()}, supply either a single unnamed logical value
+applied to every predictor column or a named logical vector for one or more
+columns of \code{x}. Named values are matched to \code{colnames(x)}, so their order
+does not matter; names must be non-empty, unique, and known columns.
+Omitted columns in a named partial specification use the default
+\code{center = TRUE}. Unnamed multi-value logical vectors are not accepted. In
+\code{mfpi.formula()}, only a scalar is accepted; use
+\code{fp(variable, center = ...)} for per-variable values. See \code{center_type} for
+how centering references are computed in the interaction models.}
 
 \item{subset}{An optional logical vector or vector of unique positive row
 indices selecting observations for fitting. In the formula interface, an

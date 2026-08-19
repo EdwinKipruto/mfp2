@@ -5,7 +5,7 @@
 \alias{pima}
 \title{Pima Indians dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 768 observations and 9 variables.
+A dataset with 768 observations and 10 variables.
 \describe{
 \item{id}{Patient identifier.}
 \item{pregnant}{Number of times pregnant.}

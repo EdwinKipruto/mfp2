@@ -140,11 +140,18 @@ distinct values: 2--3 distinct values force \code{df = 1}; 4--5 distinct values
 cap \code{df} at \code{min(2, requested)}; 6 or more distinct values use the
 requested value unchanged.}
 
-\item{center}{Logical value controlling centering of final transformed terms.
-Default \code{TRUE}. Ordinary continuous transformed terms are centered on their
-mean; zero-handled FP columns use the mean of their nonzero transformed
-values while zero rows remain zero. Binary terms are centered by
-subtracting their lower observed value.}
+\item{center}{Controls centering of final transformed terms. In
+\code{mfp2.default()}, supply either a single unnamed logical value applied to
+every predictor or a named logical vector for one or more columns of \code{x}.
+Named values are matched to \code{colnames(x)}, so their order does not matter;
+names must be non-empty, unique, and known columns. Omitted columns in a
+named partial specification use the default \code{center = TRUE}. Unnamed
+multi-value logical vectors are not accepted. In \code{mfp2.formula()}, the
+top-level value is a scalar global default; use \code{fp()} or \code{fp2()} for
+variable-specific values. Ordinary continuous transformed terms are
+centered on their mean; zero-handled FP columns use the mean of their
+nonzero transformed values while zero rows remain zero. Binary terms are
+centered by subtracting their lower observed value.}
 
 \item{subset}{Optional observations used for model selection and fitting.
 Formula calls accept an expression evaluated in \code{data} and the formula

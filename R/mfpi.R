@@ -359,12 +359,16 @@
 #'   In `mfpi.formula()`, only a scalar is accepted; use
 #'   `fp(variable, df = ...)` for per-variable values.
 #'
-#' @param center A single logical value, or in `mfpi.default()` one value per
-#'   predictor column, indicating whether transformed predictors are centered
-#'   before fitting. The default is `TRUE`. In `mfpi.formula()`, only a scalar
-#'   is accepted; use `fp(variable, center = ...)` for per-variable values.
-#'   See `center_type` for how centering references are computed in the
-#'   interaction models.
+#' @param center Controls whether transformed predictors are centered before
+#'   fitting. In `mfpi.default()`, supply either a single unnamed logical value
+#'   applied to every predictor column or a named logical vector for one or more
+#'   columns of `x`. Named values are matched to `colnames(x)`, so their order
+#'   does not matter; names must be non-empty, unique, and known columns.
+#'   Omitted columns in a named partial specification use the default
+#'   `center = TRUE`. Unnamed multi-value logical vectors are not accepted. In
+#'   `mfpi.formula()`, only a scalar is accepted; use
+#'   `fp(variable, center = ...)` for per-variable values. See `center_type` for
+#'   how centering references are computed in the interaction models.
 #'
 #' @param subset An optional logical vector or vector of unique positive row
 #'   indices selecting observations for fitting. In the formula interface, an
@@ -1256,14 +1260,16 @@ mfpi.default <- function(
     automatic = is.na(scale)
   )
 
-  # Validate center ------------------------------------------------------------
-  # Developer note: mfpi.formula() may pass a per-variable logical vector after
-  # reading fp()/fp2() attributes, so the default method is the final validation
-  # gate for both direct matrix calls and formula calls.
-  validate_logical_vector(
-    arg = center,
-    name = "center",
-    allowed_lengths = c(1L, nvars)
+  # Validate and normalize center ----------------------------------------------
+  # Developer note: mfpi.formula() may pass a complete named logical vector
+  # after reading fp()/fp2() attributes. Direct default-method calls may instead
+  # use an unnamed global scalar or a named partial vector. In all named cases,
+  # matching is by colnames(x), never by predictor position.
+  center <- normalize_named_logical_setting(
+    value = center,
+    column_names = vnames,
+    default = TRUE,
+    argument_name = "center"
   )
 
   # Validate df ----------------------------------------------------------------
@@ -1415,10 +1421,8 @@ mfpi.default <- function(
 
   if (is.null(offset))  offset  <- rep.int(0, nobs)
 
-  # select and alpha were normalized above to complete named vectors.
-  # center retains its existing scalar-or-positional-vector interface.
-  if (length(center) == 1L) center <- rep(center, nvars)
-  center <- setNames(center, vnames)
+  # select, alpha, and center were normalized above to complete named vectors
+  # ordered exactly like colnames(x).
 
   # For adjustment-model variables under p-value selection, force_max_fp
   # requires both retention of the variable and acceptance of its most complex

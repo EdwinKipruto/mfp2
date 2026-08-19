@@ -5,9 +5,9 @@
 \alias{advanced_prostate_cancer}
 \title{Advanced prostate cancer dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 475 observations (338 deaths) and 13 variables.
+A dataset with 475 observations (338 deaths) and 17 variables.
 \describe{
-\item{patnr }{Patient number.}
+\item{patnr}{Patient number.}
 \item{age}{Age at diagnosis in years (continuous).}
 \item{wt}{Standardized weight (continuous).}
 \item{sbp}{Systolic blood pressure (continuous).}
@@ -15,11 +15,13 @@ A dataset with 475 observations (338 deaths) and 13 variables.
 \item{sz}{Size of primary tumour (continuous).}
 \item{ap}{Serum acid phosphatase (continuous).}
 \item{hg}{Haemoglobin (g/100 ml) (continuous).}
+\item{sg}{Gleason stage-grade category (continuous).}
 \item{pf}{Performance status (binary).}
-\item{hx}{HHistory of cardiovascular disease (binary).}
+\item{hx}{History of cardiovascular disease (binary).}
 \item{bm}{Presence of bone metastases (binary).}
 \item{stage}{Stage 4 vs stage 3 (binary).}
 \item{ekg}{Abnormal electrocardiogram (binary).}
+\item{rx}{Treatment group (binary).}
 \item{survtime}{Time to death (overall survival).}
 \item{cens}{Censoring (0 = censored, 1 = event).}
 }

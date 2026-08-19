@@ -592,6 +592,150 @@ normalize_named_override_setting <- function(value,
 }
 
 
+#' Normalize a scalar or named partial logical setting
+#'
+#' Matrix interfaces use this helper for logical settings such as `center`.
+#' An unnamed scalar is a global value and is recycled to every column. A named
+#' vector is matched to `column_names`, may specify only a subset of columns,
+#' and fills omitted columns from `default`. Unnamed vectors with more than one
+#' value are rejected so that settings cannot be assigned positionally.
+#'
+#' @param value Logical scalar or named logical vector to normalize.
+#' @param column_names Character vector of matrix column names.
+#' @param default Logical scalar or complete per-column logical vector used for
+#'   columns omitted from a named input.
+#' @param argument_name Character scalar used in error messages.
+#'
+#' @return A logical vector named and ordered exactly like `column_names`.
+#' @keywords internal
+#' @noRd
+normalize_named_logical_setting <- function(value,
+                                            column_names,
+                                            default,
+                                            argument_name) {
+  n_columns <- length(column_names)
+  shape_message <- paste0(
+    "`", argument_name, "` must be a single unnamed logical value or a named ",
+    "logical vector for one or more columns of `x`. Unnamed logical vectors ",
+    "with more than one value are not allowed; supply a scalar or name each value."
+  )
+
+  # Intercept-only formula models can delegate a zero-column matrix together
+  # with zero-length internally constructed setting vectors.
+  if (n_columns == 0L && length(value) == 0L) {
+    return(stats::setNames(logical(0L), column_names))
+  }
+
+  if (!is.logical(value)) {
+    stop(
+      sprintf("`%s` must contain logical values, not %s values.",
+              argument_name, typeof(value)),
+      call. = FALSE
+    )
+  }
+
+  if (length(value) == 0L) {
+    stop(shape_message, call. = FALSE)
+  }
+
+  if (anyNA(value)) {
+    stop(
+      sprintf("`%s` must contain only non-missing logical values.",
+              argument_name),
+      call. = FALSE
+    )
+  }
+
+  normalize_default <- function(x) {
+    if (!is.logical(x) || anyNA(x)) {
+      stop(
+        sprintf("Internal default for `%s` is malformed.", argument_name),
+        call. = FALSE
+      )
+    }
+
+    if (length(x) == 1L) {
+      return(stats::setNames(rep(x, n_columns), column_names))
+    }
+
+    if (length(x) != n_columns) {
+      stop(
+        sprintf("Internal default for `%s` has the wrong length.",
+                argument_name),
+        call. = FALSE
+      )
+    }
+
+    x_names <- names(x)
+    if (!is.null(x_names)) {
+      if (anyNA(x_names) || any(!nzchar(x_names)) || anyDuplicated(x_names) ||
+          !setequal(x_names, column_names)) {
+        stop(
+          sprintf("Internal default names for `%s` are malformed.",
+                  argument_name),
+          call. = FALSE
+        )
+      }
+      x <- x[column_names]
+    }
+
+    stats::setNames(as.logical(x), column_names)
+  }
+
+  value_names <- names(value)
+  named_input <- !is.null(value_names) && length(value_names) > 0L
+
+  if (length(value) == 1L && !named_input) {
+    return(stats::setNames(rep(value, n_columns), column_names))
+  }
+
+  if (is.null(value_names) ||
+      length(value_names) != length(value) ||
+      anyNA(value_names) ||
+      any(!nzchar(value_names))) {
+    stop(shape_message, call. = FALSE)
+  }
+
+  if (anyDuplicated(column_names)) {
+    stop(
+      sprintf(
+        "`colnames(x)` must be unique when `%s` is supplied as a named vector.",
+        argument_name
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (anyDuplicated(value_names)) {
+    duplicated_names <- unique(value_names[duplicated(value_names)])
+    stop(
+      sprintf(
+        "`%s` names must be unique; duplicated name(s): %s.",
+        argument_name,
+        paste(duplicated_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  unknown_names <- setdiff(value_names, column_names)
+  if (length(unknown_names) > 0L) {
+    stop(
+      sprintf(
+        "`%s` contains unknown column name(s): %s.",
+        argument_name,
+        paste(unknown_names, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  normalized <- normalize_default(default)
+  normalized[value_names] <- as.logical(value)
+  normalized
+}
+
+
 #' Validate a positive integer scalar argument
 #'
 #' Checks that an argument is a single finite positive integer.

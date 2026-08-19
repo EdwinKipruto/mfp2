@@ -321,11 +321,18 @@
 #'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
 #'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
 #'   requested value unchanged.
-#' @param center Logical value controlling centering of final transformed terms.
-#'   Default `TRUE`. Ordinary continuous transformed terms are centered on their
-#'   mean; zero-handled FP columns use the mean of their nonzero transformed
-#'   values while zero rows remain zero. Binary terms are centered by
-#'   subtracting their lower observed value.
+#' @param center Controls centering of final transformed terms. In
+#'   `mfp2.default()`, supply either a single unnamed logical value applied to
+#'   every predictor or a named logical vector for one or more columns of `x`.
+#'   Named values are matched to `colnames(x)`, so their order does not matter;
+#'   names must be non-empty, unique, and known columns. Omitted columns in a
+#'   named partial specification use the default `center = TRUE`. Unnamed
+#'   multi-value logical vectors are not accepted. In `mfp2.formula()`, the
+#'   top-level value is a scalar global default; use `fp()` or `fp2()` for
+#'   variable-specific values. Ordinary continuous transformed terms are
+#'   centered on their mean; zero-handled FP columns use the mean of their
+#'   nonzero transformed values while zero rows remain zero. Binary terms are
+#'   centered by subtracting their lower observed value.
 #' @param subset Optional observations used for model selection and fitting.
 #'   Formula calls accept an expression evaluated in `data` and the formula
 #'   environment. Matrix calls accept a logical vector or unique numeric/integer
@@ -1856,8 +1863,15 @@ mfp2.default <- function(x,
   validate_probability_vector(alpha, "alpha", nvars)
   validate_probability_vector(select, "select", nvars)
 
-  # center may be scalar or one logical value per predictor.
-  validate_logical_vector(center, "center", allowed_lengths = c(1L, nvars))
+  # center follows the same matrix-interface convention as df/select/alpha:
+  # an unnamed scalar is global, while named partial vectors are matched to
+  # colnames(x) and omitted columns retain the public default (TRUE).
+  center <- normalize_named_logical_setting(
+    value = center,
+    column_names = vnames,
+    default = TRUE,
+    argument_name = "center"
+  )
 
   # Direct matrix users may supply NULL, an unnamed global scalar, or named
   # per-column settings. Named shift and scale vectors may be partial;
@@ -2074,10 +2088,7 @@ mfp2.default <- function(x,
   # `shift` was normalized above. NA marks a variable for automatic shift
   # estimation further below; supplied values are already aligned by name.
 
-  # Expand scalar center to one value per predictor.
-  if (length(center) == 1) {
-    center <- rep(center, nvars)
-  }
+  # center was normalized above to a complete named vector in colnames(x) order.
 
   # Convert the public character-vector interface into the named logical vector
   # expected by the internal MFP fitting functions.

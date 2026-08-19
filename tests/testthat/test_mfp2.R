@@ -1274,7 +1274,7 @@ mfpi_setting_y <-
 # - Limit differences between compared fits to the order in which named shift
 #   or scale values were supplied.
 
-fit_mfp2_settings <- function(shift = NULL, scale = NULL) {
+fit_mfp2_settings <- function(shift = NULL, scale = NULL, center = FALSE) {
   mfp2(
     x = setting_x,
     y = setting_y,
@@ -1284,14 +1284,14 @@ fit_mfp2_settings <- function(shift = NULL, scale = NULL) {
     select = 1,
     alpha = 1,
     force_max_fp_vars = colnames(setting_x),
-    center = FALSE,
+    center = center,
     cycles = 2,
     xorder = "original",
     verbose = FALSE
   )
 }
 
-fit_mfpi_settings <- function(shift = NULL, scale = NULL) {
+fit_mfpi_settings <- function(shift = NULL, scale = NULL, center = FALSE) {
   mfpi(
     x = mfpi_setting_x,
     y = mfpi_setting_y,
@@ -1305,7 +1305,7 @@ fit_mfpi_settings <- function(shift = NULL, scale = NULL) {
     select = 1,
     alpha = 1,
     force_max_fp_vars = c("age", "weight"),
-    center = FALSE,
+    center = center,
     cycles = 2,
     xorder = "original",
     verbose = FALSE
@@ -17466,3 +17466,104 @@ test_that("find_best_fpm_step() rejects simultaneous FP and ACD compact bases", 
 # =============================================================================
 # End of tests
 # =============================================================================
+
+# =============================================================================
+# Named center settings in default matrix interfaces
+# =============================================================================
+
+# Test purpose: A named center vector must be aligned by predictor name rather
+# than by the order in which values are supplied.
+test_that("mfp2.default() matches named center settings by colnames(x)", {
+  fit <- fit_mfp2_settings(
+    shift = 0,
+    scale = 1,
+    center = c(weight = FALSE, age = TRUE)
+  )
+
+  expect_true(isTRUE(fit$transformations["age", "center"]))
+  expect_false(isTRUE(fit$transformations["weight", "center"]))
+})
+
+# Test purpose: A named scalar is a one-variable override, not a global scalar;
+# omitted variables retain the public default center = TRUE.
+test_that("mfp2.default() fills partial named center settings from the default", {
+  fit <- fit_mfp2_settings(
+    shift = 0,
+    scale = 1,
+    center = c(age = FALSE)
+  )
+
+  expect_false(isTRUE(fit$transformations["age", "center"]))
+  expect_true(isTRUE(fit$transformations["weight", "center"]))
+})
+
+# Test purpose: Positional multi-value center vectors are ambiguous and must be
+# rejected with guidance to use either a scalar or named values.
+test_that("mfp2.default() rejects unnamed multi-value center settings", {
+  expect_error(
+    mfp2_validation_call("center", c(TRUE, FALSE)),
+    "supply a scalar or name each value"
+  )
+})
+
+# Test purpose: Named center settings use the same duplicate/unknown-name
+# validation contract as df, shift, and scale.
+test_that("mfp2.default() validates names in center settings", {
+  expect_error(
+    mfp2_validation_call("center", c(age = TRUE, unknown = FALSE)),
+    "unknown column name.*unknown"
+  )
+  expect_error(
+    mfp2_validation_call(
+      "center",
+      stats::setNames(c(TRUE, FALSE), c("age", "age"))
+    ),
+    "names must be unique.*age"
+  )
+})
+
+# Test purpose: MFPI applies the same colnames(x)-based matching while its input
+# matrix also contains the grouping column.
+test_that("mfpi.default() matches named center settings by colnames(x)", {
+  fit <- fit_mfpi_settings(
+    shift = 0,
+    scale = 1,
+    center = c(weight = FALSE, age = TRUE, svi = FALSE)
+  )
+
+  expect_true(isTRUE(fit$adjustment_model$transformations["age", "center"]))
+  expect_false(isTRUE(fit$adjustment_model$transformations["weight", "center"]))
+})
+
+# Test purpose: Partial named MFPI specifications retain center = TRUE for
+# omitted continuous predictors.
+test_that("mfpi.default() fills partial named center settings from the default", {
+  fit <- fit_mfpi_settings(
+    shift = 0,
+    scale = 1,
+    center = c(weight = FALSE)
+  )
+
+  expect_true(isTRUE(fit$adjustment_model$transformations["age", "center"]))
+  expect_false(isTRUE(fit$adjustment_model$transformations["weight", "center"]))
+})
+
+# Test purpose: MFPI rejects positional center vectors and malformed names at
+# its public default-method boundary.
+test_that("mfpi.default() validates vector center settings", {
+  expect_error(
+    mfpi_validation_call("center", c(TRUE, FALSE, TRUE)),
+    "supply a scalar or name each value"
+  )
+  expect_error(
+    mfpi_validation_call("center", c(age = TRUE, unknown = FALSE)),
+    "unknown column name.*unknown"
+  )
+  expect_error(
+    mfpi_validation_call(
+      "center",
+      stats::setNames(c(TRUE, FALSE), c("age", "age"))
+    ),
+    "names must be unique.*age"
+  )
+})

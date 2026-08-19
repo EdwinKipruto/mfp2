@@ -5,7 +5,7 @@
 \alias{art}
 \title{Artificial dataset with continuous response}
 \format{
-The dataset has 250 observations and 10 covariates
+The dataset has 250 observations and 11 variables (1 response and 10 covariates)
 \describe{
 \item{y}{Continuous response variable.}
 \item{x1, x3, x5-x7, x10}{Continuous covariates.}

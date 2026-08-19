@@ -47,12 +47,11 @@
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
 #'   `"negbin"`, or `"cox"`.
 #' @param fp_cand Numeric vector of candidate FP powers for `cont_var`.
-#'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()]. When
-#'   `degree == 1` (FP1), power = 1 is automatically excluded from `fp_cand`
-#'   inside `flex_fit()` because linear is handled separately by `flex0`;
-#'   keeping power = 1 in the FP1 candidate set would allow FP1 to collapse
-#'   to a duplicate linear fit. Higher degrees retain power = 1 since
-#'   combinations such as `(1, 2)` are distinct from linear.
+#'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()]. For
+#'   FP1, the conventional candidate set is retained, including power = 1.
+#'   A prespecified linear interaction is still handled separately by `flex0`;
+#'   thus `linear` means power 1 fixed with no power search, whereas an FP1
+#'   search may select power 1 as its best member.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
 #'   use an F-test rather than a chi-square likelihood-ratio test when
 #'   computing p-values. Applied to both the adjustment-variable selection
@@ -161,23 +160,6 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
 
   # Linear degree always uses flex0, regardless of the flex setting
   if (degree < 1L) flex <- "flex0"
-
-  # For FP1 (degree = 1), exclude power = 1 from the candidate set so that
-  # the FP1 search cannot collapse to a linear fit. Linear is already handled
-  # separately by flex0 (degree = 0), so testing it again as FP1 with power 1
-  # would produce a vacuous duplicate of the LINEAR candidate.
-  # Higher degrees (FP2+) retain power 1 since combinations like (1, 2),
-  # (1, 3) etc. are genuinely distinct from linear.
-  if (degree == 1L) {
-    fp_cand <- setdiff(fp_cand, 1)
-    if (length(fp_cand) < 1L) {
-      stop(
-        "! `fp_cand` is empty for FP1 after excluding power = 1. ",
-        "Provide a candidate set containing at least one non-unity power.",
-        call. = FALSE
-      )
-    }
-  }
 
   # Build shared argument list and dispatch ------------------------------------
   common_args <- list(
@@ -428,6 +410,11 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
+    # MFPI follows the conventional FP1 search: if power 1 is present in the
+    # supplied FP1 candidate set, retain it as a possible selected power. This
+    # internal switch is used only for this MFPI power-selection fit; ordinary
+    # mfp2() closed-test behaviour is unchanged.
+    retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,
     family_string = family_string,
@@ -457,63 +444,15 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # Step 2: Extract best FP powers for cont_var --------------------------------
   bestfp <- unlist(get_fp_powers(cont_var, fit_main_pool$fp_terms))
 
-  # Defensive guard: if fit_mfp returned an unexpected linear or empty result for
-  # an FP1 search (despite force_max_fp = TRUE and power = 1 excluded from
-  # fp_cand by flex_fit()), perform a direct deviance-minimization search over
-  # the non-unity candidates. This ensures FP1 is always a non-linear functional
-  # form, since linear is handled separately by flex0.
-  needs_fallback <- degree == 1L && (
-    length(bestfp) == 0L ||
-      (length(bestfp) == 1L && isTRUE(bestfp == 1))
-  )
-
-  if (needs_fallback) {
-    nonunit_cand <- setdiff(fp_cand, 1)
-    if (length(nonunit_cand) == 0L) {
-      stop(
-        "! FP1 fallback failed: `fp_cand` contains no non-unity powers.",
-        call. = FALSE
-      )
-    }
-
-    # Fit a one-term FP transformation at each candidate power and choose the
-    # lowest-deviance fit. Adjustment columns and group dummies are included as
-    # covariates so the comparison is on equal footing with the MFP-fitted model.
-    #
-    # Although this deviance search uses fast = TRUE, where `offset` is passed
-    # directly to the underlying fitting routine, forward `has_offset` as well.
-    # This keeps offset handling consistent with the rest of the MFPI fitting
-    # path and avoids future inconsistencies if this call is changed to use a
-    # formula-based fit.
-    fixed_x <- cbind(group_dummies, xadj)
-    dev_vec <- vapply(nonunit_cand, function(p) {
-      z_p <- transform_vector_fp(
-        x     = contvar_vec,
-        power = p,
-        shift = 0,
-        scale = 1,
-        zero  = zero_var,
-        name  = cont_var
-      )
-      fit_p <- fit_model(
-        x             = cbind(z_p, fixed_x),
-        y             = y,
-        family        = family,
-        family_string = family_string,
-        fitter        = fitter,
-        weights       = weights,
-        offset        = offset,
-        method        = ties,
-        strata        = strata,
-        control       = control,
-        nocenter      = nocenter,
-        rownames      = NULL,
-        fast          = TRUE,
-        has_offset    = has_offset
-      )
-      -2 * fit_p$logl
-    }, numeric(1L))
-    bestfp <- nonunit_cand[which.min(dev_vec)]
+  # Defensive guard: the forced fixed-degree MFPI search must return exactly
+  # `degree` selected powers. For FP1, power 1 is a valid selected result: it
+  # means the FP1 search selected its linear member, not that the user requested
+  # the separate prespecified `linear` interaction form.
+  if (length(bestfp) != degree || anyNA(bestfp)) {
+    stop(
+      "! Internal MFPI error: FP power selection did not return the requested degree.",
+      call. = FALSE
+    )
   }
 
   # Step 3: Build interaction terms using the pooled FP powers ----------------
@@ -1183,6 +1122,11 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
+    # MFPI follows the conventional FP1 search: if power 1 is present in the
+    # supplied FP1 candidate set, retain it as a possible selected power. This
+    # internal switch is used only for this MFPI power-selection fit; ordinary
+    # mfp2() closed-test behaviour is unchanged.
+    retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,
     family_string = family_string,

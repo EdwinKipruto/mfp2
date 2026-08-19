@@ -86,6 +86,12 @@
 #'   its only purpose is to compare reduced component representations. The best
 #'   power combination within the forced form is still determined by
 #'   \code{find_best_fpm_step()}.
+#' @param retain_linear_fp1 Internal logical used specifically for MFPI's
+#'   forced fixed-degree power-selection fits. If \code{TRUE}, a degree-1 FP
+#'   search retains power \code{1} when it is present in the supplied candidate
+#'   set. It does not add power \code{1} when absent. Ordinary MFP closed
+#'   testing keeps the default \code{FALSE}, fitting the linear model separately
+#'   and excluding power 1 from its non-linear FP1 candidate search.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param n_obs Numeric; number of observations (or observed events, for Cox
@@ -207,6 +213,7 @@ find_best_fp_step <- function(x,
                               prev_adj_params,
                               transform_cache = NULL,
                               force_max_fp,
+                              retain_linear_fp1 = FALSE,
                               has_offset,
                               n_obs,
                               verbose,
@@ -258,7 +265,7 @@ find_best_fp_step <- function(x,
   # Pass the term lookup to every selector, not only to select_linear(). Even
   # when xi is a continuous FP term, its adjustment set can contain grouped
   # categorical terms whose raw columns must be assembled as one block.
-  fit1 <- select_fct(
+  selector_args <- list(
     x = x, xi = xi, keep = keep, degree = degree, acdx = acdx,
     y = y, family = family, family_string = family_string,
     fitter = fitter,
@@ -273,6 +280,16 @@ find_best_fp_step <- function(x,
     term_to_columns = term_to_columns,
     calculate_gaussian_deviance = isTRUE(ftest)
   )
+
+  # Only the forced selector used by MFPI needs this FP1 convention. Pass the
+  # switch only on that path so ordinary RA2/IC selectors remain completely
+  # unaware of it. The switch retains p = 1 only if it is already present in
+  # the supplied FP1 candidate powers.
+  if (force_max_active) {
+    selector_args$retain_linear_fp1 <- retain_linear_fp1
+  }
+
+  fit1 <- do.call(select_fct, selector_args)
 
   if (verbose) {
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
@@ -467,6 +484,7 @@ find_best_fpm_step <- function(x,
                                focal_basis_cache = NULL,
                                n_obs,
                                term_to_columns,
+                               retain_linear_fp1 = FALSE,
                                ...
 ) {
   # The conceptual-term lookup is normalized once in fit_mfp() and passed
@@ -475,20 +493,22 @@ find_best_fpm_step <- function(x,
   # n_obs (number of observations, or events for Cox models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
 
-  # Step 1: For degree 1 (FP1), drop power 1 from xi's own candidate set -----
-  if (degree == 1) {
-    # Degree-1 candidate generation is for the current variable xi only.
-    # Exclude power 1 for xi because the corresponding linear model is fitted
-    # separately by fit_linear_step().
+  # Step 1: Define the degree-1 candidate set for xi -------------------------
+  if (degree == 1L &&
+      (!isTRUE(retain_linear_fp1) || isTRUE(acdx[xi]))) {
+    # Ordinary MFP closed testing fits the linear model separately, so power 1
+    # is excluded from its FP1 candidate search. MFPI differs deliberately:
+    # when the user prespecifies FP1, the conventional FP1 class is searched
+    # and p = 1 is retained if supplied, so it may legitimately win the FP1
+    # power search. This switch never inserts p = 1 into a restricted user
+    # candidate set. ACD keeps its historical behaviour because its degree-1
+    # p = 1 candidate duplicates an ACD-linear model handled separately by the
+    # ACD selection procedure.
     #
     # Do not remove power 1 from the full powers list: transform_data_step()
-    # also receives powers and may pass powers[[v]] to ACD adjustment-variable
+    # also receives powers and may pass powers[[v]] to adjustment-variable
     # transformations. Adjustment variables must keep their original allowed
     # power sets.
-    #
-    # In the ACD case, generate_powers_acd(degree = 1) produces candidates
-    # of the form c(NA, p). Thus p = 1 corresponds to the ACD-linear candidate
-    # already fitted separately and should not be duplicated for xi.
     powers[[xi]] <- setdiff(powers[[xi]], 1)
   }
 
@@ -1993,6 +2013,7 @@ select_force_max_fp <- function(x,
                                 prev_adj_params,
                                 transform_cache = NULL,
                                 force_max_fp,
+                                retain_linear_fp1 = FALSE,
                                 has_offset,
                                 n_obs,
                                 term_to_columns,
@@ -2033,7 +2054,9 @@ select_force_max_fp <- function(x,
 
   # ACD's maximum model is FP1(x, A(x)); internally it occupies two power
   # slots, so degree = 2 is the fixed search used to identify its best powers.
-  # Ordinary FP uses the requested maximum degree directly.
+  # Ordinary FP uses the requested maximum degree directly. For MFPI FP1,
+  # retain_linear_fp1 is passed through unchanged so p = 1 remains available
+  # when it is part of the supplied candidate set.
   forced_degree <- if (is_acd) 2 else degree
 
   fit_max <- find_best_fpm_step(
@@ -2042,7 +2065,8 @@ select_force_max_fp <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    retain_linear_fp1 = retain_linear_fp1, ...
   )
 
   # Keep only the winning fixed-form row.  No null, linear, lower-degree FP,

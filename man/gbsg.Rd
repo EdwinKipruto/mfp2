@@ -5,7 +5,7 @@
 \alias{gbsg}
 \title{Breast cancer dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 686 observations and 11 variables.
+A dataset with 686 observations and 12 variables.
 \describe{
 \item{id}{Patient identifier.}
 \item{age}{Age in years.}

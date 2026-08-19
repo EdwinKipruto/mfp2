@@ -5,7 +5,7 @@
 \alias{prostate}
 \title{Prostate cancer dataset used in Royston and Sauerbrei (2008) book.}
 \format{
-A dataset with 97 observations and 8 variables.
+A dataset with 97 observations and 9 variables.
 \describe{
 \item{obsno}{Observation number.}
 \item{age}{Age in years.}

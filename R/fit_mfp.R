@@ -1,11 +1,18 @@
 #' Validate MFP Candidate Powers Against Closed-Test Requirements
 #'
 #' Checks that each variable with \code{df > 1} has at least one candidate
-#' fractional-polynomial power other than \code{1}. In the MFP selection engine,
-#' power \code{1} is fitted separately as the ordinary linear model and is
-#' therefore excluded from degree-1 FP candidate fitting. The closed-test
-#' procedure requires an available FP1 candidate whenever \code{df > 1}, so a
-#' candidate-power set containing only \code{1} is invalid in that case.
+#' fractional-polynomial power other than \code{1}, unless that variable has
+#' been explicitly exempted from this closed-test requirement. In the ordinary
+#' MFP selection engine, power \code{1} is fitted separately as the linear model
+#' and is therefore excluded from the degree-1 FP candidate search. The
+#' closed-test procedure consequently requires a non-linear FP1 candidate when
+#' \code{df > 1}.
+#'
+#' The exemption is used by MFPI's internally forced FP1 power search. MFPI
+#' prespecifies the FP degree and searches the conventional FP1 class, in which
+#' the linear power \eqn{p = 1} remains a legitimate candidate. This exemption
+#' affects only validation; it does not alter \code{df}, add power \code{1} to
+#' a candidate set, or change ordinary \code{mfp2()} closed-test behaviour.
 #'
 #' Repeated selected powers remain valid for FP2 and higher-degree models. For
 #' example, \code{c(1, 1)} is a valid selected FP2 power vector, corresponding
@@ -20,9 +27,14 @@
 #' @param df Named numeric or integer vector of degrees of freedom, one value
 #'   per variable. Values greater than \code{1} indicate that FP model selection
 #'   may require degree-1 candidate fitting.
+#' @param allow_linear_only_fp1 Optional named logical vector, aligned with
+#'   \code{df}. \code{TRUE} exempts the corresponding variable from the
+#'   closed-test error when its candidate-power set contains only power
+#'   \code{1}. This is an internal exception for MFPI's forced FP1 search; the
+#'   default is \code{FALSE} for every variable.
 #'
 #' @return Invisibly returns \code{TRUE} if all candidate-power sets are
-#'   compatible with the closed-test procedure.
+#'   compatible with the requested selection procedure.
 #'
 #' @details
 #' This is an internal selection-engine validation. It should be called after
@@ -32,11 +44,25 @@
 #'
 #' @keywords internal
 #' @noRd
-validate_mfp_candidate_powers <- function(powers, df) {
-  # Step 1: Flag variables whose candidate-power set collapses to just `1`.
-  # A candidate set of exactly {1} after cleaning (dedup, drop NA/non-finite)
-  # gives the closed-test procedure no non-linear FP1 candidate to test against
-  # the linear model, which is required whenever df > 1.
+validate_mfp_candidate_powers <- function(powers,
+                                          df,
+                                          allow_linear_only_fp1 = NULL) {
+  if (is.null(allow_linear_only_fp1)) {
+    allow_linear_only_fp1 <- stats::setNames(
+      rep(FALSE, length(df)),
+      names(df)
+    )
+  } else {
+    allow_linear_only_fp1 <- stats::setNames(
+      as.logical(allow_linear_only_fp1),
+      names(allow_linear_only_fp1)
+    )[names(df)]
+    allow_linear_only_fp1[is.na(allow_linear_only_fp1)] <- FALSE
+  }
+
+  # Flag variables whose candidate-power set collapses to just p = 1 after
+  # cleaning. In ordinary MFP that leaves no non-linear FP1 candidate for the
+  # closed test against the separately fitted linear model.
   only_linear_candidate <- vapply(
     powers,
     function(v) {
@@ -47,10 +73,14 @@ validate_mfp_candidate_powers <- function(powers, df) {
     logical(1L)
   )
 
-  # Step 2: Report an error listing every variable where this is a problem
-  # (only-linear candidate set combined with df > 1), rather than failing on
-  # just the first offending variable.
-  vars_invalid <- names(which(only_linear_candidate & df > 1L))
+  # MFPI may explicitly exempt its forced FP1 focal terms because there the
+  # FP degree is prespecified and p = 1 is a valid member of the FP1 search.
+  # All non-exempt variables retain the ordinary MFP validation rule.
+  vars_invalid <- names(which(
+    only_linear_candidate &
+      df > 1L &
+      !allow_linear_only_fp1
+  ))
 
   if (length(vars_invalid) > 0L) {
     stop(
@@ -59,9 +89,9 @@ validate_mfp_candidate_powers <- function(powers, df) {
         "set contains only power 1: ",
         paste(vars_invalid, collapse = ", "),
         ". Power 1 is fitted separately as the ordinary linear model and is ",
-        "excluded from FP1 candidate fitting. The closed-test procedure requires ",
-        "at least one available FP1 candidate when `df > 1`. Use `df = 1` for a ",
-        "purely linear effect, or include at least one non-1 candidate power."
+        "excluded from FP1 candidate fitting in the ordinary MFP closed-test ",
+        "procedure. Use `df = 1` for a purely linear effect, or include at ",
+        "least one non-1 candidate power."
       ),
       call. = FALSE
     )
@@ -164,6 +194,14 @@ validate_mfp_candidate_powers <- function(powers, df) {
 #'   eligible spike-at-zero term, the forced result is the complete maximum SAZ
 #'   representation (maximum positive-component form plus binary zero indicator),
 #'   so the reduced-component comparisons in SAZ Stage 2 are not run.
+#' @param retain_linear_fp1 Internal logical specifically for MFPI. MFPI uses
+#'   \code{fit_mfp()} to perform forced fixed-degree FP power searches, but its
+#'   FP1 search follows the conventional FP1 class and therefore retains the
+#'   linear power \eqn{p = 1} as a candidate. Set this to \code{TRUE} only for
+#'   those MFPI power-selection fits. The default \code{FALSE} preserves the
+#'   ordinary \code{mfp2()} closed-test behaviour, where the linear model is
+#'   fitted separately from the non-linear FP1 candidates. This option never
+#'   adds power \code{1} when it is absent from the supplied candidate set.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
@@ -278,6 +316,7 @@ fit_mfp <- function(x,
                     min_saz_component_prop,
                     saz_pre_resolved = FALSE,
                     force_max_fp,
+                    retain_linear_fp1 = FALSE,
                     has_offset,
                     verbose,
                     term_to_columns = NULL,
@@ -511,9 +550,25 @@ fit_mfp <- function(x,
 
   # Validate candidate powers after all early df modifications. This includes
   # ACD forcing df = 4 and SAZ-specific df capping for retained spike variables.
+  #
+  # Ordinary mfp2() closed testing requires a non-linear FP1 candidate whenever
+  # df > 1 because its linear model is fitted separately. MFPI is the deliberate
+  # exception: when MFPI prespecifies FP1 and forces that degree, p = 1 remains
+  # a legitimate member of the FP1 candidate class. Build an explicit exemption
+  # mask for those forced MFPI FP1 terms rather than modifying df itself.
+  allow_linear_only_fp1 <- stats::setNames(
+    rep(FALSE, length(df)),
+    names(df)
+  )
+  if (isTRUE(retain_linear_fp1)) {
+    forced_fp1 <- force_max_fp & df == 2L
+    allow_linear_only_fp1[forced_fp1] <- TRUE
+  }
+
   validate_mfp_candidate_powers(
     powers = powers,
-    df = df
+    df = df,
+    allow_linear_only_fp1 = allow_linear_only_fp1
   )
 
   if (isTRUE(verbose)) {
@@ -728,6 +783,7 @@ fit_mfp <- function(x,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
       force_max_fp    = force_max_fp,
+      retain_linear_fp1 = retain_linear_fp1,
       has_offset      = has_offset,
       n_obs           = n_obs,
       verbose         = verbose
@@ -1138,6 +1194,7 @@ find_best_fp_cycle <- function(x,
                                prev_adj_params,
                                transform_cache = NULL,
                                force_max_fp,
+                               retain_linear_fp1 = FALSE,
                                has_offset,
                                n_obs,
                                term_to_columns = NULL,
@@ -1194,6 +1251,7 @@ find_best_fp_cycle <- function(x,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
       force_max_fp = force_max_fp,
+      retain_linear_fp1 = retain_linear_fp1,
       has_offset   = has_offset,
       n_obs        = n_obs,
       verbose = verbose

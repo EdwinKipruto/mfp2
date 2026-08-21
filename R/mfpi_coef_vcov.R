@@ -628,94 +628,31 @@ mfpi_adjustment_coefficient_labels <- function(object,
   if (length(coefficient_names) == 0L) return(character(0L))
 
   labels <- coefficient_names
-  labels[labels != "(Intercept)"] <- sub(
-    "\\.[0-9]+$", "", labels[labels != "(Intercept)"]
-  )
-
   source_map <- interaction_model$transformed_to_model_columns
+  adj <- object$adjustment_model
+
   if (is.null(source_map) || !is.character(source_map) ||
-      is.null(names(source_map))) {
+      is.null(names(source_map)) || is.null(adj) || !inherits(adj, "mfp2")) {
     return(labels)
   }
 
   source_names <- names(source_map)[match(coefficient_names, unname(source_map))]
   have_source <- !is.na(source_names) & nzchar(source_names)
-  labels[have_source] <- sub("\\.[0-9]+$", "", source_names[have_source])
+  if (!any(have_source)) return(labels)
 
-  adj <- object$adjustment_model
-  if (is.null(adj) || !inherits(adj, "mfp2") || is.null(adj$fp_terms)) {
+  adjustment_info <- tryCatch(
+    mfp2_design_column_info(adj),
+    error = function(e) NULL
+  )
+  if (is.null(adjustment_info) || nrow(adjustment_info) == 0L) {
     return(labels)
   }
 
-  classified <- tryCatch(
-    mfp2_summary_classify_terms(adj),
-    error = function(e) NULL
-  )
-  if (is.null(classified)) return(labels)
-
-  for (i in which(have_source)) {
-    src <- source_names[i]
-    vars <- names(classified$cols_by_var)[vapply(
-      classified$cols_by_var,
-      function(cols) src %in% cols,
-      logical(1L)
-    )]
-    if (length(vars) != 1L) next
-
-    v <- vars[[1L]]
-    pos <- match(v, classified$variable_names)
-    if (is.na(pos)) next
-
-    if (isTRUE(classified$is_nonlinear[pos])) {
-      # Ordinary FP adjustment terms should use the same compact, raw-scale
-      # notation as the focal MFPI interaction terms.  The generic mfp2
-      # summary formatter intentionally emits parse-like expressions such as
-      # `((age))^(3)`, which are useful internally but unnecessarily noisy in
-      # the MFPI coefficient display.  Reconstruct the complete FP basis from
-      # the stored selected powers so repeated powers are labelled correctly
-      # (for example, `age^3` and `age^3 * log(age)`).
-      ordinary_fp <- !isTRUE(classified$acd[pos]) &&
-        !isTRUE(classified$zero[pos]) &&
-        !isTRUE(classified$catzero[pos]) &&
-        !isTRUE(classified$spike[pos])
-
-      candidate <- NULL
-      if (ordinary_fp) {
-        cols_v <- classified$cols_by_var[[v]]
-        k <- match(src, cols_v)
-        powers_v <- classified$powers_by_var[[pos]]
-
-        if (!is.na(k) && length(powers_v) == length(cols_v)) {
-          fp_labels <- tryCatch(
-            mfpi_fp_transformation_labels(
-              object = object,
-              term = v,
-              powers = powers_v
-            ),
-            error = function(e) NULL
-          )
-          if (!is.null(fp_labels) && k <= length(fp_labels)) {
-            candidate <- fp_labels[[k]]
-          }
-        }
-      }
-
-      # ACD, SAZ/zero, and other special terms retain the mfp2 formatter,
-      # because their basis is not represented by an ordinary FP power vector.
-      if (is.null(candidate)) {
-        candidate <- tryCatch(
-          mfp2_summary_term_label(adj, classified, v, src),
-          error = function(e) NULL
-        )
-      }
-
-      if (is.character(candidate) && length(candidate) == 1L &&
-          !is.na(candidate) && nzchar(candidate)) {
-        labels[i] <- candidate
-      }
-    } else if (isTRUE(classified$is_linear[pos])) {
-      labels[i] <- v
-    }
+  info_rows <- match(source_names[have_source], adjustment_info$transformed_column)
+  matched <- !is.na(info_rows)
+  if (any(matched)) {
+    label_positions <- which(have_source)[matched]
+    labels[label_positions] <- adjustment_info$basis[info_rows[matched]]
   }
 
   labels
@@ -759,69 +696,8 @@ mfpi_resolve_fitted_coefficient_names <- function(interaction_model,
 
 # Convert one selected FP power vector into readable transformation labels.
 mfpi_fp_transformation_labels <- function(object, term, powers) {
-  if (!is.numeric(powers) || length(powers) == 0L || anyNA(powers) ||
-      any(!is.finite(powers))) {
-    stop("`powers` must be a finite non-empty numeric vector.", call. = FALSE)
-  }
-
   shift <- mfpi_named_scalar(object$shift, term, default = 0)
-  base <- mfpi_fp_base_label(term, shift)
-  log_arg <- mfpi_fp_log_argument(term, shift)
-
-  out <- character(length(powers))
-  seen <- numeric(0L)
-  for (i in seq_along(powers)) {
-    p <- powers[i]
-    repetition <- sum(seen == p) + 1L
-
-    first <- if (isTRUE(p == 0)) {
-      paste0("log(", log_arg, ")")
-    } else if (isTRUE(p == 1)) {
-      base
-    } else {
-      paste0(base, "^", format(p, trim = TRUE, scientific = FALSE))
-    }
-
-    if (repetition == 1L) {
-      label <- first
-    } else if (isTRUE(p == 0)) {
-      label <- paste0("log(", log_arg, ")^", repetition)
-    } else if (repetition == 2L) {
-      label <- paste0(first, " * log(", log_arg, ")")
-    } else {
-      label <- paste0(first, " * log(", log_arg, ")^", repetition - 1L)
-    }
-
-    out[i] <- label
-    seen <- c(seen, p)
-  }
-  out
-}
-
-
-# Build the raw-scale variable expression shown inside FP transformation labels.
-mfpi_fp_base_label <- function(term, shift) {
-  if (is.na(shift) || isTRUE(shift == 0)) return(term)
-
-  abs_shift <- format(abs(shift), trim = TRUE, scientific = FALSE)
-  if (shift > 0) {
-    paste0("(", term, " + ", abs_shift, ")")
-  } else {
-    paste0("(", term, " - ", abs_shift, ")")
-  }
-}
-
-
-# Build the expression shown inside log() for shifted FP transformations.
-mfpi_fp_log_argument <- function(term, shift) {
-  if (is.na(shift) || isTRUE(shift == 0)) return(term)
-
-  abs_shift <- format(abs(shift), trim = TRUE, scientific = FALSE)
-  if (shift > 0) {
-    paste0(term, " + ", abs_shift)
-  } else {
-    paste0(term, " - ", abs_shift)
-  }
+  mfp2_fp_basis_labels(term = term, powers = powers, shift = shift)
 }
 
 

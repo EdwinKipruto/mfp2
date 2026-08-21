@@ -725,6 +725,374 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
 }
 
 # ---------------------------------------------------------------------------
+# Final design-column description
+# ---------------------------------------------------------------------------
+
+# Build compact labels for an ordinary fractional-polynomial basis.
+#
+# The label is expressed on the scale used by the final model. A nonzero shift
+# is shown explicitly, and repeated powers use the standard FP log multiplier.
+mfp2_fp_basis_labels <- function(term, powers, shift = 0) {
+  if (!is.numeric(powers) || length(powers) == 0L || anyNA(powers) ||
+      any(!is.finite(powers))) {
+    stop("`powers` must be a finite non-empty numeric vector.", call. = FALSE)
+  }
+
+  if (length(shift) != 1L || is.na(shift) || !is.finite(shift)) shift <- 0
+
+  base <- if (isTRUE(shift == 0)) {
+    term
+  } else if (shift > 0) {
+    paste0("(", term, " + ", format(abs(shift), trim = TRUE, scientific = FALSE), ")")
+  } else {
+    paste0("(", term, " - ", format(abs(shift), trim = TRUE, scientific = FALSE), ")")
+  }
+
+  log_arg <- if (isTRUE(shift == 0)) {
+    term
+  } else if (shift > 0) {
+    paste0(term, " + ", format(abs(shift), trim = TRUE, scientific = FALSE))
+  } else {
+    paste0(term, " - ", format(abs(shift), trim = TRUE, scientific = FALSE))
+  }
+
+  out <- character(length(powers))
+  seen <- numeric(0L)
+
+  for (i in seq_along(powers)) {
+    p <- powers[[i]]
+    repetition <- sum(seen == p) + 1L
+
+    first <- if (isTRUE(p == 0)) {
+      paste0("log(", log_arg, ")")
+    } else if (isTRUE(p == 1)) {
+      base
+    } else {
+      paste0(base, "^", format(p, trim = TRUE, scientific = FALSE))
+    }
+
+    if (repetition == 1L) {
+      out[[i]] <- first
+    } else if (isTRUE(p == 0)) {
+      out[[i]] <- paste0("log(", log_arg, ")^", repetition)
+    } else if (repetition == 2L) {
+      out[[i]] <- paste0(first, " * log(", log_arg, ")")
+    } else {
+      out[[i]] <- paste0(first, " * log(", log_arg, ")^", repetition - 1L)
+    }
+
+    seen <- c(seen, p)
+  }
+
+  out
+}
+
+# Format one factor design column from its stored level-by-design matrix.
+# Treatment-coded indicator columns are shown as level indicators. Other
+# contrast columns are shown by their exact fitted values across factor levels.
+mfp2_factor_design_column_info <- function(object, term, source) {
+  factor_info <- if (!is.null(object$formula_factor_info)) {
+    object$formula_factor_info[[term]]
+  } else {
+    NULL
+  }
+
+  if (is.null(factor_info) || is.null(factor_info$design_by_level)) {
+    return(NULL)
+  }
+
+  design <- as.matrix(factor_info$design_by_level)
+  if (is.null(colnames(design)) || !source %in% colnames(design) ||
+      is.null(rownames(design))) {
+    return(NULL)
+  }
+
+  values <- suppressWarnings(as.numeric(design[, source]))
+  if (length(values) != nrow(design) || anyNA(values) || any(!is.finite(values))) {
+    return(NULL)
+  }
+
+  variable <- factor_info$variable
+  if (is.null(variable) || length(variable) != 1L || is.na(variable) ||
+      !nzchar(variable)) {
+    variable <- term
+  }
+
+  tolerance <- 1e-10
+  is_zero <- abs(values) <= tolerance
+  is_one <- abs(values - 1) <= tolerance
+
+  if (all(is_zero | is_one) && sum(is_one) == 1L) {
+    level <- rownames(design)[which(is_one)]
+    basis <- sprintf(
+      "I(%s = %s)",
+      variable,
+      encodeString(level, quote = "\"")
+    )
+  } else {
+    formatted_values <- vapply(values, function(value) {
+      format(signif(value, 6L), trim = TRUE, scientific = FALSE)
+    }, character(1L))
+    level_values <- paste0(
+      encodeString(rownames(design), quote = "\""),
+      "=",
+      formatted_values
+    )
+    basis <- paste0("contrast(", paste(level_values, collapse = ", "), ")")
+  }
+
+  list(variable = variable, basis = basis)
+}
+
+# Describe the final transformed columns from metadata recorded when the design
+# matrix is assembled. Source variables, component types, zero handling,
+# centering, and model-column mappings are all read directly from the fitted
+# object; generated column names are not interpreted.
+mfp2_design_column_info <- function(object) {
+  transformed_to_model <- object$transformed_to_model_columns
+  transformed_to_source <- object$transformed_column_to_source
+  transformed_component <- object$transformed_column_component
+  transformed_zero_handled <- object$transformed_column_zero_handled
+  transformed_centered <- object$transformed_column_centered
+  term_to_columns <- object$term_to_columns
+
+  # An intercept-only final model has no transformed predictor columns. The
+  # fitting backend records this as an empty named transformed-to-model map,
+  # while the transformation-specific metadata are naturally NULL because no
+  # design matrix was constructed. Accept that empty design only when the
+  # fitted coefficient vector also contains no predictor coefficients; this
+  # keeps a genuinely incomplete nonempty design from being silently hidden.
+  coefficient_names <- names(object$coefficients)
+  if (is.null(coefficient_names)) {
+    coefficient_names <- character(0L)
+  }
+  predictor_coefficients <- setdiff(coefficient_names, "(Intercept)")
+
+  if (!is.null(transformed_to_model) &&
+      length(transformed_to_model) == 0L &&
+      !is.null(names(transformed_to_model)) &&
+      length(predictor_coefficients) == 0L) {
+    return(data.frame(
+      variable = character(0L),
+      transformed_column = character(0L),
+      model_column = character(0L),
+      basis = character(0L),
+      center = numeric(0L),
+      centered = logical(0L),
+      zero_handled = logical(0L),
+      component = character(0L),
+      stringsAsFactors = FALSE,
+      row.names = NULL
+    ))
+  }
+
+  metadata <- list(
+    transformed_to_model = transformed_to_model,
+    transformed_to_source = transformed_to_source,
+    transformed_component = transformed_component,
+    transformed_zero_handled = transformed_zero_handled,
+    transformed_centered = transformed_centered
+  )
+
+  valid_named_vector <- function(value) {
+    !is.null(value) && !is.null(names(value)) && !anyDuplicated(names(value))
+  }
+
+  if (!all(vapply(metadata, valid_named_vector, logical(1L))) ||
+      is.null(term_to_columns) || is.null(names(term_to_columns))) {
+    stop("Final design-column metadata is incomplete.", call. = FALSE)
+  }
+
+  transformed_columns <- names(transformed_to_model)
+  aligned <- vapply(metadata[-1L], function(value) {
+    setequal(transformed_columns, names(value))
+  }, logical(1L))
+  if (!all(aligned)) {
+    stop("Final design-column metadata is not aligned.", call. = FALSE)
+  }
+
+  components_allowed <- c(
+    "fp_basis", "acd_basis", "zero_indicator", "identity_binary"
+  )
+  unknown_components <- setdiff(
+    unique(unname(transformed_component[transformed_columns])),
+    components_allowed
+  )
+  if (length(unknown_components) > 0L) {
+    stop(
+      sprintf(
+        "Unknown transformed-column component(s): %s.",
+        paste(unknown_components, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  # Each raw source column must belong to exactly one conceptual model term.
+  source_to_term <- character(0L)
+  for (term in names(term_to_columns)) {
+    raw_columns <- as.character(term_to_columns[[term]])
+    for (raw_column in raw_columns) {
+      if (raw_column %in% names(source_to_term) &&
+          !identical(unname(source_to_term[[raw_column]]), term)) {
+        stop(
+          sprintf("Source column '%s' belongs to more than one model term.", raw_column),
+          call. = FALSE
+        )
+      }
+      source_to_term[[raw_column]] <- term
+    }
+  }
+
+  sources <- unname(transformed_to_source[transformed_columns])
+  missing_sources <- is.na(sources) | !nzchar(sources)
+  if (any(missing_sources)) {
+    stop("Final design metadata contains an unmapped source column.", call. = FALSE)
+  }
+
+  missing_terms <- setdiff(unique(sources), names(source_to_term))
+  if (length(missing_terms) > 0L) {
+    stop(
+      sprintf(
+        "Final design metadata contains unmapped source column(s): %s.",
+        paste(missing_terms, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  centers <- object$centers
+  if (!is.null(centers)) {
+    if (is.null(names(centers)) || anyDuplicated(names(centers)) ||
+        !setequal(transformed_columns, names(centers))) {
+      stop("Final centering constants are not aligned with design columns.", call. = FALSE)
+    }
+  }
+
+  fp_terms <- object$fp_terms
+  power_columns <- if (!is.null(fp_terms)) {
+    grep("^power[0-9]+$", names(fp_terms), value = TRUE)
+  } else {
+    character(0L)
+  }
+
+  rows <- vector("list", length(transformed_columns))
+
+  for (i in seq_along(transformed_columns)) {
+    transformed_column <- transformed_columns[[i]]
+    source <- transformed_to_source[[transformed_column]]
+    component <- transformed_component[[transformed_column]]
+    zero_handled <- isTRUE(transformed_zero_handled[[transformed_column]])
+    centered <- isTRUE(transformed_centered[[transformed_column]])
+    term <- source_to_term[[source]]
+    raw_columns <- as.character(term_to_columns[[term]])
+
+    mapped_block <- term_uses_column_mapping(term, raw_columns)
+    display_variable <- if (mapped_block) term else source
+    basis <- source
+
+    factor_column <- if (mapped_block) {
+      mfp2_factor_design_column_info(object, term, source)
+    } else {
+      NULL
+    }
+
+    if (!is.null(factor_column)) {
+      display_variable <- factor_column$variable
+      basis <- factor_column$basis
+    } else if (mapped_block) {
+      # Explicit grouped design blocks retain their supplied source-column
+      # labels when there is no factor level-to-design mapping.
+      basis <- source
+    } else if (identical(component, "zero_indicator")) {
+      basis <- sprintf("I(%s <= 0)", term)
+    } else if (identical(component, "identity_binary")) {
+      basis <- term
+    } else {
+      if (is.null(fp_terms) || is.null(rownames(fp_terms)) ||
+          !term %in% rownames(fp_terms)) {
+        stop(sprintf("Missing FP metadata for term '%s'.", term), call. = FALSE)
+      }
+
+      slots <- suppressWarnings(as.numeric(unlist(
+        fp_terms[term, power_columns, drop = FALSE],
+        use.names = FALSE
+      )))
+      term_row <- fp_terms[term, , drop = FALSE]
+      is_acd <- mfp2_summary_flag(term_row, "acd")[[1L]]
+
+      shift <- 0
+      transformations <- object$transformations
+      if (!is.null(transformations) && term %in% rownames(transformations) &&
+          "shift" %in% colnames(transformations)) {
+        shift_value <- suppressWarnings(as.numeric(transformations[term, "shift"]))
+        if (length(shift_value) == 1L && !is.na(shift_value) &&
+            is.finite(shift_value)) {
+          shift <- shift_value
+        }
+      }
+
+      if (zero_handled) {
+        shift <- 0
+      }
+
+      if (identical(component, "acd_basis")) {
+        power <- if (length(slots) >= 2L) slots[[2L]] else NA_real_
+        basis <- sprintf("A(%s)", term)
+        if (!is.na(power)) {
+          basis <- mfp2_fp_basis_labels(basis, power, shift = 0)[[1L]]
+        }
+      } else if (identical(component, "fp_basis")) {
+        if (isTRUE(is_acd)) {
+          powers <- if (length(slots) >= 1L) slots[[1L]] else NA_real_
+          powers <- powers[!is.na(powers)]
+        } else {
+          powers <- slots[!is.na(slots)]
+        }
+
+        if (length(powers) == 0L) {
+          stop(sprintf("Missing FP power metadata for term '%s'.", term), call. = FALSE)
+        }
+
+        fp_columns_for_source <- transformed_columns[
+          unname(transformed_to_source[transformed_columns]) == source &
+            unname(transformed_component[transformed_columns]) == "fp_basis"
+        ]
+        k <- match(transformed_column, fp_columns_for_source)
+        labels <- mfp2_fp_basis_labels(term, powers, shift = shift)
+
+        if (is.na(k) || k > length(labels)) {
+          stop(
+            sprintf("FP basis metadata is not aligned for term '%s'.", term),
+            call. = FALSE
+          )
+        }
+
+        basis <- labels[[k]]
+        if (zero_handled) {
+          basis <- sprintf("I(%s > 0) * %s", term, basis)
+        }
+      }
+    }
+
+    rows[[i]] <- data.frame(
+      variable = display_variable,
+      transformed_column = transformed_column,
+      model_column = unname(transformed_to_model[[transformed_column]]),
+      basis = basis,
+      center = if (is.null(centers)) NA_real_ else unname(centers[[transformed_column]]),
+      centered = centered,
+      zero_handled = zero_handled,
+      component = component,
+      stringsAsFactors = FALSE,
+      row.names = NULL
+    )
+  }
+
+  do.call(rbind, rows)
+}
+
+# ---------------------------------------------------------------------------
 # Basis coefficients table (optional)
 # ---------------------------------------------------------------------------
 

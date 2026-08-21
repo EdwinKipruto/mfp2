@@ -1,15 +1,14 @@
 # Variable-ordering helpers for the MFP backfitting algorithm
 #
-# The full linear model has two distinct roles in mfp2:
+# fit_mfp() supplies the resolved linear reference representation:
 #
-#   1. It provides the null/full-linear model fit statistics retained for later
-#      reporting, including the null and fitted log-likelihoods.
-#   2. When significance-based ordering is requested, it is the reference model
-#      against which each leave-one-predictor-out model is compared.
+#   ordinary term      -> x
+#   zero term          -> x+ (nonpositive values already recoded to zero)
+#   catzero/SAZ term   -> x+ plus a prebuilt structural-zero indicator
 #
-# Importantly, the full linear model itself does not depend on `xorder`.
-# `xorder` affects only the order in which predictors are visited during the
-# subsequent MFP backfitting cycles.
+# This file does not recode zero values or construct catzero indicators. It only
+# assembles the supplied reusable blocks, fits the full reference once, and uses
+# that same fit for leave-one-conceptual-term-out significance ordering.
 
 
 # -----------------------------------------------------------------------------
@@ -18,94 +17,71 @@
 
 #' Fit the Full Linear Reference Model and Determine Predictor Visiting Order
 #'
-#' Fits the model containing every candidate predictor as an ordinary linear
-#' term and determines the order in which predictors are visited by the MFP
-#' backfitting algorithm.
+#' Fits the resolved full linear reference model and determines the order in
+#' which conceptual predictors are visited by the MFP backfitting algorithm.
 #'
 #' @details
-#' The full linear reference model is fitted unconditionally because its null
-#' and fitted-model statistics are retained by \code{fit_mfp()}. For GLMs,
-#' the null deviance reported by the full reference fit is retained directly;
-#' no separate intercept-only likelihood fit is required here.
-#' This fit is invariant to \code{xorder}: changing the visiting order does not
-#' change the predictors, likelihood, coefficients, or deviance of the full
-#' linear model.
+#' The caller supplies the continuous reference matrix in its final starting
+#' form. Thus ordinary terms remain unchanged, while terms with \code{zero}
+#' handling have already had nonpositive values recoded to zero. Optional
+#' \code{catzero_blocks} contain the already-built binary structural-zero
+#' indicators. These indicators are appended to the corresponding conceptual
+#' terms only for fitting the reference model; they are not recalculated here.
 #'
-#' Predictor ranking is a separate operation. It is performed only when all of
-#' the following are true:
-#' \itemize{
-#'   \item more than one predictor is present; and
-#'   \item \code{xorder} is \code{"ascending"} or \code{"descending"}.
-#' }
+#' The full reference model is fitted unconditionally because its null and
+#' fitted-model statistics are retained by \code{fit_mfp()}. For GLMs, the null
+#' deviance reported by the full fit is retained directly; no separate
+#' intercept-only likelihood fit is required. For Cox models the reference
+#' remains intercept-free.
 #'
-#' For significance-based ordering, one reduced model is fitted per predictor by
-#' omitting that predictor from the full linear model. A likelihood-ratio test
-#' compares the reduced model with the full model. Predictors are then ordered by
-#' the resulting p-values:
+#' Significance-based ranking is performed only when more than one conceptual
+#' predictor is present and \code{xorder} is \code{"ascending"} or
+#' \code{"descending"}. One reduced model is fitted per conceptual predictor by
+#' removing that predictor's complete reference block. Consequently a
+#' \code{catzero} or retained spike-at-zero term is tested jointly through its
+#' positive-part continuous column and binary indicator. Test degrees of freedom
+#' are the fitted rank difference between the full and reduced models.
+#'
 #' \describe{
-#'   \item{\code{"ascending"}}{Smallest p-value first; the predictor whose
-#'     omission most strongly worsens model fit is visited first.}
-#'   \item{\code{"descending"}}{Largest p-value first; the least significant
-#'     predictor is visited first.}
-#'   \item{\code{"original"}}{The original column order of \code{x} is
-#'     retained and no reduced models are fitted.}
+#'   \item{\code{"ascending"}}{Smallest p-value first.}
+#'   \item{\code{"descending"}}{Largest p-value first.}
+#'   \item{\code{"original"}}{Preserve the supplied conceptual-term order and
+#'     fit no reduced ordering models.}
 #' }
-#'
-#' With a single predictor, no ranking problem exists. The full linear reference
-#' model is still fitted so that its deviance is available, and the sole
-#' predictor is returned unchanged.
 #'
 #' @section Deviance convention:
 #' Deviance is family-specific and is taken directly from the full reference
 #' fit returned by \code{fit_model()}. For GLMs, \code{null_deviance} and
 #' \code{linear_deviance} are the \code{null.deviance} and \code{deviance}
-#' values computed by \code{stats::glm.fit()} or \code{stats::glm()}. For Cox
-#' models, they are minus twice the null and fitted partial log-likelihoods.
+#' values returned by the GLM fit. For Cox models, they are minus twice the null
+#' and fitted partial log-likelihoods.
 #'
-#' These reported deviances are separate from the log-likelihoods used for the
-#' leave-one-predictor-out likelihood-ratio tests below.
-#'
-#' @param xorder Character scalar controlling the predictor visiting order.
-#'   Supported values are \code{"ascending"}, \code{"descending"}, and
+#' @param xorder Character scalar controlling the conceptual-predictor visiting
+#'   order. Supported values are \code{"ascending"}, \code{"descending"}, and
 #'   \code{"original"}.
-#' @param x Numeric design matrix with one row per observation and one or more
-#'   raw columns per conceptual term. The matrix excludes the intercept for both
-#'   GLM and Cox models.
-#' @param term_to_columns Named list mapping each conceptual term to the raw
-#'   design-matrix columns that represent it. Singleton terms contain one column;
-#'   grouped categorical terms contain multiple columns.
-#' @param y Response used to fit the models. For GLMs, this may be a numeric
-#'   vector, a factor response accepted by \code{stats::glm()}, or a two-column
-#'   matrix of grouped binomial counts. For Cox models, this must be a
-#'   \code{survival::Surv()} object.
+#' @param x Numeric matrix containing the continuous reference columns, excluding
+#'   the intercept. Structural-zero recoding must already have been applied by
+#'   the caller.
+#' @param term_to_columns Named list mapping each conceptual term to its columns
+#'   in \code{x}. Grouped fixed terms may map to multiple columns.
+#' @param catzero_blocks Optional named list, indexed by conceptual term, of
+#'   prebuilt one-column binary structural-zero indicator matrices. NULL entries
+#'   are ignored. The matrices are reused as supplied and are not recomputed.
+#' @param y Response used to fit the models.
 #' @param family GLM family object used by \code{fit_model()}, or character
 #'   \code{"cox"} for a Cox proportional-hazards model.
-#' @param family_string Normalized character family name, for example
-#'   \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
-#'   \code{"negbin"}, or \code{"cox"}.
+#' @param family_string Normalized character family name.
 #' @param weights Optional observation weights passed to \code{fit_model()}.
 #' @param offset Optional linear-predictor offset passed to \code{fit_model()}.
 #' @param strata Optional Cox stratification object. Ignored for GLMs.
 #' @param method Cox tie-handling method. Ignored for GLMs.
-#' @param control Model-fitting control object passed to the GLM or Cox fitting
-#'   path.
+#' @param control Model-fitting control object.
 #' @param nocenter Cox centering-suppression argument. Ignored for GLMs.
+#' @param fitter GLM fitting backend; ignored for Cox models.
 #'
-#' @return A list with three components:
-#' \describe{
-#'   \item{\code{variables_ordered}}{Character vector containing every
-#'     predictor name exactly once, in the requested visiting order.}
-#'   \item{\code{null_deviance}}{Family-specific deviance of the null model
-#'     associated with the full linear reference fit.}
-#'   \item{\code{linear_deviance}}{Family-specific deviance of the full
-#'     linear reference model.}
-#'   \item{\code{linear_logl}}{Maximized log-likelihood of the full linear
-#'     reference model.}
-#'   \item{\code{linear_df}}{Model degrees of freedom for the full linear
-#'     reference model.}
-#'   \item{\code{null_logl}}{Null partial log-likelihood for Cox models;
-#'     \code{NA_real_} for GLMs.}
-#' }
+#' @return A list containing \code{variables_ordered}, \code{null_deviance},
+#'   \code{linear_deviance}, \code{linear_logl}, \code{linear_df}, and
+#'   \code{null_logl}.
 #'
 #' @keywords internal
 #' @noRd
@@ -121,6 +97,7 @@ order_variables <- function(xorder = "ascending",
                             control = NULL,
                             nocenter = NULL,
                             term_to_columns = NULL,
+                            catzero_blocks = NULL,
                             fitter = "base") {
   if (is.null(term_to_columns)) {
     term_to_columns <- stats::setNames(as.list(colnames(x)), colnames(x))
@@ -129,9 +106,8 @@ order_variables <- function(xorder = "ascending",
   predictor_names <- names(term_to_columns)
   n_predictors <- length(term_to_columns)
 
-  # Cox fast fits require integer stratum identifiers. Convert an observation-
-  # length factor/other strata object once for the complete ordering operation
-  # rather than repeating the same coercion in every leave-one-term-out fit.
+  # Cox fast fits require integer stratum identifiers. Convert once for the
+  # complete reference/ordering operation rather than once per reduced model.
   strata_ordering <- if (identical(family_string, "cox") &&
                          !is.null(strata) && !is.integer(strata)) {
     as.integer(strata)
@@ -139,23 +115,37 @@ order_variables <- function(xorder = "ascending",
     strata
   }
 
-  # GLM ordering fits all use the same intercept-augmented source matrix.
-  # Allocate and fill it once, then form reduced models by dropping columns.
-  # Cox models remain intercept-free and can reuse x directly.
   use_glm_intercept_template <- !identical(family_string, "cox")
-  x_fit <- if (use_glm_intercept_template) {
-    assemble_design_matrix(
-      blocks = list(x),
-      nobs = NROW(x),
-      intercept = TRUE
-    )
+
+  # Fast path: when no catzero/SAZ indicator blocks are present, the supplied x
+  # is already the complete reference design. No structural-zero assembly or
+  # extra predictor matrix is created. Plain zero terms need no special branch
+  # here because fit_mfp() has already recoded their continuous column in x.
+  if (is.null(catzero_blocks)) {
+    x_fit <- if (use_glm_intercept_template) {
+      assemble_design_matrix(
+        blocks = list(x),
+        nobs = NROW(x),
+        intercept = TRUE
+      )
+    } else {
+      x
+    }
+    reference_term_to_columns <- term_to_columns
   } else {
-    x
+    reference_design <- assemble_linear_reference_design(
+      x = x,
+      term_to_columns = term_to_columns,
+      catzero_blocks = catzero_blocks,
+      intercept = use_glm_intercept_template
+    )
+    x_fit <- reference_design$x
+    reference_term_to_columns <- reference_design$term_to_columns
   }
 
-  # The full linear reference model is required independently of predictor
-  # ordering. Fit it once and reuse its log-likelihood for all reduced-model
-  # comparisons below.
+  # Fit the resolved full reference once. The same likelihood/df are reused by
+  # every leave-one-term-out comparison, so the full model is never refitted for
+  # significance ordering.
   full_reference <- fit_full_linear_reference(
     x = x_fit,
     y = y,
@@ -171,16 +161,13 @@ order_variables <- function(xorder = "ascending",
     x_has_intercept = use_glm_intercept_template
   )
 
-  # No reduced-model fits are needed when the user requests the original order
-  # or when only one predictor is available. The full reference fit above is
-  # nevertheless retained because its deviance is required for reporting.
   rank_predictors <- n_predictors > 1L && !identical(xorder, "original")
 
   variables_ordered <- if (rank_predictors) {
     order_variables_by_significance(
       xorder = xorder,
       x = x_fit,
-      term_to_columns = term_to_columns,
+      term_to_columns = reference_term_to_columns,
       y = y,
       family = family,
       family_string = family_string,
@@ -202,17 +189,137 @@ order_variables <- function(xorder = "ascending",
     variables_ordered = variables_ordered,
     null_deviance = full_reference$null_deviance,
     linear_deviance = full_reference$model_deviance,
-    # Likelihood-scale quantities retained for downstream inference and object
-    # compatibility. Cox supplies its null partial likelihood from the full
-    # reference fit. GLMs report their stored deviances and therefore do not
-    # require an intercept-only likelihood fit.
     linear_logl = full_reference$logl,
-    linear_df   = full_reference$df,
-    null_logl   = if (identical(family_string, "cox")) {
+    linear_df = full_reference$df,
+    null_logl = if (identical(family_string, "cox")) {
       full_reference$null_logl
     } else {
       NA_real_
     }
+  )
+}
+
+
+# -----------------------------------------------------------------------------
+# assemble_linear_reference_design() -----------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Assemble the Linear Reference Design from Reusable Blocks
+#'
+#' Appends precomputed catzero/SAZ indicator blocks to the continuous reference
+#' matrix and extends the conceptual term-to-column mapping. This helper does not
+#' recode x and does not calculate any indicator values.
+#'
+#' @inheritParams order_variables
+#' @param intercept Logical; prepend a GLM intercept when TRUE.
+#'
+#' @return A list containing the assembled fit matrix \code{x} and extended
+#'   \code{term_to_columns} mapping.
+#' @keywords internal
+#' @noRd
+assemble_linear_reference_design <- function(x,
+                                             term_to_columns,
+                                             catzero_blocks,
+                                             intercept = FALSE) {
+  if (is.null(names(catzero_blocks))) {
+    stop("Internal error: catzero reference blocks must be named.", call. = FALSE)
+  }
+
+  active <- names(catzero_blocks)[vapply(
+    catzero_blocks,
+    function(block) !is.null(block) && NCOL(block) > 0L,
+    logical(1L)
+  )]
+
+  # A non-NULL all-empty list is accepted for defensive internal calls, but the
+  # normal fit_mfp() path passes NULL and therefore bypasses this helper entirely.
+  if (length(active) == 0L) {
+    x_fit <- if (isTRUE(intercept)) {
+      assemble_design_matrix(list(x), NROW(x), intercept = TRUE)
+    } else {
+      x
+    }
+    return(list(x = x_fit, term_to_columns = term_to_columns))
+  }
+
+  missing_terms <- setdiff(active, names(term_to_columns))
+  if (length(missing_terms) > 0L) {
+    stop(
+      "Internal error: catzero reference blocks do not match conceptual terms.",
+      call. = FALSE
+    )
+  }
+
+  for (term in active) {
+    block <- catzero_blocks[[term]]
+    if (NCOL(block) != 1L || NROW(block) != NROW(x)) {
+      stop(
+        sprintf(
+          "Internal error: catzero reference block '%s' must have one column and match x rows.",
+          term
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  # Indicator blocks are stored for backfitting with the generic column name
+  # "catzero". In the assembled linear-reference design, name each appended
+  # indicator directly from the conceptual term that generated it, following
+  # mfp2's existing "<term>_bin" convention. The stored backfitting matrices
+  # themselves are left unchanged.
+  indicator_names <- paste0(active, "_bin")
+
+  # Do not silently repair a collision with make.unique(). A generated *_bin
+  # name identifies a specific structural-zero indicator, so an existing design
+  # column with the same name would make the conceptual term mapping ambiguous.
+  # Check before allocating the augmented reference matrix.
+  if (anyDuplicated(indicator_names)) {
+    stop(
+      "Internal error: duplicate catzero indicator names were generated.",
+      call. = FALSE
+    )
+  }
+
+  name_conflicts <- indicator_names %in% colnames(x)
+  if (any(name_conflicts)) {
+    stop(
+      sprintf(
+        "Generated catzero indicator name(s) already exist in the model matrix: %s.",
+        paste(indicator_names[name_conflicts], collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  # assemble_design_matrix() allocates the destination once and copies x and the
+  # existing indicator blocks directly into it. No cbind(x, indicators)
+  # intermediate is created.
+  x_fit <- assemble_design_matrix(
+    blocks = c(list(x), unname(catzero_blocks[active])),
+    nobs = NROW(x),
+    intercept = intercept
+  )
+
+  # The active indicator blocks are appended in the same order as `active`, and
+  # each block has exactly one column (validated above). Rename only those
+  # assembled columns; catzero_blocks continues to use the generic "catzero"
+  # column name required by backfitting.
+  indicator_positions <- NCOL(x_fit) - length(active) + seq_along(active)
+  colnames(x_fit)[indicator_positions] <- indicator_names
+
+  reference_term_to_columns <- term_to_columns
+  for (index in seq_along(active)) {
+    term <- active[[index]]
+    reference_term_to_columns[[term]] <- c(
+      reference_term_to_columns[[term]],
+      indicator_names[[index]]
+    )
+  }
+
+  list(
+    x = x_fit,
+    term_to_columns = reference_term_to_columns
   )
 }
 
@@ -223,17 +330,17 @@ order_variables <- function(xorder = "ascending",
 
 #' Fit the Full Linear Reference Model
 #'
-#' Fits a model containing all candidate predictors as ordinary linear terms.
-#' The fitted model supplies both the null and full-linear-model deviances and,
-#' when
-#' significance-based ordering is requested, the full-model likelihood and
-#' degrees of freedom used in leave-one-predictor-out likelihood-ratio tests.
+#' Fits the resolved full linear reference design supplied by \code{order_variables()}.
+#' The design may contain positive-part continuous columns and structural-zero
+#' indicators in addition to ordinary linear columns. The fitted model supplies
+#' the null/full-reference deviances and the likelihood/df used by the
+#' leave-one-conceptual-term-out ordering tests.
 #'
 #' @inheritParams order_variables
 #'
 #' @return A lightweight model-fit wrapper returned by \code{fit_model()},
 #'   including \code{logl}, \code{df}, \code{rank}, \code{null_deviance},
-#'   \code{model_deviance}, coefficients, rank, and degrees of freedom. Cox
+#'   \code{model_deviance}, coefficients, and degrees of freedom. Cox
 #'   fits additionally include \code{null_logl}. The underlying fast-fit object is
 #'   not retained.
 #'
@@ -298,8 +405,7 @@ fit_full_linear_reference <- function(x,
 #'
 #' @inheritParams order_variables
 #' @param full_reference Model-fit wrapper returned by
-#'   \code{fit_full_linear_reference()} for the model containing all predictors
-#'   linearly.
+#'   \code{fit_full_linear_reference()} for the resolved full reference model.
 #'
 #' @return Character vector containing all predictor names in significance-based
 #'   visiting order.

@@ -18,15 +18,15 @@ have nothing left to annotate when this table isn't printed). Default is
 
 \item{notes}{Logical. If \code{FALSE}, suppresses all auto-generated
 explanatory text printed after the Detailed Settings table -- both the
-\code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship,
-\code{select}/\code{alpha} divergence) and the column-definition
+\code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship
+and variable-specific selection settings) and the column-definition
 paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
 Has no effect when \code{detailed_settings = FALSE}. Default is
 \code{TRUE}.}
 
-\item{...}{Further arguments passed to \code{print.default()} when printing
-the coefficient vector. The \code{digits} argument, when supplied, is also
-used to format the model-fit values.}
+\item{...}{Further print arguments. The \code{digits} argument, when
+supplied, is used to format the final coefficient table and model-fit
+values.}
 }
 \value{
 Invisibly returns \code{x}.
@@ -59,9 +59,21 @@ model degrees of freedom and is sorted with selected variables first. For
 grouped terms, the initial degrees of freedom count all member design columns.
 The Spike-at-Zero subsection also reports \code{prop_zero}, the proportion of
 finite fitting-sample observations in the structural-zero component.
-Notes about \code{select}/\code{alpha} divergence and the
+Notes about variable-specific \code{select}/\code{alpha} settings and the
 \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 column whose meaning may not be obvious, are printed immediately below it.
+When the SAZ table contains an \code{ACD} column, a short note explains that
+\code{ACD = yes} identifies a variable that also underwent ACD transformation.
+
+The "Final Model Coefficients" section reports the original variable, the
+fitted basis represented by each design column, its estimate, and its standard
+error from the final fitted model. When the final model uses centering, the
+stored centering constant is shown in a
+separate \code{Center} column. For zero-handled terms, the displayed basis
+includes the positive-part or structural-zero indicator explicitly, and the
+centering constant applies only within the positive component. Factor main
+effects are described from their stored level-by-design matrix, so treatment
+indicators and other contrasts reflect the design that was fitted.
 
 The reported model-fit values use family-specific definitions.
 
@@ -69,8 +81,10 @@ For generalized linear models:
 \itemize{
 \item the null-model value is the null deviance returned by
 \code{glm.fit()} or \code{glm()};
-\item the full-linear value is the residual deviance of the model containing
-all candidate predictors as ordinary linear terms; and
+\item the full-linear value is the residual deviance of the resolved linear
+reference model: ordinary terms use x, \code{zero} terms use their positive
+part, and \code{catzero}/retained spike-at-zero terms additionally include the
+structural-zero indicator; and
 \item the final-MFP value is the residual deviance of the selected MFP
 model.
 }

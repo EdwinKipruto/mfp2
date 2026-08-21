@@ -213,12 +213,14 @@ Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
 Names must match formula term names or, for matrix fits, column names or
 \code{term_groups} names.}
 
-\item{xorder}{Order in which predictors enter the backfitting algorithm.
-One of \code{"ascending"} (default), \code{"descending"}, or \code{"original"}.
-\code{"ascending"} processes predictors from smallest to largest p-value in an
-initial linear model (most significant first). \code{"descending"} reverses that
-order. \code{"original"} preserves the column order of \code{x} or the left-to-right
-order of formula terms.}
+\item{xorder}{Order in which conceptual predictors enter the backfitting
+algorithm. One of \code{"ascending"} (default), \code{"descending"}, or \code{"original"}.
+For significance-based ordering, each conceptual predictor is removed as one
+block from the resolved full linear reference model. Ordinary terms use their
+linear column, \code{zero} terms use the positive-part column, and \code{catzero} or
+retained spike-at-zero terms use the positive-part column plus the binary
+structural-zero indicator. \code{"ascending"} visits the smallest p-value first,
+\code{"descending"} the largest, and \code{"original"} preserves the input term order.}
 
 \item{powers}{Optional named list of candidate FP powers for individual predictors.
 The default set is \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where 0 stands

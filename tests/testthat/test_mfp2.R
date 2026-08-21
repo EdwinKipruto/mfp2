@@ -7629,6 +7629,328 @@ test_that("xorder options work without error", {
   }
 })
 
+
+# Test purpose: The reference-design helper must reuse the already-prepared
+# positive-part x and existing catzero indicator, while extending the conceptual
+# block mapping without changing the stored indicator matrix.
+test_that("linear reference design reuses prepared catzero blocks", {
+  x <- cbind(
+    exposure = c(0, 0, 1, 2),
+    z = c(1, 2, 3, 4)
+  )
+  indicator <- matrix(
+    c(1, 1, 0, 0),
+    ncol = 1L,
+    dimnames = list(NULL, "catzero")
+  )
+  blocks <- list(exposure = indicator, z = NULL)
+  mapping <- list(exposure = "exposure", z = "z")
+
+  design <- assemble_linear_reference_design(
+    x = x,
+    term_to_columns = mapping,
+    catzero_blocks = blocks,
+    intercept = TRUE
+  )
+
+  expect_equal(design$x[, "exposure"], x[, "exposure"])
+  expect_equal(design$x[, "z"], x[, "z"])
+  expect_equal(NCOL(design$x), 4L)
+  expect_length(design$term_to_columns$exposure, 2L)
+  expect_identical(design$term_to_columns$z, "z")
+
+  expect_identical(
+    design$term_to_columns$exposure,
+    c("exposure", "exposure_bin")
+  )
+  expect_equal(design$x[, "exposure_bin"], c(1, 1, 0, 0))
+
+  # The backfitting block itself keeps its existing generic column name.
+  expect_identical(colnames(blocks$exposure), "catzero")
+})
+
+# Test purpose: Generated structural-zero indicator names follow the established
+# <term>_bin convention in active-term order without renaming catzero_mat_list.
+test_that("linear reference indicator names follow active conceptual terms", {
+  x <- cbind(
+    exposure = c(0, 1, 2, 3),
+    dose = c(0, 0, 2, 4),
+    z = c(1, 2, 3, 4)
+  )
+  blocks <- list(
+    exposure = matrix(c(1, 0, 0, 0), ncol = 1L,
+                      dimnames = list(NULL, "catzero")),
+    dose = matrix(c(1, 1, 0, 0), ncol = 1L,
+                  dimnames = list(NULL, "catzero")),
+    z = NULL
+  )
+  mapping <- stats::setNames(as.list(colnames(x)), colnames(x))
+
+  design <- assemble_linear_reference_design(
+    x = x,
+    term_to_columns = mapping,
+    catzero_blocks = blocks,
+    intercept = FALSE
+  )
+
+  expect_identical(
+    colnames(design$x),
+    c("exposure", "dose", "z", "exposure_bin", "dose_bin")
+  )
+  expect_identical(
+    design$term_to_columns$exposure,
+    c("exposure", "exposure_bin")
+  )
+  expect_identical(
+    design$term_to_columns$dose,
+    c("dose", "dose_bin")
+  )
+  expect_identical(colnames(blocks$exposure), "catzero")
+  expect_identical(colnames(blocks$dose), "catzero")
+})
+
+# Test purpose: A generated <term>_bin name must not silently overwrite or be
+# made unique against an existing model-matrix column with the same name.
+test_that("linear reference design rejects catzero indicator name collisions", {
+  x <- cbind(
+    exposure = c(0, 0, 1, 2),
+    exposure_bin = c(0, 1, 0, 1)
+  )
+  blocks <- list(
+    exposure = matrix(c(1, 1, 0, 0), ncol = 1L,
+                      dimnames = list(NULL, "catzero")),
+    exposure_bin = NULL
+  )
+  mapping <- stats::setNames(as.list(colnames(x)), colnames(x))
+
+  expect_error(
+    assemble_linear_reference_design(
+      x = x,
+      term_to_columns = mapping,
+      catzero_blocks = blocks,
+      intercept = TRUE
+    ),
+    "Generated catzero indicator name.*exposure_bin"
+  )
+})
+
+# Test purpose: When no catzero/SAZ indicator is active, order_variables() must
+# stay on the direct x path and must not enter reference-block assembly.
+test_that("ordinary and zero-only references bypass catzero assembly", {
+  x <- cbind(
+    x1 = c(0, 0, 1, 2),
+    x2 = c(4, 3, 2, 1)
+  )
+  mapping <- stats::setNames(as.list(colnames(x)), colnames(x))
+
+  testthat::local_mocked_bindings(
+    assemble_linear_reference_design = function(...) {
+      stop("catzero assembly must not run when catzero_blocks is NULL")
+    },
+    fit_full_linear_reference = function(x, ...) {
+      list(
+        null_deviance = 50,
+        model_deviance = 40,
+        logl = -20,
+        df = 3,
+        null_logl = NA_real_
+      )
+    },
+    order_variables_by_significance = function(
+    xorder, x, term_to_columns, full_reference, ...) {
+      expect_identical(term_to_columns, mapping)
+      expect_equal(x[, "x1"], c(0, 0, 1, 2))
+      c("x1", "x2")
+    },
+    .package = "mfp2"
+  )
+
+  result <- order_variables(
+    xorder = "ascending",
+    x = x,
+    term_to_columns = mapping,
+    catzero_blocks = NULL,
+    y = rep(0, nrow(x)),
+    family = stats::gaussian(),
+    family_string = "gaussian"
+  )
+
+  expect_identical(result$variables_ordered, c("x1", "x2"))
+  expect_equal(result$linear_deviance, 40)
+})
+
+# Test purpose: The full reference and the ordering tests must use the same
+# two-column conceptual block for a catzero/retained SAZ term.
+test_that("catzero full reference and ordering share one joint block", {
+  x <- cbind(
+    exposure = c(0, 0, 1, 2),
+    z = c(1, 2, 3, 4)
+  )
+  indicator <- matrix(
+    c(1, 1, 0, 0),
+    ncol = 1L,
+    dimnames = list(NULL, "catzero")
+  )
+  blocks <- list(exposure = indicator, z = NULL)
+  mapping <- list(exposure = "exposure", z = "z")
+
+  full_seen <- NULL
+  ordering_seen <- NULL
+
+  testthat::local_mocked_bindings(
+    fit_full_linear_reference = function(x, ...) {
+      full_seen <<- x
+      list(
+        null_deviance = 50,
+        model_deviance = 30,
+        logl = -15,
+        df = 4,
+        null_logl = NA_real_
+      )
+    },
+    order_variables_by_significance = function(
+    xorder, x, term_to_columns, full_reference, ...) {
+      ordering_seen <<- list(
+        x = x,
+        term_to_columns = term_to_columns,
+        full_reference = full_reference
+      )
+      c("exposure", "z")
+    },
+    .package = "mfp2"
+  )
+
+  result <- order_variables(
+    xorder = "ascending",
+    x = x,
+    term_to_columns = mapping,
+    catzero_blocks = blocks,
+    y = rep(0, nrow(x)),
+    family = stats::gaussian(),
+    family_string = "gaussian"
+  )
+
+  expect_equal(NCOL(full_seen), 4L) # intercept + x + indicator
+  expect_identical(ordering_seen$x, full_seen)
+  expect_length(ordering_seen$term_to_columns$exposure, 2L)
+  expect_identical(ordering_seen$full_reference$logl, -15)
+  expect_equal(result$linear_deviance, 30)
+  expect_equal(result$linear_df, 4)
+})
+
+# Test purpose: A two-component structural-zero term must use the fitted rank
+# contribution of both columns in its leave-one-term-out likelihood-ratio test.
+test_that("two-component structural-zero ordering uses joint fitted df", {
+  x <- cbind(
+    exposure = c(0, 0, 1, 2),
+    zero_indicator = c(1, 1, 0, 0),
+    z = c(1, 2, 3, 4)
+  )
+  mapping <- list(
+    exposure = c("exposure", "zero_indicator"),
+    z = "z"
+  )
+
+  testthat::local_mocked_bindings(
+    fit_model = function(x, ...) {
+      remaining <- colnames(x)
+      if (identical(remaining, "z")) {
+        return(list(logl = 95, df = 1))
+      }
+      if (identical(remaining, c("exposure", "zero_indicator"))) {
+        return(list(logl = 96, df = 2))
+      }
+      stop("Unexpected reduced design in structural-zero ordering test.")
+    },
+    .package = "mfp2"
+  )
+
+  ordered <- order_variables_by_significance(
+    xorder = "ascending",
+    x = x,
+    y = rep(0, nrow(x)),
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    weights = NULL,
+    offset = NULL,
+    strata = NULL,
+    method = NULL,
+    control = NULL,
+    nocenter = NULL,
+    full_reference = list(logl = 100, df = 3),
+    term_to_columns = mapping
+  )
+
+  # LR(exposure) = 10 on 2 df; LR(z) = 8 on 1 df. The joint df calculation
+  # therefore visits z first; treating exposure as one df would reverse order.
+  expect_identical(ordered, c("z", "exposure"))
+})
+
+# Test purpose: The stored full-linear deviance for a zero term must use the
+# positive-part reference column rather than the unre-coded covariate.
+test_that("zero term changes the full linear reference representation", {
+  x <- cbind(
+    exposure = c(-3, -1, 0, 1, 2, 4, 5, 6),
+    z = c(-1, 0, 1, 0, -1, 1, 0.5, -0.5)
+  )
+  y <- c(1.0, 1.2, 0.8, 1.6, 2.1, 2.8, 3.0, 3.5)
+
+  fit <- mfp2(
+    x,
+    y,
+    zero_vars = "exposure",
+    df = 1,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  reference_data <- data.frame(
+    y = y,
+    exposure = pmax(x[, "exposure"], 0),
+    z = x[, "z"]
+  )
+  reference <- stats::glm(
+    y ~ exposure + z,
+    data = reference_data,
+    family = stats::gaussian()
+  )
+
+  expect_equal(fit$linear_deviance, stats::deviance(reference), tolerance = 1e-8)
+})
+
+# Test purpose: The stored full-linear deviance for catzero must include both
+# the positive-part continuous column and the structural-zero indicator.
+test_that("catzero term changes the full linear reference representation", {
+  x <- cbind(
+    exposure = c(-3, -1, 0, 1, 2, 4, 5, 6),
+    z = c(-1, 0, 1, 0, -1, 1, 0.5, -0.5)
+  )
+  y <- c(3.0, 3.2, 2.8, 1.6, 2.1, 2.8, 3.0, 3.5)
+
+  fit <- mfp2(
+    x,
+    y,
+    catzero_vars = "exposure",
+    df = 1,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  reference_data <- data.frame(
+    y = y,
+    exposure = pmax(x[, "exposure"], 0),
+    zero_indicator = as.integer(x[, "exposure"] <= 0),
+    z = x[, "z"]
+  )
+  reference <- stats::glm(
+    y ~ exposure + zero_indicator + z,
+    data = reference_data,
+    family = stats::gaussian()
+  )
+
+  expect_equal(fit$linear_deviance, stats::deviance(reference), tolerance = 1e-8)
+})
+
 # Test purpose: The leave-one-term-out likelihood-ratio test used for
 # significance ordering must use the fitted rank contribution of a grouped
 # term, not the number of raw columns in its design block. The mocked fits are

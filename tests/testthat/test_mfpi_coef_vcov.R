@@ -445,11 +445,38 @@ test_that("MFPI adjustment FP labels use compact transformation notation", {
       matrix(numeric(0), nrow = 0L, ncol = 2L),
       dimnames = list(NULL, c("age.1", "age.2"))
     ),
-    coefficients = c(age.1 = -0.1, age.2 = 0.02)
+    coefficients = c(age.1 = -0.1, age.2 = 0.02),
+    fp_powers = list(age = c(3, 3)),
+    transformations = data.frame(
+      shift = 0,
+      scale = 1,
+      center = TRUE,
+      row.names = "age"
+    ),
+    term_to_columns = list(age = "age"),
+    transformed_to_model_columns = c(
+      age.1 = "age.1",
+      age.2 = "age.2"
+    ),
+    transformed_column_to_source = c(
+      age.1 = "age",
+      age.2 = "age"
+    ),
+    transformed_column_component = c(
+      age.1 = "fp_basis",
+      age.2 = "fp_basis"
+    ),
+    transformed_column_zero_handled = c(
+      age.1 = FALSE,
+      age.2 = FALSE
+    ),
+    transformed_column_centered = c(
+      age.1 = TRUE,
+      age.2 = TRUE
+    )
   )
   class(adj) <- "mfp2"
   fit$adjustment_model <- adj
-  fit$shift <- c(age = 0)
 
   interaction_model <- list(
     transformed_to_model_columns = c(
@@ -468,7 +495,7 @@ test_that("MFPI adjustment FP labels use compact transformation notation", {
   expect_false(any(grepl("((age))", labels, fixed = TRUE)))
 
   # Genuine MFPI shifts remain visible, but with the same compact notation.
-  fit$shift["age"] <- 2
+  fit$adjustment_model$transformations["age", "shift"] <- 2
   shifted <- mfpi_adjustment_coefficient_labels(
     object = fit,
     interaction_model = interaction_model,

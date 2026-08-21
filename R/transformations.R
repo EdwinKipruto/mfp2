@@ -1,64 +1,64 @@
 #' Transform a Variable Using Fractional-Polynomial Powers
-#' 
+#'
 #' Constructs fractional-polynomial design columns from specified powers,
 #' analogous to `fracgen` in Stata.
-#' 
-#' @details 
+#'
+#' @details
 #' This is a low-level utility for constructing fractional-polynomial design
 #' columns from specified powers. It does not perform model or power selection.
 #' Most users should specify continuous variables with [fp()] inside an
 #' [mfp2()] formula instead.
-#' 
+#'
 #' The FP transformation constructs design columns as follows. For each power
 #' pi in `power` = (p1, p2, ..., pn) it computes x^pi and returns the
 #' collection as a matrix. The input may be shifted and scaled before
 #' transformation. Centering, if desired, should be applied separately
 #' after transformation (see the Data processing section).
-#' 
-#' A special case are repeated powers, i.e. when some pi = pj. In this case, 
+#'
+#' A special case are repeated powers, i.e. when some pi = pj. In this case,
 #' the fp transformations are given by x^pi and x^pi * log(x). In case
-#' more than 2 powers are repeated they are repeatedly multiplied with 
-#' log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and 
-#' x^pi * log(x)^2. 
-#' 
-#' Note that the powers pi are assumed to be sorted. That is, this function 
-#' sorts them, then proceeds to compute the transformation. For example, 
+#' more than 2 powers are repeated they are repeatedly multiplied with
+#' log(x) terms, e.g. pi = pj = pk leads to x^pi, x^pi * log(x) and
+#' x^pi * log(x)^2.
+#'
+#' Note that the powers pi are assumed to be sorted. That is, this function
+#' sorts them, then proceeds to compute the transformation. For example,
 #' the output will be the same for `power = c(1, 1, 2)` and
-#' `power = c(1, 2, 1)`. This is done to make sense of repeated powers and 
-#' to uniquely define FPs. In case an ACD transformation is used, there is a 
-#' specific order in which powers are processed, which is always the same (but 
-#' not necessarily sorted). 
+#' `power = c(1, 2, 1)`. This is done to make sense of repeated powers and
+#' to uniquely define FPs. In case an ACD transformation is used, there is a
+#' specific order in which powers are processed, which is always the same (but
+#' not necessarily sorted).
 #' Thus, throughout the whole package powers will always be given and processed
-#' in either sorted, or ACD specific order and the columns of the matrix 
+#' in either sorted, or ACD specific order and the columns of the matrix
 #' returned by this function will always align with the powers used
 #' throughout this package.
-#' 
+#'
 #' Binary variables are not transformed, unless `check_binary` is set to
-#' `FALSE`. This is usually not necessary, the only special case to set it to 
+#' `FALSE`. This is usually not necessary, the only special case to set it to
 #' `FALSE` is when a single value is to be transformed during prediction (e.g.
 #' to transform a reference value). When this is done, binary variables are
 #' still returned unchanged, but a single value from a continuous variable will
-#' be transformed as desired by the fitted transformations. For model fit, 
+#' be transformed as desired by the fitted transformations. For model fit,
 #' `check_binary` should always be at its default value.
-#' 
-#' @section Data processing: 
+#'
+#' @section Data processing:
 #' Variables are shifted and then scaled before any power transformation is
 #' applied. Shifting ensures positive values; scaling avoids numerically
 #' extreme magnitudes. Scaling does not change the selected powers.
-#' 
+#'
 #' Centering is not performed by this function. When centering is desired, it
 #' should be applied after transformation, because centering before
 #' transformation alters the correlation structure among predictors. In
 #' [mfp2()], centering is applied only to the final selected model when
 #' `center = TRUE`. See Sauerbrei et al (2006) for discussion.
-#' 
-#' If a variable is specified in the \code{zero} or \code{catzero} arguments, 
-#' nonpositive values (zero or negative) are not shifted. Instead, they are replaced 
-#' with zero, and transformation is applied only to the positive values. This approach 
-#' is useful in cases where nonpositive values have a qualitatively different interpretation 
-#' (e.g., nonsmokers in smoking data) and should not be transformed in the same way 
+#'
+#' If a variable is specified in the \code{zero} or \code{catzero} arguments,
+#' nonpositive values (zero or negative) are not shifted. Instead, they are replaced
+#' with zero, and transformation is applied only to the positive values. This approach
+#' is useful in cases where nonpositive values have a qualitatively different interpretation
+#' (e.g., nonsmokers in smoking data) and should not be transformed in the same way
 #' as positive values.
-#' 
+#'
 #' @section Domain restrictions:
 #' Fractional-polynomial transformations are applied after shifting and scaling.
 #' Users should ensure that the shifted and scaled values are in the domain
@@ -86,53 +86,53 @@
 #'
 #' If `zero = TRUE`, nonpositive values are treated structurally: they are not
 #' shifted, and their transformed continuous components are set to zero.
-#' 
+#'
 #' @param x a vector of a predictor variable.
-#' @param power a numeric vector indicating the FP power. Default is 1 (linear). 
+#' @param power a numeric vector indicating the FP power. Default is 1 (linear).
 #' Must be a vector of length 2 for acd transformation. Ignores `NA`, unless
-#' an ACD transformation is applied in which case power must be a numeric 
-#' vector of length 2, and `NA` indicated which parts are used for the final 
+#' an ACD transformation is applied in which case power must be a numeric
+#' vector of length 2, and `NA` indicated which parts are used for the final
 #' FP.
 #' @param scale Positive numeric scaling factor applied to `x` after shifting.
 #'   Default `1` (no scaling). If `NULL`, the scale factor is estimated
 #'   automatically. Scaling does not change the selected powers.
-#' @param shift shift required for shifting x to positive values. Default is 0, 
-#' meaning no shift is applied. If `NULL` then the shift is estimated 
+#' @param shift shift required for shifting x to positive values. Default is 0,
+#' meaning no shift is applied. If `NULL` then the shift is estimated
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
-#' @param zero Logical indicating whether only positive values of the variable 
-#' should be transformed, with nonpositive values (zero or negative) set to zero. 
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values 
-#' are replaced with zero before transformation. If \code{FALSE} (default), all values 
+#' @param zero Logical indicating whether only positive values of the variable
+#' should be transformed, with nonpositive values (zero or negative) set to zero.
+#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values
+#' are replaced with zero before transformation. If \code{FALSE} (default), all values
 #' are shifted (if needed) to ensure positivity before transformation.
 #' @param check_binary a logical indicating whether or not input `x` is checked
 #' if it is a binary variable (i.e. has only two distinct values). The default
-#' `TRUE` usually only needs to changed when this function is to be used to 
+#' `TRUE` usually only needs to changed when this function is to be used to
 #' transform data for predictions. See Details.
-#' 
+#'
 #' @examples
 #' z = 1:10
 #' transform_vector_fp(z)
-#' @return 
+#' @return
 #' Returns a matrix of transformed variable(s). The number of columns
 #' depends on the number of powers provided, the number of rows is equal to the
 #' length of `x`. The columns are sorted by increased power.
 #' If all powers are `NA`, then this function returns `NULL`.
-#' In case an acd transformation is applied, the output is a list with two 
-#' entries. The first `acd` is the matrix of transformed variables, the acd 
-#' term is returned as the last column of the matrix (i.e. in case that the 
+#' In case an acd transformation is applied, the output is a list with two
+#' entries. The first `acd` is the matrix of transformed variables, the acd
+#' term is returned as the last column of the matrix (i.e. in case that the
 #' power for the normal data is `NA`, then it is the only column in the matrix).
 #' The second entry `acd_parameter` returns a list of estimated parameters
 #' for the ACD transformation, or simply the input `acd_parameter` if it was
 #' not `NULL`.
-#' 
-#' @references 
-#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006. 
-#' \emph{Multivariable regression model building by using fractional 
-#' polynomials: Description of SAS, STATA and R programs. 
+#'
+#' @references
+#' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
+#' \emph{Multivariable regression model building by using fractional
+#' polynomials: Description of SAS, STATA and R programs.
 #' Comput Stat Data Anal, 50(12): 3464-85.}
-#' 
+#'
 #' @export
 transform_vector_fp <- function(x,
                                 power = 1,
@@ -141,36 +141,36 @@ transform_vector_fp <- function(x,
                                 name = NULL,
                                 zero = FALSE,
                                 check_binary = TRUE) {
-  
+
   if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
     stop("`zero` must be a single logical value (TRUE or FALSE).", call. = FALSE)
   }
-  
+
   if (!is.logical(check_binary) ||
       length(check_binary) != 1L ||
       is.na(check_binary)) {
     stop("`check_binary` must be a single logical value (TRUE or FALSE).",
          call. = FALSE)
   }
-  
+
   if (all(is.na(power))) {
     return(NULL)
   }
-  
+
   if (is.null(shift)) {
     shift <- find_shift_factor(x)
   }
-  
+
   if (is.null(scale)) {
     scale <- find_scale_factor(x)
   }
-  
+
   if (zero) {
     shift <- 0
   }
-  
+
   power <- sort(power)
-  
+
   if (!zero && check_binary && length(unique(x)) <= 2L) {
     x_out <- matrix(x, ncol = 1L)
     if (!is.null(name)) {
@@ -178,7 +178,7 @@ transform_vector_fp <- function(x,
     }
     return(x_out)
   }
-  
+
   x_trafo <- transform_fp_core(
     x_raw     = as.numeric(x),
     power     = as.numeric(power),
@@ -186,39 +186,39 @@ transform_vector_fp <- function(x,
     scale_val = as.numeric(scale),
     zero      = zero
   )
-  
+
   if (!is.null(name)) {
     colnames(x_trafo) <- name_transformed_variables(name, ncol(x_trafo))
   }
-  
+
   x_trafo
 }
 
 #' @describeIn transform_vector_fp Function to generate acd transformation.
-#' @param acd_parameter a list usually returned by \code{fit_acd()}. In particular, 
-#' it must have components that define `beta0`, `beta1`, `power`, `shift` and 
-#' `scale` which are to be applied when using the acd transformation in 
+#' @param acd_parameter a list usually returned by \code{fit_acd()}. In particular,
+#' it must have components that define `beta0`, `beta1`, `power`, `shift` and
+#' `scale` which are to be applied when using the acd transformation in
 #' new data.
 #' @param powers passed to \code{fit_acd()}.
 #' @keywords internal
 #' @noRd
-transform_vector_acd <- function(x, 
+transform_vector_acd <- function(x,
                                  power = c(1, 1),
-                                 shift = 0, 
-                                 powers = NULL, 
-                                 scale = 1, 
-                                 acd_parameter = NULL, 
+                                 shift = 0,
+                                 powers = NULL,
+                                 scale = 1,
+                                 acd_parameter = NULL,
                                  name = NULL,
                                  zero = FALSE) {
-  
-  if (length(power) != 2) 
-    stop("! power must have length two.", 
+
+  if (length(power) != 2)
+    stop("! power must have length two.",
          sprintf("i The length of powers supplied is %d.", length(power)))
-  
+
   if (all(is.na(power))) {
     return(NULL)
-  } 
-  
+  }
+
   if (is.null(acd_parameter)) {
     # estimate acd(x)
     acd_parameter <- fit_acd(x, powers = powers, shift = shift, scale = scale, zero = zero)
@@ -231,20 +231,20 @@ transform_vector_acd <- function(x,
       utils::modifyList(acd_parameter, list(x = x, zero = zero))
     )
   }
-  
+
   name_acd <- NULL
   if (!is.null(name)) {
     name_acd <- paste0("A_", name)
   }
-  
+
   # apply fp transform on x (if required) and acd(x)
-  # if any of these is NA, transform_vector_fp returns NULL and thus the 
+  # if any of these is NA, transform_vector_fp returns NULL and thus the
   # component is not used in the final result, as desired
-  x_acd <- transform_vector_fp(x = x_acd, power = power[2], scale = 1, 
+  x_acd <- transform_vector_fp(x = x_acd, power = power[2], scale = 1,
                                shift = 0, name = name_acd, zero = FALSE)
-  x_fp <- transform_vector_fp(x = x, power = power[1], scale = scale, 
+  x_fp <- transform_vector_fp(x = x, power = power[1], scale = scale,
                               shift = shift, name = name, zero = zero)
-  
+
   list(
     acd = cbind(x_fp, x_acd),
     acd_parameter = acd_parameter
@@ -442,6 +442,15 @@ transform_vector_acd <- function(x,
 #' * `zero_expanded`: named logical vector aligned with the columns of
 #'   `x_transformed`, indicating which transformed FP/ACD columns require
 #'   zero-specific centering behavior in `center_matrix()`.
+#' * `transformed_column_to_source`: named character vector mapping each final
+#'   transformed column to the source column from which it was constructed.
+#' * `transformed_column_component`: named character vector identifying each
+#'   final transformed column as an FP basis, ACD basis, structural-zero
+#'   indicator, or unchanged binary column.
+#' * `transformed_column_zero_handled`: named logical vector indicating which
+#'   final columns use positive-part centering, where nonpositive rows remain 0.
+#' * `transformed_column_centered`: named logical vector indicating whether
+#'   centering was requested for the source variable of each final column.
 #' @keywords internal
 #' @noRd
 transform_matrix <- function(x,
@@ -456,7 +465,7 @@ transform_matrix <- function(x,
                              spike = NULL,
                              spike_decision = NULL,
                              reset_zero = FALSE) {
-  
+
   # ---------------------------------------------------------------------------
   # Input checks
   # ---------------------------------------------------------------------------
@@ -472,21 +481,21 @@ transform_matrix <- function(x,
   catzero        <- validated$catzero
   spike          <- validated$spike
   spike_decision <- validated$spike_decision
-  
+
   # If every FP/ACD power is NA, there is usually no transformed continuous
   # component to return. The exception is a binary-only spike decision, where
   # the final selected representation is the *_bin column.
   all_powers <- unlist(power_list, use.names = FALSE)
   all_powers_na <- length(all_powers) == 0L || all(is.na(all_powers))
-  
+
   has_binary_only_spike <- !is.null(spike_decision) &&
     any(spike & spike_decision == saz_decision_codes[["binary_only"]],
         na.rm = TRUE)
-  
+
   if (all_powers_na && !has_binary_only_spike) {
     return(NULL)
   }
-  
+
   # ---------------------------------------------------------------------------
   # Optional zero reset
   # ---------------------------------------------------------------------------
@@ -495,7 +504,7 @@ transform_matrix <- function(x,
     zero    <- reset$zero
     catzero <- reset$catzero
   }
-  
+
   # ---------------------------------------------------------------------------
   # Reorder variables
   # ---------------------------------------------------------------------------
@@ -513,7 +522,7 @@ transform_matrix <- function(x,
   spike          <- reordered$spike
   spike_decision <- reordered$spike_decision
   names_vars     <- reordered$names_vars
-  
+
   # ---------------------------------------------------------------------------
   # Resolve binary-only SAZ variables before constructing FP/ACD components
   # ---------------------------------------------------------------------------
@@ -526,7 +535,7 @@ transform_matrix <- function(x,
   )
   catzero                 <- resolved_saz$catzero
   binary_only_spike_vars  <- resolved_saz$binary_only_spike_vars
-  
+
   # ---------------------------------------------------------------------------
   # FP / ACD transformations
   # ---------------------------------------------------------------------------
@@ -538,7 +547,7 @@ transform_matrix <- function(x,
   x_trafo            <- fp_acd$x_trafo
   acd_parameter      <- fp_acd$acd_parameter
   acd_component_cols <- fp_acd$acd_component_cols
-  
+
   # ---------------------------------------------------------------------------
   # Spike decision post-processing
   # ---------------------------------------------------------------------------
@@ -548,7 +557,7 @@ transform_matrix <- function(x,
   )
   x_trafo <- spike_applied$x_trafo
   catzero <- spike_applied$catzero
-  
+
   # ---------------------------------------------------------------------------
   # Build transformed matrix, then add catzero / spike binary indicators
   # ---------------------------------------------------------------------------
@@ -558,12 +567,12 @@ transform_matrix <- function(x,
   )
   x_transformed  <- bin$x_transformed
   bin_col_to_var <- bin$bin_col_to_var
-  
+
   # No FP/ACD columns and no binary indicators remain.
   if (is.null(x_transformed) || ncol(x_transformed) == 0L) {
     return(NULL)
   }
-  
+
   # ---------------------------------------------------------------------------
   # Column-to-variable map
   # ---------------------------------------------------------------------------
@@ -573,7 +582,7 @@ transform_matrix <- function(x,
   )
   col_to_var <- col_map$col_to_var
   bin_cols   <- col_map$bin_cols
-  
+
   # ---------------------------------------------------------------------------
   # Expanded zero vector
   # ---------------------------------------------------------------------------
@@ -581,7 +590,7 @@ transform_matrix <- function(x,
     x_transformed = x_transformed, col_to_var = col_to_var, zero = zero,
     acd_component_cols = acd_component_cols, bin_cols = bin_cols
   )
-  
+
   # ---------------------------------------------------------------------------
   # Centering
   # ---------------------------------------------------------------------------
@@ -589,13 +598,53 @@ transform_matrix <- function(x,
     x_transformed = x_transformed, center = center, col_to_var = col_to_var,
     zero_expanded = zero_expanded
   )
-  
+
+  # Record the exact structural metadata used to assemble the final design.
+  # Display code can then describe each fitted column without parsing generated
+  # names or reconstructing how the column was created.
+  column_component <- stats::setNames(
+    rep("fp_basis", ncol(x_transformed)),
+    colnames(x_transformed)
+  )
+  column_component[intersect(acd_component_cols, names(column_component))] <-
+    "acd_basis"
+  column_component[intersect(bin_cols, names(column_component))] <-
+    "zero_indicator"
+
+  if (isTRUE(check_binary)) {
+    binary_sources <- names_vars[vapply(names_vars, function(v) {
+      !isTRUE(zero[[v]]) &&
+        !isTRUE(acdx[[v]]) &&
+        length(unique(x[, v])) <= 2L
+    }, logical(1L))]
+
+    identity_columns <- names(col_to_var)[
+      !is.na(col_to_var) &
+        col_to_var %in% binary_sources &
+        column_component == "fp_basis"
+    ]
+    column_component[identity_columns] <- "identity_binary"
+  }
+
+  column_centered <- stats::setNames(
+    rep(FALSE, ncol(x_transformed)),
+    colnames(x_transformed)
+  )
+  mapped_center <- !is.na(col_to_var) & col_to_var %in% names(center)
+  if (any(mapped_center)) {
+    column_centered[mapped_center] <- center[col_to_var[mapped_center]]
+  }
+
   list(
-    x_transformed = centered$x_transformed,
-    centers       = centered$centers,
-    acd_parameter = acd_parameter,
-    x_trafo       = x_trafo,
-    zero_expanded = zero_expanded
+    x_transformed                    = centered$x_transformed,
+    centers                          = centered$centers,
+    acd_parameter                    = acd_parameter,
+    x_trafo                          = x_trafo,
+    zero_expanded                    = zero_expanded,
+    transformed_column_to_source     = col_to_var,
+    transformed_column_component     = column_component,
+    transformed_column_zero_handled  = zero_expanded,
+    transformed_column_centered      = column_centered
   )
 }
 
@@ -626,21 +675,21 @@ transform_matrix <- function(x,
 #' @noRd
 check_same_names_as <- function(x, arg, ref_names) {
   x_names <- names(x)
-  
+
   if (is.null(x_names)) {
     stop(sprintf("! '%s' must have names.", arg), call. = FALSE)
   }
-  
+
   if (anyDuplicated(x_names)) {
     stop(sprintf("! '%s' must not contain duplicated names.", arg), call. = FALSE)
   }
-  
+
   missing_names <- setdiff(ref_names, x_names)
   extra_names <- setdiff(x_names, ref_names)
-  
+
   if (length(missing_names) > 0L || length(extra_names) > 0L) {
     msg <- sprintf("! Names of '%s' must match names of 'power_list'.", arg)
-    
+
     if (length(missing_names) > 0L) {
       msg <- paste0(
         msg,
@@ -652,7 +701,7 @@ check_same_names_as <- function(x, arg, ref_names) {
         )
       )
     }
-    
+
     if (length(extra_names) > 0L) {
       msg <- paste0(
         msg,
@@ -663,10 +712,10 @@ check_same_names_as <- function(x, arg, ref_names) {
         )
       )
     }
-    
+
     stop(msg, call. = FALSE)
   }
-  
+
   x[ref_names]
 }
 
@@ -711,26 +760,26 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
   if (!is.matrix(x)) {
     stop("! 'x' must be a matrix.", call. = FALSE)
   }
-  
+
   x_cols <- colnames(x)
   if (is.null(x_cols)) {
     stop("! Input data 'x' must have column names.", call. = FALSE)
   }
-  
+
   if (!is.list(power_list)) {
     stop("! 'power_list' must be a list.", call. = FALSE)
   }
-  
+
   if (is.null(names(power_list))) {
     stop("! 'power_list' must have names.", call. = FALSE)
   }
-  
+
   if (anyDuplicated(names(power_list))) {
     stop("! 'power_list' must not contain duplicated names.", call. = FALSE)
   }
-  
+
   pl_names <- names(power_list)
-  
+
   missing_in_x <- setdiff(pl_names, x_cols)
   if (length(missing_in_x) > 0L) {
     stop(
@@ -739,29 +788,29 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
       call. = FALSE
     )
   }
-  
+
   # center: per-original-variable centering request.
   if (!is.logical(center)) {
     stop("! 'center' must be a logical vector.", call. = FALSE)
   }
-  
+
   if (anyNA(center)) {
     stop("! 'center' must not contain missing values.", call. = FALSE)
   }
-  
+
   center <- check_same_names_as(center, "center", pl_names)
-  
+
   # acdx: per-original-variable flag for ACD transformation.
   if (!is.logical(acdx)) {
     stop("! 'acdx' must be a logical vector.", call. = FALSE)
   }
-  
+
   if (anyNA(acdx)) {
     stop("! 'acdx' must not contain missing values.", call. = FALSE)
   }
-  
+
   acdx <- check_same_names_as(acdx, "acdx", pl_names)
-  
+
   # zero: variables where nonpositive values are structurally handled as zero
   # before FP/ACD transformation.
   if (is.null(zero)) {
@@ -770,14 +819,14 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
     if (!is.logical(zero)) {
       stop("! 'zero' must be a logical vector.", call. = FALSE)
     }
-    
+
     if (anyNA(zero)) {
       stop("! 'zero' must not contain missing values.", call. = FALSE)
     }
-    
+
     zero <- check_same_names_as(zero, "zero", pl_names)
   }
-  
+
   # catzero: variables requiring an additional structural-zero binary indicator.
   if (is.null(catzero)) {
     catzero <- setNames(rep(FALSE, length(pl_names)), pl_names)
@@ -785,14 +834,14 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
     if (!is.logical(catzero)) {
       stop("! 'catzero' must be a logical vector.", call. = FALSE)
     }
-    
+
     if (anyNA(catzero)) {
       stop("! 'catzero' must not contain missing values.", call. = FALSE)
     }
-    
+
     catzero <- check_same_names_as(catzero, "catzero", pl_names)
   }
-  
+
   # spike: variables assessed by the spike-at-zero selection logic.
   if (is.null(spike)) {
     spike <- setNames(rep(FALSE, length(pl_names)), pl_names)
@@ -800,14 +849,14 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
     if (!is.logical(spike)) {
       stop("! 'spike' must be a logical vector.", call. = FALSE)
     }
-    
+
     if (anyNA(spike)) {
       stop("! 'spike' must not contain missing values.", call. = FALSE)
     }
-    
+
     spike <- check_same_names_as(spike, "spike", pl_names)
   }
-  
+
   # spike_decision encodes the selected spike representation:
   #   1 = FP/ACD part + structural-zero binary
   #   2 = FP/ACD part only
@@ -819,11 +868,11 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
         call. = FALSE
       )
     }
-    
+
     if (anyNA(spike_decision)) {
       stop("! 'spike_decision' must not contain missing values.", call. = FALSE)
     }
-    
+
     bad_vals <- setdiff(unique(spike_decision), unname(saz_decision_codes))
     if (length(bad_vals) > 0L) {
       stop(
@@ -831,14 +880,14 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
         call. = FALSE
       )
     }
-    
+
     spike_decision <- check_same_names_as(
       spike_decision,
       "spike_decision",
       pl_names
     )
   }
-  
+
   list(
     pl_names       = pl_names,
     center         = center,
@@ -867,7 +916,7 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
 #' @noRd
 reset_ineligible_zero_flags <- function(x, zero, catzero) {
   vars_to_check <- names(zero)[zero]
-  
+
   bad_vars <- vars_to_check[
     apply(
       x[, vars_to_check, drop = FALSE],
@@ -875,7 +924,7 @@ reset_ineligible_zero_flags <- function(x, zero, catzero) {
       function(col) all(col > 0, na.rm = TRUE)
     )
   ]
-  
+
   if (length(bad_vars) > 0L) {
     warning(
       "These variables were marked as 'zero = TRUE' but contain only positive values. ",
@@ -883,11 +932,11 @@ reset_ineligible_zero_flags <- function(x, zero, catzero) {
       paste(bad_vars, collapse = ", "),
       call. = FALSE
     )
-    
+
     zero[bad_vars] <- FALSE
     catzero[bad_vars] <- FALSE
   }
-  
+
   list(zero = zero, catzero = catzero)
 }
 
@@ -924,9 +973,9 @@ reorder_transform_inputs <- function(x, power_list, center, acdx, zero,
   if (keep_x_order) {
     power_list <- power_list[order(match(names(power_list), colnames(x)))]
   }
-  
+
   names_vars <- names(power_list)
-  
+
   # Reindex all per-variable controls after possible reordering of power_list.
   x <- x[, names_vars, drop = FALSE]
   center <- center[names_vars]
@@ -934,11 +983,11 @@ reorder_transform_inputs <- function(x, power_list, center, acdx, zero,
   zero <- zero[names_vars]
   catzero <- catzero[names_vars]
   spike <- spike[names_vars]
-  
+
   if (!is.null(spike_decision)) {
     spike_decision <- spike_decision[names_vars]
   }
-  
+
   list(
     x              = x,
     power_list     = power_list,
@@ -982,12 +1031,12 @@ reorder_transform_inputs <- function(x, power_list, center, acdx, zero,
 #' @noRd
 identify_binary_only_spike_vars <- function(catzero, spike, spike_decision) {
   binary_only_spike_vars <- character(0L)
-  
+
   if (!is.null(spike_decision)) {
     for (v in names(spike_decision)) {
       if (isTRUE(spike[[v]])) {
         dec <- as.integer(spike_decision[[v]])
-        
+
         if (dec == saz_decision_codes[["continuous_only"]]) {
           catzero[[v]] <- FALSE
         } else if (dec == saz_decision_codes[["binary_only"]]) {
@@ -997,7 +1046,7 @@ identify_binary_only_spike_vars <- function(catzero, spike, spike_decision) {
       }
     }
   }
-  
+
   list(catzero = catzero, binary_only_spike_vars = binary_only_spike_vars)
 }
 
@@ -1043,22 +1092,22 @@ build_fp_acd_columns <- function(x, names_vars, power_list, acdx, zero,
   x_trafo <- list()
   acd_parameter <- list()
   acd_component_cols <- character(0L)
-  
+
   for (name in names_vars) {
     if (name %in% binary_only_spike_vars) {
       x_trafo[[name]] <- NULL
       next
     }
-    
+
     if (isTRUE(acdx[[name]])) {
       # During fitting, acd_parameter_list is usually NULL and parameters are
       # estimated. During prediction, fitted ACD parameters are supplied here.
       acd_parameter_name <- NULL
-      
+
       if (!is.null(acd_parameter_list)) {
         acd_parameter_name <- acd_parameter_list[[name]]
       }
-      
+
       acd <- transform_vector_acd(
         x[, name],
         power = power_list[[name]],
@@ -1066,23 +1115,23 @@ build_fp_acd_columns <- function(x, names_vars, power_list, acdx, zero,
         name = name,
         zero = zero[[name]]
       )
-      
+
       x_trafo[[name]] <- acd$acd
       acd_parameter[[name]] <- acd$acd_parameter
-      
+
       if (!is.null(acd$acd)) {
         cols_acd <- colnames(acd$acd)
-        
+
         if (is.null(cols_acd)) {
           cols_acd <- name
         }
-        
+
         # transform_vector_acd() returns cbind(x_fp, x_acd): the FP part
         # comes first, followed by ACD component columns. ACD component values
         # are cumulative-probability quantities, not structural zeros, so they
         # must not inherit zero-aware centering from the parent variable.
         n_fp_cols <- if (all(is.na(power_list[[name]][1L]))) 0L else 1L
-        
+
         if (length(cols_acd) > n_fp_cols) {
           acd_component_cols <- c(
             acd_component_cols,
@@ -1100,7 +1149,7 @@ build_fp_acd_columns <- function(x, names_vars, power_list, acdx, zero,
       )
     }
   }
-  
+
   list(
     x_trafo            = x_trafo,
     acd_parameter       = acd_parameter,
@@ -1137,7 +1186,7 @@ apply_spike_decision_to_columns <- function(x_trafo, catzero, spike,
   if (!is.null(spike_decision)) {
     for (v in names(spike_decision)) {
       dec <- as.integer(spike_decision[[v]])
-      
+
       if (isTRUE(spike[[v]])) {
         if (dec == saz_decision_codes[["continuous_only"]]) {
           catzero[[v]] <- FALSE
@@ -1149,7 +1198,7 @@ apply_spike_decision_to_columns <- function(x_trafo, catzero, spike,
       }
     }
   }
-  
+
   list(x_trafo = x_trafo, catzero = catzero)
 }
 
@@ -1188,34 +1237,34 @@ build_binary_indicator_columns <- function(x, x_trafo, catzero, spike,
   } else {
     x_transformed <- NULL
   }
-  
+
   cat_vars <- names(catzero)[catzero]
   bin_col_to_var <- setNames(character(0L), character(0L))
-  
+
   if (length(cat_vars) > 0L) {
     catzero_list <- lapply(cat_vars, function(v) {
       binary_only_spike <- isTRUE(spike[[v]]) &&
         !is.null(spike_decision) &&
         v %in% names(spike_decision) &&
         isTRUE(spike_decision[[v]] == saz_decision_codes[["binary_only"]])
-      
+
       # all powers NA usually means the variable was eliminated. The exception
       # is spike_decision == 3, where the binary indicator is the selected term.
       if (all(is.na(power_list[[v]])) && !binary_only_spike) {
         return(NULL)
       }
-      
+
       # Structural-zero indicator is I(x <= 0), consistent with
       # transform_vector_fp(..., zero = TRUE), which treats nonpositive values
       # as structural zero before FP transformation.
       as.integer(x[, v] <= 0)
     })
-    
+
     valid_idx <- !vapply(catzero_list, is.null, logical(1L))
     catzero_list <- catzero_list[valid_idx]
     cat_vars_valid <- cat_vars[valid_idx]
     names(catzero_list) <- cat_vars_valid
-    
+
     if (length(catzero_list) > 0L) {
       catzero_matrix <- do.call(cbind, catzero_list)
       colnames(catzero_matrix) <- paste0(cat_vars_valid, "_bin")
@@ -1223,7 +1272,7 @@ build_binary_indicator_columns <- function(x, x_trafo, catzero, spike,
         bin_col_to_var,
         setNames(cat_vars_valid, colnames(catzero_matrix))
       )
-      
+
       if (is.null(x_transformed)) {
         x_transformed <- catzero_matrix
       } else {
@@ -1231,7 +1280,7 @@ build_binary_indicator_columns <- function(x, x_trafo, catzero, spike,
       }
     }
   }
-  
+
   list(x_transformed = x_transformed, bin_col_to_var = bin_col_to_var)
 }
 
@@ -1265,29 +1314,29 @@ build_col_to_var_map <- function(x_trafo, x_transformed, bin_col_to_var) {
     rep(NA_character_, ncol(x_transformed)),
     colnames(x_transformed)
   )
-  
+
   for (v in names(x_trafo)) {
     if (!is.null(x_trafo[[v]])) {
       cols_v <- colnames(x_trafo[[v]])
-      
+
       if (is.null(cols_v)) {
         cols_v <- v
       }
-      
+
       cols_v <- intersect(cols_v, colnames(x_transformed))
-      
+
       if (length(cols_v) > 0L) {
         col_to_var[cols_v] <- v
       }
     }
   }
-  
+
   bin_cols <- intersect(names(bin_col_to_var), colnames(x_transformed))
-  
+
   if (length(bin_cols) > 0L) {
     col_to_var[bin_cols] <- bin_col_to_var[bin_cols]
   }
-  
+
   list(col_to_var = col_to_var, bin_cols = bin_cols)
 }
 
@@ -1320,27 +1369,27 @@ expand_zero_flags_to_columns <- function(x_transformed, col_to_var, zero,
     rep(FALSE, ncol(x_transformed)),
     colnames(x_transformed)
   )
-  
+
   mapped_zero_cols <- !is.na(col_to_var) & col_to_var %in% names(zero)
-  
+
   if (any(mapped_zero_cols)) {
     zero_expanded[mapped_zero_cols] <- zero[col_to_var[mapped_zero_cols]]
   }
-  
+
   # ACD component columns are not structural-zero FP columns. Even when the
   # parent variable has zero=TRUE, exact numeric zeros in ACD columns can be
   # legitimate transformed cumulative probabilities and must be centered as
   # ordinary continuous values.
   acd_component_cols <- intersect(acd_component_cols, names(zero_expanded))
-  
+
   if (length(acd_component_cols) > 0L) {
     zero_expanded[acd_component_cols] <- FALSE
   }
-  
+
   if (length(bin_cols) > 0L) {
     zero_expanded[bin_cols] <- FALSE
   }
-  
+
   zero_expanded
 }
 
@@ -1371,10 +1420,10 @@ expand_zero_flags_to_columns <- function(x_transformed, col_to_var, zero,
 apply_mixed_centering <- function(x_transformed, center, col_to_var,
                                   zero_expanded) {
   centers <- NULL
-  
+
   if (any(center)) {
     centers <- setNames(rep(0, ncol(x_transformed)), colnames(x_transformed))
-    
+
     if (all(center)) {
       # Fast path: all variables request centering, so center the whole design
       # matrix in one call.
@@ -1383,37 +1432,37 @@ apply_mixed_centering <- function(x_transformed, center, col_to_var,
         centers = NULL,
         zero = zero_expanded
       )
-      
+
       centers <- attr(x_transformed, "scaled:center")
     } else {
       # Mixed path: center only columns whose original variable has center=TRUE.
       mapped_center_cols <- !is.na(col_to_var) & col_to_var %in% names(center)
-      
+
       center_flags <- setNames(
         rep(FALSE, length(col_to_var)),
         names(col_to_var)
       )
-      
+
       if (any(mapped_center_cols)) {
         center_flags[mapped_center_cols] <- center[col_to_var[mapped_center_cols]]
       }
-      
+
       cols_to_center <- names(center_flags)[center_flags]
       cols_to_center <- intersect(cols_to_center, colnames(x_transformed))
-      
+
       if (length(cols_to_center) > 0L) {
         centered_part <- center_matrix(
           mat = x_transformed[, cols_to_center, drop = FALSE],
           centers = NULL,
           zero = zero_expanded[cols_to_center]
         )
-        
+
         x_transformed[, cols_to_center] <- centered_part
         centers[cols_to_center] <- attr(centered_part, "scaled:center")
       }
     }
   }
-  
+
   list(x_transformed = x_transformed, centers = centers)
 }
 
@@ -1476,11 +1525,11 @@ transform_vector_single_power <- function(x, power = 1, zero = FALSE) {
       call. = FALSE
     )
   }
-  
+
   if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
     stop("'zero' must be a single non-missing logical value.", call. = FALSE)
   }
-  
+
   # Delegate to the same C++ kernel used by transform_vector_fp(). This keeps
   # the single-power helper numerically consistent with the package-wide FP
   # implementation:
@@ -1526,79 +1575,79 @@ fp_power_requires_positive_input <- function(power) {
   if (is.null(power) || length(power) == 0L || all(is.na(power))) {
     return(FALSE)
   }
-  
+
   p <- as.numeric(power[!is.na(power)])
-  
+
   if (length(p) == 0L) {
     return(FALSE)
   }
-  
+
   # Repeated powers require log(x), e.g. c(2, 2) gives
   # x^2 and x^2 * log(x).
   if (length(p) > length(unique(p))) {
     return(TRUE)
   }
-  
+
   # Power 0 represents log(x).
   if (any(p == 0)) {
     return(TRUE)
   }
-  
+
   # Negative powers are undefined at zero and unstable near zero. For package
   # consistency, require strictly positive input rather than allowing negative
   # bases for negative integer powers.
   if (any(p < 0)) {
     return(TRUE)
   }
-  
+
   # Non-integer powers are not real-valued for negative inputs.
   if (any(p != floor(p))) {
     return(TRUE)
   }
-  
+
   # Remaining case: distinct positive integer powers, e.g. 1, 2, 3.
   FALSE
 }
 
 #' Simple function to center data
-#' 
-#' @param mat a transformed data matrix. 
-#' @param centers a vector of centering values. Length must be equal to the 
-#' number of columns in `mat`. If `NULL` (default) then 
+#'
+#' @param mat a transformed data matrix.
+#' @param centers a vector of centering values. Length must be equal to the
+#' number of columns in `mat`. If `NULL` (default) then
 #' centering values are determined by the function (see Details).
-#' @param zero Optional named logical vector indicating which columns treat 
-#' zero values specially. Names must match `mat` columns. Default `NULL` means 
+#' @param zero Optional named logical vector indicating which columns treat
+#' zero values specially. Names must match `mat` columns. Default `NULL` means
 #' no zero-specific handling.
 #'
-#' @details 
-#' Centering is done by column means for continuous variables (more than 2 
-#' distinct values) and by the minimum for binary variables. For variables 
-#' with `zero = TRUE`, the mean is computed only over the non-zero values, 
+#' @details
+#' Centering is done by column means for continuous variables (more than 2
+#' distinct values) and by the minimum for binary variables. For variables
+#' with `zero = TRUE`, the mean is computed only over the non-zero values,
 #' while zero values remain at zero.
-#' 
-#' It is assumed all categorical variables in the data are represented by 
-#' binary dummy variables. 
+#'
+#' It is assumed all categorical variables in the data are represented by
+#' binary dummy variables.
 #' @examples
 #' mat <- matrix(1:100, nrow = 10)
 #' colnames(mat) <- paste0("x", 1:ncol(mat))
 #' zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
 #' center_matrix(mat, zero = zero)
-#' 
-#' @return 
-#' Transformed data matrix. Has an attribute `scaled:center` that stores 
+#'
+#' @return
+#' Transformed data matrix. Has an attribute `scaled:center` that stores
 #' values used for centering.
-#' 
+#'
 #' @keywords internal
 #' @noRd
 center_matrix <- function(mat, centers = NULL, zero = NULL) {
-  
+
   if (!is.matrix(mat)) {
     stop("! 'mat' must be a matrix.")
   }
   if (is.null(colnames(mat))) {
     stop("! 'mat' must have column names.")
   }
-  
+
   # Validate zero
   if (!is.null(zero)) {
     if (!is.logical(zero)) {
@@ -1614,7 +1663,7 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
   } else {
     zero <- setNames(rep(FALSE, ncol(mat)), colnames(mat))
   }
-  
+
   # Validate centers (if provided)
   if (!is.null(centers)) {
     if (!is.numeric(centers)) {
@@ -1628,32 +1677,32 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
     }
     centers <- centers[colnames(mat)]  # reorder to match mat
   }
-  
+
   # Compute centers if not provided
   if (is.null(centers)) {
     centers <- numeric(ncol(mat))
-    
+
     for (j in seq_len(ncol(mat))) {
       x <- mat[, j]
       is_binary <- length(unique(x)) <= 2
-      
+
       if (zero[j]) {
         spike_mask <- x == 0
         centers[j] <- if (all(spike_mask)) 0 else mean(x[!spike_mask], na.rm = TRUE)
       } else if (is_binary) {
-        # replace the means of binary variables with the minimum 
+        # replace the means of binary variables with the minimum
         centers[j] <- min(x, na.rm = TRUE)
       } else {
         centers[j] <- mean(x, na.rm = TRUE)
       }
     }
-    
+
     centers <- setNames(centers, colnames(mat))
   }
-  
+
   # Apply centering
   mat_centered <- scale(mat, center = centers, scale = FALSE)
-  
+
   # Reset zero values for variables flagged with zero=TRUE
   for (j in seq_len(ncol(mat))) {
     if (zero[j]) {
@@ -1665,12 +1714,12 @@ center_matrix <- function(mat, centers = NULL, zero = NULL) {
 }
 
 #' Helper function to name transformed variables
-#' 
+#'
 #' @param name character with name of variable being transformed.
 #' @param n_powers number of resulting variables from FP-transformation.
 #' @param acd logical indicating the use of ACD-transformation
-#' 
-#' @return 
+#'
+#' @return
 #' Character vector of names of length `n_powers`.
 #' @keywords internal
 #' @noRd
@@ -1787,11 +1836,11 @@ name_transformed_variables <- function(name, n_powers, acd = FALSE) {
 #'
 #' @keywords internal
 #' @noRd
-create_dummy_variables <- function(data, 
-                                   var_ordinal = NULL, 
-                                   var_nominal = NULL, 
+create_dummy_variables <- function(data,
+                                   var_ordinal = NULL,
+                                   var_nominal = NULL,
                                    drop_variables = FALSE) {
-  
+
   # assert that data must be provided
   if (missing(data)) {
     stop(
@@ -1800,31 +1849,31 @@ create_dummy_variables <- function(data,
       call. = FALSE
     )
   }
-  
+
   if (!is.data.frame(data)) {
     stop("The data must be a data.frame.", call. = FALSE)
   }
-  
+
   # colnames of data
   xnames <- colnames(data)
-  
+
   if (is.null(xnames)) {
     stop("The column names of the provided data are empty.", call. = FALSE)
   }
-  
+
   # assert that either var_ordinal or var_nominal must be provided
   if (is.null(var_nominal) && is.null(var_ordinal)) {
     stop("Either var_nominal or var_ordinal must be provided.", call. = FALSE)
   }
-  
+
   # validate ordinal variable names
   if (!is.null(var_ordinal)) {
     if (!is.character(var_ordinal)) {
       stop("var_ordinal must be a character vector.", call. = FALSE)
     }
-    
+
     index1 <- which(!var_ordinal %in% xnames)
-    
+
     if (length(index1) != 0L) {
       stop(
         paste0(
@@ -1837,15 +1886,15 @@ create_dummy_variables <- function(data,
       )
     }
   }
-  
+
   # validate nominal variable names
   if (!is.null(var_nominal)) {
     if (!is.character(var_nominal)) {
       stop("var_nominal must be a character vector.", call. = FALSE)
     }
-    
+
     index2 <- which(!var_nominal %in% xnames)
-    
+
     if (length(index2) != 0L) {
       stop(
         paste0(
@@ -1858,13 +1907,13 @@ create_dummy_variables <- function(data,
       )
     }
   }
-  
+
   # A variable cannot be encoded both as ordinal and nominal.
   # These encodings are mutually exclusive and would create duplicated or
   # contradictory dummy variables for the same source variable.
   if (!is.null(var_ordinal) && !is.null(var_nominal)) {
     overlap <- intersect(var_ordinal, var_nominal)
-    
+
     if (length(overlap) > 0L) {
       stop(
         sprintf(
@@ -1875,19 +1924,19 @@ create_dummy_variables <- function(data,
       )
     }
   }
-  
+
   # Deal with ordinal variables when provided
   if (!is.null(var_ordinal)) {
     for (col in var_ordinal) {
-      
+
       # levels of the variable if it exists; important for reference
       unique_levels <- levels(data[[col]])
-      
+
       # if levels do not exist, use sorted unique values
       if (is.null(unique_levels)) {
         unique_levels <- sort(unique(data[[col]]))
       }
-      
+
       if (length(unique_levels) == 1L) {
         warning(
           paste(
@@ -1899,37 +1948,37 @@ create_dummy_variables <- function(data,
         )
         next
       }
-      
+
       levels_list <- lapply(
         seq_along(unique_levels)[-length(unique_levels)],
         function(i) unique_levels[seq_len(i)]
       )
-      
+
       for (i in seq_along(levels_list)) {
         level <- levels_list[[i]]
-        
+
         var_name <- paste0(col, "_", paste(i, collapse = "_"))
         data[[var_name]] <- as.integer(!data[[col]] %in% level)
       }
     }
   }
-  
+
   # Deal with nominal variables when provided
   if (!is.null(var_nominal)) {
     dummies <- stats::model.matrix(
       ~ .,
       data = data[, var_nominal, drop = FALSE]
     )[, -1, drop = FALSE]
-    
+
     data <- cbind(data, dummies)
   }
-  
+
   # drop original variables
   if (drop_variables) {
     vars_to_drop <- c(var_nominal, var_ordinal)
     data <- data[, !(colnames(data) %in% vars_to_drop), drop = FALSE]
   }
-  
+
   data
 }
 #' Cumulative (Threshold) Contrast Coding for Ordered Factors
@@ -1949,8 +1998,8 @@ create_dummy_variables <- function(data,
 #' @details
 #' For an ordered factor with levels A < B < C < D, the resulting matrix
 #' produces three columns:
-#' Column 1 compares B, C, D versus A; 
-#' Column 2 compares C, D versus A and B; 
+#' Column 1 compares B, C, D versus A;
+#' Column 2 compares C, D versus A and B;
 #' Column 3 compares D versus A, B, and C.
 #' Each element of the matrix is 0 or 1, with 1 indicating that the observation
 #' belongs to the "higher" category for that threshold.

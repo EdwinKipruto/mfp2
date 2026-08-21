@@ -394,12 +394,14 @@
 #' Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
 #' Names must match formula term names or, for matrix fits, column names or
 #' `term_groups` names.
-#' @param xorder Order in which predictors enter the backfitting algorithm.
-#' One of `"ascending"` (default), `"descending"`, or `"original"`.
-#' `"ascending"` processes predictors from smallest to largest p-value in an
-#' initial linear model (most significant first). `"descending"` reverses that
-#' order. `"original"` preserves the column order of `x` or the left-to-right
-#' order of formula terms.
+#' @param xorder Order in which conceptual predictors enter the backfitting
+#' algorithm. One of `"ascending"` (default), `"descending"`, or `"original"`.
+#' For significance-based ordering, each conceptual predictor is removed as one
+#' block from the resolved full linear reference model. Ordinary terms use their
+#' linear column, `zero` terms use the positive-part column, and `catzero` or
+#' retained spike-at-zero terms use the positive-part column plus the binary
+#' structural-zero indicator. `"ascending"` visits the smallest p-value first,
+#' `"descending"` the largest, and `"original"` preserves the input term order.
 #' @param powers Optional named list of candidate FP powers for individual predictors.
 #' The default set is `c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)`, where 0 stands
 #' for the logarithm. Names must match the corresponding formula terms or
@@ -1239,9 +1241,11 @@ expand_term_metadata_to_columns <- function(
 #' @param term_to_columns Conceptual term-to-design-column lookup.
 #' @param x Numeric design matrix after any fp() column renaming.
 #'
-#' @return Named list of metadata for simple factor main effects. More complex
-#'   factor-containing terms, such as interactions, are omitted because their
-#'   design rows also depend on the interacting variables.
+#' @return Named list of metadata for simple factor main effects. Each entry
+#'   records the source factor variable, its levels and ordering, the fitted raw
+#'   design columns, and the exact design row for every observed level. More
+#'   complex factor-containing terms, such as interactions, are omitted because
+#'   their design rows also depend on the interacting variables.
 #'
 #' @keywords internal
 #' @noRd
@@ -1297,6 +1301,7 @@ build_formula_factor_info <- function(factor_terms,
     }
 
     out[[conceptual_term]] <- list(
+      variable = frame_variable,
       levels = level_names,
       ordered = is.ordered(values),
       columns = columns,
@@ -3708,9 +3713,21 @@ coef.mfp2 <- function(object, ...) {
 #' grouped terms, the initial degrees of freedom count all member design columns.
 #' The Spike-at-Zero subsection also reports `prop_zero`, the proportion of
 #' finite fitting-sample observations in the structural-zero component.
-#' Notes about \code{select}/\code{alpha} divergence and the
+#' Notes about variable-specific \code{select}/\code{alpha} settings and the
 #' \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 #' column whose meaning may not be obvious, are printed immediately below it.
+#' When the SAZ table contains an \code{ACD} column, a short note explains that
+#' \code{ACD = yes} identifies a variable that also underwent ACD transformation.
+#'
+#' The "Final Model Coefficients" section reports the original variable, the
+#' fitted basis represented by each design column, its estimate, and its standard
+#' error from the final fitted model. When the final model uses centering, the
+#' stored centering constant is shown in a
+#' separate \code{Center} column. For zero-handled terms, the displayed basis
+#' includes the positive-part or structural-zero indicator explicitly, and the
+#' centering constant applies only within the positive component. Factor main
+#' effects are described from their stored level-by-design matrix, so treatment
+#' indicators and other contrasts reflect the design that was fitted.
 #'
 #' The reported model-fit values use family-specific definitions.
 #'
@@ -3718,8 +3735,10 @@ coef.mfp2 <- function(object, ...) {
 #' \itemize{
 #'   \item the null-model value is the null deviance returned by
 #'     \code{glm.fit()} or \code{glm()};
-#'   \item the full-linear value is the residual deviance of the model containing
-#'     all candidate predictors as ordinary linear terms; and
+#'   \item the full-linear value is the residual deviance of the resolved linear
+#'     reference model: ordinary terms use x, `zero` terms use their positive
+#'     part, and `catzero`/retained spike-at-zero terms additionally include the
+#'     structural-zero indicator; and
 #'   \item the final-MFP value is the residual deviance of the selected MFP
 #'     model.
 #' }
@@ -3737,14 +3756,14 @@ coef.mfp2 <- function(object, ...) {
 #'   \code{TRUE}.
 #' @param notes Logical. If \code{FALSE}, suppresses all auto-generated
 #'   explanatory text printed after the Detailed Settings table -- both the
-#'   \code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship,
-#'   \code{select}/\code{alpha} divergence) and the column-definition
+#'   \code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship
+#'   and variable-specific selection settings) and the column-definition
 #'   paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
 #'   Has no effect when \code{detailed_settings = FALSE}. Default is
 #'   \code{TRUE}.
-#' @param ... Further arguments passed to \code{print.default()} when printing
-#'   the coefficient vector. The \code{digits} argument, when supplied, is also
-#'   used to format the model-fit values.
+#' @param ... Further print arguments. The \code{digits} argument, when
+#'   supplied, is used to format the final coefficient table and model-fit
+#'   values.
 #'
 #' @return Invisibly returns \code{x}.
 #'
@@ -4355,22 +4374,74 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
           as.numeric(names(tab)[which.max(tab)])
         }
 
-        select_common <- mode_value(select_num)
-        alpha_common  <- mode_value(alpha_num)
+        # Forced inclusion and alpha = 1 are both deliberate variable-specific
+        # modelling settings. Report them together so the note is concise while
+        # still explaining that alpha = 1 permits the maximum function complexity.
+        setting_note_parts <- character(0L)
 
-        diverges <- (!is.na(select_num) & select_num != select_common) |
-          (!is.na(alpha_num) & alpha_num != alpha_common)
+        forced <- !is.na(select_num) & select_num == 1
+        if (any(forced)) {
+          forced_vars <- variable_names[forced]
+          setting_note_parts <- c(
+            setting_note_parts,
+            sprintf(
+              "%s %s forced into the model (select = 1)",
+              paste(forced_vars, collapse = ", "),
+              if (length(forced_vars) == 1L) "is" else "are"
+            )
+          )
+        }
 
-        if (any(diverges)) {
-          diverging_vars <- variable_names[diverges]
+        alpha_one <- !is.na(alpha_num) & alpha_num == 1
+        alpha_one_is_exception <- alpha_one & any(!is.na(alpha_num) & !alpha_one)
+        if (any(alpha_one_is_exception)) {
+          alpha_one_vars <- variable_names[alpha_one_is_exception]
+          setting_note_parts <- c(
+            setting_note_parts,
+            sprintf(
+              "%s use%s alpha = 1, allowing the maximum permitted function complexity",
+              paste(alpha_one_vars, collapse = ", "),
+              if (length(alpha_one_vars) == 1L) "s" else ""
+            )
+          )
+        }
+
+        if (length(setting_note_parts) > 0L) {
+          note_lines <- c(
+            note_lines,
+            paste0(paste(setting_note_parts, collapse = "; "), ".")
+          )
+        }
+
+        # Preserve reporting of other non-default selection settings. Forced
+        # inclusion is handled above and is therefore excluded here.
+        selectable <- !forced & !is.na(select_num)
+        select_common <- mode_value(select_num[selectable])
+        select_diff <- selectable & !is.na(select_common) &
+          select_num != select_common
+        if (any(select_diff)) {
+          vars <- variable_names[select_diff]
           note_lines <- c(note_lines, sprintf(
-            "%s use%s select = %s, alpha = %s (all others use select = %s, alpha = %s).",
-            paste(diverging_vars, collapse = ", "),
-            if (length(diverging_vars) == 1L) "s" else "",
-            paste(unique(format(select_num[diverges], trim = TRUE)), collapse = "/"),
-            paste(unique(format(alpha_num[diverges], trim = TRUE)), collapse = "/"),
-            format(select_common, trim = TRUE),
-            format(alpha_common, trim = TRUE)
+            "%s use%s select = %s (all others use select = %s).",
+            paste(vars, collapse = ", "),
+            if (length(vars) == 1L) "s" else "",
+            paste(unique(format(select_num[select_diff], trim = TRUE)), collapse = "/"),
+            format(select_common, trim = TRUE)
+          ))
+        }
+
+        # alpha = 1 has the informative wording above. Keep the established
+        # generic note only for other variable-specific alpha values.
+        alpha_common <- mode_value(alpha_num[!alpha_one])
+        alpha_diff <- !alpha_one & !is.na(alpha_num) & !is.na(alpha_common) &
+          alpha_num != alpha_common
+        if (any(alpha_diff)) {
+          vars <- variable_names[alpha_diff]
+          note_lines <- c(note_lines, sprintf(
+            "%s use%s alpha = %s.",
+            paste(vars, collapse = ", "),
+            if (length(vars) == 1L) "s" else "",
+            paste(unique(format(alpha_num[alpha_diff], trim = TRUE)), collapse = "/")
           ))
         }
       }
@@ -4385,15 +4456,10 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
       # catzero_final's meaning is covered in the Notes above (together with
       # the catzero-implies-zero relationship), not repeated here.
 
-      if (any(acd_flag)) {
+      if (any(in_saz) && any(acd_flag[in_saz])) {
         cat(
-          "acd:\n",
-          "  yes means the variable underwent an approximate cumulative ",
-          "distribution\n  (ACD) transformation. acd and spike are independent ",
-          "settings, so a\n  variable can be yes for both; ACD variables that ",
-          "were also assessed by\n  the spike-at-zero algorithm are listed in ",
-          "the SAZ table above, not in the ACD table. When such an overlap ",
-          "exists,\n  the SAZ table includes an ACD column to mark it.\n\n",
+          "Note: In the SAZ table, ACD = yes indicates that the variable also\n",
+          "underwent an ACD transformation.\n\n",
           sep = ""
         )
       }
@@ -4436,7 +4502,128 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   coefficients <- stats::coef(x)
 
   if (length(coefficients) > 0L) {
-    print.default(coefficients, ...)
+    design_info <- mfp2_design_column_info(x)
+    coefficient_names <- names(coefficients)
+
+    if (is.null(coefficient_names)) {
+      stop("Final model coefficients must be named.", call. = FALSE)
+    }
+
+    model_rows <- match(design_info$model_column, coefficient_names)
+    if (anyNA(model_rows)) {
+      stop(
+        "Final design-column metadata is not aligned with model coefficients.",
+        call. = FALSE
+      )
+    }
+
+    # Standard errors come from the final fitted model covariance matrix and
+    # are matched by exact coefficient names. Missing covariance entries remain
+    # NA rather than being aligned by position or reconstructed from names.
+    standard_errors <- stats::setNames(
+      rep(NA_real_, length(coefficients)),
+      coefficient_names
+    )
+    covariance <- tryCatch(stats::vcov(x), error = function(e) NULL)
+    if (is.matrix(covariance) && !is.null(rownames(covariance)) &&
+        !is.null(colnames(covariance))) {
+      covariance_names <- intersect(
+        coefficient_names,
+        intersect(rownames(covariance), colnames(covariance))
+      )
+      if (length(covariance_names) > 0L) {
+        covariance_rows <- match(covariance_names, rownames(covariance))
+        covariance_cols <- match(covariance_names, colnames(covariance))
+        variances <- covariance[cbind(covariance_rows, covariance_cols)]
+        valid_variance <- !is.na(variances) & variances >= 0
+        standard_errors[covariance_names[valid_variance]] <- sqrt(
+          variances[valid_variance]
+        )
+      }
+    }
+
+    display <- data.frame(
+      Variable = design_info$variable,
+      Basis = design_info$basis,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+
+    if (!is.null(x$centers)) {
+      display[["Center"]] <- design_info$center
+    }
+    display[["Estimate"]] <- unname(coefficients[model_rows])
+    display[["Std. Error"]] <- unname(
+      standard_errors[coefficient_names[model_rows]]
+    )
+
+    # Repeated rows for one variable represent additional basis columns. Blank
+    # the repeated label while retaining the exact basis, center, and estimate.
+    if (nrow(display) > 1L) {
+      repeated_variable <- c(FALSE, display$Variable[-1L] == display$Variable[-nrow(display)])
+      display$Variable[repeated_variable] <- ""
+    }
+
+    intercept_position <- match("(Intercept)", coefficient_names)
+    if (!is.na(intercept_position)) {
+      intercept <- data.frame(
+        Variable = "(Intercept)",
+        Basis = "",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+      if (!is.null(x$centers)) intercept[["Center"]] <- NA_real_
+      intercept[["Estimate"]] <- unname(coefficients[[intercept_position]])
+      intercept[["Std. Error"]] <- unname(
+        standard_errors[["(Intercept)"]]
+      )
+      display <- rbind(intercept, display)
+    }
+
+    if (!is.null(x$centers)) {
+      zero_centered <- any(design_info$zero_handled & design_info$centered)
+      if (zero_centered) {
+        cat(
+          "Estimates use the displayed Center; for zero-handled terms it is ",
+          "subtracted only within the positive component.\n\n",
+          sep = ""
+        )
+      } else {
+        cat("Estimates are for: Basis - Center\n\n")
+      }
+    }
+
+    if (!is.null(x$centers)) {
+      # Center is numeric while the table is assembled. Convert it to display
+      # text only at the print boundary: a missing center is not applicable and
+      # is left blank, an exact zero is shown as 0, and nonzero values use
+      # compact numeric formatting without trailing decimal zeroes.
+      format_center <- function(value) {
+        if (length(value) != 1L || is.na(value)) {
+          return("")
+        }
+        if (identical(value, 0) || value == 0) {
+          return("0")
+        }
+        format(value, digits = digits, trim = TRUE)
+      }
+
+      display[["Center"]] <- vapply(
+        display[["Center"]],
+        FUN = format_center,
+        FUN.VALUE = character(1L),
+        USE.NAMES = FALSE
+      )
+    }
+
+    print.data.frame(
+      display,
+      row.names = FALSE,
+      right = FALSE,
+      quote = FALSE,
+      na.print = "",
+      digits = digits
+    )
   } else {
     cat("(none)\n")
   }

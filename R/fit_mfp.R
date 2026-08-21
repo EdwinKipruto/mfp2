@@ -151,8 +151,11 @@ validate_mfp_candidate_powers <- function(powers,
 #'   threshold per conceptual term.
 #' @param keep A character vector with names of variables to be kept in the
 #'   model regardless of selection criteria.
-#' @param xorder A string determining the order of entry of the covariates into
-#'   the model-selection algorithm.
+#' @param xorder A string determining the visiting order of conceptual terms.
+#'   For significance-based ordering, terms are ranked by leave-one-term-out
+#'   likelihood-ratio tests from the resolved full linear reference model. A
+#'   zero term contributes its positive-part column, while a catzero or retained
+#'   spike term contributes the positive-part column plus its binary indicator.
 #' @param powers Named list of permitted FP powers, one element per conceptual
 #'   term. Explicitly mapped terms use the fixed linear power \code{1}.
 #' @param method A character string specifying the method for tie handling in
@@ -209,17 +212,23 @@ validate_mfp_candidate_powers <- function(powers,
 #'
 #' @section Algorithm:
 #' \enumerate{
-#'   \item \strong{Full linear reference and variable ordering.} A model
-#'     containing all candidate predictors as ordinary linear terms is fitted
-#'     once. Its null and fitted-model deviances are retained as
-#'     \code{null_deviance} and \code{linear_deviance}. When
-#'     \code{xorder} is \code{"ascending"} or \code{"descending"} and
-#'     more than one predictor is present, leave-one-predictor-out likelihood-
-#'     ratio tests determine the visiting order. For \code{xorder = "original"}
-#'     or a single predictor, no reduced ordering models are fitted.
-#'   \item \strong{Pre-processing.} Initial FP powers are set to 1. ACD
-#'     transformation setup, zero/catzero/spike handling, and spike eligibility
-#'     checks are performed. See the \emph{Spike-at-zero handling} section.
+#'   \item \strong{Pre-processing and structural-zero resolution.} ACD
+#'     eligibility is resolved on the unre-coded design. The
+#'     spike-to-catzero-to-zero hierarchy and any defensive SAZ reset are then
+#'     applied, followed by SAZ df capping.
+#'   \item \strong{Reference representation.} Final zero terms are recoded to
+#'     their positive part and catzero/retained spike indicators are built once.
+#'     These same objects are reused by the reference fit and backfitting.
+#'   \item \strong{Full linear reference and variable ordering.} The full
+#'     reference contains each conceptual term in its resolved linear starting
+#'     form: ordinary x, positive-part x for zero terms, and positive-part x plus
+#'     the structural-zero indicator for catzero/retained spike terms. Its fit
+#'     statistics are retained as \code{null_deviance},
+#'     \code{linear_deviance}, \code{linear_logl}, and \code{linear_df}. For
+#'     ascending/descending ordering, each conceptual term is removed as one
+#'     block and compared with the full reference by a likelihood-ratio test.
+#'     With \code{xorder = "original"} or one term, no reduced ordering fits
+#'     are required.
 #'   \item \strong{MFP backfitting cycles.} FP powers and spike decisions are
 #'     updated iteratively via \code{find_best_fp_cycle()} until convergence or
 #'     the maximum number of cycles is reached. Previously computed adjustment
@@ -227,8 +236,9 @@ validate_mfp_candidate_powers <- function(powers,
 #'     recomputation across cycles.
 #'   \item \strong{Final transformation.} After convergence, \code{x} is
 #'     backscaled (if \code{scale != 1}) to restore the shifted-but-not-scaled
-#'     variable, then FP-transformed using the selected powers. Centering and
-#'     binary indicator creation for \code{catzero} variables are applied.
+#'     variable, then FP-transformed using the selected powers. Centering is
+#'     applied and the already-built catzero indicators are retained or removed
+#'     according to the final SAZ decision.
 #'   \item \strong{Model fitting.} The final model is fitted on the transformed
 #'     design matrix and returned as an \code{mfp2} object.
 #' }
@@ -243,12 +253,12 @@ validate_mfp_candidate_powers <- function(powers,
 #' \enumerate{
 #'   \item The cascade is enforced: \code{catzero[spike] <- TRUE} and
 #'     \code{zero[catzero] <- TRUE}.
-#'   \item Spike-specific eligibility checks and positive-part df capping are
-#'     evaluated directly with \code{x <= 0} / \code{x > 0} predicates, so no
-#'     temporary recoded copy of the full design matrix is required.
 #'   \item If \code{saz_pre_resolved = FALSE}, \code{reset_spike()} is called as
 #'     a defensive fallback for internal callers that have not resolved SAZ
 #'     eligibility before preprocessing.
+#'   \item Spike-specific proportions and positive-part df capping are evaluated
+#'     directly with \code{x <= 0} / \code{x > 0} predicates before physical
+#'     zero recoding.
 #'   \item For retained spike variables, the maximum FP degrees of freedom may
 #'     be reduced according to the number of distinct positive values. This
 #'     mirrors the ordinary MFP df-capping rule, but applies it to the positive
@@ -323,8 +333,8 @@ fit_mfp <- function(x,
                     fitter = "base") {
 
   # fit_mfp() implements the full MFP/MFPA/SAZ algorithm described in the
-  # "Algorithm" section above: order variables, pre-process ACD/zero/catzero/
-  # spike settings, run backfitting cycles to select FP powers, then transform
+  # "Algorithm" section above: resolve ACD/zero/catzero/spike settings, build
+  # the linear reference and visiting order, run backfitting cycles, then transform
   # and fit the final model. mfp2.default()/mfp2.formula() are expected to have
   # already validated and preprocessed all inputs: ordinary FP variables are
   # shifted/scaled, whereas active ACD variables are shifted with scale 1.
@@ -355,119 +365,42 @@ fit_mfp <- function(x,
   # poisson() construction as well. Cox remains the character string "cox".
   family_fit <- resolve_fit_model_family(family)
 
-  # Initial df are reported later, after visiting order, ACD handling, SAZ
-  # eligibility, and positive-part df capping have been resolved. Printing the
-  # raw user/search df here would under-count eligible SAZ terms by one binary
-  # indicator and would not align the displayed columns with the visiting order.
+  # Initial df are reported after the reference model and visiting order have
+  # been resolved. Before that point, keep all per-variable settings aligned to
+  # `variables_x`, the conceptual-term order supplied to fit_mfp().
 
-  # Step 2: Fit the full linear reference and determine visiting order -------
-  # order_variables() always fits the model containing every candidate
-  # predictor as an ordinary linear term. That fit supplies both the null-model
-  # deviance and the full-linear-model deviance. Its log-likelihood is separately
-  # reused for leave-one-predictor-out likelihood-ratio tests when
-  # significance-based ordering is requested.
-  #
-  # The call is deliberately unconditional: with one predictor, or with
-  # xorder = "original", no reduced ordering models are needed, but the full
-  # linear reference deviance is still required for the fitted mfp2 object.
-  ordering_result <- order_variables(
-    xorder        = xorder,
-    x             = x,
-    term_to_columns = term_to_columns,
-    y             = y,
-    family        = family_fit,
-    family_string = family_string,
-    fitter        = fitter,
-    weights       = weights,
-    offset        = offset,
-    strata        = strata,
-    method        = method,
-    control       = control,
-    nocenter      = nocenter
-  )
-
-  variables_ordered <- ordering_result$variables_ordered
-  null_deviance <- ordering_result$null_deviance
-  linear_deviance <- ordering_result$linear_deviance
-
-  # Likelihood-scale quantities retained for model comparison and object
-  # compatibility. Cox supplies null_logl from coxph.fit(); GLMs report their
-  # stored deviances and retain null_logl as NA_real_.
-  linear_logl <- ordering_result$linear_logl
-  linear_df   <- ordering_result$linear_df
-  null_logl   <- ordering_result$null_logl
-
-  # The visiting order is reported together with the effective initial df
-  # after early preprocessing below. This keeps the two verbose summaries in
-  # the same variable order and avoids showing pre-cap/pre-SAZ df values.
-
-  # Step 3: Initialize FP powers and align all per-variable vectors/x to order
-  # Every variable starts the first cycle as linear (power = 1); the
-  # backfitting cycles below will update powers_current as better-fitting FP
-  # forms are found. All per-variable option vectors (and x itself) are then
-  # reordered to variables_ordered so the rest of the function can index them
-  # consistently by name/position.
-  powers_current <- stats::setNames(
-    as.list(rep(1, length(variables_ordered))),
-    variables_ordered
-  )
-
-  # Re-order all per-variable vectors to match variables_ordered
-  alpha        <- setNames(alpha,   variables_x)[variables_ordered]
-  select       <- setNames(select,  variables_x)[variables_ordered]
-  df           <- setNames(df,      variables_x)[variables_ordered]
-  center       <- setNames(center,  variables_x)[variables_ordered]
-  shift        <- if (!is.null(names(shift))) {
-    shift[variables_ordered]
-  } else {
-    setNames(shift, variables_x)[variables_ordered]
-  }
+  # Step 2: Align settings and configure ACD on the unre-coded design ---------
+  # Ordering is intentionally deferred until the structural-zero representation
+  # is final. ACD eligibility must be resolved first because reset_acd() inspects
+  # the unre-coded covariate values. Naming these vectors here is alignment only;
+  # it does not change their conceptual-term order.
+  df           <- stats::setNames(df,      variables_x)
   scale        <- if (!is.null(names(scale))) {
-    scale[variables_ordered]
+    scale[variables_x]
   } else {
-    setNames(scale, variables_x)[variables_ordered]
+    stats::setNames(scale, variables_x)
   }
-  acdx         <- setNames(acdx,    variables_x)[variables_ordered]
-  zero         <- setNames(zero,    variables_x)[variables_ordered]
-  catzero      <- setNames(catzero, variables_x)[variables_ordered]
-  spike        <- setNames(spike,   variables_x)[variables_ordered]
-  force_max_fp <- setNames(force_max_fp, variables_x)[variables_ordered]
-  powers       <- powers[variables_ordered]
+  acdx         <- stats::setNames(acdx,    variables_x)
+  zero         <- stats::setNames(zero,    variables_x)
+  catzero      <- stats::setNames(catzero, variables_x)
+  spike        <- stats::setNames(spike,   variables_x)
+  force_max_fp <- stats::setNames(force_max_fp, variables_x)
+  powers       <- powers[variables_x]
 
-  # Reorder the raw design columns by conceptual-term visiting order. For the
-  # historical singleton case this is identical to the previous column reorder.
-  term_to_columns <- term_to_columns[variables_ordered]
-  raw_columns_ordered <- unlist(term_to_columns, use.names = FALSE)
-  if (!identical(colnames(x), raw_columns_ordered)) {
-    x <- x[, raw_columns_ordered, drop = FALSE]
-  }
-  if (!identical(colnames(x), raw_columns_ordered)) {
-    stop("Internal error: x column order does not match term_to_columns.",
-         call. = FALSE)
-  }
+  variables_acd <- character(0L)
 
-
-  # `keep` forces variables into the final model regardless of their
-  # backfitting significance, by setting their selection threshold to 1
-  # (i.e. always significant) for the p-value criterion.
-  if (!is.null(keep)) {
-    select[which(names(select) %in% keep)] <- 1
-  }
-
-  # Step 4: Configure the ACD (approximate cumulative distribution) transform -
-  # Requesting ACD for a variable forces df = 4, since the FSPA function-
-  # selection procedure for ACD needs the full FP1(p1, p2) model space (see
-  # "Details on approximate cumulative distribution transformation" in mfp2()).
-  # Initial powers_current for ACD variables are set to c(1, NA): a linear
-  # term for x and no ACD term yet, to be updated in the first backfitting cycle.
+  # Requesting ACD forces df = 4 because FSPA evaluates the full FP1(p1, p2)
+  # model space. Keep x unre-coded here so reset_acd() sees the same values used
+  # to determine ACD eligibility.
   if (any(acdx)) {
     acdx          <- reset_acd(x, acdx)
     variables_acd <- names(acdx)[acdx]
 
     # Public mfp2() callers set active ACD variables to scale 1 before entering
     # fit_mfp(). Keep a defensive path for direct internal callers that supplied
-    # the historical scaled working matrix: restore shifted, unscaled values and
-    # update the preprocessing metadata before any FP/ACD candidate is generated.
+    # a scaled working matrix: restore shifted, unscaled values before any
+    # FP/ACD candidate or linear reference term is generated.
+    # ACD should not be scaled but can be shifted, see mfpa paper
     acd_scaled <- variables_acd[scale[variables_acd] != 1]
     if (length(acd_scaled) > 0L) {
       x[, acd_scaled] <- sweep(
@@ -479,42 +412,21 @@ fit_mfp <- function(x,
       scale[acd_scaled] <- 1
     }
 
-    powers_current <- utils::modifyList(
-      powers_current,
-      sapply(variables_acd, function(v) c(1, NA), simplify = FALSE)
-    )
-    df[variables_ordered %in% variables_acd] <- 4
+    df[variables_acd] <- 4
   }
 
-  # Step 5: Resolve the spike/catzero/zero cascade and SAZ eligibility --------
-  # Public callers should resolve SAZ eligibility before shift/scale
-  # preprocessing. This prevents variables reset from SAZ to ordinary FP from
-  # retaining a shift = 0 that was chosen only because spike was temporarily TRUE.
-  #
-  # fit_mfp() still enforces the spike/catzero/zero cascade. It also keeps a
-  # defensive reset path for internal callers that have not yet pre-resolved SAZ
-  # eligibility.
-
-  user_catzero <- catzero   # pre-cascade user intent
-  user_zero    <- zero      # pre-cascade user intent
+  # Step 3: Resolve spike/catzero/zero hierarchy and SAZ eligibility ----------
+  # Preserve explicit user intent before applying the hierarchy. reset_spike()
+  # uses these copies to restore zero/catzero settings when a requested spike
+  # term is ineligible.
+  user_catzero <- catzero
+  user_zero    <- zero
 
   catzero[spike] <- TRUE    # spike implies catzero
   zero[catzero]  <- TRUE    # catzero implies zero
 
-  # No temporary zero-recoded copy is needed for SAZ eligibility. The helper
-  # functions below interpret finite x <= 0 directly as the structural-zero
-  # component, exactly matching the old temporary recoding while avoiding a
-  # copy-on-modify duplication of the full design matrix.
-
-  # Defensive reset for ineligible spike variables.
-  #
-  # Public callers such as mfp2.default() should resolve SAZ eligibility before
-  # shift/scale preprocessing and call fit_mfp(..., saz_pre_resolved = TRUE).
-  # That avoids the unsafe situation where a spike variable is reset to ordinary
-  # FP after shift = 0 has already been chosen.
-  #
-  # This late reset is kept only for internal callers that have not yet
-  # pre-resolved SAZ eligibility.
+  # Public callers normally resolve SAZ eligibility before shift/scale
+  # preprocessing. Keep the defensive reset for direct internal callers.
   if (!isTRUE(saz_pre_resolved) && any(spike)) {
     result <- reset_spike(
       x                      = x,
@@ -529,9 +441,8 @@ fit_mfp <- function(x,
     zero    <- result$zero
   }
 
-  # Retain the structural-zero share for the actual fitting sample. This is
-  # descriptive SAZ metadata, not a model-selection result. Non-SAZ terms are
-  # represented by NA and are suppressed by the print methods.
+  # Retain the structural-zero share before x is physically recoded. This is
+  # descriptive SAZ metadata, not a model-selection result.
   prop_zero <- calculate_saz_prop_zero(
     x = x,
     spike = spike,
@@ -539,23 +450,18 @@ fit_mfp <- function(x,
   )
 
   # For retained spike-at-zero variables, cap the maximum FP df using only the
-  # positive component. Ordinary assign_df() uses the full variable,
-  # but for SAZ the relevant information for the FP part is x > 0; no
-  # temporary zero recoding is required for that predicate.
+  # positive component. The positive/nonpositive split must also be evaluated
+  # before physical recoding.
   df <- cap_spike_df(
     x     = x,
     df    = df,
     spike = spike
   )
 
-  # Validate candidate powers after all early df modifications. This includes
-  # ACD forcing df = 4 and SAZ-specific df capping for retained spike variables.
-  #
-  # Ordinary mfp2() closed testing requires a non-linear FP1 candidate whenever
-  # df > 1 because its linear model is fitted separately. MFPI is the deliberate
-  # exception: when MFPI prespecifies FP1 and forces that degree, p = 1 remains
-  # a legitimate member of the FP1 candidate class. Build an explicit exemption
-  # mask for those forced MFPI FP1 terms rather than modifying df itself.
+  # Validate candidate powers after ACD forcing and SAZ-specific df capping.
+  # MFPI may deliberately retain p = 1 as an FP1 candidate when that degree is
+  # prespecified; ordinary mfp2() still requires a non-linear FP1 candidate when
+  # df > 1 because its linear model is fitted separately.
   allow_linear_only_fp1 <- stats::setNames(
     rep(FALSE, length(df)),
     names(df)
@@ -571,68 +477,10 @@ fit_mfp <- function(x,
     allow_linear_only_fp1 = allow_linear_only_fp1
   )
 
-  if (isTRUE(verbose)) {
-    # `df` is the effective continuous FP/ACD search setting after all early
-    # capping. For display, convert it to the degrees of freedom actually
-    # represented by each term when selection starts. Explicitly mapped fixed
-    # terms contribute one df per raw design column, and every eligible SAZ
-    # term contributes one additional df for its structural-zero indicator.
-    # This mirrors create_fp_terms()$df_initial without changing `df` itself,
-    # because the latter must continue to control the FP power search.
-    df_initial_display <- df
-
-    mapped_display <- mapped_term_flags(term_to_columns[variables_ordered])
-    if (any(mapped_display)) {
-      df_initial_display[mapped_display] <- lengths(
-        term_to_columns[variables_ordered][mapped_display]
-      )
-    }
-
-    if (any(spike)) {
-      df_initial_display[spike] <- df_initial_display[spike] + 1L
-    }
-
-    # All per-variable vectors were reordered to `variables_ordered` in Step 3,
-    # so print the visiting sequence and its df vector together. Users can then
-    # read each df directly against the order in which terms will be visited.
-    message(sprintf(
-      "Visiting order: %s",
-      paste0(variables_ordered, collapse = ", ")
-    ))
-
-    df_text <- utils::capture.output(
-      print(
-        matrix(
-          df_initial_display[variables_ordered],
-          nrow = 1,
-          dimnames = list("df", variables_ordered)
-        ),
-        quote = FALSE
-      )
-    )
-
-    message(
-      "Initial degrees of freedom:\n",
-      paste(df_text, collapse = "\n")
-    )
-  }
-
-  # Spike decision initialisation.
-  # continuous_only means standard FP algorithm by default.
-  spike_decision        <- rep(
-    saz_decision_codes[["continuous_only"]],
-    length(variables_ordered)
-  )
-  names(spike_decision) <- variables_ordered
-
-  # Step 6: Recode real x for zero handling and build catzero indicator matrices
-  # Now that reset_spike() has produced the final zero/catzero/spike vectors, we
-  # can safely mutate the actual x used by the MFP cycles.
-  #
-  # Only variables with final zero == TRUE are recoded. Therefore, variables whose
-  # spike request was rejected and whose user-specified zero/catzero status was
-  # FALSE remain untouched.
-
+  # Step 4: Recode zero components in x once ----------------------------------
+  # Apply the final zero flags after cascade/reset. The same recoded x is used
+  # by the full linear reference, variable ordering, and all backfitting cycles;
+  # no ordering-specific copy is created.
   zero_x       <- zero
   zero_aligned <- if (has_mapped_terms) {
     stats::setNames(
@@ -650,44 +498,188 @@ fit_mfp <- function(x,
     }
   }
 
-  # zero_x is intentionally kept identical to zero (not reset to FALSE), even
-  # though x has already been physically recoded to 0 above. The backfitting
-  # cycles below (find_best_fp_cycle() / transform_data_step()) still need
-  # this flag at cycle time to know which variables have a zero component, so
-  # that FP transformations during variable/degree selection are computed only
-  # over the positive part while the recoded zeros are left untouched.
+  # zero_x remains TRUE for zero-component terms even though x has already been
+  # recoded. The cycle-level transformation code still needs this flag to leave
+  # structural zeros untouched when FP transformations are evaluated.
 
-  # Step 7: Build catzero binary-indicator matrices and cache ACD parameters -
-  # Binary zero indicators for catzero variables.
+  # Step 5: Build catzero indicators once -------------------------------------
+  # Build the binary structural-zero columns after zero recoding, then reuse the
+  # same matrices in the full linear reference and in backfitting. This avoids
+  # calculating the indicator twice. Each active catzero term is a conceptual
+  # two-component block: positive-part x plus I(original x <= 0).
+  catzero_mat_list <- stats::setNames(
+    vector("list", length(catzero)),
+    names(catzero)
+  )
+
+  catzero_terms <- names(catzero)[catzero]
+  if (length(catzero_terms) > 0L) {
+    for (v in catzero_terms) {
+      columns <- term_to_columns[[v]]
+      if (length(columns) != 1L) {
+        stop(
+          sprintf(
+            "Internal error: catzero term '%s' must map to one design column.",
+            v
+          ),
+          call. = FALSE
+        )
+      }
+
+      column <- columns[[1L]]
+      catzero_mat_list[[v]] <- matrix(
+        as.integer(x[, column] <= 0),
+        ncol = 1L,
+        dimnames = list(rownames(x), "catzero")
+      )
+    }
+  }
+
+  # Step 6: Fit the full linear reference and determine visiting order --------
+  # The reference model now matches the resolved starting representation:
+  #   ordinary term        -> x
+  #   zero term            -> x+ (already recoded in Step 4)
+  #   catzero/spike term   -> x+ + I(x <= 0)
+  # catzero indicators are passed as already-built blocks; order_variables()
+  # only assembles the fit matrix and never recreates zero/catzero data.
   #
-  # Because non-positive values have already been recoded to zero above,
-  # x == 0 here means:
-  #
-  #   I(original x <= 0)
-  #
-  # not merely:
-  #
-  #   I(original x == 0)
-  #
-  # This is the intended interpretation of catzero/spike variables.
-  catzero_mat_list <- lapply(names(catzero), function(v) {
-    if (!isTRUE(catzero[[v]])) {
-      return(NULL)
+  # The full reference is fitted for every xorder because its fit statistics are
+  # retained in the mfp2 object. Reduced leave-one-term-out fits are needed only
+  # for ascending/descending significance ordering with more than one term.
+  ordering_result <- order_variables(
+    xorder          = xorder,
+    x               = x,
+    term_to_columns = term_to_columns,
+    catzero_blocks  = if (length(catzero_terms) > 0L) {
+      catzero_mat_list
+    } else {
+      NULL
+    },
+    y               = y,
+    family          = family_fit,
+    family_string   = family_string,
+    fitter          = fitter,
+    weights         = weights,
+    offset          = offset,
+    strata          = strata,
+    method          = method,
+    control         = control,
+    nocenter        = nocenter
+  )
+
+  variables_ordered <- ordering_result$variables_ordered
+  null_deviance     <- ordering_result$null_deviance
+  linear_deviance   <- ordering_result$linear_deviance
+  linear_logl       <- ordering_result$linear_logl
+  linear_df         <- ordering_result$linear_df
+  null_logl         <- ordering_result$null_logl
+
+  # Step 7: Initialize powers and align all working objects to visiting order --
+  # Only now is the visiting order known. Reorder every per-variable object and
+  # the raw design columns together so subsequent code can index consistently.
+  powers_current <- stats::setNames(
+    as.list(rep(1, length(variables_ordered))),
+    variables_ordered
+  )
+
+  alpha        <- stats::setNames(alpha,  variables_x)[variables_ordered]
+  select       <- stats::setNames(select, variables_x)[variables_ordered]
+  df           <- df[variables_ordered]
+  center       <- stats::setNames(center, variables_x)[variables_ordered]
+  shift        <- if (!is.null(names(shift))) {
+    shift[variables_ordered]
+  } else {
+    stats::setNames(shift, variables_x)[variables_ordered]
+  }
+  scale        <- scale[variables_ordered]
+  acdx         <- acdx[variables_ordered]
+  zero         <- zero[variables_ordered]
+  zero_x       <- zero_x[variables_ordered]
+  catzero      <- catzero[variables_ordered]
+  spike        <- spike[variables_ordered]
+  force_max_fp <- force_max_fp[variables_ordered]
+  powers       <- powers[variables_ordered]
+  prop_zero    <- prop_zero[variables_ordered]
+  catzero_mat_list <- catzero_mat_list[variables_ordered]
+
+  term_to_columns <- term_to_columns[variables_ordered]
+  raw_columns_ordered <- unlist(term_to_columns, use.names = FALSE)
+  if (!identical(colnames(x), raw_columns_ordered)) {
+    x <- x[, raw_columns_ordered, drop = FALSE]
+  }
+  if (!identical(colnames(x), raw_columns_ordered)) {
+    stop(
+      "Internal error: x column order does not match term_to_columns.",
+      call. = FALSE
+    )
+  }
+
+  # Active ACD terms start as a linear x component with no ACD component yet.
+  # Their df was already forced to 4 in Step 2.
+  if (any(acdx)) {
+    variables_acd <- names(acdx)[acdx]
+    powers_current <- utils::modifyList(
+      powers_current,
+      sapply(variables_acd, function(v) c(1, NA), simplify = FALSE)
+    )
+  }
+
+  # `keep` forces variables into the final model regardless of their
+  # backfitting significance under the p-value criterion.
+  if (!is.null(keep)) {
+    select[which(names(select) %in% keep)] <- 1
+  }
+
+  if (isTRUE(verbose)) {
+    # `df` is the effective continuous FP/ACD search setting after all early
+    # capping. For display, convert it to the df represented when selection
+    # starts. Mapped fixed terms contribute one df per raw design column, and a
+    # retained SAZ term contributes one additional structural-zero indicator df.
+    df_initial_display <- df
+
+    mapped_display <- mapped_term_flags(term_to_columns)
+    if (any(mapped_display)) {
+      df_initial_display[mapped_display] <- lengths(
+        term_to_columns[mapped_display]
+      )
     }
 
-    matrix(
-      as.integer(x[, v] <= 0),
-      ncol = 1L,
-      dimnames = list(rownames(x), "catzero")
+    if (any(spike)) {
+      df_initial_display[spike] <- df_initial_display[spike] + 1L
+    }
+
+    message(sprintf(
+      "Visiting order: %s",
+      paste0(variables_ordered, collapse = ", ")
+    ))
+
+    df_text <- utils::capture.output(
+      print(
+        matrix(
+          df_initial_display,
+          nrow = 1,
+          dimnames = list("df", variables_ordered)
+        ),
+        quote = FALSE
+      )
     )
-  })
 
-  names(catzero_mat_list) <- names(catzero)
+    message(
+      "Initial degrees of freedom:\n",
+      paste(df_text, collapse = "\n")
+    )
+  }
 
-  # ACD parameters (beta0, beta1, power, shift, scale for the rank-based
-  # power-linear approximation) are estimated once per ACD variable here and
-  # cached, rather than being refit on every backfitting cycle/step that needs
-  # to apply the ACD transformation.
+  # Spike decision initialisation. continuous_only means standard FP handling
+  # unless the SAZ procedure later retains a structural-zero component.
+  spike_decision <- stats::setNames(
+    rep(saz_decision_codes[["continuous_only"]], length(variables_ordered)),
+    variables_ordered
+  )
+
+  # Step 8: Cache ACD parameters and selection sample size --------------------
+  # ACD parameters are estimated once per active variable and reused throughout
+  # the backfitting cycles.
   acd_parameter <- lapply(names(acdx), function(v) {
     if (isTRUE(acdx[[v]])) {
       fit_acd(
@@ -700,12 +692,10 @@ fit_mfp <- function(x,
       NULL
     }
   })
-
   names(acd_parameter) <- names(acdx)
 
-  # Number of events (Cox) or observations (all other families), used for
-  # AIC/BIC-based selection and to guard against fitting a Cox model with no
-  # observed events.
+  # Number of events (Cox) or observations (other families), used for AIC/BIC
+  # selection and to guard against a Cox fit with no observed events.
   if (family_string == "cox") {
     status <- y[, ncol(y)]
     n_obs <- sum(!is.na(status) & status > 0)
@@ -720,7 +710,7 @@ fit_mfp <- function(x,
     n_obs <- nrow(x)
   }
 
-  # Step 8: Run MFP backfitting cycles until convergence -----------------------
+  # Step 9: Run MFP backfitting cycles until convergence ----------------------
   # A cycle is one complete pass through all variables (see find_best_fp_cycle()
   # documentation); convergence means neither the selected powers nor the SAZ
   # stage-2 decisions changed compared to the previous cycle.
@@ -842,7 +832,7 @@ fit_mfp <- function(x,
     )
   }
 
-  # Step 9: Apply the final FP/ACD transformation and centering ---------------
+  # Step 10: Apply the final FP/ACD transformation and centering --------------
   # Backscale x before final FP transformation so that coefficients are on
   # the phi(x + shift) scale, matching what a user would expect from mfp2().
   # Scaling was applied upstream for numerical stability during power selection
@@ -961,7 +951,7 @@ fit_mfp <- function(x,
     }
   }
 
-  # Step 10: Fit the final model and assemble the returned mfp2 object --------
+  # Step 11: Fit the final model and assemble the returned mfp2 object --------
   modelfit <- fit_model(
     x             = data_transformed$x_transformed,
     y             = y,
@@ -1007,7 +997,7 @@ fit_mfp <- function(x,
   # twice the fitted partial log-likelihood.
   mfp_deviance <- modelfit$model_deviance
 
-  # The full-linear reference likelihood was computed once by order_variables().
+  # The full linear reference likelihood was computed once in Step 6 by order_variables().
   # Cox also supplies its null partial likelihood from that same fit.
   mfp_logl <- modelfit$logl
   mfp_df   <- modelfit$df
@@ -1064,6 +1054,11 @@ fit_mfp <- function(x,
       spike              = spike,
       spike_dec       = spike_decision,
       transformed_to_model_columns = transformed_to_model_columns,
+      transformed_column_to_source = data_transformed$transformed_column_to_source,
+      transformed_column_component = data_transformed$transformed_column_component,
+      transformed_column_zero_handled =
+        data_transformed$transformed_column_zero_handled,
+      transformed_column_centered = data_transformed$transformed_column_centered,
       cox_offset_reference = cox_offset_reference,
       fitter          = fitter
     )

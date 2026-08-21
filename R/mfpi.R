@@ -240,9 +240,8 @@
 #'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
 #'   predictors. It must have column names and must not contain missing or
-#'   non-finite values. Do not add an intercept column. In a data frame, only
-#'   `group_var` may be categorical; all other columns must be numeric, integer,
-#'   or logical.
+#'   non-finite values. Do not add an intercept column. If `x` is a data frame, only
+#'   `group_var` can be categorical; all other columns must be numeric.
 #'
 #' @param y For `mfpi.default()`, the response. Supply a finite numeric vector
 #'   for Gaussian models, non-negative counts for Poisson models, non-negative
@@ -275,10 +274,25 @@
 #'   whose interactions with `group_var` are evaluated. Each variable must be a
 #'   single numeric column with more than two distinct values.
 #'
-#' @param cont_var_forms An optional named character vector specifying
-#'   `"linear"`, `"fp1"`, or `"fp2"` for variables in `cont_vars`.
-#'   Every supplied entry must be named. Variables not named use `"fp1"`.
-#'   The default `NULL` uses `"fp1"` for every tested variable.
+#' @param cont_var_forms An optional named character vector specifying the
+#'   functional form of the interaction between each variable in `cont_vars`
+#'   and the grouping variable. Permitted values are `"linear"`, `"fp1"`, and
+#'   `"fp2"`. All entries must be named by the corresponding variable in
+#'   `cont_vars`; variables not named default to `"fp1"`. Passing `NULL`
+#'   (the default) applies `"fp1"` to every tested variable.
+#'
+#'   - `"linear"`: fixes the interaction at power 1 with no power search.
+#'     The interaction term is a single product of the grouping indicator(s)
+#'     and the untransformed continuous variable.
+#'   - `"fp1"`: searches the supplied FP1 candidate powers (by default
+#'     \eqn{\mathcal{P} = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}) and selects
+#'     the single power that best fits the data. Because \eqn{p = 1} is a
+#'     member of the default candidate set, a linear interaction can still be
+#'     selected as the best-fitting FP1 function.
+#'   - `"fp2"`: searches all ordered pairs of the supplied candidate powers,
+#'     including repeated powers (e.g., \eqn{(3, 3)}), and selects the
+#'     two-term FP2 combination that best fits the data. With the default
+#'     eight-element power set, this evaluates 36 candidate pairs.
 #'
 #' @param flex A character string specifying how FP powers are chosen across
 #'   groups: `"flex1"`, `"flex2"`, `"flex3"`, or `"flex4"`. The

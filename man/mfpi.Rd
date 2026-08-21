@@ -105,9 +105,8 @@ mfpi(x, ...)
 \arguments{
 \item{x}{For \code{mfpi.default()}, a numeric matrix or data frame containing the
 predictors. It must have column names and must not contain missing or
-non-finite values. Do not add an intercept column. In a data frame, only
-\code{group_var} may be categorical; all other columns must be numeric, integer,
-or logical.}
+non-finite values. Do not add an intercept column. If \code{x} is a data frame, only
+\code{group_var} can be categorical; all other columns must be numeric.}
 
 \item{...}{Additional arguments are not currently supported and produce an
 error.}
@@ -126,10 +125,26 @@ variable. It must have at least two observed groups and must not appear in
 whose interactions with \code{group_var} are evaluated. Each variable must be a
 single numeric column with more than two distinct values.}
 
-\item{cont_var_forms}{An optional named character vector specifying
-\code{"linear"}, \code{"fp1"}, or \code{"fp2"} for variables in \code{cont_vars}.
-Every supplied entry must be named. Variables not named use \code{"fp1"}.
-The default \code{NULL} uses \code{"fp1"} for every tested variable.}
+\item{cont_var_forms}{An optional named character vector specifying the
+functional form of the interaction between each variable in \code{cont_vars}
+and the grouping variable. Permitted values are \code{"linear"}, \code{"fp1"}, and
+\code{"fp2"}. All entries must be named by the corresponding variable in
+\code{cont_vars}; variables not named default to \code{"fp1"}. Passing \code{NULL}
+(the default) applies \code{"fp1"} to every tested variable.
+\itemize{
+\item \code{"linear"}: fixes the interaction at power 1 with no power search.
+The interaction term is a single product of the grouping indicator(s)
+and the untransformed continuous variable.
+\item \code{"fp1"}: searches the supplied FP1 candidate powers (by default
+\eqn{\mathcal{P} = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}) and selects
+the single power that best fits the data. Because \eqn{p = 1} is a
+member of the default candidate set, a linear interaction can still be
+selected as the best-fitting FP1 function.
+\item \code{"fp2"}: searches all ordered pairs of the supplied candidate powers,
+including repeated powers (e.g., \eqn{(3, 3)}), and selects the
+two-term FP2 combination that best fits the data. With the default
+eight-element power set, this evaluates 36 candidate pairs.
+}}
 
 \item{flex}{A character string specifying how FP powers are chosen across
 groups: \code{"flex1"}, \code{"flex2"}, \code{"flex3"}, or \code{"flex4"}. The

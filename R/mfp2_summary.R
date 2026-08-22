@@ -1460,10 +1460,9 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
   # Note about the df column. Kept identical between print.mfp2() and
   # print.summary.mfp2() so users see one consistent explanation.
   note_lines <- c(
-    "df counts regression coefficients (excluding the intercept). For the MFP",
-    "row it also includes 1 df for each estimated FP power: an FP1 term is",
-    "charged 2 df total (1 coefficient + 1 power), an FP2 term 4 df (2",
-    "coefficients + 2 powers)."
+    "df counts regression coefficients, excluding the intercept. For the MFP",
+    "model, df additionally includes 1 df for each estimated FP power (e.g.",
+    "FP1 = 2 df, FP2 = 4 df)."
   )
   for (ln in note_lines) cat(ln, "\n", sep = "")
 }
@@ -1525,7 +1524,8 @@ print.summary.mfp2 <- function(x, ...) {
   # Selected first, then excluded.
   ft <- ft[order(ft$Selected != "yes"), , drop = FALSE]
   print.data.frame(ft, row.names = FALSE, right = FALSE)
-  cat("\n")
+  cat(sprintf("\nVariables selected: %d of %d\n\n",
+              sum(ft$Selected == "yes"), nrow(ft)))
 
   # --- Linear terms --------------------------------------------------------
   section("Linear Terms")
@@ -1570,11 +1570,11 @@ print.summary.mfp2 <- function(x, ...) {
                          "exp(coef)"
       )
       cat(sprintf(
-        "exp(coef) is the %s (per unit for continuous terms; versus\nreference for factor levels).\n\n",
+        "exp(coef) is the %s.\n\n",
         exp_name
       ))
     } else {
-      cat("Coefficients are on the outcome scale (mean difference).\n\n")
+      cat("Coefficients are on the link scale.\n\n")
     }
   }
 
@@ -1596,12 +1596,9 @@ print.summary.mfp2 <- function(x, ...) {
     print.data.frame(disp, row.names = FALSE, right = FALSE)
     cat("\n")
     cat(
-      "Joint likelihood-ratio test per variable (H0: variable has no\n",
-      "effect): the final MFP model versus the same model with that\n",
-      "variable removed, all other functional forms held fixed. df uses\n",
-      "the selection-adjusted convention (2 df per FP1, 4 per FP2).\n",
-      "Diagnostic only; selection was performed by the MFP procedure.\n",
-      "Use plot() to interpret the fitted function.\n\n",
+      "Joint likelihood-ratio tests for each variable in the final MFP model,\n",
+      "with all other selected functional forms held fixed. df follow the MFP\n",
+      "convention (FP1 = 2, FP2 = 4).\n\n",
       sep = ""
     )
 

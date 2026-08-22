@@ -37,6 +37,9 @@
 #' missing offsets were replaced by zeros internally.
 #' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
 #' `x` as an already-intercepted model matrix. Must be FALSE for Cox models.
+#' @param reserved_names Optional character vector of user-facing names that
+#' must not be reused for package-created formula columns in a final refit.
+#' Ignored by fast matrix fits.
 #'
 #' @return
 #' A list with the following components:
@@ -78,7 +81,7 @@ fit_model <- function(x,
                       strata = NULL,
                       control = NULL,
                       rownames = NULL,
-                      nocenter = NULL,
+                      nocenter = c(-1, 0, 1),
                       fast = TRUE,
                       calculate_fit_statistics = FALSE,
                       calculate_gaussian_deviance = FALSE,
@@ -86,7 +89,11 @@ fit_model <- function(x,
                       has_offset = FALSE,
                       x_has_intercept = FALSE,
                       fitter = "base",
-                      keep_fitted_values = FALSE) {
+                      keep_fitted_values = FALSE,
+                      reserved_names = character()) {
+  # Match coxph() by default: 0/1 and -1/0/1 design columns are not
+  # internally recentered. Public callers pass this value explicitly;
+  # keeping the same internal default also protects direct helper calls.
   # Set column names if not provided
   if (!is.null(dim(x)) && is.null(colnames(x))) {
     colnames(x) <- colnames(x, do.NULL = FALSE)
@@ -120,7 +127,8 @@ fit_model <- function(x,
       fast = fast,
       calculate_fit_statistics = calculate_fit_statistics,
       keep_fit = keep_fit,
-      has_offset = has_offset
+      has_offset = has_offset,
+      reserved_names = reserved_names
     )
   } else {
     fit <- fit_glm(
@@ -129,6 +137,7 @@ fit_model <- function(x,
       family = family,
       weights = weights,
       offset = offset,
+      control = control,
       fast = fast,
       calculate_fit_statistics = calculate_fit_statistics,
       calculate_gaussian_deviance = calculate_gaussian_deviance,
@@ -137,7 +146,8 @@ fit_model <- function(x,
       fitter = fitter,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept,
-      family_string = family_string
+      family_string = family_string,
+      reserved_names = reserved_names
     )
   }
 
@@ -177,6 +187,155 @@ fit_model <- function(x,
   }
 
   fit
+}
+
+
+# Evaluate a base-GLM fit while suppressing only the backend warning that we
+# immediately replace with a targeted fail-fast error in validate_mfp_fit_result().
+# Other glm/glm.fit warnings (for example fitted probabilities near 0 or 1)
+# remain visible to the user. This does not alter fitting or convergence.
+mfp2_muffle_glm_nonconvergence_warning <- function(expr) {
+  withCallingHandlers(
+    expr,
+    warning = function(w) {
+      if (identical(conditionMessage(w), "glm.fit: algorithm did not converge")) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
+}
+
+#' Validate a Fitted Model Before Its Criteria Enter MFP Selection
+#'
+#' Candidate models are never silently discarded or automatically refitted.
+#' Every model that participates in an MFP decision must have a finite
+#' likelihood/df pair, and a backend that explicitly reports non-convergence
+#' makes that fit unusable. The checks are scalar and therefore negligible
+#' compared with the model fit itself.
+#'
+#' @param logl Fitted model log-likelihood.
+#' @param df Model degrees of freedom used by MFP comparisons.
+#' @param converged Optional logical convergence flag returned by the backend.
+#' @param gaussian_deviance Optional Gaussian deviance used by F-tests.
+#' @param require_gaussian_deviance Whether a finite Gaussian deviance is
+#' required for the current comparison path.
+#' @param family_string Normalized model-family label used in error messages.
+#' @param fast Whether this is a repeated candidate fit (`TRUE`) or the final
+#' model refit (`FALSE`).
+#'
+#' @return Invisibly `TRUE`; otherwise stops with a targeted error.
+#' @keywords internal
+#' @noRd
+validate_mfp_fit_result <- function(logl,
+                                    df,
+                                    converged = NULL,
+                                    gaussian_deviance = NULL,
+                                    require_gaussian_deviance = FALSE,
+                                    family_string = NULL,
+                                    fast = TRUE) {
+  stage <- if (isTRUE(fast)) "candidate" else "final"
+  family_label <- if (is.character(family_string) &&
+                      length(family_string) == 1L &&
+                      !is.na(family_string) && nzchar(family_string)) {
+    paste0(" ", family_string)
+  } else {
+    ""
+  }
+
+  # Respect an explicit convergence flag from glm/glm.fit/fastglm rather than
+  # attempting a second fit with different controls. Re-fitting would alter
+  # runtime and could change the candidate search requested by the user.
+  if (!is.null(converged)) {
+    # Some compiled backends may expose a scalar 0/1 flag rather than a native
+    # R logical. Accept that representation, but reject any ambiguous value.
+    if (is.numeric(converged) && length(converged) == 1L &&
+        !is.na(converged) && is.finite(converged) &&
+        converged %in% c(0, 1)) {
+      converged <- as.logical(converged)
+    }
+
+    if (!is.logical(converged) || length(converged) != 1L || is.na(converged)) {
+      stop(
+        "Internal error: model backend returned an invalid convergence flag.",
+        call. = FALSE
+      )
+    }
+    if (!isTRUE(converged)) {
+      stop(
+        "The ", stage, family_label,
+        " model did not converge; MFP fitting cannot use an unconverged fit. ",
+        "Adjust the fitting controls or inspect the data.",
+        call. = FALSE
+      )
+    }
+  }
+
+  criterion_label <- if (isTRUE(fast)) "candidate criterion" else "fit criterion"
+
+  if (!is.numeric(logl) || length(logl) != 1L || !is.finite(logl)) {
+    stop(
+      "The ", stage, family_label,
+      " model produced a non-finite log-likelihood; MFP fitting cannot ",
+      "continue with an invalid ", criterion_label, ".",
+      call. = FALSE
+    )
+  }
+
+  if (!is.numeric(df) || length(df) != 1L || !is.finite(df) || df < 0) {
+    stop(
+      "The ", stage, family_label,
+      " model produced invalid degrees of freedom; MFP fitting cannot ",
+      "continue with an invalid ", criterion_label, ".",
+      call. = FALSE
+    )
+  }
+
+  if (isTRUE(require_gaussian_deviance) &&
+      (!is.numeric(gaussian_deviance) ||
+       length(gaussian_deviance) != 1L ||
+       !is.finite(gaussian_deviance))) {
+    stop(
+      "The ", stage,
+      " Gaussian model produced a non-finite deviance required for the F-test; ",
+      "MFP fitting cannot continue.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Evaluate a Cox Fit While Treating Explicit Non-convergence as Fatal
+#'
+#' `survival::coxph.fit()` reports iteration exhaustion by warning rather than
+#' by a returned `converged` flag. Convert only that specific warning into an
+#' error. All other Cox warnings retain survival's normal behavior.
+#'
+#' @param expr Cox fitting expression to evaluate.
+#' @param fast Whether this is a repeated candidate fit or the final refit.
+#'
+#' @return The evaluated Cox fit.
+#' @keywords internal
+#' @noRd
+mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE) {
+  stage <- if (isTRUE(fast)) "candidate" else "final"
+
+  withCallingHandlers(
+    expr,
+    warning = function(w) {
+      msg <- conditionMessage(w)
+      if (grepl("Ran out of iterations and did not converge", msg, fixed = TRUE)) {
+        stop(
+          "The ", stage,
+          " Cox model did not converge within the configured iteration limit; ",
+          "MFP fitting will not refit or silently discard the model. ",
+          "Adjust `control$iter.max` or inspect the data.",
+          call. = FALSE
+        )
+      }
+    }
+  )
 }
 
 #' Assemble a Design Matrix from Reusable Column Blocks
@@ -280,6 +439,9 @@ assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
 #' in the fitting process. see [stats::glm()] for details.
 #' @param offset a numeric vector of length nobs of of a priori known component
 #' to be included in the linear predictor during fitting.
+#' @param control GLM fitting controls. `NULL` uses [stats::glm.control()]
+#' defaults. For the fastglm backend, `epsilon` is mapped to `tol` and `maxit`
+#' is passed through; `trace = TRUE` is not supported by fastglm.
 #' @param fast a logical which determines how the model is fitted. The default
 #' `TRUE` uses fast fitting routines (i.e. [stats::glm.fit()]), while `FALSE`
 #' uses the normal fitting routines ([stats::glm()]) (used for the final output
@@ -301,6 +463,8 @@ assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
 #' the final formula-based fit when `fast = FALSE`.
 #' @param x_has_intercept internal logical. If TRUE, `x` is already the full
 #' model matrix including an intercept column named `"(Intercept)"`.
+#' @param reserved_names Optional character vector of names that package-created
+#' response/offset columns must avoid in the formula-based final refit.
 #'
 #' @return
 #' A list with the following components:
@@ -327,6 +491,7 @@ fit_glm <- function(x,
                     family,
                     weights,
                     offset,
+                    control = NULL,
                     fast = TRUE,
                     calculate_fit_statistics = FALSE,
                     calculate_gaussian_deviance = FALSE,
@@ -335,7 +500,8 @@ fit_glm <- function(x,
                     x_has_intercept = FALSE,
                     fitter = "base",
                     family_string = NULL,
-                    keep_fitted_values = FALSE) {
+                    keep_fitted_values = FALSE,
+                    reserved_names = character()) {
   if (is.null(family_string)) {
     family_string <- if (is.character(family) && length(family) == 1L) {
       family
@@ -343,6 +509,33 @@ fit_glm <- function(x,
       family$family
     }
   }
+
+  # Normalize the GLM control object before dispatching to any backend. This
+  # ensures base candidate fits, fastglm candidate fits, and the final model
+  # all use the same convergence tolerance and iteration limit.
+  control <- normalize_glm_control(control)
+
+  uses_fastglm <- identical(family_string, "negbin") ||
+    (isTRUE(fast) && identical(fitter, "fastglm"))
+
+  # fastglm has no public equivalent of glm.control(trace = TRUE). Reject it
+  # explicitly rather than silently ignoring a user-supplied fitting control.
+  if (uses_fastglm && isTRUE(control$trace)) {
+    if (identical(family_string, "negbin")) {
+      stop(
+        "`control$trace = TRUE` is not supported for `family = \"negbin\"`; ",
+        "the required fastglm backend does not provide GLM iteration tracing.",
+        call. = FALSE
+      )
+    }
+
+    stop(
+      "`control$trace = TRUE` is not supported with `fitter = \"fastglm\"`; ",
+      "use `fitter = \"base\"` to enable GLM iteration tracing.",
+      call. = FALSE
+    )
+  }
+
   nobs <- NROW(y)
 
   has_predictors <- !is.null(x) && NCOL(x) > 0L
@@ -376,16 +569,19 @@ fit_glm <- function(x,
     }
 
     fit <- if (identical(family_string, "negbin")) {
-      fit_glm_fastglm_nb(xx, y, weights, offset)
+      fit_glm_fastglm_nb(xx, y, weights, offset, control)
     } else if (identical(fitter, "fastglm")) {
-      fit_glm_fastglm(xx, y, family, weights, offset)
+      fit_glm_fastglm(xx, y, family, weights, offset, control)
     } else {
-      stats::glm.fit(
-        x = xx,
-        y = y,
-        family = family,
-        weights = weights,
-        offset = offset
+      mfp2_muffle_glm_nonconvergence_warning(
+        stats::glm.fit(
+          x = xx,
+          y = y,
+          family = family,
+          weights = weights,
+          offset = offset,
+          control = control
+        )
       )
     }
 
@@ -402,7 +598,7 @@ fit_glm <- function(x,
         intercept = TRUE
       )
     }
-    fit <- fit_glm_fastglm_nb(xx, y, weights, offset)
+    fit <- fit_glm_fastglm_nb(xx, y, weights, offset, control)
 
   } else {
 
@@ -430,18 +626,28 @@ fit_glm <- function(x,
       rhs <- "1"
     }
 
-    if (is.matrix(y)) {
-      response_cols <- c("..mfp2_successes", "..mfp2_failures")
+    # Allocate package-created columns only for this single formula-based final
+    # refit. Predictor names are never renamed, and the repeated candidate-fit
+    # path above remains unchanged. Collision checks therefore cost only a few
+    # string comparisons once per fitted model.
+    # Reserve both final transformed-column names and the original user-facing
+    # predictor names. A selected continuous predictor named, for example,
+    # `offset_` is transformed to `offset_.1`; without the original name in this
+    # set the temporary offset column could still reuse `offset_` and later
+    # collide with prediction data. This check runs only once for the final fit.
+    used_names <- unique(c(names(data), as.character(reserved_names)))
+    internal_names <- list(response = NULL, offset = NULL, strata = NULL)
 
-      if (any(response_cols %in% names(data))) {
-        stop(
-          "Internal error: response column names conflict with design matrix names.",
-          call. = FALSE
-        )
-      }
+    if (is.matrix(y)) {
+      response_cols <- character(2L)
+      response_cols[1L] <- mfp2_internal_name("successes", used_names, preferred = "..mfp2_successes")
+      used_names <- c(used_names, response_cols[1L])
+      response_cols[2L] <- mfp2_internal_name("failures", used_names, preferred = "..mfp2_failures")
+      used_names <- c(used_names, response_cols[2L])
 
       data[[response_cols[1L]]] <- y[, 1L]
       data[[response_cols[2L]]] <- y[, 2L]
+      internal_names$response <- response_cols
 
       lhs <- sprintf(
         "cbind(%s, %s)",
@@ -450,39 +656,45 @@ fit_glm <- function(x,
       )
 
     } else {
-      response_col <- "..mfp2_y"
-
-      if (response_col %in% names(data)) {
-        stop(
-          "Internal error: response column name conflicts with design matrix names.",
-          call. = FALSE
-        )
-      }
+      response_col <- mfp2_internal_name("response", used_names, preferred = "..mfp2_y")
+      used_names <- c(used_names, response_col)
 
       data[[response_col]] <- y
+      internal_names$response <- response_col
       lhs <- response_col
     }
 
     if (isTRUE(has_offset)) {
-      data$offset_ <- offset
+      offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+      used_names <- c(used_names, offset_col)
+      data[[offset_col]] <- offset
+      internal_names$offset <- offset_col
 
+      offset_term <- paste0("offset(", offset_col, ")")
       rhs <- if (identical(rhs, "1")) {
-        "offset(offset_)"
+        offset_term
       } else {
-        paste(rhs, "+ offset(offset_)")
+        paste(rhs, "+", offset_term)
       }
     }
 
     formula <- stats::as.formula(paste(lhs, "~", rhs))
 
-    fit <- stats::glm(
-      formula = formula,
-      data = data,
-      family = family,
-      weights = weights,
-      x = TRUE,
-      y = TRUE
+    fit <- mfp2_muffle_glm_nonconvergence_warning(
+      stats::glm(
+        formula = formula,
+        data = data,
+        family = family,
+        weights = weights,
+        control = control,
+        x = TRUE,
+        y = TRUE
+      )
     )
+
+    # Prediction reuses these exact names so the stored formula never depends
+    # on a fixed helper name such as `offset_`.
+    fit$mfp2_internal_names <- internal_names
   }
 
   # Gaussian scale and negative-binomial theta are estimated nuisance
@@ -537,6 +749,20 @@ fit_glm <- function(x,
     result$deviance_gaussian <- gaussian_deviance
   }
 
+  # Validate immediately after fitting, before this model can enter an MFP
+  # comparison. Invalid candidates are neither removed from the search space
+  # nor retried with different fitting controls.
+  convergence_flag <- if (is.null(fit$converged)) NULL else fit$converged
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    converged = convergence_flag,
+    gaussian_deviance = gaussian_deviance,
+    require_gaussian_deviance = is_gaussian && isTRUE(calculate_gaussian_deviance),
+    family_string = family_string,
+    fast = fast
+  )
+
   if (isTRUE(keep_fitted_values)) {
     # Some internal searches need only the n-length fitted-value vector.
     # Retain that lightweight result before the backend fit goes out of scope
@@ -577,6 +803,41 @@ fastglm_available <- function() {
 #' @noRd
 fastglm_exports <- function() {
   getNamespaceExports("fastglm")
+}
+
+#' Normalize GLM fitting controls
+#'
+#' Converts `NULL` or a user-supplied control list into a validated
+#' [stats::glm.control()] list. Normalizing once at the fitting boundary gives
+#' all GLM backends the same `epsilon`, `maxit`, and `trace` semantics.
+#'
+#' @param control `NULL` or a list accepted by [stats::glm.control()].
+#'
+#' @return A validated list returned by [stats::glm.control()].
+#' @keywords internal
+#' @noRd
+normalize_glm_control <- function(control = NULL) {
+  if (is.null(control)) {
+    return(stats::glm.control())
+  }
+
+  if (!is.list(control)) {
+    stop(
+      "For GLMs, `control` must be `NULL` or a list accepted by ",
+      "`stats::glm.control()`.",
+      call. = FALSE
+    )
+  }
+
+  tryCatch(
+    do.call(stats::glm.control, control),
+    error = function(e) {
+      stop(
+        "Invalid GLM `control`: ", conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
 }
 
 #' Resolve the effective GLM fitting backend once per top-level fit
@@ -668,26 +929,17 @@ is_finite_numeric_scalar <- function(value) {
   is.numeric(value) && length(value) == 1L && !is.na(value) && is.finite(value)
 }
 
-#' Fit a GLM with fastglm and safely fall back to stats::glm.fit
+#' Fit a GLM with fastglm Without Candidate-level Refitting
 #'
 #' Package availability is resolved once by `resolve_fitter()` before entering
-#' the candidate-search path. This helper retains only candidate-specific error
-#' and return-value checks.
+#' the candidate-search path. Once fastglm is selected, an error or unusable
+#' result is fatal for that MFP fit: the candidate is not silently retried with
+#' `stats::glm.fit()`, because changing backend after seeing a failed candidate
+#' would make the search path backend-dependent.
 #'
 #' @keywords internal
 #' @noRd
-fit_glm_fastglm <- function(x, y, family, weights, offset) {
-  fallback <- function() {
-    stats::glm.fit(
-      x = x,
-      y = y,
-      family = family,
-      weights = weights,
-      offset = offset
-    )
-  }
-
-  fit_error <- NULL
+fit_glm_fastglm <- function(x, y, family, weights, offset, control) {
   fit <- tryCatch(
     fastglm::fastglm(
       x = x,
@@ -695,11 +947,18 @@ fit_glm_fastglm <- function(x, y, family, weights, offset) {
       family = family,
       weights = weights,
       offset = offset,
-      method = 0L
+      method = 0L,
+      # fastglm uses `tol` for glm.control()'s convergence `epsilon`.
+      tol = control$epsilon,
+      maxit = control$maxit
     ),
     error = function(e) {
-      fit_error <<- e
-      NULL
+      stop(
+        "fastglm could not fit an MFP candidate model: ",
+        conditionMessage(e),
+        ". The candidate was not refit with another backend.",
+        call. = FALSE
+      )
     }
   )
 
@@ -734,20 +993,11 @@ fit_glm_fastglm <- function(x, y, family, weights, offset) {
   }
 
   if (!fit_is_usable) {
-    if (!is.null(fit_error)) {
-      warning(
-        "fastglm failed for this candidate (", conditionMessage(fit_error),
-        "); falling back to stats::glm.fit().",
-        call. = FALSE
-      )
-    } else {
-      warning(
-        "fastglm returned a non-finite fit for this candidate; falling back ",
-        "to stats::glm.fit().",
-        call. = FALSE
-      )
-    }
-    return(fallback())
+    stop(
+      "fastglm returned an incomplete or non-finite MFP candidate fit; ",
+      "the candidate was not discarded or refit with another backend.",
+      call. = FALSE
+    )
   }
 
   fit
@@ -761,14 +1011,18 @@ fit_glm_fastglm <- function(x, y, family, weights, offset) {
 #'
 #' @keywords internal
 #' @noRd
-fit_glm_fastglm_nb <- function(x, y, weights, offset) {
+fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
   fit <- tryCatch(
     fastglm::fastglm_nb(
       x = x,
       y = y,
       weights = weights,
       offset = offset,
-      method = 0L
+      method = 0L,
+      # Apply glm.control() to the inner IRLS fit. fastglm_nb-specific outer
+      # optimization controls keep their documented defaults.
+      tol = control$epsilon,
+      maxit = control$maxit
     ),
     error = function(e) {
       stop(
@@ -852,7 +1106,10 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset) {
 #' @param keep_fit logical. If `TRUE`, retain the underlying fitted object.
 #' @param has_offset logical indicating whether `offset` should be included in
 #' the final formula-based fit when `fast = FALSE`.
-#' @param strata,control,rownames,nocenter passed to [survival::coxph.fit()].
+#' @param strata `NULL`, a normalized factor, or internal integer stratum codes.
+#' @param reserved_names Optional character vector of names that package-created
+#' response/offset/strata columns must avoid in the formula-based final refit.
+#' @param control,rownames,nocenter passed to [survival::coxph.fit()].
 #'
 #' @return
 #' A list with the following components:
@@ -884,7 +1141,8 @@ fit_cox <- function(x,
                     fast = TRUE,
                     calculate_fit_statistics = FALSE,
                     keep_fit = !fast,
-                    has_offset = FALSE) {
+                    has_offset = FALSE,
+                    reserved_names = character()) {
 
   # Set default for control
   if (is.null(control)) {
@@ -892,9 +1150,43 @@ fit_cox <- function(x,
   }
   has_predictors <- !is.null(x) && NCOL(x) > 0
 
-  # coxph.fit() requires integer stratum identifiers. Many internal fast-fit
-  # calls already pass an integer vector, so avoid repeatedly coercing an
-  # observation-length object and creating unnecessary allocation/GC pressure.
+  # Public fitting paths validate weights before selection. Keep this low-level
+  # invariant as a defensive boundary because survival::coxph.fit() requires
+  # strictly positive weights and otherwise fails with a less contextual error.
+  if (!is.null(weights) && (
+    !is.numeric(weights) ||
+    length(weights) != NROW(y) ||
+    anyNA(weights) ||
+    any(!is.finite(weights)) ||
+    any(weights <= 0)
+  )) {
+    stop(
+      "Internal error: Cox weights must be finite, non-missing, and strictly positive for every fitted observation.",
+      call. = FALSE
+    )
+  }
+
+  # Public fitting paths normalize Cox strata upstream to a single factor.
+  # coxph.fit() itself performs little type checking and calls as.numeric() on
+  # its strata argument, which is unsafe for raw character labels. Keep the
+  # low-level boundary strict: accept the normalized factor (or already encoded
+  # integer strata from an internal caller) and convert only here.
+  if (!is.null(strata)) {
+    if (length(strata) != NROW(y) || anyNA(strata)) {
+      stop(
+        "Internal error: Cox `strata` must contain one non-missing value per observation.",
+        call. = FALSE
+      )
+    }
+
+    if (!(is.factor(strata) || is.integer(strata))) {
+      stop(
+        "Internal error: Cox `strata` must be normalized to a factor before fitting.",
+        call. = FALSE
+      )
+    }
+  }
+
   istrata <- if (is.null(strata)) {
     NULL
   } else if (is.integer(strata)) {
@@ -904,59 +1196,89 @@ fit_cox <- function(x,
   }
 
   if (fast) {
-    fit <- survival::coxph.fit(
-      x = x,
-      y = y,
-      strata = istrata,
-      offset = offset,
-      control = control,
-      weights = weights,
-      method = method,
-      rownames = rownames,
-      resid = FALSE,
-      nocenter = nocenter
+    fit <- mfp2_with_cox_convergence_guard(
+      survival::coxph.fit(
+        x = x,
+        y = y,
+        strata = istrata,
+        offset = offset,
+        control = control,
+        weights = weights,
+        method = method,
+        rownames = rownames,
+        resid = FALSE,
+        nocenter = nocenter
+      ),
+      fast = TRUE
     )
   } else {
-    # construct appropriate formula incorporating offset and strata terms
-    # cbinding y will lead to two variables: time and status
-
+    # Build the single formula-based final Cox refit with collision-safe names
+    # for package-created columns. The Surv response itself is unchanged; only
+    # the temporary data-frame name used by coxph() is allocated dynamically.
     if (!has_predictors) {
-      d <- data.frame(y = y)
+      d <- data.frame(row.names = seq_len(NROW(y)))
       rhs <- "1"
     } else {
-      d <- data.frame(x, y = y, check.names = FALSE)
-
       if (is.null(colnames(x)) || any(colnames(x) == "")) {
         stop("! Internal error: x must have non-empty column names.", call. = FALSE)
       }
 
+      d <- data.frame(x, check.names = FALSE)
       rhs <- paste(sprintf("`%s`", colnames(x)), collapse = " + ")
     }
+
+    # Include original user-facing predictor names as reserved names as well
+    # as the transformed columns present in this final design. This prevents a
+    # helper such as `y`, `offset_`, or `strata_` from reusing a real predictor
+    # name even when that predictor was transformed to a different model column.
+    used_names <- unique(c(names(d), as.character(reserved_names)))
+    internal_names <- list(response = NULL, offset = NULL, strata = NULL)
+
+    response_col <- mfp2_internal_name("response", used_names, preferred = "y")
+    used_names <- c(used_names, response_col)
+    # Assign the Surv object directly. Wrapping it in I() adds an AsIs layer
+    # that prevents coxph() from recognizing the model-frame response as Surv.
+    d[[response_col]] <- y
+    internal_names$response <- response_col
 
     # Add offset only when the model was structurally specified with one.
     # This distinguishes no-offset models from all-zero offset models.
     if (isTRUE(has_offset)) {
-      d$offset_ <- offset
-      rhs <- paste(rhs, "+ offset(offset_)")
+      offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+      used_names <- c(used_names, offset_col)
+      d[[offset_col]] <- offset
+      internal_names$offset <- offset_col
+      rhs <- paste(rhs, "+", paste0("offset(", offset_col, ")"))
     }
 
     if (!is.null(strata)) {
-      d$strata_ <- strata
-      rhs <- paste(rhs, "+ strata(strata_)")
+      strata_col <- mfp2_internal_name("strata", used_names, preferred = "strata_")
+      used_names <- c(used_names, strata_col)
+      d[[strata_col]] <- strata
+      internal_names$strata <- strata_col
+      rhs <- paste(rhs, "+", paste0("strata(", strata_col, ")"))
     }
 
-    ff <- stats::as.formula(paste("y ~", rhs))
+    ff <- stats::as.formula(paste(response_col, "~", rhs))
 
-    fit <- survival::coxph(
-      ff,
-      data = d,
-      weights = weights,
-      control = control,
-      method = method,
-      nocenter = nocenter,
-      x = TRUE,
-      y = TRUE
+    fit <- mfp2_with_cox_convergence_guard(
+      survival::coxph(
+        ff,
+        data = d,
+        weights = weights,
+        control = control,
+        method = method,
+        nocenter = nocenter,
+        x = TRUE,
+        y = TRUE
+      ),
+      fast = FALSE
     )
+
+    # Prediction must reconstruct offset/strata columns under the exact names
+    # embedded in this stored formula. Retaining the metadata avoids formula
+    # parsing and prevents package-created columns from colliding with predictors.
+    fit$mfp2_internal_names <- internal_names
   }
 
   # coxph.fit()/coxph() normally return the null and fitted partial
@@ -984,6 +1306,16 @@ fit_cox <- function(x,
     # never by Cox likelihood comparisons.
     weights = NULL,
     residuals = NULL
+  )
+
+  # Cox does not expose a glm-style convergence flag. Iteration exhaustion is
+  # handled above at warning time; the finite likelihood/df check here protects
+  # every remaining candidate before its metric is used for selection.
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    family_string = "cox",
+    fast = fast
   )
 
   if (isTRUE(keep_fit)) {

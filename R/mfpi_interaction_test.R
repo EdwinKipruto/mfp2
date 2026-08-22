@@ -246,8 +246,9 @@ make_best_model_metrics <- function(variable,
 #'   `"negbin"`, or `"cox"`.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param ties Character string; Cox tie-handling method - `"breslow"`,
-#'   `"efron"`, or `"exact"`. Ignored for non-Cox families.
+#' @param ties Character string; Cox tie-handling method - `"breslow"` or
+#'   `"efron"`. `"exact"` is rejected by the public MFP/MFPI interfaces before
+#'   selection. Ignored for non-Cox families.
 #' @param strata Integer stratum vector for stratified Cox models, or `NULL`.
 #' @param control Fitting control list from [stats::glm.control()] or
 #'   [survival::coxph.control()].

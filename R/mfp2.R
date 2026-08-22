@@ -56,9 +56,17 @@
 #'
 #' Both interfaces use the same model-selection procedure, but differ in how
 #' factors, offsets, strata, and variable-specific options are supplied.
-#' Predictor names supplied through `keep`, `powers`, `acdx`, `zero_vars`,
-#' `catzero_vars`, or `spike_vars` are validated against the applicable formula
-#' terms, matrix columns, or `term_groups`; unknown names cause an error.
+#' Predictor/design-column names must be unique, non-missing, non-empty, and
+#' must not contain the backtick character. Other non-syntactic names, including
+#' spaces and hyphens, remain supported. Predictor names supplied through `keep`,
+#' `powers`, `acdx`, `zero_vars`, `catzero_vars`, or `spike_vars` are validated
+#' against the applicable formula terms, matrix columns, or `term_groups`;
+#' unknown names cause an error.
+#'
+#' Package-created columns used only for the final formula-based refit are
+#' allocated with collision-safe names. Predictor names such as `y`, `offset_`,
+#' `strata_`, or names beginning with `..mfp2_` are therefore not reserved and
+#' are not overwritten by internal response, offset, or strata columns.
 #'
 #' @section Model families and responses:
 #' Supported families are `"gaussian"`, `"binomial"`, `"poisson"`,
@@ -257,7 +265,9 @@
 #' or SAZ selection.
 #'
 #' @param x For `mfp2.default()`, a numeric predictor matrix with one row per
-#'   observation and one column per design variable.
+#'   observation and one column per design variable. Column names must be
+#'   unique, non-missing, non-empty, and must not contain backticks (`). Other
+#'   non-syntactic names, including spaces and hyphens, are supported.
 #' @param term_groups For `mfp2.default()`, an optional named list mapping a
 #'   conceptual term to one or more columns of `x`, for example
 #'   `list(race = c("raceB", "raceC"))`. Mapped columns are selected and tested
@@ -273,8 +283,11 @@
 #'   to set variable-specific FP, ACD, zero, catzero, or SAZ options.
 #' @param data For `mfp2.formula()`, a data frame containing the variables in
 #'   `formula`.
-#' @param weights Optional numeric observation weights. In the formula interface,
-#'   the vector is supplied directly and is not looked up in `data`.
+#' @param weights Optional finite numeric observation weights. All weights must
+#'   be strictly positive; zero and negative weights are not supported. This
+#'   restriction keeps likelihood-based MFP model comparisons well-defined
+#'   across all supported families. In the formula interface, the vector is
+#'   supplied directly and is not looked up in `data`.
 #' @param offset Optional numeric offset with one value per observation. In the
 #'   formula interface, an offset may alternatively be included with `offset()`.
 #'   Corresponding values must be supplied when predicting from a model that used
@@ -410,17 +423,23 @@
 #' candidate to search over. To restrict a predictor to a linear effect,
 #' set `df = 1` rather than limiting its power set. Per-term settings in
 #' [fp()] take precedence over entries in this list.
-#' @param ties Method for handling tied event times in Cox models. One of
-#' `"breslow"` (default), `"efron"`, or `"exact"`. All methods are equivalent
-#' when no ties exist. Ignored for non-Cox families. See
-#' [survival::coxph()] for details.
-#' @param strata Optional stratification variable(s) for Cox models. Accepts a
-#' vector, factor, or a matrix/data frame of multiple stratification
-#' variables. In formula fits, `strata()` terms can be used instead and take
-#' precedence if both are supplied.
-#' @param nocenter Optional numeric vector of predictor indices whose columns
-#' should not be internally centered by [survival::coxph()]. Applies to Cox
-#' models only. See [survival::coxph()] for details.
+#' @param ties Method for handling tied event times in Cox models. Supported
+#' values are `"breslow"` (default) and `"efron"`. `"exact"` is not supported
+#' because MFP selection uses Cox candidate fits that do not implement the
+#' exact partial likelihood. The argument otherwise has no effect for non-Cox
+#' families. See [survival::coxph()] for details.
+#' @param strata Optional stratification variable(s) for Cox models. A vector
+#' or factor supplies one categorical stratum label per observation; character,
+#' numeric, integer, and logical values are accepted. A matrix or data frame may
+#' supply multiple stratification variables, one per column, which are combined
+#' into a single stratification factor before Cox fitting. In formula fits,
+#' `strata()` terms can be used instead and take precedence if both are supplied.
+#' @param nocenter Numeric set of values used to identify Cox design-matrix
+#' columns that should not be internally recentered. A column is left
+#' uncentered when all of its values are contained in `nocenter`. The default
+#' `c(-1, 0, 1)` matches [survival::coxph()] and typically leaves indicator
+#' and dummy columns uncentered. Set `NULL` to allow all eligible columns to
+#' be recentered. Applies only to Cox models.
 #' @param acdx Character vector naming continuous predictors to be assessed with
 #' the approximate cumulative distribution (ACD) extension. An ACD request
 #' triggers the function-selection procedure for ACD (FSPA), which evaluates
@@ -435,7 +454,12 @@
 #' functional-form selection, and spike-at-zero testing. Default `FALSE`.
 #' Ignored for non-Gaussian families.
 #' @param control Fitting controls from [stats::glm.control()] or
-#' [survival::coxph.control()]. `NULL` uses the relevant defaults.
+#' [survival::coxph.control()]. `NULL` uses the relevant defaults. For GLMs,
+#' the same controls are used during MFP selection and the final fit. With
+#' `fitter = "fastglm"`, `epsilon` is mapped to `tol` and `maxit` is passed
+#' through; `trace = TRUE` is not supported by the fastglm backend. For
+#' `family = "negbin"`, these settings apply to the inner IRLS fit, while
+#' fastglm_nb-specific outer optimization controls retain their defaults.
 #' @param zero_vars Character vector of continuous predictors whose nonpositive
 #' values should be recoded to zero before FP transformation. Only positive
 #' values undergo the FP function; nonpositive values contribute zero to the
@@ -1568,9 +1592,9 @@ mfp2.default <- function(x,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron", "exact"),
+                         ties = c("breslow", "efron"),
                          strata = NULL,
-                         nocenter = NULL,
+                         nocenter = c(-1, 0, 1),
                          acdx = NULL,
                          ftest = FALSE,
                          control = NULL,
@@ -1611,7 +1635,7 @@ mfp2.default <- function(x,
   # Step 2: Resolve multiple-choice arguments to their single selected value ----
   criterion <- match.arg(criterion)
   xorder    <- match.arg(xorder)
-  ties      <- match.arg(ties)
+  ties      <- resolve_mfp_ties(ties)
   fitter <- match.arg(fitter)
 
   # Step 3: Validate family and the input matrix `x` ----------------------------
@@ -1667,19 +1691,13 @@ mfp2.default <- function(x,
          call. = FALSE)
   }
 
-  # column names are required because variable-name arguments (keep, zero_vars,
-  # catzero_vars, spike_vars, acdx, powers) are matched against them downstream.
+  # Predictor names are used throughout MFP to match variable-specific
+  # settings and to construct the single final formula-based refit. Validate
+  # them once here, outside every candidate-fitting loop. Backticks are rejected
+  # because the existing formula builder uses backticks to quote non-syntactic
+  # user names; spaces, hyphens, and other non-syntactic names remain valid.
   vnames <- colnames(x)
-  if (is.null(vnames)) {
-    stop("! The column names of x must not be missing.\n",
-         "i Please set column names for x.",
-         call. = FALSE)
-  }
-
-  if (!is.null(term_groups) && anyDuplicated(vnames)) {
-    stop("! The column names of `x` must be unique when `term_groups` is supplied.",
-         call. = FALSE)
-  }
+  validate_predictor_names(vnames, object = "`x`")
 
   # Build the complete conceptual-term lookup once. This is a singleton map
   # when term_groups = NULL, preserving the historical one-column-per-variable
@@ -1769,41 +1787,14 @@ mfp2.default <- function(x,
   }
 
   # Step 5: Validate `weights` and `offset` --------------------------------------
-  # weights: optional observation weights, one per row of x.
-  if (!is.null(weights)) {
-    if (!is.numeric(weights)) {
-      stop(
-        "! `weights` must be numeric.",
-        sprintf("i Current type is: %s.", typeof(weights)),
-        call. = FALSE
-      )
-    }
-
-    if (length(weights) != nobs) {
-      stop(
-        "! The number of observations in x and weights must match.",
-        sprintf(
-          "i The number of rows in x is %d, but the number of elements in weights is %d.",
-          nobs, length(weights)
-        ),
-        call. = FALSE
-      )
-    }
-
-    if (anyNA(weights) || any(!is.finite(weights))) {
-      stop(
-        "! `weights` must contain only finite, non-missing values.",
-        call. = FALSE
-      )
-    }
-
-    if (any(weights < 0)) {
-      stop(
-        "! `weights` must not be negative.",
-        call. = FALSE
-      )
-    }
-  }
+  # Use one strict observation-weight contract for every family. Zero weights
+  # are rejected even if a fitter would otherwise accept them because they can
+  # make likelihood-based MFP comparisons undefined (for example, Gaussian
+  # glm() can return an infinite AIC/log-likelihood with zero prior weights).
+  validate_model_weights(
+    weights = weights,
+    nobs = nobs
+  )
 
   # offset: optional known linear-predictor term, one per row of x
   # (e.g. log of exposure time for a Poisson model).
@@ -2456,22 +2447,14 @@ mfp2.default <- function(x,
   x <- sweep(x, 2, scale, "/")
 
   # Step 18: Build the Cox stratification object --------------------------------
-  # Mimic survival::coxph():
-  #   - keep the evaluated strata object at the model-frame level
-  #   - convert to integer only immediately before coxph.fit()
+  # Normalize all Cox strata to one factor before any candidate fit. This
+  # mirrors survival::coxph(): multiple strata variables are combined first,
+  # while a single character/numeric/logical vector is treated as categorical
+  # labels. Integer conversion is deferred to the coxph.fit() boundary.
   strata_keep <- strata
 
   if (family_string == "cox" && !is.null(strata_keep)) {
-    if (!isTRUE(attr(strata_keep, "mfp2_strata_keep"))) {
-      strata_keep <- if (is.matrix(strata_keep) || is.data.frame(strata_keep)) {
-        do.call(
-          survival::strata,
-          c(as.list(as.data.frame(strata_keep)), list(shortlabel = TRUE))
-        )
-      } else {
-        strata_keep
-      }
-    }
+    strata_keep <- normalize_cox_strata(strata_keep, nobs = nobs)
   }
 
   # Step 19: Apply `subset`, after full-data preprocessing ----------------------
@@ -2497,7 +2480,9 @@ mfp2.default <- function(x,
     weights <- weights[subset]
     offset <- offset[subset]
     if (!is.null(strata_keep)) {
-      strata_keep <- strata_keep[subset]
+      # Keep strata aligned with the fitted rows and remove levels no longer
+      # represented after subsetting.
+      strata_keep <- droplevels(strata_keep[subset])
     }
   }
 
@@ -2610,9 +2595,9 @@ mfp2.formula <- function(formula,
                          keep = NULL,
                          xorder = c("ascending", "descending", "original"),
                          powers = NULL,
-                         ties = c("breslow", "efron", "exact"),
+                         ties = c("breslow", "efron"),
                          strata = NULL,
-                         nocenter = NULL,
+                         nocenter = c(-1, 0, 1),
                          ftest = FALSE,
                          control = NULL,
                          min_saz_component_prop = 0.10,
@@ -2630,7 +2615,7 @@ mfp2.formula <- function(formula,
 
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
-  ties <- match.arg(ties)
+  ties <- resolve_mfp_ties(ties)
   fitter <- match.arg(fitter)
 
   # acdx is not a top-level argument in the formula interface: ACD handling is
@@ -2803,33 +2788,6 @@ mfp2.formula <- function(formula,
     enclos = environment(formula_internal)
   )
 
-  if (!is.null(weights)) {
-    if (!is.numeric(weights)) {
-      stop("! `weights` must be numeric.", call. = FALSE)
-    }
-
-    if (length(weights) != n_data) {
-      stop(
-        sprintf(
-          "! `weights` must have one value per row of `data`.\ni `weights` has length %d, but `data` has %d rows.",
-          length(weights), n_data
-        ),
-        call. = FALSE
-      )
-    }
-
-    if (anyNA(weights) || any(!is.finite(weights))) {
-      stop(
-        "! `weights` must contain only finite, non-missing values.",
-        call. = FALSE
-      )
-    }
-
-    if (any(weights < 0)) {
-      stop("! `weights` must not contain negative values.", call. = FALSE)
-    }
-  }
-
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
       stop("! `offset` must be numeric.", call. = FALSE)
@@ -2887,6 +2845,14 @@ mfp2.formula <- function(formula,
       )
     }
   }
+
+  # Apply the same strictly-positive weight contract as the matrix interface.
+  # Validation covers the complete user-supplied vector, including rows later
+  # excluded by `subset`, so the public API has one unambiguous weight rule.
+  validate_model_weights(
+    weights = weights,
+    nobs = n_data
+  )
 
   # Step 5: Parse the formula and validate `strata` against it -------------------
   # "strata" is registered as a special so that strata() terms inside the
@@ -3069,7 +3035,6 @@ mfp2.formula <- function(formula,
         )
       }
 
-      attr(strata, "mfp2_strata_keep") <- TRUE
 
       terms_drop <- c(terms_drop, stemp$terms)
     } else {

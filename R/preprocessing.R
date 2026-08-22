@@ -233,7 +233,10 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
   
   if (!full_rank) {
     pivot <- qr_x$pivot
-    aliased_positions <- pivot[(qr_x$rank + 1L):ncol(X)]
+    # `!full_rank` guarantees at least one aliased column, so the bounds are
+    # ordered. `seq.int()` makes that invariant explicit and avoids a fragile
+    # programmatic colon expression.
+    aliased_positions <- pivot[seq.int(qr_x$rank + 1L, ncol(X))]
     aliased_names <- colnames(X)[aliased_positions]
     aliased_names <- setdiff(aliased_names, "(Intercept)")
     

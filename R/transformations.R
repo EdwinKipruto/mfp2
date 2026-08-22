@@ -2027,13 +2027,34 @@ create_dummy_variables <- function(data,
 #' @keywords internal
 #' @noRd
 contr.cumulative <- function(n) {
-  if (is.numeric(n)) nlev <- n else nlev <- length(n)
-  mat <- matrix(0, nrow = nlev, ncol = nlev - 1)
-  for (j in 1:(nlev - 1)) {
-    mat[(j + 1):nlev, j] <- 1
+  # Numeric input represents the number of ordered levels. Keep this contract
+  # explicit so invalid scalar values do not reach matrix dimensions or create
+  # unsafe colon sequences such as 1:0. Non-numeric input supplies the labels.
+  if (is.numeric(n)) {
+    if (length(n) != 1L || is.na(n) || !is.finite(n) ||
+        n < 2 || n != floor(n)) {
+      stop(
+        "`n` must specify at least two ordered levels.",
+        call. = FALSE
+      )
+    }
+    nlev <- as.integer(n)
+  } else {
+    nlev <- length(n)
+    if (nlev < 2L) {
+      stop(
+        "`n` must specify at least two ordered levels.",
+        call. = FALSE
+      )
+    }
   }
-  rownames(mat) <- if (is.numeric(n)) as.character(seq_len(n)) else n
+
+  mat <- matrix(0, nrow = nlev, ncol = nlev - 1L)
+  for (j in seq_len(nlev - 1L)) {
+    mat[seq.int(j + 1L, nlev), j] <- 1
+  }
+  rownames(mat) <- if (is.numeric(n)) as.character(seq_len(nlev)) else n
   # Safe column names without special characters
-  colnames(mat) <- paste0("_", seq_len(nlev - 1))
+  colnames(mat) <- paste0("_", seq_len(nlev - 1L))
   mat
 }

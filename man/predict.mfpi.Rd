@@ -67,8 +67,11 @@ addition to these grid points.}
 
 \item{strata}{Optional stratum information for predictions for individual
 observations from a stratified Cox model. For one stratification variable,
-supply one value per prediction row. For several variables, supply a matrix
-or data frame with one row per prediction row.
+supply one value per prediction row as a character, factor, numeric/integer,
+or logical vector. For several variables, supply a matrix or data frame
+with one row per prediction row. Values are matched as categorical labels
+to the strata observed during fitting; previously unseen strata are
+rejected.
 
 This argument is not used for non-Cox models, unstratified Cox models, or
 fitted-curve predictions.}
@@ -379,7 +382,11 @@ the offset for the new rows through \code{newoffset}.
 
 Supply one finite \code{newoffset} value for each prediction row. \code{newoffset}
 cannot be used when the relevant interaction model was fitted without an
-offset.
+offset. Prediction reuses the collision-safe internal offset name stored by
+each term-specific fitted model, so user predictor names are left untouched.
+Formula-based prediction requires the internal-name metadata written at fit
+time; fitted objects without that metadata must be refitted with the current
+package version.
 }
 
 \section{Cox predictions}{
@@ -396,6 +403,10 @@ Use \code{cox_reference} to choose the covariate reference for these predictions
 
 Changing \code{cox_reference} changes the displayed linear predictors and risks,
 but comparisons made using the same reference remain unchanged.
+
+Stratified prediction likewise reuses the stored internal strata-column name;
+predictor columns named \code{strata_} or beginning with \code{..mfp2_} are not
+reserved.
 
 \code{cox_reference} does not change the group used by
 \code{type = "difference"}. It applies only to observation-level Cox predictions
@@ -417,7 +428,10 @@ Do not use \code{cox_reference} with \code{type = "expected"} or
 For a stratified Cox model, each prediction row must have valid stratum
 information. If \code{strata()} was included in the fitted formula, include its
 original variable or variables in \code{newdata}. Otherwise, supply new stratum
-values through \code{strata}.
+values through \code{strata}. Prediction strata are matched as categorical labels
+to the strata observed in the term-specific fitted Cox model; previously
+unseen strata are rejected. For several stratification variables, preserve
+the same variable order used for fitting.
 }
 
 \section{Standard errors and confidence intervals}{
@@ -553,6 +567,7 @@ fit_cox <- mfpi(
   cont_vars = "age",
   cont_var_forms = c(age = "linear"),
   flex = "flex1",
+  strata = advanced_prostate_cancer$pf,
   select = 1,
   p_interact = 1,
   verbose = FALSE
@@ -584,37 +599,52 @@ predict(
 # Ordinary Cox predictions are observation-level predictions. Supply the
 # group and all adjustment variables required by the age interaction model.
 relative_data <- advanced_prostate_cancer[
-  1:5, c("age", "rx", "wt", "hg", "stage")
+  1:5, c("age", "rx", "wt", "hg", "stage", "pf")
 ]
 
-# Relative log-hazard for each covariate profile.
+# Relative log-hazard for each covariate profile. External strata are
+# supplied separately and matched to the strata observed during fitting.
 predict(
-  fit_cox, newdata = relative_data, terms = "age", model = "all",
-  type = "lp"
+  fit_cox,
+  newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
+  strata = relative_data$pf,
+  terms = "age", model = "all", type = "lp"
 )
 
 # Relative hazard for the same covariate profiles.
 predict(
-  fit_cox, newdata = relative_data, terms = "age", model = "all",
-  type = "risk"
+  fit_cox,
+  newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
+  strata = relative_data$pf,
+  terms = "age", model = "all", type = "risk",
+  cox_reference = "strata"
 )
 
 # Absolute Cox predictions additionally need follow-up information from the
 # Surv() response. The adjustment profile is otherwise the same.
 absolute_data <- advanced_prostate_cancer[
-  1:5, c("survtime", "cens", "age", "rx", "wt", "hg", "stage")
+  1:5,
+  c("survtime", "cens", "age", "rx", "wt", "hg", "stage", "pf")
 ]
 
 # Predicted cumulative hazard up to each row's follow-up time.
 predict(
-  fit_cox, newdata = absolute_data, terms = "age", model = "all",
-  type = "expected"
+  fit_cox,
+  newdata = absolute_data[, c(
+    "survtime", "cens", "age", "rx", "wt", "hg", "stage"
+  )],
+  strata = absolute_data$pf,
+  terms = "age", model = "all", type = "expected"
 )
 
 # Estimated survival probability at each row's follow-up time.
 predict(
-  fit_cox, newdata = absolute_data, terms = "age", model = "all",
-  type = "survival"
+  fit_cox,
+  newdata = absolute_data[, c(
+    "survtime", "cens", "age", "rx", "wt", "hg", "stage"
+  )],
+  strata = absolute_data$pf,
+  terms = "age", model = "all", type = "survival"
 )
 }
 

@@ -1,3 +1,32 @@
+#' Decide Whether an MFP Comparison Supports Simplification
+#'
+#' MFP removes a variable or simplifies a functional form only when the
+#' comparison p-value is a valid finite probability that is strictly greater
+#' than the relevant selection threshold. A missing/non-finite p-value is not
+#' evidence in favour of the simpler model, so the current (more complex)
+#' representation is retained. This also prevents NA p-values from propagating
+#' into model indices during selection.
+#'
+#' @param pvalue Numeric scalar p-value from an MFP comparison.
+#' @param threshold Numeric scalar selection threshold.
+#'
+#' @return Logical scalar.
+#' @keywords internal
+#' @noRd
+mfp_pvalue_exceeds <- function(pvalue, threshold) {
+  is.numeric(pvalue) &&
+    length(pvalue) == 1L &&
+    !is.na(pvalue) &&
+    is.finite(pvalue) &&
+    pvalue >= 0 && pvalue <= 1 &&
+    is.numeric(threshold) &&
+    length(threshold) == 1L &&
+    !is.na(threshold) &&
+    is.finite(threshold) &&
+    pvalue > threshold
+}
+
+
 #' Function to estimate the best FP functions for a single variable
 #'
 #' See \code{mfp2()} for a brief summary on the notation used here and
@@ -1168,7 +1197,7 @@ select_linear <- function(x,
     # linear-only variable has no functional form to choose between.
     model_best <- switch(
       tolower(criterion),
-      "pvalue" = ifelse(pvalue > select, 1, 2),
+      "pvalue" = if (mfp_pvalue_exceeds(pvalue, select)) 1 else 2,
       "aic" = which.min(metrics[, "aic", drop = TRUE]),
       "bic" = which.min(metrics[, "bic", drop = TRUE])
     )
@@ -1437,7 +1466,7 @@ select_ra2 <- function(x,
   # MFP uses a strict upper-tail boundary for simplification/removal. Therefore
   # select = 1 truly forces inclusion: p = 1 is retained, and only p > select
   # can trigger removal. The same convention is used for alpha below.
-  if (stats$pvalue > select && !(xi %in% current_keep)) {
+  if (mfp_pvalue_exceeds(stats$pvalue, select) && !(xi %in% current_keep)) {
     # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
     # the null row).
     # not selected and not forced into model
@@ -1481,7 +1510,7 @@ select_ra2 <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue > alpha) {
+  if (mfp_pvalue_exceeds(stats$pvalue, alpha)) {
     # Test 2 not significant: the extra flexibility beyond linear is not
     # needed. Accept linear and stop (model_best = 3: rows were inserted in
     # order FPm(degree), null, linear).
@@ -1502,7 +1531,7 @@ select_ra2 <- function(x,
 
   if (degree > 1) {
     # Vector of lower degrees starting with FP1.
-    lower_degrees <- 1:(degree - 1)
+    lower_degrees <- seq_len(degree - 1L)
 
     # Construct FP names once
     fp_names <- paste0("FP", lower_degrees, binary_suffix)
@@ -1544,7 +1573,7 @@ select_ra2 <- function(x,
       names(res$pvalue) <- names(res$statistic)
 
       # Stop early if non-linearity detected
-      if (stats$pvalue > alpha) {
+      if (mfp_pvalue_exceeds(stats$pvalue, alpha)) {
         # FPm(current_degree) is not significantly worse than FPm(degree):
         # accept it and stop climbing further; model_best is the row just
         # appended (the last row of res$metrics at this point).
@@ -1774,7 +1803,7 @@ select_ra2_acd <- function(x,
   # Preserve the same strict MFP endpoint convention as select_ra2(): select = 1
   # forces inclusion even at p = 1, and alpha = 1 below prevents simplification
   # at the exact upper boundary.
-  if (stats$pvalue > select && !(xi %in% current_keep)) {
+  if (mfp_pvalue_exceeds(stats$pvalue, select) && !(xi %in% current_keep)) {
     # Test 1 not significant and xi not forced: eliminate xi (model_best = 2,
     # the null/M6 row).
     # not selected and not forced into model
@@ -1814,7 +1843,7 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue > alpha) {
+  if (mfp_pvalue_exceeds(stats$pvalue, alpha)) {
     # Test 2 not significant: plain linear(x) (M4) is not significantly worse
     # than M1. Accept it and stop (model_best = 3: rows inserted in order M1,
     # null/M6, linear/M4).
@@ -1856,7 +1885,7 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue > alpha) {
+  if (mfp_pvalue_exceeds(stats$pvalue, alpha)) {
     # Test 3 not significant: ordinary FP1(x, .) (M2) is not significantly
     # worse than M1. Accept it and stop (model_best = 4).
     # FP1(x, .) is good enough
@@ -2375,7 +2404,9 @@ select_ic <- function(x,
     # index is then shifted by +1 to account for the excluded row and land
     # back on the correct row of the full res$metrics/res$powers.
     # Prevent selection of null model; choose best among linear through FPm.
-    ind_select <- 2:nrow(res$metrics)
+    # Build the full safe row sequence and drop row 1 rather than using 2:n,
+    # which can create a descending sequence when bounds change unexpectedly.
+    ind_select <- seq_len(nrow(res$metrics))[-1L]
     res$model_best <- which.min(
       res$metrics[ind_select, tolower(criterion), drop = TRUE]
     )
@@ -2385,7 +2416,7 @@ select_ic <- function(x,
     # Unrestricted: every candidate (including null) is eligible; simply
     # take whichever row has the smallest AIC/BIC.
     # Unrestricted: choose best among null through FPm.
-    ind_select <- 1:nrow(res$metrics)
+    ind_select <- seq_len(nrow(res$metrics))
     res$model_best <- which.min(
       res$metrics[ind_select, tolower(criterion), drop = TRUE]
     )
@@ -2657,7 +2688,8 @@ select_ic_acd <- function(x,
     # shift the index by +1 to land back on the correct row of the full
     # res$metrics/res$powers.
     # Prevent selection of null model; choose best among linear through FP1(x, A(x)).
-    ind_select <- 2:nrow(res$metrics)
+    # As above, avoid a programmatic 2:n sequence.
+    ind_select <- seq_len(nrow(res$metrics))[-1L]
     res$model_best <- which.min(
       res$metrics[ind_select, tolower(criterion), drop = TRUE]
     )
@@ -2665,7 +2697,7 @@ select_ic_acd <- function(x,
   } else {
     # Unrestricted: every candidate (including null) is eligible.
     # Unrestricted: choose best among null through FP1(x, A(x))
-    ind_select = 1:nrow(res$metrics)
+    ind_select = seq_len(nrow(res$metrics))
     res$model_best <- which.min(
       res$metrics[ind_select, tolower(criterion), drop = TRUE]
     )

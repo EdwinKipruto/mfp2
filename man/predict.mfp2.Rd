@@ -30,7 +30,7 @@ predict. See \strong{Supplying prediction data}.}
 \item{type}{A character value selecting the prediction type. See
 \strong{Choosing the prediction type}.}
 
-\item{se.fit}{A single \code{TRUE} or \code{FALSE} value. For complete-model
+\item{se.fit}{A single non-missing \code{TRUE} or \code{FALSE} value. For complete-model
 predictions, \code{TRUE} requests standard errors from the underlying model
 method. Term and contrast results always include standard errors and
 confidence limits, so this argument is ignored for those prediction types.}
@@ -43,8 +43,8 @@ names. If \code{NULL}, all terms included in the final model are used.}
 single numeric term. Use \code{"equidistant"} or \code{"data"}. The default is
 \code{"equidistant"}. Grouped terms are always evaluated row by row.}
 
-\item{alpha}{A number between 0 and 1 used to calculate confidence intervals
-for term and contrast results. The confidence level is \code{1 - alpha}. The
+\item{alpha}{A single finite number strictly between 0 and 1 used to
+calculate confidence intervals for term and contrast results. The confidence level is \code{1 - alpha}. The
 default \code{alpha = 0.05} gives 95 percent confidence intervals.}
 
 \item{ref}{A named list of reference values used with
@@ -53,9 +53,11 @@ variable scale. See \strong{Contrasts and reference values}.}
 
 \item{strata}{Optional stratum information for complete-model prediction
 from a stratified Cox model when \code{newdata} is supplied. For one
-stratification variable, supply one value per row. For several
-stratification variables, supply a
-matrix or data frame with one row per prediction row.
+stratification variable, supply one value per row as a character, factor,
+numeric/integer, or logical vector. For several stratification variables,
+supply a matrix or data frame with one row per prediction row. Values are
+matched as categorical labels to the strata observed during fitting, so
+previously unseen strata are rejected.
 
 This argument can be supplied only for complete-model prediction from a
 stratified Cox model when \code{newdata} is supplied.}
@@ -66,11 +68,11 @@ value for each row of \code{newdata}. See \strong{Offsets}.
 This argument can be supplied only for a complete-model prediction when the
 fitted model used an offset and \code{newdata} is supplied.}
 
-\item{nseq}{A positive integer giving the number of equally spaced values
-used when \code{terms_seq = "equidistant"}. The default is 100.}
+\item{nseq}{A single finite positive integer giving the number of equally
+spaced values used when \code{terms_seq = "equidistant"}. The default is 100.}
 
-\item{add_intercept}{A single \code{TRUE} or \code{FALSE} value. For term predictions
-from Gaussian, binomial, Poisson, and negative-binomial models, \code{TRUE} includes the fitted
+\item{add_intercept}{A single non-missing \code{TRUE} or \code{FALSE} value. For
+term predictions from Gaussian, binomial, Poisson, and negative-binomial models, \code{TRUE} includes the fitted
 intercept in each result. The default is \code{TRUE}. It has no effect for Cox
 models or contrasts.}
 
@@ -289,7 +291,12 @@ the offset for the new rows through \code{newoffset}.
 \item A supplied \code{newoffset} takes precedence over a formula offset.
 }
 
-Supply one finite \code{newoffset} value for each row of \code{newdata}.
+Supply one finite \code{newoffset} value for each row of \code{newdata}. Users should
+supply only their original predictor columns; prediction automatically reuses
+the collision-safe internal offset name stored by the fitted model. Formula-
+based prediction requires the internal-name metadata written at fit time; a
+fitted object without that metadata must be refitted with the current package
+version rather than interpreted using fixed helper-name assumptions.
 }
 
 \section{Cox predictions}{
@@ -326,6 +333,10 @@ Do not use \code{cox_reference} with \code{type = "expected"} or
 For a stratified Cox model, each prediction row must have a valid stratum.
 If \code{strata()} was included in the formula, include its original variable or
 variables in \code{newdata}. Otherwise, supply the new strata through \code{strata}.
+Prediction strata are treated as categorical labels and matched to the
+strata observed when the model was fitted; new, previously unseen strata are
+not allowed. For several stratification variables, supply the same variables
+in the same column order used for fitting.
 }
 
 \examples{
@@ -426,27 +437,50 @@ predict(
 # Cox predictions.
 data("gbsg")
 
+# Use tumour grade as an external Cox stratification variable.
 fit_cox <- mfp2(
   survival::Surv(rectime, censrec) ~ fp(age) + fp(nodes),
   data = gbsg,
   family = "cox",
+  strata = gbsg$grade,
   df = 1,
   select = 1,
   alpha = 1,
   verbose = FALSE
 )
 
-relative_profiles <- gbsg[1:3, c("age", "nodes")]
-predict(fit_cox, relative_profiles, type = "lp")
-predict(fit_cox, relative_profiles, type = "risk")
+relative_profiles <- gbsg[1:3, c("age", "nodes", "grade")]
+predict(
+  fit_cox,
+  newdata = relative_profiles[, c("age", "nodes")],
+  strata = relative_profiles$grade,
+  type = "lp"
+)
+predict(
+  fit_cox,
+  newdata = relative_profiles[, c("age", "nodes")],
+  strata = relative_profiles$grade,
+  type = "risk",
+  cox_reference = "strata"
+)
 
 # Survival predictions also need the original follow-up variables.
 absolute_profiles <- gbsg[
   1:3,
-  c("rectime", "censrec", "age", "nodes")
+  c("rectime", "censrec", "age", "nodes", "grade")
 ]
-predict(fit_cox, absolute_profiles, type = "survival")
-predict(fit_cox, absolute_profiles, type = "expected")
+predict(
+  fit_cox,
+  newdata = absolute_profiles[, c("rectime", "censrec", "age", "nodes")],
+  strata = absolute_profiles$grade,
+  type = "survival"
+)
+predict(
+  fit_cox,
+  newdata = absolute_profiles[, c("rectime", "censrec", "age", "nodes")],
+  strata = absolute_profiles$grade,
+  type = "expected"
+)
 }
 
 }

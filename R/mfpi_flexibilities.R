@@ -40,8 +40,9 @@
 #' @param xadj Numeric matrix of pre-transformed, pre-centered adjustment
 #'   predictors, or `NULL` if there are no adjustment variables.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param ties Character string; Cox tie-handling - `"breslow"`, `"efron"`,
-#'   or `"exact"`. Ignored for non-Cox families.
+#' @param ties Character string; Cox tie-handling - `"breslow"` or `"efron"`.
+#'   `"exact"` is rejected by the public MFP/MFPI interfaces before selection.
+#'   Ignored for non-Cox families.
 #' @param degree Integer; FP degree - `0` (linear), `1` (FP1), or `2` (FP2).
 #'   Values below 1 are silently treated as `0` and routed to `flex0`.
 #' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,

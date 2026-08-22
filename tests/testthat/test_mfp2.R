@@ -295,6 +295,89 @@ test_that("mfp2.default() works with Poisson family", {
   expect_equal(fit$family_string, "poisson")
 })
 
+# Test purpose: User-supplied glm.control() settings must reach both the fast
+# candidate path and the final formula-based base GLM fit. The deliberately
+# restrictive one-iteration limit should therefore trigger the package's
+# fail-fast non-convergence error in both paths.
+test_that("GLM control is propagated to candidate and final base fits", {
+  set.seed(1200)
+  n <- 100L
+  x <- cbind(
+    x1 = seq(-2.5, 2.5, length.out = n),
+    x2 = stats::rnorm(n)
+  )
+  eta <- -0.3 + 1.8 * x[, "x1"] - 1.1 * x[, "x2"]
+  y <- stats::rbinom(n, 1L, stats::plogis(eta))
+  control <- stats::glm.control(epsilon = 1e-12, maxit = 1L)
+
+  expect_error(
+    fit_model(
+      x = x,
+      y = y,
+      family = stats::binomial(),
+      family_string = "binomial",
+      control = control,
+      fast = TRUE,
+      keep_fit = TRUE,
+      fitter = "base"
+    ),
+    "did not converge"
+  )
+
+  expect_error(
+    fit_model(
+      x = x,
+      y = y,
+      family = stats::binomial(),
+      family_string = "binomial",
+      control = control,
+      fast = FALSE,
+      keep_fit = TRUE,
+      fitter = "base"
+    ),
+    "did not converge"
+  )
+})
+
+# Test purpose: Control lists are normalized with glm.control() semantics so
+# partial lists receive defaults and malformed controls fail with an mfp2 error.
+test_that("GLM control normalization is explicit", {
+  control <- normalize_glm_control(list(epsilon = 1e-7, maxit = 17L))
+
+  expect_equal(control$epsilon, 1e-7)
+  expect_identical(control$maxit, 17L)
+  expect_false(control$trace)
+
+  expect_error(
+    normalize_glm_control("not-a-control-list"),
+    "must be `NULL` or a list"
+  )
+  expect_error(
+    normalize_glm_control(list(maxit = 0L)),
+    "Invalid GLM `control`"
+  )
+})
+
+# Test purpose: fastglm has no trace equivalent. Reject the setting before
+# backend dispatch rather than silently dropping glm.control(trace = TRUE).
+test_that("fastglm rejects unsupported GLM iteration tracing", {
+  x <- cbind(x1 = seq_len(20L))
+  y <- stats::rpois(20L, lambda = 2)
+
+  expect_error(
+    fit_model(
+      x = x,
+      y = y,
+      family = stats::poisson(),
+      family_string = "poisson",
+      control = stats::glm.control(trace = TRUE),
+      fast = TRUE,
+      fitter = "fastglm"
+    ),
+    "not supported with `fitter = \"fastglm\"`"
+  )
+})
+
 # Test purpose: Fits a negative-binomial model through the public matrix
 # interface and checks the family-specific metadata returned by mfp2().
 test_that("mfp2.default() works with negative-binomial family", {
@@ -6674,6 +6757,61 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   expect_equal(unname(risk_coxph), manual_risk, tolerance = tolerance)
 }
 
+# Exact partial likelihood is deliberately rejected because the low-level Cox
+# candidate fitter used during MFP/MFPI selection does not implement it. These
+# tests cover both matrix and formula entry points so the unsupported method
+# cannot bypass public argument validation.
+test_that("exact Cox ties are rejected before MFP-based selection", {
+  dat <- data.frame(
+    time = c(1, 2, 3, 4, 5, 6),
+    status = c(1, 1, 0, 1, 0, 1),
+    x = c(0.2, 0.5, 0.1, 0.8, 0.3, 0.7),
+    group = c(0, 1, 0, 1, 0, 1)
+  )
+  y <- survival::Surv(dat$time, dat$status)
+  x <- as.matrix(dat[c("x", "group")])
+  msg <- "not supported for MFP selection"
+
+  expect_error(
+    mfp2(x, y, family = "cox", ties = "exact", verbose = FALSE),
+    msg
+  )
+  expect_error(
+    mfp2(
+      survival::Surv(time, status) ~ x + group,
+      data = dat,
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+  expect_error(
+    mfpi(
+      x, y,
+      group_var = "group",
+      cont_vars = "x",
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+  expect_error(
+    mfpi(
+      survival::Surv(time, status) ~ x + group,
+      data = dat,
+      group_var = "group",
+      cont_vars = "x",
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+})
+
+
 # Generate one stable Cox data set containing continuous and categorical
 # predictors, two potential stratification factors, and an offset. Individual
 # equivalence tests use different subsets of these model components.
@@ -10462,8 +10600,8 @@ test_that("predict.mfpi ordinary Gaussian prediction matches stored glm", {
   expect_equal(got_response$predictions$fit, manual_link, tolerance = 1e-8)
 })
 
-# Test purpose: Stratified Cox MFPI prediction passes raw vector strata through
-# exactly once and matches predict.coxph(reference = "zero").
+# Test purpose: Stratified Cox MFPI prediction reconstructs prediction strata
+# with the fitted Cox level set and matches predict.coxph(reference = "zero").
 test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
@@ -10485,10 +10623,18 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
   design <- mfpi_build_ordinary_design(
     fit, "age", fit_result, nd, strata = nd$inst
   )
-  expect_identical(design$model_newdata$strata_, nd$inst)
+  stored <- fit_result$test_results$interaction_model$fit
+  fitted_strata_levels <- stored$xlevels[["strata(strata_)"]]
+
+  expect_true(is.factor(design$model_newdata$strata_))
+  expect_identical(levels(design$model_newdata$strata_), fitted_strata_levels)
+  expect_identical(
+    as.character(design$model_newdata$strata_),
+    as.character(nd$inst)
+  )
 
   direct <- stats::predict(
-    fit_result$test_results$interaction_model$fit,
+    stored,
     newdata = design$model_newdata,
     type = "lp",
     se.fit = TRUE,
@@ -11179,10 +11325,21 @@ test_that("17.1.11 multiple Cox strata columns are combined once in MFPI predict
     survival::strata,
     c(as.list(strata_new), list(shortlabel = TRUE))
   )
-  expect_equal(design$model_newdata$strata_, expected_strata)
-  expect_s3_class(design$model_newdata$strata_, "factor")
-
   stored <- fit_result$test_results$interaction_model$fit
+  fitted_strata_levels <- stored$xlevels[["strata(strata_)"]]
+
+  # Prediction values must represent the supplied rows, while the factor keeps
+  # the complete fit-time level set required by predict.coxph/model.frame().
+  expect_s3_class(design$model_newdata$strata_, "factor")
+  expect_identical(
+    as.character(design$model_newdata$strata_),
+    as.character(expected_strata)
+  )
+  expect_identical(
+    levels(design$model_newdata$strata_),
+    fitted_strata_levels
+  )
+
   direct <- stats::predict(
     stored,
     newdata = design$model_newdata,
@@ -11353,10 +11510,12 @@ test_that("17.1.13 MFPI fitted functions equal direct basis-times-coefficient ca
   expect_equal(pred$functions$fit, expected$fit, tolerance = 1e-10)
 })
 
-# Test purpose: Replaces the former tautological representation check with a
-# direct test of mfpi_build_ordinary_design(). Vector/factor strata must remain
-# unchanged; only matrix/data-frame strata are combined before model prediction.
-test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tabular strata", {
+# Test purpose: Verifies that MFPI ordinary-design prediction reconstructs
+# vector and tabular Cox strata against the level set of the corresponding
+# fitted Cox model.  The tabular case is fitted with tabular strata as well;
+# changing the number of stratification variables at prediction time is not a
+# valid prediction operation.
+test_that("17.1.14 MFPI ordinary design preserves fitted Cox strata levels", {
   dat <- survival::lung
   dat$status <- as.integer(dat$status == 2L)
   dat <- dat[complete.cases(
@@ -11364,7 +11523,10 @@ test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tab
   ), ]
   dat$sex <- factor(dat$sex)
 
-  fit <- mfpi(
+  nd <- dat[1:8, c("sex", "age", "inst", "ph.ecog"), drop = FALSE]
+
+  # One-dimensional external strata.
+  fit_vector <- mfpi(
     x = dat[, c("sex", "age")],
     y = survival::Surv(dat$time, dat$status),
     family = "cox",
@@ -11380,24 +11542,59 @@ test_that("17.1.14 MFPI ordinary design preserves vector strata and combines tab
     p_interact = 1,
     verbose = FALSE
   )
-
-  nd <- dat[1:8, c("sex", "age", "inst", "ph.ecog"), drop = FALSE]
-  fit_result <- fit$var_winners[["age"]]$fit
-
+  vector_result <- fit_vector$var_winners[["age"]]$fit
   vector_design <- mfpi_build_ordinary_design(
-    fit, "age", fit_result, nd, strata = factor(nd$inst)
+    fit_vector, "age", vector_result, nd, strata = factor(nd$inst)
   )
-  expect_identical(vector_design$model_newdata$strata_, factor(nd$inst))
+  vector_stored <- vector_result$test_results$interaction_model$fit
 
+  expect_identical(
+    as.character(vector_design$model_newdata$strata_),
+    as.character(nd$inst)
+  )
+  expect_identical(
+    levels(vector_design$model_newdata$strata_),
+    vector_stored$xlevels[["strata(strata_)"]]
+  )
+
+  # Two-dimensional external strata. Fit and predict with the same two
+  # stratification variables, mirroring coxph(... + strata(inst, ph.ecog)).
+  strata_fit <- dat[, c("inst", "ph.ecog"), drop = FALSE]
+  fit_tabular <- mfpi(
+    x = dat[, c("sex", "age")],
+    y = survival::Surv(dat$time, dat$status),
+    family = "cox",
+    group_var = "sex",
+    cont_vars = "age",
+    cont_var_forms = c(age = "linear"),
+    strata = strata_fit,
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    center = FALSE,
+    p_interact = 1,
+    verbose = FALSE
+  )
+  tabular_result <- fit_tabular$var_winners[["age"]]$fit
   tabular_strata <- nd[, c("inst", "ph.ecog"), drop = FALSE]
   tabular_design <- mfpi_build_ordinary_design(
-    fit, "age", fit_result, nd, strata = tabular_strata
+    fit_tabular, "age", tabular_result, nd, strata = tabular_strata
   )
-  expected <- do.call(
+  expected_tabular <- do.call(
     survival::strata,
     c(as.list(tabular_strata), list(shortlabel = TRUE))
   )
-  expect_equal(tabular_design$model_newdata$strata_, expected)
+  tabular_stored <- tabular_result$test_results$interaction_model$fit
+
+  expect_identical(
+    as.character(tabular_design$model_newdata$strata_),
+    as.character(expected_tabular)
+  )
+  expect_identical(
+    levels(tabular_design$model_newdata$strata_),
+    tabular_stored$xlevels[["strata(strata_)"]]
+  )
 })
 
 # -----------------------------------------------------------------------------
@@ -17887,5 +18084,101 @@ test_that("mfpi.default() validates vector center settings", {
       stats::setNames(c(TRUE, FALSE), c("age", "age"))
     ),
     "names must be unique.*age"
+  )
+})
+
+
+# Test purpose: External Cox strata supplied as character, numeric, factor, or
+# multiple columns must be normalized to one factor before coxph.fit(). This
+# prevents character labels from becoming NA through low-level numeric coercion.
+test_that("Cox strata inputs are normalized before candidate fitting", {
+  set.seed(30031)
+  n <- 150L
+  x1 <- runif(n, 1, 5)
+  x2 <- rnorm(n)
+  s1 <- rep(c("A", "B", "C"), length.out = n)
+  s2 <- rep(c("X", "Y"), each = ceiling(n / 2L))[seq_len(n)]
+  lp <- 0.25 * x1 - 0.15 * x2
+  event_time <- rexp(n, rate = 0.03 * exp(lp))
+  censor_time <- rexp(n, rate = 0.02)
+  y <- survival::Surv(
+    pmin(event_time, censor_time),
+    as.integer(event_time <= censor_time)
+  )
+  x <- cbind(x1 = x1, x2 = x2)
+
+  common <- list(
+    x = x, y = y, family = "cox", keep = c("x1", "x2"),
+    df = 1, select = 1, alpha = 1, cycles = 5, shift = 0, scale = 1,
+    center = FALSE, xorder = "original", ties = "breslow", verbose = FALSE
+  )
+
+  fit_character <- do.call(mfp2, c(common, list(strata = s1)))
+  fit_factor <- do.call(mfp2, c(common, list(strata = factor(s1))))
+  fit_numeric <- do.call(mfp2, c(common, list(strata = match(s1, c("A", "B", "C")))))
+
+  expect_equal(unname(coef(fit_character)), unname(coef(fit_factor)), tolerance = 1e-8)
+  expect_equal(unname(coef(fit_numeric)), unname(coef(fit_factor)), tolerance = 1e-8)
+  expect_equal(as.numeric(logLik(fit_character)), as.numeric(logLik(fit_factor)), tolerance = 1e-8)
+
+  multi <- data.frame(site = s1, period = s2)
+  fit_multi <- do.call(mfp2, c(common, list(strata = multi)))
+  combined <- do.call(
+    survival::strata,
+    c(as.list(multi), list(shortlabel = TRUE))
+  )
+  fit_combined <- do.call(mfp2, c(common, list(strata = combined)))
+
+  expect_equal(unname(coef(fit_multi)), unname(coef(fit_combined)), tolerance = 1e-8)
+  expect_equal(as.numeric(logLik(fit_multi)), as.numeric(logLik(fit_combined)), tolerance = 1e-8)
+})
+
+
+# Test purpose: MFPI uses the same Cox-strata normalization as mfp2, including
+# raw character labels supplied through the external strata argument.
+test_that("MFPI accepts character Cox strata through the external argument", {
+  set.seed(30032)
+  n <- 120L
+  trt <- factor(rep(c("control", "treated"), length.out = n))
+  x <- runif(n, 1, 5)
+  z <- rnorm(n)
+  strata_char <- rep(c("S1", "S2", "S3"), length.out = n)
+  lp <- 0.2 * x - 0.1 * z + 0.2 * (trt == "treated")
+  event_time <- rexp(n, rate = 0.03 * exp(lp))
+  censor_time <- rexp(n, rate = 0.02)
+
+  fit <- mfpi(
+    x = data.frame(trt = trt, x = x, z = z),
+    y = survival::Surv(
+      pmin(event_time, censor_time),
+      as.integer(event_time <= censor_time)
+    ),
+    family = "cox", group_var = "trt", cont_vars = "x",
+    cont_var_forms = c(x = "linear"), keep = "z", strata = strata_char,
+    df = 1, select = 1, alpha = 1, cycles = 1, shift = 0, scale = 1,
+    center = FALSE, p_interact = 1, ties = "breslow", verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfpi")
+})
+
+
+# Test purpose: Unsupported or malformed Cox strata fail before reaching
+# survival::coxph.fit(), where type/shape checking is intentionally minimal.
+test_that("Cox strata normalization rejects malformed inputs", {
+  expect_error(
+    normalize_cox_strata(as.list(rep(c("A", "B"), 5)), 10L),
+    "vector, factor, matrix, or data frame"
+  )
+
+  expect_error(
+    normalize_cox_strata(array(1:24, dim = c(4, 3, 2)), 4L),
+    "vector, factor, matrix, or data frame"
+  )
+
+  empty_strata <- data.frame(row.names = seq_len(4L))
+  expect_error(
+    normalize_cox_strata(empty_strata, 4L),
+    "at least one stratification variable"
   )
 })

@@ -35,9 +35,9 @@ mfpi(x, ...)
   force_max_fp_vars = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("breslow", "efron"),
   strata = NULL,
-  nocenter = NULL,
+  nocenter = c(-1, 0, 1),
   acd_vars = NULL,
   zero_vars = NULL,
   catzero_vars = NULL,
@@ -83,9 +83,9 @@ mfpi(x, ...)
   force_max_fp_vars = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("breslow", "efron"),
   strata = NULL,
-  nocenter = NULL,
+  nocenter = c(-1, 0, 1),
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
@@ -104,9 +104,9 @@ mfpi(x, ...)
 }
 \arguments{
 \item{x}{For \code{mfpi.default()}, a numeric matrix or data frame containing the
-predictors. It must have column names and must not contain missing or
-non-finite values. Do not add an intercept column. If \code{x} is a data frame, only
-\code{group_var} can be categorical; all other columns must be numeric.}
+predictors. Column names must be unique, non-missing, non-empty, and must
+not contain backticks (\verb{); spaces, hyphens, and other non-syntactic names are supported. Predictor values must not be missing or non-finite. Do not add an intercept column. If }x\verb{is a data frame, only}group_var` can be
+categorical; all other columns must be numeric.}
 
 \item{...}{Additional arguments are not currently supported and produce an
 error.}
@@ -171,9 +171,11 @@ is \code{FALSE}.}
 print the regression summary for each selected interaction model. The
 default is \code{FALSE}.}
 
-\item{weights}{An optional finite, non-negative numeric vector with one value
-per observation. The weights are used in both the adjustment and
-interaction models.}
+\item{weights}{An optional finite numeric vector with one value per
+observation. All weights must be strictly positive; zero and negative
+weights are not supported. This restriction keeps likelihood-based model
+comparisons well-defined across all supported families. The weights are
+used in both the adjustment and interaction models.}
 
 \item{offset}{An optional finite numeric vector with one value per
 observation, added to the linear predictor in both fitting stages. A formula
@@ -306,16 +308,25 @@ uses \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where zero represents the
 natural logarithm. These candidates are used when FP powers are selected
 for both adjustment and interaction functions.}
 
-\item{ties}{The method for handling tied event times in Cox models:
-\code{"breslow"}, \code{"efron"}, or \code{"exact"}. The default is
-\code{"breslow"}. It is ignored for other families.}
+\item{ties}{The method for handling tied event times in Cox models. Supported
+values are \code{"breslow"} (default) and \code{"efron"}. \code{"exact"} is not supported
+because MFPI relies on MFP-based Cox candidate fits that do not implement
+the exact partial likelihood. The argument otherwise has no effect for
+non-Cox families.}
 
 \item{strata}{Optional Cox strata with one value or row per observation. A
-vector, factor, matrix, data frame, or \code{\link[survival:strata]{survival::strata()}} object is
-accepted. Formula \code{strata(...)} terms take precedence over this argument.}
+vector or factor supplies one categorical stratum label per observation;
+character, numeric, integer, and logical values are accepted. A matrix or
+data frame may supply multiple stratification variables, one per column,
+which are combined before Cox fitting. A \code{\link[survival:strata]{survival::strata()}} object is
+also accepted. Formula \code{strata(...)} terms take precedence over this argument.}
 
-\item{nocenter}{A numeric vector passed to \code{\link[survival:coxph]{survival::coxph()}} to control its
-internal centering. It is used only for Cox models.}
+\item{nocenter}{Numeric set of values used to identify Cox design-matrix
+columns that should not be internally recentered. A column is left
+uncentered when all of its values are contained in \code{nocenter}. The default
+\code{c(-1, 0, 1)} matches \code{\link[survival:coxph]{survival::coxph()}} and typically leaves indicator
+and dummy columns uncentered. Set \code{NULL} to allow all eligible columns to
+be recentered. It is used only for Cox models.}
 
 \item{acd_vars}{For \code{mfpi.default()}, an optional character vector naming
 adjustment variables that use the approximate cumulative distribution
@@ -362,7 +373,12 @@ for non-Gaussian families.}
 
 \item{control}{Control settings for the underlying fit, usually from
 \code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}. \code{NULL} uses the
-relevant defaults.}
+relevant defaults. For GLMs, the same controls are used during MFP
+selection and the final fit. With \code{fitter = "fastglm"}, \code{epsilon} is
+mapped to \code{tol} and \code{maxit} is passed through; \code{trace = TRUE} is not
+supported by the fastglm backend. For \code{family = "negbin"}, these settings
+apply to the inner IRLS fit; fastglm_nb-specific outer controls retain
+their defaults.}
 
 \item{winsorize}{A single logical value. If \code{TRUE}, Winsorise variables in
 \code{cont_vars} before fitting. The default is \code{FALSE}.}
@@ -639,10 +655,12 @@ terms. Their contrast columns are selected or excluded together. The
 formula.
 
 With the default matrix or data-frame interface, all non-group predictors
-must be numeric. The grouping variable may be factor, character, logical,
-integer, or numeric when \code{x} is a data frame. When a categorical adjustment
-variable is represented by several numeric columns, use \code{term_groups} to
-identify those columns as one adjustment term.
+must be numeric. Predictor names must be unique, non-missing, non-empty, and
+must not contain the backtick character; spaces, hyphens, and other non-syntactic
+names remain supported. The grouping variable may be factor, character,
+logical, integer, or numeric when \code{x} is a data frame. When a categorical
+adjustment variable is represented by several numeric columns, use
+\code{term_groups} to identify those columns as one adjustment term.
 
 Variables in \code{cont_vars} must be single numeric columns. They cannot be
 binary or members of a grouped categorical term. A variable with five or
@@ -722,6 +740,10 @@ supplied. The offset is used in both the adjustment and interaction models.
 For Cox models, strata can be supplied through \code{strata} or included in the
 formula with \code{strata(...)}. Formula strata take precedence when both are
 supplied. Only right-censored \code{\link[survival:Surv]{survival::Surv()}} responses are supported.
+
+Internal response, offset, and strata columns used by the final stored models
+are named collision-safely. User predictors named \code{y}, \code{offset_}, \code{strata_},
+or with a \code{..mfp2_} prefix remain ordinary predictors and are not overwritten.
 }
 
 \section{Argument precedence (fp()/fp2() vs global)}{

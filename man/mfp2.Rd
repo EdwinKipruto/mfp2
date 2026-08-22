@@ -26,9 +26,9 @@ mfp2(x, ...)
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("breslow", "efron"),
   strata = NULL,
-  nocenter = NULL,
+  nocenter = c(-1, 0, 1),
   acdx = NULL,
   ftest = FALSE,
   control = NULL,
@@ -61,9 +61,9 @@ mfp2(x, ...)
   keep = NULL,
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
-  ties = c("breslow", "efron", "exact"),
+  ties = c("breslow", "efron"),
   strata = NULL,
-  nocenter = NULL,
+  nocenter = c(-1, 0, 1),
   ftest = FALSE,
   control = NULL,
   min_saz_component_prop = 0.1,
@@ -74,7 +74,9 @@ mfp2(x, ...)
 }
 \arguments{
 \item{x}{For \code{mfp2.default()}, a numeric predictor matrix with one row per
-observation and one column per design variable.}
+observation and one column per design variable. Column names must be
+unique, non-missing, non-empty, and must not contain backticks (`). Other
+non-syntactic names, including spaces and hyphens, are supported.}
 
 \item{\dots}{Additional arguments passed to methods. Variable-specific formula
 options should be supplied inside \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}}.}
@@ -86,8 +88,11 @@ counts. Binomial models accept a numeric binary vector of 0s and 1s, a
 two-level factor, or a two-column matrix of successes and failures. Cox
 models require a two-column right-censored \code{\link[survival:Surv]{survival::Surv()}} object.}
 
-\item{weights}{Optional numeric observation weights. In the formula interface,
-the vector is supplied directly and is not looked up in \code{data}.}
+\item{weights}{Optional finite numeric observation weights. All weights must
+be strictly positive; zero and negative weights are not supported. This
+restriction keeps likelihood-based MFP model comparisons well-defined
+across all supported families. In the formula interface, the vector is
+supplied directly and is not looked up in \code{data}.}
 
 \item{offset}{Optional numeric offset with one value per observation. In the
 formula interface, an offset may alternatively be included with \code{offset()}.
@@ -231,19 +236,25 @@ candidate to search over. To restrict a predictor to a linear effect,
 set \code{df = 1} rather than limiting its power set. Per-term settings in
 \code{\link[=fp]{fp()}} take precedence over entries in this list.}
 
-\item{ties}{Method for handling tied event times in Cox models. One of
-\code{"breslow"} (default), \code{"efron"}, or \code{"exact"}. All methods are equivalent
-when no ties exist. Ignored for non-Cox families. See
-\code{\link[survival:coxph]{survival::coxph()}} for details.}
+\item{ties}{Method for handling tied event times in Cox models. Supported
+values are \code{"breslow"} (default) and \code{"efron"}. \code{"exact"} is not supported
+because MFP selection uses Cox candidate fits that do not implement the
+exact partial likelihood. The argument otherwise has no effect for non-Cox
+families. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
 
-\item{strata}{Optional stratification variable(s) for Cox models. Accepts a
-vector, factor, or a matrix/data frame of multiple stratification
-variables. In formula fits, \code{strata()} terms can be used instead and take
-precedence if both are supplied.}
+\item{strata}{Optional stratification variable(s) for Cox models. A vector
+or factor supplies one categorical stratum label per observation; character,
+numeric, integer, and logical values are accepted. A matrix or data frame may
+supply multiple stratification variables, one per column, which are combined
+into a single stratification factor before Cox fitting. In formula fits,
+\code{strata()} terms can be used instead and take precedence if both are supplied.}
 
-\item{nocenter}{Optional numeric vector of predictor indices whose columns
-should not be internally centered by \code{\link[survival:coxph]{survival::coxph()}}. Applies to Cox
-models only. See \code{\link[survival:coxph]{survival::coxph()}} for details.}
+\item{nocenter}{Numeric set of values used to identify Cox design-matrix
+columns that should not be internally recentered. A column is left
+uncentered when all of its values are contained in \code{nocenter}. The default
+\code{c(-1, 0, 1)} matches \code{\link[survival:coxph]{survival::coxph()}} and typically leaves indicator
+and dummy columns uncentered. Set \code{NULL} to allow all eligible columns to
+be recentered. Applies only to Cox models.}
 
 \item{acdx}{Character vector naming continuous predictors to be assessed with
 the approximate cumulative distribution (ACD) extension. An ACD request
@@ -261,7 +272,12 @@ functional-form selection, and spike-at-zero testing. Default \code{FALSE}.
 Ignored for non-Gaussian families.}
 
 \item{control}{Fitting controls from \code{\link[stats:glm.control]{stats::glm.control()}} or
-\code{\link[survival:coxph.control]{survival::coxph.control()}}. \code{NULL} uses the relevant defaults.}
+\code{\link[survival:coxph.control]{survival::coxph.control()}}. \code{NULL} uses the relevant defaults. For GLMs,
+the same controls are used during MFP selection and the final fit. With
+\code{fitter = "fastglm"}, \code{epsilon} is mapped to \code{tol} and \code{maxit} is passed
+through; \code{trace = TRUE} is not supported by the fastglm backend. For
+\code{family = "negbin"}, these settings apply to the inner IRLS fit, while
+fastglm_nb-specific outer optimization controls retain their defaults.}
 
 \item{zero_vars}{Character vector of continuous predictors whose nonpositive
 values should be recoded to zero before FP transformation. Only positive
@@ -486,9 +502,17 @@ conceptual predictor so that they are selected, retained, and tested jointly.
 
 Both interfaces use the same model-selection procedure, but differ in how
 factors, offsets, strata, and variable-specific options are supplied.
-Predictor names supplied through \code{keep}, \code{powers}, \code{acdx}, \code{zero_vars},
-\code{catzero_vars}, or \code{spike_vars} are validated against the applicable formula
-terms, matrix columns, or \code{term_groups}; unknown names cause an error.
+Predictor/design-column names must be unique, non-missing, non-empty, and
+must not contain the backtick character. Other non-syntactic names, including
+spaces and hyphens, remain supported. Predictor names supplied through \code{keep},
+\code{powers}, \code{acdx}, \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} are validated
+against the applicable formula terms, matrix columns, or \code{term_groups};
+unknown names cause an error.
+
+Package-created columns used only for the final formula-based refit are
+allocated with collision-safe names. Predictor names such as \code{y}, \code{offset_},
+\code{strata_}, or names beginning with \code{..mfp2_} are therefore not reserved and
+are not overwritten by internal response, offset, or strata columns.
 }
 
 \section{Model families and responses}{

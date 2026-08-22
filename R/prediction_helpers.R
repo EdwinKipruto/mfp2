@@ -39,6 +39,109 @@ normalize_prediction_type <- function(type, family_string) {
 }
 
 
+#' Normalize Cox Strata for Prediction Against the Fitted Levels
+#'
+#' Cox fitting normalizes external strata to a single factor before the final
+#' `coxph` model is stored. Prediction must use the same categorical labels and,
+#' crucially, the same complete set of fitted levels. Passing a raw numeric or
+#' character vector into the stored formula would cause `survival::strata()` to
+#' construct labels that can differ from the fit-time labels. Prediction also
+#' reuses the collision-safe internal strata-column name stored by the final
+#' formula-based Cox refit.
+#'
+#' @param strata User-supplied prediction strata. The accepted forms are the
+#'   same as for fitting: a vector/factor for one stratification variable, or a
+#'   matrix/data frame for several variables.
+#' @param fit_obj Stored fitted `coxph` object.
+#' @param nobs Number of prediction rows.
+#'
+#' @return A factor whose values represent the requested prediction strata and
+#'   whose levels exactly match the strata levels stored by the fitted Cox
+#'   model.
+#'
+#' @keywords internal
+#' @noRd
+normalize_cox_prediction_strata <- function(strata, fit_obj, nobs) {
+  if (is.null(strata)) {
+    return(NULL)
+  }
+
+  # Validate row alignment at the prediction boundary before delegating to the
+  # shared fit-time normalizer.  This keeps public prediction errors expressed
+  # in terms of prediction rows rather than leaking the more generic fitting
+  # message ("one value per observation").
+  if (is.matrix(strata) || is.data.frame(strata)) {
+    if (NROW(strata) != nobs) {
+      stop(
+        sprintf(
+          "`strata` must have one value or row per prediction row; got %d rows for %d prediction rows.",
+          NROW(strata), nobs
+        ),
+        call. = FALSE
+      )
+    }
+  } else if (length(strata) != nobs) {
+    stop(
+      sprintf(
+        "`strata` must have one value or row per prediction row; got length %d for %d prediction rows.",
+        length(strata), nobs
+      ),
+      call. = FALSE
+    )
+  }
+
+  # Reuse the fit-time normalization so vectors and multi-column strata have
+  # identical label construction in fitting and prediction.
+  normalized <- normalize_cox_strata(strata, nobs = nobs)
+  labels <- as.character(normalized)
+
+  # The final Cox formula uses the exact collision-safe strata column allocated
+  # at fit time. Prediction requires this metadata and never guesses a helper
+  # name from historical conventions.
+  strata_name <- mfp2_internal_fit_name(
+    fit_obj,
+    component = "strata"
+  )
+  strata_term <- paste0("strata(", strata_name, ")")
+
+  # coxph stores the accepted prediction levels under the exact strata term in
+  # xlevels. Prefer that metadata; fit$strata is a defensive fallback for
+  # unusual but otherwise valid fitted objects.
+  fitted_levels <- NULL
+  if (!is.null(fit_obj$xlevels)) {
+    fitted_levels <- fit_obj$xlevels[[strata_term]]
+  }
+  if (is.null(fitted_levels) && is.factor(fit_obj$strata)) {
+    fitted_levels <- levels(fit_obj$strata)
+  }
+
+  if (is.null(fitted_levels) || length(fitted_levels) < 1L) {
+    stop(
+      "The fitted stratified Cox model lacks stored strata levels needed for prediction. ",
+      "Refit the model with the current package version.",
+      call. = FALSE
+    )
+  }
+  fitted_levels <- as.character(fitted_levels)
+
+  mapped_labels <- labels
+  unseen <- unique(mapped_labels[!mapped_labels %in% fitted_levels])
+  if (length(unseen) > 0L) {
+    stop(
+      "`strata` contains level(s) not present in the fitted Cox model: ",
+      paste(unseen, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  # Do not drop unused levels here. predict.coxph()/model.frame() need the full
+  # training level set even when the supplied newdata occupies only a subset of
+  # the fitted strata.
+  factor(mapped_labels, levels = fitted_levels)
+}
+
+
 #' Match a Cox Covariate Reference
 #'
 #' Validates the covariate-centering reference understood by
@@ -294,7 +397,10 @@ attach_cox_prediction_response <- function(fit_obj, newdata, response) {
          call. = FALSE)
   }
 
-  newdata[[response_name]] <- I(response)
+  # Keep the Surv class intact. As in the final Cox refit, I(response) would
+  # add an AsIs layer and can make model.frame()/coxph prediction reject the
+  # response as non-survival data.
+  newdata[[response_name]] <- response
   newdata
 }
 

@@ -968,7 +968,11 @@ fit_mfp <- function(x,
     fast          = FALSE,
     calculate_fit_statistics = TRUE,
     keep_fit      = TRUE,
-    has_offset    = has_offset
+    has_offset    = has_offset,
+    # Reserve original predictor names in addition to transformed final-model
+    # columns so package-created response/offset/strata helpers cannot reuse a
+    # user-facing name such as y, offset_, or strata_.
+    reserved_names = colnames(x)
   )
 
   # predict.coxph() expresses prediction offsets relative to the mean training
@@ -1489,24 +1493,42 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
 #' @keywords internal
 #' @noRd
 convert_powers_list_to_matrix <- function(power_list) {
+  # This helper is called only after per-variable powers have been assembled.
+  # An empty list or zero-length power vector indicates an inconsistent
+  # internal state; fail explicitly rather than letting 1:maxp create a
+  # descending or otherwise unintended sequence.
+  if (!is.list(power_list) || length(power_list) == 0L) {
+    stop(
+      "Internal error: `power_list` must contain at least one variable.",
+      call. = FALSE
+    )
+  }
+
   # Step 1: Determine how many power columns are needed, i.e. the largest
   # number of selected powers across all variables (FP2 has 2, FP1 has 1).
-  psize <- sapply(power_list, length)
+  psize <- vapply(power_list, length, integer(1L))
+  if (any(psize == 0L)) {
+    stop(
+      "Internal error: every element of `power_list` must contain at least one power.",
+      call. = FALSE
+    )
+  }
   maxp <- max(psize)
 
   # Step 2: For each power slot i = 1..maxp, extract the i-th power of every
-  # variable. Indexing past a shorter vector's length yields NA automatically,
-  # which is exactly the desired padding for lower-degree variables (e.g. the
-  # second power of an FP1 variable becomes NA).
-  new_list_powers <- vector(mode = "list", length = length(power_list))
-  for (i in 1:maxp) {
+  # variable. `seq_len()` is intentional here: unlike `1:maxp`, it remains
+  # empty when its upper bound is zero and therefore cannot create 1, 0.
+  # Indexing past a shorter vector's length yields NA automatically, which is
+  # exactly the desired padding for lower-degree variables.
+  new_list_powers <- vector(mode = "list", length = maxp)
+  for (i in seq_len(maxp)) {
     new_list_powers[[i]] <- sapply(power_list, function(x) x[i])
   }
 
   # Step 3: Column-bind the per-slot vectors into a matrix and label the
   # columns power1, power2, ... .
   matp           <- do.call(cbind, new_list_powers)
-  colnames(matp) <- paste0("power", 1:maxp)
+  colnames(matp) <- paste0("power", seq_len(maxp))
 
   matp
 }

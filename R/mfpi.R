@@ -164,10 +164,12 @@
 #' formula.
 #'
 #' With the default matrix or data-frame interface, all non-group predictors
-#' must be numeric. The grouping variable may be factor, character, logical,
-#' integer, or numeric when `x` is a data frame. When a categorical adjustment
-#' variable is represented by several numeric columns, use `term_groups` to
-#' identify those columns as one adjustment term.
+#' must be numeric. Predictor names must be unique, non-missing, non-empty, and
+#' must not contain the backtick character; spaces, hyphens, and other non-syntactic
+#' names remain supported. The grouping variable may be factor, character,
+#' logical, integer, or numeric when `x` is a data frame. When a categorical
+#' adjustment variable is represented by several numeric columns, use
+#' `term_groups` to identify those columns as one adjustment term.
 #'
 #' Variables in `cont_vars` must be single numeric columns. They cannot be
 #' binary or members of a grouped categorical term. A variable with five or
@@ -238,10 +240,16 @@
 #' formula with `strata(...)`. Formula strata take precedence when both are
 #' supplied. Only right-censored [survival::Surv()] responses are supported.
 #'
+#' Internal response, offset, and strata columns used by the final stored models
+#' are named collision-safely. User predictors named `y`, `offset_`, `strata_`,
+#' or with a `..mfp2_` prefix remain ordinary predictors and are not overwritten.
+#'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
-#'   predictors. It must have column names and must not contain missing or
-#'   non-finite values. Do not add an intercept column. If `x` is a data frame, only
-#'   `group_var` can be categorical; all other columns must be numeric.
+#'   predictors. Column names must be unique, non-missing, non-empty, and must
+#'   not contain backticks (`); spaces, hyphens, and other non-syntactic names
+#'   are supported. Predictor values must not be missing or non-finite. Do not
+#'   add an intercept column. If `x` is a data frame, only `group_var` can be
+#'   categorical; all other columns must be numeric.
 #'
 #' @param y For `mfpi.default()`, the response. Supply a finite numeric vector
 #'   for Gaussian models, non-negative counts for Poisson models, non-negative
@@ -319,9 +327,11 @@
 #'   print the regression summary for each selected interaction model. The
 #'   default is `FALSE`.
 #'
-#' @param weights An optional finite, non-negative numeric vector with one value
-#'   per observation. The weights are used in both the adjustment and
-#'   interaction models.
+#' @param weights An optional finite numeric vector with one value per
+#'   observation. All weights must be strictly positive; zero and negative
+#'   weights are not supported. This restriction keeps likelihood-based model
+#'   comparisons well-defined across all supported families. The weights are
+#'   used in both the adjustment and interaction models.
 #'
 #' @param offset An optional finite numeric vector with one value per
 #'   observation, added to the linear predictor in both fitting stages. A formula
@@ -462,16 +472,25 @@
 #'   natural logarithm. These candidates are used when FP powers are selected
 #'   for both adjustment and interaction functions.
 #'
-#' @param ties The method for handling tied event times in Cox models:
-#'   `"breslow"`, `"efron"`, or `"exact"`. The default is
-#'   `"breslow"`. It is ignored for other families.
+#' @param ties The method for handling tied event times in Cox models. Supported
+#'   values are `"breslow"` (default) and `"efron"`. `"exact"` is not supported
+#'   because MFPI relies on MFP-based Cox candidate fits that do not implement
+#'   the exact partial likelihood. The argument otherwise has no effect for
+#'   non-Cox families.
 #'
 #' @param strata Optional Cox strata with one value or row per observation. A
-#'   vector, factor, matrix, data frame, or [survival::strata()] object is
-#'   accepted. Formula `strata(...)` terms take precedence over this argument.
+#'   vector or factor supplies one categorical stratum label per observation;
+#'   character, numeric, integer, and logical values are accepted. A matrix or
+#'   data frame may supply multiple stratification variables, one per column,
+#'   which are combined before Cox fitting. A [survival::strata()] object is
+#'   also accepted. Formula `strata(...)` terms take precedence over this argument.
 #'
-#' @param nocenter A numeric vector passed to [survival::coxph()] to control its
-#'   internal centering. It is used only for Cox models.
+#' @param nocenter Numeric set of values used to identify Cox design-matrix
+#'   columns that should not be internally recentered. A column is left
+#'   uncentered when all of its values are contained in `nocenter`. The default
+#'   `c(-1, 0, 1)` matches [survival::coxph()] and typically leaves indicator
+#'   and dummy columns uncentered. Set `NULL` to allow all eligible columns to
+#'   be recentered. It is used only for Cox models.
 #'
 #' @param acd_vars For `mfpi.default()`, an optional character vector naming
 #'   adjustment variables that use the approximate cumulative distribution
@@ -518,7 +537,12 @@
 #'
 #' @param control Control settings for the underlying fit, usually from
 #'   [stats::glm.control()] or [survival::coxph.control()]. `NULL` uses the
-#'   relevant defaults.
+#'   relevant defaults. For GLMs, the same controls are used during MFP
+#'   selection and the final fit. With `fitter = "fastglm"`, `epsilon` is
+#'   mapped to `tol` and `maxit` is passed through; `trace = TRUE` is not
+#'   supported by the fastglm backend. For `family = "negbin"`, these settings
+#'   apply to the inner IRLS fit; fastglm_nb-specific outer controls retain
+#'   their defaults.
 #'
 #' @param winsorize A single logical value. If `TRUE`, Winsorise variables in
 #'   `cont_vars` before fitting. The default is `FALSE`.
@@ -716,9 +740,9 @@ mfpi.default <- function(
     force_max_fp_vars = NULL,
     xorder            = c("ascending", "descending", "original"),
     powers            = NULL,
-    ties              = c("breslow", "efron", "exact"),
+    ties              = c("breslow", "efron"),
     strata            = NULL,
-    nocenter          = NULL,
+    nocenter          = c(-1, 0, 1),
     acd_vars          = NULL,
     zero_vars         = NULL,
     catzero_vars      = NULL,
@@ -753,7 +777,7 @@ mfpi.default <- function(
   xorder      <- match.arg(xorder)
   criterion   <- match.arg(criterion)
   flex        <- match.arg(flex)
-  ties        <- match.arg(ties)
+  ties        <- resolve_mfp_ties(ties)
   center_type <- match.arg(center_type)
 
   # Resolve family -------------------------------------------------------------
@@ -795,10 +819,6 @@ mfpi.default <- function(
   x_input <- x
 
   vnames <- colnames(x)
-
-  if (anyDuplicated(vnames)) {
-    stop("! `x` must have unique column names.", call. = FALSE)
-  }
 
   # Keep a complete conceptual-term lookup throughout MFPI. Unmentioned
   # columns remain singleton terms; grouped entries represent one categorical
@@ -1090,25 +1110,7 @@ mfpi.default <- function(
     }
   }
 
-  # Validate weights and offset ------------------------------------------------
-  if (!is.null(weights)) {
-    if (
-      !is.numeric(weights) ||
-      length(weights) != nobs ||
-      anyNA(weights) ||
-      any(!is.finite(weights)) ||
-      any(weights < 0)
-    ) {
-      stop(
-        paste0(
-          "! `weights` must be a finite non-negative numeric vector ",
-          "of length nobs."
-        ),
-        call. = FALSE
-      )
-    }
-  }
-
+  # Validate offset -------------------------------------------------------------
   if (!is.null(offset)) {
     if (
       !is.numeric(offset) ||
@@ -1393,6 +1395,14 @@ mfpi.default <- function(
       )
     }
   }
+
+  # Apply one strictly-positive observation-weight contract to every family.
+  # Zero weights are rejected even when a fitter accepts them because they can
+  # make likelihood-based MFP/MFPI comparisons undefined for some families.
+  validate_model_weights(
+    weights = weights,
+    nobs = nobs
+  )
 
   # Validate interaction-selection thresholds -----------------------------------
   if (!is.numeric(p_interact) ||
@@ -1747,24 +1757,14 @@ mfpi.default <- function(
   # Step 14: Prepare Cox stratification, apply `subset`, and re-validate
   # group_var against the (possibly reduced) subsetted data -------------------
   # Prepare Cox stratification ------------------------------------------------
-  # Keep high-level strata labels here. Integer conversion belongs only in the
-  # low-level Cox fitting path immediately before survival::coxph.fit(). This
-  # mirrors survival::coxph() and prevents formula-strata labels from being lost.
+  # Normalize all strata to one factor before MFP/MFPI candidate fitting.
+  # Multiple columns are combined as in survival::coxph(), while a single
+  # vector is treated as categorical labels regardless of storage mode.
+  # Integer conversion belongs only at the survival::coxph.fit() boundary.
   strata_keep <- strata
 
   if (family_string == "cox" && !is.null(strata_keep)) {
-    if (!isTRUE(attr(strata_keep, "mfp2_strata_keep"))) {
-      strata_keep <- if (inherits(strata_keep, "strata")) {
-        strata_keep
-      } else if (is.matrix(strata_keep) || is.data.frame(strata_keep)) {
-        do.call(
-          survival::strata,
-          c(as.list(as.data.frame(strata_keep)), list(shortlabel = TRUE))
-        )
-      } else {
-        strata_keep
-      }
-    }
+    strata_keep <- normalize_cox_strata(strata_keep, nobs = nobs)
   }
 
   # Apply subset ---------------------------------------------------------------
@@ -1787,7 +1787,11 @@ mfpi.default <- function(
     }
     weights <- weights[subset]
     offset  <- offset[subset]
-    if (!is.null(strata_keep)) strata_keep <- strata_keep[subset]
+    if (!is.null(strata_keep)) {
+      # Subsetting can remove complete strata, so drop unused levels after the
+      # row restriction while preserving row alignment.
+      strata_keep <- droplevels(strata_keep[subset])
+    }
     validate_subset_predictor_variation(x, exclude = group_var)
   }
 
@@ -2019,9 +2023,9 @@ mfpi.formula <- function(formula,
                          force_max_fp_vars = NULL,
                          xorder            = c("ascending", "descending", "original"),
                          powers            = NULL,
-                         ties              = c("breslow", "efron", "exact"),
+                         ties              = c("breslow", "efron"),
                          strata            = NULL,
-                         nocenter          = NULL,
+                         nocenter          = c(-1, 0, 1),
                          zero_vars         = NULL,
                          catzero_vars      = NULL,
                          spike_vars        = NULL,
@@ -2053,7 +2057,7 @@ mfpi.formula <- function(formula,
   xorder      <- match.arg(xorder)
   criterion   <- match.arg(criterion)
   flex        <- match.arg(flex)
-  ties        <- match.arg(ties)
+  ties        <- resolve_mfp_ties(ties)
   center_type <- match.arg(center_type)
   fitter      <- match.arg(fitter)
 
@@ -2254,12 +2258,6 @@ mfpi.formula <- function(formula,
     enclos = environment(formula_internal)
   )
 
-  if (!is.null(weights)) {
-    if (!is.numeric(weights) || length(weights) != n_data || anyNA(weights) ||
-        any(!is.finite(weights)) || any(weights < 0)) {
-      stop("! `weights` must be a finite, non-negative numeric vector with one value per row of `data`.", call. = FALSE)
-    }
-  }
   if (!is.null(offset)) {
     if (!is.numeric(offset) || length(offset) != n_data || anyNA(offset) ||
         any(!is.finite(offset))) {
@@ -2284,6 +2282,15 @@ mfpi.formula <- function(formula,
       stop("! `subset` must be either a logical vector or a numeric/integer vector of row indices.", call. = FALSE)
     }
   }
+
+  # Apply the same strictly-positive weight contract as the matrix interface.
+  # The complete user-supplied vector is validated even when `subset` is used,
+  # keeping the public weight rule simple and family-independent.
+  validate_model_weights(
+    weights = weights,
+    nobs = n_data
+  )
+
   # Keep the ordinary formula path independent of subset-specific helpers.
   # A genuine subset is resolved once; otherwise all data rows are retained in
   # their original order.
@@ -2382,7 +2389,6 @@ mfpi.formula <- function(formula,
         )
       }
 
-      attr(strata, "mfp2_strata_keep") <- TRUE
       terms_drop <- stemp$terms
     } else {
       stop("! strata are only allowed for Cox models.\n",
@@ -3071,11 +3077,10 @@ prepare_mfpi_default_x <- function(x, group_var) {
   # input only for group_var, convert it to numeric codes for fitting, and keep
   # the original labels separately for display.
   if (is.data.frame(x)) {
-    # Require complete, non-empty column names so group_var and downstream
-    # variable selections can be resolved unambiguously.
-    if (is.null(names(x)) || any(!nzchar(names(x)))) {
-      stop("`x` must have valid column names.", call. = FALSE)
-    }
+    # Validate names before resolving group_var. This prevents duplicate or
+    # malformed names from making x[[group_var]] ambiguous. The check is
+    # performed once per public call and is outside all MFPI fitting loops.
+    validate_predictor_names(names(x), object = "`x`")
 
     # group_var must be present as a named column.
     if (!group_var %in% names(x)) {
@@ -3182,9 +3187,10 @@ prepare_mfpi_default_x <- function(x, group_var) {
     stop("`x` must be a matrix or data frame.", call. = FALSE)
   }
 
-  if (is.null(colnames(x))) {
-    stop("`x` must have column names.", call. = FALSE)
-  }
+  # The matrix interface uses the same predictor-name contract as data-frame
+  # input. Validate before group_var lookup so all downstream name matching is
+  # unambiguous.
+  validate_predictor_names(colnames(x), object = "`x`")
 
   if (!is.numeric(x)) {
     stop(

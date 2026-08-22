@@ -551,7 +551,11 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' Supply one finite `newoffset` value for each prediction row. `newoffset`
 #' cannot be used when the relevant interaction model was fitted without an
-#' offset.
+#' offset. Prediction reuses the collision-safe internal offset name stored by
+#' each term-specific fitted model, so user predictor names are left untouched.
+#' Formula-based prediction requires the internal-name metadata written at fit
+#' time; fitted objects without that metadata must be refitted with the current
+#' package version.
 #'
 #' @section Cox predictions:
 #' Cox predictions with `type = "lp"` and `type = "risk"` are relative
@@ -565,6 +569,10 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' Changing `cox_reference` changes the displayed linear predictors and risks,
 #' but comparisons made using the same reference remain unchanged.
+#'
+#' Stratified prediction likewise reuses the stored internal strata-column name;
+#' predictor columns named `strata_` or beginning with `..mfp2_` are not
+#' reserved.
 #'
 #' `cox_reference` does not change the group used by
 #' `type = "difference"`. It applies only to observation-level Cox predictions
@@ -586,7 +594,10 @@ build_group_fp_basis <- function(cont_mat,
 #' For a stratified Cox model, each prediction row must have valid stratum
 #' information. If `strata()` was included in the fitted formula, include its
 #' original variable or variables in `newdata`. Otherwise, supply new stratum
-#' values through `strata`.
+#' values through `strata`. Prediction strata are matched as categorical labels
+#' to the strata observed in the term-specific fitted Cox model; previously
+#' unseen strata are rejected. For several stratification variables, preserve
+#' the same variable order used for fitting.
 #'
 #' @section Standard errors and confidence intervals:
 #' For fitted curves and fitted differences, `se.fit = TRUE` returns pointwise
@@ -647,8 +658,11 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' @param strata Optional stratum information for predictions for individual
 #'   observations from a stratified Cox model. For one stratification variable,
-#'   supply one value per prediction row. For several variables, supply a matrix
-#'   or data frame with one row per prediction row.
+#'   supply one value per prediction row as a character, factor, numeric/integer,
+#'   or logical vector. For several variables, supply a matrix or data frame
+#'   with one row per prediction row. Values are matched as categorical labels
+#'   to the strata observed during fitting; previously unseen strata are
+#'   rejected.
 #'
 #'   This argument is not used for non-Cox models, unstratified Cox models, or
 #'   fitted-curve predictions.
@@ -818,6 +832,7 @@ build_group_fp_basis <- function(cont_mat,
 #'   cont_vars = "age",
 #'   cont_var_forms = c(age = "linear"),
 #'   flex = "flex1",
+#'   strata = advanced_prostate_cancer$pf,
 #'   select = 1,
 #'   p_interact = 1,
 #'   verbose = FALSE
@@ -849,37 +864,52 @@ build_group_fp_basis <- function(cont_mat,
 #' # Ordinary Cox predictions are observation-level predictions. Supply the
 #' # group and all adjustment variables required by the age interaction model.
 #' relative_data <- advanced_prostate_cancer[
-#'   1:5, c("age", "rx", "wt", "hg", "stage")
+#'   1:5, c("age", "rx", "wt", "hg", "stage", "pf")
 #' ]
 #'
-#' # Relative log-hazard for each covariate profile.
+#' # Relative log-hazard for each covariate profile. External strata are
+#' # supplied separately and matched to the strata observed during fitting.
 #' predict(
-#'   fit_cox, newdata = relative_data, terms = "age", model = "all",
-#'   type = "lp"
+#'   fit_cox,
+#'   newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
+#'   strata = relative_data$pf,
+#'   terms = "age", model = "all", type = "lp"
 #' )
 #'
 #' # Relative hazard for the same covariate profiles.
 #' predict(
-#'   fit_cox, newdata = relative_data, terms = "age", model = "all",
-#'   type = "risk"
+#'   fit_cox,
+#'   newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
+#'   strata = relative_data$pf,
+#'   terms = "age", model = "all", type = "risk",
+#'   cox_reference = "strata"
 #' )
 #'
 #' # Absolute Cox predictions additionally need follow-up information from the
 #' # Surv() response. The adjustment profile is otherwise the same.
 #' absolute_data <- advanced_prostate_cancer[
-#'   1:5, c("survtime", "cens", "age", "rx", "wt", "hg", "stage")
+#'   1:5,
+#'   c("survtime", "cens", "age", "rx", "wt", "hg", "stage", "pf")
 #' ]
 #'
 #' # Predicted cumulative hazard up to each row's follow-up time.
 #' predict(
-#'   fit_cox, newdata = absolute_data, terms = "age", model = "all",
-#'   type = "expected"
+#'   fit_cox,
+#'   newdata = absolute_data[, c(
+#'     "survtime", "cens", "age", "rx", "wt", "hg", "stage"
+#'   )],
+#'   strata = absolute_data$pf,
+#'   terms = "age", model = "all", type = "expected"
 #' )
 #'
 #' # Estimated survival probability at each row's follow-up time.
 #' predict(
-#'   fit_cox, newdata = absolute_data, terms = "age", model = "all",
-#'   type = "survival"
+#'   fit_cox,
+#'   newdata = absolute_data[, c(
+#'     "survtime", "cens", "age", "rx", "wt", "hg", "stage"
+#'   )],
+#'   strata = absolute_data$pf,
+#'   terms = "age", model = "all", type = "survival"
 #' )
 #' }
 #'
@@ -2603,8 +2633,14 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   expects_offset <- has_offset
   expects_strata <- mfpi_fit_has_strata(fit_obj)
 
-  if (expects_offset) {
-    model_newdata$offset_ <- pred_offset
+  if (expects_offset && !inherits(fit_obj, "fastglm")) {
+    # Formula-based fits embed the allocated helper name in their stored model
+    # formula. fastglm fits are matrix based and receive offsets separately.
+    offset_name <- mfp2_internal_fit_name(
+      fit_obj,
+      component = "offset"
+    )
+    model_newdata[[offset_name]] <- pred_offset
   }
 
   if (expects_strata) {
@@ -2626,31 +2662,18 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
       )
     }
 
-    strata_n <- if (is.vector(strata) || is.factor(strata)) length(strata) else NROW(strata)
-    if (strata_n != n) {
-      stop("`strata` must have one value or row per prediction row.", call. = FALSE)
-    }
-    if (anyNA(strata)) {
-      stop("`strata` must not contain missing values.", call. = FALSE)
-    }
-    strata_frame <- as.data.frame(strata, check.names = FALSE)
-    bad_numeric_strata <- names(strata_frame)[vapply(
-      strata_frame,
-      function(column) is.numeric(column) && any(!is.finite(column)),
-      logical(1L)
-    )]
-    if (length(bad_numeric_strata) > 0L) {
-      stop("Numeric `strata` values must be finite.", call. = FALSE)
-    }
-
-    model_newdata$strata_ <- if (is.matrix(strata) || is.data.frame(strata)) {
-      do.call(
-        survival::strata,
-        c(as.list(as.data.frame(strata)), list(shortlabel = TRUE))
-      )
-    } else {
-      strata
-    }
+    # Use both the same categorical normalization and the same collision-safe
+    # helper name as the term-specific Cox fit. Passing raw strata or rebuilding
+    # a fixed `strata_` column can disagree with the stored coxph formula.
+    strata_name <- mfp2_internal_fit_name(
+      fit_obj,
+      component = "strata"
+    )
+    model_newdata[[strata_name]] <- normalize_cox_prediction_strata(
+      strata = strata,
+      fit_obj = fit_obj,
+      nobs = n
+    )
   }
 
   list(

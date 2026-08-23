@@ -297,6 +297,108 @@ mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
   )
 }
 
+
+# Attach fitted-model residuals to the observed-value prediction frame for
+# every requested term. `predict(..., terms_seq = "data")` constructs these
+# frames from `model$x_original`, so fitted-observation order is the governing
+# invariant. Validate it explicitly to prevent R from recycling a shorter
+# residual vector when its length happens to divide the number of rows.
+mfp2_plot_attach_residuals <- function(pred_data, resid, model) {
+  if (is.null(model$x_original) || is.null(nrow(model$x_original))) {
+    stop(
+      "Cannot construct component-plus-residual plots: the fitted object ",
+      "does not contain its original predictor rows.",
+      call. = FALSE
+    )
+  }
+
+  if (!is.atomic(resid) || !is.null(dim(resid))) {
+    stop(
+      "Cannot construct component-plus-residual plots: model residuals must ",
+      "be a vector.",
+      call. = FALSE
+    )
+  }
+
+  expected_n <- nrow(model$x_original)
+  if (length(resid) != expected_n) {
+    stop(
+      "Cannot construct component-plus-residual plots: the model contains ",
+      expected_n, " fitted observations but ", length(resid), " residuals.",
+      call. = FALSE
+    )
+  }
+
+  observation_ids <- rownames(model$x_original)
+  residual_ids <- names(resid)
+
+  if (!is.null(observation_ids) && !is.null(residual_ids)) {
+    # When identifiers are available, use them rather than assuming the
+    # residual method retained fitted-data order. Duplicate, missing, or
+    # different identifiers make a one-to-one alignment impossible.
+    invalid_ids <- anyNA(observation_ids) || anyNA(residual_ids) ||
+      anyDuplicated(observation_ids) > 0L ||
+      anyDuplicated(residual_ids) > 0L ||
+      !setequal(observation_ids, residual_ids)
+
+    if (invalid_ids) {
+      stop(
+        "Cannot align model residuals with the fitted observations: their ",
+        "row identifiers are missing, duplicated, or different.",
+        call. = FALSE
+      )
+    }
+
+    resid <- resid[match(observation_ids, residual_ids)]
+  }
+
+  for (term in names(pred_data)) {
+    term_data <- pred_data[[term]]
+    term_n <- if (is.data.frame(term_data)) nrow(term_data) else NA_integer_
+
+    if (is.na(term_n) || term_n != expected_n) {
+      term_n_label <- if (is.na(term_n)) "a non-data-frame result" else term_n
+      stop(
+        "Cannot attach residuals for term `", term, "`: its prediction ",
+        "frame contains ", term_n_label, " but ", expected_n,
+        " fitted observations were expected.",
+        call. = FALSE
+      )
+    }
+
+    term_resid <- resid
+    term_ids <- rownames(term_data)
+    default_term_ids <- as.character(seq_len(expected_n))
+
+    if (!is.null(observation_ids) && !is.null(term_ids) &&
+        !identical(term_ids, observation_ids)) {
+      if (!anyNA(term_ids) && !anyDuplicated(term_ids) &&
+          setequal(term_ids, observation_ids)) {
+        # Some grouped prediction frames preserve source row names. If such a
+        # frame has been reordered, align residuals to that frame explicitly.
+        term_resid <- resid[match(term_ids, observation_ids)]
+      } else if (!identical(term_ids, default_term_ids)) {
+        # Default sequential row names carry no observation identity and use
+        # the documented x_original order. Non-default incompatible names,
+        # however, are evidence that positional attachment is unsafe.
+        stop(
+          "Cannot attach residuals for term `", term, "`: its prediction ",
+          "row identifiers do not match the fitted observations.",
+          call. = FALSE
+        )
+      }
+    }
+
+    # Remove residual names after alignment. The prediction frame already
+    # carries the row order, and retaining unrelated names on this column can
+    # obscure that the assignment is deliberately positional at this point.
+    term_data$resid <- unname(term_resid)
+    pred_data[[term]] <- term_data
+  }
+
+  pred_data
+}
+
 # Internal implementation shared by plot.mfp2() and fracplot().
 #
 # Keeping the plotting logic here prevents the preferred plot() method from
@@ -381,11 +483,10 @@ plot_mfp2_impl <- function(model,
     } else {
       stats::residuals(model, type = "deviance")
     }
-    # add residuals to the data
-    #pred_data <- lapply(pred_data, function(v) transform(v, resid = resid))
-    pred_data <- lapply(pred_data, function(v) {
-      v$resid <- resid
-      v})
+    # Prediction frames and residuals must describe the same fitted rows.
+    # The helper checks counts and uses observation names for alignment when
+    # both the stored predictors and residual vector provide them.
+    pred_data <- mfp2_plot_attach_residuals(pred_data, resid, model)
 
     # y label for the plot
     ylab <- "Partial Predictor + residuals"

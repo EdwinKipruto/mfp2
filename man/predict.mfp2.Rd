@@ -123,6 +123,13 @@ structural-zero indicator columns yourself.
 Standard errors and confidence intervals are conditional on the final fitted
 model. They do not include uncertainty from variable selection or from
 choosing the fitted function.
+
+For term and contrast predictions, the covariance entries required by the
+requested term must be finite. Prediction variances are checked before their
+square roots are taken. Tiny negative values attributable to floating-point
+roundoff are replaced by zero; non-finite or materially negative variances
+cause an error because a valid standard error and confidence interval cannot
+be constructed from them.
 }
 \section{Supplying prediction data}{
 

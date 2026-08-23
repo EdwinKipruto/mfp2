@@ -120,6 +120,11 @@ mfpi_group_row_cache <- function(group_idx,
 #' If the continuous variable contains non-positive values, it should usually be
 #' shifted before calling this function unless \code{zero = TRUE} is intended.
 #'
+#' The continuous variable must contain at least two distinct values. A
+#' constant variable cannot define an estimable group-specific FP effect:
+#' centering turns its FP basis into zero columns, while an uncentered constant
+#' basis is collinear with the corresponding group indicators.
+#'
 #' @section Centering:
 #'
 #' If \code{center = FALSE}, no centering is applied and \code{center_vals} is
@@ -218,7 +223,8 @@ mfpi_group_row_cache <- function(group_idx,
 #' recomputed on new prediction data.
 #'
 #' @param cont_var A one-column numeric matrix containing the continuous
-#'   covariate. It must have a column name and contain only finite values.
+#'   covariate. It must have a column name, contain only finite values, and
+#'   contain at least two distinct values.
 #' @param group_var A one-column numeric matrix containing group membership. It
 #'   must have the same number of rows as \code{cont_var}, contain no missing
 #'   values, and have at least two distinct values.
@@ -395,8 +401,15 @@ create_z_variables <- function(cont_var,
   n <- nrow(cont_var)
 
   if (diff(range(as.vector(cont_var))) == 0) {
-    warning("cont_var has zero variance; all values are identical.",
-            call. = FALSE)
+    # A constant covariate cannot identify an MFPI effect. With centering its
+    # transformed basis becomes exactly zero; without centering each group-
+    # specific column is only a scaled copy of a group indicator. Stop before
+    # either rank-deficient design can reach the downstream fitting engine.
+    stop(
+      "cont_var must contain at least two distinct values; a constant ",
+      "continuous variable cannot define an estimable MFPI effect.",
+      call. = FALSE
+    )
   }
 
   # Backscale cont_var to match mfp2 convention --------------------------------

@@ -16,6 +16,13 @@
 #' model. They do not include uncertainty from variable selection or from
 #' choosing the fitted function.
 #'
+#' For term and contrast predictions, the covariance entries required by the
+#' requested term must be finite. Prediction variances are checked before their
+#' square roots are taken. Tiny negative values attributable to floating-point
+#' roundoff are replaced by zero; non-finite or materially negative variances
+#' cause an error because a valid standard error and confidence interval cannot
+#' be constructed from them.
+#'
 #' @section Supplying prediction data:
 #' Supply `newdata` in the same form used when fitting the model.
 #'
@@ -863,8 +870,10 @@ predict.mfp2 <- function(object,
           ))
         } else {
           x_seq <- if (!is.null(newdata)) {
+            # Use column indexing rather than newdata[[t]] so the documented
+            # matrix and data-frame prediction interfaces follow the same path.
             matrix(
-              newdata[[t]] + object$transformations[t, "shift"],
+              newdata[, t] + object$transformations[t, "shift"],
               ncol = 1L,
               dimnames = list(NULL, t)
             )
@@ -891,7 +900,10 @@ predict.mfp2 <- function(object,
         variable <- as.numeric(x_seq) - object$transformations[t, "shift"]
         variable_pre <- as.numeric(x_seq)
 
-        if (object$spike_dec[t] == saz_decision_codes[["binary_only"]]) {
+        # Legacy serialized fits may predate `spike_dec`. Treat absent or
+        # incomplete decision metadata as not binary-only; the helper still
+        # recognizes the explicit code stored by current SAZ fits.
+        if (prediction_term_is_binary_only(object, t)) {
           variable <- as.integer(x_seq[, t] <= 0)
           variable_pre <- variable
         }
@@ -1215,6 +1227,17 @@ mfp2_validate_prediction_newdata <- function(newdata, check_missing = TRUE) {
   }
 
   newdata <- as.data.frame(newdata, check.names = FALSE)
+
+  # Every prediction mode requires at least one row. Reject an empty object at
+  # the shared validation boundary, before term ranges, equidistant sequences,
+  # formula reconstruction, or contrast reference means are calculated. This
+  # prevents downstream Inf/-Inf ranges and NaN default reference values.
+  if (nrow(newdata) == 0L) {
+    stop(
+      "! `newdata` must contain at least one row.",
+      call. = FALSE
+    )
+  }
 
   if (isTRUE(check_missing) && anyNA(newdata)) {
     stop(
@@ -1946,6 +1969,43 @@ transform_linear_predictor <- function(nfit, family, link = NULL, type = NULL) {
   )
 }
 
+#' Is a Prediction Term Explicitly Stored as Binary-Only SAZ?
+#'
+#' Current SAZ fits store one named decision code per term in
+#' `object$spike_dec`. Older serialized fits may not contain this field, and
+#' partially reconstructed legacy objects may contain an unnamed vector, omit a
+#' term, or retain an `NA` value. None of those states proves that the fitted
+#' term is binary-only, so this helper returns `FALSE` rather than allowing a
+#' zero-length/indeterminate comparison to reach `if()`.
+#'
+#' @param object A fitted `mfp2` object.
+#' @param v Character scalar giving the conceptual term name.
+#'
+#' @return A single logical value.
+#'
+#' @keywords internal
+#' @noRd
+prediction_term_is_binary_only <- function(object, v) {
+  decisions <- object$spike_dec
+
+  if (is.null(decisions) ||
+      is.null(names(decisions)) ||
+      !v %in% names(decisions)) {
+    return(FALSE)
+  }
+
+  decision <- decisions[[v]]
+
+  if (!is.numeric(decision) || length(decision) != 1L || is.na(decision)) {
+    return(FALSE)
+  }
+
+  isTRUE(
+    as.integer(decision) == saz_decision_codes[["binary_only"]]
+  )
+}
+
+
 #' Does a fitted term require positive raw prediction input?
 #'
 #' Internal helper used by `predict.mfp2()`.
@@ -1985,10 +2045,9 @@ requires_positive_raw_input <- function(object, v) {
     return(FALSE)
   }
 
-  if (!is.null(object$spike_dec) &&
-      v %in% names(object$spike_dec) &&
-      !is.na(object$spike_dec[[v]]) &&
-      as.integer(object$spike_dec[[v]]) == saz_decision_codes[["binary_only"]]) {
+  # Reuse the same legacy-safe metadata interpretation as the term/contrast
+  # display branch so missing `spike_dec` cannot produce inconsistent behavior.
+  if (prediction_term_is_binary_only(object, v)) {
     return(FALSE)
   }
 
@@ -2562,48 +2621,54 @@ prepare_newdata_for_predict <- function(object,
     # internally generated term grids are already on the shifted prediction scale.
     if (apply_pre) {
       newdata <- sweep(newdata, 2L, metadata$shift[raw_columns], "+")
+    }
 
-      positive_terms <- active_terms[
+    # Domain validation is independent of who applied the shift. Full-model
+    # prediction reaches this helper with raw data and apply_pre = TRUE, whereas
+    # term/contrast prediction applies the shift before calling this helper and
+    # therefore uses apply_pre = FALSE. In both cases `newdata` is now on the
+    # shifted scale consumed by the FP transformation and must be checked before
+    # log(), negative-power, fractional-power, or repeated-power evaluation.
+    positive_terms <- active_terms[
+      vapply(
+        active_terms,
+        function(term) {
+          length(lookup[[term]]) == 1L && requires_positive_raw_input(object, term)
+        },
+        logical(1L)
+      )
+    ]
+
+    if (length(positive_terms) > 0L) {
+      bad_terms <- positive_terms[
         vapply(
-          active_terms,
+          positive_terms,
           function(term) {
-            length(lookup[[term]]) == 1L && requires_positive_raw_input(object, term)
+            column <- lookup[[term]][[1L]]
+            any(!is.na(newdata[, column]) & newdata[, column] <= 0)
           },
           logical(1L)
         )
       ]
 
-      if (length(positive_terms) > 0L) {
-        bad_terms <- positive_terms[
-          vapply(
-            positive_terms,
-            function(term) {
-              column <- lookup[[term]][[1L]]
-              any(!is.na(newdata[, column]) & newdata[, column] <= 0)
-            },
-            logical(1L)
-          )
-        ]
+      if (length(bad_terms) > 0L) {
+        bad_summary <- vapply(
+          bad_terms,
+          function(term) {
+            column <- lookup[[term]][[1L]]
+            count <- sum(!is.na(newdata[, column]) & newdata[, column] <= 0)
+            paste0(term, " (", count, if (count == 1L) " row)" else " rows)")
+          },
+          character(1L)
+        )
 
-        if (length(bad_terms) > 0L) {
-          bad_summary <- vapply(
-            bad_terms,
-            function(term) {
-              column <- lookup[[term]][[1L]]
-              count <- sum(!is.na(newdata[, column]) & newdata[, column] <= 0)
-              paste0(term, " (", count, if (count == 1L) " row)" else " rows)")
-            },
-            character(1L)
-          )
-
-          stop(
-            "After applying the shift values learned during fitting, some values in ",
-            "`newdata` remain non-positive for terms whose fitted transformation ",
-            "requires strictly positive input.\n",
-            "i Problematic term(s): ", paste(bad_summary, collapse = ", "), ".",
-            call. = FALSE
-          )
-        }
+        stop(
+          "After applying the shift values learned during fitting, some values in ",
+          "`newdata` remain non-positive for terms whose fitted transformation ",
+          "requires strictly positive input.\n",
+          "i Problematic term(s): ", paste(bad_summary, collapse = ", "), ".",
+          call. = FALSE
+        )
       }
     }
 
@@ -2720,6 +2785,12 @@ prepare_newdata_for_predict <- function(object,
 #' See pages 91-92 and following in the book by Royston and Sauerbrei 2008
 #' for the formulas and mathematical details.
 #'
+#' Only the covariance block required by `X` (and, when requested, the
+#' intercept) is validated. Non-finite entries and materially negative
+#' quadratic-form variances cause an error. A negative variance whose magnitude
+#' is within a scale-aware floating-point tolerance is treated as numerical
+#' roundoff and replaced by zero before the square root is taken.
+#'
 #' @return
 #' Numeric vector of conditional standard errors.
 #'
@@ -2735,11 +2806,6 @@ calculate_standard_error <- function(model,
                                      include_intercept = TRUE) {
 
   vcovx <- vcov(object = model)
-
-  # Small or rank-deficient fitted samples can yield undefined covariance entries.
-  if (any(is.nan(vcovx)))
-    warning("i NaN detected in the covariance matrix of the model.",
-            "i Standard errors for calculation of confidence intervals may not exist")
 
   # Use the exact fit-time mapping between transformed matrix columns and
   # fitted coefficient names. This handles non-syntactic formula terms without
@@ -2777,8 +2843,48 @@ calculate_standard_error <- function(model,
   }
 
   # Compute diag(X V X') without constructing the full n-by-n product.
+  # Validate only the selected block: an undefined covariance for an unrelated,
+  # unused coefficient must not prevent an otherwise estimable prediction.
   vcovx <- vcovx[ind, ind, drop = FALSE]
-  v <- rowSums((X %*% vcovx) * X)
+  if (anyNA(vcovx) || any(!is.finite(vcovx))) {
+    stop(
+      "Cannot compute standard errors: the covariance matrix contains ",
+      "non-finite entries for the required coefficients.",
+      call. = FALSE
+    )
+  }
+
+  quadratic_terms <- (X %*% vcovx) * X
+  v <- rowSums(quadratic_terms)
+
+  if (anyNA(v) || any(!is.finite(v))) {
+    stop(
+      "Cannot compute standard errors: the prediction variance contains ",
+      "non-finite values.",
+      call. = FALSE
+    )
+  }
+
+  # In exact arithmetic, diag(X V X') is non-negative for a valid covariance
+  # matrix. Cancellation can nevertheless leave a tiny negative value. Scale
+  # the tolerance by the absolute quadratic-form contributions so the decision
+  # remains meaningful for both small and large predictors.
+  variance_scale <- rowSums(abs(quadratic_terms))
+  tolerance <- 100 * .Machine$double.eps * pmax(1, variance_scale)
+  materially_negative <- v < -tolerance
+
+  if (any(materially_negative)) {
+    stop(
+      "Cannot compute standard errors: the prediction variance is materially ",
+      "negative for ", sum(materially_negative), " row(s). The fitted ",
+      "covariance matrix may not be positive semidefinite.",
+      call. = FALSE
+    )
+  }
+
+  # Values in [-tolerance, 0) are floating-point artifacts, not evidence of a
+  # negative statistical variance. Clamp only those accepted values to zero.
+  v[v < 0] <- 0
 
   sqrt(v)
 }

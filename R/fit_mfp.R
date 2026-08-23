@@ -101,6 +101,115 @@ validate_mfp_candidate_powers <- function(powers,
 }
 
 
+#' Warn About Low Information Relative to Initial MFP Complexity
+#'
+#' Replaces the former absolute five-observation failure with a diagnostic that
+#' accounts for the model actually requested. The denominator is the sum of the
+#' resolved initial term degrees of freedom: ordinary FP terms use their final
+#' search df, mapped fixed-linear blocks use their number of design columns, and
+#' each active catzero/SAZ representation adds its binary indicator. The
+#' intercept is intentionally excluded because this is an MFP term-complexity
+#' diagnostic rather than an algebraic rank calculation.
+#'
+#' @param x Fitting design matrix after row subsetting.
+#' @param y Validated fitting response.
+#' @param weights Positive fitting weights.
+#' @param family_string Normalized family name.
+#' @param df Named, resolved initial df vector by conceptual term.
+#' @param term_to_columns Complete conceptual-term-to-design-column mapping.
+#' @param catzero Named logical vector after the spike-to-catzero cascade.
+#' @param threshold Maximum information units per initial df that triggers the
+#'   warning.
+#'
+#' @return Invisibly, a list containing the information count, initial df, and
+#'   their ratio. The return value is useful for focused internal tests.
+#'
+#' @keywords internal
+#' @noRd
+warn_mfp_information_ratio <- function(x,
+                                       y,
+                                       weights,
+                                       family_string,
+                                       df,
+                                       term_to_columns,
+                                       catzero,
+                                       threshold = 5) {
+  initial_df <- df
+
+  # A grouped/factor term is fixed linear in the MFP search (`df = 1`) but may
+  # occupy several estimable design columns. Count those columns so the warning
+  # reflects the complete starting block rather than its search setting.
+  mapped <- mapped_term_flags(term_to_columns)
+  if (any(mapped)) {
+    initial_df[mapped] <- lengths(term_to_columns[mapped])
+  }
+
+  # catzero already includes retained spike terms because fit_mfp() applies the
+  # spike -> catzero cascade before calling this helper. Its binary indicator is
+  # an additional fitted component and therefore contributes one initial df.
+  indicator_terms <- names(catzero)[catzero]
+  if (length(indicator_terms) > 0L) {
+    initial_df[indicator_terms] <- initial_df[indicator_terms] + 1L
+  }
+
+  model_df <- sum(initial_df)
+
+  # Use the information unit most closely tied to estimation for each family.
+  # Cox models use observed events. For binomial models, the smaller outcome
+  # total is used; this also supports grouped success/failure responses and
+  # prior trial weights. Other supported families use fitted observations.
+  if (identical(family_string, "cox")) {
+    status <- y[, ncol(y)]
+    information <- sum(status > 0)
+    unit_label <- "events"
+  } else if (identical(family_string, "binomial")) {
+    if (is.matrix(y)) {
+      successes <- sum(weights * y[, 1L])
+      failures <- sum(weights * y[, 2L])
+    } else {
+      response <- if (is.factor(y)) {
+        as.integer(y) - 1L
+      } else {
+        as.numeric(y)
+      }
+      successes <- sum(weights * response)
+      failures <- sum(weights * (1 - response))
+    }
+    information <- min(successes, failures)
+    unit_label <- "minority outcome units"
+  } else {
+    information <- nrow(x)
+    unit_label <- "observations"
+  }
+
+  ratio <- information / model_df
+
+  if (is.finite(ratio) && ratio <= threshold) {
+    warning(
+      sprintf(
+        paste0(
+          "The model has a low information-to-complexity ratio ",
+          "(%.2f %s per initial model degree of freedom; ",
+          "%.2f information units / %d initial df).\n",
+          "Estimates and fractional-polynomial selection may be unstable."
+        ),
+        ratio,
+        unit_label,
+        information,
+        as.integer(model_df)
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(list(
+    information = information,
+    initial_df = model_df,
+    ratio = ratio
+  ))
+}
+
+
 #' Function for fitting a model using the MFP, MFPA or spike-at-zero algorithm
 #'
 #' This internal function implements the Multivariable Fractional Polynomial (MFP),
@@ -142,8 +251,11 @@ validate_mfp_candidate_powers <- function(powers,
 #'   character string \code{"cox"} is allowed.
 #' @param family_string A character string representing the selected family,
 #'   e.g., \code{"gaussian"}.
-#' @param criterion A character string defining the criterion used to select
-#'   variables and FP models of different degrees.
+#' @param criterion One character value defining the selection criterion:
+#'   \code{"pvalue"}, \code{"aic"}, or \code{"bic"}. It is validated and
+#'   normalized at the fitting-engine boundary because \code{fit_mfp()} is also
+#'   called directly by MFPI internals rather than exclusively through the
+#'   public \code{mfp2()} methods.
 #' @param select Named numeric vector with one significance threshold per
 #'   conceptual term, used during backfitting to decide whether the term is
 #'   retained.
@@ -209,6 +321,10 @@ validate_mfp_candidate_powers <- function(powers,
 #' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
 #'   during fitting. Default \code{FALSE}.
+#' @param warn_low_information Internal logical. If \code{TRUE}, emit one
+#'   information-to-complexity warning after the effective initial df have been
+#'   resolved. Public \code{mfp2()} calls enable it; auxiliary internal fits use
+#'   the default \code{FALSE}.
 #'
 #' @section Algorithm:
 #' \enumerate{
@@ -330,7 +446,32 @@ fit_mfp <- function(x,
                     has_offset,
                     verbose,
                     term_to_columns = NULL,
-                    fitter = "base") {
+                    fitter = "base",
+                    warn_low_information = FALSE) {
+
+  # fit_mfp() is the boundary of the reusable fitting engine. Public mfp2()
+  # methods already use match.arg(), but MFPI and future internal callers can
+  # invoke this function directly. Validate before touching any other required
+  # argument so an invalid criterion cannot fall through a downstream switch()
+  # to NULL and cause an unrelated indexing failure.
+  if (!is.character(criterion) ||
+      length(criterion) != 1L ||
+      is.na(criterion) ||
+      !nzchar(criterion)) {
+    stop(
+      "`criterion` must be one character value: 'pvalue', 'aic', or 'bic'.",
+      call. = FALSE
+    )
+  }
+
+  criterion <- tolower(criterion)
+
+  if (!criterion %in% c("pvalue", "aic", "bic")) {
+    stop(
+      "`criterion` must be one of 'pvalue', 'aic', or 'bic'.",
+      call. = FALSE
+    )
+  }
 
   # fit_mfp() implements the full MFP/MFPA/SAZ algorithm described in the
   # "Algorithm" section above: resolve ACD/zero/catzero/spike settings, build
@@ -457,6 +598,24 @@ fit_mfp <- function(x,
     df    = df,
     spike = spike
   )
+
+  # The public mfp2() interfaces request this diagnostic only after all rules
+  # that determine the starting model complexity have run. In particular, ACD
+  # has forced df = 4, SAZ eligibility has been resolved, and the positive-part
+  # cardinality cap has been applied. This is therefore more informative than
+  # either a fixed minimum row count or n / ncol(x).
+  if (isTRUE(warn_low_information)) {
+    warn_mfp_information_ratio(
+      x               = x,
+      y               = y,
+      weights         = weights,
+      family_string   = family_string,
+      df               = df,
+      term_to_columns  = term_to_columns,
+      catzero          = catzero,
+      threshold        = 5
+    )
+  }
 
   # Validate candidate powers after ACD forcing and SAZ-specific df capping.
   # MFPI may deliberately retain p = 1 as an FP1 candidate when that degree is

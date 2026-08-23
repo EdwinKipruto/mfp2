@@ -730,8 +730,16 @@ mfpi_accessor_interaction_form <- function(object, term, fit_result) {
 # Make user-facing coefficient labels unique without changing ordinary labels.
 mfpi_make_unique_display_names <- function(x) {
   if (!anyDuplicated(x)) return(x)
+
   out <- make.unique(x, sep = " [")
-  sub("( \\[0-9]+)$", "\\1]", out)
+
+  # make.unique() appends only the separator and number (for example, " [1").
+  # Identify generated suffixes from the values it actually changed instead of
+  # parsing their text with a regular expression. This remains correct for
+  # multi-digit suffixes and leaves every original display label untouched.
+  changed <- out != x
+  out[changed] <- paste0(out[changed], "]")
+  out
 }
 
 

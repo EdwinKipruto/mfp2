@@ -507,6 +507,14 @@
 #'   `fp(x, force_max_fp = TRUE)`.
 #' @param verbose Logical value indicating whether progress messages are printed.
 #' Default `TRUE`.
+#' @param warn_low_information Logical scalar controlling the advisory
+#'   information-to-complexity warning. The default `TRUE` warns when the
+#'   number of family-appropriate information units per resolved initial model
+#'   degree of freedom is at most 5. Cox models use observed events, binomial
+#'   models use the weighted minority-outcome total, and other supported
+#'   families use fitted observations. Set this argument to `FALSE` to suppress
+#'   only this diagnostic; convergence, rank, and numerical warnings are not
+#'   affected.
 #' @param \dots Additional arguments passed to methods. Variable-specific formula
 #' options should be supplied inside [fp()] or [fp2()].
 #' @examples
@@ -1606,6 +1614,7 @@ mfp2.default <- function(x,
                          term_groups = NULL,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
+                         warn_low_information = TRUE,
                          ...
 ) {
 
@@ -1775,15 +1784,10 @@ mfp2.default <- function(x,
       )
     }
 
-    # A minimum of 5 observations is required so that model fitting and the
-    # FP selection tests below have a chance of being numerically well-defined.
-    if (length(subset) < 5L) {
-      stop(
-        "! The selected subset is too small (<5) to fit an mfp model.",
-        sprintf("i The number of selected observations is %d.", length(subset)),
-        call. = FALSE
-      )
-    }
+    # Do not reject a small subset solely because it contains fewer than five
+    # rows. Whether a fit is supportable depends on its resolved term df, not on
+    # an absolute row-count cutoff. fit_mfp() evaluates that complexity after
+    # all df/cardinality/ACD/SAZ rules and emits a low-information warning.
   }
 
   # Step 5: Validate `weights` and `offset` --------------------------------------
@@ -1833,9 +1837,16 @@ mfp2.default <- function(x,
   validate_positive_integer_scalar(cycles, "cycles")
   cycles <- as.integer(cycles)
 
-  # verbose, and ftest are scalar logical flags.
+  # These switches are scalar logical flags. Keep the information diagnostic
+  # independent of `verbose`: progress output may be disabled while important
+  # statistical warnings remain enabled unless explicitly switched off.
   validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
   validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
+  validate_logical_vector(
+    warn_low_information,
+    "warn_low_information",
+    allowed_lengths = 1L
+  )
 
   # alpha and select accept an unnamed global scalar or named partial
   # overrides. Omitted named entries use the public defaults and all matching is
@@ -2557,7 +2568,10 @@ mfp2.default <- function(x,
     saz_pre_resolved = TRUE,
     term_to_columns = term_to_columns,
     has_offset = has_offset,
-    verbose = verbose
+    verbose = verbose,
+    # The public switch controls only this advisory diagnostic. Its calculation
+    # remains in fit_mfp(), where effective starting complexity is fully known.
+    warn_low_information = warn_low_information
   )
 
   # Step 21: Attach mfp2-specific metadata to the fitted object -----------------
@@ -2603,6 +2617,7 @@ mfp2.formula <- function(formula,
                          min_saz_component_prop = 0.10,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
+                         warn_low_information = TRUE,
                          ...) {
   # mfp2.formula() translates a formula + data.frame specification into the
   # matrix/vector inputs expected by mfp2.default(): it expands categorical
@@ -2914,12 +2929,10 @@ mfp2.formula <- function(formula,
   } else {
     fit_rows <- formula_subset_rows(subset, nrow(mf_full))
   }
-  if (length(fit_rows) < 5L) {
-    stop(
-      sprintf("! The selected subset is too small (<5) to fit an mfp model.\ni The number of selected observations is %d.", length(fit_rows)),
-      call. = FALSE
-    )
-  }
+  # Small fitted samples are allowed through to the shared default/fit_mfp()
+  # path. There the effective initial term df are available, so adequacy can be
+  # diagnosed by an information-to-complexity warning instead of an arbitrary
+  # absolute five-row failure.
 
 
   # Factor columns are expanded by model.matrix() below and then mapped back
@@ -3584,7 +3597,11 @@ mfp2.formula <- function(formula,
                       spike_vars = spike,
                       force_max_fp_vars = force_max_fp_vars,
                       min_saz_component_prop = min_saz_component_prop,
-                      verbose = verbose
+                      verbose = verbose,
+                      # Forward the formula-interface choice to the shared
+                      # default path; fit_mfp() receives exactly one switch and
+                      # therefore cannot warn twice for one formula fit.
+                      warn_low_information = warn_low_information
   )
   fit$formula_interface <- TRUE
   fit$formula <- formula_user

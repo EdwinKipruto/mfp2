@@ -119,7 +119,9 @@ must have the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical grouping
 variable. It must have at least two observed groups and must not appear in
-\code{cont_vars} or \code{term_groups}.}
+\code{cont_vars} or \code{term_groups}. After applying \code{subset}, every group must
+contain at least two observations, or at least three when an FP2
+interaction is requested.}
 
 \item{cont_vars}{A non-empty character vector naming the continuous variables
 whose interactions with \code{group_var} are evaluated. Each variable must be a
@@ -342,7 +344,9 @@ selected FP or linear function is applied only to positive values, while
 non-positive values receive a separate fixed contribution. The shift for
 a zero-handled variable is set to 0. This option can be used for
 variables in \code{cont_vars} and for adjustment variables. In the formula
-interface, this can also be specified with \code{fp(variable, zero = TRUE)}.}
+interface, this can also be specified with \code{fp(variable, zero = TRUE)}.
+A zero-handled variable in \code{cont_vars} must retain at least one positive
+observation after applying \code{subset}.}
 
 \item{catzero_vars}{An optional character vector naming adjustment variables
 that use both a positive-part FP function and a binary structural-zero
@@ -388,7 +392,10 @@ upper probabilities used for Winsorisation. The values must be in \verb{[0, 1]}
 and in increasing order. The default is \code{c(0.01, 0.99)}.}
 
 \item{center_type}{How interaction functions are centered when
-\code{center = TRUE}: \code{"grand"} or \code{"group"}. The default is \code{"grand"}.}
+\code{center = TRUE}: \code{"grand"} or \code{"group"}. The default is \code{"grand"}. For a
+group-centered zero-handled interaction, each group must retain enough
+positive observations to identify the requested interaction basis: two
+for a linear or FP1 form and three for FP2.}
 
 \item{p_adjust_method}{A character string accepted by \code{\link[stats:p.adjust]{stats::p.adjust()}}.
 It controls multiplicity adjustment across the variables in \code{cont_vars}
@@ -681,13 +688,25 @@ its levels before fitting.
 Missing and non-finite values are not allowed in variables used for fitting.
 Use \code{subset} to fit the model to selected observations. The selected rows are
 used for model fitting and for calculating Winsorisation limits.
+
+Every group must retain at least two fitting observations. FP2 interactions
+require at least three observations per group because two group-specific FP
+columns must be estimated in addition to the group effect. Groups containing
+exactly two observations remain permitted for linear and FP1 interactions,
+with a warning that fitting may be unreliable.
 }
 
 \section{Non-positive values and special transformations}{
 
 Explicit \code{zero_vars} handling is supported for variables in \code{cont_vars}.
 Non-positive values are then treated as structural zero, and the selected
-linear or FP function is applied to the positive values.
+linear or FP function is applied to the positive values. At least one
+positive observation must remain in the fitting data after \code{subset} is
+applied; otherwise fitting stops and identifies every affected variable.
+With \code{center_type = "group"}, a zero-handled interaction additionally needs
+at least two positive observations per group for a linear or FP1 form and at
+least three for FP2. Fewer observations produce zero or rank-deficient
+centered interaction columns.
 
 \code{catzero_vars}, \code{spike_vars}, and ACD transformations are supported for
 adjustment variables but not for variables being tested in \code{cont_vars}.

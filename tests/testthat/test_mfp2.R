@@ -1,6 +1,9 @@
 # =============================================================================
 # Comprehensive tests for the mfp2 package
 # =============================================================================
+# Tests here exercise fitting and downstream behavior, not the advisory
+# information-ratio policy. Affected fixture fits opt out explicitly so all
+# unrelated numerical, convergence, and rank warnings remain visible.
 #
 # File organization
 # -----------------
@@ -200,7 +203,7 @@ expect_negbin_mfp2_mass_equal <- function(fit_mfp2,
 # Test purpose: Fits the default Gaussian model and verifies core classes,
 # convergence, and MFP metadata are present.
 test_that("mfp2.default() returns an mfp2 object for Gaussian family", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_s3_class(fit, "glm")
@@ -816,7 +819,7 @@ test_that("mfp2.formula() returns an mfp2 object", {
   fit <- mfp2(
     lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
       fp(bph) + fp(cp),
-    data = prostate, verbose = FALSE
+    data = prostate, verbose = FALSE, warn_low_information = FALSE
   )
 
   expect_s3_class(fit, "mfp2")
@@ -878,7 +881,7 @@ test_that("linear negative-binomial mfp2 agrees with MASS::glm.nb()", {
 # top-level formula setting.
 test_that("default and formula interfaces give consistent selected variables", {
   fit_default <- mfp2(
-    x_prostate, y_prostate, center = TRUE, verbose = FALSE
+    x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE
   )
   fit_formula <- mfp2(
     lpsa ~ fp(age, center = TRUE) + fp(svi, df = 1, center = TRUE) +
@@ -887,7 +890,7 @@ test_that("default and formula interfaces give consistent selected variables", {
       fp(cp, center = TRUE),
     data = prostate,
     center = TRUE,
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   sel_default <- sort(get_selected_variable_names(fit_default))
@@ -1280,14 +1283,14 @@ test_that("apply_shift_scale() produces positive, scaled output", {
 
 # Test purpose: Checks that default model fitting records centering constants.
 test_that("centering is applied by default", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
   expect_true(!is.null(fit$centers))
 })
 
 # Test purpose: Checks that center = FALSE disables centering and leaves no
 # centers stored.
 test_that("centering can be disabled", {
-  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE, warn_low_information = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_null(fit$centers)
@@ -3727,7 +3730,7 @@ test_that("SAZ Stage 2 retains both components at alpha = 1 and p = 1", {
 # Test purpose: Checks that ACD can be requested through the default matrix
 # interface.
 test_that("ACD transformation via default interface works", {
-  fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE, warn_low_information = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])
@@ -4593,7 +4596,7 @@ test_that("fit_acd() validates input arguments", {
 # Test purpose: Checks default Gaussian predictions are finite and have one
 # value per observation.
 test_that("predict.mfp2() returns predictions for Gaussian model", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   preds <- predict(fit)
   expect_length(preds, nrow(x_prostate))
@@ -4754,7 +4757,7 @@ test_that("negative-binomial predictions and SEs agree with MASS::glm.nb()", {
 })
 
 test_that("predict.mfp2() with newdata reproduces training predictions", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   preds_train <- predict(fit)
   preds_new <- predict(fit, newdata = x_prostate)
@@ -4765,7 +4768,7 @@ test_that("predict.mfp2() with newdata reproduces training predictions", {
 
 # Test purpose: Checks that term-level predictions return per-term data frames with values and standard errors.
 test_that("predict.mfp2() type = 'terms' returns list of data frames", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   terms_result <- predict(fit, type = "terms")
   expect_true(is.list(terms_result))
@@ -4779,7 +4782,7 @@ test_that("predict.mfp2() type = 'terms' returns list of data frames", {
 
 # Test purpose: Checks that contrast predictions return per-term data-frame outputs.
 test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   contrasts_result <- predict(fit, type = "contrasts")
   expect_true(is.list(contrasts_result))
@@ -7261,20 +7264,20 @@ test_that("8.3.2 Formula-level offset missing from newdata errors clearly", {
 
 # Test purpose: Checks that AIC-based model selection runs successfully.
 test_that("criterion = 'aic' runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE, warn_low_information = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
 # Test purpose: Checks that BIC-based model selection runs successfully.
 test_that("criterion = 'bic' runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE, warn_low_information = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
 # Test purpose: Checks the expected stronger-penalty behavior of BIC relative to AIC on this dataset.
 test_that("BIC selects equal or fewer variables than AIC", {
-  fit_aic <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE)
-  fit_bic <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE)
+  fit_aic <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE, warn_low_information = FALSE)
+  fit_bic <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE, warn_low_information = FALSE)
 
   n_aic <- sum(fit_aic$fp_terms[, "selected"])
   n_bic <- sum(fit_bic$fp_terms[, "selected"])
@@ -7286,7 +7289,7 @@ test_that("BIC selects equal or fewer variables than AIC", {
 
 # Test purpose: Checks that select = 1 retains all predictors under p-value selection.
 test_that("select = 1 forces all variables into model", {
-  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE, warn_low_information = FALSE)
   expect_true(all(fit$fp_terms[, "selected"]))
 })
 
@@ -7379,14 +7382,14 @@ test_that("RA2 keeps FP2 when select = alpha = 1 and every test has p = 1", {
 
 # Test purpose: Checks that variables listed in keep remain selected in the final model.
 test_that("keep argument retains specified variables", {
-  fit <- mfp2(x_prostate, y_prostate, keep = c("age", "bph"), verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, keep = c("age", "bph"), verbose = FALSE, warn_low_information = FALSE)
   expect_true(fit$fp_terms["age", "selected"])
   expect_true(fit$fp_terms["bph", "selected"])
 })
 
 # Test purpose: Checks that Gaussian fitting works when F-test based selection is requested.
 test_that("ftest argument works for Gaussian family", {
-  fit <- mfp2(x_prostate, y_prostate, ftest = TRUE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, ftest = TRUE, verbose = FALSE, warn_low_information = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
@@ -7741,7 +7744,7 @@ test_that("mfp2() rejects mismatched y length", {
 # observations.
 test_that("subset argument works correctly", {
   idx <- 1:50
-  fit <- mfp2(x_prostate, y_prostate, subset = idx, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, subset = idx, verbose = FALSE, warn_low_information = FALSE)
 
   expect_s3_class(fit, "mfp2")
   # The model should be fitted on the subset
@@ -7753,7 +7756,7 @@ test_that("subset argument works correctly", {
 test_that("subset with logical vector works", {
   log_sub <- rep(FALSE, nrow(x_prostate))
   log_sub[1:50] <- TRUE
-  fit <- mfp2(x_prostate, y_prostate, subset = log_sub, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, subset = log_sub, verbose = FALSE, warn_low_information = FALSE)
 
   expect_equal(length(fit$residuals), 50)
 })
@@ -7762,7 +7765,7 @@ test_that("subset with logical vector works", {
 # successfully.
 test_that("xorder options work without error", {
   for (ord in c("ascending", "descending", "original")) {
-    fit <- mfp2(x_prostate, y_prostate, xorder = ord, verbose = FALSE)
+    fit <- mfp2(x_prostate, y_prostate, xorder = ord, verbose = FALSE, warn_low_information = FALSE)
     expect_s3_class(fit, "mfp2")
   }
 })
@@ -8039,7 +8042,7 @@ test_that("zero term changes the full linear reference representation", {
     zero_vars = "exposure",
     df = 1,
     xorder = "original",
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   reference_data <- data.frame(
@@ -8071,7 +8074,7 @@ test_that("catzero term changes the full linear reference representation", {
     catzero_vars = "exposure",
     df = 1,
     xorder = "original",
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   reference_data <- data.frame(
@@ -8169,7 +8172,7 @@ test_that("assign_df() correctly limits df for low-cardinality variables", {
 # Test purpose: Checks that the selected-variable accessor returns valid predictor
 # names.
 test_that("get_selected_variable_names() returns correct names", {
-  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE, warn_low_information = FALSE)
 
   sel <- get_selected_variable_names(fit)
   expect_true(is.character(sel))
@@ -8184,7 +8187,7 @@ test_that("get_selected_variable_names() returns correct names", {
 # Test purpose: Checks that summary() returns output for a fitted Gaussian mfp2
 #  model.
 test_that("summary.mfp2() works for Gaussian", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
 })
@@ -8335,7 +8338,7 @@ test_that("summary preserves ACD-only power slots", {
 # Test purpose: Verifies that GLM Model Fit output uses stored deviances and a
 # Deviance header rather than reconstructing minus twice log-likelihood.
 test_that("Model Fit reports deviance for GLMs", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
   values <- mfp2_summary_model_fit_values(fit)
 
   expect_identical(attr(values, "statistic_label"), "Deviance")
@@ -8464,7 +8467,7 @@ test_that("summary.mfp2() reports correct negative-binomial inference", {
 
 # Test purpose: Checks that coef() returns named numeric coefficients.
 test_that("coef.mfp2() returns named numeric vector", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
   cf <- coef(fit)
   expect_true(is.numeric(cf))
   expect_true(!is.null(names(cf)))
@@ -8472,7 +8475,7 @@ test_that("coef.mfp2() returns named numeric vector", {
 
 # Test purpose: Checks that the print method produces console output without error.
 test_that("print.mfp2() runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
   expect_output(print(fit))
 })
 
@@ -8572,7 +8575,7 @@ test_that("SAZ metadata and print output include prop_zero", {
 test_that("weights argument is accepted and used", {
   w <- rep(1, nrow(x_prostate))
   w[1:10] <- 2
-  fit <- mfp2(x_prostate, y_prostate, weights = w, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, weights = w, verbose = FALSE, warn_low_information = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
@@ -8687,7 +8690,7 @@ test_that("negative-binomial weights and offsets agree with MASS::glm.nb()", {
 # Test purpose: Checks that the default maximum number of cycles is sufficient
 # for convergence on the prostate data.
 test_that("mfp2() converges within default cycles", {
-  fit <- mfp2(x_prostate, y_prostate, cycles = 5, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, cycles = 5, verbose = FALSE, warn_low_information = FALSE)
   expect_true(fit$convergence_mfp)
 })
 
@@ -8695,7 +8698,7 @@ test_that("mfp2() converges within default cycles", {
 # an mfp2 object.
 test_that("mfp2() with cycles = 1 still returns a result", {
   expect_warning(
-    fit <- mfp2(x_prostate, y_prostate, cycles = 1, verbose = FALSE),
+    fit <- mfp2(x_prostate, y_prostate, cycles = 1, verbose = FALSE, warn_low_information = FALSE),
     "No convergence after 1 cycles"
   )
 
@@ -8797,7 +8800,7 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
     criterion = "aic",
     force_max_fp_vars = colnames(x_prostate),
     select = 1,
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   for (v in get_selected_variable_names(fit_force)) {
@@ -11872,8 +11875,8 @@ test_that("MFPI minimal prediction supports selected inline factor adjustments",
 # Test purpose: Checks that repeated fits on the same data produce identical
 # selected powers, coefficients, and metadata.
 test_that("mfp2() is deterministic across repeated calls", {
-  fit1 <- mfp2(x_prostate, y_prostate, verbose = FALSE)
-  fit2 <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  fit1 <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit2 <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
 
   expect_equal(fit1$fp_powers, fit2$fp_powers)
   expect_equal(coef(fit1), coef(fit2))
@@ -11963,7 +11966,7 @@ test_that("plot() runs without error for Gaussian model", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   expect_error(
@@ -11978,7 +11981,7 @@ test_that("plot() runs without warning for Gaussian models", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   expect_warning(
@@ -11995,7 +11998,7 @@ test_that("fracplot() is deprecated but still works for Gaussian models", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE
+    verbose = FALSE, warn_low_information = FALSE
   )
 
   expect_warning(

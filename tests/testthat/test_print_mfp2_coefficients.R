@@ -1,4 +1,7 @@
 data("prostate", package = "mfp2")
+# These tests target coefficient extraction and printing. Low-information
+# behavior is tested separately, so affected fixture fits opt out explicitly;
+# other warning types remain visible to testthat.
 x_prostate <- as.matrix(prostate[, 2:8])
 y_prostate <- as.numeric(prostate$lpsa)
 
@@ -427,7 +430,7 @@ test_that("custom factor contrasts report the stored design values", {
 
 
 test_that("print.mfp2 shows basis and center when centering is used", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
   output <- capture.output(print(fit, detailed_settings = FALSE))
 
   coefficient_lines <- extract_print_section(
@@ -479,7 +482,7 @@ test_that("print.mfp2 explains zero-specific centering", {
 
 
 test_that("print.mfp2 omits centering output when centering is not used", {
-  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE, warn_low_information = FALSE)
   output <- capture.output(print(fit, detailed_settings = FALSE))
 
   coefficient_lines <- extract_print_section(
@@ -500,7 +503,7 @@ test_that("print.mfp2 omits centering output when centering is not used", {
 
 
 test_that("print.mfp2 standard errors come from the final covariance matrix", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
   covariance <- stats::vcov(fit)
   expected_se <- sqrt(diag(covariance))
 
@@ -525,7 +528,7 @@ test_that("print.mfp2 standard errors come from the final covariance matrix", {
 })
 
 test_that("coef.mfp2 keeps fitted coefficient names", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
   coefficient_names <- names(stats::coef(fit))
 
   expect_identical(coefficient_names, names(fit$coefficients))

@@ -40,6 +40,7 @@ mfp2(x, ...)
   term_groups = NULL,
   verbose = TRUE,
   fitter = c("base", "fastglm"),
+  warn_low_information = TRUE,
   ...
 )
 
@@ -69,6 +70,7 @@ mfp2(x, ...)
   min_saz_component_prop = 0.1,
   verbose = TRUE,
   fitter = c("base", "fastglm"),
+  warn_low_information = TRUE,
   ...
 )
 }
@@ -345,6 +347,15 @@ search. The optional \code{fastglm} package must be installed; ordinary GLM
 fits fall back to \code{"base"} with a warning if it is unavailable or a fit
 fails. Cox models are unaffected. Negative binomial models are available
 only with \code{fitter = "fastglm"} and have no base fallback.}
+
+\item{warn_low_information}{Logical scalar controlling the advisory
+information-to-complexity warning. The default \code{TRUE} warns when the
+number of family-appropriate information units per resolved initial model
+degree of freedom is at most 5. Cox models use observed events, binomial
+models use the weighted minority-outcome total, and other supported
+families use fitted observations. Set this argument to \code{FALSE} to suppress
+only this diagnostic; convergence, rank, and numerical warnings are not
+affected.}
 
 \item{formula}{For \code{mfp2.formula()}, a model formula. Use \code{\link[=fp]{fp()}} or \code{\link[=fp2]{fp2()}}
 to set variable-specific FP, ACD, zero, catzero, or SAZ options.}

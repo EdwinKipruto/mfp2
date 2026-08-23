@@ -190,10 +190,22 @@
 #' Use `subset` to fit the model to selected observations. The selected rows are
 #' used for model fitting and for calculating Winsorisation limits.
 #'
+#' Every group must retain at least two fitting observations. FP2 interactions
+#' require at least three observations per group because two group-specific FP
+#' columns must be estimated in addition to the group effect. Groups containing
+#' exactly two observations remain permitted for linear and FP1 interactions,
+#' with a warning that fitting may be unreliable.
+#'
 #' @section Non-positive values and special transformations:
 #' Explicit `zero_vars` handling is supported for variables in `cont_vars`.
 #' Non-positive values are then treated as structural zero, and the selected
-#' linear or FP function is applied to the positive values.
+#' linear or FP function is applied to the positive values. At least one
+#' positive observation must remain in the fitting data after `subset` is
+#' applied; otherwise fitting stops and identifies every affected variable.
+#' With `center_type = "group"`, a zero-handled interaction additionally needs
+#' at least two positive observations per group for a linear or FP1 form and at
+#' least three for FP2. Fewer observations produce zero or rank-deficient
+#' centered interaction columns.
 #'
 #' `catzero_vars`, `spike_vars`, and ACD transformations are supported for
 #' adjustment variables but not for variables being tested in `cont_vars`.
@@ -276,7 +288,9 @@
 #'
 #' @param group_var A single character string naming the categorical grouping
 #'   variable. It must have at least two observed groups and must not appear in
-#'   `cont_vars` or `term_groups`.
+#'   `cont_vars` or `term_groups`. After applying `subset`, every group must
+#'   contain at least two observations, or at least three when an FP2
+#'   interaction is requested.
 #'
 #' @param cont_vars A non-empty character vector naming the continuous variables
 #'   whose interactions with `group_var` are evaluated. Each variable must be a
@@ -507,6 +521,8 @@
 #'   a zero-handled variable is set to 0. This option can be used for
 #'   variables in `cont_vars` and for adjustment variables. In the formula
 #'   interface, this can also be specified with `fp(variable, zero = TRUE)`.
+#'   A zero-handled variable in `cont_vars` must retain at least one positive
+#'   observation after applying `subset`.
 #'
 #' @param catzero_vars An optional character vector naming adjustment variables
 #'   that use both a positive-part FP function and a binary structural-zero
@@ -552,7 +568,10 @@
 #'   and in increasing order. The default is `c(0.01, 0.99)`.
 #'
 #' @param center_type How interaction functions are centered when
-#'   `center = TRUE`: `"grand"` or `"group"`. The default is `"grand"`.
+#'   `center = TRUE`: `"grand"` or `"group"`. The default is `"grand"`. For a
+#'   group-centered zero-handled interaction, each group must retain enough
+#'   positive observations to identify the requested interaction basis: two
+#'   for a linear or FP1 form and three for FP2.
 #'
 #' @param p_adjust_method A character string accepted by [stats::p.adjust()].
 #'   It controls multiplicity adjustment across the variables in `cont_vars`
@@ -1795,6 +1814,36 @@ mfpi.default <- function(
     validate_subset_predictor_variation(x, exclude = group_var)
   }
 
+  # zero_vars applies the interaction function only to x > 0. Validate this
+  # requirement after the optional subset has been applied, because a variable
+  # can contain positive values in the full data yet lose all of them in the
+  # actual fitting population. This shared boundary gives every flexibility
+  # method the same variable-specific error instead of exposing flex2/flex4
+  # transformation assertions to users.
+  zero_cont_vars <- intersect(
+    cont_vars,
+    names(zero_flag)[zero_flag]
+  )
+
+  if (length(zero_cont_vars) > 0L) {
+    has_positive <- vapply(
+      zero_cont_vars,
+      function(variable) any(x[, variable] > 0),
+      logical(1L)
+    )
+
+    if (any(!has_positive)) {
+      stop(
+        "Zero-handled variables in `cont_vars` must contain at least one ",
+        "positive value in the fitting data after subsetting. Problematic ",
+        "variables: ",
+        paste(zero_cont_vars[!has_positive], collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
   # Refresh group-level metadata after subsetting. The metadata are created
   # before subset is applied, so a subset can remove one or more group levels.
   # Passing stale levels into preprocess_data() can create all-zero group dummies.
@@ -1814,12 +1863,89 @@ mfpi.default <- function(
   }
 
   group_counts <- table(x[, group_var])
-  small_groups <- names(group_counts)[group_counts < 3L]
+
+  # A singleton group cannot identify a group effect and a group-specific
+  # continuous effect simultaneously. With group centering, its only basis
+  # value is also centered to exact zero. This is a structural failure rather
+  # than merely a small-sample concern, irrespective of the requested form.
+  singleton_groups <- names(group_counts)[group_counts < 2L]
+  if (length(singleton_groups) > 0L) {
+    stop(
+      "Each group must contain at least two observations in the fitting data ",
+      "after subsetting. Singleton groups: ",
+      paste(singleton_groups, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  # FP2 contributes two group-specific basis columns. Together with the group
+  # effect, these require at least three observations in every group. A two-row
+  # group can still identify a one-column linear/FP1 interaction, so it retains
+  # the existing warning below when no FP2 interaction is requested.
+  fp2_requested <- any(cont_var_forms == "fp2")
+  fp2_small_groups <- names(group_counts)[group_counts < 3L]
+  if (fp2_requested && length(fp2_small_groups) > 0L) {
+    stop(
+      "FP2 interactions require at least three observations in every group ",
+      "after subsetting. Problematic groups: ",
+      paste(fp2_small_groups, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  if (identical(center_type, "group") && length(zero_cont_vars) > 0L) {
+    group_values <- x[, group_var]
+    fitted_group_levels <- sort(unique(group_values))
+    insufficient_positive <- character(0L)
+
+    for (variable in zero_cont_vars) {
+      required_positive <- if (identical(cont_var_forms[[variable]], "fp2")) {
+        3L
+      } else {
+        2L
+      }
+
+      positive_counts <- vapply(
+        fitted_group_levels,
+        function(group) {
+          as.integer(sum(group_values == group & x[, variable] > 0))
+        },
+        integer(1L)
+      )
+      names(positive_counts) <- as.character(fitted_group_levels)
+
+      bad_groups <- names(positive_counts)[positive_counts < required_positive]
+      if (length(bad_groups) > 0L) {
+        insufficient_positive <- c(
+          insufficient_positive,
+          paste0(
+            variable, " (group ", bad_groups, ": ",
+            positive_counts[bad_groups], " positive; need ",
+            required_positive, ")"
+          )
+        )
+      }
+    }
+
+    if (length(insufficient_positive) > 0L) {
+      stop(
+        "Group-centered zero-handled interactions lack enough positive ",
+        "observations to identify their requested basis: ",
+        paste(insufficient_positive, collapse = ", "),
+        ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  small_groups <- names(group_counts)[group_counts == 2L]
   if (length(small_groups) > 0L) {
     warning(
-      "Some groups have fewer than 3 observations after subsetting: ",
+      "Some groups have only 2 observations after subsetting: ",
       paste(small_groups, collapse = ", "),
-      ". FP model fitting may be unreliable.",
+      ". Linear or FP1 interaction fitting may be unreliable.",
       call. = FALSE
     )
   }

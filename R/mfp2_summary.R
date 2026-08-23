@@ -61,6 +61,23 @@
 #' \code{raw = TRUE} to obtain the underlying [stats::summary.glm()] or
 #' [survival::summary.coxph()] object instead.
 #'
+#' @section Coefficient statistics:
+#' The linear-terms table obtains its estimate, standard error, test statistic,
+#' and p-value from the coefficient matrix returned by the underlying summary
+#' method. Columns are resolved using exact, documented GLM and Cox labels; no
+#' regular-expression or partial-name matching is used. For robust Cox fits,
+#' `"robust se"` takes precedence over `"se(coef)"` so the displayed standard
+#' error agrees with the summary's robust test statistic and p-value.
+#' Recognized GLM labels include `"Estimate"`, `"Std. Error"`, `"z value"` or
+#' `"t value"`, and `"Pr(>|z|)"` or `"Pr(>|t|)"`. Recognized Cox labels include
+#' `"coef"`, `"se(coef)"` or `"robust se"`, `"z"`, and `"Pr(>|z|)"`.
+#'
+#' If a future or third-party summary method uses unrecognized or ambiguous
+#' labels, the raw matrix is not indexed with a missing column position.
+#' Instead, coefficient statistics are reconstructed from the fitted
+#' coefficients and [stats::vcov()]. This prevents an unfamiliar header from
+#' silently producing an all-missing column in `linear_terms`.
+#'
 #' @param object A fitted [mfp2()] object.
 #' @param formulas Logical. If \code{TRUE}, append the fitted-function formula
 #'   for each nonlinear variable. Default \code{FALSE}.
@@ -84,6 +101,26 @@
 #' \code{NULL}), \code{fit}, and \code{raw_summary}. A
 #' dedicated \code{print} method renders these. When \code{raw = TRUE}, the
 #' underlying summary object.
+#'
+#' @examples
+#' data("prostate")
+#'
+#' fit <- mfp2(
+#'   lpsa ~ fp(age) + svi,
+#'   data = prostate,
+#'   select = 1,
+#'   alpha = 1,
+#'   verbose = FALSE,
+#'   warn_low_information = FALSE
+#' )
+#'
+#' fit_summary <- summary(fit)
+#'
+#' # The standardized coefficient statistics for selected linear terms.
+#' fit_summary$linear_terms
+#'
+#' # The original model-specific coefficient table remains available.
+#' fit_summary$raw_summary$coefficients
 #'
 #' @seealso [mfp2()], [print.mfp2()], [stats::summary.glm()],
 #'   [survival::summary.coxph()]
@@ -586,6 +623,30 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   df
 }
 
+# Return the position of the first supported exact column label. Candidate
+# order defines precedence: this matters for robust Cox summaries, which can
+# contain both `robust se` and `se(coef)`. A duplicated candidate is ambiguous
+# and deliberately returns NA so the caller can use its safe fallback.
+mfp2_summary_match_coef_column <- function(column_names, candidates) {
+  if (is.null(column_names)) {
+    return(NA_integer_)
+  }
+
+  for (candidate in candidates) {
+    positions <- which(column_names == candidate)
+
+    if (length(positions) > 1L) {
+      return(NA_integer_)
+    }
+    if (length(positions) == 1L) {
+      return(as.integer(positions))
+    }
+  }
+
+  NA_integer_
+}
+
+
 # Standardised coefficient matrix (estimate, se, statistic, pvalue) with row
 # names equal to coefficient names, sourced from the raw summary where
 # possible and falling back to vcov().
@@ -599,26 +660,45 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   est <- object$coefficients
   nm <- names(est)
 
-  if (!is.null(cmat) && nrow(cmat) == length(est)) {
-    # Cox: columns are coef, exp(coef), se(coef), z, Pr(>|z|)
-    # GLM: columns are Estimate, Std. Error, z/t value, Pr(>|.|)
+  if (is.matrix(cmat) && is.numeric(cmat) && nrow(cmat) == length(est)) {
+    # Use exact known labels rather than grep()/partial matching. If any label
+    # is absent or ambiguous, `columns` contains NA and execution continues to
+    # the covariance fallback below instead of indexing cmat with NA.
     cn <- colnames(cmat)
-    se_col <- grep("se|Std", cn, ignore.case = TRUE)[1]
-    stat_col <- grep("^z$|value|^t$", cn, ignore.case = TRUE)[1]
-    p_col <- grep("Pr|p.?value", cn, ignore.case = TRUE)[1]
-    est_col <- grep("coef|Estimate", cn, ignore.case = TRUE)[1]
-
-    out <- cbind(
-      estimate  = cmat[, est_col],
-      se        = cmat[, se_col],
-      statistic = cmat[, stat_col],
-      pvalue    = cmat[, p_col]
+    columns <- c(
+      estimate = mfp2_summary_match_coef_column(
+        cn,
+        c("Estimate", "coef")
+      ),
+      se = mfp2_summary_match_coef_column(
+        cn,
+        c("robust se", "Std. Error", "se(coef)")
+      ),
+      statistic = mfp2_summary_match_coef_column(
+        cn,
+        c("z value", "t value", "z", "t")
+      ),
+      pvalue = mfp2_summary_match_coef_column(
+        cn,
+        c("Pr(>|z|)", "Pr(>|t|)", "p-value", "pvalue")
+      )
     )
-    rownames(out) <- rownames(cmat)
-    return(out)
+
+    if (!anyNA(columns) && !anyDuplicated(columns)) {
+      out <- cbind(
+        estimate  = cmat[, columns[["estimate"]]],
+        se        = cmat[, columns[["se"]]],
+        statistic = cmat[, columns[["statistic"]]],
+        pvalue    = cmat[, columns[["pvalue"]]]
+      )
+      rownames(out) <- rownames(cmat)
+      return(out)
+    }
   }
 
-  # Fallback: compute from vcov().
+  # Fallback for an absent, malformed, or unfamiliar raw coefficient table.
+  # This is intentionally reached for unresolved headers rather than allowing
+  # an NA column index to manufacture an all-NA result.
   V <- tryCatch(stats::vcov(object), error = function(e) NULL)
   se <- if (!is.null(V)) sqrt(diag(V)) else rep(NA_real_, length(est))
   stat <- est / se
@@ -678,6 +758,8 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
   df_v <- classified$df_final[idx]
   if (is.na(df_v)) df_v <- length(cols_v)
 
+  is_cox <- identical(object$family_string, "cox")
+
   na_result <- list(lr = NA_real_, df = df_v, p = NA_real_)
 
   x_full <- object$x
@@ -696,8 +778,10 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
         family = object$family,
         family_string = object$family_string,
         fitter = if (is.null(object$fitter)) "base" else object$fitter,
-        weights = object$prior.weights,
+        weights = if (is_cox) object$weights else object$prior.weights,
         offset = object$offset,
+        method = if (is_cox) object$method else NULL,
+        strata = if (is_cox) object$strata else NULL,
         fast = TRUE
       ),
       error = function(e) NULL

@@ -85,6 +85,46 @@ ACD component, either option also prints the stored definition of
 \code{raw = TRUE} to obtain the underlying \code{\link[stats:summary.glm]{stats::summary.glm()}} or
 \code{\link[survival:summary.coxph]{survival::summary.coxph()}} object instead.
 }
+\section{Coefficient statistics}{
+
+The linear-terms table obtains its estimate, standard error, test statistic,
+and p-value from the coefficient matrix returned by the underlying summary
+method. Columns are resolved using exact, documented GLM and Cox labels; no
+regular-expression or partial-name matching is used. For robust Cox fits,
+\code{"robust se"} takes precedence over \code{"se(coef)"} so the displayed standard
+error agrees with the summary's robust test statistic and p-value.
+Recognized GLM labels include \code{"Estimate"}, \code{"Std. Error"}, \code{"z value"} or
+\code{"t value"}, and \code{"Pr(>|z|)"} or \code{"Pr(>|t|)"}. Recognized Cox labels include
+\code{"coef"}, \code{"se(coef)"} or \code{"robust se"}, \code{"z"}, and \code{"Pr(>|z|)"}.
+
+If a future or third-party summary method uses unrecognized or ambiguous
+labels, the raw matrix is not indexed with a missing column position.
+Instead, coefficient statistics are reconstructed from the fitted
+coefficients and \code{\link[stats:vcov]{stats::vcov()}}. This prevents an unfamiliar header from
+silently producing an all-missing column in \code{linear_terms}.
+}
+
+\examples{
+data("prostate")
+
+fit <- mfp2(
+  lpsa ~ fp(age) + svi,
+  data = prostate,
+  select = 1,
+  alpha = 1,
+  verbose = FALSE,
+  warn_low_information = FALSE
+)
+
+fit_summary <- summary(fit)
+
+# The standardized coefficient statistics for selected linear terms.
+fit_summary$linear_terms
+
+# The original model-specific coefficient table remains available.
+fit_summary$raw_summary$coefficients
+
+}
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}},
 \code{\link[survival:summary.coxph]{survival::summary.coxph()}}

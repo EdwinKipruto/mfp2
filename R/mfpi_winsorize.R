@@ -27,6 +27,12 @@
 #' meaning. For transparency, their corresponding entries in
 #' \code{limits} are recorded as \code{NA}.
 #'
+#' Missing values are excluded when calculating the cutoffs and remain missing
+#' in the returned matrix. A requested variable with no observed values is
+#' rejected. If the lower and upper empirical quantiles coincide, the function
+#' also stops before modifying the data because applying equal cutoffs would
+#' collapse every observed value to a constant.
+#'
 #' @param x A numeric predictor matrix with column names.
 #'
 #' @param cont_vars A character vector specifying the continuous variables to
@@ -107,12 +113,50 @@ winsorize_cont_vars <- function(x,
       next
     }
     
-    if (length(col) < 2L) {
+    # Count usable observations rather than physical rows. In particular, an
+    # all-NA column must not reach quantile(), where it would produce a backend-
+    # dependent low-level error or unusable limits.
+    observed <- col[!is.na(col)]
+
+    if (length(observed) == 0L) {
+      stop(
+        "Cannot Winsorise variable `", v,
+        "`: it contains no non-missing values.",
+        call. = FALSE
+      )
+    }
+
+    # Retain the existing behavior for a single usable observation: there is
+    # no empirical distribution to Winsorise, so leave the column unchanged
+    # and record unavailable limits.
+    if (length(observed) < 2L) {
       limits[, v] <- c(NA_real_, NA_real_)
       next
     }
-    
-    q <- stats::quantile(col, probs = probs, na.rm = TRUE, names = FALSE)
+
+    q <- stats::quantile(observed, probs = probs, names = FALSE)
+
+    if (any(!is.finite(q))) {
+      stop(
+        "Cannot Winsorise variable `", v,
+        "`: non-finite quantile limits were produced.",
+        call. = FALSE
+      )
+    }
+
+    if (q[1L] >= q[2L]) {
+      # Equal cutoffs map every value below them upward and every value above
+      # them downward, making the entire observed column constant. Detect the
+      # cause here instead of passing a rank-deficient variable to MFPI.
+      stop(
+        "Cannot Winsorise variable `", v,
+        "`: the lower and upper quantile limits are identical. The requested ",
+        "probabilities would collapse the variable to a single value; choose ",
+        "wider cutoffs or exclude this variable from Winsorisation.",
+        call. = FALSE
+      )
+    }
+
     limits["lower", v] <- q[1L]
     limits["upper", v] <- q[2L]
     

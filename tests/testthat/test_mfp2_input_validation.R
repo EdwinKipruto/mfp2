@@ -43,7 +43,7 @@ test_that("mfp2() rejects mismatched y length", {
 # observations.
 test_that("subset argument works correctly", {
   idx <- 1:50
-  fit <- mfp2(x_prostate, y_prostate, subset = idx, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, subset = idx, verbose = FALSE)
 
   expect_s3_class(fit, "mfp2")
   # The model should be fitted on the subset
@@ -56,7 +56,7 @@ test_that("subset argument works correctly", {
 test_that("subset with logical vector works", {
   log_sub <- rep(FALSE, nrow(x_prostate))
   log_sub[1:50] <- TRUE
-  fit <- mfp2(x_prostate, y_prostate, subset = log_sub, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, subset = log_sub, verbose = FALSE)
 
   expect_equal(length(fit$residuals), 50)
 })
@@ -66,7 +66,7 @@ test_that("subset with logical vector works", {
 # successfully.
 test_that("xorder options work without error", {
   for (ord in c("ascending", "descending", "original")) {
-    fit <- mfp2(x_prostate, y_prostate, xorder = ord, verbose = FALSE, warn_low_information = FALSE)
+    fit <- mfp2(x_prostate, y_prostate, xorder = ord, verbose = FALSE)
     expect_s3_class(fit, "mfp2")
   }
 })

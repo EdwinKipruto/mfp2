@@ -163,7 +163,7 @@ test_that("unknown or ambiguous coefficient headers use the vcov fallback", {
 # Test purpose: Checks that summary() returns output for a fitted Gaussian mfp2
 #  model.
 test_that("summary.mfp2() works for Gaussian", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
 })
@@ -318,7 +318,7 @@ test_that("summary preserves ACD-only power slots", {
 # Test purpose: Verifies that GLM Model Fit output uses stored deviances and a
 # Deviance header rather than reconstructing minus twice log-likelihood.
 test_that("Model Fit reports deviance for GLMs", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   values <- mfp2_summary_model_fit_values(fit)
 
   expect_identical(attr(values, "statistic_label"), "Deviance")
@@ -446,4 +446,71 @@ test_that("summary.mfp2() reports correct negative-binomial inference", {
     unname(summary_mass$coefficients[, 3:4, drop = FALSE]),
     tolerance = 1e-3
   )
+})
+
+
+test_that("print and summary show the expanded df note unless notes is FALSE", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+
+  direct_shown <- capture.output(
+    print(fit, detailed_settings = FALSE, notes = TRUE)
+  )
+  direct_hidden <- capture.output(
+    print(fit, detailed_settings = FALSE, notes = FALSE)
+  )
+
+  expect_true(any(grepl(
+    "A retained catzero",
+    direct_shown,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "binary-only SAZ uses 1 df",
+    direct_shown,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "df counts fitted regression coefficients",
+    direct_hidden,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl("Model Fit", direct_hidden, fixed = TRUE)))
+
+  summary_shown <- summary(fit, notes = TRUE)
+  summary_hidden <- summary(fit, notes = FALSE)
+
+  expect_identical(summary_shown$notes, TRUE)
+  expect_identical(summary_hidden$notes, FALSE)
+
+  printed_summary_shown <- capture.output(print(summary_shown))
+  printed_summary_hidden <- capture.output(print(summary_hidden))
+  printed_summary_override <- capture.output(
+    print(summary_shown, notes = FALSE)
+  )
+
+  expect_true(any(grepl(
+    "A retained catzero",
+    printed_summary_shown,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "df counts fitted regression coefficients",
+    printed_summary_hidden,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "df counts fitted regression coefficients",
+    printed_summary_override,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl("Model Fit", printed_summary_hidden, fixed = TRUE)))
+})
+
+
+test_that("notes must be one non-missing logical value", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+
+  expect_error(print(fit, notes = NA), "`notes`")
+  expect_error(summary(fit, notes = NA), "`notes`")
+  expect_error(print(summary(fit), notes = NA), "`notes`")
 })

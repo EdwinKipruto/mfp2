@@ -226,6 +226,10 @@
 #' missing observations or to construct cross-validation folds; prepare those
 #' analysis data explicitly before fitting. If subsetting removes factor levels
 #' or reduces the estimable dimension of a grouped matrix term, fitting may stop.
+#' After any subset is applied, the number of fitted observations (`n`) must be
+#' greater than the number of columns in the fitting predictor matrix (`p`). In
+#' the formula interface, `p` is counted after categorical predictors have been
+#' expanded into model-matrix columns.
 #' Detailed factor, contrast, and grouped-term behaviour is documented in
 #' `vignette("mfp2_introduction", package = "mfp2")`.
 #'
@@ -507,14 +511,6 @@
 #'   `fp(x, force_max_fp = TRUE)`.
 #' @param verbose Logical value indicating whether progress messages are printed.
 #' Default `TRUE`.
-#' @param warn_low_information Logical scalar controlling the advisory
-#'   information-to-complexity warning. The default `TRUE` warns when the
-#'   number of family-appropriate information units per resolved initial model
-#'   degree of freedom is at most 5. Cox models use observed events, binomial
-#'   models use the weighted minority-outcome total, and other supported
-#'   families use fitted observations. Set this argument to `FALSE` to suppress
-#'   only this diagnostic; convergence, rank, and numerical warnings are not
-#'   affected.
 #' @param \dots Additional arguments passed to methods. Variable-specific formula
 #' options should be supplied inside [fp()] or [fp2()].
 #' @examples
@@ -1614,7 +1610,6 @@ mfp2.default <- function(x,
                          term_groups = NULL,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
-                         warn_low_information = TRUE,
                          ...
 ) {
 
@@ -1783,11 +1778,6 @@ mfp2.default <- function(x,
         call. = FALSE
       )
     }
-
-    # Do not reject a small subset solely because it contains fewer than five
-    # rows. Whether a fit is supportable depends on its resolved term df, not on
-    # an absolute row-count cutoff. fit_mfp() evaluates that complexity after
-    # all df/cardinality/ACD/SAZ rules and emits a low-information warning.
   }
 
   # Step 5: Validate `weights` and `offset` --------------------------------------
@@ -1837,16 +1827,9 @@ mfp2.default <- function(x,
   validate_positive_integer_scalar(cycles, "cycles")
   cycles <- as.integer(cycles)
 
-  # These switches are scalar logical flags. Keep the information diagnostic
-  # independent of `verbose`: progress output may be disabled while important
-  # statistical warnings remain enabled unless explicitly switched off.
+  # These switches are scalar logical flags.
   validate_logical_vector(verbose, "verbose", allowed_lengths = 1L)
   validate_logical_vector(ftest, "ftest", allowed_lengths = 1L)
-  validate_logical_vector(
-    warn_low_information,
-    "warn_low_information",
-    allowed_lengths = 1L
-  )
 
   # alpha and select accept an unnamed global scalar or named partial
   # overrides. Omitted named entries use the public defaults and all matching is
@@ -2497,6 +2480,20 @@ mfp2.default <- function(x,
     }
   }
 
+  # Require more fitted observations than predictor columns. For matrix calls,
+  # this check runs after `subset` has been applied; formula calls already pass
+  # their subset-specific model matrix into this shared path.
+  if (nrow(x) <= ncol(x)) {
+    stop(
+      sprintf(
+        "! The number of observations must be greater than the number of predictor columns (n = %d, p = %d).",
+        nrow(x),
+        ncol(x)
+      ),
+      call. = FALSE
+    )
+  }
+
   # Collapse raw-column options to one value per conceptual term only after all
   # column-level preprocessing has completed. Grouped members must agree on
   # settings that have a single term-level meaning.
@@ -2568,10 +2565,7 @@ mfp2.default <- function(x,
     saz_pre_resolved = TRUE,
     term_to_columns = term_to_columns,
     has_offset = has_offset,
-    verbose = verbose,
-    # The public switch controls only this advisory diagnostic. Its calculation
-    # remains in fit_mfp(), where effective starting complexity is fully known.
-    warn_low_information = warn_low_information
+    verbose = verbose
   )
 
   # Step 21: Attach mfp2-specific metadata to the fitted object -----------------
@@ -2617,7 +2611,6 @@ mfp2.formula <- function(formula,
                          min_saz_component_prop = 0.10,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
-                         warn_low_information = TRUE,
                          ...) {
   # mfp2.formula() translates a formula + data.frame specification into the
   # matrix/vector inputs expected by mfp2.default(): it expands categorical
@@ -2929,12 +2922,6 @@ mfp2.formula <- function(formula,
   } else {
     fit_rows <- formula_subset_rows(subset, nrow(mf_full))
   }
-  # Small fitted samples are allowed through to the shared default/fit_mfp()
-  # path. There the effective initial term df are available, so adequacy can be
-  # diagnosed by an information-to-complexity warning instead of an arbitrary
-  # absolute five-row failure.
-
-
   # Factor columns are expanded by model.matrix() below and then mapped back
   # to their original formula term through the `assign` attribute. Both
   # unordered treatment-contrast blocks and ordered polynomial-contrast blocks
@@ -3597,11 +3584,7 @@ mfp2.formula <- function(formula,
                       spike_vars = spike,
                       force_max_fp_vars = force_max_fp_vars,
                       min_saz_component_prop = min_saz_component_prop,
-                      verbose = verbose,
-                      # Forward the formula-interface choice to the shared
-                      # default path; fit_mfp() receives exactly one switch and
-                      # therefore cannot warn twice for one formula fit.
-                      warn_low_information = warn_low_information
+                      verbose = verbose
   )
   fit$formula_interface <- TRUE
   fit$formula <- formula_user
@@ -3736,13 +3719,10 @@ coef.mfp2 <- function(object, ...) {
 #'   definitions (which are controlled independently by \code{notes}, but
 #'   have nothing left to annotate when this table isn't printed). Default is
 #'   \code{TRUE}.
-#' @param notes Logical. If \code{FALSE}, suppresses all auto-generated
-#'   explanatory text printed after the Detailed Settings table -- both the
-#'   \code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship
-#'   and variable-specific selection settings) and the column-definition
-#'   paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
-#'   Has no effect when \code{detailed_settings = FALSE}. Default is
-#'   \code{TRUE}.
+#' @param notes Logical. If \code{FALSE}, suppresses auto-generated explanatory
+#'   notes: the \code{Note:} lines and column definitions associated with the
+#'   Detailed Settings table, and the model-df explanation below the Model Fit
+#'   table. Default is \code{TRUE}.
 #' @param ... Further print arguments. The \code{digits} argument, when
 #'   supplied, is used to format the final coefficient table and model-fit
 #'   values.
@@ -3760,6 +3740,8 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
   dots <- list(...)
   digits <- dots$digits
+
+  validate_logical_vector(notes, "notes", allowed_lengths = 1L)
 
   if (is.null(digits)) {
     digits <- max(3L, getOption("digits") - 3L)
@@ -4566,8 +4548,8 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
       zero_centered <- any(design_info$zero_handled & design_info$centered)
       if (zero_centered) {
         cat(
-          "Estimates use the displayed Center; for zero-handled terms it is ",
-          "subtracted only within the positive component.\n\n",
+          "Estimates are for: Basis - Center ",
+          "(positive part for zero-handled terms).\n\n",
           sep = ""
         )
       } else {
@@ -4621,12 +4603,13 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   # mfp2_format_model_fit_block(), the same helper called by
   # print.summary.mfp2(). This guarantees the two methods display the same
   # two family-specific fit statistics (GLM deviance or Cox -2 log L; df on
-  # the MFP-adjusted scale) and the same explanatory note, so there is exactly
-  # one place in the package where the block's format lives.
+  # the MFP-adjusted scale) and the same optional explanatory note, so there is
+  # exactly one place in the package where the block's format lives.
   mfp2_format_model_fit_block(
     values          = mfp2_summary_model_fit_values(x),
     digits          = digits,
-    heading_printer = print_section_heading
+    heading_printer = print_section_heading,
+    notes           = notes
   )
 
   cat("\n")

@@ -9,22 +9,22 @@
 
 # Test purpose: Checks that AIC-based model selection runs successfully.
 test_that("criterion = 'aic' runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
 
 # Test purpose: Checks that BIC-based model selection runs successfully.
 test_that("criterion = 'bic' runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 
 
 # Test purpose: Checks the expected stronger-penalty behavior of BIC relative to AIC on this dataset.
 test_that("BIC selects equal or fewer variables than AIC", {
-  fit_aic <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE, warn_low_information = FALSE)
-  fit_bic <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE, warn_low_information = FALSE)
+  fit_aic <- mfp2(x_prostate, y_prostate, criterion = "aic", verbose = FALSE)
+  fit_bic <- mfp2(x_prostate, y_prostate, criterion = "bic", verbose = FALSE)
 
   n_aic <- sum(fit_aic$fp_terms[, "selected"])
   n_bic <- sum(fit_bic$fp_terms[, "selected"])
@@ -37,7 +37,7 @@ test_that("BIC selects equal or fewer variables than AIC", {
 
 # Test purpose: Checks that select = 1 retains all predictors under p-value selection.
 test_that("select = 1 forces all variables into model", {
-  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE)
   expect_true(all(fit$fp_terms[, "selected"]))
 })
 
@@ -132,7 +132,7 @@ test_that("RA2 keeps FP2 when select = alpha = 1 and every test has p = 1", {
 
 # Test purpose: Checks that variables listed in keep remain selected in the final model.
 test_that("keep argument retains specified variables", {
-  fit <- mfp2(x_prostate, y_prostate, keep = c("age", "bph"), verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, keep = c("age", "bph"), verbose = FALSE)
   expect_true(fit$fp_terms["age", "selected"])
   expect_true(fit$fp_terms["bph", "selected"])
 })
@@ -140,6 +140,6 @@ test_that("keep argument retains specified variables", {
 
 # Test purpose: Checks that Gaussian fitting works when F-test based selection is requested.
 test_that("ftest argument works for Gaussian family", {
-  fit <- mfp2(x_prostate, y_prostate, ftest = TRUE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, ftest = TRUE, verbose = FALSE)
   expect_s3_class(fit, "mfp2")
 })

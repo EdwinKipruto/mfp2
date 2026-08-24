@@ -1,5 +1,3 @@
-## Replacement for the obsolete low-information diagnostic tests.
-
 test_that("matrix and formula interfaces accept fits when n is greater than p", {
   dat <- data.frame(
     y = c(1.0, 2.2, 2.7, 4.1),

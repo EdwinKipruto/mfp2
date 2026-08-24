@@ -15,7 +15,7 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
     criterion = "aic",
     force_max_fp_vars = colnames(x_prostate),
     select = 1,
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   for (v in get_selected_variable_names(fit_force)) {

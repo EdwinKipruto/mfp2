@@ -13,7 +13,7 @@ test_that("plot() runs without error for Gaussian model", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   expect_error(
@@ -29,7 +29,7 @@ test_that("plot() runs without warning for Gaussian models", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   expect_warning(
@@ -47,7 +47,7 @@ test_that("fracplot() is deprecated but still works for Gaussian models", {
   fit <- mfp2(
     x_prostate,
     y_prostate,
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   expect_warning(

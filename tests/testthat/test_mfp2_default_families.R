@@ -10,7 +10,7 @@
 # Test purpose: Fits the default Gaussian model and verifies core classes,
 # convergence, and MFP metadata are present.
 test_that("mfp2.default() returns an mfp2 object for Gaussian family", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_s3_class(fit, "glm")

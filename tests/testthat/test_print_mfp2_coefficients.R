@@ -430,7 +430,7 @@ test_that("custom factor contrasts report the stored design values", {
 
 
 test_that("print.mfp2 shows basis and center when centering is used", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
   output <- capture.output(print(fit, detailed_settings = FALSE))
 
   coefficient_lines <- extract_print_section(
@@ -441,6 +441,7 @@ test_that("print.mfp2 shows basis and center when centering is used", {
   coefficient_output <- paste(coefficient_lines, collapse = "\n")
 
   expect_match(coefficient_output, "Estimates are for: Basis - Center", fixed = TRUE)
+  expect_false(grepl("within the positive component", coefficient_output, fixed = TRUE))
   expect_match(coefficient_output, "Variable", fixed = TRUE)
   expect_match(coefficient_output, "Basis", fixed = TRUE)
   expect_match(coefficient_output, "Center", fixed = TRUE)
@@ -472,8 +473,8 @@ test_that("print.mfp2 explains zero-specific centering", {
   expect_match(
     output,
     paste0(
-      "Estimates use the displayed Center; for zero-handled terms it is ",
-      "subtracted only within the positive component."
+      "Estimates are for: Basis - Center ",
+      "(positive part for zero-handled terms)."
     ),
     fixed = TRUE
   )
@@ -482,7 +483,7 @@ test_that("print.mfp2 explains zero-specific centering", {
 
 
 test_that("print.mfp2 omits centering output when centering is not used", {
-  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE)
   output <- capture.output(print(fit, detailed_settings = FALSE))
 
   coefficient_lines <- extract_print_section(
@@ -503,7 +504,7 @@ test_that("print.mfp2 omits centering output when centering is not used", {
 
 
 test_that("print.mfp2 standard errors come from the final covariance matrix", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
   covariance <- stats::vcov(fit)
   expected_se <- sqrt(diag(covariance))
 
@@ -528,7 +529,7 @@ test_that("print.mfp2 standard errors come from the final covariance matrix", {
 })
 
 test_that("coef.mfp2 keeps fitted coefficient names", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
   coefficient_names <- names(stats::coef(fit))
 
   expect_identical(coefficient_names, names(fit$coefficients))
@@ -643,7 +644,7 @@ test_that("mfp2_design_column_info rejects an empty map with predictor coefficie
 
 # Test purpose: Checks that coef() returns named numeric coefficients.
 test_that("coef.mfp2() returns named numeric vector", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   cf <- coef(fit)
   expect_true(is.numeric(cf))
   expect_true(!is.null(names(cf)))
@@ -652,7 +653,7 @@ test_that("coef.mfp2() returns named numeric vector", {
 
 # Test purpose: Checks that the print method produces console output without error.
 test_that("print.mfp2() runs without error", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   expect_output(print(fit))
 })
 

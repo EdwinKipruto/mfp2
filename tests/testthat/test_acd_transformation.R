@@ -10,7 +10,7 @@
 # Test purpose: Checks that ACD can be requested through the default matrix
 # interface.
 test_that("ACD transformation via default interface works", {
-  fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])

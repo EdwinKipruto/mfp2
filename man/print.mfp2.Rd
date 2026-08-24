@@ -16,13 +16,10 @@ definitions (which are controlled independently by \code{notes}, but
 have nothing left to annotate when this table isn't printed). Default is
 \code{TRUE}.}
 
-\item{notes}{Logical. If \code{FALSE}, suppresses all auto-generated
-explanatory text printed after the Detailed Settings table -- both the
-\code{Note:} lines (e.g. the \code{catzero}/\code{zero} relationship
-and variable-specific selection settings) and the column-definition
-paragraphs (\code{acd}, \code{zero}, \code{spike}, \code{saz_decision}).
-Has no effect when \code{detailed_settings = FALSE}. Default is
-\code{TRUE}.}
+\item{notes}{Logical. If \code{FALSE}, suppresses auto-generated explanatory
+notes: the \code{Note:} lines and column definitions associated with the
+Detailed Settings table, and the model-df explanation below the Model Fit
+table. Default is \code{TRUE}.}
 
 \item{...}{Further print arguments. The \code{digits} argument, when
 supplied, is used to format the final coefficient table and model-fit

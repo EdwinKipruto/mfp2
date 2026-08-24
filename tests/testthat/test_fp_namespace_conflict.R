@@ -29,8 +29,7 @@ test_that("mfp2 prediction retains mfp2 fp semantics under shadowing", {
     df = 1,
     select = 1,
     alpha = 1,
-    verbose = FALSE,
-    warn_low_information = FALSE
+    verbose = FALSE
   )
 
   nd <- dat[1:12, c("x", "z"), drop = FALSE]

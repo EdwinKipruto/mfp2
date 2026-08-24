@@ -24,7 +24,7 @@ test_that("assign_df() correctly limits df for low-cardinality variables", {
 # Test purpose: Checks that the selected-variable accessor returns valid predictor
 # names.
 test_that("get_selected_variable_names() returns correct names", {
-  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, select = 1, verbose = FALSE)
 
   sel <- get_selected_variable_names(fit)
   expect_true(is.character(sel))

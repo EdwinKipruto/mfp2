@@ -87,6 +87,8 @@
 #'   the raw [stats::summary.glm()] or [survival::summary.coxph()] object, with
 #'   the fitting call replaced by the original [mfp2()] call. Default
 #'   \code{FALSE}.
+#' @param notes Logical. If \code{FALSE}, suppress the explanatory model-df note
+#'   when the structured summary is printed. Default \code{TRUE}.
 #' @param digits Number of significant digits used when printing. Defaults to
 #'   \code{max(3L, getOption("digits") - 3L)}.
 #' @param ... Further arguments. When \code{raw = TRUE}, passed to the
@@ -98,7 +100,7 @@
 #' \code{converged}, \code{n}, \code{nevents}, \code{function_table},
 #' \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 #' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
-#' \code{NULL}), \code{fit}, and \code{raw_summary}. A
+#' \code{NULL}), \code{fit}, \code{raw_summary}, and \code{notes}. A
 #' dedicated \code{print} method renders these. When \code{raw = TRUE}, the
 #' underlying summary object.
 #'
@@ -110,8 +112,7 @@
 #'   data = prostate,
 #'   select = 1,
 #'   alpha = 1,
-#'   verbose = FALSE,
-#'   warn_low_information = FALSE
+#'   verbose = FALSE
 #' )
 #'
 #' fit_summary <- summary(fit)
@@ -130,11 +131,14 @@ summary.mfp2 <- function(object,
                          formulas = FALSE,
                          basis = FALSE,
                          raw = FALSE,
+                         notes = TRUE,
                          digits = max(3L, getOption("digits") - 3L),
                          ...) {
   if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
   }
+
+  validate_logical_vector(notes, "notes", allowed_lengths = 1L)
 
   # ---------------------------------------------------------------------------
   # raw = TRUE: fall back to the underlying model's summary method.
@@ -189,6 +193,7 @@ summary.mfp2 <- function(object,
     acd_definitions = acd_definitions,
     fit             = mfp2_summary_fit_stats(object),
     raw_summary     = raw_summary,
+    notes           = notes,
     digits          = digits
   )
   class(out) <- "summary.mfp2"
@@ -1494,7 +1499,8 @@ mfp2_summary_model_fit_values <- function(object) {
 # its existing print_section_heading() helper (which draws the boxed rules
 # used elsewhere in its output) without leaking that helper's internals into
 # the summary path. summary()'s printer supplies its own rule-based heading.
-mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
+mfp2_format_model_fit_block <- function(values, digits, heading_printer,
+                                        notes = TRUE) {
   heading_printer("Model Fit")
 
   # Model-fit statistics use a fixed number of decimal places. The `digits`
@@ -1543,12 +1549,14 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
 
   # Note about the df column. Kept identical between print.mfp2() and
   # print.summary.mfp2() so users see one consistent explanation.
-  note_lines <- c(
-    "df counts regression coefficients, excluding the intercept. For the MFP",
-    "model, df additionally includes 1 df for each estimated FP power (e.g.",
-    "FP1 = 2 df, FP2 = 4 df)."
-  )
-  for (ln in note_lines) cat(ln, "\n", sep = "")
+  if (isTRUE(notes)) {
+    note_lines <- c(
+      "df counts fitted regression coefficients, excluding the intercept, plus 1 df",
+      "for each estimated FP power (FP1 = 2 df, FP2 = 4 df). A retained catzero",
+      "or spike-at-zero binary indicator adds 1 df; binary-only SAZ uses 1 df."
+    )
+    for (ln in note_lines) cat(ln, "\n", sep = "")
+  }
 }
 
 #' Print a Summary of an `mfp2` Model Fit
@@ -1556,6 +1564,8 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
 #' Renders the structured summary produced by [summary.mfp2()].
 #'
 #' @param x An object of class \code{"summary.mfp2"}.
+#' @param notes Logical. If \code{FALSE}, suppress the explanatory model-df
+#'   note. Defaults to the value stored by [summary.mfp2()].
 #' @param ... Not used.
 #'
 #' @return Invisibly returns \code{x}.
@@ -1563,7 +1573,9 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer) {
 #' @seealso [summary.mfp2()], [print.mfp2()]
 #'
 #' @export
-print.summary.mfp2 <- function(x, ...) {
+print.summary.mfp2 <- function(x, notes = x$notes, ...) {
+  validate_logical_vector(notes, "notes", allowed_lengths = 1L)
+
   digits <- if (!is.null(x$digits)) x$digits else max(3L, getOption("digits") - 3L)
   width <- 78L
   rule_eq <- paste(rep("=", width), collapse = "")
@@ -1725,13 +1737,14 @@ print.summary.mfp2 <- function(x, ...) {
   # The Model Fit block is rendered by the shared helper
   # mfp2_format_model_fit_block(), which is called identically by
   # print.mfp2(). This ensures the two methods display the same family-specific
-  # fit statistic and df convention, together with the same note. The
+  # fit statistic and df convention, together with the same optional note. The
   # `section()` helper defined above draws the dash-rule heading used elsewhere
   # in the summary output.
   mfp2_format_model_fit_block(
     values          = x$fit$model_fit,
     digits          = digits,
-    heading_printer = section
+    heading_printer = section,
+    notes           = notes
   )
 
   cat("\n", rule_eq, "\n", sep = "")

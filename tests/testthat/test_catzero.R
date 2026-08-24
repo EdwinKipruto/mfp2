@@ -373,7 +373,7 @@ test_that("zero term changes the full linear reference representation", {
     zero_vars = "exposure",
     df = 1,
     xorder = "original",
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   reference_data <- data.frame(
@@ -406,7 +406,7 @@ test_that("catzero term changes the full linear reference representation", {
     catzero_vars = "exposure",
     df = 1,
     xorder = "original",
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   reference_data <- data.frame(

@@ -13,7 +13,7 @@ test_that("mfp2.formula() returns an mfp2 object", {
   fit <- mfp2(
     lpsa ~ fp(age) + fp(svi, df = 1) + fp(pgg45) + fp(cavol) + fp(weight) +
       fp(bph) + fp(cp),
-    data = prostate, verbose = FALSE, warn_low_information = FALSE
+    data = prostate, verbose = FALSE
   )
 
   expect_s3_class(fit, "mfp2")
@@ -77,7 +77,7 @@ test_that("linear negative-binomial mfp2 agrees with MASS::glm.nb()", {
 # top-level formula setting.
 test_that("default and formula interfaces give consistent selected variables", {
   fit_default <- mfp2(
-    x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE
+    x_prostate, y_prostate, center = TRUE, verbose = FALSE
   )
   fit_formula <- mfp2(
     lpsa ~ fp(age, center = TRUE) + fp(svi, df = 1, center = TRUE) +
@@ -86,7 +86,7 @@ test_that("default and formula interfaces give consistent selected variables", {
       fp(cp, center = TRUE),
     data = prostate,
     center = TRUE,
-    verbose = FALSE, warn_low_information = FALSE
+    verbose = FALSE
   )
 
   sel_default <- sort(get_selected_variable_names(fit_default))

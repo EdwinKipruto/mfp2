@@ -16,8 +16,7 @@ make_shifted_log_prediction_fit <- function() {
     shift = 5,
     scale = 1,
     center = FALSE,
-    verbose = FALSE,
-    warn_low_information = FALSE
+    verbose = FALSE
   )
 }
 
@@ -334,7 +333,7 @@ test_that("standard-error calculation validates the required covariance block", 
 # Test purpose: Checks default Gaussian predictions are finite and have one
 # value per observation.
 test_that("predict.mfp2() returns predictions for Gaussian model", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
 
   preds <- predict(fit)
   expect_length(preds, nrow(x_prostate))
@@ -498,7 +497,7 @@ test_that("negative-binomial predictions and SEs agree with MASS::glm.nb()", {
 
 
 test_that("predict.mfp2() with newdata reproduces training predictions", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
 
   preds_train <- predict(fit)
   preds_new <- predict(fit, newdata = x_prostate)
@@ -510,7 +509,7 @@ test_that("predict.mfp2() with newdata reproduces training predictions", {
 
 # Test purpose: Checks that term-level predictions return per-term data frames with values and standard errors.
 test_that("predict.mfp2() type = 'terms' returns list of data frames", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
 
   terms_result <- predict(fit, type = "terms")
   expect_true(is.list(terms_result))
@@ -525,7 +524,7 @@ test_that("predict.mfp2() type = 'terms' returns list of data frames", {
 
 # Test purpose: Checks that contrast predictions return per-term data-frame outputs.
 test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
-  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
 
   contrasts_result <- predict(fit, type = "contrasts")
   expect_true(is.list(contrasts_result))

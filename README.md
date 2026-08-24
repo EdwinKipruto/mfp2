@@ -9,8 +9,10 @@
 `mfp2` implements multivariable fractional polynomial (MFP) models and related
 extensions. It performs variable selection and functional-form selection for
 continuous covariates. The package supports generalized linear models with
-families `"gaussian"`, `"binomial"`, and `"poisson"`, as well as Cox
-proportional hazards models for right-censored survival outcomes.
+families `"gaussian"`, `"binomial"`, `"poisson"`, and `"negbin"`, as well as
+Cox proportional hazards models for right-censored survival outcomes.
+Negative-binomial models are specified with `family = "negbin"` and require
+`fitter = "fastglm"`.
 
 In addition to standard MFP modelling, `mfp2` provides:
 

@@ -287,7 +287,7 @@ test_that("mfpi rejects zero weights for Cox and Gaussian models", {
 test_that("weights argument is accepted and used", {
   w <- rep(1, nrow(x_prostate))
   w[1:10] <- 2
-  fit <- mfp2(x_prostate, y_prostate, weights = w, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, weights = w, verbose = FALSE)
   expect_s3_class(fit, "mfp2")
 })
 

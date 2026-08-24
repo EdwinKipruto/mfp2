@@ -9,6 +9,7 @@
   formulas = FALSE,
   basis = FALSE,
   raw = FALSE,
+  notes = TRUE,
   digits = max(3L, getOption("digits") - 3L),
   ...
 )
@@ -27,6 +28,9 @@ the raw \code{\link[stats:summary.glm]{stats::summary.glm()}} or \code{\link[sur
 the fitting call replaced by the original \code{\link[=mfp2]{mfp2()}} call. Default
 \code{FALSE}.}
 
+\item{notes}{Logical. If \code{FALSE}, suppress the explanatory model-df note
+when the structured summary is printed. Default \code{TRUE}.}
+
 \item{digits}{Number of significant digits used when printing. Defaults to
 \code{max(3L, getOption("digits") - 3L)}.}
 
@@ -39,7 +43,7 @@ with components \code{call}, \code{family}, \code{criterion},
 \code{converged}, \code{n}, \code{nevents}, \code{function_table},
 \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
-\code{NULL}), \code{fit}, and \code{raw_summary}. A
+\code{NULL}), \code{fit}, \code{raw_summary}, and \code{notes}. A
 dedicated \code{print} method renders these. When \code{raw = TRUE}, the
 underlying summary object.
 }
@@ -112,8 +116,7 @@ fit <- mfp2(
   data = prostate,
   select = 1,
   alpha = 1,
-  verbose = FALSE,
-  warn_low_information = FALSE
+  verbose = FALSE
 )
 
 fit_summary <- summary(fit)

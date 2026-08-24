@@ -4,10 +4,13 @@
 \alias{print.summary.mfp2}
 \title{Print a Summary of an \code{mfp2} Model Fit}
 \usage{
-\method{print}{summary.mfp2}(x, ...)
+\method{print}{summary.mfp2}(x, notes = x$notes, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"summary.mfp2"}.}
+
+\item{notes}{Logical. If \code{FALSE}, suppress the explanatory model-df
+note. Defaults to the value stored by \code{\link[=summary.mfp2]{summary.mfp2()}}.}
 
 \item{...}{Not used.}
 }

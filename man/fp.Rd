@@ -120,7 +120,8 @@ factors.
 }
 \section{Functions}{
 \itemize{
-\item \code{fp2()}: Alias for \code{fp()} - use in formula when both \code{mfp} and \code{mfp2} are loaded to avoid name shadowing.
+\item \code{fp2()}: Alias for \code{fp()} that provides an explicitly distinct name
+when both \code{mfp} and \code{mfp2} are attached.
 
 }}
 \examples{

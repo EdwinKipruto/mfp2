@@ -209,3 +209,952 @@ test_that("rejected spike does not reserve a source-term _bin name", {
   expect_false(fit$spike[["exposure"]])
   expect_false(fit$catzero[["exposure"]])
 })
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# =============================================================================
+# 6. SAZ (spike-at-zero) — eligibility, cascade, and reset
+# =============================================================================
+
+# Test purpose: Fits a clear spike-at-zero example and checks that the spike
+# flag is retained.
+test_that("spike-at-zero basic fitting works", {
+  set.seed(123)
+  n <- 300
+  prop_zero <- 0.25
+  x_val <- numeric(n)
+  zero_idx <- sample(seq_len(n), size = round(n * prop_zero))
+  x_val[zero_idx] <- 0
+  x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 0.5)
+
+  Z <- ifelse(x_val == 0, 1, 0)
+  y_val <- 1.5 * Z + 2 * log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(x_mat, y_val, spike_vars = "exposure", verbose = FALSE)
+
+  expect_s3_class(fit, "mfp2")
+  # spike should be TRUE because the proportion of zeros is well within threshold
+  expect_true(fit$fp_terms["exposure", "spike"])
+})
+
+
+# Test purpose: Checks that SAZ is reset when the zero component fails the
+# minimum proportion threshold.
+test_that("spike-at-zero is reset when zero proportion is too low", {
+  # Almost no zeros
+  set.seed(42)
+  n <- 200
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  # Only 2 zeros out of 200 = 1% which is below default 10%
+  x_val[1:2] <- 0
+  y_val <- 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  expect_warning(
+    fit <- mfp2(x_mat, y_val, spike_vars = "exposure", verbose = FALSE),
+    "spike"
+  )
+
+  # Spike should be reset
+  expect_false(fit$fp_terms["exposure", "spike"])
+})
+
+
+# Test purpose: Checks that explicit zero handling survives after an ineligible
+# spike request is reset.
+test_that("spike cascade restores user-specified zero/catzero on reset", {
+  # Build a scenario where spike is reset but user also set zero=TRUE
+  set.seed(42)
+  n <- 200
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  x_val[1:2] <- 0 # too few zeros => spike reset
+  y_val <- 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  suppressWarnings({
+    fit <- mfp2(
+      x_mat, y_val,
+      spike_vars = "exposure",
+      zero_vars = "exposure",
+      verbose = FALSE
+    )
+  })
+
+  # Spike should be reset, but zero should be preserved
+  expect_false(fit$fp_terms["exposure", "spike"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Checks that spike-at-zero handling can be requested inside fp()
+# in the formula interface.
+test_that("spike formula interface fp(spike = TRUE) works", {
+  set.seed(123)
+  n <- 300
+  prop_zero <- 0.25
+  x_val <- numeric(n)
+  zero_idx <- sample(seq_len(n), size = round(n * prop_zero))
+  x_val[zero_idx] <- 0
+  x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 0.5)
+
+  Z <- ifelse(x_val == 0, 1, 0)
+  y_val <- 1.5 * Z + 2 * log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+
+  dat <- data.frame(y = y_val, exposure = x_val)
+
+  fit <- mfp2(
+    y ~ fp(exposure, spike = TRUE, center = FALSE),
+    data = dat, verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+})
+
+
+# Test purpose: Checks that changing the SAZ component threshold changes spike
+#  eligibility as expected.
+test_that("min_saz_component_prop controls eligibility threshold", {
+  set.seed(123)
+  n <- 200
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  # 15% zeros
+  x_val[sample(n, 30)] <- 0
+  y_val <- 0.5 * x_val + rnorm(n)
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  # With default threshold 0.10 it should be eligible
+  fit_low <- mfp2(x_mat, y_val, spike_vars = "exposure",
+                  min_saz_component_prop = 0.10, verbose = FALSE)
+  expect_true(fit_low$fp_terms["exposure", "spike"])
+
+  # With high threshold 0.40 it should be ineligible
+  expect_warning(
+    fit_high <- mfp2(x_mat, y_val, spike_vars = "exposure",
+                     min_saz_component_prop = 0.40, verbose = FALSE),
+    "spike"
+  )
+  expect_false(fit_high$fp_terms["exposure", "spike"])
+})
+
+
+# Test purpose: Ensures SAZ eligibility requires enough positive-component
+# observations, not only enough zero-component observations.
+test_that("spike-at-zero is reset when positive component proportion is too low", {
+  set.seed(104)
+  n <- 200
+
+  x_val <- numeric(n)
+  x_val[1:5] <- rgamma(5, shape = 2, rate = 1)  # 2.5% positive component
+  y_val <- 1.5 * (x_val == 0) + 0.2 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  expect_warning(
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      verbose = FALSE
+    ),
+    "spike"
+  )
+
+  expect_false(fit$fp_terms["exposure", "spike"])
+})
+
+
+# Test purpose: Checks that non-positive values, including negative values,
+# are counted in the zero component for SAZ eligibility.
+test_that("spike-at-zero counts non-positive values in the zero component", {
+  set.seed(105)
+  n <- 200
+
+  x_val <- numeric(n)
+  zero_idx <- sample(seq_len(n), size = 50)
+  x_val[zero_idx] <- -1
+  x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 1)
+
+  y_val <- 1.5 * (x_val <= 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$fp_terms["exposure", "spike"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Ensures that when spike is reset, user-specified catzero handling
+# is preserved rather than removed with the spike-implied cascade.
+test_that("spike cascade preserves user-specified catzero on reset", {
+  set.seed(106)
+  n <- 200
+
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  x_val[1:2] <- 0  # too few zeros for SAZ eligibility
+  y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  suppressWarnings({
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      catzero_vars = "exposure",
+      verbose = FALSE
+    )
+  })
+
+  expect_false(fit$fp_terms["exposure", "spike"])
+  expect_true(fit$catzero["exposure"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Directly checks reset_spike() for the all-zero case, where
+# the positive component is absent.
+test_that("reset_spike() resets all-zero variables", {
+  x <- matrix(0, nrow = 100, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  spike <- c(exposure = TRUE)
+  user_catzero <- c(exposure = FALSE)
+  user_zero <- c(exposure = FALSE)
+
+  expect_warning(
+    out <- reset_spike(
+      x = x,
+      spike = spike,
+      user_catzero = user_catzero,
+      user_zero = user_zero,
+      min_saz_component_prop = 0.10
+    ),
+    "positive observation proportion"
+  )
+
+  expect_false(out$spike["exposure"])
+  expect_false(out$catzero["exposure"])
+  expect_false(out$zero["exposure"])
+})
+
+
+# Test purpose: Checks that resolve_saz_eligibility() treats nonpositive values
+# as the structural-zero component without requiring a recoded matrix.
+test_that("resolve_saz_eligibility() counts negative values as zero component", {
+  # Only the zero-component proportion matters here. Use deterministic
+  # positive values so this validation test is independent of RNG state.
+  x <- matrix(
+    c(rep(-2, 20), seq(0.1, 18, length.out = 180)),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  spike <- c(exposure = TRUE)
+  catzero <- c(exposure = FALSE)
+  zero <- c(exposure = FALSE)
+
+  out <- resolve_saz_eligibility(
+    x = x,
+    spike = spike,
+    catzero = catzero,
+    zero = zero,
+    min_saz_component_prop = 0.10
+  )
+
+  expect_true(out$spike["exposure"])
+  expect_true(out$catzero["exposure"])
+  expect_true(out$zero["exposure"])
+})
+
+
+# Test purpose: The raw-predicate reset must be exactly equivalent to the old
+# temporary x[x <= 0] <- 0 representation, including binary detection after
+# multiple distinct nonpositive values collapse to one structural-zero level.
+test_that("reset_spike raw predicates match zero-recoded eligibility", {
+  x_raw <- cbind(
+    exposure = c(-3, -2, -1, 0, rep(2, 16)),
+    eligible = c(rep(-2, 4), rep(1:4, each = 4))
+  )
+  x_recoded <- x_raw
+  x_recoded[x_recoded <= 0] <- 0
+
+  spike <- c(exposure = TRUE, eligible = TRUE)
+  user_catzero <- c(exposure = FALSE, eligible = FALSE)
+  user_zero <- c(exposure = FALSE, eligible = FALSE)
+
+  raw <- suppressWarnings(reset_spike(
+    x = x_raw,
+    spike = spike,
+    user_catzero = user_catzero,
+    user_zero = user_zero,
+    min_saz_component_prop = 0.10
+  ))
+  recoded <- suppressWarnings(reset_spike(
+    x = x_recoded,
+    spike = spike,
+    user_catzero = user_catzero,
+    user_zero = user_zero,
+    min_saz_component_prop = 0.10
+  ))
+
+  expect_identical(raw, recoded)
+  # exposure has one effective zero level plus one positive level, so it is
+  # binary after structural-zero collapsing and must be reset.
+  expect_false(raw$spike[["exposure"]])
+  expect_true(raw$spike[["eligible"]])
+})
+
+
+# Test purpose: Checks that structural-zero proportions use finite observations
+# and count nonpositive values as the SAZ zero component.
+test_that("calculate_saz_prop_zero() reports retained SAZ proportions", {
+  x <- cbind(
+    exposure = c(-2, 0, 0, 1, 2, 3, NA_real_, Inf),
+    ordinary = seq_len(8)
+  )
+
+  out <- calculate_saz_prop_zero(
+    x = x,
+    spike = c(exposure = TRUE, ordinary = FALSE)
+  )
+
+  expect_equal(out[["exposure"]], 3 / 6)
+  expect_true(is.na(out[["ordinary"]]))
+})
+
+
+# Test purpose: Ensures that when spike-only handling is reset, the variable
+# returns to ordinary FP handling with no zero or catzero flags.
+test_that("spike-only reset restores ordinary FP handling", {
+  set.seed(305)
+  n <- 200
+
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  x_val[1:2] <- 0 # too few zeros for SAZ eligibility
+  y_val <- 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  expect_warning(
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      verbose = FALSE
+    ),
+    "spike-at-zero option has been reset"
+  )
+
+  expect_false(fit$spike["exposure"])
+  expect_false(fit$catzero["exposure"])
+  expect_false(fit$zero["exposure"])
+})
+
+
+# Test purpose: Ensures that when spike is reset, explicitly requested zero
+# handling is preserved rather than removed with the spike-implied cascade.
+test_that("spike reset preserves user-specified zero handling", {
+  set.seed(306)
+  n <- 200
+
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  x_val[1:2] <- 0 # too few zeros for SAZ eligibility
+  y_val <- 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  suppressWarnings({
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      zero_vars = "exposure",
+      verbose = FALSE
+    )
+  })
+
+  expect_false(fit$spike["exposure"])
+  expect_false(fit$catzero["exposure"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Ensures that when spike is reset, explicitly requested catzero
+# handling is preserved and still implies zero handling.
+test_that("spike reset preserves user-specified catzero handling", {
+  set.seed(307)
+  n <- 200
+
+  x_val <- rgamma(n, shape = 2, rate = 1)
+  x_val[1:2] <- 0 # too few zeros for SAZ eligibility
+  y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  suppressWarnings({
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      catzero_vars = "exposure",
+      verbose = FALSE
+    )
+  })
+
+  expect_false(fit$spike["exposure"])
+  expect_true(fit$catzero["exposure"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Ensures retained SAZ variables satisfy the internal cascade:
+# spike implies catzero, and catzero implies zero.
+test_that("retained spike variable implies catzero and zero handling", {
+  set.seed(308)
+  n <- 200
+
+  x_val <- c(rep(0, 60), rgamma(140, shape = 2, rate = 1))
+  y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    verbose = FALSE
+  )
+
+  expect_true(fit$spike["exposure"])
+  expect_true(fit$catzero["exposure"])
+  expect_true(fit$zero["exposure"])
+  expect_true(fit$fp_terms["exposure", "spike"])
+})
+
+
+# Test purpose: Ensures formula-interface fp(spike = TRUE) is translated into
+# spike, catzero, and zero handling for an eligible SAZ variable.
+test_that("formula interface fp(spike = TRUE) activates SAZ handling", {
+  set.seed(309)
+  n <- 200
+
+  exposure <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
+  dat <- data.frame(
+    y = 2 * (exposure == 0) + log(ifelse(exposure > 0, exposure, 1)) + rnorm(n),
+    exposure = exposure,
+    z = runif(n, 1, 10)
+  )
+
+  fit <- mfp2(
+    y ~ fp(exposure, spike = TRUE) + fp(z),
+    data = dat,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$spike["exposure"])
+  expect_true(fit$catzero["exposure"])
+  expect_true(fit$zero["exposure"])
+})
+
+
+# Test purpose: Checks that the SAZ algorithm runs under AIC-based selection,
+# not only under p-value based closed testing.
+test_that("spike-at-zero works with AIC criterion", {
+  set.seed(310)
+  n <- 220
+
+  x_val <- c(rep(0, 70), rgamma(150, shape = 2, rate = 1))
+  y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    criterion = "aic",
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$spike["exposure"])
+  expect_true(fit$fp_terms["exposure", "spike"])
+  expect_true(fit$spike_dec["exposure"] %in% c(1L, 2L, 3L))
+})
+
+
+# Test purpose: Checks that the SAZ algorithm runs under BIC-based selection.
+test_that("spike-at-zero works with BIC criterion", {
+  set.seed(311)
+  n <- 220
+
+  x_val <- c(rep(0, 70), rgamma(150, shape = 2, rate = 1))
+  y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    criterion = "bic",
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$spike["exposure"])
+  expect_true(fit$fp_terms["exposure", "spike"])
+  expect_true(fit$spike_dec["exposure"] %in% c(1L, 2L, 3L))
+})
+
+
+# Test purpose: Ensures retained SAZ variables with at most 3 distinct positive
+# values have their maximum FP df forced to 1.
+test_that("cap_spike_df() forces df = 1 for at most 3 distinct positive values", {
+  x <- matrix(
+    c(rep(0, 30), rep(c(1, 2, 3), each = 10)),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  df <- c(exposure = 4)
+  spike <- c(exposure = TRUE)
+
+  expect_warning(
+    out <- cap_spike_df(
+      x = x,
+      df = df,
+      spike = spike
+    ),
+    "maximum FP df was reduced"
+  )
+
+  expect_equal(out[["exposure"]], 1)
+})
+
+
+# Test purpose: Ensures retained SAZ variables with 4 or 5 distinct positive
+# values have their maximum FP df capped at FP1, i.e. df = 2.
+test_that("cap_spike_df() caps df at 2 for 4 or 5 distinct positive values", {
+  x <- matrix(
+    c(rep(0, 30), rep(c(1, 2, 3, 4, 5), each = 10)),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  df <- c(exposure = 4)
+  spike <- c(exposure = TRUE)
+
+  expect_warning(
+    out <- cap_spike_df(
+      x = x,
+      df = df,
+      spike = spike
+    ),
+    "maximum FP df was reduced"
+  )
+
+  expect_equal(out[["exposure"]], 2)
+})
+
+
+# Test purpose: Ensures retained SAZ variables with at least 6 distinct positive
+# values keep the requested maximum FP df.
+test_that("cap_spike_df() keeps df unchanged for at least 6 distinct positive values", {
+  x <- matrix(
+    c(rep(0, 30), rep(1:6, each = 10)),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  df <- c(exposure = 4)
+  spike <- c(exposure = TRUE)
+
+  expect_warning(
+    out <- cap_spike_df(
+      x = x,
+      df = df,
+      spike = spike
+    ),
+    NA
+  )
+
+  expect_equal(out[["exposure"]], 4)
+})
+
+
+# Test purpose: GLM SAZ stage 2 must assemble the final intercept-inclusive
+# Model 2/Model 3 design once and tell fit_model() not to prepend another
+# intercept. This protects the one-allocation GLM path.
+test_that("SAZ reduced GLMs pass final intercept-inclusive designs", {
+  seen <- new.env(parent = emptyenv())
+  seen$x <- list()
+  seen$x_has_intercept <- logical()
+
+  testthat::local_mocked_bindings(
+    fit_model = function(x, x_has_intercept = FALSE, ...) {
+      seen$x[[length(seen$x) + 1L]] <- x
+      seen$x_has_intercept <- c(seen$x_has_intercept, x_has_intercept)
+      list(logl = -1, df = NCOL(x))
+    },
+    .package = "mfp2"
+  )
+
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0),
+    fp1 = c(0, 0, 1.2, 2.4)
+  )
+  adjustment <- cbind(z = c(2, 3, 4, 5))
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  out <- fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = rep(0, 4),
+    weights = NULL,
+    offset = NULL,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    method = NULL,
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  expected_fit2 <- cbind(
+    "(Intercept)" = rep(1, 4),
+    fp1 = data_xi[, "fp1"],
+    adjustment
+  )
+  expected_fit3 <- cbind(
+    "(Intercept)" = rep(1, 4),
+    catzero = data_xi[, "catzero"],
+    adjustment
+  )
+
+  expect_length(seen$x, 2L)
+  expect_equal(seen$x[[1L]], expected_fit2)
+  expect_equal(seen$x[[2L]], expected_fit3)
+  expect_identical(seen$x_has_intercept, c(TRUE, TRUE))
+  expect_false("x" %in% names(out))
+  expect_identical(out$data_xi, data_xi)
+  expect_identical(out$adjustment_matrix, adjustment)
+})
+
+
+# Test purpose: Cox SAZ stage 2 must preserve the historical no-intercept
+# design contract. The GLM allocation optimization must never add an ordinary
+# intercept to a matrix sent to the Cox fitter.
+test_that("SAZ reduced Cox models remain intercept-free", {
+  seen <- new.env(parent = emptyenv())
+  seen$x <- list()
+  seen$x_has_intercept <- logical()
+
+  testthat::local_mocked_bindings(
+    fit_model = function(x, x_has_intercept = FALSE, ...) {
+      seen$x[[length(seen$x) + 1L]] <- x
+      seen$x_has_intercept <- c(seen$x_has_intercept, x_has_intercept)
+      list(logl = -1, df = NCOL(x))
+    },
+    .package = "mfp2"
+  )
+
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0),
+    fp1 = c(0, 0, 1.2, 2.4)
+  )
+  adjustment <- cbind(z = c(2, 3, 4, 5))
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = rep(0, 4),
+    weights = NULL,
+    offset = NULL,
+    family = NULL,
+    family_string = "cox",
+    method = "efron",
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  expect_length(seen$x, 2L)
+  expect_equal(seen$x[[1L]], cbind(fp1 = data_xi[, "fp1"], adjustment))
+  expect_equal(seen$x[[2L]], cbind(catzero = data_xi[, "catzero"], adjustment))
+  expect_identical(seen$x_has_intercept, c(FALSE, FALSE))
+  expect_false("(Intercept)" %in% colnames(seen$x[[1L]]))
+  expect_false("(Intercept)" %in% colnames(seen$x[[2L]]))
+})
+
+
+# Test purpose: The optimized GLM SAZ assembly must be numerically identical
+# to the historical path where fit_glm() prepended the intercept itself.
+test_that("SAZ reduced GLM fits match historical assembly numerically", {
+  data_xi <- cbind(
+    catzero = c(1, 1, 0, 0, 0, 0, 0, 0),
+    fp1 = c(0, 0, 0.3, 0.8, 1.2, 1.7, 2.1, 2.8)
+  )
+  adjustment <- cbind(z = c(-1.2, -0.4, 0.1, 0.7, 1.1, 1.8, 2.3, 3.0))
+  y <- c(0.4, 0.8, 1.2, 1.7, 2.0, 2.6, 3.0, 3.5)
+  family <- stats::gaussian()
+  stage1 <- list(
+    current_adj_params = list(
+      exposure = list(data_xi = data_xi, data_adj = adjustment)
+    )
+  )
+
+  out <- fit_saz_reduced_models(
+    stage1_selection = stage1,
+    xi = "exposure",
+    y = y,
+    weights = NULL,
+    offset = NULL,
+    family = family,
+    family_string = "gaussian",
+    method = NULL,
+    strata = NULL,
+    nocenter = NULL,
+    control = NULL,
+    rownames = NULL,
+    has_offset = FALSE
+  )
+
+  old_x2 <- cbind(fp1 = data_xi[, "fp1"], adjustment)
+  old_x3 <- cbind(catzero = data_xi[, "catzero"], adjustment)
+
+  expected2 <- fit_model(
+    x = old_x2,
+    y = y,
+    family = family,
+    family_string = "gaussian",
+    weights = NULL,
+    offset = NULL,
+    method = NULL,
+    strata = NULL,
+    control = NULL,
+    rownames = NULL,
+    nocenter = NULL,
+    has_offset = FALSE
+  )
+  expected3 <- fit_model(
+    x = old_x3,
+    y = y,
+    family = family,
+    family_string = "gaussian",
+    weights = NULL,
+    offset = NULL,
+    method = NULL,
+    strata = NULL,
+    control = NULL,
+    rownames = NULL,
+    nocenter = NULL,
+    has_offset = FALSE
+  )
+
+  expect_equal(out$fit2$coefficients, expected2$coefficients, tolerance = 1e-12)
+  expect_equal(out$fit3$coefficients, expected3$coefficients, tolerance = 1e-12)
+  expect_equal(out$fit2$logl, expected2$logl, tolerance = 1e-12)
+  expect_equal(out$fit3$logl, expected3$logl, tolerance = 1e-12)
+  expect_identical(out$fit2$df, expected2$df)
+  expect_identical(out$fit3$df, expected3$df)
+})
+
+
+# Test purpose: Ensures public mfp2() applies the SAZ positive-part df cap
+# before final FP model selection metadata are stored.
+test_that("mfp2() applies positive-part df cap for retained spike variables", {
+  set.seed(312)
+  n <- 180
+
+  positive_values <- rep(c(1, 2, 3), each = 40)
+  x_val <- c(rep(0, 60), positive_values)
+  y_val <- 1.5 * (x_val == 0) + 0.4 * x_val + rnorm(n, sd = 0.2)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  expect_warning(
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = "exposure",
+      df = 4,
+      verbose = FALSE
+    ),
+    "maximum FP df was reduced"
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$spike["exposure"])
+
+  # The positive-part cap reduces the continuous FP complexity to one df, but
+  # an eligible SAZ term enters selection with its one-df zero indicator as
+  # well. Keep these two quantities distinct: df_setting describes the capped
+  # continuous component, while df_initial is the total initial SAZ term df.
+  expect_equal(fit$fp_terms["exposure", "df_setting"], 1)
+  expect_equal(fit$fp_terms["exposure", "df_initial"], 2)
+})
+
+
+# Test purpose: Ensures prediction works for retained SAZ models, including
+# new zero and positive values in newdata.
+test_that("predict.mfp2() works for retained spike-at-zero models", {
+  set.seed(313)
+  n <- 200
+
+  x_val <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
+  y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n, sd = 0.3)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    verbose = FALSE
+  )
+
+  newx <- matrix(
+    c(0, 0, 0.5, 1, 2, 4),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  pred <- predict(fit, newdata = newx)
+
+  expect_length(pred, nrow(newx))
+  expect_true(all(is.finite(pred)))
+})
+
+
+# Test purpose: Ensures prediction for retained SAZ models treats negative
+# newdata values as part of the zero component rather than failing as ordinary FP.
+test_that("predict.mfp2() treats negative newdata as zero component for SAZ models", {
+  set.seed(314)
+  n <- 200
+
+  x_val <- c(rep(0, 50), rgamma(150, shape = 2, rate = 1))
+  y_val <- 2 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n, sd = 0.3)
+
+  x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
+
+  fit <- mfp2(
+    x_mat,
+    y_val,
+    spike_vars = "exposure",
+    verbose = FALSE
+  )
+
+  newx <- matrix(
+    c(-2, -1, 0, 0.5, 2),
+    ncol = 1,
+    dimnames = list(NULL, "exposure")
+  )
+
+  pred <- predict(fit, newdata = newx)
+
+  expect_length(pred, nrow(newx))
+  expect_true(all(is.finite(pred)))
+})
+
+
+# Test purpose: Ensures SAZ eligibility is resolved independently for multiple
+# spike variables, so one reset variable does not reset all spike variables.
+test_that("multiple spike variables are reset independently", {
+  set.seed(315)
+  n <- 240
+
+  eligible <- c(rep(0, 60), rgamma(180, shape = 2, rate = 1))
+  ineligible <- rgamma(n, shape = 2, rate = 1)
+  ineligible[1:2] <- 0 # too few zeros
+
+  y_val <- 1.5 * (eligible == 0) + log(ifelse(eligible > 0, eligible, 1)) +
+    0.2 * ineligible + rnorm(n)
+
+  x_mat <- cbind(
+    eligible = eligible,
+    ineligible = ineligible
+  )
+
+  expect_warning(
+    fit <- mfp2(
+      x_mat,
+      y_val,
+      spike_vars = c("eligible", "ineligible"),
+      verbose = FALSE
+    ),
+    "ineligible"
+  )
+
+  expect_true(fit$spike["eligible"])
+  expect_false(fit$spike["ineligible"])
+
+  expect_true(fit$catzero["eligible"])
+  expect_true(fit$zero["eligible"])
+
+  expect_false(fit$catzero["ineligible"])
+  expect_false(fit$zero["ineligible"])
+})
+
+
+# Test purpose: Guards the MFP endpoint convention for SAZ Stage 2. With
+# alpha = 1, an exact p-value of 1 must not simplify the two-component SAZ
+# representation; simplification occurs only when p is strictly greater than
+# alpha.
+test_that("SAZ Stage 2 retains both components at alpha = 1 and p = 1", {
+  metric <- c(
+    logl = 0,
+    df = 1,
+    aic = 0,
+    bic = 0,
+    deviance_gaussian = 1,
+    df_resid = 10
+  )
+
+  testthat::local_mocked_bindings(
+    calculate_lr_test = function(...) {
+      list(statistic = 0, pvalue = 1)
+    },
+    .package = "mfp2"
+  )
+
+  out <- compute_saz_stage2_decision(
+    metrics = list(
+      metrics1 = metric,
+      metrics2 = metric,
+      metrics3 = metric
+    ),
+    criterion = "pvalue",
+    alpha = 1,
+    n_obs = 10,
+    ftest = FALSE
+  )
+
+  expect_equal(out$decision, saz_decision_codes[["cont_binary"]])
+  expect_equal(unname(out$pvalue), c(1, 1))
+})

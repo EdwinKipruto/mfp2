@@ -323,3 +323,345 @@ test_that("standard-error calculation validates the required covariance block", 
     "non-finite entries for the required coefficients"
   )
 })
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# =============================================================================
+# 8. predict.mfp2()
+# =============================================================================
+
+# Test purpose: Checks default Gaussian predictions are finite and have one
+# value per observation.
+test_that("predict.mfp2() returns predictions for Gaussian model", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+
+  preds <- predict(fit)
+  expect_length(preds, nrow(x_prostate))
+  expect_true(all(is.finite(preds)))
+})
+
+
+# Test purpose: Checks the structure and numerical correctness of Gaussian
+# link-scale predictions and standard errors. The expected values are calculated
+# independently as X beta and sqrt(diag(X V X')).
+test_that("predict.mfp2() Gaussian fit and SE equal manual matrix calculation", {
+  fit <- mfp2(
+    x_prostate,
+    y_prostate,
+    df = 1,
+    select = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  result <- predict(fit, type = "link", se.fit = TRUE)
+  beta <- stats::coef(fit)
+  beta_vcov <- stats::vcov(fit)
+  manual_x <- cbind(`(Intercept)` = 1, x_prostate)
+  expect_equal(ncol(manual_x), length(beta))
+  expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
+
+  manual_fit <- as.numeric(manual_x %*% beta)
+  manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
+  manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
+
+  expect_true(is.list(result))
+  expect_named(result, c("fit", "se.fit", "residual.scale"))
+  expect_equal(as.numeric(result$fit), manual_fit, tolerance = 1e-8)
+  expect_equal(as.numeric(result$se.fit), manual_se, tolerance = 1e-8)
+})
+
+
+# Test purpose: Independently validates negative-binomial link and response
+# predictions, including standard errors, against MASS::predict.glm().
+test_that("negative-binomial predictions and SEs agree with MASS::glm.nb()", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  fits <- get_negbin_reference_fits()
+  newdata <- fits$data[seq_len(24L), c("x1", "x2", "x3"), drop = FALSE]
+
+  mfp_link <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "link",
+    se.fit = TRUE
+  )
+  mass_link <- stats::predict(
+    fits$mass,
+    newdata = newdata,
+    type = "link",
+    se.fit = TRUE
+  )
+
+  expect_named(mfp_link, c("fit", "se.fit", "residual.scale"))
+  expect_equal(
+    unname(mfp_link$fit),
+    unname(mass_link$fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_link$se.fit),
+    unname(mass_link$se.fit),
+    tolerance = 1e-4
+  )
+  expect_equal(mfp_link$residual.scale, 1, tolerance = 1e-12)
+
+  mfp_response <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "response",
+    se.fit = TRUE
+  )
+  mass_response <- stats::predict(
+    fits$mass,
+    newdata = newdata,
+    type = "response",
+    se.fit = TRUE
+  )
+
+  expect_equal(
+    unname(mfp_response$fit),
+    unname(mass_response$fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_response$se.fit),
+    unname(mass_response$se.fit),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(mfp_response$fit),
+    exp(unname(mfp_link$fit)),
+    tolerance = 1e-10
+  )
+
+  # Prediction without newdata must reproduce the stored training means.
+  expect_equal(
+    unname(predict(fits$mfp2, type = "response")),
+    unname(fits$mfp2$fitted.values),
+    tolerance = 1e-10
+  )
+
+  # Term and contrast predictions use the same selected linear function and
+  # covariance matrix. Check them independently on the link scale.
+  term <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "terms",
+    terms = "x1",
+    terms_seq = "data",
+    add_intercept = FALSE
+  )
+  coefficient_name <- unname(
+    fits$mfp2$transformed_to_model_columns[["x1.1"]]
+  )
+  beta_x1 <- stats::coef(fits$mfp2)[[coefficient_name]]
+  se_beta_x1 <- sqrt(stats::vcov(fits$mfp2)[coefficient_name, coefficient_name])
+
+  expect_named(term, "x1")
+  expect_equal(
+    unname(term$x1$value),
+    unname(newdata$x1 * beta_x1),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    unname(term$x1$se),
+    unname(abs(newdata$x1) * se_beta_x1),
+    tolerance = 1e-8
+  )
+
+  contrast <- predict(
+    fits$mfp2,
+    newdata = newdata,
+    type = "contrasts",
+    terms = "x1",
+    terms_seq = "data",
+    ref = list(x1 = 1)
+  )
+  expect_named(contrast, "x1")
+  expect_equal(
+    unname(contrast$x1$value),
+    unname((newdata$x1 - 1) * beta_x1),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    unname(contrast$x1$se),
+    unname(abs(newdata$x1 - 1) * se_beta_x1),
+    tolerance = 1e-8
+  )
+})
+
+
+test_that("predict.mfp2() with newdata reproduces training predictions", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+
+  preds_train <- predict(fit)
+  preds_new <- predict(fit, newdata = x_prostate)
+
+  expect_equal(as.numeric(preds_train), as.numeric(preds_new),
+               tolerance = 1e-10)
+})
+
+
+# Test purpose: Checks that term-level predictions return per-term data frames with values and standard errors.
+test_that("predict.mfp2() type = 'terms' returns list of data frames", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+
+  terms_result <- predict(fit, type = "terms")
+  expect_true(is.list(terms_result))
+
+  for (nm in names(terms_result)) {
+    expect_true(is.data.frame(terms_result[[nm]]))
+    expect_true("value" %in% colnames(terms_result[[nm]]))
+    expect_true("se" %in% colnames(terms_result[[nm]]))
+  }
+})
+
+
+# Test purpose: Checks that contrast predictions return per-term data-frame outputs.
+test_that("predict.mfp2() type = 'contrasts' returns list of data frames", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+
+  contrasts_result <- predict(fit, type = "contrasts")
+  expect_true(is.list(contrasts_result))
+
+  for (nm in names(contrasts_result)) {
+    expect_true(is.data.frame(contrasts_result[[nm]]))
+  }
+})
+
+
+# Test purpose: Checks that prediction errors when newdata violates the positive domain required by a fitted log transform.
+test_that("predict.mfp2() stops on domain violation in newdata", {
+  x <- cbind(x1 = seq(1, 100, length.out = 100))
+  # A small deterministic perturbation avoids an exact fit while keeping the
+  # fitted transformation reproducible without depending on RNG state.
+  y <- log(x[, "x1"]) + 0.01 * sin(seq_len(nrow(x)))
+
+  fit <- mfp2(
+    x, y,
+    select = 1,
+    alpha = 1,
+    powers = list(x1 = 0),
+    df = 2,
+    shift = 0,
+    scale = 1,
+    verbose = FALSE
+  )
+
+  # create bad data
+  bad_data <- x[1:5, , drop = FALSE]
+  bad_data[, "x1"] <- -1
+
+  expect_error(
+    predict(fit, newdata = bad_data),
+    "non-positive"
+  )
+})
+
+
+# Test purpose: Checks that Cox-model predictions are finite and have the correct length.
+test_that("predict.mfp2() works for Cox models", {
+  data("gbsg", package = "mfp2")
+  x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes", "pgr", "er")])
+  y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
+
+  fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
+
+  preds <- predict(fit)
+  expect_length(preds, nrow(x_gbsg))
+  expect_true(all(is.finite(preds)))
+})
+
+
+# Test purpose: Checks that default Cox predictions use cox_reference = "zero".
+# On this scale the linear predictor is the uncentered matrix product X beta,
+# rather than the sample-centered predictor returned by another reference mode.
+test_that("predict.mfp2() for Cox equals manual X beta on reference-zero scale", {
+  data("gbsg", package = "mfp2")
+  x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
+  y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
+
+  fit <- mfp2(
+    x_gbsg,
+    y_gbsg,
+    family = "cox",
+    df = 1,
+    select = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  got <- predict(fit, type = "lp", se.fit = TRUE)
+  beta <- stats::coef(fit)
+  beta_vcov <- stats::vcov(fit)
+  manual_x <- x_gbsg
+  expect_equal(ncol(manual_x), length(beta))
+  expect_equal(dim(beta_vcov), c(length(beta), length(beta)))
+
+  manual_lp <- as.numeric(manual_x %*% beta)
+  manual_variance <- rowSums((manual_x %*% beta_vcov) * manual_x)
+  manual_se <- as.numeric(sqrt(pmax(manual_variance, 0)))
+
+  expect_equal(as.numeric(got$fit), manual_lp, tolerance = 1e-8)
+  expect_equal(as.numeric(got$se.fit), manual_se, tolerance = 1e-8)
+})
+
+
+# Test purpose: Ensures factor binomial responses do not break inherited
+# predict.glm(se.fit = TRUE) behavior.
+test_that("predict.mfp2() with se.fit = TRUE works for factor binomial response", {
+  data("pima", package = "mfp2")
+
+  x_pima <- as.matrix(pima[, c("glucose", "bmi", "age")])
+  y_factor <- factor(pima$y, levels = c(0, 1), labels = c("no", "yes"))
+
+  fit <- mfp2(
+    x_pima,
+    y_factor,
+    family = "binomial",
+    verbose = FALSE
+  )
+
+  result <- predict(fit, se.fit = TRUE)
+
+  expect_true(is.list(result))
+  expect_true("fit" %in% names(result))
+  expect_true("se.fit" %in% names(result))
+  expect_length(result$fit, nrow(x_pima))
+  expect_length(result$se.fit, nrow(x_pima))
+  expect_identical(fit$y_original, y_factor)
+})
+
+
+# Test purpose: Ensures prediction with newdata requires newoffset when the
+# model was fitted with an offset.
+test_that("predict.mfp2() requires newoffset when fitted model used offset", {
+  set.seed(107)
+  n <- 150
+
+  x <- cbind(x1 = runif(n, 1, 10), x2 = runif(n, 1, 5))
+  exposure <- runif(n, 0.5, 2)
+  y <- rpois(n, exposure * exp(0.5 + 0.1 * x[, "x1"]))
+
+  fit <- mfp2(
+    x,
+    y,
+    family = "poisson",
+    offset = log(exposure),
+    verbose = FALSE
+  )
+
+  expect_error(
+    predict(fit, newdata = x[1:5, , drop = FALSE]),
+    "newoffset"
+  )
+})

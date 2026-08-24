@@ -639,3 +639,403 @@ test_that("mfp2 formula strata terms match coxph fits and predictions", {
     }
   }
 })
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# Exact partial likelihood is deliberately rejected because the low-level Cox
+# candidate fitter used during MFP/MFPI selection does not implement it. These
+# tests cover both matrix and formula entry points so the unsupported method
+# cannot bypass public argument validation.
+test_that("exact Cox ties are rejected before MFP-based selection", {
+  dat <- data.frame(
+    time = c(1, 2, 3, 4, 5, 6),
+    status = c(1, 1, 0, 1, 0, 1),
+    x = c(0.2, 0.5, 0.1, 0.8, 0.3, 0.7),
+    group = c(0, 1, 0, 1, 0, 1)
+  )
+  y <- survival::Surv(dat$time, dat$status)
+  x <- as.matrix(dat[c("x", "group")])
+  msg <- "not supported for MFP selection"
+
+  expect_error(
+    mfp2(x, y, family = "cox", ties = "exact", verbose = FALSE),
+    msg
+  )
+  expect_error(
+    mfp2(
+      survival::Surv(time, status) ~ x + group,
+      data = dat,
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+  expect_error(
+    mfpi(
+      x, y,
+      group_var = "group",
+      cont_vars = "x",
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+  expect_error(
+    mfpi(
+      survival::Surv(time, status) ~ x + group,
+      data = dat,
+      group_var = "group",
+      cont_vars = "x",
+      family = "cox",
+      ties = "exact",
+      verbose = FALSE
+    ),
+    msg
+  )
+})
+
+
+# Test purpose: 8.2.5 A formula offset without strata should be included in
+# training and newdata Cox linear predictors exactly as in coxph().
+test_that("8.2.5 Cox formula offset matches coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8205)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + x2 + offset(off),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + x2 + offset(off),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "x2", "off"), drop = FALSE]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.6 A retained categorical predictor without strata or
+# offset should match coxph() completely.
+test_that("8.2.6 Cox categorical predictor matches coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8206)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + group,
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + group,
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "group"), drop = FALSE]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.7 A categorical predictor combined with formula strata
+# should preserve both grouped contrasts and stratum-specific risk sets.
+test_that("8.2.7 Cox categorical predictor with strata matches coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8207)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + group + strata(stratum1),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + group + strata(stratum1),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "group", "stratum1"), drop = FALSE]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.8 A categorical predictor combined with a formula offset
+# should match coxph() in all fitted and predicted quantities.
+test_that("8.2.8 Cox categorical predictor with offset matches coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8208)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + group + offset(off),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + group + offset(off),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "group", "off"), drop = FALSE]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.9 Categorical contrasts, one formula strata term, and a
+# formula offset should all be reconstructed together without changing the
+# coxph() fit or predictions.
+test_that("8.2.9 Cox categorical predictor with strata and offset matches coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8209)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + group +
+      strata(stratum1) + offset(off),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + group +
+      strata(stratum1) + offset(off),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "group", "stratum1", "off"), drop = FALSE]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.10 Two formula strata terms and an offset should match
+# coxph() simultaneously, including the offset contribution to LP and risk.
+test_that("8.2.10 Cox multiple strata with offset match coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8210)
+
+  fit_mfp2 <- mfp2(
+    survival::Surv(time, status) ~ x1 + x2 +
+      strata(stratum1) + strata(stratum2) + offset(off),
+    data = dat,
+    family = "cox",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + x2 +
+      strata(stratum1) + strata(stratum2) + offset(off),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[
+    1:30,
+    c("x1", "x2", "stratum1", "stratum2", "off"),
+    drop = FALSE
+  ]
+
+  expect_mfp2_cox_predictions_equal(fit_mfp2, fit_coxph, nd)
+})
+
+
+# Test purpose: 8.2.11 Matrix-interface strata and offset vectors should match
+# the equivalent coxph() formula model for fitting and newdata prediction.
+test_that("8.2.11 Cox matrix-interface strata and offset match coxph completely", {
+  dat <- make_cox_equivalence_data(seed = 8211)
+  x <- as.matrix(dat[, c("x1", "x2")])
+  y <- survival::Surv(dat$time, dat$status)
+
+  fit_mfp2 <- mfp2(
+    x = x,
+    y = y,
+    family = "cox",
+    strata = dat$stratum1,
+    offset = dat$off,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    ties = "breslow",
+    verbose = FALSE
+  )
+  fit_coxph <- survival::coxph(
+    survival::Surv(time, status) ~ x1 + x2 + strata(stratum1) + offset(off),
+    data = dat,
+    ties = "breslow",
+    x = TRUE,
+    y = TRUE
+  )
+  nd <- dat[1:30, c("x1", "x2", "stratum1", "off"), drop = FALSE]
+  newx <- as.matrix(nd[, c("x1", "x2")])
+
+  expect_mfp2_cox_predictions_equal(
+    fit_mfp2,
+    fit_coxph,
+    newdata = nd,
+    mfp2_newdata = newx,
+    mfp2_predict_args = list(
+      strata = nd$stratum1,
+      newoffset = nd$off
+    )
+  )
+})
+
+
+# Test purpose: External Cox strata supplied as character, numeric, factor, or
+# multiple columns must be normalized to one factor before coxph.fit(). This
+# prevents character labels from becoming NA through low-level numeric coercion.
+test_that("Cox strata inputs are normalized before candidate fitting", {
+  set.seed(30031)
+  n <- 150L
+  x1 <- runif(n, 1, 5)
+  x2 <- rnorm(n)
+  s1 <- rep(c("A", "B", "C"), length.out = n)
+  s2 <- rep(c("X", "Y"), each = ceiling(n / 2L))[seq_len(n)]
+  lp <- 0.25 * x1 - 0.15 * x2
+  event_time <- rexp(n, rate = 0.03 * exp(lp))
+  censor_time <- rexp(n, rate = 0.02)
+  y <- survival::Surv(
+    pmin(event_time, censor_time),
+    as.integer(event_time <= censor_time)
+  )
+  x <- cbind(x1 = x1, x2 = x2)
+
+  common <- list(
+    x = x, y = y, family = "cox", keep = c("x1", "x2"),
+    df = 1, select = 1, alpha = 1, cycles = 5, shift = 0, scale = 1,
+    center = FALSE, xorder = "original", ties = "breslow", verbose = FALSE
+  )
+
+  fit_character <- do.call(mfp2, c(common, list(strata = s1)))
+  fit_factor <- do.call(mfp2, c(common, list(strata = factor(s1))))
+  fit_numeric <- do.call(mfp2, c(common, list(strata = match(s1, c("A", "B", "C")))))
+
+  expect_equal(unname(coef(fit_character)), unname(coef(fit_factor)), tolerance = 1e-8)
+  expect_equal(unname(coef(fit_numeric)), unname(coef(fit_factor)), tolerance = 1e-8)
+  expect_equal(as.numeric(logLik(fit_character)), as.numeric(logLik(fit_factor)), tolerance = 1e-8)
+
+  multi <- data.frame(site = s1, period = s2)
+  fit_multi <- do.call(mfp2, c(common, list(strata = multi)))
+  combined <- do.call(
+    survival::strata,
+    c(as.list(multi), list(shortlabel = TRUE))
+  )
+  fit_combined <- do.call(mfp2, c(common, list(strata = combined)))
+
+  expect_equal(unname(coef(fit_multi)), unname(coef(fit_combined)), tolerance = 1e-8)
+  expect_equal(as.numeric(logLik(fit_multi)), as.numeric(logLik(fit_combined)), tolerance = 1e-8)
+})
+
+
+# Test purpose: MFPI uses the same Cox-strata normalization as mfp2, including
+# raw character labels supplied through the external strata argument.
+test_that("MFPI accepts character Cox strata through the external argument", {
+  set.seed(30032)
+  n <- 120L
+  trt <- factor(rep(c("control", "treated"), length.out = n))
+  x <- runif(n, 1, 5)
+  z <- rnorm(n)
+  strata_char <- rep(c("S1", "S2", "S3"), length.out = n)
+  lp <- 0.2 * x - 0.1 * z + 0.2 * (trt == "treated")
+  event_time <- rexp(n, rate = 0.03 * exp(lp))
+  censor_time <- rexp(n, rate = 0.02)
+
+  fit <- mfpi(
+    x = data.frame(trt = trt, x = x, z = z),
+    y = survival::Surv(
+      pmin(event_time, censor_time),
+      as.integer(event_time <= censor_time)
+    ),
+    family = "cox", group_var = "trt", cont_vars = "x",
+    cont_var_forms = c(x = "linear"), keep = "z", strata = strata_char,
+    df = 1, select = 1, alpha = 1, cycles = 1, shift = 0, scale = 1,
+    center = FALSE, p_interact = 1, ties = "breslow", verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfpi")
+})
+
+
+# Test purpose: Unsupported or malformed Cox strata fail before reaching
+# survival::coxph.fit(), where type/shape checking is intentionally minimal.
+test_that("Cox strata normalization rejects malformed inputs", {
+  expect_error(
+    normalize_cox_strata(as.list(rep(c("A", "B"), 5)), 10L),
+    "vector, factor, matrix, or data frame"
+  )
+
+  expect_error(
+    normalize_cox_strata(array(1:24, dim = c(4, 3, 2)), 4L),
+    "vector, factor, matrix, or data frame"
+  )
+
+  empty_strata <- data.frame(row.names = seq_len(4L))
+  expect_error(
+    normalize_cox_strata(empty_strata, 4L),
+    "at least one stratification variable"
+  )
+})

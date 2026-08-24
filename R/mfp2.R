@@ -243,14 +243,14 @@
 #' data required by Cox prediction types such as survival probabilities.
 #'
 #' @section Compatibility with the `mfp` package:
-#' Both `mfp` and `mfp2` export a function named `fp()`. When both packages are
-#' attached, use [fp2()] in `mfp2` formulas to avoid namespace ambiguity:
+#' Both `mfp` and `mfp2` export `fp()`. Within `mfp2()` and `mfpi()` formulas,
+#' bare `fp()` is resolved internally to the `mfp2` implementation regardless
+#' of package attachment order. The [fp2()] alias remains available as an
+#' explicit alternative.
 #'
 #' \preformatted{
 #' fit <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
 #' }
-#'
-#' `fp2()` is an alias for [fp()] and accepts the same arguments.
 #'
 #' @section Convergence and inference:
 #' MFP selection typically stabilises within a small number of cycles.
@@ -4827,7 +4827,8 @@ fp <- function(x,
   x
 }
 
-#' @describeIn fp Alias for `fp()` - use in formula when both `mfp` and `mfp2` are loaded to avoid name shadowing.
+#' @describeIn fp Alias for `fp()` that provides an explicitly distinct name
+#' when both `mfp` and `mfp2` are attached.
 #' @export
 fp2 <- function(...) {
   fp(...)

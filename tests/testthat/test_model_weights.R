@@ -146,50 +146,6 @@ test_that("weighted Cox mfp2 matches coxph with positive weights", {
     tolerance = 1e-8
   )
 })
-
-
-# Positive Gaussian weights remain supported; the stricter rule only removes
-# zero/negative cases that can invalidate likelihood-based model comparisons.
-test_that("weighted Gaussian mfp2 matches glm with positive weights", {
-  set.seed(2602L)
-  n <- 120L
-  dat <- data.frame(
-    x1 = stats::runif(n, 0.5, 3),
-    x2 = stats::rnorm(n)
-  )
-  dat$y <- 0.5 + 0.8 * dat$x1 - 0.3 * dat$x2 + stats::rnorm(n, sd = 0.25)
-  dat$w <- stats::runif(n, 0.5, 2)
-
-  fit_mfp2 <- mfp2(
-    y ~ x1 + x2,
-    data = dat,
-    family = "gaussian",
-    weights = dat$w,
-    df = 1,
-    select = 1,
-    alpha = 1,
-    cycles = 1,
-    shift = 0,
-    scale = 1,
-    center = FALSE,
-    xorder = "original",
-    verbose = FALSE
-  )
-  fit_glm <- stats::glm(
-    y ~ x1 + x2,
-    data = dat,
-    family = stats::gaussian(),
-    weights = w
-  )
-
-  expect_equal(
-    unname(stats::coef(fit_mfp2)),
-    unname(stats::coef(fit_glm)),
-    tolerance = 1e-8
-  )
-})
-
-
 # mfp2 rejects zero weights for both GLM and Cox models, in both public
 # interfaces. The contract applies to the complete supplied vector, so a zero
 # weight remains invalid even if that row would later be excluded by `subset`.
@@ -317,5 +273,74 @@ test_that("mfpi rejects zero weights for Cox and Gaussian models", {
       verbose = FALSE
     ),
     "strictly positive"
+  )
+})
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# =============================================================================
+# 12. Weights and offsets
+# =============================================================================
+
+# Test purpose: Checks that observation weights are accepted during model fitting.
+test_that("weights argument is accepted and used", {
+  w <- rep(1, nrow(x_prostate))
+  w[1:10] <- 2
+  fit <- mfp2(x_prostate, y_prostate, weights = w, verbose = FALSE, warn_low_information = FALSE)
+  expect_s3_class(fit, "mfp2")
+})
+
+
+# Test purpose: Checks that Poisson offsets are accepted and recorded in the
+# fitted object.
+test_that("offset argument is accepted for Poisson", {
+  set.seed(1)
+  n <- 200
+  x <- cbind(x1 = runif(n, 1, 10), x2 = runif(n, 1, 5))
+  exposure <- runif(n, 0.5, 2)
+  y <- rpois(n, exposure * exp(0.5 + 0.1 * x[, 1]))
+
+  fit <- mfp2(x, y, family = "poisson", offset = log(exposure), verbose = FALSE)
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$has_offset)
+})
+
+
+# Test purpose: Observation weights must be passed unchanged through mfp2() and
+# produce the same coefficients, covariance matrix, fitted values, and
+# predictions as the corresponding weighted Gaussian glm.
+test_that("23.9 weighted Gaussian mfp2 equals weighted glm", {
+  set.seed(2309)
+  n <- 220
+  dat <- data.frame(
+    x1 = runif(n, 1, 5),
+    x2 = rnorm(n),
+    w = runif(n, 0.5, 3)
+  )
+  dat$y <- 0.7 + 1.1 * dat$x1 - 0.6 * dat$x2 + rnorm(n, sd = 0.4)
+
+  fit_mfp2 <- mfp2(
+    y ~ x1 + x2,
+    data = dat,
+    weights = dat$w,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+  fit_glm <- stats::glm(y ~ x1 + x2, data = dat, weights = w)
+  nd <- dat[1:20, c("x1", "x2"), drop = FALSE]
+
+  expect_mfp2_glm_parameters_equal(fit_mfp2, fit_glm, tolerance = 1e-8)
+  expect_equal(unname(fitted(fit_mfp2)), unname(fitted(fit_glm)), tolerance = 1e-8)
+  expect_equal(
+    unname(predict(fit_mfp2, newdata = nd, se.fit = TRUE)$fit),
+    unname(predict(fit_glm, newdata = nd, se.fit = TRUE)$fit),
+    tolerance = 1e-8
   )
 })

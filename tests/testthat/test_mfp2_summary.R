@@ -152,3 +152,298 @@ test_that("unknown or ambiguous coefficient headers use the vcov fallback", {
   ambiguous_result <- mfp2:::mfp2_summary_coef_matrix(fit, ambiguous)
   expect_equal(ambiguous_result, result)
 })
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# =============================================================================
+# 11. Summary, print, coef methods
+# =============================================================================
+
+# Test purpose: Checks that summary() returns output for a fitted Gaussian mfp2
+#  model.
+test_that("summary.mfp2() works for Gaussian", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  s <- summary(fit)
+  expect_true(!is.null(s))
+})
+
+
+# Test purpose: Checks that summary() returns output for a fitted Cox mfp2 model.
+test_that("summary.mfp2() works for Cox", {
+  data("gbsg", package = "mfp2")
+  x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
+  y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
+
+  fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
+  s <- summary(fit)
+  expect_true(!is.null(s))
+})
+
+
+# Test purpose: Ensures displayed ordinary FP equations use the final
+# shifted-but-unscaled basis rather than reapplying the preprocessing scale.
+test_that("summary FP labels do not reapply preprocessing scale", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = FALSE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 2,
+      power1 = -1,
+      power2 = NA_real_,
+      row.names = "x"
+    ),
+    x = matrix(1, nrow = 1L, dimnames = list(NULL, "x.1")),
+    coefficients = c("x.1" = 2.5),
+    transformations = data.frame(
+      shift = 3,
+      scale = 100,
+      row.names = "x"
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  label <- mfp2_summary_term_label(object, classified, "x", "x.1")
+  formula <- mfp2_summary_formula_strings(object, classified)
+
+  expect_true(grepl("x + 3", label, fixed = TRUE))
+  expect_false(grepl("/100", label, fixed = TRUE))
+  expect_false(any(grepl("/100", formula, fixed = TRUE)))
+})
+
+
+# Test purpose: Ensures ACD direct and transformed columns remain grouped under
+# one variable and new ACD definitions use shifted, unscaled predictor values.
+test_that("summary shows unscaled ACD definitions for new fits", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = TRUE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 4,
+      power1 = 1,
+      power2 = 1,
+      row.names = "x"
+    ),
+    x = matrix(
+      c(1, 0.5),
+      nrow = 1L,
+      dimnames = list(NULL, c("x.1", "A_x.1"))
+    ),
+    coefficients = c("x.1" = 0.4, "A_x.1" = 1.2),
+    transformations = data.frame(
+      shift = 2,
+      scale = 1,
+      row.names = "x"
+    ),
+    acd_parameter = list(
+      x = list(
+        beta0 = -0.8,
+        beta1 = 1.3,
+        power = 0,
+        shift = 0,
+        scale = 1
+      )
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  direct_label <- mfp2_summary_term_label(object, classified, "x", "x.1")
+  acd_label <- mfp2_summary_term_label(object, classified, "x", "A_x.1")
+  definitions <- mfp2_summary_acd_definitions(object, classified)
+  formulas <- mfp2_summary_formula_strings(object, classified)
+
+  expect_identical(
+    classified$cols_by_var[["x"]],
+    c("x.1", "A_x.1")
+  )
+  expect_true(grepl("x + 2", direct_label, fixed = TRUE))
+  expect_false(grepl("/", direct_label, fixed = TRUE))
+  expect_true(grepl("A(x)", acd_label, fixed = TRUE))
+  expect_false(grepl("log(A(x))", acd_label, fixed = TRUE))
+  expect_true(any(grepl("x + 2", definitions, fixed = TRUE)))
+  expect_false(any(grepl("/", definitions, fixed = TRUE)))
+  expect_true(any(grepl("pnorm", definitions, fixed = TRUE)))
+  expect_true(any(grepl("A(x)", formulas, fixed = TRUE)))
+})
+
+
+# Test purpose: Ensures ACD power positions are preserved so an ACD-only form
+# c(NA, p) is not mislabeled as a direct ordinary FP term.
+test_that("summary preserves ACD-only power slots", {
+  object <- list(
+    fp_terms = data.frame(
+      selected = TRUE,
+      acd = TRUE,
+      zero = FALSE,
+      catzero = FALSE,
+      spike = FALSE,
+      df_final = 2,
+      power1 = NA_real_,
+      power2 = 1,
+      row.names = "x"
+    ),
+    x = matrix(0.5, nrow = 1L, dimnames = list(NULL, "A_x.1")),
+    coefficients = c("A_x.1" = 1.2),
+    transformations = data.frame(
+      shift = 0,
+      scale = 10,
+      row.names = "x"
+    ),
+    acd_parameter = list(
+      x = list(
+        beta0 = 0,
+        beta1 = 1,
+        power = 1,
+        shift = 0,
+        scale = 10
+      )
+    )
+  )
+
+  classified <- mfp2_summary_classify_terms(object)
+  label <- mfp2_summary_term_label(object, classified, "x", "A_x.1")
+
+  expect_equal(classified$power_slots_by_var[["x"]], c(NA_real_, 1))
+  expect_true(grepl("A(x)", label, fixed = TRUE))
+  expect_false(grepl("log(A(x))", label, fixed = TRUE))
+})
+
+
+# Test purpose: Verifies that GLM Model Fit output uses stored deviances and a
+# Deviance header rather than reconstructing minus twice log-likelihood.
+test_that("Model Fit reports deviance for GLMs", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  values <- mfp2_summary_model_fit_values(fit)
+
+  expect_identical(attr(values, "statistic_label"), "Deviance")
+  expect_equal(
+    values$fit_statistic,
+    c(fit$linear_deviance, fit$mfp_deviance)
+  )
+  output <- capture.output(print(fit))
+  expect_true(any(grepl("Deviance", output, fixed = TRUE)))
+  expect_false(any(grepl("-2 log L", output, fixed = TRUE)))
+})
+
+
+# Test purpose: Verifies that Cox Model Fit output remains on the existing
+# minus-twice-partial-log-likelihood scale.
+test_that("Model Fit keeps -2 log L for Cox models", {
+  data("gbsg", package = "mfp2")
+  x_gbsg <- as.matrix(gbsg[, c("age", "size", "nodes")])
+  y_gbsg <- Surv(gbsg$rectime, gbsg$censrec)
+
+  fit <- mfp2(x_gbsg, y_gbsg, family = "cox", verbose = FALSE)
+  values <- mfp2_summary_model_fit_values(fit)
+
+  expect_identical(attr(values, "statistic_label"), "-2 log L")
+  expect_equal(
+    values$fit_statistic,
+    c(fit$linear_deviance, fit$mfp_deviance)
+  )
+  output <- capture.output(print(fit))
+  expect_true(any(grepl("-2 log L", output, fixed = TRUE)))
+})
+
+
+# Test purpose: Verifies that internal fast fits retain only lightweight
+# quantities by default and calculate reporting statistics only when requested.
+test_that("fit_model returns only requested internal components", {
+  x <- matrix(
+    c(-2, -1, 0, 1, 2, 3),
+    ncol = 1L,
+    dimnames = list(NULL, "x")
+  )
+  y <- c(-1.8, -0.9, 0.2, 1.1, 1.9, 3.2)
+
+  selection_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE
+  )
+
+  expect_false("fit" %in% names(selection_fit))
+  expect_false("null_deviance" %in% names(selection_fit))
+  expect_false("model_deviance" %in% names(selection_fit))
+  expect_false("sse" %in% names(selection_fit))
+  expect_true(all(c("logl", "coefficients", "rank", "df") %in%
+                    names(selection_fit)))
+
+  metrics <- calculate_model_metrics(selection_fit, n_obs = length(y))
+  expect_true(all(is.finite(metrics[c("logl", "df", "aic", "bic")])))
+
+  reference_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE,
+    calculate_fit_statistics = TRUE
+  )
+
+  expect_false("fit" %in% names(reference_fit))
+  expect_true(all(c("null_deviance", "model_deviance") %in%
+                    names(reference_fit)))
+
+  retained_fast_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = TRUE,
+    keep_fit = TRUE
+  )
+
+  expect_true("fit" %in% names(retained_fast_fit))
+
+  full_fit <- fit_model(
+    x = x,
+    y = y,
+    family = stats::gaussian(),
+    family_string = "gaussian",
+    fast = FALSE
+  )
+
+  expect_true("fit" %in% names(full_fit))
+  expect_false("null_deviance" %in% names(full_fit))
+  expect_false("model_deviance" %in% names(full_fit))
+  expect_identical(
+    unname(full_fit$transformed_to_model_columns),
+    "x"
+  )
+})
+
+
+# Test purpose: Verifies that negative-binomial summary inference agrees with
+# MASS and uses z rather than t statistics after theta has been estimated.
+test_that("summary.mfp2() reports correct negative-binomial inference", {
+  skip_if_not_installed("fastglm")
+  skip_if_not_installed("MASS")
+
+  fits <- get_negbin_reference_fits()
+  summary_mfp2 <- summary(fits$mfp2, raw = TRUE)
+  summary_mass <- summary(fits$mass)
+
+  expect_true(!is.null(summary_mfp2))
+  expect_true(is.matrix(summary_mfp2$coefficients))
+  expect_true(any(grepl("^z($| value)", colnames(summary_mfp2$coefficients))))
+  expect_false(any(grepl("^t($| value)", colnames(summary_mfp2$coefficients))))
+  expect_equal(
+    unname(summary_mfp2$coefficients[, 1:2, drop = FALSE]),
+    unname(summary_mass$coefficients[, 1:2, drop = FALSE]),
+    tolerance = 1e-4
+  )
+  expect_equal(
+    unname(summary_mfp2$coefficients[, 3:4, drop = FALSE]),
+    unname(summary_mass$coefficients[, 3:4, drop = FALSE]),
+    tolerance = 1e-3
+  )
+})

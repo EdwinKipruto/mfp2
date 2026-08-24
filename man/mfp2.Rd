@@ -716,14 +716,14 @@ data required by Cox prediction types such as survival probabilities.
 
 \section{Compatibility with the \code{mfp} package}{
 
-Both \code{mfp} and \code{mfp2} export a function named \code{fp()}. When both packages are
-attached, use \code{\link[=fp2]{fp2()}} in \code{mfp2} formulas to avoid namespace ambiguity:
+Both \code{mfp} and \code{mfp2} export \code{fp()}. Within \code{mfp2()} and \code{mfpi()} formulas,
+bare \code{fp()} is resolved internally to the \code{mfp2} implementation regardless
+of package attachment order. The \code{\link[=fp2]{fp2()}} alias remains available as an
+explicit alternative.
 
 \preformatted{
 fit <- mfp2(y ~ fp2(x1) + fp2(x2), data = dat)
 }
-
-\code{fp2()} is an alias for \code{\link[=fp]{fp()}} and accepts the same arguments.
 }
 
 \section{Convergence and inference}{

@@ -1282,12 +1282,14 @@ validate_scalar_fp <- function(arg, arg_name, var_name, type,
 }
 
 
-#' Normalize Namespace-Qualified Formula Specials
+#' Normalize and Bind Formula Specials
 #'
 #' Rewrites formula-special calls that base R does not recognize when
 #' namespace-qualified, e.g. survival::strata(x) -> strata(x) and
-#' stats::offset(x) -> offset(x). The original call object should still be
-#' stored on the fitted object; this normalized formula is for internal parsing.
+#' stats::offset(x) -> offset(x). It also binds the bare `fp()` and `fp2()`
+#' names to this package's implementations so another attached package cannot
+#' intercept their evaluation. The original call object should still be stored
+#' on the fitted object; this normalized formula is for internal parsing.
 #'
 #' @param formula A model formula.
 #'
@@ -1341,9 +1343,14 @@ normalize_formula_special_namespaces <- function(formula) {
     out[[3L]] <- rewrite_call(out[[3L]])
   }
 
-  # Give model.frame()/terms() a reliable lookup path for the bare specials
-  # after rewriting, while preserving all user-scope lookups through the parent.
+  # Give model.frame()/terms() a reliable lookup path for package-owned formula
+  # helpers while preserving all other user-scope lookups through the parent.
+  # Ensure fp() in the formula resolves to mfp2's version even if mfp is loaded.
+  # Both packages export fp(); without this, model.frame() evaluates fp() via
+  # the search path and may find mfp::fp(), which lacks the attributes mfp2 expects.
   env <- new.env(parent = environment(formula))
+  env$fp <- fp2
+  env$fp2 <- fp2
   env$strata <- survival::strata
   env$offset <- stats::offset
 

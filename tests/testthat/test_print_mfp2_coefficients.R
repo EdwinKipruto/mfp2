@@ -637,3 +637,112 @@ test_that("mfp2_design_column_info rejects an empty map with predictor coefficie
     "Final design-column metadata is incomplete"
   )
 })
+
+
+# Migrated coverage from the former test_mfp2.R
+
+# Test purpose: Checks that coef() returns named numeric coefficients.
+test_that("coef.mfp2() returns named numeric vector", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  cf <- coef(fit)
+  expect_true(is.numeric(cf))
+  expect_true(!is.null(names(cf)))
+})
+
+
+# Test purpose: Checks that the print method produces console output without error.
+test_that("print.mfp2() runs without error", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE, warn_low_information = FALSE)
+  expect_output(print(fit))
+})
+
+
+# Test purpose: Ensures grouped terms print their actual initial and final
+# model degrees of freedom without exposing the internal FP search setting.
+test_that("print.mfp2() reports grouped initial and final df only", {
+  set.seed(91501)
+  n <- 120L
+  group <- factor(rep(c("A", "B", "C"), length.out = n))
+  group_mm <- stats::model.matrix(~ group)[, -1L, drop = FALSE]
+  x <- cbind(x1 = stats::runif(n, 1, 8), group_mm)
+  y <- 0.4 * x[, "x1"] + 0.8 * group_mm[, 1L] -
+    0.5 * group_mm[, 2L] + stats::rnorm(n, sd = 0.3)
+
+  fit <- mfp2(
+    x, y,
+    term_groups = list(group = colnames(group_mm)),
+    keep = "group",
+    verbose = FALSE
+  )
+
+  expect_equal(as.numeric(fit$fp_terms["group", "df_setting"]), 1)
+  expect_equal(as.numeric(fit$fp_terms["group", "df_initial"]), 2)
+  expect_equal(as.numeric(fit$fp_terms["group", "df_final"]), 2)
+
+  output <- capture.output(print(fit, detailed_settings = TRUE, notes = TRUE))
+  printed <- paste(output, collapse = "\n")
+  expect_match(printed, "df (init->final)", fixed = TRUE)
+  expect_match(printed, "2 -> 2", fixed = TRUE)
+  expect_false(grepl("df setting", printed, fixed = TRUE))
+  expect_false(grepl("df_setting", printed, fixed = TRUE))
+})
+
+
+# Test purpose: Ensures an SAZ-only fit does not print an empty Standard MFP
+# data frame in the function-selection summary.
+test_that("print.mfp2() omits an empty Standard MFP subsection", {
+  fit <- mfp2(
+    lpsa ~ fp(
+      pgg45,
+      df = 4,
+      select = 0.05,
+      alpha = 0.05,
+      spike = TRUE
+    ),
+    data = prostate,
+    family = "gaussian",
+    criterion = "pvalue",
+    verbose = FALSE
+  )
+
+  output <- capture.output(print(fit, detailed_settings = FALSE))
+
+  expect_false(any(output == "Standard MFP"))
+  expect_false(any(grepl("<0 rows>", output, fixed = TRUE)))
+  expect_true(any(grepl("Spike-at-Zero (SAZ)", output, fixed = TRUE)))
+})
+
+
+# Test purpose: Ensures retained SAZ terms store and print the structural-zero
+# proportion from the actual fitting sample.
+test_that("SAZ metadata and print output include prop_zero", {
+  set.seed(91502)
+  n <- 100L
+  exposure <- c(rep(0, 25L), stats::runif(75L, 0.5, 6))
+  exposure <- sample(exposure)
+  x <- cbind(exposure = exposure, age = stats::runif(n, 20, 70))
+  y <- 1.2 * (exposure == 0) + 0.25 * exposure +
+    0.01 * x[, "age"] + stats::rnorm(n, sd = 0.25)
+
+  fit <- mfp2(
+    x, y,
+    df = c(exposure = 1),
+    spike_vars = "exposure",
+    keep = "exposure",
+    verbose = FALSE
+  )
+
+  expect_equal(fit$fp_terms["exposure", "prop_zero"], 0.25)
+  expect_true(is.na(fit$fp_terms["age", "prop_zero"]))
+
+  output <- capture.output(
+    print(fit, detailed_settings = FALSE, digits = 3L)
+  )
+  printed <- paste(output, collapse = "\n")
+
+  expect_match(printed, "prop_zero", fixed = TRUE)
+  expect_match(printed, "0.250", fixed = TRUE)
+
+  saz_header <- output[grepl("prop_zero", output, fixed = TRUE)][1L]
+  expect_false(grepl("Selected", saz_header, fixed = TRUE))
+})

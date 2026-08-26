@@ -100,9 +100,10 @@ reset_acd <- function(x, acdx) {
 #' \code{find_shift_factor()}. If `scale = NULL`, an appropriate scale is estimated
 #' automatically using \code{find_scale_factor()}.
 #'
-#' When `zero = TRUE`, only positive values are used in the continuous
-#' transformation. Nonpositive values are assigned a transformed value of zero,
-#' and no shift is applied.
+#' When `zero = TRUE`, `x` must be nonnegative. Only values with `x > 0` are
+#' used in the continuous transformation; exact-zero values are assigned a
+#' transformed value of zero, and no shift is applied. This internal helper
+#' assumes that callers have already validated the nonnegative-input contract.
 #'
 #' @param x Numeric vector containing the covariate values. Missing values are
 #'   not allowed.
@@ -121,7 +122,8 @@ reset_acd <- function(x, acdx) {
 #'   scale automatically.
 #'
 #' @param zero Logical scalar. If `TRUE`, the ACD transformation is fitted to
-#'   the positive values and nonpositive values are assigned zero. If `FALSE`,
+#'   the positive values and exact-zero values are assigned zero. Callers must
+#'   supply previously validated nonnegative values. If `FALSE`,
 #'   all observations are included after any requested shifting and scaling.
 #'
 #' @return
@@ -235,7 +237,7 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
   }
 
   if (zero) {
-    x[x <= 0] <- 0
+    x[x == 0] <- 0
     # zero transformation overrides shift
     shift <- 0
   }
@@ -287,10 +289,10 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
 #' @param shift a numeric value that is used to shift the values of `x` to
 #' positive values.
 #' @param scale a numeric value used to scale `x`.
-#' @param zero Logical indicating whether only positive values of the variable
-#' should be transformed, with nonpositive values (zero or negative) set to zero.
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values
-#' are replaced with zero before transformation.
+#' @param zero Logical indicating whether only positive values of a nonnegative
+#' variable should be transformed, with exact-zero values retained as zero. If
+#' `TRUE`, callers must supply values already checked against the nonnegative
+#' input contract.
 #' @param ... not used.
 #'
 #' @return

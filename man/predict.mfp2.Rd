@@ -267,18 +267,19 @@ comparison.
 Supply zero-handled and spike-at-zero variables on their original scale.
 Do not create a separate zero-indicator column.
 
-The zero handling selected during fitting is reused during prediction. A
-nonpositive value is treated in the same way as a nonpositive value in the
-fitted model, and a positive value is passed to the selected continuous
-function when applicable.
+The zero handling selected during fitting is reused during prediction. These
+options require nonnegative covariates: \code{x = 0} belongs to the zero component
+and \code{x > 0} belongs to the positive component. Negative values in \code{newdata}
+are rejected; recode them explicitly before prediction if they should
+scientifically represent the zero group.
 
 If the final spike-at-zero model includes both a continuous component and a
 zero indicator, both are used automatically. If it includes only one
 component, only that component is used.
 
 The same rule is applied to a supplied reference. For a term that includes
-only the zero indicator, a nonpositive reference is treated as indicator 1
-and a positive reference as indicator 0.
+only the zero indicator, an exact-zero reference is treated as indicator 1
+and a positive reference as indicator 0. Negative references are rejected.
 }
 
 \section{Offsets}{

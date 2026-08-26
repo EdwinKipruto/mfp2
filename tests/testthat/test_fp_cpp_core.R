@@ -84,10 +84,10 @@ test_that("C++ FP core applies shift and scale", {
 })
 
 
-# Test purpose: Checks that the C++ FP core maps non-positive values to zero
+# Test purpose: Checks that the C++ FP core maps exact-zero values to zero
 # rows when zero handling is active.
 test_that("C++ FP core handles zero mode", {
-  x <- c(-2, 0, 1, 4)
+  x <- c(0, 1, 4)
 
   out <- transform_fp_core(
     x_raw = x,
@@ -98,7 +98,6 @@ test_that("C++ FP core handles zero mode", {
   )
 
   expected <- rbind(
-    c(0, 0),
     c(0, 0),
     c(1, log(1)),
     c(4, log(4))
@@ -303,10 +302,10 @@ test_that("compact FP basis preserves repeated zero powers and catzero", {
 })
 
 
-# Test purpose: Checks zero-mode semantics in the compact basis. Nonpositive
+# Test purpose: Checks exact-zero semantics in the compact basis. Exact-zero
 # values must remain zero while positive observations use ordinary FP terms.
 test_that("compact FP basis preserves zero-mode transformations", {
-  x <- c(-2, 0, 1, 2, 4)
+  x <- c(0, 0.5, 1, 2, 4)
   powers <- rbind(c(-1, -1), c(0, 0), c(1, 2))
 
   old <- generate_transformations_fp_cpp(

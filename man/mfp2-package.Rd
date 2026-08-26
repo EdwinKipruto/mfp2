@@ -48,6 +48,10 @@ Spike-at-zero modelling can be requested in the formula interface with
 \code{spike_vars = "x"}. The procedure assesses whether the final model should
 retain both the zero-component indicator and the positive continuous
 component, or only one of them.
+Covariates requested through \code{zero}, \code{catzero}, or \code{spike} must be
+nonnegative: \code{x = 0} defines the zero component and \code{x > 0} defines the
+positive component. Negative values are rejected and must be explicitly
+recoded if they should represent the zero group.
 }
 
 \section{Getting started}{

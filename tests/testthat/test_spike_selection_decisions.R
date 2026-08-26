@@ -10,7 +10,7 @@ test_that("23.4 SAZ decision 1 retains binary and continuous components", {
   set.seed(2304)
   positive <- rep(seq(0.5, 8, length.out = 180), each = 2)
   x <- c(rep(0, 140), positive)
-  z <- as.numeric(x <= 0)
+  z <- as.numeric(x == 0)
   y <- 1 + 4.5 * z + 2.2 * x + rnorm(length(x), sd = 0.03)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
 
@@ -75,7 +75,7 @@ test_that("23.6 SAZ decision 3 retains only the binary zero indicator", {
   set.seed(2306)
   positive <- rep(seq(0.5, 8, length.out = 180), each = 2)
   x <- c(rep(0, 140), positive)
-  z <- as.numeric(x <= 0)
+  z <- as.numeric(x == 0)
   y <- 1 + 4.2 * z + rnorm(length(x), sd = 0.03)
   xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "exposure"))
 
@@ -152,14 +152,14 @@ test_that("23.6.1 SAZ Stage 2 uses alpha when select is forced by keep", {
 })
 
 
-# Test purpose: For a retained SAZ model, prediction on negative, zero, and
+# Test purpose: For a retained SAZ model, prediction on zero and positive
 # positive new values must match both:
 #   1. direct prediction from the final stored GLM; and
 #   2. an independent manual calculation using X %*% beta and
 #      diag(X %*% vcov(beta) %*% t(X)).
 #
 # This verifies the complete SAZ prediction contract:
-#   - nonpositive values enter the binary structural-zero component;
+#   - exact-zero values enter the binary structural-zero component;
 #   - the continuous component uses the positive part of exposure;
 #   - coefficient ordering matches the reconstructed model matrix;
 #   - link-scale standard errors use the stored coefficient covariance matrix.
@@ -167,7 +167,7 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
   set.seed(2307)
 
   x <- c(rep(0, 120), seq(0.5, 8, length.out = 300))
-  z <- as.numeric(x <= 0)
+  z <- as.numeric(x == 0)
 
   y <- 1 +
     3.5 * z +
@@ -200,7 +200,7 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
   expect_equal(unname(fit$spike_dec["exposure"]), 1L)
 
   newx <- matrix(
-    c(-2, 0, 0.5, 2, 6),
+    c(0, 0.25, 0.5, 2, 6),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
@@ -215,11 +215,11 @@ test_that("23.7 SAZ newdata prediction matches stored model and manual matrix ca
 
   # Because power = 1, shift = 0, scale = 1, and center = FALSE, the final
   # non-intercept design columns are exactly:
-  #   exposure_bin = I(exposure <= 0)
-  #   exposure.1   = max(exposure, 0)
+  #   exposure_bin = I(exposure == 0)
+  #   exposure.1   = exposure
   expected_design <- data.frame(
-    exposure_bin = as.numeric(newx[, "exposure"] <= 0),
-    exposure.1 = pmax(newx[, "exposure"], 0),
+    exposure_bin = as.numeric(newx[, "exposure"] == 0),
+    exposure.1 = newx[, "exposure"],
     check.names = FALSE
   )
 

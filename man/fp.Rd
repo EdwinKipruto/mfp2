@@ -63,19 +63,23 @@ algorithm can search over nonlinear forms. Duplicate values are removed
 automatically. Overrides the corresponding entry in the \code{powers} list
 argument of \code{\link[=mfp2]{mfp2()}}.}
 
-\item{zero}{Logical. If \code{TRUE}, only positive values undergo the FP
-function; nonpositive values contribute zero to the linear predictor.
+\item{zero}{Logical. If \code{TRUE}, only values with \code{x > 0} undergo the FP
+function; values with \code{x = 0} contribute zero to the linear predictor.
+The covariate must be nonnegative. Negative values are rejected and must
+be explicitly recoded if they should represent the zero group.
 Default \code{FALSE}. Equivalent to listing the variable in \code{zero_vars} in
 \code{mfp2.default()}.}
 
-\item{catzero}{Logical. If \code{TRUE}, a fixed binary indicator for nonpositive
+\item{catzero}{Logical. If \code{TRUE}, a fixed binary indicator for \code{x = 0}
 values is added alongside the positive-component FP function. Implies
-\code{zero = TRUE}. Default \code{FALSE}. Equivalent to listing the variable in
+\code{zero = TRUE}, including its nonnegative domain and negative-value
+rejection. Default \code{FALSE}. Equivalent to listing the variable in
 \code{catzero_vars} in \code{mfp2.default()}.}
 
 \item{spike}{Logical. If \code{TRUE}, request two-stage spike-at-zero (SAZ)
 selection for this variable. While SAZ remains eligible, implies both
-\code{catzero} and \code{zero}. Default \code{FALSE}. Equivalent to listing the variable
+\code{catzero} and \code{zero}, including their nonnegative domain and negative-value
+rejection. Default \code{FALSE}. Equivalent to listing the variable
 in \code{spike_vars} in \code{mfp2.default()}. See the SAZ section in \code{\link[=mfp2]{mfp2()}} for
 eligibility requirements.}
 
@@ -112,7 +116,7 @@ or \code{\link[=mfpi]{mfpi()}}.
 
 Variable-specific options can be used to restrict the maximum complexity,
 force the variable into the model, request ACD or spike-at-zero modelling,
-or control how zero and nonpositive values are handled.
+or control how exact-zero values are handled in nonnegative covariates.
 
 \code{fp()} should normally be applied only to continuous numeric variables.
 Categorical variables should be included directly in the formula as

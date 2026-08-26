@@ -52,12 +52,12 @@
 #' [mfp2()], centering is applied only to the final selected model when
 #' `center = TRUE`. See Sauerbrei et al (2006) for discussion.
 #'
-#' If a variable is specified in the \code{zero} or \code{catzero} arguments,
-#' nonpositive values (zero or negative) are not shifted. Instead, they are replaced
-#' with zero, and transformation is applied only to the positive values. This approach
-#' is useful in cases where nonpositive values have a qualitatively different interpretation
-#' (e.g., nonsmokers in smoking data) and should not be transformed in the same way
-#' as positive values.
+#' If `zero = TRUE`, `x` must be nonnegative. Exact-zero values are not shifted
+#' and their transformed components remain zero; transformation is applied only
+#' to values with `x > 0`. For performance, this low-level helper assumes that
+#' callers have already enforced the nonnegative-input contract. The public
+#' fitting and prediction interfaces perform that validation once, before any
+#' transformation work.
 #'
 #' @section Domain restrictions:
 #' Fractional-polynomial transformations are applied after shifting and scaling.
@@ -84,7 +84,7 @@
 #' an informative error if new data fall outside the required transformation
 #' domain.
 #'
-#' If `zero = TRUE`, nonpositive values are treated structurally: they are not
+#' If `zero = TRUE`, exact-zero values are treated structurally: they are not
 #' shifted, and their transformed continuous components are set to zero.
 #'
 #' @param x a vector of a predictor variable.
@@ -101,11 +101,12 @@
 #' automatically using the Royston and Sauerbrei formula iff any `x` <= 0.
 #' @param name character used to define names for the output matrix. Default
 #' is `NULL`, meaning the output will have unnamed columns.
-#' @param zero Logical indicating whether only positive values of the variable
-#' should be transformed, with nonpositive values (zero or negative) set to zero.
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive values
-#' are replaced with zero before transformation. If \code{FALSE} (default), all values
-#' are shifted (if needed) to ensure positivity before transformation.
+#' @param zero Logical indicating whether only values with `x > 0` should be
+#' transformed, with exact-zero values retained as structural zeros. If
+#' `TRUE`, `x` must be nonnegative and must have been validated by the caller;
+#' negative values must be explicitly recoded if they should represent the zero
+#' group. If `FALSE`
+#' (default), all values are shifted (if needed) to ensure positivity.
 #' @param check_binary a logical indicating whether or not input `x` is checked
 #' if it is a binary variable (i.e. has only two distinct values). The default
 #' `TRUE` usually only needs to changed when this function is to be used to
@@ -284,17 +285,18 @@ transform_vector_acd <- function(x,
 #'   `acdx` is `TRUE` and are passed to `transform_vector_acd()`. The default
 #'   `NULL` means ACD parameters are estimated during transformation.
 #' @param check_binary Passed to `transform_vector_fp()`.
-#' @param zero Named logical vector specifying, for each variable, whether
-#'   nonpositive values should be treated as structural zero before FP or ACD
-#'   transformation. If `TRUE`, transformations are applied to the positive part
-#'   and nonpositive values are represented as zero in the transformed columns.
+#' @param zero Named logical vector specifying, for each nonnegative variable,
+#'   whether exact-zero values should be treated as structural zero before FP or
+#'   ACD transformation. If `TRUE`, transformations are applied to the positive
+#'   part (`x > 0`) and exact-zero values remain zero in transformed columns.
+#'   Callers must supply values already checked against the nonnegative-input
+#'   contract and explicitly recode negative values if appropriate.
 #'   If `FALSE`, all values are transformed directly. If `NULL`, no variables
 #'   are treated as zero-handled.
 #' @param catzero Named logical vector specifying, for each variable, whether a
 #'   structural-zero binary indicator should be added. For these variables, the
-#'   indicator is computed as `I(x <= 0)` using the input matrix supplied to this
-#'   function. This is consistent with zero handling, where nonpositive values
-#'   are treated as structural zero before FP or ACD transformation. If `NULL`,
+#'   indicator is computed as `I(x == 0)` using the input matrix supplied to this
+#'   function. This is consistent with exact-zero handling. If `NULL`,
 #'   no categorical-zero indicators are added.
 #' @param spike Named logical vector indicating which variables are subject to
 #'   spike-at-zero handling. If `NULL`, this is equivalent to setting all entries
@@ -321,7 +323,7 @@ transform_vector_acd <- function(x,
 #'
 #' Structural-zero binary indicators are appended after the FP/ACD transformed
 #' columns. Binary indicator columns are named with the suffix `"_bin"` and are
-#' computed as `I(x <= 0)`.
+#' computed as `I(x == 0)`.
 #'
 #' The interaction of `spike`, `spike_decision`, and `catzero` determines whether
 #' binary indicators are included:
@@ -448,7 +450,7 @@ transform_vector_acd <- function(x,
 #'   final transformed column as an FP basis, ACD basis, structural-zero
 #'   indicator, or unchanged binary column.
 #' * `transformed_column_zero_handled`: named logical vector indicating which
-#'   final columns use positive-part centering, where nonpositive rows remain 0.
+#'   final columns use positive-part centering, where exact-zero rows remain 0.
 #' * `transformed_column_centered`: named logical vector indicating whether
 #'   centering was requested for the source variable of each final column.
 #' @keywords internal
@@ -811,7 +813,7 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
 
   acdx <- check_same_names_as(acdx, "acdx", pl_names)
 
-  # zero: variables where nonpositive values are structurally handled as zero
+  # zero: variables where exact-zero values are structurally handled as zero
   # before FP/ACD transformation.
   if (is.null(zero)) {
     zero <- setNames(rep(FALSE, length(pl_names)), pl_names)
@@ -904,7 +906,7 @@ validate_transform_matrix_args <- function(x, power_list, center, acdx,
 #' Internal helper used by \code{transform_matrix()} when
 #' \code{reset_zero = TRUE}. Variables marked \code{zero = TRUE} but whose
 #' raw column in \code{x} contains only strictly positive values have no
-#' structural-zero/nonpositive group to preserve, so both \code{zero} and
+#' structural exact-zero group to preserve, so both \code{zero} and
 #' \code{catzero} are reset to \code{FALSE} for them (with a warning).
 #'
 #' @param x Numeric matrix with column names.
@@ -1067,8 +1069,8 @@ identify_binary_only_spike_vars <- function(catzero, spike, spike_decision) {
 #' @param power_list Named list of FP/ACD powers, one element per variable.
 #' @param acdx Named logical vector: \code{TRUE} to use the ACD
 #'   transformation for that variable.
-#' @param zero Named logical vector: \code{TRUE} to treat nonpositive values
-#'   as structural zero before transformation.
+#' @param zero Named logical vector: \code{TRUE} to treat exact-zero values of
+#'   a nonnegative variable as structural zero before transformation.
 #' @param acd_parameter_list Optional named list of previously-fitted ACD
 #'   parameters (supplied during prediction; \code{NULL} during fitting, in
 #'   which case parameters are estimated).
@@ -1208,9 +1210,8 @@ apply_spike_decision_to_columns <- function(x_trafo, catzero, spike,
 #' \code{x_trafo} into a single matrix (or \code{NULL} if empty, which can
 #' happen after a binary-only spike decision). Then, for every variable
 #' flagged in \code{catzero}, builds the structural-zero binary indicator
-#' column \code{I(x <= 0)} and appends it, consistent with
-#' \code{transform_vector_fp(..., zero = TRUE)}'s treatment of nonpositive
-#' values.
+#' column \code{I(x == 0)} and appends it, consistent with exact-zero handling
+#' in \code{transform_vector_fp(..., zero = TRUE)}.
 #'
 #' @param x Numeric matrix, already reordered to \code{names(catzero)} order.
 #' @param x_trafo Named list of transformed columns, as returned by
@@ -1254,10 +1255,9 @@ build_binary_indicator_columns <- function(x, x_trafo, catzero, spike,
         return(NULL)
       }
 
-      # Structural-zero indicator is I(x <= 0), consistent with
-      # transform_vector_fp(..., zero = TRUE), which treats nonpositive values
-      # as structural zero before FP transformation.
-      as.integer(x[, v] <= 0)
+      # Structural-zero indicator is I(x == 0), consistent with
+      # transform_vector_fp(..., zero = TRUE).
+      as.integer(x[, v] == 0)
     })
 
     valid_idx <- !vapply(catzero_list, is.null, logical(1L))
@@ -1487,10 +1487,12 @@ apply_mixed_centering <- function(x_transformed, center, col_to_var,
 #' silent error where the C++ core would return multiple columns and this helper
 #' would otherwise keep only the first one.
 #'
-#' When \code{zero = TRUE}, nonpositive values are treated as structural zeros:
-#' rows with \code{x <= 0} are returned as zero and are not evaluated by
+#' When \code{zero = TRUE}, exact-zero values are treated as structural zeros:
+#' rows with \code{x == 0} are returned as zero and are not evaluated by
 #' \code{log()} or power operations. This prevents invalid evaluations such as
-#' \code{log(0)} or \code{0^(-1)}. Missing and non-finite values are propagated
+#' \code{log(0)} or \code{0^(-1)}. Callers must supply previously validated
+#' nonnegative values when zero handling is active. Missing and
+#' non-finite values are propagated
 #' by the shared C++ transformation core.
 #'
 #' The function passes \code{shift = 0} and \code{scale = 1} to the C++ core
@@ -1501,7 +1503,8 @@ apply_mixed_centering <- function(x_transformed, center, col_to_var,
 #' @param power Numeric scalar. Fractional-polynomial power to apply. A value
 #'   of \code{0} represents the logarithmic transformation.
 #' @param zero Logical scalar. If \code{TRUE}, transform only positive values
-#'   and return zero for nonpositive values. If \code{FALSE}, transform all
+#'   of a nonnegative vector and return zero for exact-zero values. The caller
+#'   is responsible for enforcing nonnegative input. If \code{FALSE}, transform all
 #'   values as supplied.
 #'
 #' @return
@@ -1535,7 +1538,7 @@ transform_vector_single_power <- function(x, power = 1, zero = FALSE) {
   # implementation:
   #   power = 0   -> log(x)
   #   power != 0  -> x^power
-  #   zero = TRUE -> rows with x <= 0 are structural zeros and are not evaluated
+  #   zero = TRUE -> rows with x == 0 are structural zeros and are not evaluated
   #                  by log() or pow(); they remain zero in the returned vector.
   #
   # The helper passes shift = 0 and scale = 1 because its original contract was

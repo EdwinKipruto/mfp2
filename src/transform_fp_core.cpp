@@ -75,10 +75,10 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
       continue;
     }
 
-    // In zero mode, non-positive raw values are assigned zero-valued
+    // In zero mode, exact-zero raw values are assigned zero-valued
     // transformation columns. NumericMatrix initializes to zero, so continuing
     // here leaves the whole row at zero.
-    if (zero && x_raw[i] <= 0.0) {
+    if (zero && x_raw[i] == 0.0) {
       continue;
     }
 
@@ -95,9 +95,9 @@ static NumericMatrix transform_fp_core_internal(const NumericVector& x_raw,
       continue;
     }
 
-    // In zero mode, values that remain non-positive after shift/scale are also
+    // In zero mode, values that remain exactly zero after shift/scale are also
     // assigned zero-valued transformation columns.
-    if (zero && xi <= 0.0) {
+    if (zero && xi == 0.0) {
       continue;
     }
 
@@ -516,7 +516,7 @@ List generate_transformations_fp_basis_cpp(const NumericVector& x,
       continue;
     }
 
-    if (zero && x_i <= 0.0) {
+    if (zero && x_i == 0.0) {
       // NumericMatrix is initialized to zero, matching the ordinary FP kernel.
       continue;
     }
@@ -617,7 +617,7 @@ NumericMatrix copy_fp_basis_candidate_cpp(NumericMatrix target,
  * Centering semantics
  * -------------------
  * `valid_rows` defines observations that participate in the positive-part FP
- * basis and in centering.  When zero handling is active, rows with x <= 0 are
+ * basis and in centering.  When zero handling is active, rows with x == 0 are
  * passed as invalid and are written as exact zeros after centering.
  *
  * If `center == true` and `group_center == false`, one mean is computed for each

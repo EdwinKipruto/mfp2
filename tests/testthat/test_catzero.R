@@ -58,7 +58,7 @@ test_that("catzero reference indicators use source-term _bin names", {
 })
 
 # The helper must use the already-prepared indicator values. This deliberately
-# supplies values that cannot be inferred from x; recomputing I(x <= 0) would
+# supplies values that cannot be inferred from x; recomputing I(x == 0) would
 # therefore fail the test.
 test_that("catzero reference design reuses prepared indicator values", {
   x <- cbind(
@@ -362,7 +362,7 @@ test_that("catzero full reference and ordering share one joint block", {
 # positive-part reference column rather than the unre-coded covariate.
 test_that("zero term changes the full linear reference representation", {
   x <- cbind(
-    exposure = c(-3, -1, 0, 1, 2, 4, 5, 6),
+    exposure = c(0, 0, 0.5, 1, 2, 4, 5, 6),
     z = c(-1, 0, 1, 0, -1, 1, 0.5, -0.5)
   )
   y <- c(1.0, 1.2, 0.8, 1.6, 2.1, 2.8, 3.0, 3.5)
@@ -395,7 +395,7 @@ test_that("zero term changes the full linear reference representation", {
 # the positive-part continuous column and the structural-zero indicator.
 test_that("catzero term changes the full linear reference representation", {
   x <- cbind(
-    exposure = c(-3, -1, 0, 1, 2, 4, 5, 6),
+    exposure = c(0, 0, 0.5, 1, 2, 4, 5, 6),
     z = c(-1, 0, 1, 0, -1, 1, 0.5, -0.5)
   )
   y <- c(3.0, 3.2, 2.8, 1.6, 2.1, 2.8, 3.0, 3.5)
@@ -411,8 +411,8 @@ test_that("catzero term changes the full linear reference representation", {
 
   reference_data <- data.frame(
     y = y,
-    exposure = pmax(x[, "exposure"], 0),
-    zero_indicator = as.integer(x[, "exposure"] <= 0),
+    exposure = x[, "exposure"],
+    zero_indicator = as.integer(x[, "exposure"] == 0),
     z = x[, "z"]
   )
   reference <- stats::glm(
@@ -491,13 +491,13 @@ test_that("grouped significance ordering uses fitted rank difference", {
 # =============================================================================
 
 # Test purpose: Checks that zero_vars activates zero-component handling for
-# nonpositive values.
-test_that("zero_vars recodes non-positive values to zero", {
+# exact-zero values.
+test_that("zero_vars preserves exact-zero values", {
   set.seed(1)
   n <- 200
-  x_val <- rnorm(n, mean = 5, sd = 3) # some values may be <= 0
+  x_val <- c(rep(0, 40), rgamma(n - 40, shape = 2, rate = 1))
   x_mat <- cbind(exposure = x_val, x2 = runif(n, 1, 10))
-  y_val <- 2 * pmax(x_val, 0) + rnorm(n)
+  y_val <- 2 * x_val + rnorm(n)
 
   fit <- mfp2(x_mat, y_val, zero_vars = "exposure", verbose = FALSE)
 
@@ -511,9 +511,9 @@ test_that("zero_vars recodes non-positive values to zero", {
 test_that("catzero_vars creates binary indicator", {
   set.seed(1)
   n <- 200
-  x_val <- rnorm(n, mean = 5, sd = 3)
+  x_val <- c(rep(0, 40), rgamma(n - 40, shape = 2, rate = 1))
   x_mat <- cbind(exposure = x_val, x2 = runif(n, 1, 10))
-  y_val <- 2 * pmax(x_val, 0) + 1.5 * (x_val <= 0) + rnorm(n)
+  y_val <- 2 * x_val + 1.5 * (x_val == 0) + rnorm(n)
 
   fit <- mfp2(x_mat, y_val, catzero_vars = "exposure", verbose = FALSE)
 
@@ -525,14 +525,14 @@ test_that("catzero_vars creates binary indicator", {
 
 
 # Test purpose: Verifies that fp(x, zero = TRUE) is converted to zero_vars
-# and that non-positive values are handled through the zero component.
+# and that exact-zero values are handled through the zero component.
 test_that("formula interface fp(zero = TRUE) enables zero handling", {
   set.seed(102)
   n <- 200
 
-  exposure <- rnorm(n, mean = 5, sd = 3)
+  exposure <- c(rep(0, 40), rgamma(n - 40, shape = 2, rate = 1))
   dat <- data.frame(
-    y = 2 * pmax(exposure, 0) + rnorm(n),
+    y = 2 * exposure + rnorm(n),
     exposure = exposure,
     x2 = runif(n, 1, 10)
   )
@@ -554,9 +554,9 @@ test_that("formula interface fp(catzero = TRUE) enables catzero and zero handlin
   set.seed(103)
   n <- 200
 
-  exposure <- rnorm(n, mean = 5, sd = 3)
+  exposure <- c(rep(0, 40), rgamma(n - 40, shape = 2, rate = 1))
   dat <- data.frame(
-    y = 2 * pmax(exposure, 0) + 1.5 * (exposure <= 0) + rnorm(n),
+    y = 2 * exposure + 1.5 * (exposure == 0) + rnorm(n),
     exposure = exposure,
     x2 = runif(n, 1, 10)
   )

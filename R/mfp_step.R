@@ -79,13 +79,15 @@ mfp_pvalue_exceeds <- function(pvalue, threshold) {
 #' @param ftest a logical indicating the use of the F-test for Gaussian models.
 #' @param control a list with parameters for model fit.
 #' @param rownames a parameter for Cox models.
-#' @param catzero A named list of structural-zero indicators. Each element is
-#' either `NULL` or an n x 1 integer/numeric matrix. Non-NULL elements indicate
-#' variables for which a binary structural-zero column is available.
+#' @param catzero A named list of exact-zero indicators. Each element is either
+#' `NULL` or an n x 1 integer/numeric matrix containing `I(x == 0)`. Non-NULL
+#' elements indicate variables for which that binary column is available.
 #' @param zero Named logical vector with one value per conceptual term,
-#'   indicating structural-zero handling for singleton terms.
+#'   indicating exact-zero handling for nonnegative singleton terms. Negative
+#'   values are rejected before this function is called.
 #' @param spike Named logical vector with one value per conceptual term,
-#'   indicating spike-at-zero handling for singleton terms.
+#'   indicating spike-at-zero handling for nonnegative singleton terms, with
+#'   `x == 0` defining the zero component and `x > 0` the positive component.
 #' @param acd_parameter Named list of ACD parameters produced by \code{fit_acd()},
 #' with length equal to \code{ncol(x)}. Each list element corresponds to a variable;
 #' if an element is \code{NULL}, the variable was not specified in the
@@ -481,13 +483,13 @@ find_best_fp_step <- function(x,
 #' Same number of rows as, and indexed by, `powers`.
 #' * `model_best`: row index of best model in `metrics`.
 #' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}.
-#'   In this case, nonpositive values of \code{xi} were set to zero before transformation,
+#'   In this case, exact-zero values of \code{xi} remain zero before transformation,
 #'   and only positive values were transformed.
 #' * `catzero`: Logical indicating whether a combination of a zero transformation
 #'   and a binary indicator variable was applied to \code{xi}. This means that
-#'   nonpositive values of \code{xi} were set to zero, only positive values were
+#'   exact-zero values of \code{xi} remain zero, only positive values are
 #'   transformed, and an additional binary variable was created to indicate
-#'   whether \code{xi} was positive or nonpositive.
+#'   whether \code{xi} was exactly zero or positive.
 #' @inheritParams find_best_fp_step
 #' @param degree degrees of freedom for fp transformation of `xi`.
 #' @param ... parameters passed to `fit_model()`.
@@ -1033,13 +1035,13 @@ fit_linear_step <- function(x,
 #' * `pvalue`: p-value for comparison of linear and null model.
 #' * `statistic`: test statistic used, depends on `ftest`.
 #' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}.
-#'   In this case, nonpositive values of \code{xi} were set to zero before transformation,
+#'   In this case, exact-zero values of \code{xi} remain zero before transformation,
 #'   and only positive values were transformed.
 #' * `catzero`: Logical indicating whether a combination of a zero transformation
 #'   and a binary indicator variable was applied to \code{xi}. This means that
-#'   nonpositive values of \code{xi} were set to zero, only positive values were
+#'   exact-zero values of \code{xi} remain zero, only positive values are
 #'   transformed, and an additional binary variable was created to indicate
-#'   whether \code{xi} was positive or nonpositive.
+#'   whether \code{xi} was exactly zero or positive.
 #' * `spike`: Logical; whether `xi` is (still) treated as a spike-at-zero
 #'   variable, carried through from the `spike` argument.
 #' * `current_adj_params`: Adjustment-variable transformations for `xi` from
@@ -3323,7 +3325,7 @@ build_adjustment_step <- function(x,
 #' a spike at zero. The length and order of \code{spike} must match those of
 #' the columns in \code{x}.
 #' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
-#' for nonpositive values, created when specific variables are passed to the
+#' for exact-zero values, created when specific variables are passed to the
 #' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}
@@ -3365,7 +3367,7 @@ build_adjustment_step <- function(x,
 #' The role of `spike_decision` is to determine how each adjustment variable is
 #' represented in the presence of potential spike-at-zero effects. For every
 #' adjustment variable, the function can include the transformed variable, the
-#' binary indicator for nonpositive values (`catzero`), or both. This makes it
+#' binary indicator for exact-zero values (`catzero`), or both. This makes it
 #' possible to model spike-at-zero behavior directly in the adjustment matrix,
 #' while preserving flexibility in how variables are included.
 #'
@@ -3486,12 +3488,9 @@ transform_data_step <- function(x,
 
     if (length(unique(data_xi)) <= 3) {
       # Variables with <= 3 distinct values are treated as linear/binary: no FP
-      # candidates are generated, but nonpositive values are still recoded to
-      # zero if `zero` is requested, and a catzero indicator column is added if
-      # present (df = 1 is enforced upstream for such variables; see assign_df()).
-      if (zero[xi]) {
-        data_xi[data_xi <= 0] <- 0
-      }
+      # candidates are generated. The original nonnegative values are used as
+      # supplied, and a catzero indicator column is added if present (df = 1 is
+      # enforced upstream for such variables; see assign_df()).
 
       # add catzero variable if not null; if null cbind will remove it
       data_xi_mat <- matrix(data_xi, ncol = 1L)

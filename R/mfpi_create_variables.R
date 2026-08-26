@@ -118,7 +118,8 @@ mfpi_group_row_cache <- function(group_idx,
 #' }
 #'
 #' If the continuous variable contains non-positive values, it should usually be
-#' shifted before calling this function unless \code{zero = TRUE} is intended.
+#' shifted before calling this function. With \code{zero = TRUE}, the variable
+#' must be nonnegative and only exact zeros are structural zeros.
 #'
 #' The continuous variable must contain at least two distinct values. A
 #' constant variable cannot define an estimable group-specific FP effect:
@@ -163,8 +164,9 @@ mfpi_group_row_cache <- function(group_idx,
 #'   }
 #' }
 #'
-#' When \code{zero = TRUE}, non-positive values of \code{cont_var} are excluded
-#' from the centering means and reset to zero after centering.
+#' When \code{zero = TRUE}, exact-zero values of \code{cont_var} are excluded
+#' from the centering means and reset to zero after centering. Negative values
+#' are invalid and must be recoded explicitly if they should represent zero.
 #'
 #' @section Fitting matrix versus evaluation matrix:
 #'
@@ -237,9 +239,10 @@ mfpi_group_row_cache <- function(group_idx,
 #'   to \code{transform_vector_fp()}.
 #' @param center Logical. If \code{TRUE}, center the FP basis columns before
 #'   constructing the group-specific design matrix. Default is \code{FALSE}.
-#' @param zero Logical. If \code{TRUE}, non-positive values of \code{cont_var}
-#'   are treated as structural zeros: they are excluded from centering means and
-#'   reset to zero after centering. Default is \code{FALSE}.
+#' @param zero Logical. If \code{TRUE}, exact-zero values of nonnegative
+#'   \code{cont_var} are treated as structural zeros: they are excluded from
+#'   centering means and reset to zero after centering. Callers must supply
+#'   previously validated nonnegative values. Default is \code{FALSE}.
 #' @param center_type Character string controlling centering when
 #'   \code{center = TRUE}. Either \code{"grand"} or \code{"group"}. Default is
 #'   \code{"grand"}.
@@ -252,7 +255,7 @@ mfpi_group_row_cache <- function(group_idx,
 #'   variable before scaling was applied. For standard variables this gives
 #'   \eqn{x + \text{shift}}; for \code{zero_var = TRUE} variables (where
 #'   shift is forced to 0) this gives the original \eqn{x}, and the
-#'   \code{zero} argument then correctly handles non-positive values.
+#'   \code{zero} argument then correctly handles exact-zero values.
 #'   This ensures model coefficients match the \eqn{\phi(x + \text{shift})}
 #'   scale of the adjustment model and standalone \pkg{mfp2}. Default
 #'   \code{1} (no backscaling).
@@ -424,7 +427,7 @@ create_z_variables <- function(cont_var,
   #
   # For zero_var variables (shift forced to 0 in mfpi.default), backscaling
   # restores the original x. The zero argument then correctly handles
-  # non-positive values in that restored x.
+  # exact-zero values in that restored x.
   #
   # Applied AFTER validation so checks run on the pre-backscaled (scaled) values.
   if (!is.null(scale_var) && any(scale_var != 1)) {
@@ -432,7 +435,7 @@ create_z_variables <- function(cont_var,
   }
 
   # Structural-zero rows from the original continuous variable.
-  zero_rows  <- if (zero) as.vector(cont_var) <= 0 else rep(FALSE, n)
+  zero_rows  <- if (zero) as.vector(cont_var) == 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
 
   if (!any(valid_rows)) {

@@ -48,7 +48,7 @@
 #'   transform \code{cont_mat}. If \code{FALSE}, validate \code{cont_mat} as
 #'   an already transformed basis and rename its columns to the fitted
 #'   coefficient names.
-#' @param zero_var Logical scalar. Whether non-positive values should be treated
+#' @param zero_var Logical scalar. Whether exact-zero values should be treated
 #'   as structural zeros during FP transformation. Centering and final
 #'   structural-zero restoration are handled by higher-level prediction helpers.
 #' @param check_binary Logical scalar passed to \code{transform_matrix()}.
@@ -330,6 +330,11 @@ build_group_fp_basis <- function(cont_mat,
 #' Supply continuous predictors on their original scale. Stored shifts, scales,
 #' fractional-polynomial functions, centering values, zero handling, and
 #' Winsorisation limits are applied automatically.
+#' For every fitted term retaining `zero`, `catzero`, or `spike` handling,
+#' prediction values must be nonnegative: `x = 0` is the zero component and
+#' `x > 0` is the positive component. Negative values are rejected, including
+#' for binary-only SAZ terms, and must be explicitly recoded if they should
+#' represent the zero group.
 #'
 #' The default `type = NULL` is equivalent to `type = "both"`. Supplying
 #' `newdata` by itself does not change this default. To obtain one prediction per
@@ -937,6 +942,15 @@ predict.mfpi <- function(object,
     stop("`object` must be an object of class \"mfpi\".", call. = FALSE)
   }
 
+  # Validate raw prediction covariates before model selection, grid building,
+  # scaling, or basis reconstruction. This includes retained binary-only SAZ
+  # terms because their canonical zero flag remains active even without a
+  # continuous FP component.
+  if (!is.null(newdata)) {
+    zero_option_terms <- active_zero_option_names(object$zero_vars)
+    validate_zero_option_covariates(newdata, zero_option_terms)
+  }
+
   model <- match.arg(model)
   family_string <- mfpi_family_string(object)
   type <- mfpi_match_prediction_type(type, family_string)
@@ -1389,7 +1403,7 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
   if (grid) {
     cont_vec <- as.vector(cont_plus)
     if (isTRUE(zero_var)) {
-      zero_present <- any(cont_vec <= 0, na.rm = TRUE)
+      zero_present <- any(cont_vec == 0, na.rm = TRUE)
       grid_source <- cont_vec[cont_vec > 0 & is.finite(cont_vec)]
     } else {
       zero_present <- FALSE
@@ -1571,7 +1585,7 @@ mfpi_build_function_basis <- function(object, term, fit_result,
   # Structural zeros must be restored after centering; otherwise zero rows would
   # incorrectly receive minus the centering constant as their FP contribution.
   zero_rows <- if (isTRUE(zero_var)) {
-    as.vector(cont_plus) <= 0
+    as.vector(cont_plus) == 0
   } else {
     rep(FALSE, nrow(cont_plus))
   }
@@ -2916,28 +2930,19 @@ mfpi_fit_has_strata <- function(fit_obj) {
 #' Retrieve the Zero-Handling Flag for One Term
 #'
 #' Determines whether a continuous variable was fitted with structural-zero
-#' handling. The helper checks prediction metadata stored directly on the MFPI
-#' object first, then falls back to adjustment-model metadata when available.
+#' handling using the canonical prediction metadata stored directly on the
+#' MFPI object.
 #'
 #' @param object Object of class \code{"mfpi"}.
 #' @param term Character scalar naming the variable.
 #'
-#' @return Logical scalar. \code{TRUE} means non-positive values are treated as
+#' @return Logical scalar. \code{TRUE} means exact-zero values are treated as
 #'   structural zeros for FP prediction.
 #'
 #' @keywords internal
 #' @noRd
 mfpi_get_zero_var <- function(object, term) {
-  # Structural-zero flags may live in newer prediction metadata or in older
-  # adjustment-model metadata. Check both locations for backward compatibility.
-
-  z <- NULL
-  if (!is.null(object$zero_vars)) z <- object$zero_vars
-  if (is.null(z) && !is.null(object$adjustment_model$zero)) z <- object$adjustment_model$zero
-  if (is.null(z) && !is.null(object$adjustment_model$fp_terms$zero)) {
-    z <- object$adjustment_model$fp_terms$zero
-    names(z) <- rownames(object$adjustment_model$fp_terms)
-  }
+  z <- object$zero_vars
   if (!is.null(z) && !is.null(names(z)) && term %in% names(z)) return(isTRUE(z[[term]]))
   FALSE
 }

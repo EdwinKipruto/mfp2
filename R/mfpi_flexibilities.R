@@ -11,7 +11,7 @@
 #   xadj       - pre-transformed, pre-centered adjustment matrix (or NULL)
 #   ties       - Cox tie-handling method (was `method` in original)
 #   use_ftest  - F-test flag for Gaussian models (was `ftest`)
-#   zero_var   - logical; treat non-positive values of cont_var as zero
+#   zero_var   - logical; treat exact-zero values of cont_var as structural zero
 #   fp_cand    - candidate FP powers for cont_var (was `powers`)
 
 
@@ -88,8 +88,9 @@
 #' @param nocenter Numeric vector for Cox centring suppression; see
 #'   [survival::coxph()].
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param zero_var Logical scalar. Whether non-positive values of `cont_var`
-#'   should be treated as structural zeros before FP transformation.
+#' @param zero_var Logical scalar. Whether exact-zero values of nonnegative
+#'   `cont_var` should be treated as structural zeros before FP transformation.
+#'   Negative values are rejected before this function is called.
 #' @param spike_var Logical scalar. Whether `cont_var` is subject to
 #'   spike-at-zero handling. Always `FALSE` for interaction testing; see
 #'   \code{evaluate_interactions()}.
@@ -606,10 +607,10 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   n_groups_int     <- as.integer(n_groups)
   n                 <- length(contvar_main_vec)
 
-  # Structural-zero semantics: when `zero_var` is active, x <= 0 does not
+  # Structural-zero semantics: when `zero_var` is active, x == 0 does not
   # participate in the positive-part FP transform or in centering. Those rows
   # are later written back as exact zeros in every group-specific FP block.
-  zero_rows  <- if (isTRUE(zero_var)) contvar_main_vec <= 0 else rep(FALSE, n)
+  zero_rows  <- if (isTRUE(zero_var)) contvar_main_vec == 0 else rep(FALSE, n)
   valid_rows <- !zero_rows
 
   if (!any(valid_rows)) {
@@ -1068,7 +1069,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
 
   # Step 2: Fit group-specific FP model via MFP --------------------------------
   # Each group's column is allowed its own FP powers (no equality constraint).
-  # Non-positive values within groups are handled via zero = TRUE.
+  # Exact-zero values within groups are handled via zero = TRUE.
   xnew   <- cbind(z_linear, group_dummies, xadj)
   vnames <- colnames(xnew)
   n_adj  <- if (is.null(xadj)) 0L else ncol(xadj)
@@ -1096,7 +1097,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   )
   shift_vec <- stats::setNames(rep(0, n_total), vnames)
   scale_vec <- stats::setNames(rep(1, n_total), vnames)
-  # Developer note: Non-positive values within groups are handled via zero = TRUE"),
+  # Developer note: exact-zero values within groups are handled via zero = TRUE;
   # this is unrelated to the user's zero_var flag.
   zero_vec <- stats::setNames(
     c(rep(TRUE, k), rep(FALSE, n_total - k)),
@@ -1198,7 +1199,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   # shifted and divided by scale_var upstream; multiplying by scale_var restores
   # x + shift, matching the basis used in z_linear_bs and transform_matrix().
   contvar_bs <- contvar_vec * scale_var
-  zero_rows  <- if (isTRUE(zero_var)) as.vector(contvar_bs) <= 0 else rep(FALSE, nrow(contvar_bs))
+  zero_rows  <- if (isTRUE(zero_var)) as.vector(contvar_bs) == 0 else rep(FALSE, nrow(contvar_bs))
   valid_rows <- !zero_rows
 
   if (!any(valid_rows)) {

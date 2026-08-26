@@ -196,10 +196,14 @@
 #' exactly two observations remain permitted for linear and FP1 interactions,
 #' with a warning that fitting may be unreliable.
 #'
-#' @section Non-positive values and special transformations:
+#' @section Exact-zero values and special transformations:
 #' Explicit `zero_vars` handling is supported for variables in `cont_vars`.
-#' Non-positive values are then treated as structural zero, and the selected
-#' linear or FP function is applied to the positive values. At least one
+#' Exact-zero values (`x = 0`) are then treated as structural zero, and the
+#' selected linear or FP function is applied to values with `x > 0`. Variables
+#' requested through `zero_vars`, `catzero_vars`, or `spike_vars` must be
+#' nonnegative. Negative values are rejected before flag cascading, SAZ checks,
+#' shifting, scaling, or transformation and must be recoded explicitly if they
+#' should scientifically represent the zero group. At least one
 #' positive observation must remain in the fitting data after `subset` is
 #' applied; otherwise fitting stops and identifies every affected variable.
 #' With `center_type = "group"`, a zero-handled interaction additionally needs
@@ -214,7 +218,7 @@
 #' preserved.
 #'
 #' Spike-at-zero adjustment variables must have enough observations in both the
-#' non-positive and positive components. `min_saz_component_prop` sets the
+#' exact-zero and positive components. `min_saz_component_prop` sets the
 #' minimum required proportion in each component.
 #'
 #' @section Winsorisation:
@@ -514,28 +518,33 @@
 #'   argument is not available; use `fp(variable, acd = TRUE)` or
 #'   `fp2(variable, acd = TRUE)` in the formula instead.
 #'
-#' @param zero_vars An optional character vector naming variables for which
-#'   non-positive values are treated as structural zeros. When enabled, the
-#'   selected FP or linear function is applied only to positive values, while
-#'   non-positive values receive a separate fixed contribution. The shift for
+#' @param zero_vars An optional character vector naming nonnegative variables
+#'   for which exact-zero values (`x = 0`) are treated as structural zeros.
+#'   The selected FP or linear function is applied only to values with `x > 0`,
+#'   while exact-zero values receive a separate fixed contribution. Negative
+#'   values are rejected and must be explicitly recoded if they should
+#'   represent the zero group. The shift for
 #'   a zero-handled variable is set to 0. This option can be used for
 #'   variables in `cont_vars` and for adjustment variables. In the formula
 #'   interface, this can also be specified with `fp(variable, zero = TRUE)`.
 #'   A zero-handled variable in `cont_vars` must retain at least one positive
 #'   observation after applying `subset`.
 #'
-#' @param catzero_vars An optional character vector naming adjustment variables
+#' @param catzero_vars An optional character vector naming nonnegative adjustment variables
 #'   that use both a positive-part FP function and a binary structural-zero
-#'   indicator as an additional covariate. Setting `catzero_vars` implies
+#'   indicator `I(x == 0)` as an additional covariate. Negative values are
+#'   rejected and require explicit recoding when scientifically appropriate.
+#'   Setting `catzero_vars` implies
 #'   `zero_vars` for the same variables. This option is disabled with a
 #'   warning for variables in `cont_vars`; only explicit `zero_vars` settings
 #'   are preserved for those. In the formula interface, use
 #'   `fp(variable, catzero = TRUE)`.
 #'
-#' @param spike_vars An optional character vector naming adjustment variables to
+#' @param spike_vars An optional character vector naming nonnegative adjustment variables to
 #'   assess with the spike-at-zero procedure. Spike-at-zero testing requires
-#'   enough observations in both the non-positive and positive components (see
-#'   `min_saz_component_prop`). Setting `spike_vars` implies both
+#'   enough observations in both the exact-zero and positive components (see
+#'   `min_saz_component_prop`). Negative values are rejected and require
+#'   explicit recoding when scientifically appropriate. Setting `spike_vars` implies both
 #'   `catzero_vars` and `zero_vars` for the same variables. Variables that fail
 #'   the component-proportion check are automatically downgraded to `catzero`
 #'   or `zero` handling. This option is disabled with a warning for variables
@@ -871,6 +880,22 @@ mfpi.default <- function(
       call. = FALSE
     )
   }
+
+  # Enforce the exact-zero domain as soon as the original unshifted matrix and
+  # term mapping are available. This precedes group/continuous-variable
+  # eligibility checks as well as all option cascading and preprocessing, so a
+  # later validation or reset cannot mask negative requested covariates.
+  validate_zero_option_covariates(
+    x = preprocess_x,
+    variables = intersect(
+      unique(c(
+        expand_term_names(zero_vars),
+        expand_term_names(catzero_vars),
+        expand_term_names(spike_vars)
+      )),
+      vnames
+    )
+  )
 
   # Basic dimension checks on x ------------------------------------------------
   np    <- dim(x)
@@ -1574,7 +1599,7 @@ mfpi.default <- function(
     vars_pos <- names(zero_flag)[zero_flag | catzero_flag | spike_flag]
 
     xpos <- preprocess_x[, vars_pos, drop = FALSE]
-    all_positive <- vars_pos[colSums(xpos <= 0) == 0L]
+    all_positive <- vars_pos[colSums(xpos == 0) == 0L]
 
     if (length(all_positive) > 0L) {
       warning(
@@ -1811,7 +1836,6 @@ mfpi.default <- function(
       # row restriction while preserving row alignment.
       strata_keep <- droplevels(strata_keep[subset])
     }
-    validate_subset_predictor_variation(x, exclude = group_var)
   }
 
   # zero_vars applies the interaction function only to x > 0. Validate this
@@ -1842,6 +1866,14 @@ mfpi.default <- function(
         call. = FALSE
       )
     }
+  }
+
+  # Run the general post-subset variation check after the zero-specific support
+  # check so an all-zero zero-handled continuous variable receives the more
+  # informative missing-positive-component error. Formula calls arrive with an
+  # already-subset fitting matrix and carry `formula_generated_settings = TRUE`.
+  if (!is.null(subset) || formula_generated_settings) {
+    validate_subset_predictor_variation(x, exclude = group_var)
   }
 
   # Refresh group-level metadata after subsetting. The metadata are created
@@ -2960,14 +2992,10 @@ mfpi.formula <- function(formula,
   if (length(grouped_formula_terms) == 0L) grouped_formula_terms <- NULL
 
   # Step 14: Delegate using the subset-specific fitting design ----------------
-  # Validate singleton-column variation before delegation because subset has
-  # already been applied. The private attribute transports only the aligned
-  # full-data preprocessing source and is removed on entry to mfpi.default().
-  # All fitted categorical metadata comes from mf/x, and subset = NULL prevents
-  # the default method from applying the row selection a second time.
-  if (!is.null(subset)) {
-    validate_subset_predictor_variation(x, exclude = group_var)
-  }
+  # The private attribute transports the full-data preprocessing source and
+  # tells mfpi.default() that the fitting matrix has already been subset. The
+  # default method performs zero-specific support validation before the general
+  # singleton-column variation check.
   x <- attach_formula_preprocess_matrix(x, x_full)
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]

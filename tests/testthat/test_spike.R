@@ -8,7 +8,7 @@ test_that("retained spike uses positive-part plus binary reference design", {
   n <- 200L
   exposure <- c(rep(0, 60L), stats::rgamma(140L, shape = 2, rate = 1))
   z <- stats::rnorm(n)
-  zero_indicator <- as.integer(exposure <= 0)
+  zero_indicator <- as.integer(exposure == 0)
   y <- 1.5 * zero_indicator + 0.6 * exposure + 0.3 * z + stats::rnorm(n)
   x <- cbind(exposure = exposure, z = z)
 
@@ -47,7 +47,7 @@ test_that("rejected spike reverts full reference to ordinary linear term", {
   set.seed(9102)
   n <- 200L
   exposure <- stats::rgamma(n, shape = 2, rate = 1)
-  exposure[1:2] <- c(-2, 0) # 1% structural-zero component: below default 10%
+  exposure[1:2] <- 0 # 1% structural-zero component: below default 10%
   z <- stats::rnorm(n)
   y <- 0.5 * exposure + 0.2 * z + stats::rnorm(n)
   x <- cbind(exposure = exposure, z = z)
@@ -81,7 +81,7 @@ test_that("rejected spike preserves explicit zero reference design", {
   set.seed(9103)
   n <- 200L
   exposure <- stats::rgamma(n, shape = 2, rate = 1)
-  exposure[1:2] <- c(-2, 0) # too few nonpositive observations for SAZ
+  exposure[1:2] <- 0 # too few exact-zero observations for SAZ
   z <- stats::rnorm(n)
   y <- 0.5 * pmax(exposure, 0) + 0.2 * z + stats::rnorm(n)
   x <- cbind(exposure = exposure, z = z)
@@ -120,9 +120,9 @@ test_that("rejected spike preserves explicit catzero binary reference design", {
   set.seed(9104)
   n <- 200L
   exposure <- stats::rgamma(n, shape = 2, rate = 1)
-  exposure[1:2] <- c(-2, 0) # too few nonpositive observations for SAZ
+  exposure[1:2] <- 0 # too few exact-zero observations for SAZ
   z <- stats::rnorm(n)
-  exposure_bin <- as.integer(exposure <= 0)
+  exposure_bin <- as.integer(exposure == 0)
   y <- 1.5 * exposure_bin + 0.5 * pmax(exposure, 0) +
     0.2 * z + stats::rnorm(n)
   x <- cbind(exposure = exposure, z = z)
@@ -167,7 +167,7 @@ test_that("retained spike rejects an existing source-term _bin column", {
     exposure = exposure,
     exposure_bin = existing_bin
   )
-  y <- 1.2 * as.integer(exposure <= 0) + 0.4 * exposure +
+  y <- 1.2 * as.integer(exposure == 0) + 0.4 * exposure +
     0.2 * existing_bin + stats::rnorm(n)
 
   expect_error(
@@ -189,7 +189,7 @@ test_that("rejected spike does not reserve a source-term _bin name", {
   set.seed(9106)
   n <- 200L
   exposure <- stats::rgamma(n, shape = 2, rate = 1)
-  exposure[1:2] <- c(-2, 0) # below the default SAZ component threshold
+  exposure[1:2] <- 0 # below the default SAZ component threshold
   existing_bin <- rep(c(0, 1), length.out = n)
   x <- cbind(
     exposure = exposure,
@@ -368,9 +368,9 @@ test_that("spike-at-zero is reset when positive component proportion is too low"
 })
 
 
-# Test purpose: Checks that non-positive values, including negative values,
-# are counted in the zero component for SAZ eligibility.
-test_that("spike-at-zero counts non-positive values in the zero component", {
+# Test purpose: Checks that negative values are rejected rather than counted in
+# the zero component for SAZ eligibility.
+test_that("spike-at-zero rejects negative fitting values", {
   set.seed(105)
   n <- 200
 
@@ -379,19 +379,16 @@ test_that("spike-at-zero counts non-positive values in the zero component", {
   x_val[zero_idx] <- -1
   x_val[-zero_idx] <- rgamma(n - length(zero_idx), shape = 2, rate = 1)
 
-  y_val <- 1.5 * (x_val <= 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
+  y_val <- 1.5 * (x_val == 0) + log(ifelse(x_val > 0, x_val, 1)) + rnorm(n)
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
 
-  fit <- mfp2(
-    x_mat,
-    y_val,
-    spike_vars = "exposure",
-    verbose = FALSE
+  expect_error(
+    mfp2(x_mat, y_val, spike_vars = "exposure", verbose = FALSE),
+    paste0(
+      "require nonnegative covariates(.|[[:space:]])*exposure",
+      "(.|[[:space:]])*Recode negative values explicitly"
+    )
   )
-
-  expect_s3_class(fit, "mfp2")
-  expect_true(fit$fp_terms["exposure", "spike"])
-  expect_true(fit$zero["exposure"])
 })
 
 
@@ -403,7 +400,7 @@ test_that("spike cascade preserves user-specified catzero on reset", {
 
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0  # too few zeros for SAZ eligibility
-  y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
+  y_val <- 1.5 * (x_val == 0) + 0.5 * x_val + rnorm(n)
 
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
 
@@ -449,13 +446,13 @@ test_that("reset_spike() resets all-zero variables", {
 })
 
 
-# Test purpose: Checks that resolve_saz_eligibility() treats nonpositive values
-# as the structural-zero component without requiring a recoded matrix.
-test_that("resolve_saz_eligibility() counts negative values as zero component", {
+# Test purpose: Checks that resolve_saz_eligibility() uses exact zeros for the
+# structural-zero component without requiring a recoded matrix.
+test_that("resolve_saz_eligibility() counts exact zeros", {
   # Only the zero-component proportion matters here. Use deterministic
   # positive values so this validation test is independent of RNG state.
   x <- matrix(
-    c(rep(-2, 20), seq(0.1, 18, length.out = 180)),
+    c(rep(0, 20), seq(0.1, 18, length.out = 180)),
     ncol = 1,
     dimnames = list(NULL, "exposure")
   )
@@ -478,49 +475,37 @@ test_that("resolve_saz_eligibility() counts negative values as zero component", 
 })
 
 
-# Test purpose: The raw-predicate reset must be exactly equivalent to the old
-# temporary x[x <= 0] <- 0 representation, including binary detection after
-# multiple distinct nonpositive values collapse to one structural-zero level.
-test_that("reset_spike raw predicates match zero-recoded eligibility", {
+# Test purpose: Exact-zero predicates drive SAZ binary detection and
+# eligibility without any negative-to-zero recoding.
+test_that("reset_spike exact-zero predicates drive eligibility", {
   x_raw <- cbind(
-    exposure = c(-3, -2, -1, 0, rep(2, 16)),
-    eligible = c(rep(-2, 4), rep(1:4, each = 4))
+    exposure = c(rep(0, 4), rep(2, 16)),
+    eligible = c(rep(0, 4), rep(1:4, each = 4))
   )
-  x_recoded <- x_raw
-  x_recoded[x_recoded <= 0] <- 0
 
   spike <- c(exposure = TRUE, eligible = TRUE)
   user_catzero <- c(exposure = FALSE, eligible = FALSE)
   user_zero <- c(exposure = FALSE, eligible = FALSE)
 
-  raw <- suppressWarnings(reset_spike(
+  out <- suppressWarnings(reset_spike(
     x = x_raw,
     spike = spike,
     user_catzero = user_catzero,
     user_zero = user_zero,
     min_saz_component_prop = 0.10
   ))
-  recoded <- suppressWarnings(reset_spike(
-    x = x_recoded,
-    spike = spike,
-    user_catzero = user_catzero,
-    user_zero = user_zero,
-    min_saz_component_prop = 0.10
-  ))
-
-  expect_identical(raw, recoded)
   # exposure has one effective zero level plus one positive level, so it is
-  # binary after structural-zero collapsing and must be reset.
-  expect_false(raw$spike[["exposure"]])
-  expect_true(raw$spike[["eligible"]])
+  # binary and must be reset.
+  expect_false(out$spike[["exposure"]])
+  expect_true(out$spike[["eligible"]])
 })
 
 
 # Test purpose: Checks that structural-zero proportions use finite observations
-# and count nonpositive values as the SAZ zero component.
+# and count exact-zero values as the SAZ zero component.
 test_that("calculate_saz_prop_zero() reports retained SAZ proportions", {
   x <- cbind(
-    exposure = c(-2, 0, 0, 1, 2, 3, NA_real_, Inf),
+    exposure = c(0, 0, 1, 2, 3, 4, NA_real_, Inf),
     ordinary = seq_len(8)
   )
 
@@ -529,7 +514,7 @@ test_that("calculate_saz_prop_zero() reports retained SAZ proportions", {
     spike = c(exposure = TRUE, ordinary = FALSE)
   )
 
-  expect_equal(out[["exposure"]], 3 / 6)
+  expect_equal(out[["exposure"]], 2 / 6)
   expect_true(is.na(out[["ordinary"]]))
 })
 
@@ -598,7 +583,7 @@ test_that("spike reset preserves user-specified catzero handling", {
 
   x_val <- rgamma(n, shape = 2, rate = 1)
   x_val[1:2] <- 0 # too few zeros for SAZ eligibility
-  y_val <- 1.5 * (x_val <= 0) + 0.5 * x_val + rnorm(n)
+  y_val <- 1.5 * (x_val == 0) + 0.5 * x_val + rnorm(n)
 
   x_mat <- matrix(x_val, ncol = 1, dimnames = list(NULL, "exposure"))
 
@@ -1052,9 +1037,9 @@ test_that("predict.mfp2() works for retained spike-at-zero models", {
 })
 
 
-# Test purpose: Ensures prediction for retained SAZ models treats negative
-# newdata values as part of the zero component rather than failing as ordinary FP.
-test_that("predict.mfp2() treats negative newdata as zero component for SAZ models", {
+# Test purpose: Ensures prediction for retained SAZ models rejects negative
+# newdata instead of treating it as the zero component.
+test_that("predict.mfp2() rejects negative newdata for SAZ models", {
   set.seed(314)
   n <- 200
 
@@ -1076,10 +1061,10 @@ test_that("predict.mfp2() treats negative newdata as zero component for SAZ mode
     dimnames = list(NULL, "exposure")
   )
 
-  pred <- predict(fit, newdata = newx)
-
-  expect_length(pred, nrow(newx))
-  expect_true(all(is.finite(pred)))
+  expect_error(
+    predict(fit, newdata = newx),
+    "require nonnegative covariates(.|[[:space:]])*exposure"
+  )
 })
 
 
@@ -1157,4 +1142,78 @@ test_that("SAZ Stage 2 retains both components at alpha = 1 and p = 1", {
 
   expect_equal(out$decision, saz_decision_codes[["cont_binary"]])
   expect_equal(unname(out$pvalue), c(1, 1))
+})
+
+
+# Test purpose: When both component-removal tests are non-significant, the two
+# reduced models are non-nested and may have different df. Stage 2 must compare
+# their already-computed BIC values rather than favoring the model with the
+# larger raw likelihood. An exact BIC tie is resolved in favor of binary-only.
+test_that("SAZ Stage 2 uses BIC for two non-significant reductions", {
+  metric <- c(
+    logl = 0,
+    df = 1,
+    aic = 0,
+    bic = 0,
+    deviance_gaussian = 1,
+    df_resid = 10
+  )
+
+  testthat::local_mocked_bindings(
+    calculate_lr_test = function(...) {
+      list(statistic = 0, pvalue = 0.50)
+    },
+    .package = "mfp2"
+  )
+
+  cases <- list(
+    continuous_smaller_bic = list(
+      bic2 = 10,
+      bic3 = 20,
+      # Deliberately make Model 2's likelihood worse so this case would fail
+      # under the former larger-log-likelihood tie-break.
+      logl2 = -100,
+      logl3 = -1,
+      expected = saz_decision_codes[["continuous_only"]]
+    ),
+    binary_smaller_bic = list(
+      bic2 = 20,
+      bic3 = 10,
+      # Deliberately make Model 2's likelihood better for the same reason.
+      logl2 = -1,
+      logl3 = -100,
+      expected = saz_decision_codes[["binary_only"]]
+    ),
+    exact_bic_tie = list(
+      bic2 = 10,
+      bic3 = 10,
+      logl2 = -1,
+      logl3 = -100,
+      expected = saz_decision_codes[["binary_only"]]
+    )
+  )
+
+  for (case in cases) {
+    metrics2 <- metric
+    metrics3 <- metric
+    metrics2[["bic"]] <- case$bic2
+    metrics3[["bic"]] <- case$bic3
+    metrics2[["logl"]] <- case$logl2
+    metrics3[["logl"]] <- case$logl3
+
+    out <- compute_saz_stage2_decision(
+      metrics = list(
+        metrics1 = metric,
+        metrics2 = metrics2,
+        metrics3 = metrics3
+      ),
+      criterion = "pvalue",
+      alpha = 0.05,
+      n_obs = 10,
+      ftest = FALSE
+    )
+
+    expect_identical(out$decision, case$expected)
+    expect_equal(unname(out$pvalue), c(0.50, 0.50))
+  }
 })

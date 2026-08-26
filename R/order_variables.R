@@ -3,7 +3,7 @@
 # fit_mfp() supplies the resolved linear reference representation:
 #
 #   ordinary term      -> x
-#   zero term          -> x+ (nonpositive values already recoded to zero)
+#   zero term          -> x+ (exact-zero values retained as zero)
 #   catzero/SAZ term   -> x+ plus a prebuilt structural-zero indicator
 #
 # This file does not recode zero values or construct catzero indicators. It only
@@ -23,7 +23,7 @@
 #' @details
 #' The caller supplies the continuous reference matrix in its final starting
 #' form. Thus ordinary terms remain unchanged, while terms with \code{zero}
-#' handling have already had nonpositive values recoded to zero. Optional
+#' handling already retain exact-zero values as zero. Optional
 #' \code{catzero_blocks} contain the already-built binary structural-zero
 #' indicators. These indicators are appended to the corresponding conceptual
 #' terms only for fitting the reference model; they are not recalculated here.
@@ -60,8 +60,8 @@
 #'   order. Supported values are \code{"ascending"}, \code{"descending"}, and
 #'   \code{"original"}.
 #' @param x Numeric matrix containing the continuous reference columns, excluding
-#'   the intercept. Structural-zero recoding must already have been applied by
-#'   the caller.
+#'   the intercept. The caller must already have validated nonnegative
+#'   exact-zero terms; negative-to-zero recoding is not permitted.
 #' @param term_to_columns Named list mapping each conceptual term to its columns
 #'   in \code{x}. Grouped fixed terms may map to multiple columns.
 #' @param catzero_blocks Optional named list, indexed by conceptual term, of
@@ -120,7 +120,8 @@ order_variables <- function(xorder = "ascending",
   # Fast path: when no catzero/SAZ indicator blocks are present, the supplied x
   # is already the complete reference design. No structural-zero assembly or
   # extra predictor matrix is created. Plain zero terms need no special branch
-  # here because fit_mfp() has already recoded their continuous column in x.
+  # here because fit_mfp() has already retained their exact-zero continuous
+  # column in x.
   if (is.null(catzero_blocks)) {
     x_fit <- if (use_glm_intercept_template) {
       assemble_design_matrix(

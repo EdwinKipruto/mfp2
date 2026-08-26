@@ -220,7 +220,7 @@ test_that("zero-handled FP components display their positive-part basis", {
 
 
 test_that("catzero and spike component sets describe the fitted columns", {
-  x <- matrix(c(-2, 0, 1, 4), ncol = 1L, dimnames = list(NULL, "age"))
+  x <- matrix(c(0, 0.5, 1, 4), ncol = 1L, dimnames = list(NULL, "age"))
   common <- list(
     x = x,
     power_list = list(age = 0.5),
@@ -301,7 +301,7 @@ test_that("zero indicator columns display the structural-zero condition", {
 
   expect_identical(
     info$basis,
-    c("I(age > 0) * age^0.5", "I(age <= 0)")
+    c("I(age > 0) * age^0.5", "I(age = 0)")
   )
 })
 
@@ -540,10 +540,10 @@ test_that("coef.mfp2 keeps fitted coefficient names", {
 test_that("print.mfp2 formats intercept and exact-zero centers distinctly", {
   set.seed(73104)
   n <- 240
-  exposure <- stats::rnorm(n, mean = 4, sd = 3)
+  exposure <- c(rep(0, 60), stats::rgamma(n - 60, shape = 2, rate = 1))
   dat <- data.frame(
-    y = 1.2 * pmax(exposure, 0)^0.5 +
-      0.8 * (exposure <= 0) + stats::rnorm(n, sd = 0.5),
+    y = 1.2 * exposure^0.5 +
+      0.8 * (exposure == 0) + stats::rnorm(n, sd = 0.5),
     exposure = exposure
   )
 
@@ -567,11 +567,11 @@ test_that("print.mfp2 formats intercept and exact-zero centers distinctly", {
   expect_false(grepl("\\bNA\\b", intercept_line))
 
   indicator_line <- coefficient_lines[
-    grepl("I(exposure <= 0)", coefficient_lines, fixed = TRUE)
+    grepl("I(exposure = 0)", coefficient_lines, fixed = TRUE)
   ]
   expect_length(indicator_line, 1L)
-  expect_match(indicator_line, "I\\(exposure <= 0\\)\\s+0\\s+[-+0-9]", perl = TRUE)
-  expect_false(grepl("I\\(exposure <= 0\\)\\s+0\\.0+", indicator_line, perl = TRUE))
+  expect_match(indicator_line, "I\\(exposure = 0\\)\\s+0\\s+[-+0-9]", perl = TRUE)
+  expect_false(grepl("I\\(exposure = 0\\)\\s+0\\.0+", indicator_line, perl = TRUE))
 
   expect_false(grepl("\\bNA\\b", coefficient_output))
 })
@@ -710,7 +710,14 @@ test_that("print.mfp2() omits an empty Standard MFP subsection", {
 
   expect_false(any(output == "Standard MFP"))
   expect_false(any(grepl("<0 rows>", output, fixed = TRUE)))
-  expect_true(any(grepl("Spike-at-Zero (SAZ)", output, fixed = TRUE)))
+  expect_true(any(grepl(
+    paste0(
+      "Spike-at-Zero (SAZ; x is transformed only for x > 0, ",
+      "binary is I(x = 0))"
+    ),
+    output,
+    fixed = TRUE
+  )))
 })
 
 

@@ -202,7 +202,7 @@ mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
 # Collapse repeated observed-value predictions to one fitted estimate per level
 # and preserve fitted factor-level order for discrete axes, including factors
 # with more than two levels. For a SAZ
-# binary-only term, translate the internal indicator I(x <= 0) into semantic
+# binary-only term, translate the internal indicator I(x == 0) into semantic
 # labels on the original covariate scale: "x = 0" and "x > 0".
 mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
   binary_df <- df[!duplicated(df$variable), , drop = FALSE]

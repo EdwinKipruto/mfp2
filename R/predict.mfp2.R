@@ -145,18 +145,19 @@
 #' Supply zero-handled and spike-at-zero variables on their original scale.
 #' Do not create a separate zero-indicator column.
 #'
-#' The zero handling selected during fitting is reused during prediction. A
-#' nonpositive value is treated in the same way as a nonpositive value in the
-#' fitted model, and a positive value is passed to the selected continuous
-#' function when applicable.
+#' The zero handling selected during fitting is reused during prediction. These
+#' options require nonnegative covariates: `x = 0` belongs to the zero component
+#' and `x > 0` belongs to the positive component. Negative values in `newdata`
+#' are rejected; recode them explicitly before prediction if they should
+#' scientifically represent the zero group.
 #'
 #' If the final spike-at-zero model includes both a continuous component and a
 #' zero indicator, both are used automatically. If it includes only one
 #' component, only that component is used.
 #'
 #' The same rule is applied to a supplied reference. For a term that includes
-#' only the zero indicator, a nonpositive reference is treated as indicator 1
-#' and a positive reference as indicator 0.
+#' only the zero indicator, an exact-zero reference is treated as indicator 1
+#' and a positive reference as indicator 0. Negative references are rejected.
 #'
 #' @section Offsets:
 #' Offsets are used only for complete-model predictions. They are not included
@@ -667,6 +668,30 @@ predict.mfp2 <- function(object,
     selected_internal_terms
   }
 
+  zero_option_terms <- active_zero_option_names(
+    object$zero,
+    object$catzero,
+    object$spike
+  )
+
+  if (!is.null(newdata_raw)) {
+    validate_zero_option_covariates(newdata_raw, zero_option_terms)
+  }
+
+  # Explicit contrast references use the same exact-zero domain as newdata.
+  # Validate them before adding fitted shifts or constructing transformed rows.
+  if (!is.null(ref) && length(ref) > 0L) {
+    for (term in intersect(names(ref), zero_option_terms)) {
+      value <- ref[[term]]
+      if (!is.null(value) && is.numeric(value)) {
+        validate_zero_option_covariates(
+          matrix(value, ncol = 1L, dimnames = list(NULL, term)),
+          term
+        )
+      }
+    }
+  }
+
   if (!is.null(newdata)) {
     newdata <- reconstruct_formula_newdata(
       object,
@@ -904,7 +929,7 @@ predict.mfp2 <- function(object,
         # incomplete decision metadata as not binary-only; the helper still
         # recognizes the explicit code stored by current SAZ fits.
         if (prediction_term_is_binary_only(object, t)) {
-          variable <- as.integer(x_seq[, t] <= 0)
+          variable <- as.integer(x_seq[, t] == 0)
           variable_pre <- variable
         }
 
@@ -2022,7 +2047,7 @@ prediction_term_is_binary_only <- function(object, v) {
 #' `object$fp_powers[[v]][2]` applies to the ACD component A(x). Therefore only
 #' the first power is checked against the raw covariate here.
 #'
-#' Variables fitted with zero-handling are exempt because nonpositive values are
+#' Variables fitted with zero-handling are exempt because exact-zero values are
 #' represented structurally. Variables with `spike_decision = 3` are also exempt
 #' because the continuous component is dropped and only the spike/catzero
 #' indicator is retained.

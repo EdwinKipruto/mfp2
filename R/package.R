@@ -35,6 +35,10 @@
 #' `spike_vars = "x"`. The procedure assesses whether the final model should
 #' retain both the zero-component indicator and the positive continuous
 #' component, or only one of them.
+#' Covariates requested through `zero`, `catzero`, or `spike` must be
+#' nonnegative: `x = 0` defines the zero component and `x > 0` defines the
+#' positive component. Negative values are rejected and must be explicitly
+#' recoded if they should represent the zero group.
 #'
 #' @section Getting started:
 #' See `vignette("mfp2_introduction", package = "mfp2")` for an introduction

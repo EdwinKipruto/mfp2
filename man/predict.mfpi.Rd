@@ -138,6 +138,11 @@ different term-specific models; they are not parts of one combined model.
 Supply continuous predictors on their original scale. Stored shifts, scales,
 fractional-polynomial functions, centering values, zero handling, and
 Winsorisation limits are applied automatically.
+For every fitted term retaining \code{zero}, \code{catzero}, or \code{spike} handling,
+prediction values must be nonnegative: \code{x = 0} is the zero component and
+\code{x > 0} is the positive component. Negative values are rejected, including
+for binary-only SAZ terms, and must be explicitly recoded if they should
+represent the zero group.
 
 The default \code{type = NULL} is equivalent to \code{type = "both"}. Supplying
 \code{newdata} by itself does not change this default. To obtain one prediction per

@@ -56,6 +56,10 @@ model degrees of freedom and is sorted with selected variables first. For
 grouped terms, the initial degrees of freedom count all member design columns.
 The Spike-at-Zero subsection also reports \code{prop_zero}, the proportion of
 finite fitting-sample observations in the structural-zero component.
+Its heading states that \code{x} is transformed only for \code{x > 0} and that the
+binary component is \code{I(x = 0)}. The Function column can therefore use the
+concise labels \code{linear}, \code{FP(...)}, and \code{binary}, combining them with \code{+}
+when both components are retained.
 Notes about variable-specific \code{select}/\code{alpha} settings and the
 \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 column whose meaning may not be obvious, are printed immediately below it.

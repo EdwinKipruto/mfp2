@@ -783,9 +783,9 @@ test_that("compact ACD basis preserves degree-1 catzero candidates", {
 
 
 # Test purpose: Checks that compact ACD generation preserves zero-mode
-# semantics for nonpositive x values as well as positive transformed values.
+# semantics for exact-zero x values as well as positive transformed values.
 test_that("compact ACD basis preserves zero-mode transformations", {
-  x <- c(-2, 0, 1, 2, 4, 8)
+  x <- c(0, 0, 1, 2, 4, 8)
   powers <- c(0, 1)
   acd_par <- list(
     beta0 = -1,

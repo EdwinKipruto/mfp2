@@ -57,7 +57,7 @@ test_that("MFPI rejects two-row groups for FP2 interactions", {
 test_that("group-centered zero handling requires positive group support", {
   x <- cbind(
     treatment = rep(c(0, 1), each = 6L),
-    age = c(-4, -3, -2, -1, 0, 1, 1:6)
+    age = c(rep(0, 5), 1, 1:6)
   )
   y <- seq_len(nrow(x)) / 10
 
@@ -81,7 +81,7 @@ test_that("group-centered zero handling requires positive group support", {
 test_that("group-centered zero-handled FP2 requires three positive rows", {
   x <- cbind(
     treatment = rep(c(0, 1), each = 6L),
-    age = c(-3, -2, -1, 0, 1, 2, 1:6)
+    age = c(rep(0, 4), 1, 2, 1:6)
   )
   y <- seq_len(nrow(x)) / 10
 

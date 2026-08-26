@@ -168,6 +168,87 @@ validate_model_weights <- function(weights, nobs) {
 }
 
 
+#' Validate Covariates Requested for Exact-Zero Handling
+#'
+#' Applies the common domain contract for the `zero`, `catzero`, and `spike`
+#' options. Validation must be called on the original, unshifted covariate
+#' values, before option cascading, SAZ eligibility checks, preprocessing, or
+#' transformation. Structural zero means exactly `x == 0`; finite negative
+#' values are never assigned to that component implicitly.
+#'
+#' @param x Numeric matrix or data frame containing unshifted covariates.
+#' @param variables Character vector naming variables requested through
+#'   `zero`, `catzero`, or `spike`. Names not present in `x` are ignored so the
+#'   helper can also validate the relevant columns of term-specific prediction
+#'   data after missing-column checks have been handled by the caller.
+#'
+#' @return Invisibly returns `TRUE`.
+#'
+#' @keywords internal
+#' @noRd
+validate_zero_option_covariates <- function(x, variables) {
+  variables <- unique(variables[!is.na(variables) & nzchar(variables)])
+  if (length(variables) == 0L || is.null(x)) {
+    return(invisible(TRUE))
+  }
+
+  if (is.data.frame(x)) {
+    x_names <- names(x)
+    get_values <- function(variable) x[[variable]]
+  } else if (is.matrix(x)) {
+    x_names <- colnames(x)
+    get_values <- function(variable) x[, variable]
+  } else {
+    x <- as.data.frame(x, check.names = FALSE)
+    x_names <- names(x)
+    get_values <- function(variable) x[[variable]]
+  }
+
+  variables <- intersect(variables, x_names)
+  if (length(variables) == 0L) {
+    return(invisible(TRUE))
+  }
+
+  affected <- variables[vapply(
+    variables,
+    function(variable) {
+      values <- get_values(variable)
+      is.numeric(values) && any(is.finite(values) & values < 0)
+    },
+    logical(1L)
+  )]
+
+  if (length(affected) > 0L) {
+    stop(
+      "The `zero`, `catzero`, and `spike` options require nonnegative covariates (x >= 0).\n",
+      "i Affected variable(s): ", paste(affected, collapse = ", "), ".\n",
+      "i Recode negative values explicitly if they should represent the zero group.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Collect Names Retaining Exact-Zero Handling
+#'
+#' @param ... Named logical vectors or lists containing zero/catzero/spike
+#'   flags.
+#'
+#' @return Character vector of active names.
+#'
+#' @keywords internal
+#' @noRd
+active_zero_option_names <- function(...) {
+  flags <- list(...)
+  unique(unlist(lapply(flags, function(flag) {
+    if (is.null(flag) || is.null(names(flag))) return(character(0L))
+    names(flag)[vapply(flag, isTRUE, logical(1L))]
+  }), use.names = FALSE))
+}
+
+
 #' Validate Predictor Column Names
 #'
 #' Applies the common predictor-name contract before variable-specific settings

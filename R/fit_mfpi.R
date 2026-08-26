@@ -194,7 +194,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   predictor undergoes the ACD transformation. Must be \code{FALSE} for all
 #'   variables in \code{cont_vars}.
 #' @param zero_vars Named logical vector of length \eqn{p}. Whether each
-#'   predictor treats non-positive values as zero before transformation.
+#'   predictor treats exact-zero values as structural zero before transformation.
 #' @param catzero_vars Named logical vector of length \eqn{p}. Whether each
 #'   predictor is semi-continuous and requires a binary indicator alongside
 #'   its FP transformation.
@@ -698,7 +698,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
 #'   ACD transformation.
 #' @param fp_powers Named list of candidate FP power sets, one per predictor.
 #' @param zero_vars Named logical vector. Whether each predictor should treat
-#'   non-positive values as zero.
+#'   exact-zero values as structural zero.
 #' @param catzero_vars Named logical vector. Whether each predictor should add a
 #'   zero indicator.
 #' @param spike_vars Named logical vector. Whether each predictor should be

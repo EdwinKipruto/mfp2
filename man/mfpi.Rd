@@ -338,28 +338,33 @@ conflict with the interaction-form search. In \code{mfpi.formula()}, this
 argument is not available; use \code{fp(variable, acd = TRUE)} or
 \code{fp2(variable, acd = TRUE)} in the formula instead.}
 
-\item{zero_vars}{An optional character vector naming variables for which
-non-positive values are treated as structural zeros. When enabled, the
-selected FP or linear function is applied only to positive values, while
-non-positive values receive a separate fixed contribution. The shift for
+\item{zero_vars}{An optional character vector naming nonnegative variables
+for which exact-zero values (\code{x = 0}) are treated as structural zeros.
+The selected FP or linear function is applied only to values with \code{x > 0},
+while exact-zero values receive a separate fixed contribution. Negative
+values are rejected and must be explicitly recoded if they should
+represent the zero group. The shift for
 a zero-handled variable is set to 0. This option can be used for
 variables in \code{cont_vars} and for adjustment variables. In the formula
 interface, this can also be specified with \code{fp(variable, zero = TRUE)}.
 A zero-handled variable in \code{cont_vars} must retain at least one positive
 observation after applying \code{subset}.}
 
-\item{catzero_vars}{An optional character vector naming adjustment variables
+\item{catzero_vars}{An optional character vector naming nonnegative adjustment variables
 that use both a positive-part FP function and a binary structural-zero
-indicator as an additional covariate. Setting \code{catzero_vars} implies
+indicator \code{I(x == 0)} as an additional covariate. Negative values are
+rejected and require explicit recoding when scientifically appropriate.
+Setting \code{catzero_vars} implies
 \code{zero_vars} for the same variables. This option is disabled with a
 warning for variables in \code{cont_vars}; only explicit \code{zero_vars} settings
 are preserved for those. In the formula interface, use
 \code{fp(variable, catzero = TRUE)}.}
 
-\item{spike_vars}{An optional character vector naming adjustment variables to
+\item{spike_vars}{An optional character vector naming nonnegative adjustment variables to
 assess with the spike-at-zero procedure. Spike-at-zero testing requires
-enough observations in both the non-positive and positive components (see
-\code{min_saz_component_prop}). Setting \code{spike_vars} implies both
+enough observations in both the exact-zero and positive components (see
+\code{min_saz_component_prop}). Negative values are rejected and require
+explicit recoding when scientifically appropriate. Setting \code{spike_vars} implies both
 \code{catzero_vars} and \code{zero_vars} for the same variables. Variables that fail
 the component-proportion check are automatically downgraded to \code{catzero}
 or \code{zero} handling. This option is disabled with a warning for variables
@@ -696,11 +701,15 @@ exactly two observations remain permitted for linear and FP1 interactions,
 with a warning that fitting may be unreliable.
 }
 
-\section{Non-positive values and special transformations}{
+\section{Exact-zero values and special transformations}{
 
 Explicit \code{zero_vars} handling is supported for variables in \code{cont_vars}.
-Non-positive values are then treated as structural zero, and the selected
-linear or FP function is applied to the positive values. At least one
+Exact-zero values (\code{x = 0}) are then treated as structural zero, and the
+selected linear or FP function is applied to values with \code{x > 0}. Variables
+requested through \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} must be
+nonnegative. Negative values are rejected before flag cascading, SAZ checks,
+shifting, scaling, or transformation and must be recoded explicitly if they
+should scientifically represent the zero group. At least one
 positive observation must remain in the fitting data after \code{subset} is
 applied; otherwise fitting stops and identifies every affected variable.
 With \code{center_type = "group"}, a zero-handled interaction additionally needs
@@ -715,7 +724,7 @@ with a warning. An explicit \code{zero_vars} setting for that variable is
 preserved.
 
 Spike-at-zero adjustment variables must have enough observations in both the
-non-positive and positive components. \code{min_saz_component_prop} sets the
+exact-zero and positive components. \code{min_saz_component_prop} sets the
 minimum required proportion in each component.
 }
 

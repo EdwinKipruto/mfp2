@@ -123,8 +123,8 @@ saz_decision_label <- function(decision,
 #'
 #' Internal helper that reports, for each retained spike-at-zero term, the
 #' proportion of finite observations belonging to the structural-zero
-#' component. Nonpositive values are counted directly as structural zeros,
-#' matching the zero-recoded semantics without materializing a recoded copy.
+#' component. Exact-zero values are counted directly as structural zeros;
+#' callers reject negative values before this helper is reached.
 #' Non-SAZ terms receive
 #' `NA_real_`.
 #'
@@ -175,7 +175,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
     values <- x[, column]
     finite <- is.finite(values)
     if (any(finite)) {
-      out[[term]] <- mean(values[finite] <= 0)
+      out[[term]] <- mean(values[finite] == 0)
     }
   }
 
@@ -209,7 +209,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #'
 #' @param x A numeric matrix or data frame with column names. Only columns named
 #'   in \code{spike} are examined. Values are interpreted on the raw structural-
-#'   zero scale: finite values \code{<= 0} belong to the zero component and
+#'   zero scale: finite values \code{== 0} belong to the zero component and
 #'   finite values \code{> 0} belong to the positive component. The caller does
 #'   not need to materialize a temporarily zero-recoded copy.
 #' @param spike A named logical vector. \code{TRUE} indicates the column was
@@ -248,15 +248,14 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #'   \item{User specified \code{spike} only, not \code{catzero} or
 #'     \code{zero}}{After reset: \code{spike = FALSE},
 #'     \code{catzero = FALSE}, \code{zero = FALSE}. The variable is treated as
-#'     a standard continuous predictor -- no binary indicator, no zero recoding.}
+#'     a standard continuous predictor -- no binary indicator or exact-zero handling.}
 #'   \item{User specified \code{spike} and \code{zero = TRUE}}{After reset:
 #'     \code{spike = FALSE}, \code{catzero = FALSE}, \code{zero = TRUE}.
-#'     Nonpositive values are still recoded to zero before FP transformation,
+#'     Exact-zero values are still structural zeros before FP transformation,
 #'     but no binary indicator is added and the SAZ algorithm is not run.}
 #'   \item{User specified \code{spike} and \code{catzero = TRUE}}{After reset:
 #'     \code{spike = FALSE}, \code{catzero = TRUE}, \code{zero = TRUE}. The
-#'     binary structural-zero indicator \code{I(x == 0)} on the recoded scale,
-#'     equivalent to \code{I(original x <= 0)}, is still added as explicitly
+#'     binary structural-zero indicator \code{I(x == 0)} is still added as explicitly
 #'     requested via \code{catzero}, but the SAZ selection algorithm is not run.}
 #' }
 #'
@@ -267,7 +266,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #'     structural-zero proportion or the positive-observation proportion is
 #'     below \code{min_saz_component_prop}.
 #'   \item \strong{Binary variable} -- exactly two effective finite values
-#'     after all nonpositive values are collapsed to the structural-zero level.
+#'     when exact zero and one distinct positive value are present.
 #'     The positive part would then contain a single unique value, making FP
 #'     transformation degenerate.
 #' }
@@ -288,9 +287,9 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   names_spike <- names(spike)[spike]
 
   # Component proportions for each requested spike-at-zero variable.
-  # Work directly on the unre-coded values: x <= 0 is exactly the set that a
-  # temporary zero-recoding pass would collapse to zero, while x > 0 is left
-  # unchanged. Avoiding that physical rewrite prevents copy-on-modify from
+  # Work directly on the unre-coded values: x == 0 defines the structural-zero
+  # component, while x > 0 defines the positive component. Avoiding a physical
+  # rewrite prevents copy-on-modify from
   # duplicating the full design matrix solely for this eligibility check.
   #
   # is.finite() excludes NA/NaN/Inf from both counts, so n_observed below can
@@ -302,7 +301,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   n_zero <- vapply(
     names_spike,
     function(v) {
-      sum(is.finite(x[, v]) & x[, v] <= 0)
+      sum(is.finite(x[, v]) & x[, v] == 0)
     },
     integer(1L)
   )
@@ -321,16 +320,16 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   prop_positive <- n_positive / n_observed
 
   # Binary variables are not eligible for spike-at-zero modelling. Match the
-  # old temporarily-recoded definition without constructing that vector: all
-  # finite nonpositive values collapse to one effective zero level, while each
-  # distinct positive value remains a separate level.
+  # exact-zero definition without constructing a recoded vector: the finite
+  # zero value contributes one level, while each distinct positive value
+  # remains a separate level.
   is_binary <- vapply(
     names_spike,
     function(v) {
       values <- x[, v]
       values <- values[is.finite(values)]
 
-      has_zero_component <- any(values <= 0)
+      has_zero_component <- any(values == 0)
       n_positive_levels <- length(unique(values[values > 0]))
       n_effective_levels <- as.integer(has_zero_component) + n_positive_levels
 
@@ -522,10 +521,9 @@ resolve_saz_eligibility <- function(x,
   user_catzero <- catzero
   user_zero <- zero
 
-  # Delegate directly on the raw matrix. reset_spike() interprets finite
-  # nonpositive values as one structural-zero component, which is exactly the
-  # result of the old temporary x[x <= 0] <- 0 preprocessing but without
-  # allocating and rewriting a full copy of x.
+  # Delegate directly on the raw matrix. reset_spike() interprets finite exact
+  # zeros as the structural-zero component without allocating and rewriting a
+  # full copy of x. Public callers reject negative values first.
   reset_spike(
     x = x,
     spike = spike,
@@ -542,7 +540,7 @@ resolve_saz_eligibility <- function(x,
 #' For ordinary variables, \code{assign_df()} caps the maximum FP degrees of
 #' freedom according to the number of distinct values in the full variable. For
 #' spike-at-zero variables, the continuous FP part is fitted to the positive
-#' component, while zero/nonpositive observations are represented structurally
+#' component, while exact-zero observations are represented structurally
 #' through the binary zero indicator. Therefore the SAZ-specific df cap must be
 #' based on the number of distinct positive values, not on the number of distinct
 #' values in the full variable including zero.
@@ -556,7 +554,7 @@ resolve_saz_eligibility <- function(x,
 #'
 #' @param x Numeric matrix or data frame on the fitting scale. For spike
 #'   variables, only finite positive values are used to determine the positive-
-#'   component cardinality; nonpositive values need not be physically recoded.
+#'   component cardinality; exact-zero values need not be physically recoded.
 #' @param df Named integer vector of current maximum df values.
 #' @param spike Named logical vector indicating final retained spike-at-zero
 #'   variables after \code{reset_spike()}.
@@ -1028,13 +1026,22 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #'   Model 2 \cr
 #'   \code{p_drop_binary > alpha}, \code{p_drop_continuous > alpha} \tab
 #'   Neither reduction is significantly worse than Model 1 \tab
-#'   Better-fitting reduced component \tab
-#'   Model 2 if \code{logLik(Model 2) > logLik(Model 3)}, otherwise Model 3 \cr
+#'   Reduced component selected by a complexity-adjusted comparison \tab
+#'   Model 2 if \code{BIC(Model 2) < BIC(Model 3)}, otherwise Model 3 \cr
 #' }
 #'
 #' If \code{ftest = FALSE}, the nested comparisons use likelihood-ratio tests.
-#' If \code{ftest = TRUE}, the nested comparisons use F-tests. For
-#' information-criterion based selection, no hypothesis tests are used; the
+#' If \code{ftest = TRUE}, the nested comparisons use F-tests. In the case
+#' where both reductions are non-significant, Models 2 and 3 are
+#' non-nested and can have different complexity: Model 3 has a one-df binary
+#' component, whereas Model 2 can carry a one-, two-, or four-df continuous
+#' component selected in Stage 1. Their raw deviances or log-likelihoods are
+#' therefore not used as a neutral tie-break. Instead, the model with the
+#' smaller BIC is selected so that the additional continuous-component
+#' complexity is penalized. An exact BIC tie selects Model 3, the binary-only
+#' representation.
+#'
+#' For information-criterion based selection, no hypothesis tests are used; the
 #' model with the smallest requested information criterion is selected.
 #'
 #' @return A list with two elements:
@@ -1126,9 +1133,12 @@ compute_saz_stage2_decision <- function(metrics,
     #     continuous one isn't -> keep binary only -> Model 3
     #   only p_drop_continuous small -> the continuous component is needed but
     #     the binary one isn't -> keep continuous only -> Model 2
-    #   neither small -> both components are individually dispensable; break
-    #     the tie by whichever reduced model actually fits better (higher
-    #     log-likelihood), rather than defaulting to either one arbitrarily.
+    #   neither small -> both components are individually dispensable. Models
+    #     2 and 3 are non-nested and may have different df, so raw deviance
+    #     would systematically favor the more flexible continuous component.
+    #     Compare their already-computed BIC values instead. The strict
+    #     inequality deliberately sends an exact BIC tie to Model 3, whose
+    #     binary-only representation is no more complex than Model 2.
     decision <- if (p_drop_binary <= alpha && p_drop_continuous <= alpha) {
       saz_decision_codes[["cont_binary"]]  # Model 1: both components
     } else if (p_drop_binary <= alpha && p_drop_continuous > alpha) {
@@ -1137,8 +1147,9 @@ compute_saz_stage2_decision <- function(metrics,
       saz_decision_codes[["continuous_only"]]  # Model 2: continuous FP/linear/ACD only
     } else {
       # If neither reduced model is significantly worse than the full model,
-      # choose the better-fitting reduced model.
-      if (metrics$metrics2["logl"] > metrics$metrics3["logl"]) {
+      # use BIC to compare the non-nested reduced models while accounting for
+      # the Stage-1 continuous component's one-, two-, or four-df complexity.
+      if (metrics$metrics2["bic"] < metrics$metrics3["bic"]) {
         saz_decision_codes[["continuous_only"]]
       } else {
         saz_decision_codes[["binary_only"]]

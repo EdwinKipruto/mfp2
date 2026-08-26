@@ -1094,7 +1094,7 @@ mfp2_design_column_info <- function(object) {
       # labels when there is no factor level-to-design mapping.
       basis <- source
     } else if (identical(component, "zero_indicator")) {
-      basis <- sprintf("I(%s <= 0)", term)
+      basis <- sprintf("I(%s = 0)", term)
     } else if (identical(component, "identity_binary")) {
       basis <- term
     } else {

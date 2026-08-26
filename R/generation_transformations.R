@@ -7,11 +7,11 @@
 #' For ACD transformation, this is assumed to be 2.
 #' @param powers A numeric vector specifying the set of allowed fractional
 #' polynomial (FP) powers to be used in the transformation.
-#' @param zero Logical indicating whether only positive values of the variable
-#' should be transformed, with nonpositive values (zero or negative) set to zero.
-#' If \code{TRUE}, transformation is applied only to positive values; nonpositive
-#' values are replaced with zero before transformation. If \code{FALSE} (default),
-#' all values are shifted (if needed) to ensure positivity before transformation.
+#' @param zero Logical indicating whether only positive values of a nonnegative
+#' variable should be transformed, with exact-zero values retained as zero. If
+#' \code{TRUE}, callers must supply values already checked against the
+#' nonnegative-input contract. If \code{FALSE} (default), all values
+#' are shifted (if needed) to ensure positivity before transformation.
 #' @param catzero An optional n x 1 numeric/integer matrix containing the
 #' structural-zero binary indicator for the current variable.
 #' @details
@@ -37,7 +37,7 @@
 #'
 #' When \code{catzero} is used, the transformed (or untransformed) continuous variable is
 #' combined with its corresponding binary indicator, representing whether the original
-#' value was positive or nonpositive.
+#' value was positive or exactly zero.
 #'
 #' @return
 #' A list with two components:
@@ -594,7 +594,9 @@ materialize_fp_basis_candidate <- function(fp_basis, candidate) {
 #'
 #' @param x Numeric covariate vector used for candidate generation.
 #' @param powers Candidate powers used if ACD parameters must be fitted here.
-#' @param zero Logical indicating zero-component handling.
+#' @param zero Logical indicating exact-zero handling for a nonnegative `x`:
+#'   `x == 0` is structural and the transformation is applied to `x > 0`.
+#'   The caller must have validated the nonnegative-input contract.
 #' @param acd_parameter Optional stored ACD parameter list.
 #' @param acd_training_values Optional cached A(x) values for exactly the same
 #'   training observations, in the same order as x.

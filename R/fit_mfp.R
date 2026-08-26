@@ -175,14 +175,17 @@ validate_mfp_candidate_powers <- function(powers,
 #' @param control A list with parameters for model fit. See
 #'   \code{survival::coxph()} or \code{stats::glm()} for details.
 #' @param zero Named logical vector with one value per conceptual term,
-#'   indicating which singleton terms treat non-positive values as zero before
+#'   indicating which singleton nonnegative terms treat exact-zero values as zero before
 #'   FP transformation.
 #' @param catzero Named logical vector with one value per conceptual term,
-#'   indicating which singleton terms also receive a binary zero indicator.
-#'   Internally, values \code{x <= 0} are recoded to zero and the indicator is
-#'   equivalent to \code{I(original x <= 0)}.
+#'   indicating which nonnegative singleton terms also receive a binary
+#'   exact-zero indicator.
+#'   Internally, the structural-zero indicator is \code{I(x == 0)}; negative
+#'   values are invalid.
 #' @param spike Named logical vector with one value per conceptual term,
-#'   indicating which singleton terms are assessed using the SAZ algorithm.
+#'   indicating which nonnegative singleton terms are assessed using the SAZ
+#'   algorithm, with `x == 0` defining the zero component and `x > 0` the
+#'   positive component.
 #' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   zero component and the positive component. A requested
@@ -218,8 +221,9 @@ validate_mfp_candidate_powers <- function(powers,
 #'     eligibility is resolved on the unre-coded design. The
 #'     spike-to-catzero-to-zero hierarchy and any defensive SAZ reset are then
 #'     applied, followed by SAZ df capping.
-#'   \item \strong{Reference representation.} Final zero terms are recoded to
-#'     their positive part and catzero/retained spike indicators are built once.
+#'   \item \strong{Reference representation.} Final zero terms retain exact
+#'     zeros and their positive values, and catzero/retained spike indicators
+#'     are built once from \code{x == 0}. No negative-to-zero recoding occurs.
 #'     These same objects are reused by the reference fit and backfitting.
 #'   \item \strong{Full linear reference and variable ordering.} The full
 #'     reference contains each conceptual term in its resolved linear starting
@@ -259,8 +263,8 @@ validate_mfp_candidate_powers <- function(powers,
 #'     a defensive fallback for internal callers that have not resolved SAZ
 #'     eligibility before preprocessing.
 #'   \item Spike-specific proportions and positive-part df capping are evaluated
-#'     directly with \code{x <= 0} / \code{x > 0} predicates before physical
-#'     zero recoding.
+#'     directly with \code{x == 0} / \code{x > 0} predicates before model-matrix
+#'     construction.
 #'   \item For retained spike variables, the maximum FP degrees of freedom may
 #'     be reduced according to the number of distinct positive values. This
 #'     mirrors the ordinary MFP df-capping rule, but applies it to the positive
@@ -476,7 +480,7 @@ fit_mfp <- function(x,
   )
 
   # For retained spike-at-zero variables, cap the maximum FP df using only the
-  # positive component. The positive/nonpositive split must also be evaluated
+  # positive component. The exact-zero/positive split must also be evaluated
   # before physical recoding.
   df <- cap_spike_df(
     x     = x,
@@ -503,10 +507,10 @@ fit_mfp <- function(x,
     allow_linear_only_fp1 = allow_linear_only_fp1
   )
 
-  # Step 4: Recode zero components in x once ----------------------------------
-  # Apply the final zero flags after cascade/reset. The same recoded x is used
+  # Step 4: Normalize exact-zero components in x once -------------------------
+  # Apply the final zero flags after cascade/reset. The same nonnegative x is used
   # by the full linear reference, variable ordering, and all backfitting cycles;
-  # no ordering-specific copy is created.
+  # no negative-to-zero recoding or ordering-specific copy is created.
   zero_x       <- zero
   zero_aligned <- if (has_mapped_terms) {
     stats::setNames(
@@ -520,19 +524,19 @@ fit_mfp <- function(x,
 
   if (length(cols_to_zero) > 0L) {
     for (j in cols_to_zero) {
-      x[x[, j] <= 0, j] <- 0
+      x[x[, j] == 0, j] <- 0
     }
   }
 
-  # zero_x remains TRUE for zero-component terms even though x has already been
-  # recoded. The cycle-level transformation code still needs this flag to leave
+  # zero_x remains TRUE for zero-component terms. The cycle-level
+  # transformation code still needs this flag to leave
   # structural zeros untouched when FP transformations are evaluated.
 
   # Step 5: Build catzero indicators once -------------------------------------
-  # Build the binary structural-zero columns after zero recoding, then reuse the
+  # Build the binary structural-zero columns from exact-zero values, then reuse the
   # same matrices in the full linear reference and in backfitting. This avoids
   # calculating the indicator twice. Each active catzero term is a conceptual
-  # two-component block: positive-part x plus I(original x <= 0).
+  # two-component block: positive-part x plus I(original x == 0).
   catzero_mat_list <- stats::setNames(
     vector("list", length(catzero)),
     names(catzero)
@@ -554,7 +558,7 @@ fit_mfp <- function(x,
 
       column <- columns[[1L]]
       catzero_mat_list[[v]] <- matrix(
-        as.integer(x[, column] <= 0),
+        as.integer(x[, column] == 0),
         ncol = 1L,
         dimnames = list(rownames(x), "catzero")
       )
@@ -564,8 +568,8 @@ fit_mfp <- function(x,
   # Step 6: Fit the full linear reference and determine visiting order --------
   # The reference model now matches the resolved starting representation:
   #   ordinary term        -> x
-  #   zero term            -> x+ (already recoded in Step 4)
-  #   catzero/spike term   -> x+ + I(x <= 0)
+  #   zero term            -> x+ (exact zero retained in Step 4)
+  #   catzero/spike term   -> x+ + I(x == 0)
   # catzero indicators are passed as already-built blocks; order_variables()
   # only assembles the fit matrix and never recreates zero/catzero data.
   #
@@ -1156,7 +1160,7 @@ fit_mfp <- function(x,
 #' indicating the fp powers to be used in the current step for all variables
 #' (except `xi`).
 #' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
-#' for nonpositive values, created when specific variables are passed to the
+#' for exact-zero values, created when specific variables are passed to the
 #' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
 #' \code{NULL}, it indicates that the corresponding variable was not specified by
 #' the user in the \code{catzero} argument of \code{fit_mfp}. Here, \code{catzero}

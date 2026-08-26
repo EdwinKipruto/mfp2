@@ -279,28 +279,30 @@ through; \code{trace = TRUE} is not supported by the fastglm backend. For
 \code{family = "negbin"}, these settings apply to the inner IRLS fit, while
 fastglm_nb-specific outer optimization controls retain their defaults.}
 
-\item{zero_vars}{Character vector of continuous predictors whose nonpositive
-values should be recoded to zero before FP transformation. Only positive
-values undergo the FP function; nonpositive values contribute zero to the
+\item{zero_vars}{Character vector of nonnegative continuous predictors for
+which exact-zero values form a structural-zero component. Only values with
+\code{x > 0} undergo the FP function; values with \code{x = 0} contribute zero to the
 linear predictor. The shift for these variables is forced to zero. Applies
 to \code{mfp2.default()} only; in the formula interface use
-\code{fp(x, zero = TRUE)}. See the section on nonpositive values and
-spike-at-zero modelling.}
+\code{fp(x, zero = TRUE)}. Negative values are rejected and must be explicitly
+recoded if they should represent the zero group. See the exact-zero and
+spike-at-zero modelling section.}
 
-\item{catzero_vars}{Character vector of continuous predictors that combine an
+\item{catzero_vars}{Character vector of nonnegative continuous predictors that combine an
 FP transformation of their positive values with a binary indicator for
-nonpositive values. The indicator enters the model as a separate fixed
+exact-zero values (\code{x = 0}). The indicator enters the model as a separate fixed
 covariate. Requesting \code{catzero} implies \code{zero} handling for the same
 variable. Applies to \code{mfp2.default()} only; in the formula interface use
-\code{fp(x, catzero = TRUE)}.}
+\code{fp(x, catzero = TRUE)}. Negative values are rejected and require explicit
+recoding when they should represent the zero group.}
 
-\item{spike_vars}{Character vector of continuous predictors to be assessed
+\item{spike_vars}{Character vector of nonnegative continuous predictors to be assessed
 with the two-stage spike-at-zero (SAZ) algorithm. SAZ selection determines
 whether the final model retains both the binary zero-indicator and
 continuous FP component, only the continuous component, or only the binary
 indicator. Requesting \code{spike} implies both \code{catzero} and \code{zero} handling
 while SAZ remains eligible. A predictor is eligible for SAZ only when both
-the nonpositive and positive components meet the \code{min_saz_component_prop}
+the exact-zero and positive components meet the \code{min_saz_component_prop}
 threshold and the variable is not binary; ineligible spike requests are
 reset. Applies to \code{mfp2.default()} only; in the formula interface use
 \code{fp(x, spike = TRUE)}.}
@@ -408,7 +410,7 @@ transformed using only their positive values.
 
 \item{catzero}{
 A named logical vector indicating which terms include a separate
-indicator for nonpositive values.
+indicator for exact-zero values.
 }
 
 \item{spike_dec}{
@@ -622,16 +624,15 @@ of the transformation, the six candidate model families, the five-step
 closed-test sequence, interpretation, and worked examples.
 }
 
-\section{Nonpositive values and spike-at-zero modelling}{
+\section{Exact-zero and spike-at-zero modelling}{
 
 The \code{zero}, \code{catzero}, and \code{spike} options address related but distinct
-modelling goals for covariates containing nonpositive values:
+modelling goals for nonnegative covariates containing exact zeros:
 
 \itemize{
 \item \code{zero} applies the continuous FP function to positive values only;
-nonpositive values form the zero component and are recoded to zero before
-transformation.
-\item \code{catzero} adds a fixed binary indicator for the nonpositive component
+values with \code{x = 0} form the zero component.
+\item \code{catzero} adds a fixed binary indicator for the exact-zero component
 while also fitting the positive-component function.
 \item \code{spike} invokes SAZ selection to determine whether the final model
 retains both components, only the positive-component function, or only
@@ -645,15 +646,21 @@ In the formula interface, use \code{fp(x, zero = TRUE)},
 \code{catzero} implies \code{zero}. While SAZ remains eligible, \code{spike} implies both
 \code{catzero} and \code{zero}. Binary predictors are not eligible for any of these
 options, and requests for them are reset. Requests for \code{zero} or \code{catzero} on
-an all-positive predictor are also reset because there is no nonpositive
+an all-positive predictor are also reset because there is no exact-zero
 component to represent.
+
+All three options require nonnegative covariates (\code{x >= 0}). The zero
+component is exactly \code{x = 0} and the positive component is \code{x > 0}.
+Negative values are rejected before option cascading or preprocessing and
+are never silently recoded. Recode negative values explicitly only when it
+is scientifically appropriate for them to represent the zero group.
 
 SAZ selection has two stages. Stage 1 uses \code{select} for overall term
 inclusion and \code{alpha} for positive-component functional-form comparisons
 while retaining the binary component. Stage 2 selects among the three
 retained representations; under \code{criterion = "pvalue"}, both Stage-2
 component-removal tests are evaluated at \code{alpha}. A requested SAZ variable is
-eligible only when both the nonpositive and positive components contain at least
+eligible only when both the exact-zero and positive components contain at least
 \code{min_saz_component_prop} of the observations and the variable is not binary.
 With the default value \code{0.10}, each component must contain at least 10 percent
 of observations. If eligibility fails, the spike request is reset; explicit

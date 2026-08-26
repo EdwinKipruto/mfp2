@@ -167,15 +167,14 @@
 #' of the transformation, the six candidate model families, the five-step
 #' closed-test sequence, interpretation, and worked examples.
 #'
-#' @section Nonpositive values and spike-at-zero modelling:
+#' @section Exact-zero and spike-at-zero modelling:
 #' The `zero`, `catzero`, and `spike` options address related but distinct
-#' modelling goals for covariates containing nonpositive values:
+#' modelling goals for nonnegative covariates containing exact zeros:
 #'
 #' \itemize{
 #'   \item `zero` applies the continuous FP function to positive values only;
-#'     nonpositive values form the zero component and are recoded to zero before
-#'     transformation.
-#'   \item `catzero` adds a fixed binary indicator for the nonpositive component
+#'     values with `x = 0` form the zero component.
+#'   \item `catzero` adds a fixed binary indicator for the exact-zero component
 #'     while also fitting the positive-component function.
 #'   \item `spike` invokes SAZ selection to determine whether the final model
 #'     retains both components, only the positive-component function, or only
@@ -189,15 +188,21 @@
 #' `catzero` implies `zero`. While SAZ remains eligible, `spike` implies both
 #' `catzero` and `zero`. Binary predictors are not eligible for any of these
 #' options, and requests for them are reset. Requests for `zero` or `catzero` on
-#' an all-positive predictor are also reset because there is no nonpositive
+#' an all-positive predictor are also reset because there is no exact-zero
 #' component to represent.
+#'
+#' All three options require nonnegative covariates (`x >= 0`). The zero
+#' component is exactly `x = 0` and the positive component is `x > 0`.
+#' Negative values are rejected before option cascading or preprocessing and
+#' are never silently recoded. Recode negative values explicitly only when it
+#' is scientifically appropriate for them to represent the zero group.
 #'
 #' SAZ selection has two stages. Stage 1 uses `select` for overall term
 #' inclusion and `alpha` for positive-component functional-form comparisons
 #' while retaining the binary component. Stage 2 selects among the three
 #' retained representations; under `criterion = "pvalue"`, both Stage-2
 #' component-removal tests are evaluated at `alpha`. A requested SAZ variable is
-#' eligible only when both the nonpositive and positive components contain at least
+#' eligible only when both the exact-zero and positive components contain at least
 #' `min_saz_component_prop` of the observations and the variable is not binary.
 #' With the default value `0.10`, each component must contain at least 10 percent
 #' of observations. If eligibility fails, the spike request is reset; explicit
@@ -464,26 +469,28 @@
 #' through; `trace = TRUE` is not supported by the fastglm backend. For
 #' `family = "negbin"`, these settings apply to the inner IRLS fit, while
 #' fastglm_nb-specific outer optimization controls retain their defaults.
-#' @param zero_vars Character vector of continuous predictors whose nonpositive
-#' values should be recoded to zero before FP transformation. Only positive
-#' values undergo the FP function; nonpositive values contribute zero to the
+#' @param zero_vars Character vector of nonnegative continuous predictors for
+#' which exact-zero values form a structural-zero component. Only values with
+#' `x > 0` undergo the FP function; values with `x = 0` contribute zero to the
 #' linear predictor. The shift for these variables is forced to zero. Applies
 #' to `mfp2.default()` only; in the formula interface use
-#' `fp(x, zero = TRUE)`. See the section on nonpositive values and
-#' spike-at-zero modelling.
-#' @param catzero_vars Character vector of continuous predictors that combine an
+#' `fp(x, zero = TRUE)`. Negative values are rejected and must be explicitly
+#' recoded if they should represent the zero group. See the exact-zero and
+#' spike-at-zero modelling section.
+#' @param catzero_vars Character vector of nonnegative continuous predictors that combine an
 #' FP transformation of their positive values with a binary indicator for
-#' nonpositive values. The indicator enters the model as a separate fixed
+#' exact-zero values (`x = 0`). The indicator enters the model as a separate fixed
 #' covariate. Requesting `catzero` implies `zero` handling for the same
 #' variable. Applies to `mfp2.default()` only; in the formula interface use
-#' `fp(x, catzero = TRUE)`.
-#' @param spike_vars Character vector of continuous predictors to be assessed
+#' `fp(x, catzero = TRUE)`. Negative values are rejected and require explicit
+#' recoding when they should represent the zero group.
+#' @param spike_vars Character vector of nonnegative continuous predictors to be assessed
 #' with the two-stage spike-at-zero (SAZ) algorithm. SAZ selection determines
 #' whether the final model retains both the binary zero-indicator and
 #' continuous FP component, only the continuous component, or only the binary
 #' indicator. Requesting `spike` implies both `catzero` and `zero` handling
 #' while SAZ remains eligible. A predictor is eligible for SAZ only when both
-#' the nonpositive and positive components meet the `min_saz_component_prop`
+#' the exact-zero and positive components meet the `min_saz_component_prop`
 #' threshold and the variable is not binary; ineligible spike requests are
 #' reset. Applies to `mfp2.default()` only; in the formula interface use
 #' `fp(x, spike = TRUE)`.
@@ -701,7 +708,7 @@
 #'
 #'   \item{catzero}{
 #'     A named logical vector indicating which terms include a separate
-#'     indicator for nonpositive values.
+#'     indicator for exact-zero values.
 #'   }
 #'
 #'   \item{spike_dec}{
@@ -1921,6 +1928,15 @@ mfp2.default <- function(x,
   validate_variable_names(spike, "spike_vars", vnames)
   validate_variable_names(force_max_fp,"force_max_fp_vars", vnames)
 
+  # Enforce the exact-zero domain on the original, unshifted preprocessing
+  # values before any option cascade, SAZ eligibility check, or shift/scale
+  # calculation. A variable requested through any of the three options must be
+  # nonnegative even if a later eligibility rule would otherwise reset it.
+  validate_zero_option_covariates(
+    x = preprocess_x,
+    variables = unique(c(zero, catzero, spike))
+  )
+
   # Step 8: Validate `df` ---------------------------------------------------------
   # df accepts an unnamed global scalar or named partial overrides. Ordinary
   # omitted columns use df = 4; explicitly mapped design blocks use their
@@ -2124,7 +2140,7 @@ mfp2.default <- function(x,
     catzero[vnames %in% catzero_input_vars] <- TRUE
   }
 
-  # zero_vars only makes sense for variables that actually contain nonpositive
+  # zero_vars only makes sense for variables that actually contain exact-zero
   # values; warn and reset the flag for any variable that is already all-positive.
   if (any(zero)) {
     vars_to_check <- vnames[zero]
@@ -3678,6 +3694,10 @@ coef.mfp2 <- function(object, ...) {
 #' grouped terms, the initial degrees of freedom count all member design columns.
 #' The Spike-at-Zero subsection also reports `prop_zero`, the proportion of
 #' finite fitting-sample observations in the structural-zero component.
+#' Its heading states that `x` is transformed only for `x > 0` and that the
+#' binary component is `I(x = 0)`. The Function column can therefore use the
+#' concise labels `linear`, `FP(...)`, and `binary`, combining them with `+`
+#' when both components are retained.
 #' Notes about variable-specific \code{select}/\code{alpha} settings and the
 #' \code{catzero}-implies-\code{zero} relationship, plus definitions for any
 #' column whose meaning may not be obvious, are printed immediately below it.
@@ -3827,7 +3847,9 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   # the table has no such columns but the row is nonetheless ACD-transformed
   # (an ACD variable that also went through the SAZ table).
   format_function_label <- function(powers, zero, catzero, acd_prefix = FALSE,
-                                    selected = TRUE) {
+                                    selected = TRUE,
+                                    show_positive_domain = TRUE,
+                                    binary_only_label = "binary indicator only") {
     # An unselected variable is always "out", regardless of any lingering
     # catzero/zero flag values -- those describe what was *requested*, not
     # what survived selection, and the two can disagree for eliminated
@@ -3849,7 +3871,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
         base_label <- paste0("ACD ", base_label)
       }
 
-      if (isTRUE(zero)) {
+      if (isTRUE(zero) && isTRUE(show_positive_domain)) {
         base_label <- paste0(base_label, " (x > 0)")
       }
 
@@ -3861,7 +3883,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     }
 
     if (isTRUE(catzero)) {
-      return("binary indicator only")
+      return(binary_only_label)
     }
 
     "out"
@@ -4239,6 +4261,10 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
       catzero = catzero_flag[in_saz],
       acd_prefix = acd_flag[in_saz],
       selected = selected_status[in_saz],
+      MoreArgs = list(
+        show_positive_domain = FALSE,
+        binary_only_label = "binary"
+      ),
       SIMPLIFY = TRUE
     )
 
@@ -4268,7 +4294,9 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
     saz_table <- sort_selected_first(saz_table, selected_status[in_saz])
 
-    print_subsection_heading("Spike-at-Zero (SAZ)")
+    print_subsection_heading(
+      "Spike-at-Zero (SAZ; x is transformed only for x > 0, binary is I(x = 0))"
+    )
     print.data.frame(saz_table, row.names = FALSE, right = FALSE)
     cat("\n")
   }
@@ -4322,7 +4350,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
           "catzero implies zero.",
           paste0(
             "catzero_final = yes means a binary indicator for the ",
-            "non-positive component is included in the final model."
+            "x = 0 component is included in the final model."
           )
         )
       }
@@ -4633,7 +4661,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'
 #' Variable-specific options can be used to restrict the maximum complexity,
 #' force the variable into the model, request ACD or spike-at-zero modelling,
-#' or control how zero and nonpositive values are handled.
+#' or control how exact-zero values are handled in nonnegative covariates.
 #'
 #' `fp()` should normally be applied only to continuous numeric variables.
 #' Categorical variables should be included directly in the formula as
@@ -4662,17 +4690,21 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   See [mfp2()] for details.
 #' @param acdx Logical. If `TRUE`, request ACD modelling for this variable.
 #'   Default `FALSE`. See the ACD modelling section in [mfp2()].
-#' @param zero Logical. If `TRUE`, only positive values undergo the FP
-#'   function; nonpositive values contribute zero to the linear predictor.
+#' @param zero Logical. If `TRUE`, only values with `x > 0` undergo the FP
+#'   function; values with `x = 0` contribute zero to the linear predictor.
+#'   The covariate must be nonnegative. Negative values are rejected and must
+#'   be explicitly recoded if they should represent the zero group.
 #'   Default `FALSE`. Equivalent to listing the variable in `zero_vars` in
 #'   `mfp2.default()`.
-#' @param catzero Logical. If `TRUE`, a fixed binary indicator for nonpositive
+#' @param catzero Logical. If `TRUE`, a fixed binary indicator for `x = 0`
 #'   values is added alongside the positive-component FP function. Implies
-#'   `zero = TRUE`. Default `FALSE`. Equivalent to listing the variable in
+#'   `zero = TRUE`, including its nonnegative domain and negative-value
+#'   rejection. Default `FALSE`. Equivalent to listing the variable in
 #'   `catzero_vars` in `mfp2.default()`.
 #' @param spike Logical. If `TRUE`, request two-stage spike-at-zero (SAZ)
 #'   selection for this variable. While SAZ remains eligible, implies both
-#'   `catzero` and `zero`. Default `FALSE`. Equivalent to listing the variable
+#'   `catzero` and `zero`, including their nonnegative domain and negative-value
+#'   rejection. Default `FALSE`. Equivalent to listing the variable
 #'   in `spike_vars` in `mfp2.default()`. See the SAZ section in [mfp2()] for
 #'   eligibility requirements.
 #' @param force_max_fp Logical. If `TRUE`, the most complex functional form

@@ -34,11 +34,12 @@ automatically using the Royston and Sauerbrei formula iff any \code{x} <= 0.}
 \item{name}{character used to define names for the output matrix. Default
 is \code{NULL}, meaning the output will have unnamed columns.}
 
-\item{zero}{Logical indicating whether only positive values of the variable
-should be transformed, with nonpositive values (zero or negative) set to zero.
-If \code{TRUE}, transformation is applied only to positive values; nonpositive values
-are replaced with zero before transformation. If \code{FALSE} (default), all values
-are shifted (if needed) to ensure positivity before transformation.}
+\item{zero}{Logical indicating whether only values with \code{x > 0} should be
+transformed, with exact-zero values retained as structural zeros. If
+\code{TRUE}, \code{x} must be nonnegative and must have been validated by the caller;
+negative values must be explicitly recoded if they should represent the zero
+group. If \code{FALSE}
+(default), all values are shifted (if needed) to ensure positivity.}
 
 \item{check_binary}{a logical indicating whether or not input \code{x} is checked
 if it is a binary variable (i.e. has only two distinct values). The default
@@ -112,12 +113,12 @@ transformation alters the correlation structure among predictors. In
 \code{\link[=mfp2]{mfp2()}}, centering is applied only to the final selected model when
 \code{center = TRUE}. See Sauerbrei et al (2006) for discussion.
 
-If a variable is specified in the \code{zero} or \code{catzero} arguments,
-nonpositive values (zero or negative) are not shifted. Instead, they are replaced
-with zero, and transformation is applied only to the positive values. This approach
-is useful in cases where nonpositive values have a qualitatively different interpretation
-(e.g., nonsmokers in smoking data) and should not be transformed in the same way
-as positive values.
+If \code{zero = TRUE}, \code{x} must be nonnegative. Exact-zero values are not shifted
+and their transformed components remain zero; transformation is applied only
+to values with \code{x > 0}. For performance, this low-level helper assumes that
+callers have already enforced the nonnegative-input contract. The public
+fitting and prediction interfaces perform that validation once, before any
+transformation work.
 }
 
 \section{Domain restrictions}{
@@ -146,7 +147,7 @@ During prediction, \code{predict.mfp2()} checks the fitted powers and stops with
 an informative error if new data fall outside the required transformation
 domain.
 
-If \code{zero = TRUE}, nonpositive values are treated structurally: they are not
+If \code{zero = TRUE}, exact-zero values are treated structurally: they are not
 shifted, and their transformed continuous components are set to zero.
 }
 

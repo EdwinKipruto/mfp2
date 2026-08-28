@@ -218,7 +218,7 @@
 #' preserved.
 #'
 #' Spike-at-zero adjustment variables must have enough observations in both the
-#' exact-zero and positive components. `min_saz_component_prop` sets the
+#' exact-zero and positive components. `min_saz_prop` sets the
 #' minimum required proportion in each component.
 #'
 #' @section Winsorisation:
@@ -473,7 +473,8 @@
 #'   `criterion = "pvalue"`, this also forces `select = 1` and `alpha = 1` for
 #'   the named variables, so they are both retained and kept at full FP
 #'   complexity. Under AIC and BIC the same maximum-degree requirement is
-#'   enforced directly. If a forced adjustment variable is also an eligible
+#'   enforced directly; when `df = 1`, the forced maximum is linear. If a
+#'   forced adjustment variable is also an eligible
 #'   spike-at-zero term, its complete maximum SAZ representation is retained
 #'   and SAZ Stage 2 is skipped. In a formula, the corresponding option is
 #'   `fp(variable, force_max_fp = TRUE)` or
@@ -543,7 +544,7 @@
 #' @param spike_vars An optional character vector naming nonnegative adjustment variables to
 #'   assess with the spike-at-zero procedure. Spike-at-zero testing requires
 #'   enough observations in both the exact-zero and positive components (see
-#'   `min_saz_component_prop`). Negative values are rejected and require
+#'   `min_saz_prop`). Negative values are rejected and require
 #'   explicit recoding when scientifically appropriate. Setting `spike_vars` implies both
 #'   `catzero_vars` and `zero_vars` for the same variables. Variables that fail
 #'   the component-proportion check are automatically downgraded to `catzero`
@@ -551,7 +552,7 @@
 #'   in `cont_vars`. In the formula interface, use
 #'   `fp(variable, spike = TRUE)`.
 #'
-#' @param min_saz_component_prop A finite number in `(0, 0.5)` giving the
+#' @param min_saz_prop A finite number in `(0, 0.5)` giving the
 #'   minimum proportion required in both components of a spike-at-zero
 #'   adjustment variable. The default is `0.10`.
 #'
@@ -775,7 +776,7 @@ mfpi.default <- function(
     zero_vars         = NULL,
     catzero_vars      = NULL,
     spike_vars        = NULL,
-    min_saz_component_prop = 0.10,
+    min_saz_prop = 0.10,
     ftest             = FALSE,
     control           = NULL,
     winsorize         = FALSE,
@@ -1351,14 +1352,14 @@ mfpi.default <- function(
   }
 
   # Validate spike-at-zero component proportion -------------------------------
-  if (!is.numeric(min_saz_component_prop) ||
-      length(min_saz_component_prop) != 1L ||
-      anyNA(min_saz_component_prop) ||
-      !is.finite(min_saz_component_prop) ||
-      min_saz_component_prop <= 0 ||
-      min_saz_component_prop >= 0.5) {
+  if (!is.numeric(min_saz_prop) ||
+      length(min_saz_prop) != 1L ||
+      anyNA(min_saz_prop) ||
+      !is.finite(min_saz_prop) ||
+      min_saz_prop <= 0 ||
+      min_saz_prop >= 0.5) {
     stop(
-      "! `min_saz_component_prop` must be a single finite numeric value in the open interval (0, 0.5).",
+      "! `min_saz_prop` must be a single finite numeric value in the open interval (0, 0.5).",
       call. = FALSE
     )
   }
@@ -1577,7 +1578,7 @@ mfpi.default <- function(
       spike                  = spike_flag,
       catzero                = catzero_flag,
       zero                   = zero_flag,
-      min_saz_component_prop = min_saz_component_prop
+      min_saz_prop = min_saz_prop
     )
 
     spike_flag   <- saz_flags$spike
@@ -2048,7 +2049,7 @@ mfpi.default <- function(
     zero_vars         = zero_flag,
     catzero_vars      = catzero_flag,
     spike_vars        = spike_flag,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     use_ftest         = ftest,
     control           = control,
     verbose           = verbose,
@@ -2125,7 +2126,7 @@ mfpi.default <- function(
 #' \code{flex}, \code{p_interact}, \code{min_improvement},
 #' \code{include_group_var}, \code{show_models}, \code{cycles},
 #' \code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
-#' \code{nocenter}, \code{min_saz_component_prop}, \code{ftest},
+#' \code{nocenter}, \code{min_saz_prop}, \code{ftest},
 #' \code{control}, \code{verbose}, \code{digits}.
 #'
 #' \code{acd_vars}, by contrast, is not merely scalar-restricted but entirely
@@ -2187,7 +2188,7 @@ mfpi.formula <- function(formula,
                          zero_vars         = NULL,
                          catzero_vars      = NULL,
                          spike_vars        = NULL,
-                         min_saz_component_prop = 0.10,
+                         min_saz_prop = 0.10,
                          ftest             = FALSE,
                          control           = NULL,
                          winsorize         = FALSE,
@@ -3047,7 +3048,7 @@ mfpi.formula <- function(formula,
     zero_vars         = zero_vars_final,
     catzero_vars      = catzero_vars_final,
     spike_vars        = spike_vars_final,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     ftest             = ftest,
     control           = control,
     winsorize         = winsorize,

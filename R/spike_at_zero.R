@@ -222,7 +222,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #' @param user_zero A named logical vector of the user's original \code{zero}
 #'   specification before the cascade \code{zero[catzero] <- TRUE} was applied.
 #'   Must have the same names as \code{spike}.
-#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   structural-zero component and the positive continuous component. A
 #'   requested spike-at-zero variable is retained only if both component
@@ -264,7 +264,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #' \enumerate{
 #'   \item \strong{Insufficient component representation} -- either the
 #'     structural-zero proportion or the positive-observation proportion is
-#'     below \code{min_saz_component_prop}.
+#'     below \code{min_saz_prop}.
 #'   \item \strong{Binary variable} -- exactly two effective finite values
 #'     when exact zero and one distinct positive value are present.
 #'     The positive part would then contain a single unique value, making FP
@@ -275,7 +275,7 @@ calculate_saz_prop_zero <- function(x, spike, term_to_columns = NULL) {
 #' @keywords internal
 #' @noRd
 reset_spike <- function(x, spike, user_catzero, user_zero,
-                        min_saz_component_prop = 0.10) {
+                        min_saz_prop = 0.10) {
 
   # Early exit: no spike variables to evaluate. In this case there was no
   # spike-implied cascade to preserve, so return the user's original zero and
@@ -346,8 +346,8 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
   to_reset_component <- names_spike[
     is.na(prop_zero) |
       is.na(prop_positive) |
-      prop_zero < min_saz_component_prop |
-      prop_positive < min_saz_component_prop
+      prop_zero < min_saz_prop |
+      prop_positive < min_saz_prop
   ]
 
   to_reset_binary <- names_spike[is_binary]
@@ -375,31 +375,31 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
 
         if (nz == 0L && np > 0L) {
           return(sprintf(
-            "all observed values are positive; zero proportion is 0 < `min_saz_component_prop = %s`",
-            min_saz_component_prop
+            "all observed values are positive; zero proportion is 0 < `min_saz_prop = %s`",
+            min_saz_prop
           ))
         }
 
         if (np == 0L && nz > 0L) {
           return(sprintf(
-            "all observed values are structural zeros; positive observation proportion is 0 < `min_saz_component_prop = %s`",
-            min_saz_component_prop
+            "all observed values are structural zeros; positive observation proportion is 0 < `min_saz_prop = %s`",
+            min_saz_prop
           ))
         }
 
-        if (is.na(p0) || p0 < min_saz_component_prop) {
+        if (is.na(p0) || p0 < min_saz_prop) {
           return(sprintf(
-            "zero proportion is %.4g < `min_saz_component_prop = %s`",
+            "zero proportion is %.4g < `min_saz_prop = %s`",
             p0,
-            min_saz_component_prop
+            min_saz_prop
           ))
         }
 
-        if (is.na(pp) || pp < min_saz_component_prop) {
+        if (is.na(pp) || pp < min_saz_prop) {
           return(sprintf(
-            "positive observation proportion is %.4g < `min_saz_component_prop = %s`",
+            "positive observation proportion is %.4g < `min_saz_prop = %s`",
             pp,
-            min_saz_component_prop
+            min_saz_prop
           ))
         }
 
@@ -488,7 +488,7 @@ reset_spike <- function(x, spike, user_catzero, user_zero,
 #' @param catzero Named logical vector indicating requested categorical-zero
 #'   variables.
 #' @param zero Named logical vector indicating requested zero-handled variables.
-#' @param min_saz_component_prop Numeric in `(0, 0.5)`. Minimum required
+#' @param min_saz_prop Numeric in `(0, 0.5)`. Minimum required
 #'   proportion in both the structural-zero and positive components.
 #'
 #' @return A named list with updated `spike`, `catzero`, and `zero` logical
@@ -500,7 +500,7 @@ resolve_saz_eligibility <- function(x,
                                     spike,
                                     catzero,
                                     zero,
-                                    min_saz_component_prop = 0.10) {
+                                    min_saz_prop = 0.10) {
   # This is the *early* eligibility check, run by mfp2.default() before
   # shift/scale preprocessing (see the "Resolve spike-at-zero eligibility"
   # section of fit_mfp()'s documentation). Its whole purpose is to decide
@@ -529,7 +529,7 @@ resolve_saz_eligibility <- function(x,
     spike = spike,
     user_catzero = user_catzero,
     user_zero = user_zero,
-    min_saz_component_prop = min_saz_component_prop
+    min_saz_prop = min_saz_prop
   )
 }
 
@@ -650,67 +650,424 @@ cap_spike_df <- function(x, df, spike) {
 }
 
 
-#' Fit Reduced Models for SAZ Stage 2
+#' Rank Joint SAZ Information-Criterion Candidates by Simplicity
 #'
-#' Fits the two reduced candidate models required for stage 2 of the
-#' spike-at-zero (SAZ) algorithm.
+#' Builds explicit tie-breaking metadata for the one-stage SAZ AIC/BIC
+#' comparison. For ordinary FP candidates, positive-component complexity is
+#' ordered as none, linear, FP1, FP2, and so on. ACD candidates use the same
+#' functional-form hierarchy as their ordinary AIC/BIC selector. Component
+#' count is retained as a final substantive tie-break after functional-form
+#' complexity.
 #'
-#' Stage 2 compares three nested models for the current variable \code{xi}:
+#' Keeping this metadata separate from candidate row positions ensures that
+#' reordering the joint metrics table cannot change the selected model.
 #'
-#' \describe{
-#'   \item{Model 1}{
-#'     FP/ACD(\code{xi}) + binary zero indicator(\code{xi}) + adjustment
-#'     variables. This model is already fitted in stage 1.
-#'   }
-#'   \item{Model 2}{
-#'     FP/ACD(\code{xi}) only + adjustment variables.
-#'   }
-#'   \item{Model 3}{
-#'     Binary zero indicator(\code{xi}) only + adjustment variables.
-#'   }
-#' }
+#' @param candidate_names Character vector of joint SAZ candidate names.
+#' @param acd Logical scalar indicating whether the positive component uses
+#'   the ACD candidate family.
 #'
-#' This function fits only Models 2 and 3. Model 1 is represented by the
-#' already-selected stage-1 object passed via \code{stage1_selection}; it is not
-#' refitted here.
+#' @return A data frame with integer columns `positive_complexity` and
+#'   `component_count`, indexed by `candidate_names`.
 #'
-#' The function reuses the already transformed stage-1 \code{xi} design matrix
-#' and adjustment matrix stored in
-#' \code{stage1_selection$current_adj_params[[xi]]}. The \code{xi} design is
-#' split by the \code{"catzero"} column: non-\code{"catzero"} columns form the
-#' continuous FP/ACD component, and \code{"catzero"} forms the binary
-#' structural-zero component.
+#' @keywords internal
+#' @noRd
+saz_ic_candidate_simplicity <- function(candidate_names, acd = FALSE) {
+  if (!is.character(candidate_names) || anyNA(candidate_names) ||
+      anyDuplicated(candidate_names)) {
+    stop(
+      "Internal error: joint SAZ candidate names must be unique strings.",
+      call. = FALSE
+    )
+  }
+
+  has_binary <- grepl(" \\+ Binary$", candidate_names)
+  base_names <- sub(" \\+ Binary$", "", candidate_names)
+  positive_complexity <- rep(NA_integer_, length(candidate_names))
+
+  no_positive <- base_names %in% c("null", "Binary")
+  positive_complexity[no_positive] <- 0L
+
+  if (isTRUE(acd)) {
+    # The ACD selector's established order runs from ordinary linear through
+    # the two single-transformation FP1 forms to the joint FP1(x, A(x)) form.
+    acd_forms <- c(
+      "linear",
+      "linear(., A(x))",
+      "FP1(x, .)",
+      "FP1(., A(x))",
+      "FP1(x, A(x))"
+    )
+    is_positive <- !no_positive
+    positive_complexity[is_positive] <- match(
+      base_names[is_positive],
+      acd_forms
+    )
+  } else {
+    positive_complexity[base_names == "linear"] <- 1L
+    is_fp <- grepl("^FP[0-9]+$", base_names)
+    positive_complexity[is_fp] <-
+      as.integer(sub("^FP", "", base_names[is_fp])) + 1L
+  }
+
+  if (anyNA(positive_complexity)) {
+    stop(
+      "Internal error: unrecognised joint SAZ candidate form: ",
+      paste(candidate_names[is.na(positive_complexity)], collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  component_count <- ifelse(
+    base_names == "null",
+    0L,
+    ifelse(base_names == "Binary", 1L, ifelse(has_binary, 2L, 1L))
+  )
+
+  out <- data.frame(
+    positive_complexity = as.integer(positive_complexity),
+    component_count = as.integer(component_count),
+    row.names = candidate_names
+  )
+  out
+}
+
+
+#' Select the Winning Joint SAZ Information-Criterion Candidate
 #'
-#' @param stage1_selection Stage 1 selection object, as returned by one of the
-#'   \code{select_*()} functions (e.g. \code{select_ra2()}, \code{select_ic()}).
-#'   Used both as the Model 1 fit (returned unchanged as \code{fit1}) and to
-#'   reuse the already-transformed \code{xi} design/adjustment matrices stored
-#'   in \code{stage1_selection$current_adj_params[[xi]]}, avoiding a full
-#'   retransformation of \code{xi} and its adjustment set.
-#' @param xi Character scalar; focal variable name.
+#' Applies an explicit, order-independent hierarchy to the eligible one-stage
+#' SAZ candidates: minimum AIC/BIC, smaller adjusted model df, simpler
+#' positive-component form, and fewer retained components. Candidate order is
+#' used only as a defensive fallback if every substantive quantity is equal.
+#'
+#' @param metrics Numeric candidate metrics matrix with row names and columns
+#'   `df` plus the requested information criterion.
+#' @param criterion Character scalar, `"aic"` or `"bic"`.
+#' @param eligible Integer indices of eligible rows in `metrics`.
+#' @param acd Logical scalar indicating whether the positive component uses
+#'   the ACD candidate family.
+#'
+#' @return Integer row index of the selected candidate.
+#'
+#' @keywords internal
+#' @noRd
+select_saz_ic_winner <- function(metrics, criterion, eligible, acd = FALSE) {
+  criterion <- tolower(criterion)
+  if (!criterion %in% c("aic", "bic")) {
+    stop("Internal error: joint SAZ selection requires AIC or BIC.",
+         call. = FALSE)
+  }
+  if (is.null(rownames(metrics)) || !all(c("df", criterion) %in% colnames(metrics))) {
+    stop("Internal error: incomplete joint SAZ candidate metrics.",
+         call. = FALSE)
+  }
+
+  eligible <- as.integer(eligible)
+  ic_values <- metrics[eligible, criterion, drop = TRUE]
+  valid_ic <- is.finite(ic_values)
+  if (!any(valid_ic)) {
+    stop("All eligible SAZ information-criterion values are non-finite.",
+         call. = FALSE)
+  }
+
+  best_ic <- min(ic_values[valid_ic])
+  tied <- eligible[valid_ic & ic_values == best_ic]
+
+  # First prefer lower adjusted model df. These are the same df used in the
+  # AIC/BIC penalty, including the extra allowance for FP-power selection.
+  if (length(tied) > 1L) {
+    tied_df <- metrics[tied, "df", drop = TRUE]
+    finite_df <- is.finite(tied_df)
+    if (any(finite_df)) {
+      best_df <- min(tied_df[finite_df])
+      tied <- tied[finite_df & tied_df == best_df]
+    }
+  }
+
+  simplicity <- saz_ic_candidate_simplicity(
+    rownames(metrics),
+    acd = acd
+  )
+
+  # Equal adjusted df can still represent different kinds of complexity. For
+  # ordinary FP SAZ selection, the only such substantive pairs are binary-only
+  # versus positive-only linear (1 df), and both-components linear versus
+  # positive-only FP1 (2 df). Prefer the simpler positive-component form.
+  if (length(tied) > 1L) {
+    tied_positive <- simplicity$positive_complexity[tied]
+    tied <- tied[tied_positive == min(tied_positive)]
+  }
+
+  # This normally resolves no additional ordinary-FP ties, but makes the
+  # intended hierarchy complete for any candidate family with equal criterion,
+  # adjusted df, and positive-form complexity.
+  if (length(tied) > 1L) {
+    tied_components <- simplicity$component_count[tied]
+    tied <- tied[tied_components == min(tied_components)]
+  }
+
+  tied[[1L]]
+}
+
+
+#' Joint AIC/BIC Selection for a Spike-at-Zero Term
+#'
+#' Fits the complete information-criterion candidate family for one eligible
+#' spike-at-zero term. Positive-only and positive-plus-binary models perform
+#' independent functional-form searches; the null and binary-only models are
+#' then added before one global AIC/BIC minimisation.
+#'
+#' For an ordinary FP term with maximum degree `d`, the compressed comparison
+#' contains `2*d + 4` rows: null, binary, linear with and without binary, and
+#' the best FP1 through FPd models with and without binary. "Best" within a
+#' fixed degree means minimum deviance, which is also minimum AIC/BIC because
+#' all power combinations at that degree have the same complexity.
+#'
+#' Exact AIC/BIC ties are resolved by smaller adjusted model df, simpler
+#' positive-component form, and then fewer retained components. The explicit
+#' hierarchy prevents candidate row order from determining a substantive tie.
+#'
+#' @inheritParams find_best_fp_step
+#' @param ... Additional arguments passed through to the ordinary selectors
+#'   and ultimately to `fit_model()`.
+#'
+#' @return A selector result compatible with `find_best_fp_step()`, including
+#'   the joint metrics table and the final `spike_decision`.
+#'
+#' @keywords internal
+#' @noRd
+select_saz_ic <- function(x,
+                          xi,
+                          keep,
+                          degree,
+                          acdx,
+                          y,
+                          powers_current,
+                          powers,
+                          criterion,
+                          ftest,
+                          select,
+                          alpha,
+                          family,
+                          family_string,
+                          zero,
+                          catzero,
+                          spike,
+                          spike_decision,
+                          acd_parameter,
+                          prev_adj_params,
+                          transform_cache = NULL,
+                          force_max_fp,
+                          has_offset,
+                          n_obs,
+                          term_to_columns,
+                          ...) {
+  criterion_lower <- tolower(criterion)
+  if (!criterion_lower %in% c("aic", "bic")) {
+    stop("select_saz_ic() requires criterion = 'aic' or 'bic'.", call. = FALSE)
+  }
+  if (!isTRUE(spike[[xi]]) || is.null(catzero[[xi]])) {
+    stop("select_saz_ic() requires an eligible spike-at-zero term.", call. = FALSE)
+  }
+
+  # SAZ decision codes are an integer-valued package contract (1L, 2L, 3L).
+  # Normalize the complete named vector here because assigning an integer code
+  # into a caller-supplied double vector would otherwise silently retain
+  # storage mode "double" in this selector's result.
+  spike_decision <- stats::setNames(
+    as.integer(spike_decision),
+    names(spike_decision)
+  )
+
+  # Select the appropriate functional-form engine. degree = 0.5 corresponds
+  # to df = 1, where linear is the maximum and only continuous form.
+  branch_selector <- if (degree <= 0.5) {
+    select_linear
+  } else if (isTRUE(acdx[[xi]])) {
+    select_ic_acd
+  } else {
+    select_ic
+  }
+
+  branch_args <- list(
+    x = x, xi = xi, keep = keep, degree = degree, acdx = acdx,
+    y = y, powers_current = powers_current, powers = powers,
+    criterion = criterion, ftest = ftest, select = select, alpha = alpha,
+    family = family, family_string = family_string, zero = zero,
+    catzero = catzero, spike = spike, spike_decision = spike_decision,
+    acd_parameter = acd_parameter, prev_adj_params = prev_adj_params,
+    transform_cache = transform_cache, force_max_fp = force_max_fp,
+    has_offset = has_offset, n_obs = n_obs,
+    term_to_columns = term_to_columns, ...
+  )
+
+  # Joint path A: optimize every positive-plus-binary candidate. This is the
+  # historical Stage-1 family, but here it is only one branch of a joint IC
+  # comparison and does not constrain the powers used by the next branch.
+  fit_bp <- do.call(branch_selector, branch_args)
+
+  # Joint path B: remove the binary component first, then repeat the complete
+  # continuous-form search. Assigning through `[` preserves xi's named NULL
+  # list element; `[[<- NULL` would delete it and misalign later variables.
+  positive_args <- branch_args
+  positive_args$catzero[xi] <- list(NULL)
+  positive_args$spike[[xi]] <- FALSE
+  positive_args$spike_decision[[xi]] <-
+    saz_decision_codes[["continuous_only"]]
+  positive_args$transform_cache <- fit_bp$transform_cache
+  fit_p <- do.call(branch_selector, positive_args)
+
+  # Joint path C: fit binary-only using the same adjustment-variable design.
+  # Its single indicator coefficient needs no extra FP-power df penalty.
+  params_binary <- fit_bp$current_adj_params
+  adjustment_matrix <- params_binary[[xi]]$data_adj
+  if (is.null(adjustment_matrix) || NCOL(adjustment_matrix) == 0L) {
+    adjustment_matrix <- NULL
+  }
+
+  binary_matrix <- catzero[[xi]]
+  if (!is.matrix(binary_matrix)) {
+    binary_matrix <- as.matrix(binary_matrix)
+  }
+  colnames(binary_matrix) <- "catzero"
+
+  is_cox <- identical(family_string, "cox")
+  x_binary <- if (is_cox) {
+    if (is.null(adjustment_matrix)) binary_matrix else
+      cbind(binary_matrix, adjustment_matrix)
+  } else {
+    assemble_design_matrix(
+      blocks = list(binary_matrix, adjustment_matrix),
+      nobs = NROW(y),
+      intercept = TRUE
+    )
+  }
+
+  binary_fit_args <- list(
+    x = x_binary, y = y, family = family, family_string = family_string,
+    has_offset = has_offset
+  )
+  if (!is_cox) {
+    binary_fit_args$x_has_intercept <- TRUE
+  }
+  binary_fit_args <- c(binary_fit_args, list(...))
+  fit_binary <- do.call(fit_model, binary_fit_args)
+  metrics_binary <- rbind(
+    Binary = calculate_model_metrics(fit_binary, n_obs = n_obs)
+  )
+  params_binary[[xi]]$data_xi <- binary_matrix
+
+  # Assemble one table. The rows are deliberately stable: null, binary, then
+  # positive-only and positive-plus-binary forms interleaved by complexity.
+  # For ordinary FP degree d this gives exactly 2*d + 4 candidates and works
+  # unchanged for FP3, FP4, or any larger degree supported by the package.
+  p_names <- setdiff(rownames(fit_p$metrics), "null")
+  bp_names <- setdiff(rownames(fit_bp$metrics), "null")
+  if (length(p_names) != length(bp_names)) {
+    stop("Internal error: SAZ IC branches produced unequal candidate sets.",
+         call. = FALSE)
+  }
+
+  interleaved_names <- as.vector(rbind(p_names, bp_names))
+  candidate_names <- c("null", "Binary", interleaved_names)
+  metric_rows <- c(
+    list(fit_bp$metrics["null", , drop = FALSE], metrics_binary),
+    lapply(interleaved_names, function(model_name) {
+      source_fit <- if (model_name %in% bp_names) fit_bp else fit_p
+      source_fit$metrics[model_name, , drop = FALSE]
+    })
+  )
+  metrics <- do.call(rbind, metric_rows)
+  rownames(metrics) <- candidate_names
+
+  n_power <- max(NCOL(fit_p$powers), NCOL(fit_bp$powers), 1L)
+  pad_power_row <- function(fit, model_name) {
+    ensure_length(fit$powers[model_name, , drop = FALSE], n_power)
+  }
+  power_rows <- c(
+    list(
+      ensure_length(fit_bp$powers["null", , drop = FALSE], n_power),
+      rep(NA_real_, n_power)
+    ),
+    lapply(interleaved_names, function(model_name) {
+      source_fit <- if (model_name %in% bp_names) fit_bp else fit_p
+      pad_power_row(source_fit, model_name)
+    })
+  )
+  powers_joint <- do.call(rbind, power_rows)
+  rownames(powers_joint) <- candidate_names
+
+  # Minimize the requested IC globally. Exact ties are resolved explicitly by
+  # smaller adjusted model df, simpler positive-component form, and then fewer
+  # retained components. This prevents candidate row order from acting as an
+  # implicit statistical preference between equally scoring models.
+  eligible <- seq_len(nrow(metrics))
+  if (xi %in% keep) {
+    eligible <- eligible[rownames(metrics)[eligible] != "null"]
+  }
+  model_best <- select_saz_ic_winner(
+    metrics = metrics,
+    criterion = criterion_lower,
+    eligible = eligible,
+    acd = isTRUE(acdx[[xi]])
+  )
+  selected_name <- rownames(metrics)[model_best]
+
+  if (selected_name == "null") {
+    selected_params <- fit_bp$current_adj_params
+    selected_decision <- saz_decision_codes[["continuous_only"]]
+  } else if (selected_name == "Binary") {
+    selected_params <- params_binary
+    selected_decision <- saz_decision_codes[["binary_only"]]
+  } else if (selected_name %in% bp_names) {
+    selected_params <- fit_bp$current_adj_params
+    selected_decision <- saz_decision_codes[["cont_binary"]]
+  } else {
+    selected_params <- fit_p$current_adj_params
+    selected_decision <- saz_decision_codes[["continuous_only"]]
+  }
+  spike_decision[[xi]] <- selected_decision
+
+  list(
+    keep = xi %in% keep,
+    acd = isTRUE(acdx[[xi]]),
+    powers = powers_joint,
+    # A selector returns the selected powers as a numeric vector. Keep the
+    # complete candidate collection as a matrix in `powers`, but drop the row
+    # dimension for the single winning candidate. This also matches the
+    # documented selector contract and the output of select_linear().
+    power_best = powers_joint[model_best, , drop = TRUE],
+    metrics = metrics,
+    model_best = model_best,
+    statistic = NA,
+    pvalue = NA,
+    zero = zero[xi],
+    catzero = TRUE,
+    spike = TRUE,
+    selection_mode = "joint_ic",
+    spike_decision = spike_decision,
+    current_adj_params = selected_params,
+    transform_cache = fit_p$transform_cache
+  )
+}
+
+#' Fit Reduced Models for P-value SAZ Stage 2
+#'
+#' Reuses the Stage-1 transformed focal and adjustment matrices, fits the
+#' continuous-only and binary-only reductions, and returns them with the
+#' already fitted full model. This helper is not used by joint AIC/BIC SAZ
+#' selection.
+#'
+#' @param stage1_selection P-value Stage-1 selector result containing
+#'   `current_adj_params[[xi]]$data_xi` and `$data_adj`.
+#' @param xi Character scalar naming the focal term.
 #' @param y,weights,offset,family,family_string,method,strata,nocenter,control,
-#'   rownames,has_offset Passed through to \code{fit_model()} for fitting
-#'   Model 2 and Model 3.
-#' @param calculate_gaussian_deviance Logical. If `TRUE`, compute the scalar
-#'   Gaussian deviance required for stage-2 F-tests.
+#'   rownames,has_offset Passed to `fit_model()`.
+#' @param calculate_gaussian_deviance Logical; compute Gaussian deviance for
+#'   Stage-2 F-tests.
+#' @param fitter Fitting backend.
 #'
-#' @return A list with:
-#'   \itemize{
-#'     \item \code{fit1}: alias for \code{stage1_selection} (Model 1; not
-#'       refitted here, included for a uniform \code{fit1}/\code{fit2}/
-#'       \code{fit3} naming convention downstream).
-#'     \item \code{fit2}: fitted Model 2 (continuous FP/ACD component only,
-#'       plus adjustment variables).
-#'     \item \code{fit3}: fitted Model 3 (binary zero-indicator only, plus
-#'       adjustment variables).
-#'     \item \code{data_xi}: the reused stage-1 transformed design matrix for
-#'       \code{xi} (continuous FP/ACD column(s) plus the \code{"catzero"}
-#'       column).
-#'     \item \code{adjustment_matrix}: the reused stage-1 adjustment matrix, or
-#'       \code{NULL} if there were no adjustment variables or the stage-1
-#'       adjustment matrix had zero columns.
-#'   }
-#'
+#' @return The full Stage-1 fit, two reduced fits, and reused design matrices.
 #' @keywords internal
 #' @noRd
 fit_saz_reduced_models <- function(stage1_selection,
@@ -1034,15 +1391,13 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #' If \code{ftest = TRUE}, the nested comparisons use F-tests. In the case
 #' where both reductions are non-significant, Models 2 and 3 are
 #' non-nested and can have different complexity: Model 3 has a one-df binary
-#' component, whereas Model 2 can carry a one-, two-, or four-df continuous
-#' component selected in Stage 1. Their raw deviances or log-likelihoods are
+#' component, whereas Model 2 can carry a one-df linear component or a
+#' \eqn{2m}-df FP\emph{m} component selected in Stage 1, for any supported
+#' degree \emph{m}. Their raw deviances or log-likelihoods are
 #' therefore not used as a neutral tie-break. Instead, the model with the
 #' smaller BIC is selected so that the additional continuous-component
 #' complexity is penalized. An exact BIC tie selects Model 3, the binary-only
 #' representation.
-#'
-#' For information-criterion based selection, no hypothesis tests are used; the
-#' model with the smallest requested information criterion is selected.
 #'
 #' @return A list with two elements:
 #'   \itemize{
@@ -1051,7 +1406,7 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
 #'       and \code{3} = binary zero-indicator only.
 #'     \item \code{pvalue}: Named numeric vector containing
 #'       \code{p_drop_binary} and \code{p_drop_continuous} when
-#'       \code{criterion = "pvalue"}; otherwise \code{NA}.
+#'       \code{criterion = "pvalue"}.
 #'   }
 #'
 #' @keywords internal
@@ -1063,15 +1418,14 @@ compute_saz_stage2_decision <- function(metrics,
                                         ftest = FALSE) {
   criterion <- tolower(criterion)
 
-  if (!criterion %in% c("pvalue", "aic", "bic")) {
+  if (!identical(criterion, "pvalue")) {
     stop(
-      "! criterion must be one of 'pvalue', 'aic', or 'bic'.",
+      "compute_saz_stage2_decision() is only for p-value SAZ Stage 2.",
       call. = FALSE
     )
   }
 
-  if (criterion == "pvalue") {
-    if (ftest) {
+  if (ftest) {
       # Test whether the binary zero-indicator component is needed.
       # Reduced model: Model 2 = continuous FP/linear/ACD only.
       # Full model:    Model 1 = continuous FP/linear/ACD + binary.
@@ -1148,7 +1502,8 @@ compute_saz_stage2_decision <- function(metrics,
     } else {
       # If neither reduced model is significantly worse than the full model,
       # use BIC to compare the non-nested reduced models while accounting for
-      # the Stage-1 continuous component's one-, two-, or four-df complexity.
+      # the Stage-1 continuous component's one-df linear or 2m-df FPm
+      # complexity, for any supported FP degree m.
       if (metrics$metrics2["bic"] < metrics$metrics3["bic"]) {
         saz_decision_codes[["continuous_only"]]
       } else {
@@ -1156,46 +1511,13 @@ compute_saz_stage2_decision <- function(metrics,
       }
     }
 
-    return(list(
-      decision = decision,
-      pvalue = c(
-        p_drop_binary = p_drop_binary,
-        p_drop_continuous = p_drop_continuous
-      )
-    ))
-  }
-
-  # For AIC/BIC there is no hypothesis test at all: simply compute the
-  # criterion for all three models and take whichever is smallest. Naming
-  # the values by saz_decision_codes' names (in the same order the values are
-  # assembled: metrics1/2/3 <-> cont_binary/continuous_only/binary_only) lets
-  # which.min()'s returned name be looked straight back up in
-  # saz_decision_codes to get the corresponding integer decision code.
-  if (criterion == "aic") {
-    aic_values <- c(
-      metrics$metrics1["aic"],
-      metrics$metrics2["aic"],
-      metrics$metrics3["aic"]
+  list(
+    decision = decision,
+    pvalue = c(
+      p_drop_binary = p_drop_binary,
+      p_drop_continuous = p_drop_continuous
     )
-    names(aic_values) <- names(saz_decision_codes)
-
-    decision <- saz_decision_codes[[names(which.min(aic_values))]]
-
-    return(list(decision = decision, pvalue = NA_real_))
-  }
-
-  # criterion == "bic": identical logic to the AIC branch above, just using
-  # the BIC column instead.
-  bic_values <- c(
-    metrics$metrics1["bic"],
-    metrics$metrics2["bic"],
-    metrics$metrics3["bic"]
   )
-  names(bic_values) <- names(saz_decision_codes)
-
-  decision <- saz_decision_codes[[names(which.min(bic_values))]]
-
-  list(decision = decision, pvalue = NA_real_)
 }
 
 
@@ -1203,15 +1525,16 @@ compute_saz_stage2_decision <- function(metrics,
 #'
 #' Internal helper used by \code{find_best_fp_step()}.
 #'
-#' Stage 2 of the SAZ algorithm is evaluated only when stage 1 selected a
+#' Stage 2 is specific to `criterion = "pvalue"` and is evaluated only when
+#' stage 1 selected a
 #' non-null functional form for a spike-at-zero variable \code{xi}. This
 #' function fits the two reduced candidate models (continuous-only and
 #' binary-only), compares them against the full continuous + binary model
 #' already selected in stage 1, updates \code{spike_decision[[xi]]}
 #' accordingly, and builds the printable stage-2 metrics table.
 #'
-#' @param fit1 Stage 1 selection object, as returned by one of the
-#'   \code{select_*()} functions (e.g. \code{select_ra2()}, \code{select_ic()}).
+#' @param fit1 Stage 1 selection object returned by a p-value
+#'   \code{select_*()} function (for example, \code{select_ra2()}).
 #'   Must contain \code{metrics} (a matrix with a row for the selected model)
 #'   and \code{model_best} (the row index of that model). Also used by
 #'   \code{fit_saz_reduced_models()} to reuse the stage-1 transformed design.
@@ -1223,7 +1546,8 @@ compute_saz_stage2_decision <- function(metrics,
 #'   rownames,has_offset Passed through to \code{fit_saz_reduced_models()}.
 #' @param n_obs Numeric; number of observations (or events, for Cox models).
 #' @param criterion,alpha,ftest Passed through to
-#'   \code{compute_saz_stage2_decision()}. Stage 2 uses \code{alpha} for
+#'   \code{compute_saz_stage2_decision()}. `criterion` must be `"pvalue"`;
+#'   AIC/BIC SAZ selection is joint and never calls this helper. Stage 2 uses \code{alpha} for
 #'   component-removal tests; \code{select} is used only for Stage-1 variable
 #'   inclusion.
 #' @param spike_decision Named numeric vector of current spike decisions. This
@@ -1264,6 +1588,13 @@ evaluate_saz_stage2 <- function(fit1,
                                 spike_decision,
                                 verbose,
                                 fitter = "base") {
+
+  if (!identical(tolower(criterion), "pvalue")) {
+    stop(
+      "Internal error: SAZ Stage 2 is available only for p-value selection.",
+      call. = FALSE
+    )
+  }
 
   # evaluate_saz_stage2() is the single entry point find_best_fp_step() calls
   # for SAZ stage 2 (see its own documentation): it orchestrates fitting the

@@ -186,7 +186,7 @@ validate_mfp_candidate_powers <- function(powers,
 #'   indicating which nonnegative singleton terms are assessed using the SAZ
 #'   algorithm, with `x == 0` defining the zero component and `x > 0` the
 #'   positive component.
-#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   zero component and the positive component. A requested
 #'   spike-at-zero variable is retained for SAZ modelling only if both component
@@ -197,9 +197,10 @@ validate_mfp_candidate_powers <- function(powers,
 #'   If \code{FALSE}, \code{fit_mfp()} performs a defensive late eligibility
 #'   reset for internal callers that have not yet been updated.
 #' @param force_max_fp Named logical vector with one value per conceptual term.
-#'   If \code{TRUE} for a non-linear term, forces selection of the most complex
+#'   If \code{TRUE}, forces selection of the most complex
 #'   functional form allowed by \code{df} under p-value, AIC, or BIC selection,
-#'   bypassing variable elimination and simpler-form comparisons. For an
+#'   including the linear form when \code{df = 1}, and bypassing variable
+#'   elimination and simpler-form comparisons. For an
 #'   eligible spike-at-zero term, the forced result is the complete maximum SAZ
 #'   representation (maximum positive-component form plus binary zero indicator),
 #'   so the reduced-component comparisons in SAZ Stage 2 are not run.
@@ -329,7 +330,7 @@ fit_mfp <- function(x,
                     zero,
                     catzero,
                     spike,
-                    min_saz_component_prop,
+                    min_saz_prop,
                     saz_pre_resolved = FALSE,
                     force_max_fp,
                     retain_linear_fp1 = FALSE,
@@ -463,7 +464,7 @@ fit_mfp <- function(x,
       spike                  = spike,
       user_catzero           = user_catzero,
       user_zero              = user_zero,
-      min_saz_component_prop = min_saz_component_prop
+      min_saz_prop = min_saz_prop
     )
 
     spike   <- result$spike

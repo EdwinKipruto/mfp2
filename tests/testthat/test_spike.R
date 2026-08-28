@@ -213,6 +213,227 @@ test_that("rejected spike does not reserve a source-term _bin name", {
 
 # Migrated coverage from the former test_mfp2.R
 
+# AIC/BIC SAZ selection must search the positive-only and
+# positive-plus-binary functional forms independently and compare them in one
+# joint table. This mocked FP3 example makes the positive-only FP3 powers win,
+# while the full branch has different best powers, so inheriting Stage-1
+# powers would fail the test.
+test_that("joint SAZ IC selection independently optimizes both FP branches", {
+  metric_names <- c(
+    "logl", "df", "deviance_rs", "deviance_gaussian",
+    "aic", "bic", "df_resid"
+  )
+
+  make_metrics <- function(model_names, aic, df) {
+    out <- cbind(
+      logl = -aic / 2,
+      df = df,
+      deviance_rs = aic,
+      deviance_gaussian = aic,
+      aic = aic,
+      bic = aic + df,
+      df_resid = 100 - df
+    )
+    colnames(out) <- metric_names
+    rownames(out) <- model_names
+    out
+  }
+
+  testthat::local_mocked_bindings(
+    select_ic = function(..., xi, spike) {
+      with_binary <- isTRUE(spike[[xi]])
+      model_names <- if (with_binary) {
+        c("null", "linear + Binary", "FP1 + Binary",
+          "FP2 + Binary", "FP3 + Binary")
+      } else {
+        c("null", "linear", "FP1", "FP2", "FP3")
+      }
+      aic <- if (with_binary) c(120, 105, 98, 90, 94) else
+        c(120, 108, 99, 92, 80)
+      powers <- rbind(
+        c(NA, NA, NA), c(1, NA, NA), c(2, NA, NA),
+        c(-1, 2, NA), c(-1, 0.5, 2)
+      )
+      rownames(powers) <- model_names
+      model_best <- which.min(aic)
+
+      list(
+        keep = FALSE, acd = FALSE, powers = powers,
+        power_best = powers[model_best, , drop = FALSE],
+        metrics = make_metrics(model_names, aic, c(1, 3, 4, 6, 8)),
+        model_best = model_best, statistic = NA, pvalue = NA,
+        spike = with_binary,
+        current_adj_params = list(
+          x = list(data_adj = NULL, data_xi = matrix(1, nrow = 8))
+        ),
+        transform_cache = list(branch = if (with_binary) "BP" else "P")
+      )
+    },
+    fit_model = function(...) structure(list(), class = "mock_fit"),
+    calculate_model_metrics = function(...) {
+      c(
+        logl = -55, df = 2, deviance_rs = 110,
+        deviance_gaussian = 110, aic = 110, bic = 112,
+        df_resid = 98
+      )
+    },
+    .package = "mfp2"
+  )
+
+  out <- select_saz_ic(
+    x = matrix(seq_len(8), ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x", keep = character(0), degree = 3, acdx = c(x = FALSE),
+    y = seq_len(8), powers_current = list(x = c(1, 1, 1)),
+    powers = list(x = c(-2, -1, 0, 0.5, 1, 2, 3)),
+    criterion = "aic", ftest = FALSE, select = 0.05, alpha = 0.05,
+    family = stats::gaussian(), family_string = "gaussian",
+    zero = c(x = TRUE),
+    catzero = list(x = matrix(rep(c(1, 0), 4), ncol = 1)),
+    spike = list(x = TRUE), spike_decision = c(x = 1),
+    acd_parameter = list(x = NULL), prev_adj_params = list(x = NULL),
+    transform_cache = NULL, force_max_fp = c(x = FALSE),
+    has_offset = FALSE, n_obs = 8, term_to_columns = list(x = "x")
+  )
+
+  expect_identical(nrow(out$metrics), 2L * 3L + 4L)
+  expect_identical(
+    rownames(out$metrics),
+    c("null", "Binary", "linear", "linear + Binary", "FP1",
+      "FP1 + Binary", "FP2", "FP2 + Binary", "FP3", "FP3 + Binary")
+  )
+  expect_identical(rownames(out$metrics)[out$model_best], "FP3")
+  expect_equal(unname(out$power_best), c(-1, 0.5, 2))
+  expect_identical(unname(out$spike_decision[["x"]]), 2L)
+  expect_identical(out$selection_mode, "joint_ic")
+})
+
+# Exact AIC/BIC ties must be resolved by an explicit simplicity hierarchy,
+# not by whichever candidate happens to occupy the first row. These are the
+# two ordinary-FP pairs that can have equal adjusted SAZ df: binary-only versus
+# positive-only linear (1 df), and both-components linear versus positive-only
+# FP1 (2 df).
+test_that("joint SAZ IC same-df ties prefer the simpler positive form", {
+  tie_pairs <- list(
+    one_df = list(
+      candidates = c("Binary", "linear"),
+      df = c(1, 1),
+      expected = "Binary"
+    ),
+    two_df = list(
+      candidates = c("linear + Binary", "FP1"),
+      df = c(2, 2),
+      expected = "linear + Binary"
+    )
+  )
+
+  for (criterion in c("aic", "bic")) {
+    for (tie_pair in tie_pairs) {
+      # Check both possible row orders. A row-order tie-break would fail one
+      # of these two arrangements for each pair.
+      for (candidate_order in list(
+        seq_along(tie_pair$candidates),
+        rev(seq_along(tie_pair$candidates))
+      )) {
+        candidate_names <- tie_pair$candidates[candidate_order]
+        candidate_df <- tie_pair$df[candidate_order]
+        metrics <- cbind(
+          df = candidate_df,
+          aic = rep(10, length(candidate_names)),
+          bic = rep(10, length(candidate_names))
+        )
+        rownames(metrics) <- candidate_names
+
+        selected <- select_saz_ic_winner(
+          metrics = metrics,
+          criterion = criterion,
+          eligible = seq_len(nrow(metrics)),
+          acd = FALSE
+        )
+
+        expect_identical(rownames(metrics)[selected], tie_pair$expected)
+      }
+    }
+  }
+})
+
+# Adjusted model df remains the first simplicity tie-break. This test uses a
+# pair with the same positive-form complexity so that component count cannot
+# obscure whether the lower-df rule was applied.
+test_that("joint SAZ IC ties first prefer smaller adjusted df", {
+  metrics <- cbind(
+    df = c(2, 1),
+    aic = c(10, 10),
+    bic = c(10, 10)
+  )
+  rownames(metrics) <- c("linear + Binary", "linear")
+
+  for (criterion in c("aic", "bic")) {
+    selected <- select_saz_ic_winner(
+      metrics = metrics,
+      criterion = criterion,
+      eligible = seq_len(nrow(metrics)),
+      acd = FALSE
+    )
+
+    expect_identical(rownames(metrics)[selected], "linear")
+  }
+})
+
+# The joint SAZ selector also accepts the package's ACD functional-form family.
+# Its explicit simplicity metadata must recognize every established ACD label
+# with and without the binary component.
+test_that("joint SAZ IC simplicity hierarchy recognizes ACD forms", {
+  candidate_names <- c(
+    "null", "Binary",
+    "linear", "linear + Binary",
+    "linear(., A(x))", "linear(., A(x)) + Binary",
+    "FP1(x, .)", "FP1(x, .) + Binary",
+    "FP1(., A(x))", "FP1(., A(x)) + Binary",
+    "FP1(x, A(x))", "FP1(x, A(x)) + Binary"
+  )
+
+  simplicity <- saz_ic_candidate_simplicity(candidate_names, acd = TRUE)
+
+  expect_identical(
+    simplicity$positive_complexity,
+    c(0L, 0L, rep(1:5, each = 2L))
+  )
+  expect_identical(
+    simplicity$component_count,
+    c(0L, 1L, rep(c(1L, 2L), 5L))
+  )
+})
+
+# Verbose labels are part of the behavioral distinction: IC selection must not
+# imply that the selected powers came from a preceding SAZ Stage 1.
+test_that("verbose SAZ output distinguishes joint IC from p-value stages", {
+  set.seed(9001)
+  x <- c(rep(0, 70), seq(0.2, 7, length.out = 210))
+  z <- as.numeric(x == 0)
+  y <- 3 * z + 1.5 * x + stats::rnorm(length(x), sd = 0.05)
+  xmat <- matrix(x, ncol = 1, dimnames = list(NULL, "x"))
+
+  out_aic <- capture.output(
+    suppressMessages(mfp2(
+      xmat, y, spike_vars = "x", df = 1, criterion = "aic",
+      shift = 0, scale = 1, center = FALSE, verbose = TRUE
+    ))
+  )
+  expect_true(any(grepl("Joint Spike at Zero AIC Selection", out_aic,
+                        fixed = TRUE)))
+  expect_false(any(grepl("Stage 2 of Spike at Zero", out_aic, fixed = TRUE)))
+
+  out_pvalue <- capture.output(
+    suppressMessages(mfp2(
+      xmat, y, spike_vars = "x", df = 1, criterion = "pvalue",
+      select = 1, alpha = 1, shift = 0, scale = 1, center = FALSE,
+      verbose = TRUE
+    ))
+  )
+  expect_true(any(grepl("Stage 1 of Spike at Zero", out_pvalue, fixed = TRUE)))
+  expect_true(any(grepl("Stage 2 of Spike at Zero", out_pvalue, fixed = TRUE)))
+})
+
 # =============================================================================
 # 6. SAZ (spike-at-zero) — eligibility, cascade, and reset
 # =============================================================================
@@ -318,7 +539,7 @@ test_that("spike formula interface fp(spike = TRUE) works", {
 
 # Test purpose: Checks that changing the SAZ component threshold changes spike
 #  eligibility as expected.
-test_that("min_saz_component_prop controls eligibility threshold", {
+test_that("min_saz_prop controls eligibility threshold", {
   set.seed(123)
   n <- 200
   x_val <- rgamma(n, shape = 2, rate = 1)
@@ -329,13 +550,13 @@ test_that("min_saz_component_prop controls eligibility threshold", {
 
   # With default threshold 0.10 it should be eligible
   fit_low <- mfp2(x_mat, y_val, spike_vars = "exposure",
-                  min_saz_component_prop = 0.10, verbose = FALSE)
+                  min_saz_prop = 0.10, verbose = FALSE)
   expect_true(fit_low$fp_terms["exposure", "spike"])
 
   # With high threshold 0.40 it should be ineligible
   expect_warning(
     fit_high <- mfp2(x_mat, y_val, spike_vars = "exposure",
-                     min_saz_component_prop = 0.40, verbose = FALSE),
+                     min_saz_prop = 0.40, verbose = FALSE),
     "spike"
   )
   expect_false(fit_high$fp_terms["exposure", "spike"])
@@ -435,7 +656,7 @@ test_that("reset_spike() resets all-zero variables", {
       spike = spike,
       user_catzero = user_catzero,
       user_zero = user_zero,
-      min_saz_component_prop = 0.10
+      min_saz_prop = 0.10
     ),
     "positive observation proportion"
   )
@@ -466,7 +687,7 @@ test_that("resolve_saz_eligibility() counts exact zeros", {
     spike = spike,
     catzero = catzero,
     zero = zero,
-    min_saz_component_prop = 0.10
+    min_saz_prop = 0.10
   )
 
   expect_true(out$spike["exposure"])
@@ -492,7 +713,7 @@ test_that("reset_spike exact-zero predicates drive eligibility", {
     spike = spike,
     user_catzero = user_catzero,
     user_zero = user_zero,
-    min_saz_component_prop = 0.10
+    min_saz_prop = 0.10
   ))
   # exposure has one effective zero level plus one positive level, so it is
   # binary and must be reset.

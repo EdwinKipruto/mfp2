@@ -2454,6 +2454,30 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
   } else {
     unique(all.vars(offset_variables_call))
   }
+
+  # Do not let model.frame() resolve a missing offset variable from the stored
+  # formula environment. That environment can still contain the training-data
+  # variable, whose length then differs from the prediction rows and produces a
+  # misleading "wrong number of rows" error. Formula-level offsets must be
+  # reconstructed from the supplied newdata; otherwise callers must provide
+  # newoffset explicitly.
+  missing_offset_variables <- setdiff(
+    offset_source_variables,
+    names(newdata_df)
+  )
+  if (length(missing_offset_variables) > 0L) {
+    stop(
+      "! This `mfp2` object was fitted with a formula-level offset, ",
+      "but the offset could not be reconstructed from `newdata`.\n",
+      "i Include the original offset variable(s) in `newdata`, or supply ",
+      "`newoffset = ...` explicitly to `predict()`.\n",
+      "i Missing offset variable(s): ",
+      paste(missing_offset_variables, collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
   offset_source_columns <- intersect(offset_source_variables, names(newdata_df))
   if (length(offset_source_columns) > 0L) {
     mfp2_validate_prediction_newdata(

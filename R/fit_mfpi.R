@@ -200,7 +200,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   its FP transformation.
 #' @param spike_vars Named logical vector of length \eqn{p}. Whether each
 #'   predictor is subject to spike-at-zero (SAZ) modelling.
-#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   zero component and the positive component. Only
 #'   affects variables in the adjustment model, since spike-at-zero handling is
@@ -322,7 +322,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      force_max_fp,
                      df, xorder,
                      fp_powers, ties, strata, nocenter, acd_vars, zero_vars,
-                     catzero_vars, spike_vars,  min_saz_component_prop, use_ftest,
+                     catzero_vars, spike_vars,  min_saz_prop, use_ftest,
                      control, group_var, include_group_var, flex, cont_vars,
                      cont_var_forms,
                      p_interact, min_improvement, show_models, verbose,
@@ -392,7 +392,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     ties           = ties,
     strata         = strata,
     nocenter       = nocenter,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     use_ftest      = use_ftest,
     control        = control,
     force_max_fp   = processed_data$updated_params$force_max_fp,
@@ -580,7 +580,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     show_models        = show_models,
     p_interact         = p_interact,
     min_improvement    = min_improvement,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     center_type        = center_type,
     scale              = scale,
     shift              = shift,
@@ -1171,7 +1171,7 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 #'   \code{NULL}. Passed through to \code{fit_mfp()} without converting
 #'   ordinary vector/factor strata to integer codes.
 #' @param nocenter Numeric vector passed to \code{survival::coxph()}.
-#' @param min_saz_component_prop Numeric in \eqn{(0, 0.5)}. Minimum required
+#' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate, passed to
 #'   \code{fit_mfp()} for adjustment-model fitting.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an F-test rather than a chi-square test. Applied to both adjustment-variable selection and the interaction test.
@@ -1206,7 +1206,7 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
                                  family_string, criterion, updated_params,
                                  xorder, ties, strata, nocenter,
-                                 min_saz_component_prop, use_ftest, control,
+                                 min_saz_prop, use_ftest, control,
                                  force_max_fp, scale, has_offset,
                                  term_to_columns,
                                  verbose = FALSE, fitter = "base") {
@@ -1275,7 +1275,7 @@ fit_adjustment_model <- function(x, y, weights, offset, cycles, family,
     zero          = zero_term,
     catzero       = catzero_term,
     spike         = spike_term,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     saz_pre_resolved = TRUE,
     force_max_fp  = force_term,
     term_to_columns = term_to_columns,
@@ -1583,7 +1583,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   use_ftest, control, nocenter, family,
                                   family_string, fp_powers, cycles, criterion,
                                   digits, group_var, show_models, p_interact,
-                                  min_improvement, min_saz_component_prop,
+                                  min_improvement, min_saz_prop,
                                   center_type = c("grand", "group"),
                                   scale = NULL, shift = NULL,
                                   adj_acd_parameter = NULL,
@@ -1741,7 +1741,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       control                = control,
       nocenter               = nocenter,
       cycles                 = cycles,
-      min_saz_component_prop = min_saz_component_prop,
+      min_saz_prop = min_saz_prop,
       flex                   = flex,
       scale                  = scale,
       shift                  = shift,
@@ -1978,7 +1978,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #'   e.g. \code{c(linear = 0L, fp1 = 1L, fp2 = 2L)}.
 #' @param processed_data,criterion,ties,family,family_string,use_ftest,
 #'   center_type,xorder,weights,offset,strata,control,nocenter,cycles,
-#'   min_saz_component_prop,flex,scale,shift,has_offset Passed through to
+#'   min_saz_prop,flex,scale,shift,has_offset Passed through to
 #'   \code{flex_fit()}.
 #' @param ic_col,ic_label Column name and display label for the active
 #'   information criterion (\code{NULL} when \code{criterion == "pvalue"}).
@@ -2030,7 +2030,7 @@ evaluate_interaction_for_variable <- function(var_name,
                                               control,
                                               nocenter,
                                               cycles,
-                                              min_saz_component_prop,
+                                              min_saz_prop,
                                               flex,
                                               scale,
                                               shift,
@@ -2138,7 +2138,7 @@ evaluate_interaction_for_variable <- function(var_name,
       cycles        = cycles,
       zero_var      = processed_data$updated_params$zero_vars[var_name],
       spike_var     = FALSE,
-      min_saz_component_prop = min_saz_component_prop,
+      min_saz_prop = min_saz_prop,
       flex          = flex,
       scale_var     = if (!is.null(scale)) unname(scale[var_name]) else 1,
       shift_var     = if (!is.null(shift)) unname(shift[var_name]) else 0,

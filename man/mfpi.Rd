@@ -42,7 +42,7 @@ mfpi(x, ...)
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
-  min_saz_component_prop = 0.1,
+  min_saz_prop = 0.1,
   ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
@@ -89,7 +89,7 @@ mfpi(x, ...)
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
-  min_saz_component_prop = 0.1,
+  min_saz_prop = 0.1,
   ftest = FALSE,
   control = NULL,
   winsorize = FALSE,
@@ -293,7 +293,8 @@ powers within that degree are still chosen by the data. Under
 \code{criterion = "pvalue"}, this also forces \code{select = 1} and \code{alpha = 1} for
 the named variables, so they are both retained and kept at full FP
 complexity. Under AIC and BIC the same maximum-degree requirement is
-enforced directly. If a forced adjustment variable is also an eligible
+enforced directly; when \code{df = 1}, the forced maximum is linear. If a
+forced adjustment variable is also an eligible
 spike-at-zero term, its complete maximum SAZ representation is retained
 and SAZ Stage 2 is skipped. In a formula, the corresponding option is
 \code{fp(variable, force_max_fp = TRUE)} or
@@ -363,7 +364,7 @@ are preserved for those. In the formula interface, use
 \item{spike_vars}{An optional character vector naming nonnegative adjustment variables to
 assess with the spike-at-zero procedure. Spike-at-zero testing requires
 enough observations in both the exact-zero and positive components (see
-\code{min_saz_component_prop}). Negative values are rejected and require
+\code{min_saz_prop}). Negative values are rejected and require
 explicit recoding when scientifically appropriate. Setting \code{spike_vars} implies both
 \code{catzero_vars} and \code{zero_vars} for the same variables. Variables that fail
 the component-proportion check are automatically downgraded to \code{catzero}
@@ -371,7 +372,7 @@ or \code{zero} handling. This option is disabled with a warning for variables
 in \code{cont_vars}. In the formula interface, use
 \code{fp(variable, spike = TRUE)}.}
 
-\item{min_saz_component_prop}{A finite number in \verb{(0, 0.5)} giving the
+\item{min_saz_prop}{A finite number in \verb{(0, 0.5)} giving the
 minimum proportion required in both components of a spike-at-zero
 adjustment variable. The default is \code{0.10}.}
 
@@ -724,7 +725,7 @@ with a warning. An explicit \code{zero_vars} setting for that variable is
 preserved.
 
 Spike-at-zero adjustment variables must have enough observations in both the
-exact-zero and positive components. \code{min_saz_component_prop} sets the
+exact-zero and positive components. \code{min_saz_prop} sets the
 minimum required proportion in each component.
 }
 
@@ -795,7 +796,7 @@ supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 \code{flex}, \code{p_interact}, \code{min_improvement},
 \code{include_group_var}, \code{show_models}, \code{cycles},
 \code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
-\code{nocenter}, \code{min_saz_component_prop}, \code{ftest},
+\code{nocenter}, \code{min_saz_prop}, \code{ftest},
 \code{control}, \code{verbose}, \code{digits}.
 
 \code{acd_vars}, by contrast, is not merely scalar-restricted but entirely

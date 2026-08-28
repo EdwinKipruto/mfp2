@@ -76,8 +76,9 @@ values is added alongside the positive-component FP function. Implies
 rejection. Default \code{FALSE}. Equivalent to listing the variable in
 \code{catzero_vars} in \code{mfp2.default()}.}
 
-\item{spike}{Logical. If \code{TRUE}, request two-stage spike-at-zero (SAZ)
-selection for this variable. While SAZ remains eligible, implies both
+\item{spike}{Logical. If \code{TRUE}, request spike-at-zero (SAZ) selection for
+this variable. P-values use two-stage closed testing; AIC/BIC use one
+joint candidate comparison. While SAZ remains eligible, implies both
 \code{catzero} and \code{zero}, including their nonnegative domain and negative-value
 rejection. Default \code{FALSE}. Equivalent to listing the variable
 in \code{spike_vars} in \code{mfp2.default()}. See the SAZ section in \code{\link[=mfp2]{mfp2()}} for
@@ -85,9 +86,8 @@ eligibility requirements.}
 
 \item{force_max_fp}{Logical. If \code{TRUE}, the most complex functional form
 allowed by \code{df} is forced for this variable, bypassing both variable
-selection and functional-form simplification. Under \code{criterion = "pvalue"},
-this is implemented by internally setting \code{select = 1} and \code{alpha = 1}
-for the variable; the option also applies under \code{"aic"} and \code{"bic"}.
+selection and functional-form simplification under all three criteria.
+With \code{df = 1}, the forced maximum form is linear.
 If \code{spike = TRUE} remains eligible, the forced representation includes
 both the maximum permitted positive-component FP form and the binary zero
 indicator, and SAZ Stage 2 is bypassed under all three criteria. Default

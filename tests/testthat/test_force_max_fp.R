@@ -38,6 +38,36 @@ test_that("force_max_fp_vars forces maximum FP degree with AIC/BIC", {
   }
 })
 
+# df = 1 is also a maximum-form request: ordinary terms must remain linear,
+# and eligible SAZ terms must retain linear plus binary. This guards against
+# the former df > 1 gate, which allowed AIC/BIC to drop a forced linear term.
+test_that("force_max_fp applies to linear ordinary and SAZ terms", {
+  set.seed(151)
+  n <- 240L
+  x <- stats::rnorm(n)
+  y <- stats::rnorm(n)
+
+  ordinary <- mfp2(
+    matrix(x, ncol = 1, dimnames = list(NULL, "x")), y,
+    df = 1, criterion = "bic", force_max_fp_vars = "x",
+    verbose = FALSE
+  )
+
+  expect_true(ordinary$fp_terms["x", "selected"])
+  expect_equal(as.numeric(ordinary$fp_powers[["x"]]), 1)
+
+  exposure <- c(rep(0, 80L), stats::rgamma(n - 80L, shape = 2))
+  saz <- mfp2(
+    matrix(exposure, ncol = 1, dimnames = list(NULL, "exposure")), y,
+    spike_vars = "exposure", df = 1, criterion = "bic",
+    force_max_fp_vars = "exposure", verbose = FALSE
+  )
+
+  expect_equal(as.integer(saz$spike_dec[["exposure"]]), 1L)
+  expect_equal(as.numeric(saz$fp_powers[["exposure"]]), 1)
+  expect_true(saz$catzero[["exposure"]])
+})
+
 
 # Test purpose: force_max_fp has one dedicated selector for p-value, AIC, and
 # BIC selection. It fits only the predetermined maximum ordinary FP form;

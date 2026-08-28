@@ -253,46 +253,21 @@ find_best_fp_step <- function(x,
 
   # `fit_mfp()` constructs the complete conceptual-term lookup once and the
   # backfitting cycle passes it explicitly through every selection routine.
-  # find_best_fp_step() dispatches xi's model-selection to the right
-  # closed-test/IC routine, prints progress, cleans up the returned powers,
-  # and (for spike variables) runs SAZ stage 2 once stage 1 has selected a
-  # non-null model. See "Functional form selection" above for how the three
-  # selection routines relate.
+  # find_best_fp_step() dispatches xi's model selection to the path implied by
+  # force_max_fp, spike-at-zero eligibility, and the selection criterion.
+  # P-value SAZ selection keeps its two closed-testing stages. AIC/BIC SAZ
+  # selection instead compares the complete candidate family jointly, because
+  # there is no closed-test error-control argument requiring two stages.
 
   degree <- as.numeric(df / 2)
 
-  # Step 1: Choose the appropriate selection function for xi ------------------
-  # Linear-only terms retain their historical selector. For every non-linear
-  # term with force_max_fp = TRUE, selection is already predetermined by the
-  # public option: retain xi at its maximum permitted functional complexity.
-  # Use one dedicated selector for p-value, AIC, and BIC so RA2/IC machinery
-  # never fits null, linear, or lower-degree alternatives that cannot win.
   criterion_lower <- tolower(criterion)
-  force_max_active <- df > 1 && isTRUE(force_max_fp[xi])
+  force_max_active <- isTRUE(force_max_fp[[xi]])
+  saz_active <- isTRUE(spike[[xi]])
 
-  if (df == 1) {
-    # Linear-only terms keep their historical selector.
-    select_fct <- select_linear
-  } else if (force_max_active) {
-    # All criteria plus force_max_fp: fit only the required maximum form.
-    select_fct <- select_force_max_fp
-  } else if (acdx[xi]) {
-    # ACD case.
-    if (criterion_lower == "pvalue") {
-      select_fct <- select_ra2_acd
-    } else {
-      select_fct <- select_ic_acd
-    }
-  } else {
-    # Ordinary MFP case.
-    if (criterion_lower == "pvalue") {
-      select_fct <- select_ra2
-    } else {
-      select_fct <- select_ic
-    }
-  }
-
-  # Step 2: Run the selected routine and optionally print progress -----------
+  # Shared arguments for every path below. The conceptual-term lookup is
+  # passed to every selector because an adjustment term can be a grouped term
+  # spanning multiple raw design-matrix columns.
   # Pass the term lookup to every selector, not only to select_linear(). Even
   # when xi is a continuous FP term, its adjustment set can contain grouped
   # categorical terms whose raw columns must be assembled as one block.
@@ -312,12 +287,72 @@ find_best_fp_step <- function(x,
     calculate_gaussian_deviance = isTRUE(ftest)
   )
 
-  # Only the forced selector used by MFPI needs this FP1 convention. Pass the
-  # switch only on that path so ordinary RA2/IC selectors remain completely
-  # unaware of it. The switch retains p = 1 only if it is already present in
-  # the supplied FP1 candidate powers.
+  # Path 1: force_max_fp fixes the final form before any selection criterion.
+  # For df = 1 the maximum form is linear; adding xi to the selector's local
+  # keep set forces that row. For df > 1, select_force_max_fp() fits only the
+  # requested highest FP form. An eligible SAZ variable retains its binary
+  # component as well, so neither the joint-IC path nor SAZ Stage 2 may undo
+  # the explicit force request.
   if (force_max_active) {
-    selector_args$retain_linear_fp1 <- retain_linear_fp1
+    if (df == 1) {
+      forced_args <- selector_args
+      forced_args$keep <- unique(c(keep, xi))
+      fit1 <- do.call(select_linear, forced_args)
+      # `keep` reports the user's keep setting, not the local implementation
+      # device used above to force the only available continuous form.
+      fit1$keep <- xi %in% keep
+    } else {
+      selector_args$retain_linear_fp1 <- retain_linear_fp1
+      fit1 <- do.call(select_force_max_fp, selector_args)
+    }
+
+    if (verbose) {
+      print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
+    }
+
+    power_best <- normalize_selected_step_powers(fit1, xi, acdx)
+    if (saz_active) {
+      spike_decision[[xi]] <- saz_decision_codes[["cont_binary"]]
+    }
+
+    return(list(
+      power_best = power_best,
+      spike_decision = spike_decision,
+      current_adj_params = fit1$current_adj_params,
+      transform_cache = fit1$transform_cache
+    ))
+  }
+
+  # Path 2: an eligible SAZ term under AIC/BIC is one joint model-selection
+  # problem. The positive-only and positive-plus-binary branches each perform
+  # their own power search, then null, binary-only, and both sets of positive
+  # candidates compete by the requested information criterion. This avoids
+  # retaining powers optimized conditionally on the binary component.
+  if (saz_active && criterion_lower %in% c("aic", "bic")) {
+    fit1 <- do.call(select_saz_ic, selector_args)
+
+    if (verbose) {
+      print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
+    }
+
+    return(list(
+      power_best = normalize_selected_step_powers(fit1, xi, acdx),
+      spike_decision = fit1$spike_decision,
+      current_adj_params = fit1$current_adj_params,
+      transform_cache = fit1$transform_cache
+    ))
+  }
+
+  # Path 3: ordinary FP/ACD selection, plus Stage 1 of p-value SAZ selection.
+  # P-value SAZ deliberately retains the historical two-stage split because
+  # it is part of the closed-test construction. Non-SAZ AIC/BIC selection also
+  # uses these ordinary selectors and is unaffected by the joint SAZ path.
+  if (df == 1) {
+    select_fct <- select_linear
+  } else if (acdx[xi]) {
+    select_fct <- if (criterion_lower == "pvalue") select_ra2_acd else select_ic_acd
+  } else {
+    select_fct <- if (criterion_lower == "pvalue") select_ra2 else select_ic
   }
 
   fit1 <- do.call(select_fct, selector_args)
@@ -326,21 +361,7 @@ find_best_fp_step <- function(x,
     print_mfp_step(xi = xi, criterion = criterion, fit = fit1)
   }
 
-  # Step 3: Clean up the returned powers for xi -------------------------------
-  # prepare power to return. Remove trailing NAs, unless ACD is used
-  power_best <- as.numeric(fit1$power_best)
-
-  if (!fit1$acd) {
-    power_best <- power_best[!is.na(power_best)]
-    if (length(power_best) == 0) {
-      power_best <- NA
-    }
-  }
-
-  # create names for powers
-  names(power_best) <- name_transformed_variables(
-    xi,length(power_best),acd = acdx[xi]
-  )
+  power_best <- normalize_selected_step_powers(fit1, xi, acdx)
 
   # Step 4: If xi was eliminated (stage 1 selected null), stop here ----------
   # Stage 1 selected null.
@@ -377,26 +398,7 @@ find_best_fp_step <- function(x,
     ))
   }
 
-  # Step 6: Forced spike terms already have their final representation -------
-  if (force_max_active) {
-    # select_force_max_fp() has already fitted the maximum permitted continuous
-    # form together with the binary zero indicator for an eligible spike term.
-    # SAZ stage 2 exists only to ask whether either component can be removed.
-    # Running those reduced-model comparisons would therefore contradict the
-    # explicit force_max_fp request and, under AIC/BIC, could undo the forced
-    # representation. It would also perform two model fits whose results are
-    # not allowed to change the answer. Mark the full representation directly.
-    spike_decision[[xi]] <- saz_decision_codes[["cont_binary"]]
-
-    return(list(
-      power_best = power_best,
-      spike_decision = spike_decision,
-      current_adj_params = fit1$current_adj_params,
-      transform_cache = fit1$transform_cache
-    ))
-  }
-
-  # Step 7: xi is a selected non-forced spike variable, so run SAZ stage 2 ----
+  # Path 4: Stage 2 is reached only by a selected, non-forced p-value SAZ term.
   # If we get here:
   # power_best is not NA
   # and xi is a spike variable
@@ -439,6 +441,25 @@ find_best_fp_step <- function(x,
     transform_cache = fit1$transform_cache
   ))
 
+}
+
+# Normalize and name the selected power vector returned by a step selector.
+# Keeping this in one helper is important for joint IC because binary-only and
+# null models both carry NA powers but have different spike_decision values.
+normalize_selected_step_powers <- function(fit, xi, acdx) {
+  power_best <- as.numeric(fit$power_best)
+
+  if (!fit$acd) {
+    power_best <- power_best[!is.na(power_best)]
+    if (length(power_best) == 0L) {
+      power_best <- NA_real_
+    }
+  }
+
+  names(power_best) <- name_transformed_variables(
+    xi, length(power_best), acd = acdx[xi]
+  )
+  power_best
 }
 
 

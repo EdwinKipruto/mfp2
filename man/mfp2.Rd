@@ -35,7 +35,7 @@ mfp2(x, ...)
   zero_vars = NULL,
   catzero_vars = NULL,
   spike_vars = NULL,
-  min_saz_component_prop = 0.1,
+  min_saz_prop = 0.1,
   force_max_fp_vars = NULL,
   term_groups = NULL,
   verbose = TRUE,
@@ -66,7 +66,7 @@ mfp2(x, ...)
   nocenter = c(-1, 0, 1),
   ftest = FALSE,
   control = NULL,
-  min_saz_component_prop = 0.1,
+  min_saz_prop = 0.1,
   verbose = TRUE,
   fitter = c("base", "fastglm"),
   ...
@@ -214,7 +214,8 @@ functional form of kept variables may still be simplified by the
 \code{alpha}-level closed test or information criterion. For a kept spike-at-zero
 term under \code{criterion = "pvalue"}, Stage 2 still uses \code{alpha}, so either SAZ
 component may be removed while the term itself remains forced into the model.
-Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
+Under AIC/BIC, the null row is excluded from the joint SAZ comparison, but
+either component may still be removed while the term remains represented.
 Names must match formula term names or, for matrix fits, column names or
 \code{term_groups} names.}
 
@@ -297,17 +298,19 @@ variable. Applies to \code{mfp2.default()} only; in the formula interface use
 recoding when they should represent the zero group.}
 
 \item{spike_vars}{Character vector of nonnegative continuous predictors to be assessed
-with the two-stage spike-at-zero (SAZ) algorithm. SAZ selection determines
+with the spike-at-zero (SAZ) algorithm. P-value selection uses two-stage
+closed testing; AIC/BIC selection compares the complete candidate family
+jointly. SAZ selection determines
 whether the final model retains both the binary zero-indicator and
 continuous FP component, only the continuous component, or only the binary
 indicator. Requesting \code{spike} implies both \code{catzero} and \code{zero} handling
 while SAZ remains eligible. A predictor is eligible for SAZ only when both
-the exact-zero and positive components meet the \code{min_saz_component_prop}
+the exact-zero and positive components meet the \code{min_saz_prop}
 threshold and the variable is not binary; ineligible spike requests are
 reset. Applies to \code{mfp2.default()} only; in the formula interface use
 \code{fp(x, spike = TRUE)}.}
 
-\item{min_saz_component_prop}{Numeric in \verb{(0, 0.5)}. Minimum required
+\item{min_saz_prop}{Numeric in \verb{(0, 0.5)}. Minimum required
 proportion in each component of a spike-at-zero covariate: the zero
 component and the positive continuous component. Default \code{0.10}. A
 spike-at-zero candidate is retained for SAZ modelling only if both the
@@ -319,10 +322,9 @@ small proportion may yield enough observations for reliable estimation.}
 \item{force_max_fp_vars}{For \code{mfp2.default()}, an optional character
 vector naming predictors for which the most complex FP function allowed by
 \code{df} should be forced into the model. For the named predictors,
-variable selection and functional-form simplification are bypassed. Under
-\code{criterion = "pvalue"}, this is implemented internally by setting
-\code{select = 1} and \code{alpha = 1}; the option also applies under
-\code{criterion = "aic"} and \code{criterion = "bic"}. For an eligible
+variable selection and functional-form simplification are bypassed for all
+three criteria. This includes \code{df = 1}, for which the forced maximum is
+the linear form. For an eligible
 spike-at-zero predictor, forcing applies to the complete maximum SAZ
 representation: the maximum permitted positive-component FP form plus the
 binary zero indicator. SAZ Stage 2 is skipped for forced terms under all
@@ -655,19 +657,25 @@ Negative values are rejected before option cascading or preprocessing and
 are never silently recoded. Recode negative values explicitly only when it
 is scientifically appropriate for them to represent the zero group.
 
-SAZ selection has two stages. Stage 1 uses \code{select} for overall term
-inclusion and \code{alpha} for positive-component functional-form comparisons
-while retaining the binary component. Stage 2 selects among the three
-retained representations; under \code{criterion = "pvalue"}, both Stage-2
-component-removal tests are evaluated at \code{alpha}. A requested SAZ variable is
-eligible only when both the exact-zero and positive components contain at least
-\code{min_saz_component_prop} of the observations and the variable is not binary.
+The SAZ selection path depends on \code{criterion}. With
+\code{criterion = "pvalue"}, the two-stage closed-test procedure is retained:
+Stage 1 uses \code{select} for overall term inclusion and \code{alpha} for
+positive-component functional-form comparisons while retaining the binary
+component; Stage 2 tests removal of each component at \code{alpha}. With
+\code{criterion = "aic"} or \code{"bic"}, there is no closed-test split. The null,
+binary-only, positive-only, and positive-plus-binary candidates are compared
+jointly, with the positive functional form optimized independently in the
+latter two branches. For maximum ordinary FP degree \eqn{d}, this is a
+\eqn{2d+4}-model comparison containing linear and best FP1 through FP\eqn{d}
+forms in each positive branch. A requested SAZ variable is eligible only
+when both the exact-zero and positive components contain at least
+\code{min_saz_prop} of the observations and the variable is not binary.
 With the default value \code{0.10}, each component must contain at least 10 percent
 of observations. If eligibility fails, the spike request is reset; explicit
 \code{zero} or \code{catzero} handling is retained only when requested separately.
 
-See \code{vignette("mfp2_spike", package = "mfp2")} for the complete two-stage
-algorithm, eligibility equations, information-criterion alternatives,
+See \code{vignette("mfp2_spike", package = "mfp2")} for the complete
+criterion-specific algorithm, eligibility equations, candidate families,
 component interpretations, and worked examples.
 }
 

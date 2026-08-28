@@ -197,19 +197,25 @@
 #' are never silently recoded. Recode negative values explicitly only when it
 #' is scientifically appropriate for them to represent the zero group.
 #'
-#' SAZ selection has two stages. Stage 1 uses `select` for overall term
-#' inclusion and `alpha` for positive-component functional-form comparisons
-#' while retaining the binary component. Stage 2 selects among the three
-#' retained representations; under `criterion = "pvalue"`, both Stage-2
-#' component-removal tests are evaluated at `alpha`. A requested SAZ variable is
-#' eligible only when both the exact-zero and positive components contain at least
-#' `min_saz_component_prop` of the observations and the variable is not binary.
+#' The SAZ selection path depends on `criterion`. With
+#' `criterion = "pvalue"`, the two-stage closed-test procedure is retained:
+#' Stage 1 uses `select` for overall term inclusion and `alpha` for
+#' positive-component functional-form comparisons while retaining the binary
+#' component; Stage 2 tests removal of each component at `alpha`. With
+#' `criterion = "aic"` or `"bic"`, there is no closed-test split. The null,
+#' binary-only, positive-only, and positive-plus-binary candidates are compared
+#' jointly, with the positive functional form optimized independently in the
+#' latter two branches. For maximum ordinary FP degree \eqn{d}, this is a
+#' \eqn{2d+4}-model comparison containing linear and best FP1 through FP\eqn{d}
+#' forms in each positive branch. A requested SAZ variable is eligible only
+#' when both the exact-zero and positive components contain at least
+#' `min_saz_prop` of the observations and the variable is not binary.
 #' With the default value `0.10`, each component must contain at least 10 percent
 #' of observations. If eligibility fails, the spike request is reset; explicit
 #' `zero` or `catzero` handling is retained only when requested separately.
 #'
-#' See `vignette("mfp2_spike", package = "mfp2")` for the complete two-stage
-#' algorithm, eligibility equations, information-criterion alternatives,
+#' See `vignette("mfp2_spike", package = "mfp2")` for the complete
+#' criterion-specific algorithm, eligibility equations, candidate families,
 #' component interpretations, and worked examples.
 #'
 #' @section Subsetting:
@@ -413,7 +419,8 @@
 #' `alpha`-level closed test or information criterion. For a kept spike-at-zero
 #' term under `criterion = "pvalue"`, Stage 2 still uses `alpha`, so either SAZ
 #' component may be removed while the term itself remains forced into the model.
-#' Under AIC/BIC, Stage 2 continues to use the chosen information criterion.
+#' Under AIC/BIC, the null row is excluded from the joint SAZ comparison, but
+#' either component may still be removed while the term remains represented.
 #' Names must match formula term names or, for matrix fits, column names or
 #' `term_groups` names.
 #' @param xorder Order in which conceptual predictors enter the backfitting
@@ -485,16 +492,18 @@
 #' `fp(x, catzero = TRUE)`. Negative values are rejected and require explicit
 #' recoding when they should represent the zero group.
 #' @param spike_vars Character vector of nonnegative continuous predictors to be assessed
-#' with the two-stage spike-at-zero (SAZ) algorithm. SAZ selection determines
+#' with the spike-at-zero (SAZ) algorithm. P-value selection uses two-stage
+#' closed testing; AIC/BIC selection compares the complete candidate family
+#' jointly. SAZ selection determines
 #' whether the final model retains both the binary zero-indicator and
 #' continuous FP component, only the continuous component, or only the binary
 #' indicator. Requesting `spike` implies both `catzero` and `zero` handling
 #' while SAZ remains eligible. A predictor is eligible for SAZ only when both
-#' the exact-zero and positive components meet the `min_saz_component_prop`
+#' the exact-zero and positive components meet the `min_saz_prop`
 #' threshold and the variable is not binary; ineligible spike requests are
 #' reset. Applies to `mfp2.default()` only; in the formula interface use
 #' `fp(x, spike = TRUE)`.
-#' @param min_saz_component_prop Numeric in `(0, 0.5)`. Minimum required
+#' @param min_saz_prop Numeric in `(0, 0.5)`. Minimum required
 #'   proportion in each component of a spike-at-zero covariate: the zero
 #'   component and the positive continuous component. Default `0.10`. A
 #'   spike-at-zero candidate is retained for SAZ modelling only if both the
@@ -505,10 +514,9 @@
 #' @param force_max_fp_vars For `mfp2.default()`, an optional character
 #'   vector naming predictors for which the most complex FP function allowed by
 #'   `df` should be forced into the model. For the named predictors,
-#'   variable selection and functional-form simplification are bypassed. Under
-#'   `criterion = "pvalue"`, this is implemented internally by setting
-#'   `select = 1` and `alpha = 1`; the option also applies under
-#'   `criterion = "aic"` and `criterion = "bic"`. For an eligible
+#'   variable selection and functional-form simplification are bypassed for all
+#'   three criteria. This includes `df = 1`, for which the forced maximum is
+#'   the linear form. For an eligible
 #'   spike-at-zero predictor, forcing applies to the complete maximum SAZ
 #'   representation: the maximum permitted positive-component FP form plus the
 #'   binary zero indicator. SAZ Stage 2 is skipped for forced terms under all
@@ -1612,7 +1620,7 @@ mfp2.default <- function(x,
                          zero_vars = NULL,
                          catzero_vars = NULL,
                          spike_vars = NULL,
-                         min_saz_component_prop = 0.10,
+                         min_saz_prop = 0.10,
                          force_max_fp_vars = NULL,
                          term_groups = NULL,
                          verbose = TRUE,
@@ -2046,18 +2054,18 @@ mfp2.default <- function(x,
   }
 
   # Step 10: Validate spike-at-zero proportion and the candidate power list -----
-  # min_saz_component_prop is the minimum share of observations required in
+  # min_saz_prop is the minimum share of observations required in
   # both the zero component and the positive component for a variable
   # requested via spike_vars to remain SAZ-eligible (see resolve_saz_eligibility()
   # below).
-  if (!is.numeric(min_saz_component_prop) ||
-      length(min_saz_component_prop) != 1L ||
-      anyNA(min_saz_component_prop) ||
-      !is.finite(min_saz_component_prop) ||
-      min_saz_component_prop <= 0 ||
-      min_saz_component_prop >= 0.5) {
+  if (!is.numeric(min_saz_prop) ||
+      length(min_saz_prop) != 1L ||
+      anyNA(min_saz_prop) ||
+      !is.finite(min_saz_prop) ||
+      min_saz_prop <= 0 ||
+      min_saz_prop >= 0.5) {
     stop(
-      "! `min_saz_component_prop` must be a single finite numeric value in the open interval (0, 0.5).",
+      "! `min_saz_prop` must be a single finite numeric value in the open interval (0, 0.5).",
       call. = FALSE
     )
   }
@@ -2296,7 +2304,7 @@ mfp2.default <- function(x,
       spike                  = spike,
       catzero                = catzero,
       zero                   = zero,
-      min_saz_component_prop = min_saz_component_prop
+      min_saz_prop = min_saz_prop
     )
 
     spike   <- saz_flags$spike
@@ -2577,7 +2585,7 @@ mfp2.default <- function(x,
     powers = powers_term, method = ties, strata = strata_keep, nocenter = nocenter,
     acdx = acdx_term, ftest = ftest, force_max_fp = force_max_fp_term,
     control = control, zero = zero_term, catzero = catzero_term, spike = spike_term,
-    min_saz_component_prop = min_saz_component_prop,
+    min_saz_prop = min_saz_prop,
     saz_pre_resolved = TRUE,
     term_to_columns = term_to_columns,
     has_offset = has_offset,
@@ -2624,7 +2632,7 @@ mfp2.formula <- function(formula,
                          nocenter = c(-1, 0, 1),
                          ftest = FALSE,
                          control = NULL,
-                         min_saz_component_prop = 0.10,
+                         min_saz_prop = 0.10,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
                          ...) {
@@ -3599,7 +3607,7 @@ mfp2.formula <- function(formula,
                       catzero_vars = catzero,
                       spike_vars = spike,
                       force_max_fp_vars = force_max_fp_vars,
-                      min_saz_component_prop = min_saz_component_prop,
+                      min_saz_prop = min_saz_prop,
                       verbose = verbose
   )
   fit$formula_interface <- TRUE
@@ -4701,17 +4709,17 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   `zero = TRUE`, including its nonnegative domain and negative-value
 #'   rejection. Default `FALSE`. Equivalent to listing the variable in
 #'   `catzero_vars` in `mfp2.default()`.
-#' @param spike Logical. If `TRUE`, request two-stage spike-at-zero (SAZ)
-#'   selection for this variable. While SAZ remains eligible, implies both
+#' @param spike Logical. If `TRUE`, request spike-at-zero (SAZ) selection for
+#'   this variable. P-values use two-stage closed testing; AIC/BIC use one
+#'   joint candidate comparison. While SAZ remains eligible, implies both
 #'   `catzero` and `zero`, including their nonnegative domain and negative-value
 #'   rejection. Default `FALSE`. Equivalent to listing the variable
 #'   in `spike_vars` in `mfp2.default()`. See the SAZ section in [mfp2()] for
 #'   eligibility requirements.
 #' @param force_max_fp Logical. If `TRUE`, the most complex functional form
 #'   allowed by `df` is forced for this variable, bypassing both variable
-#'   selection and functional-form simplification. Under `criterion = "pvalue"`,
-#'   this is implemented by internally setting `select = 1` and `alpha = 1`
-#'   for the variable; the option also applies under `"aic"` and `"bic"`.
+#'   selection and functional-form simplification under all three criteria.
+#'   With `df = 1`, the forced maximum form is linear.
 #'   If `spike = TRUE` remains eligible, the forced representation includes
 #'   both the maximum permitted positive-component FP form and the binary zero
 #'   indicator, and SAZ Stage 2 is bypassed under all three criteria. Default

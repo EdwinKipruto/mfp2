@@ -43,13 +43,20 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
   # ensure fixed width model names
   rownames(mat_print) <- sprintf("%-16s", rownames(fit$metrics))
   
-  # Stage 1: only if not in Stage 2 mode
+  # Joint AIC/BIC SAZ selection is a single comparison, not Stage 1 followed
+  # by component removal. Keep its heading distinct so verbose output mirrors
+  # the statistical procedure actually used.
+  joint_saz_ic <- identical(fit$selection_mode, "joint_ic")
+
+  # Stage 1 (p-value SAZ) or the only step (ordinary and joint-IC selection).
   if (!stage2) {
     cat(sprintf(
       "\nVariable: %s (keep = %s, spike = %s)\n", 
       xi, fit$keep, fit$spike
     ))
-    if (fit$spike) {
+    if (joint_saz_ic) {
+      cat(sprintf("Joint Spike at Zero %s Selection:\n", toupper(criterion)))
+    } else if (fit$spike) {
       cat("Stage 1 of Spike at Zero Algorithm:\n")
     }
     print(mat_print, quote = FALSE, na.print = ".", print.gap = 1)

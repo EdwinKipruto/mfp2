@@ -9,9 +9,9 @@ A dataset with 97 observations and 9 variables.
 \describe{
 \item{obsno}{Observation number.}
 \item{age}{Age in years.}
-\item{svi}{Seminal vessel invasion (yes/no).}
+\item{svi}{Seminal vesicle invasion (yes/no).}
 \item{pgg45}{Percentage Gleason score 4 or 5.}
-\item{cavol}{Cancer volume (mm).}
+\item{cavol}{Cancer volume (ml).}
 \item{weight}{Prostate weight (g).}
 \item{bph}{Amount of benign prostatic hyperplasia (g).}
 \item{cp}{Amount of capsular penetration (g).}

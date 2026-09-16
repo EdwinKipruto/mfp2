@@ -135,11 +135,12 @@ validate_mfp_candidate_powers <- function(powers,
 #'   conceptual term. Explicitly mapped terms must have \code{df = 1}.
 #' @param center Named logical vector with one centering setting per conceptual
 #'   term.
-#' @param family Either a character string specifying the model family
-#'   (e.g., \code{"gaussian"}, \code{"binomial"}, \code{"poisson"},
-#'   \code{"negbin"}, \code{"cox"}) or a function that returns a GLM family object such as
-#'   \code{stats::gaussian(link = "identity")}. For Cox models, only the
-#'   character string \code{"cox"} is allowed.
+#' @param center_method Optional named character vector with source-column
+#'   centering rules. It is used by formula callers to distinguish factor
+#'   contrasts from ordinary two-valued numeric predictors. Unspecified columns
+#'   retain automatic centering.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, `survreg`, or
+#'   Fine--Gray family specification supplied by the public interface.
 #' @param family_string A character string representing the selected family,
 #'   e.g., \code{"gaussian"}.
 #' @param criterion One character value defining the selection criterion:
@@ -161,19 +162,19 @@ validate_mfp_candidate_powers <- function(powers,
 #'   spike term contributes the positive-part column plus its binary indicator.
 #' @param powers Named list of permitted FP powers, one element per conceptual
 #'   term. Explicitly mapped terms use the fixed linear power \code{1}.
-#' @param method A character string specifying the method for tie handling in
-#'   Cox regression.
-#' @param strata A factor of all possible combinations of stratification
-#'   variables. Returned from \code{survival::strata()}.
-#' @param nocenter A numeric vector with a list of values for fitting Cox
-#'   models. See \code{survival::coxph()} for details.
+#' @param method A character string specifying tie handling for Cox and
+#'   Fine--Gray regression.
+#' @param strata Optional normalized survival stratum. For Fine--Gray this has
+#'   already been consumed during response expansion.
+#' @param nocenter A numeric vector with values whose Cox/Fine--Gray design
+#'   columns are not internally centered. See \code{survival::coxph()}.
 #' @param acdx Named logical vector with one value per conceptual term,
 #'   indicating which singleton continuous terms undergo the approximate
 #'   cumulative distribution (ACD) transformation.
 #' @param ftest Logical. If \code{TRUE} and \code{family = "gaussian"}, use an
 #'   F-test rather than a chi-square likelihood-ratio test.
-#' @param control A list with parameters for model fit. See
-#'   \code{survival::coxph()} or \code{stats::glm()} for details.
+#' @param control A list with parameters for model fitting. See
+#'   \code{survival::coxph()}, \code{survival::survreg()}, or \code{stats::glm()}.
 #' @param zero Named logical vector with one value per conceptual term,
 #'   indicating which singleton nonnegative terms treat exact-zero values as zero before
 #'   FP transformation.
@@ -230,8 +231,10 @@ validate_mfp_candidate_powers <- function(powers,
 #'     reference contains each conceptual term in its resolved linear starting
 #'     form: ordinary x, positive-part x for zero terms, and positive-part x plus
 #'     the structural-zero indicator for catzero/retained spike terms. Its fit
-#'     statistics are retained as \code{null_deviance},
-#'     \code{linear_deviance}, \code{linear_logl}, and \code{linear_df}. For
+#'     statistics are retained as \code{linear_deviance},
+#'     \code{linear_logl}, and \code{linear_df}. The family-specific
+#'     \code{null_deviance} is taken from the retained final fit, whose null
+#'     model uses the same response, weights, offset, and strata. For
 #'     ascending/descending ordering, each conceptual term is removed as one
 #'     block and compared with the full reference by a likelihood-ratio test.
 #'     With \code{xorder = "original"} or one term, no reduced ordering fits
@@ -273,13 +276,13 @@ validate_mfp_candidate_powers <- function(powers,
 #' }
 #'
 #' @return An object of class \code{"mfp2"} built from the final fitted
-#'   GLM or Cox model and augmented with MFP-specific metadata. In addition to
+#'   GLM or survival model and augmented with MFP-specific metadata. In addition to
 #'   the selected powers, transformation settings, and convergence information,
 #'   the returned object contains three family-specific deviance values:
 #'   \code{null_deviance}, \code{linear_deviance}, and
 #'   \code{mfp_deviance}. For GLMs these are the null and residual deviances
-#'   returned by the fitted GLM objects. For Cox models they are minus twice the
-#'   corresponding null and fitted partial log-likelihoods. See \code{mfp2()}
+#'   returned by the fitted GLM objects. For survival models they are minus
+#'   twice the corresponding likelihoods. See \code{mfp2()}
 #'   for the remaining components.
 #'
 #' @references
@@ -337,7 +340,8 @@ fit_mfp <- function(x,
                     has_offset,
                     verbose,
                     term_to_columns = NULL,
-                    fitter = "base") {
+                    fitter = "base",
+                    center_method = NULL) {
 
   # fit_mfp() is the boundary of the reusable fitting engine. Public mfp2()
   # methods already use match.arg(), but MFPI and future internal callers can
@@ -574,9 +578,10 @@ fit_mfp <- function(x,
   # catzero indicators are passed as already-built blocks; order_variables()
   # only assembles the fit matrix and never recreates zero/catzero data.
   #
-  # The full reference is fitted for every xorder because its fit statistics are
-  # retained in the mfp2 object. Reduced leave-one-term-out fits are needed only
-  # for ascending/descending significance ordering with more than one term.
+  # The full reference is fitted for every xorder because its linear-model fit
+  # statistics are retained in the mfp2 object. Reduced leave-one-term-out fits
+  # are needed only for ascending/descending significance ordering with more
+  # than one term.
   ordering_result <- order_variables(
     xorder          = xorder,
     x               = x,
@@ -599,7 +604,6 @@ fit_mfp <- function(x,
   )
 
   variables_ordered <- ordering_result$variables_ordered
-  null_deviance     <- ordering_result$null_deviance
   linear_deviance   <- ordering_result$linear_deviance
   linear_logl       <- ordering_result$linear_logl
   linear_df         <- ordering_result$linear_df
@@ -725,8 +729,9 @@ fit_mfp <- function(x,
   })
   names(acd_parameter) <- names(acdx)
 
-  # Number of events (Cox) or observations (other families), used for AIC/BIC
-  # selection and to guard against a Cox fit with no observed events.
+  # Number of target events (Cox/Fine--Gray) or observations (other families),
+  # used for AIC/BIC. Fine--Gray counts only the selected endpoint, not every
+  # cause present in the original multi-state response.
   if (family_string == "cox") {
     status <- y[, ncol(y)]
     n_obs <- sum(!is.na(status) & status > 0)
@@ -734,6 +739,14 @@ fit_mfp <- function(x,
     if (!is.finite(n_obs) || n_obs <= 0L) {
       stop(
         "Cox selection requires at least one observed event.",
+        call. = FALSE
+      )
+    }
+  } else if (family_string == "finegray") {
+    n_obs <- family_fit$prepared$nevents
+    if (!is.finite(n_obs) || n_obs <= 0L) {
+      stop(
+        "Fine--Gray selection requires at least one event of the selected type.",
         call. = FALSE
       )
     }
@@ -938,7 +951,8 @@ fit_mfp <- function(x,
     catzero            = catzero_final,
     spike              = spike_final,
     reset_zero         = FALSE,
-    spike_decision     = spike_decision_final
+    spike_decision     = spike_decision_final,
+    center_method      = center_method
   )
 
   # Update catzero for final metadata.
@@ -1011,8 +1025,14 @@ fit_mfp <- function(x,
   # metadata, so calculate it once here after the MFP backfitting cycles have
   # terminated and the final Cox model has been fitted. Internal candidate fits
   # do not need to calculate or store it.
-  cox_offset_reference <- if (identical(family_string, "cox")) {
-    if (isTRUE(has_offset)) unname(mean(offset)) else 0
+  cox_offset_reference <- if (family_string %in% c("cox", "finegray")) {
+    if (!isTRUE(has_offset)) {
+      0
+    } else if (identical(family_string, "finegray")) {
+      unname(mean(offset[family_fit$prepared$row_map]))
+    } else {
+      unname(mean(offset))
+    }
   } else {
     NULL
   }
@@ -1027,9 +1047,17 @@ fit_mfp <- function(x,
     )
   }
 
-  # The final fit supplies the family-specific deviance for the selected MFP
-  # model. For GLMs this is the residual deviance; for Cox models it is minus
-  # twice the fitted partial log-likelihood.
+  # Use the retained final fit as the authoritative source of null deviance.
+  # A fast GLM reference fit uses glm.fit(), whose provisional null.deviance
+  # does not perform glm()'s required intercept-plus-offset null refit. The null
+  # model depends on the response, weights, offset, and strata rather than the
+  # selected predictor representation, so the final fit supplies the same
+  # baseline without an additional diagnostic refit.
+  null_deviance <- modelfit$null_deviance
+
+  # The final fit also supplies the family-specific deviance for the selected
+  # MFP model. For GLMs this is the residual deviance; for Cox models it is
+  # minus twice the fitted partial log-likelihood.
   mfp_deviance <- modelfit$model_deviance
 
   # The full linear reference likelihood was computed once in Step 6 by order_variables().
@@ -1095,7 +1123,12 @@ fit_mfp <- function(x,
         data_transformed$transformed_column_zero_handled,
       transformed_column_centered = data_transformed$transformed_column_centered,
       cox_offset_reference = cox_offset_reference,
-      fitter          = fitter
+      fitter          = fitter,
+      # Summary reduced-model refits must use the same numerical settings as
+      # selection. Wrap nocenter so an explicitly supplied NULL remains
+      # distinguishable from metadata absent in an older fitted object.
+      mfp2_control    = control,
+      mfp2_nocenter   = list(value = nocenter)
     )
   )
 
@@ -1103,6 +1136,12 @@ fit_mfp <- function(x,
   # are required by prediction just as explicit categorical mappings are, and
   # keeping one invariant avoids reconstructing term structure downstream.
   fit$term_to_columns <- term_to_columns
+  fit$nobs <- NROW(y)
+  if (identical(family_string, "cox")) {
+    fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)
+  } else if (identical(family_string, "finegray")) {
+    fit$nevents <- family_fit$prepared$nevents
+  }
 
   class(fit) <- c("mfp2", class(fit))
   fit

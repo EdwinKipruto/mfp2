@@ -68,16 +68,16 @@
 #'   prebuilt one-column binary structural-zero indicator matrices. NULL entries
 #'   are ignored. The matrices are reused as supplied and are not recomputed.
 #' @param y Response used to fit the models.
-#' @param family GLM family object used by \code{fit_model()}, or character
-#'   \code{"cox"} for a Cox proportional-hazards model.
+#' @param family Resolved likelihood-GLM, Cox, survreg, or Fine--Gray family used
+#'   by \code{fit_model()}.
 #' @param family_string Normalized character family name.
 #' @param weights Optional observation weights passed to \code{fit_model()}.
 #' @param offset Optional linear-predictor offset passed to \code{fit_model()}.
-#' @param strata Optional Cox stratification object. Ignored for GLMs.
-#' @param method Cox tie-handling method. Ignored for GLMs.
+#' @param strata Optional survival-family stratification object. Ignored for GLMs.
+#' @param method Proportional-hazards tie-handling method. Ignored otherwise.
 #' @param control Model-fitting control object.
-#' @param nocenter Cox centering-suppression argument. Ignored for GLMs.
-#' @param fitter GLM fitting backend; ignored for Cox models.
+#' @param nocenter Proportional-hazards centering-suppression argument.
+#' @param fitter GLM fitting backend; ignored for survival models.
 #'
 #' @return A list containing \code{variables_ordered}, \code{null_deviance},
 #'   \code{linear_deviance}, \code{linear_logl}, \code{linear_df}, and
@@ -115,7 +115,7 @@ order_variables <- function(xorder = "ascending",
     strata
   }
 
-  use_glm_intercept_template <- !identical(family_string, "cox")
+  use_glm_intercept_template <- mfp2_family_has_intercept(family_string)
 
   # Fast path: when no catzero/SAZ indicator blocks are present, the supplied x
   # is already the complete reference design. No structural-zero assembly or
@@ -192,7 +192,7 @@ order_variables <- function(xorder = "ascending",
     linear_deviance = full_reference$model_deviance,
     linear_logl = full_reference$logl,
     linear_df = full_reference$df,
-    null_logl = if (identical(family_string, "cox")) {
+    null_logl = if (mfp2_family_is_survival(family_string)) {
       full_reference$null_logl
     } else {
       NA_real_

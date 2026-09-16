@@ -178,17 +178,10 @@ test_that("GLM control normalization is explicit", {
 # Test purpose: fastglm has no trace equivalent. Reject the setting before
 # backend dispatch rather than silently dropping glm.control(trace = TRUE).
 test_that("fastglm rejects unsupported GLM iteration tracing", {
-  x <- cbind(x1 = seq_len(20L))
-  y <- stats::rpois(20L, lambda = 2)
-
   expect_error(
-    fit_model(
-      x = x,
-      y = y,
-      family = stats::poisson(),
-      family_string = "poisson",
+    normalize_fit_control(
       control = stats::glm.control(trace = TRUE),
-      fast = TRUE,
+      family_string = "poisson",
       fitter = "fastglm"
     ),
     "not supported with `fitter = \"fastglm\"`"

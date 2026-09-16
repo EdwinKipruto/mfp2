@@ -115,7 +115,15 @@ mfpi_summary_coefficient_statistics <- function(fit_obj, raw_names) {
   statistic_label <- "Statistic"
 
   sm <- tryCatch(summary(fit_obj), error = function(e) NULL)
-  coef_table <- if (!is.null(sm)) sm$coefficients else NULL
+  coef_table <- if (!is.null(sm) && !is.null(sm$coefficients)) {
+    sm$coefficients
+  } else if (!is.null(sm)) {
+    # summary.survreg() calls its coefficient matrix `table` and appends scale
+    # rows; the raw-name matching below selects only regression coefficients.
+    sm$table
+  } else {
+    NULL
+  }
 
   if (is.data.frame(coef_table)) {
     coef_table <- as.matrix(coef_table)
@@ -155,6 +163,7 @@ mfpi_summary_coefficient_statistics <- function(fit_obj, raw_names) {
         lower.tail = FALSE
       )
     } else if (inherits(fit_obj, "glm") || inherits(fit_obj, "coxph") ||
+               inherits(fit_obj, "survreg") ||
                inherits(fit_obj, "fastglm")) {
       statistic_label <- if (identical(statistic_label, "Statistic")) "z" else statistic_label
       p_value <- 2 * stats::pnorm(abs(statistic), lower.tail = FALSE)

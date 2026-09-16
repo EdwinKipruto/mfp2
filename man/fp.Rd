@@ -13,12 +13,13 @@ fp(
   shift = NULL,
   scale = NULL,
   center = TRUE,
-  acdx = FALSE,
+  acd = FALSE,
   powers = NULL,
   zero = FALSE,
   catzero = FALSE,
   spike = FALSE,
-  force_max_fp = FALSE
+  force_max_fp = FALSE,
+  acdx = NULL
 )
 
 fp2(...)
@@ -29,7 +30,8 @@ FP-transformation.}
 
 \item{df}{Maximum degrees of freedom for this variable's FP function.
 Must be \code{1} (linear) or a positive even integer. Default \code{4} (FP2).
-See \code{\link[=mfp2]{mfp2()}} for the cardinality-based reduction rules.}
+See \code{\link[=mfp2]{mfp2()}} for the automatic reductions applied to variables with few
+distinct values.}
 
 \item{alpha}{Significance level for the closed test between FP functions of
 different degrees and, when \code{spike = TRUE} with p-value selection, for
@@ -52,8 +54,9 @@ to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[
 \item{center}{Logical centering override for this variable. Default \code{TRUE}.
 See \code{\link[=mfp2]{mfp2()}} for details.}
 
-\item{acdx}{Logical. If \code{TRUE}, request ACD modelling for this variable.
-Default \code{FALSE}. See the ACD modelling section in \code{\link[=mfp2]{mfp2()}}.}
+\item{acd}{Logical. If \code{TRUE}, request ACD modelling for this variable.
+Default \code{FALSE}. When combined with \code{zero = TRUE}, ACD is fitted on
+\code{x > 0} only and \code{A(0) = 0}. See the ACD modelling section in \code{\link[=mfp2]{mfp2()}}.}
 
 \item{powers}{Numeric vector of candidate powers to be evaluated for \code{x}.
 If \code{NULL} (default), the global candidate set from \code{\link[=mfp2]{mfp2()}} is used,
@@ -65,6 +68,8 @@ argument of \code{\link[=mfp2]{mfp2()}}.}
 
 \item{zero}{Logical. If \code{TRUE}, only values with \code{x > 0} undergo the FP
 function; values with \code{x = 0} contribute zero to the linear predictor.
+This positive-part rule also covers ACD ranking, ACD fitting, FP(A(x)), and
+centering when \code{acd = TRUE}.
 The covariate must be nonnegative. Negative values are rejected and must
 be explicitly recoded if they should represent the zero group.
 Default \code{FALSE}. Equivalent to listing the variable in \code{zero_vars} in
@@ -94,13 +99,16 @@ indicator, and SAZ Stage 2 is bypassed under all three criteria. Default
 \code{FALSE}. Equivalent to naming the variable in \code{force_max_fp_vars} in
 \code{mfp2.default()}.}
 
+\item{acdx}{Deprecated compatibility alias for \code{acd}. Use \code{acd} in new
+formula-interface code. Supplying both arguments is an error.}
+
 \item{...}{Not used directly by \code{fp()}. Present so that the \code{fp2()} alias
 can forward all arguments.}
 }
 \value{
-The input vector \code{x} with modelling options attached as attributes. The
-returned value is interpreted by \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} during model fitting;
-calling \code{fp()} outside a formula has no modelling effect.
+The variable marked with the requested modelling options for use by \code{\link[=mfp2]{mfp2()}}
+or \code{\link[=mfpi]{mfpi()}}. The result is meaningful only inside a model formula; calling
+\code{fp()} outside a formula has no modelling effect.
 }
 \description{
 Marks a continuous variable for fractional-polynomial modelling by
@@ -148,7 +156,7 @@ fit2 <- mfp2(
 \donttest{
 # Request ACD modelling for a continuous predictor.
 fit_acd <- mfp2(
-  lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + svi,
+  lpsa ~ fp(cavol, acd = TRUE) + fp(age) + svi,
   data = prostate,
   verbose = FALSE
 )

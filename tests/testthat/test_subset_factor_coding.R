@@ -297,10 +297,55 @@ test_that("24.8 mfp2 formula rebuilds treatment contrasts when reference is remo
 })
 
 
+# Test purpose: Formula-factor contrast centers are calculated from the actual
+# fitted rows and the contrast basis regenerated after subsetting, rather than
+# from the full-data factor coding.
+test_that("24.9 ordered-factor contrast centers use subset fitting rows", {
+  stage <- ordered(
+    c(rep("A", 10L), rep("B", 25L), rep("C", 45L), rep("D", 20L)),
+    levels = c("A", "B", "C", "D")
+  )
+  dat <- data.frame(
+    y = seq_along(stage) / 25 + sin(seq_along(stage) / 6),
+    stage = stage
+  )
+  fit_rows <- dat$stage != "D"
+
+  fit <- mfp2(
+    y ~ stage,
+    data = dat,
+    subset = fit_rows,
+    keep = "stage",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = TRUE,
+    verbose = FALSE
+  )
+
+  dat_fit <- droplevels(dat[fit_rows, , drop = FALSE])
+  expected <- stats::model.matrix(~ stage, data = dat_fit)[, -1L, drop = FALSE]
+  contrast_columns <- colnames(expected)
+  source_map <- fit$transformed_column_to_source
+  transformed_columns <- names(source_map)[
+    match(contrast_columns, unname(source_map))
+  ]
+
+  expect_false(anyNA(transformed_columns))
+  expect_equal(
+    unname(fit$centers[transformed_columns]),
+    unname(colMeans(expected)),
+    tolerance = 1e-12
+  )
+})
+
+
 # Test purpose: Formula methods must bypass all subset-specific processing
 # when subset is NULL. This guards the ordinary formula path against both the
 # model.frame() NSE regression and unnecessary row/factor reconstruction.
-test_that("24.9 formula methods bypass subset helpers when subset is NULL", {
+test_that("24.10 formula methods bypass subset helpers when subset is NULL", {
   set.seed(2409)
   n <- 90L
   dat <- data.frame(

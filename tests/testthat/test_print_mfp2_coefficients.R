@@ -367,7 +367,7 @@ test_that("factor treatment coding is described from design_by_level", {
 })
 
 
-test_that("custom factor contrasts report the stored design values", {
+test_that("custom factor contrasts retain their model-matrix column names", {
   factor_info <- list(
     group = list(
       variable = "group",
@@ -421,11 +421,58 @@ test_that("custom factor contrasts report the stored design values", {
 
   expect_identical(
     info$basis,
-    c(
-      'contrast("A"=-1, "B"=0, "C"=1)',
-      'contrast("A"=0, "B"=-1, "C"=1)'
+    c("contrast_1", "contrast_2")
+  )
+})
+
+
+test_that("ordered factor coefficients use familiar polynomial contrast names", {
+  factor_info <- list(
+    x4 = list(
+      variable = "x4",
+      levels = c("1", "2", "3"),
+      ordered = TRUE,
+      columns = c("x4.L", "x4.Q"),
+      design_by_level = stats::contr.poly(3L)
     )
   )
+  dimnames(factor_info$x4$design_by_level) <- list(
+    c("1", "2", "3"),
+    c("x4.L", "x4.Q")
+  )
+
+  object <- make_design_info_object(
+    variables = c("x4.L", "x4.Q"),
+    components = c("fp_basis", "fp_basis"),
+    powers = list("x4.L" = 1, "x4.Q" = 1),
+    centers = c(0.07354, 0.02),
+    term_to_columns = list(x4 = c("x4.L", "x4.Q")),
+    formula_factor_info = factor_info
+  )
+  object$fp_terms <- data.frame(
+    selected = TRUE,
+    df_final = 2,
+    power1 = 1,
+    power2 = NA_real_,
+    acd = FALSE,
+    zero = FALSE,
+    catzero = FALSE,
+    spike = FALSE,
+    row.names = "x4",
+    check.names = FALSE
+  )
+  object$transformations <- data.frame(
+    shift = 0,
+    scale = 1,
+    center = TRUE,
+    row.names = "x4"
+  )
+
+  info <- mfp2_design_column_info(object)
+
+  expect_identical(info$variable, c("x4", "x4"))
+  expect_identical(info$basis, c("x4.L", "x4.Q"))
+  expect_equal(info$center, c(0.07354, 0.02))
 })
 
 
@@ -452,7 +499,7 @@ test_that("print.mfp2 shows basis and center when centering is used", {
 })
 
 
-test_that("print.mfp2 explains zero-specific centering", {
+test_that("print.mfp2 reports ordinary centering for zero-handled terms", {
   set.seed(73103)
   dat <- data.frame(
     y = stats::rnorm(180),
@@ -470,14 +517,8 @@ test_that("print.mfp2 explains zero-specific centering", {
     collapse = "\n"
   )
 
-  expect_match(
-    output,
-    paste0(
-      "Estimates are for: Basis - Center ",
-      "(positive part for zero-handled terms)."
-    ),
-    fixed = TRUE
-  )
+  expect_match(output, "Estimates are for: Basis - Center", fixed = TRUE)
+  expect_false(grepl("positive part for zero-handled terms", output, fixed = TRUE))
   expect_match(output, "I(x > 0)", fixed = TRUE)
 })
 

@@ -52,15 +52,21 @@ default \code{alpha = 0.05} gives 95 percent confidence intervals.}
 variable scale. See \strong{Contrasts and reference values}.}
 
 \item{strata}{Optional stratum information for complete-model prediction
-from a stratified Cox model when \code{newdata} is supplied. For one
+from a stratified Cox or \code{survreg} model fitted with externally supplied
+strata when \code{newdata} is supplied. This is normally the matrix interface;
+it also covers the deprecated external-strata compatibility path in
+\code{mfp2.formula()}. For one
 stratification variable, supply one value per row as a character, factor,
 numeric/integer, or logical vector. For several stratification variables,
 supply a matrix or data frame with one row per prediction row. Values are
 matched as categorical labels to the strata observed during fitting, so
 previously unseen strata are rejected.
 
-This argument can be supplied only for complete-model prediction from a
-stratified Cox model when \code{newdata} is supplied.}
+For a model fitted with \code{strata(...)} in its formula, do not use this
+argument. Include the original strata variable or variables in \code{newdata};
+they are reconstructed automatically. Otherwise, \code{strata} can be supplied
+only for complete-model prediction from a stratified Cox or \code{survreg}
+model when \code{newdata} is supplied.}
 
 \item{newoffset}{An optional finite numeric vector containing one offset
 value for each row of \code{newdata}. See \strong{Offsets}.
@@ -71,23 +77,24 @@ fitted model used an offset and \code{newdata} is supplied.}
 \item{nseq}{A single finite positive integer giving the number of equally
 spaced values used when \code{terms_seq = "equidistant"}. The default is 100.}
 
-\item{add_intercept}{A single non-missing \code{TRUE} or \code{FALSE} value. For
-term predictions from Gaussian, binomial, Poisson, and negative-binomial models, \code{TRUE} includes the fitted
-intercept in each result. The default is \code{TRUE}. It has no effect for Cox
-models or contrasts.}
+\item{add_intercept}{A single non-missing \code{TRUE} or \code{FALSE} value. For GLM
+and \code{survreg} term predictions, \code{TRUE} includes the fitted intercept in
+each result. The default is \code{TRUE}. It has no effect for proportional-
+hazards models or contrasts.}
 
 \item{cox_reference}{A character value choosing the covariate reference for
-Cox predictions with \code{type = "lp"} or \code{type = "risk"}. Use \code{"zero"},
+Cox or Fine--Gray predictions with \code{type = "lp"} or \code{type = "risk"}. Use \code{"zero"},
 \code{"sample"}, or \code{"strata"}. The default is \code{"zero"}. It cannot be
-used for non-Cox models, term or contrast predictions, or Cox predictions
+used for other models, term or contrast predictions, or Cox predictions
 with \code{type = "expected"} or \code{type = "survival"}.}
 
 \item{...}{Further arguments passed to \code{\link[stats:predict.glm]{stats::predict.glm()}} or
-\code{\link[survival:predict.coxph]{survival::predict.coxph()}} for complete-model predictions.}
+the native \code{\link[survival:predict.coxph]{survival::predict.coxph()}} or
+\code{\link[survival:predict.survreg]{survival::predict.survreg()}} method for complete-model predictions.}
 }
 \value{
-For complete-model predictions, the result follows \code{\link[stats:predict.glm]{stats::predict.glm()}} or
-\code{\link[survival:predict.coxph]{survival::predict.coxph()}}. It is usually a numeric vector. When
+For complete-model predictions, the result follows the applicable native
+GLM, \code{coxph}, or \code{survreg} prediction method. It is usually a numeric vector. When
 \code{se.fit = TRUE}, it is usually a list containing fitted values and standard
 errors.
 
@@ -124,12 +131,11 @@ Standard errors and confidence intervals are conditional on the final fitted
 model. They do not include uncertainty from variable selection or from
 choosing the fitted function.
 
-For term and contrast predictions, the covariance entries required by the
-requested term must be finite. Prediction variances are checked before their
-square roots are taken. Tiny negative values attributable to floating-point
-roundoff are replaced by zero; non-finite or materially negative variances
-cause an error because a valid standard error and confidence interval cannot
-be constructed from them.
+Term and contrast predictions require enough valid covariance information to
+calculate their standard errors and confidence intervals. Negligible negative
+variances caused by numerical rounding are treated as zero. Prediction stops
+if a variance is non-finite or meaningfully negative and a valid interval
+cannot be calculated.
 }
 \section{Supplying prediction data}{
 
@@ -151,7 +157,7 @@ the \code{terms} argument.
 For complete-model prediction, normally supply only the variables needed by
 terms included in the final model. For term or contrast prediction, only the
 requested terms are required. Additional variables can be needed to evaluate
-a formula offset, Cox strata, or an absolute Cox prediction.
+a formula offset, Cox or \code{survreg} strata, or an absolute Cox prediction.
 
 Required values must not be missing. No numeric column in \code{newdata} may
 contain \code{Inf} or \code{-Inf}, including unused extra columns. Prediction stops if
@@ -162,11 +168,23 @@ positive value after the fitted shift is applied.
 
 \section{Choosing the prediction type}{
 
-For Gaussian, binomial, Poisson, and negative-binomial models:
+For all supported likelihood GLMs:
 \itemize{
 \item \code{type = "link"} returns predictions on the link scale.
 \item \code{type = "response"} returns predictions on the response scale.
 \item \code{type = "lp"} is accepted as another name for \code{"link"}.
+}
+
+For parametric \code{survreg} models:
+\itemize{
+\item \code{type = "link"} returns the fitted location (linear predictor).
+\item \code{type = "response"} transforms the fitted location back to the response
+scale.
+\item \code{type = "quantile"} and \code{type = "uquantile"} use the corresponding
+\code{\link[survival:predict.survreg]{survival::predict.survreg()}} predictions; supply probabilities through
+\code{...} (for example, \code{p = 0.5}).
+\item \code{type = "lp"} and \code{type = "linear"} are accepted as other names for
+\code{"link"}, matching \code{\link[survival:predict.survreg]{survival::predict.survreg()}}.
 }
 
 For Cox models:
@@ -180,25 +198,30 @@ supplied follow-up time.
 \item \code{type = "link"} is accepted as another name for \code{"lp"}.
 }
 
+For Fine--Gray models, \code{type = "lp"} and \code{type = "risk"} return the
+relative log subdistribution hazard and relative subdistribution hazard,
+respectively. \code{"link"} is accepted as another name for \code{"lp"}. Absolute
+Cox survival/expected-event predictions are deliberately not assigned a
+competing-risks interpretation.
+
 For all supported models:
 \itemize{
 \item \code{type = "terms"} returns a fitted value for each requested term on the
-linear-predictor scale. For Gaussian, binomial, Poisson, and negative-binomial models, the
-intercept is included by default.
+linear-predictor scale. For GLM and \code{survreg} models, the intercept is
+included by default.
 \item \code{type = "contrasts"} compares each fitted term value with a reference
 value.
 }
 
-When \code{type} is not supplied, the default is \code{"link"} for Gaussian,
-binomial, and Poisson models and \code{"lp"} for Cox models.
+When \code{type} is not supplied, the default is \code{"link"} for GLM and \code{survreg}
+models and \code{"lp"} for Cox and Fine--Gray models.
 }
 
 \section{Term predictions}{
 
-A term can contain more than one fitted column. For example, one term can
-represent an FP2 function, a factor with several contrast columns, a
-zero-handled variable, or several matrix columns grouped with \code{term_groups}.
-These columns are combined and returned as one term result.
+A single term result can represent an FP2 function, a factor, a zero-handled
+variable, or several matrix columns grouped with \code{term_groups}. Contributions
+from all parts of the term are combined in that result.
 
 Use the original variable or group name in \code{terms}. Use
 \code{\link[=get_selected_variable_names]{get_selected_variable_names()}} to see the terms included in the final model.
@@ -214,10 +237,10 @@ when \code{newdata = NULL}.
 
 Factors and other grouped terms are evaluated row by row.
 
-For Gaussian, binomial, Poisson, and negative-binomial models, \code{add_intercept = TRUE} includes
-the fitted intercept in each term result. Set \code{add_intercept = FALSE} to
-return only the contribution from the requested term. This argument does not
-affect Cox models or contrasts.
+For GLM and \code{survreg} models, \code{add_intercept = TRUE} includes the fitted
+intercept in each term result. Set \code{add_intercept = FALSE} to return only the
+contribution from the requested term. This argument does not affect Cox,
+Fine--Gray, or contrast predictions.
 }
 
 \section{Contrasts and reference values}{
@@ -244,7 +267,9 @@ supply one numeric value for every member column. A named vector is
 recommended, for example:
 
 \code{ref = list(race = c(raceB = 0, raceC = 0))}.
-The member names are the raw model-matrix columns used for that grouped term.
+For a matrix group, use the original member-column names supplied in
+\code{term_groups}. For another grouped term, use the component names shown in its
+term prediction result.
 
 If no reference is supplied, the function uses:
 \itemize{
@@ -299,18 +324,16 @@ the offset for the new rows through \code{newoffset}.
 \item A supplied \code{newoffset} takes precedence over a formula offset.
 }
 
-Supply one finite \code{newoffset} value for each row of \code{newdata}. Users should
-supply only their original predictor columns; prediction automatically reuses
-the collision-safe internal offset name stored by the fitted model. Formula-
-based prediction requires the internal-name metadata written at fit time; a
-fitted object without that metadata must be refitted with the current package
-version rather than interpreted using fixed helper-name assumptions.
+Supply one finite \code{newoffset} value for each row of \code{newdata}, and supply only
+the original predictors needed for the model. If a model fitted with an older
+package version cannot safely reproduce its formula offset, prediction stops
+and the model must be refitted with the current package version.
 }
 
-\section{Cox predictions}{
+\section{Proportional-hazards predictions}{
 
-Cox predictions with \code{type = "lp"} and \code{type = "risk"} are relative
-quantities. They are not absolute hazards or survival probabilities.
+Cox and Fine--Gray predictions with \code{type = "lp"} and \code{type = "risk"} are
+relative quantities. They are not absolute hazards or survival probabilities.
 
 Use \code{cox_reference} to choose the covariate reference for these relative
 predictions:
@@ -340,11 +363,18 @@ Do not use \code{cox_reference} with \code{type = "expected"} or
 
 For a stratified Cox model, each prediction row must have a valid stratum.
 If \code{strata()} was included in the formula, include its original variable or
-variables in \code{newdata}. Otherwise, supply the new strata through \code{strata}.
+variables in \code{newdata}; the fitted strata term is reconstructed
+automatically, so do not also supply the \code{strata} argument. If strata were
+supplied separately when fitting through the matrix interface, supply the
+new strata through \code{strata}.
 Prediction strata are treated as categorical labels and matched to the
 strata observed when the model was fitted; new, previously unseen strata are
 not allowed. For several stratification variables, supply the same variables
 in the same column order used for fitting.
+
+Fine--Gray models expose only relative \code{"lp"} and \code{"risk"} predictions
+through this method. Use an appropriate competing-risks curve method when
+absolute cumulative incidence is required.
 }
 
 \examples{
@@ -445,12 +475,12 @@ predict(
 # Cox predictions.
 data("gbsg")
 
-# Use tumour grade as an external Cox stratification variable.
+# Include tumour grade as a Cox stratification term in the formula.
 fit_cox <- mfp2(
-  survival::Surv(rectime, censrec) ~ fp(age) + fp(nodes),
+  survival::Surv(rectime, censrec) ~
+    fp(age) + fp(nodes) + strata(grade),
   data = gbsg,
   family = "cox",
-  strata = gbsg$grade,
   df = 1,
   select = 1,
   alpha = 1,
@@ -460,14 +490,12 @@ fit_cox <- mfp2(
 relative_profiles <- gbsg[1:3, c("age", "nodes", "grade")]
 predict(
   fit_cox,
-  newdata = relative_profiles[, c("age", "nodes")],
-  strata = relative_profiles$grade,
+  newdata = relative_profiles,
   type = "lp"
 )
 predict(
   fit_cox,
-  newdata = relative_profiles[, c("age", "nodes")],
-  strata = relative_profiles$grade,
+  newdata = relative_profiles,
   type = "risk",
   cox_reference = "strata"
 )
@@ -479,14 +507,12 @@ absolute_profiles <- gbsg[
 ]
 predict(
   fit_cox,
-  newdata = absolute_profiles[, c("rectime", "censrec", "age", "nodes")],
-  strata = absolute_profiles$grade,
+  newdata = absolute_profiles,
   type = "survival"
 )
 predict(
   fit_cox,
-  newdata = absolute_profiles[, c("rectime", "censrec", "age", "nodes")],
-  strata = absolute_profiles$grade,
+  newdata = absolute_profiles,
   type = "expected"
 )
 }

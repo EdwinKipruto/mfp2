@@ -71,10 +71,12 @@ fitted basis represented by each design column, its estimate, and its standard
 error from the final fitted model. When the final model uses centering, the
 stored centering constant is shown in a
 separate \code{Center} column. For zero-handled terms, the displayed basis
-includes the positive-part or structural-zero indicator explicitly, and the
-centering constant applies only within the positive component. Factor main
-effects are described from their stored level-by-design matrix, so treatment
-indicators and other contrasts reflect the design that was fitted.
+includes the positive-part or structural-zero indicator explicitly. The
+displayed center for a continuous basis is its complete fitted-sample mean.
+Factor main
+effects use level-indicator labels for treatment coding and retain their
+model-matrix column names for other contrast systems, such as \code{.L} and \code{.Q}
+for the default contrasts of an ordered factor.
 
 The reported model-fit values use family-specific definitions.
 

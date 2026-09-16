@@ -931,8 +931,8 @@ select_saz_ic <- function(x,
   }
   colnames(binary_matrix) <- "catzero"
 
-  is_cox <- identical(family_string, "cox")
-  x_binary <- if (is_cox) {
+  no_intercept <- !mfp2_family_has_intercept(family_string)
+  x_binary <- if (no_intercept) {
     if (is.null(adjustment_matrix)) binary_matrix else
       cbind(binary_matrix, adjustment_matrix)
   } else {
@@ -947,7 +947,7 @@ select_saz_ic <- function(x,
     x = x_binary, y = y, family = family, family_string = family_string,
     has_offset = has_offset
   )
-  if (!is_cox) {
+  if (!no_intercept) {
     binary_fit_args$x_has_intercept <- TRUE
   }
   binary_fit_args <- c(binary_fit_args, list(...))
@@ -1157,13 +1157,13 @@ fit_saz_reduced_models <- function(stage1_selection,
   # coxph.fit() must not receive an ordinary intercept, and when there are no
   # adjustment variables the component matrix can be passed through without
   # an additional assembly allocation.
-  is_cox <- identical(family_string, "cox")
-  if (!is_cox) {
+  no_intercept <- !mfp2_family_has_intercept(family_string)
+  if (!no_intercept) {
     fit_args$x_has_intercept <- TRUE
   }
 
   xi_continuous <- data_xi[, continuous_cols, drop = FALSE]
-  x_fit2 <- if (is_cox) {
+  x_fit2 <- if (no_intercept) {
     if (is.null(adjustment_matrix)) {
       xi_continuous
     } else {
@@ -1188,7 +1188,7 @@ fit_saz_reduced_models <- function(stage1_selection,
   # Materialize the binary component only now, after Model 2 and its temporary
   # design have been released, to keep the stage-2 live working set small.
   xi_binary <- data_xi[, "catzero", drop = FALSE]
-  x_fit3 <- if (is_cox) {
+  x_fit3 <- if (no_intercept) {
     if (is.null(adjustment_matrix)) {
       xi_binary
     } else {

@@ -1062,6 +1062,79 @@ static NumericMatrix mfp2_transform_fp_one_cpp(const NumericVector& x,
 }
 
 
+// Transform one derived FP component while preserving an original-scale
+// structural-zero mask.
+//
+// In FP(A(x)), structural-zero membership is determined by the original x,
+// not by whether A(x) happens to equal the numeric value zero. The function
+// therefore transforms only rows with original_x != 0 and scatters those
+// values back into an otherwise zero-initialized result matrix. This also
+// avoids evaluating log(0) or a negative power at structural-zero rows.
+static NumericMatrix mfp2_transform_fp_one_masked_cpp(
+    const NumericVector& values,
+    const NumericVector& original_x,
+    const double power,
+    const double shift,
+    const double scale,
+    const bool zero,
+    const bool check_binary) {
+
+  const int n = values.size();
+
+  if (original_x.size() != n) {
+    stop("Internal error: structural-zero mask source has the wrong length.");
+  }
+
+  if (!zero) {
+    return mfp2_transform_fp_one_cpp(
+      values, power, shift, scale, false, check_binary
+    );
+  }
+
+  if (NumericVector::is_na(power)) {
+    return mfp2_empty_matrix_cpp(n);
+  }
+
+  std::vector<int> positive_rows;
+  positive_rows.reserve(n);
+
+  for (int i = 0; i < n; ++i) {
+    if (original_x[i] != 0.0) {
+      positive_rows.push_back(i);
+    }
+  }
+
+  // A stored model may be applied to prediction data containing only zeros.
+  // One selected power still corresponds to one all-zero output column.
+  if (positive_rows.empty()) {
+    return NumericMatrix(n, 1);
+  }
+
+  NumericVector positive_values(positive_rows.size());
+  for (int k = 0; k < static_cast<int>(positive_rows.size()); ++k) {
+    positive_values[k] = values[positive_rows[k]];
+  }
+
+  NumericMatrix transformed_positive = mfp2_transform_fp_one_cpp(
+    positive_values,
+    power,
+    shift,
+    scale,
+    false,
+    check_binary
+  );
+
+  NumericMatrix out(n, transformed_positive.ncol());
+  for (int j = 0; j < transformed_positive.ncol(); ++j) {
+    for (int k = 0; k < static_cast<int>(positive_rows.size()); ++k) {
+      out(positive_rows[k], j) = transformed_positive(k, j);
+    }
+  }
+
+  return out;
+}
+
+
 // Apply stored ACD parameters to x.
 //
 // This implements the apply-only ACD path needed by build_adjustment_step().
@@ -1078,7 +1151,10 @@ static NumericMatrix mfp2_transform_fp_one_cpp(const NumericVector& x,
 //     check_binary = FALSE
 //   )
 //
-//   pnorm(acd_parameter$beta0 + acd_parameter$beta1 * x_power[, 1L])
+//   out[x > 0] <- pnorm(
+//     acd_parameter$beta0 + acd_parameter$beta1 * x_power[x > 0, 1L]
+//   )
+//   out[x == 0] <- 0
 //
 // Note:
 //   transform_vector_fp() forces shift = 0 when zero = TRUE. We mirror that
@@ -1119,6 +1195,13 @@ static NumericVector mfp2_apply_acd_stored_cpp(const NumericVector& x,
   NumericVector out(n);
 
   for (int i = 0; i < n; ++i) {
+    // ACD with zero handling is fitted and applied to the positive part only.
+    // NumericVector is zero-initialized, so structural-zero rows remain exact
+    // zeros and never receive Phi(beta0).
+    if (zero && x[i] == 0.0) {
+      continue;
+    }
+
     const double zhat = beta0 + beta1 * x_power(i, 0);
     out[i] = R::pnorm5(zhat, 0.0, 1.0, 1, 0);
   }
@@ -1187,14 +1270,16 @@ static NumericMatrix mfp2_transform_acd_adjustment_apply_cpp(
          true
   );
 
-  // Second component: FP transform of acd(x).
-  NumericMatrix x_acd = mfp2_transform_fp_one_cpp(
+  // Second component: FP transform of acd(x), using original x == 0 as the
+  // structural-zero mask. Do not infer the mask from numeric ACD values.
+  NumericMatrix x_acd = mfp2_transform_fp_one_masked_cpp(
     x_acd_raw,
+    x,
     power[1],
          0.0,
          1.0,
-         false,
-         true
+         zero,
+         false
   );
 
   return mfp2_cbind_two_cpp(x_fp, x_acd);

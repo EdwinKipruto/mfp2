@@ -1,4 +1,4 @@
-# Shared GLM and Cox equivalence oracles.
+# Shared native-model equivalence oracles.
 
 # 8.1 Prediction equivalence against stats::glm()
 # -----------------------------------------------------------------------------
@@ -245,8 +245,6 @@ expect_glm_objects_and_manual_prediction_equal <- function(fit_mfp2,
   expect_equal(unname(pred_mfp2_response), manual_response, tolerance = tolerance)
 }
 
-# Test purpose: 8.1.1 Gaussian GLM equivalence without offset.
-
 # 8.2 Prediction equivalence against survival::coxph()
 # -----------------------------------------------------------------------------
 # These tests use the simplest Cox configuration where mfp2() should reduce to
@@ -412,6 +410,187 @@ expect_mfp2_cox_predictions_equal <- function(fit_mfp2,
   expect_equal(unname(risk_coxph), manual_risk, tolerance = tolerance)
 }
 
+
+# Compare a native prediction result with an mfp2 prediction result. Survival
+# prediction methods return either a numeric object or a list containing fit and
+# se.fit; GLM and survreg predictions can additionally return residual.scale.
+# Keeping this shape-aware comparison in one helper makes the family-specific
+# equivalence tests concise without weakening their assertions.
+expect_native_prediction_equal <- function(got,
+                                           expected,
+                                           tolerance = 1e-8,
+                                           info = NULL) {
+  if (is.list(expected) && all(c("fit", "se.fit") %in% names(expected))) {
+    expect_true(
+      is.list(got) && all(c("fit", "se.fit") %in% names(got)),
+      info = info
+    )
+    expect_equal(
+      unname(got$fit),
+      unname(expected$fit),
+      tolerance = tolerance,
+      info = info
+    )
+    expect_equal(
+      unname(got$se.fit),
+      unname(expected$se.fit),
+      tolerance = tolerance,
+      info = info
+    )
+
+    if ("residual.scale" %in% names(expected)) {
+      expect_true("residual.scale" %in% names(got), info = info)
+      expect_equal(
+        unname(got$residual.scale),
+        unname(expected$residual.scale),
+        tolerance = tolerance,
+        info = info
+      )
+    }
+    return(invisible(NULL))
+  }
+
+  expect_equal(
+    unname(got),
+    unname(expected),
+    tolerance = tolerance,
+    info = info
+  )
+  invisible(NULL)
+}
+
+
+# Independently verify the package-owned term and contrast prediction paths for
+# one ordinary numeric df = 1 term. These paths are common to every supported
+# family, but unlike complete-model predictions they are not delegated to the
+# native glm/coxph/survreg method. The oracle therefore uses the fitted
+# coefficient and covariance matrix directly.
+expect_linear_term_and_contrast_equal <- function(object,
+                                                  newdata,
+                                                  term,
+                                                  ref,
+                                                  has_intercept,
+                                                  tolerance = 1e-8) {
+  expect_true(term %in% names(object$term_to_columns))
+  expect_true(isTRUE(object$fp_terms[term, "selected"]))
+  expect_equal(as.numeric(object$fp_terms[term, "df_setting"]), 1)
+  expect_equal(as.numeric(object$fp_terms[term, "df_initial"]), 1)
+  expect_equal(as.numeric(object$fp_terms[term, "df_final"]), 1)
+  expect_equal(as.numeric(object$fp_terms[term, "power1"]), 1)
+  raw_columns <- object$term_to_columns[[term]]
+  expect_length(raw_columns, 1L)
+
+  transformed_column <- paste0(raw_columns, ".1")
+  model_column <- unname(
+    object$transformed_to_model_columns[[transformed_column]]
+  )
+  expect_true(
+    is.character(model_column) && length(model_column) == 1L &&
+      !is.na(model_column) && nzchar(model_column)
+  )
+
+  beta <- stats::coef(object)
+  covariance <- stats::vcov(object)
+  expect_true(model_column %in% names(beta))
+  expect_true(all(model_column %in% rownames(covariance)))
+
+  values <- as.numeric(newdata[[raw_columns]])
+  slope <- unname(beta[[model_column]])
+  slope_variance <- unname(covariance[model_column, model_column])
+  z_value <- stats::qnorm(0.975)
+
+  term_only <- stats::predict(
+    object,
+    newdata = newdata,
+    type = "terms",
+    terms = term,
+    terms_seq = "data",
+    add_intercept = FALSE
+  )[[term]]
+  expected_value <- values * slope
+  expected_se <- abs(values) * sqrt(pmax(slope_variance, 0))
+
+  expect_equal(unname(term_only$variable), values, tolerance = tolerance)
+  expect_equal(unname(term_only$variable_pre), values, tolerance = tolerance)
+  expect_equal(unname(term_only$value), expected_value, tolerance = tolerance)
+  expect_equal(unname(term_only$se), expected_se, tolerance = tolerance)
+  expect_equal(
+    unname(term_only$lower),
+    expected_value - z_value * expected_se,
+    tolerance = tolerance
+  )
+  expect_equal(
+    unname(term_only$upper),
+    expected_value + z_value * expected_se,
+    tolerance = tolerance
+  )
+
+  if (isTRUE(has_intercept)) {
+    expect_true("(Intercept)" %in% names(beta))
+    coefficient_names <- c("(Intercept)", model_column)
+    design <- cbind("(Intercept)" = 1, term = values)
+    colnames(design)[2L] <- model_column
+    beta_block <- beta[coefficient_names]
+    covariance_block <- covariance[
+      coefficient_names,
+      coefficient_names,
+      drop = FALSE
+    ]
+    expected_with_intercept <- as.numeric(design %*% beta_block)
+    expected_with_intercept_se <- sqrt(pmax(
+      rowSums((design %*% covariance_block) * design),
+      0
+    ))
+
+    term_with_intercept <- stats::predict(
+      object,
+      newdata = newdata,
+      type = "terms",
+      terms = term,
+      terms_seq = "data",
+      add_intercept = TRUE
+    )[[term]]
+    expect_equal(
+      unname(term_with_intercept$value),
+      expected_with_intercept,
+      tolerance = tolerance
+    )
+    expect_equal(
+      unname(term_with_intercept$se),
+      expected_with_intercept_se,
+      tolerance = tolerance
+    )
+  }
+
+  contrast <- stats::predict(
+    object,
+    newdata = newdata,
+    type = "contrasts",
+    terms = term,
+    terms_seq = "data",
+    ref = stats::setNames(list(ref), term)
+  )[[term]]
+  contrast_design <- values - ref
+  expected_contrast <- contrast_design * slope
+  expected_contrast_se <- abs(contrast_design) * sqrt(pmax(slope_variance, 0))
+
+  expect_equal(unname(contrast$variable), values, tolerance = tolerance)
+  expect_equal(unname(contrast$variable_pre), values, tolerance = tolerance)
+  expect_equal(unname(contrast$value), expected_contrast, tolerance = tolerance)
+  expect_equal(unname(contrast$se), expected_contrast_se, tolerance = tolerance)
+  expect_equal(
+    unname(contrast$lower),
+    expected_contrast - z_value * expected_contrast_se,
+    tolerance = tolerance
+  )
+  expect_equal(
+    unname(contrast$upper),
+    expected_contrast + z_value * expected_contrast_se,
+    tolerance = tolerance
+  )
+  invisible(NULL)
+}
+
 # Exact partial likelihood is deliberately rejected because the low-level Cox
 # candidate fitter used during MFP/MFPI selection does not implement it. These
 # tests cover both matrix and formula entry points so the unsupported method
@@ -429,7 +608,8 @@ make_cox_equivalence_data <- function(n = 480L, seed = 8200L) {
     group = factor(sample(c("A", "B", "C"), n, replace = TRUE)),
     stratum1 = factor(sample(c("S1", "S2", "S3"), n, replace = TRUE)),
     stratum2 = factor(sample(c("T1", "T2"), n, replace = TRUE)),
-    off = stats::rnorm(n, mean = 0, sd = 0.25)
+    off = stats::rnorm(n, mean = 0, sd = 0.25),
+    case_weight = sample(c(1, 2), n, replace = TRUE)
   )
 
   group_effect <- c(A = 0, B = 0.45, C = -0.35)[as.character(dat$group)]

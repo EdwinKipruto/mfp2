@@ -198,10 +198,11 @@ test_that("24.22 subset aligns grouped-binomial response and formula offset", {
 })
 
 
-# Test purpose: External Cox strata and formula strata() must remain aligned
-# after an ordered numeric subset. The MFPI formula path must reconstruct its
-# strata special from retained-level metadata during prediction.
-test_that("24.23 subset aligns external and formula Cox strata", {
+# Test purpose: Deprecated external mfp2.formula() strata and formula strata()
+# must remain aligned after an ordered numeric subset. When both forms are
+# supplied, formula strata must win with one deprecation warning. The MFPI
+# formula path must reconstruct its strata special during prediction.
+test_that("24.23 subset aligns deprecated and formula Cox strata", {
   set.seed(2423)
   n <- 180L
   dat <- data.frame(
@@ -218,41 +219,57 @@ test_that("24.23 subset aligns external and formula Cox strata", {
   rows <- c(121:180, 1:90)
   retained <- dat[rows, , drop = FALSE]
 
-  fit_external <- mfp2(
-    survival::Surv(time, status) ~ x + z,
-    data = dat,
-    subset = rows,
-    family = "cox",
-    strata = dat$stratum,
-    keep = c("x", "z"),
-    df = 1,
-    select = 1,
-    alpha = 1,
-    cycles = 5,
-    shift = 0,
-    scale = 1,
-    center = FALSE,
-    xorder = "original",
-    ties = "breslow",
-    verbose = FALSE
+  expect_warning(
+    fit_external <- mfp2(
+      survival::Surv(time, status) ~ x + z,
+      data = dat,
+      subset = rows,
+      family = "cox",
+      strata = dat$stratum,
+      keep = c("x", "z"),
+      df = 1,
+      select = 1,
+      alpha = 1,
+      cycles = 5,
+      shift = 0,
+      scale = 1,
+      center = FALSE,
+      xorder = "original",
+      ties = "breslow",
+      verbose = FALSE
+    ),
+    "deprecated"
   )
-  fit_formula <- mfp2(
-    survival::Surv(time, status) ~ x + z + strata(stratum),
-    data = dat,
-    subset = rows,
-    family = "cox",
-    keep = c("x", "z"),
-    df = 1,
-    select = 1,
-    alpha = 1,
-    cycles = 5,
-    shift = 0,
-    scale = 1,
-    center = FALSE,
-    xorder = "original",
-    ties = "breslow",
-    verbose = FALSE
+  expect_s3_class(fit_external, "mfp2")
+
+  formula_warnings <- character()
+  fit_formula <- withCallingHandlers(
+    mfp2(
+      survival::Surv(time, status) ~ x + z + strata(stratum),
+      data = dat,
+      subset = rows,
+      family = "cox",
+      strata = dat$trt,
+      keep = c("x", "z"),
+      df = 1,
+      select = 1,
+      alpha = 1,
+      cycles = 5,
+      shift = 0,
+      scale = 1,
+      center = FALSE,
+      xorder = "original",
+      ties = "breslow",
+      verbose = FALSE
+    ),
+    warning = function(condition) {
+      formula_warnings <<- c(formula_warnings, conditionMessage(condition))
+      invokeRestart("muffleWarning")
+    }
   )
+  expect_length(formula_warnings, 1L)
+  expect_match(formula_warnings[[1L]], "deprecated")
+  expect_s3_class(fit_formula, "mfp2")
   reference <- survival::coxph(
     survival::Surv(time, status) ~ x + z + strata(stratum),
     data = retained,

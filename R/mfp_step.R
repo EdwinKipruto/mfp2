@@ -50,9 +50,9 @@ mfp_pvalue_exceeds <- function(pvalue, threshold) {
 #' variable of interest `xi`.
 #' @param powers_current Named list with one selected-power state per
 #'   conceptual term, used for all adjustment terms in the current step.
-#' @param family Either a character string naming the family (e.g., "gaussian", "binomial", "cox")
-#'   or a function that returns a GLM family object (e.g., stats::gaussian).
-#'   For Cox models, only a character string "cox" is allowed.
+#' @param family A resolved likelihood-GLM, negative-binomial, Cox, parametric
+#'   survival, or Fine--Gray family specification supplied by the calling MFP
+#'   engine.
 #' @param family_string A character string representing the selected family,
 #'   e.g., "gaussian".
 #' @param criterion a character string defining the criterion used to select
@@ -542,7 +542,7 @@ find_best_fpm_step <- function(x,
   # The conceptual-term lookup is normalized once in fit_mfp() and passed
   # explicitly so every FP candidate uses the same focal and adjustment
   # raw-column blocks.
-  # n_obs (number of observations, or events for Cox models) is computed once
+  # n_obs (number of observations, or target events for PH models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
 
   # Step 1: Define the degree-1 candidate set for xi -------------------------
@@ -618,9 +618,9 @@ find_best_fpm_step <- function(x,
   use_compact_basis <- !is.null(compact_basis)
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
 
-  # GLMs use an explicit intercept in the design matrix; Cox models do not.
+  # GLMs and survreg use an explicit intercept; proportional-hazards models do not.
   # Keep this in one flag so matrix construction and model fitting stay aligned.
-  x_has_intercept <- !identical(family_string, "cox")
+  x_has_intercept <- mfp2_family_has_intercept(family_string)
 
 
   # Step 3: Build a reusable design-matrix template ---------------------------
@@ -953,7 +953,7 @@ fit_linear_step <- function(x,
                             ...,
                             precomputed_adj = NULL,
                             term_to_columns) {
-  # n_obs (number of observations, or events for Cox models) is computed once
+  # n_obs (number of observations, or target events for PH models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
 
   # Step 1: Transform xi as a linear term (power 1) plus the adjustment set -
@@ -977,7 +977,7 @@ fit_linear_step <- function(x,
   data_adj <- x_transformed[["data_adj", exact = TRUE]]
 
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
-  use_glm_intercept_template <- !identical(family_string, "cox")
+  use_glm_intercept_template <- mfp2_family_has_intercept(family_string)
 
   # Build the final matrix in one allocation. GLM fits receive a leading
   # intercept and set x_has_intercept below; Cox fits remain intercept-free.
@@ -1953,9 +1953,10 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue < alpha) {
-    # Test 4 significant: M3 is significantly worse than M1, so M1 cannot be
-    # simplified any further. Stop with the full FP1(x, A(x)) model.
+  if (!mfp_pvalue_exceeds(stats$pvalue, alpha)) {
+    # Test 4 significant at the package-wide inclusive significance boundary
+    # (p <= alpha), or indeterminate because the p-value is invalid: M3 has not
+    # supplied valid evidence for simplification. Retain the full M1 model.
     # FP1(x, A(x)) is the best
     res$power_best = fit_fpmax$power_best
     res$model_best = 1
@@ -1995,9 +1996,10 @@ select_ra2_acd <- function(x,
   res$pvalue <- c(res$pvalue, stats$pvalue)
   names(res$pvalue) <- names(res$statistic)
 
-  if (stats$pvalue < alpha) {
-    # Test 5 significant: M5 (linear in A(x)) is significantly worse than M3,
-    # so M3 cannot be simplified further. Stop with FP1(., A(x)).
+  if (!mfp_pvalue_exceeds(stats$pvalue, alpha)) {
+    # Test 5 significant at the inclusive boundary (p <= alpha), or
+    # indeterminate because the p-value is invalid: M5 has not supplied valid
+    # evidence for simplification. Retain M3, FP1(., A(x)).
     # use FP1(., A(x))
     res$power_best = fit_fp1a$power_best
     res$model_best = 5

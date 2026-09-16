@@ -3,8 +3,8 @@
 #
 # The structured summary method for `mfp2` model fits, and its dedicated
 # `print` method. Provides an MFP-aware alternative to the raw
-# `summary.glm()` / `summary.coxph()` output that ships from the underlying
-# fitter.
+# model-specific summary output that ships from the underlying fitter,
+# including `summary.survreg()` for parametric survival models.
 #
 # The file is organised in three sections:
 #
@@ -21,7 +21,7 @@
 #' Summarize an `mfp2` Model Fit
 #'
 #' Produces a structured, MFP-aware summary of a fitted [mfp2()] model. Unlike
-#' the raw [stats::summary.glm()] or [survival::summary.coxph()] output, this
+#' the raw model-specific summary output, this
 #' method separates interpretable linear terms from fractional-polynomial (FP)
 #' and other nonlinear terms, whose individual coefficients are curve
 #' parameters rather than per-unit effect sizes.
@@ -33,18 +33,17 @@
 #'     functional form for each variable.
 #'   \item \strong{Linear Terms}: variables entering the model as a single
 #'     linear term (including binary-only spike variables and factor levels),
-#'     with the coefficient, standard error, test statistic, p-value, and --
-#'     for non-Gaussian families -- the exponentiated coefficient and its
-#'     confidence interval.
+#'     with the coefficient, standard error, test statistic, p-value, and,
+#'     when the fitted link has a standard multiplicative interpretation, the
+#'     exponentiated coefficient and its confidence interval.
 #'   \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 #'     FP2, ACD, or spike/catzero compound form. Each row reports a joint
 #'     likelihood-ratio test (LRT) of all of that variable's terms, using the
-#'     selection-adjusted degrees of freedom stored in \code{fp_terms}. The
-#'     LRT compares the final MFP model with the model obtained by dropping
-#'     that variable's columns while holding all other functional forms fixed.
+#'     package's selection-adjusted degrees of freedom. The LRT compares the
+#'     final MFP model with an otherwise unchanged model that omits the variable.
 #'   \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
-#'     or minus twice the partial log-likelihood for Cox models, with model
-#'     degrees of freedom.
+#'     or minus twice the fitted likelihood for survival models (partial
+#'     likelihood for Cox and Fine--Gray), with model degrees of freedom.
 #' }
 #'
 #' The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -55,36 +54,27 @@
 #'
 #' Coefficients for nonlinear terms are omitted from the default output. Set
 #' \code{formulas = TRUE} to append the fitted-function formulas, or
-#' \code{basis = TRUE} to append the raw basis coefficients. For an active
-#' ACD component, either option also prints the stored definition of
-#' \eqn{A(x)}, including its internal training scale. Set
-#' \code{raw = TRUE} to obtain the underlying [stats::summary.glm()] or
-#' [survival::summary.coxph()] object instead.
+#' \code{basis = TRUE} to append the individual fitted basis coefficients. For
+#' an active ACD component, either option also prints the fitted definition of
+#' \eqn{A(x)}, including the scale used during fitting. Set
+#' \code{raw = TRUE} to obtain the underlying model-specific summary object
+#' instead.
 #'
 #' @section Coefficient statistics:
-#' The linear-terms table obtains its estimate, standard error, test statistic,
-#' and p-value from the coefficient matrix returned by the underlying summary
-#' method. Columns are resolved using exact, documented GLM and Cox labels; no
-#' regular-expression or partial-name matching is used. For robust Cox fits,
-#' `"robust se"` takes precedence over `"se(coef)"` so the displayed standard
-#' error agrees with the summary's robust test statistic and p-value.
-#' Recognized GLM labels include `"Estimate"`, `"Std. Error"`, `"z value"` or
-#' `"t value"`, and `"Pr(>|z|)"` or `"Pr(>|t|)"`. Recognized Cox labels include
-#' `"coef"`, `"se(coef)"` or `"robust se"`, `"z"`, and `"Pr(>|z|)"`.
-#'
-#' If a future or third-party summary method uses unrecognized or ambiguous
-#' labels, the raw matrix is not indexed with a missing column position.
-#' Instead, coefficient statistics are reconstructed from the fitted
-#' coefficients and [stats::vcov()]. This prevents an unfamiliar header from
-#' silently producing an all-missing column in `linear_terms`.
+#' The linear-terms table reports the coefficient statistics from the applicable
+#' GLM, Cox, or `survreg` summary. For a robust Cox fit, it uses the robust
+#' standard error so that the estimate, test statistic, and p-value remain
+#' consistent. When these statistics cannot be read directly from a compatible
+#' model summary, they are calculated from the fitted coefficients and
+#' [stats::vcov()] when possible.
 #'
 #' @param object A fitted [mfp2()] object.
 #' @param formulas Logical. If \code{TRUE}, append the fitted-function formula
 #'   for each nonlinear variable. Default \code{FALSE}.
-#' @param basis Logical. If \code{TRUE}, append a table of raw basis
-#'   coefficients for the nonlinear terms. Default \code{FALSE}.
+#' @param basis Logical. If \code{TRUE}, append a table of the individual fitted
+#'   basis coefficients for nonlinear terms. Default \code{FALSE}.
 #' @param raw Logical. If \code{TRUE}, bypass the structured summary and return
-#'   the raw [stats::summary.glm()] or [survival::summary.coxph()] object, with
+#'   the raw model-specific summary object, with
 #'   the fitting call replaced by the original [mfp2()] call. Default
 #'   \code{FALSE}.
 #' @param notes Logical. If \code{FALSE}, suppress the explanatory model-df note
@@ -124,7 +114,7 @@
 #' fit_summary$raw_summary$coefficients
 #'
 #' @seealso [mfp2()], [print.mfp2()], [stats::summary.glm()],
-#'   [survival::summary.coxph()]
+#'   [survival::summary.coxph()], [survival::summary.survreg()]
 #'
 #' @export
 summary.mfp2 <- function(object,
@@ -193,6 +183,7 @@ summary.mfp2 <- function(object,
     acd_definitions = acd_definitions,
     fit             = mfp2_summary_fit_stats(object),
     raw_summary     = raw_summary,
+    exp_label       = mfp2_summary_exponent_label(object),
     notes           = notes,
     digits          = digits
   )
@@ -212,9 +203,9 @@ mfp2_summary_nobs <- function(object) {
   as.integer(n)
 }
 
-# Number of events for Cox models; NA otherwise.
+# Number of target events for proportional-hazards models; NA otherwise.
 mfp2_summary_nevents <- function(object) {
-  if (!identical(object$family_string, "cox")) return(NA_integer_)
+  if (!mfp2_family_uses_event_count(object$family_string)) return(NA_integer_)
   if (!is.null(object$nevents)) return(as.integer(object$nevents))
   y <- object$y
   if (inherits(y, "Surv")) {
@@ -240,9 +231,9 @@ mfp2_summary_criterion_label <- function(object) {
   )
 }
 
-# Compute (once) the underlying summary.glm / summary.coxph object, with the
-# call replaced by the original mfp2() call. Stored on the result so users can
-# access it without refitting.
+# Compute the underlying model-specific summary once, with the call replaced by
+# the original mfp2() call. Stored on the result so users can access it without
+# refitting.
 mfp2_summary_raw <- function(object) {
   result <- tryCatch(
     NextMethod_summary(object),
@@ -557,7 +548,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   stat <- cmat[rows, "statistic"]
   pval <- cmat[rows, "pvalue"]
 
-  is_gaussian <- identical(object$family_string, "gaussian")
+  exponentiate <- mfp2_summary_exponentiates_coefficients(object)
 
   # -------------------------------------------------------------------------
   # Build a display name for each fitted coefficient.
@@ -616,7 +607,7 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
     stringsAsFactors = FALSE
   )
 
-  if (!is_gaussian) {
+  if (exponentiate) {
     df$exp_coef <- exp(est)
     df$ci_lower <- exp(est - 1.96 * se)
     df$ci_upper <- exp(est + 1.96 * se)
@@ -625,7 +616,61 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
     df$ci_upper <- est + 1.96 * se
   }
 
+  attr(df, "statistic_label") <- attr(cmat, "statistic_label", exact = TRUE)
+
   df
+}
+
+
+# Exponentiation is displayed only when it has the model's usual multiplicative
+# interpretation. In particular, arbitrary GLM links and raw-time survreg
+# distributions are not mislabeled as odds/rate/time ratios.
+mfp2_summary_exponentiates_coefficients <- function(object) {
+  if (mfp2_family_is_ph(object$family_string)) return(TRUE)
+
+  if (identical(object$family_string, "survreg")) {
+    dist <- object$family$dist
+    if (!is.character(dist) || length(dist) != 1L) return(FALSE)
+    return(tolower(dist) %in% c(
+      "weibull", "exponential", "rayleigh", "lognormal", "log normal",
+      "loggaussian", "log gaussian", "loglogistic", "log logistic"
+    ))
+  }
+
+  family <- object$family
+  is.list(family) && is.character(family$link) && length(family$link) == 1L &&
+    family$link %in% c("log", "logit")
+}
+
+
+# Label exp(coef) from the actual link, rather than assuming that every
+# binomial coefficient is a log-odds coefficient. This matters now that all
+# likelihood-family links accepted by glm() remain available.
+mfp2_summary_exponent_label <- function(object) {
+  if (!mfp2_summary_exponentiates_coefficients(object)) return(NULL)
+
+  if (identical(object$family_string, "cox")) return("hazard ratio")
+  if (identical(object$family_string, "finegray")) {
+    return("subdistribution hazard ratio")
+  }
+  if (identical(object$family_string, "survreg")) return("time ratio")
+
+  link <- if (is.list(object$family)) object$family$link else NULL
+  if (identical(object$family_string, "binomial") &&
+      identical(link, "logit")) {
+    return("odds ratio")
+  }
+  if (identical(object$family_string, "binomial") &&
+      identical(link, "log")) {
+    return("risk ratio")
+  }
+  if (identical(object$family_string, "poisson") &&
+      identical(link, "log")) {
+    return("rate ratio")
+  }
+  if (identical(link, "log")) return("mean ratio")
+
+  "multiplicative effect"
 }
 
 # Return the position of the first supported exact column label. Candidate
@@ -660,10 +705,19 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   cmat <- NULL
   if (!is.null(raw_summary) && !is.null(raw_summary$coefficients)) {
     cmat <- raw_summary$coefficients
+  } else if (!is.null(raw_summary) && !is.null(raw_summary$table)) {
+    # summary.survreg() calls this component `table` and appends one or more
+    # scale rows after the regression coefficients.
+    cmat <- raw_summary$table
   }
 
   est <- object$coefficients
   nm <- names(est)
+
+  if (is.matrix(cmat) && !is.null(rownames(cmat)) &&
+      !is.null(nm) && all(nm %in% rownames(cmat))) {
+    cmat <- cmat[nm, , drop = FALSE]
+  }
 
   if (is.matrix(cmat) && is.numeric(cmat) && nrow(cmat) == length(est)) {
     # Use exact known labels rather than grep()/partial matching. If any label
@@ -673,7 +727,7 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
     columns <- c(
       estimate = mfp2_summary_match_coef_column(
         cn,
-        c("Estimate", "coef")
+        c("Estimate", "Value", "coef")
       ),
       se = mfp2_summary_match_coef_column(
         cn,
@@ -685,7 +739,7 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
       ),
       pvalue = mfp2_summary_match_coef_column(
         cn,
-        c("Pr(>|z|)", "Pr(>|t|)", "p-value", "pvalue")
+        c("Pr(>|z|)", "Pr(>|t|)", "p", "p-value", "pvalue")
       )
     )
 
@@ -697,6 +751,14 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
         pvalue    = cmat[, columns[["pvalue"]]]
       )
       rownames(out) <- rownames(cmat)
+      statistic_column <- cn[columns[["statistic"]]]
+      attr(out, "statistic_label") <- if (grepl("^t", statistic_column)) {
+        "t"
+      } else if (grepl("^z", statistic_column)) {
+        "z"
+      } else {
+        "Statistic"
+      }
       return(out)
     }
   }
@@ -705,9 +767,26 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   # This is intentionally reached for unresolved headers rather than allowing
   # an NA column index to manufacture an all-NA result.
   V <- tryCatch(stats::vcov(object), error = function(e) NULL)
-  se <- if (!is.null(V)) sqrt(diag(V)) else rep(NA_real_, length(est))
+  if (is.matrix(V) && !is.null(nm) &&
+      !is.null(rownames(V)) && !is.null(colnames(V)) &&
+      all(nm %in% rownames(V)) && all(nm %in% colnames(V))) {
+    V <- V[nm, nm, drop = FALSE]
+  }
+  se <- if (is.matrix(V) && all(dim(V) == length(est))) {
+    sqrt(diag(V))
+  } else {
+    rep(NA_real_, length(est))
+  }
   stat <- est / se
-  pval <- 2 * stats::pnorm(abs(stat), lower.tail = FALSE)
+  uses_t <- inherits(object, "glm") &&
+    mfp2_glm_estimates_dispersion(object$family, object$family_string) &&
+    is.numeric(object$df.residual) && length(object$df.residual) == 1L &&
+    is.finite(object$df.residual)
+  pval <- if (uses_t) {
+    2 * stats::pt(abs(stat), df = object$df.residual, lower.tail = FALSE)
+  } else {
+    2 * stats::pnorm(abs(stat), lower.tail = FALSE)
+  }
 
   out <- cbind(
     estimate  = est,
@@ -716,6 +795,11 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
     pvalue    = pval
   )
   rownames(out) <- nm
+  attr(out, "statistic_label") <- if (uses_t) {
+    "t"
+  } else {
+    "z"
+  }
   out
 }
 
@@ -723,11 +807,115 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
 # Nonlinear terms table (LRT, one row per variable)
 # ---------------------------------------------------------------------------
 
+mfp2_summary_refit_context <- function(object) {
+  family_string <- object$family_string
+  is_cox <- identical(family_string, "cox")
+  is_finegray <- identical(family_string, "finegray")
+  is_survreg <- identical(family_string, "survreg")
+
+  full_logl <- object$mfp_logl
+  if (!is.numeric(full_logl) || length(full_logl) != 1L ||
+      is.na(full_logl) || !is.finite(full_logl)) {
+    full_logl <- tryCatch({
+      if (is_cox || is_finegray || is_survreg) {
+        unname(object$loglik[length(object$loglik)])
+      } else {
+        as.numeric(stats::logLik(object))
+      }
+    }, error = function(e) NA_real_)
+  }
+
+  fitter <- if (is.null(object$fitter)) "base" else object$fitter
+  control <- object$mfp2_control
+  if (is.null(control)) {
+    control <- tryCatch(
+      normalize_fit_control(
+        control = NULL,
+        family_string = family_string,
+        fitter = fitter
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  nocenter_meta <- object$mfp2_nocenter
+  nocenter <- if (is.list(nocenter_meta) &&
+                  "value" %in% names(nocenter_meta)) {
+    nocenter_meta[["value"]]
+  } else if (is.numeric(nocenter_meta)) {
+    nocenter_meta
+  } else {
+    c(-1, 0, 1)
+  }
+
+  context <- list(
+    valid = is.numeric(full_logl) && length(full_logl) == 1L &&
+      !is.na(full_logl) && is.finite(full_logl) && !is.null(control),
+    full_logl = full_logl,
+    family = object$family,
+    family_string = family_string,
+    y = object$y,
+    weights = if (is_cox || is_finegray || is_survreg) {
+      object$weights
+    } else {
+      object$prior.weights
+    },
+    offset = object$offset,
+    strata = if (is_cox) object$strata else NULL,
+    method = if (is_cox || is_finegray) object$method else NULL,
+    fitter = fitter,
+    control = control,
+    nocenter = nocenter,
+    is_finegray = is_finegray
+  )
+
+  if (is_finegray) {
+    # The retained final model already contains the expanded counting-process
+    # response, design and weights. Reuse them without another finegray() call.
+    row_map <- object$mfp2_finegray_row_map
+    original_offset <- object$mfp2_original_offset
+    if (is.null(row_map) || is.null(original_offset)) {
+      context$valid <- FALSE
+      return(context)
+    }
+    context$family <- "cox"
+    context$family_string <- "cox"
+    context$offset <- original_offset[row_map]
+  } else if (is_survreg) {
+    # Prepare the transformed response and resolved distribution once for all
+    # nonlinear-term reduced refits in this summary call.
+    prepared <- tryCatch(
+      prepare_family_for_fit(
+        family = object$family,
+        family_string = "survreg",
+        y = object$y_original,
+        weights = object$weights,
+        strata = object$mfp2_survreg_strata
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(prepared)) {
+      context$valid <- FALSE
+      return(context)
+    }
+    context$family <- prepared$family
+    context$y <- object$y_original
+  }
+
+  context
+}
+
+
 mfp2_summary_nonlinear_table <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) {
     return(data.frame())
   }
+
+  # Construct family-specific response/control metadata once, then reuse it for
+  # every reduced model. In particular, survreg response preparation is not
+  # repeated once per nonlinear variable.
+  refit_context <- mfp2_summary_refit_context(object)
 
   rows <- lapply(nl_vars, function(v) {
     idx <- match(v, classified$variable_names)
@@ -737,7 +925,9 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
       classified$catzero[idx], classified$spike[idx],
       classified$spike_dec[idx], TRUE
     )
-    lrt <- mfp2_summary_lrt_drop_variable(object, classified, v)
+    lrt <- mfp2_summary_lrt_drop_variable(
+      object, classified, v, refit_context = refit_context
+    )
 
     data.frame(
       variable = v,
@@ -754,60 +944,88 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
 }
 
 # Joint likelihood-ratio test for dropping one variable's columns, holding all
-# other functional forms fixed. The LR statistic is computed by refitting the
-# reduced model with the same deviance definition as the full model; the df is
-# the selection-adjusted df_final from fp_terms.
-mfp2_summary_lrt_drop_variable <- function(object, classified, v) {
+# other functional forms fixed. The selected model's stored log likelihood is
+# already on the same family-specific scale, so only the reduced model is
+# fitted. The df is the selection-adjusted df_final from fp_terms.
+mfp2_summary_lrt_drop_variable <- function(object, classified, v,
+                                            refit_context = NULL) {
   cols_v <- intersect(colnames(object$x), classified$cols_by_var[[v]])
   idx <- match(v, classified$variable_names)
   df_v <- classified$df_final[idx]
   if (is.na(df_v)) df_v <- length(cols_v)
 
-  is_cox <- identical(object$family_string, "cox")
-
   na_result <- list(lr = NA_real_, df = df_v, p = NA_real_)
-
   x_full <- object$x
   if (is.null(x_full) || length(cols_v) == 0L) {
     return(na_result)
   }
 
+  if (is.null(refit_context)) {
+    refit_context <- mfp2_summary_refit_context(object)
+  }
+  if (!isTRUE(refit_context$valid)) return(na_result)
+
   keep <- setdiff(colnames(x_full), cols_v)
   x_reduced <- x_full[, keep, drop = FALSE]
 
-  refit <- function(x) {
+  reduced_fit <- if (isTRUE(refit_context$is_finegray)) {
+    # agreg.fit() is the counting-process matrix fitter. With resid = FALSE it
+    # does not use row names, so avoid allocating them for summary refits too.
+    tryCatch({
+      fg_fit <- mfp2_with_cox_convergence_guard(
+        survival::agreg.fit(
+          x = x_reduced,
+          y = refit_context$y,
+          strata = NULL,
+          offset = refit_context$offset,
+          init = NULL,
+          control = refit_context$control,
+          weights = refit_context$weights,
+          method = if (is.null(refit_context$method)) {
+            "breslow"
+          } else {
+            refit_context$method
+          },
+          rownames = NULL,
+          resid = FALSE,
+          nocenter = refit_context$nocenter
+        ),
+        fast = TRUE
+      )
+      list(logl = unname(fg_fit$loglik[length(fg_fit$loglik)]))
+    }, error = function(e) NULL)
+  } else {
+    x_has_intercept <- NCOL(x_reduced) > 0L &&
+      !is.null(colnames(x_reduced)) &&
+      identical(colnames(x_reduced)[1L], "(Intercept)")
     tryCatch(
       fit_model(
-        x = x,
-        y = object$y,
-        family = object$family,
-        family_string = object$family_string,
-        fitter = if (is.null(object$fitter)) "base" else object$fitter,
-        weights = if (is_cox) object$weights else object$prior.weights,
-        offset = object$offset,
-        method = if (is_cox) object$method else NULL,
-        strata = if (is_cox) object$strata else NULL,
+        x = x_reduced,
+        y = refit_context$y,
+        family = refit_context$family,
+        family_string = refit_context$family_string,
+        fitter = refit_context$fitter,
+        weights = refit_context$weights,
+        offset = refit_context$offset,
+        method = refit_context$method,
+        strata = refit_context$strata,
+        control = refit_context$control,
+        nocenter = refit_context$nocenter,
+        x_has_intercept = x_has_intercept,
         fast = TRUE
       ),
       error = function(e) NULL
     )
   }
 
-  # Refit BOTH models with the same routine so the deviance scale matches.
-  fit_full <- refit(x_full)
-  fit_red  <- if (ncol(x_reduced) == 0L) {
-    refit(x_reduced)
-  } else {
-    refit(x_reduced)
-  }
-
-  if (is.null(fit_full) || is.null(fit_red) ||
-      is.null(fit_full$logl) || is.null(fit_red$logl)) {
+  if (is.null(reduced_fit) || is.null(reduced_fit$logl) ||
+      !is.finite(reduced_fit$logl)) {
     return(na_result)
   }
 
-  lr <- 2 * (fit_full$logl - fit_red$logl)
-  if (!is.finite(lr) || lr < 0) lr <- max(lr, 0)
+  lr <- 2 * (refit_context$full_logl - reduced_fit$logl)
+  if (!is.finite(lr)) return(na_result)
+  lr <- max(lr, 0)
   p <- stats::pchisq(lr, df = df_v, lower.tail = FALSE)
 
   list(lr = lr, df = df_v, p = p)
@@ -878,7 +1096,8 @@ mfp2_fp_basis_labels <- function(term, powers, shift = 0) {
 
 # Format one factor design column from its stored level-by-design matrix.
 # Treatment-coded indicator columns are shown as level indicators. Other
-# contrast columns are shown by their exact fitted values across factor levels.
+# contrast columns retain their model-matrix names, such as x4.L and x4.Q,
+# because those names identify the configured contrast basis directly.
 mfp2_factor_design_column_info <- function(object, term, source) {
   factor_info <- if (!is.null(object$formula_factor_info)) {
     object$formula_factor_info[[term]]
@@ -919,15 +1138,7 @@ mfp2_factor_design_column_info <- function(object, term, source) {
       encodeString(level, quote = "\"")
     )
   } else {
-    formatted_values <- vapply(values, function(value) {
-      format(signif(value, 6L), trim = TRUE, scientific = FALSE)
-    }, character(1L))
-    level_values <- paste0(
-      encodeString(rownames(design), quote = "\""),
-      "=",
-      formatted_values
-    )
-    basis <- paste0("contrast(", paste(level_values, collapse = ", "), ")")
+    basis <- source
   }
 
   list(variable = variable, basis = basis)
@@ -1452,19 +1663,24 @@ mfp2_summary_model_fit_values <- function(object) {
 
   # The df column follows a single convention: number of regression
   # coefficients, EXCLUDING the intercept. `linear_df` as stored comes from
-  # fit_model()$df, which follows logLik.glm()'s convention -- it counts the
-  # intercept for GLMs (Cox has none) and adds +1 for either the
-  # Gaussian residual variance sigma^2 or negative-binomial theta. These
-  # adjustments are stripped here so the number the
+  # fit_model()$df, which counts the intercept for models that have one and
+  # includes any estimated GLM dispersion, negative-binomial theta, or `survreg`
+  # scale parameter. These adjustments are stripped here so the number the
   # user sees matches the promise made in the note.
   linear_df <- if (!is.null(object$linear_df)) {
     d <- as.integer(object$linear_df)
-    if (family_string %in% c("gaussian", "negbin")) {
-      # Strip 1 for the intercept AND 1 for sigma^2 or theta.
+    if (identical(family_string, "negbin")) {
+      # Strip one for the intercept and one for theta.
       d <- d - 2L
-    } else if (!identical(family_string, "cox")) {
-      # Non-Gaussian GLM: strip the intercept only.
-      d <- d - 1L
+    } else if (identical(family_string, "survreg")) {
+      # survreg$idf counts the intercept plus estimated scale parameter(s).
+      d <- d - as.integer(if (is.null(object$idf)) 1L else object$idf)
+    } else if (mfp2_family_has_intercept(family_string)) {
+      # Strip the intercept and, when applicable, estimated GLM dispersion.
+      d <- d - 1L - as.integer(mfp2_glm_estimates_dispersion(
+        family = object$family,
+        family_string = family_string
+      ))
     }
     d
   } else {
@@ -1482,7 +1698,7 @@ mfp2_summary_model_fit_values <- function(object) {
     df            = c(linear_df, mfp_df),
     stringsAsFactors = FALSE
   )
-  attr(values, "statistic_label") <- if (identical(family_string, "cox")) {
+  attr(values, "statistic_label") <- if (mfp2_family_is_survival(family_string)) {
     "-2 log L"
   } else {
     "Deviance"
@@ -1628,7 +1844,6 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
   if (nrow(x$linear_terms) == 0L) {
     cat("(none)\n\n")
   } else {
-    is_gaussian <- identical(x$family, "gaussian")
     lt <- x$linear_terms
     fmt <- function(v, d = digits) formatC(v, format = "g", digits = d)
 
@@ -1645,10 +1860,13 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
-    stat_name <- if (is_gaussian) "t" else "z"
+    stat_name <- attr(lt, "statistic_label", exact = TRUE)
+    if (is.null(stat_name) || !stat_name %in% c("t", "z")) {
+      stat_name <- "Statistic"
+    }
     names(disp)[names(disp) == "stat"] <- stat_name
 
-    if (!is_gaussian && !is.null(lt$exp_coef)) {
+    if (!is.null(lt$exp_coef)) {
       disp[["exp(coef)"]] <- fmt(lt$exp_coef)
       disp[["[95% CI]"]] <- sprintf("[%s, %s]", fmt(lt$ci_lower), fmt(lt$ci_upper))
     } else {
@@ -1658,16 +1876,10 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     print.data.frame(disp, row.names = FALSE, right = FALSE)
     cat("\n")
 
-    if (!is_gaussian) {
-      exp_name <- switch(x$family,
-                         "binomial" = "odds ratio",
-                         "poisson"  = "rate ratio",
-                         "cox"      = "hazard ratio",
-                         "exp(coef)"
-      )
+    if (!is.null(lt$exp_coef)) {
       cat(sprintf(
         "exp(coef) is the %s.\n\n",
-        exp_name
+        if (is.null(x$exp_label)) "multiplicative effect" else x$exp_label
       ))
     } else {
       cat("Coefficients are on the link scale.\n\n")

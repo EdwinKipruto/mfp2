@@ -4,7 +4,8 @@
 #' one or more continuous variables differs across the levels of a categorical
 #' grouping variable.
 #'
-#' The function supports Gaussian, binomial, Poisson, negative-binomial, and Cox models. Nonlinear
+#' The function supports the likelihood GLMs accepted by `mfp2()`, negative
+#' binomial, Cox, parametric `survreg`, and Fine--Gray models. Nonlinear
 #' relationships can be modelled with fractional polynomials.
 #'
 #' @details
@@ -126,8 +127,8 @@
 #' every term-specific interaction model.
 #'
 #' The tested continuous variable is removed from its own adjustment set. The
-#' group variable is also excluded from the ordinary adjustment matrix because
-#' group main effects are included directly in every interaction comparison.
+#' group variable is also omitted from the adjustment set because group main
+#' effects are included in every interaction comparison.
 #'
 #' Set `include_group_var = TRUE` only when the grouping variable should also be
 #' forced into the first-stage MFP adjustment model. This does not control
@@ -145,23 +146,21 @@
 #' In `mfpi.default()`, an unnamed scalar is a global setting. A named vector is
 #' matched to `colnames(x)` and may specify only a subset of columns. Thus,
 #' `shift = c(age = 20)` fixes only the shift for `age`, and
-#' `scale = c(age = 10)` fixes only its scale. Unspecified settings remain
-#' automatic and are estimated through the existing preprocessing pipeline.
-#' User-supplied values must be finite, scales must be strictly positive, and
-#' explicit `NA` values are not accepted.
+#' `scale = c(age = 10)` fixes only its scale. Unspecified settings are estimated
+#' automatically. User-supplied values must be finite, scales must be strictly
+#' positive, and explicit `NA` values are not accepted.
 #'
 #' Explicit shifts are not increased automatically. If a supplied shift leaves
 #' zero or negative values for a predictor fitted with a nonlinear FP form,
-#' fitting stops and identifies the affected variable. The MFPI grouping column
-#' and predictors handled as linear or structural-zero terms retain their
-#' existing special shift and scale rules.
+#' fitting stops and identifies the affected variable. Linear and structural-
+#' zero terms use a shift of zero. The grouping variable is not shifted or
+#' scaled.
 #'
 #' @section Supplying data:
 #' With the formula interface, supply the original variables in `data`.
-#' Categorical adjustment variables can be factors and are handled as complete
-#' terms. Their contrast columns are selected or excluded together. The
-#' `group_var` and every variable in `cont_vars` must be included in the model
-#' formula.
+#' Categorical adjustment variables can be factors and are selected or excluded
+#' as complete terms. The `group_var` and every variable in `cont_vars` must be
+#' included in the model formula.
 #'
 #' With the default matrix or data-frame interface, all non-group predictors
 #' must be numeric. Predictor names must be unique, non-missing, non-empty, and
@@ -191,31 +190,41 @@
 #' used for model fitting and for calculating Winsorisation limits.
 #'
 #' Every group must retain at least two fitting observations. FP2 interactions
-#' require at least three observations per group because two group-specific FP
-#' columns must be estimated in addition to the group effect. Groups containing
-#' exactly two observations remain permitted for linear and FP1 interactions,
-#' with a warning that fitting may be unreliable.
+#' require at least three observations per group. Groups containing exactly two
+#' observations remain permitted for linear and FP1 interactions, with a warning
+#' that fitting may be unreliable.
+#'
+#' Meeting these observation-count rules does not guarantee that an interaction
+#' can be estimated after transformation. Fitting stops and identifies the
+#' affected variable and group if the transformed variable has no within-group
+#' variation or the requested model terms cannot be estimated uniquely.
 #'
 #' @section Exact-zero values and special transformations:
 #' Explicit `zero_vars` handling is supported for variables in `cont_vars`.
 #' Exact-zero values (`x = 0`) are then treated as structural zero, and the
 #' selected linear or FP function is applied to values with `x > 0`. Variables
 #' requested through `zero_vars`, `catzero_vars`, or `spike_vars` must be
-#' nonnegative. Negative values are rejected before flag cascading, SAZ checks,
-#' shifting, scaling, or transformation and must be recoded explicitly if they
-#' should scientifically represent the zero group. At least one
-#' positive observation must remain in the fitting data after `subset` is
+#' nonnegative. Negative values are rejected before fitting and must be recoded
+#' explicitly if they should scientifically represent the zero group. At least
+#' one positive observation must remain in the fitting data after `subset` is
 #' applied; otherwise fitting stops and identifies every affected variable.
 #' With `center_type = "group"`, a zero-handled interaction additionally needs
 #' at least two positive observations per group for a linear or FP1 form and at
-#' least three for FP2. Fewer observations produce zero or rank-deficient
-#' centered interaction columns.
+#' least three for FP2; otherwise the requested group-centered interaction
+#' cannot be estimated.
 #'
 #' `catzero_vars`, `spike_vars`, and ACD transformations are supported for
 #' adjustment variables but not for variables being tested in `cont_vars`.
 #' When one of these settings is requested for a tested variable, it is disabled
 #' with a warning. An explicit `zero_vars` setting for that variable is
 #' preserved.
+#'
+#' For an adjustment variable using both ACD and `zero = TRUE`, the ACD ranks
+#' and auxiliary FP1 approximation are fitted on `x > 0` only, and `A(0)` is
+#' exactly `0`. Every subsequent FP function of `x` or `A(x)` is evaluated only
+#' on positive rows. Whether a value belongs to the zero or positive component
+#' is always determined from its original value, including during prediction
+#' and plotting.
 #'
 #' Spike-at-zero adjustment variables must have enough observations in both the
 #' exact-zero and positive components. `min_saz_prop` sets the
@@ -247,31 +256,40 @@
 #' The default is `"grand"`. The fitted centering values are reused for
 #' prediction and plotting.
 #'
-#' @section Formula offsets and Cox strata:
+#' Adjustment variables follow the same structural-zero convention as [mfp2()]:
+#' their uncentered ordinary FP and ACD bases are zero where original `x == 0`.
+#' When centering is requested, each complete zero-padded column is centered on
+#' its fitted-sample mean, and the same constant is subtracted from every row.
+#'
+#' @section Formula offsets and survival strata:
 #' An offset can be supplied through the `offset` argument or included in the
 #' formula with `offset(...)`. A formula offset takes precedence when both are
 #' supplied. The offset is used in both the adjustment and interaction models.
 #'
-#' For Cox models, strata can be supplied through `strata` or included in the
-#' formula with `strata(...)`. Formula strata take precedence when both are
-#' supplied. Only right-censored [survival::Surv()] responses are supported.
+#' For survival models, supply strata through `strata` in the matrix interface
+#' and through `strata(...)` in the formula interface. Strata define baseline
+#' hazards for Cox, scale parameters for `survreg`, and censoring distributions
+#' for Fine--Gray.
 #'
-#' Internal response, offset, and strata columns used by the final stored models
-#' are named collision-safely. User predictors named `y`, `offset_`, `strata_`,
-#' or with a `..mfp2_` prefix remain ordinary predictors and are not overwritten.
+#' `mfpi()` does not reserve names such as `y`, `offset_`, `strata_`, or names
+#' beginning with `..mfp2_`. Predictors with these names remain ordinary
+#' predictors and are not overwritten during fitting.
 #'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
 #'   predictors. Column names must be unique, non-missing, non-empty, and must
-#'   not contain backticks (`); spaces, hyphens, and other non-syntactic names
+#'   not contain the backtick character; spaces, hyphens, and other non-syntactic names
 #'   are supported. Predictor values must not be missing or non-finite. Do not
 #'   add an intercept column. If `x` is a data frame, only `group_var` can be
 #'   categorical; all other columns must be numeric.
 #'
 #' @param y For `mfpi.default()`, the response. Supply a finite numeric vector
-#'   for Gaussian models, non-negative counts for Poisson models, non-negative
-#'   integer counts for negative-binomial models, a valid binomial response for
-#'   binomial models, or a right-censored [survival::Surv()] object for Cox models. It
-#'   must have the same number of observations as `x`.
+#'   for Gaussian models, a strictly positive response for Gamma or inverse-
+#'   Gaussian models, non-negative integer counts for Poisson and
+#'   negative-binomial models, a valid binomial response for binomial models
+#'   (with integer successes/failures for the grouped two-column form), a
+#'   right-censored [survival::Surv()] object for Cox, a
+#'   non-counting `Surv` response for `survreg`, or a multi-state `Surv`
+#'   response for Fine--Gray. It must have the same number of observations as `x`.
 #'
 #' @param formula For `mfpi.formula()`, a model formula containing the response,
 #'   `group_var`, the variables in `cont_vars`, and any adjustment variables.
@@ -284,7 +302,7 @@
 #' @param term_groups For `mfpi.default()`, an optional named list that groups
 #'   numeric columns representing one categorical adjustment term. For example,
 #'   `list(stage = c("stageII", "stageIII"))`. Each member column can belong
-#'   to only one group. Grouped terms are fitted as fixed linear blocks: they
+#'   to only one group. Grouped terms are fitted as fixed linear terms: they
 #'   are not eligible for FP transformation searches and cannot be used in
 #'   `cont_vars`, `zero_vars`, `catzero_vars`, `spike_vars`, `acd_vars`, or
 #'   `force_max_fp_vars`. In `mfpi.formula()`, factor predictors are grouped
@@ -349,11 +367,15 @@
 #'   observation. All weights must be strictly positive; zero and negative
 #'   weights are not supported. This restriction keeps likelihood-based model
 #'   comparisons well-defined across all supported families. The weights are
-#'   used in both the adjustment and interaction models.
+#'   used in both the adjustment and interaction models. In the formula
+#'   interface, an expression is evaluated first in `data` and then in the
+#'   formula environment.
 #'
 #' @param offset An optional finite numeric vector with one value per
 #'   observation, added to the linear predictor in both fitting stages. A formula
-#'   `offset(...)` term takes precedence over this argument.
+#'   expression is evaluated first in `data` and then in the formula
+#'   environment. A formula `offset(...)` term takes precedence over this
+#'   argument.
 #'
 #' @param cycles A positive integer giving the maximum number of MFP fitting
 #'   cycles. The default is 10.
@@ -367,8 +389,8 @@
 #'   Unnamed multi-value vectors are not accepted. `NULL` estimates every scale
 #'   automatically and `scale = 1` disables scaling globally. Binary predictors,
 #'   including factor dummy columns, are always assigned scale `1`, even when
-#'   another value is supplied. The MFPI grouping column remains unscaled under the
-#'   existing categorical-group handling. In `mfpi.formula()`, the top-level
+#'   another value is supplied. The MFPI grouping variable is also always
+#'   unscaled. In `mfpi.formula()`, the top-level
 #'   value is a scalar global default; use `fp()` or `fp2()` for
 #'   variable-specific values.
 #'
@@ -417,19 +439,19 @@
 #'   expression using columns of `data` is also accepted. At least five
 #'   observations and two groups must remain.
 #'
-#' @param family The model family. Use `"gaussian"`, `"binomial"`,
-#'   `"poisson"`, `"negbin"`, or `"cox"`; a GLM family function; or a GLM
-#'   family object. Custom GLM links are supported through family objects.
-#'   Negative binomial models require `family = "negbin"` and
-#'   `fitter = "fastglm"`. Cox models require `family = "cox"`.
+#' @param family The model family. Use a likelihood family implemented by
+#'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
+#'   `"inverse.gaussian"`) as a name, function, or family object. Quasi
+#'   families are excluded because selection requires a likelihood. Use
+#'   `"negbin"` with `fitter = "fastglm"`, `"cox"`, [survreg_family()], or
+#'   [finegray_family()] for the corresponding survival model.
 #'
-#' @param fitter Fitting backend for repeated GLM candidate fits. `"base"`
-#'   (default) uses [stats::glm.fit()]. `"fastglm"` uses the compiled
-#'   `fastglm::fastglm.default()` fitter and may be faster during FP candidate
-#'   search. The optional `fastglm` package must be installed; ordinary GLM
-#'   fits fall back to `"base"` with a warning if it is unavailable or a fit
-#'   fails. Cox models are unaffected. Negative binomial models are available
-#'   only with `fitter = "fastglm"` and have no base fallback.
+#' @param fitter Fitting method for repeated GLM candidate models. `"base"`
+#'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
+#'   `fastglm` package and may be faster during the FP search. Ordinary GLMs
+#'   retry with `"base"` and issue a warning if `fastglm` is unavailable or a
+#'   fit fails. Survival models are unaffected. Negative-binomial models require
+#'   `fitter = "fastglm"` and cannot retry with `"base"`.
 #'
 #' @param criterion The selection criterion used for both the MFP adjustment
 #'   model and the interaction comparisons: `"pvalue"`, `"aic"`, or `"bic"`.
@@ -491,25 +513,32 @@
 #'   natural logarithm. These candidates are used when FP powers are selected
 #'   for both adjustment and interaction functions.
 #'
-#' @param ties The method for handling tied event times in Cox models. Supported
+#' @param ties The method for handling tied event times in Cox and Fine--Gray models. Supported
 #'   values are `"breslow"` (default) and `"efron"`. `"exact"` is not supported
 #'   because MFPI relies on MFP-based Cox candidate fits that do not implement
-#'   the exact partial likelihood. The argument otherwise has no effect for
-#'   non-Cox families.
+#'   the exact partial likelihood. The argument has no effect for other families.
 #'
-#' @param strata Optional Cox strata with one value or row per observation. A
+#' @param strata Optional survival-model strata for `mfpi.default()`. For Cox
+#'   they define baseline hazards, for `survreg` scale parameters, and for
+#'   Fine--Gray censoring distributions. A
 #'   vector or factor supplies one categorical stratum label per observation;
 #'   character, numeric, integer, and logical values are accepted. A matrix or
 #'   data frame may supply multiple stratification variables, one per column,
 #'   which are combined before Cox fitting. A [survival::strata()] object is
-#'   also accepted. Formula `strata(...)` terms take precedence over this argument.
+#'   also accepted. In `mfpi.formula()`, this argument is unavailable; include
+#'   `strata(...)` in the formula instead.
 #'
-#' @param nocenter Numeric set of values used to identify Cox design-matrix
-#'   columns that should not be internally recentered. A column is left
+#' @param id Optional Fine--Gray subject identifier. It is required only for a
+#'   start--stop multi-state response. In formula fits, the argument is
+#'   evaluated first in `data` and then in the formula environment. It is not
+#'   used by other families.
+#'
+#' @param nocenter Numeric set of values used to identify Cox/Fine--Gray predictor
+#'   columns that should be left uncentered. A column is left
 #'   uncentered when all of its values are contained in `nocenter`. The default
 #'   `c(-1, 0, 1)` matches [survival::coxph()] and typically leaves indicator
 #'   and dummy columns uncentered. Set `NULL` to allow all eligible columns to
-#'   be recentered. It is used only for Cox models.
+#'   be recentered. It is used only for Cox and Fine--Gray models.
 #'
 #' @param acd_vars For `mfpi.default()`, an optional character vector naming
 #'   adjustment variables that use the approximate cumulative distribution
@@ -517,19 +546,26 @@
 #'   disabled with a warning for variables in `cont_vars` because it would
 #'   conflict with the interaction-form search. In `mfpi.formula()`, this
 #'   argument is not available; use `fp(variable, acd = TRUE)` or
-#'   `fp2(variable, acd = TRUE)` in the formula instead.
+#'   `fp2(variable, acd = TRUE)` in the formula instead. If the same adjustment
+#'   variable also has `zero = TRUE`, ACD is fitted and applied to its positive
+#'   component only and its uncentered basis is zero at exact-zero rows. Any
+#'   subsequent centering uses the complete fitted-sample column.
 #'
 #' @param zero_vars An optional character vector naming nonnegative variables
 #'   for which exact-zero values (`x = 0`) are treated as structural zeros.
 #'   The selected FP or linear function is applied only to values with `x > 0`,
-#'   while exact-zero values receive a separate fixed contribution. Negative
+#'   while exact-zero rows contribute zero to the uncentered continuous basis.
+#'   If that basis is centered, its fitted-sample mean is subsequently
+#'   subtracted from every row.
+#'   Negative
 #'   values are rejected and must be explicitly recoded if they should
 #'   represent the zero group. The shift for
 #'   a zero-handled variable is set to 0. This option can be used for
 #'   variables in `cont_vars` and for adjustment variables. In the formula
 #'   interface, this can also be specified with `fp(variable, zero = TRUE)`.
 #'   A zero-handled variable in `cont_vars` must retain at least one positive
-#'   observation after applying `subset`.
+#'   observation after applying `subset`. For an ACD adjustment variable, at
+#'   least two distinct positive values are required and `A(0) = 0`.
 #'
 #' @param catzero_vars An optional character vector naming nonnegative adjustment variables
 #'   that use both a positive-part FP function and a binary structural-zero
@@ -547,9 +583,9 @@
 #'   `min_saz_prop`). Negative values are rejected and require
 #'   explicit recoding when scientifically appropriate. Setting `spike_vars` implies both
 #'   `catzero_vars` and `zero_vars` for the same variables. Variables that fail
-#'   the component-proportion check are automatically downgraded to `catzero`
-#'   or `zero` handling. This option is disabled with a warning for variables
-#'   in `cont_vars`. In the formula interface, use
+#'   the component-proportion check are not assessed with SAZ and continue with
+#'   `catzero` or `zero` handling as applicable. This option is disabled with a
+#'   warning for variables in `cont_vars`. In the formula interface, use
 #'   `fp(variable, spike = TRUE)`.
 #'
 #' @param min_saz_prop A finite number in `(0, 0.5)` giving the
@@ -562,13 +598,13 @@
 #'   for non-Gaussian families.
 #'
 #' @param control Control settings for the underlying fit, usually from
-#'   [stats::glm.control()] or [survival::coxph.control()]. `NULL` uses the
-#'   relevant defaults. For GLMs, the same controls are used during MFP
-#'   selection and the final fit. With `fitter = "fastglm"`, `epsilon` is
-#'   mapped to `tol` and `maxit` is passed through; `trace = TRUE` is not
-#'   supported by the fastglm backend. For `family = "negbin"`, these settings
-#'   apply to the inner IRLS fit; fastglm_nb-specific outer controls retain
-#'   their defaults.
+#'   [stats::glm.control()], [survival::coxph.control()], or
+#'   [survival::survreg.control()]. `NULL` uses the relevant defaults. For GLMs,
+#'   the same controls are used during MFP selection and the final fit. With
+#'   `fitter = "fastglm"`, `epsilon` controls the convergence tolerance and
+#'   `maxit` controls the iteration limit; `trace = TRUE` is not supported. For
+#'   `family = "negbin"`, these settings apply to the regression iterations;
+#'   estimation of the dispersion parameter retains its default controls.
 #'
 #' @param winsorize A single logical value. If `TRUE`, Winsorise variables in
 #'   `cont_vars` before fitting. The default is `FALSE`.
@@ -612,22 +648,21 @@
 #' - `all_interaction_models`: a named list of fitted model objects for every
 #'   evaluated continuous variable, including interactions that were not
 #'   selected;
-#' - `adjustment_model`: the fitted [mfp2()] adjustment model. Its
-#'   preprocessing metadata are restored to the MFPI-level shifts after Stage 1,
-#'   so printing reports the shifts applied to the raw covariates and direct
-#'   `predict()` calls on this nested model correctly preprocess raw `newdata`;
+#' - `adjustment_model`: the fitted [mfp2()] adjustment model. Its printed shifts
+#'   correspond to the original covariates, and it accepts prediction data on
+#'   the original covariate scale;
 #' - `cont_var_forms`: the interaction form (`"linear"`, `"fp1"`, or `"fp2"`)
 #'   specified for each tested variable;
-#' - `group_level_map`: the mapping between internal group codes and the
-#'   original group labels;
-#' - `winsorize_limits`: the Winsorisation limits on the processed scale used
-#'   for fitting, when Winsorisation was requested;
+#' - `group_level_map`: the original group label corresponding to each group
+#'   value used in the fitted models;
+#' - `winsorize_limits`: the Winsorisation limits used after the fitted shift
+#'   and scale, when Winsorisation was requested;
 #' - `criterion`: the selection criterion used;
 #' - `p_adjust_method`: the multiplicity adjustment method applied;
 #' - `call`: the matched model call.
 #'
-#' Additional components are stored for prediction, plotting, and summaries and
-#' should not be treated as a stable public interface.
+#' Only documented components form part of the stable public interface. Other
+#' components may change between package versions.
 #'
 #' @references
 #' Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
@@ -787,6 +822,7 @@ mfpi.default <- function(
     digits            = 3,
     term_groups       = NULL,
     fitter            = c("base", "fastglm"),
+    id                = NULL,
     ...
 ) {
   # mfpi.default() validates and normalizes every argument, resolves the
@@ -1121,7 +1157,7 @@ mfpi.default <- function(
     )
   }
 
-  # Step 4: Validate the response, Cox auxiliary inputs, weights, and offset --
+  # Step 4: Validate the response, survival inputs, weights, and offset --------
   # Validate response y --------------------------------------------------------
   validate_family_response(
     y             = y,
@@ -1129,8 +1165,8 @@ mfpi.default <- function(
     nobs          = nobs
   )
 
-  # Validate Cox-specific auxiliary inputs ------------------------------------
-  if (family_string == "cox" && !is.null(strata)) {
+  # Validate survival-model stratification ------------------------------------
+  if (mfp2_family_is_survival(family_string) && !is.null(strata)) {
     strata_len <- if (is.vector(strata) || is.factor(strata)) {
       length(strata)
     } else {
@@ -1150,6 +1186,19 @@ mfpi.default <- function(
     if (anyNA(strata)) {
       stop(
         "! `strata` must not contain missing values.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!is.null(id)) {
+    if (family_string != "finegray") {
+      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(id) || length(id) != nobs || anyNA(id) ||
+        is.matrix(id) || !is.null(dim(id))) {
+      stop(
+        "! `id` must be an atomic vector or factor with one non-missing value per observation.",
         call. = FALSE
       )
     }
@@ -1509,10 +1558,13 @@ mfpi.default <- function(
   # Missing internal formula sentinels are resolved after the SAZ cascade and
   # after shifting, respectively.
 
-  if (is.null(control)) {
-    control <- if (family_string == "cox") survival::coxph.control() else
-      stats::glm.control()
-  }
+  # Resolve and validate fitting controls once for both MFPI stages and every
+  # nested MFP candidate fit.
+  control <- normalize_fit_control(
+    control = control,
+    family_string = family_string,
+    fitter = fitter
+  )
 
   # Retain valid raw-column or conceptual-term entries. preprocess_data()
   # converts these to the term names expected by the grouped MFP core.
@@ -1799,18 +1851,20 @@ mfpi.default <- function(
   # Scale the x based on the estimated scaling factors
   x <- sweep(x, 2L, scale, "/")
 
-  # Step 14: Prepare Cox stratification, apply `subset`, and re-validate
+  # Step 14: Prepare survival stratification, apply `subset`, and re-validate
   # group_var against the (possibly reduced) subsetted data -------------------
-  # Prepare Cox stratification ------------------------------------------------
+  # Prepare survival stratification -------------------------------------------
   # Normalize all strata to one factor before MFP/MFPI candidate fitting.
   # Multiple columns are combined as in survival::coxph(), while a single
   # vector is treated as categorical labels regardless of storage mode.
   # Integer conversion belongs only at the survival::coxph.fit() boundary.
   strata_keep <- strata
 
-  if (family_string == "cox" && !is.null(strata_keep)) {
+  if (mfp2_family_is_survival(family_string) && !is.null(strata_keep)) {
     strata_keep <- normalize_cox_strata(strata_keep, nobs = nobs)
   }
+
+  id_keep <- id
 
   # Apply subset ---------------------------------------------------------------
   # This is the direct matrix path. Keep the user-supplied numeric columns, but
@@ -1825,7 +1879,7 @@ mfpi.default <- function(
     )
     x       <- x[subset, , drop = FALSE]
 
-    y <- if (family_string == "cox" || is.matrix(y)) {
+    y <- if (is.matrix(y)) {
       y[subset, , drop = FALSE]
     } else {
       y[subset]
@@ -1837,6 +1891,7 @@ mfpi.default <- function(
       # row restriction while preserving row alignment.
       strata_keep <- droplevels(strata_keep[subset])
     }
+    if (!is.null(id_keep)) id_keep <- id_keep[subset]
   }
 
   # zero_vars applies the interaction function only to x > 0. Validate this
@@ -2022,12 +2077,26 @@ mfpi.default <- function(
     }
   }
 
+  # Prepare transformed survival data once before either MFPI stage. Candidate
+  # fits then reuse the cached survreg response or Fine--Gray row expansion.
+  prepared_family <- prepare_family_for_fit(
+    family = family,
+    family_string = family_string,
+    y = y,
+    weights = weights,
+    strata = strata_keep,
+    id = id_keep,
+    offset = offset
+  )
+  family <- prepared_family$family
+  strata_keep <- prepared_family$strata
+
   # Step 16: Fit the MFPI model and attach return metadata --------------------
   # Fit the MFPI model ---------------------------------------------------------
   fit <- fit_mfpi(
     x                 = x,
     y                 = y,
-    family            = family,         # GLM object or "cox"
+    family            = family,         # resolved GLM or survival family
     family_string     = family_string,  # character string for branching
     fitter            = fitter,
     weights           = weights,
@@ -2085,7 +2154,16 @@ mfpi.default <- function(
   # matrix used for manual prediction reconstruction. It contains shifted/scaled
   # predictors and internally remapped group_var codes. Do not store or use the
   # pre-remap matrix `x` for prediction.
+  finegray_nevents <- if (identical(family_string, "finegray")) {
+    family$prepared$nevents
+  } else {
+    NULL
+  }
+
   fit$family_string  <- family_string
+  if (!identical(family_string, "negbin")) {
+    fit$family <- mfp2_strip_prepared_family(family)
+  }
   fit$zero_vars      <- zero_flag
   fit$center_type    <- center_type
   fit$cont_vars      <- cont_vars
@@ -2096,6 +2174,8 @@ mfpi.default <- function(
   # print.mfpi() can display it alongside n.
   if (identical(family_string, "cox")) {
     fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)
+  } else if (identical(family_string, "finegray")) {
+    fit$nevents <- finegray_nevents
   }
 
   class(fit) <- "mfpi"
@@ -2104,9 +2184,8 @@ mfpi.default <- function(
 
 #' @describeIn mfpi Formula interface for \code{mfpi()}.
 #'
-#' Constructs a model frame from the supplied formula and data, processes
-#' predictor variables (including any \code{fp()} or \code{fp2()} terms), and fits an MFPI
-#' model by calling \code{mfpi.default()} internally.
+#' Fits an MFPI model from the supplied formula and data, including any
+#' variable-specific options given in \code{fp()} or \code{fp2()} terms.
 #'
 #' @section Argument precedence (fp()/fp2() vs global):
 #' Arguments supplied inside \code{fp()} or \code{fp2()} are treated as
@@ -2114,10 +2193,10 @@ mfpi.default <- function(
 #' arguments passed to \code{mfpi.formula()}. Variables not wrapped in
 #' \code{fp()} or \code{fp2()} use the global argument values. For
 #' \code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, and
-#' \code{force_max_fp_vars}, global settings are combined with the
-#' corresponding \code{fp()} or \code{fp2()} flags and then checked by
-#' \code{mfpi.default()} for unsupported combinations. Cardinality-based
-#' adjustments to \code{df} may still be applied internally.
+#' \code{force_max_fp_vars}, global settings are combined with the corresponding
+#' options in \code{fp()} or \code{fp2()}. Unsupported combinations produce a
+#' warning or error as described for the relevant argument. Variables with few
+#' distinct values may still be restricted to a simpler form.
 #'
 #' @section Parameters restricted to scalar values in the formula interface:
 #' The following \code{mfpi.default()} parameters must be supplied as scalar
@@ -2125,7 +2204,7 @@ mfpi.default <- function(
 #' supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 #' \code{flex}, \code{p_interact}, \code{min_improvement},
 #' \code{include_group_var}, \code{show_models}, \code{cycles},
-#' \code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
+#' \code{criterion}, \code{keep}, \code{xorder}, \code{ties},
 #' \code{nocenter}, \code{min_saz_prop}, \code{ftest},
 #' \code{control}, \code{verbose}, \code{digits}.
 #'
@@ -2134,25 +2213,25 @@ mfpi.default <- function(
 #' raises an error); use \code{fp(variable, acd = TRUE)} or
 #' \code{fp2(variable, acd = TRUE)} in the formula instead.
 #'
+#' The \code{strata} argument is likewise unavailable in
+#' \code{mfpi.formula()}; include \code{strata(...)} in the formula. The matrix
+#' interface continues to accept \code{strata} directly.
+#'
 #' @section Categorical terms in the formula interface:
 #' Unordered and ordered factor predictors other than \code{group_var} are
-#' expanded with the contrasts recorded by \code{model.matrix()}. All columns
-#' generated by one factor are stored as one conceptual adjustment term and are
-#' selected jointly. Do not wrap a categorical predictor in \code{fp()} or
-#' \code{fp2()}; those wrappers are for continuous variables. The factor term
-#' may be named in \code{keep}, but it cannot be named in \code{cont_vars}.
-#' The fitted terms, contrasts, levels, and term-to-column mapping are stored so
-#' \code{predict.mfpi()} can accept raw factor-valued \code{newdata}.
+#' treated as complete adjustment terms and selected jointly. Do not wrap a
+#' categorical predictor in \code{fp()} or \code{fp2()}; those wrappers are for
+#' continuous variables. The factor term may be named in \code{keep}, but it
+#' cannot be named in \code{cont_vars}. For prediction, supply factors in their
+#' original form; their fitted levels and contrasts are reused automatically.
 #' @section Strata and offset in the formula:
 #' For Cox models, \code{strata()} terms may be included directly in the formula,
 #' for example \code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata
-#' variables are combined using \code{survival::strata(shortlabel = TRUE)}. If
-#' \code{strata} is also supplied as an argument, the formula value is used and
-#' a warning is issued. Similarly, an \code{offset()} term in the
-#' formula takes precedence over the \code{offset} argument. Formula-offset
-#' metadata are stored on the fitted object so \code{predict.mfpi()} can
-#' reconstruct the offset from raw prediction \code{newdata}; if the needed raw
-#' offset variables are absent, supply \code{newoffset} to \code{predict()}.
+#' variables are supported. The direct \code{strata} argument is not available
+#' in \code{mfpi.formula()}. An \code{offset()} term in the formula takes
+#' precedence over the \code{offset} argument. For prediction,
+#' include the variables needed to evaluate a formula offset in \code{newdata};
+#' if they are unavailable, supply \code{newoffset} to \code{predict()}.
 #'
 #' @method mfpi formula
 #' @export
@@ -2183,7 +2262,6 @@ mfpi.formula <- function(formula,
                          xorder            = c("ascending", "descending", "original"),
                          powers            = NULL,
                          ties              = c("breslow", "efron"),
-                         strata            = NULL,
                          nocenter          = c(-1, 0, 1),
                          zero_vars         = NULL,
                          catzero_vars      = NULL,
@@ -2198,6 +2276,7 @@ mfpi.formula <- function(formula,
                          verbose           = TRUE,
                          digits            = 3,
                          fitter            = c("base", "fastglm"),
+                         id                = NULL,
                          ...) {
 
   # mfpi.formula() translates a formula + data.frame specification into the
@@ -2206,8 +2285,23 @@ mfpi.formula <- function(formula,
   # then calls mfpi.default() to perform validation, preprocessing, and fitting.
   call <- match.call()
 
+  # Capture these promises before validation can force them. They are resolved
+  # exactly once in the formula data mask below, matching the standard lookup
+  # behavior of model-frame-based formula methods.
+  weights_expr <- substitute(weights)
+  offset_expr <- substitute(offset)
+  subset_expr <- substitute(subset)
+  id_expr <- substitute(id)
+
   # Step 1: Resolve multiple-choice arguments, family, and reject unused `...`
   dots <- match.call(expand.dots = FALSE)$...
+  if ("strata" %in% names(dots)) {
+    stop(
+      "`strata` is not supported as an argument to `mfpi.formula()`. ",
+      "Include `strata(...)` in the formula instead.",
+      call. = FALSE
+    )
+  }
   mfpi_check_unused_dots(
     dots = dots,
     context = "`mfpi.formula()`"
@@ -2227,10 +2321,9 @@ mfpi.formula <- function(formula,
   )
   family_string <- family_info$family_string
 
-  # Unused/misspelled arguments (including acd_vars, which is not supported
-  # in the formula interface - see fp(variable, acd = TRUE) instead) are
-  # already rejected above by mfpi_check_unused_dots(), which reports the
-  # offending argument name(s) directly.
+  # Unused or misspelled arguments are already rejected above by
+  # mfpi_check_unused_dots(), which reports the offending name(s) directly.
+  # `strata` receives the more specific formula-syntax guidance above.
 
   # Step 2: Validate the formula-specific inputs (data, formula) --------------
   # ---------------------------------------------------------------------------
@@ -2403,19 +2496,43 @@ mfpi.formula <- function(formula,
     }
   }
 
-  # Evaluate `subset` once, then validate observation-level inputs.
+  # Evaluate formula observation arguments once, then validate them.
   n_data <- nrow(data)
 
   # Match standard formula-method lookup rules: data columns are searched first,
   # followed by the normalized formula environment (which inherits the user's
-  # formula environment). Rebinding `subset` to the resolved value prevents any
-  # later branch from re-evaluating an expression with side effects.
-  subset_expr <- substitute(subset)
+  # formula environment). Rebinding each argument to its resolved value prevents
+  # later branches from re-evaluating expressions with side effects.
+  weights <- eval(
+    weights_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  offset <- eval(
+    offset_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
   subset <- eval(
     subset_expr,
     envir = data,
     enclos = environment(formula_internal)
   )
+  strata <- NULL
+  id <- eval(
+    id_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
+  if (!is.null(id)) {
+    if (family_string != "finegray") {
+      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(id) || length(id) != n_data || anyNA(id) ||
+        is.matrix(id) || !is.null(dim(id))) {
+      stop("! `id` must be an atomic vector or factor with one non-missing value per row of `data`.", call. = FALSE)
+    }
+  }
 
   if (!is.null(offset)) {
     if (!is.numeric(offset) || length(offset) != n_data || anyNA(offset) ||
@@ -2495,9 +2612,9 @@ mfpi.formula <- function(formula,
     stop("! No predictors found in formula. At least one predictor is required.",
          call. = FALSE)
 
-  # Step 6: Extract strata() terms for Cox models -----------------------------
+  # Step 6: Extract strata() terms for survival models ------------------------
   # ---------------------------------------------------------------------------
-  # Handle strata terms for Cox models
+  # Handle strata terms for survival models
   # ---------------------------------------------------------------------------
   specials      <- "strata"
   terms_formula <- stats::terms(
@@ -2505,13 +2622,6 @@ mfpi.formula <- function(formula,
     specials = specials,
     data = data
   )
-  if (!is.null(strata) && is.null(attr(terms_formula, "specials")$strata)) {
-    strata_n <- if (is.vector(strata) || is.factor(strata)) length(strata) else NROW(strata)
-    if (strata_n != n_data || anyNA(strata)) {
-      stop("! `strata` must have one non-missing value or row per row of `data`.", call. = FALSE)
-    }
-  }
-
   terms_drop <- NULL
   formula_strata_terms <- NULL
   formula_strata_xlevels <- NULL
@@ -2519,12 +2629,7 @@ mfpi.formula <- function(formula,
   formula_offset_xlevels <- NULL
 
   if (!is.null(attr(terms_formula, "specials")$strata)) {
-    if (family_string == "cox") {
-      if (!is.null(call$strata))
-        warning("i strata appear in both the formula and as an argument.\n",
-                "i Formula strata are used; the argument is ignored.",
-                call. = FALSE)
-
+    if (mfp2_family_is_survival(family_string)) {
       stemp <- survival::untangle.specials(
         terms_formula,
         special = "strata",
@@ -2550,7 +2655,7 @@ mfpi.formula <- function(formula,
 
       terms_drop <- stemp$terms
     } else {
-      stop("! strata are only allowed for Cox models.\n",
+      stop("! strata are only allowed for survival models.\n",
            "i Please remove strata terms from the formula.", call. = FALSE)
     }
   }
@@ -2607,9 +2712,12 @@ mfpi.formula <- function(formula,
   # ---------------------------------------------------------------------------
   y <- stats::model.extract(mf, "response")
 
-  if (family_string != "cox" && survival::is.Surv(y))
+  if (!mfp2_family_is_survival(family_string) && survival::is.Surv(y))
     stop(sprintf(
-      "! Response is a Surv object but family = '%s'. Set family = 'cox'.",
+      paste0(
+        "! Response is a Surv object but family = '%s'. Use family = 'cox', ",
+        "survreg_family(), or finegray_family() as appropriate."
+      ),
       family_string
     ), call. = FALSE)
 
@@ -3000,14 +3108,8 @@ mfpi.formula <- function(formula,
   x <- attach_formula_preprocess_matrix(x, x_full)
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]
+    if (!is.null(id)) id <- id[fit_rows]
     if (is.null(term_offset) && !is.null(offset)) offset <- offset[fit_rows]
-    if (!is.null(strata) && is.null(attr(terms_formula, "specials")$strata)) {
-      strata <- if (is.matrix(strata) || is.data.frame(strata)) {
-        strata[fit_rows, , drop = FALSE]
-      } else {
-        strata[fit_rows]
-      }
-    }
   }
 
   # ---------------------------------------------------------------------------
@@ -3043,6 +3145,7 @@ mfpi.formula <- function(formula,
     powers            = power_list,
     ties              = ties,
     strata            = strata,
+    id                = id,
     nocenter          = nocenter,
     acd_vars          = acd_vars,
     zero_vars         = zero_vars_final,

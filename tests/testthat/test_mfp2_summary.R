@@ -22,7 +22,11 @@ test_that("Cox summary LRT preserves weights, ties, and strata", {
     prior.weights = rep(99, n),
     offset = rep(0, n),
     method = "breslow",
-    strata = factor(rep(c("A", "B"), each = n / 2L))
+    strata = factor(rep(c("A", "B"), each = n / 2L)),
+    mfp_logl = -100,
+    mfp2_control = list(marker = "original-control"),
+    # Wrapped metadata preserves an explicitly requested nocenter = NULL.
+    mfp2_nocenter = list(value = NULL)
   )
 
   classified <- list(
@@ -37,15 +41,19 @@ test_that("Cox summary LRT preserves weights, ties, and strata", {
                          weights = NULL,
                          method = NULL,
                          strata = NULL,
+                         control = NULL,
+                         nocenter = c(-1, 0, 1),
                          ...) {
       refit_calls[[length(refit_calls) + 1L]] <<- list(
         x = x,
         weights = weights,
         method = method,
-        strata = strata
+        strata = strata,
+        control = control,
+        nocenter = nocenter
       )
 
-      list(logl = if (ncol(x) == 3L) -100 else -108)
+      list(logl = -108)
     },
     .package = "mfp2"
   )
@@ -56,15 +64,18 @@ test_that("Cox summary LRT preserves weights, ties, and strata", {
     v = "x"
   )
 
-  expect_length(refit_calls, 2L)
+  # The selected-model likelihood is already stored; only the reduced model is
+  # fitted for the joint test.
+  expect_length(refit_calls, 1L)
   for (refit_call in refit_calls) {
     expect_identical(refit_call$weights, object$weights)
     expect_identical(refit_call$method, object$method)
     expect_identical(refit_call$strata, object$strata)
+    expect_identical(refit_call$control, object$mfp2_control)
+    expect_null(refit_call$nocenter)
   }
 
-  expect_identical(colnames(refit_calls[[1L]]$x), c("x.1", "x.2", "z.1"))
-  expect_identical(colnames(refit_calls[[2L]]$x), "z.1")
+  expect_identical(colnames(refit_calls[[1L]]$x), "z.1")
   expect_equal(result$lr, 16)
   expect_equal(result$df, 2)
   expect_equal(result$p, stats::pchisq(16, df = 2, lower.tail = FALSE))

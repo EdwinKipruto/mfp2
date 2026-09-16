@@ -236,8 +236,8 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
   dat$sex <- factor(dat$sex)
 
   fit <- mfpi(
-    survival::Surv(time, status) ~ age + sex,
-    data = dat,
+    x = dat[, c("sex", "age"), drop = FALSE],
+    y = survival::Surv(dat$time, dat$status),
     family = "cox",
     group_var = "sex",
     cont_vars = "age",
@@ -251,7 +251,8 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
     p_interact = 1,
     verbose = FALSE
   )
-  nd <- dat[1:8, c("age", "sex", "inst"), drop = FALSE]
+  nd <- dat[1:8, c("sex", "age"), drop = FALSE]
+  nd_strata <- dat$inst[1:8]
 
   expect_error(
     predict(fit, newdata = nd, terms = "age", model = "all", type = "link"),
@@ -260,11 +261,11 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
   expect_error(
     predict(
       fit, newdata = nd, terms = "age", model = "all", type = "link",
-      strata = nd$inst[-1]
+      strata = nd_strata[-1]
     ),
     "one value or row per prediction row"
   )
-  bad_strata <- nd$inst
+  bad_strata <- nd_strata
   bad_strata[1] <- NA
   expect_error(
     predict(
@@ -273,7 +274,7 @@ test_that("17.1.12 MFPI Cox strata validation rejects missing, short, and NA str
     ),
     "must not contain missing values"
   )
-  bad_strata_inf <- as.numeric(nd$inst)
+  bad_strata_inf <- as.numeric(nd_strata)
   bad_strata_inf[1] <- Inf
   expect_error(
     predict(
@@ -795,33 +796,19 @@ test_that("predict.mfpi training reconstruction preserves fitted Cox strata", {
   expect_equal(got$predictions$fit, as.numeric(direct$fit), tolerance = 1e-8)
   expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
 
-  # Reconstructing the training rows solely to resupply their fitted strata
-  # must also recover the original, uncentred offset scale. The resulting
-  # prediction should therefore equal direct prediction on the stored fit.
+  # Formula-stratified fits reuse their stored strata when newdata is NULL and
+  # do not accept a separate replacement strata argument.
   fitted_strata <- stored$strata
-  direct_training <- stats::predict(
-    stored,
-    type = "lp",
-    se.fit = TRUE,
-    reference = "zero"
-  )
-  got_strata_only <- predict(
-    fit,
-    terms = "age",
-    model = "all",
-    type = "lp",
-    strata = fitted_strata,
-    cox_reference = "zero",
-    se.fit = TRUE
-  )
-  expect_equal(
-    got_strata_only$predictions$fit,
-    as.numeric(direct_training$fit),
-    tolerance = 1e-8
-  )
-  expect_equal(
-    got_strata_only$predictions$se.fit,
-    as.numeric(direct_training$se.fit),
-    tolerance = 1e-8
+  expect_error(
+    predict(
+      fit,
+      terms = "age",
+      model = "all",
+      type = "lp",
+      strata = fitted_strata,
+      cox_reference = "zero",
+      se.fit = TRUE
+    ),
+    "formula-level strata.*original strata variable"
   )
 })

@@ -55,14 +55,16 @@ confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
 intervals.}
 
 \item{show_titles}{Logical scalar. If \code{TRUE}, add titles describing the
-selected FP or ACD representation and any retained spike-at-zero component.}
+selected FP or ACD representation, positive-part handling, and any retained
+zero-indicator or spike-at-zero component.}
 
 \item{color_points}{Colour used for residual points.}
 
-\item{color_line}{Colour used for fitted curves and for binary fitted
-points and confidence intervals.}
+\item{color_line}{Colour used for fitted curves, binary fitted points, and
+the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
 
-\item{color_line_spike}{Colour used for the structural-zero point.}
+\item{color_line_spike}{Colour used for the zero-component point of a
+\code{catzero} term or a term assessed with spike-at-zero selection.}
 
 \item{color_fill}{Fill colour used for confidence ribbons.}
 
@@ -70,7 +72,8 @@ points and confidence intervals.}
 
 \item{size_points}{Point size used for residual observations.}
 
-\item{size_points_spike}{Point size used for structural-zero observations.}
+\item{size_points_spike}{Point size used for fitted values shown at exactly
+zero for zero-handled covariates.}
 
 \item{linetype}{Line type used for fitted curves.}
 
@@ -103,12 +106,23 @@ residuals for Cox regression.
 
 Binary predictors are displayed at their two fitted levels as point estimates
 with vertical confidence intervals. Only those two levels are labelled on the
-x-axis; no interpolating line or confidence ribbon is drawn. For a spike-at-zero
-term retaining only the zero indicator, the internal 0/1 coding is replaced by
-semantic labels such as \code{x = 0} and \code{x > 0}.
+x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero
+term retaining only the zero indicator is labelled with categories such as
+\code{x = 0} and \code{x > 0} rather than numeric values.
 
-Spike-at-zero covariates are displayed according to the representation
-retained by the final model:
+For a covariate fitted with \code{zero = TRUE} alone, the FP or ACD function
+is evaluated only for \code{x > 0}; its uncentered basis is set to zero at
+\code{x = 0}. If centering is enabled, the complete zero-padded basis is
+centered and the same fitted-sample constant is subtracted from every row,
+including the exact-zero rows. The positive-part curve and confidence ribbon
+are drawn only for \code{x > 0}, while the fitted value at exactly zero is
+shown as a point in the ordinary curve colour. This point comes from the same
+fitted continuous term and does not represent a separately estimated zero
+effect.
+
+A \code{catzero} term additionally estimates a zero indicator. Spike-at-zero
+covariates are displayed according to the representation retained by the
+final model:
 \itemize{
 \item both components: the positive-value FP or ACD function and the
 structural-zero indicator;
@@ -118,10 +132,10 @@ zero indicator;
 continuous function.
 }
 
-For spike-at-zero terms with a continuous component, the curve is drawn only
-for \code{x > 0}. A fitted value at \code{x = 0}, when available, is shown as
-a separate point with a vertical confidence interval because an FP or ACD
-function is not evaluated at zero.
+For \code{catzero} and spike-at-zero terms with a continuous component, the
+curve is likewise drawn only for \code{x > 0}. A fitted value at
+\code{x = 0}, when available, is shown as a separate point with a vertical
+confidence interval and uses \code{color_line_spike}.
 }
 \examples{
 data("prostate")

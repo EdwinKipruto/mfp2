@@ -115,7 +115,9 @@ transformation alters the correlation structure among predictors. In
 
 If \code{zero = TRUE}, \code{x} must be nonnegative. Exact-zero values are not shifted
 and their transformed components remain zero; transformation is applied only
-to values with \code{x > 0}. For performance, this low-level helper assumes that
+to values with \code{x > 0}. Structural-zero membership is determined before the
+power transformation, so a positive value that transforms to zero is still
+part of the positive component. For performance, this low-level helper assumes that
 callers have already enforced the nonnegative-input contract. The public
 fitting and prediction interfaces perform that validation once, before any
 transformation work.

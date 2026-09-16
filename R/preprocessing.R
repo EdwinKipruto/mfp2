@@ -172,9 +172,9 @@ apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
 #' Therefore this helper validates the actual estimability of the supplied
 #' columns rather than trying to infer their origin from column names.
 #'
-#' For Cox models, `intercept` should be `FALSE` because Cox partial-likelihood
-#' models do not include an intercept. For ordinary Gaussian, binomial, poisson,
-#' and other GLM-style fits, `intercept` should usually be `TRUE`.
+#' For proportional-hazards models, `intercept` should be `FALSE` because the
+#' partial likelihood has no intercept. For likelihood GLMs and `survreg`
+#' location-scale models, `intercept` should usually be `TRUE`.
 #'
 #' @param x A numeric design matrix, or an object coercible to a matrix. Columns
 #'   are candidate variables supplied to the default interface.

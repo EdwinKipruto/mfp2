@@ -1,12 +1,31 @@
 # Shared prediction helpers ---------------------------------------------------
 
+#' Identify Formula-Level Survival Strata Stored on a Fitted Object
+#'
+#' Formula-level strata must be reconstructed from their original variables in
+#' prediction data. This helper distinguishes those terms from strata supplied
+#' through a matrix interface or through the deprecated external
+#' `mfp2.formula(strata = ...)` compatibility path.
+#'
+#' @param object A fitted `mfp2` or `mfpi` object.
+#'
+#' @return A single logical value.
+#'
+#' @keywords internal
+#' @noRd
+prediction_has_formula_strata <- function(object) {
+  isTRUE(object$formula_interface) &&
+    !is.null(object$formula_strata_terms)
+}
+
 #' Normalize Linear-Predictor Type Names Across Model Families
 #'
 #' GLM and Cox prediction methods use different names for the same
 #' linear-predictor scale: `predict.glm()` uses `"link"`, whereas
-#' `predict.coxph()` uses `"lp"`. This helper accepts either exact spelling and
-#' returns the family-native name. Response-scale names are not translated,
-#' because a GLM response and a Cox risk score are not generally equivalent.
+#' `predict.coxph()` uses `"lp"`. `predict.survreg()` additionally accepts
+#' `"linear"`. This helper accepts the applicable aliases and returns the
+#' family-native name. Response-scale names are not translated, because a GLM
+#' response and a Cox risk score are not generally equivalent.
 #'
 #' @param type Character scalar.
 #' @param family_string Character scalar identifying the fitted family.
@@ -27,15 +46,59 @@ normalize_prediction_type <- function(type, family_string) {
   type <- unname(as.character(type)[1L])
   family_string <- unname(as.character(family_string)[1L])
 
-  if (identical(family_string, "cox") && identical(type, "link")) {
+  if (mfp2_family_is_ph(family_string) && identical(type, "link")) {
     return("lp")
   }
 
-  if (!identical(family_string, "cox") && identical(type, "lp")) {
+  if (identical(family_string, "survreg") && identical(type, "linear")) {
+    return("link")
+  }
+
+  if (!mfp2_family_is_ph(family_string) && identical(type, "lp")) {
     return("link")
   }
 
   type
+}
+
+
+# Collapse repeated finegray() pseudo-observation predictions back to one value
+# per original input row. Linear predictors and risk scores are constant within
+# each pseudo-row block because all copies share the same covariates and offset.
+collapse_finegray_training_prediction <- function(prediction, row_map,
+                                                  n_original = NULL) {
+  if (is.null(row_map)) return(prediction)
+  n_expanded <- length(row_map)
+
+  if (is.null(n_original)) {
+    n_original <- if (n_expanded > 0L) max(row_map) else 0L
+  }
+  if (!is.numeric(n_original) || length(n_original) != 1L ||
+      is.na(n_original) || !is.finite(n_original) || n_original < 0L) {
+    stop("Internal error: invalid original Fine--Gray row count.", call. = FALSE)
+  }
+  n_original <- as.integer(n_original)
+
+  keep <- !duplicated(row_map)
+  original_rows <- row_map[keep]
+
+  collapse_component <- function(value) {
+    if (!is.atomic(value) || length(value) != n_expanded) return(value)
+
+    # finegray() groups output by censoring stratum and may omit a stratum with
+    # no target events. Restore original input-row order and retain an explicit
+    # NA for any row that did not contribute to the weighted Cox fit.
+    out <- rep(NA_real_, n_original)
+    out[original_rows] <- as.numeric(value[keep])
+    out
+  }
+
+  if (is.list(prediction)) {
+    prediction$fit <- collapse_component(prediction$fit)
+    prediction$se.fit <- collapse_component(prediction$se.fit)
+    return(prediction)
+  }
+  collapse_component(prediction)
 }
 
 
@@ -113,6 +176,9 @@ normalize_cox_prediction_strata <- function(strata, fit_obj, nobs) {
   }
   if (is.null(fitted_levels) && is.factor(fit_obj$strata)) {
     fitted_levels <- levels(fit_obj$strata)
+  }
+  if (is.null(fitted_levels) && !is.null(fit_obj$mfp2_strata_levels)) {
+    fitted_levels <- fit_obj$mfp2_strata_levels
   }
 
   if (is.null(fitted_levels) || length(fitted_levels) < 1L) {
@@ -417,7 +483,7 @@ attach_cox_prediction_response <- function(fit_obj, newdata, response) {
 #' @keywords internal
 #' @noRd
 prediction_fit_has_strata <- function(fit_obj) {
-  if (!inherits(fit_obj, "coxph")) {
+  if (!inherits(fit_obj, c("coxph", "survreg"))) {
     return(FALSE)
   }
 

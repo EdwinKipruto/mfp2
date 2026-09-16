@@ -20,11 +20,11 @@
 \item{formulas}{Logical. If \code{TRUE}, append the fitted-function formula
 for each nonlinear variable. Default \code{FALSE}.}
 
-\item{basis}{Logical. If \code{TRUE}, append a table of raw basis
-coefficients for the nonlinear terms. Default \code{FALSE}.}
+\item{basis}{Logical. If \code{TRUE}, append a table of the individual fitted
+basis coefficients for nonlinear terms. Default \code{FALSE}.}
 
 \item{raw}{Logical. If \code{TRUE}, bypass the structured summary and return
-the raw \code{\link[stats:summary.glm]{stats::summary.glm()}} or \code{\link[survival:summary.coxph]{survival::summary.coxph()}} object, with
+the raw model-specific summary object, with
 the fitting call replaced by the original \code{\link[=mfp2]{mfp2()}} call. Default
 \code{FALSE}.}
 
@@ -49,7 +49,7 @@ underlying summary object.
 }
 \description{
 Produces a structured, MFP-aware summary of a fitted \code{\link[=mfp2]{mfp2()}} model. Unlike
-the raw \code{\link[stats:summary.glm]{stats::summary.glm()}} or \code{\link[survival:summary.coxph]{survival::summary.coxph()}} output, this
+the raw model-specific summary output, this
 method separates interpretable linear terms from fractional-polynomial (FP)
 and other nonlinear terms, whose individual coefficients are curve
 parameters rather than per-unit effect sizes.
@@ -61,18 +61,17 @@ The summary is organised into the following sections:
 functional form for each variable.
 \item \strong{Linear Terms}: variables entering the model as a single
 linear term (including binary-only spike variables and factor levels),
-with the coefficient, standard error, test statistic, p-value, and --
-for non-Gaussian families -- the exponentiated coefficient and its
-confidence interval.
+with the coefficient, standard error, test statistic, p-value, and,
+when the fitted link has a standard multiplicative interpretation, the
+exponentiated coefficient and its confidence interval.
 \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 FP2, ACD, or spike/catzero compound form. Each row reports a joint
 likelihood-ratio test (LRT) of all of that variable's terms, using the
-selection-adjusted degrees of freedom stored in \code{fp_terms}. The
-LRT compares the final MFP model with the model obtained by dropping
-that variable's columns while holding all other functional forms fixed.
+package's selection-adjusted degrees of freedom. The LRT compares the
+final MFP model with an otherwise unchanged model that omits the variable.
 \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
-or minus twice the partial log-likelihood for Cox models, with model
-degrees of freedom.
+or minus twice the fitted likelihood for survival models (partial
+likelihood for Cox and Fine--Gray), with model degrees of freedom.
 }
 
 The joint LRT is a diagnostic: the variable was selected by the MFP
@@ -83,29 +82,20 @@ rather than treating the powers as fixed in advance.
 
 Coefficients for nonlinear terms are omitted from the default output. Set
 \code{formulas = TRUE} to append the fitted-function formulas, or
-\code{basis = TRUE} to append the raw basis coefficients. For an active
-ACD component, either option also prints the stored definition of
-\eqn{A(x)}, including its internal training scale. Set
-\code{raw = TRUE} to obtain the underlying \code{\link[stats:summary.glm]{stats::summary.glm()}} or
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}} object instead.
+\code{basis = TRUE} to append the individual fitted basis coefficients. For
+an active ACD component, either option also prints the fitted definition of
+\eqn{A(x)}, including the scale used during fitting. Set
+\code{raw = TRUE} to obtain the underlying model-specific summary object
+instead.
 }
 \section{Coefficient statistics}{
 
-The linear-terms table obtains its estimate, standard error, test statistic,
-and p-value from the coefficient matrix returned by the underlying summary
-method. Columns are resolved using exact, documented GLM and Cox labels; no
-regular-expression or partial-name matching is used. For robust Cox fits,
-\code{"robust se"} takes precedence over \code{"se(coef)"} so the displayed standard
-error agrees with the summary's robust test statistic and p-value.
-Recognized GLM labels include \code{"Estimate"}, \code{"Std. Error"}, \code{"z value"} or
-\code{"t value"}, and \code{"Pr(>|z|)"} or \code{"Pr(>|t|)"}. Recognized Cox labels include
-\code{"coef"}, \code{"se(coef)"} or \code{"robust se"}, \code{"z"}, and \code{"Pr(>|z|)"}.
-
-If a future or third-party summary method uses unrecognized or ambiguous
-labels, the raw matrix is not indexed with a missing column position.
-Instead, coefficient statistics are reconstructed from the fitted
-coefficients and \code{\link[stats:vcov]{stats::vcov()}}. This prevents an unfamiliar header from
-silently producing an all-missing column in \code{linear_terms}.
+The linear-terms table reports the coefficient statistics from the applicable
+GLM, Cox, or \code{survreg} summary. For a robust Cox fit, it uses the robust
+standard error so that the estimate, test statistic, and p-value remain
+consistent. When these statistics cannot be read directly from a compatible
+model summary, they are calculated from the fitted coefficients and
+\code{\link[stats:vcov]{stats::vcov()}} when possible.
 }
 
 \examples{
@@ -130,5 +120,5 @@ fit_summary$raw_summary$coefficients
 }
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=print.mfp2]{print.mfp2()}}, \code{\link[stats:summary.glm]{stats::summary.glm()}},
-\code{\link[survival:summary.coxph]{survival::summary.coxph()}}
+\code{\link[survival:summary.coxph]{survival::summary.coxph()}}, \code{\link[survival:summary.survreg]{survival::summary.survreg()}}
 }

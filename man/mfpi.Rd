@@ -53,6 +53,7 @@ mfpi(x, ...)
   digits = 3,
   term_groups = NULL,
   fitter = c("base", "fastglm"),
+  id = NULL,
   ...
 )
 
@@ -84,7 +85,6 @@ mfpi(x, ...)
   xorder = c("ascending", "descending", "original"),
   powers = NULL,
   ties = c("breslow", "efron"),
-  strata = NULL,
   nocenter = c(-1, 0, 1),
   zero_vars = NULL,
   catzero_vars = NULL,
@@ -99,23 +99,29 @@ mfpi(x, ...)
   verbose = TRUE,
   digits = 3,
   fitter = c("base", "fastglm"),
+  id = NULL,
   ...
 )
 }
 \arguments{
 \item{x}{For \code{mfpi.default()}, a numeric matrix or data frame containing the
 predictors. Column names must be unique, non-missing, non-empty, and must
-not contain backticks (\verb{); spaces, hyphens, and other non-syntactic names are supported. Predictor values must not be missing or non-finite. Do not add an intercept column. If }x\verb{is a data frame, only}group_var` can be
+not contain the backtick character; spaces, hyphens, and other non-syntactic names
+are supported. Predictor values must not be missing or non-finite. Do not
+add an intercept column. If \code{x} is a data frame, only \code{group_var} can be
 categorical; all other columns must be numeric.}
 
 \item{...}{Additional arguments are not currently supported and produce an
 error.}
 
 \item{y}{For \code{mfpi.default()}, the response. Supply a finite numeric vector
-for Gaussian models, non-negative counts for Poisson models, non-negative
-integer counts for negative-binomial models, a valid binomial response for
-binomial models, or a right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox models. It
-must have the same number of observations as \code{x}.}
+for Gaussian models, a strictly positive response for Gamma or inverse-
+Gaussian models, non-negative integer counts for Poisson and
+negative-binomial models, a valid binomial response for binomial models
+(with integer successes/failures for the grouped two-column form), a
+right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox, a
+non-counting \code{Surv} response for \code{survreg}, or a multi-state \code{Surv}
+response for Fine--Gray. It must have the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical grouping
 variable. It must have at least two observed groups and must not appear in
@@ -177,11 +183,15 @@ default is \code{FALSE}.}
 observation. All weights must be strictly positive; zero and negative
 weights are not supported. This restriction keeps likelihood-based model
 comparisons well-defined across all supported families. The weights are
-used in both the adjustment and interaction models.}
+used in both the adjustment and interaction models. In the formula
+interface, an expression is evaluated first in \code{data} and then in the
+formula environment.}
 
 \item{offset}{An optional finite numeric vector with one value per
 observation, added to the linear predictor in both fitting stages. A formula
-\code{offset(...)} term takes precedence over this argument.}
+expression is evaluated first in \code{data} and then in the formula
+environment. A formula \code{offset(...)} term takes precedence over this
+argument.}
 
 \item{cycles}{A positive integer giving the maximum number of MFP fitting
 cycles. The default is 10.}
@@ -195,8 +205,8 @@ scales, while scales for unspecified columns are estimated automatically.
 Unnamed multi-value vectors are not accepted. \code{NULL} estimates every scale
 automatically and \code{scale = 1} disables scaling globally. Binary predictors,
 including factor dummy columns, are always assigned scale \code{1}, even when
-another value is supplied. The MFPI grouping column remains unscaled under the
-existing categorical-group handling. In \code{mfpi.formula()}, the top-level
+another value is supplied. The MFPI grouping variable is also always
+unscaled. In \code{mfpi.formula()}, the top-level
 value is a scalar global default; use \code{fp()} or \code{fp2()} for
 variable-specific values.}
 
@@ -245,11 +255,12 @@ indices selecting observations for fitting. In the formula interface, an
 expression using columns of \code{data} is also accepted. At least five
 observations and two groups must remain.}
 
-\item{family}{The model family. Use \code{"gaussian"}, \code{"binomial"},
-\code{"poisson"}, \code{"negbin"}, or \code{"cox"}; a GLM family function; or a GLM
-family object. Custom GLM links are supported through family objects.
-Negative binomial models require \code{family = "negbin"} and
-\code{fitter = "fastglm"}. Cox models require \code{family = "cox"}.}
+\item{family}{The model family. Use a likelihood family implemented by
+\code{\link[stats:glm]{stats::glm()}} (\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, or
+\code{"inverse.gaussian"}) as a name, function, or family object. Quasi
+families are excluded because selection requires a likelihood. Use
+\code{"negbin"} with \code{fitter = "fastglm"}, \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
+\code{\link[=finegray_family]{finegray_family()}} for the corresponding survival model.}
 
 \item{criterion}{The selection criterion used for both the MFP adjustment
 model and the interaction comparisons: \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
@@ -311,25 +322,27 @@ uses \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where zero represents the
 natural logarithm. These candidates are used when FP powers are selected
 for both adjustment and interaction functions.}
 
-\item{ties}{The method for handling tied event times in Cox models. Supported
+\item{ties}{The method for handling tied event times in Cox and Fine--Gray models. Supported
 values are \code{"breslow"} (default) and \code{"efron"}. \code{"exact"} is not supported
 because MFPI relies on MFP-based Cox candidate fits that do not implement
-the exact partial likelihood. The argument otherwise has no effect for
-non-Cox families.}
+the exact partial likelihood. The argument has no effect for other families.}
 
-\item{strata}{Optional Cox strata with one value or row per observation. A
+\item{strata}{Optional survival-model strata for \code{mfpi.default()}. For Cox
+they define baseline hazards, for \code{survreg} scale parameters, and for
+Fine--Gray censoring distributions. A
 vector or factor supplies one categorical stratum label per observation;
 character, numeric, integer, and logical values are accepted. A matrix or
 data frame may supply multiple stratification variables, one per column,
 which are combined before Cox fitting. A \code{\link[survival:strata]{survival::strata()}} object is
-also accepted. Formula \code{strata(...)} terms take precedence over this argument.}
+also accepted. In \code{mfpi.formula()}, this argument is unavailable; include
+\code{strata(...)} in the formula instead.}
 
-\item{nocenter}{Numeric set of values used to identify Cox design-matrix
-columns that should not be internally recentered. A column is left
+\item{nocenter}{Numeric set of values used to identify Cox/Fine--Gray predictor
+columns that should be left uncentered. A column is left
 uncentered when all of its values are contained in \code{nocenter}. The default
 \code{c(-1, 0, 1)} matches \code{\link[survival:coxph]{survival::coxph()}} and typically leaves indicator
 and dummy columns uncentered. Set \code{NULL} to allow all eligible columns to
-be recentered. It is used only for Cox models.}
+be recentered. It is used only for Cox and Fine--Gray models.}
 
 \item{acd_vars}{For \code{mfpi.default()}, an optional character vector naming
 adjustment variables that use the approximate cumulative distribution
@@ -337,19 +350,26 @@ adjustment variables that use the approximate cumulative distribution
 disabled with a warning for variables in \code{cont_vars} because it would
 conflict with the interaction-form search. In \code{mfpi.formula()}, this
 argument is not available; use \code{fp(variable, acd = TRUE)} or
-\code{fp2(variable, acd = TRUE)} in the formula instead.}
+\code{fp2(variable, acd = TRUE)} in the formula instead. If the same adjustment
+variable also has \code{zero = TRUE}, ACD is fitted and applied to its positive
+component only and its uncentered basis is zero at exact-zero rows. Any
+subsequent centering uses the complete fitted-sample column.}
 
 \item{zero_vars}{An optional character vector naming nonnegative variables
 for which exact-zero values (\code{x = 0}) are treated as structural zeros.
 The selected FP or linear function is applied only to values with \code{x > 0},
-while exact-zero values receive a separate fixed contribution. Negative
+while exact-zero rows contribute zero to the uncentered continuous basis.
+If that basis is centered, its fitted-sample mean is subsequently
+subtracted from every row.
+Negative
 values are rejected and must be explicitly recoded if they should
 represent the zero group. The shift for
 a zero-handled variable is set to 0. This option can be used for
 variables in \code{cont_vars} and for adjustment variables. In the formula
 interface, this can also be specified with \code{fp(variable, zero = TRUE)}.
 A zero-handled variable in \code{cont_vars} must retain at least one positive
-observation after applying \code{subset}.}
+observation after applying \code{subset}. For an ACD adjustment variable, at
+least two distinct positive values are required and \code{A(0) = 0}.}
 
 \item{catzero_vars}{An optional character vector naming nonnegative adjustment variables
 that use both a positive-part FP function and a binary structural-zero
@@ -367,9 +387,9 @@ enough observations in both the exact-zero and positive components (see
 \code{min_saz_prop}). Negative values are rejected and require
 explicit recoding when scientifically appropriate. Setting \code{spike_vars} implies both
 \code{catzero_vars} and \code{zero_vars} for the same variables. Variables that fail
-the component-proportion check are automatically downgraded to \code{catzero}
-or \code{zero} handling. This option is disabled with a warning for variables
-in \code{cont_vars}. In the formula interface, use
+the component-proportion check are not assessed with SAZ and continue with
+\code{catzero} or \code{zero} handling as applicable. This option is disabled with a
+warning for variables in \code{cont_vars}. In the formula interface, use
 \code{fp(variable, spike = TRUE)}.}
 
 \item{min_saz_prop}{A finite number in \verb{(0, 0.5)} giving the
@@ -382,13 +402,13 @@ adjustment and interaction steps. The default is \code{FALSE}. It is ignored
 for non-Gaussian families.}
 
 \item{control}{Control settings for the underlying fit, usually from
-\code{\link[stats:glm.control]{stats::glm.control()}} or \code{\link[survival:coxph.control]{survival::coxph.control()}}. \code{NULL} uses the
-relevant defaults. For GLMs, the same controls are used during MFP
-selection and the final fit. With \code{fitter = "fastglm"}, \code{epsilon} is
-mapped to \code{tol} and \code{maxit} is passed through; \code{trace = TRUE} is not
-supported by the fastglm backend. For \code{family = "negbin"}, these settings
-apply to the inner IRLS fit; fastglm_nb-specific outer controls retain
-their defaults.}
+\code{\link[stats:glm.control]{stats::glm.control()}}, \code{\link[survival:coxph.control]{survival::coxph.control()}}, or
+\code{\link[survival:survreg.control]{survival::survreg.control()}}. \code{NULL} uses the relevant defaults. For GLMs,
+the same controls are used during MFP selection and the final fit. With
+\code{fitter = "fastglm"}, \code{epsilon} controls the convergence tolerance and
+\code{maxit} controls the iteration limit; \code{trace = TRUE} is not supported. For
+\code{family = "negbin"}, these settings apply to the regression iterations;
+estimation of the dispersion parameter retains its default controls.}
 
 \item{winsorize}{A single logical value. If \code{TRUE}, Winsorise variables in
 \code{cont_vars} before fitting. The default is \code{FALSE}.}
@@ -416,19 +436,23 @@ used in printed interaction results. The default is 3.}
 \item{term_groups}{For \code{mfpi.default()}, an optional named list that groups
 numeric columns representing one categorical adjustment term. For example,
 \code{list(stage = c("stageII", "stageIII"))}. Each member column can belong
-to only one group. Grouped terms are fitted as fixed linear blocks: they
+to only one group. Grouped terms are fitted as fixed linear terms: they
 are not eligible for FP transformation searches and cannot be used in
 \code{cont_vars}, \code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, \code{acd_vars}, or
 \code{force_max_fp_vars}. In \code{mfpi.formula()}, factor predictors are grouped
 automatically; this argument is not needed.}
 
-\item{fitter}{Fitting backend for repeated GLM candidate fits. \code{"base"}
-(default) uses \code{\link[stats:glm.fit]{stats::glm.fit()}}. \code{"fastglm"} uses the compiled
-\code{fastglm::fastglm.default()} fitter and may be faster during FP candidate
-search. The optional \code{fastglm} package must be installed; ordinary GLM
-fits fall back to \code{"base"} with a warning if it is unavailable or a fit
-fails. Cox models are unaffected. Negative binomial models are available
-only with \code{fitter = "fastglm"} and have no base fallback.}
+\item{fitter}{Fitting method for repeated GLM candidate models. \code{"base"}
+(default) uses standard R GLM fitting. \code{"fastglm"} uses the optional
+\code{fastglm} package and may be faster during the FP search. Ordinary GLMs
+retry with \code{"base"} and issue a warning if \code{fastglm} is unavailable or a
+fit fails. Survival models are unaffected. Negative-binomial models require
+\code{fitter = "fastglm"} and cannot retry with \code{"base"}.}
+
+\item{id}{Optional Fine--Gray subject identifier. It is required only for a
+start--stop multi-state response. In formula fits, the argument is
+evaluated first in \code{data} and then in the formula environment. It is not
+used by other families.}
 
 \item{formula}{For \code{mfpi.formula()}, a model formula containing the response,
 \code{group_var}, the variables in \code{cont_vars}, and any adjustment variables.
@@ -454,23 +478,22 @@ selected interactions;
 \item \code{all_interaction_models}: a named list of fitted model objects for every
 evaluated continuous variable, including interactions that were not
 selected;
-\item \code{adjustment_model}: the fitted \code{\link[=mfp2]{mfp2()}} adjustment model. Its
-preprocessing metadata are restored to the MFPI-level shifts after Stage 1,
-so printing reports the shifts applied to the raw covariates and direct
-\code{predict()} calls on this nested model correctly preprocess raw \code{newdata};
+\item \code{adjustment_model}: the fitted \code{\link[=mfp2]{mfp2()}} adjustment model. Its printed shifts
+correspond to the original covariates, and it accepts prediction data on
+the original covariate scale;
 \item \code{cont_var_forms}: the interaction form (\code{"linear"}, \code{"fp1"}, or \code{"fp2"})
 specified for each tested variable;
-\item \code{group_level_map}: the mapping between internal group codes and the
-original group labels;
-\item \code{winsorize_limits}: the Winsorisation limits on the processed scale used
-for fitting, when Winsorisation was requested;
+\item \code{group_level_map}: the original group label corresponding to each group
+value used in the fitted models;
+\item \code{winsorize_limits}: the Winsorisation limits used after the fitted shift
+and scale, when Winsorisation was requested;
 \item \code{criterion}: the selection criterion used;
 \item \code{p_adjust_method}: the multiplicity adjustment method applied;
 \item \code{call}: the matched model call.
 }
 
-Additional components are stored for prediction, plotting, and summaries and
-should not be treated as a stable public interface.
+Only documented components form part of the stable public interface. Other
+components may change between package versions.
 }
 \description{
 Use \code{mfpi()} to investigate whether the relationship between an outcome and
@@ -478,7 +501,8 @@ one or more continuous variables differs across the levels of a categorical
 grouping variable.
 }
 \details{
-The function supports Gaussian, binomial, Poisson, negative-binomial, and Cox models. Nonlinear
+The function supports the likelihood GLMs accepted by \code{mfp2()}, negative
+binomial, Cox, parametric \code{survreg}, and Fine--Gray models. Nonlinear
 relationships can be modelled with fractional polynomials.
 
 \code{mfpi()} evaluates each variable in \code{cont_vars} separately. For every
@@ -506,9 +530,8 @@ already represented by its main effect and interaction.
 
 \item \code{mfpi(formula)}: Formula interface for \code{mfpi()}.
 
-Constructs a model frame from the supplied formula and data, processes
-predictor variables (including any \code{fp()} or \code{fp2()} terms), and fits an MFPI
-model by calling \code{mfpi.default()} internally.
+Fits an MFPI model from the supplied formula and data, including any
+variable-specific options given in \code{fp()} or \code{fp2()} terms.
 
 }}
 \section{Basic use}{
@@ -626,8 +649,8 @@ The selected adjustment terms and their fitted transformations are reused in
 every term-specific interaction model.
 
 The tested continuous variable is removed from its own adjustment set. The
-group variable is also excluded from the ordinary adjustment matrix because
-group main effects are included directly in every interaction comparison.
+group variable is also omitted from the adjustment set because group main
+effects are included in every interaction comparison.
 
 Set \code{include_group_var = TRUE} only when the grouping variable should also be
 forced into the first-stage MFP adjustment model. This does not control
@@ -647,25 +670,23 @@ fitted without adjustment variables.
 In \code{mfpi.default()}, an unnamed scalar is a global setting. A named vector is
 matched to \code{colnames(x)} and may specify only a subset of columns. Thus,
 \code{shift = c(age = 20)} fixes only the shift for \code{age}, and
-\code{scale = c(age = 10)} fixes only its scale. Unspecified settings remain
-automatic and are estimated through the existing preprocessing pipeline.
-User-supplied values must be finite, scales must be strictly positive, and
-explicit \code{NA} values are not accepted.
+\code{scale = c(age = 10)} fixes only its scale. Unspecified settings are estimated
+automatically. User-supplied values must be finite, scales must be strictly
+positive, and explicit \code{NA} values are not accepted.
 
 Explicit shifts are not increased automatically. If a supplied shift leaves
 zero or negative values for a predictor fitted with a nonlinear FP form,
-fitting stops and identifies the affected variable. The MFPI grouping column
-and predictors handled as linear or structural-zero terms retain their
-existing special shift and scale rules.
+fitting stops and identifies the affected variable. Linear and structural-
+zero terms use a shift of zero. The grouping variable is not shifted or
+scaled.
 }
 
 \section{Supplying data}{
 
 With the formula interface, supply the original variables in \code{data}.
-Categorical adjustment variables can be factors and are handled as complete
-terms. Their contrast columns are selected or excluded together. The
-\code{group_var} and every variable in \code{cont_vars} must be included in the model
-formula.
+Categorical adjustment variables can be factors and are selected or excluded
+as complete terms. The \code{group_var} and every variable in \code{cont_vars} must be
+included in the model formula.
 
 With the default matrix or data-frame interface, all non-group predictors
 must be numeric. Predictor names must be unique, non-missing, non-empty, and
@@ -696,10 +717,14 @@ Use \code{subset} to fit the model to selected observations. The selected rows a
 used for model fitting and for calculating Winsorisation limits.
 
 Every group must retain at least two fitting observations. FP2 interactions
-require at least three observations per group because two group-specific FP
-columns must be estimated in addition to the group effect. Groups containing
-exactly two observations remain permitted for linear and FP1 interactions,
-with a warning that fitting may be unreliable.
+require at least three observations per group. Groups containing exactly two
+observations remain permitted for linear and FP1 interactions, with a warning
+that fitting may be unreliable.
+
+Meeting these observation-count rules does not guarantee that an interaction
+can be estimated after transformation. Fitting stops and identifies the
+affected variable and group if the transformed variable has no within-group
+variation or the requested model terms cannot be estimated uniquely.
 }
 
 \section{Exact-zero values and special transformations}{
@@ -708,21 +733,27 @@ Explicit \code{zero_vars} handling is supported for variables in \code{cont_vars
 Exact-zero values (\code{x = 0}) are then treated as structural zero, and the
 selected linear or FP function is applied to values with \code{x > 0}. Variables
 requested through \code{zero_vars}, \code{catzero_vars}, or \code{spike_vars} must be
-nonnegative. Negative values are rejected before flag cascading, SAZ checks,
-shifting, scaling, or transformation and must be recoded explicitly if they
-should scientifically represent the zero group. At least one
-positive observation must remain in the fitting data after \code{subset} is
+nonnegative. Negative values are rejected before fitting and must be recoded
+explicitly if they should scientifically represent the zero group. At least
+one positive observation must remain in the fitting data after \code{subset} is
 applied; otherwise fitting stops and identifies every affected variable.
 With \code{center_type = "group"}, a zero-handled interaction additionally needs
 at least two positive observations per group for a linear or FP1 form and at
-least three for FP2. Fewer observations produce zero or rank-deficient
-centered interaction columns.
+least three for FP2; otherwise the requested group-centered interaction
+cannot be estimated.
 
 \code{catzero_vars}, \code{spike_vars}, and ACD transformations are supported for
 adjustment variables but not for variables being tested in \code{cont_vars}.
 When one of these settings is requested for a tested variable, it is disabled
 with a warning. An explicit \code{zero_vars} setting for that variable is
 preserved.
+
+For an adjustment variable using both ACD and \code{zero = TRUE}, the ACD ranks
+and auxiliary FP1 approximation are fitted on \code{x > 0} only, and \code{A(0)} is
+exactly \code{0}. Every subsequent FP function of \code{x} or \code{A(x)} is evaluated only
+on positive rows. Whether a value belongs to the zero or positive component
+is always determined from its original value, including during prediction
+and plotting.
 
 Spike-at-zero adjustment variables must have enough observations in both the
 exact-zero and positive components. \code{min_saz_prop} sets the
@@ -758,21 +789,27 @@ interaction functions, \code{center_type} determines the centering reference:
 
 The default is \code{"grand"}. The fitted centering values are reused for
 prediction and plotting.
+
+Adjustment variables follow the same structural-zero convention as \code{\link[=mfp2]{mfp2()}}:
+their uncentered ordinary FP and ACD bases are zero where original \code{x == 0}.
+When centering is requested, each complete zero-padded column is centered on
+its fitted-sample mean, and the same constant is subtracted from every row.
 }
 
-\section{Formula offsets and Cox strata}{
+\section{Formula offsets and survival strata}{
 
 An offset can be supplied through the \code{offset} argument or included in the
 formula with \code{offset(...)}. A formula offset takes precedence when both are
 supplied. The offset is used in both the adjustment and interaction models.
 
-For Cox models, strata can be supplied through \code{strata} or included in the
-formula with \code{strata(...)}. Formula strata take precedence when both are
-supplied. Only right-censored \code{\link[survival:Surv]{survival::Surv()}} responses are supported.
+For survival models, supply strata through \code{strata} in the matrix interface
+and through \code{strata(...)} in the formula interface. Strata define baseline
+hazards for Cox, scale parameters for \code{survreg}, and censoring distributions
+for Fine--Gray.
 
-Internal response, offset, and strata columns used by the final stored models
-are named collision-safely. User predictors named \code{y}, \code{offset_}, \code{strata_},
-or with a \code{..mfp2_} prefix remain ordinary predictors and are not overwritten.
+\code{mfpi()} does not reserve names such as \code{y}, \code{offset_}, \code{strata_}, or names
+beginning with \code{..mfp2_}. Predictors with these names remain ordinary
+predictors and are not overwritten during fitting.
 }
 
 \section{Argument precedence (fp()/fp2() vs global)}{
@@ -782,10 +819,10 @@ variable-specific settings and take precedence over the corresponding global
 arguments passed to \code{mfpi.formula()}. Variables not wrapped in
 \code{fp()} or \code{fp2()} use the global argument values. For
 \code{zero_vars}, \code{catzero_vars}, \code{spike_vars}, and
-\code{force_max_fp_vars}, global settings are combined with the
-corresponding \code{fp()} or \code{fp2()} flags and then checked by
-\code{mfpi.default()} for unsupported combinations. Cardinality-based
-adjustments to \code{df} may still be applied internally.
+\code{force_max_fp_vars}, global settings are combined with the corresponding
+options in \code{fp()} or \code{fp2()}. Unsupported combinations produce a
+warning or error as described for the relevant argument. Variables with few
+distinct values may still be restricted to a simpler form.
 }
 
 \section{Parameters restricted to scalar values in the formula interface}{
@@ -795,7 +832,7 @@ arguments only; per-variable specification via \code{fp()} or \code{fp2()} is no
 supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 \code{flex}, \code{p_interact}, \code{min_improvement},
 \code{include_group_var}, \code{show_models}, \code{cycles},
-\code{criterion}, \code{keep}, \code{xorder}, \code{ties}, \code{strata},
+\code{criterion}, \code{keep}, \code{xorder}, \code{ties},
 \code{nocenter}, \code{min_saz_prop}, \code{ftest},
 \code{control}, \code{verbose}, \code{digits}.
 
@@ -803,31 +840,31 @@ supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
 unavailable as a direct argument to \code{mfpi.formula()} (passing it
 raises an error); use \code{fp(variable, acd = TRUE)} or
 \code{fp2(variable, acd = TRUE)} in the formula instead.
+
+The \code{strata} argument is likewise unavailable in
+\code{mfpi.formula()}; include \code{strata(...)} in the formula. The matrix
+interface continues to accept \code{strata} directly.
 }
 
 \section{Categorical terms in the formula interface}{
 
 Unordered and ordered factor predictors other than \code{group_var} are
-expanded with the contrasts recorded by \code{model.matrix()}. All columns
-generated by one factor are stored as one conceptual adjustment term and are
-selected jointly. Do not wrap a categorical predictor in \code{fp()} or
-\code{fp2()}; those wrappers are for continuous variables. The factor term
-may be named in \code{keep}, but it cannot be named in \code{cont_vars}.
-The fitted terms, contrasts, levels, and term-to-column mapping are stored so
-\code{predict.mfpi()} can accept raw factor-valued \code{newdata}.
+treated as complete adjustment terms and selected jointly. Do not wrap a
+categorical predictor in \code{fp()} or \code{fp2()}; those wrappers are for
+continuous variables. The factor term may be named in \code{keep}, but it
+cannot be named in \code{cont_vars}. For prediction, supply factors in their
+original form; their fitted levels and contrasts are reused automatically.
 }
 
 \section{Strata and offset in the formula}{
 
 For Cox models, \code{strata()} terms may be included directly in the formula,
 for example \code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata
-variables are combined using \code{survival::strata(shortlabel = TRUE)}. If
-\code{strata} is also supplied as an argument, the formula value is used and
-a warning is issued. Similarly, an \code{offset()} term in the
-formula takes precedence over the \code{offset} argument. Formula-offset
-metadata are stored on the fitted object so \code{predict.mfpi()} can
-reconstruct the offset from raw prediction \code{newdata}; if the needed raw
-offset variables are absent, supply \code{newoffset} to \code{predict()}.
+variables are supported. The direct \code{strata} argument is not available
+in \code{mfpi.formula()}. An \code{offset()} term in the formula takes
+precedence over the \code{offset} argument. For prediction,
+include the variables needed to evaluate a formula offset in \code{newdata};
+if they are unavailable, supply \code{newoffset} to \code{predict()}.
 }
 
 \examples{

@@ -224,7 +224,7 @@ test_that("grouped terms reject continuous-only processing options", {
   grouped <- list(group = c("groupB", "groupC"))
 
   cases <- list(
-    acdx = list(acdx = "groupB"),
+    acd_vars = list(acd_vars = "groupB"),
     zero_vars = list(zero_vars = "groupB"),
     catzero_vars = list(catzero_vars = "groupB"),
     spike_vars = list(spike_vars = "groupB")

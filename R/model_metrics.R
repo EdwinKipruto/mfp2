@@ -127,9 +127,10 @@ deviance_gaussian <- function(residuals, weights) {
 #' `-2logL + 2(df + df_additional)`.
 #' * `bic`: Bayesian information criterion, defined as
 #' `-2logL + log(n_obs)(df + df_additional)`.
-#' * `df_resid`: residual degrees of freedom. Gaussian scale and negative-
-#' binomial theta are excluded, while regression and FP transformation degrees
-#' of freedom are subtracted from `n_obs`.
+#' * `df_resid`: residual degrees of freedom. Estimated dispersion, parametric-
+#' survival scale, and negative-binomial theta parameters are excluded, while
+#' regression and FP transformation degrees of freedom are subtracted from
+#' `n_obs`.
 #'
 #' @references
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
@@ -143,9 +144,9 @@ calculate_model_metrics <- function(obj,
   # Collect the core model metrics returned by fit_model().
   #
   # obj$df is the model degrees of freedom reported by fit_model().
-  # For Gaussian models, fit_model() includes the estimated scale parameter
-  # in obj$df, and negative-binomial models include theta. Their nuisance-df
-  # contribution is derived below from obj$df and the stored regression rank.
+  # fit_model() includes any estimated GLM dispersion, survreg scale, or
+  # negative-binomial theta in obj$df. Its nuisance-df contribution is derived
+  # below from obj$df and the stored regression rank.
   #
   # df_additional is used to add extra degrees of freedom for FP/ACD
   # transformations when the fitted model has more transformation parameters
@@ -157,8 +158,8 @@ calculate_model_metrics <- function(obj,
   )
 
   # Residual df should subtract only regression and transformation
-  # parameters. Gaussian scale and negative-binomial theta are nuisance
-  # parameters included in obj$df but not in the regression residual df.
+  # parameters. Estimated dispersion/scale and negative-binomial theta are
+  # nuisance parameters included in obj$df but not in regression residual df.
   # Derive their count from the stored regression rank rather than carrying
   # family-specific boolean flags in every fit_model() result.
   fit_rank <- obj$rank

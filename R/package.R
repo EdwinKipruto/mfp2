@@ -15,10 +15,16 @@
 #' used for prediction with `predict()`, and visualised with `plot()`.
 #'
 #' @section Supported models:
-#' [mfp2()] supports Gaussian, binomial, Poisson, and optional
-#' negative-binomial regression, together with Cox proportional hazards models
-#' for right-censored survival outcomes. Negative-binomial fitting requires the
-#' optional `fastglm` package.
+#' [mfp2()] and [mfpi()] support every likelihood-based family supplied by base
+#' [stats::glm()]: Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian
+#' regression, including the links accepted by their family objects. Quasi
+#' families are not supported because MFP selection requires a likelihood.
+#' Optional negative-binomial fitting requires the `fastglm` package.
+#'
+#' Survival models are specified as separate families: `family = "cox"` for
+#' Cox proportional hazards, [survreg_family()] for the parametric distributions
+#' implemented by [survival::survreg()], and [finegray_family()] for Fine--Gray
+#' proportional subdistribution hazards.
 #'
 #' @section Modelling extensions:
 #' In addition to standard fractional-polynomial modelling, `mfp2` provides:
@@ -48,7 +54,7 @@
 #'
 #' - `vignette("MFP_Introduction", package = "mfp2")` for MFP methodology;
 #' - `vignette("mfp2_ACD", package = "mfp2")` for ACD transformations;
-#' - `vignette("mfp2_spike", package = "mfp2")` for spike-at-zero modelling;
+#' - the [mfp2()] help page for the complete spike-at-zero algorithm;
 #' - `vignette("mfpi", package = "mfp2")` for interaction analysis.
 #'
 #' @seealso

@@ -338,8 +338,8 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' The default `type = NULL` is equivalent to `type = "both"`. Supplying
 #' `newdata` by itself does not change this default. To obtain one prediction per
-#' row, explicitly use `type = "link"`, `"response"`, or one of the Cox
-#' prediction types.
+#' row, explicitly use `type = "link"`, `"response"`, or a supported
+#' proportional-hazards prediction type.
 #'
 #' @section Common calls:
 #' - `predict(fit, terms = "age")` returns the fitted group curves for age and
@@ -352,7 +352,7 @@ build_group_fp_basis <- function(cont_mat,
 #' - `predict(fit, terms = "age", type = "response", newdata = new_data)`
 #'   returns one response-scale prediction per row for a GLM.
 #' - `predict(fit, terms = "age", type = "risk", newdata = new_data)` returns
-#'   one relative-risk prediction per row for a Cox model.
+#'   one relative-risk prediction per row for a Cox or Fine--Gray model.
 #'
 #' @section Selecting terms and models:
 #' Use `terms` to select continuous variables that were examined by [mfpi()].
@@ -387,14 +387,19 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' Use the following types for predictions for individual observations:
 #'
-#' - For Gaussian, binomial, Poisson, and negative-binomial models, `type = "link"` returns the
-#'   linear predictor and `type = "response"` applies the inverse link function.
+#' - For every supported likelihood GLM, `type = "link"` returns the linear
+#'   predictor and `type = "response"` applies the inverse link function.
 #'   `"lp"` is accepted as another name for `"link"`.
+#' - For parametric `survreg` models, `type = "link"` returns the fitted
+#'   location and `type = "response"` transforms it back to the response scale.
 #' - For Cox models, `type = "lp"` returns the relative log-hazard,
 #'   `type = "risk"` returns relative hazard, `type = "expected"` returns the
 #'   predicted cumulative hazard up to the supplied follow-up time, and
 #'   `type = "survival"` returns the estimated survival probability at that
 #'   time. `"link"` is accepted as another name for `"lp"`.
+#' - For Fine--Gray models, `type = "lp"` and `type = "risk"` return relative
+#'   subdistribution-hazard predictions. Absolute Cox survival/expected-event
+#'   types are not exposed for this family.
 #'
 #' For Cox models, `type = "risk"` is not the same as a GLM response
 #' prediction.
@@ -422,10 +427,11 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' - the outcome scale for a Gaussian identity-link model;
 #' - the log-odds scale for a binomial logit model;
-#' - the log-mean scale for Poisson and negative-binomial log-link models;
-#' - a partial log-hazard scale for a Cox model.
+#' - the log-mean scale for log-link GLMs;
+#' - the fitted location scale for a `survreg` model;
+#' - a partial log-hazard scale for Cox and Fine--Gray models.
 #'
-#' For a Cox model, these fitted curves do not include the baseline hazard and
+#' For Cox and Fine--Gray models, these fitted curves do not include the baseline hazard and
 #' are not survival probabilities.
 #'
 #' @section Evaluation values and grids:
@@ -491,7 +497,7 @@ build_group_fp_basis <- function(cont_mat,
 #' the stored interaction model. Column names and coding must match the fitted
 #' coefficient vector exactly.
 #'
-#' For a GLM, if `X_i` is the reconstructed row excluding the intercept and
+#' For a GLM or `survreg` model, if `X_i` is the reconstructed row excluding the intercept and
 #' `o_i` is the prediction offset, the linear predictor is the usual fitted
 #' model quantity
 #'
@@ -503,8 +509,8 @@ build_group_fp_basis <- function(cont_mat,
 #' possible, so manual calculations should use the same coefficient ordering and
 #' offset convention.
 #'
-#' For a Cox model, let `eta_i` denote the subject's fitted linear predictor on
-#' the Cox scale. `type = "lp"` returns the linear predictor relative to the
+#' For a Cox or Fine--Gray model, let `eta_i` denote the subject's fitted linear
+#' predictor on the proportional-hazards scale. `type = "lp"` returns it relative to the
 #' reference selected by `cox_reference`, and `type = "risk"` is its
 #' exponential. Thus, using the same reference convention,
 #'
@@ -562,9 +568,9 @@ build_group_fp_basis <- function(cont_mat,
 #' time; fitted objects without that metadata must be refitted with the current
 #' package version.
 #'
-#' @section Cox predictions:
-#' Cox predictions with `type = "lp"` and `type = "risk"` are relative
-#' quantities. They are not absolute hazards or survival probabilities.
+#' @section Proportional-hazards predictions:
+#' Cox and Fine--Gray predictions with `type = "lp"` and `type = "risk"` are
+#' relative quantities. They are not absolute hazards or survival probabilities.
 #'
 #' Use `cox_reference` to choose the covariate reference for these predictions:
 #'
@@ -580,7 +586,7 @@ build_group_fp_basis <- function(cont_mat,
 #' reserved.
 #'
 #' `cox_reference` does not change the group used by
-#' `type = "difference"`. It applies only to observation-level Cox predictions
+#' `type = "difference"`. It applies only to observation-level proportional-hazards predictions
 #' with `type = "lp"` or `type = "risk"`.
 #'
 #' Cox predictions with `type = "expected"` or `type = "survival"` also need
@@ -596,10 +602,16 @@ build_group_fp_basis <- function(cont_mat,
 #' Do not use `cox_reference` with `type = "expected"` or
 #' `type = "survival"`.
 #'
+#' Fine--Gray models expose only relative `"lp"` and `"risk"` predictions in
+#' this method; the absolute Cox types above are specific to ordinary Cox models.
+#'
 #' For a stratified Cox model, each prediction row must have valid stratum
 #' information. If `strata()` was included in the fitted formula, include its
-#' original variable or variables in `newdata`. Otherwise, supply new stratum
-#' values through `strata`. Prediction strata are matched as categorical labels
+#' original variable or variables in `newdata`; the fitted strata term is
+#' reconstructed automatically, so do not also supply the `strata` argument.
+#' If strata were supplied separately when fitting through the matrix
+#' interface, supply new stratum values through `strata`. Prediction strata are
+#' matched as categorical labels
 #' to the strata observed in the term-specific fitted Cox model; previously
 #' unseen strata are rejected. For several stratification variables, preserve
 #' the same variable order used for fitting.
@@ -609,7 +621,8 @@ build_group_fp_basis <- function(cont_mat,
 #' standard errors and confidence intervals with confidence level `level`.
 #'
 #' For predictions for individual observations, `se.fit = TRUE` requests the
-#' standard errors supported by the underlying GLM or Cox prediction method.
+#' standard errors supported by the underlying GLM, Cox, or `survreg`
+#' prediction method.
 #' The `level` argument is not used for these predictions.
 #'
 #' All standard errors and confidence intervals are conditional on the selected
@@ -639,10 +652,10 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' @param type The prediction type. Use `"function"`, `"difference"`, or
 #'   `"both"` for fitted curves. For predictions for individual observations,
-#'   Gaussian, binomial, Poisson, and negative-binomial models support
-#'   `"link"` and `"response"`,
-#'   while Cox models support `"lp"`, `"risk"`, `"expected"`, and
-#'   `"survival"`. If `NULL`, `"both"` is used.
+#'   likelihood GLMs and `survreg` models support `"link"` and `"response"`;
+#'   Cox models support `"lp"`, `"risk"`, `"expected"`, and `"survival"`;
+#'   Fine--Gray models support `"lp"` and `"risk"`. If `NULL`, `"both"` is
+#'   used.
 #'
 #' @param se.fit A single `TRUE` or `FALSE` value indicating whether standard
 #'   errors should be returned. The default is `TRUE`.
@@ -662,18 +675,21 @@ build_group_fp_basis <- function(cont_mat,
 #'   addition to these grid points.
 #'
 #' @param strata Optional stratum information for predictions for individual
-#'   observations from a stratified Cox model. For one stratification variable,
+#'   observations from a stratified Cox or `survreg` model fitted through the
+#'   matrix interface with externally supplied strata. For one stratification variable,
 #'   supply one value per prediction row as a character, factor, numeric/integer,
 #'   or logical vector. For several variables, supply a matrix or data frame
 #'   with one row per prediction row. Values are matched as categorical labels
 #'   to the strata observed during fitting; previously unseen strata are
 #'   rejected.
 #'
-#'   This argument is not used for non-Cox models, unstratified Cox models, or
-#'   fitted-curve predictions.
+#'   For a model fitted with `strata(...)` in its formula, do not use this
+#'   argument. Include the original strata variable or variables in `newdata`;
+#'   they are reconstructed automatically. This argument is not used for other
+#'   models, unstratified models, or fitted-curve predictions.
 #'
 #' @param cox_reference A character value selecting the covariate reference for
-#'   Cox observation-level predictions with `type = "lp"` or `type = "risk"`.
+#'   Cox or Fine--Gray observation-level predictions with `type = "lp"` or `type = "risk"`.
 #'   Use `"zero"`, `"sample"`, or `"strata"`. The default is `"zero"`.
 #'
 #' @param newoffset An optional finite numeric vector containing one offset value
@@ -830,14 +846,13 @@ build_group_fp_basis <- function(cont_mat,
 #' # so the ordinary-prediction examples below have a stable set of covariates.
 #' fit_cox <- mfpi(
 #'   survival::Surv(survtime, cens) ~
-#'     rx + fp(age) + fp(wt) + fp(hg) + stage,
+#'     rx + fp(age) + fp(wt) + fp(hg) + stage + strata(pf),
 #'   data = advanced_prostate_cancer,
 #'   family = "cox",
 #'   group_var = "rx",
 #'   cont_vars = "age",
 #'   cont_var_forms = c(age = "linear"),
 #'   flex = "flex1",
-#'   strata = advanced_prostate_cancer$pf,
 #'   select = 1,
 #'   p_interact = 1,
 #'   verbose = FALSE
@@ -872,20 +887,19 @@ build_group_fp_basis <- function(cont_mat,
 #'   1:5, c("age", "rx", "wt", "hg", "stage", "pf")
 #' ]
 #'
-#' # Relative log-hazard for each covariate profile. External strata are
-#' # supplied separately and matched to the strata observed during fitting.
+#' # Relative log-hazard for each covariate profile. Because strata(pf) was
+#' # included in the fitted formula, pf is supplied in newdata and its fitted
+#' # stratum labels are reconstructed automatically.
 #' predict(
 #'   fit_cox,
-#'   newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
-#'   strata = relative_data$pf,
+#'   newdata = relative_data,
 #'   terms = "age", model = "all", type = "lp"
 #' )
 #'
 #' # Relative hazard for the same covariate profiles.
 #' predict(
 #'   fit_cox,
-#'   newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
-#'   strata = relative_data$pf,
+#'   newdata = relative_data,
 #'   terms = "age", model = "all", type = "risk",
 #'   cox_reference = "strata"
 #' )
@@ -900,20 +914,14 @@ build_group_fp_basis <- function(cont_mat,
 #' # Predicted cumulative hazard up to each row's follow-up time.
 #' predict(
 #'   fit_cox,
-#'   newdata = absolute_data[, c(
-#'     "survtime", "cens", "age", "rx", "wt", "hg", "stage"
-#'   )],
-#'   strata = absolute_data$pf,
+#'   newdata = absolute_data,
 #'   terms = "age", model = "all", type = "expected"
 #' )
 #'
 #' # Estimated survival probability at each row's follow-up time.
 #' predict(
 #'   fit_cox,
-#'   newdata = absolute_data[, c(
-#'     "survtime", "cens", "age", "rx", "wt", "hg", "stage"
-#'   )],
-#'   strata = absolute_data$pf,
+#'   newdata = absolute_data,
 #'   terms = "age", model = "all", type = "survival"
 #' )
 #' }
@@ -958,6 +966,10 @@ predict.mfpi <- function(object,
   function_types <- c("both", "function", "difference")
   ordinary_types <- if (identical(family_string, "cox")) {
     c("lp", "risk", "expected", "survival")
+  } else if (identical(family_string, "finegray")) {
+    c("lp", "risk")
+  } else if (identical(family_string, "survreg")) {
+    c("link", "response")
   } else {
     c("link", "response")
   }
@@ -1023,17 +1035,29 @@ predict.mfpi <- function(object,
     }
   }
 
-  if (!identical(family_string, "cox")) {
+  if (is_ordinary_prediction && !is.null(strata) &&
+      prediction_has_formula_strata(object)) {
+    stop(
+      "`strata` cannot be supplied when predicting from an `mfpi` model ",
+      "fitted with formula-level strata. Include the original strata ",
+      "variable(s) in `newdata` instead.",
+      call. = FALSE
+    )
+  }
+
+  if (!family_string %in% c("cox", "survreg")) {
     if (!is.null(strata)) {
-      stop("`strata` is available only for Cox predictions.", call. = FALSE)
+      stop("`strata` is available only for Cox or stratified survreg predictions.", call. = FALSE)
     }
+  }
+  if (!mfp2_family_is_ph(family_string)) {
     if (!is.null(cox_reference)) {
-      stop("`cox_reference` is available only for Cox predictions.",
+      stop("`cox_reference` is available only for Cox or Fine--Gray predictions.",
            call. = FALSE)
     }
   }
 
-  if (identical(family_string, "cox")) {
+  if (mfp2_family_is_ph(family_string)) {
     if (type %in% c("lp", "risk")) {
       cox_reference <- match_cox_reference(
         value = cox_reference,
@@ -1093,7 +1117,7 @@ predict.mfpi <- function(object,
 
       if (!is.null(strata) && !fit_is_stratified) {
         stop(
-          "`strata` was supplied, but the retained Cox interaction model for ",
+          "`strata` was supplied, but the retained survival interaction model for ",
           "term `", term, "` is not stratified.",
           call. = FALSE
         )
@@ -1117,11 +1141,13 @@ predict.mfpi <- function(object,
 
       # Ordinary prediction is subject-level: each row belongs to one group,
       # so the reconstructed interaction block is masked row by row. Formula-
-      # level Cox strata are reconstructed from raw newdata unless explicitly
-      # supplied.
+      # level Cox strata are reconstructed from raw newdata. The public method
+      # rejects a separate `strata` argument for formula-stratified fits, while
+      # matrix-interface fits continue to use that argument directly.
       ordinary_strata <- strata
-      if (is.null(ordinary_strata) && !is.null(newdata) &&
-          !is.null(object$formula_strata_terms)) {
+      if (!is.null(newdata) &&
+          family_string %in% c("cox", "survreg") &&
+          prediction_has_formula_strata(object)) {
         ordinary_strata <- reconstruct_formula_strata_newdata(object, newdata)
       }
 
@@ -1723,7 +1749,7 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
     object = object
   )
 
-  has_intercept <- !identical(family_string, "cox") &&
+  has_intercept <- mfp2_family_has_intercept(family_string) &&
     "(Intercept)" %in% names(coef_vec)
   intercept <- if (has_intercept) unname(coef_vec["(Intercept)"]) else 0
 
@@ -2040,6 +2066,11 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # Build formula-compatible subject-level prediction data only when new rows,
   # replacement strata, or a replacement offset must be supplied to the stored
   # fitted model.
+
+  # Resolve this locally as well as in predict.mfpi(). This helper is tested and
+  # used directly, and its training-data offset reconstruction must not depend
+  # on a caller-local variable named `family_string`.
+  family_string <- mfpi_family_string(object)
 
   interaction_model <- fit_result$test_results$interaction_model
   if (is.null(interaction_model) || is.null(interaction_model$fit)) {
@@ -2496,7 +2527,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
         x_adjustment <- center_matrix(
           mat = x_adjustment,
           centers = centers[colnames(x_adjustment)],
-          zero = zero_expanded
+          zero = zero_expanded,
+          zero_rows = x_trans$structural_zero_rows[
+            , colnames(x_adjustment), drop = FALSE
+          ]
         )
       }
 
@@ -2586,8 +2620,13 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # newdata, formula offsets are reconstructed earlier; matrix-interface fits
   # still require an explicit replacement because the raw offset is unavailable.
   if (has_offset && is.null(newoffset) && isTRUE(newdata_is_training_internal)) {
-    stored_offset <- fit_obj$offset
-    if (!is.null(stored_offset) && inherits(fit_obj, "coxph")) {
+    stored_offset <- if (identical(family_string, "finegray")) {
+      fit_obj$mfp2_original_offset
+    } else {
+      fit_obj$offset
+    }
+    if (!is.null(stored_offset) && inherits(fit_obj, "coxph") &&
+        !identical(family_string, "finegray")) {
       offset_origin <- object$cox_offset_reference
       if (!is.numeric(offset_origin) || length(offset_origin) != 1L ||
           is.na(offset_origin) || !is.finite(offset_origin)) {
@@ -2662,13 +2701,17 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     # This allows a caller to replace only the offset without redundantly
     # supplying the original strata.
     if (is.null(strata) && isTRUE(newdata_is_training_internal)) {
-      strata <- fit_obj$strata
+      strata <- if (inherits(fit_obj, "survreg")) {
+        fit_obj$mfp2_survreg_strata
+      } else {
+        fit_obj$strata
+      }
     }
 
     if (is.null(strata)) {
       stop(
         paste0(
-          "The fitted Cox interaction model is stratified. Supply `strata` ",
+          "The fitted survival interaction model is stratified. Supply `strata` ",
           "with one value or row per prediction row, or include the original ",
           "formula strata variable(s) in `newdata`."
         ),
@@ -2677,8 +2720,8 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     }
 
     # Use both the same categorical normalization and the same collision-safe
-    # helper name as the term-specific Cox fit. Passing raw strata or rebuilding
-    # a fixed `strata_` column can disagree with the stored coxph formula.
+    # helper name as the term-specific survival fit. Passing raw strata or
+    # rebuilding a fixed `strata_` column can disagree with the stored formula.
     strata_name <- mfp2_internal_fit_name(
       fit_obj,
       component = "strata"
@@ -2783,11 +2826,18 @@ mfpi_predict_ordinary <- function(object,
     predict_args$newdata <- model_newdata
   }
 
-  if (identical(family_string, "cox") && type %in% c("lp", "risk")) {
+  if (mfp2_family_is_ph(family_string) && type %in% c("lp", "risk")) {
     predict_args$reference <- cox_reference
   }
 
   pred <- do.call(stats::predict, predict_args)
+  if (identical(family_string, "finegray") && is.null(model_newdata)) {
+    pred <- collapse_finegray_training_prediction(
+      pred,
+      fit_obj$mfp2_finegray_row_map,
+      fit_obj$mfp2_finegray_n_original
+    )
+  }
 
   if (is.list(pred)) {
     return(list(
@@ -2852,7 +2902,8 @@ mfpi_named_scalar <- function(x, name, default) {
 #' @param object Object of class \code{"mfpi"}.
 #'
 #' @return Character scalar family name, such as \code{"gaussian"},
-#'   \code{"binomial"}, \code{"poisson"}, \code{"negbin"}, or \code{"cox"}.
+#'   \code{"Gamma"}, \code{"inverse.gaussian"}, \code{"negbin"}, \code{"cox"},
+#'   \code{"survreg"}, or \code{"finegray"}.
 #'
 #' @keywords internal
 #' @noRd
@@ -2890,6 +2941,10 @@ mfpi_match_prediction_type <- function(type, family_string) {
 
   choices <- if (identical(family_string, "cox")) {
     c("both", "function", "difference", "lp", "risk", "expected", "survival")
+  } else if (identical(family_string, "finegray")) {
+    c("both", "function", "difference", "lp", "risk")
+  } else if (identical(family_string, "survreg")) {
+    c("both", "function", "difference", "link", "response")
   } else {
     c("both", "function", "difference", "link", "response")
   }
@@ -2897,13 +2952,21 @@ mfpi_match_prediction_type <- function(type, family_string) {
   tryCatch(
     match.arg(type, choices),
     error = function(e) {
-      alias_note <- if (identical(family_string, "cox")) {
+      alias_note <- if (mfp2_family_is_ph(family_string)) {
         " The alias 'link' is also accepted for 'lp'."
       } else {
         " The alias 'lp' is also accepted for 'link'."
       }
       stop(
-        "For ", if (identical(family_string, "cox")) "Cox" else "GLM",
+        "For ", if (identical(family_string, "cox")) {
+          "Cox"
+        } else if (identical(family_string, "finegray")) {
+          "Fine--Gray"
+        } else if (identical(family_string, "survreg")) {
+          "survreg"
+        } else {
+          "GLM"
+        },
         " MFPI models, `type` must be one of: ",
         paste(shQuote(choices), collapse = ", "),
         ".", alias_note,

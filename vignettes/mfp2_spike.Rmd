@@ -1,0 +1,363 @@
+---
+title: "Spike-at-Zero Modelling with mfp2"
+subtitle: 'Package version `r as.character(utils::packageVersion("mfp2"))`'
+author: "Edwin Kipruto and Willi Sauerbrei"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Spike-at-Zero Modelling with mfp2}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 6,
+  fig.height = 4,
+  out.width = "100%",
+  fig.align = "center",
+  dev = "png",
+  dpi = 96
+)
+
+library(mfp2)
+library(ggplot2)
+```
+
+# Overview
+
+In epidemiological and clinical research, some covariates have a
+semi-continuous distribution: a non-negligible proportion of observations
+are concentrated exactly at zero, and the remaining observations are
+distributed continuously over positive values. This pattern is commonly
+referred to as a *spike at zero* (SAZ). Typical examples include
+alcohol consumption (zero for teetotallers, positive for drinkers) and
+cigarette smoking (zero for non-smokers, positive for smokers).
+
+Standard approaches to modelling SAZ covariates have important
+limitations. Categorising the covariate (e.g. zero, low, medium, high)
+discards information, depends on arbitrary cutpoints, and can obscure
+nonlinear relationships. Treating the covariate as an ordinary
+continuous variable constrains zero and positive values to lie on the
+same response function, which may be inappropriate when the zero group
+represents a qualitatively different state.
+
+The SAZ extension in `mfp2` addresses this by decomposing an SAZ
+covariate into two components (Royston, Sauerbrei, and Becher, 2010;
+Becher, Lorenz, and Engel, 2012):
+
+- a **binary indicator** $Z$ for whether the value is zero ($Z = 1$
+  when $x = 0$; $Z = 0$ when $x > 0$), and
+- a **fractional polynomial function** $f^+(x)$ of the positive values
+  only, with zero values contributing nothing to this component.
+
+The two components do not contribute to the linear predictor
+simultaneously: for observations with $x = 0$, the linear predictor
+includes only the binary indicator's coefficient; for observations with
+$x > 0$, it includes only the FP function of $x$. The model imposes no
+continuity constraint at zero, allowing the zero group to have an
+effect distinct from the function fitted to positive values.
+
+The SAZ selection algorithm then determines which components the final
+model requires. Under $p$-value-based selection, a two-stage procedure
+is used: Stage 1 determines variable inclusion and selects the
+positive-component functional form (linear, FP1, or FP2), and Stage 2
+determines whether to retain both components, only the binary
+indicator, or only the positive component. Under AIC or BIC, a
+one-stage procedure compares all eligible models jointly. In a
+multivariable model, SAZ selection for each covariate is performed
+conditionally on the current forms of the other covariates during MFP
+backfitting, which allows multiple SAZ covariates to be modelled
+simultaneously.
+
+For the complete algorithm, eligibility equations, candidate families,
+and simulation results, see:
+
+> Kipruto E, Sauerbrei W (YEAR). "Modelling Spike-at-Zero Covariates
+> with Fractional Polynomials in R." *Journal of Statistical Software*,
+> **VOL**(ISSUE), PAGES. doi:DOI.
+
+This vignette demonstrates the practical workflow.
+
+# When to use spike-at-zero modelling
+
+SAZ modelling is appropriate when a nonnegative covariate has a
+meaningful group of exact zeros alongside a continuous positive
+component. Common examples include:
+
+- biomarkers that are undetectable in some patients (recorded as zero),
+- exposure variables where some individuals have no exposure, and
+- counts or measurements where zero represents a qualitatively
+  different state.
+
+The decision to model zero separately from positive values should be
+guided by subject-matter knowledge, particularly whether a distinct
+effect at zero is scientifically plausible. A covariate qualifies for
+SAZ modelling when both the zero group and the positive group each
+contain at least the proportion of observations specified by
+`min_saz_prop` (default 0.10, i.e. 10%). This threshold is a pragmatic
+safeguard; in large samples, a smaller value may be appropriate. Users
+should consider both the proportion and the absolute number of
+observations in each component when choosing `min_saz_prop`.
+
+SAZ covariates must be nonnegative: $x = 0$ defines the zero component
+and $x > 0$ the positive component. Negative values are rejected; they
+must be explicitly recoded if they should represent the zero group.
+Binary covariates are ineligible because their two levels are already
+fully represented by a single indicator.
+
+# Example: prostate cancer data
+
+We use the `prostate` dataset (Stamey et al., 1989), bundled with
+`mfp2`. The outcome is `lpsa` (log prostate-specific antigen). The
+covariate `pgg45` (percentage of Gleason score 4 or 5) is a natural SAZ
+candidate.
+
+```{r data-summary}
+data("prostate")
+
+cat("Number of observations:", nrow(prostate), "\n")
+cat("pgg45 == 0:", sum(prostate$pgg45 == 0),
+    sprintf("(%.0f%%)\n", 100 * mean(prostate$pgg45 == 0)))
+cat("pgg45  > 0:", sum(prostate$pgg45 > 0),
+    sprintf("(%.0f%%)\n", 100 * mean(prostate$pgg45 > 0)))
+```
+
+Both proportions exceed the default eligibility threshold of 10%, so
+`pgg45` qualifies for SAZ modelling.
+
+## Univariable SAZ analysis (p-value criterion)
+
+Request SAZ modelling with `spike = TRUE` inside the `fp()` term:
+
+```{r fit-univariable}
+fit_pgg45 <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  verbose = FALSE
+)
+
+fit_pgg45
+```
+
+The output reports the SAZ decision. In this example, only the binary
+indicator is retained ("binary only"). The positive-component FP
+function was dropped at Stage 2 of the closed-test procedure, meaning
+that among patients with any Gleason 4/5 cells, the percentage does
+not add predictive information beyond simply knowing that such cells
+were present.
+
+## Predictions
+
+The `predict()` method applies the selected SAZ structure
+automatically. Supply new data on the original covariate scale:
+
+```{r predictions}
+newdat <- data.frame(pgg45 = c(0, 4, 20, 45, 60, 100))
+predict(fit_pgg45, newdata = newdat, type = "link")
+```
+
+For a "binary only" model, all positive values produce the same
+prediction (the intercept), while `pgg45 = 0` shifts the prediction by
+the binary indicator's coefficient.
+
+## Plot
+
+The `plot()` method for `mfp2` objects produces a ggplot2 figure. For
+a "binary only" SAZ decision, it shows two point estimates (zero and
+positive groups) with error bars:
+
+```{r plot-binary-only, fig.height=4}
+plots <- plot(fit_pgg45, terms = "pgg45", partial_only = TRUE)
+plots[["pgg45"]]
+```
+
+## Using AIC instead of p-values
+
+With `criterion = "aic"`, model selection uses a one-stage procedure
+that compares all eligible models (null, binary-only, positive-only,
+and positive-plus-binary) jointly, selecting the one with the smallest
+AIC. This approach tends to be less stringent and may retain more
+components:
+
+```{r fit-aic}
+fit_aic <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "aic",
+  verbose = FALSE
+)
+
+fit_aic
+```
+
+With AIC, both the binary indicator and a linear positive-component
+function are retained ("continuous + binary"). The plot now shows a
+continuous curve over positive values with a separate point at zero:
+
+```{r plot-aic, fig.height=4.5}
+plots_aic <- plot(fit_aic, terms = "pgg45", partial_only = TRUE)
+plots_aic[["pgg45"]]
+```
+
+BIC applies a stronger penalty and, for these data, selects the same
+"binary only" model as the p-value criterion.
+
+# Multivariable SAZ analysis
+
+In a multivariable model, SAZ selection for each covariate is performed
+conditionally on the current forms of the other covariates during MFP
+backfitting. In each cycle, every SAZ covariate is re-evaluated given
+the latest selected forms of the remaining predictors. In this example,
+`pgg45` is the SAZ candidate while the other covariates use standard MFP
+selection:
+
+```{r fit-multivariable}
+fit_multi <- mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE) + fp(age) +
+    fp(cavol) + fp(weight) + fp(bph) + fp(cp) + svi,
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  verbose = FALSE
+)
+
+fit_multi
+```
+
+After adjustment for the other covariates, `pgg45` is excluded
+entirely ("not selected"). The retained model includes only `cavol`,
+`weight`, and `svi`.
+
+# Controlling SAZ retention
+
+Three arguments influence how much of the SAZ machinery can be
+overridden:
+
+## `select = 1`: force inclusion, allow form selection
+
+Setting `select = 1` inside `fp()` forces the variable into the
+model (Stage 1 retention is guaranteed), but `alpha` still governs
+functional-form selection and Stage 2 component removal:
+
+```{r select-1, eval=FALSE}
+mfp2(
+  lpsa ~ fp(pgg45, select = 1, spike = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  verbose = FALSE
+)
+```
+
+## `keep`: retain a variable across criteria
+
+The `keep` argument ensures a variable cannot be excluded, regardless
+of the selection criterion:
+
+```{r keep, eval=FALSE}
+mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE) + fp(age) +
+    fp(cavol) + fp(weight) + fp(bph) + fp(cp) + svi,
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  keep = "pgg45",
+  verbose = FALSE
+)
+```
+
+## `force_max_fp = TRUE`: bypass Stage 2
+
+Setting `force_max_fp = TRUE` retains the maximum-complexity SAZ
+representation (the full FP positive component plus the binary
+indicator), bypassing Stage 2 component selection entirely:
+
+```{r force-max, eval=FALSE}
+mfp2(
+  lpsa ~ fp(pgg45, spike = TRUE, force_max_fp = TRUE),
+  data = prostate,
+  family = "gaussian",
+  criterion = "pvalue",
+  verbose = FALSE
+)
+```
+
+# Matrix interface
+
+The matrix interface identifies SAZ candidates through `spike_vars`
+instead of `fp(..., spike = TRUE)`:
+
+```{r matrix-interface}
+x <- as.matrix(prostate[, "pgg45", drop = FALSE])
+y <- prostate$lpsa
+
+fit_mat <- mfp2(
+  x, y,
+  family = "gaussian",
+  criterion = "pvalue",
+  spike_vars = "pgg45",
+  verbose = FALSE
+)
+
+fit_mat
+```
+
+Both interfaces use the same fitting procedure and produce identical
+results.
+
+# Related options: `zero` and `catzero`
+
+The `spike` option is the most complete SAZ workflow, but two simpler
+options are available when you want to fix the model structure rather
+than select it:
+
+- `fp(x, zero = TRUE)` applies the FP function to positive values only;
+  zero values contribute nothing to the linear predictor. No binary
+  indicator is included.
+- `fp(x, catzero = TRUE)` adds a fixed binary indicator for zero
+  values alongside the positive-component FP function. Unlike `spike`,
+  neither the binary indicator nor the continuous component can be
+  dropped — both are always in the model.
+
+`spike = TRUE` implies both `catzero` and `zero` while SAZ remains
+eligible, and then uses the SAZ selection procedure to determine which
+components to retain.
+
+# References
+
+Kipruto E, Sauerbrei W (YEAR). "Modelling Spike-at-Zero Covariates
+with Fractional Polynomials in R." *Journal of Statistical Software*,
+**VOL**(ISSUE), PAGES. doi:DOI.
+
+Becher H, Lorenz E, Engel A (2012). "Analysing Covariates with Spike
+at Zero: A Modified FP Procedure and Conceptual Issues."
+*Biometrical Journal*, 54(5), 686--700. doi:10.1002/bimj.201100263.
+
+Royston P, Sauerbrei W, Becher H (2010). "Modelling Continuous
+Exposures with a 'Spike' at Zero: A New Procedure Based on Fractional
+Polynomials." *Statistics in Medicine*, 29, 1219--1227.
+doi:10.1002/sim.3864.
+
+Royston P, Sauerbrei W (2008). *Multivariable Model-Building: A
+Pragmatic Approach to Regression Analysis based on Fractional
+Polynomials for Modelling Continuous Variables*. John Wiley & Sons.
+
+Stamey TA, Kabalin JN, McNeal JE, Johnstone IM, Freiha F, Redwine EA,
+Yang N (1989). "Prostate Specific Antigen in the Diagnosis and
+Treatment of Adenocarcinoma of the Prostate." *Journal of Urology*,
+141(5), 1076--1083.

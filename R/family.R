@@ -1,19 +1,481 @@
+#' Survival Family Specifications for mfp2 and mfpi
+#'
+#' `survreg_family()` specifies a parametric accelerated failure-time or
+#' location-scale model. `finegray_family()` specifies a proportional
+#' subdistribution-hazards model for competing risks.
+#'
+#' For parametric survival models, repeated candidate models are fitted with
+#' [survival::survreg.fit()], and the selected model is refitted with
+#' [survival::survreg()].
+#' For log-time distributions, an interval-censored observation with lower
+#' boundary zero is converted to the mathematically equivalent left-censored
+#' observation at its finite upper boundary before applying the logarithmic
+#' time transformation. This includes the log-logistic distribution.
+#'
+#' For Fine--Gray models, [survival::finegray()] expands the multi-state
+#' response once. Repeated candidate models then use
+#' [survival::agreg.fit()], while the selected model is returned as a weighted
+#' robust `coxph` fit. The public model interface remains
+#' `family = finegray_family(etype = ...)`. An `id` argument is required by
+#' [mfp2()] or [mfpi()] only for a start--stop multi-state response.
+#'
+#' @param dist A distribution accepted by [survival::survreg()].
+#' @param scale Fixed scale. The default, zero, estimates the scale.
+#' @param parms Optional distribution parameters accepted by
+#'   [survival::survreg()].
+#' @param etype Endpoint of interest, using the same interpretation as the
+#'   `etype` argument of [survival::finegray()]. `NULL` uses the first event
+#'   state, matching `finegray()`.
+#' @param timefix Logical; pass event times through survival's round-off check.
+#'
+#' @return An `mfp2_survreg_family` or `mfp2_finegray_family` specification for
+#'   the `family` argument of [mfp2()] or [mfpi()].
+#' @rdname survival_families
+#' @export
+survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
+  scale_supplied <- !missing(scale)
+  if (!(is.character(dist) && length(dist) == 1L && !is.na(dist) && nzchar(dist)) &&
+      !is.list(dist)) {
+    stop(
+      "! `dist` must be one distribution name or a distribution list accepted by `survival::survreg()`.",
+      call. = FALSE
+    )
+  }
+
+  if (!is.numeric(scale) || length(scale) != 1L || anyNA(scale) ||
+      !is.finite(scale) || scale < 0) {
+    stop("! `scale` must be one finite non-negative number.", call. = FALSE)
+  }
+
+  if (!is.null(parms)) {
+    parms_flat <- unlist(parms, use.names = TRUE)
+    if (!is.numeric(parms_flat) || length(parms_flat) < 1L ||
+        anyNA(parms_flat) || any(!is.finite(parms_flat))) {
+      stop("! `parms` must be `NULL` or a finite numeric value/vector.", call. = FALSE)
+    }
+  }
+
+  structure(
+    list(
+      family = "survreg",
+      dist = dist,
+      scale = unname(scale),
+      scale_supplied = scale_supplied,
+      parms = parms,
+      prepared = NULL
+    ),
+    class = c("mfp2_survreg_family", "mfp2_family")
+  )
+}
+
+
+#' @rdname survival_families
+#' @export
+finegray_family <- function(etype = NULL, timefix = TRUE) {
+  if (!is.null(etype)) {
+    if (!is.atomic(etype) || is.matrix(etype) || !is.null(dim(etype)) ||
+        length(etype) < 1L || anyNA(etype)) {
+      stop("! `etype` must be `NULL` or a non-missing event-state value.", call. = FALSE)
+    }
+    if (length(etype) > 1L) {
+      warning("Only the first value of `etype` is used.", call. = FALSE)
+      etype <- etype[1L]
+    }
+  }
+  if (!is.logical(timefix) || length(timefix) != 1L || is.na(timefix)) {
+    stop("! `timefix` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+
+  structure(
+    list(
+      family = "finegray",
+      etype = etype,
+      timefix = timefix,
+      prepared = NULL
+    ),
+    class = c("mfp2_finegray_family", "mfp2_family")
+  )
+}
+
+
+# Family-behaviour predicates used by the existing MFP/MFPI engine. These are
+# intentionally about one behaviour at a time: Cox and Fine--Gray remain
+# separate families and share only the properties named by each helper.
+mfp2_family_has_intercept <- function(family_string) {
+  !family_string %in% c("cox", "finegray")
+}
+
+mfp2_family_uses_event_count <- function(family_string) {
+  family_string %in% c("cox", "finegray")
+}
+
+mfp2_family_is_ph <- function(family_string) {
+  family_string %in% c("cox", "finegray")
+}
+
+mfp2_family_is_survival <- function(family_string) {
+  family_string %in% c("cox", "survreg", "finegray")
+}
+
+mfp2_family_is_glm <- function(family_string) {
+  family_string %in% c(
+    "gaussian", "binomial", "poisson", "Gamma",
+    "inverse.gaussian", "negbin"
+  )
+}
+
+# Match stats::logLik.glm()'s nuisance-parameter convention. Recent R family
+# objects can declare a fixed dispersion explicitly; older family objects omit
+# that field, in which case the three traditional dispersion families estimate
+# it from the fitted model.
+mfp2_glm_estimates_dispersion <- function(family, family_string) {
+  if (!mfp2_family_is_glm(family_string) ||
+      identical(family_string, "negbin")) {
+    return(FALSE)
+  }
+
+  dispersion <- if (is.list(family)) family$dispersion else NULL
+  if (!is.null(dispersion)) {
+    return(length(dispersion) == 1L && is.na(dispersion))
+  }
+
+  family_string %in% c("gaussian", "Gamma", "inverse.gaussian")
+}
+
+mfp2_strip_prepared_family <- function(family) {
+  if (inherits(family, "mfp2_family")) family$prepared <- NULL
+  family
+}
+
+
+# Prepare the transformed response expected by survival::survreg.fit(). This is
+# the non-formula portion of survival::survreg(): it is evaluated once per MFP
+# analysis rather than once for every candidate model.
+prepare_survreg_family <- function(family, y, weights, strata = NULL) {
+  if (!inherits(family, "mfp2_survreg_family")) {
+    stop("Internal error: invalid survreg family specification.", call. = FALSE)
+  }
+
+  n <- NROW(y)
+  if (is.null(weights)) weights <- rep.int(1, n)
+  if (!is.numeric(weights) || length(weights) != n || anyNA(weights) ||
+      any(!is.finite(weights)) || any(weights <= 0)) {
+    stop("! `weights` must contain one finite positive value per observation.", call. = FALSE)
+  }
+
+  distributions <- survival::survreg.distributions
+  requested_dist <- family$dist
+  if (is.character(requested_dist)) {
+    dist_name <- tryCatch(
+      match.arg(requested_dist, names(distributions)),
+      error = function(e) {
+        stop("Invalid `survreg` distribution: ", conditionMessage(e), call. = FALSE)
+      }
+    )
+    dlist <- distributions[[dist_name]]
+  } else {
+    dist_name <- requested_dist
+    dlist <- requested_dist
+  }
+
+  distribution_test <- utils::getFromNamespace("survregDtest", "survival")
+  if (!is.list(dlist) || !isTRUE(distribution_test(dlist))) {
+    stop("! Invalid distribution object supplied to `survreg_family()`.", call. = FALSE)
+  }
+
+  y_fit <- y
+  type <- attr(y_fit, "type", exact = TRUE)
+  logcorrect <- 0
+
+  # For log-time distributions, an interval (0, upper] is mathematically left
+  # censored at its finite upper boundary. Convert it before applying log() so
+  # log(0) never enters the transformed interval. Keep this explicit local
+  # allow-list because upstream survival releases have historically misspelled
+  # the Log logistic distribution name in the corresponding boundary branch.
+  log_time_names <- c(
+    "Weibull", "Exponential", "Rayleigh", "Log Normal",
+    "Log logistic"
+  )
+  if (identical(type, "interval") && dlist$name %in% log_time_names) {
+    fix <- y_fit[, 1L] == 0 & y_fit[, 3L] == 3
+    if (any(fix)) {
+      y_fit[fix, ] <- cbind(y_fit[fix, 2L], 1, 2)
+    }
+  }
+
+  if (!is.null(dlist$trans)) {
+    exact <- y_fit[, NCOL(y_fit)] == 1
+    if (any(exact)) {
+      logcorrect <- sum(
+        weights[exact] * log(dlist$dtrans(y_fit[exact, 1L]))
+      )
+    }
+
+    if (identical(type, "interval")) {
+      if (any(y_fit[, 3L] == 3)) {
+        y_fit <- cbind(dlist$trans(y_fit[, 1:2, drop = FALSE]), y_fit[, 3L])
+      } else {
+        y_fit <- cbind(dlist$trans(y_fit[, 1L]), y_fit[, 3L])
+      }
+    } else if (identical(type, "left")) {
+      y_fit <- cbind(dlist$trans(y_fit[, 1L]), 2 - y_fit[, 2L])
+    } else {
+      y_fit <- cbind(dlist$trans(y_fit[, 1L]), y_fit[, 2L])
+    }
+
+    if (!all(is.finite(y_fit))) {
+      stop("! Invalid survival times for the requested `survreg` distribution.", call. = FALSE)
+    }
+  } else {
+    if (identical(type, "left")) {
+      y_fit[, 2L] <- 2 - y_fit[, 2L]
+    } else if (identical(type, "interval") && all(y_fit[, 3L] < 3)) {
+      y_fit <- y_fit[, c(1L, 3L), drop = FALSE]
+    }
+  }
+
+  distribution_has_fixed_scale <- !is.null(dlist$scale)
+  fit_scale <- family$scale
+  if (!is.null(dlist$scale)) {
+    if (isTRUE(family$scale_supplied)) {
+      warning(
+        dlist$name, " has a fixed scale; the value supplied to `survreg_family()` is ignored.",
+        call. = FALSE
+      )
+    }
+    fit_scale <- dlist$scale
+  }
+
+  if (!is.null(dlist$dist)) {
+    dlist <- if (is.atomic(dlist$dist)) {
+      distributions[[dlist$dist]]
+    } else {
+      dlist$dist
+    }
+  }
+
+  default_parms <- dlist$parms
+  requested_parms <- family$parms
+  if (is.null(default_parms)) {
+    if (!is.null(requested_parms)) {
+      stop("! The requested `survreg` distribution has no optional parameters.", call. = FALSE)
+    }
+    fit_parms <- NULL
+  } else {
+    if (!is.numeric(default_parms)) {
+      stop("Internal error: default survreg distribution parameters are not numeric.", call. = FALSE)
+    }
+    fit_parms <- default_parms
+    if (!is.null(requested_parms)) {
+      supplied <- unlist(requested_parms, use.names = TRUE)
+      if (is.null(names(supplied)) || any(!nzchar(names(supplied)))) {
+        if (length(supplied) != length(fit_parms)) {
+          stop(
+            "! Unnamed `parms` must have the same length as the distribution defaults.",
+            call. = FALSE
+          )
+        }
+        fit_parms[] <- supplied
+      } else {
+        invalid <- setdiff(names(supplied), names(fit_parms))
+        if (length(invalid) > 0L) {
+          stop(
+            "! Invalid `survreg` parameter name(s): ",
+            paste(invalid, collapse = ", "), ".",
+            call. = FALSE
+          )
+        }
+        fit_parms[names(supplied)] <- supplied
+      }
+    }
+  }
+
+  if (is.null(strata)) {
+    strata_factor <- factor(rep.int(1L, NROW(y_fit)))
+  } else {
+    strata_factor <- droplevels(normalize_cox_strata(strata, nobs = NROW(y_fit)))
+  }
+  nstrat <- nlevels(strata_factor)
+  if (fit_scale > 0 && nstrat > 1L) {
+    stop("! A fixed `survreg` scale cannot be combined with multiple scale strata.", call. = FALSE)
+  }
+
+  family$prepared <- list(
+    y = y_fit,
+    y_original = y,
+    dist = dlist,
+    dist_requested = requested_dist,
+    scale = fit_scale,
+    distribution_has_fixed_scale = distribution_has_fixed_scale,
+    parms = fit_parms,
+    logcorrect = logcorrect,
+    strata = as.integer(strata_factor),
+    strata_factor = strata_factor,
+    strata_supplied = !is.null(strata),
+    nstrat = nstrat,
+    n_original = NROW(y)
+  )
+  family
+}
+
+
+# Run survival::finegray() once and retain the input-row mapping required to
+# expand each dynamically generated FP candidate design matrix.
+prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL,
+                                    offset = NULL) {
+  if (!inherits(family, "mfp2_finegray_family")) {
+    stop("Internal error: invalid Fine--Gray family specification.", call. = FALSE)
+  }
+
+  n <- NROW(y)
+  if (is.null(weights)) weights <- rep.int(1, n)
+  if (!is.numeric(weights) || length(weights) != n || anyNA(weights) ||
+      any(!is.finite(weights)) || any(weights <= 0)) {
+    stop("! `weights` must contain one finite positive value per observation.", call. = FALSE)
+  }
+  if (is.null(offset)) offset <- rep.int(0, n)
+  if (!is.numeric(offset) || length(offset) != n || anyNA(offset) ||
+      any(!is.finite(offset))) {
+    stop("! `offset` must contain one finite numeric value per observation.", call. = FALSE)
+  }
+  if (!is.null(id)) {
+    if (!is.atomic(id) || is.matrix(id) || !is.null(dim(id))) {
+      stop("! `id` must be an atomic vector or factor.", call. = FALSE)
+    }
+    if (length(id) != n || anyNA(id)) {
+      stop("! `id` must contain one non-missing subject identifier per observation.", call. = FALSE)
+    }
+  }
+
+  type <- attr(y, "type", exact = TRUE)
+  if (identical(type, "mcounting") && is.null(id)) {
+    stop("! Start--stop Fine--Gray data require the `id` argument.", call. = FALSE)
+  }
+
+  original_row <- seq_len(n)
+  subject_id <- if (is.null(id)) original_row else id
+  d <- data.frame(
+    .mfp2_row_id = original_row,
+    .mfp2_subject_id = subject_id,
+    check.names = FALSE
+  )
+  d[[".mfp2_response"]] <- y
+
+  rhs <- c(".mfp2_row_id", ".mfp2_subject_id")
+  if (!is.null(strata)) {
+    d[[".mfp2_censor_strata"]] <- normalize_cox_strata(strata, nobs = n)
+    rhs <- c(rhs, "strata(.mfp2_censor_strata)")
+  }
+  fg_formula <- stats::as.formula(
+    paste(".mfp2_response ~", paste(rhs, collapse = " + ")),
+    env = environment()
+  )
+
+  fg_args <- list(
+    formula = fg_formula,
+    data = d,
+    weights = weights,
+    prefix = ".mfp2_fg",
+    count = ".mfp2_fg_count",
+    timefix = family$timefix
+  )
+  if (!is.null(family$etype)) fg_args$etype <- family$etype
+  if (identical(type, "mcounting")) fg_args$id <- subject_id
+
+  fg <- tryCatch(
+    do.call(survival::finegray, fg_args),
+    error = function(e) {
+      stop("Fine--Gray data preparation failed: ", conditionMessage(e), call. = FALSE)
+    }
+  )
+
+  required <- c(
+    ".mfp2_row_id", ".mfp2_subject_id", ".mfp2_fgstart",
+    ".mfp2_fgstop", ".mfp2_fgstatus", ".mfp2_fgwt"
+  )
+  missing_required <- setdiff(required, names(fg))
+  if (length(missing_required) > 0L) {
+    stop(
+      "Internal error: `finegray()` output is missing: ",
+      paste(missing_required, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  row_map <- as.integer(fg[[".mfp2_row_id"]])
+  y_fg <- survival::Surv(
+    fg[[".mfp2_fgstart"]],
+    fg[[".mfp2_fgstop"]],
+    fg[[".mfp2_fgstatus"]]
+  )
+
+  family$prepared <- list(
+    y = y_fg,
+    weights = as.numeric(fg[[".mfp2_fgwt"]]),
+    row_map = row_map,
+    # The offset is invariant across all FP candidates. Expand it once along
+    # with the response and Fine--Gray weights instead of indexing the original
+    # vector for every weighted Cox fit.
+    offset_expanded = as.numeric(offset[row_map]),
+    subject_id = fg[[".mfp2_subject_id"]],
+    event = attr(fg, "event", exact = TRUE),
+    nevents = sum(fg[[".mfp2_fgstatus"]] > 0),
+    n_original = n,
+    n_expanded = nrow(fg)
+  )
+  family
+}
+
+
+prepare_family_for_fit <- function(family, family_string, y, weights,
+                                   strata = NULL, id = NULL, offset = NULL) {
+  if (identical(family_string, "survreg")) {
+    family <- prepare_survreg_family(family, y, weights, strata)
+    return(list(family = family, strata = strata))
+  }
+  if (identical(family_string, "finegray")) {
+    family <- prepare_finegray_family(
+      family, y, weights, strata, id, offset = offset
+    )
+    # `strata` has already been consumed by finegray() to estimate censoring
+    # weights; it is not a baseline-hazard stratum in the weighted Cox fit.
+    return(list(family = family, strata = NULL))
+  }
+  list(family = family, strata = strata)
+}
+
+
 #' Normalize and validate a model family
 #'
-#' @param family Character family name, GLM family function, or GLM family object.
+#' @param family Character family name, GLM family function/object, or an mfp2
+#'   survival-family specification.
 #' @param family_arg Character label used in error messages for function inputs.
 #'
 #' @return A list with elements:
 #' \describe{
-#'   \item{\code{family}}{A GLM family object, or character \code{"negbin"} or \code{"cox"}.}
+#'   \item{\code{family}}{A resolved fitting-family object or character label.}
 #'   \item{\code{family_string}}{The normalized character family name.}
 #' }
 #'
 #' @keywords internal
 #' @noRd
 normalize_family_argument <- function(family, family_arg = deparse(substitute(family))) {
-  allowed_families <- c("gaussian", "binomial", "poisson", "negbin", "cox")
+  allowed_glm_families <- c(
+    "gaussian", "binomial", "poisson", "Gamma", "inverse.gaussian"
+  )
+  allowed_families <- c(
+    allowed_glm_families, "negbin", "cox", "survreg", "finegray"
+  )
   family_arg <- paste(family_arg, collapse = " ")
+
+  if (inherits(family, "mfp2_family")) {
+    family_string <- family$family
+    if (!is.character(family_string) || length(family_string) != 1L ||
+        !family_string %in% c("survreg", "finegray")) {
+      stop("! Invalid mfp2 survival-family specification.", call. = FALSE)
+    }
+    return(list(family = family, family_string = family_string))
+  }
 
   if (is.character(family)) {
     if (length(family) != 1L) {
@@ -23,7 +485,29 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
           length(family),
           paste(family, collapse = ", ")
         ),
-        "\ni Supported character families are: gaussian, binomial, poisson, negbin, cox.",
+        "\ni Supported character families are: gaussian, binomial, poisson, Gamma, inverse.gaussian, negbin, cox, survreg, finegray.",
+        call. = FALSE
+      )
+    }
+
+    family_key <- tolower(family)
+    family <- switch(
+      family_key,
+      gaussian = "gaussian",
+      binomial = "binomial",
+      poisson = "poisson",
+      gamma = "Gamma",
+      inverse.gaussian = "inverse.gaussian",
+      negbin = "negbin",
+      cox = "cox",
+      survreg = "survreg",
+      finegray = "finegray",
+      family
+    )
+
+    if (grepl("^quasi", family_key)) {
+      stop(
+        sprintf("! Family '%s' has no likelihood and is not supported by likelihood-based MFP selection.", family_key),
         call. = FALSE
       )
     }
@@ -41,12 +525,18 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
 
     family_obj <- if (family %in% c("cox", "negbin")) {
       family
+    } else if (identical(family, "survreg")) {
+      survreg_family()
+    } else if (identical(family, "finegray")) {
+      finegray_family()
     } else {
       switch(
         family,
         gaussian = stats::gaussian(),
         binomial = stats::binomial(),
-        poisson  = stats::poisson()
+        poisson  = stats::poisson(),
+        Gamma = stats::Gamma(),
+        inverse.gaussian = stats::inverse.gaussian()
       )
     }
 
@@ -90,13 +580,23 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       )
     }
 
-    if (!family_string %in% setdiff(allowed_families, "negbin")) {
+    if (grepl("^quasi", tolower(family_string))) {
+      stop(
+        sprintf(
+          "! Family returned by `%s` has no likelihood and is not supported by likelihood-based MFP selection.",
+          family_arg
+        ),
+        call. = FALSE
+      )
+    }
+
+    if (!family_string %in% allowed_glm_families) {
       stop(
         sprintf(
           "! Invalid family returned by `%s`: '%s'. Supported families are: %s.",
           family_arg,
           family_string,
-          paste(allowed_families, collapse = ", ")
+          paste(allowed_glm_families, collapse = ", ")
         ),
         call. = FALSE
       )
@@ -118,12 +618,19 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       )
     }
 
-    if (!family_string %in% setdiff(allowed_families, "negbin")) {
+    if (grepl("^quasi", tolower(family_string))) {
+      stop(
+        "! Quasi families have no likelihood and are not supported by likelihood-based MFP selection.",
+        call. = FALSE
+      )
+    }
+
+    if (!family_string %in% allowed_glm_families) {
       stop(
         sprintf(
           "! Invalid family: '%s'. Supported families are: %s.",
           family_string,
-          paste(allowed_families, collapse = ", ")
+          paste(allowed_glm_families, collapse = ", ")
         ),
         call. = FALSE
       )
@@ -136,7 +643,7 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
   }
 
   stop(
-    "! `family` must be a character string, a GLM family function, or a GLM family object.",
+    "! `family` must be a character string, a GLM family function/object, or an mfp2 survival-family specification.",
     call. = FALSE
   )
 }
@@ -165,8 +672,10 @@ get_family_string_formula <- function(family, family_arg = deparse(substitute(fa
 
 #' Resolve a model family once for repeated internal fits
 #'
-#' @param family Character family name, family function, family object, or "cox".
-#' @return A resolved GLM family object, or the character string "cox".
+#' @param family Character family name, family function, family object, or an
+#'   mfp2 survival-family specification.
+#' @return A resolved GLM family object, character Cox/negbin label, or an mfp2
+#'   survival-family specification.
 #' @keywords internal
 #' @noRd
 resolve_fit_model_family <- function(family) {
@@ -180,8 +689,7 @@ resolve_fit_model_family <- function(family) {
 #' it does not modify `y`.
 #'
 #' @param y Response vector, matrix, factor, or `survival::Surv()` object.
-#' @param family_string Normalized family name: `"gaussian"`, `"binomial"`,
-#'   `"poisson"`, `"negbin"`, or `"cox"`.
+#' @param family_string Normalized supported family name.
 #' @param nobs Expected number of observations.
 #'
 #' @return Invisibly returns `TRUE`.
@@ -238,11 +746,62 @@ validate_family_response <- function(y, family_string, nobs) {
     return(invisible(TRUE))
   }
 
+  if (family_string == "survreg") {
+    if (!survival::is.Surv(y)) {
+      stop(
+        "! For `family = survreg_family()`, `y` must be a `survival::Surv()` object.",
+        call. = FALSE
+      )
+    }
+    if (NROW(y) != nobs) {
+      stop("! `y` and `x` must contain the same number of observations.", call. = FALSE)
+    }
+    type <- attr(y, "type", exact = TRUE)
+    if (!type %in% c("right", "left", "interval", "interval2")) {
+      stop(
+        sprintf("! `survreg` does not support survival response type '%s'.", type),
+        call. = FALSE
+      )
+    }
+    if (anyNA(y) || any(!is.finite(as.matrix(y)))) {
+      stop("! The parametric survival response must contain only finite, non-missing values.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
+  if (family_string == "finegray") {
+    if (!survival::is.Surv(y)) {
+      stop(
+        "! For `family = finegray_family()`, `y` must be a multi-state `survival::Surv()` object.",
+        call. = FALSE
+      )
+    }
+    if (NROW(y) != nobs) {
+      stop("! `y` and `x` must contain the same number of observations.", call. = FALSE)
+    }
+    type <- attr(y, "type", exact = TRUE)
+    if (!type %in% c("mright", "mcounting")) {
+      stop(
+        sprintf("! Fine--Gray requires a multi-state response; `y` has type '%s'.", type),
+        call. = FALSE
+      )
+    }
+    states <- attr(y, "states", exact = TRUE)
+    if (length(states) < 2L) {
+      stop("! Fine--Gray requires at least two event states.", call. = FALSE)
+    }
+    if (anyNA(y) || any(!is.finite(as.matrix(y)))) {
+      stop("! The Fine--Gray response must contain only finite, non-missing values.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
   if (survival::is.Surv(y)) {
     stop(
       paste0(
         "! Response is a `survival::Surv()` object but family = '",
-        family_string, "'. Set `family = 'cox'`."
+        family_string, "'. Select `family = 'cox'`, `survreg_family()`, or ",
+        "`finegray_family()` as appropriate."
       ),
       call. = FALSE
     )
@@ -282,9 +841,13 @@ validate_family_response <- function(y, family_string, nobs) {
       )
     }
 
-    if (anyNA(y) || any(!is.finite(y)) || any(y < 0)) {
+    if (anyNA(y) || any(!is.finite(y)) || any(y < 0) ||
+        any(y != floor(y))) {
       stop(
-        "! For `family = 'binomial'`, matrix `y` counts must be finite, non-missing, and non-negative.",
+        paste0(
+          "! For `family = 'binomial'`, matrix `y` counts must be finite, ",
+          "non-missing, non-negative integers."
+        ),
         call. = FALSE
       )
     }
@@ -310,6 +873,27 @@ validate_family_response <- function(y, family_string, nobs) {
     if (anyNA(y) || any(!is.finite(y))) {
       stop(
         "! For `family = 'gaussian'`, `y` must contain only finite, non-missing values.",
+        call. = FALSE
+      )
+    }
+
+    return(invisible(TRUE))
+  }
+
+  if (family_string %in% c("Gamma", "inverse.gaussian")) {
+    if (!is.numeric(y)) {
+      stop(
+        sprintf("! For `family = '%s'`, `y` must be a numeric vector.", family_string),
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(y) || any(!is.finite(y)) || any(y <= 0)) {
+      stop(
+        sprintf(
+          "! For `family = '%s'`, `y` must contain only finite, non-missing, strictly positive values.",
+          family_string
+        ),
         call. = FALSE
       )
     }
@@ -343,9 +927,13 @@ validate_family_response <- function(y, family_string, nobs) {
       )
     }
 
-    if (anyNA(y) || any(!is.finite(y)) || any(y < 0)) {
+    if (anyNA(y) || any(!is.finite(y)) || any(y < 0) ||
+        any(y != floor(y))) {
       stop(
-        "! For `family = 'poisson'`, `y` must contain only finite, non-missing, non-negative values.",
+        paste0(
+          "! For `family = 'poisson'`, `y` must contain only finite, ",
+          "non-missing, non-negative integer counts."
+        ),
         call. = FALSE
       )
     }

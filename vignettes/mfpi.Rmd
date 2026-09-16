@@ -1003,8 +1003,8 @@ reader-facing labels as `print.mfp2()`, including `catzero_final` and
 `saz_decision`.
 
 In the formula interface, approximate cumulative distribution handling is
-requested term by term through `fp(..., acdx = TRUE)` or
-`fp2(..., acdx = TRUE)`. The argument-level `acd_vars` option is not used in the
+requested term by term through `fp(..., acd = TRUE)` or
+`fp2(..., acd = TRUE)`. The argument-level `acd_vars` option is not used in the
 formula interface, avoiding ambiguity with term-specific settings.
 
 # Interaction model formulation {#the-interaction-model}

@@ -118,6 +118,271 @@ make_best_model_metrics <- function(variable,
 
 
 # -----------------------------------------------------------------------------
+# MFPI design-estimability checks ---------------------------------------------
+# -----------------------------------------------------------------------------
+
+#' Check the Numerical Rank of an MFPI Design Matrix
+#'
+#' MFPI designs are supplied without an intercept. The augmented intercept is
+#' included here for every family: ordinary regression models estimate it,
+#' while proportional-hazards likelihoods are invariant to a constant shift of
+#' the linear predictor. A design column combination equal to a constant is
+#' therefore non-identifiable in either case.
+#'
+#' @param design Numeric design matrix without an intercept.
+#' @param tolerance Numerical tolerance passed to [base::qr()].
+#'
+#' @return A list containing the augmented rank, expected rank, and names of
+#'   columns identified as aliased by the QR decomposition.
+#' @keywords internal
+#' @noRd
+mfpi_design_rank <- function(design, tolerance = 1e-7) {
+  design <- as.matrix(design)
+  # Rank should not depend on the physical units of a covariate. Project each
+  # design column off the intercept and normalize its Euclidean norm before QR.
+  # Constant columns remain exact zeros and therefore remain detectable.
+  centered <- sweep(
+    design,
+    2L,
+    colMeans(design),
+    "-",
+    check.margin = FALSE
+  )
+  column_norms <- sqrt(colSums(centered^2))
+  safe_norms <- column_norms
+  safe_norms[safe_norms == 0] <- 1
+  standardized <- sweep(
+    centered,
+    2L,
+    safe_norms,
+    "/",
+    check.margin = FALSE
+  )
+
+  augmented <- cbind("(Intercept)" = 1, standardized)
+  colnames(augmented) <- make.unique(colnames(augmented), sep = "__")
+
+  decomposition <- qr(augmented, tol = tolerance, LAPACK = FALSE)
+  expected <- ncol(augmented)
+  aliased <- if (decomposition$rank < expected) {
+    colnames(augmented)[
+      decomposition$pivot[seq.int(decomposition$rank + 1L, expected)]
+    ]
+  } else {
+    character(0L)
+  }
+
+  list(
+    rank = decomposition$rank,
+    expected = expected,
+    aliased = aliased
+  )
+}
+
+
+#' Validate Selected MFPI Main and Interaction Designs
+#'
+#' Nominal MFPI degrees of freedom include the regression coefficients and,
+#' for FP terms, the method's explicit power-search allowance. Those formulas
+#' are valid only when every selected regression column is estimable. This
+#' helper rejects a selected design before outcome-model fitting when a group
+#' lacks enough transformed within-group variation or either complete design
+#' is rank deficient.
+#'
+#' @param cont_var One-column continuous-variable matrix.
+#' @param group_var One-column grouping-variable matrix.
+#' @param xmain,xinteraction Selected main-effects and interaction designs.
+#' @param degree Non-negative FP degree; zero denotes the linear form.
+#' @param flex MFPI flexibility label used in diagnostics.
+#' @param tolerance Numerical tolerance passed to [base::qr()].
+#'
+#' @return Invisibly `TRUE`.
+#' @keywords internal
+#' @noRd
+validate_mfpi_design_estimability <- function(cont_var,
+                                               group_var,
+                                               xmain,
+                                               xinteraction,
+                                               degree,
+                                               flex,
+                                               tolerance = 1e-7) {
+  cont_name <- colnames(cont_var)
+  if (is.null(cont_name) || length(cont_name) != 1L || !nzchar(cont_name)) {
+    cont_name <- "<unnamed>"
+  }
+
+  designs <- list(`main-effects` = xmain, interaction = xinteraction)
+  n <- NROW(group_var)
+  for (design_name in names(designs)) {
+    design <- designs[[design_name]]
+    if (!is.matrix(design) || !is.numeric(design) || NROW(design) != n) {
+      stop(
+        sprintf(
+          "Internal MFPI error: the %s design for '%s' must be a numeric matrix with %d rows.",
+          design_name, cont_name, n
+        ),
+        call. = FALSE
+      )
+    }
+    if (is.null(colnames(design)) || any(!nzchar(colnames(design)))) {
+      stop(
+        sprintf(
+          "Internal MFPI error: the %s design for '%s' must have non-empty column names.",
+          design_name, cont_name
+        ),
+        call. = FALSE
+      )
+    }
+    if (anyNA(design) || any(!is.finite(design))) {
+      stop(
+        sprintf(
+          "MFPI cannot test '%s': the selected %s design contains non-finite values.",
+          cont_name, design_name
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  group_values <- as.vector(group_var)
+  if (length(group_values) != n || anyNA(group_values)) {
+    stop("Internal MFPI error: the grouping variable is incomplete.", call. = FALSE)
+  }
+  group_levels <- sort(unique(group_values))
+  n_groups <- length(group_levels)
+  if (n_groups < 2L) {
+    stop("MFPI interaction testing requires at least two groups.", call. = FALSE)
+  }
+
+  if (!is.numeric(degree) || length(degree) != 1L || anyNA(degree) ||
+      !is.finite(degree) || degree < 0 || degree != floor(degree)) {
+    stop("Internal MFPI error: `degree` must be a non-negative integer.", call. = FALSE)
+  }
+  terms_per_group <- if (degree == 0L) 1L else as.integer(degree)
+  group_dummy_width <- n_groups - 1L
+  focal_width <- n_groups * terms_per_group
+  focal_start <- group_dummy_width + 1L
+  focal_end <- group_dummy_width + focal_width
+
+  if (ncol(xinteraction) < focal_end) {
+    stop(
+      sprintf(
+        "Internal MFPI error: the %s interaction design for '%s' does not contain the expected %d group-specific focal columns.",
+        flex, cont_name, focal_width
+      ),
+      call. = FALSE
+    )
+  }
+
+  focal <- xinteraction[, seq.int(focal_start, focal_end), drop = FALSE]
+  for (group_index in seq_len(n_groups)) {
+    in_group <- group_values == group_levels[[group_index]]
+    block_columns <- seq.int(
+      (group_index - 1L) * terms_per_group + 1L,
+      group_index * terms_per_group
+    )
+    group_block <- focal[in_group, block_columns, drop = FALSE]
+    group_rank <- mfpi_design_rank(group_block, tolerance = tolerance)
+
+    if (group_rank$rank < group_rank$expected) {
+      alias_note <- if (length(group_rank$aliased)) {
+        paste0(" Aliased column(s): ", paste(group_rank$aliased, collapse = ", "), ".")
+      } else {
+        ""
+      }
+      stop(
+        paste0(
+          "MFPI cannot test continuous variable '", cont_name,
+          "' in group '", as.character(group_levels[[group_index]]),
+          "': the selected ", flex, " focal block has rank ",
+          group_rank$rank, " of ", group_rank$expected,
+          " (including its within-group intercept). More within-group variation ",
+          "after transformation, or a simpler functional form, is required.",
+          alias_note
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  for (design_name in names(designs)) {
+    design_rank <- mfpi_design_rank(designs[[design_name]], tolerance = tolerance)
+    if (design_rank$rank < design_rank$expected) {
+      alias_note <- if (length(design_rank$aliased)) {
+        paste0(" Aliased column(s): ", paste(design_rank$aliased, collapse = ", "), ".")
+      } else {
+        ""
+      }
+      stop(
+        paste0(
+          "MFPI cannot test continuous variable '", cont_name, "': the selected ",
+          design_name, " design is rank deficient (rank ", design_rank$rank,
+          " of ", design_rank$expected, " including the intercept).",
+          alias_note,
+          " Remove collinear adjustment terms or choose a simpler functional form."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Validate Rank Reported by an MFPI Outcome-Model Fit
+#'
+#' The matrix check above catches structural aliasing before fitting. This
+#' second boundary ensures that family-specific fitting did not nevertheless
+#' lose regression rank through its own numerical or information-matrix rules.
+#'
+#' @param fit Result returned by `fit_model()`.
+#' @param design Design matrix supplied to that fit, without an intercept.
+#' @param model_name Diagnostic label (`"main-effects"` or `"interaction"`).
+#' @param cont_name Name of the continuous variable under test.
+#' @param family_string Normalized model-family name.
+#'
+#' @return Invisibly `TRUE`.
+#' @keywords internal
+#' @noRd
+validate_mfpi_fitted_rank <- function(fit,
+                                      design,
+                                      model_name,
+                                      cont_name,
+                                      family_string) {
+  expected_rank <- ncol(design) + as.integer(
+    mfp2_family_has_intercept(family_string)
+  )
+  fitted_rank <- fit$rank
+
+  if (!is.numeric(fitted_rank) || length(fitted_rank) != 1L ||
+      anyNA(fitted_rank) || !is.finite(fitted_rank)) {
+    stop(
+      sprintf(
+        "Internal MFPI error: the fitted %s model for '%s' did not report a valid rank.",
+        model_name, cont_name
+      ),
+      call. = FALSE
+    )
+  }
+
+  if (fitted_rank < expected_rank) {
+    stop(
+      paste0(
+        "MFPI cannot test continuous variable '", cont_name, "': the fitted ",
+        model_name, " model is rank deficient (fitted rank ", fitted_rank,
+        " of ", expected_rank, "). The nominal MFPI degrees of freedom are ",
+        "valid only for an estimable selected design."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+# -----------------------------------------------------------------------------
 # test_interaction() ----------------------------------------------------------
 # -----------------------------------------------------------------------------
 
@@ -157,24 +422,25 @@ make_best_model_metrics <- function(variable,
 #' may or may not differ across groups depending on `flex`).
 #'
 #' @section Degrees of freedom:
-#' The degrees of freedom for the likelihood-ratio test are determined by
-#' `interaction_model_df(n_groups, degree, flex)`:
-#' \deqn{
-#'   df_{\text{int}}
-#'   = p_{\text{interaction}} - p_{\text{main}},
-#' }
-#' where \eqn{p} counts model parameters excluding the intercept and
-#' adjustment terms. Specifically:
-#' \itemize{
-#'   \item \eqn{p_{\text{main}} = m + (K - 1)}: \eqn{m} shared FP terms
-#'     plus \eqn{K-1} group dummies.
-#'   \item \eqn{p_{\text{interaction}} = Km + (K - 1)}: \eqn{m} FP terms
-#'     per group plus \eqn{K-1} group dummies.
-#'   \item Hence \eqn{df_{\text{int}} = (K-1)m}.
-#' }
-#' Under `flex3` and `flex4` the main and interaction models may use different
-#' FP families, so the models are non-nested and the degrees of freedom
-#' calculation differs; see `interaction_model_df()` for details.
+#' The nominal degrees of freedom are determined by
+#' `interaction_model_df(n_groups, degree, flex)`. They count regression
+#' coefficients plus the FP power-search allowance used by the MFPI method,
+#' while excluding the intercept and common adjustment terms. For an FP of
+#' degree \eqn{m}, the main-effects contribution is \eqn{2m}: \eqn{m}
+#' regression coefficients and \eqn{m} searched powers (a linear term is the
+#' special case with one slope and no power search). For `flex1`--`flex3`,
+#' \eqn{df_{\text{int}}=(K-1)m}; for `flex4`, independently searched powers
+#' add a second \eqn{(K-1)m}, giving
+#' \eqn{df_{\text{int}}=2(K-1)m}. `flex0` uses \eqn{K-1} df.
+#'
+#' These nominal formulas assume that all selected regression columns are
+#' estimable. Before fitting, the complete main and interaction designs and
+#' every group-specific transformed focal block are checked for full rank.
+#' The ranks reported by the fitted models are checked again afterward. A
+#' deficient design is rejected with a variable/group diagnostic rather than
+#' being assigned nominal test or information-criterion degrees of freedom.
+#' Under `flex3` and `flex4`, different selected FP families can additionally
+#' make the comparison non-nested; see `interaction_model_df()` for details.
 #'
 #' @section Likelihood-ratio and F-test statistics:
 #' Let \eqn{\ell_{\text{main}}} and \eqn{\ell_{\text{int}}} denote the
@@ -191,12 +457,11 @@ make_best_model_metrics <- function(variable,
 #' instead:
 #' \deqn{F = \frac{d_2}{d_1}
 #'   \left(\exp\!\left(\frac{T}{n}\right) - 1\right),}
-#' where \eqn{d_1 = df_{\text{resid,main}} - df_{\text{resid,int}}} is the
-#' difference in residual degrees of freedom between the main-effects and
-#' interaction models, and \eqn{d_2 = df_{\text{resid,int}}} is the residual
-#' degrees of freedom of the interaction model. Both are taken directly from
-#' the fitted model objects to correctly account for all parameters including
-#' adjustment variables. The p-value is
+#' where \eqn{d_1=df_{\text{int}}} is the nominal MFPI interaction df,
+#' including its applicable power-search allowance. The denominator df
+#' \eqn{d_2} is the fitted interaction-model residual df minus the
+#' interaction model's power-search allowance. The fitted residual df already
+#' accounts for the intercept and adjustment variables. The p-value is
 #' \eqn{\Pr[F(d_1, d_2) > F_{\text{obs}}]}.
 #'
 #' @section Information criteria:
@@ -208,15 +473,15 @@ make_best_model_metrics <- function(variable,
 #' where \eqn{p} is the number of model parameters (excluding intercepts and
 #' adjustment terms, as these are common across models and do not affect
 #' comparisons), and \eqn{n^*} is the effective sample size
-#' (\eqn{n^* =} number of events for Cox models; \eqn{n^* = n} otherwise).
+#' (\eqn{n^* =} number of target events for Cox/Fine--Gray models;
+#' \eqn{n^* = n} otherwise).
 #' Positive values of
 #' \eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}} and
 #' \eqn{\mathrm{BIC}_{\text{main}} - \mathrm{BIC}_{\text{int}}} indicate
 #' that the interaction model fits better.
 #'
-#' @param y Response vector or [survival::Surv()] object. For
-#'   `family = "binomial"`, a numeric vector with exactly two distinct values.
-#'   For `family = "cox"`, a two-column right-censored Surv object.
+#' @param y Response accepted by the resolved fitting family, including
+#'   [survival::Surv()] responses for survival models.
 #' @param cont_var A one-column numeric matrix of the continuous variable.
 #'   Must have a column name.
 #' @param group_var A one-column numeric matrix of the grouping variable.
@@ -242,17 +507,17 @@ make_best_model_metrics <- function(variable,
 #'   manual (Royston and Sauerbrei), with residual df taken directly from the
 #'   fitted interaction model to correctly account for adjustment variables.
 #'   Ignored (chi-square used) for non-Gaussian families. Default \code{FALSE}.
-#' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
-#'   `"negbin"`, or `"cox"`.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, `survreg`, or
+#'   Fine--Gray family specification.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param ties Character string; Cox tie-handling method - `"breslow"` or
+#' @param ties Character string; Cox/Fine--Gray tie-handling method - `"breslow"` or
 #'   `"efron"`. `"exact"` is rejected by the public MFP/MFPI interfaces before
-#'   selection. Ignored for non-Cox families.
-#' @param strata Integer stratum vector for stratified Cox models, or `NULL`.
-#' @param control Fitting control list from [stats::glm.control()] or
-#'   [survival::coxph.control()].
-#' @param nocenter Numeric vector for Cox centring suppression; see
+#'   selection. Ignored for other families.
+#' @param strata Optional normalized Cox or `survreg` stratum; for Fine--Gray,
+#'   censoring strata were consumed during preparation.
+#' @param control Fitting control list for the resolved model family.
+#' @param nocenter Numeric vector for Cox/Fine--Gray centring suppression; see
 #'   [survival::coxph()].
 #'
 #' @return A list with five components:
@@ -295,6 +560,15 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   cont_name  <- colnames(cont_var)
   n_groups   <- length(unique(as.vector(group_var)))
 
+  validate_mfpi_design_estimability(
+    cont_var = cont_var,
+    group_var = group_var,
+    xmain = xmain,
+    xinteraction = xinteraction,
+    degree = degree,
+    flex = flex
+  )
+
   # ---------------------------------------------------------------------------
   # Fit main-effects and interaction models
   # ---------------------------------------------------------------------------
@@ -312,13 +586,24 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     rownames = NULL,
     nocenter = nocenter,
     has_offset = has_offset,
-    fast     = TRUE,
+    # Fine--Gray's retained main model supplies covariance information to
+    # downstream plots, so give that one model the same robust coxph refit as
+    # the interaction model. Repeated FP candidate fits elsewhere remain on
+    # the agreg.fit() hot path.
+    fast     = !identical(family_string, "finegray"),
     calculate_gaussian_deviance = isTRUE(
       use_ftest && identical(family_string, "gaussian")
     ),
     keep_fit = TRUE    # retained for downstream coefficient/vcov extraction
   )
 
+  validate_mfpi_fitted_rank(
+    fit = fit_main,
+    design = xmain,
+    model_name = "main-effects",
+    cont_name = cont_name,
+    family_string = family_string
+  )
   fit_interaction <- fit_model(
     x        = xinteraction,
     y        = y,
@@ -337,6 +622,14 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
       use_ftest && identical(family_string, "gaussian")
     ),
     fast     = FALSE   # full fit: coefficients and vcov required downstream
+  )
+
+  validate_mfpi_fitted_rank(
+    fit = fit_interaction,
+    design = xinteraction,
+    model_name = "interaction",
+    cont_name = cont_name,
+    family_string = family_string
   )
 
   # ---------------------------------------------------------------------------
@@ -359,9 +652,6 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # ---------------------------------------------------------------------------
   # P-value: F-test (Gaussian only) or chi-square LRT
   # ---------------------------------------------------------------------------
-  # ---------------------------------------------------------------------------
-  # P-value: F-test (Gaussian only) or chi-square LRT
-  # ---------------------------------------------------------------------------
   if (deviance_diff < -sqrt(.Machine$double.eps)) {
 
     warning(
@@ -370,8 +660,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
           "Interaction test for variable '%s' using %s was not assigned a p-value: ",
           "the fitted interaction model has a larger deviance than the main-effects model ",
           "(main deviance = %.6g, interaction deviance = %.6g, difference = %.6g). ",
-          "This can occur with non-nested selected FP transformations, rank deficiency, ",
-          "or numerical convergence issues. For non-nested MFPI comparisons, especially ",
+          "This can occur with non-nested selected FP transformations or numerical ",
+          "convergence issues. For non-nested MFPI comparisons, especially ",
           "when using flex3 or flex4, AIC or BIC can be more appropriate than a ",
           "likelihood-ratio or F-test p-value. The interaction p-value is set to NA; ",
           "AIC/BIC values are still reported."
@@ -453,6 +743,14 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     if (!is.finite(n_eff) || n_eff <= 0L) {
       stop(
         "Cox BIC requires at least one observed event.",
+        call. = FALSE
+      )
+    }
+  } else if (family_string == "finegray") {
+    n_eff <- family$prepared$nevents
+    if (!is.finite(n_eff) || n_eff <= 0L) {
+      stop(
+        "Fine--Gray BIC requires at least one event of the selected type.",
         call. = FALSE
       )
     }

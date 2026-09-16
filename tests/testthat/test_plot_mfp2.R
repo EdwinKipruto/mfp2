@@ -217,3 +217,91 @@ test_that("plot() labels SAZ binary-only groups on the original scale", {
   )
   expect_false(any(as.character(point_layer$data$variable) %in% c("0", "1")))
 })
+
+
+# -----------------------------------------------------------------------------
+# 21.2 Positive-part ACD plotting
+# -----------------------------------------------------------------------------
+
+# Test purpose: zero_vars without catzero or spike fits no separate zero
+# coefficient. The ACD curve and ribbon must cover only x > 0, while x = 0 is
+# shown once with the ordinary curve colour rather than spike styling.
+test_that("plot() separates the zero endpoint from a positive-part ACD curve", {
+  skip_if_not_installed("ggplot2")
+
+  set.seed(21013)
+  n <- 160L
+  exposure <- stats::rexp(n)
+  exposure[sample.int(n, size = 40L)] <- 0
+  y <- 1 + 4 * (exposure > 0) * stats::pnorm(log(pmax(exposure, 0.05))) +
+    stats::rnorm(n, sd = 0.1)
+
+  fit <- mfp2(
+    x = matrix(exposure, ncol = 1L, dimnames = list(NULL, "exposure")),
+    y = y,
+    acd_vars = "exposure",
+    zero_vars = "exposure",
+    keep = "exposure",
+    force_max_fp_vars = "exposure",
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+
+  expect_true(fit$acd[["exposure"]])
+  expect_true(fit$zero[["exposure"]])
+  expect_false(fit$catzero[["exposure"]])
+  expect_false(fit$spike[["exposure"]])
+
+  p <- plot(
+    fit,
+    terms = "exposure",
+    partial_only = TRUE,
+    terms_seq = "equidistant",
+    color_line = "navy",
+    color_line_spike = "orange"
+  )[["exposure"]]
+
+  geom_classes <- vapply(
+    p$layers,
+    function(layer) class(layer$geom)[[1L]],
+    character(1L)
+  )
+
+  expect_equal(sum(geom_classes == "GeomLine"), 1L)
+  expect_equal(sum(geom_classes == "GeomRibbon"), 1L)
+  expect_equal(sum(geom_classes == "GeomPoint"), 1L)
+  expect_equal(sum(geom_classes == "GeomErrorbar"), 1L)
+
+  line_layer <- p$layers[[which(geom_classes == "GeomLine")[[1L]]]]
+  ribbon_layer <- p$layers[[which(geom_classes == "GeomRibbon")[[1L]]]]
+  point_layer <- p$layers[[which(geom_classes == "GeomPoint")[[1L]]]]
+  errorbar_layer <- p$layers[[which(geom_classes == "GeomErrorbar")[[1L]]]]
+
+  expect_true(all(line_layer$data$variable > 0))
+  expect_true(all(ribbon_layer$data$variable > 0))
+  expect_equal(point_layer$data$variable, 0)
+  expect_equal(errorbar_layer$data$variable, 0)
+  expect_identical(point_layer$aes_params$colour, "navy")
+  expect_identical(errorbar_layer$aes_params$colour, "navy")
+  expect_match(p$labels$title, "no zero indicator", fixed = TRUE)
+  expect_false(grepl("spike", p$labels$title, ignore.case = TRUE))
+
+  # Plot layers must use the same centered term predictions returned by the
+  # public prediction method, including the exact-zero endpoint.
+  predicted <- predict(
+    fit,
+    type = "terms",
+    terms = "exposure",
+    terms_seq = "equidistant"
+  )[["exposure"]]
+  predicted_zero <- predicted[predicted$variable == 0, , drop = FALSE]
+  predicted_positive <- predicted[predicted$variable > 0, , drop = FALSE]
+
+  expect_equal(point_layer$data$value, predicted_zero$value, tolerance = 1e-12)
+  expect_equal(
+    unname(line_layer$data$value),
+    unname(predicted_positive$value[order(predicted_positive$variable)]),
+    tolerance = 1e-12
+  )
+})

@@ -25,15 +25,18 @@
 #'   confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
 #'   intervals.
 #' @param show_titles Logical scalar. If \code{TRUE}, add titles describing the
-#'   selected FP or ACD representation and any retained spike-at-zero component.
+#'   selected FP or ACD representation, positive-part handling, and any retained
+#'   zero-indicator or spike-at-zero component.
 #' @param color_points Colour used for residual points.
-#' @param color_line Colour used for fitted curves and for binary fitted
-#'   points and confidence intervals.
-#' @param color_line_spike Colour used for the structural-zero point.
+#' @param color_line Colour used for fitted curves, binary fitted points, and
+#'   the zero endpoint of a term fitted with \code{zero = TRUE} alone.
+#' @param color_line_spike Colour used for the zero-component point of a
+#'   \code{catzero} term or a term assessed with spike-at-zero selection.
 #' @param color_fill Fill colour used for confidence ribbons.
 #' @param shape Point shape used for residual observations.
 #' @param size_points Point size used for residual observations.
-#' @param size_points_spike Point size used for structural-zero observations.
+#' @param size_points_spike Point size used for fitted values shown at exactly
+#'   zero for zero-handled covariates.
 #' @param linetype Line type used for fitted curves.
 #' @param linewidth Line width used for fitted curves.
 #' @param alpha_fill Numeric scalar between 0 and 1 controlling confidence-band
@@ -52,12 +55,23 @@
 #'
 #' Binary predictors are displayed at their two fitted levels as point estimates
 #' with vertical confidence intervals. Only those two levels are labelled on the
-#' x-axis; no interpolating line or confidence ribbon is drawn. For a spike-at-zero
-#' term retaining only the zero indicator, the internal 0/1 coding is replaced by
-#' semantic labels such as \code{x = 0} and \code{x > 0}.
+#' x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero
+#' term retaining only the zero indicator is labelled with categories such as
+#' \code{x = 0} and \code{x > 0} rather than numeric values.
 #'
-#' Spike-at-zero covariates are displayed according to the representation
-#' retained by the final model:
+#' For a covariate fitted with \code{zero = TRUE} alone, the FP or ACD function
+#' is evaluated only for \code{x > 0}; its uncentered basis is set to zero at
+#' \code{x = 0}. If centering is enabled, the complete zero-padded basis is
+#' centered and the same fitted-sample constant is subtracted from every row,
+#' including the exact-zero rows. The positive-part curve and confidence ribbon
+#' are drawn only for \code{x > 0}, while the fitted value at exactly zero is
+#' shown as a point in the ordinary curve colour. This point comes from the same
+#' fitted continuous term and does not represent a separately estimated zero
+#' effect.
+#'
+#' A \code{catzero} term additionally estimates a zero indicator. Spike-at-zero
+#' covariates are displayed according to the representation retained by the
+#' final model:
 #' \itemize{
 #'   \item both components: the positive-value FP or ACD function and the
 #'     structural-zero indicator;
@@ -67,10 +81,10 @@
 #'     continuous function.
 #' }
 #'
-#' For spike-at-zero terms with a continuous component, the curve is drawn only
-#' for \code{x > 0}. A fitted value at \code{x = 0}, when available, is shown as
-#' a separate point with a vertical confidence interval because an FP or ACD
-#' function is not evaluated at zero.
+#' For \code{catzero} and spike-at-zero terms with a continuous component, the
+#' curve is likewise drawn only for \code{x > 0}. A fitted value at
+#' \code{x = 0}, when available, is shown as a separate point with a vertical
+#' confidence interval and uses \code{color_line_spike}.
 #'
 #' @return A named list of \code{ggplot2} objects, one for each plotted term.
 #'   Individual plots can be printed directly or combined with packages such as
@@ -478,10 +492,24 @@ plot_mfp2_impl <- function(model,
     # compute residuals to plot points
     # for glm, deviance residuals are required
     # while for cox martingale residuals
-    resid <- if (model$family_string == "cox") {
+    resid <- if (mfp2_family_is_ph(model$family_string)) {
       model$residuals
     } else {
       stats::residuals(model, type = "deviance")
+    }
+    if (identical(model$family_string, "finegray") &&
+        !is.null(model$mfp2_finegray_row_map) &&
+        length(resid) == length(model$mfp2_finegray_row_map)) {
+      row_map <- model$mfp2_finegray_row_map
+      aggregated <- rowsum(
+        resid,
+        row_map,
+        reorder = FALSE
+      )
+      n_original <- if (is.null(model$nobs)) max(row_map) else model$nobs
+      resid_original <- rep(NA_real_, n_original)
+      resid_original[unique(row_map)] <- as.numeric(aggregated)
+      resid <- resid_original
     }
     # Prediction frames and residuals must describe the same fitted rows.
     # The helper checks counts and uses observation names for alignment when
@@ -525,6 +553,20 @@ plot_mfp2_impl <- function(model,
       v %in% rownames(model$fp_terms) &&
       "acd" %in% colnames(model$fp_terms) &&
       isTRUE(model$fp_terms[v, "acd"])
+
+    # zero = TRUE defines the uncentered continuous basis only on x > 0 and
+    # assigns zero to that basis at x = 0. Ordinary centering may subsequently
+    # move the zero-row design value away from zero. This is distinct from
+    # catzero/spike modelling, which can include a separately estimated zero
+    # indicator, but every zero-handled continuous curve must avoid drawing an
+    # interpolating segment through the exact-zero point.
+    has_zero_indicator <- !is.null(model$catzero) &&
+      v %in% names(model$catzero) &&
+      isTRUE(model$catzero[[v]])
+
+    is_zero_handled <- (!is.null(model$zero) &&
+      v %in% names(model$zero) &&
+      isTRUE(model$zero[[v]])) || is_spike || has_zero_indicator
 
     is_binary <- (is_spike &&
                     spike_dec_v == saz_decision_codes[["binary_only"]]) ||
@@ -579,6 +621,10 @@ plot_mfp2_impl <- function(model,
         style = "plot_title",
         continuous_label = continuous_label
       )
+    } else if (is_zero_handled && has_zero_indicator) {
+      paste0(continuous_label, " (x > 0) + zero indicator")
+    } else if (is_zero_handled) {
+      paste0(continuous_label, " (positive part; no zero indicator)")
     } else {
       continuous_label
     }
@@ -601,9 +647,10 @@ plot_mfp2_impl <- function(model,
     }
 
     # Then fitted line/ribbon on top.
-    # For active spike-at-zero covariates, the positive-value FP/ACD curve must
-    # not extend through x = 0. The retained representation is handled as one
-    # of: both components, positive-part only, or zero-indicator only.
+    # A zero-handled positive-value FP/ACD curve must not extend through x = 0.
+    # Binary-only SAZ terms were handled by the discrete branch above. All
+    # remaining zero-handled terms have a continuous positive component; only
+    # catzero or spike models use the special zero-component styling.
     if (is_discrete && !is.null(binary_plot_data)) {
       # Discrete terms (binary variables and formula factors of any size) use
       # one estimate and confidence interval per fitted level. Do not imply
@@ -636,38 +683,18 @@ plot_mfp2_impl <- function(model,
         )
       }
 
-    } else if (is_spike && spike_dec_v == saz_decision_codes[["cont_binary"]]) {
-      # Cont + binary: FP curve for x > 0, point at x = 0
+    } else if (is_zero_handled) {
+      # The continuous transformation is defined only for x > 0. At x = 0,
+      # zero-only handling shows the endpoint from the same centered continuous
+      # term with ordinary styling; catzero and spike models retain
+      # zero-component styling.
       pos_df <- df[df$variable > 0, , drop = FALSE]
       pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
       zero_df <- df[df$variable == 0, , drop = FALSE]
-
-      p <- p + ggplot2::geom_line(data = pos_df,
-                                  ggplot2::aes(x = .data$variable, y = .data$value),
-                                  linewidth = linewidth,
-                                  linetype = linetype,
-                                  color = color_line) +
-        ggplot2::geom_ribbon(data = pos_df,
-                             ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
-                             alpha = alpha_fill, fill = color_fill)
-
-      if (nrow(zero_df) > 0) {
-        p <- p + ggplot2::geom_point(data = zero_df,
-                                     ggplot2::aes(y = .data$value),
-                                     color = color_line_spike,
-                                     size = size_points_spike) +
-          ggplot2::geom_errorbar(data = zero_df,
-                                 ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
-                                 width = 0.2,
-                                 color = color_line)
+      if (nrow(zero_df) > 1L) {
+        zero_df <- zero_df[1L, , drop = FALSE]
       }
 
-    } else if (is_spike && spike_dec_v == saz_decision_codes[["continuous_only"]]) {
-      # Cont only: FP curve for x > 0, separate reference point at x = 0
-      pos_df <- df[df$variable > 0, , drop = FALSE]
-      pos_df <- pos_df[order(pos_df$variable), , drop = FALSE]
-      zero_df <- df[df$variable == 0, , drop = FALSE]
-
       p <- p + ggplot2::geom_line(data = pos_df,
                                   ggplot2::aes(x = .data$variable, y = .data$value),
                                   linewidth = linewidth,
@@ -678,14 +705,20 @@ plot_mfp2_impl <- function(model,
                              alpha = alpha_fill, fill = color_fill)
 
       if (nrow(zero_df) > 0) {
+        zero_color <- if (is_spike || has_zero_indicator) {
+          color_line_spike
+        } else {
+          color_line
+        }
+
         p <- p + ggplot2::geom_point(data = zero_df,
                                      ggplot2::aes(y = .data$value),
-                                     color = color_line_spike,
+                                     color = zero_color,
                                      size = size_points_spike) +
           ggplot2::geom_errorbar(data = zero_df,
                                  ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
                                  width = 0.2,
-                                 color = color_line)
+                                 color = zero_color)
       }
 
     } else {

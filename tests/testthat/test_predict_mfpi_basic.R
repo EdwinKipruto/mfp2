@@ -138,20 +138,20 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
   dat <- dat[stats::complete.cases(dat[, c("time", "status", "age", "sex", "inst")]), ]
   dat$sex <- factor(dat$sex)
   fit <- mfpi(
-    survival::Surv(time, status) ~ age + sex,
+    survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
     family = "cox",
     cont_vars = "age",
     group_var = "sex",
     cont_var_forms = c(age = "linear"),
-    strata = dat$inst,
     p_interact = 0.95,
     verbose = FALSE
   )
   nd <- dat[1:10, c("age", "sex", "inst"), drop = FALSE]
   fit_result <- fit$var_winners[["age"]]$fit
+  prediction_strata <- reconstruct_formula_strata_newdata(fit, nd)
   design <- mfpi_build_ordinary_design(
-    fit, "age", fit_result, nd, strata = nd$inst
+    fit, "age", fit_result, nd, strata = prediction_strata
   )
   stored <- fit_result$test_results$interaction_model$fit
   fitted_strata_levels <- stored$xlevels[["strata(strata_)"]]
@@ -160,7 +160,7 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
   expect_identical(levels(design$model_newdata$strata_), fitted_strata_levels)
   expect_identical(
     as.character(design$model_newdata$strata_),
-    as.character(nd$inst)
+    as.character(prediction_strata)
   )
 
   direct <- stats::predict(
@@ -172,7 +172,7 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
   )
   got <- predict(
     fit, newdata = nd, terms = "age", model = "all",
-    type = "link", strata = nd$inst, se.fit = TRUE
+    type = "link", se.fit = TRUE
   )
   expect_equal(got$predictions$fit, as.numeric(direct$fit))
   expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit))

@@ -586,6 +586,9 @@ materialize_fp_basis_candidate <- function(fp_basis, candidate) {
 #' training A(x) vector is retained in acd_parameter$acd. The model-search hot
 #' path can pass that vector explicitly via acd_training_values and avoid
 #' applying the same fitted ACD transformation to the same training x again.
+#' With `zero = TRUE`, cached and newly applied values are forced to zero on the
+#' original `x == 0` rows; all downstream FP(A(x)) functions use that same raw
+#' row mask.
 #'
 #' The cache is deliberately explicit rather than inferred from
 #' acd_parameter$acd. This preserves the existing apply-to-new-x semantics for
@@ -623,6 +626,11 @@ resolve_acd_base_values <- function(x,
         ),
         call. = FALSE
       )
+    }
+
+    if (zero) {
+      acd_training_values <- as.numeric(acd_training_values)
+      acd_training_values[x == 0] <- 0
     }
 
     return(acd_training_values)
@@ -669,6 +677,10 @@ resolve_acd_base_values <- function(x,
 #' represents each candidate by one row of the small integer
 #' \code{candidate_map}. The structural-zero indicator, when present, is kept
 #' separately because it is invariant across all candidates.
+#'
+#' When `zero = TRUE`, both the direct FP(x) basis and every FP(A(x)) basis
+#' column are evaluated only where original `x > 0`; original exact-zero rows
+#' remain zero for every candidate.
 #'
 #' For the default eight powers, ACD degree 2 therefore stores 16 transformed
 #' columns (8 for x and 8 for A(x)) plus a 64 x 2 integer map, rather than 64
@@ -761,13 +773,16 @@ generate_transformations_acd_basis <- function(x,
   }
 
   if (n_acd_basis > 0L) {
+    structural_zero_rows <- if (zero) x == 0 else NULL
+
     for (j in seq_along(acd_powers)) {
-      basis[, n_x_basis + j] <- transform_vector_fp(
+      basis[, n_x_basis + j] <- transform_vector_fp_masked(
         x = x_acd_base,
         power = acd_powers[j],
         scale = 1,
         shift = 0,
-        zero = FALSE
+        structural_zero_rows = structural_zero_rows,
+        check_binary = FALSE
       )
     }
   }
@@ -939,6 +954,7 @@ generate_transformations_acd <- function(x,
 
   x_acd_cache <- vector("list", length(power_acd_values))
   names(x_acd_cache) <- vapply(power_acd_values, make_power_key, character(1L))
+  structural_zero_rows <- if (zero) x == 0 else NULL
 
   for (j in seq_along(power_acd_values)) {
     p <- power_acd_values[j]
@@ -946,12 +962,13 @@ generate_transformations_acd <- function(x,
     if (is.na(p)) {
       x_acd_cache[[j]] <- NULL
     } else {
-      x_acd_cache[[j]] <- transform_vector_fp(
+      x_acd_cache[[j]] <- transform_vector_fp_masked(
         x = x_acd_base,
         power = p,
         scale = 1,
         shift = 0,
-        zero = FALSE
+        structural_zero_rows = structural_zero_rows,
+        check_binary = FALSE
       )
     }
   }

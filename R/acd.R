@@ -100,10 +100,12 @@ reset_acd <- function(x, acdx) {
 #' \code{find_shift_factor()}. If `scale = NULL`, an appropriate scale is estimated
 #' automatically using \code{find_scale_factor()}.
 #'
-#' When `zero = TRUE`, `x` must be nonnegative. Only values with `x > 0` are
-#' used in the continuous transformation; exact-zero values are assigned a
-#' transformed value of zero, and no shift is applied. This internal helper
-#' assumes that callers have already validated the nonnegative-input contract.
+#' When `zero = TRUE`, `x` must be nonnegative. Ranks, normal scores, automatic
+#' scaling, and the auxiliary FP1 fit are all computed on `x > 0` only;
+#' exact-zero values are excluded from fitting and assigned a transformed value
+#' of exactly zero. No shift is applied, and at least two distinct positive
+#' values are required. This internal helper also validates the nonnegative
+#' input contract directly.
 #'
 #' @param x Numeric vector containing the covariate values. Missing values are
 #'   not allowed.
@@ -232,21 +234,57 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
   }
 
   # --- Preprocessing ---
-  if (is.null(shift)) {
-    shift <- find_shift_factor(x)
-  }
-
+  # With structural-zero handling, ACD is a positive-part transformation:
+  # zero observations do not enter the empirical ranks or the auxiliary FP1
+  # regression, and they are restored as exact zeros in the returned vector.
+  # Keeping the row mask on the original scale is important because a positive
+  # value can legitimately transform to the numeric value zero (e.g. log(1)).
   if (zero) {
-    x[x == 0] <- 0
-    # zero transformation overrides shift
+    if (any(x < 0)) {
+      stop("`x` must be nonnegative when `zero = TRUE`.", call. = FALSE)
+    }
+
+    zero_rows <- x == 0
+    fit_rows <- !zero_rows
+    x_fit <- x[fit_rows]
+
+    if (length(x_fit) < 2L) {
+      stop(
+        "At least two positive values are required to fit ACD when `zero = TRUE`.",
+        call. = FALSE
+      )
+    }
+
+    if (length(unique(x_fit)) < 2L) {
+      stop(
+        paste0(
+          "At least two distinct positive values are required to fit ACD ",
+          "when `zero = TRUE`."
+        ),
+        call. = FALSE
+      )
+    }
+
+    # Structural-zero handling overrides any requested/automatic shift.
     shift <- 0
+  } else {
+    zero_rows <- rep(FALSE, length(x))
+    fit_rows <- rep(TRUE, length(x))
+    x_fit <- x
+
+    if (is.null(shift)) {
+      shift <- find_shift_factor(x_fit)
+    }
   }
 
+  # In zero mode, automatic scaling is estimated from the positive part only.
+  # This is immaterial for mfp2()'s normal ACD path (whose scale is fixed at 1)
+  # but makes direct fit_acd(..., scale = NULL) calls mathematically coherent.
   if (is.null(scale)) {
-    scale <- find_scale_factor(x)
+    scale <- find_scale_factor(x_fit)
   }
 
-  x <- (x + shift) / scale
+  x_fit <- (x_fit + shift) / scale
 
   # check whether acd is estimable
   #if (!all(x > 0) && !zero) {
@@ -255,18 +293,26 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
   #}
   # --- ACD transformation ---
   # see here for details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5663339/pdf/emss-59479.pdf)
-  n <- length(x)
-  z <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / n)
+  n_fit <- length(x_fit)
+  z <- stats::qnorm(
+    (rank(x_fit, ties.method = "average") - 0.5) / n_fit
+  )
 
   # estimate the best p in model E(z) = beta0 + beta1*x^p using the data
   fit <- find_best_fp1_for_acd(
-    y = z, x = x, powers = powers, zero = zero, fitter = fitter
+    y = z, x = x_fit, powers = powers, zero = FALSE, fitter = fitter
   )
 
   coefx <- fit$coefficients
   zhat <- fit$fitted_values
 
-  list(acd = stats::pnorm(zhat),
+  acd <- numeric(length(x))
+  acd[fit_rows] <- stats::pnorm(zhat)
+  # Defensive assignment documents and enforces the public invariant even if
+  # the construction above changes in the future.
+  acd[zero_rows] <- 0
+
+  list(acd = acd,
        beta0 = coefx[1],
        beta1 = coefx[2],
        power = fit$power,
@@ -291,8 +337,8 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
 #' @param scale a numeric value used to scale `x`.
 #' @param zero Logical indicating whether only positive values of a nonnegative
 #' variable should be transformed, with exact-zero values retained as zero. If
-#' `TRUE`, callers must supply values already checked against the nonnegative
-#' input contract.
+#' `TRUE`, stored ACD parameters are applied only to `x > 0` and `A(0)` is
+#' exactly zero.
 #' @param ... not used.
 #'
 #' @return
@@ -305,18 +351,37 @@ apply_acd <- function(x, beta0, beta1, power, shift, scale, zero, ...) {
     stop("! `power` must be a single numeric value.")
   }
 
+  if (!is.logical(zero) || length(zero) != 1L || is.na(zero)) {
+    stop("`zero` must be a single logical value (TRUE or FALSE).", call. = FALSE)
+  }
+
+  if (zero && any(x < 0, na.rm = TRUE)) {
+    stop("`x` must be nonnegative when `zero = TRUE`.", call. = FALSE)
+  }
+
+  zero_rows <- if (zero) x == 0 else rep(FALSE, length(x))
+  apply_rows <- !zero_rows
+  out <- numeric(length(x))
+
+  # Prediction data may legitimately contain only structural zeros. No FP
+  # evaluation is then needed and every ACD value is exactly zero.
+  if (!any(apply_rows)) {
+    return(out)
+  }
+
   x_power <- transform_vector_fp(
-    x            = x,
+    x            = x[apply_rows],
     power        = power,
     shift        = shift,
     scale        = scale,
-    zero         = zero,
+    zero         = FALSE,
     check_binary = FALSE
   )
 
   zhat <- beta0 + beta1 * x_power[, 1L]
-
-  stats::pnorm(zhat)
+  out[apply_rows] <- stats::pnorm(zhat)
+  out[zero_rows] <- 0
+  out
 }
 
 #' Function to fit univariable FP1 models for acd transformation
@@ -365,6 +430,11 @@ find_best_fp1_for_acd <- function(x,
 
   family_gaussian <- stats::gaussian()
   family_string_gaussian <- family_gaussian$family
+  control_gaussian <- normalize_fit_control(
+    control = NULL,
+    family_string = family_string_gaussian,
+    fitter = fitter
+  )
 
   # Reuse one intercept-augmented design matrix across candidate fits.
   # Only the numeric FP column changes; the intercept and column names remain
@@ -413,6 +483,7 @@ find_best_fp1_for_acd <- function(x,
       family = family_gaussian,
       family_string = family_string_gaussian,
       fitter = fitter,
+      control = control_gaussian,
       x_has_intercept = TRUE,
       keep_fit = FALSE,
       keep_fitted_values = TRUE

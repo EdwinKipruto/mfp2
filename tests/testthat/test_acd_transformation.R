@@ -10,7 +10,7 @@
 # Test purpose: Checks that ACD can be requested through the default matrix
 # interface.
 test_that("ACD transformation via default interface works", {
-  fit <- mfp2(x_prostate, y_prostate, acdx = "cavol", verbose = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, acd_vars = "cavol", verbose = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])
@@ -21,12 +21,78 @@ test_that("ACD transformation via default interface works", {
 # interface.
 test_that("ACD transformation via formula interface works", {
   fit <- mfp2(
-    lpsa ~ fp(cavol, acdx = TRUE) + fp(age) + fp(svi, df = 1),
+    lpsa ~ fp(cavol, acd = TRUE) + fp(age) + fp(svi, df = 1),
     data = prostate, verbose = FALSE
   )
 
   expect_s3_class(fit, "mfp2")
   expect_true(fit$fp_terms["cavol", "acd"])
+})
+
+
+# Test purpose: Keeps the former matrix-interface spelling operational while
+# directing callers to the new descriptive name.
+test_that("deprecated matrix-interface acdx alias remains available", {
+  expect_warning(
+    fit <- mfp2(
+      x_prostate,
+      y_prostate,
+      acdx = "cavol",
+      verbose = FALSE
+    ),
+    "`acdx` is deprecated; use `acd_vars` instead",
+    fixed = TRUE
+  )
+
+  expect_s3_class(fit, "mfp2")
+  expect_true(fit$fp_terms["cavol", "acd"])
+})
+
+
+# Test purpose: Prevents an ambiguous matrix-interface specification when both
+# the canonical argument and its deprecated alias are supplied.
+test_that("matrix interface rejects simultaneous acd_vars and acdx", {
+  expect_error(
+    mfp2(
+      x_prostate,
+      y_prostate,
+      acd_vars = "cavol",
+      acdx = "cavol",
+      verbose = FALSE
+    ),
+    "cannot both be supplied",
+    fixed = TRUE
+  )
+})
+
+
+# Test purpose: Keeps the former fp()/fp2() spelling operational while storing
+# the same internal ACD attribute as the canonical argument.
+test_that("deprecated fp acdx alias remains available", {
+  expect_warning(
+    marked_fp <- fp(seq_len(10), acdx = TRUE),
+    "`acdx` is deprecated; use `acd` instead",
+    fixed = TRUE
+  )
+  expect_true(attr(marked_fp, "acd"))
+
+  expect_warning(
+    marked_fp2 <- fp2(seq_len(10), acdx = TRUE),
+    "`acdx` is deprecated; use `acd` instead",
+    fixed = TRUE
+  )
+  expect_true(attr(marked_fp2, "acd"))
+})
+
+
+# Test purpose: Prevents an ambiguous formula-term specification when both the
+# canonical fp() argument and its deprecated alias are supplied.
+test_that("fp rejects simultaneous acd and acdx", {
+  expect_error(
+    fp(seq_len(10), acd = TRUE, acdx = TRUE),
+    "cannot both be supplied",
+    fixed = TRUE
+  )
 })
 
 
@@ -133,7 +199,7 @@ test_that("mfp2() resets ACD for low-cardinality variables", {
     fit <- mfp2(
       x,
       y,
-      acdx = "low_unique",
+      acd_vars = "low_unique",
       verbose = FALSE
     ),
     "fewer than 5 unique values"
@@ -161,7 +227,7 @@ test_that("mfp2() forces retained ACD variables to df = 4", {
   fit <- mfp2(
     x,
     y,
-    acdx = "x1",
+    acd_vars = "x1",
     df = c(x1 = 2, z = 2),
     keep = "x1",
     select = 1,
@@ -176,9 +242,9 @@ test_that("mfp2() forces retained ACD variables to df = 4", {
 })
 
 
-# Test purpose: Ensures formula-interface fp(acdx = TRUE) is translated to ACD
+# Test purpose: Ensures formula-interface fp(acd = TRUE) is translated to ACD
 # handling and receives the same effective df = 4 treatment as the default interface.
-test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
+test_that("formula interface fp(acd = TRUE) forces effective df = 4", {
   set.seed(403)
   n <- 160
 
@@ -192,7 +258,7 @@ test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
   )
 
   fit <- mfp2(
-    y ~ fp(x1, acdx = TRUE, df = 2) + fp(z, df = 2),
+    y ~ fp(x1, acd = TRUE, df = 2) + fp(z, df = 2),
     data = dat,
     keep = "x1",
     select = 1,
@@ -207,8 +273,8 @@ test_that("formula interface fp(acdx = TRUE) forces effective df = 4", {
 })
 
 
-# Test purpose: Ensures the formula interface rejects the old acd_vars argument
-# and directs users to fp(..., acdx = TRUE).
+# Test purpose: Ensures the formula interface rejects the matrix-only acd_vars argument
+# and directs users to fp(..., acd = TRUE).
 test_that("formula interface rejects acd_vars argument", {
   data("prostate", package = "mfp2")
 
@@ -240,7 +306,7 @@ test_that("mfp2() stores ACD parameters for retained ACD variables", {
   fit <- mfp2(
     x,
     y,
-    acdx = "x1",
+    acd_vars = "x1",
     keep = "x1",
     select = 1,
     alpha = 1,
@@ -270,7 +336,7 @@ test_that("matrix-interface ACD variables use scale one", {
   fit <- mfp2(
     x,
     y,
-    acdx = "x1",
+    acd_vars = "x1",
     scale = c(x1 = 1000, z = 10),
     keep = "x1",
     select = 1,
@@ -302,7 +368,7 @@ test_that("formula-interface ACD variables use scale one", {
   dat$y <- 1.5 * pnorm(scale(dat$x1)) + 0.15 * dat$z + rnorm(n, sd = 0.2)
 
   fit <- mfp2(
-    y ~ fp(x1, acdx = TRUE, scale = 1000) + fp(z, scale = 10),
+    y ~ fp(x1, acd = TRUE, scale = 1000) + fp(z, scale = 10),
     data = dat,
     keep = "x1",
     select = 1,
@@ -331,7 +397,7 @@ test_that("reset ACD requests retain ordinary FP scaling", {
     fit <- mfp2(
       x,
       y,
-      acdx = "x1",
+      acd_vars = "x1",
       scale = c(x1 = 100, z = 10),
       df = c(x1 = 2, z = 1),
       select = 1,
@@ -362,7 +428,7 @@ test_that("predict.mfp2() works for ACD models with newdata", {
   fit <- mfp2(
     x,
     y,
-    acdx = "x1",
+    acd_vars = "x1",
     keep = "x1",
     select = 1,
     alpha = 1,
@@ -392,7 +458,7 @@ test_that("predict.mfp2() errors when active ACD parameters are missing", {
   fit <- mfp2(
     x,
     y,
-    acdx = "x1",
+    acd_vars = "x1",
     keep = "x1",
     select = 1,
     alpha = 1,

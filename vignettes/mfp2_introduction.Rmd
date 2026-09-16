@@ -426,11 +426,13 @@ the domain requirements of logarithmic, negative, and fractional powers.
 
 Shifting and scaling are preprocessing operations used while candidate FP or ACD
 functions are estimated. Centering is applied later, after the functional form
-has been selected. With `center = TRUE`, each ordinary selected transformed continuous term is
-centered on its mean in the fitted sample. For zero-handled FP columns, the mean
-is computed from the nonzero transformed values and structural-zero rows remain
-zero after centering. Binary terms are centered by subtracting their lower
-observed value.
+has been selected. With `center = TRUE`, each selected transformed continuous
+term is centered on its mean in the fitted sample. For a zero-handled FP or ACD
+term, the uncentered basis is first set to zero at exact-zero observations. Its
+mean is then computed over the complete fitted sample and subtracted from every
+row, including the exact-zero rows. Centering therefore changes the intercept
+parameterisation but not fitted values. Binary terms are centered by subtracting
+their lower observed value.
 
 The fitted object records the shift, scale, and centering values. Consequently,
 new observations passed to `predict.mfp2()` should be supplied on the original
@@ -1488,11 +1490,12 @@ model includes covariates that are assumed to satisfy the PH assumption, while
 the stratification variable itself is not estimated as a regression coefficient.
 Instead, it is used to define subgroups with separate baseline hazard functions.
 
-Similar to `coxph()` in the **survival** package, `mfp2()` supports
-stratification through the `strata` argument or through `strata()` in the formula
-interface. The fitted MFP model assumes that the selected FP functions and their
-coefficients are common across strata. Therefore, users should assess whether
-this assumption is appropriate for their data.
+Similar to `coxph()` in the **survival** package, the `mfp2()` formula interface
+uses `strata()` in the formula. The matrix interface uses the `strata` argument.
+Supplying `strata` directly to `mfp2.formula()` is deprecated. The fitted MFP
+model assumes that the selected FP functions and their coefficients are common
+across strata. Therefore, users should assess whether this assumption is
+appropriate for their data.
 
 As an illustration, we stratify the analysis by hormonal therapy (`hormon`). The
 following code shows how to fit a stratified Cox model using both the default

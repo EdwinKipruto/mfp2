@@ -64,7 +64,7 @@ test_that("MFPI rebuilds selected ACD adjustment terms during interaction fittin
   fit <- NULL
   expect_error(
     fit <- mfpi(
-      lpsa ~ fp(age, acdx = TRUE, select = 1) + svi +
+      lpsa ~ fp(age, acd = TRUE, select = 1) + svi +
         fp(cavol, select = 1),
       data = prostate,
       cont_vars = "cavol",

@@ -25,10 +25,16 @@ used for prediction with \code{predict()}, and visualised with \code{plot()}.
 
 \section{Supported models}{
 
-\code{\link[=mfp2]{mfp2()}} supports Gaussian, binomial, Poisson, and optional
-negative-binomial regression, together with Cox proportional hazards models
-for right-censored survival outcomes. Negative-binomial fitting requires the
-optional \code{fastglm} package.
+\code{\link[=mfp2]{mfp2()}} and \code{\link[=mfpi]{mfpi()}} support every likelihood-based family supplied by base
+\code{\link[stats:glm]{stats::glm()}}: Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian
+regression, including the links accepted by their family objects. Quasi
+families are not supported because MFP selection requires a likelihood.
+Optional negative-binomial fitting requires the \code{fastglm} package.
+
+Survival models are specified as separate families: \code{family = "cox"} for
+Cox proportional hazards, \code{\link[=survreg_family]{survreg_family()}} for the parametric distributions
+implemented by \code{\link[survival:survreg]{survival::survreg()}}, and \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray
+proportional subdistribution hazards.
 }
 
 \section{Modelling extensions}{
@@ -63,7 +69,7 @@ Further guidance is available in:
 \itemize{
 \item \code{vignette("MFP_Introduction", package = "mfp2")} for MFP methodology;
 \item \code{vignette("mfp2_ACD", package = "mfp2")} for ACD transformations;
-\item \code{vignette("mfp2_spike", package = "mfp2")} for spike-at-zero modelling;
+\item the \code{\link[=mfp2]{mfp2()}} help page for the complete spike-at-zero algorithm;
 \item \code{vignette("mfpi", package = "mfp2")} for interaction analysis.
 }
 }

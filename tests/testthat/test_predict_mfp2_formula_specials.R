@@ -31,10 +31,66 @@ test_that("8.3.1 Formula-level strata missing from newdata errors clearly", {
     verbose = FALSE
   )
 
+  nd <- dat[1:5, c("age", "sex", "inst"), drop = FALSE]
+  expect_true(all(is.finite(predict(fit, newdata = nd, type = "lp"))))
+
+  expect_error(
+    predict(
+      fit,
+      newdata = nd,
+      strata = nd$inst,
+      type = "lp"
+    ),
+    "formula-level strata.*original strata variable"
+  )
+
   expect_error(
     predict(fit, newdata = dat[1:5, c("age", "sex"), drop = FALSE], type = "lp"),
     "formula-level Cox strata|strata term could not be reconstructed"
   )
+})
+
+
+# Test purpose: Formula fits created through the deprecated external-strata
+# compatibility path have no formula strata term to reconstruct. They must
+# therefore retain the separate prediction `strata` argument until that fitting
+# compatibility path is removed.
+test_that("8.3.1a Deprecated external formula strata retain prediction compatibility", {
+  dat <- survival::lung
+  dat$status <- as.integer(dat$status == 2L)
+  dat <- dat[stats::complete.cases(
+    dat[, c("time", "status", "age", "sex", "inst")]
+  ), ]
+
+  expect_warning(
+    fit <- mfp2(
+      survival::Surv(time, status) ~ age + sex,
+      data = dat,
+      family = "cox",
+      strata = dat$inst,
+      df = 1,
+      select = 1,
+      alpha = 1,
+      shift = 0,
+      scale = 1,
+      center = FALSE,
+      ties = "breslow",
+      verbose = FALSE
+    ),
+    "deprecated"
+  )
+
+  expect_false(prediction_has_formula_strata(fit))
+  rows <- 1:5
+  prediction <- predict(
+    fit,
+    newdata = dat[rows, c("age", "sex"), drop = FALSE],
+    strata = dat$inst[rows],
+    type = "lp"
+  )
+
+  expect_length(prediction, length(rows))
+  expect_true(all(is.finite(prediction)))
 })
 
 

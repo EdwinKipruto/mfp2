@@ -54,14 +54,16 @@ confidence intervals; for example, \code{alpha = 0.05} gives 95 percent
 intervals.}
 
 \item{show_titles}{Logical scalar. If \code{TRUE}, add titles describing the
-selected FP or ACD representation and any retained spike-at-zero component.}
+selected FP or ACD representation, positive-part handling, and any retained
+zero-indicator or spike-at-zero component.}
 
 \item{color_points}{Colour used for residual points.}
 
-\item{color_line}{Colour used for fitted curves and for binary fitted
-points and confidence intervals.}
+\item{color_line}{Colour used for fitted curves, binary fitted points, and
+the zero endpoint of a term fitted with \code{zero = TRUE} alone.}
 
-\item{color_line_spike}{Colour used for the structural-zero point.}
+\item{color_line_spike}{Colour used for the zero-component point of a
+\code{catzero} term or a term assessed with spike-at-zero selection.}
 
 \item{color_fill}{Fill colour used for confidence ribbons.}
 
@@ -69,7 +71,8 @@ points and confidence intervals.}
 
 \item{size_points}{Point size used for residual observations.}
 
-\item{size_points_spike}{Point size used for structural-zero observations.}
+\item{size_points_spike}{Point size used for fitted values shown at exactly
+zero for zero-handled covariates.}
 
 \item{linetype}{Line type used for fitted curves.}
 

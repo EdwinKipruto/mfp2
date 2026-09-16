@@ -53,6 +53,80 @@ test_that("mfpi.formula() runs and returns an mfpi object", {
 })
 
 
+# Formula strata follow the coxph convention and must be written as a formula
+# special. The matrix interface continues to accept its strata argument.
+test_that("mfpi.formula() rejects a direct strata argument", {
+  dat <- data.frame(
+    time = seq_len(8L),
+    status = rep(c(0L, 1L), 4L),
+    age = seq(40, 68, length.out = 8L),
+    group = factor(rep(c("A", "B"), 4L)),
+    centre = factor(rep(c("C1", "C2"), each = 4L))
+  )
+
+  expect_error(
+    mfpi(
+      survival::Surv(time, status) ~ age + group,
+      data = dat,
+      family = "cox",
+      group_var = "group",
+      cont_vars = "age",
+      strata = centre,
+      verbose = FALSE
+    ),
+    paste0(
+      "`strata` is not supported as an argument to `mfpi.formula()`. ",
+      "Include `strata(...)` in the formula instead."
+    ),
+    fixed = TRUE
+  )
+})
+
+
+# Formula observation arguments follow the same data-mask lookup rule as the
+# underlying standard model functions. The bare names below exist only as
+# columns of `dat`, so this also guards against accidentally forcing them in the
+# test/function environment before formula evaluation.
+test_that("mfpi.formula() resolves weights and offset in data", {
+  data("prostate", package = "mfp2")
+  dat <- prostate
+  dat$case_weight <- seq(0.8, 1.2, length.out = nrow(dat))
+  dat$external_offset <- seq(-0.1, 0.1, length.out = nrow(dat))
+
+  fit <- mfpi(
+    lpsa ~ svi + age + cavol,
+    data = dat,
+    group_var = "svi",
+    cont_vars = "cavol",
+    cont_var_forms = c(cavol = "linear"),
+    weights = case_weight,
+    offset = external_offset,
+    flex = "flex1",
+    p_interact = 1,
+    cycles = 1,
+    df = 1,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    xorder = "original",
+    verbose = FALSE
+  )
+
+  expect_equal(
+    unname(fit$adjustment_model$prior.weights),
+    dat$case_weight,
+    tolerance = 0
+  )
+  expect_equal(
+    unname(fit$adjustment_model$offset),
+    dat$external_offset,
+    tolerance = 0
+  )
+})
+
+
 # Test purpose: Checks that requested interaction functional forms are stored for
 # continuous variables.
 test_that("mfpi() cont_var_forms specifies functional form correctly", {

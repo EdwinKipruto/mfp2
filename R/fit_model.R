@@ -1,24 +1,28 @@
 #' Function that fits models supported by `mfp2`
 #'
-#' Fits generalized linear models and Cox proportional-hazards models.
+#' Fits likelihood-based generalized linear, Cox proportional-hazards,
+#' parametric survival, and Fine--Gray models.
 #'
 #' @details
-#' Computations rely on \code{fit_glm()} and \code{fit_cox()}.
+#' Computations dispatch to the corresponding matrix-level candidate fitter and
+#' retain the native high-level model class for the final fit.
 #'
 #' @param x a matrix of predictors (excluding intercept) with column names.
 #' If column names are not provided they are set according to
 #' `colnames(x, do.NULL = FALSE)`.
 #' @param y Response variable. For GLMs, this may be a numeric vector, a factor
 #' response accepted by [stats::glm()], or for binomial models a two-column
-#' matrix of grouped counts `cbind(successes, failures)`. For Cox models, this
-#' must be a [survival::Surv()] object.
+#' matrix of grouped integer counts `cbind(successes, failures)`. Poisson and
+#' negative-binomial responses are nonnegative integer counts. Survival families use
+#' a family-appropriate [survival::Surv()] object.
 #' @param method a character string specifying the method for tie handling.
 #' See [survival::coxph()].
-#' @param family a character string specifying the GLM family to be used, or
-#' "cox" for Cox models. The default family is set to 'Gaussian'.
-#' @param strata,control,weights,offset,rownames,nocenter parameters for Cox
-#' or glm. See [survival::coxph()] or [stats::glm()] for details.
-#' @param fast passed to \code{fit_glm()} and \code{fit_cox()}.
+#' @param family Resolved GLM, Cox, survreg, or Fine--Gray family.
+#' @param strata,control,weights,offset,rownames,nocenter family-specific fitting
+#' parameters. See [stats::glm()], [survival::coxph()], and
+#' [survival::survreg()] for details.
+#' @param fast logical selecting the matrix-level candidate path rather than the
+#' retained native final fit.
 #' @param calculate_fit_statistics logical. If `TRUE`, return the
 #' family-specific null and fitted-model statistics used for final reporting.
 #' Candidate-selection fits leave this `FALSE`.
@@ -32,7 +36,7 @@
 #' @param keep_fitted_values logical. If `TRUE` for a GLM, retain only the
 #' fitted-values vector in the lightweight wrapper. This is useful for internal
 #' candidate searches that need predictions but not the complete backend fit.
-#' @param fitter GLM fitting backend; ignored for Cox models.
+#' @param fitter GLM fitting backend; ignored for survival models.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param x_has_intercept internal logical. If TRUE, GLM fast fitting treats
@@ -128,6 +132,55 @@ fit_model <- function(x,
       calculate_fit_statistics = calculate_fit_statistics,
       keep_fit = keep_fit,
       has_offset = has_offset,
+      reserved_names = reserved_names
+    )
+  } else if (identical(family_string, "finegray")) {
+    if (isTRUE(keep_fitted_values)) {
+      stop(
+        "Internal error: keep_fitted_values is unavailable for Fine--Gray models.",
+        call. = FALSE
+      )
+    }
+    if (isTRUE(x_has_intercept)) {
+      stop(
+        "Internal error: Fine--Gray model matrix must not include an intercept.",
+        call. = FALSE
+      )
+    }
+
+    fit <- fit_finegray(
+      x = x,
+      family = family,
+      offset = offset,
+      control = control,
+      method = method,
+      nocenter = nocenter,
+      fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
+      has_offset = has_offset,
+      reserved_names = reserved_names
+    )
+  } else if (identical(family_string, "survreg")) {
+    if (isTRUE(keep_fitted_values)) {
+      stop(
+        "Internal error: keep_fitted_values is unavailable for survreg models.",
+        call. = FALSE
+      )
+    }
+
+    fit <- fit_survreg(
+      x = x,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset,
+      control = control,
+      fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
+      has_offset = has_offset,
+      x_has_intercept = x_has_intercept,
       reserved_names = reserved_names
     )
   } else {
@@ -433,7 +486,7 @@ assemble_design_matrix <- function(blocks, nobs, intercept = FALSE) {
 #' @param x a matrix of predictors with nobs observations.
 #' @param y Response variable. For GLMs, this may be a numeric vector, a factor
 #' response accepted by [stats::glm()], or for binomial models a two-column
-#' matrix of grouped counts `cbind(successes, failures)`.
+#' matrix of grouped integer counts `cbind(successes, failures)`.
 #' @param family a family function e.g. `stats::gaussian()`.
 #' @param weights a numeric vector of length nobs of 'prior weights' to be used
 #' in the fitting process. see [stats::glm()] for details.
@@ -510,31 +563,11 @@ fit_glm <- function(x,
     }
   }
 
-  # Normalize the GLM control object before dispatching to any backend. This
-  # ensures base candidate fits, fastglm candidate fits, and the final model
-  # all use the same convergence tolerance and iteration limit.
-  control <- normalize_glm_control(control)
-
-  uses_fastglm <- identical(family_string, "negbin") ||
-    (isTRUE(fast) && identical(fitter, "fastglm"))
-
-  # fastglm has no public equivalent of glm.control(trace = TRUE). Reject it
-  # explicitly rather than silently ignoring a user-supplied fitting control.
-  if (uses_fastglm && isTRUE(control$trace)) {
-    if (identical(family_string, "negbin")) {
-      stop(
-        "`control$trace = TRUE` is not supported for `family = \"negbin\"`; ",
-        "the required fastglm backend does not provide GLM iteration tracing.",
-        call. = FALSE
-      )
-    }
-
-    stop(
-      "`control$trace = TRUE` is not supported with `fitter = \"fastglm\"`; ",
-      "use `fitter = \"base\"` to enable GLM iteration tracing.",
-      call. = FALSE
-    )
-  }
+  # Public mfp2()/mfpi() calls normalize and validate control exactly once
+  # before entering the repeated candidate-fit path. Retain a NULL fallback for
+  # direct internal/test calls, but do not rebuild an already-normalized control
+  # object for every candidate.
+  if (is.null(control)) control <- stats::glm.control()
 
   nobs <- NROW(y)
 
@@ -697,11 +730,33 @@ fit_glm <- function(x,
     fit$mfp2_internal_names <- internal_names
   }
 
-  # Gaussian scale and negative-binomial theta are estimated nuisance
-  # parameters in addition to the regression rank.
+  # Gaussian, Gamma, and inverse-Gaussian dispersion and negative-binomial
+  # theta are estimated nuisance parameters in addition to regression rank.
   is_gaussian <- identical(family_string, "gaussian")
   is_negbin <- identical(family_string, "negbin")
-  df <- fit$rank + as.integer(is_gaussian || is_negbin)
+  estimates_dispersion <- mfp2_glm_estimates_dispersion(
+    family = family,
+    family_string = family_string
+  )
+
+  # fastglm_nb() computes its glm.fit-style null deviance from a constant
+  # weighted mean. MASS::glm.nb() performs one additional intercept-only IRLS
+  # fit when an offset is present, holding the full model's theta fixed. Do the
+  # same only when fit statistics have explicitly been requested. Candidate
+  # fits leave calculate_fit_statistics = FALSE, so this diagnostic refit stays
+  # outside the repeated model-selection hot path.
+  if (is_negbin && isTRUE(calculate_fit_statistics) &&
+      !is.null(offset) && any(offset != 0)) {
+    fit$null.deviance <- mfp2_negbin_offset_null_deviance(
+      y = y,
+      weights = weights,
+      offset = offset,
+      family = fit$family,
+      control = control
+    )
+  }
+
+  df <- fit$rank + as.integer(estimates_dispersion || is_negbin)
 
   # The Stata-style Gaussian deviance is needed only for Gaussian F-tests.
   # Compute it here while the fitted object is available, then retain only the
@@ -856,7 +911,7 @@ normalize_glm_control <- function(control = NULL) {
 resolve_fitter <- function(fitter, family_string) {
   fitter <- match.arg(fitter, c("base", "fastglm"))
 
-  if (identical(family_string, "cox")) {
+  if (!mfp2_family_is_glm(family_string)) {
     return("base")
   }
 
@@ -1083,6 +1138,510 @@ fit_glm_fastglm_nb <- function(x, y, weights, offset, control) {
   # The rank + 1 AIC convention above matches MASS::glm.nb() and counts
   # theta without over-counting aliased regression columns.
   fit
+}
+
+
+# Reproduce MASS::glm.nb()'s offset-aware null deviance without re-estimating
+# theta. This helper is called only for the full reference and retained final
+# fits when their reporting statistics are requested, never for ordinary MFP
+# candidates.
+mfp2_negbin_offset_null_deviance <- function(y, weights, offset, family,
+                                             control) {
+  nobs <- NROW(y)
+  null_x <- matrix(
+    1,
+    nrow = nobs,
+    ncol = 1L,
+    dimnames = list(names(y), "(Intercept)")
+  )
+
+  null_fit <- mfp2_muffle_glm_nonconvergence_warning(
+    stats::glm.fit(
+      x = null_x,
+      y = y,
+      weights = weights,
+      offset = offset,
+      family = family,
+      control = control,
+      intercept = TRUE
+    )
+  )
+
+  if (!isTRUE(null_fit$converged) ||
+      !is_finite_numeric_scalar(null_fit$deviance)) {
+    stop(
+      "The offset-aware negative-binomial null model did not converge; ",
+      "adjust `control` or inspect the data.",
+      call. = FALSE
+    )
+  }
+
+  unname(null_fit$deviance)
+}
+
+
+# Normalize a control list for survival::survreg.fit()/survreg().
+normalize_survreg_control <- function(control = NULL) {
+  if (is.null(control)) return(survival::survreg.control())
+  if (!is.list(control)) {
+    stop(
+      "For `survreg` models, `control` must be `NULL` or a list accepted by `survival::survreg.control()`.",
+      call. = FALSE
+    )
+  }
+  tryCatch(
+    do.call(survival::survreg.control, control),
+    error = function(e) {
+      stop("Invalid `survreg` control: ", conditionMessage(e), call. = FALSE)
+    }
+  )
+}
+
+
+# Normalize controls shared by Cox and Fine--Gray candidate fitters.
+normalize_cox_control <- function(control = NULL) {
+  if (is.null(control)) return(survival::coxph.control())
+  if (!is.list(control)) {
+    stop(
+      "For Cox and Fine--Gray models, `control` must be `NULL` or a list accepted by `survival::coxph.control()`.",
+      call. = FALSE
+    )
+  }
+  tryCatch(
+    do.call(survival::coxph.control, control),
+    error = function(e) {
+      stop("Invalid Cox/Fine--Gray `control`: ", conditionMessage(e), call. = FALSE)
+    }
+  )
+}
+
+
+# Validate control/backend combinations once, before candidate fitting begins.
+validate_fit_control_for_fitter <- function(control, family_string,
+                                            fitter = "base") {
+  uses_fastglm <- identical(family_string, "negbin") ||
+    (mfp2_family_is_glm(family_string) && identical(fitter, "fastglm"))
+
+  if (uses_fastglm && isTRUE(control$trace)) {
+    if (identical(family_string, "negbin")) {
+      stop(
+        "`control$trace = TRUE` is not supported for `family = \"negbin\"`; ",
+        "the required fastglm backend does not provide GLM iteration tracing.",
+        call. = FALSE
+      )
+    }
+
+    stop(
+      "`control$trace = TRUE` is not supported with `fitter = \"fastglm\"`; ",
+      "use `fitter = \"base\"` to enable GLM iteration tracing.",
+      call. = FALSE
+    )
+  }
+
+  invisible(control)
+}
+
+
+# Normalize the family-specific fitting control once at the public fitting
+# boundary. Low-level candidate fitters receive this resolved object unchanged.
+normalize_fit_control <- function(control = NULL, family_string,
+                                  fitter = "base") {
+  normalized <- if (family_string %in% c("cox", "finegray")) {
+    normalize_cox_control(control)
+  } else if (identical(family_string, "survreg")) {
+    normalize_survreg_control(control)
+  } else {
+    normalize_glm_control(control)
+  }
+
+  validate_fit_control_for_fitter(
+    control = normalized,
+    family_string = family_string,
+    fitter = fitter
+  )
+  normalized
+}
+
+
+mfp2_with_survreg_convergence_guard <- function(expr, fast = TRUE) {
+  stage <- if (isTRUE(fast)) "candidate" else "final"
+  withCallingHandlers(
+    expr,
+    warning = function(w) {
+      if (grepl("Ran out of iterations and did not converge", conditionMessage(w), fixed = TRUE)) {
+        stop(
+          "The ", stage, " survreg model did not converge; adjust `control` or inspect the data.",
+          call. = FALSE
+        )
+      }
+    }
+  )
+}
+
+
+# Fit a parametric survival model through the matrix-level hot path and retain
+# survival::survreg() only for the single final model.
+fit_survreg <- function(x,
+                        y,
+                        family,
+                        weights,
+                        offset,
+                        control,
+                        fast = TRUE,
+                        calculate_fit_statistics = FALSE,
+                        keep_fit = !fast,
+                        has_offset = FALSE,
+                        x_has_intercept = FALSE,
+                        reserved_names = character()) {
+  if (!inherits(family, "mfp2_survreg_family") || is.null(family$prepared)) {
+    stop("Internal error: survreg family was not prepared before fitting.", call. = FALSE)
+  }
+
+  prepared <- family$prepared
+  # Public fitting paths supply a fully normalized control object. Keep only a
+  # NULL fallback for direct internal calls; rebuilding survreg.control() from
+  # the same list belongs outside the repeated candidate loop.
+  if (is.null(control)) control <- survival::survreg.control()
+  nobs <- prepared$n_original
+  has_predictors <- !is.null(x) && NCOL(x) > 0L
+
+  if (isTRUE(x_has_intercept)) {
+    if (!has_predictors || is.null(colnames(x)) ||
+        !identical(colnames(x)[1L], "(Intercept)")) {
+      stop("Internal error: survreg intercept template is invalid.", call. = FALSE)
+    }
+    xx <- x
+  } else {
+    xx <- assemble_design_matrix(list(x), nobs = nobs, intercept = TRUE)
+  }
+
+  if (fast) {
+    raw_fit <- mfp2_with_survreg_convergence_guard(
+      survival::survreg.fit(
+        x = xx,
+        y = prepared$y,
+        weights = weights,
+        offset = offset,
+        init = NULL,
+        controlvals = control,
+        dist = prepared$dist,
+        scale = prepared$scale,
+        nstrat = prepared$nstrat,
+        strata = prepared$strata,
+        parms = prepared$parms,
+        # No penalized terms are fitted. Passing NULL satisfies survreg.fit()'s
+        # public low-level interface without constructing per-candidate term
+        # assignment metadata that this unpenalized routine does not inspect.
+        assign = NULL
+      ),
+      fast = TRUE
+    )
+
+    corrected_loglik <- raw_fit$loglik + prepared$logcorrect
+    nreg <- NCOL(xx)
+    regression_indices <- seq_len(nreg)
+    coefficients <- raw_fit$coefficients[regression_indices]
+    singular <- diag(raw_fit$var)[regression_indices] == 0
+    coefficients[singular] <- NA_real_
+    names(coefficients) <- colnames(xx)
+    rank <- sum(!singular)
+    nuisance_df <- if (prepared$scale == 0) prepared$nstrat else 0L
+
+    result <- list(
+      logl = unname(corrected_loglik[length(corrected_loglik)]),
+      coefficients = coefficients,
+      rank = rank,
+      df = rank + nuisance_df,
+      weights = NULL,
+      residuals = NULL
+    )
+    validate_mfp_fit_result(
+      logl = result$logl,
+      df = result$df,
+      family_string = "survreg",
+      fast = TRUE
+    )
+
+    # Candidate selection normally discards the backend fit. Materialize the
+    # covariance submatrix and survreg-compatible fields only for the uncommon
+    # diagnostic path that explicitly asks to retain it.
+    if (isTRUE(keep_fit)) {
+      candidate_fit <- raw_fit
+      candidate_fit$loglik <- corrected_loglik
+      candidate_fit$coefficients <- coefficients
+      candidate_fit$var <- raw_fit$var[
+        regression_indices, regression_indices, drop = FALSE
+      ]
+      candidate_fit$scale <- if (prepared$scale == 0) {
+        exp(raw_fit$coefficients[nreg + seq_len(prepared$nstrat)])
+      } else {
+        prepared$scale
+      }
+      candidate_fit$df <- result$df
+      class(candidate_fit) <- "survreg"
+      result$fit <- candidate_fit
+    }
+    if (isTRUE(calculate_fit_statistics)) {
+      null_logl <- if (length(corrected_loglik) >= 2L) {
+        unname(corrected_loglik[1L])
+      } else {
+        NA_real_
+      }
+      result$null_logl <- null_logl
+      result$null_deviance <- if (is.finite(null_logl)) -2 * null_logl else NA_real_
+      result$model_deviance <- -2 * result$logl
+    }
+    return(result)
+  }
+
+  x_formula <- if (isTRUE(x_has_intercept)) {
+    x[, -1L, drop = FALSE]
+  } else {
+    x
+  }
+  has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
+  if (has_formula_predictors) {
+    if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
+      stop("Internal error: x must have non-empty column names.", call. = FALSE)
+    }
+    data <- data.frame(x_formula, check.names = FALSE)
+    rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
+  } else {
+    data <- data.frame(row.names = seq_len(nobs))
+    rhs <- "1"
+  }
+
+  used_names <- unique(c(names(data), as.character(reserved_names)))
+  internal_names <- list(response = NULL, offset = NULL, strata = NULL)
+  response_col <- mfp2_internal_name("response", used_names, preferred = "..mfp2_survreg_y")
+  used_names <- c(used_names, response_col)
+  data[[response_col]] <- prepared$y_original
+  internal_names$response <- response_col
+
+  if (isTRUE(has_offset)) {
+    offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+    used_names <- c(used_names, offset_col)
+    data[[offset_col]] <- offset
+    internal_names$offset <- offset_col
+    rhs <- if (identical(rhs, "1")) {
+      paste0("offset(", offset_col, ")")
+    } else {
+      paste(rhs, "+", paste0("offset(", offset_col, ")"))
+    }
+  }
+
+  if (isTRUE(prepared$strata_supplied)) {
+    strata_col <- mfp2_internal_name("strata", used_names, preferred = "strata_")
+    data[[strata_col]] <- prepared$strata_factor
+    internal_names$strata <- strata_col
+    rhs <- paste(rhs, "+", paste0("strata(", strata_col, ")"))
+  }
+
+  formula <- stats::as.formula(paste(response_col, "~", rhs))
+  fit_args <- list(
+    formula = formula,
+    data = data,
+    weights = weights,
+    dist = family$dist,
+    control = control,
+    x = TRUE,
+    y = TRUE
+  )
+  if (isTRUE(family$scale_supplied) &&
+      !isTRUE(prepared$distribution_has_fixed_scale)) {
+    fit_args$scale <- family$scale
+  }
+  # Use the same resolved parameter vector as the matrix-level candidate fits.
+  # This also preserves defaults supplied by a custom distribution.
+  if (!is.null(prepared$parms)) fit_args$parms <- prepared$parms
+
+  fit <- mfp2_with_survreg_convergence_guard(
+    do.call(survival::survreg, fit_args),
+    fast = FALSE
+  )
+  fit$mfp2_internal_names <- internal_names
+  fit$mfp2_strata_levels <- levels(prepared$strata_factor)
+  fit$mfp2_survreg_strata <- if (isTRUE(prepared$strata_supplied)) {
+    prepared$strata_factor
+  } else {
+    NULL
+  }
+
+  loglik <- fit$loglik
+  null_logl <- if (length(loglik) >= 2L) unname(loglik[1L]) else NA_real_
+  model_logl <- unname(loglik[length(loglik)])
+  rank <- sum(!is.na(fit$coefficients))
+  total_df <- rank + if (prepared$scale == 0) prepared$nstrat else 0L
+
+  result <- list(
+    logl = model_logl,
+    coefficients = fit$coefficients,
+    rank = rank,
+    df = total_df,
+    weights = NULL,
+    residuals = NULL
+  )
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    family_string = "survreg",
+    fast = fast
+  )
+
+  if (isTRUE(keep_fit)) result$fit <- fit
+  if (isTRUE(calculate_fit_statistics)) {
+    result$null_logl <- null_logl
+    result$null_deviance <- if (is.finite(null_logl)) -2 * null_logl else NA_real_
+    result$model_deviance <- -2 * model_logl
+  }
+  result
+}
+
+
+# Fit the weighted counting-process Cox representation produced once by
+# prepare_finegray_family().
+fit_finegray <- function(x,
+                         family,
+                         offset,
+                         control,
+                         method,
+                         nocenter,
+                         fast = TRUE,
+                         calculate_fit_statistics = FALSE,
+                         keep_fit = !fast,
+                         has_offset = FALSE,
+                         reserved_names = character()) {
+  if (!inherits(family, "mfp2_finegray_family") || is.null(family$prepared)) {
+    stop("Internal error: Fine--Gray family was not prepared before fitting.", call. = FALSE)
+  }
+  prepared <- family$prepared
+  if (is.null(control)) control <- survival::coxph.control()
+  if (is.null(method)) method <- "breslow"
+
+  row_map <- prepared$row_map
+  x_expanded <- if (is.null(x) || NCOL(x) == 0L) {
+    matrix(numeric(0L), nrow = length(row_map), ncol = 0L)
+  } else {
+    x[row_map, , drop = FALSE]
+  }
+  offset_expanded <- prepared$offset_expanded
+  if (!is.numeric(offset_expanded) ||
+      length(offset_expanded) != length(row_map)) {
+    stop("Internal error: cached Fine--Gray offset is invalid.", call. = FALSE)
+  }
+
+  if (fast) {
+    fit <- mfp2_with_cox_convergence_guard(
+      survival::agreg.fit(
+        x = x_expanded,
+        y = prepared$y,
+        strata = NULL,
+        offset = offset_expanded,
+        init = NULL,
+        control = control,
+        weights = prepared$weights,
+        method = method,
+        # agreg.fit() consults row names only when residuals are requested.
+        # Candidate fits use resid = FALSE, so expanding names here would be
+        # pure O(n_expanded) allocation on every candidate.
+        rownames = NULL,
+        resid = FALSE,
+        nocenter = nocenter
+      ),
+      fast = TRUE
+    )
+  } else {
+    has_predictors <- NCOL(x_expanded) > 0L
+    if (has_predictors) {
+      if (is.null(colnames(x_expanded)) || any(colnames(x_expanded) == "")) {
+        stop("Internal error: x must have non-empty column names.", call. = FALSE)
+      }
+      data <- data.frame(x_expanded, check.names = FALSE)
+      rhs <- paste(sprintf("`%s`", colnames(x_expanded)), collapse = " + ")
+    } else {
+      data <- data.frame(row.names = seq_len(length(row_map)))
+      rhs <- "1"
+    }
+
+    used_names <- unique(c(names(data), as.character(reserved_names)))
+    internal_names <- list(response = NULL, offset = NULL, strata = NULL, cluster = NULL)
+    response_col <- mfp2_internal_name("response", used_names, preferred = "..mfp2_finegray_y")
+    used_names <- c(used_names, response_col)
+    data[[response_col]] <- prepared$y
+    internal_names$response <- response_col
+
+    if (isTRUE(has_offset)) {
+      offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+      used_names <- c(used_names, offset_col)
+      data[[offset_col]] <- offset_expanded
+      internal_names$offset <- offset_col
+      rhs <- if (identical(rhs, "1")) {
+        paste0("offset(", offset_col, ")")
+      } else {
+        paste(rhs, "+", paste0("offset(", offset_col, ")"))
+      }
+    }
+
+    cluster_col <- mfp2_internal_name("cluster", used_names, preferred = "..mfp2_subject")
+    data[[cluster_col]] <- prepared$subject_id
+    internal_names$cluster <- cluster_col
+    rhs <- paste(rhs, "+", paste0("cluster(", cluster_col, ")"))
+    formula <- stats::as.formula(paste(response_col, "~", rhs))
+
+    fit <- mfp2_with_cox_convergence_guard(
+      survival::coxph(
+        formula,
+        data = data,
+        weights = prepared$weights,
+        control = control,
+        method = method,
+        nocenter = nocenter,
+        robust = TRUE,
+        x = TRUE,
+        y = TRUE
+      ),
+      fast = FALSE
+    )
+    fit$mfp2_internal_names <- internal_names
+    fit$mfp2_finegray_event <- prepared$event
+    fit$mfp2_finegray_row_map <- row_map
+    fit$mfp2_finegray_n_original <- prepared$n_original
+    # coxph stores a centered offset on the expanded pseudo-observation rows.
+    # Retain the user-supplied original-row offset as separate metadata so
+    # MFPI can reconstruct training-row predictions without first expanding
+    # and then ambiguously collapsing that offset.
+    fit$mfp2_original_offset <- offset
+  }
+
+  if (length(fit$loglik) >= 2L) {
+    null_logl <- fit$loglik[1L]
+    model_logl <- fit$loglik[2L]
+  } else {
+    null_logl <- NA_real_
+    model_logl <- fit$loglik[1L]
+  }
+  model_df <- length(fit$coefficients[!is.na(fit$coefficients)])
+  result <- list(
+    logl = unname(model_logl),
+    coefficients = fit$coefficients,
+    rank = model_df,
+    df = model_df,
+    weights = NULL,
+    residuals = NULL
+  )
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    family_string = "finegray",
+    fast = fast
+  )
+  if (isTRUE(keep_fit)) result$fit <- fit
+  if (isTRUE(calculate_fit_statistics)) {
+    result$null_logl <- if (is.finite(null_logl)) unname(null_logl) else NA_real_
+    result$null_deviance <- if (is.finite(null_logl)) unname(-2 * null_logl) else NA_real_
+    result$model_deviance <- unname(-2 * model_logl)
+  }
+  result
 }
 
 

@@ -43,10 +43,10 @@ The default is \code{"best"}.}
 
 \item{type}{The prediction type. Use \code{"function"}, \code{"difference"}, or
 \code{"both"} for fitted curves. For predictions for individual observations,
-Gaussian, binomial, Poisson, and negative-binomial models support
-\code{"link"} and \code{"response"},
-while Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and
-\code{"survival"}. If \code{NULL}, \code{"both"} is used.}
+likelihood GLMs and \code{survreg} models support \code{"link"} and \code{"response"};
+Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and \code{"survival"};
+Fine--Gray models support \code{"lp"} and \code{"risk"}. If \code{NULL}, \code{"both"} is
+used.}
 
 \item{se.fit}{A single \code{TRUE} or \code{FALSE} value indicating whether standard
 errors should be returned. The default is \code{TRUE}.}
@@ -66,18 +66,21 @@ observations.}
 addition to these grid points.}
 
 \item{strata}{Optional stratum information for predictions for individual
-observations from a stratified Cox model. For one stratification variable,
+observations from a stratified Cox or \code{survreg} model fitted through the
+matrix interface with externally supplied strata. For one stratification variable,
 supply one value per prediction row as a character, factor, numeric/integer,
 or logical vector. For several variables, supply a matrix or data frame
 with one row per prediction row. Values are matched as categorical labels
 to the strata observed during fitting; previously unseen strata are
 rejected.
 
-This argument is not used for non-Cox models, unstratified Cox models, or
-fitted-curve predictions.}
+For a model fitted with \code{strata(...)} in its formula, do not use this
+argument. Include the original strata variable or variables in \code{newdata};
+they are reconstructed automatically. This argument is not used for other
+models, unstratified models, or fitted-curve predictions.}
 
 \item{cox_reference}{A character value selecting the covariate reference for
-Cox observation-level predictions with \code{type = "lp"} or \code{type = "risk"}.
+Cox or Fine--Gray observation-level predictions with \code{type = "lp"} or \code{type = "risk"}.
 Use \code{"zero"}, \code{"sample"}, or \code{"strata"}. The default is \code{"zero"}.}
 
 \item{newoffset}{An optional finite numeric vector containing one offset value
@@ -146,8 +149,8 @@ represent the zero group.
 
 The default \code{type = NULL} is equivalent to \code{type = "both"}. Supplying
 \code{newdata} by itself does not change this default. To obtain one prediction per
-row, explicitly use \code{type = "link"}, \code{"response"}, or one of the Cox
-prediction types.
+row, explicitly use \code{type = "link"}, \code{"response"}, or a supported
+proportional-hazards prediction type.
 }
 \section{Common calls}{
 
@@ -162,7 +165,7 @@ curve.
 \item \code{predict(fit, terms = "age", type = "response", newdata = new_data)}
 returns one response-scale prediction per row for a GLM.
 \item \code{predict(fit, terms = "age", type = "risk", newdata = new_data)} returns
-one relative-risk prediction per row for a Cox model.
+one relative-risk prediction per row for a Cox or Fine--Gray model.
 }
 }
 
@@ -204,14 +207,19 @@ the default when \code{type = NULL}.
 
 Use the following types for predictions for individual observations:
 \itemize{
-\item For Gaussian, binomial, Poisson, and negative-binomial models, \code{type = "link"} returns the
-linear predictor and \code{type = "response"} applies the inverse link function.
+\item For every supported likelihood GLM, \code{type = "link"} returns the linear
+predictor and \code{type = "response"} applies the inverse link function.
 \code{"lp"} is accepted as another name for \code{"link"}.
+\item For parametric \code{survreg} models, \code{type = "link"} returns the fitted
+location and \code{type = "response"} transforms it back to the response scale.
 \item For Cox models, \code{type = "lp"} returns the relative log-hazard,
 \code{type = "risk"} returns relative hazard, \code{type = "expected"} returns the
 predicted cumulative hazard up to the supplied follow-up time, and
 \code{type = "survival"} returns the estimated survival probability at that
 time. \code{"link"} is accepted as another name for \code{"lp"}.
+\item For Fine--Gray models, \code{type = "lp"} and \code{type = "risk"} return relative
+subdistribution-hazard predictions. Absolute Cox survival/expected-event
+types are not exposed for this family.
 }
 
 For Cox models, \code{type = "risk"} is not the same as a GLM response
@@ -242,11 +250,12 @@ linear-predictor scale. With the standard links, this is:
 \itemize{
 \item the outcome scale for a Gaussian identity-link model;
 \item the log-odds scale for a binomial logit model;
-\item the log-mean scale for Poisson and negative-binomial log-link models;
-\item a partial log-hazard scale for a Cox model.
+\item the log-mean scale for log-link GLMs;
+\item the fitted location scale for a \code{survreg} model;
+\item a partial log-hazard scale for Cox and Fine--Gray models.
 }
 
-For a Cox model, these fitted curves do not include the baseline hazard and
+For Cox and Fine--Gray models, these fitted curves do not include the baseline hazard and
 are not survival probabilities.
 }
 
@@ -319,7 +328,7 @@ transformations, centering constants, strata information, and offset used by
 the stored interaction model. Column names and coding must match the fitted
 coefficient vector exactly.
 
-For a GLM, if \code{X_i} is the reconstructed row excluding the intercept and
+For a GLM or \code{survreg} model, if \code{X_i} is the reconstructed row excluding the intercept and
 \code{o_i} is the prediction offset, the linear predictor is the usual fitted
 model quantity
 
@@ -331,8 +340,8 @@ function. MFPI delegates these predictions to the stored fitted model when
 possible, so manual calculations should use the same coefficient ordering and
 offset convention.
 
-For a Cox model, let \code{eta_i} denote the subject's fitted linear predictor on
-the Cox scale. \code{type = "lp"} returns the linear predictor relative to the
+For a Cox or Fine--Gray model, let \code{eta_i} denote the subject's fitted linear
+predictor on the proportional-hazards scale. \code{type = "lp"} returns it relative to the
 reference selected by \code{cox_reference}, and \code{type = "risk"} is its
 exponential. Thus, using the same reference convention,
 
@@ -394,10 +403,10 @@ time; fitted objects without that metadata must be refitted with the current
 package version.
 }
 
-\section{Cox predictions}{
+\section{Proportional-hazards predictions}{
 
-Cox predictions with \code{type = "lp"} and \code{type = "risk"} are relative
-quantities. They are not absolute hazards or survival probabilities.
+Cox and Fine--Gray predictions with \code{type = "lp"} and \code{type = "risk"} are
+relative quantities. They are not absolute hazards or survival probabilities.
 
 Use \code{cox_reference} to choose the covariate reference for these predictions:
 \itemize{
@@ -414,7 +423,7 @@ predictor columns named \code{strata_} or beginning with \code{..mfp2_} are not
 reserved.
 
 \code{cox_reference} does not change the group used by
-\code{type = "difference"}. It applies only to observation-level Cox predictions
+\code{type = "difference"}. It applies only to observation-level proportional-hazards predictions
 with \code{type = "lp"} or \code{type = "risk"}.
 
 Cox predictions with \code{type = "expected"} or \code{type = "survival"} also need
@@ -430,10 +439,16 @@ for example:
 Do not use \code{cox_reference} with \code{type = "expected"} or
 \code{type = "survival"}.
 
+Fine--Gray models expose only relative \code{"lp"} and \code{"risk"} predictions in
+this method; the absolute Cox types above are specific to ordinary Cox models.
+
 For a stratified Cox model, each prediction row must have valid stratum
 information. If \code{strata()} was included in the fitted formula, include its
-original variable or variables in \code{newdata}. Otherwise, supply new stratum
-values through \code{strata}. Prediction strata are matched as categorical labels
+original variable or variables in \code{newdata}; the fitted strata term is
+reconstructed automatically, so do not also supply the \code{strata} argument.
+If strata were supplied separately when fitting through the matrix
+interface, supply new stratum values through \code{strata}. Prediction strata are
+matched as categorical labels
 to the strata observed in the term-specific fitted Cox model; previously
 unseen strata are rejected. For several stratification variables, preserve
 the same variable order used for fitting.
@@ -445,7 +460,8 @@ For fitted curves and fitted differences, \code{se.fit = TRUE} returns pointwise
 standard errors and confidence intervals with confidence level \code{level}.
 
 For predictions for individual observations, \code{se.fit = TRUE} requests the
-standard errors supported by the underlying GLM or Cox prediction method.
+standard errors supported by the underlying GLM, Cox, or \code{survreg}
+prediction method.
 The \code{level} argument is not used for these predictions.
 
 All standard errors and confidence intervals are conditional on the selected
@@ -565,14 +581,13 @@ advanced_prostate_cancer$rx <- factor(
 # so the ordinary-prediction examples below have a stable set of covariates.
 fit_cox <- mfpi(
   survival::Surv(survtime, cens) ~
-    rx + fp(age) + fp(wt) + fp(hg) + stage,
+    rx + fp(age) + fp(wt) + fp(hg) + stage + strata(pf),
   data = advanced_prostate_cancer,
   family = "cox",
   group_var = "rx",
   cont_vars = "age",
   cont_var_forms = c(age = "linear"),
   flex = "flex1",
-  strata = advanced_prostate_cancer$pf,
   select = 1,
   p_interact = 1,
   verbose = FALSE
@@ -607,20 +622,19 @@ relative_data <- advanced_prostate_cancer[
   1:5, c("age", "rx", "wt", "hg", "stage", "pf")
 ]
 
-# Relative log-hazard for each covariate profile. External strata are
-# supplied separately and matched to the strata observed during fitting.
+# Relative log-hazard for each covariate profile. Because strata(pf) was
+# included in the fitted formula, pf is supplied in newdata and its fitted
+# stratum labels are reconstructed automatically.
 predict(
   fit_cox,
-  newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
-  strata = relative_data$pf,
+  newdata = relative_data,
   terms = "age", model = "all", type = "lp"
 )
 
 # Relative hazard for the same covariate profiles.
 predict(
   fit_cox,
-  newdata = relative_data[, c("age", "rx", "wt", "hg", "stage")],
-  strata = relative_data$pf,
+  newdata = relative_data,
   terms = "age", model = "all", type = "risk",
   cox_reference = "strata"
 )
@@ -635,20 +649,14 @@ absolute_data <- advanced_prostate_cancer[
 # Predicted cumulative hazard up to each row's follow-up time.
 predict(
   fit_cox,
-  newdata = absolute_data[, c(
-    "survtime", "cens", "age", "rx", "wt", "hg", "stage"
-  )],
-  strata = absolute_data$pf,
+  newdata = absolute_data,
   terms = "age", model = "all", type = "expected"
 )
 
 # Estimated survival probability at each row's follow-up time.
 predict(
   fit_cox,
-  newdata = absolute_data[, c(
-    "survtime", "cens", "age", "rx", "wt", "hg", "stage"
-  )],
-  strata = absolute_data$pf,
+  newdata = absolute_data,
   terms = "age", model = "all", type = "survival"
 )
 }

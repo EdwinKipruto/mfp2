@@ -143,9 +143,9 @@ the standard MFP procedure.
 
 The ACD transformation can be used in both interfaces of `mfp2()`:
 
-- in the matrix interface, by specifying the variable name in the `acdx`
+- in the matrix interface, by specifying the variable name in the `acd_vars`
   argument;
-- in the formula interface, by setting `acdx = TRUE` inside `fp()`.
+- in the formula interface, by setting `acd = TRUE` inside `fp()`.
 
 In the notation below, the ACD transformation of a covariate `x` is denoted by
 $A_x$.
@@ -468,13 +468,13 @@ simple setting in which the ACD extension is expected to be useful.
 ## Matrix interface
 
 We first fit the model using the matrix interface. The variable `x` is specified
-in the `acdx` argument, indicating that the ACD extension should be considered
+in the `acd_vars` argument, indicating that the ACD extension should be considered
 for this covariate.
 
 ```{r fit-acd-matrix}
 fit_acd_matrix <- mfp2(
   x, y,
-  acdx = "x",
+  acd_vars = "x",
   verbose = FALSE
 )
 
@@ -484,13 +484,13 @@ fit_acd_matrix$fp_terms
 ## Formula interface
 
 The same model can be fitted using the formula interface by setting
-`acdx = TRUE` inside `fp()`.
+`acd = TRUE` inside `fp()`.
 
 ```{r fit-acd-formula}
 dat <- data.frame(y = y, x = as.numeric(x))
 
 fit_acd_formula <- mfp2(
-  y ~ fp(x, acdx = TRUE),
+  y ~ fp(x, acd = TRUE),
   data = dat,
   verbose = FALSE
 )
@@ -504,7 +504,7 @@ For comparison, we fit a standard MFP model without the ACD extension.
 
 ```{r fit-standard-mfp}
 fit_standard <- mfp2(
-  y ~ fp(x, acdx = FALSE),
+  y ~ fp(x, acd = FALSE),
   data = dat,
   verbose = FALSE
 )

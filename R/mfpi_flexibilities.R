@@ -9,7 +9,7 @@
 #   cont_var   - the continuous variable being tested for interaction
 #   group_var  - the categorical grouping variable (e.g. treatment)
 #   xadj       - pre-transformed, pre-centered adjustment matrix (or NULL)
-#   ties       - Cox tie-handling method (was `method` in original)
+#   ties       - proportional-hazards tie-handling method (was `method` in original)
 #   use_ftest  - F-test flag for Gaussian models (was `ftest`)
 #   zero_var   - logical; treat exact-zero values of cont_var as structural zero
 #   fp_cand    - candidate FP powers for cont_var (was `powers`)
@@ -40,13 +40,13 @@
 #' @param xadj Numeric matrix of pre-transformed, pre-centered adjustment
 #'   predictors, or `NULL` if there are no adjustment variables.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param ties Character string; Cox tie-handling - `"breslow"` or `"efron"`.
+#' @param ties Character string; Cox/Fine--Gray tie handling - `"breslow"` or `"efron"`.
 #'   `"exact"` is rejected by the public MFP/MFPI interfaces before selection.
-#'   Ignored for non-Cox families.
+#'   Ignored for other families.
 #' @param degree Integer; FP degree - `0` (linear), `1` (FP1), or `2` (FP2).
 #'   Values below 1 are silently treated as `0` and routed to `flex0`.
-#' @param family Character string; `"gaussian"`, `"binomial"`, `"poisson"`,
-#'   `"negbin"`, or `"cox"`.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, `survreg`, or
+#'   Fine--Gray family specification.
 #' @param fp_cand Numeric vector of candidate FP powers for `cont_var`.
 #'   Corresponds to one element of the `fp_powers` list in [mfp2::mfpi()]. For
 #'   FP1, the conventional candidate set is retained, including power = 1.
@@ -80,12 +80,11 @@
 #'   compatibility; has no effect when variable selection is disabled.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param strata Optional high-level Cox stratification object, or `NULL`.
-#'   Passed through to Cox model fits without converting ordinary vector/factor
-#'   strata to integer codes.
-#' @param control Fitting control list from [stats::glm.control()] or
-#'   [survival::coxph.control()].
-#' @param nocenter Numeric vector for Cox centring suppression; see
+#' @param strata Optional normalized Cox or `survreg` stratum, or `NULL`.
+#'   Fine--Gray censoring strata have already been consumed during preparation.
+#' @param control Fitting control list from [stats::glm.control()],
+#'   [survival::coxph.control()], or [survival::survreg.control()].
+#' @param nocenter Numeric vector for Cox/Fine--Gray centring suppression; see
 #'   [survival::coxph()].
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param zero_var Logical scalar. Whether exact-zero values of nonnegative

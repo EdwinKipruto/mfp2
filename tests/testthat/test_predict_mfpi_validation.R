@@ -312,6 +312,19 @@ test_that("predict.mfpi Cox references match the retained coxph model", {
       expect_equal(got$predictions$se.fit, as.numeric(direct$se.fit), tolerance = 1e-8)
     }
   }
+
+  expect_true(prediction_has_formula_strata(fit))
+  expect_error(
+    predict(
+      fit,
+      newdata = nd,
+      strata = nd$inst,
+      terms = "age",
+      model = "all",
+      type = "lp"
+    ),
+    "formula-level strata.*original strata variable"
+  )
 })
 
 

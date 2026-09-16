@@ -233,16 +233,17 @@ test_that("predict.mfp2 rejects irrelevant strata arguments", {
 
   dat$stratum <- factor(rep(c("A", "B"), length.out = nrow(dat)))
   fit_stratified <- mfp2(
-    survival::Surv(time, status) ~ age + sex + strata(stratum),
-    data = dat,
+    x = data.matrix(dat[, c("age", "sex"), drop = FALSE]),
+    y = survival::Surv(dat$time, dat$status),
     family = "cox",
+    strata = dat$stratum,
     df = 1,
     select = 1,
     alpha = 1,
     verbose = FALSE
   )
-  nd_stratified <- dat[1:8, c("age", "sex", "stratum"), drop = FALSE]
-  bad_strata <- as.numeric(nd_stratified$stratum)
+  nd_stratified <- data.matrix(dat[1:8, c("age", "sex"), drop = FALSE])
+  bad_strata <- as.numeric(dat$stratum[1:8])
   bad_strata[2] <- Inf
   expect_error(
     predict(

@@ -13,10 +13,11 @@
 
 #' Degrees of Freedom for the Main-Effects and Interaction Models
 #'
-#' Computes the number of estimable parameters for both the main-effects and
-#' interaction models, excluding the intercept and any adjustment-variable
-#' parameters (which are identical in both models and therefore cancel in the
-#' likelihood-ratio test and in AIC/BIC differences).
+#' Computes the MFPI degrees-of-freedom accounting for the main-effects and
+#' interaction models. These counts combine estimable regression coefficients
+#' with the method's FP power-search allowances, while excluding the intercept
+#' and adjustment-variable coefficients (which are common to both models and
+#' therefore cancel in likelihood-ratio and AIC/BIC differences).
 #'
 #' @section Parameter counts:
 #' Let \eqn{K} be the number of groups (`n_groups`) and \eqn{m} the FP degree
@@ -112,10 +113,12 @@
 #'
 #' @return A named list with four elements:
 #' \describe{
-#'   \item{`dfmain`}{\eqn{p_{\text{main}}}: number of parameters in the
-#'     main-effects model excluding intercept and adjustment terms.}
-#'   \item{`total_df`}{\eqn{p_{\text{int}}}: number of parameters in the
-#'     interaction model excluding intercept and adjustment terms.}
+#'   \item{`dfmain`}{\eqn{p_{\text{main}}}: main-model df contribution,
+#'     including any FP power-search allowance and excluding intercept and
+#'     adjustment terms.}
+#'   \item{`total_df`}{\eqn{p_{\text{int}}}: interaction-model df
+#'     contribution, including any FP power-search allowance and excluding
+#'     intercept and adjustment terms.}
 #'   \item{`dfint`}{\eqn{df_{\text{int}} = p_{\text{int}} - p_{\text{main}}}:
 #'     degrees of freedom for the likelihood-ratio test.}
 #'   \item{`n_groups`}{The value of `n_groups` passed in, returned for

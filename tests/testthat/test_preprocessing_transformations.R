@@ -84,7 +84,7 @@ test_that("apply_shift_scale() produces positive, scaled output", {
 
 # Test purpose: Checks that default model fitting records centering constants.
 test_that("centering is applied by default", {
-  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = TRUE, verbose = FALSE)
   expect_true(!is.null(fit$centers))
 })
 
@@ -92,9 +92,82 @@ test_that("centering is applied by default", {
 # Test purpose: Checks that center = FALSE disables centering and leaves no
 # centers stored.
 test_that("centering can be disabled", {
-  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE, warn_low_information = FALSE)
+  fit <- mfp2(x_prostate, y_prostate, center = FALSE, verbose = FALSE)
 
   expect_s3_class(fit, "mfp2")
   expect_null(fit$centers)
   expect_true(all(fit$transformations$center == FALSE))
+})
+
+
+# Test purpose: An explicit semantic centering method must override the
+# cardinality heuristic without changing the historical automatic treatment of
+# other columns. This is required for polynomial contrasts that contain only
+# two distinct numeric values but are not independent binary predictors.
+test_that("center_matrix() supports partial explicit centering methods", {
+  mat <- cbind(
+    polynomial_contrast = c(-0.8164966, 0.4082483, 0.4082483, 0.4082483),
+    binary_12 = c(1, 1, 2, 2)
+  )
+
+  centered <- center_matrix(
+    mat,
+    center_method = c(polynomial_contrast = "mean")
+  )
+  centers <- attr(centered, "scaled:center")
+
+  expect_equal(
+    unname(centers[["polynomial_contrast"]]),
+    mean(mat[, "polynomial_contrast"])
+  )
+  expect_equal(unname(centers[["binary_12"]]), 1)
+  expect_equal(colMeans(centered), c(polynomial_contrast = 0, binary_12 = 0.5))
+})
+
+
+# Test purpose: transform_matrix() must expand a source-column centering method
+# to the final design while retaining automatic behavior when no override is
+# supplied.
+test_that("transform_matrix() propagates explicit source centering methods", {
+  contrast <- c(-0.8164966, 0.4082483, 0.4082483, 0.4082483)
+  x <- cbind(contrast = contrast)
+  common <- list(
+    x = x,
+    power_list = list(contrast = 1),
+    center = c(contrast = TRUE),
+    acdx = c(contrast = FALSE)
+  )
+
+  automatic <- do.call(transform_matrix, common)
+  explicit <- do.call(
+    transform_matrix,
+    c(common, list(center_method = c(contrast = "mean")))
+  )
+
+  transformed_column <- names(explicit$transformed_column_to_source)[
+    explicit$transformed_column_to_source == "contrast"
+  ]
+
+  expect_length(transformed_column, 1L)
+  expect_equal(unname(automatic$centers[[transformed_column]]), min(contrast))
+  expect_equal(unname(explicit$centers[[transformed_column]]), mean(contrast))
+  expect_equal(mean(explicit$x_transformed[, transformed_column]), 0)
+  expect_identical(
+    unname(explicit$transformed_column_component[[transformed_column]]),
+    "fp_basis"
+  )
+})
+
+
+test_that("explicit centering methods are validated by column name and value", {
+  mat <- cbind(x = 1:4)
+
+  expect_error(
+    center_matrix(mat, center_method = c(unknown = "mean")),
+    "Unknown column"
+  )
+  expect_error(
+    center_matrix(mat, center_method = c(x = "median")),
+    "'auto', 'mean', or 'minimum'"
+  )
 })

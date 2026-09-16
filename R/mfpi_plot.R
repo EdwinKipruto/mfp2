@@ -86,16 +86,24 @@
 #'   \item the outcome scale for Gaussian identity-link models;
 #'   \item the log-odds scale for binomial logit-link models;
 #'   \item the log-mean scale for Poisson and negative-binomial log-link models;
-#'   \item a partial log-relative-hazard scale for Cox models.
+#'   \item the inverse-mean scale for Gamma models with the default inverse link;
+#'   \item the inverse-squared-mean scale for inverse-Gaussian models with their
+#'     default link;
+#'   \item a partial log-relative-hazard scale for Cox models;
+#'   \item a partial log-subdistribution-hazard scale for Fine--Gray models;
+#'   \item the fitted location scale for parametric `survreg` models.
 #' }
 #'
 #' For other GLM links, plots are labelled using the corresponding link scale.
 #' Under the standard links, a difference plot represents a mean difference for
 #' Gaussian models, a log odds ratio for binomial models, a log mean ratio for
-#' Poisson and negative-binomial models, and a log hazard ratio for Cox models.
+#' Poisson and negative-binomial models, a log hazard ratio for Cox models, a
+#' log subdistribution hazard ratio for Fine--Gray models, and a location-scale
+#' difference for `survreg` models.
 #' With an exposure offset in a Poisson or negative-binomial model, the log mean
 #' ratio is interpreted as a log rate ratio. Exponentiating a log-scale contrast
-#' gives the corresponding odds, mean, rate, or hazard ratio. The group-specific
+#' gives the corresponding odds, mean, rate, hazard, or subdistribution-hazard
+#' ratio when that interpretation applies. The group-specific
 #' curves remain partial linear predictors and are not complete predicted
 #' responses, probabilities, rates, hazards, or survival probabilities.
 #'
@@ -1101,13 +1109,13 @@ plot.mfpi <- function(x,
 
 #' Determine the Link Used for MFPI Plot Labels
 #'
-#' Extracts the fitted GLM link for use in plot-axis labels. Cox models use a
-#' dedicated value because they do not store a GLM family object, and
-#' negative-binomial models use their supported log link.
+#' Extracts the fitted GLM link for use in plot-axis labels. Cox, Fine--Gray,
+#' and `survreg` models use dedicated values because they do not store a GLM
+#' family object, and negative-binomial models use their supported log link.
 #'
 #' @param model Object of class \code{"mfpi"}.
 #'
-#' @return Character scalar naming the link or \code{"cox"}.
+#' @return Character scalar naming the link or survival-model scale.
 #'
 #' @keywords internal
 #' @noRd
@@ -1117,6 +1125,8 @@ mfpi_plot_link_name <- function(model) {
   if (identical(family_string, "cox")) {
     return("cox")
   }
+  if (identical(family_string, "finegray")) return("finegray")
+  if (identical(family_string, "survreg")) return("survreg")
   if (identical(family_string, "negbin")) {
     return("log")
   }
@@ -1135,6 +1145,8 @@ mfpi_plot_link_name <- function(model) {
     gaussian = "identity",
     binomial = "logit",
     poisson  = "log",
+    gamma = "inverse",
+    inverse.gaussian = "1/mu^2",
     "unknown"
   )
 }
@@ -1158,6 +1170,12 @@ mfpi_plot_fitted_ylabel <- function(model) {
   if (identical(family_string, "cox")) {
     return("Partial linear predictor (log relative hazard)")
   }
+  if (identical(family_string, "finegray")) {
+    return("Partial linear predictor (log subdistribution hazard)")
+  }
+  if (identical(family_string, "survreg")) {
+    return("Partial linear predictor (survreg location scale)")
+  }
 
   scale_label <- switch(
     link,
@@ -1168,6 +1186,7 @@ mfpi_plot_fitted_ylabel <- function(model) {
     cloglog  = "complementary log-log scale",
     cauchit  = "cauchit scale",
     inverse  = "inverse-mean scale",
+    `1/mu^2` = "inverse-squared-mean scale",
     sqrt     = "square-root mean scale",
     if (identical(link, "unknown")) "link scale" else paste0(link, " scale")
   )
@@ -1195,6 +1214,10 @@ mfpi_plot_difference_ylabel <- function(model, group, reference) {
 
   measure <- if (identical(family_string, "cox")) {
     "Log hazard ratio"
+  } else if (identical(family_string, "finegray")) {
+    "Log subdistribution hazard ratio"
+  } else if (identical(family_string, "survreg")) {
+    "Location-scale difference"
   } else if (identical(family_string, "gaussian") &&
              identical(link, "identity")) {
     "Mean difference"
@@ -1232,6 +1255,8 @@ mfpi_plot_scale_label <- function(model) {
   if (identical(family_string, "cox")) {
     return("log relative hazard")
   }
+  if (identical(family_string, "finegray")) return("log subdistribution hazard")
+  if (identical(family_string, "survreg")) return("survreg location scale")
 
   switch(
     link,
@@ -1242,6 +1267,7 @@ mfpi_plot_scale_label <- function(model) {
     cloglog  = "complementary log-log scale",
     cauchit  = "cauchit scale",
     inverse  = "inverse-mean scale",
+    `1/mu^2` = "inverse-squared-mean scale",
     sqrt     = "square-root mean scale",
     if (identical(link, "unknown")) "linear predictor" else paste0(link, " scale")
   )

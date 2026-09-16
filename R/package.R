@@ -20,6 +20,9 @@
 #' regression, including the links accepted by their family objects. Quasi
 #' families are not supported because MFP selection requires a likelihood.
 #' Optional negative-binomial fitting requires the `fastglm` package.
+#' Multinomial logistic models use [multinomial_family()] and the `nnet`
+#' package. Their selected FP transformations are common across logits and
+#' their regression coefficients are logit specific.
 #'
 #' Survival models are specified as separate families: `family = "cox"` for
 #' Cox proportional hazards, [survreg_family()] for the parametric distributions

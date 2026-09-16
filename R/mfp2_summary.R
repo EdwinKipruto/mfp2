@@ -26,6 +26,11 @@
 #' and other nonlinear terms, whose individual coefficients are curve
 #' parameters rather than per-unit effect sizes.
 #'
+#' For multinomial models, the structured summary reports the common selected
+#' functional forms and an outcome-specific coefficient table containing the
+#' estimate, standard error, z statistic, and p-value for each non-reference
+#' logit. Model-fit values are reported as minus twice the log likelihood.
+#'
 #' @details
 #' The summary is organised into the following sections:
 #' \itemize{
@@ -139,6 +144,55 @@ summary.mfp2 <- function(object,
       result$call <- object$call_mfp
     }
     return(result)
+  }
+
+  if (identical(object$family_string, "multinomial")) {
+    base_object <- object
+    class(base_object) <- setdiff(class(base_object), "mfp2")
+    raw_summary <- summary(base_object)
+    coefficients <- object$mfp2_coefficient_matrix
+    standard_errors <- raw_summary$standard.errors
+    if (is.null(dim(standard_errors))) {
+      standard_errors <- matrix(
+        standard_errors,
+        nrow = nrow(coefficients),
+        dimnames = dimnames(coefficients)
+      )
+    }
+    z <- coefficients / standard_errors
+    p <- 2 * stats::pnorm(abs(z), lower.tail = FALSE)
+    coefficient_table <- do.call(rbind, lapply(seq_len(nrow(coefficients)), function(i) {
+      data.frame(
+        outcome = rownames(coefficients)[[i]],
+        reference = object$reference_class,
+        term = colnames(coefficients),
+        coefficient = unname(coefficients[i, ]),
+        se = unname(standard_errors[i, ]),
+        z = unname(z[i, ]),
+        p = unname(p[i, ]),
+        stringsAsFactors = FALSE
+      )
+    }))
+    out <- list(
+      call = object$call_mfp,
+      family = object$family_string,
+      criterion = mfp2_summary_criterion_label(object),
+      converged = isTRUE(object$convergence_mfp),
+      n = mfp2_summary_nobs(object),
+      nevents = NA_integer_,
+      multinomial = TRUE,
+      class_levels = object$class_levels,
+      reference_class = object$reference_class,
+      n_logits = object$n_logits,
+      function_table = mfp2_summary_classify_terms(object)$function_table,
+      coefficients = coefficient_table,
+      model_fit_values = mfp2_summary_model_fit_values(object),
+      raw_summary = raw_summary,
+      notes = notes,
+      digits = digits
+    )
+    class(out) <- "summary.mfp2"
+    return(out)
   }
 
   # ---------------------------------------------------------------------------
@@ -323,6 +377,9 @@ mfp2_summary_classify_terms <- function(object) {
   # columns are named A_<variable>.<index>; map those columns back to their
   # source variable so direct and ACD components are formatted together.
   design_cols <- colnames(object$x)
+  if (is.null(design_cols) && !is.null(object$mfp2_design)) {
+    design_cols <- setdiff(colnames(object$mfp2_design), "(Intercept)")
+  }
   if (is.null(design_cols)) design_cols <- names(object$coefficients)
   base_names <- sub("\\.[0-9]+$", "", design_cols)
   source_names <- base_names
@@ -1162,7 +1219,11 @@ mfp2_design_column_info <- function(object) {
   # design matrix was constructed. Accept that empty design only when the
   # fitted coefficient vector also contains no predictor coefficients; this
   # keeps a genuinely incomplete nonempty design from being silently hidden.
-  coefficient_names <- names(object$coefficients)
+  coefficient_names <- if (is.matrix(object$coefficients)) {
+    colnames(object$coefficients)
+  } else {
+    names(object$coefficients)
+  }
   if (is.null(coefficient_names)) {
     coefficient_names <- character(0L)
   }
@@ -1675,6 +1736,8 @@ mfp2_summary_model_fit_values <- function(object) {
     } else if (identical(family_string, "survreg")) {
       # survreg$idf counts the intercept plus estimated scale parameter(s).
       d <- d - as.integer(if (is.null(object$idf)) 1L else object$idf)
+    } else if (identical(family_string, "multinomial")) {
+      d <- d - as.integer(if (is.null(object$n_logits)) 1L else object$n_logits)
     } else if (mfp2_family_has_intercept(family_string)) {
       # Strip the intercept and, when applicable, estimated GLM dispersion.
       d <- d - 1L - as.integer(mfp2_glm_estimates_dispersion(
@@ -1698,10 +1761,16 @@ mfp2_summary_model_fit_values <- function(object) {
     df            = c(linear_df, mfp_df),
     stringsAsFactors = FALSE
   )
-  attr(values, "statistic_label") <- if (mfp2_family_is_survival(family_string)) {
+  attr(values, "statistic_label") <- if (
+    mfp2_family_is_survival(family_string) ||
+    identical(family_string, "multinomial")
+  ) {
     "-2 log L"
   } else {
     "Deviance"
+  }
+  if (identical(family_string, "multinomial")) {
+    attr(values, "n_logits") <- as.integer(object$n_logits)
   }
   values
 }
@@ -1766,11 +1835,21 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
   # Note about the df column. Kept identical between print.mfp2() and
   # print.summary.mfp2() so users see one consistent explanation.
   if (isTRUE(notes)) {
-    note_lines <- c(
-      "df counts fitted regression coefficients, excluding the intercept, plus 1 df",
-      "for each estimated FP power (FP1 = 2 df, FP2 = 4 df). A retained catzero",
-      "or spike-at-zero binary indicator adds 1 df; binary-only SAZ uses 1 df."
-    )
+    n_logits <- attr(values, "n_logits", exact = TRUE)
+    if (!is.null(n_logits)) {
+      q <- n_logits
+      note_lines <- c(
+        sprintf("df counts coefficients across %d non-reference logits, excluding their intercepts,", q),
+        "plus 1 df for each estimated FP power shared across logits. A linear term",
+        sprintf("adds %d df, FP1 adds %d df, and FP2 adds %d df.", q, q + 1L, 2L * q + 2L)
+      )
+    } else {
+      note_lines <- c(
+        "df counts fitted regression coefficients, excluding the intercept, plus 1 df",
+        "for each estimated FP power (FP1 = 2 df, FP2 = 4 df). A retained catzero",
+        "or spike-at-zero binary indicator adds 1 df; binary-only SAZ uses 1 df."
+      )
+    }
     for (ln in note_lines) cat(ln, "\n", sep = "")
   }
 }
@@ -1791,6 +1870,45 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
 #' @export
 print.summary.mfp2 <- function(x, notes = x$notes, ...) {
   validate_logical_vector(notes, "notes", allowed_lengths = 1L)
+
+  if (isTRUE(x$multinomial)) {
+    digits <- if (!is.null(x$digits)) x$digits else 3L
+    rule <- paste(rep("=", 78L), collapse = "")
+    dash <- paste(rep("-", 78L), collapse = "")
+    cat(rule, "\nMFP Model Summary\n", rule, "\n\n", sep = "")
+    if (!is.null(x$call)) {
+      cat("Call:\n")
+      print(x$call)
+      cat("\n")
+    }
+    cat(sprintf(
+      "Family: multinomial | Criterion: %s | Converged: %s\n",
+      x$criterion,
+      if (isTRUE(x$converged)) "yes" else "no"
+    ))
+    cat(sprintf("Observations: %d\n", x$n))
+    cat(sprintf(
+      "Outcome classes: %s | Reference: %s | Logits: %d\n",
+      paste(x$class_levels, collapse = ", "), x$reference_class, x$n_logits
+    ))
+    cat("FP powers: common across logits\n\n")
+    cat(dash, "\nSelection Overview\n", dash, "\n", sep = "")
+    print.data.frame(x$function_table, row.names = FALSE, right = FALSE)
+    cat("\n", dash, "\nCoefficient Tests\n", dash, "\n", sep = "")
+    display <- x$coefficients
+    display$logit <- paste0(display$outcome, " vs ", display$reference)
+    display <- display[, c("logit", "term", "coefficient", "se", "z", "p")]
+    print.data.frame(display, row.names = FALSE, digits = digits)
+    cat("\n")
+    mfp2_format_model_fit_block(
+      x$model_fit_values,
+      digits = digits,
+      heading_printer = function(title) cat(dash, "\n", title, "\n", dash, "\n", sep = ""),
+      notes = notes
+    )
+    cat("\n", rule, "\n", sep = "")
+    return(invisible(x))
+  }
 
   digits <- if (!is.null(x$digits)) x$digits else max(3L, getOption("digits") - 3L)
   width <- 78L

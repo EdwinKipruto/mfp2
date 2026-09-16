@@ -94,6 +94,16 @@
 #' When `type` is not supplied, the default is `"link"` for GLM and `survreg`
 #' models and `"lp"` for Cox and Fine--Gray models.
 #'
+#' For multinomial models, `type = "link"` returns an `n` by `C - 1` matrix of
+#' reference-category logits, `type = "response"` returns an `n` by `C` matrix
+#' of class probabilities, and `type = "class"` returns the predicted response
+#' class. Link and response matrices retain the observation names from the
+#' fitted data or `newdata`. The fitted FP transformations are common across
+#' logits. Full-model
+#' multinomial standard errors and multinomial term/contrast predictions are
+#' not currently provided, so use `se.fit = FALSE` and one of these three
+#' prediction types.
+#'
 #' @section Term predictions:
 #' A single term result can represent an FP2 function, a factor, a zero-handled
 #' variable, or several matrix columns grouped with `term_groups`. Contributions
@@ -287,7 +297,9 @@
 #'   model when `newdata` is supplied.
 #'
 #' @param newoffset An optional finite numeric vector containing one offset
-#'   value for each row of `newdata`. See **Offsets**.
+#'   value for each row of `newdata`. For multinomial models, supply an `n` by
+#'   `C` class-offset matrix or an `n` by `C - 1` reference-logit matrix. See
+#'   **Offsets**.
 #'
 #'   This argument can be supplied only for a complete-model prediction when the
 #'   fitted model used an offset and `newdata` is supplied.
@@ -315,6 +327,9 @@
 #' GLM, `coxph`, or `survreg` prediction method. It is usually a numeric vector. When
 #' `se.fit = TRUE`, it is usually a list containing fitted values and standard
 #' errors.
+#'
+#' For multinomial models, `type = "link"` and `type = "response"` return
+#' matrices that retain observation names.
 #'
 #' For `type = "terms"` or `type = "contrasts"`, the result is a named list
 #' with one data frame for each requested term. Each data frame contains:
@@ -576,6 +591,11 @@ predict.mfp2 <- function(object,
     if (cox_reference_supplied) {
       stop("'cox_reference' is only available for proportional-hazards models.", call. = FALSE)
     }
+  } else if (identical(object$family_string, "multinomial")) {
+    type <- mfp2_match_multinomial_prediction_type(type)
+    if (cox_reference_supplied) {
+      stop("'cox_reference' is only available for Cox models.", call. = FALSE)
+    }
   } else {
     type <- mfp2_match_glm_prediction_type(type)
     if (cox_reference_supplied) {
@@ -645,13 +665,14 @@ predict.mfp2 <- function(object,
     if (!is.numeric(newoffset) || anyNA(newoffset) ||
         any(!is.finite(newoffset))) {
       stop(
-        "'newoffset' must be a finite numeric vector with one value per prediction row.",
+        "'newoffset' must contain finite numeric values.",
         call. = FALSE
       )
     }
-    if (length(newoffset) != NROW(newdata)) {
+    offset_rows <- if (is.matrix(newoffset)) nrow(newoffset) else length(newoffset)
+    if (offset_rows != NROW(newdata)) {
       stop(
-        "The length of 'newoffset' must equal the number of rows in 'newdata'.",
+        "The number of observation rows in 'newoffset' must equal the rows in 'newdata'.",
         call. = FALSE
       )
     }
@@ -773,6 +794,12 @@ predict.mfp2 <- function(object,
   # may correspond to one transformed continuous predictor or to a block of
   # dummy/contrast columns for a categorical term.
   if (type %in% c("terms", "contrasts")) {
+    if (identical(object$family_string, "multinomial")) {
+      stop(
+        "Multinomial term and contrast predictions are not yet available; use type = 'link', 'response', or 'class'.",
+        call. = FALSE
+      )
+    }
     requested_terms <- terms
     internal_terms <- requested_terms
 
@@ -1058,14 +1085,15 @@ predict.mfp2 <- function(object,
       if (!is.numeric(newoffset) || anyNA(newoffset) ||
           any(!is.finite(newoffset))) {
         stop(
-          "! newoffset must be a finite numeric vector.",
+          "! newoffset must contain finite numeric values.",
           call. = FALSE
         )
       }
 
-      if (length(newoffset) != nrow(newdata)) {
+      offset_rows <- if (is.matrix(newoffset)) nrow(newoffset) else length(newoffset)
+      if (offset_rows != nrow(newdata)) {
         stop(
-          "The length of newoffset must be equal to the number of rows of newdata",
+          "The number of observation rows in newoffset must equal the rows of newdata",
           call. = FALSE
         )
       }
@@ -1087,7 +1115,7 @@ predict.mfp2 <- function(object,
       newdata,
       terms = selected_internal_terms,
       strata = strata,
-      offset = newoffset,
+      offset = if (identical(object$family_string, "multinomial")) NULL else newoffset,
       check_binary = FALSE
     )
 
@@ -1097,6 +1125,16 @@ predict.mfp2 <- function(object,
         newdata = newdata,
         response = cox_prediction_response
       )
+    }
+
+    if (identical(object$family_string, "multinomial")) {
+      return(mfp2_predict_multinomial(
+        object = object,
+        transformed = newdata,
+        type = type,
+        se.fit = se.fit,
+        newoffset = newoffset
+      ))
     }
 
     if (mfp2_family_is_ph(object$family_string)) {
@@ -1159,6 +1197,16 @@ predict.mfp2 <- function(object,
   # With no newdata, the fitted base object already contains the training
   # response, transformed design, strata, and offsets required by its native
   # prediction method.
+  if (identical(object$family_string, "multinomial")) {
+    return(mfp2_predict_multinomial(
+      object = object,
+      transformed = NULL,
+      type = type,
+      se.fit = se.fit,
+      newoffset = NULL
+    ))
+  }
+
   if (mfp2_family_is_ph(object$family_string)) {
     return(
       mfp2_predict_cox_base(
@@ -1264,6 +1312,90 @@ mfp2_match_glm_prediction_type <- function(type) {
         call. = FALSE
       )
     }
+  )
+}
+
+
+mfp2_match_multinomial_prediction_type <- function(type) {
+  choices <- c("link", "response", "class", "terms", "contrasts")
+  tryCatch(
+    match.arg(type, choices),
+    error = function(e) {
+      stop(
+        "For multinomial models, 'type' must be one of: ",
+        paste(shQuote(choices), collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  )
+}
+
+
+mfp2_predict_multinomial <- function(object, transformed = NULL,
+                                      type = c("link", "response", "class"),
+                                      se.fit = FALSE, newoffset = NULL) {
+  type <- match.arg(type)
+  if (isTRUE(se.fit)) {
+    stop(
+      "`se.fit = TRUE` is not available for full multinomial predictions; use `summary()` for coefficient uncertainty.",
+      call. = FALSE
+    )
+  }
+  coefficient_matrix <- object$mfp2_coefficient_matrix
+  if (!is.matrix(coefficient_matrix)) {
+    stop("Internal error: multinomial coefficient matrix is unavailable.", call. = FALSE)
+  }
+
+  if (is.null(transformed)) {
+    xx <- object$mfp2_design
+    offset_matrix <- object$mfp2_offset_matrix
+    prediction_rownames <- rownames(xx)
+  } else {
+    transformed <- as.data.frame(transformed, check.names = FALSE)
+    # Match predict.multinom(): returned matrices use the prediction data's row
+    # names, including automatic "1", "2", ... names for an unnamed matrix.
+    prediction_rownames <- row.names(transformed)
+    needed <- setdiff(colnames(coefficient_matrix), "(Intercept)")
+    model_columns <- prediction_model_column_names(object, colnames(transformed))
+    names(model_columns) <- colnames(transformed)
+    selected <- match(needed, unname(model_columns))
+    if (anyNA(selected)) {
+      stop("Internal error: transformed multinomial prediction columns are incomplete.", call. = FALSE)
+    }
+    xx <- cbind(
+      "(Intercept)" = 1,
+      as.matrix(transformed[, names(model_columns)[selected], drop = FALSE])
+    )
+    colnames(xx) <- c("(Intercept)", needed)
+    offset_matrix <- mfp2_multinomial_offset(
+      newoffset,
+      object$mfp2_family,
+      nobs = nrow(xx),
+      has_offset = isTRUE(object$has_offset)
+    )
+  }
+
+  eta <- xx[, colnames(coefficient_matrix), drop = FALSE] %*%
+    t(coefficient_matrix)
+  eta <- eta + offset_matrix[, -1L, drop = FALSE]
+  dimnames(eta) <- list(prediction_rownames, rownames(coefficient_matrix))
+  if (type == "link") return(eta)
+
+  eta_full <- cbind(0, eta)
+  colnames(eta_full) <- object$class_levels
+  row_max <- apply(eta_full, 1L, max)
+  exp_eta <- exp(eta_full - row_max)
+  probabilities <- exp_eta / rowSums(exp_eta)
+
+  original_levels <- object$mfp2_family$prepared$original_levels
+  if (!is.null(original_levels) && all(original_levels %in% colnames(probabilities))) {
+    probabilities <- probabilities[, original_levels, drop = FALSE]
+  }
+  if (type == "response") return(probabilities)
+
+  factor(
+    colnames(probabilities)[max.col(probabilities, ties.method = "first")],
+    levels = colnames(probabilities)
   )
 }
 
@@ -2550,9 +2682,10 @@ reconstruct_formula_offset_newdata <- function(object, newdata) {
     )
   }
 
-  out <- as.vector(out)
+  if (!identical(object$family_string, "multinomial")) out <- as.vector(out)
 
-  if (length(out) != NROW(newdata_df)) {
+  out_rows <- if (is.matrix(out)) nrow(out) else length(out)
+  if (out_rows != NROW(newdata_df)) {
     stop(
       "! Formula-level offset reconstruction returned the wrong number of rows.",
       call. = FALSE

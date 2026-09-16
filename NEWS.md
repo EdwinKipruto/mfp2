@@ -2,6 +2,15 @@
 
 ## New functionality
 
+* Added multinomial logistic models through
+  `family = "multinomial"` and `multinomial_family(reference = ...)`.
+  Repeated MFP and MFPI candidate fits use the matrix-level `nnet` hot path,
+  while retained MFP models inherit from `multinom`. FP transformations and
+  selected powers are common across non-reference logits, with separate
+  coefficients per logit. Multinomial-aware degrees of freedom, printing,
+  summaries, class probabilities, predicted classes, offsets, factor responses,
+  and grouped class-count responses are supported.
+
 * Expanded the `family` interface to all likelihood-based base `glm()`
   families and their supported links. Quasi families remain unsupported because
   MFP selection requires a likelihood. The existing Cox path is unchanged, and

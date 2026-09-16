@@ -69,7 +69,9 @@ only for complete-model prediction from a stratified Cox or \code{survreg}
 model when \code{newdata} is supplied.}
 
 \item{newoffset}{An optional finite numeric vector containing one offset
-value for each row of \code{newdata}. See \strong{Offsets}.
+value for each row of \code{newdata}. For multinomial models, supply an \code{n} by
+\code{C} class-offset matrix or an \code{n} by \code{C - 1} reference-logit matrix. See
+\strong{Offsets}.
 
 This argument can be supplied only for a complete-model prediction when the
 fitted model used an offset and \code{newdata} is supplied.}
@@ -97,6 +99,9 @@ For complete-model predictions, the result follows the applicable native
 GLM, \code{coxph}, or \code{survreg} prediction method. It is usually a numeric vector. When
 \code{se.fit = TRUE}, it is usually a list containing fitted values and standard
 errors.
+
+For multinomial models, \code{type = "link"} and \code{type = "response"} return
+matrices that retain observation names.
 
 For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list
 with one data frame for each requested term. Each data frame contains:
@@ -215,6 +220,16 @@ value.
 
 When \code{type} is not supplied, the default is \code{"link"} for GLM and \code{survreg}
 models and \code{"lp"} for Cox and Fine--Gray models.
+
+For multinomial models, \code{type = "link"} returns an \code{n} by \code{C - 1} matrix of
+reference-category logits, \code{type = "response"} returns an \code{n} by \code{C} matrix
+of class probabilities, and \code{type = "class"} returns the predicted response
+class. Link and response matrices retain the observation names from the
+fitted data or \code{newdata}. The fitted FP transformations are common across
+logits. Full-model
+multinomial standard errors and multinomial term/contrast predictions are
+not currently provided, so use \code{se.fit = FALSE} and one of these three
+prediction types.
 }
 
 \section{Term predictions}{

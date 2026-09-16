@@ -55,6 +55,11 @@ and other nonlinear terms, whose individual coefficients are curve
 parameters rather than per-unit effect sizes.
 }
 \details{
+For multinomial models, the structured summary reports the common selected
+functional forms and an outcome-specific coefficient table containing the
+estimate, standard error, z statistic, and p-value for each non-reference
+logit. Model-fit values are reported as minus twice the log likelihood.
+
 The summary is organised into the following sections:
 \itemize{
 \item \strong{Selection Overview}: a compact overview of the selected

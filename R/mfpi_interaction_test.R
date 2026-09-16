@@ -350,9 +350,16 @@ validate_mfpi_fitted_rank <- function(fit,
                                       model_name,
                                       cont_name,
                                       family_string) {
-  expected_rank <- ncol(design) + as.integer(
+  expected_design_rank <- ncol(design) + as.integer(
     mfp2_family_has_intercept(family_string)
   )
+  expected_rank <- expected_design_rank * if (
+    identical(family_string, "multinomial")
+  ) {
+    if (is.null(fit$n_logits)) 1L else as.integer(fit$n_logits)
+  } else {
+    1L
+  }
   fitted_rank <- fit$rank
 
   if (!is.numeric(fitted_rank) || length(fitted_rank) != 1L ||
@@ -644,7 +651,14 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
   # df_int  = (K-1)*m  for flex1/flex2 (nested models)
   # differs for flex3/flex4; delegated to interaction_model_df()
   # ---------------------------------------------------------------------------
-  deg_freedom <- interaction_model_df(n_groups, degree, flex)
+  n_logits <- if (identical(family_string, "multinomial")) {
+    family$prepared$n_logits
+  } else {
+    1L
+  }
+  deg_freedom <- interaction_model_df(
+    n_groups, degree, n_logits = n_logits, flex = flex
+  )
   df_main     <- deg_freedom$dfmain       # p_main (excl. intercept & adj.)
   df_total    <- deg_freedom$total_df     # p_interaction (excl. intercept & adj.)
   df_int      <- deg_freedom$dfint        # df_total - df_main = (K-1)*m
@@ -754,6 +768,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
         call. = FALSE
       )
     }
+  } else if (family_string == "multinomial") {
+    n_eff <- family$prepared$effective_n
   } else {
     n_eff <- NROW(y)
   }

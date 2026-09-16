@@ -8,9 +8,11 @@
 
 `mfp2` implements multivariable fractional polynomial (MFP) models and related
 extensions. It performs variable selection and functional-form selection for
-continuous covariates. The package supports generalized linear models with
-families `"gaussian"`, `"binomial"`, `"poisson"`, and `"negbin"`, as well as
-Cox proportional hazards models for right-censored survival outcomes.
+continuous covariates. The package supports generalized linear models,
+unpenalized multinomial logistic models, and Cox, parametric-survival, and
+Fine--Gray models. Multinomial fitting uses `nnet`; one FP transformation is
+selected per predictor and shared across logits, with logit-specific
+coefficients.
 Negative-binomial models are specified with `family = "negbin"` and require
 `fitter = "fastglm"`.
 
@@ -104,6 +106,28 @@ fit_matrix <- mfp2(
 )
 
 fit_matrix
+```
+
+### Fit a multinomial MFP model
+
+Use a factor response with at least three levels, or a matrix of class counts.
+The first level is the reference by default; choose another with
+`multinomial_family()`.
+
+```r
+fit_multinomial <- mfp2(
+  Species ~ fp(Sepal.Length) + fp(Petal.Length) + Sepal.Width,
+  data = iris,
+  family = multinomial_family(reference = "setosa"),
+  verbose = FALSE
+)
+
+# One row per non-reference logit; the selected powers are shared.
+coef(fit_multinomial)
+
+# Class probabilities and predicted classes.
+predict(fit_multinomial, iris[1:6, ], type = "response")
+predict(fit_multinomial, iris[1:6, ], type = "class")
 ```
 
 ### Model a spike-at-zero covariate

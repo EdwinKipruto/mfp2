@@ -30,6 +30,9 @@ used for prediction with \code{predict()}, and visualised with \code{plot()}.
 regression, including the links accepted by their family objects. Quasi
 families are not supported because MFP selection requires a likelihood.
 Optional negative-binomial fitting requires the \code{fastglm} package.
+Multinomial logistic models use \code{\link[=multinomial_family]{multinomial_family()}} and the \code{nnet}
+package. Their selected FP transformations are common across logits and
+their regression coefficients are logit specific.
 
 Survival models are specified as separate families: \code{family = "cox"} for
 Cox proportional hazards, \code{\link[=survreg_family]{survreg_family()}} for the parametric distributions

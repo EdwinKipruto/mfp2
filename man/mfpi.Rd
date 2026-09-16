@@ -119,6 +119,8 @@ for Gaussian models, a strictly positive response for Gamma or inverse-
 Gaussian models, non-negative integer counts for Poisson and
 negative-binomial models, a valid binomial response for binomial models
 (with integer successes/failures for the grouped two-column form), a
+factor or character/numeric class-label vector with at least three classes,
+or a three-or-more-column count matrix for multinomial models, a
 right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox, a
 non-counting \code{Surv} response for \code{survreg}, or a multi-state \code{Surv}
 response for Fine--Gray. It must have the same number of observations as \code{x}.}
@@ -259,7 +261,8 @@ observations and two groups must remain.}
 \code{\link[stats:glm]{stats::glm()}} (\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, or
 \code{"inverse.gaussian"}) as a name, function, or family object. Quasi
 families are excluded because selection requires a likelihood. Use
-\code{"negbin"} with \code{fitter = "fastglm"}, \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
+\code{"negbin"} with \code{fitter = "fastglm"}, \code{"multinomial"} or
+\code{\link[=multinomial_family]{multinomial_family()}}, \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
 \code{\link[=finegray_family]{finegray_family()}} for the corresponding survival model.}
 
 \item{criterion}{The selection criterion used for both the MFP adjustment
@@ -810,6 +813,19 @@ for Fine--Gray.
 \code{mfpi()} does not reserve names such as \code{y}, \code{offset_}, \code{strata_}, or names
 beginning with \code{..mfp2_}. Predictors with these names remain ordinary
 predictors and are not overwritten during fitting.
+}
+
+\section{Multinomial degrees of freedom}{
+
+For \code{family = "multinomial"}, the same main-effect and group-specific FP
+powers are used across all \eqn{Q = C - 1} non-reference logits, while every
+logit has its own regression coefficients. Regression-coefficient parts of
+the MFPI df formulas are therefore multiplied by \eqn{Q}; each searched FP
+power is counted once because it is shared. In particular, for FP degree
+\eqn{m}, the pooled main model contributes
+\eqn{Q(K - 1 + m) + m} df, \code{flex1}--\code{flex3} add
+\eqn{Q(K - 1)m} interaction df, and \code{flex4} adds
+\eqn{(K - 1)m(Q + 1)} interaction df.
 }
 
 \section{Argument precedence (fp()/fp2() vs global)}{

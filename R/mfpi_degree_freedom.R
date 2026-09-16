@@ -20,8 +20,10 @@
 #' therefore cancel in likelihood-ratio and AIC/BIC differences).
 #'
 #' @section Parameter counts:
-#' Let \eqn{K} be the number of groups (`n_groups`) and \eqn{m} the FP degree
-#' (`degree`).
+#' Let \eqn{K} be the number of groups (`n_groups`), \eqn{m} the FP degree
+#' (`degree`), and \eqn{Q} the number of outcome logits (`n_logits`). For
+#' scalar-response models, \eqn{Q = 1}. For multinomial models, regression
+#' coefficients are logit specific but FP powers are shared across logits.
 #'
 #' The **main-effects model** contains:
 #' \itemize{
@@ -73,6 +75,13 @@
 #'           p_{\text{int}} = (K-1) + 2m + 2\,(K-1)\,m.}}
 #' }
 #'
+#' For \eqn{Q > 1}, the implemented common-power multinomial formulas are
+#' \deqn{p_{main}=QK} for a linear term and
+#' \deqn{p_{main}=Q(K-1+m)+m} for an FP term. The interaction increment is
+#' \eqn{Q(K-1)} for a linear term, \eqn{Q(K-1)m} for `flex1`--`flex3`, and
+#' \eqn{(K-1)m(Q+1)} for `flex4`. Setting \eqn{Q=1} reduces these expressions
+#' to the scalar-response formulas above.
+#'
 #' @section Verification table (K = 2):
 #' \tabular{llrrr}{
 #'   `flex`  \tab `degree` \tab \eqn{p_{\text{main}}} \tab
@@ -107,6 +116,9 @@
 #'   the grouping variable (`group_var`).
 #' @param degree Non-negative integer. FP degree: `0` = linear (no FP
 #'   transformation), `1` = FP1, `2` = FP2.
+#' @param n_logits Positive integer. Number of independently parameterized
+#'   outcome logits. Use `1` for scalar-response models and `C - 1` for a
+#'   `C`-class multinomial model. FP powers remain common across these logits.
 #' @param flex Character string; one of `"flex0"`, `"flex1"`, `"flex2"`,
 #'   `"flex3"`, or `"flex4"`. Controls the flexibility of the interaction
 #'   model. See [mfp2::mfpi()] for a full description.
@@ -149,6 +161,7 @@
 #' @noRd
 interaction_model_df <- function(n_groups,
                                  degree,
+                                 n_logits = 1L,
                                  flex = c("flex0", "flex1", "flex2",
                                           "flex3", "flex4")) {
   
@@ -163,13 +176,21 @@ interaction_model_df <- function(n_groups,
   
   k <- as.integer(n_groups)
   m <- as.integer(degree)
+  if (!is.numeric(n_logits) || length(n_logits) != 1L || anyNA(n_logits) ||
+      n_logits < 1L || n_logits != as.integer(n_logits)) {
+    stop("`n_logits` must be a single integer >= 1.", call. = FALSE)
+  }
+  q <- as.integer(n_logits)
   
   # ---------------------------------------------------------------------------
   # p_main: parameters in the main-effects model
   #   (K-1) group dummies + J FP terms, where J = 2m (or 1 for linear)
   # ---------------------------------------------------------------------------
-  J      <- if (m == 0L) 1L else 2L * m   # df contribution per FP term
-  dfmain <- (k - 1L) + J
+  dfmain <- if (m == 0L) {
+    q * k
+  } else {
+    q * (k - 1L + m) + m
+  }
   
   # ---------------------------------------------------------------------------
   # df_int: extra parameters in the interaction model vs the main model
@@ -183,13 +204,13 @@ interaction_model_df <- function(n_groups,
   # ---------------------------------------------------------------------------
   if (m == 0L) {
     # Linear / flex0: one extra slope per non-reference group; no powers
-    dfint <- k - 1L
+    dfint <- q * (k - 1L)
   } else if (flex == "flex4") {
-    # Each group gets its own powers: (K-1)*m regression + (K-1)*m power df
-    dfint <- 2L * (k - 1L) * m
+    # Group-specific powers remain common across outcome logits.
+    dfint <- (k - 1L) * m * (q + 1L)
   } else {
-    # flex1 / flex2 / flex3: powers constrained equal, only regression df differ
-    dfint <- (k - 1L) * m
+    # Shared powers cancel; only group-specific regression coefficients differ.
+    dfint <- q * (k - 1L) * m
   }
   
   total_df <- dfmain + dfint

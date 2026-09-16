@@ -275,6 +275,17 @@
 #' beginning with `..mfp2_`. Predictors with these names remain ordinary
 #' predictors and are not overwritten during fitting.
 #'
+#' @section Multinomial degrees of freedom:
+#' For `family = "multinomial"`, the same main-effect and group-specific FP
+#' powers are used across all \eqn{Q = C - 1} non-reference logits, while every
+#' logit has its own regression coefficients. Regression-coefficient parts of
+#' the MFPI df formulas are therefore multiplied by \eqn{Q}; each searched FP
+#' power is counted once because it is shared. In particular, for FP degree
+#' \eqn{m}, the pooled main model contributes
+#' \eqn{Q(K - 1 + m) + m} df, `flex1`--`flex3` add
+#' \eqn{Q(K - 1)m} interaction df, and `flex4` adds
+#' \eqn{(K - 1)m(Q + 1)} interaction df.
+#'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
 #'   predictors. Column names must be unique, non-missing, non-empty, and must
 #'   not contain the backtick character; spaces, hyphens, and other non-syntactic names
@@ -287,6 +298,8 @@
 #'   Gaussian models, non-negative integer counts for Poisson and
 #'   negative-binomial models, a valid binomial response for binomial models
 #'   (with integer successes/failures for the grouped two-column form), a
+#'   factor or character/numeric class-label vector with at least three classes,
+#'   or a three-or-more-column count matrix for multinomial models, a
 #'   right-censored [survival::Surv()] object for Cox, a
 #'   non-counting `Surv` response for `survreg`, or a multi-state `Surv`
 #'   response for Fine--Gray. It must have the same number of observations as `x`.
@@ -443,7 +456,8 @@
 #'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
 #'   `"inverse.gaussian"`) as a name, function, or family object. Quasi
 #'   families are excluded because selection requires a likelihood. Use
-#'   `"negbin"` with `fitter = "fastglm"`, `"cox"`, [survreg_family()], or
+#'   `"negbin"` with `fitter = "fastglm"`, `"multinomial"` or
+#'   [multinomial_family()], `"cox"`, [survreg_family()], or
 #'   [finegray_family()] for the corresponding survival model.
 #'
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
@@ -1206,16 +1220,21 @@ mfpi.default <- function(
 
   # Validate offset -------------------------------------------------------------
   if (!is.null(offset)) {
-    if (
-      !is.numeric(offset) ||
-      length(offset) != nobs ||
-      anyNA(offset) ||
-      any(!is.finite(offset))
-    ) {
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (!is.numeric(offset) || offset_rows != nobs || anyNA(offset) ||
+        any(!is.finite(offset))) {
       stop(
-        "! `offset` must be a finite numeric vector of length nobs.",
+        "! `offset` must be finite numeric data with one row per observation.",
         call. = FALSE
       )
+    }
+    if (identical(family_string, "multinomial")) {
+      c_classes <- mfp2_multinomial_n_classes(y)
+      if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
+        stop("! Multinomial `offset` must have C or C - 1 columns.", call. = FALSE)
+      }
+    } else if (is.matrix(offset)) {
+      stop("! `offset` must be a vector for this family.", call. = FALSE)
     }
   }
 
@@ -1885,7 +1904,7 @@ mfpi.default <- function(
       y[subset]
     }
     weights <- weights[subset]
-    offset  <- offset[subset]
+    offset  <- if (is.matrix(offset)) offset[subset, , drop = FALSE] else offset[subset]
     if (!is.null(strata_keep)) {
       # Subsetting can remove complete strata, so drop unused levels after the
       # row restriction while preserving row alignment.
@@ -2161,6 +2180,16 @@ mfpi.default <- function(
   }
 
   fit$family_string  <- family_string
+  if (identical(family_string, "multinomial")) {
+    # Keep the prepared class ordering on the top-level MFPI object. The
+    # public family component below is stripped to avoid duplicating the
+    # response, while retained term-specific multinom fits keep the prepared
+    # family needed for prediction and coefficient labelling.
+    fit$mfp2_family <- family
+    fit$class_levels <- family$prepared$levels
+    fit$reference_class <- family$prepared$reference
+    fit$n_logits <- family$prepared$n_logits
+  }
   if (!identical(family_string, "negbin")) {
     fit$family <- mfp2_strip_prepared_family(family)
   }
@@ -2535,9 +2564,10 @@ mfpi.formula <- function(formula,
   }
 
   if (!is.null(offset)) {
-    if (!is.numeric(offset) || length(offset) != n_data || anyNA(offset) ||
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (!is.numeric(offset) || offset_rows != n_data || anyNA(offset) ||
         any(!is.finite(offset))) {
-      stop("! `offset` must be a finite numeric vector with one value per row of `data`.", call. = FALSE)
+      stop("! `offset` must be finite numeric data with one row per observation.", call. = FALSE)
     }
   }
   if (!is.null(subset)) {
@@ -2691,7 +2721,8 @@ mfpi.formula <- function(formula,
     # Always extract offset from model frame when formula contains offset().
     # Also keep the offset expression itself so predict.mfpi() can rebuild
     # expressions such as offset(log(exposure)) from raw newdata.
-    offset <- as.vector(stats::model.offset(mf))
+    offset <- stats::model.offset(mf)
+    if (!identical(family_string, "multinomial")) offset <- as.vector(offset)
 
     offset_call <- attr(terms_formula, "variables")[[term_offset + 1L]]
     offset_formula <- stats::as.formula(
@@ -3109,7 +3140,9 @@ mfpi.formula <- function(formula,
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]
     if (!is.null(id)) id <- id[fit_rows]
-    if (is.null(term_offset) && !is.null(offset)) offset <- offset[fit_rows]
+    if (is.null(term_offset) && !is.null(offset)) {
+      offset <- if (is.matrix(offset)) offset[fit_rows, , drop = FALSE] else offset[fit_rows]
+    }
   }
 
   # ---------------------------------------------------------------------------

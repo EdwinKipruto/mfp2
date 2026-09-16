@@ -90,7 +90,9 @@ numeric vector; Gamma and inverse-Gaussian responses must be finite and
 strictly positive; Poisson and negative-binomial models require finite
 nonnegative integer counts. Binomial models accept a numeric vector in
 \verb{[0, 1]}, a two-level factor, or a two-column matrix of nonnegative integer
-successes and failures. Cox
+successes and failures. Multinomial models accept a factor or a character
+or numeric class-label vector with at least three classes, or a numeric
+matrix with at least three nonnegative integer class-count columns. Cox
 models require a two-column right-censored \code{\link[survival:Surv]{survival::Surv()}} object.
 Parametric survival models accept the non-counting censoring types handled
 by \code{\link[survival:survreg]{survival::survreg()}}. Fine--Gray models require a multi-state \code{Surv}
@@ -103,7 +105,9 @@ across all supported families. In the formula interface, an expression is
 evaluated first in \code{data} and then in the formula environment, matching
 standard formula-model lookup rules.}
 
-\item{offset}{Optional numeric offset with one value per observation. In the
+\item{offset}{Optional numeric offset with one value per observation. For a
+multinomial model, supply an \code{n} by \code{C} class-offset matrix or an \code{n} by
+\code{C - 1} reference-logit offset matrix. In the
 formula interface, an expression is evaluated first in \code{data} and then in
 the formula environment; an offset may alternatively be included with
 \code{offset()}. Corresponding values must be supplied when predicting from a
@@ -182,7 +186,8 @@ subset is applied. See the Subsetting section.}
 \code{\link[stats:glm]{stats::glm()}} (\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, or
 \code{"inverse.gaussian"}) as a character name, function, or family object;
 quasi families are not supported. Use \code{"negbin"} with
-\code{fitter = "fastglm"}, \code{"cox"} for Cox models, \code{\link[=survreg_family]{survreg_family()}} for
+\code{fitter = "fastglm"}, \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an
+unpenalized baseline-category multinomial model, \code{"cox"} for Cox models, \code{\link[=survreg_family]{survreg_family()}} for
 parametric survival models, or \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models.
 Default \code{"gaussian"}.}
 
@@ -396,13 +401,14 @@ class:
 \itemize{
 \item \code{glm} for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 \item \code{fastglm_nb} and \code{fastglm} for negative-binomial models;
+\item \code{multinom} and \code{nnet} for multinomial logistic models;
 \item \code{coxph} for Cox and Fine--Gray models;
 \item \code{survreg} for parametric survival models.
 }
 
 Standard fitted-model components, such as coefficients, residuals, fitted
 values, and the model call, can be accessed using the usual methods for
-\code{glm}, \code{fastglm}, \code{coxph}, or \code{survreg} objects.
+\code{glm}, \code{fastglm}, \code{multinom}, \code{coxph}, or \code{survreg} objects.
 
 The following additional components are part of the user-facing \code{mfp2}
 result:
@@ -800,6 +806,24 @@ modelling. Here \code{strata} stratifies estimation of the censoring distributio
 a start--stop multi-state response.
 }
 
+\section{Multinomial models}{
+
+Use \code{family = "multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}}. The response may be
+a factor, a character or numeric class-label vector with at least three
+classes, or a numeric matrix with at least three class-count columns.
+Non-factor label vectors are converted to factors. The first response level
+or column is the reference unless \code{multinomial_family(reference = ...)}
+selects another one.
+
+A predictor has one selected FP transformation shared by every
+non-reference logit, while its regression coefficients remain logit
+specific. With \eqn{Q = C - 1} logits, a linear term contributes \eqn{Q}
+regression df and an FP of degree \eqn{m} contributes \eqn{Qm + m} df:
+\eqn{Qm} coefficients plus \eqn{m} shared-power search df. Candidate models
+use the matrix-level \code{nnet} path; the retained model also inherits from
+\code{multinom}.
+}
+
 \section{Compatibility with the \code{mfp} package}{
 
 Both \code{mfp} and \code{mfp2} export \code{fp()}. Within formulas passed to \code{mfp2()} or
@@ -956,6 +980,103 @@ fit_grouped <- mfp2(
   keep = "group",
   verbose = FALSE
 )
+
+# Examples for every supported model family -----------------------------
+set.seed(2026)
+n_family <- 120
+family_data <- data.frame(
+  x1 = runif(n_family, 0.5, 3),
+  x2 = rnorm(n_family)
+)
+eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
+mu <- exp(eta)
+family_data$y_gaussian <- eta + rnorm(n_family)
+family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
+family_data$y_poisson <- rpois(n_family, mu)
+family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
+family_data$y_inverse_gaussian <- rgamma(
+  n_family, shape = 8, scale = mu / 8
+)
+family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
+family_data$y_multinomial <- sample.int(
+  3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+)
+
+fit_gaussian <- mfp2(
+  y_gaussian ~ x1 + x2, data = family_data, family = "gaussian",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_binomial <- mfp2(
+  y_binomial ~ x1 + x2, data = family_data, family = "binomial",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_poisson <- mfp2(
+  y_poisson ~ x1 + x2, data = family_data, family = "poisson",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_gamma <- mfp2(
+  y_gamma ~ x1 + x2, data = family_data,
+  family = stats::Gamma(link = "log"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_inverse_gaussian <- mfp2(
+  y_inverse_gaussian ~ x1 + x2, data = family_data,
+  family = stats::inverse.gaussian(link = "log"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Negative binomial uses the optional fastglm backend.
+if (requireNamespace("fastglm", quietly = TRUE)) {
+  fit_negbin <- mfp2(
+    y_negbin ~ x1 + x2, data = family_data,
+    family = "negbin", fitter = "fastglm",
+    df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+  )
+}
+
+# Integer class labels are converted to a multinomial factor response.
+fit_multinomial <- mfp2(
+  y_multinomial ~ x1 + x2, data = family_data,
+  family = multinomial_family(),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Cox proportional hazards and parametric survival models.
+event_time <- rexp(n_family, rate = exp(eta - 2))
+censor_time <- rexp(n_family, rate = 0.15)
+survival_data <- transform(
+  family_data,
+  time = pmin(event_time, censor_time),
+  status = as.integer(event_time <= censor_time)
+)
+fit_cox <- mfp2(
+  survival::Surv(time, status) ~ x1 + x2,
+  data = survival_data, family = "cox",
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+fit_survreg <- mfp2(
+  survival::Surv(time, status) ~ x1 + x2,
+  data = survival_data, family = survreg_family(dist = "weibull"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
+
+# Fine--Gray subdistribution hazards for a competing-risks response.
+finegray_data <- transform(
+  family_data,
+  ftime = rexp(n_family, rate = 0.12),
+  event = factor(
+    sample(
+      c("censor", "cause1", "cause2"), n_family, replace = TRUE,
+      prob = c(0.35, 0.40, 0.25)
+    ),
+    levels = c("censor", "cause1", "cause2")
+  )
+)
+fit_finegray <- mfp2(
+  survival::Surv(ftime, event) ~ x1 + x2,
+  data = finegray_data, family = finegray_family(etype = "cause1"),
+  df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+)
 }
 
 }
@@ -995,5 +1116,6 @@ Biostatistics & Epidemiology, 3(1), pp.23-37.}
 }
 \seealso{
 \code{\link[=fp]{fp()}}, \code{\link[=fp2]{fp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}},
-\code{\link[=plot.mfp2]{plot.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[=transform_vector_fp]{transform_vector_fp()}}
+\code{\link[=plot.mfp2]{plot.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[=transform_vector_fp]{transform_vector_fp()}},
+\code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
 }

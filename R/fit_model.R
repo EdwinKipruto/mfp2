@@ -1,7 +1,7 @@
 #' Function that fits models supported by `mfp2`
 #'
-#' Fits likelihood-based generalized linear, Cox proportional-hazards,
-#' parametric survival, and Fine--Gray models.
+#' Fits likelihood-based generalized linear, multinomial logistic, Cox
+#' proportional-hazards, parametric survival, and Fine--Gray models.
 #'
 #' @details
 #' Computations dispatch to the corresponding matrix-level candidate fitter and
@@ -13,11 +13,13 @@
 #' @param y Response variable. For GLMs, this may be a numeric vector, a factor
 #' response accepted by [stats::glm()], or for binomial models a two-column
 #' matrix of grouped integer counts `cbind(successes, failures)`. Poisson and
-#' negative-binomial responses are nonnegative integer counts. Survival families use
+#' negative-binomial responses are nonnegative integer counts. Multinomial
+#' responses are factors, character/numeric class-label vectors, or class-count
+#' matrices. Survival families use
 #' a family-appropriate [survival::Surv()] object.
 #' @param method a character string specifying the method for tie handling.
 #' See [survival::coxph()].
-#' @param family Resolved GLM, Cox, survreg, or Fine--Gray family.
+#' @param family Resolved GLM, multinomial, Cox, survreg, or Fine--Gray family.
 #' @param strata,control,weights,offset,rownames,nocenter family-specific fitting
 #' parameters. See [stats::glm()], [survival::coxph()], and
 #' [survival::survreg()] for details.
@@ -103,7 +105,24 @@ fit_model <- function(x,
     colnames(x) <- colnames(x, do.NULL = FALSE)
   }
 
-  if (identical(family_string, "cox")) {
+  if (identical(family_string, "multinomial")) {
+    if (isTRUE(calculate_gaussian_deviance)) {
+      stop("Internal error: Gaussian deviance is unavailable for multinomial models.", call. = FALSE)
+    }
+    fit <- fit_multinomial(
+      x = x,
+      family = family,
+      weights = weights,
+      offset = offset,
+      control = control,
+      fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
+      keep_fitted_values = keep_fitted_values,
+      has_offset = has_offset,
+      x_has_intercept = x_has_intercept
+    )
+  } else if (identical(family_string, "cox")) {
     if (isTRUE(keep_fitted_values)) {
       stop(
         "Internal error: keep_fitted_values is available only for GLMs.",
@@ -220,10 +239,12 @@ fit_model <- function(x,
       source_columns <- source_columns[-1L]
     }
 
-    fitted_columns <- names(fit$coefficients)
-    if (is.null(fitted_columns)) {
-      fitted_columns <- character(0L)
+    fitted_columns <- if (identical(family_string, "multinomial")) {
+      source_columns
+    } else {
+      names(fit$coefficients)
     }
+    if (is.null(fitted_columns)) fitted_columns <- character(0L)
     fitted_columns <- setdiff(fitted_columns, "(Intercept)")
 
     if (length(source_columns) != length(fitted_columns)) {
@@ -1493,6 +1514,345 @@ fit_survreg <- function(x,
     result$null_logl <- null_logl
     result$null_deviance <- if (is.finite(null_logl)) -2 * null_logl else NA_real_
     result$model_deviance <- -2 * model_logl
+  }
+  result
+}
+
+
+# Normalize multinomial offsets to one column per outcome class with the
+# reference-class column equal to zero. A C-column offset is converted to
+# reference contrasts; a (C-1)-column offset is already on that scale.
+mfp2_multinomial_offset <- function(offset, family, nobs, has_offset) {
+  prepared <- family$prepared
+  c_classes <- prepared$n_classes
+  q_logits <- prepared$n_logits
+
+  if (!isTRUE(has_offset)) {
+    return(matrix(0, nrow = nobs, ncol = c_classes,
+                  dimnames = list(NULL, prepared$levels)))
+  }
+  if (!is.numeric(offset) || anyNA(offset) || any(!is.finite(offset))) {
+    stop("! Multinomial offsets must be finite and numeric.", call. = FALSE)
+  }
+  if (is.null(dim(offset))) {
+    if (q_logits != 1L || length(offset) != nobs) {
+      stop(
+        "! Multinomial offsets must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+        call. = FALSE
+      )
+    }
+    offset <- matrix(offset, ncol = 1L)
+  }
+  if (!is.matrix(offset) || nrow(offset) != nobs ||
+      !ncol(offset) %in% c(q_logits, c_classes)) {
+    stop(
+      "! Multinomial offsets must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+      call. = FALSE
+    )
+  }
+
+  if (ncol(offset) == q_logits) {
+    logit_offset <- unclass(offset)
+    if (!is.null(colnames(logit_offset)) &&
+        all(prepared$nonreference %in% colnames(logit_offset))) {
+      logit_offset <- logit_offset[, prepared$nonreference, drop = FALSE]
+    }
+    result <- cbind(0, logit_offset)
+    colnames(result) <- prepared$levels
+    return(result)
+  }
+
+  result <- unclass(offset)
+  if (!is.null(colnames(result)) &&
+      all(prepared$levels %in% colnames(result))) {
+    result <- result[, prepared$levels, drop = FALSE]
+  } else {
+    original_index <- match(prepared$levels, prepared$original_levels)
+    result <- result[, original_index, drop = FALSE]
+  }
+  result <- sweep(result, 1L, result[, 1L], "-")
+  colnames(result) <- prepared$levels
+  result
+}
+
+
+mfp2_multinomial_flatten <- function(coefficient_matrix) {
+  values <- as.vector(t(coefficient_matrix))
+  names(values) <- paste0(
+    rep(rownames(coefficient_matrix), each = ncol(coefficient_matrix)),
+    "::",
+    rep(colnames(coefficient_matrix), times = nrow(coefficient_matrix))
+  )
+  values
+}
+
+
+mfp2_fit_multinom_native <- function(xx, family, weights, offset_matrix,
+                                     control, Hess = FALSE,
+                                     include_offset = FALSE) {
+  prepared <- family$prepared
+  predictor_names <- colnames(xx)
+  if (is.null(predictor_names) || !identical(predictor_names[[1L]], "(Intercept)")) {
+    stop("Internal error: multinomial design must start with an intercept.", call. = FALSE)
+  }
+
+  x_no_intercept <- xx[, -1L, drop = FALSE]
+  data <- if (ncol(x_no_intercept) == 0L) {
+    data.frame(row.names = seq_len(nrow(xx)))
+  } else {
+    as.data.frame(x_no_intercept, check.names = FALSE)
+  }
+  rhs <- if (ncol(x_no_intercept) == 0L) {
+    "1"
+  } else {
+    paste(sprintf("`%s`", colnames(x_no_intercept)), collapse = " + ")
+  }
+  fit_env <- new.env(parent = parent.frame())
+  fit_env$.mfp2_multinomial_response <- prepared$y
+  if (isTRUE(include_offset)) {
+    fit_env$.mfp2_multinomial_offset <- offset_matrix
+    rhs <- paste(rhs, "+ offset(.mfp2_multinomial_offset)")
+  }
+  formula <- stats::as.formula(
+    paste(".mfp2_multinomial_response ~", rhs),
+    env = fit_env
+  )
+
+  max_weights <- max(
+    1000L,
+    as.integer((ncol(xx) + prepared$n_classes + 1L) * prepared$n_classes)
+  )
+  # nnet::multinom() appends fixed class-offset columns to its internal design
+  # before calling multinomHess(). multinomHess() cannot align those fixed
+  # columns with the freely estimated coefficient vector. Fit natively, but
+  # calculate the information matrix below from the estimable design when a
+  # matrix-valued offset is present.
+  fit <- nnet::multinom(
+    formula = formula,
+    data = data,
+    weights = weights,
+    Hess = isTRUE(Hess) && !isTRUE(include_offset),
+    model = TRUE,
+    trace = isTRUE(control$trace),
+    maxit = control$maxit,
+    reltol = control$epsilon,
+    MaxNWts = max_weights
+  )
+
+  if (isTRUE(Hess) && isTRUE(include_offset)) {
+    fit$Hessian <- mfp2_multinomial_information(
+      x = xx,
+      probabilities = fit$fitted.values,
+      weights = fit$weights,
+      outcomes = prepared$nonreference,
+      class_levels = prepared$levels
+    )
+  }
+
+  fit
+}
+
+
+# Expected information for the freely estimated baseline-category logit
+# coefficients. Fixed class offsets affect probabilities but have no
+# derivative with respect to beta, so they must not be included as design
+# columns. Parameter order matches coef.multinom()/vcov.multinom(): all design
+# coefficients for one non-reference outcome, followed by the next outcome.
+mfp2_multinomial_information <- function(x, probabilities, weights, outcomes,
+                                         class_levels) {
+  probabilities <- as.matrix(probabilities)
+  if (!is.null(colnames(probabilities)) &&
+      all(class_levels %in% colnames(probabilities))) {
+    probabilities <- probabilities[, class_levels, drop = FALSE]
+  }
+  if (ncol(probabilities) != length(class_levels)) {
+    stop(
+      "Internal error: multinomial fitted probabilities are incomplete.",
+      call. = FALSE
+    )
+  }
+
+  q_logits <- length(outcomes)
+  p_columns <- ncol(x)
+  parameter_names <- paste0(
+    rep(outcomes, each = p_columns),
+    ":",
+    rep(colnames(x), times = q_logits)
+  )
+  information <- matrix(
+    0,
+    nrow = q_logits * p_columns,
+    ncol = q_logits * p_columns,
+    dimnames = list(parameter_names, parameter_names)
+  )
+  nonreference_probabilities <- probabilities[, -1L, drop = FALSE]
+  weights <- as.numeric(weights)
+
+  for (j in seq_len(q_logits)) {
+    rows <- (j - 1L) * p_columns + seq_len(p_columns)
+    for (k in seq_len(q_logits)) {
+      columns <- (k - 1L) * p_columns + seq_len(p_columns)
+      working_weights <- weights * nonreference_probabilities[, j] *
+        ((j == k) - nonreference_probabilities[, k])
+      information[rows, columns] <- crossprod(
+        x,
+        x * working_weights
+      )
+    }
+  }
+
+  information
+}
+
+
+# Matrix-level multinomial candidate fitter. Candidate models call
+# nnet.default() directly, including nnet's fixed-offset encoding when an
+# offset is present. Only the retained model uses multinom(), preserving a
+# native high-level object for coefficients, covariance, and summaries.
+fit_multinomial <- function(x, family, weights, offset, control = NULL,
+                            fast = TRUE, calculate_fit_statistics = FALSE,
+                            keep_fit = !fast, keep_fitted_values = FALSE,
+                            has_offset = FALSE, x_has_intercept = FALSE) {
+  if (!inherits(family, "mfp2_multinomial_family") || is.null(family$prepared)) {
+    stop("Internal error: multinomial family was not prepared before fitting.", call. = FALSE)
+  }
+  if (is.null(control)) control <- stats::glm.control()
+  prepared <- family$prepared
+  nobs <- nrow(prepared$y_matrix)
+  xx <- if (isTRUE(x_has_intercept)) {
+    x
+  } else {
+    assemble_design_matrix(list(x), nobs = nobs, intercept = TRUE)
+  }
+  if (is.null(colnames(xx)) || !identical(colnames(xx)[1L], "(Intercept)")) {
+    stop("Internal error: multinomial design must start with '(Intercept)'.", call. = FALSE)
+  }
+
+  design_rank <- qr(xx)$rank
+  if (design_rank != ncol(xx)) {
+    stop("The multinomial candidate design is rank deficient.", call. = FALSE)
+  }
+  offset_matrix <- mfp2_multinomial_offset(
+    offset, family, nobs = nobs, has_offset = has_offset
+  )
+
+  use_direct <- isTRUE(fast)
+  if (use_direct) {
+    y_counts <- prepared$y_matrix
+    totals <- prepared$row_totals
+    y_fit <- y_counts / totals
+    effective_weights <- as.numeric(weights) * totals
+    p <- ncol(xx)
+    c_classes <- prepared$n_classes
+    if (isTRUE(has_offset)) {
+      mask <- c(
+        rep(FALSE, p + 1L + c_classes),
+        rep(
+          c(FALSE, rep(TRUE, p), rep(FALSE, c_classes)),
+          c_classes - 1L
+        )
+      )
+      x_fit <- cbind(xx, offset_matrix)
+      initial_weights <- as.vector(
+        rbind(matrix(0, p + 1L, c_classes), diag(c_classes))
+      )
+    } else {
+      mask <- c(
+        rep(FALSE, p + 1L),
+        rep(c(FALSE, rep(TRUE, p)), c_classes - 1L)
+      )
+      x_fit <- xx
+      initial_weights <- NULL
+    }
+    max_weights <- max(1000L, length(mask))
+    fit_args <- list(
+      x = x_fit, y = y_fit, weights = effective_weights,
+      size = 0L, skip = TRUE, softmax = TRUE, rang = 0, decay = 0,
+      mask = mask, trace = isTRUE(control$trace), maxit = control$maxit,
+      reltol = control$epsilon, MaxNWts = max_weights
+    )
+    if (!is.null(initial_weights)) fit_args$Wts <- initial_weights
+    raw_fit <- do.call(nnet::nnet.default, fit_args)
+    all_coefficients <- matrix(
+      raw_fit$wts,
+      nrow = c_classes,
+      byrow = TRUE
+    )[, 1L + seq_len(p), drop = FALSE]
+    coefficient_matrix <- all_coefficients[-1L, , drop = FALSE]
+    dimnames(coefficient_matrix) <- list(prepared$nonreference, colnames(xx))
+    logl <- -unname(raw_fit$value)
+    fitted_values <- raw_fit$fitted.values
+    converged <- length(raw_fit$convergence) == 1L && raw_fit$convergence == 0
+    native_fit <- raw_fit
+  } else {
+    native_fit <- mfp2_fit_multinom_native(
+      xx = xx,
+      family = family,
+      weights = weights,
+      offset_matrix = offset_matrix,
+      control = control,
+      Hess = !isTRUE(fast),
+      include_offset = has_offset
+    )
+    coefficient_matrix <- stats::coef(native_fit)
+    if (is.null(dim(coefficient_matrix))) {
+      coefficient_matrix <- matrix(
+        coefficient_matrix,
+        nrow = prepared$n_logits,
+        dimnames = list(prepared$nonreference, names(coefficient_matrix))
+      )
+    }
+    logl <- -unname(native_fit$value)
+    fitted_values <- native_fit$fitted.values
+    converged <- length(native_fit$convergence) == 1L && native_fit$convergence == 0
+  }
+
+  regression_df <- prepared$n_logits * design_rank
+  result <- list(
+    logl = logl,
+    coefficients = mfp2_multinomial_flatten(coefficient_matrix),
+    coefficient_matrix = coefficient_matrix,
+    rank = regression_df,
+    df = regression_df,
+    class_levels = prepared$levels,
+    reference_class = prepared$reference,
+    n_logits = prepared$n_logits
+  )
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    converged = converged,
+    family_string = "multinomial",
+    fast = fast
+  )
+
+  if (isTRUE(keep_fitted_values)) result$fitted_values <- fitted_values
+  if (isTRUE(keep_fit)) {
+    native_fit$coefficients <- coefficient_matrix
+    native_fit$mfp2_coefficient_matrix <- coefficient_matrix
+    native_fit$mfp2_class_levels <- prepared$levels
+    native_fit$mfp2_reference_class <- prepared$reference
+    native_fit$mfp2_offset_matrix <- offset_matrix
+    native_fit$mfp2_design <- xx
+    native_fit$mfp2_family <- family
+    native_fit$has_offset <- isTRUE(has_offset)
+    result$fit <- native_fit
+  }
+
+  if (isTRUE(calculate_fit_statistics)) {
+    null_fit <- mfp2_fit_multinom_native(
+      xx = matrix(1, nrow = nobs, ncol = 1L,
+                  dimnames = list(NULL, "(Intercept)")),
+      family = family,
+      weights = weights,
+      offset_matrix = offset_matrix,
+      control = control,
+      Hess = FALSE,
+      include_offset = has_offset
+    )
+    result$null_logl <- -unname(null_fit$value)
+    result$null_deviance <- -2 * result$null_logl
+    result$model_deviance <- -2 * result$logl
   }
   result
 }

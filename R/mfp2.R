@@ -302,6 +302,22 @@
 #' `id` is optional for ordinary one-row-per-subject data and required only for
 #' a start--stop multi-state response.
 #'
+#' @section Multinomial models:
+#' Use `family = "multinomial"` or [multinomial_family()]. The response may be
+#' a factor, a character or numeric class-label vector with at least three
+#' classes, or a numeric matrix with at least three class-count columns.
+#' Non-factor label vectors are converted to factors. The first response level
+#' or column is the reference unless `multinomial_family(reference = ...)`
+#' selects another one.
+#'
+#' A predictor has one selected FP transformation shared by every
+#' non-reference logit, while its regression coefficients remain logit
+#' specific. With \eqn{Q = C - 1} logits, a linear term contributes \eqn{Q}
+#' regression df and an FP of degree \eqn{m} contributes \eqn{Qm + m} df:
+#' \eqn{Qm} coefficients plus \eqn{m} shared-power search df. Candidate models
+#' use the matrix-level `nnet` path; the retained model also inherits from
+#' `multinom`.
+#'
 #' @section Compatibility with the `mfp` package:
 #' Both `mfp` and `mfp2` export `fp()`. Within formulas passed to `mfp2()` or
 #' `mfpi()`, bare `fp()` always uses the `mfp2` version regardless of package
@@ -339,7 +355,9 @@
 #'   strictly positive; Poisson and negative-binomial models require finite
 #'   nonnegative integer counts. Binomial models accept a numeric vector in
 #'   `[0, 1]`, a two-level factor, or a two-column matrix of nonnegative integer
-#'   successes and failures. Cox
+#'   successes and failures. Multinomial models accept a factor or a character
+#'   or numeric class-label vector with at least three classes, or a numeric
+#'   matrix with at least three nonnegative integer class-count columns. Cox
 #'   models require a two-column right-censored [survival::Surv()] object.
 #'   Parametric survival models accept the non-counting censoring types handled
 #'   by [survival::survreg()]. Fine--Gray models require a multi-state `Surv`
@@ -354,7 +372,9 @@
 #'   across all supported families. In the formula interface, an expression is
 #'   evaluated first in `data` and then in the formula environment, matching
 #'   standard formula-model lookup rules.
-#' @param offset Optional numeric offset with one value per observation. In the
+#' @param offset Optional numeric offset with one value per observation. For a
+#'   multinomial model, supply an `n` by `C` class-offset matrix or an `n` by
+#'   `C - 1` reference-logit offset matrix. In the
 #'   formula interface, an expression is evaluated first in `data` and then in
 #'   the formula environment; an offset may alternatively be included with
 #'   `offset()`. Corresponding values must be supplied when predicting from a
@@ -426,7 +446,8 @@
 #'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
 #'   `"inverse.gaussian"`) as a character name, function, or family object;
 #'   quasi families are not supported. Use `"negbin"` with
-#'   `fitter = "fastglm"`, `"cox"` for Cox models, [survreg_family()] for
+#'   `fitter = "fastglm"`, `"multinomial"` or [multinomial_family()] for an
+#'   unpenalized baseline-category multinomial model, `"cox"` for Cox models, [survreg_family()] for
 #'   parametric survival models, or [finegray_family()] for Fine--Gray models.
 #'   Default `"gaussian"`.
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
@@ -731,6 +752,103 @@
 #'   keep = "group",
 #'   verbose = FALSE
 #' )
+#'
+#' # Examples for every supported model family -----------------------------
+#' set.seed(2026)
+#' n_family <- 120
+#' family_data <- data.frame(
+#'   x1 = runif(n_family, 0.5, 3),
+#'   x2 = rnorm(n_family)
+#' )
+#' eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
+#' mu <- exp(eta)
+#' family_data$y_gaussian <- eta + rnorm(n_family)
+#' family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
+#' family_data$y_poisson <- rpois(n_family, mu)
+#' family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
+#' family_data$y_inverse_gaussian <- rgamma(
+#'   n_family, shape = 8, scale = mu / 8
+#' )
+#' family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
+#' family_data$y_multinomial <- sample.int(
+#'   3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+#' )
+#'
+#' fit_gaussian <- mfp2(
+#'   y_gaussian ~ x1 + x2, data = family_data, family = "gaussian",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_binomial <- mfp2(
+#'   y_binomial ~ x1 + x2, data = family_data, family = "binomial",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_poisson <- mfp2(
+#'   y_poisson ~ x1 + x2, data = family_data, family = "poisson",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_gamma <- mfp2(
+#'   y_gamma ~ x1 + x2, data = family_data,
+#'   family = stats::Gamma(link = "log"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_inverse_gaussian <- mfp2(
+#'   y_inverse_gaussian ~ x1 + x2, data = family_data,
+#'   family = stats::inverse.gaussian(link = "log"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Negative binomial uses the optional fastglm backend.
+#' if (requireNamespace("fastglm", quietly = TRUE)) {
+#'   fit_negbin <- mfp2(
+#'     y_negbin ~ x1 + x2, data = family_data,
+#'     family = "negbin", fitter = "fastglm",
+#'     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#'   )
+#' }
+#'
+#' # Integer class labels are converted to a multinomial factor response.
+#' fit_multinomial <- mfp2(
+#'   y_multinomial ~ x1 + x2, data = family_data,
+#'   family = multinomial_family(),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Cox proportional hazards and parametric survival models.
+#' event_time <- rexp(n_family, rate = exp(eta - 2))
+#' censor_time <- rexp(n_family, rate = 0.15)
+#' survival_data <- transform(
+#'   family_data,
+#'   time = pmin(event_time, censor_time),
+#'   status = as.integer(event_time <= censor_time)
+#' )
+#' fit_cox <- mfp2(
+#'   survival::Surv(time, status) ~ x1 + x2,
+#'   data = survival_data, family = "cox",
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#' fit_survreg <- mfp2(
+#'   survival::Surv(time, status) ~ x1 + x2,
+#'   data = survival_data, family = survreg_family(dist = "weibull"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
+#'
+#' # Fine--Gray subdistribution hazards for a competing-risks response.
+#' finegray_data <- transform(
+#'   family_data,
+#'   ftime = rexp(n_family, rate = 0.12),
+#'   event = factor(
+#'     sample(
+#'       c("censor", "cause1", "cause2"), n_family, replace = TRUE,
+#'       prob = c(0.35, 0.40, 0.25)
+#'     ),
+#'     levels = c("censor", "cause1", "cause2")
+#'   )
+#' )
+#' fit_finegray <- mfp2(
+#'   survival::Surv(ftime, event) ~ x1 + x2,
+#'   data = finegray_data, family = finegray_family(etype = "cause1"),
+#'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#' )
 #' }
 #'
 #' @return
@@ -740,13 +858,14 @@
 #' \itemize{
 #'   \item `glm` for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 #'   \item `fastglm_nb` and `fastglm` for negative-binomial models;
+#'   \item `multinom` and `nnet` for multinomial logistic models;
 #'   \item `coxph` for Cox and Fine--Gray models;
 #'   \item `survreg` for parametric survival models.
 #' }
 #'
 #' Standard fitted-model components, such as coefficients, residuals, fitted
 #' values, and the model call, can be accessed using the usual methods for
-#' `glm`, `fastglm`, `coxph`, or `survreg` objects.
+#' `glm`, `fastglm`, `multinom`, `coxph`, or `survreg` objects.
 #'
 #' The following additional components are part of the user-facing `mfp2`
 #' result:
@@ -848,7 +967,8 @@
 #'
 #' @seealso
 #' [fp()], [fp2()], [summary.mfp2()], [coef.mfp2()], [predict.mfp2()],
-#' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()]
+#' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()],
+#' [multinomial_family()], [survreg_family()], [finegray_family()]
 #'
 #' @export
 mfp2 <- function(x, ...) {
@@ -1947,8 +2067,8 @@ mfp2.default <- function(x,
     nobs = nobs
   )
 
-  # offset: optional known linear-predictor term, one per row of x
-  # (e.g. log of exposure time for a Poisson model).
+  # Ordinary families use one offset per row. Multinomial models accept an
+  # n x C class-offset matrix or n x (C - 1) reference-logit matrix.
   if (!is.null(offset)) {
     if (!is.numeric(offset)) {
       stop(
@@ -1958,15 +2078,28 @@ mfp2.default <- function(x,
       )
     }
 
-    if (length(offset) != nobs) {
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (offset_rows != nobs) {
       stop(
         "! The number of observations in x and offset must match.",
         sprintf(
-          "i The number of rows in x is %d, but the number of elements in offset is %d.",
-          nobs, length(offset)
+          "i The number of rows in x is %d, but the offset has %d observation rows.",
+          nobs, offset_rows
         ),
         call. = FALSE
       )
+    }
+
+    if (identical(family_string, "multinomial")) {
+      c_classes <- mfp2_multinomial_n_classes(y)
+      if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
+        stop(
+          "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+          call. = FALSE
+        )
+      }
+    } else if (is.matrix(offset)) {
+      stop("! `offset` must be a numeric vector for this family.", call. = FALSE)
     }
 
     if (anyNA(offset) || any(!is.finite(offset))) {
@@ -2653,7 +2786,11 @@ mfp2.default <- function(x,
     }
 
     weights <- weights[subset]
-    offset <- offset[subset]
+    offset <- if (is.matrix(offset)) {
+      offset[subset, , drop = FALSE]
+    } else {
+      offset[subset]
+    }
     if (!is.null(strata_keep)) {
       # Keep strata aligned with the fitted rows and remove levels no longer
       # represented after subsetting.
@@ -3316,7 +3453,10 @@ mfp2.formula <- function(formula,
       )
     }
 
-    offset <- as.vector(stats::model.offset(mf))
+    offset <- stats::model.offset(mf)
+    if (!identical(family_string, "multinomial")) {
+      offset <- as.vector(offset)
+    }
     terms_drop <- c(terms_drop, term_offset)
 
     # for predict.mfp2
@@ -3336,7 +3476,11 @@ mfp2.formula <- function(formula,
   }
 
   if (is.null(term_offset) && !is.null(offset) && !is.null(subset)) {
-    offset <- offset[fit_rows]
+    offset <- if (is.matrix(offset)) {
+      offset[fit_rows, , drop = FALSE]
+    } else {
+      offset[fit_rows]
+    }
   }
 
   if (!is.null(offset)) {
@@ -3344,8 +3488,18 @@ mfp2.formula <- function(formula,
       stop("! `offset` must be numeric.", call. = FALSE)
     }
 
-    if (length(offset) != nrow(mf)) {
+    offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
+    if (offset_rows != nrow(mf)) {
       stop("! `offset` must have one value per observation.", call. = FALSE)
+    }
+    if (identical(family_string, "multinomial")) {
+      c_classes <- mfp2_multinomial_n_classes(y)
+      if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
+        stop(
+          "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+          call. = FALSE
+        )
+      }
     }
 
     if (anyNA(offset) || any(!is.finite(offset))) {
@@ -3900,20 +4054,103 @@ is_fp_term <- function(z) {
 
 #' Extract Coefficients from an `mfp2` Model
 #'
-#' Returns the named coefficient vector from a fitted [mfp2()] model. This is a
-#' method for the generic [stats::coef()] function.
+#' Returns coefficients from a fitted [mfp2()] model. This is a method for the
+#' generic [stats::coef()] function.
 #'
 #' @param object A fitted [mfp2()] object.
 #' @param ... Not used.
 #'
 #' @return
-#' Named numeric vector of coefficients from the final selected model.
+#' A named numeric vector for scalar-response models. For multinomial models,
+#' a matrix with one row per non-reference outcome and one column per fitted
+#' term; powers are common across rows but coefficients are outcome specific.
 #'
 #' @seealso [mfp2()], [summary.mfp2()], [predict.mfp2()]
 #'
 #' @export
 coef.mfp2 <- function(object, ...) {
   object$coefficients
+}
+
+
+mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
+  coefficients <- object$mfp2_coefficient_matrix
+  if (!is.matrix(coefficients) || length(coefficients) == 0L) {
+    cat("(none)\n")
+    return(invisible(NULL))
+  }
+  base_object <- object
+  class(base_object) <- setdiff(class(base_object), "mfp2")
+  standard_errors <- tryCatch(
+    summary(base_object)$standard.errors,
+    error = function(e) matrix(
+      NA_real_, nrow(coefficients), ncol(coefficients),
+      dimnames = dimnames(coefficients)
+    )
+  )
+  if (is.null(dim(standard_errors))) {
+    standard_errors <- matrix(
+      standard_errors,
+      nrow = nrow(coefficients),
+      dimnames = dimnames(coefficients)
+    )
+  }
+
+  reference <- object$reference_class
+  design_info <- mfp2_design_column_info(object)
+  model_rows <- match(design_info$model_column, colnames(coefficients))
+  if (anyNA(model_rows)) {
+    stop("Final multinomial design metadata is not aligned with coefficients.",
+         call. = FALSE)
+  }
+  show_center <- !is.null(object$centers)
+  rows <- vector("list", nrow(coefficients))
+  for (i in seq_len(nrow(coefficients))) {
+    outcome <- rownames(coefficients)[[i]]
+    intercept_position <- match("(Intercept)", colnames(coefficients))
+    variable <- c(
+      if (!is.na(intercept_position)) "(Intercept)",
+      design_info$variable
+    )
+    basis <- c(if (!is.na(intercept_position)) "", design_info$basis)
+    estimate <- c(
+      if (!is.na(intercept_position)) coefficients[i, intercept_position],
+      coefficients[i, model_rows]
+    )
+    se <- c(
+      if (!is.na(intercept_position)) standard_errors[i, intercept_position],
+      standard_errors[i, model_rows]
+    )
+    block <- data.frame(
+      Logit = c(paste0(outcome, " vs ", reference),
+                rep("", max(0L, length(variable) - 1L))),
+      Variable = variable,
+      Basis = basis,
+      Estimate = unname(estimate),
+      `Std. Error` = unname(se),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    if (show_center) {
+      block$Center <- c(
+        if (!is.na(intercept_position)) NA_real_,
+        design_info$center
+      )
+      block <- block[, c("Logit", "Variable", "Basis", "Center",
+                         "Estimate", "Std. Error")]
+    }
+    rows[[i]] <- block
+  }
+  display <- do.call(rbind, rows)
+  print.data.frame(
+    display,
+    row.names = FALSE,
+    right = FALSE,
+    quote = FALSE,
+    na.print = "",
+    digits = digits
+  )
+  invisible(display)
 }
 
 #' Print method for objects of class `mfp2`
@@ -3924,6 +4161,11 @@ coef.mfp2 <- function(object, ...) {
 #' functional form chosen for every variable (split into standard MFP, ACD,
 #' and spike-at-zero (SAZ) results), a detailed settings table, final
 #' coefficients, and model-fit measures.
+#'
+#' For multinomial models, the header identifies the response classes,
+#' reference class, and number of logits, and states that FP powers are common
+#' across logits. The coefficient table has one block per non-reference
+#' outcome.
 #'
 #' @details
 #' The "Summary of Function Selection" section reports one row per variable,
@@ -4367,6 +4609,15 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
   } else {
     cat(sprintf("Observations: %s\n", n_obs))
   }
+  if (identical(x$family_string, "multinomial")) {
+    cat(sprintf(
+      "Outcome classes: %s | Reference: %s | Logits: %d\n",
+      paste(x$class_levels, collapse = ", "),
+      x$reference_class,
+      x$n_logits
+    ))
+    cat("FP powers: common across logits\n")
+  }
 
   cat("\n")
 
@@ -4744,6 +4995,9 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
   print_section_heading("Final Model Coefficients")
 
+  if (identical(x$family_string, "multinomial")) {
+    mfp2_print_multinomial_coefficients(x, digits = digits)
+  } else {
   coefficients <- stats::coef(x)
 
   if (length(coefficients) > 0L) {
@@ -4862,6 +5116,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     )
   } else {
     cat("(none)\n")
+  }
   }
 
   cat("\n")

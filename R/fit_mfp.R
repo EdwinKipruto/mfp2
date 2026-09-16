@@ -670,17 +670,22 @@ fit_mfp <- function(x,
     # capping. For display, convert it to the df represented when selection
     # starts. Mapped fixed terms contribute one df per raw design column, and a
     # retained SAZ term contributes one additional structural-zero indicator df.
-    df_initial_display <- df
+    n_logits <- mfp2_family_n_logits(family_fit, family_string)
+    df_initial_display <- ifelse(
+      df == 1L,
+      n_logits,
+      (df / 2L) * n_logits + df / 2L
+    )
 
     mapped_display <- mapped_term_flags(term_to_columns)
     if (any(mapped_display)) {
       df_initial_display[mapped_display] <- lengths(
         term_to_columns[mapped_display]
-      )
+      ) * n_logits
     }
 
     if (any(spike)) {
-      df_initial_display[spike] <- df_initial_display[spike] + 1L
+      df_initial_display[spike] <- df_initial_display[spike] + n_logits
     }
 
     message(sprintf(
@@ -750,6 +755,8 @@ fit_mfp <- function(x,
         call. = FALSE
       )
     }
+  } else if (family_string == "multinomial") {
+    n_obs <- family_fit$prepared$effective_n
   } else {
     n_obs <- nrow(x)
   }
@@ -1087,6 +1094,13 @@ fit_mfp <- function(x,
       mfp_logl        = mfp_logl,
       mfp_df          = mfp_df,
       family_string   = family_string,
+      class_levels = if (identical(family_string, "multinomial")) {
+        family_fit$prepared$levels
+      } else NULL,
+      reference_class = if (identical(family_string, "multinomial")) {
+        family_fit$prepared$reference
+      } else NULL,
+      n_logits = mfp2_family_n_logits(family_fit, family_string),
       x_original = if (has_mapped_terms) {
         selected_terms <- names(powers_current)[
           !vapply(powers_current, function(p) all(is.na(p)), logical(1L)) |
@@ -1106,7 +1120,8 @@ fit_mfp <- function(x,
         prop_zero = prop_zero,
         term_to_columns = term_to_columns,
         transformed_to_model_columns = transformed_to_model_columns,
-        coefficients = modelfit$fit$coefficients
+        coefficients = modelfit$fit$coefficients,
+        n_logits = mfp2_family_n_logits(family_fit, family_string)
       ),
       transformations = data.frame(shift = shift, scale = scale, center = center),
       fp_powers       = powers_current,
@@ -1462,9 +1477,13 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #'   catzero binary indicator is included for this variable. This should be the
 #'   final metadata after applying spike-at-zero decisions, not the cycle-time
 #'   `catzero` list of binary vectors.
+#' @param n_logits Positive integer number of outcome logits. The default `1`
+#'   gives the scalar-response convention. For multinomial models, regression
+#'   coefficient df are multiplied by `n_logits`, while selected FP powers are
+#'   counted once because their transformations are shared across logits.
 #'
 #' @details
-#' The package uses the following df convention:
+#' The package uses the following df convention when `n_logits = 1`:
 #' * If `spike_decision = 3`, df = 1 because the variable contributes only the
 #'   binary spike-at-zero indicator.
 #' * Otherwise, if all entries in `powers` are `NA`, df = 0 because the variable
@@ -1493,7 +1512,8 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #' }
 #' @keywords internal
 #' @noRd
-calculate_df <- function(powers, spike_decision, catzero = FALSE) {
+calculate_df <- function(powers, spike_decision, catzero = FALSE,
+                         n_logits = 1L) {
 
   # Step 1: Validate scalar inputs -----------------------------------------
   if (length(spike_decision) != 1L ||
@@ -1507,11 +1527,16 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   }
 
   spike_decision <- as.integer(spike_decision)
+  if (!is.numeric(n_logits) || length(n_logits) != 1L || anyNA(n_logits) ||
+      n_logits < 1L || n_logits != as.integer(n_logits)) {
+    stop("`n_logits` must be a positive integer.", call. = FALSE)
+  }
+  q <- as.integer(n_logits)
 
   # Step 2: Apply the df rules in the order documented above --------------
   # Binary-only spike: exactly one binary indicator column.
   if (spike_decision == saz_decision_codes[["binary_only"]]) {
-    return(1L)
+    return(q)
   }
 
   powers <- as.numeric(powers)
@@ -1526,15 +1551,15 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE) {
   p <- as.numeric(powers[!is.na(powers)])
 
   df <- if (length(p) == 1L && p == 1) {
-    1L
+    q
   } else {
-    2L * length(p)
+    q * length(p) + length(p)
   }
 
   # `catzero` is the final/effective binary-indicator flag.
   # It already covers ordinary catzero variables and spike_decision == 1.
   if (isTRUE(catzero)) {
-    df <- df + 1L
+    df <- df + q
   }
 
   df
@@ -1652,9 +1677,12 @@ convert_powers_list_to_matrix <- function(power_list) {
 #'   fitted rank contribution rather than one df per stored linear power.
 #' @param transformed_to_model_columns Optional named mapping from final
 #'   transformed design columns to exact fitted coefficient names.
-#' @param coefficients Optional named coefficient vector from the final fitted
-#'   model. Missing coefficients are treated as non-estimable and do not
-#'   contribute to a grouped term's final df.
+#' @param coefficients Optional named coefficient vector, or multinomial
+#'   coefficient matrix, from the final fitted model. Missing coefficients are
+#'   treated as non-estimable and do not contribute to a grouped term's final
+#'   df.
+#' @param n_logits Positive integer number of outcome logits. FP powers are
+#'   shared across logits; regression-coefficient contributions are not.
 #' @keywords internal
 #' @noRd
 create_fp_terms <- function(fp_powers,
@@ -1670,7 +1698,8 @@ create_fp_terms <- function(fp_powers,
                             prop_zero = NULL,
                             term_to_columns = NULL,
                             transformed_to_model_columns = NULL,
-                            coefficients = NULL) {
+                            coefficients = NULL,
+                            n_logits = 1L) {
 
   # Step 1: Align every input vector/list to the same variable order/subset
   # as fp_powers, since callers may pass vectors covering a different (e.g.
@@ -1699,7 +1728,12 @@ create_fp_terms <- function(fp_powers,
   # several raw design columns, all of which contribute to `df_initial`. The
   # package validates grouped design rank before fitting, so the member-column
   # count is the initial rank contribution for fitted package objects.
-  df_initial <- df_setting
+  q <- as.integer(n_logits)
+  df_initial <- ifelse(
+    df_setting == 1L,
+    q,
+    (df_setting / 2L) * q + df_setting / 2L
+  )
   mapped <- stats::setNames(rep(FALSE, length(vars)), vars)
 
   if (!is.null(term_to_columns)) {
@@ -1716,7 +1750,7 @@ create_fp_terms <- function(fp_powers,
 
     mapped <- mapped_term_flags(term_to_columns[vars])
     if (any(mapped)) {
-      df_initial[mapped] <- lengths(term_to_columns[vars][mapped])
+      df_initial[mapped] <- lengths(term_to_columns[vars][mapped]) * q
     }
   }
 
@@ -1728,7 +1762,7 @@ create_fp_terms <- function(fp_powers,
   # model that was actually entered into selection (for example, df = 4 starts
   # as 5 df: FP2 contributes 4 df and the zero indicator contributes 1 df).
   if (any(spike)) {
-    df_initial[spike] <- df_initial[spike] + 1L
+    df_initial[spike] <- df_initial[spike] + q
   }
 
   # Step 3: Calculate final degrees of freedom. Continuous terms use the MFP
@@ -1741,6 +1775,7 @@ create_fp_terms <- function(fp_powers,
     fp_powers,
     spike_decision,
     catzero,
+    MoreArgs = list(n_logits = q),
     SIMPLIFY = TRUE
   )
   names(df_final) <- vars
@@ -1763,7 +1798,11 @@ create_fp_terms <- function(fp_powers,
         )
       }
 
-      coefficient_names <- names(coefficients)
+      coefficient_names <- if (is.matrix(coefficients)) {
+        colnames(coefficients)
+      } else {
+        names(coefficients)
+      }
       if (is.null(coefficient_names)) {
         stop(
           "Internal error: final fitted coefficients must have names.",
@@ -1811,7 +1850,11 @@ create_fp_terms <- function(fp_powers,
           )
         }
 
-        df_final[[term]] <- sum(!is.na(coefficients[model_columns]))
+        df_final[[term]] <- if (is.matrix(coefficients)) {
+          sum(!is.na(coefficients[, model_columns, drop = FALSE]))
+        } else {
+          sum(!is.na(coefficients[model_columns]))
+        }
       }
     }
   }

@@ -98,6 +98,51 @@ finegray_family <- function(etype = NULL, timefix = TRUE) {
 }
 
 
+#' Multinomial Logistic Family Specification
+#'
+#' Specifies an unpenalized baseline-category multinomial logistic model for
+#' [mfp2()] or [mfpi()]. Fractional-polynomial powers are selected once per
+#' predictor and shared by all non-reference logits; regression coefficients
+#' remain outcome specific. Candidate fits use [nnet::nnet.default()] and the
+#' retained fit uses [nnet::multinom()].
+#'
+#' @param reference Optional response class or count-matrix column used as the
+#'   reference outcome. `NULL` uses the first factor level, the first level
+#'   obtained by converting a class-label vector to a factor, or the first
+#'   count-matrix column. For a count matrix, a numeric value may instead be
+#'   the one-based column index.
+#'
+#' @details
+#' The response may be a factor or character/numeric class-label vector with at
+#' least three classes, or a numeric matrix with at least three columns of
+#' nonnegative integer class counts. Non-factor label vectors are converted to
+#' factors. Every count-response row must contain at least one trial, and every
+#' response class must have positive weighted support.
+#'
+#' If there are \eqn{C} classes and \eqn{Q = C - 1} non-reference logits, a
+#' linear term contributes \eqn{Q} regression degrees of freedom. An FP of
+#' degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
+#' coefficients and \eqn{m} shared-power search degrees of freedom.
+#'
+#' @return An `mfp2_multinomial_family` specification.
+#' @export
+multinomial_family <- function(reference = NULL) {
+  if (!is.null(reference) &&
+      (length(reference) != 1L || is.na(reference) ||
+       !(is.character(reference) || is.numeric(reference)))) {
+    stop(
+      "! `reference` must be `NULL` or one non-missing response level.",
+      call. = FALSE
+    )
+  }
+
+  structure(
+    list(family = "multinomial", reference = reference, prepared = NULL),
+    class = c("mfp2_multinomial_family", "mfp2_family")
+  )
+}
+
+
 # Family-behaviour predicates used by the existing MFP/MFPI engine. These are
 # intentionally about one behaviour at a time: Cox and Fine--Gray remain
 # separate families and share only the properties named by each helper.
@@ -122,6 +167,28 @@ mfp2_family_is_glm <- function(family_string) {
     "gaussian", "binomial", "poisson", "Gamma",
     "inverse.gaussian", "negbin"
   )
+}
+
+mfp2_family_is_multinomial <- function(family_string) {
+  identical(family_string, "multinomial")
+}
+
+mfp2_family_n_logits <- function(family, family_string) {
+  if (!mfp2_family_is_multinomial(family_string)) return(1L)
+  if (is.null(family$prepared$n_logits)) {
+    stop("Internal error: multinomial family has not been prepared.", call. = FALSE)
+  }
+  as.integer(family$prepared$n_logits)
+}
+
+mfp2_multinomial_n_classes <- function(y) {
+  if (is.matrix(y)) return(ncol(y))
+  if (is.factor(y)) return(nlevels(y))
+  if (is.null(dim(y)) &&
+      (is.character(y) || is.numeric(y) || is.logical(y))) {
+    return(nlevels(factor(y)))
+  }
+  NA_integer_
 }
 
 # Match stats::logLik.glm()'s nuisance-parameter convention. Recent R family
@@ -427,6 +494,91 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
 }
 
 
+prepare_multinomial_family <- function(family, y, weights) {
+  if (!inherits(family, "mfp2_multinomial_family")) {
+    stop("Internal error: invalid multinomial family specification.", call. = FALSE)
+  }
+
+  n <- NROW(y)
+  if (is.null(weights)) weights <- rep.int(1, n)
+
+  if (!is.matrix(y)) {
+    if (!is.factor(y)) {
+      response_names <- names(y)
+      y <- factor(y)
+      names(y) <- response_names
+    }
+    levels_original <- levels(y)
+    reference <- family$reference
+    if (is.null(reference)) reference <- levels_original[[1L]]
+    reference <- as.character(reference)
+    if (!reference %in% levels_original) {
+      stop("! Multinomial `reference` is not a response level.", call. = FALSE)
+    }
+    levels_internal <- c(reference, setdiff(levels_original, reference))
+    y_native <- factor(y, levels = levels_internal)
+    y_matrix <- nnet::class.ind(y_native)
+    colnames(y_matrix) <- levels_internal
+    row_totals <- rep.int(1, n)
+  } else {
+    y_matrix <- unclass(y)
+    levels_original <- colnames(y_matrix)
+    if (is.null(levels_original) || any(!nzchar(levels_original))) {
+      levels_original <- paste0("class", seq_len(ncol(y_matrix)))
+      colnames(y_matrix) <- levels_original
+    }
+    if (anyDuplicated(levels_original)) {
+      stop("! Multinomial count-response column names must be unique.", call. = FALSE)
+    }
+    reference <- family$reference
+    if (is.null(reference)) {
+      reference_index <- 1L
+    } else if (is.numeric(reference)) {
+      reference_index <- as.integer(reference)
+      if (reference != reference_index || reference_index < 1L ||
+          reference_index > ncol(y_matrix)) {
+        stop("! Numeric multinomial `reference` is outside the response columns.", call. = FALSE)
+      }
+    } else {
+      reference_index <- match(as.character(reference), levels_original)
+      if (is.na(reference_index)) {
+        stop("! Multinomial `reference` is not a response column.", call. = FALSE)
+      }
+    }
+    reference <- levels_original[[reference_index]]
+    levels_internal <- c(reference, setdiff(levels_original, reference))
+    y_matrix <- y_matrix[, levels_internal, drop = FALSE]
+    y_native <- y_matrix
+    row_totals <- rowSums(y_matrix)
+  }
+
+  class_totals <- colSums(y_matrix * as.numeric(weights))
+  empty_classes <- names(class_totals)[class_totals <= 0]
+  if (length(empty_classes) > 0L) {
+    stop(
+      "! Every multinomial class must have positive weighted support; empty class(es): ",
+      paste(empty_classes, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  family$reference <- reference
+  family$prepared <- list(
+    y = y_native,
+    y_matrix = y_matrix,
+    levels = levels_internal,
+    original_levels = levels_original,
+    reference = reference,
+    nonreference = levels_internal[-1L],
+    n_classes = ncol(y_matrix),
+    n_logits = ncol(y_matrix) - 1L,
+    row_totals = as.numeric(row_totals),
+    effective_n = sum(as.numeric(weights) * as.numeric(row_totals))
+  )
+  family
+}
+
+
 prepare_family_for_fit <- function(family, family_string, y, weights,
                                    strata = NULL, id = NULL, offset = NULL) {
   if (identical(family_string, "survreg")) {
@@ -440,6 +592,10 @@ prepare_family_for_fit <- function(family, family_string, y, weights,
     # `strata` has already been consumed by finegray() to estimate censoring
     # weights; it is not a baseline-hazard stratum in the weighted Cox fit.
     return(list(family = family, strata = NULL))
+  }
+  if (identical(family_string, "multinomial")) {
+    family <- prepare_multinomial_family(family, y, weights)
+    return(list(family = family, strata = strata))
   }
   list(family = family, strata = strata)
 }
@@ -464,15 +620,15 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
     "gaussian", "binomial", "poisson", "Gamma", "inverse.gaussian"
   )
   allowed_families <- c(
-    allowed_glm_families, "negbin", "cox", "survreg", "finegray"
+    allowed_glm_families, "negbin", "multinomial", "cox", "survreg", "finegray"
   )
   family_arg <- paste(family_arg, collapse = " ")
 
   if (inherits(family, "mfp2_family")) {
     family_string <- family$family
     if (!is.character(family_string) || length(family_string) != 1L ||
-        !family_string %in% c("survreg", "finegray")) {
-      stop("! Invalid mfp2 survival-family specification.", call. = FALSE)
+        !family_string %in% c("survreg", "finegray", "multinomial")) {
+      stop("! Invalid mfp2 family specification.", call. = FALSE)
     }
     return(list(family = family, family_string = family_string))
   }
@@ -485,7 +641,7 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
           length(family),
           paste(family, collapse = ", ")
         ),
-        "\ni Supported character families are: gaussian, binomial, poisson, Gamma, inverse.gaussian, negbin, cox, survreg, finegray.",
+        "\ni Supported character families are: gaussian, binomial, poisson, Gamma, inverse.gaussian, negbin, multinomial, cox, survreg, finegray.",
         call. = FALSE
       )
     }
@@ -499,6 +655,7 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       gamma = "Gamma",
       inverse.gaussian = "inverse.gaussian",
       negbin = "negbin",
+      multinomial = "multinomial",
       cox = "cox",
       survreg = "survreg",
       finegray = "finegray",
@@ -525,6 +682,8 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
 
     family_obj <- if (family %in% c("cox", "negbin")) {
       family
+    } else if (identical(family, "multinomial")) {
+      multinomial_family()
     } else if (identical(family, "survreg")) {
       survreg_family()
     } else if (identical(family, "finegray")) {
@@ -643,7 +802,7 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
   }
 
   stop(
-    "! `family` must be a character string, a GLM family function/object, or an mfp2 survival-family specification.",
+    "! `family` must be a character string, a GLM family function/object, or an mfp2 family specification.",
     call. = FALSE
   )
 }
@@ -822,6 +981,40 @@ validate_family_response <- function(y, family_string, nobs) {
       "! `y` must not be a data frame.",
       call. = FALSE
     )
+  }
+
+  if (family_string == "multinomial") {
+    is_label_vector <- is.factor(y) ||
+      (is.null(dim(y)) &&
+       (is.character(y) || is.numeric(y) || is.logical(y)))
+    if (is_label_vector) {
+      if (anyNA(y)) {
+        stop("! Multinomial class-label responses must not contain missing values.", call. = FALSE)
+      }
+      if (is.numeric(y) && any(!is.finite(y))) {
+        stop("! Numeric multinomial class labels must be finite.", call. = FALSE)
+      }
+      if (nlevels(if (is.factor(y)) y else factor(y)) < 3L) {
+        stop(
+          "! Multinomial class-label responses must contain at least three classes.",
+          call. = FALSE
+        )
+      }
+      return(invisible(TRUE))
+    }
+    if (!is.matrix(y) || !is.numeric(y) || ncol(y) < 3L) {
+      stop(
+        "! For `family = \"multinomial\"`, `y` must be a factor or character/numeric class-label vector with at least three classes, or a numeric count matrix with at least three columns.",
+        call. = FALSE
+      )
+    }
+    if (anyNA(y) || any(!is.finite(y)) || any(y < 0) || any(y != floor(y))) {
+      stop("! Multinomial response counts must be finite non-negative integers.", call. = FALSE)
+    }
+    if (any(rowSums(y) <= 0)) {
+      stop("! Every multinomial count-response row must contain at least one trial.", call. = FALSE)
+    }
+    return(invisible(TRUE))
   }
 
   if (is.matrix(y)) {

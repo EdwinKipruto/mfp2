@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# winsorize_cont_vars() -------------------------------------------------------
+# winsorize_interaction_vars() -------------------------------------------------------
 # -----------------------------------------------------------------------------
 
 #' Winsorise Continuous Variables to Reduce the Influence of Extreme
@@ -35,7 +35,7 @@
 #'
 #' @param x A numeric predictor matrix with column names.
 #'
-#' @param cont_vars A character vector specifying the continuous variables to
+#' @param interaction_vars A character vector specifying the continuous variables to
 #'   Winsorise. Variables not listed are returned unchanged.
 #'
 #' @param probs A numeric vector of length 2 giving the lower and upper
@@ -67,9 +67,9 @@
 #'   wt  = c(rnorm(98, 70, 15), 200, 30)
 #' )
 #'
-#' out <- winsorize_cont_vars(
+#' out <- winsorize_interaction_vars(
 #'   x,
-#'   cont_vars = c("age", "wt")
+#'   interaction_vars = c("age", "wt")
 #' )
 #'
 #' out$limits
@@ -77,8 +77,8 @@
 #' }
 #' @keywords internal
 #' @noRd
-winsorize_cont_vars <- function(x,
-                                cont_vars,
+winsorize_interaction_vars <- function(x,
+                                interaction_vars,
                                 probs     = c(0.01, 0.99),
                                 zero_vars = NULL) {
   
@@ -86,22 +86,22 @@ winsorize_cont_vars <- function(x,
     stop("! `x` must be a matrix.", call. = FALSE)
   if (is.null(colnames(x)))
     stop("! `x` must have column names.", call. = FALSE)
-  if (!is.character(cont_vars) || length(cont_vars) == 0L)
-    stop("! `cont_vars` must be a non-empty character vector.", call. = FALSE)
+  if (!is.character(interaction_vars) || length(interaction_vars) == 0L)
+    stop("! `interaction_vars` must be a non-empty character vector.", call. = FALSE)
   if (!is.numeric(probs) || length(probs) != 2L ||
       any(probs < 0) || any(probs > 1) || probs[1L] >= probs[2L])
     stop("! `probs` must be a length-2 numeric vector in [0, 1] with ",
          "`probs[1] < probs[2]`.", call. = FALSE)
   
-  missing_vars <- setdiff(cont_vars, colnames(x))
+  missing_vars <- setdiff(interaction_vars, colnames(x))
   if (length(missing_vars) > 0L)
     stop(paste0("! Variables not found in `x`: ",
                 paste(missing_vars, collapse = ", "), "."), call. = FALSE)
   
-  limits <- matrix(NA_real_, nrow = 2L, ncol = length(cont_vars),
-                   dimnames = list(c("lower", "upper"), cont_vars))
+  limits <- matrix(NA_real_, nrow = 2L, ncol = length(interaction_vars),
+                   dimnames = list(c("lower", "upper"), interaction_vars))
   
-  for (v in cont_vars) {
+  for (v in interaction_vars) {
     col <- x[, v]
     
     # Skip variables flagged as zero / spike: the user has indicated that

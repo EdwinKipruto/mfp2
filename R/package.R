@@ -9,7 +9,7 @@
 #' - [fp()] specifies fractional-polynomial and related modelling options
 #'   within a formula.
 #' - [mfpi()] investigates interactions between a categorical grouping
-#'   variable and continuous covariates.
+#'   variable and continuous, binary, or categorical variables.
 #'
 #' Fitted models can be examined using `print()`, `summary()`, and `coef()`,
 #' used for prediction with `predict()`, and visualised with `plot()`.
@@ -36,8 +36,8 @@
 #'   continuous predictors;
 #' - spike-at-zero (SAZ) modelling for semi-continuous predictors that contain
 #'   a distinct zero component and a positive continuous component;
-#' - interaction analysis between continuous predictors and categorical groups
-#'   through [mfpi()].
+#' - interaction analysis between continuous, binary, or categorical predictors
+#'   and categorical groups through [mfpi()].
 #'
 #' Spike-at-zero modelling can be requested in the formula interface with
 #' `fp(x, spike = TRUE)` or in the matrix interface with

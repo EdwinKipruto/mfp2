@@ -205,10 +205,13 @@ validate_mfpi_design_estimability <- function(cont_var,
                                                xinteraction,
                                                degree,
                                                flex,
+                                               linear_width = 1L,
                                                tolerance = 1e-7) {
   cont_name <- colnames(cont_var)
-  if (is.null(cont_name) || length(cont_name) != 1L || !nzchar(cont_name)) {
+  if (is.null(cont_name) || length(cont_name) == 0L || any(!nzchar(cont_name))) {
     cont_name <- "<unnamed>"
+  } else {
+    cont_name <- paste(cont_name, collapse = ", ")
   }
 
   designs <- list(`main-effects` = xmain, interaction = xinteraction)
@@ -258,7 +261,7 @@ validate_mfpi_design_estimability <- function(cont_var,
       !is.finite(degree) || degree < 0 || degree != floor(degree)) {
     stop("Internal MFPI error: `degree` must be a non-negative integer.", call. = FALSE)
   }
-  terms_per_group <- if (degree == 0L) 1L else as.integer(degree)
+  terms_per_group <- if (degree == 0L) as.integer(linear_width) else as.integer(degree)
   group_dummy_width <- n_groups - 1L
   focal_width <- n_groups * terms_per_group
   focal_start <- group_dummy_width + 1L
@@ -562,9 +565,10 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
                              degree, bestfp_main, bestfp_interaction,
                              flex, use_ftest, family, family_string,
                              weights, offset, ties, strata, control,
-                             nocenter, has_offset, fitter = "base") {
+                             nocenter, has_offset, fitter = "base",
+                             linear_width = 1L) {
 
-  cont_name  <- colnames(cont_var)
+  cont_name  <- paste(colnames(cont_var), collapse = ", ")
   n_groups   <- length(unique(as.vector(group_var)))
 
   validate_mfpi_design_estimability(
@@ -573,7 +577,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     xmain = xmain,
     xinteraction = xinteraction,
     degree = degree,
-    flex = flex
+    flex = flex,
+    linear_width = linear_width
   )
 
   # ---------------------------------------------------------------------------
@@ -657,7 +662,8 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     1L
   }
   deg_freedom <- interaction_model_df(
-    n_groups, degree, n_logits = n_logits, flex = flex
+    n_groups, degree, n_logits = n_logits, flex = flex,
+    linear_width = linear_width
   )
   df_main     <- deg_freedom$dfmain       # p_main (excl. intercept & adj.)
   df_total    <- deg_freedom$total_df     # p_interaction (excl. intercept & adj.)

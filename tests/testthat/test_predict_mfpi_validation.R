@@ -11,7 +11,7 @@ test_that("predict.mfpi() rejects invalid se.fit", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -32,7 +32,7 @@ test_that("predict.mfpi() rejects invalid confidence level", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -53,7 +53,7 @@ test_that("predict.mfpi() rejects unknown prediction terms", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -74,7 +74,7 @@ test_that("predict.mfpi() requires fitted-function newdata to contain requested 
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -101,7 +101,7 @@ test_that("predict.mfpi() type = 'link' returns subject-level predictions", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -131,7 +131,7 @@ test_that("predict.mfpi() type = 'response' returns subject-level predictions", 
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -161,7 +161,7 @@ test_that("predict.mfpi() fitted-function grid uses requested n_grid", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -192,7 +192,7 @@ test_that("predict.mfpi() warns when grid is used with link prediction", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -218,7 +218,7 @@ test_that("predict.mfpi enforces family-specific arguments and types", {
   fit_glm <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -268,8 +268,8 @@ test_that("predict.mfpi Cox references match the retained coxph model", {
     data = dat,
     family = "cox",
     group_var = "sex",
-    cont_vars = "age",
-    cont_var_forms = c(age = "linear"),
+    interaction_vars = "age",
+    interaction_forms = c(age = "linear"),
     flex = "flex1",
     df = 1,
     select = 1,
@@ -334,8 +334,8 @@ test_that("predict.mfpi validates required predictors but ignores irrelevant ext
     lpsa ~ age + svi + cavol,
     data = prostate,
     group_var = "svi",
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "linear"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "linear"),
     flex = "flex1",
     cycles = 1,
     df = 1,
@@ -393,8 +393,8 @@ test_that("formula-derived offsets reject missing and non-finite inputs", {
     lpsa ~ age + svi + cavol + offset(log(exposure)),
     data = dat,
     group_var = "svi",
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "linear"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "linear"),
     flex = "flex1",
     cycles = 1,
     df = 1,

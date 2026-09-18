@@ -140,8 +140,8 @@ test_that("public mfpi rejects within-group rank loss", {
       x = x,
       y = y,
       group_var = "group",
-      cont_vars = "exposure",
-      cont_var_forms = c(exposure = "linear"),
+      interaction_vars = "exposure",
+      interaction_forms = c(exposure = "linear"),
       family = "gaussian",
       verbose = FALSE
     ),

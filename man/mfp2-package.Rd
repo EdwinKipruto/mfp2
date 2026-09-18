@@ -16,7 +16,7 @@ predictors.
 \item \code{\link[=fp]{fp()}} specifies fractional-polynomial and related modelling options
 within a formula.
 \item \code{\link[=mfpi]{mfpi()}} investigates interactions between a categorical grouping
-variable and continuous covariates.
+variable and continuous, binary, or categorical variables.
 }
 
 Fitted models can be examined using \code{print()}, \code{summary()}, and \code{coef()},
@@ -48,8 +48,8 @@ In addition to standard fractional-polynomial modelling, \code{mfp2} provides:
 continuous predictors;
 \item spike-at-zero (SAZ) modelling for semi-continuous predictors that contain
 a distinct zero component and a positive continuous component;
-\item interaction analysis between continuous predictors and categorical groups
-through \code{\link[=mfpi]{mfpi()}}.
+\item interaction analysis between continuous, binary, or categorical predictors
+and categorical groups through \code{\link[=mfpi]{mfpi()}}.
 }
 
 Spike-at-zero modelling can be requested in the formula interface with

@@ -15,8 +15,8 @@ test_that("mfpi FP1 retains power 1 for all flexibility variants", {
       lpsa ~ fp(age) + svi + fp(cavol, df = 1),
       data = prostate,
       group_var = "svi",
-      cont_vars = "cavol",
-      cont_var_forms = c(cavol = "fp1"),
+      interaction_vars = "cavol",
+      interaction_forms = c(cavol = "fp1"),
       powers = list(cavol = 1),
       flex = fl,
       verbose = FALSE
@@ -25,7 +25,7 @@ test_that("mfpi FP1 retains power 1 for all flexibility variants", {
     expect_s3_class(fit, "mfpi")
 
     expect_equal(
-      fit$cont_var_forms[["cavol"]],
+      fit$interaction_forms[["cavol"]],
       "fp1",
       info = paste("flex =", fl)
     )
@@ -79,8 +79,8 @@ test_that("mfpi FP1 does not add power 1 to a restricted candidate set", {
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
     group_var = "svi",
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "fp1"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "fp1"),
     powers = list(cavol = allowed),
     flex = "flex1",
     verbose = FALSE

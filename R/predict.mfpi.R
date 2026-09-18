@@ -2,6 +2,24 @@
 # Shared MFPI prediction helpers ----------------------------------------------
 # -----------------------------------------------------------------------------
 
+#' Retrieve Stored Interaction-Term Metadata
+#'
+#' @keywords internal
+#' @noRd
+mfpi_get_interaction_spec <- function(object, term) {
+  spec <- object$interaction_specs[[term]]
+  if (is.null(spec)) {
+    stop(
+      paste0(
+        "The MFPI object does not contain an interaction specification for `",
+        term, "`."
+      ),
+      call. = FALSE
+    )
+  }
+  spec
+}
+
 #' Build a Group-Specific Fractional-Polynomial Basis
 #'
 #' Builds the fractional-polynomial (FP) design block used to evaluate MFPI
@@ -322,12 +340,13 @@ build_group_fp_basis <- function(cont_mat,
 #' predictions for individual observations from a model fitted with [mfpi()].
 #'
 #' @details
-#' MFPI fits a separate interaction model for each continuous variable examined
-#' through `cont_vars`. Predictions are therefore produced separately for each
+#' MFPI fits a separate interaction model for each variable examined
+#' through `interaction_vars`. Predictions are therefore produced separately for each
 #' requested variable. Predictions for two different terms come from two
 #' different term-specific models; they are not parts of one combined model.
 #'
-#' Supply continuous predictors on their original scale. Stored shifts, scales,
+#' Supply continuous predictors on their original scale. Supply binary and
+#' categorical predictors using their fitted values/levels. Stored shifts, scales,
 #' fractional-polynomial functions, centering values, zero handling, and
 #' Winsorisation limits are applied automatically.
 #' For every fitted term retaining `zero`, `catzero`, or `spike` handling,
@@ -355,22 +374,22 @@ build_group_fp_basis <- function(cont_mat,
 #'   one relative-risk prediction per row for a Cox or Fine--Gray model.
 #'
 #' @section Selecting terms and models:
-#' Use `terms` to select continuous variables that were examined by [mfpi()].
-#' These are normally names supplied through `cont_vars`, not adjustment-variable
+#' Use `terms` to select interaction variables that were examined by [mfpi()].
+#' These are normally names supplied through `interaction_vars`, not adjustment-variable
 #' names.
 #'
-#' MFPI stores one term-specific interaction model for each evaluated continuous
+#' MFPI stores one term-specific interaction model for each evaluated
 #' variable. The `model` argument determines which of these models can be used:
 #'
 #' - `model = "best"` uses only variables whose interaction was retained by the
 #'   MFPI selection criterion. This is the default.
-#' - `model = "all"` uses the stored model for every evaluated continuous
+#' - `model = "all"` uses the stored model for every evaluated interaction
 #'   variable for which a model is available, including interactions that were
 #'   not retained.
 #'
 #' `model = "all"` does not return every candidate model considered during
 #' fitting. It returns the stored term-specific model for each evaluated
-#' continuous variable.
+#' interaction variable.
 #'
 #' When `terms = NULL`, all terms available under the selected `model` setting
 #' are used. If no interactions were retained, `model = "best"` has no models
@@ -381,7 +400,7 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' - `type = "function"` returns the fitted curve for each group.
 #' - `type = "difference"` returns each comparison-group curve minus the
-#'   reference-group curve at the same continuous-variable value.
+#'   reference-group curve or point set at the same interaction-variable value.
 #' - `type = "both"` returns both fitted curves and their differences. This is
 #'   the default when `type = NULL`.
 #'
@@ -406,7 +425,7 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' @section Fitted curves and group differences:
 #' For `type = "function"`, `"difference"`, or `"both"`, only the requested
-#' continuous variable is required in `newdata`. The grouping variable and
+#' interaction variable is required in `newdata`. The grouping variable and
 #' adjustment variables are not required because the function is evaluated for
 #' every fitted group at each supplied value.
 #'
@@ -416,7 +435,7 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' A fitted difference is the comparison-group curve minus the reference-group
 #' curve at the same value. It therefore includes both the group main-effect
-#' difference and any difference in the fitted continuous-variable functions.
+#' difference and any difference in the fitted interaction-variable functions.
 #'
 #' The reference group is the reference level used when [mfpi()] was fitted.
 #' For more than two groups, one difference is returned for every non-reference
@@ -453,6 +472,11 @@ build_group_fp_basis <- function(cont_mat,
 #' the relevant limit. The returned `x` column shows the value actually used for
 #' prediction after Winsorisation.
 #'
+#' Binary and categorical interaction terms are evaluated once at each fitted
+#' level; `n_grid` is ignored for those terms. Their returned `x` values are the
+#' original level labels. Discrete terms retain their uncentered treatment
+#' coding and are not shifted, scaled, or Winsorised.
+#'
 #' `grid` is used only for fitted curves. It is ignored with a warning for
 #' predictions for individual observations.
 #'
@@ -462,14 +486,14 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' These predictions use the complete term-specific interaction model. Supply:
 #'
-#' - the continuous variable named in `terms`;
+#' - the interaction variable named in `terms`;
 #' - the grouping variable used in the MFPI analysis;
 #' - every adjustment variable retained in that term-specific model;
 #' - any offset, strata, or follow-up information required for the selected
 #'   prediction type.
 #'
 #' Different terms can require different prediction columns because the tested
-#' continuous variable is removed from its own adjustment set.
+#' interaction variable is removed from its own adjustment set.
 #'
 #' For a model fitted with a formula, normally supply the original variables.
 #' Factors and retained formula expressions are reconstructed automatically.
@@ -635,19 +659,20 @@ build_group_fp_basis <- function(cont_mat,
 #' @param newdata An optional data frame or matrix containing values at which to
 #'   predict.
 #'
-#'   For fitted curves, only the requested continuous variables are required.
+#'   For fitted curves or discrete point sets, only the requested interaction
+#'   variables are required.
 #'   For predictions for individual observations, also supply the grouping
 #'   variable, retained adjustment variables, and any required offset, strata,
 #'   or Cox follow-up variables. See **Predictions for individual
 #'   observations**.
 #'
-#' @param terms An optional character vector naming continuous variables examined
+#' @param terms An optional character vector naming interaction variables examined
 #'   by [mfpi()]. If `NULL`, all terms available under the selected `model`
 #'   setting are used.
 #'
 #' @param model A character value selecting the available term-specific models.
 #'   `"best"` uses only interactions retained by the MFPI selection criterion.
-#'   `"all"` uses the stored model for every evaluated continuous variable.
+#'   `"all"` uses the stored model for every evaluated interaction variable.
 #'   The default is `"best"`.
 #'
 #' @param type The prediction type. Use `"function"`, `"difference"`, or
@@ -709,7 +734,7 @@ build_group_fp_basis <- function(cont_mat,
 #' For `type = "function"` or `type = "both"`, the `functions` component is a
 #' data frame containing:
 #'
-#' - `term`: the continuous-variable name;
+#' - `term`: the interaction-variable name;
 #' - `x`: the value used to evaluate the fitted curve;
 #' - `group`: the group label;
 #' - `fit`: the fitted curve value;
@@ -719,7 +744,7 @@ build_group_fp_basis <- function(cont_mat,
 #' For `type = "difference"` or `type = "both"`, the `differences` component is
 #' a data frame containing:
 #'
-#' - `term`: the continuous-variable name;
+#' - `term`: the interaction-variable name;
 #' - `x`: the value used to evaluate the curves;
 #' - `contrast`: a label identifying the comparison;
 #' - `group`: the comparison group;
@@ -743,7 +768,7 @@ build_group_fp_basis <- function(cont_mat,
 #'     fp(bph) + fp(cp),
 #'   data = prostate,
 #'   group_var = "svi",
-#'   cont_vars = c("cavol", "age"),
+#'   interaction_vars = c("cavol", "age"),
 #'   flex = "flex1",
 #'   include_group_var = TRUE,
 #'   center = FALSE,
@@ -817,8 +842,8 @@ build_group_fp_basis <- function(cont_mat,
 #'   data = d,
 #'   family = "poisson",
 #'   group_var = "group",
-#'   cont_vars = "age",
-#'   cont_var_forms = c(age = "linear"),
+#'   interaction_vars = "age",
+#'   interaction_forms = c(age = "linear"),
 #'   flex = "flex1",
 #'   p_interact = 1,
 #'   verbose = FALSE
@@ -850,8 +875,8 @@ build_group_fp_basis <- function(cont_mat,
 #'   data = advanced_prostate_cancer,
 #'   family = "cox",
 #'   group_var = "rx",
-#'   cont_vars = "age",
-#'   cont_var_forms = c(age = "linear"),
+#'   interaction_vars = "age",
+#'   interaction_forms = c(age = "linear"),
 #'   flex = "flex1",
 #'   select = 1,
 #'   p_interact = 1,
@@ -1352,9 +1377,87 @@ mfpi_prepare_prediction_data <- function(object, term, newdata, grid, n_grid,
          call. = FALSE)
   }
 
-  scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
-  shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
-  zero_var <- mfpi_get_zero_var(object, term)
+  spec <- mfpi_get_interaction_spec(object, term)
+
+  if (isTRUE(spec$discrete)) {
+    use_canonical_levels <- is.null(newdata) || isTRUE(grid)
+
+    if (use_canonical_levels) {
+      block <- spec$level_design
+      labels <- spec$level_labels
+      if (is.null(block)) {
+        x_train <- object$x_train_internal
+        if (is.null(x_train) || any(!spec$columns %in% colnames(x_train))) {
+          stop(
+            paste0("Stored interaction-level design is unavailable for term `",
+                   term, "`."),
+            call. = FALSE
+          )
+        }
+        observed <- x_train[, spec$columns, drop = FALSE]
+        keep <- !duplicated(as.data.frame(observed))
+        block <- observed[keep, , drop = FALSE]
+        labels <- apply(block, 1L, paste, collapse = ":")
+      }
+    } else {
+      raw_newdata <- newdata
+      if (isTRUE(object$formula_interface) && is.data.frame(newdata)) {
+        newdata <- mfpi_prepare_formula_newdata(
+          object = object,
+          newdata = newdata,
+          terms = term,
+          required_columns = spec$columns
+        )
+      }
+
+      if (is.data.frame(newdata)) newdata <- data.matrix(newdata)
+      if (!is.matrix(newdata) || is.null(colnames(newdata)) ||
+          any(!spec$columns %in% colnames(newdata))) {
+        stop(
+          paste0(
+            "`newdata` must provide interaction term `", term,
+            "` so fitted columns can be reconstructed: ",
+            paste(spec$columns, collapse = ", "), "."
+          ),
+          call. = FALSE
+        )
+      }
+      block <- newdata[, spec$columns, drop = FALSE]
+      labels <- if (is.data.frame(raw_newdata) && term %in% names(raw_newdata)) {
+        as.character(raw_newdata[[term]])
+      } else if (length(spec$columns) == 1L) {
+        as.character(block[, 1L])
+      } else {
+        apply(block, 1L, paste, collapse = ":")
+      }
+    }
+
+    block <- as.matrix(block)
+    storage.mode(block) <- "double"
+    colnames(block) <- spec$columns
+    if (anyNA(block) || any(!is.finite(block))) {
+      stop(paste0("Discrete interaction term `", term,
+                  "` contains non-finite prediction values."), call. = FALSE)
+    }
+
+    return(list(
+      cont_var_scaled = block,
+      x_display = as.character(labels),
+      scale_var = 1,
+      shift_var = 0,
+      zero_var = FALSE,
+      discrete = TRUE,
+      interaction_kind = spec$kind,
+      interaction_columns = spec$columns
+    ))
+  }
+
+  scale_var <- if (isTRUE(spec$discrete)) 1 else
+    mfpi_named_scalar(object$scale, term, default = 1)
+  shift_var <- if (isTRUE(spec$discrete)) 0 else
+    mfpi_named_scalar(object$shift, term, default = 0)
+  zero_var <- if (isTRUE(spec$discrete)) FALSE else
+    mfpi_get_zero_var(object, term)
 
   apply_winsor <- function(x_scaled_one, var) {
     lim <- object$winsorize_limits
@@ -1507,6 +1610,7 @@ mfpi_build_function_basis <- function(object, term, fit_result,
   # are reused exactly; they are never recomputed from prediction data.
 
   interaction_model <- fit_result$test_results$interaction_model
+  spec <- mfpi_get_interaction_spec(object, term)
   if (is.null(interaction_model)) {
     stop(paste0("No interaction model is stored for term `", term, "`."),
          call. = FALSE)
@@ -1540,30 +1644,51 @@ mfpi_build_function_basis <- function(object, term, fit_result,
     )
   }
 
-  if (!is.matrix(cont_var_scaled) || ncol(cont_var_scaled) != 1L ||
+  expected_width <- if (isTRUE(spec$discrete)) spec$width else 1L
+  if (!is.matrix(cont_var_scaled) || ncol(cont_var_scaled) != expected_width ||
       !is.numeric(cont_var_scaled) || anyNA(cont_var_scaled) ||
       any(!is.finite(cont_var_scaled))) {
-    stop("`cont_var_scaled` must be a finite one-column numeric matrix.",
+    stop(paste0("`cont_var_scaled` must be a finite ", expected_width,
+                "-column numeric matrix."),
          call. = FALSE)
   }
 
-  scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
-  shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
-  zero_var <- mfpi_get_zero_var(object, term)
+  scale_var <- if (isTRUE(spec$discrete)) 1 else
+    mfpi_named_scalar(object$scale, term, default = 1)
+  shift_var <- if (isTRUE(spec$discrete)) 0 else
+    mfpi_named_scalar(object$shift, term, default = 0)
+  zero_var <- if (isTRUE(spec$discrete)) FALSE else
+    mfpi_get_zero_var(object, term)
 
   cont_plus <- cont_var_scaled * scale_var
-  colnames(cont_plus) <- term
 
-  transformed <- build_group_fp_basis(
-    cont_mat = cont_plus,
-    group_fp_powers = group_fp_powers,
-    coefficient_groups = coefficient_groups,
-    group_levels = group_labels,
-    cont_name = term,
-    transform_basis = TRUE,
-    zero_var = zero_var,
-    check_binary = FALSE
-  )
+  if (isTRUE(spec$discrete)) {
+    repeated <- do.call(cbind, replicate(
+      length(group_labels), cont_plus, simplify = FALSE
+    ))
+    transformed <- build_group_fp_basis(
+      cont_mat = repeated,
+      group_fp_powers = group_fp_powers,
+      coefficient_groups = coefficient_groups,
+      group_levels = group_labels,
+      cont_name = term,
+      transform_basis = FALSE,
+      zero_var = FALSE,
+      check_binary = FALSE
+    )
+  } else {
+    colnames(cont_plus) <- term
+    transformed <- build_group_fp_basis(
+      cont_mat = cont_plus,
+      group_fp_powers = group_fp_powers,
+      coefficient_groups = coefficient_groups,
+      group_levels = group_labels,
+      cont_name = term,
+      transform_basis = TRUE,
+      zero_var = zero_var,
+      check_binary = FALSE
+    )
+  }
 
   centers <- fit_result$center_vals
   centered <- !is.null(centers)
@@ -1631,7 +1756,10 @@ mfpi_build_function_basis <- function(object, term, fit_result,
     centered = centered,
     scale_var = scale_var,
     shift_var = shift_var,
-    zero_var = zero_var
+    zero_var = zero_var,
+    discrete = isTRUE(spec$discrete),
+    interaction_kind = spec$kind,
+    interaction_columns = spec$columns
   )
 }
 
@@ -1936,6 +2064,9 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
         scale_var = basis$scale_var,
         shift_var = basis$shift_var,
         zero_var = basis$zero_var,
+        discrete = isTRUE(basis$discrete),
+        interaction_kind = basis$interaction_kind,
+        interaction_columns = basis$interaction_columns,
         level = level,
         se.fit = se.fit
       )
@@ -2040,7 +2171,7 @@ mfpi_prediction_adjustment_spec <- function(object, term, fit_result) {
 #'
 #' @param object Object of class \code{"mfpi"} containing group coding,
 #'   preprocessing, adjustment-model, and formula metadata.
-#' @param term Character scalar naming the continuous interaction variable.
+#' @param term Character scalar naming the interaction variable.
 #' @param fit_result Stored term-specific flex fit result.
 #' @param newdata Optional prediction data. If \code{NULL}, the fitted model's
 #'   own prediction method is used. If supplied, it must contain the interaction
@@ -2073,6 +2204,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   family_string <- mfpi_family_string(object)
 
   interaction_model <- fit_result$test_results$interaction_model
+  spec <- mfpi_get_interaction_spec(object, term)
   if (is.null(interaction_model) || is.null(interaction_model$fit)) {
     stop(paste0("No fitted interaction model is stored for term `", term, "`."),
          call. = FALSE)
@@ -2157,7 +2289,10 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # recipe before numeric coercion. This rebuilds formula-derived columns such
   # as factor dummies using stored terms, contrasts, and xlevels, while preserving
   # raw group and continuous variables needed for MFPI-specific reconstruction.
-  required_input_columns <- unique(c(term, object$group_var, raw_adj_cols))
+  focal_input_columns <- if (isTRUE(spec$discrete)) spec$columns else term
+  required_input_columns <- unique(c(
+    term, focal_input_columns, object$group_var, raw_adj_cols
+  ))
 
   if (!isTRUE(newdata_is_training_internal) &&
       isTRUE(object$formula_interface) &&
@@ -2386,21 +2521,35 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
 
   # Interaction block: first evaluate all group-specific functions at each row's
   # x value, then zero out FP blocks that do not correspond to the row's group.
-  if (!(term %in% colnames(nd))) {
-    stop(paste0("`newdata` must contain the interaction term `", term, "`."),
-         call. = FALSE)
+  if (any(!focal_input_columns %in% colnames(nd))) {
+    stop(
+      paste0(
+        "`newdata` is missing fitted interaction column(s) for `", term,
+        "`: ", paste(setdiff(focal_input_columns, colnames(nd)), collapse = ", "),
+        "."
+      ),
+      call. = FALSE
+    )
   }
 
-  term_scaled <- scale_vars(term)
-  scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
-  shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
-  x_display <- as.vector(term_scaled[, term, drop = FALSE] * scale_var - shift_var)
+  term_scaled <- scale_vars(focal_input_columns)
+  if (isTRUE(spec$discrete)) {
+    x_display <- if (length(focal_input_columns) == 1L) {
+      as.vector(term_scaled[, 1L])
+    } else {
+      apply(term_scaled, 1L, paste, collapse = ":")
+    }
+  } else {
+    scale_var <- mfpi_named_scalar(object$scale, term, default = 1)
+    shift_var <- mfpi_named_scalar(object$shift, term, default = 0)
+    x_display <- as.vector(term_scaled[, term, drop = FALSE] * scale_var - shift_var)
+  }
 
   basis <- mfpi_build_function_basis(
     object = object,
     term = term,
     fit_result = fit_result,
-    cont_var_scaled = term_scaled[, term, drop = FALSE],
+    cont_var_scaled = term_scaled[, focal_input_columns, drop = FALSE],
     x_display = x_display
   )
 

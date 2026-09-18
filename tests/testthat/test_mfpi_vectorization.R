@@ -201,8 +201,8 @@ test_that("mfpi flex2 fits FP2 interactions through the compact path", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "fp2"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "fp2"),
     group_var = "svi",
     flex = "flex2",
     verbose = FALSE
@@ -219,8 +219,8 @@ test_that("mfpi flex4 supports direct group centering", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "fp1"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "fp1"),
     group_var = "svi",
     flex = "flex4",
     center_type = "group",

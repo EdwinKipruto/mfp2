@@ -26,19 +26,20 @@
 \item{newdata}{An optional data frame or matrix containing values at which to
 predict.
 
-For fitted curves, only the requested continuous variables are required.
+For fitted curves or discrete point sets, only the requested interaction
+variables are required.
 For predictions for individual observations, also supply the grouping
 variable, retained adjustment variables, and any required offset, strata,
 or Cox follow-up variables. See \strong{Predictions for individual
 observations}.}
 
-\item{terms}{An optional character vector naming continuous variables examined
+\item{terms}{An optional character vector naming interaction variables examined
 by \code{\link[=mfpi]{mfpi()}}. If \code{NULL}, all terms available under the selected \code{model}
 setting are used.}
 
 \item{model}{A character value selecting the available term-specific models.
 \code{"best"} uses only interactions retained by the MFPI selection criterion.
-\code{"all"} uses the stored model for every evaluated continuous variable.
+\code{"all"} uses the stored model for every evaluated interaction variable.
 The default is \code{"best"}.}
 
 \item{type}{The prediction type. Use \code{"function"}, \code{"difference"}, or
@@ -100,7 +101,7 @@ Each result comes from the term-specific interaction model named by \code{term}.
 For \code{type = "function"} or \code{type = "both"}, the \code{functions} component is a
 data frame containing:
 \itemize{
-\item \code{term}: the continuous-variable name;
+\item \code{term}: the interaction-variable name;
 \item \code{x}: the value used to evaluate the fitted curve;
 \item \code{group}: the group label;
 \item \code{fit}: the fitted curve value;
@@ -111,7 +112,7 @@ limits when \code{se.fit = TRUE}.
 For \code{type = "difference"} or \code{type = "both"}, the \code{differences} component is
 a data frame containing:
 \itemize{
-\item \code{term}: the continuous-variable name;
+\item \code{term}: the interaction-variable name;
 \item \code{x}: the value used to evaluate the curves;
 \item \code{contrast}: a label identifying the comparison;
 \item \code{group}: the comparison group;
@@ -133,12 +134,13 @@ Obtain group-specific fitted curves, differences between group curves, or
 predictions for individual observations from a model fitted with \code{\link[=mfpi]{mfpi()}}.
 }
 \details{
-MFPI fits a separate interaction model for each continuous variable examined
-through \code{cont_vars}. Predictions are therefore produced separately for each
+MFPI fits a separate interaction model for each variable examined
+through \code{interaction_vars}. Predictions are therefore produced separately for each
 requested variable. Predictions for two different terms come from two
 different term-specific models; they are not parts of one combined model.
 
-Supply continuous predictors on their original scale. Stored shifts, scales,
+Supply continuous predictors on their original scale. Supply binary and
+categorical predictors using their fitted values/levels. Stored shifts, scales,
 fractional-polynomial functions, centering values, zero handling, and
 Winsorisation limits are applied automatically.
 For every fitted term retaining \code{zero}, \code{catzero}, or \code{spike} handling,
@@ -171,23 +173,23 @@ one relative-risk prediction per row for a Cox or Fine--Gray model.
 
 \section{Selecting terms and models}{
 
-Use \code{terms} to select continuous variables that were examined by \code{\link[=mfpi]{mfpi()}}.
-These are normally names supplied through \code{cont_vars}, not adjustment-variable
+Use \code{terms} to select interaction variables that were examined by \code{\link[=mfpi]{mfpi()}}.
+These are normally names supplied through \code{interaction_vars}, not adjustment-variable
 names.
 
-MFPI stores one term-specific interaction model for each evaluated continuous
+MFPI stores one term-specific interaction model for each evaluated
 variable. The \code{model} argument determines which of these models can be used:
 \itemize{
 \item \code{model = "best"} uses only variables whose interaction was retained by the
 MFPI selection criterion. This is the default.
-\item \code{model = "all"} uses the stored model for every evaluated continuous
+\item \code{model = "all"} uses the stored model for every evaluated interaction
 variable for which a model is available, including interactions that were
 not retained.
 }
 
 \code{model = "all"} does not return every candidate model considered during
 fitting. It returns the stored term-specific model for each evaluated
-continuous variable.
+interaction variable.
 
 When \code{terms = NULL}, all terms available under the selected \code{model} setting
 are used. If no interactions were retained, \code{model = "best"} has no models
@@ -200,7 +202,7 @@ Use the following types for fitted curves:
 \itemize{
 \item \code{type = "function"} returns the fitted curve for each group.
 \item \code{type = "difference"} returns each comparison-group curve minus the
-reference-group curve at the same continuous-variable value.
+reference-group curve or point set at the same interaction-variable value.
 \item \code{type = "both"} returns both fitted curves and their differences. This is
 the default when \code{type = NULL}.
 }
@@ -229,7 +231,7 @@ prediction.
 \section{Fitted curves and group differences}{
 
 For \code{type = "function"}, \code{"difference"}, or \code{"both"}, only the requested
-continuous variable is required in \code{newdata}. The grouping variable and
+interaction variable is required in \code{newdata}. The grouping variable and
 adjustment variables are not required because the function is evaluated for
 every fitted group at each supplied value.
 
@@ -239,7 +241,7 @@ the adjusted interaction model.
 
 A fitted difference is the comparison-group curve minus the reference-group
 curve at the same value. It therefore includes both the group main-effect
-difference and any difference in the fitted continuous-variable functions.
+difference and any difference in the fitted interaction-variable functions.
 
 The reference group is the reference level used when \code{\link[=mfpi]{mfpi()}} was fitted.
 For more than two groups, one difference is returned for every non-reference
@@ -279,6 +281,11 @@ values before prediction. Values outside the fitted limits are replaced by
 the relevant limit. The returned \code{x} column shows the value actually used for
 prediction after Winsorisation.
 
+Binary and categorical interaction terms are evaluated once at each fitted
+level; \code{n_grid} is ignored for those terms. Their returned \code{x} values are the
+original level labels. Discrete terms retain their uncentered treatment
+coding and are not shifted, scaled, or Winsorised.
+
 \code{grid} is used only for fitted curves. It is ignored with a warning for
 predictions for individual observations.
 }
@@ -290,7 +297,7 @@ For \code{type = "link"}, \code{"response"}, \code{"lp"}, \code{"risk"}, \code{"
 
 These predictions use the complete term-specific interaction model. Supply:
 \itemize{
-\item the continuous variable named in \code{terms};
+\item the interaction variable named in \code{terms};
 \item the grouping variable used in the MFPI analysis;
 \item every adjustment variable retained in that term-specific model;
 \item any offset, strata, or follow-up information required for the selected
@@ -298,7 +305,7 @@ prediction type.
 }
 
 Different terms can require different prediction columns because the tested
-continuous variable is removed from its own adjustment set.
+interaction variable is removed from its own adjustment set.
 
 For a model fitted with a formula, normally supply the original variables.
 Factors and retained formula expressions are reconstructed automatically.
@@ -478,7 +485,7 @@ fit <- mfpi(
     fp(bph) + fp(cp),
   data = prostate,
   group_var = "svi",
-  cont_vars = c("cavol", "age"),
+  interaction_vars = c("cavol", "age"),
   flex = "flex1",
   include_group_var = TRUE,
   center = FALSE,
@@ -552,8 +559,8 @@ fit_offset <- mfpi(
   data = d,
   family = "poisson",
   group_var = "group",
-  cont_vars = "age",
-  cont_var_forms = c(age = "linear"),
+  interaction_vars = "age",
+  interaction_forms = c(age = "linear"),
   flex = "flex1",
   p_interact = 1,
   verbose = FALSE
@@ -585,8 +592,8 @@ fit_cox <- mfpi(
   data = advanced_prostate_cancer,
   family = "cox",
   group_var = "rx",
-  cont_vars = "age",
-  cont_var_forms = c(age = "linear"),
+  interaction_vars = "age",
+  interaction_forms = c(age = "linear"),
   flex = "flex1",
   select = 1,
   p_interact = 1,

@@ -37,7 +37,7 @@ interactions are requested.
 }
 \details{
 \code{mfpi()} does not fit all selected interactions together in one joint final
-model. Each variable in \code{cont_vars} has its own term-specific interaction
+model. Each variable in \code{interaction_vars} has its own term-specific interaction
 model. Consequently, \code{coef.mfpi()} reports coefficients from those stored
 interaction models rather than from the first-stage MFP adjustment model.
 
@@ -90,8 +90,8 @@ fit <- mfpi(
   lpsa ~ fp(age) + svi + fp(cavol),
   data = prostate,
   group_var = "svi",
-  cont_vars = "cavol",
-  cont_var_forms = c(cavol = "fp2"),
+  interaction_vars = "cavol",
+  interaction_forms = c(cavol = "fp2"),
   flex = "flex4",
   p_interact = 1,
   verbose = FALSE

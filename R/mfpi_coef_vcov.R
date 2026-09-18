@@ -12,7 +12,7 @@
 #'
 #' @details
 #' `mfpi()` does not fit all selected interactions together in one joint final
-#' model. Each variable in `cont_vars` has its own term-specific interaction
+#' model. Each variable in `interaction_vars` has its own term-specific interaction
 #' model. Consequently, `coef.mfpi()` reports coefficients from those stored
 #' interaction models rather than from the first-stage MFP adjustment model.
 #'
@@ -83,8 +83,8 @@
 #'   lpsa ~ fp(age) + svi + fp(cavol),
 #'   data = prostate,
 #'   group_var = "svi",
-#'   cont_vars = "cavol",
-#'   cont_var_forms = c(cavol = "fp2"),
+#'   interaction_vars = "cavol",
+#'   interaction_forms = c(cavol = "fp2"),
 #'   flex = "flex4",
 #'   p_interact = 1,
 #'   verbose = FALSE
@@ -172,8 +172,8 @@ coef.mfpi <- function(object,
 #'   lpsa ~ fp(age) + svi + fp(cavol),
 #'   data = prostate,
 #'   group_var = "svi",
-#'   cont_vars = "cavol",
-#'   cont_var_forms = c(cavol = "fp2"),
+#'   interaction_vars = "cavol",
+#'   interaction_forms = c(cavol = "fp2"),
 #'   flex = "flex4",
 #'   p_interact = 1,
 #'   verbose = FALSE
@@ -426,6 +426,7 @@ mfpi_get_accessor_fits <- function(object, term = NULL, model = c("best", "all")
 
 # Build all coefficient labels and print metadata for one term-specific fit.
 mfpi_coefficient_info <- function(object, term, fit_result) {
+  interaction_spec <- mfpi_get_interaction_spec(object, term)
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
   beta <- interaction_model$coefficients
@@ -495,11 +496,15 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
       )
     }
 
-    transformations <- mfpi_fp_transformation_labels(
-      object = object,
-      term = term,
-      powers = power_g
-    )
+    transformations <- if (isTRUE(interaction_spec$discrete)) {
+      interaction_spec$columns
+    } else {
+      mfpi_fp_transformation_labels(
+        object = object,
+        term = term,
+        powers = power_g
+      )
+    }
 
     estimates <- unname(beta[model_names])
     group_rows[[g]] <- data.frame(
@@ -704,8 +709,8 @@ mfpi_fp_transformation_labels <- function(object, term, powers) {
 # Resolve the user-facing interaction form for one term.
 mfpi_accessor_interaction_form <- function(object, term, fit_result) {
   form <- NULL
-  if (!is.null(object$cont_var_forms) && term %in% names(object$cont_var_forms)) {
-    form <- object$cont_var_forms[[term]]
+  if (!is.null(object$interaction_forms) && term %in% names(object$interaction_forms)) {
+    form <- object$interaction_forms[[term]]
   }
   if (is.null(form) || length(form) != 1L || is.na(form) || !nzchar(form)) {
     winner <- object$var_winners[[term]]

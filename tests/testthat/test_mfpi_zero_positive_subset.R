@@ -2,7 +2,7 @@ library(testthat)
 library(mfp2)
 
 
-test_that("zero-handled cont_vars require positive rows after subsetting", {
+test_that("zero-handled interaction_vars require positive rows after subsetting", {
   n <- 24L
   x <- cbind(
     treatment = rep(c(0, 1), length.out = n),
@@ -20,7 +20,7 @@ test_that("zero-handled cont_vars require positive rows after subsetting", {
         x = x,
         y = y,
         group_var = "treatment",
-        cont_vars = "age",
+        interaction_vars = "age",
         zero_vars = "age",
         subset = zero_rows,
         flex = flex_method,
@@ -28,7 +28,7 @@ test_that("zero-handled cont_vars require positive rows after subsetting", {
         verbose = FALSE
       ),
       paste0(
-        "Zero-handled variables in `cont_vars` must contain at least one ",
+        "Zero-handled variables in `interaction_vars` must contain at least one ",
         "positive value.*Problematic variables: age"
       )
     )
@@ -36,7 +36,7 @@ test_that("zero-handled cont_vars require positive rows after subsetting", {
 })
 
 
-test_that("zero-handled cont_vars reject negatives before positive-subset checks", {
+test_that("zero-handled interaction_vars reject negatives before positive-subset checks", {
   n <- 12L
   x <- cbind(
     treatment = rep(c(0, 1), length.out = n),
@@ -49,7 +49,7 @@ test_that("zero-handled cont_vars reject negatives before positive-subset checks
       x = x,
       y = y,
       group_var = "treatment",
-      cont_vars = "age",
+      interaction_vars = "age",
       zero_vars = "age",
       flex = "flex2",
       family = "gaussian",

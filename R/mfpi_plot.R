@@ -1,7 +1,9 @@
 #' Plot Fitted Functions from an MFPI Model
 #'
 #' Produces group-specific fitted-function plots, between-group difference
-#' plots, or both for continuous variables evaluated by [mfpi()].
+#' plots, or both for variables evaluated by [mfpi()]. Continuous terms are
+#' drawn as curves; binary and categorical terms are drawn as unconnected
+#' level-specific points.
 #'
 #' The plotted quantities are shown on the model's linear-predictor scale.
 #' They are term-specific partial linear predictors rather than complete
@@ -13,8 +15,8 @@
 #' \describe{
 #'   \item{\code{"fitted"}}{
 #'     Plots the group-specific partial linear predictor for the selected
-#'     continuous variable separately for the reference group and one comparison
-#'     group on shared axes. For a GLM, each curve includes the model intercept,
+#'     interaction variable separately for the reference group and one comparison
+#'     group on shared axes. For a GLM, each curve or point set includes the model intercept,
 #'     the relevant group main effect, and the group-specific covariate function.
 #'     For a Cox model, it includes the group main effect and the group-specific
 #'     covariate function. Adjustment-variable contributions, offsets, and the
@@ -119,7 +121,7 @@
 #' If `terms = NULL`, plots are produced for interactions retained by the
 #' selected MFPI criterion.
 #'
-#' If `terms` is supplied, the requested continuous variables are plotted
+#' If `terms` is supplied, the requested interaction variables are plotted
 #' regardless of whether their interactions were retained, provided that the
 #' corresponding fitted models are available in the `mfpi` object.
 #'
@@ -140,7 +142,7 @@
 #'
 #' @param x An object of class `"mfpi"`.
 #'
-#' @param terms Optional character vector naming the continuous variables to
+#' @param terms Optional character vector naming the interaction variables to
 #'   plot. If `NULL`, only retained interaction terms are plotted; when no
 #'   interactions were retained, no plots are produced. If supplied, the
 #'   requested terms are plotted when their fitted models are available in the
@@ -158,7 +160,8 @@
 #'   selection result.
 #'
 #' @param show_rug Logical scalar. If `TRUE`, rug marks are added along the
-#'   horizontal axis to show the covariate evaluation values.
+#'   horizontal axis to show continuous covariate evaluation values. Rug marks
+#'   are not added for binary or categorical interaction terms.
 #'
 #' @param show_ci_fitted Logical scalar. If `TRUE`, confidence bands are shown
 #'   around the group-specific fitted functions.
@@ -236,7 +239,7 @@
 #' @return
 #' Invisibly returns a nested named list of plots.
 #'
-#' The outer list is named by continuous variable. Within each variable, the
+#' The outer list is named by interaction variable. Within each variable, the
 #' inner list contains one element for each displayed group contrast.
 #'
 #' Each element is:
@@ -264,7 +267,7 @@
 #'     fp(bph) + fp(cp),
 #'   data = prostate,
 #'   group_var = "svi",
-#'   cont_vars = c("cavol", "age"),
+#'   interaction_vars = c("cavol", "age"),
 #'   flex = "flex1",
 #'   include_group_var = TRUE,
 #'   center = FALSE,
@@ -452,7 +455,7 @@ plot.mfpi <- function(x,
 
     if (length(selected_terms) == 0L) {
       message(
-        "Nothing to plot: no variables in `cont_vars` were selected as\n",
+        "Nothing to plot: no variables in `interaction_vars` were selected as\n",
         "having a significant interaction with the group variable.\n",
         "To inspect a variable's fitted curve anyway, pass its name via\n",
         "the `terms` argument, e.g. terms = \"age\"."
@@ -653,6 +656,63 @@ plot.mfpi <- function(x,
     colour_values <- stats::setNames(c(colour_ref, colour_group), group_values)
     linetype_values <- resolve_line_types(group_values)
 
+    interaction_spec <- mfpi_get_interaction_spec(model, var)
+    if (isTRUE(interaction_spec$discrete)) {
+      level_order <- interaction_spec$level_labels
+      if (is.null(level_order)) level_order <- unique(as.character(line_df$x))
+      line_df$x <- factor(as.character(line_df$x), levels = level_order)
+
+      if (isTRUE(show_ci_fitted)) {
+        interval_df <- rbind(
+          transform(ref_df, group = ref_label_value),
+          transform(grp_df, group = grp_label_value)
+        )
+        interval_df$group <- factor(
+          interval_df$group,
+          levels = c(ref_label_value, grp_label_value)
+        )
+        interval_df$x <- factor(as.character(interval_df$x), levels = level_order)
+      }
+
+      p <- ggplot2::ggplot(
+        line_df,
+        ggplot2::aes(x = .data$x, y = .data$y, colour = .data$group)
+      )
+      if (isTRUE(show_ci_fitted)) {
+        p <- p + ggplot2::geom_errorbar(
+          data = interval_df,
+          ggplot2::aes(ymin = .data$lo, ymax = .data$hi),
+          width = 0.12,
+          position = ggplot2::position_dodge(width = 0.35)
+        )
+      }
+      p <- p +
+        ggplot2::geom_point(
+          size = 2.2,
+          position = ggplot2::position_dodge(width = 0.35)
+        ) +
+        ggplot2::scale_colour_manual(values = colour_values, name = group_label) +
+        ggplot2::xlab(var) +
+        ggplot2::ylab(mfpi_plot_fitted_ylabel(model)) +
+        ggplot2::labs(
+          title = if (show_title) "Group-specific fitted functions" else NULL,
+          subtitle = if (show_title) {
+            make_subtitle(var, grp_label_value, ref_label_value)
+          } else NULL
+        ) +
+        ggplot2::theme_bw()
+
+      if (legend_position == "inside") {
+        p <- p + ggplot2::theme(
+          legend.position = legend_inside,
+          legend.justification = legend_justification
+        )
+      } else {
+        p <- p + ggplot2::theme(legend.position = legend_position)
+      }
+      return(p)
+    }
+
     p <- ggplot2::ggplot()
 
     if (isTRUE(show_ci_fitted)) {
@@ -792,6 +852,54 @@ plot.mfpi <- function(x,
     if (isTRUE(show_ci_diff)) {
       plot_df$lower <- diff_raw$lower
       plot_df$upper <- diff_raw$upper
+    }
+
+    interaction_spec <- mfpi_get_interaction_spec(model, var)
+    if (isTRUE(interaction_spec$discrete)) {
+      level_order <- interaction_spec$level_labels
+      if (is.null(level_order)) level_order <- unique(as.character(plot_df$x))
+      plot_df$x <- factor(as.character(plot_df$x), levels = level_order)
+
+      p <- ggplot2::ggplot(
+        plot_df,
+        ggplot2::aes(x = .data$x, y = .data$diff)
+      )
+      if (isTRUE(show_ci_diff)) {
+        p <- p + ggplot2::geom_errorbar(
+          ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+          width = 0.12,
+          colour = colour_diff
+        )
+      }
+      p <- p + ggplot2::geom_point(colour = colour_diff, size = 2.2)
+      if (isTRUE(show_null_line)) {
+        p <- p + ggplot2::geom_hline(
+          yintercept = 0, linetype = "dashed", colour = colour_null
+        )
+      }
+      if (isTRUE(show_maineffect_line) && is.finite(main_effect_value)) {
+        p <- p + ggplot2::geom_hline(
+          yintercept = main_effect_value,
+          linetype = "dashed",
+          colour = colour_maineffect
+        )
+      }
+      return(
+        p +
+          ggplot2::xlab(var) +
+          ggplot2::ylab(mfpi_plot_difference_ylabel(
+            model = model,
+            group = grp_label_value,
+            reference = ref_label_value
+          )) +
+          ggplot2::labs(
+            title = if (show_title) "Difference in fitted functions" else NULL,
+            subtitle = if (show_title) {
+              make_subtitle(var, grp_label_value, ref_label_value)
+            } else NULL
+          ) +
+          ggplot2::theme_bw()
+      )
     }
 
     plot_df <- plot_df[order(plot_df$x), , drop = FALSE]

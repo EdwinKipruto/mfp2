@@ -62,7 +62,7 @@ make_mfpi_accessor_fixture <- function(selected = TRUE) {
     group_var = "trt",
     flex = "flex4",
     shift = c(age = 0),
-    cont_var_forms = c(age = "fp2"),
+    interaction_forms = c(age = "fp2"),
     group_levels_new = 0:3,
     group_levels_original = c("Placebo", "Drug A", "Drug B", "Drug C"),
     group_level_map = data.frame(
@@ -77,7 +77,19 @@ make_mfpi_accessor_fixture <- function(selected = TRUE) {
       list(age = interaction_model)
     } else {
       list()
-    }
+    },
+    interaction_specs = list(
+      age = list(
+        term = "age",
+        form = "fp2",
+        kind = "continuous",
+        discrete = FALSE,
+        columns = "age",
+        width = 1L,
+        level_labels = NULL,
+        level_design = NULL
+      )
+    )
   )
   class(out) <- "mfpi"
   out
@@ -222,8 +234,13 @@ test_that("MFPI accessors return named collections for multiple interactions", {
   second <- fit$var_winners$age
   fit$var_winners$hg <- second
   fit$best_interaction_model$hg <- second$fit$test_results$interaction_model
-  fit$cont_var_forms <- c(age = "fp2", hg = "fp2")
+  fit$interaction_forms <- c(age = "fp2", hg = "fp2")
   fit$shift <- c(age = 0, hg = 0)
+  fit$interaction_specs$hg <- list(
+    term = "hg", form = "fp2", kind = "continuous",
+    discrete = FALSE, columns = "hg", width = 1L,
+    level_labels = NULL, level_design = NULL
+  )
 
   b <- stats::coef(fit)
   V <- stats::vcov(fit)

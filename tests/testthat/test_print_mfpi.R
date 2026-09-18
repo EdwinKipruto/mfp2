@@ -393,7 +393,7 @@ test_that("verbose Step 3 reports final p-value decisions without stars", {
   output <- capture.output(
     print_interaction_step3_summary(
       var_winners = winners,
-      cont_vars = c("age", "wt"),
+      interaction_vars = c("age", "wt"),
       mode = "pvalue",
       p_interact = 0.05,
       p_adjust_method = "none",
@@ -431,7 +431,7 @@ test_that("verbose Step 3 reports final AIC decisions without stars", {
   output <- capture.output(
     print_interaction_step3_summary(
       var_winners = winners,
-      cont_vars = c("age", "wt"),
+      interaction_vars = c("age", "wt"),
       mode = "ic",
       ic_col = "AIC_main_minus_int",
       ic_label = "dAIC",

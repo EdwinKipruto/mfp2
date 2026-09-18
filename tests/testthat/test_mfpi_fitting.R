@@ -21,7 +21,7 @@ test_that("mfpi.default() runs and returns an mfpi object", {
   fit <- mfpi(
     x_p, y_prostate,
     group_var = "svi",
-    cont_vars = c("cavol", "age"),
+    interaction_vars = c("cavol", "age"),
     flex = "flex1",
     verbose = FALSE
   )
@@ -30,7 +30,7 @@ test_that("mfpi.default() runs and returns an mfpi object", {
   expect_true(!is.null(fit$all_model_metrics))
   expect_true(!is.null(fit$adjustment_model))
   expect_equal(fit$group_var, "svi")
-  expect_equal(fit$cont_vars, c("cavol", "age"))
+  expect_equal(fit$interaction_vars, c("cavol", "age"))
 })
 
 
@@ -43,7 +43,7 @@ test_that("mfpi.formula() runs and returns an mfpi object", {
     lpsa ~ fp(age) + svi + fp(pgg45) + fp(cavol) + fp(weight) +
       fp(bph) + fp(cp),
     data = prostate,
-    cont_vars = c("cavol", "age"),
+    interaction_vars = c("cavol", "age"),
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -70,7 +70,7 @@ test_that("mfpi.formula() rejects a direct strata argument", {
       data = dat,
       family = "cox",
       group_var = "group",
-      cont_vars = "age",
+      interaction_vars = "age",
       strata = centre,
       verbose = FALSE
     ),
@@ -97,8 +97,8 @@ test_that("mfpi.formula() resolves weights and offset in data", {
     lpsa ~ svi + age + cavol,
     data = dat,
     group_var = "svi",
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "linear"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "linear"),
     weights = case_weight,
     offset = external_offset,
     flex = "flex1",
@@ -129,22 +129,22 @@ test_that("mfpi.formula() resolves weights and offset in data", {
 
 # Test purpose: Checks that requested interaction functional forms are stored for
 # continuous variables.
-test_that("mfpi() cont_var_forms specifies functional form correctly", {
+test_that("mfpi() interaction_forms specifies functional form correctly", {
   data("prostate", package = "mfp2")
 
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = c("cavol", "age"),
-    cont_var_forms = c(cavol = "fp2", age = "linear"),
+    interaction_vars = c("cavol", "age"),
+    interaction_forms = c(cavol = "fp2", age = "linear"),
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
   )
 
   expect_s3_class(fit, "mfpi")
-  expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp2"))
-  expect_equal(fit$cont_var_forms["age"], c(age = "linear"))
+  expect_equal(fit$interaction_forms["cavol"], c(cavol = "fp2"))
+  expect_equal(fit$interaction_forms["age"], c(age = "linear"))
 })
 
 
@@ -156,7 +156,7 @@ test_that("mfpi() with criterion = 'aic' works", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = c("cavol"),
+    interaction_vars = c("cavol"),
     group_var = "svi",
     criterion = "aic",
     verbose = FALSE
@@ -175,8 +175,8 @@ test_that("mfpi() flexibility levels run without error", {
     fit <- mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = "cavol",
-      cont_var_forms = c(cavol = "fp1"),
+      interaction_vars = "cavol",
+      interaction_forms = c(cavol = "fp1"),
       group_var = "svi",
       flex = fl,
       verbose = FALSE
@@ -194,7 +194,7 @@ test_that("mfpi() defaults to flex3", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     verbose = FALSE
   )
@@ -202,57 +202,57 @@ test_that("mfpi() defaults to flex3", {
 })
 
 
-# Test purpose: Checks that omitted cont_var_forms are filled with "linear"
-# for every variable listed in cont_vars.
-test_that("mfpi() defaults missing cont_var_forms to linear", {
+# Test purpose: Checks that omitted interaction_forms are filled with "fp1"
+# for every variable listed in interaction_vars.
+test_that("mfpi() defaults missing interaction_forms to fp1", {
   data("prostate", package = "mfp2")
 
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = c("cavol", "age"),
+    interaction_vars = c("cavol", "age"),
     group_var = "svi",
     verbose = FALSE
   )
 
   expect_s3_class(fit, "mfpi")
-  expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp1"))
-  expect_equal(fit$cont_var_forms["age"], c(age = "fp1"))
+  expect_equal(fit$interaction_forms["cavol"], c(cavol = "fp1"))
+  expect_equal(fit$interaction_forms["age"], c(age = "fp1"))
 })
 
 
-# Test purpose: Ensures cont_var_forms may specify only some cont_vars;
-# omitted cont_vars are filled with "linear" and ordering follows cont_vars.
-test_that("mfpi() fills missing cont_var_forms entries with linear", {
+# Test purpose: Ensures interaction_forms may specify only some interaction_vars;
+# omitted interaction_vars are filled with "fp1" and ordering follows interaction_vars.
+test_that("mfpi() fills missing interaction_forms entries with fp1", {
   data("prostate", package = "mfp2")
 
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = c("cavol", "age"),
-    cont_var_forms = c(cavol = "fp2"),
+    interaction_vars = c("cavol", "age"),
+    interaction_forms = c(cavol = "fp2"),
     group_var = "svi",
     verbose = FALSE
   )
 
   expect_s3_class(fit, "mfpi")
-  expect_equal(names(fit$cont_var_forms), c("cavol", "age"))
-  expect_equal(fit$cont_var_forms["cavol"], c(cavol = "fp2"))
-  expect_equal(fit$cont_var_forms["age"], c(age = "fp1"))
+  expect_equal(names(fit$interaction_forms), c("cavol", "age"))
+  expect_equal(fit$interaction_forms["cavol"], c(cavol = "fp2"))
+  expect_equal(fit$interaction_forms["age"], c(age = "fp1"))
 })
 
 
-# Test purpose: Verifies that cont_var_forms only accepts "linear", "fp1",
+# Test purpose: Verifies that interaction_forms only accepts "linear", "fp1",
 # and "fp2".
-test_that("mfpi() rejects invalid cont_var_forms values", {
+test_that("mfpi() rejects invalid interaction_forms values", {
   data("prostate", package = "mfp2")
 
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = c("cavol", "age"),
-      cont_var_forms = c(cavol = "spline"),
+      interaction_vars = c("cavol", "age"),
+      interaction_forms = c(cavol = "spline"),
       group_var = "svi",
       verbose = FALSE
     ),
@@ -261,47 +261,47 @@ test_that("mfpi() rejects invalid cont_var_forms values", {
 })
 
 
-# Test purpose: Ensures cont_var_forms entries must be named so each requested
-# form is explicitly tied to a variable in cont_vars.
-test_that("mfpi() rejects unnamed cont_var_forms", {
+# Test purpose: Ensures interaction_forms entries must be named so each requested
+# form is explicitly tied to a variable in interaction_vars.
+test_that("mfpi() rejects unnamed interaction_forms", {
   data("prostate", package = "mfp2")
 
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = c("cavol", "age"),
-      cont_var_forms = c("fp2", "linear"),
+      interaction_vars = c("cavol", "age"),
+      interaction_forms = c("fp2", "linear"),
       group_var = "svi",
       verbose = FALSE
     ),
-    "Every entry of `cont_var_forms` must be named"
+    "Every entry of `interaction_forms` must be named"
   )
 })
 
 
-# Test purpose: Checks that cont_var_forms cannot name variables that are not
+# Test purpose: Checks that interaction_forms cannot name variables that are not
 # being tested as continuous interaction variables.
-test_that("mfpi() rejects cont_var_forms names not in cont_vars", {
+test_that("mfpi() rejects interaction_forms names not in interaction_vars", {
   data("prostate", package = "mfp2")
 
   expect_error(
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = "cavol",
-      cont_var_forms = c(age = "fp1"),
+      interaction_vars = "cavol",
+      interaction_forms = c(age = "fp1"),
       group_var = "svi",
       verbose = FALSE
     ),
-    "not in `cont_vars`"
+    "not in `interaction_vars`"
   )
 })
 
 
 # Test purpose: Ensures the grouping variable cannot also be listed as a
-# continuous interaction variable.
-test_that("mfpi() rejects group_var included in cont_vars", {
+# interaction variable.
+test_that("mfpi() rejects group_var included in interaction_vars", {
   set.seed(204)
   n <- 120
 
@@ -317,54 +317,65 @@ test_that("mfpi() rejects group_var included in cont_vars", {
       x,
       y,
       group_var = "group",
-      cont_vars = c("group", "x1"),
+      interaction_vars = c("group", "x1"),
       verbose = FALSE
     ),
-    "must not also appear in `cont_vars`"
+    "must not also appear in `interaction_vars`"
   )
 })
 
 
-# Test purpose: Checks that binary variables are not allowed in cont_vars,
-# because MFPI requires continuous variables for FP interaction forms.
-test_that("mfpi.formula() rejects a binary variable in cont_vars", {
-  data("prostate", package = "mfp2")
-
-  expect_error(
-    mfpi(
-      lpsa ~ fp(age) + svi + fp(cavol),
-      data = prostate,
-      cont_vars = "svi",
-      group_var = "cavol",
-      verbose = FALSE
-    ),
-    "binary"
-  )
-})
-
-
-# Test purpose: Checks that binary variables are not allowed in cont_vars,
-# because MFPI requires continuous variables for FP interaction forms.
-test_that("mfpi.formula() rejects a simulated binary variable in cont_vars", {
+# Test purpose: Binary interaction variables use the uncentred linear path.
+test_that("mfpi.formula() fits a binary linear interaction", {
   set.seed(201)
-  n <- 100
+  n <- 160
 
   dat <- data.frame(
-    y = rnorm(n),
     group = rep(0:1, length.out = n),
-    binary_x = rep(0:1, length.out = n),
+    binary_x = rep(c(0, 0, 1, 1), length.out = n),
     x = runif(n, 1, 10)
+  )
+  dat$y <- 0.5 + 0.7 * dat$group - 0.4 * dat$binary_x +
+    1.1 * dat$group * dat$binary_x + 0.2 * dat$x + rnorm(n, sd = 0.3)
+
+  fit <- mfpi(
+    y ~ group + binary_x + x,
+    data = dat,
+    interaction_vars = "binary_x",
+    interaction_forms = c(binary_x = "linear"),
+    group_var = "group",
+    select = 1,
+    p_interact = 1,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "mfpi")
+  expect_identical(fit$interaction_specs$binary_x$kind, "binary")
+  expect_true(fit$interaction_specs$binary_x$discrete)
+  expect_equal(
+    fit$var_winners$binary_x$fit$test_results$df$interaction_only,
+    1
+  )
+})
+
+test_that("mfpi() rejects FP forms for binary interaction variables", {
+  dat <- data.frame(
+    y = rnorm(80),
+    group = rep(0:1, each = 40),
+    binary_x = rep(c(0, 1), 40),
+    x = runif(80, 1, 5)
   )
 
   expect_error(
     mfpi(
-      y ~ group + binary_x + fp(x),
+      y ~ group + binary_x + x,
       data = dat,
-      cont_vars = "binary_x",
       group_var = "group",
+      interaction_vars = "binary_x",
+      interaction_forms = c(binary_x = "fp1"),
       verbose = FALSE
     ),
-    "binary"
+    "Discrete interaction variable.*must use"
   )
 })
 
@@ -378,7 +389,7 @@ test_that("mfpi() rejects invalid p_adjust_method", {
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = "cavol",
+      interaction_vars = "cavol",
       group_var = "svi",
       p_adjust_method = "not_a_method",
       verbose = FALSE
@@ -396,7 +407,7 @@ test_that("mfpi() stores valid p_adjust_method", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = c("cavol", "age"),
+    interaction_vars = c("cavol", "age"),
     group_var = "svi",
     p_adjust_method = "holm",
     verbose = FALSE
@@ -415,7 +426,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
   fit_p <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     criterion = "pvalue",
     p_interact = 0.10,
@@ -425,7 +436,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
   fit_aic <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     criterion = "aic",
     verbose = FALSE
@@ -434,7 +445,7 @@ test_that("mfpi() sets criterion-specific default min_improvement", {
   fit_bic <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     criterion = "bic",
     verbose = FALSE
@@ -454,7 +465,7 @@ test_that("mfpi() stores explicit min_improvement for AIC", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     criterion = "aic",
     min_improvement = 3.5,
@@ -475,7 +486,7 @@ test_that("mfpi() rejects invalid min_improvement", {
     mfpi(
       lpsa ~ fp(age) + svi + fp(cavol),
       data = prostate,
-      cont_vars = "cavol",
+      interaction_vars = "cavol",
       group_var = "svi",
       criterion = "aic",
       min_improvement = 0,
@@ -494,7 +505,7 @@ test_that("mfpi() accepts include_group_var = TRUE", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     include_group_var = TRUE,
     verbose = FALSE
@@ -512,7 +523,7 @@ test_that("mfpi() accepts group-specific centering", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     center_type = "group",
     verbose = FALSE
@@ -541,7 +552,7 @@ test_that("mfpi.default() rejects non-group categorical predictors", {
       x,
       y,
       group_var = "group",
-      cont_vars = "x",
+      interaction_vars = "x",
       verbose = FALSE
     ),
     "Only `group_var` may be categorical"
@@ -566,7 +577,7 @@ test_that("mfpi.default() stores original group levels", {
     x,
     y,
     group_var = "group",
-    cont_vars = "x",
+    interaction_vars = "x",
     verbose = FALSE
   )
 

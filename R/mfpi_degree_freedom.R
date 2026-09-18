@@ -20,8 +20,9 @@
 #' therefore cancel in likelihood-ratio and AIC/BIC differences).
 #'
 #' @section Parameter counts:
-#' Let \eqn{K} be the number of groups (`n_groups`), \eqn{m} the FP degree
-#' (`degree`), and \eqn{Q} the number of outcome logits (`n_logits`). For
+#' Let \eqn{K} be the number of groups (`n_groups`), \eqn{m} the FP degree,
+#' \eqn{R} the width of a prespecified linear design block (`linear_width`),
+#' and \eqn{Q} the number of outcome logits (`n_logits`). For
 #' scalar-response models, \eqn{Q = 1}. For multinomial models, regression
 #' coefficients are logit specific but FP powers are shared across logits.
 #'
@@ -29,14 +30,17 @@
 #' \itemize{
 #'   \item \eqn{K - 1} group dummy coefficients \eqn{\gamma_1, \ldots,
 #'     \gamma_{K-1}},
-#'   \item \eqn{J} parameters for the continuous variable, where \eqn{J}
+#'   \item \eqn{J} parameters for the interaction variable, where \eqn{J}
 #'     depends on the term type:
 #'     \itemize{
 #'       \item \strong{FP} (\eqn{m \geq 1}): \eqn{J = 2m}, counting \eqn{m}
 #'         regression coefficients and \eqn{m} estimated FP powers (the
 #'         **mfp2** convention of counting both).
-#'       \item \strong{Linear} (\eqn{m = 0}): \eqn{J = 1}, counting the single
-#'         slope. There are no FP powers to estimate, so the general formula
+#'       \item \strong{Linear} (\eqn{m = 0}): \eqn{J = R}, counting the
+#'         coefficients in the complete linear design block. Thus \eqn{R=1}
+#'         for continuous or binary variables, while a categorical factor with
+#'         \eqn{L} levels normally has \eqn{R=L-1}. There are no FP powers to
+#'         estimate, so the general formula
 #'         \eqn{J = 2m} does not apply; the linear term is a special case.
 #'     }
 #' }
@@ -45,16 +49,16 @@
 #'   p_{\text{main}} = (K - 1) + J,
 #' }
 #' giving \eqn{p_{\text{main}} = (K-1) + 2m} for FP terms and
-#' \eqn{p_{\text{main}} = K} for the linear term.
+#' \eqn{p_{\text{main}} = (K-1)+R} for a linear design block.
 #'
 #' The **interaction model** adds group-specific FP slopes, and depending on
 #' the `flex` level, may also add group-specific FP powers:
 #'
 #' \describe{
-#'   \item{`flex0` (linear, \eqn{m = 0})}{Each group gets its own slope:
-#'     \eqn{K} slopes in total (one per group).
-#'     \deqn{df_{\text{int}} = K - 1, \quad
-#'           p_{\text{int}} = K + (K-1).}}
+#'   \item{`flex0` (linear, \eqn{m = 0})}{Each group gets its own
+#'     \eqn{R}-coefficient block.
+#'     \deqn{df_{\text{int}} = (K - 1)R, \quad
+#'           p_{\text{int}} = (K-1)+KR.}}
 #'
 #'   \item{`flex1` / `flex2` / `flex3`}{Powers are constrained to be equal
 #'     across groups (either taken from the pooled model or estimated jointly).
@@ -76,9 +80,10 @@
 #' }
 #'
 #' For \eqn{Q > 1}, the implemented common-power multinomial formulas are
-#' \deqn{p_{main}=QK} for a linear term and
+#' \deqn{p_{main}=Q(K-1+R)} for a linear design block and
 #' \deqn{p_{main}=Q(K-1+m)+m} for an FP term. The interaction increment is
-#' \eqn{Q(K-1)} for a linear term, \eqn{Q(K-1)m} for `flex1`--`flex3`, and
+#' \eqn{Q(K-1)R} for a linear design block, \eqn{Q(K-1)m} for
+#' `flex1`--`flex3`, and
 #' \eqn{(K-1)m(Q+1)} for `flex4`. Setting \eqn{Q=1} reduces these expressions
 #' to the scalar-response formulas above.
 #'
@@ -119,6 +124,9 @@
 #' @param n_logits Positive integer. Number of independently parameterized
 #'   outcome logits. Use `1` for scalar-response models and `C - 1` for a
 #'   `C`-class multinomial model. FP powers remain common across these logits.
+#' @param linear_width Positive integer. Number of columns in the prespecified
+#'   linear focal-variable block. It is `1` for continuous and binary terms and
+#'   typically one fewer than the number of levels for a treatment-coded factor.
 #' @param flex Character string; one of `"flex0"`, `"flex1"`, `"flex2"`,
 #'   `"flex3"`, or `"flex4"`. Controls the flexibility of the interaction
 #'   model. See [mfp2::mfpi()] for a full description.
@@ -163,7 +171,8 @@ interaction_model_df <- function(n_groups,
                                  degree,
                                  n_logits = 1L,
                                  flex = c("flex0", "flex1", "flex2",
-                                          "flex3", "flex4")) {
+                                          "flex3", "flex4"),
+                                 linear_width = 1L) {
   
   flex <- match.arg(flex)
   
@@ -181,13 +190,19 @@ interaction_model_df <- function(n_groups,
     stop("`n_logits` must be a single integer >= 1.", call. = FALSE)
   }
   q <- as.integer(n_logits)
+  if (!is.numeric(linear_width) || length(linear_width) != 1L ||
+      anyNA(linear_width) || linear_width < 1L ||
+      linear_width != as.integer(linear_width)) {
+    stop("`linear_width` must be a single integer >= 1.", call. = FALSE)
+  }
+  r <- as.integer(linear_width)
   
   # ---------------------------------------------------------------------------
   # p_main: parameters in the main-effects model
   #   (K-1) group dummies + J FP terms, where J = 2m (or 1 for linear)
   # ---------------------------------------------------------------------------
   dfmain <- if (m == 0L) {
-    q * k
+    q * (k - 1L + r)
   } else {
     q * (k - 1L + m) + m
   }
@@ -204,7 +219,7 @@ interaction_model_df <- function(n_groups,
   # ---------------------------------------------------------------------------
   if (m == 0L) {
     # Linear / flex0: one extra slope per non-reference group; no powers
-    dfint <- q * (k - 1L)
+    dfint <- q * (k - 1L) * r
   } else if (flex == "flex4") {
     # Group-specific powers remain common across outcome logits.
     dfint <- (k - 1L) * m * (q + 1L)

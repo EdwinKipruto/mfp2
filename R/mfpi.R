@@ -1,28 +1,29 @@
-#' Model Interactions Between a Categorical Variable and Continuous Variables
+#' Model Interactions with Continuous, Binary, or Categorical Variables
 #'
 #' Use `mfpi()` to investigate whether the relationship between an outcome and
-#' one or more continuous variables differs across the levels of a categorical
-#' grouping variable.
+#' one or more interaction variables differs across the levels of a categorical
+#' grouping variable. Interaction variables may be continuous, binary, or
+#' categorical.
 #'
 #' The function supports the likelihood GLMs accepted by `mfp2()`, negative
 #' binomial, Cox, parametric `survreg`, and Fine--Gray models. Nonlinear
 #' relationships can be modelled with fractional polynomials.
 #'
 #' @details
-#' `mfpi()` evaluates each variable in `cont_vars` separately. For every
-#' continuous variable, it compares:
+#' `mfpi()` evaluates each variable in `interaction_vars` separately. For every
+#' interaction variable, it compares:
 #'
-#' - a model in which the continuous-variable function is the same across
+#' - a model in which the variable's function or contrast block is the same across
 #'   groups; and
-#' - a model in which the function can differ across groups.
+#' - a model in which it can differ across groups.
 #'
 #' The result is one term-specific interaction model for each variable in
-#' `cont_vars`. The function does not fit all tested interactions together in
+#' `interaction_vars`. The function does not fit all tested interactions together in
 #' one final model.
 #'
 #' Before testing the interactions, `mfpi()` builds an MFP adjustment model from
 #' the supplied predictors. Variables selected in this first step are used as
-#' adjustment variables in the interaction analyses. The continuous variable
+#' adjustment variables in the interaction analyses. The variable
 #' currently being tested is excluded from its own adjustment set because it is
 #' already represented by its main effect and interaction.
 #'
@@ -30,9 +31,9 @@
 #' The main arguments are:
 #'
 #' - `group_var`: the categorical variable defining the groups;
-#' - `cont_vars`: the continuous variables to test for interaction with
+#' - `interaction_vars`: the variables to test for interaction with
 #'   `group_var`;
-#' - `cont_var_forms`: the form used for each tested interaction;
+#' - `interaction_forms`: the form used for each tested interaction;
 #' - `flex`: how fractional-polynomial powers are chosen across groups;
 #' - `criterion`: how the interaction and adjustment models are selected.
 #'
@@ -43,30 +44,34 @@
 #'   outcome ~ treatment + fp(age) + fp(biomarker) + stage,
 #'   data = dat,
 #'   group_var = "treatment",
-#'   cont_vars = c("age", "biomarker"),
-#'   cont_var_forms = c(age = "linear", biomarker = "fp1")
+#'   interaction_vars = c("age", "biomarker"),
+#'   interaction_forms = c(age = "linear", biomarker = "fp1")
 #' )
 #' ```
 #'
 #' This fits one interaction analysis for `age` and another for `biomarker`.
 #'
 #' @section Choosing the interaction form:
-#' Use `cont_var_forms` to specify the form tested for each variable in
-#' `cont_vars`:
+#' Use `interaction_forms` to specify the form tested for each variable in
+#' `interaction_vars`:
 #'
 #' - `"linear"`: a linear group-by-variable interaction;
 #' - `"fp1"`: a first-degree fractional-polynomial interaction;
 #' - `"fp2"`: a second-degree fractional-polynomial interaction.
 #'
+#' Binary and categorical interaction variables must use `"linear"`.
+#' They retain their original indicator/contrast coding and are not centered,
+#' shifted, scaled, Winsorised, or subjected to an FP power search.
+#'
 #' The form is specified before fitting. `mfpi()` does not compare linear, FP1,
 #' and FP2 forms and choose among them. A variable not named in
-#' `cont_var_forms` uses `"fp1"`.
+#' `interaction_forms` uses `"fp1"`.
 #'
 #' In the formula interface, wrapping a variable in `fp()` or `fp2()` does not
 #' set its MFPI interaction form. The wrappers provide variable-specific FP and
 #' preprocessing settings. Some of those settings are also reused when the
 #' interaction function is fitted, but the interaction degree itself is chosen
-#' only through `cont_var_forms`.
+#' only through `interaction_forms`.
 #'
 #' @section Choosing the flexibility level:
 #' The `flex` argument controls how FP powers are chosen for variables specified
@@ -110,13 +115,13 @@
 #' `BIC_main_minus_int` for the MFPI comparison.
 #'
 #' @section Multiple interaction tests:
-#' When several variables are listed in `cont_vars`, the default p-values are
+#' When several variables are listed in `interaction_vars`, the default p-values are
 #' not adjusted for multiple testing. Set `p_adjust_method` to a method accepted
 #' by [stats::p.adjust()], such as `"holm"`, `"bonferroni"`, or `"BH"`,
 #' when adjustment is appropriate.
 #'
 #' Adjustment is applied to the planned set of tests: one test for each variable
-#' in `cont_vars`. A failed test remains `NA` and cannot be selected, but it is
+#' in `interaction_vars`. A failed test remains `NA` and cannot be selected, but it is
 #' still counted in the number of planned tests.
 #'
 #' `p_adjust_method` affects only `criterion = "pvalue"`.
@@ -126,7 +131,7 @@
 #' The selected adjustment terms and their fitted transformations are reused in
 #' every term-specific interaction model.
 #'
-#' The tested continuous variable is removed from its own adjustment set. The
+#' The tested interaction variable is removed from its own adjustment set. The
 #' group variable is also omitted from the adjustment set because group main
 #' effects are included in every interaction comparison.
 #'
@@ -137,7 +142,7 @@
 #'
 #' The arguments `select`, `alpha`, `df`, `keep`, `force_max_fp_vars`,
 #' `xorder`, and related FP settings control the MFP adjustment step. They
-#' do not replace `cont_var_forms`, which controls the tested interaction form.
+#' do not replace `interaction_forms`, which controls the tested interaction form.
 #'
 #' If the adjustment model selects no covariates, the interaction models are
 #' fitted without adjustment variables.
@@ -158,8 +163,8 @@
 #'
 #' @section Supplying data:
 #' With the formula interface, supply the original variables in `data`.
-#' Categorical adjustment variables can be factors and are selected or excluded
-#' as complete terms. The `group_var` and every variable in `cont_vars` must be
+#' Categorical variables can be factors and are selected or excluded
+#' as complete terms. The `group_var` and every variable in `interaction_vars` must be
 #' included in the model formula.
 #'
 #' With the default matrix or data-frame interface, all non-group predictors
@@ -170,10 +175,14 @@
 #' adjustment variable is represented by several numeric columns, use
 #' `term_groups` to identify those columns as one adjustment term.
 #'
-#' Variables in `cont_vars` must be single numeric columns. They cannot be
-#' binary or members of a grouped categorical term. A variable with five or
-#' fewer distinct values produces a warning because FP modelling can be
-#' unreliable for a near-categorical variable.
+#' Continuous interaction variables use one numeric column. Binary variables
+#' may be numeric or logical. In the formula interface, factors and character
+#' variables are expanded to complete treatment-contrast blocks and tested
+#' jointly. With the matrix interface, a categorical contrast block can be
+#' supplied through `term_groups` and requested by its conceptual term name.
+#' A continuous FP variable with five or fewer distinct values produces a
+#' warning because FP modelling can be unreliable for a near-categorical
+#' variable.
 #'
 #' The reference group is determined as follows:
 #'
@@ -200,7 +209,7 @@
 #' variation or the requested model terms cannot be estimated uniquely.
 #'
 #' @section Exact-zero values and special transformations:
-#' Explicit `zero_vars` handling is supported for variables in `cont_vars`.
+#' Explicit `zero_vars` handling is supported for variables in `interaction_vars`.
 #' Exact-zero values (`x = 0`) are then treated as structural zero, and the
 #' selected linear or FP function is applied to values with `x > 0`. Variables
 #' requested through `zero_vars`, `catzero_vars`, or `spike_vars` must be
@@ -214,7 +223,7 @@
 #' cannot be estimated.
 #'
 #' `catzero_vars`, `spike_vars`, and ACD transformations are supported for
-#' adjustment variables but not for variables being tested in `cont_vars`.
+#' adjustment variables but not for variables being tested in `interaction_vars`.
 #' When one of these settings is requested for a tested variable, it is disabled
 #' with a warning. An explicit `zero_vars` setting for that variable is
 #' preserved.
@@ -232,7 +241,7 @@
 #'
 #' @section Winsorisation:
 #' Set `winsorize = TRUE` to limit the influence of extreme values in
-#' `cont_vars`. Values below and above the probabilities in `winsorize_probs`
+#' `interaction_vars`. Values below and above the probabilities in `winsorize_probs`
 #' are replaced by the corresponding cutoffs. No observations are removed.
 #'
 #' The default probabilities are `c(0.01, 0.99)`. The cutoffs are calculated
@@ -254,7 +263,8 @@
 #' - `"group"` uses a separate mean within each group.
 #'
 #' The default is `"grand"`. The fitted centering values are reused for
-#' prediction and plotting.
+#' prediction and plotting. Binary and categorical interaction variables retain
+#' their original indicator coding and are never centered.
 #'
 #' Adjustment variables follow the same structural-zero convention as [mfp2()]:
 #' their uncentered ordinary FP and ACD bases are zero where original `x == 0`.
@@ -285,6 +295,10 @@
 #' \eqn{Q(K - 1 + m) + m} df, `flex1`--`flex3` add
 #' \eqn{Q(K - 1)m} interaction df, and `flex4` adds
 #' \eqn{(K - 1)m(Q + 1)} interaction df.
+#' For a linear interaction represented by an \eqn{r}-column block (\eqn{r=1}
+#' for a continuous or binary variable and \eqn{r=L-1} for an \eqn{L}-level
+#' factor), the main model contributes \eqn{Q(K-1+r)} df and the interaction
+#' contributes \eqn{Q(K-1)r} df.
 #'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
 #'   predictors. Column names must be unique, non-missing, non-empty, and must
@@ -305,42 +319,45 @@
 #'   response for Fine--Gray. It must have the same number of observations as `x`.
 #'
 #' @param formula For `mfpi.formula()`, a model formula containing the response,
-#'   `group_var`, the variables in `cont_vars`, and any adjustment variables.
+#'   `group_var`, the variables in `interaction_vars`, and any adjustment variables.
 #'   Use `fp()` or `fp2()` for variable-specific adjustment-model settings.
-#'   Specify the interaction forms separately through `cont_var_forms`.
+#'   Specify the interaction forms separately through `interaction_forms`.
 #'
 #' @param data For `mfpi.formula()`, a data frame containing the variables used
 #'   in `formula`.
 #'
 #' @param term_groups For `mfpi.default()`, an optional named list that groups
-#'   numeric columns representing one categorical adjustment term. For example,
+#'   numeric columns representing one categorical term. For example,
 #'   `list(stage = c("stageII", "stageIII"))`. Each member column can belong
 #'   to only one group. Grouped terms are fitted as fixed linear terms: they
-#'   are not eligible for FP transformation searches and cannot be used in
-#'   `cont_vars`, `zero_vars`, `catzero_vars`, `spike_vars`, `acd_vars`, or
+#'   are not eligible for FP transformation searches. A complete grouped term
+#'   may be named in `interaction_vars` only with form `"linear"`; individual
+#'   member columns cannot be requested separately. Grouped terms cannot be
+#'   used in `zero_vars`, `catzero_vars`, `spike_vars`, `acd_vars`, or
 #'   `force_max_fp_vars`. In `mfpi.formula()`, factor predictors are grouped
 #'   automatically; this argument is not needed.
 #'
 #' @param group_var A single character string naming the categorical grouping
 #'   variable. It must have at least two observed groups and must not appear in
-#'   `cont_vars` or `term_groups`. After applying `subset`, every group must
+#'   `interaction_vars` or `term_groups`. After applying `subset`, every group must
 #'   contain at least two observations, or at least three when an FP2
 #'   interaction is requested.
 #'
-#' @param cont_vars A non-empty character vector naming the continuous variables
-#'   whose interactions with `group_var` are evaluated. Each variable must be a
-#'   single numeric column with more than two distinct values.
+#' @param interaction_vars A non-empty character vector naming the continuous,
+#'   binary, or categorical variables whose interactions with `group_var` are
+#'   evaluated. Categorical variables are supported as complete formula factor
+#'   terms or complete `term_groups` blocks.
 #'
-#' @param cont_var_forms An optional named character vector specifying the
-#'   functional form of the interaction between each variable in `cont_vars`
+#' @param interaction_forms An optional named character vector specifying the
+#'   functional form of the interaction between each variable in `interaction_vars`
 #'   and the grouping variable. Permitted values are `"linear"`, `"fp1"`, and
 #'   `"fp2"`. All entries must be named by the corresponding variable in
-#'   `cont_vars`; variables not named default to `"fp1"`. Passing `NULL`
+#'   `interaction_vars`; variables not named default to `"fp1"`. Passing `NULL`
 #'   (the default) applies `"fp1"` to every tested variable.
 #'
-#'   - `"linear"`: fixes the interaction at power 1 with no power search.
-#'     The interaction term is a single product of the grouping indicator(s)
-#'     and the untransformed continuous variable.
+#'   - `"linear"`: uses the untransformed continuous variable, binary indicator,
+#'     or complete categorical contrast block with no power search. This is the
+#'     only permitted form for binary and categorical variables.
 #'   - `"fp1"`: searches the supplied FP1 candidate powers (by default
 #'     \eqn{\mathcal{P} = \{-2, -1, -0.5, 0, 0.5, 1, 2, 3\}}) and selects
 #'     the single power that best fits the data. Because \eqn{p = 1} is a
@@ -432,7 +449,7 @@
 #'   and omitted columns use the default `df = 4`. Unnamed multi-value vectors
 #'   are not accepted. Variables with few distinct values may be restricted
 #'   automatically to a simpler form. `df` controls the adjustment model only
-#'   and does not set the MFPI interaction form; use `cont_var_forms` for that.
+#'   and does not set the MFPI interaction form; use `interaction_forms` for that.
 #'   In `mfpi.formula()`, only a scalar is accepted; use
 #'   `fp(variable, df = ...)` for per-variable values.
 #'
@@ -445,7 +462,8 @@
 #'   `center = TRUE`. Unnamed multi-value logical vectors are not accepted. In
 #'   `mfpi.formula()`, only a scalar is accepted; use
 #'   `fp(variable, center = ...)` for per-variable values. See `center_type` for
-#'   how centering references are computed in the interaction models.
+#'   how centering references are computed in the interaction models. Binary
+#'   and categorical interaction variables are always left uncentered.
 #'
 #' @param subset An optional logical vector or vector of unique positive row
 #'   indices selecting observations for fitting. In the formula interface, an
@@ -557,7 +575,7 @@
 #' @param acd_vars For `mfpi.default()`, an optional character vector naming
 #'   adjustment variables that use the approximate cumulative distribution
 #'   (ACD) transformation instead of a standard FP transformation. ACD is
-#'   disabled with a warning for variables in `cont_vars` because it would
+#'   disabled with a warning for variables in `interaction_vars` because it would
 #'   conflict with the interaction-form search. In `mfpi.formula()`, this
 #'   argument is not available; use `fp(variable, acd = TRUE)` or
 #'   `fp2(variable, acd = TRUE)` in the formula instead. If the same adjustment
@@ -575,9 +593,9 @@
 #'   values are rejected and must be explicitly recoded if they should
 #'   represent the zero group. The shift for
 #'   a zero-handled variable is set to 0. This option can be used for
-#'   variables in `cont_vars` and for adjustment variables. In the formula
+#'   variables in `interaction_vars` and for adjustment variables. In the formula
 #'   interface, this can also be specified with `fp(variable, zero = TRUE)`.
-#'   A zero-handled variable in `cont_vars` must retain at least one positive
+#'   A zero-handled variable in `interaction_vars` must retain at least one positive
 #'   observation after applying `subset`. For an ACD adjustment variable, at
 #'   least two distinct positive values are required and `A(0) = 0`.
 #'
@@ -587,7 +605,7 @@
 #'   rejected and require explicit recoding when scientifically appropriate.
 #'   Setting `catzero_vars` implies
 #'   `zero_vars` for the same variables. This option is disabled with a
-#'   warning for variables in `cont_vars`; only explicit `zero_vars` settings
+#'   warning for variables in `interaction_vars`; only explicit `zero_vars` settings
 #'   are preserved for those. In the formula interface, use
 #'   `fp(variable, catzero = TRUE)`.
 #'
@@ -599,7 +617,7 @@
 #'   `catzero_vars` and `zero_vars` for the same variables. Variables that fail
 #'   the component-proportion check are not assessed with SAZ and continue with
 #'   `catzero` or `zero` handling as applicable. This option is disabled with a
-#'   warning for variables in `cont_vars`. In the formula interface, use
+#'   warning for variables in `interaction_vars`. In the formula interface, use
 #'   `fp(variable, spike = TRUE)`.
 #'
 #' @param min_saz_prop A finite number in `(0, 0.5)` giving the
@@ -620,8 +638,9 @@
 #'   `family = "negbin"`, these settings apply to the regression iterations;
 #'   estimation of the dispersion parameter retains its default controls.
 #'
-#' @param winsorize A single logical value. If `TRUE`, Winsorise variables in
-#'   `cont_vars` before fitting. The default is `FALSE`.
+#' @param winsorize A single logical value. If `TRUE`, Winsorise continuous
+#'   variables in `interaction_vars` before fitting. Binary and categorical
+#'   interaction variables are not Winsorised. The default is `FALSE`.
 #'
 #' @param winsorize_probs A numeric vector of length two giving the lower and
 #'   upper probabilities used for Winsorisation. The values must be in `[0, 1]`
@@ -634,7 +653,7 @@
 #'   for a linear or FP1 form and three for FP2.
 #'
 #' @param p_adjust_method A character string accepted by [stats::p.adjust()].
-#'   It controls multiplicity adjustment across the variables in `cont_vars`
+#'   It controls multiplicity adjustment across the variables in `interaction_vars`
 #'   when `criterion = "pvalue"`. The default is `"none"`.
 #'
 #' @param verbose A single logical value indicating whether progress information
@@ -656,7 +675,7 @@
 #'   by the chosen criterion. Contains columns such as the deviance, degrees
 #'   of freedom, p-values, AIC and BIC comparisons, and selected powers;
 #' - `all_model_metrics`: the same columns for every variable evaluated in
-#'   `cont_vars`, regardless of whether its interaction was selected;
+#'   `interaction_vars`, regardless of whether its interaction was selected;
 #' - `best_interaction_model`: a named list of fitted model objects for
 #'   selected interactions;
 #' - `all_interaction_models`: a named list of fitted model objects for every
@@ -665,7 +684,7 @@
 #' - `adjustment_model`: the fitted [mfp2()] adjustment model. Its printed shifts
 #'   correspond to the original covariates, and it accepts prediction data on
 #'   the original covariate scale;
-#' - `cont_var_forms`: the interaction form (`"linear"`, `"fp1"`, or `"fp2"`)
+#' - `interaction_forms`: the interaction form (`"linear"`, `"fp1"`, or `"fp2"`)
 #'   specified for each tested variable;
 #' - `group_level_map`: the original group label corresponding to each group
 #'   value used in the fitted models;
@@ -699,8 +718,8 @@
 #'   lpsa ~ svi + fp(age) + fp(cavol) + fp(weight) + fp(bph) + fp(cp),
 #'   data = prostate,
 #'   group_var = "svi",
-#'   cont_vars = c("cavol", "age"),
-#'   cont_var_forms = c(cavol = "fp1", age = "linear"),
+#'   interaction_vars = c("cavol", "age"),
+#'   interaction_forms = c(cavol = "fp1", age = "linear"),
 #'   flex = "flex1",
 #'   verbose = FALSE
 #' )
@@ -743,8 +762,8 @@
 #'   y ~ trt + fp(age) + stage,
 #'   data = dat,
 #'   group_var = "trt",
-#'   cont_vars = "age",
-#'   cont_var_forms = c(age = "fp1"),
+#'   interaction_vars = "age",
+#'   interaction_forms = c(age = "fp1"),
 #'   keep = "stage",
 #'   verbose = FALSE
 #' )
@@ -763,8 +782,8 @@
 #'   x = x,
 #'   y = dat$y,
 #'   group_var = "trt",
-#'   cont_vars = "age",
-#'   cont_var_forms = c(age = "fp1"),
+#'   interaction_vars = "age",
+#'   interaction_forms = c(age = "fp1"),
 #'   term_groups = list(stage = colnames(stage_matrix)),
 #'   keep = "stage",
 #'   shift = c(age = 20),
@@ -786,6 +805,86 @@ mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
 }
 
+#' Describe MFPI Interaction Terms
+#'
+#' Converts the public interaction-variable specification into the design
+#' blocks used by the fitting and prediction code. Continuous terms are
+#' singleton columns. Binary terms are also singleton columns but are forced to
+#' the uncentred linear path. Categorical terms are represented by the complete
+#' treatment-contrast block recorded in `term_to_columns`.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_interaction_specs <- function(x, interaction_vars, interaction_forms,
+                                   term_to_columns) {
+  specs <- stats::setNames(vector("list", length(interaction_vars)),
+                           interaction_vars)
+
+  for (term in interaction_vars) {
+    columns <- term_to_columns[[term]]
+    if (is.null(columns) && term %in% colnames(x)) columns <- term
+    columns <- unique(as.character(columns))
+
+    if (length(columns) == 0L || any(!columns %in% colnames(x))) {
+      stop(
+        paste0(
+          "! Interaction variable `", term,
+          "` could not be resolved to fitted design columns."
+        ),
+        call. = FALSE
+      )
+    }
+
+    identity_term <- length(columns) == 1L && identical(columns, term)
+    observed <- x[, columns, drop = FALSE]
+    n_unique <- if (identity_term) length(unique(observed[, 1L])) else NA_integer_
+    kind <- if (!identity_term || length(columns) > 1L) {
+      "categorical"
+    } else if (n_unique == 2L) {
+      "binary"
+    } else {
+      "continuous"
+    }
+
+    if (kind != "continuous" && !identical(interaction_forms[[term]], "linear")) {
+      stop(
+        paste0(
+          "! Discrete interaction variable `", term, "` must use ",
+          "`interaction_forms = c(", term, " = \"linear\")`; `fp1` and ",
+          "`fp2` are available only for continuous variables."
+        ),
+        call. = FALSE
+      )
+    }
+
+    level_design <- NULL
+    level_labels <- NULL
+    if (kind == "binary") {
+      values <- sort(unique(observed[, 1L]))
+      level_design <- matrix(values, ncol = 1L,
+                             dimnames = list(NULL, columns))
+      level_labels <- as.character(values)
+    } else if (kind == "categorical") {
+      keep <- !duplicated(as.data.frame(observed))
+      level_design <- observed[keep, , drop = FALSE]
+      level_labels <- apply(level_design, 1L, paste, collapse = ":")
+    }
+
+    specs[[term]] <- list(
+      term = term,
+      form = interaction_forms[[term]],
+      kind = kind,
+      discrete = kind != "continuous",
+      columns = columns,
+      width = length(columns),
+      level_labels = level_labels,
+      level_design = level_design
+    )
+  }
+
+  specs
+}
+
 #' @describeIn mfpi Default method accepting a numeric matrix or data frame
 #'   \code{x} and response vector \code{y}.
 #'
@@ -795,8 +894,8 @@ mfpi.default <- function(
     x,
     y,
     group_var         = NULL,
-    cont_vars         = NULL,
-    cont_var_forms    = NULL,
+    interaction_vars         = NULL,
+    interaction_forms    = NULL,
     flex              = c("flex3", "flex1", "flex2", "flex4"),
     p_interact        = 0.05,
     min_improvement   = NULL,
@@ -842,7 +941,7 @@ mfpi.default <- function(
   # mfpi.default() validates and normalizes every argument, resolves the
   # zero/catzero/spike/acd flags and shift/scale/df settings per predictor
   # (mirroring mfp2.default()), then delegates to fit_mfpi() to select the
-  # adjustment model and test each cont_vars interaction in turn.
+  # adjustment model and test each interaction_vars interaction in turn.
   cl <- match.call()
 
   dots <- match.call(expand.dots = FALSE)$...
@@ -960,7 +1059,7 @@ mfpi.default <- function(
 
   nobs  <- as.integer(np[1L])
   nvars <- as.integer(np[2L])
-  # Step 3: Validate group_var, p_adjust_method, and cont_vars ----------------
+  # Step 3: Validate group_var, p_adjust_method, and interaction_vars ----------------
   # Validate group_var ---------------------------------------------------------
   if (is.null(group_var)) {
     stop(
@@ -983,10 +1082,10 @@ mfpi.default <- function(
          call. = FALSE)
   }
 
-  if (group_var %in% cont_vars) {
+  if (group_var %in% interaction_vars) {
     stop(
       paste0("! `group_var = '", group_var,
-             "'` must not also appear in `cont_vars`."),
+             "'` must not also appear in `interaction_vars`."),
       call. = FALSE
     )
   }
@@ -1013,29 +1112,31 @@ mfpi.default <- function(
     )
   }
 
-  # Validate cont_vars ---------------------------------------------------------
-  if (is.null(cont_vars) || !is.character(cont_vars) || length(cont_vars) == 0L) {
+  # Validate interaction_vars ---------------------------------------------------------
+  if (is.null(interaction_vars) || !is.character(interaction_vars) || length(interaction_vars) == 0L) {
     stop(
       paste0(
-        "! `cont_vars` must be a non-empty character vector naming continuous ",
-        "variables to test for interaction with `group_var = '", group_var, "'`."
+        "! `interaction_vars` must be a non-empty character vector naming ",
+        "continuous, binary, or categorical variables to test for interaction ",
+        "with `group_var = '", group_var, "'`."
       ),
       call. = FALSE
     )
   }
 
-  missing_cont <- setdiff(cont_vars, vnames)
+  valid_interaction_terms <- unique(c(vnames, names(term_to_columns)))
+  missing_cont <- setdiff(interaction_vars, valid_interaction_terms)
   if (length(missing_cont) > 0L) {
     stop(
-      paste0("! The following variables in `cont_vars` are not columns of `x`: ",
+      paste0("! The following variables in `interaction_vars` are not predictors in `x`: ",
              paste(missing_cont, collapse = ", "), "."),
       call. = FALSE
     )
   }
 
-  # MFPI interaction variables and the grouping variable must each be one raw
-  # identity-mapped column. Explicit mappings are adjustment covariates only,
-  # including binary factors represented by one non-identity dummy column.
+  # Grouped interaction variables must be requested by their conceptual term
+  # name so the complete fitted design block is tested jointly. The grouping
+  # variable itself cannot participate in a mapped predictor term.
   grouped_terms <- names(term_to_columns)[mapped_term_flags(term_to_columns)]
   grouped_columns <- unlist(term_to_columns[grouped_terms], use.names = FALSE)
 
@@ -1043,126 +1144,124 @@ mfpi.default <- function(
     stop("! `group_var` must not be included in `term_groups`.", call. = FALSE)
   }
 
-  grouped_cont <- cont_vars[
-    cont_vars %in% grouped_terms | cont_vars %in% grouped_columns
+  grouped_members <- interaction_vars[
+    interaction_vars %in% grouped_columns & !interaction_vars %in% grouped_terms
   ]
-  if (length(grouped_cont) > 0L) {
+  if (length(grouped_members) > 0L) {
+    owners <- vapply(grouped_members, function(column) {
+      names(term_to_columns)[vapply(
+        term_to_columns,
+        function(columns) column %in% columns,
+        logical(1L)
+      )][1L]
+    }, character(1L))
     stop(
       paste0(
-        "! Variables in `cont_vars` must be singleton continuous columns and ",
-        "cannot be grouped categorical terms: ",
-        paste(grouped_cont, collapse = ", "), "."
+        "! Grouped categorical interaction columns must be requested by their ",
+        "complete term name: ",
+        paste0(grouped_members, " -> ", owners, collapse = ", "), "."
       ),
       call. = FALSE
     )
   }
 
-  # Validate and expand cont_var_forms ------------------------------------------
-  # cont_var_forms must be either NULL (default: all fp1) or a named
-  # character vector whose names are a subset of cont_vars and whose values
-  # are each one of "linear", "fp1", "fp2". Missing cont_vars entries are
+  # Validate and expand interaction_forms ------------------------------------------
+  # interaction_forms must be either NULL (default: all fp1) or a named
+  # character vector whose names are a subset of interaction_vars and whose values
+  # are each one of "linear", "fp1", "fp2". Missing interaction_vars entries are
   # silently filled with "fp1". Unnamed vectors and unnamed scalars are
   # rejected to enforce explicit per-variable specification.
   valid_forms <- c("linear", "fp1", "fp2")
 
-  if (is.null(cont_var_forms)) {
-    cont_var_forms <- stats::setNames(
-      rep("fp1", length(cont_vars)), cont_vars
+  if (is.null(interaction_forms)) {
+    interaction_forms <- stats::setNames(
+      rep("fp1", length(interaction_vars)), interaction_vars
     )
   } else {
-    if (!is.character(cont_var_forms)) {
+    if (!is.character(interaction_forms)) {
       stop(
-        "! `cont_var_forms` must be a named character vector or NULL.",
+        "! `interaction_forms` must be a named character vector or NULL.",
         call. = FALSE
       )
     }
-    if (is.null(names(cont_var_forms)) || any(names(cont_var_forms) == "")) {
+    if (is.null(names(interaction_forms)) || any(names(interaction_forms) == "")) {
       stop(
         paste0(
-          "! Every entry of `cont_var_forms` must be named with a variable ",
-          "from `cont_vars`. Unnamed entries are not allowed.\n",
-          "  Example: cont_var_forms = c(age = \"fp2\", bmi = \"fp1\")"
+          "! Every entry of `interaction_forms` must be named with a variable ",
+          "from `interaction_vars`. Unnamed entries are not allowed.\n",
+          "  Example: interaction_forms = c(age = \"fp2\", bmi = \"fp1\")"
         ),
         call. = FALSE
       )
     }
-    unknown_names <- setdiff(names(cont_var_forms), cont_vars)
+    unknown_names <- setdiff(names(interaction_forms), interaction_vars)
     if (length(unknown_names) > 0L) {
       stop(
         paste0(
-          "! The following name(s) in `cont_var_forms` are not in `cont_vars`: ",
+          "! The following name(s) in `interaction_forms` are not in `interaction_vars`: ",
           paste(unknown_names, collapse = ", "), "."
         ),
         call. = FALSE
       )
     }
-    bad_values <- cont_var_forms[!cont_var_forms %in% valid_forms]
+    bad_values <- interaction_forms[!interaction_forms %in% valid_forms]
     if (length(bad_values) > 0L) {
       stop(
         paste0(
-          "! Invalid value(s) in `cont_var_forms`: ",
+          "! Invalid value(s) in `interaction_forms`: ",
           paste(unique(bad_values), collapse = ", "), ".\n",
           "  Allowed values are: \"linear\", \"fp1\", \"fp2\"."
         ),
         call. = FALSE
       )
     }
-    # Fill any cont_vars not mentioned with "fp1"
-    missing_vars <- setdiff(cont_vars, names(cont_var_forms))
+    # Fill any interaction_vars not mentioned with "fp1"
+    missing_vars <- setdiff(interaction_vars, names(interaction_forms))
     if (length(missing_vars) > 0L) {
-      cont_var_forms <- c(
-        cont_var_forms,
+      interaction_forms <- c(
+        interaction_forms,
         stats::setNames(rep("fp1", length(missing_vars)), missing_vars)
       )
     }
-    # Re-order to match cont_vars order
-    cont_var_forms <- cont_var_forms[cont_vars]
+    # Re-order to match interaction_vars order
+    interaction_forms <- interaction_forms[interaction_vars]
   }
 
-  # Check cont_vars are numeric -------------------------------------------------
-  non_numeric <- cont_vars[!vapply(cont_vars, function(v)
-    is.numeric(x[, v, drop = TRUE]), logical(1L))]
-  if (length(non_numeric) > 0L) {
-    stop(
-      paste0(
-        "! The following variable(s) in `cont_vars` are not numeric: ",
-        paste(non_numeric, collapse = ", "), ".\n",
-        "  FP transformation requires continuous numeric variables. ",
-        "Convert categorical variables to numeric dummy columns before ",
-        "calling `mfpi()`."
-      ),
-      call. = FALSE
-    )
-  }
+  interaction_specs <- mfpi_interaction_specs(
+    x = preprocess_x,
+    interaction_vars = interaction_vars,
+    interaction_forms = interaction_forms,
+    term_to_columns = term_to_columns
+  )
+  interaction_columns <- unique(unlist(
+    lapply(interaction_specs, `[[`, "columns"),
+    use.names = FALSE
+  ))
+  discrete_interaction_columns <- unique(unlist(
+    lapply(Filter(function(spec) isTRUE(spec$discrete), interaction_specs),
+           `[[`, "columns"),
+    use.names = FALSE
+  ))
+  continuous_interaction_vars <- names(Filter(
+    function(spec) identical(spec$kind, "continuous"),
+    interaction_specs
+  ))
 
-  # Check cont_vars have sufficient unique values --------------------------------
-  # Binary or near-categorical variables produce degenerate FP transformations.
-  # `x` has already been checked above to contain no missing or non-finite values.
-  # Count unique observed values directly.
-  n_unique <- vapply(cont_vars, function(v) {
-    length(unique(preprocess_x[, v, drop = TRUE]))
+  # Near-categorical continuous variables remain eligible, but the warning is
+  # relevant only to FP searches. Binary and factor terms use the discrete
+  # linear path and therefore do not trigger it.
+  n_unique_continuous <- vapply(continuous_interaction_vars, function(v) {
+    length(unique(preprocess_x[, interaction_specs[[v]]$columns, drop = TRUE]))
   }, integer(1L))
-
-
-  binary_cont <- cont_vars[n_unique <= 2L]
-  few_unique  <- cont_vars[n_unique > 2L & n_unique <= 5L]
-
-  if (length(binary_cont) > 0L) {
-    stop(
-      paste0(
-        "! The following variable(s) in `cont_vars` are binary (<=2 unique ",
-        "values): ", paste(binary_cont, collapse = ", "), ".\n",
-        "  Binary variables cannot be FP-transformed. Use `group_var` for ",
-        "binary treatment indicators, or omit these variables from `cont_vars`."
-      ),
-      call. = FALSE
-    )
-  }
+  few_unique <- continuous_interaction_vars[
+    n_unique_continuous > 2L & n_unique_continuous <= 5L &
+      interaction_forms[continuous_interaction_vars] != "linear"
+  ]
 
   if (length(few_unique) > 0L) {
     warning(
       paste0(
-        "! The following variable(s) in `cont_vars` have 5 or fewer unique ",
+        "! The following variable(s) in `interaction_vars` have 5 or fewer unique ",
         "values: ", paste(few_unique, collapse = ", "), ".\n",
         "  FP transformation may be unreliable for near-categorical variables. ",
         "Consider whether these variables are truly continuous."
@@ -1335,9 +1434,9 @@ mfpi.default <- function(
   catzero_vars_in <- intersect(expand_term_names(catzero_vars), vnames)
   spike_vars_in   <- intersect(expand_term_names(spike_vars),   vnames)
 
-  # For cont_vars, catzero/spike will be dropped later, so do not treat
-  # zero + catzero overlap on cont_vars as fatal.
-  overlap <- intersect(zero_vars_in, setdiff(catzero_vars_in, cont_vars))
+  # For interaction_vars, catzero/spike will be dropped later, so do not treat
+  # zero + catzero overlap on interaction_vars as fatal.
+  overlap <- intersect(zero_vars_in, setdiff(catzero_vars_in, interaction_columns))
 
   if (length(overlap) > 0L) {
     stop(
@@ -1589,7 +1688,7 @@ mfpi.default <- function(
   # converts these to the term names expected by the grouped MFP core.
   keep <- intersect(keep, valid_term_names)
 
-  # Step 10: Build zero/catzero/spike flags, suppress them for cont_vars, and
+  # Step 10: Build zero/catzero/spike flags, suppress them for interaction_vars, and
   # resolve spike-at-zero eligibility for the remaining adjustment variables -
   # Process zero_vars / catzero_vars / spike_vars to named logical vectors -----
   zero_flag    <- setNames(rep(FALSE, nvars), vnames)
@@ -1600,17 +1699,17 @@ mfpi.default <- function(
   if (length(catzero_vars) > 0L) catzero_flag[catzero_vars] <- TRUE
   if (length(spike_vars)   > 0L) spike_flag[spike_vars]     <- TRUE
 
-  # cont_vars may keep explicit zero handling, but cannot use catzero/spike.
+  # interaction_vars may keep explicit zero handling, but cannot use catzero/spike.
   # Developer note: this cleanup must happen BEFORE the cascade below. Otherwise
-  # spike_vars/catzero_vars would imply zero_vars for cont_vars, which is not the
+  # spike_vars/catzero_vars would imply zero_vars for interaction_vars, which is not the
   # intended MFPI stage-2 contract. Only explicit zero_vars should survive for
   # interaction variables.
-  spike_in_cont   <- intersect(names(spike_flag)[spike_flag], cont_vars)
-  catzero_in_cont <- intersect(names(catzero_flag)[catzero_flag], cont_vars)
+  spike_in_cont   <- intersect(names(spike_flag)[spike_flag], interaction_columns)
+  catzero_in_cont <- intersect(names(catzero_flag)[catzero_flag], interaction_columns)
 
   if (length(spike_in_cont) > 0L) {
     warning(
-      "The following `cont_vars` were also marked as `spike_vars`: ",
+      "The following `interaction_vars` were also marked as `spike_vars`: ",
       paste(spike_in_cont, collapse = ", "),
       ". Spike-at-zero handling is not supported for MFPI interaction variables; ",
       "`spike` and the implied `catzero` indicator are set to FALSE for these variables. ",
@@ -1624,7 +1723,7 @@ mfpi.default <- function(
 
   if (length(catzero_in_cont) > 0L) {
     warning(
-      "The following `cont_vars` were also marked as `catzero_vars`: ",
+      "The following `interaction_vars` were also marked as `catzero_vars`: ",
       paste(catzero_in_cont, collapse = ", "),
       ". Structural-zero binary indicators are not supported for MFPI interaction variables; ",
       "`catzero` is set to FALSE for these variables. ",
@@ -1665,7 +1764,7 @@ mfpi.default <- function(
   zero_flag[catzero_flag]  <- TRUE
 
   # Step 11: Reset zero/catzero/spike for all-positive or binary variables,
-  # and build the acd_vars flag (suppressed for cont_vars) -------------------
+  # and build the acd_vars flag (suppressed for interaction_vars) -------------------
   # Reset zero/catzero/spike for variables that contain only positive values -----
   if (any(zero_flag | catzero_flag | spike_flag)) {
     vars_pos <- names(zero_flag)[zero_flag | catzero_flag | spike_flag]
@@ -1741,17 +1840,17 @@ mfpi.default <- function(
     # interaction variable's functional form is handled by the flex0-flex4
     # search, and applying ACD upstream would change the interaction scale and
     # break reconstruction of f_j(x).
-    acd_in_cont <- intersect(acd_vars, cont_vars)
+    acd_in_cont <- intersect(acd_vars, interaction_columns)
 
     if (length(acd_in_cont) > 0L) {
       warning(
-        "ACD transformation is disabled for cont_vars: ",
+        "ACD transformation is disabled for interaction_vars: ",
         paste(acd_in_cont, collapse = ", "),
         ".",
         call. = FALSE
       )
 
-      acd_vars <- setdiff(acd_vars, cont_vars)
+      acd_vars <- setdiff(acd_vars, interaction_columns)
     }
 
     acd_flag[acd_vars] <- TRUE
@@ -1766,6 +1865,26 @@ mfpi.default <- function(
   # blocks receiving their structural df = 1 fallback.
   df_default <- df
   df_list <- setNames(assign_df(x = preprocess_x, df_default = df_default), vnames)
+
+  # Discrete interaction terms are ordinary, uncentred design columns. They
+  # must never inherit continuous-variable preprocessing or FP settings from
+  # global arguments. Keeping the original indicator coding also makes their
+  # coefficients and predictions directly comparable with glm(), lm(), and
+  # nnet::multinom() treatment-contrast fits.
+  if (length(discrete_interaction_columns) > 0L) {
+    df_list[discrete_interaction_columns] <- 1L
+    center[discrete_interaction_columns] <- FALSE
+    shift[discrete_interaction_columns] <- 0
+    scale[discrete_interaction_columns] <- 1
+    power_list[discrete_interaction_columns] <- rep(
+      list(1), length(discrete_interaction_columns)
+    )
+    zero_flag[discrete_interaction_columns] <- FALSE
+    catzero_flag[discrete_interaction_columns] <- FALSE
+    spike_flag[discrete_interaction_columns] <- FALSE
+    acd_flag[discrete_interaction_columns] <- FALSE
+    force_max_fp[discrete_interaction_columns] <- FALSE
+  }
 
   # Multi-column adjustment terms are fixed linear design blocks. They cannot
   # use continuous-variable extensions or structural-zero representations.
@@ -1919,24 +2038,24 @@ mfpi.default <- function(
   # actual fitting population. This shared boundary gives every flexibility
   # method the same variable-specific error instead of exposing flex2/flex4
   # transformation assertions to users.
-  zero_cont_vars <- intersect(
-    cont_vars,
+  zero_interaction_vars <- intersect(
+    interaction_vars,
     names(zero_flag)[zero_flag]
   )
 
-  if (length(zero_cont_vars) > 0L) {
+  if (length(zero_interaction_vars) > 0L) {
     has_positive <- vapply(
-      zero_cont_vars,
+      zero_interaction_vars,
       function(variable) any(x[, variable] > 0),
       logical(1L)
     )
 
     if (any(!has_positive)) {
       stop(
-        "Zero-handled variables in `cont_vars` must contain at least one ",
+        "Zero-handled variables in `interaction_vars` must contain at least one ",
         "positive value in the fitting data after subsetting. Problematic ",
         "variables: ",
-        paste(zero_cont_vars[!has_positive], collapse = ", "),
+        paste(zero_interaction_vars[!has_positive], collapse = ", "),
         ".",
         call. = FALSE
       )
@@ -1990,7 +2109,7 @@ mfpi.default <- function(
   # effect, these require at least three observations in every group. A two-row
   # group can still identify a one-column linear/FP1 interaction, so it retains
   # the existing warning below when no FP2 interaction is requested.
-  fp2_requested <- any(cont_var_forms == "fp2")
+  fp2_requested <- any(interaction_forms == "fp2")
   fp2_small_groups <- names(group_counts)[group_counts < 3L]
   if (fp2_requested && length(fp2_small_groups) > 0L) {
     stop(
@@ -2002,13 +2121,13 @@ mfpi.default <- function(
     )
   }
 
-  if (identical(center_type, "group") && length(zero_cont_vars) > 0L) {
+  if (identical(center_type, "group") && length(zero_interaction_vars) > 0L) {
     group_values <- x[, group_var]
     fitted_group_levels <- sort(unique(group_values))
     insufficient_positive <- character(0L)
 
-    for (variable in zero_cont_vars) {
-      required_positive <- if (identical(cont_var_forms[[variable]], "fp2")) {
+    for (variable in zero_interaction_vars) {
+      required_positive <- if (identical(interaction_forms[[variable]], "fp2")) {
         3L
       } else {
         2L
@@ -2057,16 +2176,16 @@ mfpi.default <- function(
     )
   }
 
-  # Step 15: Winsorise cont_vars (unless excluded by zero handling) ----------
-  # Winsorise cont_vars to reduce influence of extreme values ------------------
+  # Step 15: Winsorise interaction_vars (unless excluded by zero handling) ----------
+  # Winsorise interaction_vars to reduce influence of extreme values ------------------
   # Variables with final zero handling are excluded from Winsorisation so that
   # structural-zero values and the positive distribution are both preserved.
   winsorize_limits <- NULL
-  if (isTRUE(winsorize) && length(cont_vars) > 0L) {
+  if (isTRUE(winsorize) && length(continuous_interaction_vars) > 0L) {
     exclude_from_win <- names(zero_flag)[zero_flag]
-    win <- winsorize_cont_vars(
+    win <- winsorize_interaction_vars(
       x         = x,
-      cont_vars = cont_vars,
+      interaction_vars = continuous_interaction_vars,
       probs     = winsorize_probs,
       zero_vars = exclude_from_win
     )
@@ -2075,10 +2194,10 @@ mfpi.default <- function(
     if (verbose) {
       message(sprintf(
         "Winsorising %d cont_var(s) at percentiles (%g, %g).",
-        length(cont_vars), winsorize_probs[1L], winsorize_probs[2L]
+        length(continuous_interaction_vars), winsorize_probs[1L], winsorize_probs[2L]
       ))
 
-      excluded <- intersect(exclude_from_win, cont_vars)
+      excluded <- intersect(exclude_from_win, continuous_interaction_vars)
       if (length(excluded) > 0L) {
         message(sprintf(
           "Excluded from Winsorisation because of zero handling: %s.",
@@ -2144,8 +2263,9 @@ mfpi.default <- function(
     group_var         = group_var,
     include_group_var = include_group_var,
     flex              = flex,
-    cont_vars         = cont_vars,
-    cont_var_forms    = cont_var_forms,
+    interaction_vars         = interaction_vars,
+    interaction_forms    = interaction_forms,
+    interaction_specs    = interaction_specs,
     p_interact        = p_interact,
     show_models       = show_models,
     min_improvement   = min_improvement,
@@ -2167,7 +2287,8 @@ mfpi.default <- function(
   fit$p_adjust_method   <- p_adjust_method
   fit$p_interact        <- p_interact
   fit$min_improvement   <- min_improvement
-  fit$cont_var_forms    <- cont_var_forms
+  fit$interaction_forms    <- interaction_forms
+  fit$interaction_specs    <- interaction_specs
 
   # `fit_mfpi()` stores `x_train_internal`, the post-preprocessing training
   # matrix used for manual prediction reconstruction. It contains shifted/scaled
@@ -2195,7 +2316,7 @@ mfpi.default <- function(
   }
   fit$zero_vars      <- zero_flag
   fit$center_type    <- center_type
-  fit$cont_vars      <- cont_vars
+  fit$interaction_vars      <- interaction_vars
   fit$term_to_columns <- fit$adjustment_term_to_columns
   fit$call <- cl
 
@@ -2230,7 +2351,7 @@ mfpi.default <- function(
 #' @section Parameters restricted to scalar values in the formula interface:
 #' The following \code{mfpi.default()} parameters must be supplied as scalar
 #' arguments only; per-variable specification via \code{fp()} or \code{fp2()} is not
-#' supported: \code{group_var}, \code{cont_vars}, \code{cont_var_forms},
+#' supported: \code{group_var}, \code{interaction_vars}, \code{interaction_forms},
 #' \code{flex}, \code{p_interact}, \code{min_improvement},
 #' \code{include_group_var}, \code{show_models}, \code{cycles},
 #' \code{criterion}, \code{keep}, \code{xorder}, \code{ties},
@@ -2248,11 +2369,12 @@ mfpi.default <- function(
 #'
 #' @section Categorical terms in the formula interface:
 #' Unordered and ordered factor predictors other than \code{group_var} are
-#' treated as complete adjustment terms and selected jointly. Do not wrap a
-#' categorical predictor in \code{fp()} or \code{fp2()}; those wrappers are for
-#' continuous variables. The factor term may be named in \code{keep}, but it
-#' cannot be named in \code{cont_vars}. For prediction, supply factors in their
-#' original form; their fitted levels and contrasts are reused automatically.
+#' treated as complete terms. They may be selected jointly in the adjustment
+#' model or named in \code{interaction_vars} with
+#' \code{interaction_forms = "linear"}. Do not wrap a categorical predictor in
+#' \code{fp()} or \code{fp2()}; those wrappers are for continuous variables.
+#' For prediction, supply factors in their original form; their fitted levels
+#' and contrasts are reused automatically.
 #' @section Strata and offset in the formula:
 #' For Cox models, \code{strata()} terms may be included directly in the formula,
 #' for example \code{Surv(t, d) ~ fp(age) + strata(centre)}. Multiple strata
@@ -2267,8 +2389,8 @@ mfpi.default <- function(
 mfpi.formula <- function(formula,
                          data,
                          group_var         = NULL,
-                         cont_vars         = NULL,
-                         cont_var_forms    = NULL,
+                         interaction_vars         = NULL,
+                         interaction_forms    = NULL,
                          flex              = c("flex3", "flex1", "flex2", "flex4"),
                          p_interact        = 0.05,
                          min_improvement   = NULL,
@@ -2481,49 +2603,10 @@ mfpi.formula <- function(formula,
   }
 
 
-  # Step 4: Validate cont_vars against the *original* data types, before
-  # model.matrix() expands factors and would otherwise produce a confusing
-  # "variable not found" error instead of a clear "categorical" message -----
-  # ---------------------------------------------------------------------------
-  # Validate cont_vars against original data types (before model.matrix)
-  # ---------------------------------------------------------------------------
-  # Check here using original data types because model.matrix dummy-codes
-  # factors, which would cause a misleading "variable not found" error later
-  # rather than a clear "this is categorical" message.
-  if (!is.null(cont_vars)) {
-    # Factor or character columns cannot be FP-transformed
-    factor_in_cont <- cont_vars[vapply(cont_vars, function(v)
-      v %in% names(data) && (is.factor(data[[v]]) || is.character(data[[v]])),
-      logical(1L))]
-    if (length(factor_in_cont) > 0L) {
-      stop(
-        "! The following variable(s) in `cont_vars` are categorical ",
-        "(factor or character) in `data`: ",
-        paste(factor_in_cont, collapse = ", "), ".\n",
-        "  FP transformation requires continuous numeric variables. ",
-        "Categorical variables cannot be tested for interaction via MFPI.",
-        call. = FALSE
-      )
-    }
-
-    # Numeric binary columns (0/1 or two unique values) in the original data
-    binary_in_cont <- cont_vars[vapply(cont_vars, function(v)
-      v %in% names(data) &&
-        is.numeric(data[[v]]) &&
-        length(unique(stats::na.omit(data[[v]]))) <= 2L,
-      logical(1L))]
-    if (length(binary_in_cont) > 0L) {
-      stop(
-        "! The following variable(s) in `cont_vars` are binary ",
-        "(2 or fewer unique values) in `data`: ",
-        paste(binary_in_cont, collapse = ", "), ".\n",
-        "  Binary variables cannot be FP-transformed. ",
-        "Use `group_var` for binary treatment indicators, or omit these ",
-        "variables from `cont_vars`.",
-        call. = FALSE
-      )
-    }
-  }
+  # Discrete interaction variables are validated after model.matrix() has
+  # created their complete treatment-contrast blocks. At that point the
+  # default method can enforce the linear-only rule and compute the correct
+  # block width for the interaction degrees of freedom.
 
   # Evaluate formula observation arguments once, then validate them.
   n_data <- nrow(data)
@@ -3152,8 +3235,8 @@ mfpi.formula <- function(formula,
     x                 = x,
     y                 = y,
     group_var         = group_var,
-    cont_vars         = cont_vars,
-    cont_var_forms    = cont_var_forms,
+    interaction_vars         = interaction_vars,
+    interaction_forms    = interaction_forms,
     flex              = flex,
     p_interact        = p_interact,
     min_improvement   = min_improvement,
@@ -3210,6 +3293,35 @@ mfpi.formula <- function(formula,
   fit$formula_offset_xlevels <- formula_offset_xlevels
   fit$formula_strata_terms <- formula_strata_terms
   fit$formula_strata_xlevels <- formula_strata_xlevels
+
+  # Replace design-pattern labels for formula-supplied discrete interactions
+  # with the original binary/factor levels. The corresponding contrast rows are
+  # retained so prediction and plotting can evaluate one point per level
+  # without recomputing or guessing the fit-time coding.
+  for (term in interaction_vars) {
+    spec <- fit$interaction_specs[[term]]
+    if (is.null(spec) || !isTRUE(spec$discrete) || !term %in% names(mf)) next
+
+    raw_term <- mf[[term]]
+    level_labels <- if (is.factor(raw_term)) {
+      levels(droplevels(raw_term))
+    } else if (is.character(raw_term)) {
+      unique(raw_term)
+    } else if (is.logical(raw_term)) {
+      as.character(sort(unique(raw_term)))
+    } else {
+      as.character(sort(unique(raw_term)))
+    }
+
+    raw_labels <- as.character(raw_term)
+    first_rows <- match(level_labels, raw_labels)
+    if (anyNA(first_rows)) next
+
+    spec$level_labels <- level_labels
+    spec$level_design <- x[first_rows, spec$columns, drop = FALSE]
+    spec$formula_discrete <- TRUE
+    fit$interaction_specs[[term]] <- spec
+  }
   fit$call <- call
 
   fit

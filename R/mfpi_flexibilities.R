@@ -132,7 +132,9 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
                      min_saz_prop = 0.10,
                      flex, scale_var = 1, shift_var = 0,
                      center_type = c("grand", "group"), has_offset,
-                     run_test = TRUE, fitter = "base") {
+                     run_test = TRUE, fitter = "base",
+                     interaction_columns = cont_var,
+                     interaction_kind = "continuous") {
 
   center_type <- match.arg(center_type)
 
@@ -149,9 +151,27 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     )
   }
 
-  if (!is.character(cont_var) || length(cont_var) != 1L || !cont_var %in% colnames(x)) {
-    stop("`cont_var` must be a single character string naming a column of `x`.",
+  if (!is.character(cont_var) || length(cont_var) != 1L ||
+      is.na(cont_var) || !nzchar(cont_var)) {
+    stop("`cont_var` must be a single non-empty character string.",
          call. = FALSE)
+  }
+
+  interaction_columns <- unique(as.character(interaction_columns))
+  if (length(interaction_columns) == 0L || anyNA(interaction_columns) ||
+      any(!nzchar(interaction_columns)) ||
+      any(!interaction_columns %in% colnames(x))) {
+    stop("`interaction_columns` must name one or more columns of `x`.",
+         call. = FALSE)
+  }
+
+  if (identical(interaction_kind, "continuous") &&
+      (length(interaction_columns) != 1L ||
+       !identical(interaction_columns, cont_var))) {
+    stop(
+      "Continuous MFPI interactions must map to their single named design column.",
+      call. = FALSE
+    )
   }
 
   if (!is.character(group_var) || length(group_var) != 1L || !group_var %in% colnames(x)) {
@@ -196,6 +216,11 @@ flex_fit <- function(x, y, cont_var, group_var, group_dummies, xadj,
     has_offset     = has_offset
   )
 
+  if (identical(flex, "flex0")) {
+    common_args$interaction_columns <- interaction_columns
+    common_args$interaction_kind <- interaction_kind
+  }
+
   do.call(get(flex, mode = "function"), common_args)
 }
 
@@ -223,7 +248,9 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
                   group_dummies,
                   center_type = c("grand", "group"),
                   scale_var = 1, shift_var = 0, has_offset,
-                  run_test = TRUE, fitter = "base") {
+                  run_test = TRUE, fitter = "base",
+                  interaction_columns = cont_var,
+                  interaction_kind = "continuous") {
 
   center_type <- match.arg(center_type)
 
@@ -233,34 +260,74 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     if (is.null(colnames(xadj))) stop("`xadj` must have column names.", call. = FALSE)
   }
 
-  # Extract column vectors -----------------------------------------------------
-  contvar_vec  <- x[, cont_var,  drop = FALSE]
+  # Extract focal block and grouping vector -----------------------------------
+  interaction_columns <- unique(as.character(interaction_columns))
+  if (length(interaction_columns) == 0L ||
+      any(!interaction_columns %in% colnames(x))) {
+    stop("`interaction_columns` must name columns of `x`.", call. = FALSE)
+  }
+  contvar_vec  <- x[, interaction_columns, drop = FALSE]
   groupvar_vec <- x[, group_var, drop = FALSE]
   group_levels <- sort(unique(groupvar_vec))
   k            <- length(group_levels)
 
   # Design matrices ------------------------------------------------------------
+  discrete <- !identical(interaction_kind, "continuous")
+  if (discrete) {
+    r <- ncol(contvar_vec)
+    z_names <- unlist(lapply(group_levels, function(group) {
+      paste0(cont_var, group, seq_len(r))
+    }), use.names = FALSE)
+    z <- matrix(0, nrow = nrow(x), ncol = k * r,
+                dimnames = list(NULL, z_names))
+    coefficient_groups <- stats::setNames(
+      lapply(seq_len(k), function(g) {
+        z_names[seq.int((g - 1L) * r + 1L, g * r)]
+      }),
+      as.character(group_levels)
+    )
+    group_values <- as.vector(groupvar_vec)
+    for (g in seq_len(k)) {
+      rows <- group_values == group_levels[[g]]
+      cols <- seq.int((g - 1L) * r + 1L, g * r)
+      z[rows, cols] <- contvar_vec[rows, , drop = FALSE]
+    }
 
-  z_vars <- create_z_variables(
-    cont_var  = contvar_vec,
-    group_var = groupvar_vec,
-    power     = 1L,
-    scale     = 1,
-    shift     = 0,
-    center    = center,
-    zero        = zero_var,
-    center_type = center_type,
-    scale_var   = scale_var
-  )
+    attr(z, "column_groups") <- coefficient_groups
+    x_main <- cbind(group_dummies, contvar_vec, xadj)
+    x_interaction <- cbind(group_dummies, z, xadj)
+    center_vals <- NULL
+    znames <- z_names
+    bestfp_main <- rep(1L, r)
+    bestfp_interaction <- stats::setNames(
+      replicate(k, rep(1L, r), simplify = FALSE),
+      z_names[seq.int(1L, length(z_names), by = r)]
+    )
+  } else {
+    if (ncol(contvar_vec) != 1L) {
+      stop("Continuous MFPI interactions must use one design column.",
+           call. = FALSE)
+    }
+    z_vars <- create_z_variables(
+      cont_var  = contvar_vec,
+      group_var = groupvar_vec,
+      power     = 1L,
+      scale     = 1,
+      shift     = 0,
+      center    = center,
+      zero        = zero_var,
+      center_type = center_type,
+      scale_var   = scale_var
+    )
 
-  x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
-  x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
-  center_vals   <- z_vars$center_vals
-  coefficient_groups <- z_vars$column_groups
-  # Power bookkeeping ----------------------------------------------------------
-  znames              <- sprintf("%s%d%d", cont_var, group_levels, 1L)
-  bestfp_main         <- 1L
-  bestfp_interaction  <- setNames(replicate(k, 1L, simplify = FALSE), znames)
+    x_main        <- cbind(group_dummies, z_vars$xtransformed, xadj)
+    x_interaction <- cbind(group_dummies, z_vars$z,            xadj)
+    center_vals   <- z_vars$center_vals
+    coefficient_groups <- z_vars$column_groups
+    znames              <- sprintf("%s%d%d", cont_var, group_levels, 1L)
+    bestfp_main         <- 1L
+    bestfp_interaction  <- setNames(replicate(k, 1L, simplify = FALSE), znames)
+  }
 
   # Interaction test -----------------------------------------------------------
   test_results <- NULL
@@ -272,6 +339,7 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       xmain              = x_main,
       xinteraction       = x_interaction,
       degree             = 0L,
+      linear_width       = ncol(contvar_vec),
       bestfp_main        = bestfp_main,
       bestfp_interaction = bestfp_interaction,
       flex               = "flex0",
@@ -298,6 +366,8 @@ flex0 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     xinteraction       = x_interaction,
     znames             = znames,
     coefficient_groups = coefficient_groups,
+    interaction_kind    = interaction_kind,
+    interaction_columns = interaction_columns,
     test_results       = test_results
   )
 }

@@ -15,7 +15,7 @@ test_that("predict.mfpi() returns fitted-function predictions", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -41,7 +41,7 @@ test_that("predict.mfpi() type = 'both' returns functions and differences", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -63,7 +63,7 @@ test_that("predict.mfpi ordinary Gaussian prediction matches stored glm", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE
@@ -141,9 +141,9 @@ test_that("predict.mfpi stratified Cox prediction matches stored coxph", {
     survival::Surv(time, status) ~ age + sex + strata(inst),
     data = dat,
     family = "cox",
-    cont_vars = "age",
+    interaction_vars = "age",
     group_var = "sex",
-    cont_var_forms = c(age = "linear"),
+    interaction_forms = c(age = "linear"),
     p_interact = 0.95,
     verbose = FALSE
   )
@@ -185,7 +185,7 @@ test_that("predict.mfpi defaults safely and normalizes GLM lp", {
   fit <- mfpi(
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
-    cont_vars = "cavol",
+    interaction_vars = "cavol",
     group_var = "svi",
     flex = "flex1",
     verbose = FALSE

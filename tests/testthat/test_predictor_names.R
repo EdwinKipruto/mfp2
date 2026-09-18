@@ -112,7 +112,7 @@ test_that("mfpi validates predictor names before resolving group_var", {
     mfpi(
       x_dup, y,
       group_var = "group",
-      cont_vars = "age",
+      interaction_vars = "age",
       df = 1, select = 1, verbose = FALSE
     ),
     "must be unique"
@@ -124,7 +124,7 @@ test_that("mfpi validates predictor names before resolving group_var", {
     mfpi(
       x_backtick, y,
       group_var = "group",
-      cont_vars = "age",
+      interaction_vars = "age",
       df = 1, select = 1, verbose = FALSE
     ),
     "must not contain backticks"
@@ -136,7 +136,7 @@ test_that("mfpi validates predictor names before resolving group_var", {
     mfpi(
       x_empty, y,
       group_var = "group",
-      cont_vars = "age",
+      interaction_vars = "age",
       df = 1, select = 1, verbose = FALSE
     ),
     "must not be empty"

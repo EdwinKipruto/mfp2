@@ -1103,9 +1103,10 @@ predict.mfp2 <- function(object,
     }
 
     if (
-      object$family_string %in% c("cox", "survreg") &&
+      object$family_string %in% c("cox", "survreg", "finegray") &&
       !is.null(newdata_raw) &&
-      prediction_has_formula_strata(object)
+      prediction_has_formula_strata(object) &&
+      !is.null(object$mfp2_internal_names$strata)
     ) {
       strata <- reconstruct_formula_strata_newdata(object, newdata_raw)
     }
@@ -2955,7 +2956,9 @@ prepare_newdata_for_predict <- function(object,
   # formula after the predictor design has been reconstructed. The exact helper
   # names are recovered from fit-time metadata so user predictors named
   # `strata_`, `offset_`, or even `..mfp2_*` cannot be overwritten.
-  if (object$family_string %in% c("cox", "survreg") && !is.null(strata)) {
+  if (object$family_string %in% c("cox", "survreg", "finegray") &&
+      !is.null(strata) &&
+      !is.null(object$mfp2_internal_names$strata)) {
     strata_name <- mfp2_internal_fit_name(
       object,
       component = "strata"

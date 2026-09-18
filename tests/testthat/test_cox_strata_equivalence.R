@@ -676,7 +676,7 @@ test_that("exact Cox ties are rejected before MFP-based selection", {
     mfpi(
       x, y,
       group_var = "group",
-      cont_vars = "x",
+      interaction_vars = "x",
       family = "cox",
       ties = "exact",
       verbose = FALSE
@@ -688,7 +688,7 @@ test_that("exact Cox ties are rejected before MFP-based selection", {
       survival::Surv(time, status) ~ x + group,
       data = dat,
       group_var = "group",
-      cont_vars = "x",
+      interaction_vars = "x",
       family = "cox",
       ties = "exact",
       verbose = FALSE
@@ -865,8 +865,8 @@ test_that("MFPI accepts character Cox strata through the external argument", {
       pmin(event_time, censor_time),
       as.integer(event_time <= censor_time)
     ),
-    family = "cox", group_var = "trt", cont_vars = "x",
-    cont_var_forms = c(x = "linear"), keep = "z", strata = strata_char,
+    family = "cox", group_var = "trt", interaction_vars = "x",
+    interaction_forms = c(x = "linear"), keep = "z", strata = strata_char,
     df = 1, select = 1, alpha = 1, cycles = 1, shift = 0, scale = 1,
     center = FALSE, p_interact = 1, ties = "breslow", verbose = FALSE
   )

@@ -34,7 +34,7 @@
 \arguments{
 \item{x}{An object of class \code{"mfpi"}.}
 
-\item{terms}{Optional character vector naming the continuous variables to
+\item{terms}{Optional character vector naming the interaction variables to
 plot. If \code{NULL}, only retained interaction terms are plotted; when no
 interactions were retained, no plots are produced. If supplied, the
 requested terms are plotted when their fitted models are available in the
@@ -52,7 +52,8 @@ Subtitles may include the interaction type, group contrast, and available
 selection result.}
 
 \item{show_rug}{Logical scalar. If \code{TRUE}, rug marks are added along the
-horizontal axis to show the covariate evaluation values.}
+horizontal axis to show continuous covariate evaluation values. Rug marks
+are not added for binary or categorical interaction terms.}
 
 \item{show_ci_fitted}{Logical scalar. If \code{TRUE}, confidence bands are shown
 around the group-specific fitted functions.}
@@ -130,7 +131,7 @@ of rug marks.}
 \value{
 Invisibly returns a nested named list of plots.
 
-The outer list is named by continuous variable. Within each variable, the
+The outer list is named by interaction variable. Within each variable, the
 inner list contains one element for each displayed group contrast.
 
 Each element is:
@@ -146,7 +147,9 @@ Returned plots can be printed, modified with \pkg{ggplot2}, combined with
 }
 \description{
 Produces group-specific fitted-function plots, between-group difference
-plots, or both for continuous variables evaluated by \code{\link[=mfpi]{mfpi()}}.
+plots, or both for variables evaluated by \code{\link[=mfpi]{mfpi()}}. Continuous terms are
+drawn as curves; binary and categorical terms are drawn as unconnected
+level-specific points.
 }
 \details{
 The plotted quantities are shown on the model's linear-predictor scale.
@@ -160,8 +163,8 @@ Three plot types are available through \code{plot_type}.
 \describe{
 \item{\code{"fitted"}}{
 Plots the group-specific partial linear predictor for the selected
-continuous variable separately for the reference group and one comparison
-group on shared axes. For a GLM, each curve includes the model intercept,
+interaction variable separately for the reference group and one comparison
+group on shared axes. For a GLM, each curve or point set includes the model intercept,
 the relevant group main effect, and the group-specific covariate function.
 For a Cox model, it includes the group main effect and the group-specific
 covariate function. Adjustment-variable contributions, offsets, and the
@@ -274,7 +277,7 @@ interaction selection.
 If \code{terms = NULL}, plots are produced for interactions retained by the
 selected MFPI criterion.
 
-If \code{terms} is supplied, the requested continuous variables are plotted
+If \code{terms} is supplied, the requested interaction variables are plotted
 regardless of whether their interactions were retained, provided that the
 corresponding fitted models are available in the \code{mfpi} object.
 }
@@ -305,7 +308,7 @@ fit <- mfpi(
     fp(bph) + fp(cp),
   data = prostate,
   group_var = "svi",
-  cont_vars = c("cavol", "age"),
+  interaction_vars = c("cavol", "age"),
   flex = "flex1",
   include_group_var = TRUE,
   center = FALSE,

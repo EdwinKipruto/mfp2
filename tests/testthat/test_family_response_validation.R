@@ -188,8 +188,8 @@ test_that("public fitting interfaces reject fractional count responses", {
       x = x_mfpi,
       y = y_fractional,
       group_var = "group",
-      cont_vars = "exposure",
-      cont_var_forms = c(exposure = "linear"),
+      interaction_vars = "exposure",
+      interaction_forms = c(exposure = "linear"),
       family = "poisson",
       verbose = FALSE
     ),

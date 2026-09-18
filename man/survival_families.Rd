@@ -7,7 +7,11 @@
 \usage{
 survreg_family(dist = "weibull", scale = 0, parms = NULL)
 
-finegray_family(etype = NULL, timefix = TRUE)
+finegray_family(
+  etype = NULL,
+  timefix = TRUE,
+  strata_action = c("both", "censoring", "baseline")
+)
 }
 \arguments{
 \item{dist}{A distribution accepted by \code{\link[survival:survreg]{survival::survreg()}}.}
@@ -22,6 +26,22 @@ finegray_family(etype = NULL, timefix = TRUE)
 state, matching \code{finegray()}.}
 
 \item{timefix}{Logical; pass event times through survival's round-off check.}
+
+\item{strata_action}{A character string controlling how \code{strata()} terms in
+the model formula are used in Fine--Gray models. Three options are
+available, following Zhou et al. (2011, \emph{Biometrics}):
+\describe{
+\item{\code{"both"}}{(default) Strata stratify \strong{both} the censoring
+distribution (IPCW weights estimated within each stratum) \strong{and} the
+baseline subdistribution hazard (each stratum gets its own baseline
+hazard in the weighted Cox fit). This is the standard stratified
+Fine--Gray model of Zhou et al. (2011).}
+\item{\code{"censoring"}}{Strata stratify the censoring distribution only.
+The baseline subdistribution hazard is common across all strata.}
+\item{\code{"baseline"}}{Strata stratify the baseline subdistribution hazard
+only. The censoring distribution is estimated pooling across strata.
+Equivalent to \code{ctype = 2} in Zhou et al. (2011).}
+}}
 }
 \value{
 An \code{mfp2_survreg_family} or \code{mfp2_finegray_family} specification for
@@ -47,4 +67,9 @@ response once. Repeated candidate models then use
 robust \code{coxph} fit. The public model interface remains
 \code{family = finegray_family(etype = ...)}. An \code{id} argument is required by
 \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} only for a start--stop multi-state response.
+}
+\references{
+Zhou B, Fine J, Laird G (2011). Competing risks regression for stratified
+data. \emph{Biometrics}, \strong{67}(2), 661--670.
+\doi{10.1111/j.1541-0420.2010.01493.x}
 }

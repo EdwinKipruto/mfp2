@@ -37,8 +37,8 @@ test_that("23.11 mfpi serialization preserves ordinary and fitted-function predi
     lpsa ~ fp(age) + svi + fp(cavol),
     data = prostate,
     group_var = "svi",
-    cont_vars = "cavol",
-    cont_var_forms = c(cavol = "fp1"),
+    interaction_vars = "cavol",
+    interaction_forms = c(cavol = "fp1"),
     flex = "flex1",
     verbose = FALSE
   )

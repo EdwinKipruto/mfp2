@@ -6,7 +6,7 @@ test_that("Winsorisation rejects an all-missing continuous variable", {
   x <- cbind(age = rep(NA_real_, 5L))
 
   expect_error(
-    mfp2:::winsorize_cont_vars(x, cont_vars = "age"),
+    mfp2:::winsorize_interaction_vars(x, interaction_vars = "age"),
     "variable `age`: it contains no non-missing values",
     fixed = TRUE
   )
@@ -17,7 +17,7 @@ test_that("Winsorisation leaves a single observed value unchanged", {
   x <- cbind(age = c(NA_real_, 5, NA_real_))
 
   result <- expect_silent(
-    mfp2:::winsorize_cont_vars(x, cont_vars = "age")
+    mfp2:::winsorize_interaction_vars(x, interaction_vars = "age")
   )
 
   expect_equal(result$x, x)
@@ -31,9 +31,9 @@ test_that("Winsorisation rejects coincident quantile limits", {
   x <- cbind(age = c(rep(0, 9L), 1))
 
   expect_error(
-    mfp2:::winsorize_cont_vars(
+    mfp2:::winsorize_interaction_vars(
       x,
-      cont_vars = "age",
+      interaction_vars = "age",
       probs = c(0.25, 0.75)
     ),
     "lower and upper quantile limits are identical",
@@ -48,9 +48,9 @@ test_that("Winsorisation retains ordinary distinct quantile limits", {
   expected_limits <- as.numeric(stats::quantile(x[, "age"], probs = probs))
 
   result <- expect_silent(
-    mfp2:::winsorize_cont_vars(
+    mfp2:::winsorize_interaction_vars(
       x,
-      cont_vars = "age",
+      interaction_vars = "age",
       probs = probs
     )
   )

@@ -1890,12 +1890,18 @@ fit_finegray <- function(x,
     stop("Internal error: cached Fine--Gray offset is invalid.", call. = FALSE)
   }
 
+  # Baseline subdistribution hazard stratification (Zhou et al. 2011).
+  # When strata_action is "both" or "baseline", prepared$strata_expanded
+  # contains the expanded strata factor aligned to the pseudo-observations.
+  fg_strata <- prepared$strata_expanded
+  istrata_fg <- if (!is.null(fg_strata)) as.integer(fg_strata) else NULL
+
   if (fast) {
     fit <- mfp2_with_cox_convergence_guard(
       survival::agreg.fit(
         x = x_expanded,
         y = prepared$y,
-        strata = NULL,
+        strata = istrata_fg,
         offset = offset_expanded,
         init = NULL,
         control = control,
@@ -1940,6 +1946,15 @@ fit_finegray <- function(x,
       } else {
         paste(rhs, "+", paste0("offset(", offset_col, ")"))
       }
+    }
+
+    # Add strata to the formula for baseline hazard stratification
+    if (!is.null(fg_strata)) {
+      strata_col <- mfp2_internal_name("strata", used_names, preferred = "..mfp2_fg_strata")
+      used_names <- c(used_names, strata_col)
+      data[[strata_col]] <- fg_strata
+      internal_names$strata <- strata_col
+      rhs <- paste(rhs, "+", paste0("strata(", strata_col, ")"))
     }
 
     cluster_col <- mfp2_internal_name("cluster", used_names, preferred = "..mfp2_subject")

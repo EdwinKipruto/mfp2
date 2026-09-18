@@ -69,9 +69,31 @@ survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
 }
 
 
+#' @param strata_action A character string controlling how `strata()` terms in
+#'   the model formula are used in Fine--Gray models. Three options are
+#'   available, following Zhou et al. (2011, *Biometrics*):
+#'   \describe{
+#'     \item{`"both"`}{(default) Strata stratify **both** the censoring
+#'       distribution (IPCW weights estimated within each stratum) **and** the
+#'       baseline subdistribution hazard (each stratum gets its own baseline
+#'       hazard in the weighted Cox fit). This is the standard stratified
+#'       Fine--Gray model of Zhou et al. (2011).}
+#'     \item{`"censoring"`}{Strata stratify the censoring distribution only.
+#'       The baseline subdistribution hazard is common across all strata.}
+#'     \item{`"baseline"`}{Strata stratify the baseline subdistribution hazard
+#'       only. The censoring distribution is estimated pooling across strata.
+#'       Equivalent to `ctype = 2` in Zhou et al. (2011).}
+#'   }
+#'
+#' @references
+#' Zhou B, Fine J, Laird G (2011). Competing risks regression for stratified
+#' data. *Biometrics*, **67**(2), 661--670.
+#' \doi{10.1111/j.1541-0420.2010.01493.x}
+#'
 #' @rdname survival_families
 #' @export
-finegray_family <- function(etype = NULL, timefix = TRUE) {
+finegray_family <- function(etype = NULL, timefix = TRUE,
+                            strata_action = c("both", "censoring", "baseline")) {
   if (!is.null(etype)) {
     if (!is.atomic(etype) || is.matrix(etype) || !is.null(dim(etype)) ||
         length(etype) < 1L || anyNA(etype)) {
@@ -85,12 +107,14 @@ finegray_family <- function(etype = NULL, timefix = TRUE) {
   if (!is.logical(timefix) || length(timefix) != 1L || is.na(timefix)) {
     stop("! `timefix` must be `TRUE` or `FALSE`.", call. = FALSE)
   }
+  strata_action <- match.arg(strata_action)
 
   structure(
     list(
       family = "finegray",
       etype = etype,
       timefix = timefix,
+      strata_action = strata_action,
       prepared = NULL
     ),
     class = c("mfp2_finegray_family", "mfp2_family")
@@ -428,8 +452,14 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
   )
   d[[".mfp2_response"]] <- y
 
+  strata_action <- if (!is.null(family$strata_action)) family$strata_action else "both"
+
   rhs <- c(".mfp2_row_id", ".mfp2_subject_id")
-  if (!is.null(strata)) {
+  # Pass strata to finegray() for stratified censoring weights when
+  # strata_action is "both" or "censoring". When "baseline", the censoring
+  # distribution is estimated pooling across strata (Zhou et al. ctype = 2).
+  stratify_censoring <- strata_action %in% c("both", "censoring")
+  if (!is.null(strata) && stratify_censoring) {
     d[[".mfp2_censor_strata"]] <- normalize_cox_strata(strata, nobs = n)
     rhs <- c(rhs, "strata(.mfp2_censor_strata)")
   }
@@ -476,6 +506,17 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
     fg[[".mfp2_fgstatus"]]
   )
 
+  # When strata_action is "both" or "baseline", strata must be passed through
+  # to the weighted Cox fit for baseline subdistribution hazard stratification.
+  # Expand the original-row strata along the row_map so it aligns with the
+  # Fine--Gray pseudo-observations.
+  stratify_baseline <- strata_action %in% c("both", "baseline")
+  strata_expanded <- if (!is.null(strata) && stratify_baseline) {
+    normalize_cox_strata(strata, nobs = n)[row_map]
+  } else {
+    NULL
+  }
+
   family$prepared <- list(
     y = y_fg,
     weights = as.numeric(fg[[".mfp2_fgwt"]]),
@@ -485,6 +526,9 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
     # vector for every weighted Cox fit.
     offset_expanded = as.numeric(offset[row_map]),
     subject_id = fg[[".mfp2_subject_id"]],
+    # Expanded strata for baseline subdistribution hazard stratification.
+    # NULL when strata_action = "censoring" or when no strata are present.
+    strata_expanded = strata_expanded,
     event = attr(fg, "event", exact = TRUE),
     nevents = sum(fg[[".mfp2_fgstatus"]] > 0),
     n_original = n,
@@ -589,8 +633,14 @@ prepare_family_for_fit <- function(family, family_string, y, weights,
     family <- prepare_finegray_family(
       family, y, weights, strata, id, offset = offset
     )
-    # `strata` has already been consumed by finegray() to estimate censoring
-    # weights; it is not a baseline-hazard stratum in the weighted Cox fit.
+    # Strata handling depends on strata_action (Zhou et al. 2011):
+    #   "both"     — strata used for censoring (in finegray) AND baseline hazard
+    #   "censoring"— strata used for censoring only; baseline hazard is common
+    #   "baseline" — strata used for baseline hazard only; censoring is pooled
+    # The expanded strata for the Cox fit are stored in family$prepared by
+    # prepare_finegray_family() and consumed by fit_finegray(); return NULL
+    # here because fit_finegray reads them from prepared$strata_expanded
+    # (not from the strata argument passed through fit_model).
     return(list(family = family, strata = NULL))
   }
   if (identical(family_string, "multinomial")) {

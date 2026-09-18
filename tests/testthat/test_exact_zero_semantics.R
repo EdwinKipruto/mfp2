@@ -58,7 +58,7 @@ test_that("mfpi matrix and formula interfaces reject negative requested variable
       x = x,
       y = dat$y,
       group_var = "treatment",
-      cont_vars = "age",
+      interaction_vars = "age",
       flex = "flex1",
       verbose = FALSE
     )
@@ -71,7 +71,7 @@ test_that("mfpi matrix and formula interfaces reject negative requested variable
       y ~ treatment + fp(age) + fp(exposure, spike = TRUE),
       data = dat,
       group_var = "treatment",
-      cont_vars = "age",
+      interaction_vars = "age",
       flex = "flex1",
       verbose = FALSE
     ),

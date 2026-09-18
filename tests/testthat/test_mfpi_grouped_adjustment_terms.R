@@ -19,8 +19,8 @@ test_that("MFPI formula groups unordered-factor adjustment columns", {
     y ~ trt + x + stage + z,
     data = dat,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     keep = "stage",
     df = 1,
     select = 1,
@@ -64,8 +64,8 @@ test_that("MFPI formula groups ordered-factor polynomial contrasts", {
     y ~ trt + x + stage + z,
     data = dat,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     keep = "stage",
     df = 1,
     select = 1,
@@ -106,8 +106,8 @@ test_that("MFPI names inline factor adjustments by their source variable", {
     y ~ trt + x + factor(stage_code) + z,
     data = dat,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     keep = "stage_code",
     df = 1,
     select = 1,
@@ -142,8 +142,8 @@ test_that("MFPI retains binary inline factors as source-name mappings", {
     y ~ trt + x + factor(binary_stage) + z,
     data = dat,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     keep = "binary_stage",
     df = 1,
     select = 1,
@@ -185,8 +185,8 @@ test_that("MFPI matrix interface accepts manual grouped adjustment columns", {
     x,
     dat$y,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     term_groups = list(stage = c("stageII", "stageIII")),
     keep = "stage",
     df = 1,
@@ -231,8 +231,8 @@ test_that("MFPI grouped ordered-factor columns are linear under scalar df defaul
     x,
     y,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     term_groups = list(stage = colnames(stage_mm)),
     keep = "stage",
     p_interact = 1,
@@ -277,8 +277,8 @@ test_that("MFPI grouped matrix columns default to scale one", {
     x,
     y,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     term_groups = list(stage = colnames(stage_mm)),
     keep = "stage",
     p_interact = 1,
@@ -298,9 +298,9 @@ test_that("MFPI grouped matrix columns default to scale one", {
 })
 
 
-# Test purpose: Ensures grouped categorical terms and their member columns
-# cannot be requested as continuous MFPI interaction variables.
-test_that("MFPI grouped terms cannot be used as cont_vars", {
+# Test purpose: A categorical interaction must be requested by its complete
+# conceptual term rather than one dummy-column member.
+test_that("MFPI rejects a grouped dummy member as an interaction variable", {
   dat <- make_mfpi_factor_data()
   stage_mm <- stats::model.matrix(~ stage, dat)[, -1L, drop = FALSE]
 
@@ -315,11 +315,11 @@ test_that("MFPI grouped terms cannot be used as cont_vars", {
       x,
       dat$y,
       group_var = "trt",
-      cont_vars = "stageII",
+      interaction_vars = "stageII",
       term_groups = list(stage = c("stageII", "stageIII")),
       verbose = FALSE
     ),
-    "singleton continuous|grouped categorical"
+    "complete term name"
   )
 })
 
@@ -339,8 +339,8 @@ test_that("include_group_var stores group dummies as one conceptual term", {
     y ~ trt + x + stage + z,
     data = dat,
     group_var = "trt",
-    cont_vars = "x",
-    cont_var_forms = c(x = "linear"),
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
     include_group_var = TRUE,
     keep = "stage",
     df = 1,

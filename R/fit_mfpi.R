@@ -150,7 +150,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'     \item \strong{Adjustment-model selection} (Step 1): controls variable
 #'       elimination and FP degree selection in \code{fit_mfp()}.
 #'     \item \strong{Interaction test} (Step 2): tests the pre-specified
-#'       functional form from \code{cont_var_forms} against its main-effects
+#'       functional form from \code{interaction_forms} against its main-effects
 #'       counterpart in \code{evaluate_interactions()}.
 #'   }
 #'   In the internal \code{fit_mfp()} calls within \code{flex1()} and
@@ -191,7 +191,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   suppress centring for specific predictors.
 #' @param acd_vars Named logical vector of length \eqn{p}. Whether each
 #'   predictor undergoes the ACD transformation. Must be \code{FALSE} for all
-#'   variables in \code{cont_vars}.
+#'   variables in \code{interaction_vars}.
 #' @param zero_vars Named logical vector of length \eqn{p}. Whether each
 #'   predictor treats exact-zero values as structural zero before transformation.
 #' @param catzero_vars Named logical vector of length \eqn{p}. Whether each
@@ -203,7 +203,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   proportion in each component of a spike-at-zero covariate: the
 #'   zero component and the positive component. Only
 #'   affects variables in the adjustment model, since spike-at-zero handling is
-#'   suppressed for variables in \code{cont_vars}.
+#'   suppressed for variables in \code{interaction_vars}.
 #' @param use_ftest Logical. If \code{TRUE} and \code{family = "gaussian"},
 #'   use an F-test (via \code{calculate_f_test()}) rather than a
 #'   chi-square likelihood-ratio test for the interaction p-value. Also
@@ -215,10 +215,12 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   covariate in the adjustment model.
 #' @param flex Character string; \code{"flex1"}, \code{"flex2"},
 #'   \code{"flex3"}, or \code{"flex4"}.
-#' @param cont_vars Character vector of continuous variables to test for
-#'   interaction with \code{group_var}.
-#' @param cont_var_forms Named character vector with names matching
-#'   \code{cont_vars} and values in \code{c("linear", "fp1", "fp2")}.
+#' @param interaction_vars Character vector of continuous, binary, or
+#'   categorical variables to test for interaction with \code{group_var}.
+#' @param interaction_specs Named list mapping each interaction term to its
+#'   fitted design columns and recording whether it is continuous or discrete.
+#' @param interaction_forms Named character vector with names matching
+#'   \code{interaction_vars} and values in \code{c("linear", "fp1", "fp2")}.
 #'   Specifies the functional form to use for each variable. Constructed and
 #'   validated by \code{mfpi.default()} before being passed here.
 #' @param p_interact Numeric. Significance threshold for
@@ -248,7 +250,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   returned on the original raw scale.
 #' @param digits Positive integer. Significant digits for printed output.
 #' @param p_adjust_method Character string. Method for adjusting p-values
-#'   across all variables in \code{cont_vars} when \code{criterion = "pvalue"}.
+#'   across all variables in \code{interaction_vars} when \code{criterion = "pvalue"}.
 #'   Passed to \code{\link[stats]{p.adjust}}. Default \code{"none"}.
 #' @param term_to_columns Complete named lookup created by
 #'   \code{mfpi.default()}. Each name is a conceptual adjustment term and each
@@ -261,13 +263,13 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   \item{\code{best_model_metrics}}{Data frame of metrics for the best
 #'     interaction model per selected variable.}
 #'   \item{\code{all_model_metrics}}{Tibble of metrics for the interaction
-#'     model evaluated for each variable in \code{cont_vars}, using the form
-#'     specified by \code{cont_var_forms}.}
+#'     model evaluated for each variable in \code{interaction_vars}, using the form
+#'     specified by \code{interaction_forms}.}
 #'   \item{\code{best_interaction_model}}{Named list of fitted interaction model
 #'     objects for the **winning** model per selected variable.}
-#'   \item{\code{all_interaction_models}}{Named list. Names are \code{cont_vars};
+#'   \item{\code{all_interaction_models}}{Named list. Names are \code{interaction_vars};
 #'     each element is the fitted model object for that variable using the form
-#'     specified in \code{cont_var_forms}, stored directly without an additional
+#'     specified in \code{interaction_forms}, stored directly without an additional
 #'     form-named candidate-list layer, regardless of whether it was selected or
 #'     not.}
 #'   \item{\code{center_vals_list}}{Named list (one element per
@@ -307,8 +309,8 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #' are fixed for the remainder of the algorithm.
 #'
 #' \strong{Step 2 - Univariable interactions.} For each variable in
-#' \code{cont_vars}, the interaction model is fitted using the form
-#' pre-specified in \code{cont_var_forms} and compared to its main-effects
+#' \code{interaction_vars}, the interaction model is fitted using the form
+#' pre-specified in \code{interaction_forms} and compared to its main-effects
 #' model via \code{evaluate_interactions()}. No data-driven selection among
 #' functional forms is performed.
 #'
@@ -323,8 +325,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
                      df, xorder,
                      fp_powers, ties, strata, nocenter, acd_vars, zero_vars,
                      catzero_vars, spike_vars,  min_saz_prop, use_ftest,
-                     control, group_var, include_group_var, flex, cont_vars,
-                     cont_var_forms,
+                     control, group_var, include_group_var, flex, interaction_vars,
+                     interaction_forms, interaction_specs,
                      p_interact, min_improvement, show_models, verbose,
                      digits, scale, shift = NULL, quiet = FALSE, has_offset,
                      center_type = c("grand", "group"),
@@ -552,8 +554,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     mfp2_message(rule_thick)
     mfp2_message(
       "  Testing ",
-      length(cont_vars),
-      " continuous variable(s) against group '",
+      length(interaction_vars),
+      " interaction variable(s) against group '",
       group_var,
       "'"
     )
@@ -575,8 +577,9 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     adj_catzero        = adj_catzero,
     adj_spike          = adj_spike,
     adj_spike_decision = adj_spike_decision,
-    cont_vars          = cont_vars,
-    cont_var_forms     = cont_var_forms,
+    interaction_vars          = interaction_vars,
+    interaction_forms     = interaction_forms,
+    interaction_specs     = interaction_specs,
     flex               = flex,
     weights            = weights,
     offset             = offset,
@@ -625,7 +628,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
       "  DONE: ",
       n_selected,
       " of ",
-      length(cont_vars),
+      length(interaction_vars),
       " interactions selected"
     )
     mfp2_message(rule_thick)
@@ -675,6 +678,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     var_winners              = univ_results$var_winners,
     adjustment_model         = adjustment_model,
     adjustment_term_to_columns = processed_data$term_to_columns,
+    interaction_specs          = interaction_specs,
     univariable_interactions = univ_results,
     digits                   = digits
   )
@@ -1156,7 +1160,7 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 #'   \itemize{
 #'     \item \code{group_var} has been \strong{removed} - it is not adjusted
 #'       for here because it is the variable whose interaction with
-#'       \code{cont_vars} is being tested.
+#'       \code{interaction_vars} is being tested.
 #'     \item If \code{include_group_var = TRUE} in \code{mfpi()},
 #'       \code{preprocess_data()} has already re-added \code{group_var} as a
 #'       set of binary dummy columns (one per non-reference level), with
@@ -1460,8 +1464,8 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 
 #' Evaluate Univariable Interactions Between a Grouping and Continuous Variables
 #'
-#' For each variable in `cont_vars`, fits the interaction model using the
-#' pre-specified functional form from `cont_var_forms` and tests it against
+#' For each variable in `interaction_vars`, fits the interaction model using the
+#' pre-specified functional form from `interaction_forms` and tests it against
 #' the corresponding main-effects model according to `criterion`. Variables
 #' whose model does not meet the selection threshold are excluded from the
 #' output. No data-driven selection among functional forms is performed.
@@ -1493,9 +1497,12 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #'   \code{1} = FP term + binary indicator, \code{2} = FP term only,
 #'   \code{3} = binary indicator only. Used together with \code{adj_spike}
 #'   when re-transforming adjustment variables via \code{transform_matrix()}.
-#' @param cont_vars Character vector of continuous variables to test.
-#' @param cont_var_forms Named character vector of length \code{length(cont_vars)}.
-#'   Names are variable names from \code{cont_vars}; values are one of
+#' @param interaction_vars Character vector of continuous, binary, or
+#'   categorical variables to test.
+#' @param interaction_specs Named list of validated interaction-term design
+#'   specifications constructed by \code{mfpi.default()}.
+#' @param interaction_forms Named character vector of length \code{length(interaction_vars)}.
+#'   Names are variable names from \code{interaction_vars}; values are one of
 #'   \code{"linear"}, \code{"fp1"}, or \code{"fp2"}. Each variable is tested
 #'   using exactly its pre-specified form; no selection among forms is performed.
 #'   Constructed and validated by \code{mfpi.default()} before being passed here.
@@ -1543,7 +1550,7 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #' @param p_adjust_method Character string. Method for adjusting p-values,
 #'   passed to [stats::p.adjust()]. Only applied when `criterion = "pvalue"`.
 #'   Default `"none"`. Adjusted p-values are applied across all variables in
-#'   \code{cont_vars} (one test per variable).
+#'   \code{interaction_vars} (one test per variable).
 #' @param quiet Logical. Reserved internal control for non-verbose diagnostics.
 #'
 #' @return A list with the following components:
@@ -1551,12 +1558,12 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #'   \item{`best_model_metrics`}{Data frame of evaluation metrics for the
 #'     selected interaction model per selected variable. Empty if none selected.}
 #'   \item{`all_model_metrics`}{Data frame of metrics for the interaction model
-#'     evaluated for each variable in `cont_vars`, using the form specified
-#'     by `cont_var_forms`.}
+#'     evaluated for each variable in `interaction_vars`, using the form specified
+#'     by `interaction_forms`.}
 #'   \item{`best_interaction_model`}{Named list of fitted model objects for
 #'     selected variables.}
 #'   \item{`all_interaction_models`}{Named list (one element per `cont_var`)
-#'     of model objects, each fitted using the form from `cont_var_forms` and
+#'     of model objects, each fitted using the form from `interaction_forms` and
 #'     stored directly without an additional form-named list layer.}
 #'   \item{`center_vals_list`}{Named list of centering constants per
 #'     selected variable.}
@@ -1574,8 +1581,8 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #' }
 #'
 #' @section Selection logic:
-#' For each variable in \code{cont_vars}, exactly one interaction model is
-#' fitted using the form pre-specified in \code{cont_var_forms}. The model is
+#' For each variable in \code{interaction_vars}, exactly one interaction model is
+#' fitted using the form pre-specified in \code{interaction_forms}. The model is
 #' tested against its main-effects counterpart:
 #'
 #' \describe{
@@ -1599,7 +1606,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
                                   adj_fp_powers,
                                   adj_zero, adj_catzero, adj_spike,
                                   adj_spike_decision,
-                                  cont_vars, cont_var_forms, flex,
+                                  interaction_vars, interaction_forms,
+                                  interaction_specs, flex,
                                   weights, offset, xorder, ties, strata,
                                   use_ftest, control, nocenter, family,
                                   family_string, fp_powers, cycles, criterion,
@@ -1649,9 +1657,9 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   # Pre-allocate result containers
   # ---------------------------------------------------------------------------
   # Each variable contributes exactly one candidate form because MFPI now uses
-  # pre-specified `cont_var_forms`; there is no data-driven search over linear,
+  # pre-specified `interaction_forms`; there is no data-driven search over linear,
   # FP1, and FP2 inside this loop.
-  n_vars  <- length(cont_vars)
+  n_vars  <- length(interaction_vars)
   n_types <- 1L
 
   best_metrics_list      <- vector("list", n_vars)
@@ -1660,14 +1668,14 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   all_interaction_models <- vector("list", n_vars)
   center_vals_list       <- vector("list", n_vars)
 
-  names(best_interaction_model) <- cont_vars
-  names(all_interaction_models) <- cont_vars
-  names(center_vals_list)       <- cont_vars
+  names(best_interaction_model) <- interaction_vars
+  names(all_interaction_models) <- interaction_vars
+  names(center_vals_list)       <- interaction_vars
 
   # Store the best candidate for every variable, even if it is not retained.
   # This is needed later for multiplicity-adjusted p-value decisions.
   var_winners <- vector("list", n_vars)
-  names(var_winners) <- cont_vars
+  names(var_winners) <- interaction_vars
 
   # P-value selection is deferred only when a real multiplicity adjustment is
   # requested. If p_adjust_method = "none", raw p-values are final immediately.
@@ -1731,8 +1739,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   # ===========================================================================
   # Main loop: evaluate one pre-specified interaction candidate per cont_var
   # ===========================================================================
-  for (var_name in cont_vars) {
-    var_idx <- match(var_name, cont_vars)
+  for (var_name in interaction_vars) {
+    var_idx <- match(var_name, interaction_vars)
 
     res <- evaluate_interaction_for_variable(
       var_name               = var_name,
@@ -1745,7 +1753,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       selected_adj_vars      = selected_adj_vars,
       skip_adjustment        = skip_adjustment,
       xadj                   = xadj,
-      cont_var_forms         = cont_var_forms,
+      interaction_forms         = interaction_forms,
+      interaction_specs         = interaction_specs,
       degree_lookup          = degree_lookup,
       processed_data         = processed_data,
       criterion              = criterion,
@@ -1811,7 +1820,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     # of whether it was selected. Each variable has exactly one pre-specified
     # form, so exposing the legacy candidate-list layer would make the public
     # object one level deeper than documented.
-    interaction_type <- cont_var_forms[[var_name]]
+    interaction_type <- interaction_forms[[var_name]]
     interaction_model <- res$candidate_models[[interaction_type]]
 
     if (is.null(interaction_model)) {
@@ -1846,7 +1855,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (verbose && criterion %in% c("aic", "bic") && !adjusting_pvals) {
     print_interaction_step3_summary(
       var_winners            = var_winners,
-      cont_vars              = cont_vars,
+      interaction_vars              = interaction_vars,
       mode                   = "ic",
       ic_col                 = ic_col,
       ic_label               = ic_label,
@@ -1860,7 +1869,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
   if (verbose && criterion == "pvalue" && !adjusting_pvals) {
     print_interaction_step3_summary(
       var_winners            = var_winners,
-      cont_vars              = cont_vars,
+      interaction_vars              = interaction_vars,
       mode                   = "pvalue",
       p_interact             = p_interact,
       p_adjust_method        = p_adjust_method,
@@ -1880,7 +1889,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
       var_winners      = var_winners,
       all_metrics_list = all_metrics_list,
       all_idx          = all_idx,
-      cont_vars        = cont_vars,
+      interaction_vars        = interaction_vars,
       n_vars           = n_vars,
       n_types          = n_types,
       p_adjust_method  = p_adjust_method,
@@ -1898,7 +1907,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
     if (verbose) {
       print_interaction_step3_summary(
         var_winners            = var_winners,
-        cont_vars              = cont_vars,
+        interaction_vars              = interaction_vars,
         mode                   = "pvalue",
         p_interact             = p_interact,
         p_adjust_method        = p_adjust_method,
@@ -1986,7 +1995,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #'
 #' Internal helper used by \code{evaluate_interactions()}. Fits the single
 #' pre-specified interaction form (linear, FP1, or FP2, per
-#' \code{cont_var_forms[[var_name]]}) for one continuous variable against the
+#' \code{interaction_forms[[var_name]]}) for one continuous variable against the
 #' grouping variable, resolves the AIC/BIC or p-value winner (trivial here
 #' since there is only one candidate form), prints the verbose per-variable
 #' candidate table and provisional decision line, and, when p-value
@@ -1994,12 +2003,12 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #' retain/drop decision for this variable.
 #'
 #' This was previously inlined in the body of \code{evaluate_interactions()}'s
-#' main \code{for (var_name in cont_vars)} loop. Extracting it isolates the
+#' main \code{for (var_name in interaction_vars)} loop. Extracting it isolates the
 #' per-variable fitting and decision logic from the loop's bookkeeping (the
 #' running \code{all_idx}/\code{best_idx} counters and pre-allocated result
 #' containers, which remain in the caller since they span all variables).
 #' This makes it possible to test or debug a single variable's interaction
-#' evaluation without needing to drive the full \code{cont_vars} loop.
+#' evaluation without needing to drive the full \code{interaction_vars} loop.
 #'
 #' @param var_name Character scalar. Name of the continuous variable being
 #'   tested for interaction with the grouping variable.
@@ -2011,7 +2020,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #' @param adjustment_cache,selected_adj_vars,skip_adjustment,xadj Adjustment-
 #'   matrix inputs. \code{xadj_current} for this variable is assembled
 #'   internally via \code{mfpi_make_xadj_current()}.
-#' @param cont_var_forms Named character vector; \code{cont_var_forms[[var_name]]}
+#' @param interaction_forms Named character vector; \code{interaction_forms[[var_name]]}
 #'   gives the pre-specified interaction form (\code{"linear"}, \code{"fp1"},
 #'   or \code{"fp2"}).
 #' @param degree_lookup Named integer vector mapping form name to FP degree,
@@ -2054,7 +2063,8 @@ evaluate_interaction_for_variable <- function(var_name,
                                               selected_adj_vars,
                                               skip_adjustment,
                                               xadj,
-                                              cont_var_forms,
+                                              interaction_forms,
+                                              interaction_specs,
                                               degree_lookup,
                                               processed_data,
                                               criterion,
@@ -2122,8 +2132,16 @@ evaluate_interaction_for_variable <- function(var_name,
   best_type   <- NULL
   best_score  <- Inf
 
-  # The form for this variable is pre-specified by cont_var_forms.
-  active_type <- cont_var_forms[[var_name]]
+  # The form for this variable is pre-specified by interaction_forms.
+  active_type <- interaction_forms[[var_name]]
+  interaction_spec <- interaction_specs[[var_name]]
+  if (is.null(interaction_spec)) {
+    stop(
+      paste0("Internal error: no interaction specification is stored for `",
+             var_name, "`."),
+      call. = FALSE
+    )
+  }
 
   # Candidate containers are still list-based for consistency with the older
   # multi-form structure and with downstream storage conventions.
@@ -2156,6 +2174,8 @@ evaluate_interaction_for_variable <- function(var_name,
       x             = x,
       y             = y,
       cont_var      = var_name,
+      interaction_columns = interaction_spec$columns,
+      interaction_kind = interaction_spec$kind,
       group_var     = cat_info$group_var,
       group_dummies = cat_info$dummies,
       xadj          = xadj_current,
@@ -2165,9 +2185,11 @@ evaluate_interaction_for_variable <- function(var_name,
       family        = family,
       family_string = family_string,
       fitter        = fitter,
-      fp_cand       = processed_data$updated_params$fp_powers[[var_name]],
+      fp_cand       = if (isTRUE(interaction_spec$discrete)) 1 else
+        processed_data$updated_params$fp_powers[[var_name]],
       use_ftest     = use_ftest,
-      center        = processed_data$updated_params$center[var_name],
+      center        = if (isTRUE(interaction_spec$discrete)) FALSE else
+        processed_data$updated_params$center[var_name],
       center_type   = center_type,
       xorder        = xorder,
       weights       = weights,
@@ -2176,12 +2198,13 @@ evaluate_interaction_for_variable <- function(var_name,
       control       = control,
       nocenter      = nocenter,
       cycles        = cycles,
-      zero_var      = processed_data$updated_params$zero_vars[var_name],
+      zero_var      = if (isTRUE(interaction_spec$discrete)) FALSE else
+        processed_data$updated_params$zero_vars[var_name],
       spike_var     = FALSE,
       min_saz_prop = min_saz_prop,
       flex          = flex,
-      scale_var     = if (!is.null(scale)) unname(scale[var_name]) else 1,
-      shift_var     = if (!is.null(shift)) unname(shift[var_name]) else 0,
+      scale_var     = if (isTRUE(interaction_spec$discrete)) 1 else if (!is.null(scale)) unname(scale[var_name]) else 1,
+      shift_var     = if (isTRUE(interaction_spec$discrete)) 0 else if (!is.null(shift)) unname(shift[var_name]) else 0,
       run_test      = TRUE,
       has_offset    = has_offset
     )
@@ -2357,7 +2380,7 @@ evaluate_interaction_for_variable <- function(var_name,
 #' @param all_metrics_list,all_idx The pre-allocated all-model metrics list and
 #'   the running count of rows written into it by the main candidate-fitting
 #'   loop.
-#' @param cont_vars,n_vars,n_types Used to size containers and iterate in a
+#' @param interaction_vars,n_vars,n_types Used to size containers and iterate in a
 #'   stable order.
 #' @param p_adjust_method Multiplicity-adjustment method passed to
 #'   \code{stats::p.adjust()} (e.g. \code{"BH"}, \code{"bonferroni"}).
@@ -2378,7 +2401,7 @@ evaluate_interaction_for_variable <- function(var_name,
 finalize_adjusted_pvalue_selection <- function(var_winners,
                                                all_metrics_list,
                                                all_idx,
-                                               cont_vars,
+                                               interaction_vars,
                                                n_vars,
                                                n_types,
                                                p_adjust_method,
@@ -2391,7 +2414,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
     all_candidate_metrics$p_adjusted <- NA_real_
 
     valid_p <- is.finite(all_candidate_metrics$pvalue)
-    n_planned_tests <- length(cont_vars) * n_types
+    n_planned_tests <- length(interaction_vars) * n_types
 
     if (any(valid_p)) {
       all_candidate_metrics$p_adjusted[valid_p] <- if (p_adjust_method == "none") {
@@ -2407,7 +2430,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 
     # Copy adjusted p-values back into the per-variable winners so the final
     # selection and verbose summary use adjusted scores.
-    for (vn in cont_vars) {
+    for (vn in interaction_vars) {
       rows_idx <- which(all_candidate_metrics$variable == vn &
                           is.finite(all_candidate_metrics$p_adjusted))
       if (length(rows_idx) == 0L) next
@@ -2426,10 +2449,10 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
   # Rebuild retained-model containers from adjusted p-value decisions.
   best_idx <- 0L
   best_metrics_list <- vector("list", n_vars)
-  best_interaction_model <- stats::setNames(vector("list", n_vars), cont_vars)
-  center_vals_list       <- stats::setNames(vector("list", n_vars), cont_vars)
+  best_interaction_model <- stats::setNames(vector("list", n_vars), interaction_vars)
+  center_vals_list       <- stats::setNames(vector("list", n_vars), interaction_vars)
 
-  for (vn in cont_vars) {
+  for (vn in interaction_vars) {
     w <- var_winners[[vn]]
     if (is.null(w$fit) || is.null(w$metric)) next
 
@@ -2471,7 +2494,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #'
 #' @param var_winners Named list of per-variable winner records (see
 #'   \code{evaluate_interaction_for_variable()}).
-#' @param cont_vars Character vector of tested variable names, in display
+#' @param interaction_vars Character vector of tested variable names, in display
 #'   order.
 #' @param mode One of \code{"ic"} or \code{"pvalue"}.
 #' @param ic_col,ic_label Used only when \code{mode == "ic"}: the metrics
@@ -2489,7 +2512,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #' @keywords internal
 #' @noRd
 print_interaction_step3_summary <- function(var_winners,
-                                            cont_vars,
+                                            interaction_vars,
                                             mode = c("ic", "pvalue"),
                                             ic_col = NULL,
                                             ic_label = NULL,
@@ -2522,7 +2545,7 @@ print_interaction_step3_summary <- function(var_winners,
   }
   mfp2_message(rule_thin)
 
-  for (vn in cont_vars) {
+  for (vn in interaction_vars) {
     w <- var_winners[[vn]]
 
     if (is.null(w$fit) || is.null(w$metric)) {
@@ -2622,7 +2645,7 @@ print_interaction_step3_summary <- function(var_winners,
 #' its own adjustment set if it was selected by the adjustment model.
 #'
 #' Rebuilding the full transformed adjustment matrix inside every
-#' \code{cont_vars} loop iteration is therefore unnecessary. This helper avoids
+#' \code{interaction_vars} loop iteration is therefore unnecessary. This helper avoids
 #' that repeated work by transforming each conceptual adjustment term once.
 #' The companion helper \code{mfpi_make_xadj_current()} then assembles the
 #' current adjustment matrix by dropping complete term blocks.
@@ -2730,7 +2753,7 @@ mfpi_build_adjustment_block_cache <- function(x,
 
   # Always return the same cache structure, even when adjustment is skipped.
   # This keeps evaluate_interactions() simple and avoids special cases inside
-  # the cont_vars loop.
+  # the interaction_vars loop.
   adj_blocks <- stats::setNames(
     vector("list", length(selected_adj_vars)),
     selected_adj_vars

@@ -72,8 +72,8 @@ fit <- mfpi(
   lpsa ~ fp(age) + svi + fp(cavol),
   data = prostate,
   group_var = "svi",
-  cont_vars = "cavol",
-  cont_var_forms = c(cavol = "fp2"),
+  interaction_vars = "cavol",
+  interaction_forms = c(cavol = "fp2"),
   flex = "flex4",
   p_interact = 1,
   verbose = FALSE

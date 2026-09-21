@@ -42,6 +42,23 @@ survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
     )
   }
 
+  # Fail fast on an unrecognized built-in distribution name rather than deferring
+  # the error to fit time. A `dist` supplied as a list is treated as a custom
+  # distribution object and passed through unchecked; custom distributions
+  # registered into `survival::survreg.distributions` at runtime are likewise
+  # not validated here.
+  if (is.character(dist)) {
+    valid_dists <- names(survival::survreg.distributions)
+    if (!dist %in% valid_dists) {
+      stop(
+        "! `dist` = \"", dist, "\" is not a recognized `survreg` distribution. ",
+        "Built-in choices are: ", paste(valid_dists, collapse = ", "), ". ",
+        "A custom distribution can be supplied as a list instead.",
+        call. = FALSE
+      )
+    }
+  }
+
   if (!is.numeric(scale) || length(scale) != 1L || anyNA(scale) ||
       !is.finite(scale) || scale < 0) {
     stop("! `scale` must be one finite non-negative number.", call. = FALSE)
@@ -167,6 +184,52 @@ multinomial_family <- function(reference = NULL) {
 }
 
 
+#' Ordinal (Proportional-Odds) Family Specification
+#'
+#' Specifies a proportional-odds ordinal regression model for [mfp2()] or
+#' [mfpi()], fitted with the ordinal regression model engine from the `rms`
+#' package. Candidate fits during the FP search call [rms::orm.fit()] directly
+#' on the model matrix and integer-coded response for speed; the retained model
+#' is a native `rms::orm` object. `rms` is an optional dependency and must be
+#' installed to use this family.
+#'
+#' @param link Character string selecting the cumulative-link function passed to
+#'   [rms::orm.fit()]. One of `"logistic"` (default, the proportional-odds
+#'   model), `"probit"`, `"loglog"`, `"cloglog"`, or `"cauchit"`.
+#'
+#' @details
+#' The model has one regression coefficient per predictor (a common slope across
+#' all cut-points, the proportional-odds assumption) and \eqn{k - 1} intercepts
+#' for a response with \eqn{k} distinct ordered values. A linear term therefore
+#' contributes one regression degree of freedom and an FP of degree \eqn{m}
+#' contributes \eqn{m}; the \eqn{k - 1} intercepts are common to every candidate
+#' and are counted in the model degrees of freedom used for AIC and BIC.
+#'
+#' The response may be an ordered factor (its level order is used), or a numeric,
+#' integer, character, or unordered factor. In the latter cases the category
+#' order is taken as `sort(unique(y))` -- ascending for numeric and alphabetical
+#' for character or unordered factors -- matching the behaviour of
+#' [rms::orm()]. Because an alphabetical order may not be the intended clinical
+#' order, [mfp2()] emits an informational message stating the assumed order when
+#' it is inferred from an unordered categorical response; supply an ordered
+#' factor or numeric codes to control the direction. The model is parameterized
+#' on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
+#' predictor values are associated with higher response categories.
+#'
+#' @return An `mfp2_ordinal_family` specification.
+#' @seealso [rms::orm()], [mfp2()], [mfpi()]
+#' @export
+ordinal_family <- function(link = c("logistic", "probit", "loglog",
+                                    "cloglog", "cauchit")) {
+  link <- match.arg(link)
+
+  structure(
+    list(family = "ordinal", link = link, prepared = NULL),
+    class = c("mfp2_ordinal_family", "mfp2_family")
+  )
+}
+
+
 # Family-behaviour predicates used by the existing MFP/MFPI engine. These are
 # intentionally about one behaviour at a time: Cox and Fine--Gray remain
 # separate families and share only the properties named by each helper.
@@ -195,6 +258,10 @@ mfp2_family_is_glm <- function(family_string) {
 
 mfp2_family_is_multinomial <- function(family_string) {
   identical(family_string, "multinomial")
+}
+
+mfp2_family_is_ordinal <- function(family_string) {
+  identical(family_string, "ordinal")
 }
 
 mfp2_family_n_logits <- function(family, family_string) {
@@ -526,9 +593,15 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
     # vector for every weighted Cox fit.
     offset_expanded = as.numeric(offset[row_map]),
     subject_id = fg[[".mfp2_subject_id"]],
+    subject_id_original = subject_id,
     # Expanded strata for baseline subdistribution hazard stratification.
     # NULL when strata_action = "censoring" or when no strata are present.
     strata_expanded = strata_expanded,
+    strata_original = if (!is.null(strata) && stratify_baseline) {
+      normalize_cox_strata(strata, nobs = n)
+    } else {
+      NULL
+    },
     event = attr(fg, "event", exact = TRUE),
     nevents = sum(fg[[".mfp2_fgstatus"]] > 0),
     n_original = n,
@@ -623,6 +696,83 @@ prepare_multinomial_family <- function(family, y, weights) {
 }
 
 
+# Encode the ordinal response into integer codes 1..k once, so every candidate
+# fit reuses the same compact representation. The category order follows
+# rms::orm(): an ordered factor uses its level order; a numeric response is
+# ordered ascending; a character or unordered factor is ordered by
+# sort(unique()), i.e. alphabetically. When the order is inferred from an
+# unordered categorical, an informational message names the assumed order so a
+# wrong (alphabetical) ordering is catchable.
+prepare_ordinal_family <- function(family, y, weights) {
+  if (!inherits(family, "mfp2_ordinal_family")) {
+    stop("Internal error: invalid ordinal family specification.", call. = FALSE)
+  }
+  if (!requireNamespace("rms", quietly = TRUE)) {
+    stop(
+      "! `family = ordinal_family()` requires the `rms` package. ",
+      "Install it with install.packages(\"rms\").",
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(dim(y))) {
+    stop("! The ordinal response must be a vector, not a matrix.", call. = FALSE)
+  }
+
+  inferred_order <- FALSE
+  if (is.ordered(y)) {
+    # Matrix-interface callers can supply a factor that still carries levels
+    # removed by an earlier subset. orm.fit() bases its intercept count on the
+    # observed response values, so retain the same invariant here and recode the
+    # response contiguously to 1..k.
+    y <- droplevels(y)
+    levels_ordered <- levels(y)
+    codes <- as.integer(y)
+  } else if (is.factor(y)) {
+    # Unordered factor: rms orders by sort(unique()) = sorted level labels.
+    y <- droplevels(y)
+    levels_ordered <- sort(unique(as.character(y)))
+    codes <- match(as.character(y), levels_ordered)
+    inferred_order <- TRUE
+  } else if (is.numeric(y)) {
+    levels_ordered <- sort(unique(y))
+    codes <- match(y, levels_ordered)
+  } else if (is.character(y) || is.logical(y)) {
+    levels_ordered <- sort(unique(as.character(y)))
+    codes <- match(as.character(y), levels_ordered)
+    inferred_order <- TRUE
+  } else {
+    stop(
+      "! The ordinal response must be an ordered factor, factor, numeric, ",
+      "integer, character, or logical vector.",
+      call. = FALSE
+    )
+  }
+
+  levels_labels <- as.character(levels_ordered)
+  k <- length(levels_labels)
+
+  if (inferred_order) {
+    message(
+      "Ordinal response order inferred as: ",
+      paste(levels_labels, collapse = " < "),
+      ". Supply an ordered factor or numeric codes to set a different order."
+    )
+  }
+
+  family$prepared <- list(
+    y = as.integer(codes),          # integer codes 1..k in ascending order
+    levels = levels_labels,
+    n_classes = k,
+    n_intercepts = k - 1L,
+    link = family$link,
+    inferred_order = inferred_order,
+    n_original = length(codes)
+  )
+  family
+}
+
+
 prepare_family_for_fit <- function(family, family_string, y, weights,
                                    strata = NULL, id = NULL, offset = NULL) {
   if (identical(family_string, "survreg")) {
@@ -645,6 +795,10 @@ prepare_family_for_fit <- function(family, family_string, y, weights,
   }
   if (identical(family_string, "multinomial")) {
     family <- prepare_multinomial_family(family, y, weights)
+    return(list(family = family, strata = strata))
+  }
+  if (identical(family_string, "ordinal")) {
+    family <- prepare_ordinal_family(family, y, weights)
     return(list(family = family, strata = strata))
   }
   list(family = family, strata = strata)
@@ -670,14 +824,15 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
     "gaussian", "binomial", "poisson", "Gamma", "inverse.gaussian"
   )
   allowed_families <- c(
-    allowed_glm_families, "negbin", "multinomial", "cox", "survreg", "finegray"
+    allowed_glm_families, "negbin", "multinomial", "cox", "survreg",
+    "finegray", "ordinal"
   )
   family_arg <- paste(family_arg, collapse = " ")
 
   if (inherits(family, "mfp2_family")) {
     family_string <- family$family
     if (!is.character(family_string) || length(family_string) != 1L ||
-        !family_string %in% c("survreg", "finegray", "multinomial")) {
+        !family_string %in% c("survreg", "finegray", "multinomial", "ordinal")) {
       stop("! Invalid mfp2 family specification.", call. = FALSE)
     }
     return(list(family = family, family_string = family_string))
@@ -709,6 +864,7 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       cox = "cox",
       survreg = "survreg",
       finegray = "finegray",
+      ordinal = "ordinal",
       family
     )
 
@@ -738,6 +894,8 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
       survreg_family()
     } else if (identical(family, "finegray")) {
       finegray_family()
+    } else if (identical(family, "ordinal")) {
+      ordinal_family()
     } else {
       switch(
         family,
@@ -1063,6 +1221,33 @@ validate_family_response <- function(y, family_string, nobs) {
     }
     if (any(rowSums(y) <= 0)) {
       stop("! Every multinomial count-response row must contain at least one trial.", call. = FALSE)
+    }
+    return(invisible(TRUE))
+  }
+
+  if (family_string == "ordinal") {
+    if (!is.null(dim(y))) {
+      stop("! For `family = ordinal_family()`, `y` must be a vector, not a matrix.", call. = FALSE)
+    }
+    if (!(is.factor(y) || is.numeric(y) || is.character(y) || is.logical(y))) {
+      stop(
+        "! For `family = ordinal_family()`, `y` must be an ordered factor, factor, numeric, integer, character, or logical vector.",
+        call. = FALSE
+      )
+    }
+    if (anyNA(y)) {
+      stop("! The ordinal response must not contain missing values.", call. = FALSE)
+    }
+    if (is.numeric(y) && any(!is.finite(y))) {
+      stop("! A numeric ordinal response must contain only finite values.", call. = FALSE)
+    }
+    n_levels <- if (is.factor(y)) nlevels(droplevels(y)) else length(unique(y))
+    if (n_levels < 3L) {
+      stop(
+        "! An ordinal response must have at least three distinct ordered categories; ",
+        "use `family = 'binomial'` for a two-level response.",
+        call. = FALSE
+      )
     }
     return(invisible(TRUE))
   }

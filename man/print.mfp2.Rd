@@ -4,7 +4,7 @@
 \alias{print.mfp2}
 \title{Print method for objects of class \code{mfp2}}
 \usage{
-\method{print}{mfp2}(x, detailed_settings = TRUE, notes = TRUE, ...)
+\method{print}{mfp2}(x, detailed_settings = TRUE, notes = TRUE, intercepts = NULL, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"mfp2"}.}
@@ -20,6 +20,12 @@ have nothing left to annotate when this table isn't printed). Default is
 notes: the \code{Note:} lines and column definitions associated with the
 Detailed Settings table, and the model-df explanation below the Model Fit
 table. Default is \code{TRUE}.}
+
+\item{intercepts}{Logical or \code{NULL}. Controls whether threshold
+intercepts are printed for ordinal models. \code{NULL} (default) mirrors
+\code{rms::orm}: intercepts are shown when there are fewer than 10 (i.e.
+fewer than 11 outcome levels) and suppressed otherwise. Pass \code{TRUE}
+or \code{FALSE} to override the default for any model.}
 
 \item{...}{Further print arguments. The \code{digits} argument, when
 supplied, is used to format the final coefficient table and model-fit

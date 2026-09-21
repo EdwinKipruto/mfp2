@@ -626,8 +626,8 @@ build_group_fp_basis <- function(cont_mat,
 #' Do not use `cox_reference` with `type = "expected"` or
 #' `type = "survival"`.
 #'
-#' Fine--Gray models expose only relative `"lp"` and `"risk"` predictions in
-#' this method; the absolute Cox types above are specific to ordinary Cox models.
+#' Fine--Gray models expose relative `"lp"` and `"risk"` predictions and
+#' cumulative incidence through `type = "response"` together with `times`.
 #'
 #' For a stratified Cox model, each prediction row must have valid stratum
 #' information. If `strata()` was included in the fitted formula, include its
@@ -679,8 +679,9 @@ build_group_fp_basis <- function(cont_mat,
 #'   `"both"` for fitted curves. For predictions for individual observations,
 #'   likelihood GLMs and `survreg` models support `"link"` and `"response"`;
 #'   Cox models support `"lp"`, `"risk"`, `"expected"`, and `"survival"`;
-#'   Fine--Gray models support `"lp"` and `"risk"`. If `NULL`, `"both"` is
-#'   used.
+#'   Fine--Gray models support `"lp"`, `"risk"`, and `"response"`; ordinal
+#'   models support `"link"`, `"response"`, and `"mean"`; multinomial models
+#'   support `"link"` and `"response"`. If `NULL`, `"both"` is used.
 #'
 #' @param se.fit A single `TRUE` or `FALSE` value indicating whether standard
 #'   errors should be returned. The default is `TRUE`.
@@ -720,6 +721,9 @@ build_group_fp_basis <- function(cont_mat,
 #' @param newoffset An optional finite numeric vector containing one offset value
 #'   per prediction row. It can be used only for predictions for individual
 #'   observations from a term-specific model fitted with an offset.
+#'
+#' @param times Optional non-negative numeric time or time grid required for
+#'   Fine--Gray `type = "response"` cumulative-incidence predictions.
 #'
 #' @param ... Reserved for future extensions. Currently, supplied arguments are
 #'   ignored with a warning.
@@ -967,6 +971,7 @@ predict.mfpi <- function(object,
                          strata = NULL,
                          cox_reference = NULL,
                          newoffset = NULL,
+                         times = NULL,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
   # either the fitted-function path or the ordinary subject-level path.
@@ -992,14 +997,37 @@ predict.mfpi <- function(object,
   ordinary_types <- if (identical(family_string, "cox")) {
     c("lp", "risk", "expected", "survival")
   } else if (identical(family_string, "finegray")) {
-    c("lp", "risk")
+    c("lp", "risk", "response")
   } else if (identical(family_string, "survreg")) {
     c("link", "response")
+  } else if (identical(family_string, "ordinal")) {
+    c("link", "response", "mean")
   } else {
     c("link", "response")
   }
   is_function_prediction <- type %in% function_types
   is_ordinary_prediction <- type %in% ordinary_types
+
+  if (identical(family_string, "finegray") && identical(type, "response")) {
+    if (!is.numeric(times) || length(times) < 1L || anyNA(times) ||
+        any(!is.finite(times)) || any(times < 0)) {
+      stop(
+        "Fine--Gray `type = \"response\"` requires `times` to contain one or ",
+        "more finite non-negative values.",
+        call. = FALSE
+      )
+    }
+    times <- as.numeric(times)
+  } else if (!is.null(times)) {
+    stop("`times` is used only for Fine--Gray `type = \"response\"` prediction.",
+         call. = FALSE)
+  }
+
+  # Ordinal MFPI supports fitted-function and difference prediction on the
+  # linear predictor (slope) scale. Ordinary subject-level prediction
+  # (`link`/`response`) is supported: `link` returns the linear predictor
+  # Xb (slopes only), `response` returns class-probability matrices.
+  # The `mean` type is also supported and returns the expected response.
 
   if (!is.logical(se.fit) || length(se.fit) != 1L || anyNA(se.fit)) {
     stop("`se.fit` must be a single non-missing logical value.",
@@ -1070,9 +1098,9 @@ predict.mfpi <- function(object,
     )
   }
 
-  if (!family_string %in% c("cox", "survreg")) {
+  if (!family_string %in% c("cox", "survreg", "finegray")) {
     if (!is.null(strata)) {
-      stop("`strata` is available only for Cox or stratified survreg predictions.", call. = FALSE)
+      stop("`strata` is available only for Cox, Fine--Gray, or stratified survreg predictions.", call. = FALSE)
     }
   }
   if (!mfp2_family_is_ph(family_string)) {
@@ -1171,7 +1199,7 @@ predict.mfpi <- function(object,
       # matrix-interface fits continue to use that argument directly.
       ordinary_strata <- strata
       if (!is.null(newdata) &&
-          family_string %in% c("cox", "survreg") &&
+          family_string %in% c("cox", "survreg", "finegray") &&
           prediction_has_formula_strata(object)) {
         ordinary_strata <- reconstruct_formula_strata_newdata(object, newdata)
       }
@@ -1205,11 +1233,28 @@ predict.mfpi <- function(object,
         offset = design$offset,
         type = type,
         se.fit = se.fit,
-        cox_reference = cox_reference
+        cox_reference = cox_reference,
+        times = times
       )
 
-      pred_df <- data.frame(term = term, fit = pred$fit, stringsAsFactors = FALSE)
-      if (se.fit && !is.null(pred$se.fit)) pred_df$se.fit <- pred$se.fit
+      if (is.matrix(pred$fit)) {
+        fit_frame <- as.data.frame(pred$fit, check.names = FALSE)
+        names(fit_frame) <- paste0("fit.", colnames(pred$fit))
+        pred_df <- data.frame(
+          term = rep(term, nrow(fit_frame)),
+          fit_frame,
+          stringsAsFactors = FALSE,
+          check.names = FALSE
+        )
+        if (isTRUE(se.fit) && is.matrix(pred$se.fit)) {
+          se_frame <- as.data.frame(pred$se.fit, check.names = FALSE)
+          names(se_frame) <- paste0("se.fit.", colnames(pred$se.fit))
+          pred_df <- cbind(pred_df, se_frame)
+        }
+      } else {
+        pred_df <- data.frame(term = term, fit = pred$fit, stringsAsFactors = FALSE)
+        if (se.fit && !is.null(pred$se.fit)) pred_df$se.fit <- pred$se.fit
+      }
 
       structure(
         list(
@@ -1232,6 +1277,7 @@ predict.mfpi <- function(object,
               NULL
             },
             used_model_predict = isTRUE(pred$used_model_predict),
+            times = pred$times,
             model_newdata_columns = if (!is.null(design$model_newdata)) {
               colnames(design$model_newdata)
             } else {
@@ -1852,6 +1898,16 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
   # Convert a reconstructed FP basis into long-format fitted functions and
   # long-format group contrasts. No historical wide matrix is built here.
 
+  # The multinomial family stores a per-logit coefficient matrix rather than a
+  # flat named coefficient vector, so its fitted functions and contrasts are
+  # computed on a dedicated per-logit path.
+  if (identical(mfpi_family_string(object), "multinomial")) {
+    return(mfpi_compute_function_prediction_multinomial(
+      object = object, term = term, fit_result = fit_result, basis = basis,
+      type = type, se.fit = se.fit, level = level, reference = reference
+    ))
+  }
+
   interaction_model <- fit_result$test_results$interaction_model
   coef_vec <- interaction_model$coefficients
   if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
@@ -2076,6 +2132,266 @@ mfpi_compute_function_prediction <- function(object, term, fit_result, basis,
 }
 
 
+#' Multinomial per-logit MFPI fitted-function prediction
+#'
+#' Computes fitted functions and group contrasts for a multinomial MFPI model.
+#' Unlike the single-response families, a multinomial fit carries a per-logit
+#' coefficient matrix (one row per non-reference class), so each group-specific
+#' fitted curve and each group contrast is produced separately for every
+#' non-reference logit. Standard errors use the delta method within each logit's
+#' own block of the coefficient covariance matrix (a single fitted curve or
+#' single-logit contrast has zero derivative with respect to the coefficients of
+#' any other logit, so cross-logit covariance blocks do not enter).
+#'
+#' The returned long-format tables carry an additional `class` column giving the
+#' non-reference class each curve or contrast belongs to. Everything else mirrors
+#' `mfpi_compute_function_prediction()`.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_compute_function_prediction_multinomial <- function(object, term,
+                                                         fit_result, basis,
+                                                         type, se.fit, level,
+                                                         reference) {
+  interaction_model <- fit_result$test_results$interaction_model
+  if (is.null(interaction_model)) {
+    stop(paste0("No interaction model is stored for term `", term, "`."),
+         call. = FALSE)
+  }
+
+  coef_mat <- interaction_model$coefficient_matrix
+  if (is.null(coef_mat) || !is.matrix(coef_mat) || is.null(rownames(coef_mat)) ||
+      is.null(colnames(coef_mat))) {
+    stop(
+      paste0("The stored multinomial interaction model for term `", term,
+             "` does not expose a labelled per-logit coefficient matrix."),
+      call. = FALSE
+    )
+  }
+  vcov_mat <- stats::vcov(interaction_model$fit)
+
+  classes <- rownames(coef_mat)          # non-reference logits, e.g. "B", "C"
+  model_cols <- colnames(coef_mat)       # "(Intercept)", group dummy, FP columns
+  n_logits <- length(classes)
+
+  group_labels <- names(basis$coefficient_groups)
+  group_display_labels <- mfpi_prediction_group_display_labels(
+    object = object,
+    group_labels = group_labels
+  )
+  k <- length(group_labels)
+  n <- nrow(basis$x)
+  crit <- stats::qnorm((1 + level) / 2)
+
+  ref_pos <- mfpi_resolve_reference_group(
+    reference = reference,
+    group_labels = group_labels,
+    object = object
+  )
+
+  has_intercept <- "(Intercept)" %in% model_cols
+  group_name <- object$group_var
+  group_dummy_names <- if (k > 1L) paste0(group_name, group_labels[-1L]) else character(0L)
+
+  # Every model column referenced by the reconstruction must exist in the fitted
+  # coefficient matrix; every (class, column) pair must exist in the covariance
+  # matrix when standard errors are requested.
+  required_cols <- unique(c(
+    if (has_intercept) "(Intercept)",
+    unlist(basis$coefficient_groups, use.names = FALSE),
+    group_dummy_names
+  ))
+  missing_cols <- setdiff(required_cols, model_cols)
+  if (length(missing_cols) > 0L) {
+    stop(
+      paste0("Cannot perform multinomial MFPI prediction for term `", term,
+             "`: missing coefficient columns: ",
+             paste(missing_cols, collapse = ", "), "."),
+      call. = FALSE
+    )
+  }
+
+  vname <- function(cls, cols) paste0(cls, ":", cols)
+  if (se.fit) {
+    needed_v <- as.vector(outer(classes, required_cols, vname))
+    missing_v <- setdiff(needed_v, colnames(vcov_mat))
+    if (length(missing_v) > 0L) {
+      stop(
+        paste0("Cannot compute multinomial MFPI standard errors for term `",
+               term, "`: missing covariance entries: ",
+               paste(missing_v, collapse = ", "), "."),
+        call. = FALSE
+      )
+    }
+  }
+
+  # -- Fitted functions: one curve per (class, group) --------------------------
+  function_rows <- vector("list", n_logits * k)
+  # Cache each (class, group) fitted value so the contrasts below reuse them.
+  fit_cache <- array(NA_real_, dim = c(n, k, n_logits))
+  slot <- 0L
+
+  for (qi in seq_len(n_logits)) {
+    cls <- classes[qi]
+    beta_row <- coef_mat[qi, ]
+    intercept <- if (has_intercept) unname(beta_row[["(Intercept)"]]) else 0
+
+    for (g in seq_len(k)) {
+      cols_g <- basis$coefficient_groups[[g]]
+      x_g <- basis$x[, cols_g, drop = FALSE]
+      beta_g <- beta_row[cols_g]
+
+      dummy_offset <- 0
+      dummy_name <- NULL
+      if (g > 1L) {
+        dummy_name <- group_dummy_names[g - 1L]
+        dummy_offset <- unname(beta_row[[dummy_name]])
+      }
+
+      fit_vec <- intercept + as.vector(x_g %*% beta_g) + dummy_offset
+      fit_cache[, g, qi] <- fit_vec
+
+      df_g <- data.frame(
+        term = term,
+        x = basis$x_display,
+        class = cls,
+        group = group_display_labels[g],
+        fit = fit_vec,
+        stringsAsFactors = FALSE
+      )
+
+      if (se.fit) {
+        x_var <- x_g
+        var_cols <- cols_g
+        if (has_intercept) {
+          x_var <- cbind("(Intercept)" = 1, x_var)
+          var_cols <- c("(Intercept)", var_cols)
+        }
+        if (g > 1L) {
+          x_var <- cbind(x_var, 1)
+          var_cols <- c(var_cols, dummy_name)
+        }
+        v_names <- vname(cls, var_cols)
+        v_sub <- vcov_mat[v_names, v_names, drop = FALSE]
+        var_g <- rowSums((x_var %*% v_sub) * x_var)
+        se_g <- sqrt(mfpi_sanitize_variance(
+          var_g,
+          context = paste0("multinomial fitted-function SE for term `", term,
+                           "`, class `", cls, "`, group `", group_labels[g], "`")
+        ))
+        df_g$se.fit <- se_g
+        df_g$lower <- df_g$fit - crit * se_g
+        df_g$upper <- df_g$fit + crit * se_g
+      }
+
+      slot <- slot + 1L
+      function_rows[[slot]] <- df_g
+    }
+  }
+  functions_df <- do.call(rbind, function_rows)
+
+  # -- Fitted-function differences: one contrast per (class, comparison group) -
+  compare_pos <- setdiff(seq_len(k), ref_pos)
+  diff_rows <- list()
+
+  if (length(compare_pos) > 0L) {
+    contrast_labels <- paste0(group_labels[compare_pos], "-", group_labels[ref_pos])
+    contrast_display_labels <- paste0(
+      group_display_labels[compare_pos], "-", group_display_labels[ref_pos]
+    )
+    ref_cols <- basis$coefficient_groups[[ref_pos]]
+
+    slot <- 0L
+    for (qi in seq_len(n_logits)) {
+      cls <- classes[qi]
+      for (ii in seq_along(compare_pos)) {
+        g <- compare_pos[ii]
+        grp_cols <- basis$coefficient_groups[[g]]
+        diff_vec <- fit_cache[, g, qi] - fit_cache[, ref_pos, qi]
+
+        df_d <- data.frame(
+          term = term,
+          x = basis$x_display,
+          class = cls,
+          contrast = contrast_display_labels[ii],
+          group = group_display_labels[g],
+          reference = group_display_labels[ref_pos],
+          fit = diff_vec,
+          stringsAsFactors = FALSE
+        )
+
+        if (se.fit) {
+          # Derivative of f_g(x) - f_ref(x) w.r.t. this logit's coefficients:
+          # +X_g(x) for the comparison group, -X_ref(x) for the reference group.
+          # The per-logit intercept cancels and drops out of the gradient.
+          d_mat <- cbind(
+            -basis$x[, ref_cols, drop = FALSE],
+            basis$x[, grp_cols, drop = FALSE]
+          )
+          d_names <- c(ref_cols, grp_cols)
+          if (g > 1L) {
+            d_mat <- cbind(d_mat, rep(1, n))
+            d_names <- c(d_names, group_dummy_names[g - 1L])
+          }
+          if (ref_pos > 1L) {
+            d_mat <- cbind(d_mat, rep(-1, n))
+            d_names <- c(d_names, group_dummy_names[ref_pos - 1L])
+          }
+          v_names <- vname(cls, d_names)
+          v_sub <- vcov_mat[v_names, v_names, drop = FALSE]
+          var_d <- rowSums((d_mat %*% v_sub) * d_mat)
+          se_d <- sqrt(mfpi_sanitize_variance(
+            var_d,
+            context = paste0("multinomial difference SE for term `", term,
+                             "`, class `", cls, "`, contrast `",
+                             contrast_labels[ii], "`")
+          ))
+          df_d$se.fit <- se_d
+          df_d$lower <- df_d$fit - crit * se_d
+          df_d$upper <- df_d$fit + crit * se_d
+        }
+
+        slot <- slot + 1L
+        diff_rows[[slot]] <- df_d
+      }
+    }
+  }
+
+  differences_df <- if (length(diff_rows) > 0L) do.call(rbind, diff_rows) else data.frame()
+
+  structure(
+    list(
+      term = term,
+      type = type,
+      x = basis$x_display,
+      functions = if (type == "difference") NULL else functions_df,
+      differences = if (type == "function") NULL else differences_df,
+      metadata = list(
+        multinomial = TRUE,
+        classes = classes,
+        reference_class = interaction_model$reference_class,
+        n_logits = n_logits,
+        group_fp_powers = basis$group_fp_powers,
+        center_vals = basis$center_vals,
+        coefficient_groups = basis$coefficient_groups,
+        group_display_labels = stats::setNames(group_display_labels, group_labels),
+        reference = group_labels[ref_pos],
+        reference_label = group_display_labels[ref_pos],
+        scale_var = basis$scale_var,
+        shift_var = basis$shift_var,
+        zero_var = basis$zero_var,
+        discrete = isTRUE(basis$discrete),
+        interaction_kind = basis$interaction_kind,
+        interaction_columns = basis$interaction_columns,
+        level = level,
+        se.fit = se.fit
+      )
+    ),
+    class = c("mfpi_prediction", "list")
+  )
+}
+
+
 # -----------------------------------------------------------------------------
 # Ordinary subject-level prediction -------------------------------------------
 # -----------------------------------------------------------------------------
@@ -2210,10 +2526,20 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
          call. = FALSE)
   }
 
-  coef_vec <- interaction_model$coefficients
-  if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
-    stop("Interaction-model coefficients must be a named numeric vector.",
-         call. = FALSE)
+  coefficient_columns <- if (identical(family_string, "multinomial")) {
+    coefficient_matrix <- interaction_model$coefficient_matrix
+    if (!is.matrix(coefficient_matrix) || is.null(colnames(coefficient_matrix))) {
+      stop("Multinomial interaction-model coefficients must be a labelled matrix.",
+           call. = FALSE)
+    }
+    colnames(coefficient_matrix)
+  } else {
+    coef_vec <- interaction_model$coefficients
+    if (!is.numeric(coef_vec) || is.null(names(coef_vec))) {
+      stop("Interaction-model coefficients must be a named numeric vector.",
+           call. = FALSE)
+    }
+    names(coef_vec)
   }
 
   # Training-data ordinary prediction usually delegates to the fitted model.
@@ -2256,8 +2582,7 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     newdata_is_training_internal <- TRUE
   }
 
-  coef_names <- names(coef_vec)
-  target_cols <- setdiff(coef_names, "(Intercept)")
+  target_cols <- setdiff(coefficient_columns, "(Intercept)")
 
   # Resolve the selected adjustment recipe before formula reconstruction.
   # Prediction should evaluate only formula expressions needed by this stored
@@ -2771,6 +3096,8 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   if (has_offset && is.null(newoffset) && isTRUE(newdata_is_training_internal)) {
     stored_offset <- if (identical(family_string, "finegray")) {
       fit_obj$mfp2_original_offset
+    } else if (identical(family_string, "multinomial")) {
+      fit_obj$mfp2_offset_matrix
     } else {
       fit_obj$offset
     }
@@ -2806,7 +3133,21 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
     newoffset <- stored_offset
   }
 
-  if (is.null(newoffset)) {
+  if (identical(family_string, "multinomial")) {
+    if (is.null(newoffset) && has_offset) {
+      stop(
+        "The fitted multinomial interaction model used an offset. Supply ",
+        "`newoffset` with one row per prediction row.",
+        call. = FALSE
+      )
+    }
+    pred_offset <- mfp2_multinomial_offset(
+      newoffset,
+      fit_obj$mfp2_family,
+      nobs = n,
+      has_offset = has_offset
+    )
+  } else if (is.null(newoffset)) {
     if (has_offset) {
       stop(
         paste0(
@@ -2835,7 +3176,8 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   expects_offset <- has_offset
   expects_strata <- mfpi_fit_has_strata(fit_obj)
 
-  if (expects_offset && !inherits(fit_obj, "fastglm")) {
+  if (expects_offset && !inherits(fit_obj, "fastglm") &&
+      !identical(family_string, "multinomial")) {
     # Formula-based fits embed the allocated helper name in their stored model
     # formula. fastglm fits are matrix based and receive offsets separately.
     offset_name <- mfp2_internal_fit_name(
@@ -2929,7 +3271,8 @@ mfpi_predict_ordinary <- function(object,
                                   offset = NULL,
                                   type,
                                   se.fit,
-                                  cox_reference = NULL) {
+                                  cox_reference = NULL,
+                                  times = NULL) {
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
   family_string <- mfpi_family_string(object)
@@ -2939,6 +3282,60 @@ mfpi_predict_ordinary <- function(object,
       "No stored fitted interaction model is available for term `", term, "`.",
       call. = FALSE
     )
+  }
+
+  if (identical(family_string, "multinomial")) {
+    return(mfpi_predict_multinomial_ordinary(
+      object = object,
+      interaction_model = interaction_model,
+      design_matrix = design_matrix,
+      offset = offset,
+      type = type,
+      se.fit = se.fit
+    ))
+  }
+
+  if (identical(family_string, "finegray") && identical(type, "response")) {
+    prediction <- mfp2_predict_finegray_cif(
+      object = fit_obj,
+      newdata = model_newdata,
+      times = times,
+      se.fit = se.fit
+    )
+    if (is.list(prediction)) {
+      return(list(
+        fit = prediction$fit,
+        se.fit = prediction$se.fit,
+        used_model_predict = TRUE,
+        times = prediction$times
+      ))
+    }
+    return(list(fit = prediction, se.fit = NULL,
+                used_model_predict = TRUE, times = sort(unique(times))))
+  }
+
+  # Ordinal proportional-odds models require a custom prediction path because
+
+  # rms::predict.orm() type conventions differ from mfp2. Compute predictions
+  # manually from the stored intercepts and slope coefficients, matching the
+  # approach in mfp2_predict_ordinal().
+  if (identical(family_string, "ordinal") && inherits(fit_obj, "orm")) {
+    if (is.null(design_matrix) && is.null(model_newdata)) {
+      design_matrix <- fit_obj$x
+      if (is.null(offset) && !is.null(fit_obj$offset)) {
+        offset <- as.numeric(fit_obj$offset)
+      }
+    }
+    return(mfpi_predict_ordinal_ordinary(
+      fit_obj = fit_obj,
+      design_matrix = design_matrix,
+      offset = offset,
+      type = type,
+      se.fit = se.fit,
+      ordinal_levels = object$ordinal_levels,
+      ordinal_link = object$ordinal_link,
+      n_intercepts = object$n_intercepts
+    ))
   }
 
   if (inherits(fit_obj, "fastglm")) {
@@ -3002,6 +3399,273 @@ mfpi_predict_ordinary <- function(object,
     used_model_predict = TRUE
   )
 }
+
+
+#' Multinomial Ordinary Prediction for MFPI
+#'
+#' @keywords internal
+#' @noRd
+mfpi_predict_multinomial_ordinary <- function(object,
+                                              interaction_model,
+                                              design_matrix,
+                                              offset,
+                                              type,
+                                              se.fit) {
+  fit_obj <- interaction_model$fit
+  coefficient_matrix <- interaction_model$coefficient_matrix
+  if (!is.matrix(coefficient_matrix) || is.null(colnames(coefficient_matrix))) {
+    stop("Internal error: multinomial coefficient matrix is unavailable.",
+         call. = FALSE)
+  }
+
+  if (is.null(design_matrix)) {
+    xx <- fit_obj$mfp2_design
+    offset_matrix <- fit_obj$mfp2_offset_matrix
+  } else {
+    xx <- cbind("(Intercept)" = 1, as.matrix(design_matrix))
+    offset_matrix <- offset
+  }
+  if (!is.matrix(xx)) {
+    stop("Internal error: multinomial prediction design is unavailable.",
+         call. = FALSE)
+  }
+  needed <- colnames(coefficient_matrix)
+  missing_columns <- setdiff(needed, colnames(xx))
+  if (length(missing_columns) > 0L) {
+    stop(
+      "Internal error: multinomial prediction design is missing: ",
+      paste(missing_columns, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  xx <- xx[, needed, drop = FALSE]
+
+  family <- fit_obj$mfp2_family
+  if (is.null(offset_matrix)) {
+    offset_matrix <- mfp2_multinomial_offset(
+      NULL, family, nobs = nrow(xx), has_offset = FALSE
+    )
+  }
+  eta <- xx %*% t(coefficient_matrix)
+  eta <- eta + offset_matrix[, -1L, drop = FALSE]
+  dimnames(eta) <- list(rownames(xx), rownames(coefficient_matrix))
+
+  eta_se <- NULL
+  covariance <- NULL
+  if (isTRUE(se.fit)) {
+    covariance <- stats::vcov(fit_obj)
+    raw_names <- as.vector(t(outer(
+      rownames(coefficient_matrix), needed,
+      function(class, column) paste0(class, ":", column)
+    )))
+    if (!is.matrix(covariance) ||
+        !all(raw_names %in% rownames(covariance)) ||
+        !all(raw_names %in% colnames(covariance))) {
+      stop("Multinomial covariance could not be aligned for prediction.",
+           call. = FALSE)
+    }
+    covariance <- covariance[raw_names, raw_names, drop = FALSE]
+    q <- nrow(coefficient_matrix)
+    p <- length(needed)
+    eta_se <- matrix(NA_real_, nrow = nrow(xx), ncol = q,
+                     dimnames = dimnames(eta))
+    for (i in seq_len(nrow(xx))) {
+      for (class_index in seq_len(q)) {
+        gradient <- numeric(q * p)
+        block <- seq.int((class_index - 1L) * p + 1L, class_index * p)
+        gradient[block] <- xx[i, ]
+        eta_se[i, class_index] <- sqrt(max(
+          0, as.numeric(crossprod(gradient, covariance %*% gradient))
+        ))
+      }
+    }
+  }
+  if (identical(type, "link")) {
+    return(list(fit = eta, se.fit = eta_se, used_model_predict = FALSE))
+  }
+
+  eta_full <- cbind(0, eta)
+  colnames(eta_full) <- family$prepared$levels
+  row_max <- apply(eta_full, 1L, max)
+  exp_eta <- exp(eta_full - row_max)
+  probabilities <- exp_eta / rowSums(exp_eta)
+  probability_se <- NULL
+  if (isTRUE(se.fit)) {
+    q <- nrow(coefficient_matrix)
+    p <- length(needed)
+    probability_se <- matrix(
+      NA_real_, nrow = nrow(probabilities), ncol = ncol(probabilities),
+      dimnames = dimnames(probabilities)
+    )
+    for (i in seq_len(nrow(xx))) {
+      for (class_index in seq_len(ncol(probabilities))) {
+        gradient <- numeric(q * p)
+        for (logit_index in seq_len(q)) {
+          derivative <- probabilities[i, class_index] *
+            ((class_index == logit_index + 1L) -
+               probabilities[i, logit_index + 1L])
+          block <- seq.int((logit_index - 1L) * p + 1L, logit_index * p)
+          gradient[block] <- derivative * xx[i, ]
+        }
+        probability_se[i, class_index] <- sqrt(max(
+          0, as.numeric(crossprod(gradient, covariance %*% gradient))
+        ))
+      }
+    }
+  }
+  original_levels <- family$prepared$original_levels
+  if (!is.null(original_levels) &&
+      all(original_levels %in% colnames(probabilities))) {
+    probabilities <- probabilities[, original_levels, drop = FALSE]
+    if (!is.null(probability_se)) {
+      probability_se <- probability_se[, original_levels, drop = FALSE]
+    }
+  }
+  list(fit = probabilities, se.fit = probability_se,
+       used_model_predict = FALSE)
+}
+
+
+#' Ordinal Ordinary Prediction for MFPI
+#'
+#' Computes subject-level predictions for ordinal proportional-odds interaction
+#' models. The linear predictor is computed from the slope coefficients and the
+#' design matrix. For `type = "response"`, class probabilities are computed
+#' using the stored intercepts and inverse link. For `type = "mean"`, the
+#' expected response is returned.
+#'
+#' @param fit_obj The retained orm fit object.
+#' @param design_matrix The design matrix (slopes only, no intercept column).
+#' @param offset Numeric offset vector or NULL.
+#' @param type Prediction type: "link", "response", or "mean".
+#' @param se.fit Logical; standard errors are not supported for ordinal
+#'   response/mean predictions.
+#' @param ordinal_levels Character vector of response level labels.
+#' @param ordinal_link Character string naming the link function.
+#' @param n_intercepts Integer number of cut-point intercepts (k-1).
+#'
+#' @return A list with `fit`, `se.fit`, and `used_model_predict` components.
+#'
+#' @keywords internal
+#' @noRd
+mfpi_predict_ordinal_ordinary <- function(fit_obj,
+                                          design_matrix,
+                                          offset,
+                                          type,
+                                          se.fit,
+                                          ordinal_levels,
+                                          ordinal_link,
+                                          n_intercepts) {
+  intercepts <- fit_obj$mfp2_ordinal_intercepts
+  if (is.null(intercepts)) {
+    # Fall back to extracting from the full coefficient vector
+    all_coef <- fit_obj$coefficients
+    intercepts <- all_coef[seq_len(n_intercepts)]
+  }
+
+  # Extract slope coefficients
+  all_coef <- fit_obj$coefficients
+  betas <- if (length(all_coef) > n_intercepts) {
+    all_coef[seq.int(n_intercepts + 1L, length(all_coef))]
+  } else {
+    numeric(0L)
+  }
+
+  # Compute linear predictor (slopes only)
+  if (!is.null(design_matrix) && length(betas) > 0L) {
+    design_matrix <- as.matrix(design_matrix)
+    if (!is.null(names(betas)) && !is.null(colnames(design_matrix)) &&
+        all(names(betas) %in% colnames(design_matrix))) {
+      design_matrix <- design_matrix[, names(betas), drop = FALSE]
+    }
+    eta <- as.numeric(design_matrix %*% betas)
+  } else {
+    if (length(betas) > 0L) {
+      stop("Internal error: ordinal prediction design is unavailable.",
+           call. = FALSE)
+    }
+    n <- if (!is.null(design_matrix)) nrow(design_matrix) else NROW(fit_obj$y)
+    if (is.null(n) || n < 1L) n <- 1L
+    eta <- rep(0, n)
+  }
+
+  if (!is.null(offset)) eta <- eta + as.numeric(offset)
+
+  if (type == "link") {
+    se_val <- NULL
+    if (isTRUE(se.fit)) {
+      # Compute standard errors from the vcov of the slopes
+      vcov_full <- stats::vcov(fit_obj)
+      slope_names <- names(betas)
+      if (all(slope_names %in% colnames(vcov_full))) {
+        vcov_slopes <- vcov_full[slope_names, slope_names, drop = FALSE]
+        if (!is.null(design_matrix) && length(betas) > 0L) {
+          se_val <- as.numeric(sqrt(pmax(
+            0,
+            rowSums((design_matrix %*% vcov_slopes) * design_matrix)
+          )))
+        } else {
+          se_val <- rep(0, length(eta))
+        }
+      }
+    }
+    return(list(
+      fit = eta,
+      se.fit = se_val,
+      used_model_predict = FALSE
+    ))
+  }
+
+  if (isTRUE(se.fit)) {
+    warning(
+      "`se.fit = TRUE` is not available for ordinal response/mean predictions.",
+      call. = FALSE
+    )
+  }
+
+  # Inverse link function
+  ginv <- switch(ordinal_link,
+    logistic = stats::plogis,
+    probit   = stats::pnorm,
+    loglog   = function(z) exp(-exp(-z)),
+    cloglog  = function(z) 1 - exp(-exp(z)),
+    cauchit  = stats::pcauchy
+  )
+
+  n <- length(eta)
+  k <- n_intercepts + 1L
+  # Cumulative probabilities: P(Y >= j)
+  cum <- matrix(1, n, k)
+  for (j in seq_len(n_intercepts)) {
+    cum[, j + 1L] <- ginv(intercepts[j] + eta)
+  }
+  # Category probabilities: P(Y = j) = P(Y >= j) - P(Y >= j+1)
+  probs <- matrix(0, n, k)
+  for (j in seq_len(k)) {
+    probs[, j] <- cum[, j] - (if (j < k) cum[, j + 1L] else 0)
+  }
+  colnames(probs) <- ordinal_levels
+
+  if (type == "response") {
+    return(list(
+      fit = probs,
+      se.fit = NULL,
+      used_model_predict = FALSE
+    ))
+  }
+
+  # type == "mean": expected response
+  numeric_levels <- suppressWarnings(as.numeric(ordinal_levels))
+  vals <- if (!anyNA(numeric_levels)) numeric_levels else seq_len(k)
+  mean_pred <- as.numeric(probs %*% vals)
+
+  list(
+    fit = mean_pred,
+    se.fit = NULL,
+    used_model_predict = FALSE
+  )
+}
+
 
 # -----------------------------------------------------------------------------
 # Validation and scalar helpers ------------------------------------------------
@@ -3091,9 +3755,11 @@ mfpi_match_prediction_type <- function(type, family_string) {
   choices <- if (identical(family_string, "cox")) {
     c("both", "function", "difference", "lp", "risk", "expected", "survival")
   } else if (identical(family_string, "finegray")) {
-    c("both", "function", "difference", "lp", "risk")
+    c("both", "function", "difference", "lp", "risk", "response")
   } else if (identical(family_string, "survreg")) {
     c("both", "function", "difference", "link", "response")
+  } else if (identical(family_string, "ordinal")) {
+    c("both", "function", "difference", "link", "response", "mean")
   } else {
     c("both", "function", "difference", "link", "response")
   }
@@ -3113,6 +3779,10 @@ mfpi_match_prediction_type <- function(type, family_string) {
           "Fine--Gray"
         } else if (identical(family_string, "survreg")) {
           "survreg"
+        } else if (identical(family_string, "ordinal")) {
+          "ordinal"
+        } else if (identical(family_string, "multinomial")) {
+          "multinomial"
         } else {
           "GLM"
         },

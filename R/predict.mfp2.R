@@ -79,9 +79,8 @@
 #'
 #' For Fine--Gray models, `type = "lp"` and `type = "risk"` return the
 #' relative log subdistribution hazard and relative subdistribution hazard,
-#' respectively. `"link"` is accepted as another name for `"lp"`. Absolute
-#' Cox survival/expected-event predictions are deliberately not assigned a
-#' competing-risks interpretation.
+#' respectively. `"link"` is accepted as another name for `"lp"`. With
+#' `times`, `type = "response"` returns cumulative-incidence probabilities.
 #'
 #' For all supported models:
 #'
@@ -246,9 +245,8 @@
 #' not allowed. For several stratification variables, supply the same variables
 #' in the same column order used for fitting.
 #'
-#' Fine--Gray models expose only relative `"lp"` and `"risk"` predictions
-#' through this method. Use an appropriate competing-risks curve method when
-#' absolute cumulative incidence is required.
+#' Fine--Gray models expose relative `"lp"` and `"risk"` predictions and
+#' cumulative incidence through `type = "response"` together with `times`.
 #'
 #' @param object A fitted object of class `"mfp2"`.
 #'
@@ -303,6 +301,10 @@
 #'
 #'   This argument can be supplied only for a complete-model prediction when the
 #'   fitted model used an offset and `newdata` is supplied.
+#'
+#' @param times Optional non-negative numeric time or time grid used for
+#'   Fine--Gray `type = "response"` cumulative-incidence predictions. It is
+#'   required for that prediction type and rejected for all other types.
 #'
 #' @param nseq A single finite positive integer giving the number of equally
 #'   spaced values used when `terms_seq = "equidistant"`. The default is 100.
@@ -502,6 +504,7 @@ predict.mfp2 <- function(object,
                          ref = NULL,
                          strata = NULL,
                          newoffset = NULL,
+                         times = NULL,
                          nseq = 100,
                          add_intercept = TRUE,
                          cox_reference = NULL,
@@ -596,6 +599,11 @@ predict.mfp2 <- function(object,
     if (cox_reference_supplied) {
       stop("'cox_reference' is only available for Cox models.", call. = FALSE)
     }
+  } else if (identical(object$family_string, "ordinal")) {
+    type <- mfp2_match_ordinal_prediction_type(type)
+    if (cox_reference_supplied) {
+      stop("'cox_reference' is only available for Cox models.", call. = FALSE)
+    }
   } else {
     type <- mfp2_match_glm_prediction_type(type)
     if (cox_reference_supplied) {
@@ -606,14 +614,29 @@ predict.mfp2 <- function(object,
     }
   }
 
+  if (identical(object$family_string, "finegray") && identical(type, "response")) {
+    if (!is.numeric(times) || length(times) < 1L || anyNA(times) ||
+        any(!is.finite(times)) || any(times < 0)) {
+      stop(
+        "Fine--Gray `type = \"response\"` requires `times` to contain one or ",
+        "more finite non-negative values.",
+        call. = FALSE
+      )
+    }
+    times <- as.numeric(times)
+  } else if (!is.null(times)) {
+    stop("`times` is used only for Fine--Gray `type = \"response\"` prediction.",
+         call. = FALSE)
+  }
+
   # `strata` and `newoffset` alter only native full-model predictions on
   # supplied rows. Reject irrelevant combinations before formula evaluation or
   # transformation so that an accepted argument is never silently ignored.
   full_model_prediction <- !type %in% c("terms", "contrasts")
 
   if (!is.null(strata)) {
-    if (!object$family_string %in% c("cox", "survreg")) {
-      stop("'strata' is available only for Cox or stratified survreg predictions.", call. = FALSE)
+    if (!object$family_string %in% c("cox", "survreg", "finegray")) {
+      stop("'strata' is available only for Cox, Fine--Gray, or stratified survreg predictions.", call. = FALSE)
     }
     if (!full_model_prediction) {
       stop(
@@ -1138,7 +1161,26 @@ predict.mfp2 <- function(object,
       ))
     }
 
+    if (identical(object$family_string, "ordinal")) {
+      return(mfp2_predict_ordinal(
+        object = object,
+        transformed = newdata,
+        type = type,
+        se.fit = se.fit,
+        newoffset = newoffset
+      ))
+    }
+
     if (mfp2_family_is_ph(object$family_string)) {
+      if (identical(object$family_string, "finegray") &&
+          identical(type, "response")) {
+        return(mfp2_predict_finegray_cif(
+          object = object,
+          newdata = newdata,
+          times = times,
+          se.fit = se.fit
+        ))
+      }
       return(
         mfp2_predict_cox_base(
           object = object,
@@ -1208,7 +1250,26 @@ predict.mfp2 <- function(object,
     ))
   }
 
+  if (identical(object$family_string, "ordinal")) {
+    return(mfp2_predict_ordinal(
+      object = object,
+      transformed = NULL,
+      type = type,
+      se.fit = se.fit,
+      newoffset = NULL
+    ))
+  }
+
   if (mfp2_family_is_ph(object$family_string)) {
+    if (identical(object$family_string, "finegray") &&
+        identical(type, "response")) {
+      return(mfp2_predict_finegray_cif(
+        object = object,
+        newdata = NULL,
+        times = times,
+        se.fit = se.fit
+      ))
+    }
     return(
       mfp2_predict_cox_base(
         object = object,
@@ -1332,6 +1393,106 @@ mfp2_match_multinomial_prediction_type <- function(type) {
 }
 
 
+mfp2_match_ordinal_prediction_type <- function(type) {
+  # `lp` is normalized to `link` upstream for non-PH families.
+  choices <- c("link", "response", "mean", "terms", "contrasts")
+  tryCatch(
+    match.arg(type, choices),
+    error = function(e) {
+      stop(
+        "For ordinal models, 'type' must be one of: ",
+        paste(shQuote(choices), collapse = ", "),
+        ". The alias 'lp' is also accepted for 'link'.",
+        call. = FALSE
+      )
+    }
+  )
+}
+
+
+# Full-model prediction for a proportional-odds ordinal model. The covariate
+# linear predictor is eta = X %*% beta (no cut-point intercept, so it is common
+# to all cut-points); category probabilities combine eta with the k-1 stored
+# intercepts through the inverse link. Mirrors mfp2_predict_multinomial().
+mfp2_predict_ordinal <- function(object, transformed = NULL,
+                                 type = c("link", "response", "mean"),
+                                 se.fit = FALSE, newoffset = NULL) {
+  type <- match.arg(type)
+  if (isTRUE(se.fit)) {
+    stop(
+      "`se.fit = TRUE` is not available for full ordinal predictions; use `summary()` for coefficient uncertainty.",
+      call. = FALSE
+    )
+  }
+
+  intercepts <- object$mfp2_ordinal_intercepts
+  n_int <- length(intercepts)
+  link <- object$mfp2_ordinal_link
+  levels_labels <- object$mfp2_ordinal_levels
+  all_coef <- object$coefficients
+  betas <- if (length(all_coef) > n_int) {
+    all_coef[seq.int(n_int + 1L, length(all_coef))]
+  } else {
+    numeric(0L)
+  }
+
+  if (is.null(transformed)) {
+    xx <- object$x
+    prediction_rownames <- rownames(xx)
+  } else {
+    transformed <- as.data.frame(transformed, check.names = FALSE)
+    prediction_rownames <- row.names(transformed)
+    model_columns <- prediction_model_column_names(object, colnames(transformed))
+    names(model_columns) <- colnames(transformed)
+    needed <- names(betas)
+    selected <- match(needed, unname(model_columns))
+    if (anyNA(selected)) {
+      stop("Internal error: transformed ordinal prediction columns are incomplete.", call. = FALSE)
+    }
+    xx <- as.matrix(transformed[, names(model_columns)[selected], drop = FALSE])
+    colnames(xx) <- needed
+  }
+
+  eta <- if (length(betas) > 0L) {
+    if (is.null(xx)) {
+      stop("Internal error: ordinal prediction design is unavailable.",
+           call. = FALSE)
+    }
+    as.numeric(xx[, names(betas), drop = FALSE] %*% betas)
+  } else {
+    n_prediction <- if (is.null(transformed)) object$nobs else length(prediction_rownames)
+    rep(0, n_prediction)
+  }
+  if (!is.null(newoffset)) eta <- eta + as.numeric(newoffset)
+  names(eta) <- prediction_rownames
+  if (type == "link") return(eta)
+
+  ginv <- switch(link,
+    logistic = stats::plogis,
+    probit   = stats::pnorm,
+    loglog   = function(z) exp(-exp(-z)),
+    cloglog  = function(z) 1 - exp(-exp(z)),
+    cauchit  = stats::pcauchy
+  )
+  n <- length(eta)
+  k <- n_int + 1L
+  cum <- matrix(1, n, k)                      # cum[, j] = P(Y >= j); P(Y>=1)=1
+  for (j in seq_len(n_int)) cum[, j + 1L] <- ginv(intercepts[j] + eta)
+  probs <- matrix(0, n, k)
+  for (j in seq_len(k)) {
+    probs[, j] <- cum[, j] - (if (j < k) cum[, j + 1L] else 0)
+  }
+  dimnames(probs) <- list(prediction_rownames, levels_labels)
+  if (type == "response") return(probs)
+
+  # type == "mean": expected response using numeric level values when available,
+  # otherwise the 1..k category index.
+  numeric_levels <- suppressWarnings(as.numeric(levels_labels))
+  vals <- if (!anyNA(numeric_levels)) numeric_levels else seq_len(k)
+  stats::setNames(as.numeric(probs %*% vals), prediction_rownames)
+}
+
+
 mfp2_predict_multinomial <- function(object, transformed = NULL,
                                       type = c("link", "response", "class"),
                                       se.fit = FALSE, newoffset = NULL) {
@@ -1421,10 +1582,9 @@ mfp2_match_survreg_prediction_type <- function(type) {
 
 # Fine--Gray uses a weighted Cox fit, so relative linear predictors and risk
 # scores use the native coxph interface. Absolute cumulative-incidence curves
-# require a time grid and are deliberately left to survfit() on the retained
-# weighted Cox fit rather than being mislabeled as ordinary Cox survival.
+# are obtained from survfit() on the retained weighted Cox fit.
 mfp2_match_finegray_prediction_type <- function(type) {
-  choices <- c("lp", "risk", "terms", "contrasts")
+  choices <- c("lp", "risk", "response", "terms", "contrasts")
   tryCatch(
     match.arg(type, choices),
     error = function(e) {
@@ -1435,6 +1595,80 @@ mfp2_match_finegray_prediction_type <- function(type) {
       )
     }
   )
+}
+
+
+# Compute Fine--Gray cumulative incidence from the retained weighted Cox model.
+# survival::survfit.coxph() evaluates the fitted subdistribution survival curve;
+# one minus that curve is the CIF for the selected event type.  Evaluate one
+# prediction row at a time so baseline strata and formula offsets are resolved by
+# the native survival code without reshaping multi-curve survfit objects.
+mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
+                                      se.fit = FALSE) {
+  if (!inherits(object, "coxph")) {
+    stop("Internal error: Fine--Gray CIF prediction requires a retained coxph fit.",
+         call. = FALSE)
+  }
+  if (!is.numeric(times) || length(times) < 1L || anyNA(times) ||
+      any(!is.finite(times)) || any(times < 0)) {
+    stop("`times` must contain one or more finite non-negative values.",
+         call. = FALSE)
+  }
+  times <- sort(unique(as.numeric(times)))
+
+  prediction_data <- if (is.null(newdata)) {
+    object$mfp2_finegray_training_newdata
+  } else {
+    as.data.frame(newdata, check.names = FALSE)
+  }
+  if (is.null(prediction_data) || !is.data.frame(prediction_data) ||
+      nrow(prediction_data) < 1L) {
+    stop(
+      "Fine--Gray prediction data are unavailable; refit with the current ",
+      "package version or supply `newdata`.",
+      call. = FALSE
+    )
+  }
+
+  base_object <- object
+  class(base_object) <- setdiff(class(base_object), "mfp2")
+  n <- nrow(prediction_data)
+  nt <- length(times)
+  cif <- matrix(NA_real_, nrow = n, ncol = nt)
+  cif_se <- if (isTRUE(se.fit)) matrix(NA_real_, nrow = n, ncol = nt) else NULL
+
+  for (i in seq_len(n)) {
+    curve <- survival::survfit(
+      base_object,
+      newdata = prediction_data[i, , drop = FALSE],
+      se.fit = isTRUE(se.fit)
+    )
+    point <- summary(curve, times = times, extend = TRUE)
+    survival_values <- as.numeric(point$surv)
+    if (length(survival_values) != nt) {
+      stop("Internal error: Fine--Gray CIF time grid could not be aligned.",
+           call. = FALSE)
+    }
+    cif[i, ] <- 1 - survival_values
+    if (isTRUE(se.fit)) {
+      standard_errors <- as.numeric(point$std.err)
+      if (length(standard_errors) != nt) {
+        stop("Internal error: Fine--Gray CIF standard errors are incomplete.",
+             call. = FALSE)
+      }
+      cif_se[i, ] <- standard_errors
+    }
+  }
+
+  time_names <- paste0("time=", format(times, trim = TRUE, scientific = FALSE))
+  dimnames(cif) <- list(row.names(prediction_data), time_names)
+  if (isTRUE(se.fit)) dimnames(cif_se) <- dimnames(cif)
+
+  fit <- if (nt == 1L) stats::setNames(as.numeric(cif[, 1L]), row.names(prediction_data)) else cif
+  if (!isTRUE(se.fit)) return(fit)
+  se <- if (nt == 1L) stats::setNames(as.numeric(cif_se[, 1L]), row.names(prediction_data)) else cif_se
+  list(fit = fit, se.fit = se, times = times,
+       event = object$mfp2_finegray_event)
 }
 
 
@@ -1557,7 +1791,7 @@ mfp2_validate_cox_reference <- function(type,
     return(NULL)
   }
 
-  if (type %in% c("expected", "survival")) {
+  if (type %in% c("expected", "survival", "response")) {
     if (cox_reference_supplied) {
       stop(
         "'cox_reference' does not apply to Cox predictions with type = '",

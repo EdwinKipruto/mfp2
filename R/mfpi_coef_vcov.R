@@ -51,6 +51,8 @@
 #' requested interaction, the returned object is a numeric vector with an MFPI
 #' print class and can be used in numerical calculations. If several
 #' interactions are requested, a named list of such vectors is returned.
+#' Multinomial results contain the slope coefficients for each non-reference
+#' logit; their class-specific intercepts are not included.
 #'
 #' The transformation labels reflect the interaction model actually fitted.
 #' Thus, under `flex4`, different group levels can display different FP
@@ -426,6 +428,17 @@ mfpi_get_accessor_fits <- function(object, term = NULL, model = c("best", "all")
 
 # Build all coefficient labels and print metadata for one term-specific fit.
 mfpi_coefficient_info <- function(object, term, fit_result) {
+  # Multinomial interaction models carry a per-logit coefficient matrix rather
+  # than a flat named vector, so coefficient information is assembled on a
+  # dedicated path that labels each coefficient by its non-reference logit. The
+  # family lookup is guarded so minimal or older objects without family metadata
+  # fall through to the single-response path rather than erroring.
+  family_string <- tryCatch(mfpi_family_string(object),
+                            error = function(e) NA_character_)
+  if (identical(family_string, "multinomial")) {
+    return(mfpi_multinomial_coefficient_info(object, term, fit_result))
+  }
+
   interaction_spec <- mfpi_get_interaction_spec(object, term)
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
@@ -623,6 +636,184 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
 }
 
 
+# Readable label for each shared model column of a multinomial interaction
+# design (intercept, group-specific FP terms, group-indicator dummies, and
+# adjustment columns). Labels mirror the single-response path but omit the
+# per-logit prefix, which is added by the caller. Returns a named character
+# vector keyed by model-column name.
+mfpi_multinomial_column_labels <- function(object, term, fit_result,
+                                           interaction_model, model_cols) {
+  interaction_spec <- mfpi_get_interaction_spec(object, term)
+  labels <- stats::setNames(model_cols, model_cols)
+
+  coefficient_groups <- fit_result$coefficient_groups
+  if (is.null(coefficient_groups)) {
+    coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
+  }
+  mfpi_validate_coefficient_groups(coefficient_groups, term = term)
+
+  internal_groups <- names(coefficient_groups)
+  if (is.null(internal_groups) || anyNA(internal_groups) ||
+      any(!nzchar(internal_groups))) {
+    internal_groups <- as.character(seq_along(coefficient_groups) - 1L)
+    names(coefficient_groups) <- internal_groups
+  }
+  display_groups <- mfpi_prediction_group_display_labels(object, internal_groups)
+
+  powers <- fit_result$bestfp_interaction
+  if (is.list(powers)) {
+    if (!is.null(names(powers)) && setequal(names(powers), internal_groups)) {
+      powers <- powers[internal_groups]
+    } else if (length(powers) == length(internal_groups)) {
+      names(powers) <- internal_groups
+    }
+  }
+
+  interaction_cols <- character(0L)
+  for (g in seq_along(coefficient_groups)) {
+    model_names <- mfpi_resolve_fitted_coefficient_names(
+      interaction_model = interaction_model,
+      source_names = coefficient_groups[[g]],
+      coefficient_names = model_cols,
+      term = term,
+      allow_missing = TRUE
+    )
+    if (length(model_names) == 0L) next
+    transformations <- if (isTRUE(interaction_spec$discrete)) {
+      interaction_spec$columns
+    } else {
+      mfpi_fp_transformation_labels(
+        object = object, term = term, powers = as.numeric(powers[[g]])
+      )
+    }
+    if (length(transformations) == length(model_names)) {
+      labels[model_names] <- paste0(display_groups[g], ": ", transformations)
+    }
+    interaction_cols <- c(interaction_cols, model_names)
+  }
+
+  # Group-indicator dummies.
+  dummy_source_names <- if (length(internal_groups) > 1L) {
+    paste0(object$group_var, internal_groups[-1L])
+  } else {
+    character(0L)
+  }
+  dummy_model_names <- mfpi_resolve_fitted_coefficient_names(
+    interaction_model = interaction_model,
+    source_names = dummy_source_names,
+    coefficient_names = model_cols,
+    term = term,
+    allow_missing = TRUE
+  )
+  if (length(dummy_model_names) > 0L) {
+    labels[dummy_model_names] <- paste0(
+      object$group_var, " [", display_groups[-1L][seq_along(dummy_model_names)], "]"
+    )
+  }
+
+  # Intercept.
+  if ("(Intercept)" %in% model_cols) labels[["(Intercept)"]] <- "(Intercept)"
+
+  # Anything left over is an adjustment coefficient.
+  adjustment_cols <- setdiff(
+    model_cols, c(interaction_cols, dummy_model_names, "(Intercept)")
+  )
+  if (length(adjustment_cols) > 0L) {
+    labels[adjustment_cols] <- mfpi_adjustment_coefficient_labels(
+      object = object,
+      interaction_model = interaction_model,
+      coefficient_names = adjustment_cols
+    )
+  }
+
+  labels
+}
+
+
+# Coefficient information for a multinomial MFPI interaction model. Produces a
+# flat coefficient vector and matching covariance-aligned raw names in the same
+# class-major order used by vcov.multinom(), so coef.mfpi()/vcov.mfpi() reuse
+# the shared extraction code unchanged. Display names and a per-logit table
+# carry the non-reference class of each coefficient.
+mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
+  interaction_model <- fit_result$test_results$interaction_model
+  if (is.null(interaction_model)) {
+    stop(paste0("No interaction model is stored for term `", term, "`."),
+         call. = FALSE)
+  }
+  coef_mat <- interaction_model$coefficient_matrix
+  if (is.null(coef_mat) || !is.matrix(coef_mat) || is.null(rownames(coef_mat)) ||
+      is.null(colnames(coef_mat))) {
+    stop(
+      paste0("The stored multinomial interaction model for term `", term,
+             "` does not expose a labelled per-logit coefficient matrix."),
+      call. = FALSE
+    )
+  }
+
+  classes <- rownames(coef_mat)          # non-reference logits
+  # The MFPI accessors report the fitted slope functions. Multinomial
+  # intercepts are class-specific nuisance constants and are deliberately
+  # omitted, matching the slope-only contract used by the other families.
+  model_cols <- setdiff(colnames(coef_mat), "(Intercept)")
+
+  col_label <- mfpi_multinomial_column_labels(
+    object = object, term = term, fit_result = fit_result,
+    interaction_model = interaction_model, model_cols = model_cols
+  )
+
+  # Class-major flat order matches vcov.multinom(): all columns of the first
+  # non-reference logit, then the next, ... Names in the covariance matrix join
+  # class and column with a single colon.
+  raw_names <- as.vector(t(outer(classes, model_cols,
+                                 function(a, b) paste0(a, ":", b))))
+  values    <- as.vector(t(coef_mat[, model_cols, drop = FALSE]))
+  display_names <- as.vector(t(outer(
+    classes, model_cols,
+    function(a, b) paste0(a, " | ", col_label[b])
+  )))
+  display_names <- mfpi_make_unique_display_names(display_names)
+  beta <- stats::setNames(values, display_names)
+
+  logit_rows <- lapply(classes, function(cls) {
+    data.frame(
+      class = cls,
+      term = unname(col_label[model_cols]),
+      estimate = unname(coef_mat[cls, model_cols]),
+      raw_name = paste0(cls, ":", model_cols),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+  logit_table <- do.call(rbind, logit_rows)
+
+  internal_groups <- names(fit_result$coefficient_groups)
+  if (is.null(internal_groups)) {
+    internal_groups <- as.character(seq_along(fit_result$coefficient_groups) - 1L)
+  }
+  display_groups <- mfpi_prediction_group_display_labels(object, internal_groups)
+  power_table <- data.frame(group_level = display_groups, stringsAsFactors = FALSE)
+  power_table$powers <- I(unname(fit_result$bestfp_interaction))
+
+  list(
+    term = term,
+    group_var = object$group_var,
+    shift = mfpi_named_scalar(object$shift, term, default = 0),
+    flex = toupper(as.character(object$flex)),
+    form = mfpi_accessor_interaction_form(object, term, fit_result),
+    coefficients = beta,
+    raw_names = raw_names,
+    display_names = display_names,
+    multinomial = TRUE,
+    classes = classes,
+    reference_class = interaction_model$reference_class,
+    logit_table = logit_table,
+    power_table = power_table,
+    reference_level = display_groups[1L]
+  )
+}
+
+
 # Build readable labels for adjustment coefficients carried into an interaction
 # model. The interaction fit stores transformed source-column names, while the
 # adjustment mfp2 object stores the functional-form metadata needed to turn
@@ -788,6 +979,10 @@ mfpi_print_interaction_powers <- function(power_table) {
 
 # Print one term-specific coefficient block.
 mfpi_print_coef_block <- function(info, digits) {
+  if (isTRUE(info$multinomial)) {
+    return(mfpi_print_multinomial_coef_block(info, digits = digits))
+  }
+
   cat("Interaction: ", info$term, "\n", sep = "")
   cat("Group variable: ", info$group_var, "\n", sep = "")
   cat("FLEX: ", info$flex, "\n", sep = "")
@@ -825,6 +1020,34 @@ mfpi_print_coef_block <- function(info, digits) {
     names(tab_adjustment) <- c("Term", "Estimate")
     cat("\nAdjustment coefficients:\n")
     print(tab_adjustment, row.names = FALSE, digits = digits)
+  }
+
+  invisible(NULL)
+}
+
+
+# Print block for a multinomial MFPI interaction model. Coefficients are grouped
+# by non-reference logit; each block lists that logit's coefficients against the
+# common reference class.
+mfpi_print_multinomial_coef_block <- function(info, digits) {
+  cat("Interaction: ", info$term, "\n", sep = "")
+  cat("Group variable: ", info$group_var, "\n", sep = "")
+  cat("FLEX: ", info$flex, "\n", sep = "")
+  if (identical(info$form, "Linear")) {
+    cat("Form: Linear\n")
+  } else {
+    cat("FP form: ", info$form, "\n", sep = "")
+  }
+  cat("Family: multinomial (reference class: ", info$reference_class, ")\n", sep = "")
+
+  mfpi_print_interaction_powers(info$power_table)
+
+  for (cls in info$classes) {
+    rows <- info$logit_table[info$logit_table$class == cls, , drop = FALSE]
+    tab <- rows[, c("term", "estimate"), drop = FALSE]
+    names(tab) <- c("Term", "Estimate")
+    cat("\nLogit ", cls, " vs ", info$reference_class, ":\n", sep = "")
+    print(tab, row.names = FALSE, digits = digits)
   }
 
   invisible(NULL)

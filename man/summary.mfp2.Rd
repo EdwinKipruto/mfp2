@@ -40,12 +40,16 @@ underlying summary method; otherwise ignored.}
 \value{
 When \code{raw = FALSE}, an object of class \code{"summary.mfp2"}: a list
 with components \code{call}, \code{family}, \code{criterion},
-\code{converged}, \code{n}, \code{nevents}, \code{function_table},
+\code{converged}, \code{n}, \code{nevents}, model-specific components
+\code{distribution}, \code{scale}, \code{scale_fixed},
+\code{scale_strata}, \code{distribution_parameters}, \code{censoring},
+\code{link}, and \code{theta}, plus \code{function_table},
 \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
-\code{NULL}), \code{fit}, \code{raw_summary}, and \code{notes}. A
-dedicated \code{print} method renders these. When \code{raw = TRUE}, the
-underlying summary object.
+\code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
+for ordinal models, otherwise \code{NULL}), \code{fit},
+\code{raw_summary}, and \code{notes}. A dedicated \code{print} method
+renders these. When \code{raw = TRUE}, the underlying summary object.
 }
 \description{
 Produces a structured, MFP-aware summary of a fitted \code{\link[=mfp2]{mfp2()}} model. Unlike
@@ -64,6 +68,9 @@ The summary is organised into the following sections:
 \itemize{
 \item \strong{Selection Overview}: a compact overview of the selected
 functional form for each variable.
+\item \strong{Ordinal Intercepts}: for ordinal models, the estimated
+threshold intercepts with standard errors, Wald statistics, p-values,
+and confidence intervals.
 \item \strong{Linear Terms}: variables entering the model as a single
 linear term (including binary-only spike variables and factor levels),
 with the coefficient, standard error, test statistic, p-value, and,
@@ -92,6 +99,11 @@ an active ACD component, either option also prints the fitted definition of
 \eqn{A(x)}, including the scale used during fitting. Set
 \code{raw = TRUE} to obtain the underlying model-specific summary object
 instead.
+
+The structured header reports interpretation-critical nuisance parameters:
+the distribution, fixed or estimated scale, scale strata, and censoring
+pattern for \code{survreg} models, and the log link and estimated theta for
+negative-binomial models.
 }
 \section{Coefficient statistics}{
 

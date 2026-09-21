@@ -263,7 +263,7 @@ observations and two groups must remain.}
 \code{\link[stats:glm]{stats::glm()}} (\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, or
 \code{"inverse.gaussian"}) as a name, function, or family object. Quasi
 families are excluded because selection requires a likelihood. Use
-\code{"negbin"} with \code{fitter = "fastglm"}, \code{"multinomial"} or
+\code{"negbin"} for a negative-binomial model, \code{"multinomial"} or
 \code{\link[=multinomial_family]{multinomial_family()}}, \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
 \code{\link[=finegray_family]{finegray_family()}} for the corresponding survival model.}
 
@@ -454,8 +454,8 @@ automatically; this argument is not needed.}
 (default) uses standard R GLM fitting. \code{"fastglm"} uses the optional
 \code{fastglm} package and may be faster during the FP search. Ordinary GLMs
 retry with \code{"base"} and issue a warning if \code{fastglm} is unavailable or a
-fit fails. Survival models are unaffected. Negative-binomial models require
-\code{fitter = "fastglm"} and cannot retry with \code{"base"}.}
+fit fails. Survival models are unaffected. Negative-binomial models select
+\code{"fastglm"} automatically and stop early if that backend is unavailable.}
 
 \item{id}{Optional Fine--Gray subject identifier. It is required only for a
 start--stop multi-state response. In formula fits, the argument is

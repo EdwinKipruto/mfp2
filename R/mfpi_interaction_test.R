@@ -353,9 +353,19 @@ validate_mfpi_fitted_rank <- function(fit,
                                       model_name,
                                       cont_name,
                                       family_string) {
-  expected_design_rank <- ncol(design) + as.integer(
-    mfp2_family_has_intercept(family_string)
-  )
+  # Ordinal models (rms::orm) report rank = number of slope coefficients only,
+
+  # excluding the k-1 cut-point intercepts. The expected rank must therefore
+  # count only design columns (no intercept) for ordinal. For all other
+  # intercept-bearing families (GLMs, survreg), fit$rank includes the
+  # intercept, so we add 1.
+  if (identical(family_string, "ordinal")) {
+    expected_design_rank <- ncol(design)
+  } else {
+    expected_design_rank <- ncol(design) + as.integer(
+      mfp2_family_has_intercept(family_string)
+    )
+  }
   expected_rank <- expected_design_rank * if (
     identical(family_string, "multinomial")
   ) {

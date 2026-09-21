@@ -38,12 +38,16 @@ different degrees and, when \code{spike = TRUE} with p-value selection, for
 both Stage-2 SAZ component-removal tests. Under p-value selection, reduced
 forms are accepted only when their comparison p-value is strictly greater
 than \code{alpha}; therefore \code{alpha = 1} prevents simplification, including at
-an exact p-value of \code{1}. Default \code{0.05}. Overrides the global \code{alpha} from
-\code{\link[=mfp2]{mfp2()}} for this variable.}
+an exact p-value of \code{1}. Default \code{0.05}. This is the sole \code{alpha} for the
+\code{fp()} term: it is fixed at \code{0.05} unless set here and is not inherited from
+the top-level \code{alpha} given to \code{\link[=mfp2]{mfp2()}} (which governs plain, non-\code{fp()}
+terms only).}
 
 \item{select}{Significance level for backward-elimination variable
 selection. Default \code{0.05}. Set to \code{1} to force this variable into the
-model. Overrides the global \code{select} from \code{\link[=mfp2]{mfp2()}}.}
+model. This is the sole selection level for the \code{fp()} term: it is fixed at
+\code{0.05} unless set here and is \strong{not} inherited from the top-level \code{select}
+given to \code{\link[=mfp2]{mfp2()}} (which governs plain, non-\code{fp()} terms only).}
 
 \item{shift}{Numeric shift override for this variable, or \code{NULL} (default)
 to inherit the global setting from \code{\link[=mfp2]{mfp2()}}. See \code{\link[=mfp2]{mfp2()}} for details.}

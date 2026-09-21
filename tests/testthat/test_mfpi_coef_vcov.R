@@ -325,6 +325,36 @@ test_that("MFPI regression summary print is readable and omits raw model output"
 })
 
 
+test_that("MFPI retained-model blocks print model-specific nuisance parameters", {
+  fit <- make_mfpi_accessor_fixture()
+  display <- summary(fit)$regression_displays$age
+
+  display$family_string <- "negbin"
+  display$model_metadata <- list(link = "log", theta = 2.75)
+  negbin_text <- paste(
+    capture.output(mfpi_print_summary_regression_block(display, digits = 3L)),
+    collapse = "\n"
+  )
+  expect_match(negbin_text, "Link: log", fixed = TRUE)
+  expect_match(negbin_text, "Theta: 2.75 (estimated)", fixed = TRUE)
+
+  display$family_string <- "survreg"
+  display$model_metadata <- list(
+    distribution = "Weibull",
+    scale = 0.8,
+    scale_fixed = FALSE,
+    scale_strata = NULL,
+    distribution_parameters = NULL
+  )
+  survreg_text <- paste(
+    capture.output(mfpi_print_summary_regression_block(display, digits = 3L)),
+    collapse = "\n"
+  )
+  expect_match(survreg_text, "Distribution: Weibull", fixed = TRUE)
+  expect_match(survreg_text, "Scale: 0.8 (estimated)", fixed = TRUE)
+})
+
+
 test_that("MFPI summary interaction heading underline follows the term name", {
   fit <- make_mfpi_accessor_fixture()
   display <- summary(fit)$regression_displays$age

@@ -17,6 +17,7 @@
   strata = NULL,
   cox_reference = NULL,
   newoffset = NULL,
+  times = NULL,
   ...
 )
 }
@@ -46,8 +47,9 @@ The default is \code{"best"}.}
 \code{"both"} for fitted curves. For predictions for individual observations,
 likelihood GLMs and \code{survreg} models support \code{"link"} and \code{"response"};
 Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and \code{"survival"};
-Fine--Gray models support \code{"lp"} and \code{"risk"}. If \code{NULL}, \code{"both"} is
-used.}
+Fine--Gray models support \code{"lp"}, \code{"risk"}, and \code{"response"}; ordinal
+models support \code{"link"}, \code{"response"}, and \code{"mean"}; multinomial models
+support \code{"link"} and \code{"response"}. If \code{NULL}, \code{"both"} is used.}
 
 \item{se.fit}{A single \code{TRUE} or \code{FALSE} value indicating whether standard
 errors should be returned. The default is \code{TRUE}.}
@@ -87,6 +89,9 @@ Use \code{"zero"}, \code{"sample"}, or \code{"strata"}. The default is \code{"ze
 \item{newoffset}{An optional finite numeric vector containing one offset value
 per prediction row. It can be used only for predictions for individual
 observations from a term-specific model fitted with an offset.}
+
+\item{times}{Optional non-negative numeric time or time grid required for
+Fine--Gray \code{type = "response"} cumulative-incidence predictions.}
 
 \item{...}{Reserved for future extensions. Currently, supplied arguments are
 ignored with a warning.}
@@ -446,8 +451,8 @@ for example:
 Do not use \code{cox_reference} with \code{type = "expected"} or
 \code{type = "survival"}.
 
-Fine--Gray models expose only relative \code{"lp"} and \code{"risk"} predictions in
-this method; the absolute Cox types above are specific to ordinary Cox models.
+Fine--Gray models expose relative \code{"lp"} and \code{"risk"} predictions and
+cumulative incidence through \code{type = "response"} together with \code{times}.
 
 For a stratified Cox model, each prediction row must have valid stratum
 information. If \code{strata()} was included in the fitted formula, include its

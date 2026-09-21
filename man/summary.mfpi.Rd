@@ -16,7 +16,11 @@ An object of class \code{"summary.mfpi"}. In addition to the fields
 needed to reproduce the MFPI Steps 1--3 display, the object contains
 \code{regression_displays}, a named list of structured coefficient displays
 for retained interaction models. Each display contains readable coefficient
-metadata and the corresponding model-conditional coefficient statistics.
+metadata, the corresponding model-conditional coefficient statistics, and
+model-specific nuisance metadata. Retained negative-binomial models report
+their own theta, while retained \code{survreg} models report their own scale(s).
+The normalized \code{family_string} is retained; ordinal summaries also
+retain \code{ordinal_levels}, \code{ordinal_link}, and \code{n_intercepts}.
 Printing the object produces the four-step summary described above.
 }
 \description{

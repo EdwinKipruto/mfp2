@@ -15,6 +15,7 @@
   ref = NULL,
   strata = NULL,
   newoffset = NULL,
+  times = NULL,
   nseq = 100,
   add_intercept = TRUE,
   cox_reference = NULL,
@@ -75,6 +76,10 @@ value for each row of \code{newdata}. For multinomial models, supply an \code{n}
 
 This argument can be supplied only for a complete-model prediction when the
 fitted model used an offset and \code{newdata} is supplied.}
+
+\item{times}{Optional non-negative numeric time or time grid used for
+Fine--Gray \code{type = "response"} cumulative-incidence predictions. It is
+required for that prediction type and rejected for all other types.}
 
 \item{nseq}{A single finite positive integer giving the number of equally
 spaced values used when \code{terms_seq = "equidistant"}. The default is 100.}
@@ -205,9 +210,8 @@ supplied follow-up time.
 
 For Fine--Gray models, \code{type = "lp"} and \code{type = "risk"} return the
 relative log subdistribution hazard and relative subdistribution hazard,
-respectively. \code{"link"} is accepted as another name for \code{"lp"}. Absolute
-Cox survival/expected-event predictions are deliberately not assigned a
-competing-risks interpretation.
+respectively. \code{"link"} is accepted as another name for \code{"lp"}. With
+\code{times}, \code{type = "response"} returns cumulative-incidence probabilities.
 
 For all supported models:
 \itemize{
@@ -387,9 +391,8 @@ strata observed when the model was fitted; new, previously unseen strata are
 not allowed. For several stratification variables, supply the same variables
 in the same column order used for fitting.
 
-Fine--Gray models expose only relative \code{"lp"} and \code{"risk"} predictions
-through this method. Use an appropriate competing-risks curve method when
-absolute cumulative incidence is required.
+Fine--Gray models expose relative \code{"lp"} and \code{"risk"} predictions and
+cumulative incidence through \code{type = "response"} together with \code{times}.
 }
 
 \examples{

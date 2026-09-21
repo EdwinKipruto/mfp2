@@ -485,14 +485,25 @@ plot.mfpi <- function(x,
   group_meta <- mfpi_plot_group_metadata(model)
   group_label <- group_meta$group_var
 
+  # For multinomial models the plotting loop iterates over the non-reference
+  # logits and sets `active_logit` so subtitles can name the logit being shown.
+  active_logit <- NULL
+  active_reference_class <- NULL
+
   # ---------------------------------------------------------------------------
   # Helper: subtitle for one variable/contrast
   # ---------------------------------------------------------------------------
   make_subtitle <- function(var, grp_label_value, ref_label_value) {
     info <- subtitle_lookup[[var]]
 
+    logit_suffix <- if (!is.null(active_logit)) {
+      sprintf("; logit %s vs %s", active_logit, active_reference_class)
+    } else {
+      ""
+    }
+
     if (is.null(info)) {
-      return(var)
+      return(paste0(var, logit_suffix))
     }
 
     type_str <- switch(
@@ -527,7 +538,8 @@ plot.mfpi <- function(x,
       metric_text <- sprintf("%s (p_adj = %s)", metric_text, adj_str)
     }
 
-    sprintf("type = %s; %s; %s", type_str, contrast_text, metric_text)
+    sprintf("type = %s; %s; %s%s", type_str, contrast_text, metric_text,
+            logit_suffix)
   }
 
   # ---------------------------------------------------------------------------
@@ -1023,8 +1035,31 @@ plot.mfpi <- function(x,
       grid = TRUE
     )
 
+    # Multinomial predictions carry one fitted curve / contrast per non-reference
+    # logit. Iterate over the logits, reusing the single-response plotting
+    # machinery on each per-logit slice; other families run once with no slicing.
+    is_multinomial_pred <- isTRUE(pred$metadata$multinomial)
+    logit_codes <- if (is_multinomial_pred) pred$metadata$classes else NA_character_
+    active_reference_class <- if (is_multinomial_pred) {
+      pred$metadata$reference_class
+    } else {
+      NULL
+    }
+    term_plots <- list()
+
+    for (logit_code in logit_codes) {
+    active_logit <- if (is_multinomial_pred) logit_code else NULL
+
     functions_df <- pred$functions
     differences_df <- pred$differences
+    if (is_multinomial_pred) {
+      if (!is.null(functions_df) && "class" %in% names(functions_df)) {
+        functions_df <- functions_df[functions_df$class == logit_code, , drop = FALSE]
+      }
+      if (!is.null(differences_df) && "class" %in% names(differences_df)) {
+        differences_df <- differences_df[differences_df$class == logit_code, , drop = FALSE]
+      }
+    }
 
     if (plot_type %in% c("fitted", "both") &&
         (is.null(functions_df) || !is.data.frame(functions_df) ||
@@ -1100,7 +1135,11 @@ plot.mfpi <- function(x,
         paste0("No non-reference group contrasts are available for term `", var, "`."),
         call. = FALSE
       )
-      plots[[var]] <- list()
+      if (is_multinomial_pred) {
+        term_plots[[paste0("logit_", logit_code)]] <- list()
+      } else {
+        term_plots <- list()
+      }
       next
     }
 
@@ -1204,7 +1243,14 @@ plot.mfpi <- function(x,
       }
     }
 
-    plots[[var]] <- grp_plots
+    if (is_multinomial_pred) {
+      term_plots[[paste0("logit_", logit_code)]] <- grp_plots
+    } else {
+      term_plots <- grp_plots
+    }
+    } # end per-logit loop
+
+    plots[[var]] <- term_plots
   }
 
   invisible(plots)

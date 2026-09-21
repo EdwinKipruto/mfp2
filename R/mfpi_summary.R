@@ -66,7 +66,15 @@ build_mfpi_regression_displays <- function(object) {
       fit_obj = fit_obj,
       raw_names = info$raw_names
     )
-    out[[term]] <- list(info = info, statistics = statistics)
+    out[[term]] <- list(
+      info = info,
+      statistics = statistics,
+      family_string = object$family_string,
+      model_metadata = mfp2_summary_model_metadata(
+        fit_obj,
+        family_string = object$family_string
+      )
+    )
   }
 
   out
@@ -93,6 +101,16 @@ build_mfpi_regression_displays <- function(object) {
 mfpi_summary_coefficient_statistics <- function(fit_obj, raw_names) {
   beta <- stats::coef(fit_obj)
   V <- stats::vcov(fit_obj)
+
+  # Multinomial fits expose a per-logit coefficient matrix. Flatten it into the
+  # same class-major, single-colon-named vector used by vcov.multinom() so the
+  # shared alignment below works unchanged.
+  if (is.matrix(beta)) {
+    flat_names <- as.vector(t(outer(
+      rownames(beta), colnames(beta), function(a, b) paste0(a, ":", b)
+    )))
+    beta <- stats::setNames(as.vector(t(beta)), flat_names)
+  }
 
   if (!is.numeric(beta) || is.null(names(beta))) {
     stop("The retained model does not expose named coefficients.", call. = FALSE)
@@ -164,7 +182,8 @@ mfpi_summary_coefficient_statistics <- function(fit_obj, raw_names) {
       )
     } else if (inherits(fit_obj, "glm") || inherits(fit_obj, "coxph") ||
                inherits(fit_obj, "survreg") ||
-               inherits(fit_obj, "fastglm")) {
+               inherits(fit_obj, "fastglm") ||
+               inherits(fit_obj, "multinom")) {
       statistic_label <- if (identical(statistic_label, "Statistic")) "z" else statistic_label
       p_value <- 2 * stats::pnorm(abs(statistic), lower.tail = FALSE)
     }
@@ -304,6 +323,10 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
   info <- display$info
   statistics <- display$statistics
 
+  if (isTRUE(info$multinomial)) {
+    return(mfpi_print_summary_multinomial_block(display, digits))
+  }
+
   heading <- paste0("Interaction: ", info$term)
   cat(heading, "\n", sep = "")
   cat(strrep("-", nchar(heading)), "\n", sep = "")
@@ -312,6 +335,21 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
   } else {
     cat("FP form: ", info$form, "\n", sep = "")
   }
+
+  family_string <- display$family_string
+  metadata <- display$model_metadata
+  if (identical(family_string, "survreg") &&
+      !is.null(metadata$distribution)) {
+    cat("Distribution: ", metadata$distribution, "\n", sep = "")
+  }
+  if (identical(family_string, "negbin") && !is.null(metadata$link)) {
+    cat("Link: ", metadata$link, "\n", sep = "")
+  }
+  mfp2_print_model_specific_parameters(
+    family_string = family_string,
+    metadata = metadata,
+    digits = digits
+  )
 
   mfpi_print_interaction_powers(info$power_table)
 
@@ -366,6 +404,43 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
     names(adjustment_tab)[1L] <- "Term"
     cat("\nAdjustment coefficients:\n")
     mfpi_print_summary_coefficient_table(adjustment_tab, digits)
+  }
+
+  invisible(NULL)
+}
+
+
+# Summary layout for a multinomial MFPI interaction model: one coefficient
+# statistics table per non-reference logit, each against the common reference
+# class.
+mfpi_print_summary_multinomial_block <- function(display, digits) {
+  info <- display$info
+  statistics <- display$statistics
+
+  heading <- paste0("Interaction: ", info$term)
+  cat(heading, "\n", sep = "")
+  cat(strrep("-", nchar(heading)), "\n", sep = "")
+  if (identical(info$form, "Linear")) {
+    cat("Form: Linear\n")
+  } else {
+    cat("FP form: ", info$form, "\n", sep = "")
+  }
+  cat("Family: multinomial (reference class: ", info$reference_class, ")\n", sep = "")
+
+  mfpi_print_interaction_powers(info$power_table)
+
+  for (cls in info$classes) {
+    meta <- info$logit_table[info$logit_table$class == cls, , drop = FALSE]
+    tab <- mfpi_summary_display_table(
+      metadata_table = meta,
+      statistics = statistics,
+      leading_columns = "term"
+    )
+    if (!is.null(tab)) {
+      names(tab)[1L] <- "Term"
+      cat("\nLogit ", cls, " vs ", info$reference_class, ":\n", sep = "")
+      mfpi_print_summary_coefficient_table(tab, digits)
+    }
   }
 
   invisible(NULL)
@@ -460,7 +535,11 @@ mfpi_print_summary_regression_displays <- function(displays, digits) {
 #'   needed to reproduce the MFPI Steps 1--3 display, the object contains
 #'   \code{regression_displays}, a named list of structured coefficient displays
 #'   for retained interaction models. Each display contains readable coefficient
-#'   metadata and the corresponding model-conditional coefficient statistics.
+#'   metadata, the corresponding model-conditional coefficient statistics, and
+#'   model-specific nuisance metadata. Retained negative-binomial models report
+#'   their own theta, while retained `survreg` models report their own scale(s).
+#'   The normalized \code{family_string} is retained; ordinal summaries also
+#'   retain \code{ordinal_levels}, \code{ordinal_link}, and \code{n_intercepts}.
 #'   Printing the object produces the four-step summary described above.
 #'
 #' @examples
@@ -502,6 +581,7 @@ summary.mfpi <- function(object, ...) {
       group_var               = object$group_var,
       nobs                    = object$nobs,
       family                  = object$family,
+      family_string           = object$family_string,
       flex                    = object$flex,
       criterion               = object$criterion,
       p_adjust_method         = object$p_adjust_method,
@@ -513,6 +593,11 @@ summary.mfpi <- function(object, ...) {
       group_levels_new        = object$group_levels_new,
       group_levels_original   = object$group_levels_original,
       group_level_map         = object$group_level_map,
+
+      # Ordinal response metadata --------------------------------------------
+      ordinal_levels          = object$ordinal_levels,
+      ordinal_link            = object$ordinal_link,
+      n_intercepts            = object$n_intercepts,
 
       # Model-building outputs ------------------------------------------------
       adjust_terms            = object$adjust_terms,

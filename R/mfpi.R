@@ -474,7 +474,7 @@
 #'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
 #'   `"inverse.gaussian"`) as a name, function, or family object. Quasi
 #'   families are excluded because selection requires a likelihood. Use
-#'   `"negbin"` with `fitter = "fastglm"`, `"multinomial"` or
+#'   `"negbin"` for a negative-binomial model, `"multinomial"` or
 #'   [multinomial_family()], `"cox"`, [survreg_family()], or
 #'   [finegray_family()] for the corresponding survival model.
 #'
@@ -482,8 +482,8 @@
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
 #'   `fastglm` package and may be faster during the FP search. Ordinary GLMs
 #'   retry with `"base"` and issue a warning if `fastglm` is unavailable or a
-#'   fit fails. Survival models are unaffected. Negative-binomial models require
-#'   `fitter = "fastglm"` and cannot retry with `"base"`.
+#'   fit fails. Survival models are unaffected. Negative-binomial models select
+#'   `"fastglm"` automatically and stop early if that backend is unavailable.
 #'
 #' @param criterion The selection criterion used for both the MFP adjustment
 #'   model and the interaction comparisons: `"pvalue"`, `"aic"`, or `"bic"`.
@@ -967,6 +967,12 @@ mfpi.default <- function(
   family        <- family_info$family
   family_string <- family_info$family_string
   fitter <- resolve_fitter(fitter, family_string)
+
+  # Ordinal proportional-odds models via rms::orm are supported. The k-1
+
+  # cut-point intercepts are handled transparently by fit_ordinal(), which
+  # returns rank = p (slopes only) and df = n_int + p. The rank validation
+  # in validate_mfpi_fitted_rank() accounts for this convention.
 
   # Step 2: Prepare x and group_var, then run basic sanity checks -------------
   # Formula dispatch can attach a full-row preprocessing design to the
@@ -2310,6 +2316,15 @@ mfpi.default <- function(
     fit$class_levels <- family$prepared$levels
     fit$reference_class <- family$prepared$reference
     fit$n_logits <- family$prepared$n_logits
+  }
+  if (identical(family_string, "ordinal")) {
+    # Ordinal metadata: the response levels and link function. These are
+    # needed for prediction and coefficient labelling. Unlike multinomial,
+    # ordinal has flat (scalar) coefficients, so it uses the standard
+    # coefficient/prediction path with no per-logit fan-out.
+    fit$ordinal_levels <- family$prepared$levels
+    fit$ordinal_link <- family$prepared$link
+    fit$n_intercepts <- family$prepared$n_intercepts
   }
   if (!identical(family_string, "negbin")) {
     fit$family <- mfp2_strip_prepared_family(family)

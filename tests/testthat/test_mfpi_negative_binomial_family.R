@@ -17,11 +17,12 @@ make_mfpi_negbin_data_v <- function(n = 280L, seed = 2801L) {
 }
 
 
-test_that("negative-binomial MFPI requires the fastglm fitter", {
-  dat <- make_mfpi_negbin_data_v(n = 80L, seed = 2802L)
+test_that("negative-binomial MFPI reconstructs link and response predictions", {
+  skip_if_not_installed("fastglm")
 
-  expect_error(
-    mfpi(
+  dat <- make_mfpi_negbin_data_v()
+  expect_no_warning(
+    fit <- mfpi(
       dat[, c("group", "x", "z")],
       dat$y,
       family = "negbin",
@@ -30,35 +31,16 @@ test_that("negative-binomial MFPI requires the fastglm fitter", {
       interaction_vars = "x",
       interaction_forms = c(x = "linear"),
       flex = "flex1",
+      cycles = 1,
+      df = 1,
+      select = 1,
+      alpha = 1,
+      p_interact = 1,
+      shift = 0,
+      scale = 1,
+      center = FALSE,
       verbose = FALSE
-    ),
-    "available only with.*fitter = \"fastglm\""
-  )
-})
-
-
-test_that("negative-binomial MFPI reconstructs link and response predictions", {
-  skip_if_not_installed("fastglm")
-
-  dat <- make_mfpi_negbin_data_v()
-  fit <- mfpi(
-    dat[, c("group", "x", "z")],
-    dat$y,
-    family = "negbin",
-    fitter = "fastglm",
-    group_var = "group",
-    interaction_vars = "x",
-    interaction_forms = c(x = "linear"),
-    flex = "flex1",
-    cycles = 1,
-    df = 1,
-    select = 1,
-    alpha = 1,
-    p_interact = 1,
-    shift = 0,
-    scale = 1,
-    center = FALSE,
-    verbose = FALSE
+    )
   )
 
   expect_s3_class(fit, "mfpi")
@@ -114,4 +96,11 @@ test_that("negative-binomial MFPI reconstructs link and response predictions", {
   expect_true(all(link$predictions$se.fit >= 0))
   expect_true(all(is.finite(response$predictions$fit)))
   expect_true(all(response$predictions$fit > 0))
+
+  summary_fit <- summary(fit)
+  metadata <- summary_fit$regression_displays$x$model_metadata
+  expect_identical(metadata$link, "log")
+  expect_equal(metadata$theta, stored$theta)
+  summary_text <- paste(capture.output(print(summary_fit)), collapse = "\n")
+  expect_match(summary_text, "Theta:", fixed = TRUE)
 })

@@ -185,8 +185,8 @@ subset is applied. See the Subsetting section.}
 \item{family}{Model family. Use a likelihood family implemented by
 \code{\link[stats:glm]{stats::glm()}} (\code{"gaussian"}, \code{"binomial"}, \code{"poisson"}, \code{"Gamma"}, or
 \code{"inverse.gaussian"}) as a character name, function, or family object;
-quasi families are not supported. Use \code{"negbin"} with
-\code{fitter = "fastglm"}, \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an
+quasi families are not supported. Use \code{"negbin"} for a negative-binomial
+model, \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an
 unpenalized baseline-category multinomial model, \code{"cox"} for Cox models, \code{\link[=survreg_family]{survreg_family()}} for
 parametric survival models, or \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models.
 Default \code{"gaussian"}.}
@@ -203,13 +203,16 @@ are ignored.}
 predictors. A named numeric vector may override one or more columns of
 \code{x}; values are matched by \code{colnames(x)}, order does not matter, and
 omitted columns use the default \code{select = 0.05}. Unnamed multi-value
-vectors are not accepted. In \code{mfp2.formula()}, only a single global
-default is accepted; override it for individual terms with
-\code{fp(x, select = value)}. Setting \code{select = 1}
-for a predictor forces it into the model (equivalent to naming it in
-\code{keep}). For spike-at-zero terms, \code{select} controls only Stage-1 inclusion;
-Stage-2 component-removal tests use \code{alpha}. Ignored when \code{criterion} is
-\code{"aic"} or \code{"bic"}.}
+vectors are not accepted. In \code{mfp2.formula()}, the top-level \code{select} is a
+single scalar that sets the selection level for plain (non-\code{fp()}) terms
+only. Terms wrapped in \code{fp()} (or \code{fp2()}) are governed by their own
+\code{select} argument, which defaults to \code{0.05} and is \strong{not} inherited from
+the top-level value; to force such a term into the model, set its level
+explicitly with \code{fp(x, select = 1)} (equivalent to naming it in \code{keep}), or
+list it in \code{keep}. Setting the top-level \code{select = 1} therefore forces in
+plain terms but has no effect on \code{fp()} terms. For spike-at-zero terms,
+\code{select} controls only Stage-1 inclusion; Stage-2 component-removal tests
+use \code{alpha}. Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.}
 
 \item{alpha}{Significance level for closed tests between FP functions of
 different degrees (e.g. FP2 versus FP1 versus linear). Under
@@ -226,9 +229,10 @@ scalar is applied to all predictors.
 A named numeric vector may override one or more columns of \code{x}; values are
 matched by \code{colnames(x)}, order does not matter, and omitted columns use
 the default \code{alpha = 0.05}. Unnamed multi-value vectors are not accepted.
-In \code{mfp2.formula()}, only a single global default is accepted; override it
-for individual terms with \code{fp(x, alpha = value)}. Ignored when \code{criterion} is \code{"aic"} or
-\code{"bic"}.}
+In \code{mfp2.formula()}, the top-level \code{alpha} sets the level for plain
+(non-\code{fp()}) terms; terms wrapped in \code{fp()} (or \code{fp2()}) use their own
+\code{alpha} argument, which defaults to \code{0.05} and is not inherited from the
+top-level value. Ignored when \code{criterion} is \code{"aic"} or \code{"bic"}.}
 
 \item{keep}{Character vector of predictor names that must remain in the final
 model regardless of the selection criterion. Under \code{criterion = "pvalue"},
@@ -375,8 +379,8 @@ Default \code{TRUE}.}
 (default) uses standard R GLM fitting. \code{"fastglm"} uses the optional
 \code{fastglm} package and may be faster during the FP search. Ordinary GLMs
 retry with \code{"base"} and issue a warning if \code{fastglm} is unavailable or a
-fit fails. Survival models are unaffected. Negative-binomial models require
-\code{fitter = "fastglm"} and cannot retry with \code{"base"}.}
+fit fails. Survival models are unaffected. Negative-binomial models select
+\code{"fastglm"} automatically and stop early if that backend is unavailable.}
 
 \item{id}{Optional Fine--Gray subject identifier. It is required for a
 start--stop multi-state response and optional for ordinary one-row-per-
@@ -564,8 +568,8 @@ Supported likelihood GLMs are \code{"gaussian"}, \code{"binomial"}, \code{"poiss
 character name, family function, or family object, including the links
 implemented by \code{\link[stats:glm]{stats::glm()}}. Quasi families are deliberately excluded
 because MFP selection here requires a log likelihood for likelihood-ratio,
-AIC, or BIC comparisons. Negative binomial is selected with \code{"negbin"} and
-requires \code{fitter = "fastglm"}.
+AIC, or BIC comparisons. Negative binomial is selected with \code{"negbin"};
+\code{fitter} is set silently to \code{"fastglm"}, its required backend.
 
 Survival families are separate: use \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
 \code{\link[=finegray_family]{finegray_family()}}. Character \code{"survreg"} and \code{"finegray"} select their
@@ -1029,7 +1033,7 @@ fit_inverse_gaussian <- mfp2(
 if (requireNamespace("fastglm", quietly = TRUE)) {
   fit_negbin <- mfp2(
     y_negbin ~ x1 + x2, data = family_data,
-    family = "negbin", fitter = "fastglm",
+    family = "negbin",
     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
   )
 }

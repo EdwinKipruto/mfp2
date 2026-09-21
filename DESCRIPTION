@@ -14,9 +14,10 @@ Authors@R: c(
            email = "wilhelm.sauerbrei@uniklinik-freiburg.de")
   )
 Depends: R (>= 4.2.0)
-Imports: stats, survival, nnet, utils, Rcpp, numDeriv, ggplot2 (>= 3.4.0)
+Imports: stats, survival, nnet, utils, Rcpp, numDeriv, ggplot2 (>=
+        3.4.0)
 Suggests: knitr, testthat (>= 3.2.0), xfun, rmarkdown, formatR,
-        patchwork, fastglm (>= 0.1.1), MASS
+        patchwork, fastglm (>= 0.1.1), MASS, rms (>= 6.3.0)
 Description: Fits multivariable fractional polynomial models with simultaneous
     selection of variables and functional forms for generalized linear,
     multinomial logistic, and Cox proportional hazards models. Key references are Royston and Altman
@@ -43,7 +44,7 @@ VignetteBuilder: knitr
 LinkingTo: Rcpp
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.0
-Packaged: 2026-09-16 09:07:19 UTC; Edwin Kipruto
+Packaged: 2026-09-17 17:44:42 UTC; Edwin Kipruto
 Author: Edwin Kipruto [aut, cre],
   Michael Kammer [aut],
   Patrick Royston [aut],

@@ -76,6 +76,8 @@ The numeric values remain ordinary regression coefficients. For a single
 requested interaction, the returned object is a numeric vector with an MFPI
 print class and can be used in numerical calculations. If several
 interactions are requested, a named list of such vectors is returned.
+Multinomial results contain the slope coefficients for each non-reference
+logit; their class-specific intercepts are not included.
 
 The transformation labels reflect the interaction model actually fitted.
 Thus, under \code{flex4}, different group levels can display different FP

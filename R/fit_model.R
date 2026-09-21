@@ -180,6 +180,27 @@ fit_model <- function(x,
       has_offset = has_offset,
       reserved_names = reserved_names
     )
+  } else if (identical(family_string, "ordinal")) {
+    if (isTRUE(keep_fitted_values)) {
+      stop(
+        "Internal error: keep_fitted_values is unavailable for ordinal models.",
+        call. = FALSE
+      )
+    }
+
+    fit <- fit_ordinal(
+      x = x,
+      family = family,
+      weights = weights,
+      offset = offset,
+      control = control,
+      fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
+      has_offset = has_offset,
+      x_has_intercept = x_has_intercept,
+      reserved_names = reserved_names
+    )
   } else if (identical(family_string, "survreg")) {
     if (isTRUE(keep_fitted_values)) {
       stop(
@@ -239,7 +260,10 @@ fit_model <- function(x,
       source_columns <- source_columns[-1L]
     }
 
-    fitted_columns <- if (identical(family_string, "multinomial")) {
+    fitted_columns <- if (family_string %in% c("multinomial", "ordinal")) {
+      # Multinomial stores a per-logit matrix and ordinal carries k-1 intercepts
+      # ahead of the slopes; in both cases the slope coefficients are named by
+      # the design columns, so map source columns to themselves.
       source_columns
     } else {
       names(fit$coefficients)
@@ -923,7 +947,8 @@ normalize_glm_control <- function(control = NULL) {
 #' models have no base fallback and therefore fail before candidate fitting.
 #' Cox models do not use a GLM fitter and always resolve to "base".
 #'
-#' @param fitter Requested fitter, "base" or "fastglm".
+#' @param fitter Requested fitter, "base" or "fastglm". Negative-binomial
+#'   models always resolve silently to "fastglm".
 #' @param family_string Normalized family name.
 #'
 #' @return The effective fitter, either "base" or "fastglm".
@@ -936,14 +961,11 @@ resolve_fitter <- function(fitter, family_string) {
     return("base")
   }
 
-  if (identical(family_string, "negbin") &&
-      !identical(fitter, "fastglm")) {
-    stop(
-      "`family = \"negbin\"` is available only with `fitter = \"fastglm\"`; ",
-      "stats::glm.fit() cannot estimate the negative-binomial dispersion parameter.",
-      call. = FALSE
-    )
-  }
+  # Negative-binomial fitting has only one valid backend. Resolve it here,
+  # before package/export checks and before any response or candidate-model
+  # work, so callers do not have to repeat `fitter = "fastglm"`. This override
+  # is intentionally silent: it is a family requirement rather than a fallback.
+  if (identical(family_string, "negbin")) fitter <- "fastglm"
 
   if (identical(fitter, "base")) {
     return("base")
@@ -1237,6 +1259,140 @@ normalize_cox_control <- function(control = NULL) {
 }
 
 
+# Normalize a control list for the nnet-based multinomial fitter.
+#
+# The multinomial family is fitted with nnet::multinom()/nnet.default(), whose
+# native control knobs differ from stats::glm.control(). Routing it through
+# glm.control() previously imposed `maxit = 25`, far below nnet's own default of
+# 100, which caused FP-transformed candidate designs to abort as unconverged.
+# This returns a clean nnet-only field set with nnet's defaults, except that
+# `maxit` defaults to 300 to give FP candidate fits ample BFGS iterations.
+normalize_multinomial_control <- function(control = NULL) {
+  defaults <- list(
+    maxit   = 300L,      # nnet default is 100; raised for FP candidate fits
+    reltol  = 1.0e-8,    # nnet default
+    abstol  = 1.0e-4,    # nnet default
+    trace   = FALSE,     # nnet default is TRUE; silenced for MFP candidate fits
+    MaxNWts = 1000L      # nnet default
+  )
+  if (is.null(control)) return(defaults)
+  if (!is.list(control)) {
+    stop(
+      "For multinomial models, `control` must be `NULL` or a list of nnet ",
+      "control values (`maxit`, `reltol`, `abstol`, `trace`, `MaxNWts`).",
+      call. = FALSE
+    )
+  }
+
+  # Accept the glm-style `epsilon` as an alias for nnet's `reltol` so that
+  # control lists shared with GLM families keep working.
+  if (!is.null(control$epsilon) && is.null(control$reltol)) {
+    control$reltol <- control$epsilon
+  }
+  control$epsilon <- NULL
+
+  allowed <- names(defaults)
+  unknown <- setdiff(names(control), allowed)
+  if (length(unknown) > 0L) {
+    stop(
+      "Unknown multinomial control field(s): ", paste(unknown, collapse = ", "),
+      ". Allowed fields are: ", paste(allowed, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  out <- utils::modifyList(defaults, control)
+
+  if (!is.numeric(out$maxit) || length(out$maxit) != 1L || anyNA(out$maxit) ||
+      !is.finite(out$maxit) || out$maxit < 1 ||
+      out$maxit > .Machine$integer.max || out$maxit != floor(out$maxit)) {
+    stop("Multinomial `control$maxit` must be a single positive integer.",
+         call. = FALSE)
+  }
+  out$maxit <- as.integer(out$maxit)
+  for (nm in c("reltol", "abstol")) {
+    if (!is.numeric(out[[nm]]) || length(out[[nm]]) != 1L || anyNA(out[[nm]]) ||
+        !is.finite(out[[nm]]) || out[[nm]] <= 0) {
+      stop("Multinomial `control$", nm, "` must be a single positive number.",
+           call. = FALSE)
+    }
+  }
+  if (!is.logical(out$trace) || length(out$trace) != 1L || anyNA(out$trace)) {
+    stop("Multinomial `control$trace` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+  if (!is.numeric(out$MaxNWts) || length(out$MaxNWts) != 1L ||
+      anyNA(out$MaxNWts) || !is.finite(out$MaxNWts) || out$MaxNWts < 1 ||
+      out$MaxNWts > .Machine$integer.max || out$MaxNWts != floor(out$MaxNWts)) {
+    stop("Multinomial `control$MaxNWts` must be a single positive integer.",
+         call. = FALSE)
+  }
+  out$MaxNWts <- as.integer(out$MaxNWts)
+  out
+}
+
+
+# Normalize a control list for the rms::orm.fit()-based ordinal fitter.
+#
+# orm.fit()'s native defaults are maxit = 12, eps = 0.005, tol = 1e-7. The
+# iteration cap is raised here because FP-transformed candidate designs can need
+# more Newton-Raphson steps (the same lesson as the multinomial maxit default).
+# The glm-style `epsilon` is accepted as an alias for `eps`.
+normalize_ordinal_control <- function(control = NULL) {
+  defaults <- list(
+    maxit = 30L,       # orm.fit default is 12; raised for FP candidate fits
+    eps   = 0.005,     # orm.fit default
+    tol   = 1.0e-7,    # orm.fit default
+    trace = FALSE      # orm.fit default
+  )
+  if (is.null(control)) return(defaults)
+  if (!is.list(control)) {
+    stop(
+      "For ordinal models, `control` must be `NULL` or a list of ordinal ",
+      "control values (`maxit`, `eps`, `tol`, `trace`).",
+      call. = FALSE
+    )
+  }
+
+  # Use exact [[ extraction: `$` partial-matches, so control$eps would spuriously
+  # match a supplied `epsilon`.
+  if (!is.null(control[["epsilon"]]) && is.null(control[["eps"]])) {
+    control[["eps"]] <- control[["epsilon"]]
+  }
+  control[["epsilon"]] <- NULL
+
+  allowed <- names(defaults)
+  unknown <- setdiff(names(control), allowed)
+  if (length(unknown) > 0L) {
+    stop(
+      "Unknown ordinal control field(s): ", paste(unknown, collapse = ", "),
+      ". Allowed fields are: ", paste(allowed, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  out <- utils::modifyList(defaults, control)
+
+  if (!is.numeric(out$maxit) || length(out$maxit) != 1L || anyNA(out$maxit) ||
+      !is.finite(out$maxit) || out$maxit < 1 ||
+      out$maxit > .Machine$integer.max || out$maxit != floor(out$maxit)) {
+    stop("Ordinal `control$maxit` must be a single positive integer.",
+         call. = FALSE)
+  }
+  out$maxit <- as.integer(out$maxit)
+  for (nm in c("eps", "tol")) {
+    if (!is.numeric(out[[nm]]) || length(out[[nm]]) != 1L || anyNA(out[[nm]]) ||
+        !is.finite(out[[nm]]) || out[[nm]] <= 0) {
+      stop("Ordinal `control$", nm, "` must be a single positive number.",
+           call. = FALSE)
+    }
+  }
+  if (!is.logical(out$trace) || length(out$trace) != 1L || anyNA(out$trace)) {
+    stop("Ordinal `control$trace` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+  out
+}
+
+
 # Validate control/backend combinations once, before candidate fitting begins.
 validate_fit_control_for_fitter <- function(control, family_string,
                                             fitter = "base") {
@@ -1271,6 +1427,10 @@ normalize_fit_control <- function(control = NULL, family_string,
     normalize_cox_control(control)
   } else if (identical(family_string, "survreg")) {
     normalize_survreg_control(control)
+  } else if (identical(family_string, "multinomial")) {
+    normalize_multinomial_control(control)
+  } else if (identical(family_string, "ordinal")) {
+    normalize_ordinal_control(control)
   } else {
     normalize_glm_control(control)
   }
@@ -1297,6 +1457,238 @@ mfp2_with_survreg_convergence_guard <- function(expr, fast = TRUE) {
       }
     }
   )
+}
+
+
+# Turn an rms::orm/orm.fit non-convergence warning into a targeted fail-fast
+# error, mirroring the survreg guard.
+mfp2_with_ordinal_convergence_guard <- function(expr, fast = TRUE) {
+  stage <- if (isTRUE(fast)) "candidate" else "final"
+  withCallingHandlers(
+    expr,
+    warning = function(w) {
+      msg <- conditionMessage(w)
+      if (grepl("did not converge|singular|Non-convergence", msg, ignore.case = TRUE)) {
+        stop(
+          "The ", stage, " ordinal model did not converge; adjust `control` ",
+          "(for example raise `maxit`) or inspect the data.",
+          call. = FALSE
+        )
+      }
+    }
+  )
+}
+
+
+# Fit a proportional-odds ordinal model. Candidate fits call rms::orm.fit()
+# directly on the model matrix and integer-coded response for speed ("internal
+# codes"); the retained model is a native rms::orm object so that coef(),
+# vcov(), logLik(), AIC(), predict(), and summary() work through the standard
+# rms methods. The response was integer-coded once in prepare_ordinal_family().
+fit_ordinal <- function(x,
+                        family,
+                        weights,
+                        offset,
+                        control,
+                        fast = TRUE,
+                        calculate_fit_statistics = FALSE,
+                        keep_fit = !fast,
+                        has_offset = FALSE,
+                        x_has_intercept = FALSE,
+                        reserved_names = character()) {
+  if (!inherits(family, "mfp2_ordinal_family") || is.null(family$prepared)) {
+    stop("Internal error: ordinal family was not prepared before fitting.", call. = FALSE)
+  }
+  if (!requireNamespace("rms", quietly = TRUE)) {
+    stop(
+      "! `family = ordinal_family()` requires the `rms` package. ",
+      "Install it with install.packages(\"rms\").",
+      call. = FALSE
+    )
+  }
+  if (is.null(control)) control <- normalize_ordinal_control()
+
+  prepared <- family$prepared
+  ycodes <- prepared$y
+  link <- prepared$link
+  k <- prepared$n_classes
+  n_int <- k - 1L
+  nobs <- prepared$n_original
+
+  # mfp2 does not expose weighted ordinal likelihoods. Public fitting paths
+  # replace an omitted weight vector with ones, so accept that neutral default
+  # only; silently ignoring a constant non-unit vector would change the intended
+  # likelihood scale, information criteria, and covariance.
+  if (!is.null(weights)) {
+    w <- as.numeric(weights)
+    if (length(w) > 0L && any(w != 1)) {
+      stop(
+        "! `family = ordinal_family()` does not support case weights, ",
+        "because `rms::orm()` fits an unweighted ordinal model.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # rms::orm.fit() adds the k-1 intercepts itself, so the design must not carry
+  # an intercept column. Strip a leading "(Intercept)" when the caller supplies
+  # an intercept-augmented matrix (the convention for has-intercept families).
+  if (!is.null(x) && NCOL(x) > 0L && !is.null(colnames(x)) &&
+      identical(colnames(x)[[1L]], "(Intercept)")) {
+    x <- x[, -1L, drop = FALSE]
+  }
+
+  has_predictors <- !is.null(x) && NCOL(x) > 0L
+  xx <- if (has_predictors) as.matrix(x) else NULL
+  off <- if (isTRUE(has_offset)) as.numeric(offset) else 0
+
+  # rms::orm.fit()/orm() fail with an internal error ("object 'kof'/'m' not
+  # found") when there are no predictors. The intercept-only proportional-odds
+  # model is saturated in its k-1 intercepts, so its fitted category
+  # probabilities equal the empirical proportions and its log-likelihood has a
+  # closed form -- compute it directly instead of calling the buggy backend.
+  if (!has_predictors) {
+    freq <- tabulate(ycodes, nbins = k)
+    nn <- sum(freq)
+    pos <- freq > 0L
+    model_dev <- -2 * sum(freq[pos] * log(freq[pos] / nn))
+    null_dev <- model_dev
+    logl <- -model_dev / 2
+    all_coef <- numeric(0L)
+    betas <- numeric(0L)
+  } else {
+    raw <- mfp2_with_ordinal_convergence_guard(
+      rms::orm.fit(
+        x = xx, y = ycodes, family = link, offset = off,
+        maxit = control$maxit, eps = control$eps, tol = control$tol,
+        trace = isTRUE(control$trace)
+      ),
+      fast = fast
+    )
+    if (isTRUE(raw$fail)) {
+      validate_mfp_fit_result(
+        logl = NA_real_, df = n_int, converged = FALSE,
+        family_string = "ordinal", fast = fast
+      )
+    }
+    dev <- raw$deviance
+    model_dev <- unname(dev[length(dev)])
+    null_dev <- if (length(dev) >= 2L) unname(dev[1L]) else NA_real_
+    logl <- -model_dev / 2
+    all_coef <- raw$coefficients
+    betas <- all_coef[(n_int + 1L):length(all_coef)]
+    names(betas) <- colnames(xx)
+  }
+
+  converged <- TRUE
+  p <- length(betas)
+  rank <- p
+  df <- n_int + rank
+
+  result <- list(
+    logl = unname(logl),
+    coefficients = betas,
+    rank = rank,
+    df = df,
+    weights = NULL,
+    residuals = NULL
+  )
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    converged = converged,
+    family_string = "ordinal",
+    fast = fast
+  )
+
+  if (isTRUE(keep_fit) && !has_predictors) {
+    # Intercept-only retained model: build a minimal object carrying the
+    # analytic intercepts. Full rms methods are not available for an empty
+    # ordinal model, which only arises when every predictor is dropped.
+    freq <- tabulate(ycodes, nbins = k)
+    cum_ge <- rev(cumsum(rev(freq)))[-1L] / sum(freq)   # P(Y >= j), j = 2..k
+    linkfun <- switch(link,
+      logistic = stats::qlogis,
+      probit   = stats::qnorm,
+      loglog   = function(p) -log(-log(p)),
+      cloglog  = function(p) log(-log(1 - p)),
+      cauchit  = stats::qcauchy
+    )
+    intercepts <- linkfun(pmin(pmax(cum_ge, 1e-8), 1 - 1e-8))
+    names(intercepts) <- paste0("y>=", seq(2L, k))
+    fitobj <- list(
+      coefficients = intercepts,
+      var = matrix(NA_real_, n_int, n_int,
+                   dimnames = list(names(intercepts), names(intercepts))),
+      family = link,
+      deviance = c(model_dev, model_dev),
+      non.slopes = n_int,
+      yunique = prepared$levels,
+      mfp2_ordinal_levels = prepared$levels,
+      mfp2_ordinal_link = link,
+      mfp2_ordinal_intercepts = intercepts
+    )
+    class(fitobj) <- "orm"
+    result$fit <- fitobj
+  } else if (isTRUE(keep_fit)) {
+    # Retain a native rms::orm object so downstream accessors and prediction use
+    # the standard rms methods. Fit once, on the transformed design.
+    if (has_predictors) {
+      dfm <- as.data.frame(xx, check.names = FALSE)
+    } else {
+      dfm <- data.frame(row.names = seq_len(nobs))
+    }
+    used_names <- unique(c(names(dfm), as.character(reserved_names)))
+    response_col <- mfp2_internal_name(
+      "response", used_names, preferred = "..mfp2_ordinal_y"
+    )
+    used_names <- c(used_names, response_col)
+    dfm[[response_col]] <- ycodes
+    rhs <- if (has_predictors) {
+      paste(sprintf("`%s`", colnames(xx)), collapse = " + ")
+    } else {
+      "1"
+    }
+    if (isTRUE(has_offset)) {
+      offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+      dfm[[offset_col]] <- as.numeric(offset)
+      rhs <- if (identical(rhs, "1")) {
+        paste0("offset(", offset_col, ")")
+      } else {
+        paste(rhs, "+", paste0("offset(", offset_col, ")"))
+      }
+    }
+    formula <- stats::as.formula(paste(response_col, "~", rhs))
+    fitobj <- mfp2_with_ordinal_convergence_guard(
+      rms::orm(formula, data = dfm, family = link, x = TRUE, y = TRUE,
+               maxit = control$maxit, eps = control$eps, tol = control$tol,
+               trace = isTRUE(control$trace)),
+      fast = FALSE
+    )
+    if (isTRUE(fitobj$fail)) {
+      stop(
+        "The final ordinal model did not converge; adjust `control` (for ",
+        "example raise `maxit`) or inspect the data.",
+        call. = FALSE
+      )
+    }
+    fitobj$mfp2_ordinal_levels <- prepared$levels
+    fitobj$mfp2_ordinal_link <- link
+    retained_coef <- fitobj$coefficients
+    if (length(retained_coef) < n_int) {
+      stop("Internal error: retained ordinal thresholds are incomplete.",
+           call. = FALSE)
+    }
+    fitobj$mfp2_ordinal_intercepts <- retained_coef[seq_len(n_int)]
+    result$fit <- fitobj
+  }
+
+  if (isTRUE(calculate_fit_statistics)) {
+    result$null_logl <- if (is.finite(null_dev)) -null_dev / 2 else NA_real_
+    result$null_deviance <- null_dev
+    result$model_deviance <- model_dev
+  }
+  result
 }
 
 
@@ -1487,6 +1879,22 @@ fit_survreg <- function(x,
   } else {
     NULL
   }
+  # Retain resolved model metadata for stable, model-specific print and summary
+  # output. In particular, `survreg`'s numeric scale alone does not reveal
+  # whether it was estimated, supplied by the user, or fixed by the selected
+  # distribution.
+  requested_dist <- prepared$dist_requested
+  fit$mfp2_survreg_distribution <- if (is.character(requested_dist)) {
+    requested_dist
+  } else if (is.list(requested_dist) &&
+             is.character(requested_dist$name) &&
+             length(requested_dist$name) == 1L) {
+    requested_dist$name
+  } else {
+    prepared$dist$name
+  }
+  fit$mfp2_survreg_scale_fixed <- isTRUE(prepared$scale > 0)
+  fit$mfp2_survreg_parms <- prepared$parms
 
   loglik <- fit$loglik
   null_logl <- if (length(loglik) >= 2L) unname(loglik[1L]) else NA_real_
@@ -1619,7 +2027,7 @@ mfp2_fit_multinom_native <- function(xx, family, weights, offset_matrix,
   )
 
   max_weights <- max(
-    1000L,
+    if (is.null(control$MaxNWts)) 1000L else control$MaxNWts,
     as.integer((ncol(xx) + prepared$n_classes + 1L) * prepared$n_classes)
   )
   # nnet::multinom() appends fixed class-offset columns to its internal design
@@ -1635,7 +2043,8 @@ mfp2_fit_multinom_native <- function(xx, family, weights, offset_matrix,
     model = TRUE,
     trace = isTRUE(control$trace),
     maxit = control$maxit,
-    reltol = control$epsilon,
+    reltol = control$reltol,
+    abstol = control$abstol,
     MaxNWts = max_weights
   )
 
@@ -1716,7 +2125,7 @@ fit_multinomial <- function(x, family, weights, offset, control = NULL,
   if (!inherits(family, "mfp2_multinomial_family") || is.null(family$prepared)) {
     stop("Internal error: multinomial family was not prepared before fitting.", call. = FALSE)
   }
-  if (is.null(control)) control <- stats::glm.control()
+  if (is.null(control)) control <- normalize_multinomial_control()
   prepared <- family$prepared
   nobs <- nrow(prepared$y_matrix)
   xx <- if (isTRUE(x_has_intercept)) {
@@ -1764,12 +2173,15 @@ fit_multinomial <- function(x, family, weights, offset, control = NULL,
       x_fit <- xx
       initial_weights <- NULL
     }
-    max_weights <- max(1000L, length(mask))
+    max_weights <- max(
+      if (is.null(control$MaxNWts)) 1000L else control$MaxNWts,
+      length(mask)
+    )
     fit_args <- list(
       x = x_fit, y = y_fit, weights = effective_weights,
       size = 0L, skip = TRUE, softmax = TRUE, rang = 0, decay = 0,
       mask = mask, trace = isTRUE(control$trace), maxit = control$maxit,
-      reltol = control$epsilon, MaxNWts = max_weights
+      reltol = control$reltol, abstol = control$abstol, MaxNWts = max_weights
     )
     if (!is.null(initial_weights)) fit_args$Wts <- initial_weights
     raw_fit <- do.call(nnet::nnet.default, fit_args)
@@ -1986,6 +2398,22 @@ fit_finegray <- function(x,
     # MFPI can reconstruct training-row predictions without first expanding
     # and then ambiguously collapsing that offset.
     fit$mfp2_original_offset <- offset
+    # Keep one formula-compatible prediction row per original observation. The
+    # expanded weighted Cox data cannot be used directly for subject-level CIFs,
+    # and reconstructing it after fitting would lose rows omitted by finegray().
+    training_prediction_data <- if (!is.null(x) && NCOL(x) > 0L) {
+      as.data.frame(x, check.names = FALSE)
+    } else {
+      data.frame(row.names = seq_len(prepared$n_original))
+    }
+    if (isTRUE(has_offset)) {
+      training_prediction_data[[internal_names$offset]] <- as.numeric(offset)
+    }
+    if (!is.null(prepared$strata_original)) {
+      training_prediction_data[[internal_names$strata]] <- prepared$strata_original
+    }
+    training_prediction_data[[internal_names$cluster]] <- prepared$subject_id_original
+    fit$mfp2_finegray_training_newdata <- training_prediction_data
   }
 
   if (length(fit$loglik) >= 2L) {
@@ -2082,6 +2510,7 @@ fit_cox <- function(x,
   if (is.null(control)) {
     control <- survival::coxph.control()
   }
+
   has_predictors <- !is.null(x) && NCOL(x) > 0
 
   # Public fitting paths validate weights before selection. Keep this low-level

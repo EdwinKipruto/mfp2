@@ -197,20 +197,22 @@ test_that("mfp2.default() works with negative-binomial family", {
   dat <- make_negbin_test_data(n = 180L, seed = 1101L)
   x <- as.matrix(dat[, c("x1", "x2", "x3")])
 
-  fit <- mfp2(
-    x,
-    dat$y,
-    family = "negbin",
-    fitter = "fastglm",
-    cycles = 1,
-    df = 1,
-    select = 1,
-    alpha = 1,
-    xorder = "original",
-    shift = 0,
-    scale = 1,
-    center = FALSE,
-    verbose = FALSE
+  expect_no_warning(
+    fit <- mfp2(
+      x,
+      dat$y,
+      family = "negbin",
+      fitter = "base",
+      cycles = 1,
+      df = 1,
+      select = 1,
+      alpha = 1,
+      xorder = "original",
+      shift = 0,
+      scale = 1,
+      center = FALSE,
+      verbose = FALSE
+    )
   )
 
   expect_s3_class(fit, "mfp2")
@@ -300,21 +302,44 @@ test_that("mfp2 rejects invalid fitter values", {
 })
 
 
-# Test purpose: Negative binomial has no stats::glm.fit() backend capable of
-# estimating theta, so requesting the base fitter must fail clearly.
-test_that("negative binomial rejects the base fitter", {
-  x <- cbind(x1 = seq_len(8L), x2 = rep(c(0, 1), 4L))
-  y <- c(0, 1, 2, 3, 5, 2, 1, 4)
+# Test purpose: Negative binomial silently selects its only valid backend.
+test_that("negative binomial resolves fastglm silently", {
+  testthat::local_mocked_bindings(
+    fastglm_available = function() TRUE,
+    fastglm_exports = function() c("fastglm", "fastglm_nb"),
+    .package = "mfp2"
+  )
+  expect_no_warning(
+    expect_identical(mfp2:::resolve_fitter("base", "negbin"), "fastglm")
+  )
+})
 
+
+# Test purpose: Dependency validation occurs during fitter resolution, before
+# response preparation or candidate fitting.
+test_that("negative binomial fails early when fastglm is unavailable", {
+  testthat::local_mocked_bindings(
+    fastglm_available = function() FALSE,
+    .package = "mfp2"
+  )
   expect_error(
-    mfp2(
-      x,
-      y,
-      family = "negbin",
-      fitter = "base",
-      verbose = FALSE
-    ),
-    "available only with.*fitter = \"fastglm\""
+    mfp2:::resolve_fitter("base", "negbin"),
+    "requires the optional 'fastglm' package",
+    fixed = TRUE
+  )
+})
+
+
+test_that("negative binomial fails early when fastglm_nb is unavailable", {
+  testthat::local_mocked_bindings(
+    fastglm_available = function() TRUE,
+    fastglm_exports = function() "fastglm",
+    .package = "mfp2"
+  )
+  expect_error(
+    mfp2:::resolve_fitter("base", "negbin"),
+    "does not export `fastglm_nb()`",
+    fixed = TRUE
   )
 })
 

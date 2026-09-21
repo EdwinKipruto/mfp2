@@ -36,6 +36,9 @@
 #' \itemize{
 #'   \item \strong{Selection Overview}: a compact overview of the selected
 #'     functional form for each variable.
+#'   \item \strong{Ordinal Intercepts}: for ordinal models, the estimated
+#'     threshold intercepts with standard errors, Wald statistics, p-values,
+#'     and confidence intervals.
 #'   \item \strong{Linear Terms}: variables entering the model as a single
 #'     linear term (including binary-only spike variables and factor levels),
 #'     with the coefficient, standard error, test statistic, p-value, and,
@@ -65,6 +68,11 @@
 #' \code{raw = TRUE} to obtain the underlying model-specific summary object
 #' instead.
 #'
+#' The structured header reports interpretation-critical nuisance parameters:
+#' the distribution, fixed or estimated scale, scale strata, and censoring
+#' pattern for `survreg` models, and the log link and estimated theta for
+#' negative-binomial models.
+#'
 #' @section Coefficient statistics:
 #' The linear-terms table reports the coefficient statistics from the applicable
 #' GLM, Cox, or `survreg` summary. For a robust Cox fit, it uses the robust
@@ -92,12 +100,16 @@
 #' @return
 #' When \code{raw = FALSE}, an object of class \code{"summary.mfp2"}: a list
 #' with components \code{call}, \code{family}, \code{criterion},
-#' \code{converged}, \code{n}, \code{nevents}, \code{function_table},
+#' \code{converged}, \code{n}, \code{nevents}, model-specific components
+#' \code{distribution}, \code{scale}, \code{scale_fixed},
+#' \code{scale_strata}, \code{distribution_parameters}, \code{censoring},
+#' \code{link}, and \code{theta}, plus \code{function_table},
 #' \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 #' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
-#' \code{NULL}), \code{fit}, \code{raw_summary}, and \code{notes}. A
-#' dedicated \code{print} method renders these. When \code{raw = TRUE}, the
-#' underlying summary object.
+#' \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
+#' for ordinal models, otherwise \code{NULL}), \code{fit},
+#' \code{raw_summary}, and \code{notes}. A dedicated \code{print} method
+#' renders these. When \code{raw = TRUE}, the underlying summary object.
 #'
 #' @examples
 #' data("prostate")
@@ -180,6 +192,14 @@ summary.mfp2 <- function(object,
       converged = isTRUE(object$convergence_mfp),
       n = mfp2_summary_nobs(object),
       nevents = NA_integer_,
+      distribution = NULL,
+      scale = NULL,
+      scale_fixed = NULL,
+      scale_strata = NULL,
+      distribution_parameters = NULL,
+      censoring = NULL,
+      link = NULL,
+      theta = NULL,
       multinomial = TRUE,
       class_levels = object$class_levels,
       reference_class = object$reference_class,
@@ -199,10 +219,24 @@ summary.mfp2 <- function(object,
   # Gather the pieces.
   # ---------------------------------------------------------------------------
   classified <- mfp2_summary_classify_terms(object)
-  raw_summary <- mfp2_summary_raw(object)
+  # summary.orm() prints instead of constructing a reusable coefficient table.
+  # Ordinal inference is built directly from coef() and the complete covariance
+  # matrix, avoiding backend output while the structured summary is assembled.
+  raw_summary <- if (mfp2_family_is_ordinal(object$family_string)) {
+    NULL
+  } else {
+    mfp2_summary_raw(object)
+  }
+  model_metadata <- mfp2_summary_model_metadata(object)
 
   linear_terms <- mfp2_summary_linear_table(object, classified, raw_summary)
   nonlinear_terms <- mfp2_summary_nonlinear_table(object, classified)
+
+  ordinal_intercepts <- if (mfp2_family_is_ordinal(object$family_string)) {
+    mfp2_summary_ordinal_intercepts(object)
+  } else {
+    NULL
+  }
 
   basis_table <- if (isTRUE(basis)) {
     mfp2_summary_basis_table(object, classified)
@@ -229,17 +263,26 @@ summary.mfp2 <- function(object,
     converged       = isTRUE(object$convergence_mfp),
     n               = mfp2_summary_nobs(object),
     nevents         = mfp2_summary_nevents(object),
+    distribution    = model_metadata$distribution,
+    scale           = model_metadata$scale,
+    scale_fixed     = model_metadata$scale_fixed,
+    scale_strata    = model_metadata$scale_strata,
+    distribution_parameters = model_metadata$distribution_parameters,
+    censoring       = model_metadata$censoring,
+    link            = model_metadata$link,
+    theta           = model_metadata$theta,
     function_table  = classified$function_table,
     linear_terms    = linear_terms,
     nonlinear_terms = nonlinear_terms,
     basis           = basis_table,
     formulas        = formula_strings,
     acd_definitions = acd_definitions,
-    fit             = mfp2_summary_fit_stats(object),
-    raw_summary     = raw_summary,
-    exp_label       = mfp2_summary_exponent_label(object),
-    notes           = notes,
-    digits          = digits
+    fit                = mfp2_summary_fit_stats(object),
+    raw_summary        = raw_summary,
+    exp_label          = mfp2_summary_exponent_label(object),
+    ordinal_intercepts = ordinal_intercepts,
+    notes              = notes,
+    digits             = digits
   )
   class(out) <- "summary.mfp2"
   out
@@ -267,6 +310,257 @@ mfp2_summary_nevents <- function(object) {
     return(as.integer(sum(y[, status_col] == 1, na.rm = TRUE)))
   }
   NA_integer_
+}
+
+# Model-specific metadata that is required to interpret parametric survival
+# and negative-binomial fits. Keeping this extraction in one place ensures that
+# print.mfp2() and print.summary.mfp2() report exactly the same values.
+mfp2_summary_model_metadata <- function(object, family_string = object$family_string) {
+  out <- list(
+    distribution = NULL,
+    scale = NULL,
+    scale_fixed = NULL,
+    scale_strata = NULL,
+    distribution_parameters = NULL,
+    censoring = NULL,
+    link = NULL,
+    theta = NULL
+  )
+
+  if (identical(family_string, "survreg")) {
+    requested_dist <- object$mfp2_survreg_distribution
+    if (is.null(requested_dist) && is.list(object$family) &&
+        !is.null(object$family$dist)) {
+      requested_dist <- object$family$dist
+    }
+    if (is.null(requested_dist)) requested_dist <- object$dist
+
+    if (is.character(requested_dist) && length(requested_dist) == 1L) {
+      distributions <- survival::survreg.distributions
+      registered <- distributions[[requested_dist]]
+      out$distribution <- if (!is.null(registered$name)) {
+        registered$name
+      } else {
+        requested_dist
+      }
+    } else if (is.list(requested_dist) &&
+               is.character(requested_dist$name) &&
+               length(requested_dist$name) == 1L) {
+      out$distribution <- requested_dist$name
+    }
+
+    out$scale <- if (is.numeric(object$scale)) unname(object$scale) else NULL
+
+    scale_fixed <- object$mfp2_survreg_scale_fixed
+    if (is.null(scale_fixed)) {
+      family_scale <- if (is.list(object$family)) object$family$scale else NULL
+      fixed_by_argument <- is.numeric(family_scale) &&
+        length(family_scale) == 1L && is.finite(family_scale) && family_scale > 0
+      fixed_by_distribution <- FALSE
+      family_dist <- if (is.list(object$family)) object$family$dist else NULL
+      if (is.character(family_dist) && length(family_dist) == 1L) {
+        registered <- survival::survreg.distributions[[family_dist]]
+        fixed_by_distribution <- !is.null(registered$scale)
+      } else if (is.list(family_dist)) {
+        fixed_by_distribution <- !is.null(family_dist$scale)
+      }
+      scale_fixed <- fixed_by_argument || fixed_by_distribution
+    }
+    out$scale_fixed <- isTRUE(scale_fixed)
+
+    if (length(out$scale) > 1L) {
+      strata <- object$mfp2_strata_levels
+      if (is.null(strata) || length(strata) != length(out$scale)) {
+        strata <- names(object$scale)
+      }
+      if (is.null(strata) || length(strata) != length(out$scale) ||
+          anyNA(strata) || any(!nzchar(as.character(strata)))) {
+        strata <- as.character(seq_along(out$scale))
+      }
+      out$scale_strata <- data.frame(
+        stratum = as.character(strata),
+        scale = out$scale,
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+    }
+
+    parms <- object$mfp2_survreg_parms
+    if (is.null(parms) && !is.null(object$parms)) parms <- object$parms
+    if (is.numeric(parms) && length(parms) > 0L) {
+      out$distribution_parameters <- parms
+    }
+
+    out$censoring <- mfp2_summary_survreg_censoring(object)
+  }
+
+  if (identical(family_string, "negbin")) {
+    link <- if (is.list(object$family)) object$family$link else NULL
+    if (is.function(link)) link <- NULL
+    if (is.character(link) && length(link) == 1L && !is.na(link)) {
+      out$link <- link
+    } else {
+      # The supported fastglm negative-binomial backend uses the log link.
+      out$link <- "log"
+    }
+    if (is.numeric(object$theta) && length(object$theta) == 1L &&
+        is.finite(object$theta) && object$theta > 0) {
+      out$theta <- unname(object$theta)
+    }
+  }
+
+  if (mfp2_family_is_ordinal(family_string)) {
+    link <- object$mfp2_ordinal_link
+    if (is.character(link) && length(link) == 1L && !is.na(link)) {
+      out$link <- link
+    }
+  }
+
+  out
+}
+
+
+# Count exact and censored observations according to the Surv response type.
+# The status value zero has different meanings for right- and left-censored
+# responses, so a generic `status == 1` event count is not sufficient.
+mfp2_summary_survreg_censoring <- function(object) {
+  y <- object$y
+  if (!inherits(y, "Surv")) return(NULL)
+
+  type <- attr(y, "type", exact = TRUE)
+  status <- y[, NCOL(y)]
+  result <- list(
+    type = type,
+    exact = as.integer(sum(status == 1, na.rm = TRUE)),
+    right_censored = 0L,
+    left_censored = 0L,
+    interval_censored = 0L
+  )
+
+  if (identical(type, "right")) {
+    result$right_censored <- as.integer(sum(status == 0, na.rm = TRUE))
+  } else if (identical(type, "left")) {
+    result$left_censored <- as.integer(sum(status == 0, na.rm = TRUE))
+  } else if (type %in% c("interval", "interval2")) {
+    result$right_censored <- as.integer(sum(status == 0, na.rm = TRUE))
+    result$left_censored <- as.integer(sum(status == 2, na.rm = TRUE))
+    result$interval_censored <- as.integer(sum(status == 3, na.rm = TRUE))
+  } else {
+    return(NULL)
+  }
+
+  result
+}
+
+
+# Print the common top-level metadata used by both mfp2 print methods.
+mfp2_print_model_header <- function(family_string, criterion, converged, n,
+                                    nevents = NA_integer_, metadata = NULL,
+                                    digits = 3L) {
+  family_label <- if (identical(family_string, "negbin")) {
+    "negative binomial"
+  } else {
+    family_string
+  }
+
+  fields <- c(paste0("Family: ", family_label))
+  if (identical(family_string, "survreg") &&
+      !is.null(metadata$distribution)) {
+    fields <- c(fields, paste0("Distribution: ", metadata$distribution))
+  }
+  if (identical(family_string, "negbin") && !is.null(metadata$link)) {
+    fields <- c(fields, paste0("Link: ", metadata$link))
+  }
+  fields <- c(
+    fields,
+    paste0("Criterion: ", criterion),
+    paste0(
+      "Converged: ",
+      if (isTRUE(converged)) "yes" else if (identical(converged, FALSE)) "no" else "unknown"
+    )
+  )
+  cat(paste(fields, collapse = " | "), "\n", sep = "")
+
+  censoring <- metadata$censoring
+  if (identical(family_string, "survreg") && !is.null(censoring)) {
+    if (identical(censoring$type, "right")) {
+      cat(sprintf(
+        "Observations: %s | Events: %s | Censored: %s\n",
+        n, censoring$exact, censoring$right_censored
+      ))
+    } else if (identical(censoring$type, "left")) {
+      cat(sprintf(
+        "Observations: %s | Exact: %s | Left-censored: %s\n",
+        n, censoring$exact, censoring$left_censored
+      ))
+    } else {
+      cat(sprintf(
+        paste0(
+          "Observations: %s | Exact: %s | Right-censored: %s | ",
+          "Left-censored: %s | Interval-censored: %s\n"
+        ),
+        n, censoring$exact, censoring$right_censored,
+        censoring$left_censored, censoring$interval_censored
+      ))
+    }
+  } else if (!is.na(nevents)) {
+    cat(sprintf("Observations: %s | Events: %s\n", n, nevents))
+  } else {
+    cat(sprintf("Observations: %s\n", n))
+  }
+
+  mfp2_print_model_specific_parameters(
+    family_string = family_string,
+    metadata = metadata,
+    digits = digits
+  )
+  invisible(NULL)
+}
+
+
+# Print nuisance/model parameters that are necessary for interpretation but do
+# not belong in the regression coefficient table.
+mfp2_print_model_specific_parameters <- function(family_string, metadata,
+                                                  digits = 3L) {
+  # formatC(format = "g") reserves a leading sign position for positive
+  # values. Trim that display padding before embedding a scalar in labelled
+  # output such as "Scale: 0.8" or "Theta: 2.75".
+  fmt <- function(value) {
+    trimws(formatC(value, format = "g", digits = digits))
+  }
+
+  if (identical(family_string, "survreg") && length(metadata$scale) > 0L) {
+    status <- if (isTRUE(metadata$scale_fixed)) "fixed" else "estimated"
+    if (length(metadata$scale) == 1L) {
+      cat(sprintf("Scale: %s (%s)\n", fmt(metadata$scale), status))
+    } else {
+      cat(sprintf("Scale parameters (%s):\n", status))
+      scale_table <- metadata$scale_strata
+      names(scale_table) <- c("Stratum", "Scale")
+      print.data.frame(
+        scale_table,
+        row.names = FALSE,
+        right = FALSE,
+        digits = digits
+      )
+    }
+
+    parms <- metadata$distribution_parameters
+    if (length(parms) > 0L) {
+      parm_names <- names(parms)
+      if (is.null(parm_names) || any(!nzchar(parm_names))) {
+        parm_names <- paste0("parameter", seq_along(parms))
+      }
+      values <- paste0(parm_names, "=", vapply(parms, fmt, character(1L)))
+      cat("Distribution parameters: ", paste(values, collapse = ", "), "\n", sep = "")
+    }
+  }
+
+  if (identical(family_string, "negbin") && length(metadata$theta) == 1L) {
+    cat(sprintf("Theta: %s (estimated)\n", fmt(metadata$theta)))
+  }
+
+  invisible(NULL)
 }
 
 # Human-readable selection criterion.
@@ -572,6 +866,71 @@ mfp2_summary_coef_to_display <- function(object) {
 # Linear terms table
 # ---------------------------------------------------------------------------
 
+# Return the complete ordinal covariance matrix in coefficient order. New mfp2
+# ordinal fits always retain the native orm information matrix (or the complete
+# analytic intercept-only covariance), so missing or misaligned covariance is
+# an internal error rather than a condition to mask with fallback NA values.
+mfp2_ordinal_vcov_all <- function(object) {
+  coefficient_names <- names(object$coefficients)
+  if (is.null(coefficient_names) || anyNA(coefficient_names) ||
+      any(!nzchar(coefficient_names))) {
+    stop("Ordinal model coefficients must have non-empty names.", call. = FALSE)
+  }
+
+  covariance <- stats::vcov(object, intercepts = "all")
+  if (!is.matrix(covariance) || is.null(rownames(covariance)) ||
+      is.null(colnames(covariance)) ||
+      !all(coefficient_names %in% rownames(covariance)) ||
+      !all(coefficient_names %in% colnames(covariance))) {
+    stop(
+      "Ordinal covariance matrix is not aligned with model coefficients.",
+      call. = FALSE
+    )
+  }
+
+  covariance[coefficient_names, coefficient_names, drop = FALSE]
+}
+
+
+# Build a data frame of ordinal threshold intercepts with estimate, SE,
+# z-statistic, p-value, and 95 % CI for use in print.summary.mfp2().
+mfp2_summary_ordinal_intercepts <- function(object) {
+  ord_int <- object$mfp2_ordinal_intercepts
+  if (is.null(ord_int) || length(ord_int) == 0L) {
+    return(NULL)
+  }
+
+  if (is.null(names(ord_int)) || anyNA(names(ord_int)) ||
+      any(!nzchar(names(ord_int)))) {
+    stop("Ordinal threshold intercepts must have non-empty names.", call. = FALSE)
+  }
+
+  # rms::orm's vcov() defaults to intercepts = "mid" (middle intercept only).
+  # Request all intercepts explicitly so every threshold gets an SE.
+  # The mfp2 object IS the orm object (class c("mfp2", "orm")), so vcov()
+  # dispatches directly on it, not on a $fit slot.
+  covariance_full <- mfp2_ordinal_vcov_all(object)
+  variances <- diag(
+    covariance_full[names(ord_int), names(ord_int), drop = FALSE]
+  )
+  se <- sqrt(variances)
+
+  z    <- ord_int / se
+  pval <- 2 * stats::pnorm(abs(z), lower.tail = FALSE)
+
+  data.frame(
+    threshold = names(ord_int),
+    estimate  = unname(ord_int),
+    se        = unname(se),
+    z         = unname(z),
+    p         = unname(pval),
+    ci_lower  = unname(ord_int - 1.96 * se),
+    ci_upper  = unname(ord_int + 1.96 * se),
+    row.names = NULL,
+    stringsAsFactors = FALSE
+  )
+}
+
 mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   coefs <- object$coefficients
   if (is.null(coefs) || length(coefs) == 0L) {
@@ -823,7 +1182,11 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   # Fallback for an absent, malformed, or unfamiliar raw coefficient table.
   # This is intentionally reached for unresolved headers rather than allowing
   # an NA column index to manufacture an all-NA result.
-  V <- tryCatch(stats::vcov(object), error = function(e) NULL)
+  V <- if (mfp2_family_is_ordinal(object$family_string)) {
+    mfp2_ordinal_vcov_all(object)
+  } else {
+    tryCatch(stats::vcov(object), error = function(e) NULL)
+  }
   if (is.matrix(V) && !is.null(nm) &&
       !is.null(rownames(V)) && !is.null(colnames(V)) &&
       all(nm %in% rownames(V)) && all(nm %in% colnames(V))) {
@@ -1738,6 +2101,8 @@ mfp2_summary_model_fit_values <- function(object) {
       d <- d - as.integer(if (is.null(object$idf)) 1L else object$idf)
     } else if (identical(family_string, "multinomial")) {
       d <- d - as.integer(if (is.null(object$n_logits)) 1L else object$n_logits)
+    } else if (mfp2_family_is_ordinal(family_string)) {
+      d <- d - length(object$mfp2_ordinal_intercepts)
     } else if (mfp2_family_has_intercept(family_string)) {
       # Strip the intercept and, when applicable, estimated GLM dispersion.
       d <- d - 1L - as.integer(mfp2_glm_estimates_dispersion(
@@ -1771,6 +2136,8 @@ mfp2_summary_model_fit_values <- function(object) {
   }
   if (identical(family_string, "multinomial")) {
     attr(values, "n_logits") <- as.integer(object$n_logits)
+  } else if (mfp2_family_is_ordinal(family_string)) {
+    attr(values, "n_ordinal_intercepts") <- length(object$mfp2_ordinal_intercepts)
   }
   values
 }
@@ -1836,12 +2203,25 @@ mfp2_format_model_fit_block <- function(values, digits, heading_printer,
   # print.summary.mfp2() so users see one consistent explanation.
   if (isTRUE(notes)) {
     n_logits <- attr(values, "n_logits", exact = TRUE)
+    n_ordinal_intercepts <- attr(
+      values, "n_ordinal_intercepts", exact = TRUE
+    )
     if (!is.null(n_logits)) {
       q <- n_logits
       note_lines <- c(
         sprintf("df counts coefficients across %d non-reference logits, excluding their intercepts,", q),
         "plus 1 df for each estimated FP power shared across logits. A linear term",
         sprintf("adds %d df, FP1 adds %d df, and FP2 adds %d df.", q, q + 1L, 2L * q + 2L)
+      )
+    } else if (!is.null(n_ordinal_intercepts)) {
+      note_lines <- c(
+        sprintf(
+          "df excludes the %d ordinal threshold intercept%s and counts fitted regression",
+          n_ordinal_intercepts,
+          if (identical(n_ordinal_intercepts, 1L)) "" else "s"
+        ),
+        "coefficients, plus 1 df for each estimated FP power (FP1 = 2 df, FP2 = 4 df).",
+        "A retained catzero or spike-at-zero binary indicator adds 1 df."
       )
     } else {
       note_lines <- c(
@@ -1935,17 +2315,26 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     cat("\n")
   }
 
-  # --- One-line meta -------------------------------------------------------
-  meta <- sprintf(
-    "Family: %s | Criterion: %s | Converged: %s",
-    x$family, x$criterion, if (isTRUE(x$converged)) "yes" else "no"
+  # --- Model metadata ------------------------------------------------------
+  model_metadata <- list(
+    distribution = x$distribution,
+    scale = x$scale,
+    scale_fixed = x$scale_fixed,
+    scale_strata = x$scale_strata,
+    distribution_parameters = x$distribution_parameters,
+    censoring = x$censoring,
+    link = x$link,
+    theta = x$theta
   )
-  cat(meta, "\n")
-  if (!is.na(x$nevents)) {
-    cat(sprintf("Observations: %s | Events: %s\n", x$n, x$nevents))
-  } else {
-    cat(sprintf("Observations: %s\n", x$n))
-  }
+  mfp2_print_model_header(
+    family_string = x$family,
+    criterion = x$criterion,
+    converged = x$converged,
+    n = x$n,
+    nevents = x$nevents,
+    metadata = model_metadata,
+    digits = digits
+  )
   cat("\n")
 
   # --- Selection overview --------------------------------------------------
@@ -1956,6 +2345,43 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
   print.data.frame(ft, row.names = FALSE, right = FALSE)
   cat(sprintf("\nVariables selected: %d of %d\n\n",
               sum(ft$Selected == "yes"), nrow(ft)))
+
+  # --- Ordinal intercepts --------------------------------------------------
+  # Printed as a dedicated section before linear/nonlinear terms so that
+  # threshold parameters are not confused with MFP-selected predictor terms.
+  if (!is.null(x$ordinal_intercepts) && nrow(x$ordinal_intercepts) > 0L) {
+    section("Ordinal Intercepts")
+    oi  <- x$ordinal_intercepts
+    fmt_ordinal <- function(v) formatC(v, format = "g", digits = digits)
+    disp_oi <- data.frame(
+      Threshold       = oi$threshold,
+      Estimate        = fmt_ordinal(oi$estimate),
+      `Std. Error`    = fmt_ordinal(oi$se),
+      z               = fmt_ordinal(oi$z),
+      p               = mfp2_summary_format_p(oi$p),
+      `[95% CI]`      = sprintf(
+        "[%s, %s]",
+        fmt_ordinal(oi$ci_lower),
+        fmt_ordinal(oi$ci_upper)
+      ),
+      check.names     = FALSE,
+      stringsAsFactors = FALSE
+    )
+    print.data.frame(disp_oi, row.names = FALSE, right = FALSE)
+    link_label <- switch(
+      x$link,
+      logistic = "logistic (proportional-odds)",
+      probit = "probit",
+      loglog = "log-log",
+      cloglog = "complementary log-log",
+      cauchit = "cauchit",
+      "ordinal"
+    )
+    cat(sprintf(
+      "\nThresholds for the %s cumulative-link model.\n\n",
+      link_label
+    ))
+  }
 
   # --- Linear terms --------------------------------------------------------
   section("Linear Terms")

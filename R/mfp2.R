@@ -73,8 +73,8 @@
 #' character name, family function, or family object, including the links
 #' implemented by [stats::glm()]. Quasi families are deliberately excluded
 #' because MFP selection here requires a log likelihood for likelihood-ratio,
-#' AIC, or BIC comparisons. Negative binomial is selected with `"negbin"` and
-#' requires `fitter = "fastglm"`.
+#' AIC, or BIC comparisons. Negative binomial is selected with `"negbin"`;
+#' `fitter` is set silently to `"fastglm"`, its required backend.
 #'
 #' Survival families are separate: use `"cox"`, [survreg_family()], or
 #' [finegray_family()]. Character `"survreg"` and `"finegray"` select their
@@ -445,8 +445,8 @@
 #' @param family Model family. Use a likelihood family implemented by
 #'   [stats::glm()] (`"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`, or
 #'   `"inverse.gaussian"`) as a character name, function, or family object;
-#'   quasi families are not supported. Use `"negbin"` with
-#'   `fitter = "fastglm"`, `"multinomial"` or [multinomial_family()] for an
+#'   quasi families are not supported. Use `"negbin"` for a negative-binomial
+#'   model, `"multinomial"` or [multinomial_family()] for an
 #'   unpenalized baseline-category multinomial model, `"cox"` for Cox models, [survreg_family()] for
 #'   parametric survival models, or [finegray_family()] for Fine--Gray models.
 #'   Default `"gaussian"`.
@@ -454,8 +454,8 @@
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
 #'   `fastglm` package and may be faster during the FP search. Ordinary GLMs
 #'   retry with `"base"` and issue a warning if `fastglm` is unavailable or a
-#'   fit fails. Survival models are unaffected. Negative-binomial models require
-#'   `fitter = "fastglm"` and cannot retry with `"base"`.
+#'   fit fails. Survival models are unaffected. Negative-binomial models select
+#'   `"fastglm"` automatically and stop early if that backend is unavailable.
 #' @param criterion Selection criterion. One of `"pvalue"` (default), `"aic"`,
 #'   or `"bic"`. With `"pvalue"`, variable inclusion is controlled by `select`,
 #'   while functional-form comparisons and SAZ Stage-2 component-removal tests
@@ -467,13 +467,16 @@
 #'   predictors. A named numeric vector may override one or more columns of
 #'   `x`; values are matched by `colnames(x)`, order does not matter, and
 #'   omitted columns use the default `select = 0.05`. Unnamed multi-value
-#'   vectors are not accepted. In `mfp2.formula()`, only a single global
-#'   default is accepted; override it for individual terms with
-#'   `fp(x, select = value)`. Setting `select = 1`
-#'   for a predictor forces it into the model (equivalent to naming it in
-#'   `keep`). For spike-at-zero terms, `select` controls only Stage-1 inclusion;
-#'   Stage-2 component-removal tests use `alpha`. Ignored when `criterion` is
-#'   `"aic"` or `"bic"`.
+#'   vectors are not accepted. In `mfp2.formula()`, the top-level `select` is a
+#'   single scalar that sets the selection level for plain (non-`fp()`) terms
+#'   only. Terms wrapped in `fp()` (or `fp2()`) are governed by their own
+#'   `select` argument, which defaults to `0.05` and is **not** inherited from
+#'   the top-level value; to force such a term into the model, set its level
+#'   explicitly with `fp(x, select = 1)` (equivalent to naming it in `keep`), or
+#'   list it in `keep`. Setting the top-level `select = 1` therefore forces in
+#'   plain terms but has no effect on `fp()` terms. For spike-at-zero terms,
+#'   `select` controls only Stage-1 inclusion; Stage-2 component-removal tests
+#'   use `alpha`. Ignored when `criterion` is `"aic"` or `"bic"`.
 #' @param alpha Significance level for closed tests between FP functions of
 #'   different degrees (e.g. FP2 versus FP1 versus linear). Under
 #'   `criterion = "pvalue"`, simplification occurs only when the comparison
@@ -489,9 +492,10 @@
 #'   A named numeric vector may override one or more columns of `x`; values are
 #'   matched by `colnames(x)`, order does not matter, and omitted columns use
 #'   the default `alpha = 0.05`. Unnamed multi-value vectors are not accepted.
-#'   In `mfp2.formula()`, only a single global default is accepted; override it
-#'   for individual terms with `fp(x, alpha = value)`. Ignored when `criterion` is `"aic"` or
-#'   `"bic"`.
+#'   In `mfp2.formula()`, the top-level `alpha` sets the level for plain
+#'   (non-`fp()`) terms; terms wrapped in `fp()` (or `fp2()`) use their own
+#'   `alpha` argument, which defaults to `0.05` and is not inherited from the
+#'   top-level value. Ignored when `criterion` is `"aic"` or `"bic"`.
 #' @param keep Character vector of predictor names that must remain in the final
 #' model regardless of the selection criterion. Under `criterion = "pvalue"`,
 #' this is equivalent to setting `select = 1` for each named variable. The
@@ -801,7 +805,7 @@
 #' if (requireNamespace("fastglm", quietly = TRUE)) {
 #'   fit_negbin <- mfp2(
 #'     y_negbin ~ x1 + x2, data = family_data,
-#'     family = "negbin", fitter = "fastglm",
+#'     family = "negbin",
 #'     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
 #'   )
 #' }
@@ -4234,6 +4238,11 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
 #'   definitions (which are controlled independently by \code{notes}, but
 #'   have nothing left to annotate when this table isn't printed). Default is
 #'   \code{TRUE}.
+#' @param intercepts Logical or \code{NULL}. Controls whether threshold
+#'   intercepts are printed for ordinal models. \code{NULL} (default) mirrors
+#'   \code{rms::orm}: intercepts are shown when there are fewer than 10 (i.e.
+#'   fewer than 11 outcome levels) and suppressed otherwise. Pass \code{TRUE}
+#'   or \code{FALSE} to override the default for any model.
 #' @param notes Logical. If \code{FALSE}, suppresses auto-generated explanatory
 #'   notes: the \code{Note:} lines and column definitions associated with the
 #'   Detailed Settings table, and the model-df explanation below the Model Fit
@@ -4247,7 +4256,8 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
 #' @seealso [mfp2()], [summary.mfp2()], [get_selected_variable_names()]
 #'
 #' @export
-print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
+print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
+                        intercepts = NULL, ...) {
 
   # ---------------------------------------------------------------------------
   # Step 1: Resolve display settings
@@ -4255,6 +4265,16 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 
   dots <- list(...)
   digits <- dots$digits
+
+  # `intercepts` controls whether ordinal threshold intercepts are printed.
+  # Default (NULL) mirrors rms::orm: show them when there are fewer than 10
+  # (i.e. fewer than 11 outcome levels), suppress otherwise.
+  if (is.null(intercepts)) {
+    n_int <- length(x$mfp2_ordinal_intercepts)
+    intercepts <- mfp2_family_is_ordinal(x$family_string) && n_int > 0L && n_int < 10L
+  } else {
+    validate_logical_vector(intercepts, "intercepts", allowed_lengths = 1L)
+  }
 
   validate_logical_vector(notes, "notes", allowed_lengths = 1L)
 
@@ -4300,22 +4320,6 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     )
 
     cat(paste(wrapped_text, collapse = "\n"), "\n", sep = "")
-  }
-
-  format_convergence <- function(value) {
-    if (length(value) != 1L || is.na(value)) {
-      return("unknown")
-    }
-
-    if (isTRUE(value)) {
-      return("yes")
-    }
-
-    if (identical(value, FALSE)) {
-      return("no")
-    }
-
-    "unknown"
   }
 
   format_criterion <- function(value) {
@@ -4584,31 +4588,24 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
     cat("(original mfp2 call unavailable)\n")
   }
 
-  # Family / Criterion / Converged: three fields on one line, joined by " | "
-  # for compactness. The criterion label was pre-formatted earlier in this
-  # method; convergence uses the same helper the Selection Summary previously
-  # used, so the yes/no wording is unchanged.
-  cat(sprintf(
-    "Family: %s | Criterion: %s | Converged: %s\n",
-    x$family_string,
-    criterion_label,
-    format_convergence(x$convergence_mfp)
-  ))
-
-  # Observations / Events: for proportional-hazards models the number of target
-  # events is more informative than the total sample size alone, so both are
-  # shown. For other families only the observation count is meaningful.
+  # Model-specific metadata is extracted and rendered by the same helpers used
+  # by print.summary.mfp2(), keeping direct and summary output synchronized.
   n_obs <- if (!is.null(x$nobs)) {
     x$nobs
   } else {
     tryCatch(NROW(x$y_original), error = function(e) NA_integer_)
   }
-  if (mfp2_family_uses_event_count(x$family_string)) {
-    n_events <- if (!is.null(x$nevents)) x$nevents else NA_integer_
-    cat(sprintf("Observations: %s | Events: %s\n", n_obs, n_events))
-  } else {
-    cat(sprintf("Observations: %s\n", n_obs))
-  }
+  n_events <- if (mfp2_family_uses_event_count(x$family_string) &&
+                  !is.null(x$nevents)) x$nevents else NA_integer_
+  mfp2_print_model_header(
+    family_string = x$family_string,
+    criterion = criterion_label,
+    converged = x$convergence_mfp,
+    n = n_obs,
+    nevents = n_events,
+    metadata = mfp2_summary_model_metadata(x),
+    digits = digits
+  )
   if (identical(x$family_string, "multinomial")) {
     cat(sprintf(
       "Outcome classes: %s | Reference: %s | Logits: %d\n",
@@ -5079,6 +5076,34 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
       display <- rbind(intercept, display)
     }
 
+    # Ordinal models: prepend threshold intercepts when requested.
+    # Mirrors rms::orm's print method: intercepts appear as the first rows of
+    # the same coefficient table, above the predictor slopes.
+    if (isTRUE(intercepts) && mfp2_family_is_ordinal(x$family_string)) {
+      ord_int <- x$mfp2_ordinal_intercepts
+      if (!is.null(ord_int) && length(ord_int) > 0L) {
+        # SEs from vcov: rms::orm's vcov() defaults to intercepts = "mid"
+        # (middle intercept only). Request all intercepts explicitly.
+        # The mfp2 object IS the orm object (class c("mfp2", "orm")), so
+        # vcov() dispatches directly on x, not on a $fit slot.
+        covariance_full <- mfp2_ordinal_vcov_all(x)
+        variances <- diag(
+          covariance_full[names(ord_int), names(ord_int), drop = FALSE]
+        )
+        ord_se <- sqrt(variances)
+        threshold_rows <- data.frame(
+          Variable   = names(ord_int),
+          Basis      = "",
+          stringsAsFactors = FALSE,
+          check.names = FALSE
+        )
+        if (!is.null(x$centers)) threshold_rows[["Center"]] <- NA_real_
+        threshold_rows[["Estimate"]]   <- unname(ord_int)
+        threshold_rows[["Std. Error"]] <- unname(ord_se)
+        display <- rbind(threshold_rows, display)
+      }
+    }
+
     if (!is.null(x$centers)) {
       cat("Estimates are for: Basis - Center\n\n")
     }
@@ -5177,11 +5202,15 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE, ...) {
 #'   both Stage-2 SAZ component-removal tests. Under p-value selection, reduced
 #'   forms are accepted only when their comparison p-value is strictly greater
 #'   than `alpha`; therefore `alpha = 1` prevents simplification, including at
-#'   an exact p-value of `1`. Default `0.05`. Overrides the global `alpha` from
-#'   [mfp2()] for this variable.
+#'   an exact p-value of `1`. Default `0.05`. This is the sole `alpha` for the
+#'   `fp()` term: it is fixed at `0.05` unless set here and is not inherited from
+#'   the top-level `alpha` given to [mfp2()] (which governs plain, non-`fp()`
+#'   terms only).
 #' @param select Significance level for backward-elimination variable
 #'   selection. Default `0.05`. Set to `1` to force this variable into the
-#'   model. Overrides the global `select` from [mfp2()].
+#'   model. This is the sole selection level for the `fp()` term: it is fixed at
+#'   `0.05` unless set here and is **not** inherited from the top-level `select`
+#'   given to [mfp2()] (which governs plain, non-`fp()` terms only).
 #' @param shift Numeric shift override for this variable, or `NULL` (default)
 #'   to inherit the global setting from [mfp2()]. See [mfp2()] for details.
 #' @param scale Numeric scale override for this variable, or `NULL` (default)

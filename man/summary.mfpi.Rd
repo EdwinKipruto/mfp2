@@ -19,8 +19,10 @@ for retained interaction models. Each display contains readable coefficient
 metadata, the corresponding model-conditional coefficient statistics, and
 model-specific nuisance metadata. Retained negative-binomial models report
 their own theta, while retained \code{survreg} models report their own scale(s).
-The normalized \code{family_string} is retained; ordinal summaries also
-retain \code{ordinal_levels}, \code{ordinal_link}, and \code{n_intercepts}.
+The normalized \code{family_string} is retained. Multinomial summaries also
+retain \code{class_levels}, \code{reference_class}, and \code{n_logits};
+ordinal summaries retain \code{ordinal_levels}, \code{ordinal_link}, and
+\code{n_intercepts}.
 Printing the object produces the four-step summary described above.
 }
 \description{
@@ -33,9 +35,10 @@ interaction candidates, and the final interaction-selection summary. Step 4
 reports regression results for retained interaction models using MFPI-specific
 labels rather than the raw output of the underlying regression model.
 
-The main MFPI header already reports the grouping variable and FLEX setting.
-Step 4 therefore avoids repeating those fit-level properties within each
-retained model. Instead, each retained interaction is introduced by an
+The main MFPI header reports the FLEX setting, while Step 2 reports the
+grouping variable and interaction-selection settings. Step 4 avoids
+repeating those fit-level properties within each retained model. Instead,
+each retained interaction is introduced by an
 underlined interaction heading and reports its FP form and interaction powers
 for every group level. Regression coefficients are then separated into:
 
@@ -48,7 +51,11 @@ explicitly;
 \item adjustment coefficients.
 }
 
-Each coefficient table includes the estimate, standard error, model-specific
+Centered basis terms report their stored centering constants using the same
+\code{Basis - Center} convention as \code{print.mfp2()}. Multinomial models
+use one outcome-versus-reference block per non-reference outcome, retaining
+the same coefficient-table separation within every block. Each coefficient
+table includes the estimate, standard error, model-specific
 test statistic (for example, \code{z} or \code{t}), and p-value. Significance
 stars, exponentiated coefficients, confidence-interval tables, the raw model
 call, and model-level likelihood-ratio/Wald/score tests are intentionally not

@@ -23,6 +23,9 @@
 #' Multinomial logistic models use [multinomial_family()] and the `nnet`
 #' package. Their selected FP transformations are common across logits and
 #' their regression coefficients are logit specific.
+#' Proportional-odds ordinal models use [ordinal_family()] and the optional
+#' `rms` package. They estimate a common predictor effect across response
+#' cut-points.
 #'
 #' Survival models are specified as separate families: `family = "cox"` for
 #' Cox proportional hazards, [survreg_family()] for the parametric distributions
@@ -61,7 +64,8 @@
 #' - `vignette("mfpi", package = "mfp2")` for interaction analysis.
 #'
 #' @seealso
-#' [mfp2()], [fp()], [mfpi()], [predict.mfp2()], [plot.mfp2()]
+#' [mfp2()], [fp()], [mfpi()], [multinomial_family()], [ordinal_family()],
+#' [survreg_family()], [finegray_family()], [predict.mfp2()], [plot.mfp2()]
 #'
 #' @useDynLib mfp2, .registration = TRUE
 #' @importFrom Rcpp evalCpp

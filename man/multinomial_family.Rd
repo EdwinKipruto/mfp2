@@ -35,3 +35,43 @@ linear term contributes \eqn{Q} regression degrees of freedom. An FP of
 degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
 coefficients and \eqn{m} shared-power search degrees of freedom.
 }
+\examples{
+set.seed(43)
+n <- 150
+multinomial_data <- data.frame(
+  x1 = stats::rnorm(n),
+  x2 = stats::runif(n, -1, 1)
+)
+eta_b <- with(multinomial_data, 0.4 * x1 - 0.2 * x2)
+eta_c <- with(multinomial_data, -0.3 * x1 + 0.5 * x2)
+denominator <- 1 + exp(eta_b) + exp(eta_c)
+probabilities <- cbind(
+  A = 1 / denominator,
+  B = exp(eta_b) / denominator,
+  C = exp(eta_c) / denominator
+)
+multinomial_data$y <- factor(vapply(
+  seq_len(n),
+  function(i) sample(c("A", "B", "C"), 1, prob = probabilities[i, ]),
+  character(1)
+))
+
+fit_multinomial <- mfp2(
+  y ~ x1 + x2,
+  data = multinomial_data,
+  family = multinomial_family(reference = "A"),
+  df = 1,
+  select = 1,
+  cycles = 1,
+  verbose = FALSE
+)
+predict(
+  fit_multinomial,
+  newdata = multinomial_data[1:3, ],
+  type = "response",
+  se.fit = FALSE
+)
+}
+\seealso{
+\code{\link[nnet:multinom]{nnet::multinom()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
+}

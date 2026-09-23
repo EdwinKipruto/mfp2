@@ -97,7 +97,11 @@ test_that("survreg metadata identifies distribution and fixed or stratified scal
       digits = 3L
     )
   )
-  expect_match(printed[[1L]], "Family: survreg | Distribution: Weibull", fixed = TRUE)
+  expect_match(
+    printed[[1L]],
+    "Model: Parametric Survival Regression | Distribution: Weibull",
+    fixed = TRUE
+  )
   expect_true(any(grepl("Observations: 3 | Events: 2 | Censored: 1", printed, fixed = TRUE)))
   expect_true(any(grepl("Scale: 0.8 (fixed)", printed, fixed = TRUE)))
 })
@@ -125,10 +129,106 @@ test_that("negative-binomial metadata prints log link and theta", {
   )
   expect_match(
     printed[[1L]],
-    "Family: negative binomial | Link: log | Criterion: AIC | Converged: yes",
+    "Model: Negative-Binomial GLM (log link) | Criterion: AIC | Converged: yes",
     fixed = TRUE
   )
   expect_true(any(grepl("Theta: 2.75 (estimated)", printed, fixed = TRUE)))
+})
+
+
+test_that("GLM metadata preserves fitted dispersion without transformation", {
+  object <- list(
+    family_string = "Gamma",
+    family = list(family = "Gamma", link = "log", dispersion = NA_real_)
+  )
+  raw_summary <- list(dispersion = 0.24)
+
+  metadata <- mfp2:::mfp2_summary_model_metadata(
+    object,
+    raw_summary = raw_summary
+  )
+  expect_equal(metadata$dispersion, raw_summary$dispersion)
+  expect_false(metadata$dispersion_fixed)
+
+  fixed <- object
+  fixed$family$dispersion <- 0.4
+  fixed_metadata <- mfp2:::mfp2_summary_model_metadata(
+    fixed,
+    raw_summary = list(dispersion = 99)
+  )
+  expect_equal(fixed_metadata$dispersion, 0.4)
+  expect_true(fixed_metadata$dispersion_fixed)
+
+  printed <- capture.output(
+    mfp2:::mfp2_print_model_header(
+      family_string = "Gamma",
+      criterion = "p-value",
+      converged = TRUE,
+      n = 120L,
+      metadata = metadata,
+      digits = 3L
+    )
+  )
+  expect_true(any(grepl(
+    "Dispersion: 0.24 (estimated)", printed, fixed = TRUE
+  )))
+  expect_match(
+    printed[[1L]],
+    "Model: Gamma GLM (log link) | Criterion: p-value | Converged: yes",
+    fixed = TRUE
+  )
+})
+
+
+test_that("model metadata accepts an absent family label", {
+  metadata <- mfp2:::mfp2_summary_model_metadata(
+    object = list(),
+    family_string = NULL
+  )
+
+  expect_null(metadata$dispersion)
+  expect_null(metadata$dispersion_fixed)
+  expect_null(metadata$scale)
+  expect_null(metadata$theta)
+
+  expect_no_error(
+    mfp2:::mfp2_print_model_specific_parameters(
+      family_string = NULL,
+      metadata = metadata
+    )
+  )
+})
+
+
+test_that("Gamma summaries expose the underlying fitted dispersion", {
+  set.seed(314)
+  n <- 250L
+  x <- stats::rnorm(n)
+  mu <- exp(0.4 + 0.3 * x)
+  dat <- data.frame(
+    y = stats::rgamma(n, shape = 6, scale = mu / 6),
+    x = x
+  )
+  fit <- mfp2(
+    y ~ fp(x, df = 1, select = 1),
+    data = dat,
+    family = stats::Gamma(link = "log"),
+    center = FALSE,
+    alpha = 1,
+    select = 1,
+    verbose = FALSE
+  )
+  s <- summary(fit)
+
+  expect_equal(s$dispersion, s$raw_summary$dispersion)
+  expect_false(s$dispersion_fixed)
+
+  direct <- paste(capture.output(print(fit)), collapse = "\n")
+  summarized <- paste(capture.output(print(s)), collapse = "\n")
+  for (text in c(direct, summarized)) {
+    expect_match(text, "Dispersion:", fixed = TRUE)
+    expect_match(text, "(estimated)", fixed = TRUE)
+  }
 })
 
 
@@ -171,9 +271,36 @@ test_that("mfp2 summaries expose and print negative-binomial theta", {
   direct <- paste(capture.output(print(fits$mfp2)), collapse = "\n")
   summarized <- paste(capture.output(print(s)), collapse = "\n")
   for (text in c(direct, summarized)) {
-    expect_match(text, "Family: negative binomial", fixed = TRUE)
-    expect_match(text, "Link: log", fixed = TRUE)
+    expect_match(text, "Model: Negative-Binomial GLM (log link)", fixed = TRUE)
     expect_match(text, "Theta:", fixed = TRUE)
     expect_false(grepl("Dispersion:", text, fixed = TRUE))
   }
+})
+
+
+test_that("categorical response frequencies preserve fitted response order", {
+  multinomial <- list(
+    family_string = "multinomial",
+    y_original = factor(c("A", "B", "A", "C", "B"), levels = c("A", "B", "C")),
+    mfp2_family = list(prepared = list(original_levels = c("A", "B", "C")))
+  )
+  expect_equal(
+    mfp2:::mfp2_summary_response_frequencies(multinomial),
+    c(A = 2, B = 2, C = 1)
+  )
+
+  grouped <- list(
+    family_string = "multinomial",
+    y_original = matrix(
+      c(2, 1, 0, 1, 3, 2),
+      nrow = 2L,
+      byrow = TRUE,
+      dimnames = list(NULL, c("A", "B", "C"))
+    ),
+    mfp2_family = list(prepared = list(original_levels = c("A", "B", "C")))
+  )
+  expect_equal(
+    mfp2:::mfp2_summary_response_frequencies(grouped),
+    c(A = 3, B = 4, C = 2)
+  )
 })

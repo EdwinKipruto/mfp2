@@ -288,12 +288,34 @@ mfpi_summary_display_table <- function(metadata_table, statistics, leading_colum
 
   out <- metadata_table[, leading_columns, drop = FALSE]
   out$Estimate <- statistics$estimate[idx]
-  out[["Std. Error"]] <- statistics$std_error[idx]
+  out[["S.E."]] <- statistics$std_error[idx]
   stat_label <- attr(statistics, "statistic_label", exact = TRUE)
   if (is.null(stat_label) || !nzchar(stat_label)) stat_label <- "Statistic"
   out[[stat_label]] <- statistics$statistic[idx]
   out[["p-value"]] <- statistics$p_value[idx]
   out
+}
+
+
+# Format stored centering constants at the print boundary using the same
+# convention as print.mfp2(): blank when not applicable, 0 for exact zero, and
+# compact numeric output otherwise.
+mfpi_summary_format_centers <- function(x, digits) {
+  vapply(x, function(value) {
+    if (length(value) != 1L || is.na(value)) return("")
+    if (value == 0) return("0")
+    format(value, digits = digits, trim = TRUE)
+  }, character(1L), USE.NAMES = FALSE)
+}
+
+
+# Report whether a retained interaction display contains any stored centering
+# constants in either its group-specific or adjustment basis metadata.
+mfpi_summary_info_has_centers <- function(info) {
+  tables <- list(info$group_table, info$adjustment_table)
+  any(vapply(tables, function(tab) {
+    !is.null(tab) && "center" %in% names(tab) && any(!is.na(tab$center))
+  }, logical(1L)))
 }
 
 
@@ -312,6 +334,9 @@ mfpi_summary_format_pvalues <- function(p, digits) {
 # Print one coefficient table using the common MFPI summary layout.
 mfpi_print_summary_coefficient_table <- function(tab, digits) {
   if (is.null(tab) || nrow(tab) == 0L) return(invisible(NULL))
+  if ("Center" %in% names(tab)) {
+    tab[["Center"]] <- mfpi_summary_format_centers(tab[["Center"]], digits)
+  }
   tab[["p-value"]] <- mfpi_summary_format_pvalues(tab[["p-value"]], digits)
   print(tab, row.names = FALSE, digits = digits)
   invisible(NULL)
@@ -353,13 +378,25 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
 
   mfpi_print_interaction_powers(info$power_table)
 
+  if (mfpi_summary_info_has_centers(info)) {
+    cat("\nEstimates are for: Basis - Center\n")
+  }
+
+  group_leading <- c("group_level", "transformation")
+  if ("center" %in% names(info$group_table) &&
+      any(!is.na(info$group_table$center))) {
+    group_leading <- c(group_leading, "center")
+  }
   group_tab <- mfpi_summary_display_table(
     metadata_table = info$group_table,
     statistics = statistics,
-    leading_columns = c("group_level", "transformation")
+    leading_columns = group_leading
   )
   if (!is.null(group_tab)) {
-    names(group_tab)[1:2] <- c("Group level", "Transformation")
+    names(group_tab)[1:2] <- c("Group level", "Basis")
+    if ("center" %in% names(group_tab)) {
+      names(group_tab)[names(group_tab) == "center"] <- "Center"
+    }
     cat("\nGroup-specific FP terms:\n")
     mfpi_print_summary_coefficient_table(group_tab, digits)
 
@@ -395,13 +432,26 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
     mfpi_print_summary_coefficient_table(intercept_tab, digits)
   }
 
+  adjustment_leading <- if (all(c("variable", "basis") %in%
+                                names(info$adjustment_table))) {
+    c("variable", "basis")
+  } else {
+    "term"
+  }
+  if ("center" %in% names(info$adjustment_table) &&
+      any(!is.na(info$adjustment_table$center))) {
+    adjustment_leading <- c(adjustment_leading, "center")
+  }
   adjustment_tab <- mfpi_summary_display_table(
     metadata_table = info$adjustment_table,
     statistics = statistics,
-    leading_columns = "term"
+    leading_columns = adjustment_leading
   )
   if (!is.null(adjustment_tab)) {
-    names(adjustment_tab)[1L] <- "Term"
+    names(adjustment_tab)[names(adjustment_tab) == "variable"] <- "Variable"
+    names(adjustment_tab)[names(adjustment_tab) == "basis"] <- "Basis"
+    names(adjustment_tab)[names(adjustment_tab) == "center"] <- "Center"
+    names(adjustment_tab)[names(adjustment_tab) == "term"] <- "Term"
     cat("\nAdjustment coefficients:\n")
     mfpi_print_summary_coefficient_table(adjustment_tab, digits)
   }
@@ -425,21 +475,87 @@ mfpi_print_summary_multinomial_block <- function(display, digits) {
   } else {
     cat("FP form: ", info$form, "\n", sep = "")
   }
-  cat("Family: multinomial (reference class: ", info$reference_class, ")\n", sep = "")
+  cat("Reference outcome: ", info$reference_class, "\n", sep = "")
 
   mfpi_print_interaction_powers(info$power_table)
 
+  if (mfpi_summary_info_has_centers(info)) {
+    cat("\nEstimates are for: Basis - Center\n")
+  }
+
   for (cls in info$classes) {
-    meta <- info$logit_table[info$logit_table$class == cls, , drop = FALSE]
-    tab <- mfpi_summary_display_table(
-      metadata_table = meta,
-      statistics = statistics,
-      leading_columns = "term"
-    )
-    if (!is.null(tab)) {
-      names(tab)[1L] <- "Term"
-      cat("\nLogit ", cls, " vs ", info$reference_class, ":\n", sep = "")
-      mfpi_print_summary_coefficient_table(tab, digits)
+    outcome_heading <- paste0("Outcome: ", cls, " vs ", info$reference_class)
+    cat("\n", outcome_heading, "\n", sep = "")
+    cat(strrep("-", nchar(outcome_heading)), "\n", sep = "")
+
+    if (!is.null(info$group_table)) {
+      group_meta <- info$group_table[
+        info$group_table$class == cls, , drop = FALSE
+      ]
+      group_leading <- c("group_level", "transformation")
+      if ("center" %in% names(group_meta) && any(!is.na(group_meta$center))) {
+        group_leading <- c(group_leading, "center")
+      }
+      group_tab <- mfpi_summary_display_table(
+        metadata_table = group_meta,
+        statistics = statistics,
+        leading_columns = group_leading
+      )
+      if (!is.null(group_tab)) {
+        names(group_tab)[1:2] <- c("Group level", "Basis")
+        names(group_tab)[names(group_tab) == "center"] <- "Center"
+        cat("\nGroup-specific FP terms:\n")
+        mfpi_print_summary_coefficient_table(group_tab, digits)
+      }
+
+      group_var_meta <- info$group_variable_table[
+        info$group_variable_table$class == cls, , drop = FALSE
+      ]
+      group_var_tab <- mfpi_summary_display_table(
+        metadata_table = group_var_meta,
+        statistics = statistics,
+        leading_columns = "level"
+      )
+      if (!is.null(group_var_tab)) {
+        names(group_var_tab)[1L] <- "Level"
+        cat("\nGroup-variable coefficients:\n")
+        cat("Reference level: ", info$reference_level, "\n\n", sep = "")
+        mfpi_print_summary_coefficient_table(group_var_tab, digits)
+      }
+
+      adjustment_meta <- info$adjustment_table[
+        info$adjustment_table$class == cls, , drop = FALSE
+      ]
+      adjustment_leading <- c("variable", "basis")
+      if ("center" %in% names(adjustment_meta) &&
+          any(!is.na(adjustment_meta$center))) {
+        adjustment_leading <- c(adjustment_leading, "center")
+      }
+      adjustment_tab <- mfpi_summary_display_table(
+        metadata_table = adjustment_meta,
+        statistics = statistics,
+        leading_columns = adjustment_leading
+      )
+      if (!is.null(adjustment_tab)) {
+        names(adjustment_tab)[names(adjustment_tab) == "variable"] <- "Variable"
+        names(adjustment_tab)[names(adjustment_tab) == "basis"] <- "Basis"
+        names(adjustment_tab)[names(adjustment_tab) == "center"] <- "Center"
+        cat("\nAdjustment coefficients:\n")
+        mfpi_print_summary_coefficient_table(adjustment_tab, digits)
+      }
+    } else {
+      # Backward-compatible rendering for older summary objects that contain
+      # only the original flat per-logit metadata table.
+      meta <- info$logit_table[info$logit_table$class == cls, , drop = FALSE]
+      tab <- mfpi_summary_display_table(
+        metadata_table = meta,
+        statistics = statistics,
+        leading_columns = "term"
+      )
+      if (!is.null(tab)) {
+        names(tab)[1L] <- "Term"
+        mfpi_print_summary_coefficient_table(tab, digits)
+      }
     }
   }
 
@@ -493,9 +609,10 @@ mfpi_print_summary_regression_displays <- function(displays, digits) {
 #' reports regression results for retained interaction models using MFPI-specific
 #' labels rather than the raw output of the underlying regression model.
 #'
-#' The main MFPI header already reports the grouping variable and FLEX setting.
-#' Step 4 therefore avoids repeating those fit-level properties within each
-#' retained model. Instead, each retained interaction is introduced by an
+#' The main MFPI header reports the FLEX setting, while Step 2 reports the
+#' grouping variable and interaction-selection settings. Step 4 avoids
+#' repeating those fit-level properties within each retained model. Instead,
+#' each retained interaction is introduced by an
 #' underlined interaction heading and reports its FP form and interaction powers
 #' for every group level. Regression coefficients are then separated into:
 #'
@@ -508,7 +625,11 @@ mfpi_print_summary_regression_displays <- function(displays, digits) {
 #'   \item adjustment coefficients.
 #' }
 #'
-#' Each coefficient table includes the estimate, standard error, model-specific
+#' Centered basis terms report their stored centering constants using the same
+#' \code{Basis - Center} convention as \code{print.mfp2()}. Multinomial models
+#' use one outcome-versus-reference block per non-reference outcome, retaining
+#' the same coefficient-table separation within every block. Each coefficient
+#' table includes the estimate, standard error, model-specific
 #' test statistic (for example, \code{z} or \code{t}), and p-value. Significance
 #' stars, exponentiated coefficients, confidence-interval tables, the raw model
 #' call, and model-level likelihood-ratio/Wald/score tests are intentionally not
@@ -538,8 +659,10 @@ mfpi_print_summary_regression_displays <- function(displays, digits) {
 #'   metadata, the corresponding model-conditional coefficient statistics, and
 #'   model-specific nuisance metadata. Retained negative-binomial models report
 #'   their own theta, while retained `survreg` models report their own scale(s).
-#'   The normalized \code{family_string} is retained; ordinal summaries also
-#'   retain \code{ordinal_levels}, \code{ordinal_link}, and \code{n_intercepts}.
+#'   The normalized \code{family_string} is retained. Multinomial summaries also
+#'   retain \code{class_levels}, \code{reference_class}, and \code{n_logits};
+#'   ordinal summaries retain \code{ordinal_levels}, \code{ordinal_link}, and
+#'   \code{n_intercepts}.
 #'   Printing the object produces the four-step summary described above.
 #'
 #' @examples
@@ -580,6 +703,7 @@ summary.mfpi <- function(object, ...) {
       call                    = object$call,
       group_var               = object$group_var,
       nobs                    = object$nobs,
+      nevents                 = object$nevents,
       family                  = object$family,
       family_string           = object$family_string,
       flex                    = object$flex,
@@ -598,6 +722,9 @@ summary.mfpi <- function(object, ...) {
       ordinal_levels          = object$ordinal_levels,
       ordinal_link            = object$ordinal_link,
       n_intercepts            = object$n_intercepts,
+      class_levels            = object$class_levels,
+      reference_class         = object$reference_class,
+      n_logits                = object$n_logits,
 
       # Model-building outputs ------------------------------------------------
       adjust_terms            = object$adjust_terms,
@@ -632,13 +759,16 @@ summary.mfpi <- function(object, ...) {
 #' interaction model.
 #'
 #' Step 4 uses readable group labels and FP transformations rather than internal
-#' design-column names. The grouping variable and FLEX setting are already shown
-#' in the main MFPI header and are not repeated for every retained interaction.
+#' design-column names. The grouping variable is shown in Step 2 and the FLEX
+#' setting in the main MFPI header, so neither is repeated for every retained
+#' interaction.
 #' Each retained interaction is introduced by an underlined heading. Interaction
 #' powers are always printed by group level, including when the selected FLEX
 #' strategy gives all groups the same powers. Group-variable coefficients and
 #' adjustment coefficients are displayed in separate tables. For models with an
-#' intercept, it is displayed separately.
+#' intercept, it is displayed separately. Centered terms include a \code{Center}
+#' column and use the \code{Basis - Center} convention. Multinomial models use
+#' a separate outcome-versus-reference block for each non-reference outcome.
 #'
 #' When one or more retained interaction variables have a nonzero MFPI shift,
 #' Step 4 prints one clarification immediately below the first shifted
@@ -649,7 +779,8 @@ summary.mfpi <- function(object, ...) {
 #' their transformation labels, but the note is not repeated. No shift note is
 #' printed when all retained interactions have zero shift.
 #'
-#' The method intentionally does not print the underlying model call,
+#' The original \code{mfpi()} call is printed with Steps 1--3. Step 4 does not
+#' repeat the calls of the underlying retained regression models or print
 #' exponentiated-coefficient tables, significance stars, concordance, or global
 #' likelihood-ratio/Wald/score tests. Those quantities remain available from the
 #' stored fitted regression model when required, but they are not part of the

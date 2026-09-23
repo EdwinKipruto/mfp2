@@ -30,6 +30,54 @@
 #'
 #' @return An `mfp2_survreg_family` or `mfp2_finegray_family` specification for
 #'   the `family` argument of [mfp2()] or [mfpi()].
+#' @examples
+#' survreg_spec <- survreg_family(dist = "weibull")
+#' finegray_spec <- finegray_family(etype = "cause1")
+#'
+#' \donttest{
+#' # Parametric Weibull survival model.
+#' data("gbsg")
+#' fit_survreg <- mfp2(
+#'   survival::Surv(rectime, censrec) ~ age + nodes,
+#'   data = gbsg,
+#'   family = survreg_spec,
+#'   df = 1,
+#'   select = 1,
+#'   cycles = 1,
+#'   verbose = FALSE
+#' )
+#'
+#' # Fine--Gray model for the first of two competing event types.
+#' set.seed(42)
+#' n <- 160
+#' x <- stats::rnorm(n)
+#' cause1_time <- stats::rexp(n, rate = exp(0.3 * x) / 8)
+#' cause2_time <- stats::rexp(n, rate = exp(-0.2 * x) / 10)
+#' censor_time <- stats::rexp(n, rate = 1 / 15)
+#' event <- ifelse(
+#'   censor_time < pmin(cause1_time, cause2_time), 0L,
+#'   ifelse(cause1_time <= cause2_time, 1L, 2L)
+#' )
+#' competing_data <- data.frame(
+#'   time = pmin(cause1_time, cause2_time, censor_time),
+#'   event = factor(
+#'     event,
+#'     levels = 0:2,
+#'     labels = c("censor", "cause1", "cause2")
+#'   ),
+#'   x = x
+#' )
+#' fit_finegray <- mfp2(
+#'   survival::Surv(time, event) ~ x,
+#'   data = competing_data,
+#'   family = finegray_spec,
+#'   df = 1,
+#'   select = 1,
+#'   cycles = 1,
+#'   verbose = FALSE
+#' )
+#' }
+#' @seealso [survival::survreg()], [survival::finegray()], [mfp2()], [mfpi()]
 #' @rdname survival_families
 #' @export
 survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
@@ -164,8 +212,45 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' linear term contributes \eqn{Q} regression degrees of freedom. An FP of
 #' degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
 #' coefficients and \eqn{m} shared-power search degrees of freedom.
-#'
+#' 
 #' @return An `mfp2_multinomial_family` specification.
+#' @examples
+#' set.seed(43)
+#' n <- 150
+#' multinomial_data <- data.frame(
+#'   x1 = stats::rnorm(n),
+#'   x2 = stats::runif(n, -1, 1)
+#' )
+#' eta_b <- with(multinomial_data, 0.4 * x1 - 0.2 * x2)
+#' eta_c <- with(multinomial_data, -0.3 * x1 + 0.5 * x2)
+#' denominator <- 1 + exp(eta_b) + exp(eta_c)
+#' probabilities <- cbind(
+#'   A = 1 / denominator,
+#'   B = exp(eta_b) / denominator,
+#'   C = exp(eta_c) / denominator
+#' )
+#' multinomial_data$y <- factor(vapply(
+#'   seq_len(n),
+#'   function(i) sample(c("A", "B", "C"), 1, prob = probabilities[i, ]),
+#'   character(1)
+#' ))
+#'
+#' fit_multinomial <- mfp2(
+#'   y ~ x1 + x2,
+#'   data = multinomial_data,
+#'   family = multinomial_family(reference = "A"),
+#'   df = 1,
+#'   select = 1,
+#'   cycles = 1,
+#'   verbose = FALSE
+#' )
+#' predict(
+#'   fit_multinomial,
+#'   newdata = multinomial_data[1:3, ],
+#'   type = "response",
+#'   se.fit = FALSE
+#' )
+#' @seealso [nnet::multinom()], [mfp2()], [mfpi()]
 #' @export
 multinomial_family <- function(reference = NULL) {
   if (!is.null(reference) &&
@@ -215,8 +300,46 @@ multinomial_family <- function(reference = NULL) {
 #' factor or numeric codes to control the direction. The model is parameterized
 #' on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
 #' predictor values are associated with higher response categories.
-#'
+#' 
 #' @return An `mfp2_ordinal_family` specification.
+#' @examples
+#' ordinal_family()
+#' ordinal_family(link = "probit")
+#'
+#' \donttest{
+#' if (requireNamespace("rms", quietly = TRUE)) {
+#'   set.seed(44)
+#'   n <- 180
+#'   ordinal_data <- data.frame(
+#'     x1 = stats::rnorm(n),
+#'     x2 = stats::rbinom(n, 1, 0.5)
+#'   )
+#'   latent <- with(ordinal_data, 0.6 * x1 + 0.5 * x2 + stats::rlogis(n))
+#'   ordinal_data$y <- ordered(
+#'     cut(
+#'       latent,
+#'       breaks = stats::quantile(latent, probs = seq(0, 1, length.out = 5)),
+#'       include.lowest = TRUE,
+#'       labels = c("low", "medium", "high", "very high")
+#'     )
+#'   )
+#'
+#'   fit_ordinal <- mfp2(
+#'     y ~ x1 + x2,
+#'     data = ordinal_data,
+#'     family = ordinal_family(link = "logistic"),
+#'     df = 1,
+#'     select = 1,
+#'     cycles = 1,
+#'     verbose = FALSE
+#'   )
+#'   predict(
+#'     fit_ordinal,
+#'     newdata = ordinal_data[1:3, ],
+#'     type = "response"
+#'   )
+#' }
+#' }
 #' @seealso [rms::orm()], [mfp2()], [mfpi()]
 #' @export
 ordinal_family <- function(link = c("logistic", "probit", "loglog",

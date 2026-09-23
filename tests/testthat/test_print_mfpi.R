@@ -168,8 +168,32 @@ test_that("candidate output omits interaction powers shown in the detail table",
   printed <- paste(output, collapse = "\n")
 
   expect_match(printed, "fp_powers_main", fixed = TRUE)
+  expect_match(printed, "Grouping variable     : group", fixed = TRUE)
+  expect_match(printed, "Selection criterion   : p-value", fixed = TRUE)
+  expect_match(printed, "Selection rule        : adjusted p-value < 0.05", fixed = TRUE)
+  expect_match(printed, "P-value adjustment    : holm", fixed = TRUE)
+  expect_match(printed, "deviance_int", fixed = TRUE)
+  expect_match(printed, "deviance_diff", fixed = TRUE)
+  expect_match(printed, "df_int", fixed = TRUE)
+  expect_match(printed, "p-value", fixed = TRUE)
+  expect_false(grepl("pvalue", printed, fixed = TRUE))
   expect_false(grepl("fp_powers_int", printed, fixed = TRUE))
   expect_false(grepl("A: (1); B: (2)", printed, fixed = TRUE))
+})
+
+
+test_that("Step 2 uses the raw p-value rule when adjustment is none", {
+  x <- make_minimal_mfpi_print_object()
+  x$p_adjust_method <- "none"
+
+  printed <- paste(
+    capture.output(print_candidates_step(x, ruler = "-----", digits = 3L)),
+    collapse = "\n"
+  )
+
+  expect_match(printed, "Selection rule        : p-value < 0.05", fixed = TRUE)
+  expect_match(printed, "P-value adjustment    : none", fixed = TRUE)
+  expect_false(grepl("adjusted p-value < 0.05", printed, fixed = TRUE))
 })
 
 
@@ -183,6 +207,9 @@ test_that("interaction-power detail output has no underline", {
   )
 
   expect_match(paste(output, collapse = "\n"), "FP powers by group level:", fixed = TRUE)
+  expect_match(paste(output, collapse = "\n"), "Group level", fixed = TRUE)
+  expect_false(grepl("group_level", paste(output, collapse = "\n"), fixed = TRUE))
+  expect_false(grepl("group_var", paste(output, collapse = "\n"), fixed = TRUE))
   expect_false(any(grepl("^-+$", trimws(output))))
 })
 
@@ -197,10 +224,43 @@ test_that("main header ruler matches the displayed header width", {
     nchar(output[[1L]], type = "width"),
     nchar(output[[2L]], type = "width")
   )
+  expect_match(output[[2L]], "n = 10 (events = 7)", fixed = TRUE)
+  expect_match(output[[2L]], "flex3", fixed = TRUE)
+  expect_false(grepl("group", output[[2L]], fixed = TRUE))
+  expect_match(paste(output, collapse = "\n"), "Call:", fixed = TRUE)
+  expect_match(paste(output, collapse = "\n"), "Model: Gaussian GLM", fixed = TRUE)
 })
 
 
-test_that("criterion labels are shown in settings, not the main header", {
+test_that("summary.mfpi preserves the call, model, and event count in its header", {
+  x <- make_minimal_mfpi_print_object()
+  x$nevents <- 7L
+
+  summarized <- summary(x)
+  output <- capture.output(print(summarized))
+  printed <- paste(output, collapse = "\n")
+
+  expect_identical(summarized$nevents, 7L)
+  expect_match(output[[2L]], "n = 10 (events = 7)", fixed = TRUE)
+  expect_match(printed, "Call:", fixed = TRUE)
+  expect_match(printed, "Model: Gaussian GLM", fixed = TRUE)
+})
+
+
+test_that("MFPI model labels cover Cox and multinomial fits", {
+  x <- make_minimal_mfpi_print_object()
+  x$family_string <- "cox"
+  expect_identical(mfpi_print_model_label(x), "Cox proportional hazards")
+
+  x$family_string <- "multinomial"
+  x$reference_class <- "A"
+  output <- paste(capture.output(print(x)), collapse = "\n")
+  expect_match(output, "Model: Multinomial logistic regression", fixed = TRUE)
+  expect_match(output, "Reference outcome: A", fixed = TRUE)
+})
+
+
+test_that("criterion labels are shown in Step 2, not the main header", {
   for (criterion in c("aic", "bic", "pvalue")) {
     x <- make_minimal_mfpi_print_object()
     x$criterion <- criterion
@@ -212,13 +272,13 @@ test_that("criterion labels are shown in settings, not the main header", {
     expect_false(grepl("criterion:", output[[2L]], fixed = TRUE))
     expect_match(
       paste(output, collapse = "\n"),
-      sprintf("criterion             : %s", expected),
+      sprintf("Selection criterion   : %s", expected),
       fixed = TRUE
     )
 
     # The criterion should not be duplicated elsewhere in the printed output.
     criterion_lines <- grep(
-      "^\\s*criterion\\s*:",
+      "^\\s*Selection criterion\\s*:",
       output,
       value = TRUE
     )
@@ -244,7 +304,7 @@ test_that("MFPI methods warn consistently about unused dots", {
 })
 
 
-test_that("Step 3 reports Yes and No and embeds the p-value rule in its heading", {
+test_that("Step 3 reports Yes and No without repeating the p-value rule", {
   x <- make_mfpi_interaction_summary_object("pvalue")
   output <- capture.output(
     print_interaction_summary_step(
@@ -258,9 +318,12 @@ test_that("Step 3 reports Yes and No and embeds the p-value rule in its heading"
 
   expect_match(
     printed,
-    "Step 3 - Interaction Summary (selected when p_adjusted < 0.05):",
+    "Step 3 - Interaction Summary:",
     fixed = TRUE
   )
+  expect_false(grepl("selected when", printed, fixed = TRUE))
+  expect_match(printed, "p_raw", fixed = TRUE)
+  expect_match(printed, "p_adjusted", fixed = TRUE)
   expect_match(printed, "selected", fixed = TRUE)
   expect_match(printed, "Yes", fixed = TRUE)
   expect_match(printed, "No", fixed = TRUE)
@@ -269,7 +332,7 @@ test_that("Step 3 reports Yes and No and embeds the p-value rule in its heading"
 })
 
 
-test_that("Step 3 embeds the AIC and BIC rules and uses Yes and No", {
+test_that("Step 3 omits repeated AIC and BIC rules and uses Yes and No", {
   for (criterion in c("aic", "bic")) {
     x <- make_mfpi_interaction_summary_object(criterion)
     output <- capture.output(
@@ -281,20 +344,34 @@ test_that("Step 3 embeds the AIC and BIC rules and uses Yes and No", {
       )
     )
     printed <- paste(output, collapse = "\n")
-    label <- if (criterion == "aic") "dAIC" else "dBIC"
-
     expect_match(
       printed,
-      sprintf(
-        "Step 3 - Interaction Summary (selected when %s > 2):",
-        label
-      ),
+      "Step 3 - Interaction Summary:",
       fixed = TRUE
     )
+    expect_false(grepl("selected when", printed, fixed = TRUE))
+    expect_match(printed, if (criterion == "aic") "dAIC" else "dBIC", fixed = TRUE)
     expect_match(printed, "Yes", fixed = TRUE)
     expect_match(printed, "No", fixed = TRUE)
     expect_false(grepl("* = selected", printed, fixed = TRUE))
   }
+})
+
+
+test_that("Step 3 prints one p-value when no multiplicity adjustment is used", {
+  x <- make_mfpi_interaction_summary_object("pvalue")
+  x$p_adjust_method <- "none"
+
+  printed <- paste(
+    capture.output(print_interaction_summary_step(
+      x, ruler = "-----", digits = 3L, step_no = 3L
+    )),
+    collapse = "\n"
+  )
+
+  expect_match(printed, "p-value", fixed = TRUE)
+  expect_false(grepl("p_raw", printed, fixed = TRUE))
+  expect_false(grepl("p_adjusted", printed, fixed = TRUE))
 })
 
 
@@ -374,7 +451,7 @@ test_that("MFPI Step 1 uses mfp2 SAZ display names and labels", {
 })
 
 
-test_that("verbose Step 3 reports final p-value decisions without stars", {
+test_that("verbose Step 3 reports one p-value column without adjustment", {
   winners <- list(
     age = list(
       fit = list(ok = TRUE),
@@ -402,13 +479,50 @@ test_that("verbose Step 3 reports final p-value decisions without stars", {
   )
   printed <- paste(output, collapse = "\n")
 
-  expect_match(printed, "p_raw", fixed = TRUE)
-  expect_match(printed, "p_adjusted", fixed = TRUE)
+  expect_match(printed, "p-value", fixed = TRUE)
+  expect_false(grepl("p_raw", printed, fixed = TRUE))
+  expect_false(grepl("p_adjusted", printed, fixed = TRUE))
   expect_match(printed, "selected", fixed = TRUE)
   expect_match(printed, "Yes", fixed = TRUE)
   expect_match(printed, "No", fixed = TRUE)
   expect_false(grepl("* = selected", printed, fixed = TRUE))
   expect_false(grepl("p_interact", printed, fixed = TRUE))
+})
+
+
+test_that("verbose Step 3 separates raw and adjusted p-values when needed", {
+  winners <- list(
+    age = list(
+      fit = list(ok = TRUE),
+      metric = data.frame(pvalue = 0.0273, p_adjusted = 0.0546),
+      type = "fp2",
+      score = 0.0546
+    ),
+    wt = list(
+      fit = list(ok = TRUE),
+      metric = data.frame(pvalue = 0.0100, p_adjusted = 0.0200),
+      type = "fp1",
+      score = 0.0200
+    )
+  )
+
+  output <- capture.output(
+    print_interaction_step3_summary(
+      var_winners = winners,
+      interaction_vars = c("age", "wt"),
+      mode = "pvalue",
+      p_interact = 0.05,
+      p_adjust_method = "holm",
+      digits = 4L
+    )
+  )
+  printed <- paste(output, collapse = "\n")
+
+  expect_match(printed, "p_raw", fixed = TRUE)
+  expect_match(printed, "p_adjusted", fixed = TRUE)
+  expect_match(printed, "selected", fixed = TRUE)
+  expect_match(printed, "No", fixed = TRUE)
+  expect_match(printed, "Yes", fixed = TRUE)
 })
 
 
@@ -455,7 +569,7 @@ test_that("verbose candidate evaluation contains no provisional decision text", 
     collapse = "\n"
   )
 
-  expect_match(body_text, "p-value =", fixed = TRUE)
+  expect_false(grepl(">> p-value =", body_text, fixed = TRUE))
   expect_false(grepl("provisional", body_text, fixed = TRUE))
   expect_false(grepl("No significant interaction retained", body_text, fixed = TRUE))
   expect_false(grepl("Not selected", body_text, fixed = TRUE))

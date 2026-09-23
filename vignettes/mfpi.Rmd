@@ -254,10 +254,12 @@ workflow is established.
 print(fit_quick)
 ```
 
-The printed output follows the three algorithmic steps described above. Step 1
-reports the selected adjustment model. Step 2 reports the model comparison for
-`age`, including the selected powers and the interaction statistic. Step 3
-reports the final interaction decision.
+The printed output begins with the fitted model call and model type. It then
+follows the three algorithmic steps described above. Step 1 reports the
+selected adjustment model. Step 2 reports the grouping variable, selection
+settings, and model comparison for `age`, including the selected powers and
+interaction statistic. Step 3 reports the final interaction decision without
+repeating the selection rule.
 
 This minimal model contains no additional prognostic variables, so the
 age-specific comparison is unadjusted for other prognostic factors. The
@@ -813,8 +815,9 @@ Step 2 comparison of the main-effects and interaction models.
 
 The default `criterion = "pvalue"` compares the relevant models using a
 test statistic and selects an interaction when its final p-value is below
-`p_interact`. If multiplicity adjustment is requested, the final decision uses
-`p_adjusted`; otherwise, `p_adjusted` equals the raw p-value. For Gaussian
+`p_interact`. If multiplicity adjustment is requested, Step 3 reports both
+`p_raw` and `p_adjusted` and the final decision uses `p_adjusted`. Without an
+adjustment, Step 3 reports the single `p-value` used for selection. For Gaussian
 models, `ftest = TRUE` uses the corresponding F-test for nested comparisons
 instead of the chi-square approximation.
 
@@ -1328,13 +1331,13 @@ a multiplicity method is used. The adjusted value determines the final decision.
 
 ## Regression coefficients
 
-For each selected interaction, `summary()` prints the regression table from the
-underlying fitted model. Coefficient names use internal group codes even though
-printed summaries and plots use the original group labels. For an FP2 age
-interaction, for example, `age01` and `age02` refer to the two FP terms in
-internal group 0, while `age11` and `age12` refer to the corresponding terms in
-group 1. A coefficient such as `rx1` represents the comparison-group main
-effect relative to the reference group.
+For each selected interaction, `summary()` prints readable coefficient tables
+for the group-specific FP terms, group-variable coefficients, and adjustment
+coefficients. Centered terms include their stored center alongside the basis.
+For multinomial models, the same tables are repeated within one block for each
+non-reference outcome versus the reference outcome. Raw internal design-column
+names remain available in the fitted object but are not used as the primary
+summary labels.
 
 ```{=html}
 <div class="note-box">

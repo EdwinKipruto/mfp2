@@ -490,6 +490,10 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
 
   group_rows <- vector("list", length(coefficient_groups))
   interaction_raw_names <- character(0L)
+  all_interaction_source_names <- unlist(
+    coefficient_groups,
+    use.names = FALSE
+  )
 
   for (g in seq_along(coefficient_groups)) {
     source_names <- coefficient_groups[[g]]
@@ -520,9 +524,15 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
     }
 
     estimates <- unname(beta[model_names])
+    centers <- mfpi_interaction_center_values(
+      fit_result = fit_result,
+      source_names = source_names,
+      all_source_names = all_interaction_source_names
+    )
     group_rows[[g]] <- data.frame(
       group_level = rep(display_groups[g], length(model_names)),
       transformation = transformations,
+      center = centers,
       estimate = estimates,
       raw_name = model_names,
       stringsAsFactors = FALSE,
@@ -563,11 +573,12 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
   remaining_raw_names <- raw_names[!raw_names %in% c(interaction_raw_names, dummy_model_names)]
   intercept_raw_name <- intersect("(Intercept)", remaining_raw_names)
   adjustment_raw_names <- setdiff(remaining_raw_names, intercept_raw_name)
-  adjustment_labels <- mfpi_adjustment_coefficient_labels(
+  adjustment_metadata <- mfpi_adjustment_coefficient_metadata(
     object = object,
     interaction_model = interaction_model,
     coefficient_names = adjustment_raw_names
   )
+  adjustment_labels <- adjustment_metadata$basis
 
   all_display <- raw_names
   all_display[match(interaction_raw_names, raw_names)] <- paste0(
@@ -591,13 +602,15 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
     check.names = FALSE
   )
 
-  adjustment_table <- data.frame(
-    term = if (length(adjustment_raw_names) > 0L) all_display[match(adjustment_raw_names, raw_names)] else character(0L),
-    estimate = if (length(adjustment_raw_names) > 0L) unname(beta[match(adjustment_raw_names, raw_names)]) else numeric(0L),
-    raw_name = adjustment_raw_names,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
+  adjustment_table <- adjustment_metadata
+  if (length(adjustment_raw_names) > 0L) {
+    adjustment_table$term <- all_display[match(adjustment_raw_names, raw_names)]
+    adjustment_table$estimate <- unname(
+      beta[match(adjustment_raw_names, raw_names)]
+    )
+  } else {
+    adjustment_table$estimate <- numeric(0L)
+  }
 
   intercept_table <- data.frame(
     term = if (length(intercept_raw_name) > 0L) "(Intercept)" else character(0L),
@@ -762,6 +775,79 @@ mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
     interaction_model = interaction_model, model_cols = model_cols
   )
 
+  interaction_spec <- mfpi_get_interaction_spec(object, term)
+  coefficient_groups <- fit_result$coefficient_groups
+  if (is.null(coefficient_groups)) {
+    coefficient_groups <- attr(fit_result$xinteraction, "column_groups")
+  }
+  mfpi_validate_coefficient_groups(coefficient_groups, term = term)
+  internal_groups <- names(coefficient_groups)
+  if (is.null(internal_groups) || anyNA(internal_groups) ||
+      any(!nzchar(internal_groups))) {
+    internal_groups <- as.character(seq_along(coefficient_groups) - 1L)
+    names(coefficient_groups) <- internal_groups
+  }
+  display_groups <- mfpi_prediction_group_display_labels(object, internal_groups)
+
+  powers <- fit_result$bestfp_interaction
+  if (!is.null(names(powers)) && setequal(names(powers), internal_groups)) {
+    powers <- powers[internal_groups]
+  }
+  all_interaction_source_names <- unlist(coefficient_groups, use.names = FALSE)
+  interaction_rows <- vector("list", length(coefficient_groups))
+  interaction_model_names <- character(0L)
+  for (g in seq_along(coefficient_groups)) {
+    source_names <- coefficient_groups[[g]]
+    model_names_g <- mfpi_resolve_fitted_coefficient_names(
+      interaction_model = interaction_model,
+      source_names = source_names,
+      coefficient_names = model_cols,
+      term = term
+    )
+    power_g <- as.numeric(powers[[g]])
+    transformations <- if (isTRUE(interaction_spec$discrete)) {
+      interaction_spec$columns
+    } else {
+      mfpi_fp_transformation_labels(object, term, power_g)
+    }
+    interaction_rows[[g]] <- data.frame(
+      model_column = model_names_g,
+      group_level = rep(display_groups[g], length(model_names_g)),
+      transformation = transformations,
+      center = mfpi_interaction_center_values(
+        fit_result,
+        source_names,
+        all_interaction_source_names
+      ),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+    interaction_model_names <- c(interaction_model_names, model_names_g)
+  }
+  interaction_metadata <- do.call(rbind, interaction_rows)
+
+  dummy_source_names <- if (length(internal_groups) > 1L) {
+    paste0(object$group_var, internal_groups[-1L])
+  } else {
+    character(0L)
+  }
+  dummy_model_names <- mfpi_resolve_fitted_coefficient_names(
+    interaction_model = interaction_model,
+    source_names = dummy_source_names,
+    coefficient_names = model_cols,
+    term = term,
+    allow_missing = TRUE
+  )
+  adjustment_model_names <- setdiff(
+    model_cols,
+    c(interaction_model_names, dummy_model_names)
+  )
+  adjustment_metadata <- mfpi_adjustment_coefficient_metadata(
+    object = object,
+    interaction_model = interaction_model,
+    coefficient_names = adjustment_model_names
+  )
+
   # Class-major flat order matches vcov.multinom(): all columns of the first
   # non-reference logit, then the next, ... Names in the covariance matrix join
   # class and column with a single colon.
@@ -787,13 +873,48 @@ mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
   })
   logit_table <- do.call(rbind, logit_rows)
 
-  internal_groups <- names(fit_result$coefficient_groups)
-  if (is.null(internal_groups)) {
-    internal_groups <- as.character(seq_along(fit_result$coefficient_groups) - 1L)
+  # `paste0()` recycles a scalar prefix even when its other argument has length
+  # zero. Return an explicit empty vector so metadata tables with no group or
+  # adjustment coefficients remain valid zero-row data frames.
+  prefix_class <- function(cls, coefficient_names) {
+    if (length(coefficient_names) == 0L) return(character(0L))
+    paste0(cls, ":", coefficient_names)
   }
-  display_groups <- mfpi_prediction_group_display_labels(object, internal_groups)
+
+  group_table <- do.call(rbind, lapply(classes, function(cls) {
+    data.frame(
+      class = rep(cls, nrow(interaction_metadata)),
+      group_level = interaction_metadata$group_level,
+      transformation = interaction_metadata$transformation,
+      center = interaction_metadata$center,
+      raw_name = prefix_class(cls, interaction_metadata$model_column),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+  group_variable_table <- do.call(rbind, lapply(classes, function(cls) {
+    data.frame(
+      class = rep(cls, length(dummy_model_names)),
+      level = display_groups[-1L][seq_along(dummy_model_names)],
+      raw_name = prefix_class(cls, dummy_model_names),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+  adjustment_table <- do.call(rbind, lapply(classes, function(cls) {
+    data.frame(
+      class = rep(cls, nrow(adjustment_metadata)),
+      variable = adjustment_metadata$variable,
+      basis = adjustment_metadata$basis,
+      center = adjustment_metadata$center,
+      raw_name = prefix_class(cls, adjustment_metadata$raw_name),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }))
+
   power_table <- data.frame(group_level = display_groups, stringsAsFactors = FALSE)
-  power_table$powers <- I(unname(fit_result$bestfp_interaction))
+  power_table$powers <- I(unname(powers))
 
   list(
     term = term,
@@ -808,6 +929,9 @@ mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
     classes = classes,
     reference_class = interaction_model$reference_class,
     logit_table = logit_table,
+    group_table = group_table,
+    group_variable_table = group_variable_table,
+    adjustment_table = adjustment_table,
     power_table = power_table,
     reference_level = display_groups[1L]
   )
@@ -821,37 +945,83 @@ mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
 mfpi_adjustment_coefficient_labels <- function(object,
                                                interaction_model,
                                                coefficient_names) {
-  if (length(coefficient_names) == 0L) return(character(0L))
+  metadata <- mfpi_adjustment_coefficient_metadata(
+    object = object,
+    interaction_model = interaction_model,
+    coefficient_names = coefficient_names
+  )
+  metadata$basis
+}
 
-  labels <- coefficient_names
+
+# Build the variable, basis, and centering metadata for adjustment coefficients
+# carried from the Step 1 MFP model into one term-specific interaction model.
+mfpi_adjustment_coefficient_metadata <- function(object,
+                                                 interaction_model,
+                                                 coefficient_names) {
+  out <- data.frame(
+    term = coefficient_names,
+    variable = coefficient_names,
+    basis = coefficient_names,
+    center = rep(NA_real_, length(coefficient_names)),
+    raw_name = coefficient_names,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (length(coefficient_names) == 0L) return(out)
+
   source_map <- interaction_model$transformed_to_model_columns
   adj <- object$adjustment_model
-
   if (is.null(source_map) || !is.character(source_map) ||
       is.null(names(source_map)) || is.null(adj) || !inherits(adj, "mfp2")) {
-    return(labels)
+    return(out)
   }
 
   source_names <- names(source_map)[match(coefficient_names, unname(source_map))]
   have_source <- !is.na(source_names) & nzchar(source_names)
-  if (!any(have_source)) return(labels)
+  if (!any(have_source)) return(out)
 
   adjustment_info <- tryCatch(
     mfp2_design_column_info(adj),
     error = function(e) NULL
   )
-  if (is.null(adjustment_info) || nrow(adjustment_info) == 0L) {
-    return(labels)
-  }
+  if (is.null(adjustment_info) || nrow(adjustment_info) == 0L) return(out)
 
   info_rows <- match(source_names[have_source], adjustment_info$transformed_column)
   matched <- !is.na(info_rows)
-  if (any(matched)) {
-    label_positions <- which(have_source)[matched]
-    labels[label_positions] <- adjustment_info$basis[info_rows[matched]]
+  if (!any(matched)) return(out)
+
+  positions <- which(have_source)[matched]
+  rows <- info_rows[matched]
+  out$variable[positions] <- adjustment_info$variable[rows]
+  out$basis[positions] <- adjustment_info$basis[rows]
+  out$term[positions] <- adjustment_info$basis[rows]
+  if ("center" %in% names(adjustment_info)) {
+    out$center[positions] <- adjustment_info$center[rows]
+  }
+  out
+}
+
+
+# Recover the stored MFPI centering constants for a subset of group-specific
+# design columns. Older or uncentered fits legitimately return missing values.
+mfpi_interaction_center_values <- function(fit_result,
+                                           source_names,
+                                           all_source_names) {
+  centers <- fit_result$center_vals
+  if (is.null(centers)) return(rep(NA_real_, length(source_names)))
+
+  centers <- as.numeric(centers)
+  center_names <- names(fit_result$center_vals)
+  if (!is.null(center_names) && all(source_names %in% center_names)) {
+    return(unname(centers[match(source_names, center_names)]))
   }
 
-  labels
+  if (length(centers) == length(all_source_names)) {
+    return(unname(centers[match(source_names, all_source_names)]))
+  }
+
+  rep(NA_real_, length(source_names))
 }
 
 

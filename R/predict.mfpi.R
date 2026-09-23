@@ -417,8 +417,16 @@ build_group_fp_basis <- function(cont_mat,
 #'   `type = "survival"` returns the estimated survival probability at that
 #'   time. `"link"` is accepted as another name for `"lp"`.
 #' - For Fine--Gray models, `type = "lp"` and `type = "risk"` return relative
-#'   subdistribution-hazard predictions. Absolute Cox survival/expected-event
-#'   types are not exposed for this family.
+#'   subdistribution-hazard predictions. With `times`, `type = "response"`
+#'   returns cumulative-incidence probabilities. Absolute Cox
+#'   survival/expected-event types are not exposed for this family.
+#' - For ordinal models, `type = "link"` returns the common covariate linear
+#'   predictor without cut-point intercepts, `type = "response"` returns
+#'   category probabilities, and `type = "mean"` returns the expected category
+#'   value. Numeric category values are used when possible; otherwise the
+#'   category scores are `1, ..., K`.
+#' - For multinomial models, `type = "link"` returns the non-reference logits
+#'   and `type = "response"` returns the class probabilities.
 #'
 #' For Cox models, `type = "risk"` is not the same as a GLM response
 #' prediction.
@@ -447,6 +455,8 @@ build_group_fp_basis <- function(cont_mat,
 #' - the outcome scale for a Gaussian identity-link model;
 #' - the log-odds scale for a binomial logit model;
 #' - the log-mean scale for log-link GLMs;
+#' - the common cumulative-link predictor scale for ordinal models;
+#' - a reference-category logit scale for multinomial models;
 #' - the fitted location scale for a `survreg` model;
 #' - a partial log-hazard scale for Cox and Fine--Gray models.
 #'
@@ -481,8 +491,10 @@ build_group_fp_basis <- function(cont_mat,
 #' predictions for individual observations.
 #'
 #' @section Predictions for individual observations:
-#' For `type = "link"`, `"response"`, `"lp"`, `"risk"`, `"expected"`, or
-#' `"survival"`, one prediction is returned for each row.
+#' For `type = "link"`, `"response"`, `"mean"`, `"lp"`, `"risk"`,
+#' `"expected"`, or `"survival"`, one prediction row is returned for each
+#' observation. Multinomial logits/probabilities and ordinal probabilities are
+#' represented by one output column per response class.
 #'
 #' These predictions use the complete term-specific interaction model. Supply:
 #'
@@ -532,6 +544,13 @@ build_group_fp_basis <- function(cont_mat,
 #' function. MFPI delegates these predictions to the stored fitted model when
 #' possible, so manual calculations should use the same coefficient ordering and
 #' offset convention.
+#'
+#' For an ordinal model, the reconstructed design and common slope coefficients
+#' give the covariate linear predictor. Category probabilities additionally use
+#' the fitted cut-point intercepts and inverse cumulative-link function. For a
+#' multinomial model, the reconstructed design is combined with each
+#' non-reference logit's coefficient vector, and the resulting logits are
+#' normalized to obtain class probabilities.
 #'
 #' For a Cox or Fine--Gray model, let `eta_i` denote the subject's fitted linear
 #' predictor on the proportional-hazards scale. `type = "lp"` returns it relative to the
@@ -646,7 +665,10 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' For predictions for individual observations, `se.fit = TRUE` requests the
 #' standard errors supported by the underlying GLM, Cox, or `survreg`
-#' prediction method.
+#' prediction method. Link-scale ordinal predictions can also return standard
+#' errors. Standard errors are not currently available for ordinal
+#' response/mean predictions; availability for multinomial predictions depends
+#' on the requested result stored by the fitted model.
 #' The `level` argument is not used for these predictions.
 #'
 #' All standard errors and confidence intervals are conditional on the selected
@@ -759,7 +781,8 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' For predictions for individual observations, the `predictions` component is a
 #' data frame containing `term` and `fit`, with `se.fit` added when requested and
-#' available.
+#' available. Matrix-valued multinomial or ordinal results instead use columns
+#' named `fit.<class>` and, when available, `se.fit.<class>`.
 #'
 #' Other components contain information used by plotting and internal
 #' prediction checks and should not be treated as a stable public interface.

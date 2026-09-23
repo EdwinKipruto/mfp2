@@ -43,10 +43,10 @@ and spike-at-zero (SAZ) results), a detailed settings table, final
 coefficients, and model-fit measures.
 }
 \details{
-For multinomial models, the header identifies the response classes,
-reference class, and number of logits, and states that FP powers are common
-across logits. The coefficient table has one block per non-reference
-outcome.
+For multinomial models, the header reports response frequencies, the
+reference class, and number of non-reference logits, and states that FP
+powers are common across logits. The existing coefficient table has one
+block per non-reference outcome.
 
 The "Summary of Function Selection" section reports one row per variable,
 split across three sub-tables so that ACD- and SAZ-specific detail never

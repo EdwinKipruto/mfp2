@@ -25,8 +25,11 @@ make_mfpi_print_metrics <- function(n_groups = 2L) {
 make_minimal_mfpi_print_object <- function() {
   structure(
     list(
+      call = quote(mfpi(y ~ group + fp(x), group_var = "group")),
       group_var = "group",
       nobs = 10L,
+      family = stats::gaussian(),
+      family_string = "gaussian",
       flex = "flex3",
       criterion = "pvalue",
       p_adjust_method = "holm",

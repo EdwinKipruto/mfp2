@@ -33,8 +33,10 @@ predict. See \strong{Supplying prediction data}.}
 
 \item{se.fit}{A single non-missing \code{TRUE} or \code{FALSE} value. For complete-model
 predictions, \code{TRUE} requests standard errors from the underlying model
-method. Term and contrast results always include standard errors and
-confidence limits, so this argument is ignored for those prediction types.}
+method. Full-model multinomial and ordinal predictions do not currently
+provide standard errors. Term and contrast results always include standard
+errors and confidence limits, so this argument is ignored for those
+prediction types.}
 
 \item{terms}{An optional character vector naming terms to return with
 \code{type = "terms"} or \code{type = "contrasts"}. Use original variable or group
@@ -101,12 +103,16 @@ the native \code{\link[survival:predict.coxph]{survival::predict.coxph()}} or
 }
 \value{
 For complete-model predictions, the result follows the applicable native
-GLM, \code{coxph}, or \code{survreg} prediction method. It is usually a numeric vector. When
-\code{se.fit = TRUE}, it is usually a list containing fitted values and standard
-errors.
+GLM, \code{coxph}, or \code{survreg} prediction method where one is used. It is usually
+a numeric vector. When \code{se.fit = TRUE}, it is usually a list containing fitted
+values and standard errors.
 
 For multinomial models, \code{type = "link"} and \code{type = "response"} return
 matrices that retain observation names.
+
+For ordinal models, \code{type = "link"} and \code{type = "mean"} return numeric
+vectors, while \code{type = "response"} returns an \code{n} by \code{K} matrix whose columns
+are the ordered response categories.
 
 For \code{type = "terms"} or \code{type = "contrasts"}, the result is a named list
 with one data frame for each requested term. Each data frame contains:
@@ -213,7 +219,16 @@ relative log subdistribution hazard and relative subdistribution hazard,
 respectively. \code{"link"} is accepted as another name for \code{"lp"}. With
 \code{times}, \code{type = "response"} returns cumulative-incidence probabilities.
 
-For all supported models:
+For ordinal models, \code{type = "link"} returns the common covariate linear
+predictor without the cut-point intercepts, \code{type = "response"} returns an
+\code{n} by \code{K} matrix of category probabilities, and \code{type = "mean"} returns the
+expected category value. Numeric response levels are used for the expected
+value when possible; otherwise, category scores \verb{1, ..., K} are used.
+Full-model ordinal standard errors are not currently provided, so use
+\code{se.fit = FALSE} for these three prediction types.
+
+For likelihood GLMs, ordinal models, Cox models, Fine--Gray models, and
+\code{survreg} models:
 \itemize{
 \item \code{type = "terms"} returns a fitted value for each requested term on the
 linear-predictor scale. For GLM and \code{survreg} models, the intercept is
@@ -222,8 +237,8 @@ included by default.
 value.
 }
 
-When \code{type} is not supplied, the default is \code{"link"} for GLM and \code{survreg}
-models and \code{"lp"} for Cox and Fine--Gray models.
+When \code{type} is not supplied, the default is \code{"link"} for GLM, multinomial,
+ordinal, and \code{survreg} models and \code{"lp"} for Cox and Fine--Gray models.
 
 For multinomial models, \code{type = "link"} returns an \code{n} by \code{C - 1} matrix of
 reference-category logits, \code{type = "response"} returns an \code{n} by \code{C} matrix

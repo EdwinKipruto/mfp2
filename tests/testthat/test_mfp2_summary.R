@@ -165,6 +165,61 @@ test_that("unknown or ambiguous coefficient headers use the vcov fallback", {
 })
 
 
+test_that("GLM summaries keep coefficients and intervals on the link scale", {
+  glm_objects <- list(
+    list(family_string = "gaussian", family = stats::gaussian()),
+    list(family_string = "binomial", family = stats::binomial(link = "logit")),
+    list(family_string = "poisson", family = stats::poisson(link = "log")),
+    list(family_string = "Gamma", family = stats::Gamma(link = "log")),
+    list(
+      family_string = "inverse.gaussian",
+      family = stats::inverse.gaussian(link = "log")
+    ),
+    list(family_string = "negbin", family = list(link = "log"))
+  )
+  expect_true(all(vapply(
+    glm_objects,
+    function(object) !mfp2:::mfp2_summary_exponentiates_coefficients(object),
+    logical(1L)
+  )))
+
+  # Existing survival-family behavior is deliberately unchanged.
+  expect_true(mfp2:::mfp2_summary_exponentiates_coefficients(list(
+    family_string = "cox"
+  )))
+  expect_true(mfp2:::mfp2_summary_exponentiates_coefficients(list(
+    family_string = "finegray"
+  )))
+  expect_true(mfp2:::mfp2_summary_exponentiates_coefficients(list(
+    family_string = "survreg",
+    family = list(dist = "weibull")
+  )))
+})
+
+
+test_that("printed GLM summary does not add exponentiated coefficients", {
+  set.seed(2718)
+  n <- 240L
+  dat <- data.frame(x = stats::rnorm(n))
+  dat$y <- stats::rpois(n, lambda = exp(0.3 + 0.25 * dat$x))
+  fit <- mfp2(
+    y ~ fp(x, df = 1, select = 1),
+    data = dat,
+    family = stats::poisson(link = "log"),
+    center = FALSE,
+    alpha = 1,
+    select = 1,
+    verbose = FALSE
+  )
+  s <- summary(fit)
+  output <- paste(capture.output(print(s)), collapse = "\n")
+
+  expect_false("exp_coef" %in% names(s$linear_terms))
+  expect_false(grepl("exp(coef)", output, fixed = TRUE))
+  expect_match(output, "Coefficients are on the link scale.", fixed = TRUE)
+})
+
+
 # Migrated coverage from the former test_mfp2.R
 
 # =============================================================================
@@ -177,6 +232,16 @@ test_that("summary.mfp2() works for Gaussian", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
+})
+
+
+test_that("print.mfp2() separates the model call from model metadata", {
+  fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
+  output <- capture.output(print(fit))
+  model_line <- grep("^Model:", output)[1L]
+
+  expect_true(is.finite(model_line) && model_line > 1L)
+  expect_identical(output[[model_line - 1L]], "")
 })
 
 

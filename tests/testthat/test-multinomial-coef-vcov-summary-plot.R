@@ -58,14 +58,20 @@ test_that("vcov.mfpi returns the per-logit covariance matching nnet::multinom", 
   expect_equal(as.numeric(V), as.numeric(Vraw[raw, raw]), tolerance = 1e-12)
 })
 
-test_that("summary.mfpi builds a per-logit multinomial display without error", {
+test_that("summary.mfpi builds readable outcome-specific multinomial displays", {
   skip_on_cran()
   fit <- mn_acc_fit()
   s <- summary(fit)
   out <- capture.output(print(s))
-  # The regression display names both non-reference logits against reference A.
-  expect_true(any(grepl("Logit B vs A", out)))
-  expect_true(any(grepl("Logit C vs A", out)))
+  expect_identical(nrow(s$regression_displays$a$info$adjustment_table), 0L)
+  # The regression display names both non-reference outcomes against reference A
+  # and separates the coefficient components within each outcome block.
+  expect_true(any(grepl("Outcome: B vs A", out, fixed = TRUE)))
+  expect_true(any(grepl("Outcome: C vs A", out, fixed = TRUE)))
+  expect_true(any(grepl("Group-specific FP terms:", out, fixed = TRUE)))
+  expect_true(any(grepl("Group-variable coefficients:", out, fixed = TRUE)))
+  expect_false(any(grepl("Adjustment coefficients:", out, fixed = TRUE)))
+  expect_true(any(grepl("S.E.", out, fixed = TRUE)))
 })
 
 test_that("coef print shows a per-logit block layout", {

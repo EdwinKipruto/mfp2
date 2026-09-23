@@ -53,6 +53,13 @@ test_that("print.mfp2() shows threshold rows by default for ordinal model", {
   expect_true(length(coef_section_start) > 0L)
   coef_lines <- out[seq(coef_section_start[1L], length(out))]
   expect_true(any(grepl("y>=", coef_lines, fixed = TRUE)))
+  expect_true(any(grepl(
+    "Model: Logistic Ordinal Regression (proportional odds)",
+    out,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl("Frequencies of Responses", out, fixed = TRUE)))
+  expect_equal(sum(mfp2:::mfp2_summary_response_frequencies(fit)), fit$nobs)
 })
 
 test_that("print.mfp2() intercepts = FALSE suppresses threshold rows", {
@@ -122,13 +129,13 @@ test_that("print.mfp2() validates the intercepts argument", {
   expect_error(print(fit, intercepts = 1), "intercepts")
 })
 
-test_that("print.mfp2() threshold Std. Error is non-NA when vcov is available", {
+test_that("print.mfp2() threshold SE is non-NA when vcov is available", {
   skip_on_cran(); skip_if_no_rms()
   fit <- local_ordinal_fit()
   expect_true(is.matrix(vcov(fit)))
 
   out <- capture.output(print(fit, intercepts = TRUE))
-  # The table should not contain bare "NA" in the Std. Error column next to y>= rows.
+  # The table should not contain bare "NA" in the SE column next to y>= rows.
   thresh_lines <- grep("y>=", out, fixed = TRUE, value = TRUE)
   expect_true(length(thresh_lines) > 0L)
   # Remove the numeric category embedded in the threshold label before counting
@@ -208,6 +215,52 @@ test_that("summary.mfp2() reports finite ordinal slope inference", {
   expect_true(all(is.finite(sm$linear_terms$p)))
 })
 
+test_that("ordinal slope inference uses the slope covariance block", {
+  skip_on_cran(); skip_if_no_rms()
+  fit <- local_ordinal_fit()
+  slope_covariance <- mfp2:::mfp2_ordinal_vcov_slopes(fit)
+  expected <- stats::vcov(fit, intercepts = "none")
+
+  expect_equal(slope_covariance, expected)
+  expect_true(all(is.finite(diag(slope_covariance))))
+  expect_true(all(diag(slope_covariance) > 0))
+})
+
+test_that("five-predictor ordinal summaries have finite slope inference", {
+  skip_on_cran(); skip_if_no_rms()
+  set.seed(99)
+  n <- 600L
+  predictors <- replicate(5L, stats::rnorm(n))
+  colnames(predictors) <- paste0("x", seq_len(5L))
+  eta <- drop(predictors %*% c(0.45, -0.35, 0.25, 0.15, -0.2))
+  latent <- eta + stats::rlogis(n)
+  dat <- data.frame(
+    y = ordered(cut(
+      latent,
+      breaks = stats::quantile(latent, probs = seq(0, 1, length.out = 5L)),
+      include.lowest = TRUE
+    )),
+    predictors,
+    check.names = FALSE
+  )
+  fit <- mfp2(
+    y ~ x1 + x2 + x3 + x4 + x5,
+    data = dat,
+    df = 1,
+    center = FALSE,
+    family = ordinal_family(link = "logistic"),
+    select = 1,
+    alpha = 1,
+    verbose = FALSE
+  )
+  sm <- summary(fit)
+
+  expect_equal(nrow(sm$linear_terms), 5L)
+  expect_true(all(is.finite(sm$linear_terms$se)))
+  expect_true(all(is.finite(sm$linear_terms$statistic)))
+  expect_true(all(is.finite(sm$linear_terms$p)))
+})
+
 test_that("summary.mfp2() excludes every ordinal threshold from model df", {
   skip_on_cran(); skip_if_no_rms()
   fit <- local_ordinal_fit()
@@ -276,6 +329,12 @@ test_that("print.summary.mfp2() labels non-logistic ordinal links correctly", {
     fixed = TRUE
   )))
   expect_false(any(grepl("log-odds", out, fixed = TRUE)))
+  expect_true(any(grepl(
+    "Model: Probit Ordinal Regression",
+    out,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl("Frequencies of Responses", out, fixed = TRUE)))
 })
 
 test_that("print.summary.mfp2() does not emit 'Ordinal Intercepts' for GLM", {

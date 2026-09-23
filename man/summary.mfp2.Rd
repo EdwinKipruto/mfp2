@@ -41,9 +41,10 @@ underlying summary method; otherwise ignored.}
 When \code{raw = FALSE}, an object of class \code{"summary.mfp2"}: a list
 with components \code{call}, \code{family}, \code{criterion},
 \code{converged}, \code{n}, \code{nevents}, model-specific components
-\code{distribution}, \code{scale}, \code{scale_fixed},
+\code{distribution}, \code{scale}, \code{scale_fixed}, \code{dispersion},
+\code{dispersion_fixed},
 \code{scale_strata}, \code{distribution_parameters}, \code{censoring},
-\code{link}, and \code{theta}, plus \code{function_table},
+\code{link}, \code{theta}, and \code{response_frequencies}, plus \code{function_table},
 \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
 \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
@@ -73,9 +74,10 @@ threshold intercepts with standard errors, Wald statistics, p-values,
 and confidence intervals.
 \item \strong{Linear Terms}: variables entering the model as a single
 linear term (including binary-only spike variables and factor levels),
-with the coefficient, standard error, test statistic, p-value, and,
-when the fitted link has a standard multiplicative interpretation, the
-exponentiated coefficient and its confidence interval.
+with the coefficient, standard error, test statistic, p-value, and
+confidence interval. GLM coefficients are always reported on their
+fitted link scale; supported survival models additionally report the
+usual exponentiated effect when it has a standard interpretation.
 \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 FP2, ACD, or spike/catzero compound form. Each row reports a joint
 likelihood-ratio test (LRT) of all of that variable's terms, using the
@@ -100,10 +102,13 @@ an active ACD component, either option also prints the fitted definition of
 \code{raw = TRUE} to obtain the underlying model-specific summary object
 instead.
 
-The structured header reports interpretation-critical nuisance parameters:
-the distribution, fixed or estimated scale, scale strata, and censoring
-pattern for \code{survreg} models, and the log link and estimated theta for
-negative-binomial models.
+The structured header names the fitted model and its link where applicable.
+It also reports interpretation-critical nuisance parameters: the
+distribution, fixed or estimated scale, scale strata, and censoring pattern
+for \code{survreg} models; estimated or fixed dispersion for Gaussian, Gamma, and
+inverse-Gaussian GLMs; and the estimated theta for negative-binomial models.
+Ordinal and multinomial headers additionally report unweighted frequencies
+of the responses used for fitting.
 }
 \section{Coefficient statistics}{
 

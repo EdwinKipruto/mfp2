@@ -156,8 +156,8 @@
 #'   modification, or saving.
 #'
 #' @param show_title Logical scalar. If `TRUE`, titles and subtitles are added.
-#'   Subtitles may include the interaction type, group contrast, and available
-#'   selection result.
+#'   Subtitles identify the interaction form, group contrast, and, where
+#'   applicable, the multinomial logit.
 #'
 #' @param show_rug Logical scalar. If `TRUE`, rug marks are added along the
 #'   horizontal axis to show continuous covariate evaluation values. Rug marks
@@ -476,7 +476,7 @@ plot.mfpi <- function(x,
   }
 
   # ---------------------------------------------------------------------------
-  # Metric/subtitle metadata
+  # Subtitle metadata
   # ---------------------------------------------------------------------------
   subtitle_lookup <- mfpi_plot_subtitle_lookup(model)
 
@@ -497,7 +497,7 @@ plot.mfpi <- function(x,
     info <- subtitle_lookup[[var]]
 
     logit_suffix <- if (!is.null(active_logit)) {
-      sprintf("; logit %s vs %s", active_logit, active_reference_class)
+      sprintf("; logit: %s vs %s", active_logit, active_reference_class)
     } else {
       ""
     }
@@ -514,16 +514,6 @@ plot.mfpi <- function(x,
       info$type
     )
 
-    lbl <- if (!is.null(info$label)) info$label else "metric"
-
-    val_str <- if (is.null(info$metric) || is.na(info$metric)) {
-      "NA"
-    } else if (lbl %in% c("p", "p_raw")) {
-      trimws(formatC(info$metric, format = "g", digits = 3))
-    } else {
-      trimws(formatC(info$metric, format = "f", digits = 2))
-    }
-
     contrast_text <- sprintf(
       "%s: %s vs %s",
       group_label,
@@ -531,15 +521,7 @@ plot.mfpi <- function(x,
       ref_label_value
     )
 
-    metric_text <- sprintf("%s = %s", lbl, val_str)
-
-    if (!is.null(info$metric_adj) && !is.na(info$metric_adj)) {
-      adj_str <- trimws(formatC(info$metric_adj, format = "g", digits = 3))
-      metric_text <- sprintf("%s (p_adj = %s)", metric_text, adj_str)
-    }
-
-    sprintf("type = %s; %s; %s%s", type_str, contrast_text, metric_text,
-            logit_suffix)
+    sprintf("%s interaction; %s%s", type_str, contrast_text, logit_suffix)
   }
 
   # ---------------------------------------------------------------------------
@@ -1430,31 +1412,23 @@ mfpi_plot_scale_label <- function(model) {
 
 #' Build Subtitle Metadata for MFPI Plots
 #'
-#' Creates a named lookup table containing the interaction form and the
-#' criterion-specific model-selection metric for each continuous variable stored
-#' in an \code{"mfpi"} object.
+#' Creates a named lookup table containing the interaction form for each
+#' variable stored in an \code{"mfpi"} object's interaction metrics.
 #'
 #' This helper is used only by \code{plot.mfpi()}. It reads
-#' \code{model$all_model_metrics}, determines the criterion used during model
-#' selection, and extracts the statistic that is most relevant for plot
-#' subtitles. For p-value selection, the raw p-value is stored and the adjusted
-#' p-value is stored when p-value adjustment was used. For information-criterion
-#' selection, the stored AIC or BIC improvement is used.
+#' \code{model$all_model_metrics} and extracts the fitted interaction form used
+#' in plot subtitles. Model-selection statistics remain available through the
+#' model's print and summary methods but are not repeated on the plots.
 #'
 #' @param model Object of class \code{"mfpi"}.
 #'
 #' @return A named list indexed by continuous-variable name. Each element is a
-#'   list with components \code{type}, \code{metric}, \code{label}, and, for
-#'   adjusted p-value selection, \code{metric_adj}. If no model metrics are
-#'   available, an empty list is returned.
+#'   list with component \code{type}. If no model metrics are available, an
+#'   empty list is returned.
 #'
 #' @keywords internal
 #' @noRd
 mfpi_plot_subtitle_lookup <- function(model) {
-  crit_used <- if (is.null(model$criterion)) "pvalue" else model$criterion
-  padj <- if (!is.null(model$p_adjust_method)) model$p_adjust_method else "none"
-  adjusting <- padj != "none" && crit_used == "pvalue"
-
   out <- list()
   all_metrics <- model$all_model_metrics
 
@@ -1467,41 +1441,7 @@ mfpi_plot_subtitle_lookup <- function(model) {
     form <- if ("type" %in% names(all_metrics)) all_metrics$type[i] else NA_character_
 
     if (is.na(v) || !nzchar(v)) next
-
-    if (crit_used == "pvalue") {
-      metric <- if ("pvalue" %in% names(all_metrics)) all_metrics$pvalue[i] else NA_real_
-      metric_adj <- if (adjusting &&
-                        "p_adjusted" %in% names(all_metrics) &&
-                        !is.na(all_metrics$p_adjusted[i])) {
-        all_metrics$p_adjusted[i]
-      } else {
-        NULL
-      }
-      out[[v]] <- list(
-        type = form,
-        metric = metric,
-        label = "p_raw",
-        metric_adj = metric_adj
-      )
-    } else if (crit_used == "aic") {
-      metric <- if ("dAIC" %in% names(all_metrics)) {
-        all_metrics$dAIC[i]
-      } else if ("AIC_main_minus_int" %in% names(all_metrics)) {
-        all_metrics$AIC_main_minus_int[i]
-      } else {
-        NA_real_
-      }
-      out[[v]] <- list(type = form, metric = metric, label = "dAIC")
-    } else if (crit_used == "bic") {
-      metric <- if ("dBIC" %in% names(all_metrics)) {
-        all_metrics$dBIC[i]
-      } else if ("BIC_main_minus_int" %in% names(all_metrics)) {
-        all_metrics$BIC_main_minus_int[i]
-      } else {
-        NA_real_
-      }
-      out[[v]] <- list(type = form, metric = metric, label = "dBIC")
-    }
+    out[[v]] <- list(type = form)
   }
 
   out

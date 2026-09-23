@@ -129,7 +129,8 @@ limits when \code{se.fit = TRUE}.
 
 For predictions for individual observations, the \code{predictions} component is a
 data frame containing \code{term} and \code{fit}, with \code{se.fit} added when requested and
-available.
+available. Matrix-valued multinomial or ordinal results instead use columns
+named \verb{fit.<class>} and, when available, \verb{se.fit.<class>}.
 
 Other components contain information used by plotting and internal
 prediction checks and should not be treated as a stable public interface.
@@ -225,8 +226,16 @@ predicted cumulative hazard up to the supplied follow-up time, and
 \code{type = "survival"} returns the estimated survival probability at that
 time. \code{"link"} is accepted as another name for \code{"lp"}.
 \item For Fine--Gray models, \code{type = "lp"} and \code{type = "risk"} return relative
-subdistribution-hazard predictions. Absolute Cox survival/expected-event
-types are not exposed for this family.
+subdistribution-hazard predictions. With \code{times}, \code{type = "response"}
+returns cumulative-incidence probabilities. Absolute Cox
+survival/expected-event types are not exposed for this family.
+\item For ordinal models, \code{type = "link"} returns the common covariate linear
+predictor without cut-point intercepts, \code{type = "response"} returns
+category probabilities, and \code{type = "mean"} returns the expected category
+value. Numeric category values are used when possible; otherwise the
+category scores are \verb{1, ..., K}.
+\item For multinomial models, \code{type = "link"} returns the non-reference logits
+and \code{type = "response"} returns the class probabilities.
 }
 
 For Cox models, \code{type = "risk"} is not the same as a GLM response
@@ -258,6 +267,8 @@ linear-predictor scale. With the standard links, this is:
 \item the outcome scale for a Gaussian identity-link model;
 \item the log-odds scale for a binomial logit model;
 \item the log-mean scale for log-link GLMs;
+\item the common cumulative-link predictor scale for ordinal models;
+\item a reference-category logit scale for multinomial models;
 \item the fitted location scale for a \code{survreg} model;
 \item a partial log-hazard scale for Cox and Fine--Gray models.
 }
@@ -297,8 +308,10 @@ predictions for individual observations.
 
 \section{Predictions for individual observations}{
 
-For \code{type = "link"}, \code{"response"}, \code{"lp"}, \code{"risk"}, \code{"expected"}, or
-\code{"survival"}, one prediction is returned for each row.
+For \code{type = "link"}, \code{"response"}, \code{"mean"}, \code{"lp"}, \code{"risk"},
+\code{"expected"}, or \code{"survival"}, one prediction row is returned for each
+observation. Multinomial logits/probabilities and ordinal probabilities are
+represented by one output column per response class.
 
 These predictions use the complete term-specific interaction model. Supply:
 \itemize{
@@ -351,6 +364,13 @@ returns this value and \code{type = "response"} applies the fitted inverse-link
 function. MFPI delegates these predictions to the stored fitted model when
 possible, so manual calculations should use the same coefficient ordering and
 offset convention.
+
+For an ordinal model, the reconstructed design and common slope coefficients
+give the covariate linear predictor. Category probabilities additionally use
+the fitted cut-point intercepts and inverse cumulative-link function. For a
+multinomial model, the reconstructed design is combined with each
+non-reference logit's coefficient vector, and the resulting logits are
+normalized to obtain class probabilities.
 
 For a Cox or Fine--Gray model, let \code{eta_i} denote the subject's fitted linear
 predictor on the proportional-hazards scale. \code{type = "lp"} returns it relative to the
@@ -473,7 +493,10 @@ standard errors and confidence intervals with confidence level \code{level}.
 
 For predictions for individual observations, \code{se.fit = TRUE} requests the
 standard errors supported by the underlying GLM, Cox, or \code{survreg}
-prediction method.
+prediction method. Link-scale ordinal predictions can also return standard
+errors. Standard errors are not currently available for ordinal
+response/mean predictions; availability for multinomial predictions depends
+on the requested result stored by the fitted model.
 The \code{level} argument is not used for these predictions.
 
 All standard errors and confidence intervals are conditional on the selected

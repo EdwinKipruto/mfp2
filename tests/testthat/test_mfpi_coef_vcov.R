@@ -55,6 +55,11 @@ make_mfpi_accessor_fixture <- function(selected = TRUE) {
       `2` = c("age21", "age22"),
       `3` = c("age31", "age32")
     ),
+    center_vals = stats::setNames(
+      c(0.12, 0.03, 0.12, 0.03, 0.12, 0.03, 0.12, 0.03),
+      c("age01", "age02", "age11", "age12",
+        "age21", "age22", "age31", "age32")
+    ),
     test_results = list(interaction_model = interaction_model)
   )
 
@@ -273,6 +278,10 @@ test_that("summary.mfpi builds readable regression displays", {
     vapply(display$info$power_table$powers, mfpi_format_power_vector, character(1L)),
     c("(-2, -2)", "(0, 1)", "(-1, 0.5)", "(0.5, 1)")
   )
+  expect_equal(
+    display$info$group_table$center,
+    c(0.12, 0.03, 0.12, 0.03, 0.12, 0.03, 0.12, 0.03)
+  )
 
   raw_summary <- summary(
     fit$var_winners$age$fit$test_results$interaction_model$fit
@@ -306,7 +315,11 @@ test_that("MFPI regression summary print is readable and omits raw model output"
   expect_match(txt, "Drug B:  (-1, 0.5)", fixed = TRUE)
   expect_match(txt, "Drug C:  (0.5, 1)", fixed = TRUE)
   expect_match(txt, "Group-specific FP terms:", fixed = TRUE)
-  expect_match(txt, "Std. Error", fixed = TRUE)
+  expect_match(txt, "Estimates are for: Basis - Center", fixed = TRUE)
+  expect_match(txt, "Basis", fixed = TRUE)
+  expect_match(txt, "Center", fixed = TRUE)
+  expect_match(txt, "S.E.", fixed = TRUE)
+  expect_false(grepl("Std. Error", txt, fixed = TRUE))
   expect_match(txt, "p-value", fixed = TRUE)
   expect_match(txt, "Group-variable coefficients:", fixed = TRUE)
   expect_match(txt, "Reference level: Placebo", fixed = TRUE)

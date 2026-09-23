@@ -462,9 +462,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     )
 
     mfp2_message("")
-    for (line in adjustment_info$settings$lines) {
-      mfp2_message("  ", line)
-    }
+    mfp2_message("  Criterion: ", adjustment_info$settings$criterion_label)
     mfp2_message("")
 
     if (!is.null(adjustment_info$display) &&
@@ -547,19 +545,14 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     mfp2_message(rule_thick)
     mfp2_message(
       sprintf(
-        "  STEP 2: Evaluating Interactions (flex = %s, criterion = '%s')",
-        flex, interaction_settings$criterion_label
+        "  STEP 2: Evaluating Interactions (flex = %s)",
+        flex
       )
     )
     mfp2_message(rule_thick)
-    mfp2_message(
-      "  Testing ",
-      length(interaction_vars),
-      " interaction variable(s) against group '",
-      group_var,
-      "'"
-    )
-    mfp2_message("  Interaction selection: ", interaction_settings$selection)
+    mfp2_message("")
+    mfp2_message("  Group variable: ", group_var)
+    mfp2_message("  Selection rule: ", interaction_settings$selection)
     if (criterion == "pvalue") {
       mfp2_message(
         "  P-value adjustment: ",
@@ -621,17 +614,13 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   n_selected <- nrow(univ_results$best_model_metrics)
 
   if (verbose) {
-    rule_thick <- strrep("=", 70)
-    mfp2_message("")
-    mfp2_message(rule_thick)
     mfp2_message(
-      "  DONE: ",
+      "Done: ",
       n_selected,
       " of ",
       length(interaction_vars),
-      " interactions selected"
+      " interactions selected."
     )
-    mfp2_message(rule_thick)
     mfp2_message("")
   }
 
@@ -1998,9 +1987,8 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #' \code{interaction_forms[[var_name]]}) for one continuous variable against the
 #' grouping variable, resolves the AIC/BIC or p-value winner (trivial here
 #' since there is only one candidate form), prints the verbose per-variable
-#' candidate table and provisional decision line, and, when p-value
-#' multiplicity adjustment is not in play, makes and reports the immediate
-#' retain/drop decision for this variable.
+#' candidate table, and, when p-value multiplicity adjustment is not in play,
+#' makes the immediate retain/drop decision for this variable.
 #'
 #' This was previously inlined in the body of \code{evaluate_interactions()}'s
 #' main \code{for (var_name in interaction_vars)} loop. Extracting it isolates the
@@ -2033,8 +2021,7 @@ evaluate_interactions <- function(y, processed_data, selected_vars,
 #'   information criterion (\code{NULL} when \code{criterion == "pvalue"}).
 #' @param adjusting_pvals Logical. \code{TRUE} when p-value multiplicity
 #'   adjustment is requested, in which case the immediate retain/drop decision
-#'   is deferred to \code{finalize_adjusted_pvalue_selection()} and only a
-#'   provisional message is printed here.
+#'   is deferred to \code{finalize_adjusted_pvalue_selection()}.
 #' @param p_interact,min_improvement Selection thresholds for the immediate
 #'   (non-adjusted) decision.
 #' @param verbose,quiet,show_models,digits Verbose-printing controls.
@@ -2117,9 +2104,9 @@ evaluate_interaction_for_variable <- function(var_name,
     adj_vars <- setdiff(selected_adj_vars, var_name)
 
     if (length(adj_vars) > 0L) {
-      mfp2_message("        Adjusting for: ", paste(adj_vars, collapse = ", "))
+      mfp2_message("  Adjusting for: ", paste(adj_vars, collapse = ", "))
     } else {
-      mfp2_message("        Adjusting for: (none)")
+      mfp2_message("  Adjusting for: (none)")
     }
     mfp2_message(rule_thin)
   }
@@ -2289,7 +2276,7 @@ evaluate_interaction_for_variable <- function(var_name,
   }
 
   # -------------------------------------------------------------------------
-  # Verbose per-variable candidate table and observed comparison statistic
+  # Verbose per-variable candidate table
   # -------------------------------------------------------------------------
   if (verbose) {
     mfp2_message_capture(
@@ -2300,29 +2287,6 @@ evaluate_interaction_for_variable <- function(var_name,
         best_type = best_type
       )
     )
-
-    if (!is.null(best_metric)) {
-      if (criterion == "pvalue") {
-        pval_str <- formatC(
-          best_metric$pvalue[1L],
-          format = "g",
-          digits = digits
-        )
-        mfp2_message("        >> p-value = ", pval_str)
-      } else {
-        ic_val <- if (ic_col %in% names(best_metric)) {
-          best_metric[[ic_col]][1L]
-        } else {
-          NA_real_
-        }
-        mfp2_message(
-          "        >> ",
-          ic_label,
-          " = ",
-          formatC(ic_val, format = "f", digits = digits)
-        )
-      }
-    }
   }
 
   # -------------------------------------------------------------------------
@@ -2485,9 +2449,10 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #' * \code{mode = "ic"}: used for \code{criterion \%in\% c("aic", "bic")}
 #'   without p-value multiplicity adjustment. Columns are Variable, Type, and
 #'   the active information-criterion improvement (dAIC or dBIC).
-#' * \code{mode = "pvalue"}: used for p-value selection with or without
-#'   multiplicity adjustment. Columns are Variable, Type, raw p-value,
-#'   adjusted p-value, and the final Yes/No decision.
+#' * \code{mode = "pvalue"}: used for p-value selection. Without multiplicity
+#'   adjustment, columns are Variable, Type, p-value, and the final Yes/No
+#'   decision. With adjustment, separate raw and adjusted p-value columns are
+#'   printed.
 #'
 #' Final decisions are printed only in this summary. The preceding candidate
 #' loop reports observed statistics without provisional selection labels.
@@ -2526,6 +2491,11 @@ print_interaction_step3_summary <- function(var_winners,
 
   rule_thick <- strrep("=", 70)
   rule_thin <- strrep("-", 70)
+  show_adjusted <- mode == "pvalue" &&
+    is.character(p_adjust_method) &&
+    length(p_adjust_method) == 1L &&
+    !is.na(p_adjust_method) &&
+    !identical(tolower(p_adjust_method), "none")
 
   mfp2_message("")
   mfp2_message(rule_thick)
@@ -2537,10 +2507,15 @@ print_interaction_step3_summary <- function(var_winners,
       "  %-12s %-8s %12s %10s",
       "Variable", "Type", ic_label, "selected"
     ))
-  } else {
+  } else if (show_adjusted) {
     mfp2_message(sprintf(
       "  %-12s %-8s %12s %12s %10s",
       "Variable", "Type", "p_raw", "p_adjusted", "selected"
+    ))
+  } else {
+    mfp2_message(sprintf(
+      "  %-12s %-8s %12s %10s",
+      "Variable", "Type", "p-value", "selected"
     ))
   }
   mfp2_message(rule_thin)
@@ -2554,10 +2529,15 @@ print_interaction_step3_summary <- function(var_winners,
           "  %-12s %-8s %12s %10s",
           vn, "---", "NA", "NA"
         ))
-      } else {
+      } else if (show_adjusted) {
         mfp2_message(sprintf(
           "  %-12s %-8s %12s %12s %10s",
           vn, "---", "NA", "NA", "NA"
+        ))
+      } else {
+        mfp2_message(sprintf(
+          "  %-12s %-8s %12s %10s",
+          vn, "---", "NA", "NA"
         ))
       }
       next
@@ -2591,20 +2571,32 @@ print_interaction_step3_summary <- function(var_winners,
       } else {
         p_raw
       }
-      selected <- if (is.finite(p_adjusted) && p_adjusted < p_interact) {
+      p_for_selection <- if (show_adjusted) p_adjusted else p_raw
+      selected <- if (is.finite(p_for_selection) &&
+                      p_for_selection < p_interact) {
         "Yes"
       } else {
         "No"
       }
 
-      mfp2_message(sprintf(
-        "  %-12s %-8s %12s %12s %10s",
-        vn,
-        type_label,
-        formatC(p_raw, format = "g", digits = digits),
-        formatC(p_adjusted, format = "g", digits = digits),
-        selected
-      ))
+      if (show_adjusted) {
+        mfp2_message(sprintf(
+          "  %-12s %-8s %12s %12s %10s",
+          vn,
+          type_label,
+          formatC(p_raw, format = "g", digits = digits),
+          formatC(p_adjusted, format = "g", digits = digits),
+          selected
+        ))
+      } else {
+        mfp2_message(sprintf(
+          "  %-12s %-8s %12s %10s",
+          vn,
+          type_label,
+          formatC(p_raw, format = "g", digits = digits),
+          selected
+        ))
+      }
     }
   }
 

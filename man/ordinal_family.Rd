@@ -41,6 +41,45 @@ factor or numeric codes to control the direction. The model is parameterized
 on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
 predictor values are associated with higher response categories.
 }
+\examples{
+ordinal_family()
+ordinal_family(link = "probit")
+
+\donttest{
+if (requireNamespace("rms", quietly = TRUE)) {
+  set.seed(44)
+  n <- 180
+  ordinal_data <- data.frame(
+    x1 = stats::rnorm(n),
+    x2 = stats::rbinom(n, 1, 0.5)
+  )
+  latent <- with(ordinal_data, 0.6 * x1 + 0.5 * x2 + stats::rlogis(n))
+  ordinal_data$y <- ordered(
+    cut(
+      latent,
+      breaks = stats::quantile(latent, probs = seq(0, 1, length.out = 5)),
+      include.lowest = TRUE,
+      labels = c("low", "medium", "high", "very high")
+    )
+  )
+
+  fit_ordinal <- mfp2(
+    y ~ x1 + x2,
+    data = ordinal_data,
+    family = ordinal_family(link = "logistic"),
+    df = 1,
+    select = 1,
+    cycles = 1,
+    verbose = FALSE
+  )
+  predict(
+    fit_ordinal,
+    newdata = ordinal_data[1:3, ],
+    type = "response"
+  )
+}
+}
+}
 \seealso{
 \code{\link[rms:orm]{rms::orm()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

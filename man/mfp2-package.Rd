@@ -33,6 +33,9 @@ Optional negative-binomial fitting requires the \code{fastglm} package.
 Multinomial logistic models use \code{\link[=multinomial_family]{multinomial_family()}} and the \code{nnet}
 package. Their selected FP transformations are common across logits and
 their regression coefficients are logit specific.
+Proportional-odds ordinal models use \code{\link[=ordinal_family]{ordinal_family()}} and the optional
+\code{rms} package. They estimate a common predictor effect across response
+cut-points.
 
 Survival models are specified as separate families: \code{family = "cox"} for
 Cox proportional hazards, \code{\link[=survreg_family]{survreg_family()}} for the parametric distributions
@@ -78,7 +81,8 @@ Further guidance is available in:
 }
 
 \seealso{
-\code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=plot.mfp2]{plot.mfp2()}}
+\code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=mfpi]{mfpi()}}, \code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=ordinal_family]{ordinal_family()}},
+\code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}, \code{\link[=predict.mfp2]{predict.mfp2()}}, \code{\link[=plot.mfp2]{plot.mfp2()}}
 }
 \author{
 \strong{Maintainer}: Edwin Kipruto \email{edwin.kipruto@uniklinik-freiburg.de}

@@ -28,13 +28,16 @@ selection output. Step 4 adds a compact regression display for each retained
 interaction model.
 
 Step 4 uses readable group labels and FP transformations rather than internal
-design-column names. The grouping variable and FLEX setting are already shown
-in the main MFPI header and are not repeated for every retained interaction.
+design-column names. The grouping variable is shown in Step 2 and the FLEX
+setting in the main MFPI header, so neither is repeated for every retained
+interaction.
 Each retained interaction is introduced by an underlined heading. Interaction
 powers are always printed by group level, including when the selected FLEX
 strategy gives all groups the same powers. Group-variable coefficients and
 adjustment coefficients are displayed in separate tables. For models with an
-intercept, it is displayed separately.
+intercept, it is displayed separately. Centered terms include a \code{Center}
+column and use the \code{Basis - Center} convention. Multinomial models use
+a separate outcome-versus-reference block for each non-reference outcome.
 
 When one or more retained interaction variables have a nonzero MFPI shift,
 Step 4 prints one clarification immediately below the first shifted
@@ -45,7 +48,8 @@ untransformed. Later shifted interactions retain the explicit constant in
 their transformation labels, but the note is not repeated. No shift note is
 printed when all retained interactions have zero shift.
 
-The method intentionally does not print the underlying model call,
+The original \code{mfpi()} call is printed with Steps 1--3. Step 4 does not
+repeat the calls of the underlying retained regression models or print
 exponentiated-coefficient tables, significance stars, concordance, or global
 likelihood-ratio/Wald/score tests. Those quantities remain available from the
 stored fitted regression model when required, but they are not part of the

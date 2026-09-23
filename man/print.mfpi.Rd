@@ -28,19 +28,19 @@ is printed immediately below it. Full diagnostics remain available in the
 returned object.
 }
 \details{
-Step 1 reports the interaction-selection rule in reader-facing language and
-displays \code{df_initial} and \code{df_final}. For a grouped adjustment term,
+The header reports the original call and fitted model type. Step 1 displays
+\code{df_initial} and \code{df_final}. For a grouped adjustment term,
 \code{df_initial} counts all member design columns in the initial model.
-P-value fits print the p-value cutoff and the stored adjustment method,
-including \code{none}, while retaining the variable-specific \code{select} and
-\code{alpha} columns. AIC/BIC fits print the required criterion reduction
-and omit only those two inapplicable columns.
+Step 2 reports the grouping variable, interaction-selection criterion and
+rule, and the p-value adjustment method when applicable. The candidate table
+retains the stored metric names except that \code{pvalue} is printed as
+\code{p-value}. The group-level power table uses the display labels
+\code{Group} and \code{Group level}.
 
 The final interaction summary reports selection explicitly as \code{Yes} or
-\code{No}. Its heading contains the exact criterion-specific rule:
-\code{p_adjusted < p_interact} for \code{criterion = "pvalue"}, or the
-minimum \code{dAIC}/\code{dBIC} improvement for information-criterion
-selection.
+\code{No} without repeating the rule already shown in Step 2. With no
+multiplicity adjustment it prints one \code{p-value} column; otherwise it
+prints \code{p_raw} and \code{p_adjusted}.
 
 Numeric values are rounded for display only. The underlying metrics stored in
 the \code{"mfpi"} object are not modified, and model-selection decisions are

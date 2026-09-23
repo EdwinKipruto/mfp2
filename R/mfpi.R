@@ -6,8 +6,9 @@
 #' categorical.
 #'
 #' The function supports the likelihood GLMs accepted by `mfp2()`, negative
-#' binomial, Cox, parametric `survreg`, and Fine--Gray models. Nonlinear
-#' relationships can be modelled with fractional polynomials.
+#' binomial, multinomial logistic, proportional-odds ordinal, Cox, parametric
+#' `survreg`, and Fine--Gray models. Nonlinear relationships can be modelled
+#' with fractional polynomials.
 #'
 #' @details
 #' `mfpi()` evaluates each variable in `interaction_vars` separately. For every
@@ -300,6 +301,18 @@
 #' factor), the main model contributes \eqn{Q(K-1+r)} df and the interaction
 #' contributes \eqn{Q(K-1)r} df.
 #'
+#' @section Ordinal models:
+#' Use [ordinal_family()] for an ordinal interaction analysis. The response must
+#' contain at least three categories. Ordered-factor levels define the category
+#' order; otherwise, numeric values are ordered increasingly and character or
+#' unordered-factor values alphabetically. An ordered factor is recommended
+#' whenever labelled categories have a scientifically defined order.
+#'
+#' Ordinal MFPI models use a cumulative-link parameterization with common
+#' predictor slopes across cut-points. Group-specific functions and their
+#' differences are therefore reported on the common linear-predictor scale.
+#' The optional `rms` package must be installed.
+#'
 #' @param x For `mfpi.default()`, a numeric matrix or data frame containing the
 #'   predictors. Column names must be unique, non-missing, non-empty, and must
 #'   not contain the backtick character; spaces, hyphens, and other non-syntactic names
@@ -314,6 +327,7 @@
 #'   (with integer successes/failures for the grouped two-column form), a
 #'   factor or character/numeric class-label vector with at least three classes,
 #'   or a three-or-more-column count matrix for multinomial models, a
+#'   response with at least three ordered categories for ordinal models, a
 #'   right-censored [survival::Surv()] object for Cox, a
 #'   non-counting `Surv` response for `survreg`, or a multi-state `Surv`
 #'   response for Fine--Gray. It must have the same number of observations as `x`.
@@ -475,8 +489,8 @@
 #'   `"inverse.gaussian"`) as a name, function, or family object. Quasi
 #'   families are excluded because selection requires a likelihood. Use
 #'   `"negbin"` for a negative-binomial model, `"multinomial"` or
-#'   [multinomial_family()], `"cox"`, [survreg_family()], or
-#'   [finegray_family()] for the corresponding survival model.
+#'   [multinomial_family()], `"ordinal"` or [ordinal_family()], `"cox"`,
+#'   [survreg_family()], or [finegray_family()] for the corresponding model.
 #'
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
@@ -797,8 +811,64 @@
 #' fit_matrix$scale
 #' summary(fit_matrix)
 #'
+#' \donttest{
+#' # --- Ordinal interaction model (requires the optional rms package) ---
+#' if (requireNamespace("rms", quietly = TRUE)) {
+#'   set.seed(45)
+#'   n_ordinal <- 180
+#'   ordinal_data <- data.frame(
+#'     group = factor(rep(c("control", "treated"), each = n_ordinal / 2)),
+#'     x = stats::runif(n_ordinal, 0.5, 5),
+#'     z = stats::rnorm(n_ordinal)
+#'   )
+#'   ordinal_lp <- with(
+#'     ordinal_data,
+#'     0.3 * x + 0.4 * (group == "treated") +
+#'       0.25 * x * (group == "treated") - 0.2 * z
+#'   )
+#'   ordinal_latent <- ordinal_lp + stats::rlogis(n_ordinal)
+#'   ordinal_data$y <- ordered(
+#'     cut(
+#'       ordinal_latent,
+#'       breaks = stats::quantile(
+#'         ordinal_latent,
+#'         probs = seq(0, 1, length.out = 4)
+#'       ),
+#'       include.lowest = TRUE,
+#'       labels = c("low", "medium", "high")
+#'     )
+#'   )
+#'
+#'   fit_ordinal <- mfpi(
+#'     y ~ group + fp(x, df = 1) + z,
+#'     data = ordinal_data,
+#'     family = ordinal_family(),
+#'     group_var = "group",
+#'     interaction_vars = "x",
+#'     interaction_forms = c(x = "linear"),
+#'     flex = "flex1",
+#'     df = 1,
+#'     select = 1,
+#'     alpha = 1,
+#'     p_interact = 1,
+#'     cycles = 1,
+#'     verbose = FALSE
+#'   )
+#'   summary(fit_ordinal)
+#'   predict(
+#'     fit_ordinal,
+#'     newdata = ordinal_data[1:4, ],
+#'     terms = "x",
+#'     model = "all",
+#'     type = "response",
+#'     se.fit = FALSE
+#'   )
+#' }
+#' }
+#'
 #' @seealso [mfp2()], [fp()], [coef.mfpi()], [vcov.mfpi()], [predict.mfpi()],
-#'   [plot.mfpi()], [summary.mfpi()], [print.mfpi()]
+#'   [plot.mfpi()], [summary.mfpi()], [print.mfpi()], [multinomial_family()],
+#'   [ordinal_family()], [survreg_family()], [finegray_family()]
 #'
 #' @export
 mfpi <- function(x, ...) {

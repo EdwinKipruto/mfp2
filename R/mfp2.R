@@ -9,7 +9,9 @@
 #' and response. Both interfaces provide the same core modelling capabilities
 #' but differ in input handling as described below. Supported likelihood GLMs
 #' are Gaussian, binomial, Poisson, Gamma, inverse Gaussian, and negative
-#' binomial. Survival models include Cox proportional hazards, parametric
+#' binomial. Multicategory responses can be fitted with baseline-category
+#' multinomial logistic regression or proportional-odds ordinal regression.
+#' Survival models include Cox proportional hazards, parametric
 #' [survival::survreg()] models, and Fine--Gray subdistribution hazards.
 #'
 #' @section Fractional-polynomial model selection:
@@ -76,6 +78,12 @@
 #' AIC, or BIC comparisons. Negative binomial is selected with `"negbin"`;
 #' `fitter` is set silently to `"fastglm"`, its required backend.
 #'
+#' Multicategory outcomes use [multinomial_family()] for unordered responses or
+#' [ordinal_family()] for ordered responses. Multinomial models require at least
+#' three classes and use the `nnet` package. Ordinal models require at least
+#' three ordered categories, estimate proportional-odds slopes shared across
+#' cut-points, and use the optional `rms` package.
+#'
 #' Survival families are separate: use `"cox"`, [survreg_family()], or
 #' [finegray_family()]. Character `"survreg"` and `"finegray"` select their
 #' default specifications. Parametric models accept the distributions supported
@@ -87,7 +95,10 @@
 #' negative-binomial models require finite, nonnegative integer counts.
 #' Binomial models accept a numeric response in `[0, 1]`, a two-level factor,
 #' or a two-column numeric matrix of nonnegative integer grouped counts with a
-#' positive row total. Cox models require
+#' positive row total. Multinomial responses may contain unordered class labels
+#' or class-count matrices, as described under **Multinomial models**. Ordinal
+#' responses may be ordered factors or vectors whose sorted unique values give
+#' the category order, as described under **Ordinal models**. Cox models require
 #' `family = "cox"` and an ordinary
 #' right-censored response created with [survival::Surv()], using two columns for
 #' follow-up time and event status.
@@ -318,6 +329,21 @@
 #' use the matrix-level `nnet` path; the retained model also inherits from
 #' `multinom`.
 #'
+#' @section Ordinal models:
+#' Use [ordinal_family()] for a cumulative-link ordinal regression model. The
+#' response must have at least three observed categories. An ordered factor
+#' supplies its category order directly. Numeric values are ordered
+#' increasingly; character values and unordered-factor levels are sorted
+#' alphabetically. Because alphabetical order may not represent the intended
+#' scientific ordering, an ordered factor is recommended for labelled outcomes.
+#'
+#' The default `link = "logistic"` fits a proportional-odds model. Each predictor
+#' has one slope shared across all response cut-points, while the retained model
+#' also estimates one threshold intercept for every category after the first.
+#' The selected fit inherits from `rms::orm`; the optional `rms` package must be
+#' installed. See [ordinal_family()] for the available links and interpretation
+#' of the coefficient direction.
+#'
 #' @section Compatibility with the `mfp` package:
 #' Both `mfp` and `mfp2` export `fp()`. Within formulas passed to `mfp2()` or
 #' `mfpi()`, bare `fp()` always uses the `mfp2` version regardless of package
@@ -357,7 +383,9 @@
 #'   `[0, 1]`, a two-level factor, or a two-column matrix of nonnegative integer
 #'   successes and failures. Multinomial models accept a factor or a character
 #'   or numeric class-label vector with at least three classes, or a numeric
-#'   matrix with at least three nonnegative integer class-count columns. Cox
+#'   matrix with at least three nonnegative integer class-count columns. Ordinal
+#'   models accept an ordered factor or a numeric, integer, character, or
+#'   unordered-factor response with at least three observed categories. Cox
 #'   models require a two-column right-censored [survival::Surv()] object.
 #'   Parametric survival models accept the non-counting censoring types handled
 #'   by [survival::survreg()]. Fine--Gray models require a multi-state `Surv`
@@ -447,8 +475,10 @@
 #'   `"inverse.gaussian"`) as a character name, function, or family object;
 #'   quasi families are not supported. Use `"negbin"` for a negative-binomial
 #'   model, `"multinomial"` or [multinomial_family()] for an
-#'   unpenalized baseline-category multinomial model, `"cox"` for Cox models, [survreg_family()] for
-#'   parametric survival models, or [finegray_family()] for Fine--Gray models.
+#'   unpenalized baseline-category multinomial model, `"ordinal"` or
+#'   [ordinal_family()] for a proportional-odds ordinal model, `"cox"` for Cox
+#'   models, [survreg_family()] for parametric survival models, or
+#'   [finegray_family()] for Fine--Gray models.
 #'   Default `"gaussian"`.
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
@@ -766,16 +796,30 @@
 #' )
 #' eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
 #' mu <- exp(eta)
+#' simulate_inverse_gaussian <- function(mu, shape) {
+#'   squared_normal <- stats::rnorm(length(mu))^2
+#'   candidate <- mu + (mu^2 * squared_normal) / (2 * shape) -
+#'     (mu / (2 * shape)) * sqrt(
+#'       4 * mu * shape * squared_normal + mu^2 * squared_normal^2
+#'     )
+#'   choose_candidate <- stats::runif(length(mu)) <= mu / (mu + candidate)
+#'   ifelse(choose_candidate, candidate, mu^2 / candidate)
+#' }
 #' family_data$y_gaussian <- eta + rnorm(n_family)
 #' family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
 #' family_data$y_poisson <- rpois(n_family, mu)
 #' family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
-#' family_data$y_inverse_gaussian <- rgamma(
-#'   n_family, shape = 8, scale = mu / 8
-#' )
+#' family_data$y_inverse_gaussian <- simulate_inverse_gaussian(mu, shape = 8)
 #' family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
 #' family_data$y_multinomial <- sample.int(
 #'   3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+#' )
+#' family_data$y_ordinal <- ordered(
+#'   cut(
+#'     eta + stats::rlogis(n_family),
+#'     breaks = c(-Inf, -0.5, 0.5, 1.5, Inf),
+#'     labels = c("low", "medium", "high", "very high")
+#'   )
 #' )
 #'
 #' fit_gaussian <- mfp2(
@@ -816,6 +860,15 @@
 #'   family = multinomial_family(),
 #'   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
 #' )
+#'
+#' # Ordinal regression uses the optional rms package.
+#' if (requireNamespace("rms", quietly = TRUE)) {
+#'   fit_ordinal <- mfp2(
+#'     y_ordinal ~ x1 + x2, data = family_data,
+#'     family = ordinal_family(),
+#'     df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+#'   )
+#' }
 #'
 #' # Cox proportional hazards and parametric survival models.
 #' event_time <- rexp(n_family, rate = exp(eta - 2))
@@ -863,13 +916,14 @@
 #'   \item `glm` for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 #'   \item `fastglm_nb` and `fastglm` for negative-binomial models;
 #'   \item `multinom` and `nnet` for multinomial logistic models;
+#'   \item `orm` for ordinal regression models;
 #'   \item `coxph` for Cox and Fine--Gray models;
 #'   \item `survreg` for parametric survival models.
 #' }
 #'
 #' Standard fitted-model components, such as coefficients, residuals, fitted
 #' values, and the model call, can be accessed using the usual methods for
-#' `glm`, `fastglm`, `multinom`, `coxph`, or `survreg` objects.
+#' `glm`, `fastglm`, `multinom`, `orm`, `coxph`, or `survreg` objects.
 #'
 #' The following additional components are part of the user-facing `mfp2`
 #' result:
@@ -972,7 +1026,8 @@
 #' @seealso
 #' [fp()], [fp2()], [summary.mfp2()], [coef.mfp2()], [predict.mfp2()],
 #' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()],
-#' [multinomial_family()], [survreg_family()], [finegray_family()]
+#' [multinomial_family()], [ordinal_family()], [survreg_family()],
+#' [finegray_family()]
 #'
 #' @export
 mfp2 <- function(x, ...) {
@@ -4131,7 +4186,7 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
       Variable = variable,
       Basis = basis,
       Estimate = unname(estimate),
-      `Std. Error` = unname(se),
+      SE = unname(se),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -4141,7 +4196,7 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
         design_info$center
       )
       block <- block[, c("Logit", "Variable", "Basis", "Center",
-                         "Estimate", "Std. Error")]
+                         "Estimate", "SE")]
     }
     rows[[i]] <- block
   }
@@ -4166,10 +4221,10 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
 #' and spike-at-zero (SAZ) results), a detailed settings table, final
 #' coefficients, and model-fit measures.
 #'
-#' For multinomial models, the header identifies the response classes,
-#' reference class, and number of logits, and states that FP powers are common
-#' across logits. The coefficient table has one block per non-reference
-#' outcome.
+#' For multinomial models, the header reports response frequencies, the
+#' reference class, and number of non-reference logits, and states that FP
+#' powers are common across logits. The existing coefficient table has one
+#' block per non-reference outcome.
 #'
 #' @details
 #' The "Summary of Function Selection" section reports one row per variable,
@@ -4574,7 +4629,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   # ---------------------------------------------------------------------------
   #
   # A plain "Call:" label (no dashed rule) opens the output, followed by the
-  # deparsed mfp2() call, a one-line family / criterion / convergence block,
+  # deparsed mfp2() call, a one-line model / criterion / convergence block,
   # and an observation/event line. This matches the opening produced by
   # print.summary.mfp2(); the two methods therefore present the call and
   # top-level metadata identically. The dashed-rule section headings resume
@@ -4587,6 +4642,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   } else {
     cat("(original mfp2 call unavailable)\n")
   }
+  cat("\n")
 
   # Model-specific metadata is extracted and rendered by the same helpers used
   # by print.summary.mfp2(), keeping direct and summary output synchronized.
@@ -4597,19 +4653,21 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   }
   n_events <- if (mfp2_family_uses_event_count(x$family_string) &&
                   !is.null(x$nevents)) x$nevents else NA_integer_
+  model_metadata <- mfp2_summary_model_metadata(x)
+  response_frequencies <- mfp2_summary_response_frequencies(x)
   mfp2_print_model_header(
     family_string = x$family_string,
     criterion = criterion_label,
     converged = x$convergence_mfp,
     n = n_obs,
     nevents = n_events,
-    metadata = mfp2_summary_model_metadata(x),
-    digits = digits
+    metadata = model_metadata,
+    digits = digits,
+    response_frequencies = response_frequencies
   )
   if (identical(x$family_string, "multinomial")) {
     cat(sprintf(
-      "Outcome classes: %s | Reference: %s | Logits: %d\n",
-      paste(x$class_levels, collapse = ", "),
+      "\nReference class: %s | Non-reference logits: %d\n",
       x$reference_class,
       x$n_logits
     ))
@@ -5020,7 +5078,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
       rep(NA_real_, length(coefficients)),
       coefficient_names
     )
-    covariance <- tryCatch(stats::vcov(x), error = function(e) NULL)
+    covariance <- if (mfp2_family_is_ordinal(x$family_string)) {
+      mfp2_ordinal_vcov_slopes(x)
+    } else {
+      tryCatch(stats::vcov(x), error = function(e) NULL)
+    }
     if (is.matrix(covariance) && !is.null(rownames(covariance)) &&
         !is.null(colnames(covariance))) {
       covariance_names <- intersect(
@@ -5049,7 +5111,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
       display[["Center"]] <- design_info$center
     }
     display[["Estimate"]] <- unname(coefficients[model_rows])
-    display[["Std. Error"]] <- unname(
+    display[["SE"]] <- unname(
       standard_errors[coefficient_names[model_rows]]
     )
 
@@ -5070,7 +5132,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
       )
       if (!is.null(x$centers)) intercept[["Center"]] <- NA_real_
       intercept[["Estimate"]] <- unname(coefficients[[intercept_position]])
-      intercept[["Std. Error"]] <- unname(
+      intercept[["SE"]] <- unname(
         standard_errors[["(Intercept)"]]
       )
       display <- rbind(intercept, display)
@@ -5099,7 +5161,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
         )
         if (!is.null(x$centers)) threshold_rows[["Center"]] <- NA_real_
         threshold_rows[["Estimate"]]   <- unname(ord_int)
-        threshold_rows[["Std. Error"]] <- unname(ord_se)
+        threshold_rows[["SE"]] <- unname(ord_se)
         display <- rbind(threshold_rows, display)
       }
     }

@@ -41,9 +41,10 @@
 #'     and confidence intervals.
 #'   \item \strong{Linear Terms}: variables entering the model as a single
 #'     linear term (including binary-only spike variables and factor levels),
-#'     with the coefficient, standard error, test statistic, p-value, and,
-#'     when the fitted link has a standard multiplicative interpretation, the
-#'     exponentiated coefficient and its confidence interval.
+#'     with the coefficient, standard error, test statistic, p-value, and
+#'     confidence interval. GLM coefficients are always reported on their
+#'     fitted link scale; supported survival models additionally report the
+#'     usual exponentiated effect when it has a standard interpretation.
 #'   \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 #'     FP2, ACD, or spike/catzero compound form. Each row reports a joint
 #'     likelihood-ratio test (LRT) of all of that variable's terms, using the
@@ -68,10 +69,13 @@
 #' \code{raw = TRUE} to obtain the underlying model-specific summary object
 #' instead.
 #'
-#' The structured header reports interpretation-critical nuisance parameters:
-#' the distribution, fixed or estimated scale, scale strata, and censoring
-#' pattern for `survreg` models, and the log link and estimated theta for
-#' negative-binomial models.
+#' The structured header names the fitted model and its link where applicable.
+#' It also reports interpretation-critical nuisance parameters: the
+#' distribution, fixed or estimated scale, scale strata, and censoring pattern
+#' for `survreg` models; estimated or fixed dispersion for Gaussian, Gamma, and
+#' inverse-Gaussian GLMs; and the estimated theta for negative-binomial models.
+#' Ordinal and multinomial headers additionally report unweighted frequencies
+#' of the responses used for fitting.
 #'
 #' @section Coefficient statistics:
 #' The linear-terms table reports the coefficient statistics from the applicable
@@ -101,9 +105,10 @@
 #' When \code{raw = FALSE}, an object of class \code{"summary.mfp2"}: a list
 #' with components \code{call}, \code{family}, \code{criterion},
 #' \code{converged}, \code{n}, \code{nevents}, model-specific components
-#' \code{distribution}, \code{scale}, \code{scale_fixed},
+#' \code{distribution}, \code{scale}, \code{scale_fixed}, \code{dispersion},
+#' \code{dispersion_fixed},
 #' \code{scale_strata}, \code{distribution_parameters}, \code{censoring},
-#' \code{link}, and \code{theta}, plus \code{function_table},
+#' \code{link}, \code{theta}, and \code{response_frequencies}, plus \code{function_table},
 #' \code{linear_terms}, \code{nonlinear_terms}, \code{basis} (or \code{NULL}),
 #' \code{formulas} (or \code{NULL}), \code{acd_definitions} (or
 #' \code{NULL}), \code{ordinal_intercepts} (a threshold-inference data frame
@@ -195,6 +200,8 @@ summary.mfp2 <- function(object,
       distribution = NULL,
       scale = NULL,
       scale_fixed = NULL,
+      dispersion = NULL,
+      dispersion_fixed = NULL,
       scale_strata = NULL,
       distribution_parameters = NULL,
       censoring = NULL,
@@ -204,6 +211,7 @@ summary.mfp2 <- function(object,
       class_levels = object$class_levels,
       reference_class = object$reference_class,
       n_logits = object$n_logits,
+      response_frequencies = mfp2_summary_response_frequencies(object),
       function_table = mfp2_summary_classify_terms(object)$function_table,
       coefficients = coefficient_table,
       model_fit_values = mfp2_summary_model_fit_values(object),
@@ -227,7 +235,10 @@ summary.mfp2 <- function(object,
   } else {
     mfp2_summary_raw(object)
   }
-  model_metadata <- mfp2_summary_model_metadata(object)
+  model_metadata <- mfp2_summary_model_metadata(
+    object,
+    raw_summary = raw_summary
+  )
 
   linear_terms <- mfp2_summary_linear_table(object, classified, raw_summary)
   nonlinear_terms <- mfp2_summary_nonlinear_table(object, classified)
@@ -266,6 +277,8 @@ summary.mfp2 <- function(object,
     distribution    = model_metadata$distribution,
     scale           = model_metadata$scale,
     scale_fixed     = model_metadata$scale_fixed,
+    dispersion      = model_metadata$dispersion,
+    dispersion_fixed = model_metadata$dispersion_fixed,
     scale_strata    = model_metadata$scale_strata,
     distribution_parameters = model_metadata$distribution_parameters,
     censoring       = model_metadata$censoring,
@@ -281,6 +294,7 @@ summary.mfp2 <- function(object,
     raw_summary        = raw_summary,
     exp_label          = mfp2_summary_exponent_label(object),
     ordinal_intercepts = ordinal_intercepts,
+    response_frequencies = mfp2_summary_response_frequencies(object),
     notes              = notes,
     digits             = digits
   )
@@ -300,6 +314,70 @@ mfp2_summary_nobs <- function(object) {
   as.integer(n)
 }
 
+# Unweighted response counts used by the fitted ordinal or multinomial model.
+# The display follows the original response order rather than an internal
+# reference-first reordering used by the multinomial fitting engine. For a
+# grouped multinomial count response, the class frequencies are column totals.
+mfp2_summary_response_frequencies <- function(object) {
+  family_string <- object$family_string
+  if (!isTRUE(family_string %in% c("ordinal", "multinomial"))) return(NULL)
+
+  response <- object$y_original
+  if (is.null(response) && identical(family_string, "ordinal")) {
+    response <- object$y
+  }
+  if (is.null(response)) return(NULL)
+
+  if (identical(family_string, "multinomial")) {
+    prepared <- if (is.list(object$mfp2_family)) {
+      object$mfp2_family$prepared
+    } else {
+      NULL
+    }
+    original_levels <- if (is.list(prepared)) prepared$original_levels else NULL
+
+    if (is.matrix(response)) {
+      response_names <- colnames(response)
+      if (is.null(response_names)) {
+        response_names <- original_levels
+      }
+      if (is.null(response_names) || length(response_names) != ncol(response)) {
+        response_names <- paste0("class", seq_len(ncol(response)))
+      }
+      totals <- stats::setNames(as.numeric(colSums(response)), response_names)
+      if (!is.null(original_levels) && all(original_levels %in% names(totals))) {
+        totals <- totals[original_levels]
+      }
+      return(totals)
+    }
+
+    if (is.null(original_levels)) {
+      original_levels <- if (is.factor(response)) {
+        levels(droplevels(response))
+      } else {
+        levels(factor(response))
+      }
+    }
+    counts <- table(factor(as.character(response), levels = original_levels))
+    return(stats::setNames(as.numeric(counts), original_levels))
+  }
+
+  ordinal_levels <- object$mfp2_ordinal_levels
+  if (is.null(ordinal_levels)) ordinal_levels <- object$yunique
+  if (is.null(ordinal_levels)) return(NULL)
+  ordinal_levels <- as.character(ordinal_levels)
+
+  response_values <- as.character(response)
+  if (!all(response_values %in% ordinal_levels)) {
+    codes <- suppressWarnings(as.integer(response))
+    if (!anyNA(codes) && all(codes >= 1L & codes <= length(ordinal_levels))) {
+      response_values <- ordinal_levels[codes]
+    }
+  }
+  counts <- table(factor(response_values, levels = ordinal_levels))
+  stats::setNames(as.numeric(counts), ordinal_levels)
+}
+
 # Number of target events for proportional-hazards models; NA otherwise.
 mfp2_summary_nevents <- function(object) {
   if (!mfp2_family_uses_event_count(object$family_string)) return(NA_integer_)
@@ -312,14 +390,18 @@ mfp2_summary_nevents <- function(object) {
   NA_integer_
 }
 
-# Model-specific metadata that is required to interpret parametric survival
-# and negative-binomial fits. Keeping this extraction in one place ensures that
-# print.mfp2() and print.summary.mfp2() report exactly the same values.
-mfp2_summary_model_metadata <- function(object, family_string = object$family_string) {
+# Model-specific metadata that is required to interpret parametric survival,
+# GLM, and negative-binomial fits. Keeping this extraction in one place ensures
+# that print.mfp2() and print.summary.mfp2() report exactly the same values.
+mfp2_summary_model_metadata <- function(object,
+                                        family_string = object$family_string,
+                                        raw_summary = NULL) {
   out <- list(
     distribution = NULL,
     scale = NULL,
     scale_fixed = NULL,
+    dispersion = NULL,
+    dispersion_fixed = NULL,
     scale_strata = NULL,
     distribution_parameters = NULL,
     censoring = NULL,
@@ -409,6 +491,50 @@ mfp2_summary_model_metadata <- function(object, family_string = object$family_st
     }
   }
 
+  if (isTRUE(mfp2_family_is_glm(family_string)) &&
+      !identical(family_string, "negbin")) {
+    link <- if (is.list(object$family)) object$family$link else NULL
+    if (is.character(link) && length(link) == 1L && !is.na(link) &&
+        nzchar(link)) {
+      out$link <- link
+    }
+  }
+
+  # Gaussian, Gamma, and inverse-Gaussian GLMs estimate (or may explicitly
+  # fix) a dispersion parameter in the underlying fitting function. Preserve
+  # that native value and terminology; do not derive an SD, Gamma shape, or
+  # any other transformed quantity for the custom mfp2 display.
+  if (isTRUE(family_string %in% c(
+    "gaussian", "Gamma", "inverse.gaussian"
+  ))) {
+    family_dispersion <- if (is.list(object$family)) {
+      object$family$dispersion
+    } else {
+      NULL
+    }
+    fixed_dispersion <- is.numeric(family_dispersion) &&
+      length(family_dispersion) == 1L && is.finite(family_dispersion) &&
+      family_dispersion > 0
+
+    if (fixed_dispersion) {
+      out$dispersion <- unname(family_dispersion)
+      out$dispersion_fixed <- TRUE
+    } else {
+      if (is.null(raw_summary)) raw_summary <- mfp2_summary_raw(object)
+      fitted_dispersion <- if (!is.null(raw_summary)) {
+        raw_summary$dispersion
+      } else {
+        NULL
+      }
+      if (is.numeric(fitted_dispersion) &&
+          length(fitted_dispersion) == 1L &&
+          is.finite(fitted_dispersion) && fitted_dispersion > 0) {
+        out$dispersion <- unname(fitted_dispersion)
+        out$dispersion_fixed <- FALSE
+      }
+    }
+  }
+
   if (mfp2_family_is_ordinal(family_string)) {
     link <- object$mfp2_ordinal_link
     if (is.character(link) && length(link) == 1L && !is.na(link)) {
@@ -417,6 +543,78 @@ mfp2_summary_model_metadata <- function(object, family_string = object$family_st
   }
 
   out
+}
+
+
+# Convert the normalized internal family identifier into a model label that
+# describes what was fitted. Link-dependent models include their fitted link;
+# this avoids presenting identifiers such as "ordinal" as if they were a
+# complete statistical model specification.
+mfp2_summary_model_label <- function(family_string, metadata = NULL) {
+  if (!is.character(family_string) || length(family_string) != 1L ||
+      is.na(family_string) || !nzchar(family_string)) {
+    return("Unknown Model")
+  }
+  link <- if (is.list(metadata)) metadata$link else NULL
+  if (!is.character(link) || length(link) != 1L || is.na(link) || !nzchar(link)) {
+    link <- NULL
+  }
+
+  if (mfp2_family_is_ordinal(family_string)) {
+    if (is.null(link)) return("Ordinal Regression")
+    return(switch(
+      link,
+      logistic = "Logistic Ordinal Regression (proportional odds)",
+      probit = "Probit Ordinal Regression",
+      loglog = "Log-log Ordinal Regression",
+      cloglog = "Complementary Log-log Ordinal Regression",
+      cauchit = "Cauchit Ordinal Regression",
+      "Ordinal Regression"
+    ))
+  }
+
+  if (identical(family_string, "multinomial")) {
+    return("Multinomial Logistic Regression")
+  }
+
+  if (identical(family_string, "negbin")) {
+    label <- "Negative-Binomial GLM"
+    if (!is.null(link)) label <- paste0(label, " (", link, " link)")
+    return(label)
+  }
+
+  glm_names <- c(
+    gaussian = "Gaussian",
+    binomial = "Binomial",
+    poisson = "Poisson",
+    Gamma = "Gamma",
+    inverse.gaussian = "Inverse-Gaussian"
+  )
+  if (isTRUE(family_string %in% names(glm_names))) {
+    label <- paste0(unname(glm_names[[family_string]]), " GLM")
+    if (!is.null(link)) label <- paste0(label, " (", link, " link)")
+    return(label)
+  }
+
+  switch(
+    family_string,
+    cox = "Cox Proportional Hazards",
+    finegray = "Fine--Gray Subdistribution Hazards",
+    survreg = "Parametric Survival Regression",
+    family_string
+  )
+}
+
+
+# Print the native-style response-frequency block used for categorical
+# multinomial and ordinal outcomes. Counts are deliberately unweighted.
+mfp2_print_response_frequencies <- function(response_frequencies) {
+  if (is.null(response_frequencies) || length(response_frequencies) == 0L) {
+    return(invisible(NULL))
+  }
+  cat("\nFrequencies of Responses\n\n")
+  print(response_frequencies)
+  invisible(NULL)
 }
 
 
@@ -456,20 +654,13 @@ mfp2_summary_survreg_censoring <- function(object) {
 # Print the common top-level metadata used by both mfp2 print methods.
 mfp2_print_model_header <- function(family_string, criterion, converged, n,
                                     nevents = NA_integer_, metadata = NULL,
-                                    digits = 3L) {
-  family_label <- if (identical(family_string, "negbin")) {
-    "negative binomial"
-  } else {
-    family_string
-  }
-
-  fields <- c(paste0("Family: ", family_label))
+                                    digits = 3L,
+                                    response_frequencies = NULL) {
+  model_label <- mfp2_summary_model_label(family_string, metadata)
+  fields <- c(paste0("Model: ", model_label))
   if (identical(family_string, "survreg") &&
       !is.null(metadata$distribution)) {
     fields <- c(fields, paste0("Distribution: ", metadata$distribution))
-  }
-  if (identical(family_string, "negbin") && !is.null(metadata$link)) {
-    fields <- c(fields, paste0("Link: ", metadata$link))
   }
   fields <- c(
     fields,
@@ -514,6 +705,7 @@ mfp2_print_model_header <- function(family_string, criterion, converged, n,
     metadata = metadata,
     digits = digits
   )
+  mfp2_print_response_frequencies(response_frequencies)
   invisible(NULL)
 }
 
@@ -558,6 +750,14 @@ mfp2_print_model_specific_parameters <- function(family_string, metadata,
 
   if (identical(family_string, "negbin") && length(metadata$theta) == 1L) {
     cat(sprintf("Theta: %s (estimated)\n", fmt(metadata$theta)))
+  }
+
+  if (isTRUE(family_string %in% c(
+        "gaussian", "Gamma", "inverse.gaussian"
+      )) &&
+      length(metadata$dispersion) == 1L) {
+    status <- if (isTRUE(metadata$dispersion_fixed)) "fixed" else "estimated"
+    cat(sprintf("Dispersion: %s (%s)\n", fmt(metadata$dispersion), status))
   }
 
   invisible(NULL)
@@ -892,6 +1092,42 @@ mfp2_ordinal_vcov_all <- function(object) {
 }
 
 
+# Return the ordinal slope covariance matrix in fitted-coefficient order.
+# rms::vcov.orm() has separate paths for threshold intercepts and regression
+# slopes. Requesting intercepts = "none" avoids making slope inference depend
+# on inversion and retention of the complete threshold covariance block.
+mfp2_ordinal_vcov_slopes <- function(object) {
+  coefficient_names <- names(object$coefficients)
+  if (is.null(coefficient_names) || anyNA(coefficient_names) ||
+      any(!nzchar(coefficient_names))) {
+    stop("Ordinal model coefficients must have non-empty names.", call. = FALSE)
+  }
+  n_intercepts <- length(object$mfp2_ordinal_intercepts)
+  slope_names <- if (length(coefficient_names) > n_intercepts) {
+    coefficient_names[seq.int(n_intercepts + 1L, length(coefficient_names))]
+  } else {
+    character(0L)
+  }
+  if (length(slope_names) == 0L) {
+    return(matrix(numeric(0L), nrow = 0L, ncol = 0L,
+                  dimnames = list(character(0L), character(0L))))
+  }
+
+  covariance <- stats::vcov(object, intercepts = "none")
+  if (!is.matrix(covariance) || is.null(rownames(covariance)) ||
+      is.null(colnames(covariance)) ||
+      !all(slope_names %in% rownames(covariance)) ||
+      !all(slope_names %in% colnames(covariance))) {
+    stop(
+      "Ordinal slope covariance matrix is not aligned with model coefficients.",
+      call. = FALSE
+    )
+  }
+
+  covariance[slope_names, slope_names, drop = FALSE]
+}
+
+
 # Build a data frame of ordinal threshold intercepts with estimate, SE,
 # z-statistic, p-value, and 95 % CI for use in print.summary.mfp2().
 mfp2_summary_ordinal_intercepts <- function(object) {
@@ -1038,9 +1274,9 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
 }
 
 
-# Exponentiation is displayed only when it has the model's usual multiplicative
-# interpretation. In particular, arbitrary GLM links and raw-time survreg
-# distributions are not mislabeled as odds/rate/time ratios.
+# Exponentiation is retained for the supported proportional-hazards and
+# log-time survival models. GLM coefficients remain on their fitted link scale,
+# matching the parameter estimates returned by their fitting functions.
 mfp2_summary_exponentiates_coefficients <- function(object) {
   if (mfp2_family_is_ph(object$family_string)) return(TRUE)
 
@@ -1053,15 +1289,18 @@ mfp2_summary_exponentiates_coefficients <- function(object) {
     ))
   }
 
+  # GLM summaries report the coefficients fitted by glm()/fastglm() on their
+  # native link scale. Do not add derived odds, rate, risk, or mean ratios.
+  if (mfp2_family_is_glm(object$family_string)) return(FALSE)
+
   family <- object$family
   is.list(family) && is.character(family$link) && length(family$link) == 1L &&
     family$link %in% c("log", "logit")
 }
 
 
-# Label exp(coef) from the actual link, rather than assuming that every
-# binomial coefficient is a log-odds coefficient. This matters now that all
-# likelihood-family links accepted by glm() remain available.
+# Label exp(coef) for the survival families that retain a standard
+# multiplicative-effect display.
 mfp2_summary_exponent_label <- function(object) {
   if (!mfp2_summary_exponentiates_coefficients(object)) return(NULL)
 
@@ -1070,21 +1309,6 @@ mfp2_summary_exponent_label <- function(object) {
     return("subdistribution hazard ratio")
   }
   if (identical(object$family_string, "survreg")) return("time ratio")
-
-  link <- if (is.list(object$family)) object$family$link else NULL
-  if (identical(object$family_string, "binomial") &&
-      identical(link, "logit")) {
-    return("odds ratio")
-  }
-  if (identical(object$family_string, "binomial") &&
-      identical(link, "log")) {
-    return("risk ratio")
-  }
-  if (identical(object$family_string, "poisson") &&
-      identical(link, "log")) {
-    return("rate ratio")
-  }
-  if (identical(link, "log")) return("mean ratio")
 
   "multiplicative effect"
 }
@@ -1182,20 +1406,33 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   # Fallback for an absent, malformed, or unfamiliar raw coefficient table.
   # This is intentionally reached for unresolved headers rather than allowing
   # an NA column index to manufacture an all-NA result.
-  V <- if (mfp2_family_is_ordinal(object$family_string)) {
-    mfp2_ordinal_vcov_all(object)
+  is_ordinal <- mfp2_family_is_ordinal(object$family_string)
+  V <- if (is_ordinal) {
+    mfp2_ordinal_vcov_slopes(object)
   } else {
     tryCatch(stats::vcov(object), error = function(e) NULL)
   }
-  if (is.matrix(V) && !is.null(nm) &&
-      !is.null(rownames(V)) && !is.null(colnames(V)) &&
-      all(nm %in% rownames(V)) && all(nm %in% colnames(V))) {
-    V <- V[nm, nm, drop = FALSE]
-  }
-  se <- if (is.matrix(V) && all(dim(V) == length(est))) {
-    sqrt(diag(V))
+  se <- stats::setNames(rep(NA_real_, length(est)), nm)
+  if (is_ordinal && is.matrix(V) && !is.null(nm) &&
+      !is.null(rownames(V)) && !is.null(colnames(V))) {
+    covariance_names <- intersect(
+      nm,
+      intersect(rownames(V), colnames(V))
+    )
+    if (length(covariance_names) > 0L) {
+      variances <- diag(V[covariance_names, covariance_names, drop = FALSE])
+      valid <- !is.na(variances) & is.finite(variances) & variances >= 0
+      se[covariance_names[valid]] <- sqrt(variances[valid])
+    }
   } else {
-    rep(NA_real_, length(est))
+    if (is.matrix(V) && !is.null(nm) &&
+        !is.null(rownames(V)) && !is.null(colnames(V)) &&
+        all(nm %in% rownames(V)) && all(nm %in% colnames(V))) {
+      V <- V[nm, nm, drop = FALSE]
+    }
+    if (is.matrix(V) && all(dim(V) == length(est))) {
+      se <- sqrt(diag(V))
+    }
   }
   stat <- est / se
   uses_t <- inherits(object, "glm") &&
@@ -2261,15 +2498,18 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       print(x$call)
       cat("\n")
     }
+    mfp2_print_model_header(
+      family_string = "multinomial",
+      criterion = x$criterion,
+      converged = x$converged,
+      n = x$n,
+      metadata = list(link = "logit"),
+      digits = digits,
+      response_frequencies = x$response_frequencies
+    )
     cat(sprintf(
-      "Family: multinomial | Criterion: %s | Converged: %s\n",
-      x$criterion,
-      if (isTRUE(x$converged)) "yes" else "no"
-    ))
-    cat(sprintf("Observations: %d\n", x$n))
-    cat(sprintf(
-      "Outcome classes: %s | Reference: %s | Logits: %d\n",
-      paste(x$class_levels, collapse = ", "), x$reference_class, x$n_logits
+      "\nReference class: %s | Non-reference logits: %d\n",
+      x$reference_class, x$n_logits
     ))
     cat("FP powers: common across logits\n\n")
     cat(dash, "\nSelection Overview\n", dash, "\n", sep = "")
@@ -2320,6 +2560,8 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     distribution = x$distribution,
     scale = x$scale,
     scale_fixed = x$scale_fixed,
+    dispersion = x$dispersion,
+    dispersion_fixed = x$dispersion_fixed,
     scale_strata = x$scale_strata,
     distribution_parameters = x$distribution_parameters,
     censoring = x$censoring,
@@ -2333,7 +2575,8 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     n = x$n,
     nevents = x$nevents,
     metadata = model_metadata,
-    digits = digits
+    digits = digits,
+    response_frequencies = x$response_frequencies
   )
   cat("\n")
 

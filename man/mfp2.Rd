@@ -92,7 +92,9 @@ nonnegative integer counts. Binomial models accept a numeric vector in
 \verb{[0, 1]}, a two-level factor, or a two-column matrix of nonnegative integer
 successes and failures. Multinomial models accept a factor or a character
 or numeric class-label vector with at least three classes, or a numeric
-matrix with at least three nonnegative integer class-count columns. Cox
+matrix with at least three nonnegative integer class-count columns. Ordinal
+models accept an ordered factor or a numeric, integer, character, or
+unordered-factor response with at least three observed categories. Cox
 models require a two-column right-censored \code{\link[survival:Surv]{survival::Surv()}} object.
 Parametric survival models accept the non-counting censoring types handled
 by \code{\link[survival:survreg]{survival::survreg()}}. Fine--Gray models require a multi-state \code{Surv}
@@ -187,8 +189,10 @@ subset is applied. See the Subsetting section.}
 \code{"inverse.gaussian"}) as a character name, function, or family object;
 quasi families are not supported. Use \code{"negbin"} for a negative-binomial
 model, \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an
-unpenalized baseline-category multinomial model, \code{"cox"} for Cox models, \code{\link[=survreg_family]{survreg_family()}} for
-parametric survival models, or \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models.
+unpenalized baseline-category multinomial model, \code{"ordinal"} or
+\code{\link[=ordinal_family]{ordinal_family()}} for a proportional-odds ordinal model, \code{"cox"} for Cox
+models, \code{\link[=survreg_family]{survreg_family()}} for parametric survival models, or
+\code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models.
 Default \code{"gaussian"}.}
 
 \item{criterion}{Selection criterion. One of \code{"pvalue"} (default), \code{"aic"},
@@ -406,13 +410,14 @@ class:
 \item \code{glm} for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 \item \code{fastglm_nb} and \code{fastglm} for negative-binomial models;
 \item \code{multinom} and \code{nnet} for multinomial logistic models;
+\item \code{orm} for ordinal regression models;
 \item \code{coxph} for Cox and Fine--Gray models;
 \item \code{survreg} for parametric survival models.
 }
 
 Standard fitted-model components, such as coefficients, residuals, fitted
 values, and the model call, can be accessed using the usual methods for
-\code{glm}, \code{fastglm}, \code{multinom}, \code{coxph}, or \code{survreg} objects.
+\code{glm}, \code{fastglm}, \code{multinom}, \code{orm}, \code{coxph}, or \code{survreg} objects.
 
 The following additional components are part of the user-facing \code{mfp2}
 result:
@@ -488,7 +493,9 @@ specified with a formula and data frame or with a numeric predictor matrix
 and response. Both interfaces provide the same core modelling capabilities
 but differ in input handling as described below. Supported likelihood GLMs
 are Gaussian, binomial, Poisson, Gamma, inverse Gaussian, and negative
-binomial. Survival models include Cox proportional hazards, parametric
+binomial. Multicategory responses can be fitted with baseline-category
+multinomial logistic regression or proportional-odds ordinal regression.
+Survival models include Cox proportional hazards, parametric
 \code{\link[survival:survreg]{survival::survreg()}} models, and Fine--Gray subdistribution hazards.
 }
 \section{Methods (by class)}{
@@ -571,6 +578,12 @@ because MFP selection here requires a log likelihood for likelihood-ratio,
 AIC, or BIC comparisons. Negative binomial is selected with \code{"negbin"};
 \code{fitter} is set silently to \code{"fastglm"}, its required backend.
 
+Multicategory outcomes use \code{\link[=multinomial_family]{multinomial_family()}} for unordered responses or
+\code{\link[=ordinal_family]{ordinal_family()}} for ordered responses. Multinomial models require at least
+three classes and use the \code{nnet} package. Ordinal models require at least
+three ordered categories, estimate proportional-odds slopes shared across
+cut-points, and use the optional \code{rms} package.
+
 Survival families are separate: use \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
 \code{\link[=finegray_family]{finegray_family()}}. Character \code{"survreg"} and \code{"finegray"} select their
 default specifications. Parametric models accept the distributions supported
@@ -582,7 +595,10 @@ Gaussian responses must additionally be strictly positive. Poisson and
 negative-binomial models require finite, nonnegative integer counts.
 Binomial models accept a numeric response in \verb{[0, 1]}, a two-level factor,
 or a two-column numeric matrix of nonnegative integer grouped counts with a
-positive row total. Cox models require
+positive row total. Multinomial responses may contain unordered class labels
+or class-count matrices, as described under \strong{Multinomial models}. Ordinal
+responses may be ordered factors or vectors whose sorted unique values give
+the category order, as described under \strong{Ordinal models}. Cox models require
 \code{family = "cox"} and an ordinary
 right-censored response created with \code{\link[survival:Surv]{survival::Surv()}}, using two columns for
 follow-up time and event status.
@@ -828,6 +844,23 @@ use the matrix-level \code{nnet} path; the retained model also inherits from
 \code{multinom}.
 }
 
+\section{Ordinal models}{
+
+Use \code{\link[=ordinal_family]{ordinal_family()}} for a cumulative-link ordinal regression model. The
+response must have at least three observed categories. An ordered factor
+supplies its category order directly. Numeric values are ordered
+increasingly; character values and unordered-factor levels are sorted
+alphabetically. Because alphabetical order may not represent the intended
+scientific ordering, an ordered factor is recommended for labelled outcomes.
+
+The default \code{link = "logistic"} fits a proportional-odds model. Each predictor
+has one slope shared across all response cut-points, while the retained model
+also estimates one threshold intercept for every category after the first.
+The selected fit inherits from \code{rms::orm}; the optional \code{rms} package must be
+installed. See \code{\link[=ordinal_family]{ordinal_family()}} for the available links and interpretation
+of the coefficient direction.
+}
+
 \section{Compatibility with the \code{mfp} package}{
 
 Both \code{mfp} and \code{mfp2} export \code{fp()}. Within formulas passed to \code{mfp2()} or
@@ -994,16 +1027,30 @@ family_data <- data.frame(
 )
 eta <- with(family_data, 0.2 + 0.3 * x1 - 0.2 * x2)
 mu <- exp(eta)
+simulate_inverse_gaussian <- function(mu, shape) {
+  squared_normal <- stats::rnorm(length(mu))^2
+  candidate <- mu + (mu^2 * squared_normal) / (2 * shape) -
+    (mu / (2 * shape)) * sqrt(
+      4 * mu * shape * squared_normal + mu^2 * squared_normal^2
+    )
+  choose_candidate <- stats::runif(length(mu)) <= mu / (mu + candidate)
+  ifelse(choose_candidate, candidate, mu^2 / candidate)
+}
 family_data$y_gaussian <- eta + rnorm(n_family)
 family_data$y_binomial <- rbinom(n_family, 1, plogis(eta - 1))
 family_data$y_poisson <- rpois(n_family, mu)
 family_data$y_gamma <- rgamma(n_family, shape = 5, scale = mu / 5)
-family_data$y_inverse_gaussian <- rgamma(
-  n_family, shape = 8, scale = mu / 8
-)
+family_data$y_inverse_gaussian <- simulate_inverse_gaussian(mu, shape = 8)
 family_data$y_negbin <- rnbinom(n_family, mu = mu, size = 2)
 family_data$y_multinomial <- sample.int(
   3L, n_family, replace = TRUE, prob = c(0.45, 0.35, 0.20)
+)
+family_data$y_ordinal <- ordered(
+  cut(
+    eta + stats::rlogis(n_family),
+    breaks = c(-Inf, -0.5, 0.5, 1.5, Inf),
+    labels = c("low", "medium", "high", "very high")
+  )
 )
 
 fit_gaussian <- mfp2(
@@ -1044,6 +1091,15 @@ fit_multinomial <- mfp2(
   family = multinomial_family(),
   df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
 )
+
+# Ordinal regression uses the optional rms package.
+if (requireNamespace("rms", quietly = TRUE)) {
+  fit_ordinal <- mfp2(
+    y_ordinal ~ x1 + x2, data = family_data,
+    family = ordinal_family(),
+    df = 1, select = 1, alpha = 1, cycles = 1, verbose = FALSE
+  )
+}
 
 # Cox proportional hazards and parametric survival models.
 event_time <- rexp(n_family, rate = exp(eta - 2))
@@ -1121,5 +1177,6 @@ Biostatistics & Epidemiology, 3(1), pp.23-37.}
 \seealso{
 \code{\link[=fp]{fp()}}, \code{\link[=fp2]{fp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}},
 \code{\link[=plot.mfp2]{plot.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[=transform_vector_fp]{transform_vector_fp()}},
-\code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
+\code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=ordinal_family]{ordinal_family()}}, \code{\link[=survreg_family]{survreg_family()}},
+\code{\link[=finegray_family]{finegray_family()}}
 }

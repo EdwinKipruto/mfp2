@@ -82,7 +82,16 @@
 #' respectively. `"link"` is accepted as another name for `"lp"`. With
 #' `times`, `type = "response"` returns cumulative-incidence probabilities.
 #'
-#' For all supported models:
+#' For ordinal models, `type = "link"` returns the common covariate linear
+#' predictor without the cut-point intercepts, `type = "response"` returns an
+#' `n` by `K` matrix of category probabilities, and `type = "mean"` returns the
+#' expected category value. Numeric response levels are used for the expected
+#' value when possible; otherwise, category scores `1, ..., K` are used.
+#' Full-model ordinal standard errors are not currently provided, so use
+#' `se.fit = FALSE` for these three prediction types.
+#'
+#' For likelihood GLMs, ordinal models, Cox models, Fine--Gray models, and
+#' `survreg` models:
 #'
 #' - `type = "terms"` returns a fitted value for each requested term on the
 #'   linear-predictor scale. For GLM and `survreg` models, the intercept is
@@ -90,8 +99,8 @@
 #' - `type = "contrasts"` compares each fitted term value with a reference
 #'   value.
 #'
-#' When `type` is not supplied, the default is `"link"` for GLM and `survreg`
-#' models and `"lp"` for Cox and Fine--Gray models.
+#' When `type` is not supplied, the default is `"link"` for GLM, multinomial,
+#' ordinal, and `survreg` models and `"lp"` for Cox and Fine--Gray models.
 #'
 #' For multinomial models, `type = "link"` returns an `n` by `C - 1` matrix of
 #' reference-category logits, `type = "response"` returns an `n` by `C` matrix
@@ -258,8 +267,10 @@
 #'
 #' @param se.fit A single non-missing `TRUE` or `FALSE` value. For complete-model
 #'   predictions, `TRUE` requests standard errors from the underlying model
-#'   method. Term and contrast results always include standard errors and
-#'   confidence limits, so this argument is ignored for those prediction types.
+#'   method. Full-model multinomial and ordinal predictions do not currently
+#'   provide standard errors. Term and contrast results always include standard
+#'   errors and confidence limits, so this argument is ignored for those
+#'   prediction types.
 #'
 #' @param terms An optional character vector naming terms to return with
 #'   `type = "terms"` or `type = "contrasts"`. Use original variable or group
@@ -326,12 +337,16 @@
 #'
 #' @return
 #' For complete-model predictions, the result follows the applicable native
-#' GLM, `coxph`, or `survreg` prediction method. It is usually a numeric vector. When
-#' `se.fit = TRUE`, it is usually a list containing fitted values and standard
-#' errors.
+#' GLM, `coxph`, or `survreg` prediction method where one is used. It is usually
+#' a numeric vector. When `se.fit = TRUE`, it is usually a list containing fitted
+#' values and standard errors.
 #'
 #' For multinomial models, `type = "link"` and `type = "response"` return
 #' matrices that retain observation names.
+#'
+#' For ordinal models, `type = "link"` and `type = "mean"` return numeric
+#' vectors, while `type = "response"` returns an `n` by `K` matrix whose columns
+#' are the ordered response categories.
 #'
 #' For `type = "terms"` or `type = "contrasts"`, the result is a named list
 #' with one data frame for each requested term. Each data frame contains:

@@ -68,8 +68,59 @@ robust \code{coxph} fit. The public model interface remains
 \code{family = finegray_family(etype = ...)}. An \code{id} argument is required by
 \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} only for a start--stop multi-state response.
 }
+\examples{
+survreg_spec <- survreg_family(dist = "weibull")
+finegray_spec <- finegray_family(etype = "cause1")
+
+\donttest{
+# Parametric Weibull survival model.
+data("gbsg")
+fit_survreg <- mfp2(
+  survival::Surv(rectime, censrec) ~ age + nodes,
+  data = gbsg,
+  family = survreg_spec,
+  df = 1,
+  select = 1,
+  cycles = 1,
+  verbose = FALSE
+)
+
+# Fine--Gray model for the first of two competing event types.
+set.seed(42)
+n <- 160
+x <- stats::rnorm(n)
+cause1_time <- stats::rexp(n, rate = exp(0.3 * x) / 8)
+cause2_time <- stats::rexp(n, rate = exp(-0.2 * x) / 10)
+censor_time <- stats::rexp(n, rate = 1 / 15)
+event <- ifelse(
+  censor_time < pmin(cause1_time, cause2_time), 0L,
+  ifelse(cause1_time <= cause2_time, 1L, 2L)
+)
+competing_data <- data.frame(
+  time = pmin(cause1_time, cause2_time, censor_time),
+  event = factor(
+    event,
+    levels = 0:2,
+    labels = c("censor", "cause1", "cause2")
+  ),
+  x = x
+)
+fit_finegray <- mfp2(
+  survival::Surv(time, event) ~ x,
+  data = competing_data,
+  family = finegray_spec,
+  df = 1,
+  select = 1,
+  cycles = 1,
+  verbose = FALSE
+)
+}
+}
 \references{
 Zhou B, Fine J, Laird G (2011). Competing risks regression for stratified
 data. \emph{Biometrics}, \strong{67}(2), 661--670.
 \doi{10.1111/j.1541-0420.2010.01493.x}
+}
+\seealso{
+\code{\link[survival:survreg]{survival::survreg()}}, \code{\link[survival:finegray]{survival::finegray()}}, \code{\link[=mfp2]{mfp2()}}, \code{\link[=mfpi]{mfpi()}}
 }

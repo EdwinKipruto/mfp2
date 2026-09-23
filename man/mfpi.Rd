@@ -121,6 +121,7 @@ negative-binomial models, a valid binomial response for binomial models
 (with integer successes/failures for the grouped two-column form), a
 factor or character/numeric class-label vector with at least three classes,
 or a three-or-more-column count matrix for multinomial models, a
+response with at least three ordered categories for ordinal models, a
 right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox, a
 non-counting \code{Surv} response for \code{survreg}, or a multi-state \code{Surv}
 response for Fine--Gray. It must have the same number of observations as \code{x}.}
@@ -264,8 +265,8 @@ observations and two groups must remain.}
 \code{"inverse.gaussian"}) as a name, function, or family object. Quasi
 families are excluded because selection requires a likelihood. Use
 \code{"negbin"} for a negative-binomial model, \code{"multinomial"} or
-\code{\link[=multinomial_family]{multinomial_family()}}, \code{"cox"}, \code{\link[=survreg_family]{survreg_family()}}, or
-\code{\link[=finegray_family]{finegray_family()}} for the corresponding survival model.}
+\code{\link[=multinomial_family]{multinomial_family()}}, \code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}}, \code{"cox"},
+\code{\link[=survreg_family]{survreg_family()}}, or \code{\link[=finegray_family]{finegray_family()}} for the corresponding model.}
 
 \item{criterion}{The selection criterion used for both the MFP adjustment
 model and the interaction comparisons: \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
@@ -511,8 +512,9 @@ categorical.
 }
 \details{
 The function supports the likelihood GLMs accepted by \code{mfp2()}, negative
-binomial, Cox, parametric \code{survreg}, and Fine--Gray models. Nonlinear
-relationships can be modelled with fractional polynomials.
+binomial, multinomial logistic, proportional-odds ordinal, Cox, parametric
+\code{survreg}, and Fine--Gray models. Nonlinear relationships can be modelled
+with fractional polynomials.
 
 \code{mfpi()} evaluates each variable in \code{interaction_vars} separately. For every
 interaction variable, it compares:
@@ -847,6 +849,20 @@ factor), the main model contributes \eqn{Q(K-1+r)} df and the interaction
 contributes \eqn{Q(K-1)r} df.
 }
 
+\section{Ordinal models}{
+
+Use \code{\link[=ordinal_family]{ordinal_family()}} for an ordinal interaction analysis. The response must
+contain at least three categories. Ordered-factor levels define the category
+order; otherwise, numeric values are ordered increasingly and character or
+unordered-factor values alphabetically. An ordered factor is recommended
+whenever labelled categories have a scientifically defined order.
+
+Ordinal MFPI models use a cumulative-link parameterization with common
+predictor slopes across cut-points. Group-specific functions and their
+differences are therefore reported on the common linear-predictor scale.
+The optional \code{rms} package must be installed.
+}
+
 \section{Argument precedence (fp()/fp2() vs global)}{
 
 Arguments supplied inside \code{fp()} or \code{fp2()} are treated as
@@ -990,6 +1006,61 @@ fit_matrix$shift
 fit_matrix$scale
 summary(fit_matrix)
 
+\donttest{
+# --- Ordinal interaction model (requires the optional rms package) ---
+if (requireNamespace("rms", quietly = TRUE)) {
+  set.seed(45)
+  n_ordinal <- 180
+  ordinal_data <- data.frame(
+    group = factor(rep(c("control", "treated"), each = n_ordinal / 2)),
+    x = stats::runif(n_ordinal, 0.5, 5),
+    z = stats::rnorm(n_ordinal)
+  )
+  ordinal_lp <- with(
+    ordinal_data,
+    0.3 * x + 0.4 * (group == "treated") +
+      0.25 * x * (group == "treated") - 0.2 * z
+  )
+  ordinal_latent <- ordinal_lp + stats::rlogis(n_ordinal)
+  ordinal_data$y <- ordered(
+    cut(
+      ordinal_latent,
+      breaks = stats::quantile(
+        ordinal_latent,
+        probs = seq(0, 1, length.out = 4)
+      ),
+      include.lowest = TRUE,
+      labels = c("low", "medium", "high")
+    )
+  )
+
+  fit_ordinal <- mfpi(
+    y ~ group + fp(x, df = 1) + z,
+    data = ordinal_data,
+    family = ordinal_family(),
+    group_var = "group",
+    interaction_vars = "x",
+    interaction_forms = c(x = "linear"),
+    flex = "flex1",
+    df = 1,
+    select = 1,
+    alpha = 1,
+    p_interact = 1,
+    cycles = 1,
+    verbose = FALSE
+  )
+  summary(fit_ordinal)
+  predict(
+    fit_ordinal,
+    newdata = ordinal_data[1:4, ],
+    terms = "x",
+    model = "all",
+    type = "response",
+    se.fit = FALSE
+  )
+}
+}
+
 }
 \references{
 Royston, P. and Sauerbrei, W. (2004). A new approach to modelling
@@ -1006,5 +1077,6 @@ analysis. \emph{Statistics in Medicine}, 33, 4695-4708.
 }
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}},
-\code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}
+\code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=multinomial_family]{multinomial_family()}},
+\code{\link[=ordinal_family]{ordinal_family()}}, \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
 }

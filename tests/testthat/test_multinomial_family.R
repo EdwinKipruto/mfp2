@@ -322,8 +322,14 @@ test_that("one nonlinear FP power is shared across all logits", {
   expect_equal(nrow(stats::coef(fit)), 2L)
   expect_equal(fit$fp_terms["x1", "df_final"], 3)
   printed <- paste(capture.output(print(fit)), collapse = "\n")
+  expect_match(printed, "Model: Multinomial Logistic Regression", fixed = TRUE)
+  expect_match(printed, "Frequencies of Responses", fixed = TRUE)
+  expect_match(
+    printed,
+    "Reference class: A | Non-reference logits: 2",
+    fixed = TRUE
+  )
   expect_match(printed, "FP powers: common across logits")
-  expect_match(printed, "Outcome classes: A, B, C")
   expect_match(printed, "B vs A")
   expect_match(printed, "C vs A")
 
@@ -331,10 +337,10 @@ test_that("one nonlinear FP power is shared across all logits", {
   expect_s3_class(summarized, "summary.mfp2")
   expect_true(isTRUE(summarized$multinomial))
   expect_equal(unique(summarized$coefficients$outcome), c("B", "C"))
-  expect_match(
-    paste(capture.output(print(summarized)), collapse = "\n"),
-    "Coefficient Tests"
-  )
+  summarized_output <- paste(capture.output(print(summarized)), collapse = "\n")
+  expect_match(summarized_output, "Model: Multinomial Logistic Regression", fixed = TRUE)
+  expect_match(summarized_output, "Frequencies of Responses", fixed = TRUE)
+  expect_match(summarized_output, "Coefficient Tests", fixed = TRUE)
 })
 
 

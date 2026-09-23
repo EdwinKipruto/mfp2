@@ -48,8 +48,8 @@ created. If \code{FALSE}, plots are returned invisibly for manual printing,
 modification, or saving.}
 
 \item{show_title}{Logical scalar. If \code{TRUE}, titles and subtitles are added.
-Subtitles may include the interaction type, group contrast, and available
-selection result.}
+Subtitles identify the interaction form, group contrast, and, where
+applicable, the multinomial logit.}
 
 \item{show_rug}{Logical scalar. If \code{TRUE}, rug marks are added along the
 horizontal axis to show continuous covariate evaluation values. Rug marks

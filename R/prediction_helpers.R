@@ -62,9 +62,26 @@ normalize_prediction_type <- function(type, family_string) {
 }
 
 
-# Collapse repeated finegray() pseudo-observation predictions back to one value
-# per original input row. Linear predictors and risk scores are constant within
-# each pseudo-row block because all copies share the same covariates and offset.
+#' Collapse Fine--Gray Pseudo-Observation Predictions to Original Rows
+#'
+#' Reduces repeated predictions produced on the expanded Fine--Gray
+#' pseudo-observation data set back to one value per original input row.
+#' Linear predictors and risk scores are constant within each pseudo-row
+#' block because all copies of an original row share identical covariates
+#' and offset, so the first value in every block is returned unchanged.
+#'
+#' @param prediction Numeric vector or matrix of predictions on the
+#'   expanded pseudo-observation data.
+#' @param row_map Integer vector mapping each expanded row to its original
+#'   input row.
+#' @param n_original Optional integer giving the number of original rows;
+#'   used to preallocate output when supplied.
+#'
+#' @return A prediction object of the same shape as `prediction` but with
+#'   one entry per original input row.
+#'
+#' @keywords internal
+#' @noRd
 collapse_finegray_training_prediction <- function(prediction, row_map,
                                                   n_original = NULL) {
   if (is.null(row_map)) return(prediction)

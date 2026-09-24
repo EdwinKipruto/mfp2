@@ -252,8 +252,20 @@ print_interaction_power_details_step <- function(metrics,
 }
 
 
-# Rename only the metric labels explicitly intended for public display. Stored
-# metric-table names remain unchanged for programmatic access.
+#' Rename MFPI Metric-Table Columns for Public Display
+#'
+#' Renames only the metric columns that are meant for public display in the
+#' printed MFPI selection tables. The stored metric-table names on the
+#' fitted object remain unchanged so that programmatic access continues to
+#' use stable identifiers.
+#'
+#' @param d Data frame of MFPI metrics, or `NULL`.
+#'
+#' @return A data frame with display-friendly column names, or `d`
+#'   unchanged when the input is `NULL` or has no rows.
+#'
+#' @keywords internal
+#' @noRd
 rename_mfpi_metric_display_columns <- function(d) {
   if (is.null(d) || nrow(d) == 0L) return(d)
   if ("pvalue" %in% names(d)) {
@@ -262,7 +274,21 @@ rename_mfpi_metric_display_columns <- function(d) {
   d
 }
 
-# Warn consistently when an MFPI method receives unused arguments through `...`.
+#' Warn About Unused `...` Arguments to an MFPI Method
+#'
+#' Emits a single consistent warning when an MFPI method receives arguments
+#' through `...` that it does not use. Centralising the warning here keeps
+#' the messages identical across accessors, so users see one uniform
+#' complaint regardless of which method they called.
+#'
+#' @param dots List of trailing arguments captured by the calling method.
+#' @param method Character scalar naming the calling method, used to
+#'   qualify the warning message.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 warn_unused_mfpi_dots <- function(dots, method) {
   if (length(dots) == 0L) {
     return(invisible(NULL))
@@ -303,9 +329,9 @@ warn_unused_mfpi_dots <- function(dots, method) {
 #'
 #' @param x An object that may contain a `digits` element, typically an MFPI
 #'   model or summary object.
-#' @param digits Integer or `NULL`. Optional number of digits to use for
-#'   printed numeric output. Must be a single non-negative integer when
-#'   supplied.
+#' @param digits Integer or `NULL`. Optional number of decimal places to use for
+#'   printed numeric output other than fractional-polynomial powers and degrees
+#'   of freedom. Must be a single non-negative integer when supplied.
 #'
 #' @return A single integer giving the number of digits to use for printing.
 #'
@@ -333,8 +359,21 @@ resolve_print_digits <- function(x, digits = NULL) {
   as.integer(digits)
 }
 
-# Round numeric columns for console display only.
-# This function must never be used upstream for stored metrics or selection.
+#' Round Numeric Columns for Console Display
+#'
+#' Rounds every numeric column of a data frame to the requested number of
+#' digits for console display only. Must never be used upstream for stored
+#' metrics or selection: rounding the stored numbers would change what
+#' downstream comparisons and selection decisions see.
+#'
+#' @param d Data frame of values to display.
+#' @param digits Integer scalar; number of significant digits.
+#'
+#' @return `d` with numeric columns rounded, or `d` unchanged when it is
+#'   `NULL` or has no rows.
+#'
+#' @keywords internal
+#' @noRd
 round_print_numeric <- function(d, digits) {
   if (is.null(d) || nrow(d) == 0L) return(d)
 
@@ -346,10 +385,107 @@ round_print_numeric <- function(d, digits) {
   d
 }
 
-# Format scalar thresholds printed in explanatory footnotes.
+#' Format Numeric Values With a Fixed Number of Decimal Places
+#'
+#' Formats a numeric vector to a fixed number of decimal places for
+#' console tables. Missing or non-finite values are replaced by `na_string`
+#' so the printed column stays aligned.
+#'
+#' @param x Numeric vector to format.
+#' @param digits Integer scalar; number of decimal places.
+#' @param na_string Character scalar used for `NA` and non-finite values.
+#'
+#' @return Character vector of formatted values.
+#'
+#' @keywords internal
+#' @noRd
+format_print_decimal <- function(x, digits, na_string = "NA") {
+  vapply(x, function(value) {
+    if (length(value) != 1L || is.na(value)) return(na_string)
+    formatC(value, format = "f", digits = digits)
+  }, character(1L), USE.NAMES = FALSE)
+}
+
+#' Format P-Values Without Rounding a Positive Value to Zero
+#'
+#' Formats a numeric p-value vector to the requested decimal precision
+#' without ever displaying a positive value as `0`. Values below the
+#' display resolution are printed as `"<10^{-digits}"` so the printed
+#' column always tells the truth about a positive test statistic.
+#'
+#' @param x Numeric vector of p values.
+#' @param digits Integer scalar; number of decimal places.
+#' @param na_string Character scalar used for `NA` values.
+#'
+#' @return Character vector of formatted p values.
+#'
+#' @keywords internal
+#' @noRd
+format_print_pvalue <- function(x, digits, na_string = "NA") {
+  cutoff <- 10^(-digits)
+  cutoff_label <- formatC(cutoff, format = "f", digits = digits)
+
+  vapply(x, function(value) {
+    if (length(value) != 1L || is.na(value)) return(na_string)
+    if (is.finite(value) && value >= 0 && value < cutoff) {
+      return(paste0("<", cutoff_label))
+    }
+    formatC(value, format = "f", digits = digits)
+  }, character(1L), USE.NAMES = FALSE)
+}
+
+#' Format Model-Output Table Columns For Display
+#'
+#' Formats numeric columns of a model-output table with a fixed number of
+#' decimals while preserving the natural notation for degrees of freedom
+#' and fractional-polynomial power vectors. Character and integer columns
+#' are passed through unchanged.
+#'
+#' @param d Data frame of model-output values, or `NULL`.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return `d` with numeric columns formatted for printing.
+#'
+#' @keywords internal
+#' @noRd
+format_model_print_table <- function(d, digits) {
+  if (is.null(d) || nrow(d) == 0L) return(d)
+
+  numeric_columns <- names(d)[vapply(d, is.numeric, logical(1L))]
+  for (column in numeric_columns) {
+    key <- tolower(gsub("[^[:alnum:]]+", "_", column))
+    is_df <- grepl("^df($|_)", key) || grepl("_df$", key)
+    is_power <- grepl("power", key, fixed = TRUE)
+    if (is_df || is_power) next
+
+    is_pvalue <- key %in% c("p", "pvalue", "p_value", "p_raw", "p_adjusted") ||
+      grepl("^pr_", key)
+    d[[column]] <- if (is_pvalue) {
+      format_print_pvalue(d[[column]], digits)
+    } else {
+      format_print_decimal(d[[column]], digits)
+    }
+  }
+
+  d
+}
+
+#' Format Scalar Thresholds for Footnotes
+#'
+#' Formats a scalar threshold or comparison value printed in the
+#' explanatory footnotes of MFPI output. Empty and `NA` inputs return
+#' `"NA"` so the footnote remains legible.
+#'
+#' @param x Numeric scalar to format.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Character scalar with the formatted value.
+#'
+#' @keywords internal
+#' @noRd
 format_print_number <- function(x, digits) {
   if (length(x) == 0L || is.na(x)) return("NA")
-  format(round(x, digits = digits), trim = TRUE, scientific = FALSE)
+  format_print_decimal(x[1L], digits)
 }
 
 #' Select metric columns for printing
@@ -619,7 +755,7 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
 
   list(
     settings = settings,
-    display = round_print_numeric(display, digits),
+    display = format_model_print_table(display, digits),
     selected_names = selected_names,
     model_fitted = TRUE
   )
@@ -632,7 +768,7 @@ mfpi_prepare_adjustment_display <- function(x, digits) {
 #'
 #' @param x An MFPI fit object or print-ready object containing `adjust_terms`.
 #' @param ruler Character scalar printed below the section heading.
-#' @param digits Integer scalar controlling displayed numeric precision.
+#' @param digits Integer scalar controlling displayed decimal places.
 #' @param show_settings Logical scalar. Whether to print the interaction-selection
 #'   criterion and threshold before the adjustment table. The top-level print
 #'   method sets this to `FALSE` because it prints the same settings in Step 2.
@@ -693,8 +829,8 @@ print_adjustment_step <- function(x, ruler, digits, show_settings = TRUE) {
 #'   `all_model_metrics` component and, optionally, a `criterion` component.
 #' @param ruler Character scalar. Separator line printed below the section
 #'   heading.
-#' @param digits Integer scalar. Number of digits used when printing numeric
-#'   columns.
+#' @param digits Integer scalar. Number of decimal places used when printing
+#'   numeric columns other than powers and degrees of freedom.
 #'
 #' @return Invisibly returns `NULL`.
 #'
@@ -740,7 +876,7 @@ print_candidates_step <- function(x, ruler, digits) {
   all_m <- format_mfpi_powers(all_m)
   all_m <- rename_mfpi_metric_display_columns(all_m)
 
-  print(round_print_numeric(as.data.frame(all_m), digits), row.names = FALSE)
+  print(format_model_print_table(as.data.frame(all_m), digits), row.names = FALSE)
 
   invisible(NULL)
 }
@@ -769,8 +905,8 @@ print_candidates_step <- function(x, ruler, digits) {
 #'   `p_adjust_method`, `p_interact`, and `min_improvement` components.
 #' @param ruler Character scalar. Minimum separator line printed below the
 #'   section heading. The line is extended when necessary to match the heading.
-#' @param digits Integer scalar. Number of digits used when printing numeric
-#'   columns and the selection threshold in the heading.
+#' @param digits Integer scalar. Number of decimal places used when printing
+#'   numeric columns and the selection threshold in the heading.
 #' @param step_no Integer scalar. Step number to display in the section heading.
 #'   Defaults to `3L`.
 #'
@@ -827,7 +963,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
       best_m <- rename_mfpi_metric_display_columns(best_m)
       best_m$selected <- "Yes"
 
-      print(round_print_numeric(as.data.frame(best_m), digits), row.names = FALSE)
+      print(format_model_print_table(as.data.frame(best_m), digits), row.names = FALSE)
     } else {
       cat("  No interactions selected.\n")
     }
@@ -901,7 +1037,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
       }
     }))
 
-    print(round_print_numeric(tab, digits), row.names = FALSE)
+    print(format_model_print_table(tab, digits), row.names = FALSE)
   } else {
     # Resolve the displayed information-criterion column. The display aliases
     # are dAIC and dBIC, but stored metric rows may contain only the original
@@ -951,7 +1087,7 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
     # Rename the generic score column to the criterion-specific display label.
     names(tab)[names(tab) == "score"] <- ic_label
 
-    print(round_print_numeric(tab, digits), row.names = FALSE)
+    print(format_model_print_table(tab, digits), row.names = FALSE)
   }
 
   invisible(NULL)
@@ -962,8 +1098,19 @@ print_interaction_summary_step <- function(x, ruler, digits, step_no = 3L) {
 # -----------------------------------------------------------------------------
 
 
-# Convert the normalized family identifier into the concise model description
-# used directly below the printed MFPI call.
+#' Concise Model Description for MFPI Print Output
+#'
+#' Converts the normalised family identifier into the concise model
+#' description shown immediately below the printed MFPI call. This mirrors
+#' the mfp2 model label but is deliberately short so the MFPI print output
+#' remains compact.
+#'
+#' @param x An MFPI object (or a compatible list with `family_string`).
+#'
+#' @return Character scalar with the model description.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_model_label <- function(x) {
   family_string <- if (!is.null(x$family_string)) {
     as.character(x$family_string)[1L]
@@ -1036,14 +1183,17 @@ mfpi_print_model_label <- function(x) {
 #' multiplicity adjustment it prints one \code{p-value} column; otherwise it
 #' prints \code{p_raw} and \code{p_adjusted}.
 #'
-#' Numeric values are rounded for display only. The underlying metrics stored in
+#' Numeric values use fixed decimal places for display only, except FP powers
+#' and degrees of freedom, which retain their natural notation. The underlying
+#' metrics stored in
 #' the \code{"mfpi"} object are not modified, and model-selection decisions are
 #' based on the unrounded values computed during fitting.
 #'
 #' @param x An object of class \code{"mfpi"}, as returned by \code{mfpi()}.
-#' @param digits Optional non-negative integer controlling the number of digits
-#'   used when printing numeric output. If \code{NULL}, \code{x$digits} is used
-#'   when available; otherwise 3 is used.
+#' @param digits Optional non-negative integer controlling the number of decimal
+#'   places used when printing numeric output other than FP powers and degrees
+#'   of freedom. If \code{NULL}, \code{x$digits} is used when available;
+#'   otherwise 3 is used.
 #' @param ... Currently unused.
 #'
 #' @return \code{x} invisibly.
@@ -1121,11 +1271,25 @@ print.mfpi <- function(x, digits = NULL, ...) {
 # print.mfpi_prediction()
 # -----------------------------------------------------------------------------
 
-# Format one MFPI prediction table for console display without changing the
-# stored prediction object. The public object retains its original column names
-# (`fit`, `se.fit`, and `x`) for backwards compatibility; only the printed labels
-# are made more descriptive. For fitted-function output, `x` is displayed using
-# the actual term name (for example, `age`).
+#' Format One MFPI Prediction Table for Console Display
+#'
+#' Formats a single MFPI prediction table for console display without
+#' altering the stored prediction object. The public object retains its
+#' original column names (`fit`, `se.fit`, and `x`) for backwards
+#' compatibility; only the printed labels are made more descriptive.
+#' For fitted-function output, `x` is displayed using the actual term name
+#' (for example `age`).
+#'
+#' @param d Prediction data frame produced by `predict.mfpi()`, or `NULL`.
+#' @param digits Integer scalar; number of decimal places.
+#' @param term Optional character scalar naming the term, used to relabel
+#'   the `x` column.
+#'
+#' @return A data frame with display-friendly column names, or `NULL` when
+#'   `d` is `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 format_mfpi_prediction_table <- function(d, digits, term = NULL) {
   if (is.null(d)) {
     return(NULL)
@@ -1155,7 +1319,20 @@ format_mfpi_prediction_table <- function(d, digits, term = NULL) {
 }
 
 
-# Print a compact dynamic ruler around an MFPI prediction heading.
+#' Print a Compact Ruler Around an MFPI Prediction Heading
+#'
+#' Prints a compact dynamic ruler around an MFPI prediction section
+#' heading. The ruler width adapts to the header text so headings for
+#' short and long term names line up consistently in the console.
+#'
+#' @param title Character scalar heading text.
+#' @param term Character scalar term name shown in the heading.
+#' @param detail Optional character scalar with extra qualifying text.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 print_mfpi_prediction_header <- function(title, term, detail = NULL) {
   pieces <- c(title, paste0("term: ", term))
   if (!is.null(detail) && length(detail) == 1L && !is.na(detail) && nzchar(detail)) {

@@ -203,7 +203,21 @@ mfpi_summary_coefficient_statistics <- function(fit_obj, raw_names) {
 }
 
 
-# Locate the test-statistic column in a model summary coefficient table.
+#' Locate the Test-Statistic Column in a Coefficient Table
+#'
+#' Returns the position of the test-statistic column in an underlying
+#' model summary coefficient table, matching a small set of common
+#' spellings after normalising case and whitespace. Used when the MFPI
+#' summary has to extract a Wald-style z or t statistic from tables
+#' produced by different fitting backends.
+#'
+#' @param column_names Character vector of coefficient-table column names.
+#'
+#' @return Integer scalar column position, or `NA_integer_` when no
+#'   candidate label matches.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_statistic_column <- function(column_names) {
   if (length(column_names) == 0L) return(NA_integer_)
   normalized <- tolower(trimws(column_names))
@@ -214,7 +228,19 @@ mfpi_summary_statistic_column <- function(column_names) {
 }
 
 
-# Locate the p-value column in a model summary coefficient table.
+#' Locate the P-Value Column in a Coefficient Table
+#'
+#' Returns the position of the p-value column in an underlying model
+#' summary coefficient table, matching a small set of common spellings
+#' after normalising case and whitespace.
+#'
+#' @param column_names Character vector of coefficient-table column names.
+#'
+#' @return Integer scalar column position, or `NA_integer_` when no
+#'   candidate label matches.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_pvalue_column <- function(column_names) {
   if (length(column_names) == 0L) return(NA_integer_)
   idx <- grep(
@@ -226,7 +252,19 @@ mfpi_summary_pvalue_column <- function(column_names) {
 }
 
 
-# Convert an underlying coefficient-table statistic heading to a concise label.
+#' Concise Test-Statistic Column Label
+#'
+#' Converts an underlying coefficient-table test-statistic heading into the
+#' concise label used in the printed MFPI summary (`"z"`, `"t"`, or
+#' `"Statistic"`).
+#'
+#' @param column_name Character scalar column name from an underlying
+#'   coefficient table.
+#'
+#' @return Character scalar with the concise label.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_statistic_label <- function(column_name) {
   x <- tolower(trimws(column_name))
   if (grepl("^z($| )", x)) return("z")
@@ -235,7 +273,20 @@ mfpi_summary_statistic_label <- function(column_name) {
 }
 
 
-# Determine whether at least one retained regression display is available.
+#' Are Any Retained Regression Displays Available?
+#'
+#' Reports whether at least one retained regression-display block was
+#' assembled for the MFPI summary. Callers use this to decide whether to
+#' print the regression-block section header at all.
+#'
+#' @param regression_displays List of regression-display blocks, possibly
+#'   empty.
+#'
+#' @return `TRUE` when at least one non-empty display is present, `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 has_retained_regression_displays <- function(regression_displays) {
   !is.null(regression_displays) &&
     length(regression_displays) > 0L &&
@@ -243,15 +294,39 @@ has_retained_regression_displays <- function(regression_displays) {
 }
 
 
-# Resolve the numbered step used for retained regression output.
+#' Resolve the Step Number for Retained Regression Output
+#'
+#' Returns the numbered MFPI step under which retained regression output
+#' is printed. The step number depends on the active selection criterion,
+#' because closed-testing p-value selection and information-criterion
+#' selection produce different numbers of preceding steps.
+#'
+#' @param criterion Character scalar selection criterion.
+#'
+#' @return Integer scalar step number.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_regression_step_number <- function(criterion) {
   4L
 }
 
 
-# Determine whether one retained interaction uses a nonzero covariate-wide
-# MFPI shift. The clarification is printed within that interaction block,
-# immediately after the table whose transformation labels contain the shift.
+#' Does One Retained Interaction Use a Nonzero MFPI Shift?
+#'
+#' Reports whether one retained interaction display uses a nonzero
+#' covariate-wide MFPI shift. When it does, the shift-explanation note is
+#' printed inside that interaction's block, immediately after the table
+#' whose transformation labels contain the shift, rather than as a
+#' summary-wide footer.
+#'
+#' @param display One retained interaction display.
+#'
+#' @return `TRUE` when the display uses a nonzero shift, `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_display_has_nonzero_shift <- function(display) {
   if (is.null(display) || is.null(display$info$shift)) return(FALSE)
 
@@ -260,9 +335,19 @@ mfpi_summary_display_has_nonzero_shift <- function(display) {
 }
 
 
-# Explain a displayed shift only for the interaction to which it applies.
-# Keeping this note next to the group-specific FP table avoids suggesting that
-# the shift is a global feature of every retained interaction.
+#' Print the Shift-Explanation Note for One Interaction Block
+#'
+#' Prints the explanatory note describing the covariate-wide MFPI shift
+#' used by one retained interaction display. The note is placed next to
+#' the group-specific FP table for that interaction, so it never suggests
+#' that the shift is a global feature of every retained interaction.
+#'
+#' @param display One retained interaction display.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_summary_shift_note <- function(display) {
   if (!mfpi_summary_display_has_nonzero_shift(display)) {
     return(invisible(FALSE))
@@ -275,7 +360,23 @@ mfpi_print_summary_shift_note <- function(display) {
 }
 
 
-# Build one user-facing coefficient table for print.summary.mfpi().
+#' Build One User-Facing Coefficient Table for `print.summary.mfpi()`
+#'
+#' Assembles one user-facing coefficient statistics table for the MFPI
+#' summary layout, combining the term metadata (variable, basis,
+#' centering) with the fitted regression statistics into the printed
+#' column order.
+#'
+#' @param metadata_table Data frame of per-coefficient metadata.
+#' @param statistics Data frame of fitted regression statistics (estimate,
+#'   standard error, test statistic, p value).
+#' @param leading_columns Character vector of metadata columns to place at
+#'   the front of the display table, in order.
+#'
+#' @return A data frame with columns arranged for direct printing.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_display_table <- function(metadata_table, statistics, leading_columns) {
   if (is.null(metadata_table) || nrow(metadata_table) == 0L) {
     return(NULL)
@@ -297,20 +398,40 @@ mfpi_summary_display_table <- function(metadata_table, statistics, leading_colum
 }
 
 
-# Format stored centering constants at the print boundary using the same
-# convention as print.mfp2(): blank when not applicable, 0 for exact zero, and
-# compact numeric output otherwise.
+#' Format Stored Centering Constants at the Print Boundary
+#'
+#' Formats a vector of stored centering constants for the printed MFPI
+#' summary. Missing values become blank cells because no centering
+#' constant applies to that row; all actual constants use the same
+#' fixed-decimal convention as the coefficient statistics so the columns
+#' line up.
+#'
+#' @param x Numeric vector of centering constants (possibly with `NA`).
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Character vector of formatted constants.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_format_centers <- function(x, digits) {
-  vapply(x, function(value) {
-    if (length(value) != 1L || is.na(value)) return("")
-    if (value == 0) return("0")
-    format(value, digits = digits, trim = TRUE)
-  }, character(1L), USE.NAMES = FALSE)
+  format_print_decimal(x, digits, na_string = "")
 }
 
 
-# Report whether a retained interaction display contains any stored centering
-# constants in either its group-specific or adjustment basis metadata.
+#' Does an Interaction Display Contain Any Centering Constants?
+#'
+#' Reports whether a retained interaction display carries any stored
+#' centering constants in either its group-specific or adjustment basis
+#' metadata. Callers use this to decide whether the `Center` column should
+#' appear in the printed table at all.
+#'
+#' @param info Interaction display information list.
+#'
+#' @return `TRUE` when at least one stored centering constant is present,
+#'   `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_info_has_centers <- function(info) {
   tables <- list(info$group_table, info$adjustment_table)
   any(vapply(tables, function(tab) {
@@ -319,31 +440,67 @@ mfpi_summary_info_has_centers <- function(info) {
 }
 
 
-# Format p-values in a regression display without adding significance stars.
+#' Format P-Values for a Regression-Display Table
+#'
+#' Formats a numeric p-value vector for one MFPI regression-display table
+#' without appending significance stars. Significance stars are avoided in
+#' MFPI output because model selection has already been performed and the
+#' printed p values are conditional on the retained model.
+#'
+#' @param p Numeric vector of p values.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Character vector of formatted p values.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_summary_format_pvalues <- function(p, digits) {
-  if (length(p) == 0L) return(character(0L))
-  eps <- 10^(-max(1L, digits))
-  out <- rep(NA_character_, length(p))
-  ok <- !is.na(p)
-  out[ok] <- format.pval(p[ok], digits = max(1L, digits), eps = eps)
-  out[!ok] <- "NA"
-  out
+  format_print_pvalue(p, digits)
 }
 
 
-# Print one coefficient table using the common MFPI summary layout.
+#' Print One Coefficient Table in the MFPI Summary Layout
+#'
+#' Prints one coefficient statistics table using the shared MFPI summary
+#' layout: fixed-decimal numeric columns, left-aligned metadata columns,
+#' and a compact header rule.
+#'
+#' @param tab Data frame of coefficient statistics with layout produced by
+#'   `mfpi_summary_display_table()`.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_summary_coefficient_table <- function(tab, digits) {
   if (is.null(tab) || nrow(tab) == 0L) return(invisible(NULL))
   if ("Center" %in% names(tab)) {
     tab[["Center"]] <- mfpi_summary_format_centers(tab[["Center"]], digits)
   }
   tab[["p-value"]] <- mfpi_summary_format_pvalues(tab[["p-value"]], digits)
-  print(tab, row.names = FALSE, digits = digits)
+  tab <- format_model_print_table(tab, digits)
+  print(tab, row.names = FALSE)
   invisible(NULL)
 }
 
 
-# Print one retained interaction model in the MFPI-specific summary layout.
+#' Print One Retained MFPI Interaction Block
+#'
+#' Prints one retained interaction model in the MFPI-specific summary
+#' layout: interaction identifier, selected FP powers per group,
+#' group-specific and adjustment coefficient tables, and any per-block
+#' shift-explanation note.
+#'
+#' @param display One retained interaction display.
+#' @param digits Integer scalar; number of decimal places.
+#' @param print_shift_note Logical. If `TRUE`, print the shift-explanation
+#'   note for this interaction when a nonzero shift was used.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_summary_regression_block <- function(display, digits, print_shift_note = TRUE) {
   info <- display$info
   statistics <- display$statistics
@@ -460,9 +617,19 @@ mfpi_print_summary_regression_block <- function(display, digits, print_shift_not
 }
 
 
-# Summary layout for a multinomial MFPI interaction model: one coefficient
-# statistics table per non-reference logit, each against the common reference
-# class.
+#' Print One Retained Multinomial MFPI Interaction Block
+#'
+#' Prints the summary layout for a multinomial MFPI interaction model:
+#' one coefficient statistics table per non-reference logit, each against
+#' the common reference class named in the header.
+#'
+#' @param display One retained multinomial interaction display.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_summary_multinomial_block <- function(display, digits) {
   info <- display$info
   statistics <- display$statistics
@@ -563,11 +730,21 @@ mfpi_print_summary_multinomial_block <- function(display, digits) {
 }
 
 
-# Print all retained regression displays. The shift explanation is shown only
-# once, immediately after the first retained interaction whose focal variable
-# has a nonzero MFPI shift. Later shifted interactions still show the shift
-# explicitly in their transformation labels, so repeating the note adds no
-# information.
+#' Print Every Retained MFPI Regression Display
+#'
+#' Prints every retained regression display in order. The
+#' shift-explanation note is shown at most once, immediately after the
+#' first retained interaction whose focal variable uses a nonzero MFPI
+#' shift; later shifted interactions still show the shift explicitly in
+#' their transformation labels, so repeating the note adds no information.
+#'
+#' @param displays List of retained interaction displays.
+#' @param digits Integer scalar; number of decimal places.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_summary_regression_displays <- function(displays, digits) {
   first <- TRUE
   shift_note_printed <- FALSE
@@ -787,8 +964,9 @@ summary.mfpi <- function(object, ...) {
 #' MFPI interaction-selection result.
 #'
 #' @param x An object of class \code{"summary.mfpi"}.
-#' @param digits Optional non-negative integer controlling printing precision.
-#'   If \code{NULL}, \code{x$digits} is used when available; otherwise the MFPI
+#' @param digits Optional non-negative integer controlling displayed decimal
+#'   places other than fractional-polynomial powers and degrees of freedom. If
+#'   \code{NULL}, \code{x$digits} is used when available; otherwise the MFPI
 #'   print-helper default is used.
 #' @param ... Currently unused.
 #'

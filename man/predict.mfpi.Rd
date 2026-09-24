@@ -17,7 +17,6 @@
   strata = NULL,
   cox_reference = NULL,
   newoffset = NULL,
-  times = NULL,
   ...
 )
 }
@@ -47,9 +46,9 @@ The default is \code{"best"}.}
 \code{"both"} for fitted curves. For predictions for individual observations,
 likelihood GLMs and \code{survreg} models support \code{"link"} and \code{"response"};
 Cox models support \code{"lp"}, \code{"risk"}, \code{"expected"}, and \code{"survival"};
-Fine--Gray models support \code{"lp"}, \code{"risk"}, and \code{"response"}; ordinal
-models support \code{"link"}, \code{"response"}, and \code{"mean"}; multinomial models
-support \code{"link"} and \code{"response"}. If \code{NULL}, \code{"both"} is used.}
+ordinal models support \code{"link"}, \code{"response"}, and \code{"mean"}; and
+multinomial models support \code{"link"} and \code{"response"}. If \code{NULL}, \code{"both"}
+is used.}
 
 \item{se.fit}{A single \code{TRUE} or \code{FALSE} value indicating whether standard
 errors should be returned. The default is \code{TRUE}.}
@@ -83,15 +82,12 @@ they are reconstructed automatically. This argument is not used for other
 models, unstratified models, or fitted-curve predictions.}
 
 \item{cox_reference}{A character value selecting the covariate reference for
-Cox or Fine--Gray observation-level predictions with \code{type = "lp"} or \code{type = "risk"}.
+Cox observation-level predictions with \code{type = "lp"} or \code{type = "risk"}.
 Use \code{"zero"}, \code{"sample"}, or \code{"strata"}. The default is \code{"zero"}.}
 
 \item{newoffset}{An optional finite numeric vector containing one offset value
 per prediction row. It can be used only for predictions for individual
 observations from a term-specific model fitted with an offset.}
-
-\item{times}{Optional non-negative numeric time or time grid required for
-Fine--Gray \code{type = "response"} cumulative-incidence predictions.}
 
 \item{...}{Reserved for future extensions. Currently, supplied arguments are
 ignored with a warning.}
@@ -173,7 +169,7 @@ curve.
 \item \code{predict(fit, terms = "age", type = "response", newdata = new_data)}
 returns one response-scale prediction per row for a GLM.
 \item \code{predict(fit, terms = "age", type = "risk", newdata = new_data)} returns
-one relative-risk prediction per row for a Cox or Fine--Gray model.
+one relative-risk prediction per row for a Cox model.
 }
 }
 
@@ -225,10 +221,6 @@ location and \code{type = "response"} transforms it back to the response scale.
 predicted cumulative hazard up to the supplied follow-up time, and
 \code{type = "survival"} returns the estimated survival probability at that
 time. \code{"link"} is accepted as another name for \code{"lp"}.
-\item For Fine--Gray models, \code{type = "lp"} and \code{type = "risk"} return relative
-subdistribution-hazard predictions. With \code{times}, \code{type = "response"}
-returns cumulative-incidence probabilities. Absolute Cox
-survival/expected-event types are not exposed for this family.
 \item For ordinal models, \code{type = "link"} returns the common covariate linear
 predictor without cut-point intercepts, \code{type = "response"} returns
 category probabilities, and \code{type = "mean"} returns the expected category
@@ -270,10 +262,10 @@ linear-predictor scale. With the standard links, this is:
 \item the common cumulative-link predictor scale for ordinal models;
 \item a reference-category logit scale for multinomial models;
 \item the fitted location scale for a \code{survreg} model;
-\item a partial log-hazard scale for Cox and Fine--Gray models.
+\item a partial log-hazard scale for Cox models.
 }
 
-For Cox and Fine--Gray models, these fitted curves do not include the baseline hazard and
+For Cox models, these fitted curves do not include the baseline hazard and
 are not survival probabilities.
 }
 
@@ -372,7 +364,7 @@ multinomial model, the reconstructed design is combined with each
 non-reference logit's coefficient vector, and the resulting logits are
 normalized to obtain class probabilities.
 
-For a Cox or Fine--Gray model, let \code{eta_i} denote the subject's fitted linear
+For a Cox model, let \code{eta_i} denote the subject's fitted linear
 predictor on the proportional-hazards scale. \code{type = "lp"} returns it relative to the
 reference selected by \code{cox_reference}, and \code{type = "risk"} is its
 exponential. Thus, using the same reference convention,
@@ -437,7 +429,7 @@ package version.
 
 \section{Proportional-hazards predictions}{
 
-Cox and Fine--Gray predictions with \code{type = "lp"} and \code{type = "risk"} are
+Cox predictions with \code{type = "lp"} and \code{type = "risk"} are
 relative quantities. They are not absolute hazards or survival probabilities.
 
 Use \code{cox_reference} to choose the covariate reference for these predictions:
@@ -470,9 +462,6 @@ for example:
 
 Do not use \code{cox_reference} with \code{type = "expected"} or
 \code{type = "survival"}.
-
-Fine--Gray models expose relative \code{"lp"} and \code{"risk"} predictions and
-cumulative incidence through \code{type = "response"} together with \code{times}.
 
 For a stratified Cox model, each prediction row must have valid stratum
 information. If \code{strata()} was included in the fitted formula, include its

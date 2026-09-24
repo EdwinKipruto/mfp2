@@ -349,7 +349,7 @@ test_that("MFPI retained-model blocks print model-specific nuisance parameters",
     collapse = "\n"
   )
   expect_match(negbin_text, "Link: log", fixed = TRUE)
-  expect_match(negbin_text, "Theta: 2.75 (estimated)", fixed = TRUE)
+  expect_match(negbin_text, "Theta: 2.750 (estimated)", fixed = TRUE)
 
   display$family_string <- "survreg"
   display$model_metadata <- list(
@@ -364,7 +364,7 @@ test_that("MFPI retained-model blocks print model-specific nuisance parameters",
     collapse = "\n"
   )
   expect_match(survreg_text, "Distribution: Weibull", fixed = TRUE)
-  expect_match(survreg_text, "Scale: 0.8 (estimated)", fixed = TRUE)
+  expect_match(survreg_text, "Scale: 0.800 (estimated)", fixed = TRUE)
 })
 
 

@@ -3,7 +3,7 @@
 \name{survreg_family}
 \alias{survreg_family}
 \alias{finegray_family}
-\title{Survival Family Specifications for mfp2 and mfpi}
+\title{Survival Family Specifications}
 \usage{
 survreg_family(dist = "weibull", scale = 0, parms = NULL)
 
@@ -44,8 +44,9 @@ Equivalent to \code{ctype = 2} in Zhou et al. (2011).}
 }}
 }
 \value{
-An \code{mfp2_survreg_family} or \code{mfp2_finegray_family} specification for
-the \code{family} argument of \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}.
+An \code{mfp2_survreg_family} specification for the \code{family} argument of
+\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}, or an \code{mfp2_finegray_family} specification for
+\code{\link[=mfp2]{mfp2()}}.
 }
 \description{
 \code{survreg_family()} specifies a parametric accelerated failure-time or
@@ -66,7 +67,8 @@ response once. Repeated candidate models then use
 \code{\link[survival:agreg.fit]{survival::agreg.fit()}}, while the selected model is returned as a weighted
 robust \code{coxph} fit. The public model interface remains
 \code{family = finegray_family(etype = ...)}. An \code{id} argument is required by
-\code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}} only for a start--stop multi-state response.
+\code{\link[=mfp2]{mfp2()}} only for a start--stop multi-state response. Fine--Gray models are
+not supported by \code{\link[=mfpi]{mfpi()}}.
 }
 \examples{
 survreg_spec <- survreg_family(dist = "weibull")

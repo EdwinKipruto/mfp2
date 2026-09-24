@@ -9,8 +9,9 @@
 \arguments{
 \item{x}{An object of class \code{"summary.mfpi"}.}
 
-\item{digits}{Optional non-negative integer controlling printing precision.
-If \code{NULL}, \code{x$digits} is used when available; otherwise the MFPI
+\item{digits}{Optional non-negative integer controlling displayed decimal
+places other than fractional-polynomial powers and degrees of freedom. If
+\code{NULL}, \code{x$digits} is used when available; otherwise the MFPI
 print-helper default is used.}
 
 \item{...}{Currently unused.}

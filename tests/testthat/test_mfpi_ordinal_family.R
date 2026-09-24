@@ -29,7 +29,7 @@ make_mfpi_ordinal_data <- function(n = 300L, seed = 4201L) {
   dat
 }
 
-fit_mfpi_ordinal <- function(dat, link = "logistic") {
+fit_mfpi_ordinal <- function(dat, link = "logistic", verbose = FALSE) {
   mfpi(
     y ~ group + fp(x, df = 1) + z,
     data = dat,
@@ -46,7 +46,7 @@ fit_mfpi_ordinal <- function(dat, link = "logistic") {
     shift = 0,
     scale = 1,
     center = FALSE,
-    verbose = FALSE
+    verbose = verbose
   )
 }
 
@@ -66,7 +66,9 @@ ordinal_response_matrix <- function(pred) {
 test_that("ordinal mfpi() fits without error and returns correct class", {
   skip_if_not_installed("rms")
 
-  fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data())
+  output <- capture.output(
+    fit <- fit_mfpi_ordinal(make_mfpi_ordinal_data(), verbose = TRUE)
+  )
 
   expect_s3_class(fit, "mfpi")
   expect_identical(fit$family_string, "ordinal")
@@ -75,6 +77,11 @@ test_that("ordinal mfpi() fits without error and returns correct class", {
   expect_true(is.character(fit$ordinal_link))
   expect_true(is.integer(fit$n_intercepts))
   expect_equal(fit$n_intercepts, length(fit$ordinal_levels) - 1L)
+  expect_match(
+    paste(output, collapse = "\n"),
+    "Model: Logistic ordinal regression (proportional odds)",
+    fixed = TRUE
+  )
 })
 
 

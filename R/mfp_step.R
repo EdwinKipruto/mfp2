@@ -443,9 +443,27 @@ find_best_fp_step <- function(x,
 
 }
 
-# Normalize and name the selected power vector returned by a step selector.
-# Keeping this in one helper is important for joint IC because binary-only and
-# null models both carry NA powers but have different spike_decision values.
+#' Normalise and Name the Selected Power Vector From a Step Selector
+#'
+#' Collects the selected FP power vector returned by a single MFP or SAZ
+#' step and normalises it to the naming convention used by the surrounding
+#' engine. Centralising this in one helper is important for joint information-
+#' criterion selection because the binary-only and null models both carry
+#' `NA` powers but must be distinguished by their `spike_decision` value.
+#'
+#' @param fit A step-selection result carrying `power_best` and, for SAZ
+#'   candidates, additional decision metadata.
+#' @param xi Character scalar naming the predictor.
+#' @param acdx Logical flag indicating whether the predictor is being
+#'   assessed with the ACD extension.
+#'
+#' @return A named numeric vector of selected FP powers. Names identify the
+#'   term (and its ACD companion, when applicable); missing values remain
+#'   `NA_real_` so downstream code can distinguish binary-only from null
+#'   representations.
+#'
+#' @keywords internal
+#' @noRd
 normalize_selected_step_powers <- function(fit, xi, acdx) {
   power_best <- as.numeric(fit$power_best)
 

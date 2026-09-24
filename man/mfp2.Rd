@@ -371,21 +371,26 @@ replace the requested maximum representation. The default is \code{NULL}. For
 \code{mfp2.formula()}, set this option for individual terms using
 \code{fp(x, force_max_fp = TRUE)}.}
 
-\item{term_groups}{For \code{mfp2.default()}, an optional named list mapping a
-conceptual term to one or more columns of \code{x}, for example
-\code{list(race = c("raceB", "raceC"))}. Mapped columns are selected and tested
-jointly and must be fixed linear terms (\code{df = 1}) without ACD, zero,
-catzero, or SAZ handling. Unmapped columns are treated as separate terms.}
+\item{term_groups}{For \code{mfp2.default()}, an optional named list that lets
+you treat several columns of \code{x} as one term, typically the dummy columns
+of a factor. For example, \code{list(race = c("raceB", "raceC"))} groups
+\code{raceB} and \code{raceC} under the name \code{race}; they are then jointly selected
+and jointly tested rather than considered as different variables. Grouped
+columns must be fixed linear terms (\code{df = 1}) and cannot use ACD, zero,
+catzero, or SAZ handling. Any column of \code{x} that does not appear in
+\code{term_groups} is handled on its own as a single-column term.}
 
 \item{verbose}{Logical value indicating whether progress messages are printed.
 Default \code{TRUE}.}
 
-\item{fitter}{Fitting method for repeated GLM candidate models. \code{"base"}
-(default) uses standard R GLM fitting. \code{"fastglm"} uses the optional
-\code{fastglm} package and may be faster during the FP search. Ordinary GLMs
-retry with \code{"base"} and issue a warning if \code{fastglm} is unavailable or a
-fit fails. Survival models are unaffected. Negative-binomial models select
-\code{"fastglm"} automatically and stop early if that backend is unavailable.}
+\item{fitter}{Backend used to fit the many candidate GLMs during the FP
+search. \code{"base"} (default) uses \code{stats::glm()}. \code{"fastglm"} uses the
+optional \code{fastglm} package, which can be considerably faster on large
+problems. If \code{"fastglm"} is chosen but the package is not installed, or
+a candidate fit fails, ordinary GLMs fall back to \code{"base"} with a
+warning. Negative-binomial models always use \code{"fastglm"} and stop with
+an error if the package is unavailable. Survival, multinomial, and
+ordinal models ignore this argument, as they use their own fitters.}
 
 \item{id}{Optional Fine--Gray subject identifier. It is required for a
 start--stop multi-state response and optional for ordinary one-row-per-

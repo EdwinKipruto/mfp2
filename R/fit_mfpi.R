@@ -247,7 +247,8 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   column of \code{x}), as computed and applied in \code{mfpi.default()}.
 #'   Passed through to fitted-function generation so displayed x-values can be
 #'   returned on the original raw scale.
-#' @param digits Positive integer. Significant digits for printed output.
+#' @param digits Positive integer. Decimal places for printed output other than
+#'   fractional-polynomial powers and degrees of freedom.
 #' @param p_adjust_method Character string. Method for adjusting p-values
 #'   across all variables in \code{interaction_vars} when \code{criterion = "pvalue"}.
 #'   Passed to \code{\link[stats]{p.adjust}}. Default \code{"none"}.
@@ -455,6 +456,13 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     )
 
     mfp2_message("")
+    mfp2_message(
+      "  Model: ",
+      mfpi_print_model_label(list(
+        family_string = family_string,
+        family = mfp2_strip_prepared_family(family_fit)
+      ))
+    )
     mfp2_message("  Criterion: ", adjustment_info$settings$criterion_label)
     mfp2_message("")
 
@@ -1345,7 +1353,7 @@ format_type_label <- function(type) {
 #'   \code{fp_powers_main}, and \code{fp_powers_int}.
 #' @param criterion Character string: \code{"pvalue"}, \code{"aic"}, or
 #'   \code{"bic"}.
-#' @param digits Integer; number of significant digits for p-values.
+#' @param digits Integer; number of decimal places for displayed statistics.
 #'
 #' @return Invisible \code{NULL}. The function prints to the console as a
 #'   side effect.
@@ -1376,9 +1384,17 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 
   format_row <- function(metrics) {
     # Safe extraction helpers
-    safe_fmt <- function(val, fmt = "g", digits = digits) {
+    safe_decimal <- function(val) {
       if (is.null(val) || length(val) == 0L || is.na(val[1L])) return("NA")
-      formatC(val[1L], format = fmt, digits = digits)
+      format_print_decimal(val[1L], digits)
+    }
+    safe_pvalue <- function(val) {
+      if (is.null(val) || length(val) == 0L || is.na(val[1L])) return("NA")
+      format_print_pvalue(val[1L], digits)
+    }
+    safe_df <- function(val) {
+      if (is.null(val) || length(val) == 0L || is.na(val[1L])) return("NA")
+      format(val[1L], trim = TRUE, scientific = FALSE)
     }
     safe_chr <- function(val) {
       if (is.null(val) || length(val) == 0L) return("")
@@ -1405,22 +1421,22 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
     crit_cols <- switch(
       criterion,
       "pvalue" = data.frame(
-        deviance_int  = safe_fmt(metrics$deviance_int,        fmt = "f", digits = digits),
-        deviance_diff = safe_fmt(metrics$deviance_diff,       fmt = "f", digits = digits),
-        df            = safe_fmt(metrics$df_int,      fmt = "d", digits = 0),
-        pvalue        = safe_fmt(metrics$pvalue,              fmt = "g", digits = digits),
+        deviance_int  = safe_decimal(metrics$deviance_int),
+        deviance_diff = safe_decimal(metrics$deviance_diff),
+        df            = safe_df(metrics$df_int),
+        pvalue        = safe_pvalue(metrics$pvalue),
         stringsAsFactors = FALSE
       ),
       "aic"    = data.frame(
-        AIC_main        = safe_fmt(metrics$AIC_main,           fmt = "f", digits = digits),
-        AIC_interaction = safe_fmt(metrics$AIC_interaction,    fmt = "f", digits = digits),
-        dAIC            = safe_fmt(metrics$AIC_main_minus_int, fmt = "f", digits = digits),
+        AIC_main        = safe_decimal(metrics$AIC_main),
+        AIC_interaction = safe_decimal(metrics$AIC_interaction),
+        dAIC            = safe_decimal(metrics$AIC_main_minus_int),
         stringsAsFactors = FALSE
       ),
       "bic"    = data.frame(
-        BIC_main        = safe_fmt(metrics$BIC_main,           fmt = "f", digits = digits),
-        BIC_interaction = safe_fmt(metrics$BIC_interaction,    fmt = "f", digits = digits),
-        dBIC            = safe_fmt(metrics$BIC_main_minus_int, fmt = "f", digits = digits),
+        BIC_main        = safe_decimal(metrics$BIC_main),
+        BIC_interaction = safe_decimal(metrics$BIC_interaction),
+        dBIC            = safe_decimal(metrics$BIC_main_minus_int),
         stringsAsFactors = FALSE
       )
     )
@@ -1500,7 +1516,8 @@ format_candidate_table <- function(rows, criterion, digits,  best_type = NULL) {
 #' @param fp_powers Named list of candidate FP power sets for all predictors.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
 #' @param criterion Character string; `"pvalue"`, `"aic"`, or `"bic"`.
-#' @param digits Positive integer. Number of digits for printed output.
+#' @param digits Positive integer. Number of decimal places for printed output
+#'   other than fractional-polynomial powers and degrees of freedom.
 #' @param scale Named numeric vector of per-variable scale factors. These are
 #'   the same scale factors applied to \code{x} upstream in
 #'   \code{mfpi.default()}. Passed to \code{fit_adjustment_model()} so that
@@ -2458,7 +2475,7 @@ finalize_adjusted_pvalue_selection <- function(var_winners,
 #'   selection threshold.
 #' @param p_interact,p_adjust_method Used only when \code{mode == "pvalue"}:
 #'   the final selection threshold and multiplicity-adjustment method.
-#' @param digits Number of displayed digits for the comparison statistic.
+#' @param digits Number of displayed decimal places for comparison statistics.
 #' @param show_models,best_interaction_model Optional per-model summaries,
 #'   printed after the table when \code{show_models = TRUE}.
 #'
@@ -2550,7 +2567,7 @@ print_interaction_step3_summary <- function(var_winners,
         "  %-12s %-8s %12s %10s",
         vn,
         type_label,
-        formatC(ic_val, format = "f", digits = digits),
+        format_print_decimal(ic_val, digits),
         selected
       ))
     } else {
@@ -2573,8 +2590,8 @@ print_interaction_step3_summary <- function(var_winners,
           "  %-12s %-8s %12s %12s %10s",
           vn,
           type_label,
-          formatC(p_raw, format = "g", digits = digits),
-          formatC(p_adjusted, format = "g", digits = digits),
+          format_print_pvalue(p_raw, digits),
+          format_print_pvalue(p_adjusted, digits),
           selected
         ))
       } else {
@@ -2582,7 +2599,7 @@ print_interaction_step3_summary <- function(var_winners,
           "  %-12s %-8s %12s %10s",
           vn,
           type_label,
-          formatC(p_raw, format = "g", digits = digits),
+          format_print_pvalue(p_raw, digits),
           selected
         ))
       }

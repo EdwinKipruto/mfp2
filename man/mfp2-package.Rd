@@ -38,9 +38,10 @@ Proportional-odds ordinal models use \code{\link[=ordinal_family]{ordinal_family
 cut-points.
 
 Survival models are specified as separate families: \code{family = "cox"} for
-Cox proportional hazards, \code{\link[=survreg_family]{survreg_family()}} for the parametric distributions
-implemented by \code{\link[survival:survreg]{survival::survreg()}}, and \code{\link[=finegray_family]{finegray_family()}} for Fine--Gray
-proportional subdistribution hazards.
+Cox proportional hazards and \code{\link[=survreg_family]{survreg_family()}} for the parametric
+distributions implemented by \code{\link[survival:survreg]{survival::survreg()}} are supported by both
+\code{\link[=mfp2]{mfp2()}} and \code{\link[=mfpi]{mfpi()}}. \code{\link[=finegray_family]{finegray_family()}} provides Fine--Gray proportional
+subdistribution hazards for \code{\link[=mfp2]{mfp2()}} only.
 }
 
 \section{Modelling extensions}{

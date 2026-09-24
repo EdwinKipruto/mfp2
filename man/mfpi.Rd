@@ -53,7 +53,6 @@ mfpi(x, ...)
   digits = 3,
   term_groups = NULL,
   fitter = c("base", "fastglm"),
-  id = NULL,
   ...
 )
 
@@ -99,7 +98,6 @@ mfpi(x, ...)
   verbose = TRUE,
   digits = 3,
   fitter = c("base", "fastglm"),
-  id = NULL,
   ...
 )
 }
@@ -122,9 +120,8 @@ negative-binomial models, a valid binomial response for binomial models
 factor or character/numeric class-label vector with at least three classes,
 or a three-or-more-column count matrix for multinomial models, a
 response with at least three ordered categories for ordinal models, a
-right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox, a
-non-counting \code{Surv} response for \code{survreg}, or a multi-state \code{Surv}
-response for Fine--Gray. It must have the same number of observations as \code{x}.}
+right-censored \code{\link[survival:Surv]{survival::Surv()}} object for Cox, or a non-counting \code{Surv}
+response for \code{survreg}. It must have the same number of observations as \code{x}.}
 
 \item{group_var}{A single character string naming the categorical grouping
 variable. It must have at least two observed groups and must not appear in
@@ -266,8 +263,9 @@ observations and two groups must remain.}
 \code{"inverse.gaussian"}) as a name, function, or family object. Quasi
 families are excluded because selection requires a likelihood. Use
 \code{"negbin"} for a negative-binomial model, \code{"multinomial"} or
-\code{\link[=multinomial_family]{multinomial_family()}}, \code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}}, \code{"cox"},
-\code{\link[=survreg_family]{survreg_family()}}, or \code{\link[=finegray_family]{finegray_family()}} for the corresponding model.}
+\code{\link[=multinomial_family]{multinomial_family()}}, \code{"ordinal"} or \code{\link[=ordinal_family]{ordinal_family()}}, \code{"cox"}, or
+\code{\link[=survreg_family]{survreg_family()}} for the corresponding model. Fine--Gray models are not
+supported by \code{mfpi()}.}
 
 \item{criterion}{The selection criterion used for both the MFP adjustment
 model and the interaction comparisons: \code{"pvalue"}, \code{"aic"}, or \code{"bic"}.
@@ -329,14 +327,13 @@ uses \code{c(-2, -1, -0.5, 0, 0.5, 1, 2, 3)}, where zero represents the
 natural logarithm. These candidates are used when FP powers are selected
 for both adjustment and interaction functions.}
 
-\item{ties}{The method for handling tied event times in Cox and Fine--Gray models. Supported
+\item{ties}{The method for handling tied event times in Cox models. Supported
 values are \code{"breslow"} (default) and \code{"efron"}. \code{"exact"} is not supported
 because MFPI relies on MFP-based Cox candidate fits that do not implement
 the exact partial likelihood. The argument has no effect for other families.}
 
 \item{strata}{Optional survival-model strata for \code{mfpi.default()}. For Cox
-they define baseline hazards, for \code{survreg} scale parameters, and for
-Fine--Gray censoring distributions. A
+they define baseline hazards and for \code{survreg} scale parameters. A
 vector or factor supplies one categorical stratum label per observation;
 character, numeric, integer, and logical values are accepted. A matrix or
 data frame may supply multiple stratification variables, one per column,
@@ -344,12 +341,12 @@ which are combined before Cox fitting. A \code{\link[survival:strata]{survival::
 also accepted. In \code{mfpi.formula()}, this argument is unavailable; include
 \code{strata(...)} in the formula instead.}
 
-\item{nocenter}{Numeric set of values used to identify Cox/Fine--Gray predictor
+\item{nocenter}{Numeric set of values used to identify Cox predictor
 columns that should be left uncentered. A column is left
 uncentered when all of its values are contained in \code{nocenter}. The default
 \code{c(-1, 0, 1)} matches \code{\link[survival:coxph]{survival::coxph()}} and typically leaves indicator
 and dummy columns uncentered. Set \code{NULL} to allow all eligible columns to
-be recentered. It is used only for Cox and Fine--Gray models.}
+be recentered. It is used only for Cox models.}
 
 \item{acd_vars}{For \code{mfpi.default()}, an optional character vector naming
 adjustment variables that use the approximate cumulative distribution
@@ -438,8 +435,9 @@ when \code{criterion = "pvalue"}. The default is \code{"none"}.}
 \item{verbose}{A single logical value indicating whether progress information
 is printed. The default is \code{TRUE}.}
 
-\item{digits}{A positive integer controlling the number of significant digits
-used in printed interaction results. The default is 3.}
+\item{digits}{A positive integer controlling the number of decimal places
+used in printed interaction results, except for fractional-polynomial
+powers and degrees of freedom. The default is 3.}
 
 \item{term_groups}{For \code{mfpi.default()}, an optional named list that groups
 numeric columns representing one categorical term. For example,
@@ -458,11 +456,6 @@ automatically; this argument is not needed.}
 retry with \code{"base"} and issue a warning if \code{fastglm} is unavailable or a
 fit fails. Survival models are unaffected. Negative-binomial models select
 \code{"fastglm"} automatically and stop early if that backend is unavailable.}
-
-\item{id}{Optional Fine--Gray subject identifier. It is required only for a
-start--stop multi-state response. In formula fits, the argument is
-evaluated first in \code{data} and then in the formula environment. It is not
-used by other families.}
 
 \item{formula}{For \code{mfpi.formula()}, a model formula containing the response,
 \code{group_var}, the variables in \code{interaction_vars}, and any adjustment variables.
@@ -513,9 +506,11 @@ categorical.
 }
 \details{
 The function supports the likelihood GLMs accepted by \code{mfp2()}, negative
-binomial, multinomial logistic, proportional-odds ordinal, Cox, parametric
-\code{survreg}, and Fine--Gray models. Nonlinear relationships can be modelled
-with fractional polynomials.
+binomial, multinomial logistic, proportional-odds ordinal, Cox, and
+parametric \code{survreg} models. Nonlinear relationships can be modelled with
+fractional polynomials. Fine--Gray models are not supported by \code{mfpi()}
+because its interaction selection relies on likelihood comparisons that are
+not valid for the robust weighted pseudo-likelihood fit.
 
 \code{mfpi()} evaluates each variable in \code{interaction_vars} separately. For every
 interaction variable, it compares:
@@ -825,8 +820,7 @@ supplied. The offset is used in both the adjustment and interaction models.
 
 For survival models, supply strata through \code{strata} in the matrix interface
 and through \code{strata(...)} in the formula interface. Strata define baseline
-hazards for Cox, scale parameters for \code{survreg}, and censoring distributions
-for Fine--Gray.
+hazards for Cox and scale parameters for \code{survreg}.
 
 \code{mfpi()} does not reserve names such as \code{y}, \code{offset_}, \code{strata_}, or names
 beginning with \code{..mfp2_}. Predictors with these names remain ordinary
@@ -1079,5 +1073,5 @@ analysis. \emph{Statistics in Medicine}, 33, 4695-4708.
 \seealso{
 \code{\link[=mfp2]{mfp2()}}, \code{\link[=fp]{fp()}}, \code{\link[=coef.mfpi]{coef.mfpi()}}, \code{\link[=vcov.mfpi]{vcov.mfpi()}}, \code{\link[=predict.mfpi]{predict.mfpi()}},
 \code{\link[=plot.mfpi]{plot.mfpi()}}, \code{\link[=summary.mfpi]{summary.mfpi()}}, \code{\link[=print.mfpi]{print.mfpi()}}, \code{\link[=multinomial_family]{multinomial_family()}},
-\code{\link[=ordinal_family]{ordinal_family()}}, \code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
+\code{\link[=ordinal_family]{ordinal_family()}}, \code{\link[=survreg_family]{survreg_family()}}
 }

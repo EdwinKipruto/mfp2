@@ -103,7 +103,7 @@ test_that("survreg metadata identifies distribution and fixed or stratified scal
     fixed = TRUE
   )
   expect_true(any(grepl("Observations: 3 | Events: 2 | Censored: 1", printed, fixed = TRUE)))
-  expect_true(any(grepl("Scale: 0.8 (fixed)", printed, fixed = TRUE)))
+  expect_true(any(grepl("Scale: 0.800 (fixed)", printed, fixed = TRUE)))
 })
 
 
@@ -132,7 +132,7 @@ test_that("negative-binomial metadata prints log link and theta", {
     "Model: Negative-Binomial GLM (log link) | Criterion: AIC | Converged: yes",
     fixed = TRUE
   )
-  expect_true(any(grepl("Theta: 2.75 (estimated)", printed, fixed = TRUE)))
+  expect_true(any(grepl("Theta: 2.750 (estimated)", printed, fixed = TRUE)))
 })
 
 
@@ -170,7 +170,7 @@ test_that("GLM metadata preserves fitted dispersion without transformation", {
     )
   )
   expect_true(any(grepl(
-    "Dispersion: 0.24 (estimated)", printed, fixed = TRUE
+    "Dispersion: 0.240 (estimated)", printed, fixed = TRUE
   )))
   expect_match(
     printed[[1L]],

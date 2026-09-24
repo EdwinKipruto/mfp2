@@ -566,7 +566,7 @@ test_that("print.mfp2 standard errors come from the final covariance matrix", {
   expect_length(intercept_line, 1L)
   expect_match(
     intercept_line,
-    format(expected_se[["(Intercept)"]], digits = 6, trim = TRUE),
+    formatC(expected_se[["(Intercept)"]], format = "f", digits = 6L),
     fixed = TRUE
   )
 })
@@ -580,7 +580,7 @@ test_that("coef.mfp2 keeps fitted coefficient names", {
 })
 
 
-test_that("print.mfp2 formats intercept and exact-zero centers distinctly", {
+test_that("print.mfp2 leaves intercept centers blank and formats exact zero", {
   set.seed(73104)
   n <- 240
   exposure <- c(rep(0, 60), stats::rgamma(n - 60, shape = 2, rate = 1))
@@ -613,8 +613,11 @@ test_that("print.mfp2 formats intercept and exact-zero centers distinctly", {
     grepl("I(exposure = 0)", coefficient_lines, fixed = TRUE)
   ]
   expect_length(indicator_line, 1L)
-  expect_match(indicator_line, "I\\(exposure = 0\\)\\s+0\\s+[-+0-9]", perl = TRUE)
-  expect_false(grepl("I\\(exposure = 0\\)\\s+0\\.0+", indicator_line, perl = TRUE))
+  expect_match(
+    indicator_line,
+    "I\\(exposure = 0\\)\\s+0\\.000\\s+[-+0-9]",
+    perl = TRUE
+  )
 
   expect_false(grepl("\\bNA\\b", coefficient_output))
 })

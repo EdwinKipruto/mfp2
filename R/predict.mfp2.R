@@ -1393,6 +1393,20 @@ mfp2_match_glm_prediction_type <- function(type) {
 }
 
 
+#' Match a User-Supplied Multinomial Prediction Type
+#'
+#' Matches the user-supplied `type` argument to the multinomial
+#' prediction types supported by `predict.mfp2()`, so that abbreviated or
+#' misspelled values are rejected with a clear message before any
+#' prediction machinery runs.
+#'
+#' @param type User-supplied character scalar.
+#'
+#' @return Character scalar with the canonical prediction type. Raises an
+#'   error for unsupported values.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_match_multinomial_prediction_type <- function(type) {
   choices <- c("link", "response", "class", "terms", "contrasts")
   tryCatch(
@@ -1408,6 +1422,20 @@ mfp2_match_multinomial_prediction_type <- function(type) {
 }
 
 
+#' Match a User-Supplied Ordinal Prediction Type
+#'
+#' Matches the user-supplied `type` argument to the ordinal
+#' proportional-odds prediction types supported by `predict.mfp2()`, so
+#' that abbreviated or misspelled values are rejected before any
+#' prediction machinery runs.
+#'
+#' @param type User-supplied character scalar.
+#'
+#' @return Character scalar with the canonical prediction type. Raises an
+#'   error for unsupported values.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_match_ordinal_prediction_type <- function(type) {
   # `lp` is normalized to `link` upstream for non-PH families.
   choices <- c("link", "response", "mean", "terms", "contrasts")
@@ -1425,10 +1453,30 @@ mfp2_match_ordinal_prediction_type <- function(type) {
 }
 
 
-# Full-model prediction for a proportional-odds ordinal model. The covariate
-# linear predictor is eta = X %*% beta (no cut-point intercept, so it is common
-# to all cut-points); category probabilities combine eta with the k-1 stored
-# intercepts through the inverse link. Mirrors mfp2_predict_multinomial().
+#' Full-Model Predictions for a Proportional-Odds Ordinal `mfp2` Fit
+#'
+#' Computes full-model predictions for a proportional-odds ordinal `"mfp2"`
+#' model. The covariate linear predictor is `eta = X %*% beta` (with no
+#' cut-point intercept, so it is common to every cut-point); category
+#' probabilities combine `eta` with the `k - 1` stored threshold
+#' intercepts through the inverse link. Mirrors
+#' `mfp2_predict_multinomial()` so that the two categorical paths share a
+#' consistent argument surface.
+#'
+#' @param object An `"mfp2"` ordinal model object.
+#' @param transformed Optional prepared prediction design matrix, or
+#'   `NULL` to use `object$x`.
+#' @param type Character scalar, one of `"link"`, `"response"`, or
+#'   `"mean"`.
+#' @param se.fit Logical. If `TRUE`, return prediction standard errors.
+#' @param newoffset Optional prediction-time offset, or `NULL`.
+#'
+#' @return A numeric vector or matrix of predictions, matching the
+#'   selected `type`. When `se.fit = TRUE`, a list with `fit` and
+#'   `se.fit`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_predict_ordinal <- function(object, transformed = NULL,
                                  type = c("link", "response", "mean"),
                                  se.fit = FALSE, newoffset = NULL) {
@@ -1508,6 +1556,25 @@ mfp2_predict_ordinal <- function(object, transformed = NULL,
 }
 
 
+#' Full-Model Predictions for a Baseline-Category Multinomial `mfp2` Fit
+#'
+#' Computes full-model predictions for a baseline-category multinomial
+#' `"mfp2"` fit. The per-class logits are `eta_c = X %*% beta_c` for each
+#' non-reference class `c`; class probabilities normalise `exp(eta_c)`
+#' against the reference-class logit fixed at zero.
+#'
+#' @param object An `"mfp2"` multinomial model object.
+#' @param transformed Optional prepared prediction design matrix, or
+#'   `NULL` to use `object$x`.
+#' @param ... Additional named arguments carrying the prediction type,
+#'   standard-error flag, and any prediction-time offset (see
+#'   `predict.mfp2()`).
+#'
+#' @return A numeric vector or matrix of predictions, matching the
+#'   requested type.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_predict_multinomial <- function(object, transformed = NULL,
                                       type = c("link", "response", "class"),
                                       se.fit = FALSE, newoffset = NULL) {
@@ -1586,8 +1653,19 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
 }
 
 
-# Match prediction types implemented by survival::predict.survreg(), retaining
-# the package-owned term and contrast paths on the linear-predictor scale.
+#' Match a User-Supplied `survreg` Prediction Type
+#'
+#' Matches the user-supplied `type` argument to the prediction types
+#' implemented by [survival::predict.survreg()], while retaining the
+#' package-owned `terms` and `contrasts` paths on the linear-predictor
+#' scale.
+#'
+#' @param type User-supplied character scalar.
+#'
+#' @return Character scalar with the canonical prediction type.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_match_survreg_prediction_type <- function(type) {
   choices <- c("link", "response", "quantile", "uquantile", "terms", "contrasts")
   tryCatch(
@@ -1604,9 +1682,20 @@ mfp2_match_survreg_prediction_type <- function(type) {
 }
 
 
-# Fine--Gray uses a weighted Cox fit, so relative linear predictors and risk
-# scores use the native coxph interface. Absolute cumulative-incidence curves
-# are obtained from survfit() on the retained weighted Cox fit.
+#' Match a User-Supplied Fine--Gray Prediction Type
+#'
+#' Matches the user-supplied `type` argument to the prediction types
+#' offered for Fine--Gray subdistribution-hazard models. Fine--Gray uses a
+#' weighted Cox fit, so relative linear predictors and risk scores use the
+#' native `coxph` interface; absolute cumulative-incidence curves are
+#' obtained from [survival::survfit()] on the retained weighted Cox fit.
+#'
+#' @param type User-supplied character scalar.
+#'
+#' @return Character scalar with the canonical prediction type.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_match_finegray_prediction_type <- function(type) {
   choices <- c("lp", "risk", "response", "terms", "contrasts")
   tryCatch(
@@ -1622,11 +1711,34 @@ mfp2_match_finegray_prediction_type <- function(type) {
 }
 
 
-# Compute Fine--Gray cumulative incidence from the retained weighted Cox model.
-# survival::survfit.coxph() evaluates the fitted subdistribution survival curve;
-# one minus that curve is the CIF for the selected event type.  Evaluate one
-# prediction row at a time so baseline strata and formula offsets are resolved by
-# the native survival code without reshaping multi-curve survfit objects.
+#' Fine--Gray Cumulative-Incidence Predictions
+#'
+#' Computes Fine--Gray cumulative incidence at requested times from the
+#' retained weighted Cox model. [survival::survfit.coxph()] evaluates the
+#' fitted subdistribution survival curve; one minus that curve is the
+#' cumulative incidence function (CIF) for the selected event type. The
+#' function evaluates one CIF curve per prediction row, aligns the
+#' returned matrix so that rows correspond to prediction rows and columns
+#' to requested time points, and applies the requested confidence-interval
+#' construction when standard errors are requested.
+#'
+#' @param object An `"mfp2"` Fine--Gray model object.
+#' @param newdata Optional new data frame for prediction.
+#' @param times Numeric vector of prediction time points.
+#' @param ... Additional named arguments controlling standard errors and
+#'   the confidence-interval construction.
+#'
+#' @return A numeric matrix of CIF values with rows aligned to the
+#'   prediction rows and columns aligned to `times`. When standard errors
+#'   are requested, a list carrying `cif`, `se`, `lower`, and `upper`.
+#'
+#' @keywords internal
+#' @noRd
+#'
+#' @details
+#' Predictions are evaluated one row at a time so that baseline strata and
+#' formula offsets are resolved by the native `survival` code without
+#' having to reshape multi-curve `survfit` objects.
 mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
                                       se.fit = FALSE) {
   if (!inherits(object, "coxph")) {
@@ -2065,10 +2177,23 @@ prediction_term_to_columns <- function(object, terms = NULL) {
   lookup
 }
 
-# Resolve transformed design columns to the exact coefficient names stored by
-# the final formula-based fit. The map is created once in fit_mfp() from the
-# transformed matrix and fitted coefficient order; prediction therefore does
-# not need to quote, unquote, sanitize, or otherwise guess model column names.
+#' Resolve Transformed Design Columns to Fitted Coefficient Names
+#'
+#' Maps a vector of transformed design-column names to the exact
+#' coefficient names stored by the final formula-based fit. The
+#' authoritative map is created once by `fit_mfp()` from the transformed
+#' matrix and the fitted coefficient order, so prediction never has to
+#' quote, unquote, sanitise, or otherwise guess model column names.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param transformed_columns Character vector of transformed
+#'   design-column names.
+#'
+#' @return Character vector of fitted coefficient names, in the same order
+#'   as `transformed_columns`.
+#'
+#' @keywords internal
+#' @noRd
 prediction_model_column_names <- function(object, transformed_columns) {
   column_map <- object$transformed_to_model_columns
 
@@ -2540,6 +2665,22 @@ prediction_formula_source_name <- function(term_label) {
 }
 
 
+#' Map Formula-Term Labels to Prediction Names for a Fitted `mfp2` Model
+#'
+#' Returns the map from formula-term labels to the prediction names used
+#' internally by [predict.mfp2()]. The map is stored on a formula-based
+#' fit so that prediction can look up terms by the same identifiers users
+#' see in the printed model, without re-parsing formula labels at
+#' prediction time.
+#'
+#' @param object An `"mfp2"` model object fitted through the formula
+#'   interface.
+#'
+#' @return A named character vector: names are formula-term labels,
+#'   values are internal prediction names.
+#'
+#' @keywords internal
+#' @noRd
 prediction_formula_term_map <- function(object) {
   map <- object$formula_prediction_term_names
   labels <- attr(object$formula_terms, "term.labels")

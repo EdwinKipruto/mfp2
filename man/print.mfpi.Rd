@@ -9,9 +9,10 @@
 \arguments{
 \item{x}{An object of class \code{"mfpi"}, as returned by \code{mfpi()}.}
 
-\item{digits}{Optional non-negative integer controlling the number of digits
-used when printing numeric output. If \code{NULL}, \code{x$digits} is used
-when available; otherwise 3 is used.}
+\item{digits}{Optional non-negative integer controlling the number of decimal
+places used when printing numeric output other than FP powers and degrees
+of freedom. If \code{NULL}, \code{x$digits} is used when available;
+otherwise 3 is used.}
 
 \item{...}{Currently unused.}
 }
@@ -42,7 +43,9 @@ The final interaction summary reports selection explicitly as \code{Yes} or
 multiplicity adjustment it prints one \code{p-value} column; otherwise it
 prints \code{p_raw} and \code{p_adjusted}.
 
-Numeric values are rounded for display only. The underlying metrics stored in
+Numeric values use fixed decimal places for display only, except FP powers
+and degrees of freedom, which retain their natural notation. The underlying
+metrics stored in
 the \code{"mfpi"} object are not modified, and model-selection decisions are
 based on the unrounded values computed during fitting.
 }

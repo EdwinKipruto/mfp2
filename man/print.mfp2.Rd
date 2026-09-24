@@ -28,8 +28,8 @@ fewer than 11 outcome levels) and suppressed otherwise. Pass \code{TRUE}
 or \code{FALSE} to override the default for any model.}
 
 \item{...}{Further print arguments. The \code{digits} argument, when
-supplied, is used to format the final coefficient table and model-fit
-values.}
+supplied, controls decimal places in numeric output other than
+fractional-polynomial powers and degrees of freedom. The default is 3.}
 }
 \value{
 Invisibly returns \code{x}.

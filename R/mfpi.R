@@ -8,10 +8,9 @@
 #' The function supports the likelihood GLMs accepted by `mfp2()`, negative
 #' binomial, multinomial logistic, proportional-odds ordinal, Cox, and
 #' parametric `survreg` models. Nonlinear relationships can be modelled with
-#' fractional polynomials. Fine--Gray models are available through [mfp2()]
-#' but are not supported by `mfpi()` because its interaction selection relies
-#' on likelihood comparisons that are not valid for the robust weighted
-#' pseudo-likelihood fit.
+#' fractional polynomials. Fine--Gray models are not supported by `mfpi()`
+#' because its interaction selection relies on likelihood comparisons that are
+#' not valid for the robust weighted pseudo-likelihood fit.
 #'
 #' @details
 #' `mfpi()` evaluates each variable in `interaction_vars` separately. For every
@@ -493,7 +492,7 @@
 #'   `"negbin"` for a negative-binomial model, `"multinomial"` or
 #'   [multinomial_family()], `"ordinal"` or [ordinal_family()], `"cox"`, or
 #'   [survreg_family()] for the corresponding model. Fine--Gray models are not
-#'   supported by `mfpi()`; use [mfp2()] with [finegray_family()] instead.
+#'   supported by `mfpi()`.
 #'
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
@@ -670,8 +669,9 @@
 #' @param verbose A single logical value indicating whether progress information
 #'   is printed. The default is `TRUE`.
 #'
-#' @param digits A positive integer controlling the number of significant digits
-#'   used in printed interaction results. The default is 3.
+#' @param digits A positive integer controlling the number of decimal places
+#'   used in printed interaction results, except for fractional-polynomial
+#'   powers and degrees of freedom. The default is 3.
 #'
 #' @param ... Additional arguments are not currently supported and produce an
 #'   error.
@@ -865,7 +865,7 @@
 #'
 #' @seealso [mfp2()], [fp()], [coef.mfpi()], [vcov.mfpi()], [predict.mfpi()],
 #'   [plot.mfpi()], [summary.mfpi()], [print.mfpi()], [multinomial_family()],
-#'   [ordinal_family()], [survreg_family()], [finegray_family()]
+#'   [ordinal_family()], [survreg_family()]
 #'
 #' @export
 mfpi <- function(x, ...) {
@@ -873,15 +873,25 @@ mfpi <- function(x, ...) {
 }
 
 
-# Fine--Gray coefficients are estimated from a weighted partial
-# pseudo-likelihood with clustered robust covariance. MFPI's model-selection
-# tests require ordinary likelihood comparisons, so reject this family before
-# any response preparation or candidate fitting begins.
+#' Reject Fine--Gray Responses for MFPI Analyses
+#'
+#' Fine--Gray subdistribution-hazard coefficients are estimated from a
+#' weighted partial pseudo-likelihood with a clustered robust covariance.
+#' The likelihood-ratio comparisons used by MFPI require an ordinary
+#' likelihood, so this family is rejected before any response preparation or
+#' candidate fitting begins.
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return Invisibly returns `TRUE` when the family is acceptable. Raises an
+#'   error naming Fine--Gray when it is not.
+#'
+#' @keywords internal
+#' @noRd
 validate_mfpi_family <- function(family_string) {
   if (identical(family_string, "finegray")) {
     stop(
-      "! `mfpi()` does not support Fine--Gray models.\n",
-      "i Use `mfp2(..., family = finegray_family())` to fit a Fine--Gray model.",
+      "! `mfpi()` does not support Fine--Gray models.",
       call. = FALSE
     )
   }
@@ -2103,7 +2113,6 @@ mfpi.default <- function(
       # row restriction while preserving row alignment.
       strata_keep <- droplevels(strata_keep[subset])
     }
-    if (!is.null(id_keep)) id_keep <- id_keep[subset]
   }
 
   # zero_vars applies the interaction function only to x > 0. Validate this

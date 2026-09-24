@@ -334,7 +334,25 @@ print.mfpi_vcov_list <- function(x, ...) {
 # Internal helpers -------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-# Validate shared coef()/vcov() inputs before extracting any stored model.
+#' Validate Shared Inputs to MFPI `coef()`/`vcov()` Accessors
+#'
+#' Validates the arguments shared by the MFPI `coef()` and `vcov()`
+#' accessors before extracting any stored fit, so that the caller's error
+#' messages consistently identify the offending argument regardless of
+#' which downstream helper eventually consumes it.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming a term, or `NULL` for all.
+#' @param model Character scalar, `"best"` or `"all"`.
+#' @param dots List of trailing arguments captured by the accessor.
+#' @param method Character scalar naming the calling accessor (`"coef"` or
+#'   `"vcov"`), used in error messages.
+#'
+#' @return Invisibly returns `TRUE` on success; raises a helpful error
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_check_accessor_input <- function(object, term, model, dots, method) {
   if (!inherits(object, "mfpi")) {
     stop("`object` must be an object of class \"mfpi\".", call. = FALSE)
@@ -358,7 +376,22 @@ mfpi_check_accessor_input <- function(object, term, model, dots, method) {
 }
 
 
-# Resolve selected or all stored term-specific MFPI winner fits.
+#' Resolve Stored MFPI Winner Fits for Accessors
+#'
+#' Returns either the winning term-specific fit or every stored candidate
+#' fit for the requested term(s). This is the shared entry point used by
+#' the `coef()`, `vcov()`, and `print()` methods for `"mfpi"` objects.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character vector of term names, or `NULL` for every stored
+#'   term.
+#' @param model Character scalar, one of `"best"` (winning fit only) or
+#'   `"all"` (every candidate fit).
+#'
+#' @return A named list of stored fit lists, keyed by term name.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_get_accessor_fits <- function(object, term = NULL, model = c("best", "all")) {
   model <- match.arg(model)
 
@@ -426,7 +459,23 @@ mfpi_get_accessor_fits <- function(object, term = NULL, model = c("best", "all")
 }
 
 
-# Build all coefficient labels and print metadata for one term-specific fit.
+#' Coefficient Labels and Print Metadata for One MFPI Term
+#'
+#' Assembles the complete set of coefficient labels, per-column display
+#' names, group labels, and adjustment-coefficient metadata that the MFPI
+#' `coef()` and `print()` methods need to render one term-specific fit.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming the term.
+#' @param fit_result Stored fit list for `term` from
+#'   `mfpi_get_accessor_fits()`.
+#'
+#' @return A named list carrying the fitted coefficient names,
+#'   user-facing display names, per-group labels, adjustment metadata, and
+#'   any auxiliary tables consumed by the print helpers.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_coefficient_info <- function(object, term, fit_result) {
   # Multinomial interaction models carry a per-logit coefficient matrix rather
   # than a flat named vector, so coefficient information is assembled on a
@@ -649,11 +698,24 @@ mfpi_coefficient_info <- function(object, term, fit_result) {
 }
 
 
-# Readable label for each shared model column of a multinomial interaction
-# design (intercept, group-specific FP terms, group-indicator dummies, and
-# adjustment columns). Labels mirror the single-response path but omit the
-# per-logit prefix, which is added by the caller. Returns a named character
-# vector keyed by model-column name.
+#' Readable Labels for Shared Multinomial Interaction Columns
+#'
+#' Builds readable per-column labels for the shared model columns of a
+#' multinomial MFPI interaction design (intercept, group-specific FP terms,
+#' group-indicator dummies, and adjustment columns). Labels mirror the
+#' single-response path but omit the per-logit prefix, which the caller
+#' prepends when a logit-major table is assembled.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming the interaction term.
+#' @param fit_result Stored fit list for `term`.
+#' @param interaction_model Fitted multinomial interaction model.
+#' @param model_cols Character vector of shared model-column names.
+#'
+#' @return Named character vector of labels keyed by model-column name.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_multinomial_column_labels <- function(object, term, fit_result,
                                            interaction_model, model_cols) {
   interaction_spec <- mfpi_get_interaction_spec(object, term)
@@ -744,10 +806,25 @@ mfpi_multinomial_column_labels <- function(object, term, fit_result,
 
 
 # Coefficient information for a multinomial MFPI interaction model. Produces a
-# flat coefficient vector and matching covariance-aligned raw names in the same
-# class-major order used by vcov.multinom(), so coef.mfpi()/vcov.mfpi() reuse
-# the shared extraction code unchanged. Display names and a per-logit table
-# carry the non-reference class of each coefficient.
+#' Multinomial Coefficient Labels and Print Metadata for One MFPI Term
+#'
+#' Multinomial variant of `mfpi_coefficient_info()`. Returns a flat
+#' coefficient vector and matching covariance-aligned raw names in the same
+#' class-major order used by [nnet::vcov.multinom()], so [coef.mfpi()] and
+#' [vcov.mfpi()] can reuse the shared extraction code unchanged. Display
+#' names and a per-logit table carry the non-reference class of each
+#' coefficient.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming the term.
+#' @param fit_result Stored fit list for `term`.
+#'
+#' @return A named list carrying coefficient names, display names, per-logit
+#'   labels, and any adjustment metadata consumed by the multinomial print
+#'   helpers.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
   interaction_model <- fit_result$test_results$interaction_model
   if (is.null(interaction_model)) {
@@ -938,10 +1015,22 @@ mfpi_multinomial_coefficient_info <- function(object, term, fit_result) {
 }
 
 
-# Build readable labels for adjustment coefficients carried into an interaction
-# model. The interaction fit stores transformed source-column names, while the
-# adjustment mfp2 object stores the functional-form metadata needed to turn
-# those names back into variables or FP expressions.
+#' Readable Labels for Adjustment Coefficients
+#'
+#' Builds readable labels for adjustment coefficients carried from the
+#' Step 1 MFP model into one term-specific MFPI interaction model. The
+#' interaction fit stores transformed source-column names, and the
+#' adjustment `mfp2` object stores the functional-form metadata needed to
+#' turn those names back into variable names or FP expressions.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param ... Additional named arguments carrying the fit result and the
+#'   adjustment-model reference.
+#'
+#' @return Named character vector of adjustment-coefficient labels.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_adjustment_coefficient_labels <- function(object,
                                                interaction_model,
                                                coefficient_names) {
@@ -954,8 +1043,21 @@ mfpi_adjustment_coefficient_labels <- function(object,
 }
 
 
-# Build the variable, basis, and centering metadata for adjustment coefficients
-# carried from the Step 1 MFP model into one term-specific interaction model.
+#' Adjustment-Coefficient Metadata for One MFPI Interaction Model
+#'
+#' Builds the variable, basis, and centering metadata for adjustment
+#' coefficients carried from the Step 1 MFP model into one term-specific
+#' MFPI interaction model.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param ... Additional named arguments carrying the fit result and the
+#'   adjustment-model reference.
+#'
+#' @return A data frame with columns describing each adjustment
+#'   coefficient's source variable, basis, and centering constant.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_adjustment_coefficient_metadata <- function(object,
                                                  interaction_model,
                                                  coefficient_names) {
@@ -1003,8 +1105,22 @@ mfpi_adjustment_coefficient_metadata <- function(object,
 }
 
 
-# Recover the stored MFPI centering constants for a subset of group-specific
-# design columns. Older or uncentered fits legitimately return missing values.
+#' Recover Stored MFPI Centering Constants for Interaction Columns
+#'
+#' Returns the stored MFPI centering constants for a subset of the
+#' group-specific interaction design columns. Older or uncentered fits
+#' legitimately return `NA` for missing constants; callers are expected to
+#' tolerate that.
+#'
+#' @param fit_result Stored fit list for the interaction term.
+#' @param ... Additional named arguments identifying the subset of columns
+#'   to look up.
+#'
+#' @return Named numeric vector of centering constants, with `NA` for
+#'   columns whose constant was not stored.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_interaction_center_values <- function(fit_result,
                                            source_names,
                                            all_source_names) {
@@ -1025,7 +1141,22 @@ mfpi_interaction_center_values <- function(fit_result,
 }
 
 
-# Map source design-column names to fitted coefficient names.
+#' Map Source Design-Column Names to Fitted Coefficient Names
+#'
+#' Resolves the mapping from source design-column names (as stored on the
+#' MFPI fit) to the fitted coefficient names actually used by the
+#' interaction model. Handles the naming conventions of both single-response
+#' and multinomial fitters.
+#'
+#' @param interaction_model Fitted interaction model.
+#' @param ... Additional named arguments carrying the source column names
+#'   to resolve.
+#'
+#' @return Named character vector mapping source names to fitted coefficient
+#'   names.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_resolve_fitted_coefficient_names <- function(interaction_model,
                                                   source_names,
                                                   coefficient_names,
@@ -1060,14 +1191,39 @@ mfpi_resolve_fitted_coefficient_names <- function(interaction_model,
 }
 
 
-# Convert one selected FP power vector into readable transformation labels.
+#' Readable FP Transformation Labels for One MFPI Term
+#'
+#' Converts one selected FP power vector for a term into the readable
+#' transformation labels used in the printed coefficient block.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming the term.
+#' @param powers Numeric vector of selected FP powers.
+#'
+#' @return Character vector of transformation labels, one per power.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_fp_transformation_labels <- function(object, term, powers) {
   shift <- mfpi_named_scalar(object$shift, term, default = 0)
   mfp2_fp_basis_labels(term = term, powers = powers, shift = shift)
 }
 
 
-# Resolve the user-facing interaction form for one term.
+#' User-Facing Interaction Form Label for One MFPI Term
+#'
+#' Resolves the user-facing interaction form label for one MFPI term (for
+#' example the selected FP1 or FP2 powers per group), shown in the header
+#' of the printed coefficient block.
+#'
+#' @param object An `"mfpi"` model object.
+#' @param term Character scalar naming the term.
+#' @param fit_result Stored fit list for `term`.
+#'
+#' @return Character scalar with the form label.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_accessor_interaction_form <- function(object, term, fit_result) {
   form <- NULL
   if (!is.null(object$interaction_forms) && term %in% names(object$interaction_forms)) {
@@ -1093,7 +1249,20 @@ mfpi_accessor_interaction_form <- function(object, term, fit_result) {
 }
 
 
-# Make user-facing coefficient labels unique without changing ordinary labels.
+#' Make User-Facing Coefficient Labels Unique
+#'
+#' Ensures the user-facing coefficient labels are unique without changing
+#' any label that is already distinct. Duplicated labels receive a numeric
+#' `.1`, `.2`, ... suffix in the order they occur, so the printed table
+#' never contains ambiguous row identifiers.
+#'
+#' @param x Character vector of candidate display labels.
+#'
+#' @return Character vector of the same length as `x`, guaranteed to be
+#'   unique.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_make_unique_display_names <- function(x) {
   if (!anyDuplicated(x)) return(x)
 
@@ -1109,7 +1278,18 @@ mfpi_make_unique_display_names <- function(x) {
 }
 
 
-# Validate display precision used by custom coefficient print methods.
+#' Validate the `digits` Argument Used by MFPI Print Methods
+#'
+#' Validates the display-precision argument used by the custom MFPI
+#' coefficient print methods, so that a bad value stops with a clear
+#' error rather than propagating a bad `format()` call.
+#'
+#' @param digits Value supplied by the caller.
+#'
+#' @return Integer scalar with the validated digit count.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_validate_accessor_digits <- function(digits) {
   if (!is.numeric(digits) || length(digits) != 1L || is.na(digits) ||
       !is.finite(digits) || digits < 0L || digits != floor(digits)) {
@@ -1119,7 +1299,17 @@ mfpi_validate_accessor_digits <- function(digits) {
 }
 
 
-# Format one FP power vector for the user-facing coefficient display.
+#' Format One FP Power Vector for the Coefficient Display
+#'
+#' Formats a single selected FP power vector as a compact string for the
+#' user-facing coefficient display.
+#'
+#' @param powers Numeric vector of selected FP powers.
+#'
+#' @return Character scalar such as `"(0, 3)"`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_format_power_vector <- function(powers) {
   vals <- vapply(
     as.numeric(powers),
@@ -1130,7 +1320,19 @@ mfpi_format_power_vector <- function(powers) {
 }
 
 
-# Print selected interaction powers for every fitted group level.
+#' Print Selected MFPI Interaction Powers Per Group
+#'
+#' Prints the small per-group table of selected FP powers shown in the
+#' header of an MFPI coefficient block. Returns early when the table is
+#' empty so callers do not need to guard the call.
+#'
+#' @param power_table Data frame with one row per fitted group level and
+#'   columns for the selected FP powers.
+#'
+#' @return Invisibly returns `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_interaction_powers <- function(power_table) {
   if (is.null(power_table) || nrow(power_table) == 0L) return(invisible(NULL))
 
@@ -1147,7 +1349,21 @@ mfpi_print_interaction_powers <- function(power_table) {
 }
 
 
-# Print one term-specific coefficient block.
+#' Print One Term-Specific MFPI Coefficient Block
+#'
+#' Prints a single term-specific coefficient block for an MFPI fit,
+#' dispatching to `mfpi_print_multinomial_coef_block()` when the fit is
+#' multinomial and otherwise formatting the shared single-response layout.
+#'
+#' @param info Coefficient-info list from `mfpi_coefficient_info()` or
+#'   `mfpi_multinomial_coefficient_info()`.
+#' @param digits Integer scalar controlling display precision.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of
+#'   printing.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_coef_block <- function(info, digits) {
   if (isTRUE(info$multinomial)) {
     return(mfpi_print_multinomial_coef_block(info, digits = digits))
@@ -1196,9 +1412,22 @@ mfpi_print_coef_block <- function(info, digits) {
 }
 
 
-# Print block for a multinomial MFPI interaction model. Coefficients are grouped
-# by non-reference logit; each block lists that logit's coefficients against the
-# common reference class.
+#' Print MFPI Coefficient Block for a Multinomial Interaction Model
+#'
+#' Prints the coefficient block for a multinomial MFPI interaction model.
+#' Coefficients are grouped by non-reference logit; each block lists that
+#' logit's coefficients against the common reference class named in the
+#' header.
+#'
+#' @param info Multinomial coefficient-info list from
+#'   `mfpi_multinomial_coefficient_info()`.
+#' @param digits Integer scalar controlling display precision.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of
+#'   printing.
+#'
+#' @keywords internal
+#' @noRd
 mfpi_print_multinomial_coef_block <- function(info, digits) {
   cat("Interaction: ", info$term, "\n", sep = "")
   cat("Group variable: ", info$group_var, "\n", sep = "")

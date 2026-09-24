@@ -147,9 +147,21 @@ plot.mfp2 <- function(x,
   )
 }
 
-# Identify fitted terms that should be displayed as two-level effects rather
-# than as continuous curves. Formula factors with two levels are binary;
-# singleton numeric terms are checked on the fitted raw design values.
+#' Is a Model Term Binary for Plotting Purposes?
+#'
+#' Identifies fitted terms that should be displayed as two-level effects
+#' rather than as continuous curves. A formula factor with exactly two levels
+#' is treated as binary; a singleton numeric term is treated as binary when
+#' its fitted raw design values contain only two distinct non-missing values.
+#'
+#' @param model An `"mfp2"` model object.
+#' @param term Character scalar naming a model term.
+#'
+#' @return `TRUE` when the term should be displayed as a two-level effect,
+#'   `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_plot_term_is_binary <- function(model, term) {
   factor_info <- if (!is.null(model$formula_factor_info)) {
     model$formula_factor_info[[term]]
@@ -181,17 +193,48 @@ mfp2_plot_term_is_binary <- function(model, term) {
   length(unique(values)) == 2L
 }
 
-# Formula factors are discrete effects regardless of how many fitted levels
-# they contain. Keep this check separate from binary detection so multi-level
-# factors are never sent through the continuous line/ribbon plotting path.
+#' Is a Model Term a Formula-Factor Effect for Plotting?
+#'
+#' Reports whether a term was created from a formula factor and should
+#' therefore be plotted with discrete-level geoms regardless of the number of
+#' fitted levels. Kept separate from binary detection so that factors with
+#' three or more levels are never routed through the continuous line/ribbon
+#' plotting path.
+#'
+#' @param model An `"mfp2"` model object.
+#' @param term Character scalar naming a model term.
+#'
+#' @return `TRUE` when the term originated from a formula factor, `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_plot_term_is_factor <- function(model, term) {
   !is.null(model$formula_factor_info) &&
     !is.null(model$formula_factor_info[[term]])
 }
 
-# Re-evaluate one discrete term on its fitted observations. This keeps the general
-# predict.mfp2() API unchanged while ensuring that plot(..., terms_seq =
-# "equidistant") does not display artificial intermediate binary values.
+#' Predictions on the Observed Levels of a Discrete Term
+#'
+#' Re-evaluates one discrete model term on its fitted observations. This
+#' preserves the general [predict.mfp2()] API while ensuring that
+#' `plot(..., terms_seq = "equidistant")` does not display artificial
+#' intermediate binary or factor-level values.
+#'
+#' @param model An `"mfp2"` model object.
+#' @param term Character scalar naming the term to be plotted.
+#' @param type Prediction type passed to [predict.mfp2()], e.g. `"terms"` or
+#'   `"contrasts"`.
+#' @param ref Named list of reference values used by
+#'   `predict(type = "contrasts")`; may be `NULL`.
+#' @param alpha Numeric confidence level for prediction intervals passed to
+#'   [predict.mfp2()].
+#'
+#' @return A data frame of predictions on the fitted observations for
+#'   `term`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
   term_ref <- NULL
   if (identical(type, "contrasts") &&
@@ -213,11 +256,26 @@ mfp2_plot_binary_prediction <- function(model, term, type, ref, alpha) {
   out[[term]]
 }
 
-# Collapse repeated observed-value predictions to one fitted estimate per level
-# and preserve fitted factor-level order for discrete axes, including factors
-# with more than two levels. For a SAZ
-# binary-only term, translate the internal indicator I(x == 0) into semantic
-# labels on the original covariate scale: "x = 0" and "x > 0".
+#' Prepare Prediction Data for a Discrete-Term Plot
+#'
+#' Collapses repeated observed-value predictions to one fitted estimate per
+#' level, preserving the fitted factor-level order for discrete axes,
+#' including factors with more than two levels. For a spike-at-zero
+#' binary-only term, translates the internal indicator `I(x == 0)` into
+#' semantic labels on the original covariate scale (`"x = 0"` and
+#' `"x > 0"`).
+#'
+#' @param model An `"mfp2"` model object.
+#' @param term Character scalar naming the term to be plotted.
+#' @param df Data frame of per-observation predictions for `term`.
+#' @param residual_df Optional data frame of partial residuals matched to the
+#'   original observations, used to overlay per-level residuals.
+#'
+#' @return A data frame with one row per fitted level of `term`, in fitted
+#'   order, plus optional residual annotations.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
   binary_df <- df[!duplicated(df$variable), , drop = FALSE]
 
@@ -312,11 +370,24 @@ mfp2_plot_prepare_binary_data <- function(model, term, df, residual_df = NULL) {
 }
 
 
-# Attach fitted-model residuals to the observed-value prediction frame for
-# every requested term. `predict(..., terms_seq = "data")` constructs these
-# frames from `model$x_original`, so fitted-observation order is the governing
-# invariant. Validate it explicitly to prevent R from recycling a shorter
-# residual vector when its length happens to divide the number of rows.
+#' Attach Model Residuals to an Observed-Value Prediction Frame
+#'
+#' Attaches fitted-model residuals to the observed-value prediction frame
+#' produced by `predict(model, terms_seq = "data")` for each requested term.
+#' Those predictions are constructed from `model$x_original`, so
+#' fitted-observation order is the governing invariant. Row-count agreement
+#' is validated explicitly to prevent R from recycling a shorter residual
+#' vector when its length happens to divide the number of rows.
+#'
+#' @param pred_data Data frame of observed-value predictions for one term.
+#' @param resid Numeric vector of fitted-model residuals aligned with the
+#'   original fitting rows.
+#' @param model An `"mfp2"` model object.
+#'
+#' @return `pred_data` with a `residual` column appended.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_plot_attach_residuals <- function(pred_data, resid, model) {
   if (is.null(model$x_original) || is.null(nrow(model$x_original))) {
     stop(
@@ -413,10 +484,24 @@ mfp2_plot_attach_residuals <- function(pred_data, resid, model) {
   pred_data
 }
 
-# Internal implementation shared by plot.mfp2() and fracplot().
-#
-# Keeping the plotting logic here prevents the preferred plot() method from
-# passing through the deprecated fracplot() wrapper and emitting a warning.
+#' Internal Implementation for `plot.mfp2()` and `fracplot()`
+#'
+#' Shared implementation of the diagnostic-plot output built by both
+#' [plot.mfp2()] and the deprecated [fracplot()] wrapper. Keeping the
+#' plotting logic here allows the preferred `plot()` method to run without
+#' passing through the deprecated wrapper and its deprecation warning.
+#'
+#' @param model An `"mfp2"` model object.
+#' @param terms Character vector of term names to plot, or `NULL` for all.
+#' @param partial_only Logical. If `TRUE`, plot only partial residuals
+#'   without the fitted curve.
+#' @param ... Additional graphical parameters forwarded to the plotting
+#'   layer.
+#'
+#' @return A list of `ggplot` objects, one per plotted term.
+#'
+#' @keywords internal
+#' @noRd
 plot_mfp2_impl <- function(model,
                            terms = NULL,
                            partial_only = FALSE,

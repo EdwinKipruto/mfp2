@@ -371,11 +371,14 @@
 #'   unique, non-missing, non-empty, and must not contain the backtick character.
 #'   Other
 #'   non-syntactic names, including spaces and hyphens, are supported.
-#' @param term_groups For `mfp2.default()`, an optional named list mapping a
-#'   conceptual term to one or more columns of `x`, for example
-#'   `list(race = c("raceB", "raceC"))`. Mapped columns are selected and tested
-#'   jointly and must be fixed linear terms (`df = 1`) without ACD, zero,
-#'   catzero, or SAZ handling. Unmapped columns are treated as separate terms.
+#' @param term_groups For `mfp2.default()`, an optional named list that lets
+#'   you treat several columns of `x` as one term, typically the dummy columns
+#'   of a factor. For example, `list(race = c("raceB", "raceC"))` groups
+#'   `raceB` and `raceC` under the name `race`; they are then jointly selected
+#'   and jointly tested rather than considered as different variables. Grouped
+#'   columns must be fixed linear terms (`df = 1`) and cannot use ACD, zero,
+#'   catzero, or SAZ handling. Any column of `x` that does not appear in
+#'   `term_groups` is handled on its own as a single-column term.
 #' @param y Response for `mfp2.default()`. Gaussian models require a finite
 #'   numeric vector; Gamma and inverse-Gaussian responses must be finite and
 #'   strictly positive; Poisson and negative-binomial models require finite
@@ -481,12 +484,14 @@
 #'   models, [survreg_family()] for parametric survival models, or
 #'   [finegray_family()] for Fine--Gray models.
 #'   Default `"gaussian"`.
-#' @param fitter Fitting method for repeated GLM candidate models. `"base"`
-#'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
-#'   `fastglm` package and may be faster during the FP search. Ordinary GLMs
-#'   retry with `"base"` and issue a warning if `fastglm` is unavailable or a
-#'   fit fails. Survival models are unaffected. Negative-binomial models select
-#'   `"fastglm"` automatically and stop early if that backend is unavailable.
+#' @param fitter Backend used to fit the many candidate GLMs during the FP
+#'   search. `"base"` (default) uses `stats::glm()`. `"fastglm"` uses the
+#'   optional `fastglm` package, which can be considerably faster on large
+#'   problems. If `"fastglm"` is chosen but the package is not installed, or
+#'   a candidate fit fails, ordinary GLMs fall back to `"base"` with a
+#'   warning. Negative-binomial models always use `"fastglm"` and stop with
+#'   an error if the package is unavailable. Survival, multinomial, and
+#'   ordinal models ignore this argument, as they use their own fitters.
 #' @param criterion Selection criterion. One of `"pvalue"` (default), `"aic"`,
 #'   or `"bic"`. With `"pvalue"`, variable inclusion is controlled by `select`,
 #'   while functional-form comparisons and SAZ Stage-2 component-removal tests
@@ -4134,6 +4139,22 @@ coef.mfp2 <- function(object, ...) {
 }
 
 
+#' Print the Coefficient Block for a Multinomial `mfp2` Model
+#'
+#' Prints the fitted multinomial coefficient matrix carried by an `"mfp2"`
+#' object. Rows correspond to non-reference outcomes and columns to design
+#' terms. When the coefficient matrix is absent or empty, `(none)` is
+#' printed so the print method never silently reports nothing.
+#'
+#' @param object An `"mfp2"` model object with a multinomial family.
+#' @param digits Integer scalar controlling the number of digits used when
+#'   formatting coefficient values. Default `3`.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of printing
+#'   to the console.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
   coefficients <- object$mfp2_coefficient_matrix
   if (!is.matrix(coefficients) || length(coefficients) == 0L) {
@@ -4203,13 +4224,20 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
     rows[[i]] <- block
   }
   display <- do.call(rbind, rows)
+  if (show_center) {
+    display$Center <- format_print_decimal(
+      display$Center,
+      digits,
+      na_string = ""
+    )
+  }
+  display <- format_model_print_table(display, digits)
   print.data.frame(
     display,
     row.names = FALSE,
     right = FALSE,
     quote = FALSE,
-    na.print = "",
-    digits = digits
+    na.print = ""
   )
   invisible(display)
 }
@@ -4305,8 +4333,8 @@ mfp2_print_multinomial_coefficients <- function(object, digits = 3L) {
 #'   Detailed Settings table, and the model-df explanation below the Model Fit
 #'   table. Default is \code{TRUE}.
 #' @param ... Further print arguments. The \code{digits} argument, when
-#'   supplied, is used to format the final coefficient table and model-fit
-#'   values.
+#'   supplied, controls decimal places in numeric output other than
+#'   fractional-polynomial powers and degrees of freedom. The default is 3.
 #'
 #' @return Invisibly returns \code{x}.
 #'
@@ -4336,7 +4364,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   validate_logical_vector(notes, "notes", allowed_lengths = 1L)
 
   if (is.null(digits)) {
-    digits <- max(3L, getOption("digits") - 3L)
+    digits <- 3L
   }
 
   output_width <- 78L
@@ -4730,7 +4758,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   print_section_heading("Covariate Preprocessing")
 
   if (!is.null(x$transformations)) {
-    print.data.frame(x$transformations, right = FALSE)
+    transformation_display <- format_model_print_table(
+      x$transformations,
+      digits
+    )
+    print.data.frame(transformation_display, right = FALSE)
   } else {
     cat("(preprocessing information unavailable)\n")
   }
@@ -4892,6 +4924,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     if ("power2" %in% names(fp_terms)) detailed_table[["power2"]] <- fp_terms[["power2"]]
 
     detailed_table <- sort_selected_first(detailed_table, selected_status)
+    detailed_table <- format_model_print_table(detailed_table, digits)
 
     print.data.frame(detailed_table, right = FALSE)
     cat("\n")
@@ -5175,16 +5208,13 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     if (!is.null(x$centers)) {
       # Center is numeric while the table is assembled. Convert it to display
       # text only at the print boundary: a missing center is not applicable and
-      # is left blank, an exact zero is shown as 0, and nonzero values use
-      # compact numeric formatting without trailing decimal zeroes.
+      # is left blank; actual centering constants use the common fixed-decimal
+      # display convention.
       format_center <- function(value) {
         if (length(value) != 1L || is.na(value)) {
           return("")
         }
-        if (identical(value, 0) || value == 0) {
-          return("0")
-        }
-        format(value, digits = digits, trim = TRUE)
+        format_print_decimal(value, digits)
       }
 
       display[["Center"]] <- vapply(
@@ -5195,13 +5225,14 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
       )
     }
 
+    display <- format_model_print_table(display, digits)
+
     print.data.frame(
       display,
       row.names = FALSE,
       right = FALSE,
       quote = FALSE,
-      na.print = "",
-      digits = digits
+      na.print = ""
     )
   } else {
     cat("(none)\n")

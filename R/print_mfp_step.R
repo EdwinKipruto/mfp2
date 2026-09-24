@@ -102,7 +102,25 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
   }
 }
 
-# Internal helper for constructing p-value selection output.
+#' Build the Printed Table for a P-Value MFP Selection Step
+#'
+#' Constructs the character matrix printed after one selection step under
+#' `criterion = "pvalue"`. Rows correspond to the FP candidate forms
+#' evaluated at that step (or the SAZ candidate models when `spike = TRUE`)
+#' and columns hold the deviance and p-value comparison against the current
+#' reference model.
+#'
+#' @param xi Character scalar naming the predictor being evaluated.
+#' @param fit Step-selection result from the MFP engine.
+#' @param criterion Character scalar; the active selection criterion,
+#'   passed for consistent labelling.
+#' @param spike Logical. If `TRUE`, format the output for a spike-at-zero
+#'   selection step; otherwise format for a standard MFP step.
+#'
+#' @return A character matrix containing the printed selection table.
+#'
+#' @keywords internal
+#' @noRd
 print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
   
   fpmax <- rownames(fit$metrics)[1]
@@ -142,7 +160,26 @@ print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
   return(mat)
 }
 
-# Internal helper for constructing AIC or BIC selection output.
+#' Build the Printed Table for an AIC/BIC MFP Selection Step
+#'
+#' Constructs the character matrix printed after one selection step under
+#' `criterion = "aic"` or `"bic"`. Rows correspond to the FP candidate
+#' forms evaluated at that step (or the SAZ candidate models when
+#' `spike = TRUE`) and the sole numeric column holds the requested
+#' information-criterion value.
+#'
+#' @param xi Character scalar naming the predictor being evaluated.
+#' @param fit Step-selection result from the MFP engine.
+#' @param criterion Character scalar; the active information criterion,
+#'   either `"aic"` or `"bic"`. Used both to select the metric column and to
+#'   label it in the printed output.
+#' @param spike Logical. If `TRUE`, format the output for a spike-at-zero
+#'   selection step; otherwise format for a standard MFP step.
+#'
+#' @return A character matrix containing the printed selection table.
+#'
+#' @keywords internal
+#' @noRd
 print_mfp_ic_step <- function(xi, fit, criterion, spike = FALSE) {
   
   if (spike){

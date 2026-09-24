@@ -40,6 +40,27 @@ test_that("inline interaction-power threshold is validated", {
 })
 
 
+test_that("model output uses fixed decimals except for df and FP powers", {
+  display <- format_model_print_table(
+    data.frame(
+      deviance = 10.1234,
+      pvalue = 0.01234,
+      p_raw = 0.00001,
+      df_int = 2,
+      power1 = -2,
+      check.names = FALSE
+    ),
+    digits = 3L
+  )
+
+  expect_identical(display$deviance, "10.123")
+  expect_identical(display$pvalue, "0.012")
+  expect_identical(display$p_raw, "<0.001")
+  expect_identical(display$df_int, 2)
+  expect_identical(display$power1, -2)
+})
+
+
 test_that("p-value Step 1 prints the cutoff, adjustment method, select, and alpha", {
   x <- make_mfpi_adjustment_object("pvalue")
   x$p_adjust_method <- "none"
@@ -83,7 +104,7 @@ test_that("p-value Step 1 prints the active adjustment method dynamically", {
 
   expect_match(
     printed,
-    " interaction selection : adjusted p-value < 0.01",
+    " interaction selection : adjusted p-value < 0.010",
     fixed = TRUE
   )
   expect_match(
@@ -112,7 +133,7 @@ test_that("AIC and BIC Step 1 use dynamic human-readable thresholds", {
     )
     expect_match(
       printed,
-      sprintf(" interaction selection : %s reduction > 3.5", criterion_label),
+      sprintf(" interaction selection : %s reduction > 3.500", criterion_label),
       fixed = TRUE
     )
     expect_false(grepl("min_improvement", printed, fixed = TRUE))
@@ -170,7 +191,7 @@ test_that("candidate output omits interaction powers shown in the detail table",
   expect_match(printed, "fp_powers_main", fixed = TRUE)
   expect_match(printed, "Grouping variable     : group", fixed = TRUE)
   expect_match(printed, "Selection criterion   : p-value", fixed = TRUE)
-  expect_match(printed, "Selection rule        : adjusted p-value < 0.05", fixed = TRUE)
+  expect_match(printed, "Selection rule        : adjusted p-value < 0.050", fixed = TRUE)
   expect_match(printed, "P-value adjustment    : holm", fixed = TRUE)
   expect_match(printed, "deviance_int", fixed = TRUE)
   expect_match(printed, "deviance_diff", fixed = TRUE)
@@ -191,9 +212,9 @@ test_that("Step 2 uses the raw p-value rule when adjustment is none", {
     collapse = "\n"
   )
 
-  expect_match(printed, "Selection rule        : p-value < 0.05", fixed = TRUE)
+  expect_match(printed, "Selection rule        : p-value < 0.050", fixed = TRUE)
   expect_match(printed, "P-value adjustment    : none", fixed = TRUE)
-  expect_false(grepl("adjusted p-value < 0.05", printed, fixed = TRUE))
+  expect_false(grepl("adjusted p-value < 0.050", printed, fixed = TRUE))
 })
 
 

@@ -360,33 +360,110 @@ ordinal_family <- function(link = c("logistic", "probit", "loglog",
 }
 
 
-# Family-behaviour predicates used by the existing MFP/MFPI engine. These are
-# intentionally about one behaviour at a time: Cox and Fine--Gray remain
-# separate families and share only the properties named by each helper.
+#' Does This Family Fit an Ordinary Intercept?
+#'
+#' Predicate used by the MFP/MFPI engine to decide whether the fitted-model
+#' design matrix should carry an intercept column. Cox and Fine--Gray models
+#' condition on the baseline hazard and therefore have no ordinary intercept;
+#' every other supported family does.
+#'
+#' @param family_string Character scalar giving the canonical family name, one
+#'   of `"gaussian"`, `"binomial"`, `"poisson"`, `"Gamma"`,
+#'   `"inverse.gaussian"`, `"negbin"`, `"multinomial"`, `"ordinal"`, `"cox"`,
+#'   `"survreg"`, or `"finegray"`.
+#'
+#' @return `TRUE` when the family fits an ordinary intercept and `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_has_intercept <- function(family_string) {
   !family_string %in% c("cox", "finegray")
 }
 
-# Repeated FP candidate matrices need an explicit all-ones column only when the
-# low-level fitter estimates an ordinary intercept from x. Ordinal models have
-# threshold intercepts, but rms::orm.fit() creates those internally.
+#' Does the Candidate-Model Design Matrix Need an Explicit Intercept Column?
+#'
+#' The repeated candidate-model fits used by MFP need an explicit all-ones
+#' intercept column only when the low-level fitter would otherwise estimate an
+#' ordinary intercept from `x`. Ordinal models handled by `rms::orm.fit()` are
+#' the exception: they estimate threshold intercepts internally, so no explicit
+#' column is required in the caller-supplied design matrix.
+#'
+#' @param family_string Canonical family name, as documented in
+#'   `mfp2_family_has_intercept()`.
+#'
+#' @return `TRUE` if the candidate-model design matrix requires an explicit
+#'   intercept column, `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_candidate_matrix_has_intercept <- function(family_string) {
   mfp2_family_has_intercept(family_string) &&
     !identical(family_string, "ordinal")
 }
 
+#' Does This Family Report an Event Count Rather Than a Continuous Deviance?
+#'
+#' Cox and Fine--Gray models are compared by event count when constructing
+#' summary tables, since they lack an ordinary log-likelihood based
+#' observation count.
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` for Cox and Fine--Gray models, `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_uses_event_count <- function(family_string) {
   family_string %in% c("cox", "finegray")
 }
 
+#' Is This Family a Proportional-Hazards Model?
+#'
+#' Cox and Fine--Gray subdistribution hazards are both fitted through the
+#' partial likelihood of a proportional-hazards structure.
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` for `"cox"` and `"finegray"`; `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_is_ph <- function(family_string) {
   family_string %in% c("cox", "finegray")
 }
 
+#' Is This a Survival Family?
+#'
+#' Survival families are Cox proportional hazards, parametric accelerated
+#' failure time via `survival::survreg()`, and Fine--Gray subdistribution
+#' hazards.
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` for `"cox"`, `"survreg"`, and `"finegray"`; `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_is_survival <- function(family_string) {
   family_string %in% c("cox", "survreg", "finegray")
 }
 
+#' Is This a Likelihood GLM Family?
+#'
+#' Predicate distinguishing the six standard likelihood GLM families accepted
+#' by `mfp2()` from multinomial, ordinal, and survival families that require
+#' specialised fitters.
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` when `family_string` is one of `"gaussian"`, `"binomial"`,
+#'   `"poisson"`, `"Gamma"`, `"inverse.gaussian"`, or `"negbin"`; `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_is_glm <- function(family_string) {
   family_string %in% c(
     "gaussian", "binomial", "poisson", "Gamma",
@@ -394,14 +471,46 @@ mfp2_family_is_glm <- function(family_string) {
   )
 }
 
+#' Is This the Multinomial Family?
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` when `family_string` is exactly `"multinomial"`, `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_is_multinomial <- function(family_string) {
   identical(family_string, "multinomial")
 }
 
+#' Is This the Ordinal (Proportional-Odds) Family?
+#'
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` when `family_string` is exactly `"ordinal"`, `FALSE`
+#'   otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_is_ordinal <- function(family_string) {
   identical(family_string, "ordinal")
 }
 
+#' Number of Logits Fitted by the Family
+#'
+#' Reports the number of logit predictors estimated by the family. Every
+#' non-multinomial family fits a single linear predictor. Multinomial models
+#' fit one predictor per non-reference class; that number is stored in the
+#' prepared-family metadata during model setup.
+#'
+#' @param family Prepared family object.
+#' @param family_string Canonical family name.
+#'
+#' @return Integer scalar giving the number of fitted logit predictors.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_family_n_logits <- function(family, family_string) {
   if (!mfp2_family_is_multinomial(family_string)) return(1L)
   if (is.null(family$prepared$n_logits)) {
@@ -410,6 +519,22 @@ mfp2_family_n_logits <- function(family, family_string) {
   as.integer(family$prepared$n_logits)
 }
 
+#' Number of Response Classes in a Multinomial Outcome
+#'
+#' Determines the number of response classes for a candidate multinomial
+#' outcome. Class-count matrices are counted directly by the number of
+#' columns; label vectors are counted by their number of unique levels after
+#' coercion to a factor. Values that do not match any accepted response shape
+#' return `NA_integer_`.
+#'
+#' @param y Response object: a class-count matrix, a factor, or a vector of
+#'   character, numeric, or logical class labels.
+#'
+#' @return Integer scalar with the number of response classes, or
+#'   `NA_integer_` for unsupported shapes.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_multinomial_n_classes <- function(y) {
   if (is.matrix(y)) return(ncol(y))
   if (is.factor(y)) return(nlevels(y))
@@ -420,10 +545,24 @@ mfp2_multinomial_n_classes <- function(y) {
   NA_integer_
 }
 
-# Match stats::logLik.glm()'s nuisance-parameter convention. Recent R family
-# objects can declare a fixed dispersion explicitly; older family objects omit
-# that field, in which case the three traditional dispersion families estimate
-# it from the fitted model.
+#' Does the Family Estimate a Dispersion Parameter?
+#'
+#' Matches the nuisance-parameter convention of [stats::logLik()] so that
+#' MFP information-criterion comparisons treat estimated dispersion as an
+#' additional parameter. Recent versions of R let a family declare a fixed
+#' dispersion explicitly; older family objects omit that field, in which case
+#' the three traditional dispersion families (Gaussian, Gamma, inverse
+#' Gaussian) estimate it from the fitted model.
+#'
+#' @param family Family object.
+#' @param family_string Canonical family name.
+#'
+#' @return `TRUE` when the family estimates a dispersion parameter from the
+#'   fitted model, `FALSE` otherwise. Non-GLM and negative-binomial families
+#'   always return `FALSE`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_glm_estimates_dispersion <- function(family, family_string) {
   if (!mfp2_family_is_glm(family_string) ||
       identical(family_string, "negbin")) {
@@ -438,6 +577,21 @@ mfp2_glm_estimates_dispersion <- function(family, family_string) {
   family_string %in% c("gaussian", "Gamma", "inverse.gaussian")
 }
 
+#' Strip Prepared-Family Metadata Before Returning the Fitted Model
+#'
+#' Removes the internal caches attached to a prepared family object so that
+#' the returned `mfp2` result does not carry MFP-specific fitting metadata.
+#' The `mfp2_fit_flags` attribute and any `prepared` list slot are cleared;
+#' the remainder of the family is left unchanged.
+#'
+#' @param family Prepared family object, possibly inheriting from
+#'   `"mfp2_family"`.
+#'
+#' @return The same family object with the `mfp2_fit_flags` attribute and
+#'   `prepared` slot removed.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_strip_prepared_family <- function(family) {
   attr(family, "mfp2_fit_flags") <- NULL
   if (inherits(family, "mfp2_family")) family$prepared <- NULL
@@ -445,9 +599,31 @@ mfp2_strip_prepared_family <- function(family) {
 }
 
 
-# Prepare the transformed response expected by survival::survreg.fit(). This is
-# the non-formula portion of survival::survreg(): it is evaluated once per MFP
-# analysis rather than once for every candidate model.
+#' Prepare a `survreg`-Compatible Family for Repeated MFP Candidate Fits
+#'
+#' Builds the transformed response expected by [survival::survreg.fit()] once
+#' per MFP analysis so it is not recomputed for every candidate model. This
+#' function reproduces the non-formula portion of [survival::survreg()],
+#' including distribution look-up, response validation, and reparameterisation
+#' for censored, left-truncated, and interval-censored data.
+#'
+#' @param family Family object created by [survreg_family()]; must inherit
+#'   from `"mfp2_survreg_family"`.
+#' @param y Response, typically a [survival::Surv()] object of one of the
+#'   censoring types supported by [survival::survreg()].
+#' @param weights Optional numeric vector of strictly positive observation
+#'   weights. If `NULL`, all weights are set to `1`.
+#' @param strata Optional stratification vector or factor used by
+#'   `survival::survreg()` to fit distinct scale parameters per stratum. May be
+#'   `NULL` for an unstratified analysis.
+#'
+#' @return A prepared family object carrying the transformed response,
+#'   validated weights, distribution list, and strata definition in a
+#'   `prepared` list slot, ready for repeated calls to
+#'   [survival::survreg.fit()] during MFP selection.
+#'
+#' @keywords internal
+#' @noRd
 prepare_survreg_family <- function(family, y, weights, strata = NULL) {
   if (!inherits(family, "mfp2_survreg_family")) {
     stop("Internal error: invalid survreg family specification.", call. = FALSE)
@@ -616,8 +792,35 @@ prepare_survreg_family <- function(family, y, weights, strata = NULL) {
 }
 
 
-# Run survival::finegray() once and retain the input-row mapping required to
-# expand each dynamically generated FP candidate design matrix.
+#' Prepare a Fine--Gray Subdistribution Family for MFP Candidate Fits
+#'
+#' Runs [survival::finegray()] once at the beginning of an MFP analysis and
+#' retains the input-row mapping needed to expand each dynamically generated
+#' fractional-polynomial candidate design matrix to the expanded weighted
+#' data set. Repeating this expansion for every candidate model would be both
+#' expensive and unnecessary, so the mapping is cached in the prepared
+#' family's `prepared` slot.
+#'
+#' @param family Family object created by [finegray_family()]; must inherit
+#'   from `"mfp2_finegray_family"`.
+#' @param y Multi-state right-censored response, typically a
+#'   [survival::Surv()] object with a factor-valued event column identifying
+#'   the competing causes.
+#' @param weights Optional numeric vector of strictly positive observation
+#'   weights aligned with `y`. If `NULL`, unit weights are used.
+#' @param strata Optional stratification vector or factor used by
+#'   [survival::finegray()] to stratify estimation of the censoring
+#'   distribution.
+#' @param id Optional subject identifier vector. Required for a start--stop
+#'   multi-state response and optional for ordinary one-row-per-subject data.
+#' @param offset Optional numeric offset vector aligned with `y`.
+#'
+#' @return A prepared Fine--Gray family object carrying the expanded response,
+#'   expansion weights, row-index mapping, event-of-interest indicator, and
+#'   strata definition in its `prepared` slot.
+#'
+#' @keywords internal
+#' @noRd
 prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL,
                                     offset = NULL) {
   if (!inherits(family, "mfp2_finegray_family")) {
@@ -760,6 +963,34 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
 }
 
 
+#' Prepare a Multinomial Family for MFP Candidate Fits
+#'
+#' Normalises the multinomial response, weights, and optional offset to the
+#' compact representation expected by the direct baseline-category candidate
+#' fitter and by the retained [nnet::multinom()] fit. This includes coercing
+#' the response to a factor with the requested reference level, storing the
+#' class order, and caching the number of response classes so that later
+#' calls do not re-derive it.
+#'
+#' @param family Family object created by [multinomial_family()]; must
+#'   inherit from `"mfp2_multinomial_family"`.
+#' @param y Response, one of: a factor, a character or numeric class-label
+#'   vector with at least three classes, or a numeric matrix with at least
+#'   three nonnegative integer class-count columns.
+#' @param weights Optional numeric vector of strictly positive observation
+#'   weights. Unit weights are used when `NULL`.
+#' @param offset Optional class-offset matrix (`n` by `C`) or
+#'   reference-logit offset matrix (`n` by `C - 1`).
+#' @param has_offset Logical flag indicating whether an offset was supplied.
+#'   Defaults to `!is.null(offset)` and is exposed as an argument so callers
+#'   can override the detection.
+#'
+#' @return A prepared family object carrying the normalised response, class
+#'   labels, reference class, weights, offset, and class count in its
+#'   `prepared` slot.
+#'
+#' @keywords internal
+#' @noRd
 prepare_multinomial_family <- function(family, y, weights, offset = NULL,
                                        has_offset = !is.null(offset)) {
   if (!inherits(family, "mfp2_multinomial_family")) {
@@ -862,9 +1093,26 @@ prepare_multinomial_family <- function(family, y, weights, offset = NULL,
 }
 
 
-# Normalize a multinomial offset once at the public fitting boundary. The
-# direct candidate fitter and the retained nnet::multinom() fit then share the
-# same class order and reference-contrast representation.
+#' Normalise a Multinomial Offset for Fitting
+#'
+#' Normalises a user-supplied multinomial offset once at the public fitting
+#' boundary. Both the direct candidate fitter and the retained
+#' [nnet::multinom()] fit then share the same class order and
+#' reference-contrast representation, so the offset does not have to be
+#' re-derived for every candidate model.
+#'
+#' @param offset Optional class-offset matrix (`n` by `C`) or
+#'   reference-logit offset matrix (`n` by `C - 1`).
+#' @param prepared Prepared-multinomial metadata list, typically the
+#'   `prepared` slot of a family object.
+#' @param nobs Integer number of observations.
+#' @param has_offset Logical flag indicating whether an offset was supplied.
+#'
+#' @return An `n` by `C - 1` reference-logit offset matrix, or `NULL` when
+#'   `has_offset` is `FALSE`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_prepare_multinomial_offset <- function(offset, prepared, nobs,
                                             has_offset) {
   if (!isTRUE(has_offset)) return(NULL)
@@ -917,9 +1165,26 @@ mfp2_prepare_multinomial_offset <- function(offset, prepared, nobs,
 }
 
 
-# Prediction paths need an explicit zero matrix so class-logit arithmetic can
-# remain branch-free. Fitting preparation instead stores NULL for no offset to
-# avoid allocating this matrix for every candidate model.
+#' Multinomial Offset for Prediction
+#'
+#' Returns a class-logit offset matrix suitable for prediction. Prediction
+#' paths need an explicit zero matrix so that class-logit arithmetic can
+#' remain branch-free even when no offset was supplied at fitting time.
+#' Fitting preparation instead stores `NULL` for no offset, so this helper
+#' materialises the zero matrix on demand.
+#'
+#' @param offset Optional class-offset matrix supplied at prediction, or
+#'   `NULL`.
+#' @param family Prepared multinomial family object.
+#' @param nobs Integer number of prediction rows.
+#' @param has_offset Logical flag indicating whether a prediction-time offset
+#'   was supplied.
+#'
+#' @return An `n` by `C - 1` reference-logit offset matrix. When `has_offset`
+#'   is `FALSE`, the matrix is filled with zeros.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_multinomial_offset <- function(offset, family, nobs, has_offset) {
   prepared <- family$prepared
   if (!isTRUE(has_offset)) {
@@ -946,6 +1211,32 @@ mfp2_multinomial_offset <- function(offset, family, nobs, has_offset) {
 # sort(unique()), i.e. alphabetically. When the order is inferred from an
 # unordered categorical, an informational message names the assumed order so a
 # wrong (alphabetical) ordering is catchable.
+#' Prepare an Ordinal (Proportional-Odds) Family for MFP Candidate Fits
+#'
+#' Coerces the ordinal response to the compact representation used by both
+#' the MFP candidate-model path and the retained `rms::orm()` fit. The
+#' category order follows [rms::orm()]: ordered factors keep their level
+#' order; numeric responses are ordered ascending; character or unordered
+#' factor responses are ordered by `sort(unique())` (alphabetically). When
+#' the order has to be inferred from an unordered categorical response, an
+#' informational message names the assumed order so that an unintended
+#' alphabetical ordering can be spotted and corrected.
+#'
+#' @param family Family object created by [ordinal_family()]; must inherit
+#'   from `"mfp2_ordinal_family"`.
+#' @param y Ordinal response. An ordered factor is recommended so that the
+#'   category order is explicit.
+#' @param weights Optional numeric vector of observation weights. Ordinal
+#'   models currently accept only omitted weights or an explicit all-ones
+#'   vector.
+#' @param offset Optional numeric offset vector.
+#' @param has_offset Logical flag indicating whether an offset was supplied.
+#'
+#' @return A prepared family object carrying the ordered response, category
+#'   labels, weights, and offset in its `prepared` slot.
+#'
+#' @keywords internal
+#' @noRd
 prepare_ordinal_family <- function(family, y, weights, offset = NULL,
                                    has_offset = !is.null(offset)) {
   if (!inherits(family, "mfp2_ordinal_family")) {
@@ -1030,6 +1321,33 @@ prepare_ordinal_family <- function(family, y, weights, offset = NULL,
 }
 
 
+#' Dispatch Family-Specific Preparation Before MFP Selection
+#'
+#' Top-level dispatcher that routes each supported family to its dedicated
+#' `prepare_*` helper. This is called once at the start of an MFP analysis so
+#' that the family-specific response transformation, weight handling, offset
+#' setup, and any cached metadata are constructed a single time and reused
+#' across every candidate model fit.
+#'
+#' @param family Family object supplied by the user. Its concrete class
+#'   determines which specialised preparation routine is invoked.
+#' @param family_string Canonical family name used by the MFP engine.
+#' @param y Response object.
+#' @param weights Optional numeric vector of observation weights.
+#' @param strata Optional stratification vector or matrix used by survival
+#'   families.
+#' @param id Optional subject identifier used by Fine--Gray models.
+#' @param offset Optional numeric offset (or class-offset matrix for
+#'   multinomial models).
+#' @param has_offset Logical flag indicating whether an offset was supplied.
+#'   Defaults to `!is.null(offset)`.
+#'
+#' @return The prepared family object, with any family-specific caches
+#'   populated in its `prepared` slot. Families that require no special
+#'   preparation are returned unchanged.
+#'
+#' @keywords internal
+#' @noRd
 prepare_family_for_fit <- function(family, family_string, y, weights,
                                    strata = NULL, id = NULL, offset = NULL,
                                    has_offset = !is.null(offset)) {

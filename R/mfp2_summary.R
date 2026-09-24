@@ -96,8 +96,9 @@
 #'   \code{FALSE}.
 #' @param notes Logical. If \code{FALSE}, suppress the explanatory model-df note
 #'   when the structured summary is printed. Default \code{TRUE}.
-#' @param digits Number of significant digits used when printing. Defaults to
-#'   \code{max(3L, getOption("digits") - 3L)}.
+#' @param digits Number of decimal places used when printing numeric output
+#'   other than fractional-polynomial powers and degrees of freedom. Defaults
+#'   to 3.
 #' @param ... Further arguments. When \code{raw = TRUE}, passed to the
 #'   underlying summary method; otherwise ignored.
 #'
@@ -144,7 +145,7 @@ summary.mfp2 <- function(object,
                          basis = FALSE,
                          raw = FALSE,
                          notes = TRUE,
-                         digits = max(3L, getOption("digits") - 3L),
+                         digits = 3L,
                          ...) {
   if (!inherits(object, "mfp2")) {
     stop("The object is not an mfp2 object.", call. = FALSE)
@@ -307,17 +308,39 @@ summary.mfp2 <- function(object,
 # Internal helpers
 # =============================================================================
 
-# Number of observations, robust to missing nobs field.
+#' Number of Fitted Observations for an `mfp2` Object
+#'
+#' Returns the number of observations used to fit the model, robust to a
+#' missing `nobs` field on the fitted object.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return Integer scalar with the number of fitted observations, or
+#'   `NA_integer_` if it cannot be determined.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_nobs <- function(object) {
   if (!is.null(object$nobs)) return(as.integer(object$nobs))
   n <- tryCatch(NROW(object$y), error = function(e) NA_integer_)
   as.integer(n)
 }
 
-# Unweighted response counts used by the fitted ordinal or multinomial model.
-# The display follows the original response order rather than an internal
-# reference-first reordering used by the multinomial fitting engine. For a
-# grouped multinomial count response, the class frequencies are column totals.
+#' Unweighted Response Frequencies for Categorical `mfp2` Models
+#'
+#' Computes the unweighted class-frequency counts displayed for a fitted
+#' ordinal or multinomial `"mfp2"` model. The display follows the original
+#' response order, not the reference-first reordering used internally by the
+#' multinomial fitting engine. For a grouped multinomial count response, the
+#' reported frequencies are column totals of the count matrix.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A named numeric vector of class frequencies, in original response
+#'   order, or `NULL` when the family is not ordinal or multinomial.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_response_frequencies <- function(object) {
   family_string <- object$family_string
   if (!isTRUE(family_string %in% c("ordinal", "multinomial"))) return(NULL)
@@ -378,7 +401,19 @@ mfp2_summary_response_frequencies <- function(object) {
   stats::setNames(as.numeric(counts), ordinal_levels)
 }
 
-# Number of target events for proportional-hazards models; NA otherwise.
+#' Number of Target Events for a Proportional-Hazards `mfp2` Model
+#'
+#' Returns the number of target events for Cox and Fine--Gray models. Uses
+#' the stored `nevents` field when present, otherwise counts `status == 1`
+#' rows of a `Surv` response.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return Integer scalar with the number of events, or `NA_integer_` for
+#'   families that do not report event counts.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_nevents <- function(object) {
   if (!mfp2_family_uses_event_count(object$family_string)) return(NA_integer_)
   if (!is.null(object$nevents)) return(as.integer(object$nevents))
@@ -390,9 +425,29 @@ mfp2_summary_nevents <- function(object) {
   NA_integer_
 }
 
-# Model-specific metadata that is required to interpret parametric survival,
-# GLM, and negative-binomial fits. Keeping this extraction in one place ensures
-# that print.mfp2() and print.summary.mfp2() report exactly the same values.
+#' Extract Model-Specific Interpretation Metadata
+#'
+#' Collects the family-specific metadata required to interpret parametric
+#' survival, GLM, negative-binomial, and ordinal fits: distribution name,
+#' scale (with strata table when applicable), fixed-vs-estimated flags,
+#' dispersion, link function, negative-binomial `theta`, censoring summary,
+#' and any extra distribution parameters. Centralising the extraction in one
+#' helper guarantees that [print.mfp2()] and [print.summary.mfp2()] report
+#' exactly the same values.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param family_string Canonical family name. Defaults to
+#'   `object$family_string`.
+#' @param raw_summary Optional raw summary produced by `mfp2_summary_raw()`,
+#'   used when dispersion has to be pulled from the underlying-class summary.
+#'
+#' @return A named list carrying `distribution`, `scale`, `scale_fixed`,
+#'   `dispersion`, `dispersion_fixed`, `scale_strata`,
+#'   `distribution_parameters`, `censoring`, `link`, and `theta`. Fields not
+#'   applicable to the family remain `NULL`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_model_metadata <- function(object,
                                         family_string = object$family_string,
                                         raw_summary = NULL) {
@@ -546,10 +601,22 @@ mfp2_summary_model_metadata <- function(object,
 }
 
 
-# Convert the normalized internal family identifier into a model label that
-# describes what was fitted. Link-dependent models include their fitted link;
-# this avoids presenting identifiers such as "ordinal" as if they were a
-# complete statistical model specification.
+#' Human-Readable Model Label for an `mfp2` Family
+#'
+#' Converts the normalised internal family identifier into a printable model
+#' label. Link-dependent models include their fitted link so that generic
+#' identifiers such as `"ordinal"` are not presented as complete statistical
+#' model specifications.
+#'
+#' @param family_string Canonical family name.
+#' @param metadata Optional metadata list produced by
+#'   `mfp2_summary_model_metadata()`. When supplied, `metadata$link` is
+#'   appended to the label where the family admits multiple links.
+#'
+#' @return Character scalar with a human-readable model label.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_model_label <- function(family_string, metadata = NULL) {
   if (!is.character(family_string) || length(family_string) != 1L ||
       is.na(family_string) || !nzchar(family_string)) {
@@ -606,8 +673,19 @@ mfp2_summary_model_label <- function(family_string, metadata = NULL) {
 }
 
 
-# Print the native-style response-frequency block used for categorical
-# multinomial and ordinal outcomes. Counts are deliberately unweighted.
+#' Print the Response-Frequency Block for Categorical Outcomes
+#'
+#' Prints the native-style response-frequency block used for categorical
+#' multinomial and ordinal outcomes. Counts are deliberately unweighted so
+#' the printed frequencies match the raw response data.
+#'
+#' @param response_frequencies A named numeric vector of class frequencies,
+#'   typically produced by `mfp2_summary_response_frequencies()`, or `NULL`.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of printing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_print_response_frequencies <- function(response_frequencies) {
   if (is.null(response_frequencies) || length(response_frequencies) == 0L) {
     return(invisible(NULL))
@@ -618,9 +696,21 @@ mfp2_print_response_frequencies <- function(response_frequencies) {
 }
 
 
-# Count exact and censored observations according to the Surv response type.
-# The status value zero has different meanings for right- and left-censored
-# responses, so a generic `status == 1` event count is not sufficient.
+#' Count Exact and Censored Observations for a `survreg` Model
+#'
+#' Counts exact events and censoring events for a fitted parametric survival
+#' model according to the response's `Surv` type. Status value `0` has
+#' different meanings for right- and left-censored responses, so a generic
+#' `status == 1` event count is not sufficient.
+#'
+#' @param object An `"mfp2"` model object with a `Surv` response.
+#'
+#' @return A named list with `type`, `exact`, `right_censored`,
+#'   `left_censored`, and `interval_censored`, or `NULL` if the response
+#'   type is not supported by the reporting block.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_survreg_censoring <- function(object) {
   y <- object$y
   if (!inherits(y, "Surv")) return(NULL)
@@ -651,7 +741,30 @@ mfp2_summary_survreg_censoring <- function(object) {
 }
 
 
-# Print the common top-level metadata used by both mfp2 print methods.
+#' Print the Shared Model-Header Block
+#'
+#' Prints the common top-level metadata used by both the `mfp2` and
+#' `summary.mfp2` print methods: model label, criterion, convergence status,
+#' observation count with censoring/event breakdown, family-specific
+#' parameters, and, for categorical outcomes, response frequencies.
+#'
+#' @param family_string Canonical family name.
+#' @param criterion Character scalar identifying the selection criterion.
+#' @param converged Logical indicating whether MFP selection converged, or
+#'   `NA` when unknown.
+#' @param n Integer number of fitted observations.
+#' @param nevents Integer number of events for proportional-hazards models,
+#'   or `NA_integer_`.
+#' @param metadata Metadata list from `mfp2_summary_model_metadata()`.
+#' @param digits Integer scalar controlling the number of digits used for
+#'   numeric parameters.
+#' @param response_frequencies Optional named numeric vector of response
+#'   frequencies from `mfp2_summary_response_frequencies()`.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of printing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_print_model_header <- function(family_string, criterion, converged, n,
                                     nevents = NA_integer_, metadata = NULL,
                                     digits = 3L,
@@ -710,15 +823,29 @@ mfp2_print_model_header <- function(family_string, criterion, converged, n,
 }
 
 
-# Print nuisance/model parameters that are necessary for interpretation but do
-# not belong in the regression coefficient table.
+#' Print Family-Specific Nuisance and Model Parameters
+#'
+#' Prints the nuisance and model parameters (scale, distribution parameters,
+#' negative-binomial `theta`, GLM dispersion) that are needed to interpret a
+#' fit but do not belong in the regression coefficient table. Parameter
+#' formatting follows the same fixed-decimal convention used for the
+#' coefficient and fit-statistic tables.
+#'
+#' @param family_string Canonical family name.
+#' @param metadata Metadata list from `mfp2_summary_model_metadata()`.
+#' @param digits Integer scalar controlling the number of digits used when
+#'   formatting numeric parameters.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of printing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_print_model_specific_parameters <- function(family_string, metadata,
                                                   digits = 3L) {
-  # formatC(format = "g") reserves a leading sign position for positive
-  # values. Trim that display padding before embedding a scalar in labelled
-  # output such as "Scale: 0.8" or "Theta: 2.75".
+  # Model-specific numeric parameters follow the same fixed-decimal convention
+  # as the coefficient and fit-statistic tables.
   fmt <- function(value) {
-    trimws(formatC(value, format = "g", digits = digits))
+    format_print_decimal(value, digits)
   }
 
   if (identical(family_string, "survreg") && length(metadata$scale) > 0L) {
@@ -729,11 +856,11 @@ mfp2_print_model_specific_parameters <- function(family_string, metadata,
       cat(sprintf("Scale parameters (%s):\n", status))
       scale_table <- metadata$scale_strata
       names(scale_table) <- c("Stratum", "Scale")
+      scale_table <- format_model_print_table(scale_table, digits)
       print.data.frame(
         scale_table,
         row.names = FALSE,
-        right = FALSE,
-        digits = digits
+        right = FALSE
       )
     }
 
@@ -763,7 +890,18 @@ mfp2_print_model_specific_parameters <- function(family_string, metadata,
   invisible(NULL)
 }
 
-# Human-readable selection criterion.
+#' Human-Readable Selection-Criterion Label
+#'
+#' Returns a printable label for the MFP selection criterion recorded on a
+#' fitted model. Falls back to `"p-value"` when the criterion field is
+#' absent, matching the `fp_terms` select/alpha convention.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return Character scalar such as `"p-value"`, `"AIC"`, or `"BIC"`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_criterion_label <- function(object) {
   crit <- object$criterion_mfp
   if (is.null(crit) || length(crit) != 1L || is.na(crit)) {
@@ -779,9 +917,21 @@ mfp2_summary_criterion_label <- function(object) {
   )
 }
 
-# Compute the underlying model-specific summary once, with the call replaced by
-# the original mfp2() call. Stored on the result so users can access it without
-# refitting.
+#' Underlying-Class Summary With `mfp2()` Call Restored
+#'
+#' Computes the underlying model-specific summary (for example
+#' [stats::summary.glm()] or [survival::summary.coxph()]) with the fitted
+#' `call` field replaced by the original [mfp2()] call. Storing this on the
+#' summary result lets users access the underlying-class summary without
+#' having to refit the model.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return The underlying-class summary object, or `NULL` when the
+#'   dispatched summary throws an error.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_raw <- function(object) {
   result <- tryCatch(
     NextMethod_summary(object),
@@ -793,8 +943,25 @@ mfp2_summary_raw <- function(object) {
   result
 }
 
-# NextMethod() only works inside a method; this dispatches manually to the
-# next class after "mfp2" so the raw summary can be built from a helper.
+#' Manual `NextMethod()` Dispatcher for `summary()`
+#'
+#' `NextMethod()` only works inside a method definition; this helper
+#' dispatches manually to the next class after `"mfp2"` so that
+#' `mfp2_summary_raw()` can build the underlying-class summary from an
+#' ordinary function. For negative-binomial models fitted through `fastglm`,
+#' the GLM dispersion is forced to `1` so that `summary()` uses normal/z
+#' inference, matching [MASS::summary.negbin()], rather than estimating a
+#' second dispersion and reporting t statistics.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param ... Additional arguments forwarded to the dispatched summary
+#'   method.
+#'
+#' @return The result of the underlying-class `summary()` call, or `NULL`
+#'   if no method exists for the remaining classes.
+#'
+#' @keywords internal
+#' @noRd
 NextMethod_summary <- function(object, ...) {
   cls <- class(object)
   next_classes <- cls[which(cls == "mfp2")[1L] + 1L]
@@ -822,9 +989,25 @@ NextMethod_summary <- function(object, ...) {
 # Term classification
 # ---------------------------------------------------------------------------
 
-# Split selected variables into linear vs nonlinear, and map each variable to
-# its transformed coefficient columns (by name prefix). Also returns the
-# selection overview table used in the printed header.
+#' Classify Selected Variables Into Linear and Nonlinear Terms
+#'
+#' Splits the selected variables of an `"mfp2"` model into linear and
+#' nonlinear terms, records which are spike-at-zero binary-only outcomes,
+#' and maps each variable to its transformed coefficient columns by name
+#' prefix. Also returns the selection overview table used in the printed
+#' header.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A named list with the classification vectors (`selected`,
+#'   `is_linear`, `is_nonlinear`, `binary_only`, `acd`, `zero`, `catzero`,
+#'   `spike`, `spike_dec`), per-variable power vectors preserving positions
+#'   (`power_slots_by_var`) and with `NA` removed (`powers_by_var`), the
+#'   design-column-to-variable mapping (`cols_by_var`), final degrees of
+#'   freedom (`df_final`), and the printable `function_table` overview.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_classify_terms <- function(object) {
   fp_terms <- object$fp_terms
   variable_names <- rownames(fp_terms)
@@ -942,6 +1125,21 @@ mfp2_summary_classify_terms <- function(object) {
   )
 }
 
+#' Coerce an `fp_terms` Flag Column to a Logical Vector
+#'
+#' Reads one boolean-valued column of the `fp_terms` data frame and coerces
+#' it to a proper logical vector, tolerating logical, character, and
+#' numeric encodings. Missing values are treated as `FALSE` so downstream
+#' classification never has to test for `NA`.
+#'
+#' @param fp_terms A data frame with one row per model term (see the
+#'   `fp_terms` component of an `"mfp2"` object).
+#' @param name Character scalar naming the column to coerce.
+#'
+#' @return Logical vector of length `nrow(fp_terms)`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_flag <- function(fp_terms, name) {
   if (!name %in% names(fp_terms)) return(rep(FALSE, nrow(fp_terms)))
   v <- fp_terms[[name]]
@@ -949,15 +1147,45 @@ mfp2_summary_flag <- function(fp_terms, name) {
   tolower(as.character(v)) %in% c("true", "t", "yes", "y", "1")
 }
 
-# SAZ decision codes: package uses integer codes; "binary only" is the code
-# meaning the continuous component was dropped. Matches saz_decision_label().
+#' Is a Spike-at-Zero Decision Code the Binary-Only Outcome?
+#'
+#' Package spike-at-zero decisions use integer codes; `3L` means that the
+#' continuous positive-component function was dropped and only the binary
+#' zero indicator was retained. Matches `saz_decision_label()`.
+#'
+#' @param code Integer decision code, possibly `NA`.
+#'
+#' @return `TRUE` when `code == 3L`, `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_saz_is_binary_only <- function(code) {
   if (is.na(code)) return(FALSE)
   # In mfp2, spike_dec == 3 corresponds to "binary only".
   identical(as.integer(code), 3L)
 }
 
-# Build the human-readable functional-form label for one variable.
+#' Human-Readable Functional-Form Label for One Variable
+#'
+#' Builds the printable functional-form label for one MFP term, combining
+#' the selected FP powers with ACD, `zero`, `catzero`, and spike-at-zero
+#' modifiers. Returns `"out"` when the variable was not selected and
+#' `"binary indicator only"` when a `catzero`- or `spike`-handled term
+#' retains no continuous component.
+#'
+#' @param powers Numeric vector of selected FP powers, possibly empty.
+#' @param acd Logical: was the term fitted with the ACD extension?
+#' @param zero Logical: does the term use exact-zero handling?
+#' @param catzero Logical: does the term use `catzero` handling?
+#' @param spike Logical: was the term assessed with spike-at-zero?
+#' @param spike_dec Integer spike-at-zero decision code (see
+#'   `mfp2_summary_saz_is_binary_only()`).
+#' @param selected Logical: was the term retained in the final model?
+#'
+#' @return Character scalar with the functional-form label.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_form_label <- function(powers, acd, zero, catzero, spike,
                                     spike_dec, selected) {
   if (!isTRUE(selected)) return("out")
@@ -980,7 +1208,28 @@ mfp2_summary_form_label <- function(powers, acd, zero, catzero, spike,
   base
 }
 
-# Selection overview table (Variable, Selected, df, Function).
+#' Build the Selection-Overview Table
+#'
+#' Assembles the printable variable-selection overview shown in the header
+#' of `print.summary.mfp2()`. Each row reports the variable name, whether
+#' it was retained, its final degrees of freedom, and its functional-form
+#' label from `mfp2_summary_form_label()`.
+#'
+#' @param variable_names Character vector of term names.
+#' @param selected Logical vector: which terms were retained.
+#' @param df_final Numeric vector of final degrees of freedom per term.
+#' @param powers_by_var Named list of selected FP power vectors.
+#' @param acd Logical vector: ACD flags.
+#' @param zero Logical vector: `zero` flags.
+#' @param catzero Logical vector: `catzero` flags.
+#' @param spike Logical vector: spike-at-zero flags.
+#' @param spike_dec Integer vector of spike-at-zero decision codes.
+#'
+#' @return A data frame with columns `Variable`, `Selected`, `df`, and
+#'   `Function`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_function_overview <- function(variable_names, selected, df_final,
                                            powers_by_var, acd, zero, catzero,
                                            spike, spike_dec) {
@@ -1007,20 +1256,30 @@ mfp2_summary_function_overview <- function(variable_names, selected, df_final,
 # Coefficient -> display-name lookup
 # ---------------------------------------------------------------------------
 
-# Build a named character vector mapping each fitted coefficient name to a
-# user-facing display name, drawing on the two authoritative lookups stored on
-# the fitted mfp2 object at fit time:
-#
-#   term_to_columns             user variable name  -> raw source columns
-#   transformed_to_model_columns raw source column  -> fitted coef name
-#
-# Composing the two gives an exact `coef_name -> display_name` map for every
-# selected variable, with the internal fitter's suffix convention treated as
-# an implementation detail rather than something the summary depends on.
-#
-# Returns a named character vector: names are fitted coefficient names, values
-# are display names. Returns an empty named vector if either authoritative
-# lookup is missing (in which case the caller falls back to the regex strip).
+#' Build a Fitted-Coefficient to Display-Name Lookup
+#'
+#' Builds a named character vector mapping every fitted coefficient name to
+#' the user-facing display name shown in the printed summary. The mapping is
+#' composed from the two authoritative lookups populated by `fit_mfp()` at
+#' fit time:
+#'
+#' - `term_to_columns`: user variable name to raw source columns.
+#' - `transformed_to_model_columns`: raw source column to fitted coefficient
+#'   name.
+#'
+#' Composing them yields an exact `coef_name -> display_name` map for every
+#' selected variable, so the fitter's suffix convention is treated as an
+#' implementation detail rather than something the summary depends on. The
+#' caller falls back to a regex strip when either lookup is missing.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A named character vector: names are fitted coefficient names,
+#'   values are display names. Empty when either authoritative lookup is
+#'   missing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_coef_to_display <- function(object) {
   t2c <- object$term_to_columns
   tmc <- object$transformed_to_model_columns
@@ -1066,10 +1325,22 @@ mfp2_summary_coef_to_display <- function(object) {
 # Linear terms table
 # ---------------------------------------------------------------------------
 
-# Return the complete ordinal covariance matrix in coefficient order. New mfp2
-# ordinal fits always retain the native orm information matrix, including for
-# intercept-only models, so missing or misaligned covariance is an internal
-# error rather than a condition to mask with fallback NA values.
+#' Complete Ordinal Covariance Matrix in Coefficient Order
+#'
+#' Returns the full ordinal covariance matrix (thresholds and slopes) for a
+#' fitted MFP ordinal model, ordered to match `names(object$coefficients)`.
+#' New MFP ordinal fits always retain the native `orm` information matrix,
+#' including for intercept-only models, so missing or misaligned covariance
+#' is treated as an internal error rather than silently masked with
+#' fallback `NA` values.
+#'
+#' @param object An `"mfp2"` ordinal model object.
+#'
+#' @return A numeric covariance matrix with row and column names equal to
+#'   `names(object$coefficients)`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_ordinal_vcov_all <- function(object) {
   coefficient_names <- names(object$coefficients)
   if (is.null(coefficient_names) || anyNA(coefficient_names) ||
@@ -1092,10 +1363,22 @@ mfp2_ordinal_vcov_all <- function(object) {
 }
 
 
-# Return the ordinal slope covariance matrix in fitted-coefficient order.
-# rms::vcov.orm() has separate paths for threshold intercepts and regression
-# slopes. Requesting intercepts = "none" avoids making slope inference depend
-# on inversion and retention of the complete threshold covariance block.
+#' Ordinal Slope Covariance Matrix in Fitted-Coefficient Order
+#'
+#' Returns only the slope-slope block of the ordinal covariance matrix, in
+#' fitted-coefficient order. [rms::vcov.orm()] has separate code paths for
+#' threshold intercepts and regression slopes; requesting
+#' `intercepts = "none"` avoids making slope inference depend on inversion
+#' and retention of the full threshold covariance block.
+#'
+#' @param object An `"mfp2"` ordinal model object.
+#'
+#' @return A numeric covariance matrix with row and column names equal to
+#'   the slope coefficient names. Returns an empty matrix when the model has
+#'   no slope coefficients (intercept-only fit).
+#'
+#' @keywords internal
+#' @noRd
 mfp2_ordinal_vcov_slopes <- function(object) {
   coefficient_names <- names(object$coefficients)
   if (is.null(coefficient_names) || anyNA(coefficient_names) ||
@@ -1128,8 +1411,21 @@ mfp2_ordinal_vcov_slopes <- function(object) {
 }
 
 
-# Build a data frame of ordinal threshold intercepts with estimate, SE,
-# z-statistic, p-value, and 95 % CI for use in print.summary.mfp2().
+#' Ordinal Threshold-Intercept Summary Data Frame
+#'
+#' Builds a data frame of ordinal threshold intercepts with estimate,
+#' standard error, z statistic, two-sided p value, and 95 % Wald confidence
+#' interval, for display in [print.summary.mfp2()]. All thresholds are
+#' returned, not just the middle one that [rms::vcov.orm()] defaults to.
+#'
+#' @param object An `"mfp2"` ordinal model object.
+#'
+#' @return A data frame with columns `threshold`, `estimate`, `se`, `z`,
+#'   `p`, `ci_lower`, and `ci_upper`, or `NULL` when no thresholds are
+#'   present.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_ordinal_intercepts <- function(object) {
   ord_int <- object$mfp2_ordinal_intercepts
   if (is.null(ord_int) || length(ord_int) == 0L) {
@@ -1167,6 +1463,31 @@ mfp2_summary_ordinal_intercepts <- function(object) {
   )
 }
 
+#' Build the Linear-Terms Table for `print.summary.mfp2()`
+#'
+#' Assembles the data frame of linear-term rows (plus spike-at-zero
+#' binary-only rows) shown in the printed summary. Coefficients, standard
+#' errors, test statistics, and p values are pulled from the raw summary
+#' where possible; when the raw summary does not carry a usable coefficient
+#' table the values are recomputed from `stats::vcov(object)`. Display
+#' names come from `mfp2_summary_coef_to_display()` rather than a regex
+#' strip so that factor levels are preserved and future fitter renaming
+#' does not break the display.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#' @param raw_summary Raw underlying-class summary from
+#'   `mfp2_summary_raw()`.
+#'
+#' @return A data frame with one row per linear-term coefficient and columns
+#'   `term`, `variable`, `coef`, `se`, `statistic`, `p`, plus `exp_coef`,
+#'   `ci_lower`, and `ci_upper` (on the exponentiated scale for
+#'   proportional-hazards and comparable models). Returns an empty data
+#'   frame when there are no linear terms.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_linear_table <- function(object, classified, raw_summary) {
   coefs <- object$coefficients
   if (is.null(coefs) || length(coefs) == 0L) {
@@ -1274,9 +1595,22 @@ mfp2_summary_linear_table <- function(object, classified, raw_summary) {
 }
 
 
-# Exponentiation is retained for the supported proportional-hazards and
-# log-time survival models. GLM coefficients remain on their fitted link scale,
-# matching the parameter estimates returned by their fitting functions.
+#' Does the Summary Report Exponentiated Coefficients for This Family?
+#'
+#' Reports whether the printed summary should append an exponentiated
+#' coefficient column (hazard ratio, subdistribution hazard ratio, time
+#' ratio, or generic multiplicative effect). Exponentiation is retained for
+#' Cox and Fine--Gray, and for `survreg` distributions that use log time.
+#' GLM coefficients remain on their fitted link scale, matching the
+#' parameter estimates returned by their fitting functions.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return `TRUE` when the summary should display exponentiated
+#'   coefficients, `FALSE` otherwise.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_exponentiates_coefficients <- function(object) {
   if (mfp2_family_is_ph(object$family_string)) return(TRUE)
 
@@ -1299,8 +1633,20 @@ mfp2_summary_exponentiates_coefficients <- function(object) {
 }
 
 
-# Label exp(coef) for the survival families that retain a standard
-# multiplicative-effect display.
+#' Label for the Exponentiated-Coefficient Column
+#'
+#' Returns the printable column label used for the exponentiated-coefficient
+#' column in the printed summary. Distinguishes hazard ratio (Cox),
+#' subdistribution hazard ratio (Fine--Gray), time ratio (`survreg`), and
+#' a generic multiplicative-effect label for other exponentiated families.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return Character scalar with the column label, or `NULL` when the
+#'   family does not exponentiate.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_exponent_label <- function(object) {
   if (!mfp2_summary_exponentiates_coefficients(object)) return(NULL)
 
@@ -1313,10 +1659,25 @@ mfp2_summary_exponent_label <- function(object) {
   "multiplicative effect"
 }
 
-# Return the position of the first supported exact column label. Candidate
-# order defines precedence: this matters for robust Cox summaries, which can
-# contain both `robust se` and `se(coef)`. A duplicated candidate is ambiguous
-# and deliberately returns NA so the caller can use its safe fallback.
+#' Match One Column of a Coefficient Table by Exact Name
+#'
+#' Returns the position of the first candidate column label found in
+#' `column_names`. Candidate order defines precedence: this matters for
+#' robust Cox summaries, which can contain both `"robust se"` and
+#' `"se(coef)"`. A duplicated candidate is ambiguous and deliberately
+#' returns `NA` so the caller can fall back to computing the column from
+#' first principles rather than pick an unspecified one.
+#'
+#' @param column_names Character vector of column names from a raw
+#'   coefficient table.
+#' @param candidates Character vector of candidate exact-match labels, in
+#'   precedence order.
+#'
+#' @return Integer scalar column position, or `NA_integer_` when no
+#'   unambiguous match exists.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_match_coef_column <- function(column_names, candidates) {
   if (is.null(column_names)) {
     return(NA_integer_)
@@ -1337,9 +1698,24 @@ mfp2_summary_match_coef_column <- function(column_names, candidates) {
 }
 
 
-# Standardised coefficient matrix (estimate, se, statistic, pvalue) with row
-# names equal to coefficient names, sourced from the raw summary where
-# possible and falling back to vcov().
+#' Standardised Coefficient Matrix for the Summary Table
+#'
+#' Returns a standardised numeric matrix with columns `estimate`, `se`,
+#' `statistic`, and `pvalue` and rows named by coefficient. Sourced from
+#' the raw summary's coefficient table where possible (survreg calls it
+#' `table`), falling back to `stats::vcov(object)` and Wald z or t inference
+#' when a raw table is missing or in an unfamiliar layout. Also carries a
+#' `"statistic_label"` attribute (`"z"`, `"t"`, or `"Statistic"`).
+#'
+#' @param object An `"mfp2"` model object.
+#' @param raw_summary Raw underlying-class summary from
+#'   `mfp2_summary_raw()`, possibly `NULL`.
+#'
+#' @return A numeric matrix with columns `estimate`, `se`, `statistic`, and
+#'   `pvalue`, plus a `"statistic_label"` attribute.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_coef_matrix <- function(object, raw_summary) {
   # Try the raw summary's coefficient table first.
   cmat <- NULL
@@ -1464,6 +1840,25 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
 # Nonlinear terms table (LRT, one row per variable)
 # ---------------------------------------------------------------------------
 
+#' Cache the Metadata Needed to Refit Reduced Models
+#'
+#' Assembles the family-specific response, weights, offset, strata, control,
+#' and full-model log-likelihood needed to refit reduced models when
+#' computing likelihood-ratio tests for nonlinear terms. Doing this once at
+#' the top of the summary avoids repeating expensive setup (in particular
+#' `prepare_family_for_fit()` for `survreg` and unpacking the Fine--Gray
+#' counting-process representation) for every nonlinear variable.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A named list with `valid` (flag), `full_logl`, `family`,
+#'   `family_string`, `y`, `weights`, `offset`, `strata`, `method`,
+#'   `fitter`, `control`, `nocenter`, and `is_finegray`. When `valid` is
+#'   `FALSE`, downstream code should skip reduced-model refits and report
+#'   `NA` test statistics.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_refit_context <- function(object) {
   family_string <- object$family_string
   is_cox <- identical(family_string, "cox")
@@ -1568,6 +1963,24 @@ mfp2_summary_refit_context <- function(object) {
 }
 
 
+#' Build the Nonlinear-Terms Table for `print.summary.mfp2()`
+#'
+#' Assembles the data frame of one row per nonlinear term shown in the
+#' printed summary, carrying the functional-form label, degrees of freedom
+#' for the drop-variable test, likelihood-ratio chi-square, and p value.
+#' Reduced models are fitted once per variable using the cached refit
+#' context; families that cannot support the drop-variable refit return
+#' `NA` statistics rather than aborting.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#'
+#' @return A data frame with columns `variable`, `form`, `df`, `lr_chisq`,
+#'   and `p`. Empty when the model has no nonlinear terms.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_nonlinear_table <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) {
@@ -1605,10 +2018,27 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
   do.call(rbind, rows)
 }
 
-# Joint likelihood-ratio test for dropping one variable's columns, holding all
-# other functional forms fixed. The selected model's stored log likelihood is
-# already on the same family-specific scale, so only the reduced model is
-# fitted. The df is the selection-adjusted df_final from fp_terms.
+#' Drop-Variable Likelihood-Ratio Test for One Variable
+#'
+#' Performs the joint likelihood-ratio test for dropping every design column
+#' belonging to one variable, holding all other functional forms fixed. The
+#' selected model's stored log-likelihood is already on the same
+#' family-specific scale, so only the reduced model is refitted. Degrees of
+#' freedom use the selection-adjusted `df_final` from `fp_terms`.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#' @param v Character scalar naming the variable to drop.
+#' @param refit_context Cached refit context from
+#'   `mfp2_summary_refit_context()`. When `NULL`, it is recomputed.
+#'
+#' @return A named list `list(lr, df, p)` with the likelihood-ratio
+#'   statistic, degrees of freedom, and p value. Any component may be `NA`
+#'   when the reduced model cannot be fitted.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_lrt_drop_variable <- function(object, classified, v,
                                             refit_context = NULL) {
   cols_v <- intersect(colnames(object$x), classified$cols_by_var[[v]])
@@ -1698,10 +2128,22 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v,
 # Final design-column description
 # ---------------------------------------------------------------------------
 
-# Build compact labels for an ordinary fractional-polynomial basis.
-#
-# The label is expressed on the scale used by the final model. A nonzero shift
-# is shown explicitly, and repeated powers use the standard FP log multiplier.
+#' Compact Labels for a Fractional-Polynomial Basis
+#'
+#' Builds compact printable labels for the columns of an ordinary
+#' fractional-polynomial basis, on the scale used by the final model. A
+#' nonzero shift is shown explicitly (`(x + s)` or `(x - s)`), and repeated
+#' powers use the standard FP `log(...)` multiplier convention.
+#'
+#' @param term Character scalar with the predictor name that appears in the
+#'   label.
+#' @param powers Finite numeric vector of FP powers.
+#' @param shift Numeric scalar shift applied to `term`. Default `0`.
+#'
+#' @return Character vector of labels, one per element of `powers`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_fp_basis_labels <- function(term, powers, shift = 0) {
   if (!is.numeric(powers) || length(powers) == 0L || anyNA(powers) ||
       any(!is.finite(powers))) {
@@ -1757,10 +2199,25 @@ mfp2_fp_basis_labels <- function(term, powers, shift = 0) {
   out
 }
 
-# Format one factor design column from its stored level-by-design matrix.
-# Treatment-coded indicator columns are shown as level indicators. Other
-# contrast columns retain their model-matrix names, such as x4.L and x4.Q,
-# because those names identify the configured contrast basis directly.
+#' Describe One Factor Design Column
+#'
+#' Formats a single factor design column from its stored level-by-design
+#' matrix. Treatment-coded indicator columns are shown as level indicators
+#' (for example `I(x = "high")`). Other contrast columns retain their
+#' model-matrix names, such as `x4.L` and `x4.Q`, because those names
+#' identify the configured contrast basis directly and are the labels users
+#' expect to see.
+#'
+#' @param object An `"mfp2"` model object with
+#'   `object$formula_factor_info` populated.
+#' @param term Character scalar naming the factor term.
+#' @param source Character scalar naming the raw source column.
+#'
+#' @return A named list `list(variable, basis)`, or `NULL` when the column
+#'   is not a recognised factor column.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_factor_design_column_info <- function(object, term, source) {
   factor_info <- if (!is.null(object$formula_factor_info)) {
     object$formula_factor_info[[term]]
@@ -1807,10 +2264,24 @@ mfp2_factor_design_column_info <- function(object, term, source) {
   list(variable = variable, basis = basis)
 }
 
-# Describe the final transformed columns from metadata recorded when the design
-# matrix is assembled. Source variables, component types, zero handling,
-# centering, and model-column mappings are all read directly from the fitted
-# object; generated column names are not interpreted.
+#' Describe the Final Transformed Design Columns
+#'
+#' Builds a data frame describing every transformed design column of the
+#' final fitted model, using the metadata recorded when the design matrix
+#' was assembled. Source variables, component types (FP basis, ACD basis,
+#' zero indicator, identity binary), zero handling, centering, and
+#' model-column mappings are read directly from the fitted object; the
+#' generated transformed column names are not interpreted.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A data frame with columns `variable`, `transformed_column`,
+#'   `model_column`, `basis`, `center`, `centered`, `zero_handled`, and
+#'   `component`, one row per transformed column. Returns an empty data
+#'   frame for an intercept-only model.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_design_column_info <- function(object) {
   transformed_to_model <- object$transformed_to_model_columns
   transformed_to_source <- object$transformed_column_to_source
@@ -2063,6 +2534,22 @@ mfp2_design_column_info <- function(object) {
 # Basis coefficients table (optional)
 # ---------------------------------------------------------------------------
 
+#' Build the Optional Basis-Coefficient Table
+#'
+#' Builds the per-basis coefficient table shown for nonlinear terms when
+#' basis details are requested in the printed summary. One row per fitted
+#' basis coefficient is returned; the `variable` column is filled only for
+#' the first row of each variable so the printed table stays compact.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#'
+#' @return A data frame with columns `variable`, `term`, and `coef`, or
+#'   `NULL` when no nonlinear terms are present or no coefficients match.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_basis_table <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) return(NULL)
@@ -2085,13 +2572,26 @@ mfp2_summary_basis_table <- function(object, classified) {
   do.call(rbind, rows)
 }
 
-# Construct a readable transformation label for a single fitted column.
-#
-# Ordinary final FP coefficients multiply a shifted-but-unscaled basis, because
-# fit_mfp() backscales the working predictors before the final transformation.
-# ACD component columns are functions of A(x). New fits also use shifted,
-# unscaled input for A(x); a stored non-unit ACD scale is honored only so formula
-# output remains correct for legacy serialized model objects.
+#' Readable Transformation Label for One Fitted Column
+#'
+#' Constructs the printable transformation label used in the basis-details
+#' table for a single fitted column. Ordinary final FP coefficients multiply
+#' a shifted-but-unscaled basis, because `fit_mfp()` backscales the working
+#' predictors before the final transformation. ACD component columns are
+#' functions of `A(x)`; new fits use shifted, unscaled input for `A(x)`, and
+#' a stored non-unit ACD scale is honoured only so that formula output
+#' remains exact for legacy serialised model objects.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#' @param v Character scalar naming the variable.
+#' @param col Character scalar naming the fitted design column.
+#'
+#' @return Character scalar with the transformation label.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_term_label <- function(object, classified, v, col) {
   idx <- match(v, classified$variable_names)
   cols_v <- classified$cols_by_var[[v]]
@@ -2134,7 +2634,22 @@ mfp2_summary_term_label <- function(object, classified, v, col) {
   mfp2_summary_power_expr(base, power, repeated = repeated && k == 2L)
 }
 
-# Apply one FP power to a readable base expression.
+#' Apply an FP Power to a Base Expression
+#'
+#' Wraps a readable base expression with one FP power. Power `0` becomes
+#' `log(base)`; power `1` returns the base unchanged; other powers become
+#' `base^power`. When `repeated = TRUE`, the standard FP2 second-basis
+#' multiplier `* log(base)` is appended.
+#'
+#' @param base Character scalar with the base expression.
+#' @param power Numeric FP power.
+#' @param repeated Logical. If `TRUE`, append the repeated-power log
+#'   multiplier.
+#'
+#' @return Character scalar with the powered expression.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_power_expr <- function(base, power, repeated = FALSE) {
   wrapped <- sprintf("(%s)", base)
 
@@ -2152,8 +2667,19 @@ mfp2_summary_power_expr <- function(base, power, repeated = FALSE) {
   out
 }
 
-# Inner expression for the final ordinary FP basis. The final fit uses shifted
-# but unscaled predictors, so preprocessing scale is intentionally absent here.
+#' Inner Expression for the Final Ordinary FP Basis
+#'
+#' Builds the parenthesised inner expression used by `mfp2_summary_power_expr()`
+#' for an ordinary FP term. The final fit uses shifted but unscaled
+#' predictors, so preprocessing scale is intentionally absent here.
+#'
+#' @param v Character scalar naming the variable.
+#' @param shift Numeric shift, possibly `NA`.
+#'
+#' @return Character scalar such as `"(x)"` or `"(x + 0.5)"`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_fp_inner_expr <- function(v, shift) {
   if (!is.na(shift) && shift != 0) {
     sprintf("(%s + %s)", v, format(shift, trim = TRUE))
@@ -2162,9 +2688,21 @@ mfp2_summary_fp_inner_expr <- function(v, shift) {
   }
 }
 
-# Inner expression used only by the stored ACD approximation. New model objects
-# store scale = 1 because ACD variables are not scaled. Retain support for a
-# non-unit stored scale so summaries of legacy serialized objects remain exact.
+#' Inner Expression for a Stored ACD Approximation
+#'
+#' Builds the inner expression used only by the stored ACD approximation
+#' formula. New model objects store `scale = 1` because ACD variables are
+#' not scaled, but a non-unit stored scale is honoured so summaries of
+#' legacy serialised model objects remain exact.
+#'
+#' @param v Character scalar naming the variable.
+#' @param shift Numeric shift, possibly `NA`.
+#' @param scale Numeric scale, possibly `NA`.
+#'
+#' @return Character scalar with the inner expression.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_acd_inner_expr <- function(v, shift, scale) {
   base <- if (!is.na(shift) && shift != 0) {
     sprintf("(%s + %s)", v, format(shift, trim = TRUE))
@@ -2178,7 +2716,20 @@ mfp2_summary_acd_inner_expr <- function(v, shift, scale) {
   base
 }
 
-# Look up shift and scale for a variable from the transformations table.
+#' Look Up Shift and Scale for One Variable
+#'
+#' Reads the stored preprocessing shift and scale values for one variable
+#' from the fitted model's `transformations` table.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param v Character scalar naming the variable.
+#'
+#' @return A named list `list(shift, scale)` of numeric scalars; either
+#'   entry is `NA_real_` when the variable is absent from the table or the
+#'   column is missing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_shift_scale <- function(object, v) {
   tr <- object$transformations
   shift <- NA_real_
@@ -2194,6 +2745,22 @@ mfp2_summary_shift_scale <- function(object, v) {
 # Fitted-function formula strings (optional)
 # ---------------------------------------------------------------------------
 
+#' Fitted-Function Formula Strings for Nonlinear Terms
+#'
+#' Builds the printable fitted-function formula strings shown for nonlinear
+#' terms in the printed summary. Each formula is of the form
+#' `f(x) = b1 * label1 + b2 * label2 + ...`, using `signif()` rounding for
+#' coefficients so the display remains readable.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#'
+#' @return Character vector of formula strings, one per nonlinear term, or
+#'   `NULL` when the model contains no nonlinear terms.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_formula_strings <- function(object, classified) {
   nl_vars <- classified$variable_names[classified$is_nonlinear]
   if (length(nl_vars) == 0L) return(NULL)
@@ -2216,9 +2783,22 @@ mfp2_summary_formula_strings <- function(object, classified) {
   out
 }
 
-# Build explicit definitions for active ACD component columns. Both the ordinary
-# FP term and new ACD fits use shifted, unscaled predictor values. A non-unit
-# stored ACD scale is included only for compatibility with legacy fitted objects.
+#' Build ACD Definition Strings for the Printed Summary
+#'
+#' Assembles the printable definitions `A(x) = pnorm(beta0 + beta1 * ...)`
+#' for every active ACD component. Both the ordinary FP term and new ACD
+#' fits use shifted, unscaled predictor values; a non-unit stored ACD scale
+#' is honoured only for compatibility with legacy fitted objects.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param classified Classification result from
+#'   `mfp2_summary_classify_terms()`.
+#'
+#' @return Character vector of ACD definition strings, or `NULL` when no
+#'   ACD components are active.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_acd_definitions <- function(object, classified) {
   acd_vars <- classified$variable_names[
     classified$is_nonlinear & classified$acd
@@ -2236,6 +2816,19 @@ mfp2_summary_acd_definitions <- function(object, classified) {
   if (length(definitions) == 0L) NULL else unname(definitions)
 }
 
+#' ACD Definition String for One Variable
+#'
+#' Builds the printable ACD definition `A(v) = pnorm(beta0 + beta1 * ...)`
+#' for one variable, from the stored ACD parameter list. Returns
+#' `NA_character_` when any required piece is missing.
+#'
+#' @param object An `"mfp2"` model object.
+#' @param v Character scalar naming the variable.
+#'
+#' @return Character scalar with the definition, or `NA_character_`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_acd_definition <- function(object, v) {
   par <- object$acd_parameter[[v]]
   if (is.null(par)) return(NA_character_)
@@ -2272,27 +2865,60 @@ mfp2_summary_acd_definition <- function(object, v) {
 # Model-fit statistics
 # ---------------------------------------------------------------------------
 
+#' Model-Fit Statistics Wrapper
+#'
+#' Returns the values used by the shared Model Fit block renderer.
+#' Everything else previously in this list (LR test statistic, R-squared,
+#' etc.) has been removed: the block is now purely descriptive, and
+#' inferential statements are made only by the per-variable nonlinear LRTs.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A named list with a single element `model_fit` from
+#'   `mfp2_summary_model_fit_values()`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_fit_stats <- function(object) {
-  # Values used by the shared Model Fit block renderer. Everything else that
-  # was previously in this list (LR test statistic, R-squared, and so on) has
-  # been removed: the block is now purely descriptive, and inferential
-  # statements are made only by the per-variable Nonlinear LRTs above.
   list(
     model_fit = mfp2_summary_model_fit_values(object)
   )
 }
 
+#' Coerce a Scalar Value to a Finite Numeric
+#'
+#' Convenience helper that coerces a scalar value to `numeric`, returning
+#' `NA_real_` for `NULL`, length mismatches, or coercion failures.
+#'
+#' @param x Value to coerce.
+#'
+#' @return Numeric scalar, possibly `NA_real_`.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_num <- function(x) {
   if (is.null(x) || length(x) != 1L) return(NA_real_)
   suppressWarnings(as.numeric(x))
 }
 
-# Total FP-adjusted model degrees of freedom: the sum of df_final over the
-# selected variables. Each variable is charged its selection-adjusted df
-# (1 linear, 2 FP1, 4 FP2, etc.) rather than its raw coefficient count, so the
-# overall LR test is consistent with the per-variable Nonlinear LRTs and with
-# the MFP df accounting used elsewhere in the package. The intercept, which is
-# already present in the null model, is not counted.
+#' FP-Adjusted Model Degrees of Freedom
+#'
+#' Returns the total FP-adjusted model degrees of freedom: the sum of
+#' `df_final` over the selected variables. Each variable is charged its
+#' selection-adjusted df (1 linear, 2 for FP1, 4 for FP2, etc.) rather than
+#' its raw coefficient count, so the overall LR test is consistent with the
+#' per-variable nonlinear LRTs and with the MFP df accounting used
+#' elsewhere. The intercept is not counted, because it is already present
+#' in the null model.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return Integer scalar with the FP-adjusted model degrees of freedom.
+#'   When `fp_terms$df_final` is unavailable, a fallback count based on
+#'   `coef()` (excluding an intercept, when present) is returned.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_model_df <- function(object) {
   fp_terms <- object$fp_terms
   if (is.null(fp_terms) || !"df_final" %in% names(fp_terms)) {
@@ -2313,14 +2939,30 @@ mfp2_summary_model_df <- function(object) {
   as.integer(total)
 }
 
-# Assemble the Model Fit rows (values only, no formatting) from a fitted mfp2
-# object. Used by both print.mfp2() and print.summary.mfp2() so the two
-# methods display exactly the same family-specific fit statistics.
-#
-# Returns a data frame with two rows (Full linear / MFP), and columns
-# `fit_statistic` (numeric) and `df` (integer). The `statistic_label` attribute
-# is "Deviance" for GLMs and "-2 log L" for Cox models. The Model Fit block
-# renderer, mfp2_format_model_fit_block(), formats and prints it.
+#' Assemble the Model Fit Block Values
+#'
+#' Assembles the numeric values for the printed Model Fit block from a
+#' fitted `"mfp2"` object. Used by both [print.mfp2()] and
+#' [print.summary.mfp2()] so the two methods display identical
+#' family-specific fit statistics.
+#'
+#' The `df` column follows a single convention: the number of regression
+#' coefficients, excluding the intercept. `linear_df` as stored comes from
+#' `fit_model()$df`, which counts the intercept for models that have one
+#' and includes any estimated GLM dispersion, negative-binomial `theta`, or
+#' `survreg` scale parameter; those adjustments are stripped here so the
+#' number matches the promise made in the printed note.
+#'
+#' @param object An `"mfp2"` model object.
+#'
+#' @return A data frame with columns `label`, `fit_statistic`, and `df` and
+#'   rows `"Full linear model"` and `"MFP model"`. Carries a
+#'   `"statistic_label"` attribute (`"Deviance"` for GLMs, `"-2 log L"` for
+#'   survival and multinomial models), and, where applicable, `"n_logits"`
+#'   or `"n_ordinal_intercepts"` attributes used to render the df note.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_summary_model_fit_values <- function(object) {
   family_string <- object$family_string
   fit_statistic <- c(
@@ -2385,15 +3027,31 @@ mfp2_summary_model_fit_values <- function(object) {
   values
 }
 
-# Print the Model Fit block: heading, table, and note. Shared by print.mfp2()
-# and print.summary.mfp2(). Callers pass an already-computed values frame to
-# avoid recomputing it.
-#
-# The `heading_printer` argument accepts a function of one string that draws
-# the section heading in the caller's own style, so print.mfp2() can reuse
-# its existing print_section_heading() helper (which draws the boxed rules
-# used elsewhere in its output) without leaking that helper's internals into
-# the summary path. summary()'s printer supplies its own rule-based heading.
+#' Print the Model Fit Block
+#'
+#' Prints the shared Model Fit block: heading, two-row table (Full linear /
+#' MFP), and family-specific df note. Shared by [print.mfp2()] and
+#' [print.summary.mfp2()] so the two methods produce identical output.
+#' Callers pass a pre-computed values data frame to avoid recomputing it.
+#'
+#' `heading_printer` is a function of one string that draws the section
+#' heading in the caller's own style, so [print.mfp2()] can reuse its
+#' boxed-rule helper without leaking those internals into the summary path.
+#' The summary printer supplies its own rule-based heading.
+#'
+#' @param values Values data frame from
+#'   `mfp2_summary_model_fit_values()`.
+#' @param digits Integer scalar controlling the number of decimal places
+#'   used when formatting the fit statistic.
+#' @param heading_printer Function of one string that prints the section
+#'   heading.
+#' @param notes Logical. If `TRUE`, print the explanatory df note.
+#'
+#' @return Invisibly returns `NULL`. Called for its side effect of
+#'   printing.
+#'
+#' @keywords internal
+#' @noRd
 mfp2_format_model_fit_block <- function(values, digits, heading_printer,
                                         notes = TRUE) {
   heading_printer("Model Fit")
@@ -2524,7 +3182,8 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     display <- x$coefficients
     display$logit <- paste0(display$outcome, " vs ", display$reference)
     display <- display[, c("logit", "term", "coefficient", "se", "z", "p")]
-    print.data.frame(display, row.names = FALSE, digits = digits)
+    display <- format_model_print_table(display, digits)
+    print.data.frame(display, row.names = FALSE)
     cat("\n")
     mfp2_format_model_fit_block(
       x$model_fit_values,
@@ -2536,7 +3195,7 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     return(invisible(x))
   }
 
-  digits <- if (!is.null(x$digits)) x$digits else max(3L, getOption("digits") - 3L)
+  digits <- if (!is.null(x$digits)) x$digits else 3L
   width <- 78L
   rule_eq <- paste(rep("=", width), collapse = "")
   rule_dash <- paste(rep("-", width), collapse = "")
@@ -2601,13 +3260,13 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
   if (!is.null(x$ordinal_intercepts) && nrow(x$ordinal_intercepts) > 0L) {
     section("Ordinal Intercepts")
     oi  <- x$ordinal_intercepts
-    fmt_ordinal <- function(v) formatC(v, format = "g", digits = digits)
+    fmt_ordinal <- function(v) format_print_decimal(v, digits)
     disp_oi <- data.frame(
       Threshold       = oi$threshold,
       Estimate        = fmt_ordinal(oi$estimate),
       `Std. Error`    = fmt_ordinal(oi$se),
       z               = fmt_ordinal(oi$z),
-      p               = mfp2_summary_format_p(oi$p),
+      p               = mfp2_summary_format_p(oi$p, digits),
       `[95% CI]`      = sprintf(
         "[%s, %s]",
         fmt_ordinal(oi$ci_lower),
@@ -2638,7 +3297,7 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     cat("(none)\n\n")
   } else {
     lt <- x$linear_terms
-    fmt <- function(v, d = digits) formatC(v, format = "g", digits = d)
+    fmt <- function(v, d = digits) format_print_decimal(v, d)
 
     disp <- data.frame(
       # Show the user-facing variable name, not the internal fitted-column
@@ -2649,7 +3308,7 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       coef = fmt(lt$coef),
       `se(coef)` = fmt(lt$se),
       stat = fmt(lt$statistic),
-      p = mfp2_summary_format_p(lt$p),
+      p = mfp2_summary_format_p(lt$p, digits),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -2689,8 +3348,8 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       Variable = nt$variable,
       Function = nt$form,
       df = nt$df,
-      `LR chi-sq` = formatC(nt$lr_chisq, format = "f", digits = 2),
-      p = mfp2_summary_format_p(nt$p),
+      `LR chi-sq` = format_print_decimal(nt$lr_chisq, digits),
+      p = mfp2_summary_format_p(nt$p, digits),
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -2717,7 +3376,7 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       disp_b <- data.frame(
         Variable = bt$variable,
         Term = bt$term,
-        coef = formatC(bt$coef, format = "g", digits = digits),
+        coef = format_print_decimal(bt$coef, digits),
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
@@ -2756,11 +3415,19 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
   invisible(x)
 }
 
-# Format a p-value vector for table display.
-mfp2_summary_format_p <- function(p) {
-  vapply(p, function(v) {
-    if (is.na(v)) return("NA")
-    if (v < 0.0001) return("<0.001")
-    formatC(v, format = "f", digits = 4)
-  }, character(1L))
+#' Format a P-Value Vector for Table Display
+#'
+#' Thin wrapper around `format_print_pvalue()` used by the summary tables so
+#' that all p-value formatting flows through a single named helper.
+#'
+#' @param p Numeric vector of p values.
+#' @param digits Integer scalar controlling the number of significant
+#'   digits.
+#'
+#' @return Character vector of formatted p values.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_format_p <- function(p, digits = 3L) {
+  format_print_pvalue(p, digits)
 }

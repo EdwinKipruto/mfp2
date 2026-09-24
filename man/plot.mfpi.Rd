@@ -246,20 +246,18 @@ With the standard links, this is:
 \item the inverse-squared-mean scale for inverse-Gaussian models with their
 default link;
 \item a partial log-relative-hazard scale for Cox models;
-\item a partial log-subdistribution-hazard scale for Fine--Gray models;
 \item the fitted location scale for parametric \code{survreg} models.
 }
 
 For other GLM links, plots are labelled using the corresponding link scale.
 Under the standard links, a difference plot represents a mean difference for
 Gaussian models, a log odds ratio for binomial models, a log mean ratio for
-Poisson and negative-binomial models, a log hazard ratio for Cox models, a
-log subdistribution hazard ratio for Fine--Gray models, and a location-scale
-difference for \code{survreg} models.
+Poisson and negative-binomial models, a log hazard ratio for Cox models, and
+a location-scale difference for \code{survreg} models.
 With an exposure offset in a Poisson or negative-binomial model, the log mean
 ratio is interpreted as a log rate ratio. Exponentiating a log-scale contrast
-gives the corresponding odds, mean, rate, hazard, or subdistribution-hazard
-ratio when that interpretation applies. The group-specific
+gives the corresponding odds, mean, rate, or hazard ratio when that
+interpretation applies. The group-specific
 curves remain partial linear predictors and are not complete predicted
 responses, probabilities, rates, hazards, or survival probabilities.
 

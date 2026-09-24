@@ -10,7 +10,7 @@
   basis = FALSE,
   raw = FALSE,
   notes = TRUE,
-  digits = max(3L, getOption("digits") - 3L),
+  digits = 3L,
   ...
 )
 }
@@ -31,8 +31,9 @@ the fitting call replaced by the original \code{\link[=mfp2]{mfp2()}} call. Defa
 \item{notes}{Logical. If \code{FALSE}, suppress the explanatory model-df note
 when the structured summary is printed. Default \code{TRUE}.}
 
-\item{digits}{Number of significant digits used when printing. Defaults to
-\code{max(3L, getOption("digits") - 3L)}.}
+\item{digits}{Number of decimal places used when printing numeric output
+other than fractional-polynomial powers and degrees of freedom. Defaults
+to 3.}
 
 \item{...}{Further arguments. When \code{raw = TRUE}, passed to the
 underlying summary method; otherwise ignored.}

@@ -232,6 +232,33 @@ test_that("summary.mfp2() works for Gaussian", {
   fit <- mfp2(x_prostate, y_prostate, verbose = FALSE)
   s <- summary(fit)
   expect_true(!is.null(s))
+  expect_identical(s$digits, 3L)
+})
+
+
+test_that("mfp2 summary statistics use three fixed decimals but df does not", {
+  values <- data.frame(
+    label = "Final MFP",
+    fit_statistic = 12.3456,
+    df = 2L,
+    stringsAsFactors = FALSE
+  )
+  attr(values, "statistic_label") <- "Deviance"
+
+  output <- capture.output(
+    mfp2_format_model_fit_block(
+      values = values,
+      digits = 3L,
+      heading_printer = function(title) cat(title, "\n"),
+      notes = FALSE
+    )
+  )
+  printed <- paste(output, collapse = "\n")
+
+  expect_match(printed, "12.346", fixed = TRUE)
+  expect_false(grepl("2.000", printed, fixed = TRUE))
+  expect_identical(mfp2_summary_format_p(c(0.01234, 0.00001), 3L),
+                   c("0.012", "<0.001"))
 })
 
 
@@ -405,6 +432,19 @@ test_that("Model Fit reports deviance for GLMs", {
   output <- capture.output(print(fit))
   expect_true(any(grepl("Deviance", output, fixed = TRUE)))
   expect_false(any(grepl("-2 log L", output, fixed = TRUE)))
+  expected_mfp_deviance <- formatC(
+    fit$mfp_deviance,
+    format = "f",
+    digits = 3L
+  )
+  expect_true(any(grepl(expected_mfp_deviance, output, fixed = TRUE)))
+
+  summary_output <- capture.output(print(summary(fit)))
+  expect_true(any(grepl(
+    expected_mfp_deviance,
+    summary_output,
+    fixed = TRUE
+  )))
 })
 
 

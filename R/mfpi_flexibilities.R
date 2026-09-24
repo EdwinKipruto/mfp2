@@ -761,6 +761,15 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   colnames(search_x) <- c(z_names, colnames(fixed_x))
 
   deviance_vec <- numeric(n_candidates)
+  multinomial_optimizer <- if (identical(family_string, "multinomial")) {
+    mfp2_multinomial_optimizer_structure(
+      p = ncol(search_x) + 1L,
+      c_classes = family$prepared$n_classes,
+      has_offset = family$prepared$has_offset
+    )
+  } else {
+    NULL
+  }
 
   for (i in seq_len(n_candidates)) {
     # The kernel mutates/rebuilds only the active group-specific focal columns.
@@ -793,7 +802,9 @@ flex2 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
       nocenter      = nocenter,
       rownames      = NULL,
       fast          = TRUE,
-      has_offset    = has_offset
+      has_offset    = has_offset,
+      keep_coefficients = FALSE,
+      multinomial_optimizer = multinomial_optimizer
     )
     deviance_vec[i] <- -2 * fit$logl
   }

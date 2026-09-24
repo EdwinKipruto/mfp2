@@ -21,7 +21,9 @@ Specifies an unpenalized baseline-category multinomial logistic model for
 \code{\link[=mfp2]{mfp2()}} or \code{\link[=mfpi]{mfpi()}}. Fractional-polynomial powers are selected once per
 predictor and shared by all non-reference logits; regression coefficients
 remain outcome specific. Candidate fits use \code{\link[nnet:nnet.default]{nnet::nnet.default()}} and the
-retained fit uses \code{\link[nnet:multinom]{nnet::multinom()}}.
+retained fit uses \code{\link[nnet:multinom]{nnet::multinom()}}. The response normalization, effective
+case weights, and any class-offset contrasts are prepared once and reused by
+every candidate fit.
 }
 \details{
 The response may be a factor or character/numeric class-label vector with at

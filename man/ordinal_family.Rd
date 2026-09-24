@@ -19,8 +19,9 @@ Specifies a proportional-odds ordinal regression model for \code{\link[=mfp2]{mf
 \code{\link[=mfpi]{mfpi()}}, fitted with the ordinal regression model engine from the \code{rms}
 package. Candidate fits during the FP search call \code{\link[rms:orm.fit]{rms::orm.fit()}} directly
 on the model matrix and integer-coded response for speed; the retained model
-is a native \code{rms::orm} object. \code{rms} is an optional dependency and must be
-installed to use this family.
+is a native \code{rms::orm} object, including when variable selection removes all
+predictors. \code{rms} is an optional dependency and must be installed to use
+this family.
 }
 \details{
 The model has one regression coefficient per predictor (a common slope across
@@ -40,6 +41,8 @@ it is inferred from an unordered categorical response; supply an ordered
 factor or numeric codes to control the direction. The model is parameterized
 on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
 predictor values are associated with higher response categories.
+Case weights are not currently supported for ordinal models; omitted weights
+or an explicit all-ones vector are accepted.
 }
 \examples{
 ordinal_family()

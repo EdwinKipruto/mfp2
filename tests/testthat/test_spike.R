@@ -1129,6 +1129,7 @@ test_that("SAZ reduced GLM fits match historical assembly numerically", {
   adjustment <- cbind(z = c(-1.2, -0.4, 0.1, 0.7, 1.1, 1.8, 2.3, 3.0))
   y <- c(0.4, 0.8, 1.2, 1.7, 2.0, 2.6, 3.0, 3.5)
   family <- stats::gaussian()
+  control <- normalize_fit_control(NULL, "gaussian", fitter = "base")
   stage1 <- list(
     current_adj_params = list(
       exposure = list(data_xi = data_xi, data_adj = adjustment)
@@ -1146,7 +1147,7 @@ test_that("SAZ reduced GLM fits match historical assembly numerically", {
     method = NULL,
     strata = NULL,
     nocenter = NULL,
-    control = NULL,
+    control = control,
     rownames = NULL,
     has_offset = FALSE
   )
@@ -1163,7 +1164,7 @@ test_that("SAZ reduced GLM fits match historical assembly numerically", {
     offset = NULL,
     method = NULL,
     strata = NULL,
-    control = NULL,
+    control = control,
     rownames = NULL,
     nocenter = NULL,
     has_offset = FALSE
@@ -1177,7 +1178,7 @@ test_that("SAZ reduced GLM fits match historical assembly numerically", {
     offset = NULL,
     method = NULL,
     strata = NULL,
-    control = NULL,
+    control = control,
     rownames = NULL,
     nocenter = NULL,
     has_offset = FALSE

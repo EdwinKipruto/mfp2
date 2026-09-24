@@ -397,9 +397,10 @@
 #' @param weights Optional finite numeric observation weights. All weights must
 #'   be strictly positive; zero and negative weights are not supported. This
 #'   restriction keeps likelihood-based MFP model comparisons well-defined
-#'   across all supported families. In the formula interface, an expression is
-#'   evaluated first in `data` and then in the formula environment, matching
-#'   standard formula-model lookup rules.
+#'   across all supported families. Ordinal models currently accept only
+#'   omitted weights or an explicit all-ones vector. In the formula interface,
+#'   an expression is evaluated first in `data` and then in the formula
+#'   environment, matching standard formula-model lookup rules.
 #' @param offset Optional numeric offset with one value per observation. For a
 #'   multinomial model, supply an `n` by `C` class-offset matrix or an `n` by
 #'   `C - 1` reference-logit offset matrix. In the
@@ -2929,7 +2930,8 @@ mfp2.default <- function(x,
     weights = weights,
     strata = strata_keep,
     id = id_keep,
-    offset = offset
+    offset = offset,
+    has_offset = has_offset
   )
   family <- prepared_family$family
   strata_keep <- prepared_family$strata

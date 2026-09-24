@@ -501,6 +501,7 @@ test_that("fit_model() can retain fitted values without retaining the GLM fit", 
   )
   y <- 1.5 + 0.8 * x[, "x"] + stats::rnorm(40, sd = 0.2)
   fam <- stats::gaussian()
+  control <- normalize_fit_control(NULL, fam$family, fitter = "base")
 
   retained <- fit_model(
     x = x,
@@ -508,6 +509,7 @@ test_that("fit_model() can retain fitted values without retaining the GLM fit", 
     family = fam,
     family_string = fam$family,
     fitter = "base",
+    control = control,
     x_has_intercept = TRUE,
     keep_fit = TRUE,
     keep_fitted_values = FALSE
@@ -519,6 +521,7 @@ test_that("fit_model() can retain fitted values without retaining the GLM fit", 
     family = fam,
     family_string = fam$family,
     fitter = "base",
+    control = control,
     x_has_intercept = TRUE,
     keep_fit = FALSE,
     keep_fitted_values = TRUE
@@ -610,6 +613,7 @@ test_that("find_best_fp1_for_acd() preserves previous fitted results", {
   y <- stats::qnorm((rank(x, ties.method = "average") - 0.5) / length(x))
   powers <- c(-1, 0, 0.5, 1, 2)
   fam <- stats::gaussian()
+  control <- normalize_fit_control(NULL, fam$family, fitter = "base")
   trafo <- generate_transformations_fp(
     x = x,
     degree = 1L,
@@ -628,6 +632,7 @@ test_that("find_best_fp1_for_acd() preserves previous fitted results", {
       family = fam,
       family_string = fam$family,
       fitter = "base",
+      control = control,
       x_has_intercept = TRUE,
       keep_fit = TRUE
     )

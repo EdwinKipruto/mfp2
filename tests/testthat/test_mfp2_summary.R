@@ -437,12 +437,14 @@ test_that("fit_model returns only requested internal components", {
     dimnames = list(NULL, "x")
   )
   y <- c(-1.8, -0.9, 0.2, 1.1, 1.9, 3.2)
+  control <- normalize_fit_control(NULL, "gaussian", fitter = "base")
 
   selection_fit <- fit_model(
     x = x,
     y = y,
     family = stats::gaussian(),
     family_string = "gaussian",
+    control = control,
     fast = TRUE
   )
 
@@ -461,6 +463,7 @@ test_that("fit_model returns only requested internal components", {
     y = y,
     family = stats::gaussian(),
     family_string = "gaussian",
+    control = control,
     fast = TRUE,
     calculate_fit_statistics = TRUE
   )
@@ -474,6 +477,7 @@ test_that("fit_model returns only requested internal components", {
     y = y,
     family = stats::gaussian(),
     family_string = "gaussian",
+    control = control,
     fast = TRUE,
     keep_fit = TRUE
   )
@@ -485,6 +489,7 @@ test_that("fit_model returns only requested internal components", {
     y = y,
     family = stats::gaussian(),
     family_string = "gaussian",
+    control = control,
     fast = FALSE
   )
 
@@ -589,4 +594,26 @@ test_that("notes must be one non-missing logical value", {
   expect_error(print(fit, notes = NA), "`notes`")
   expect_error(summary(fit, notes = NA), "`notes`")
   expect_error(print(summary(fit), notes = NA), "`notes`")
+})
+
+
+test_that("categorical summary refits reuse the retained prepared family", {
+  prepared_family <- structure(
+    list(family = "ordinal", prepared = list(y = 1:3)),
+    class = c("mfp2_ordinal_family", "mfp2_family")
+  )
+  object <- list(
+    family_string = "ordinal",
+    family = ordinal_family(),
+    mfp2_family = prepared_family,
+    mfp_logl = -4,
+    fitter = "base",
+    mfp2_control = normalize_ordinal_control(),
+    y = 1:3,
+    prior.weights = rep.int(1, 3L)
+  )
+
+  context <- mfp2_summary_refit_context(object)
+  expect_true(context$valid)
+  expect_identical(context$family, prepared_family)
 })

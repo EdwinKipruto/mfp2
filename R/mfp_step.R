@@ -618,9 +618,12 @@ find_best_fpm_step <- function(x,
   use_compact_basis <- !is.null(compact_basis)
   has_adj <- !is.null(data_adj) && NCOL(data_adj) > 0L
 
-  # GLMs and survreg use an explicit intercept; proportional-hazards models do not.
-  # Keep this in one flag so matrix construction and model fitting stay aligned.
-  x_has_intercept <- mfp2_family_has_intercept(family_string)
+  # The repeated candidate matrix carries an explicit intercept for GLMs,
+  # multinomial models, and survreg. Ordinal thresholds are added internally by
+  # orm.fit(), so adding then removing an all-ones column would copy every
+  # ordinal candidate design unnecessarily. Other ordinal paths retain their
+  # existing matrix convention for now.
+  x_has_intercept <- mfp2_candidate_matrix_has_intercept(family_string)
 
 
   # Step 3: Build a reusable design-matrix template ---------------------------
@@ -710,6 +713,19 @@ find_best_fpm_step <- function(x,
     dimnames = list(NULL, metric_names)
   )
 
+  # All candidates in this batch have the same design width and class count.
+  # Build nnet's mask and fixed offset-weight layout once rather than once per
+  # transformed FP candidate.
+  multinomial_optimizer <- if (identical(family_string, "multinomial")) {
+    mfp2_multinomial_optimizer_structure(
+      p = ncol(design_mat),
+      c_classes = family$prepared$n_classes,
+      has_offset = family$prepared$has_offset
+    )
+  } else {
+    NULL
+  }
+
   for (i in seq_len(n_candidates)) {
     if (use_compact_basis) {
       # Copy only the degree-sized column map. The n-length transformed values
@@ -729,6 +745,8 @@ find_best_fpm_step <- function(x,
         family_string   = family_string,
         has_offset      = has_offset,
         x_has_intercept = x_has_intercept,
+        keep_coefficients = FALSE,
+        multinomial_optimizer = multinomial_optimizer,
         ...
       )
 
@@ -745,6 +763,8 @@ find_best_fpm_step <- function(x,
           family_string   = family_string,
           has_offset      = has_offset,
           x_has_intercept = x_has_intercept,
+          keep_coefficients = FALSE,
+          multinomial_optimizer = multinomial_optimizer,
           ...
         )
       } else {
@@ -768,6 +788,11 @@ find_best_fpm_step <- function(x,
           family_string   = family_string,
           has_offset      = has_offset,
           x_has_intercept = x_has_intercept,
+          keep_coefficients = FALSE,
+          multinomial_optimizer = if (
+            !is.null(multinomial_optimizer) &&
+            ncol(x_fit) == multinomial_optimizer$p
+          ) multinomial_optimizer else NULL,
           ...
         )
       }
@@ -900,6 +925,7 @@ fit_null_step <- function(x,
                           family = family,
                           family_string   = family_string,
                           has_offset = has_offset,
+                          keep_coefficients = FALSE,
                           ...
   )
 
@@ -999,6 +1025,7 @@ fit_linear_step <- function(x,
     family_string = family_string,
     has_offset = has_offset,
     x_has_intercept = use_glm_intercept_template,
+    keep_coefficients = FALSE,
     ...
   )
 

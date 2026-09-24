@@ -193,7 +193,9 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' [mfp2()] or [mfpi()]. Fractional-polynomial powers are selected once per
 #' predictor and shared by all non-reference logits; regression coefficients
 #' remain outcome specific. Candidate fits use [nnet::nnet.default()] and the
-#' retained fit uses [nnet::multinom()].
+#' retained fit uses [nnet::multinom()]. The response normalization, effective
+#' case weights, and any class-offset contrasts are prepared once and reused by
+#' every candidate fit.
 #'
 #' @param reference Optional response class or count-matrix column used as the
 #'   reference outcome. `NULL` uses the first factor level, the first level
@@ -212,7 +214,7 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' linear term contributes \eqn{Q} regression degrees of freedom. An FP of
 #' degree \eqn{m} contributes \eqn{Qm + m}: \eqn{Qm} logit-specific
 #' coefficients and \eqn{m} shared-power search degrees of freedom.
-#' 
+#'
 #' @return An `mfp2_multinomial_family` specification.
 #' @examples
 #' set.seed(43)
@@ -275,8 +277,9 @@ multinomial_family <- function(reference = NULL) {
 #' [mfpi()], fitted with the ordinal regression model engine from the `rms`
 #' package. Candidate fits during the FP search call [rms::orm.fit()] directly
 #' on the model matrix and integer-coded response for speed; the retained model
-#' is a native `rms::orm` object. `rms` is an optional dependency and must be
-#' installed to use this family.
+#' is a native `rms::orm` object, including when variable selection removes all
+#' predictors. `rms` is an optional dependency and must be installed to use
+#' this family.
 #'
 #' @param link Character string selecting the cumulative-link function passed to
 #'   [rms::orm.fit()]. One of `"logistic"` (default, the proportional-odds
@@ -300,7 +303,9 @@ multinomial_family <- function(reference = NULL) {
 #' factor or numeric codes to control the direction. The model is parameterized
 #' on the \eqn{P(Y \ge j)} scale, so a positive coefficient means larger
 #' predictor values are associated with higher response categories.
-#' 
+#' Case weights are not currently supported for ordinal models; omitted weights
+#' or an explicit all-ones vector are accepted.
+#'
 #' @return An `mfp2_ordinal_family` specification.
 #' @examples
 #' ordinal_family()
@@ -358,6 +363,14 @@ ordinal_family <- function(link = c("logistic", "probit", "loglog",
 # separate families and share only the properties named by each helper.
 mfp2_family_has_intercept <- function(family_string) {
   !family_string %in% c("cox", "finegray")
+}
+
+# Repeated FP candidate matrices need an explicit all-ones column only when the
+# low-level fitter estimates an ordinary intercept from x. Ordinal models have
+# threshold intercepts, but rms::orm.fit() creates those internally.
+mfp2_candidate_matrix_has_intercept <- function(family_string) {
+  mfp2_family_has_intercept(family_string) &&
+    !identical(family_string, "ordinal")
 }
 
 mfp2_family_uses_event_count <- function(family_string) {
@@ -424,6 +437,7 @@ mfp2_glm_estimates_dispersion <- function(family, family_string) {
 }
 
 mfp2_strip_prepared_family <- function(family) {
+  attr(family, "mfp2_fit_flags") <- NULL
   if (inherits(family, "mfp2_family")) family$prepared <- NULL
   family
 }
@@ -643,14 +657,19 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
   d[[".mfp2_response"]] <- y
 
   strata_action <- if (!is.null(family$strata_action)) family$strata_action else "both"
+  strata_factor <- if (is.null(strata)) {
+    NULL
+  } else {
+    normalize_cox_strata(strata, nobs = n)
+  }
 
   rhs <- c(".mfp2_row_id", ".mfp2_subject_id")
   # Pass strata to finegray() for stratified censoring weights when
   # strata_action is "both" or "censoring". When "baseline", the censoring
   # distribution is estimated pooling across strata (Zhou et al. ctype = 2).
   stratify_censoring <- strata_action %in% c("both", "censoring")
-  if (!is.null(strata) && stratify_censoring) {
-    d[[".mfp2_censor_strata"]] <- normalize_cox_strata(strata, nobs = n)
+  if (!is.null(strata_factor) && stratify_censoring) {
+    d[[".mfp2_censor_strata"]] <- strata_factor
     rhs <- c(rhs, "strata(.mfp2_censor_strata)")
   }
   fg_formula <- stats::as.formula(
@@ -701,8 +720,8 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
   # Expand the original-row strata along the row_map so it aligns with the
   # Fine--Gray pseudo-observations.
   stratify_baseline <- strata_action %in% c("both", "baseline")
-  strata_expanded <- if (!is.null(strata) && stratify_baseline) {
-    normalize_cox_strata(strata, nobs = n)[row_map]
+  strata_expanded <- if (!is.null(strata_factor) && stratify_baseline) {
+    strata_factor[row_map]
   } else {
     NULL
   }
@@ -720,8 +739,13 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
     # Expanded strata for baseline subdistribution hazard stratification.
     # NULL when strata_action = "censoring" or when no strata are present.
     strata_expanded = strata_expanded,
-    strata_original = if (!is.null(strata) && stratify_baseline) {
-      normalize_cox_strata(strata, nobs = n)
+    strata_expanded_codes = if (!is.null(strata_expanded)) {
+      as.integer(strata_expanded)
+    } else {
+      NULL
+    },
+    strata_original = if (!is.null(strata_factor) && stratify_baseline) {
+      strata_factor
     } else {
       NULL
     },
@@ -734,7 +758,8 @@ prepare_finegray_family <- function(family, y, weights, strata = NULL, id = NULL
 }
 
 
-prepare_multinomial_family <- function(family, y, weights) {
+prepare_multinomial_family <- function(family, y, weights, offset = NULL,
+                                       has_offset = !is.null(offset)) {
   if (!inherits(family, "mfp2_multinomial_family")) {
     stop("Internal error: invalid multinomial family specification.", call. = FALSE)
   }
@@ -802,20 +827,113 @@ prepare_multinomial_family <- function(family, y, weights) {
     )
   }
 
+  row_totals <- as.numeric(row_totals)
+  case_weights <- as.numeric(weights)
+
   family$reference <- reference
   family$prepared <- list(
     y = y_native,
     y_matrix = y_matrix,
+    # nnet::multinom() performs these two transformations internally. Cache
+    # them here because the direct nnet.default() candidate path reuses the
+    # same response and case weights for every transformed design.
+    y_fit = y_matrix / row_totals,
+    case_weights = case_weights,
+    effective_weights = case_weights * row_totals,
     levels = levels_internal,
     original_levels = levels_original,
     reference = reference,
     nonreference = levels_internal[-1L],
     n_classes = ncol(y_matrix),
     n_logits = ncol(y_matrix) - 1L,
-    row_totals = as.numeric(row_totals),
-    effective_n = sum(as.numeric(weights) * as.numeric(row_totals))
+    row_totals = row_totals,
+    effective_n = sum(case_weights * row_totals),
+    has_offset = isTRUE(has_offset)
+  )
+  family$prepared$offset_matrix <- mfp2_prepare_multinomial_offset(
+    offset = offset,
+    prepared = family$prepared,
+    nobs = n,
+    has_offset = has_offset
   )
   family
+}
+
+
+# Normalize a multinomial offset once at the public fitting boundary. The
+# direct candidate fitter and the retained nnet::multinom() fit then share the
+# same class order and reference-contrast representation.
+mfp2_prepare_multinomial_offset <- function(offset, prepared, nobs,
+                                            has_offset) {
+  if (!isTRUE(has_offset)) return(NULL)
+
+  c_classes <- prepared$n_classes
+  q_logits <- prepared$n_logits
+
+  if (!is.numeric(offset) || anyNA(offset) || any(!is.finite(offset))) {
+    stop("! Multinomial offsets must be finite and numeric.", call. = FALSE)
+  }
+  if (is.null(dim(offset))) {
+    if (q_logits != 1L || length(offset) != nobs) {
+      stop(
+        "! Multinomial offsets must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+        call. = FALSE
+      )
+    }
+    offset <- matrix(offset, ncol = 1L)
+  }
+  if (!is.matrix(offset) || nrow(offset) != nobs ||
+      !ncol(offset) %in% c(q_logits, c_classes)) {
+    stop(
+      "! Multinomial offsets must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
+      call. = FALSE
+    )
+  }
+
+  if (ncol(offset) == q_logits) {
+    logit_offset <- unclass(offset)
+    if (!is.null(colnames(logit_offset)) &&
+        all(prepared$nonreference %in% colnames(logit_offset))) {
+      logit_offset <- logit_offset[, prepared$nonreference, drop = FALSE]
+    }
+    result <- cbind(0, logit_offset)
+    colnames(result) <- prepared$levels
+    return(result)
+  }
+
+  result <- unclass(offset)
+  if (!is.null(colnames(result)) &&
+      all(prepared$levels %in% colnames(result))) {
+    result <- result[, prepared$levels, drop = FALSE]
+  } else {
+    original_index <- match(prepared$levels, prepared$original_levels)
+    result <- result[, original_index, drop = FALSE]
+  }
+  result <- sweep(result, 1L, result[, 1L], "-")
+  colnames(result) <- prepared$levels
+  result
+}
+
+
+# Prediction paths need an explicit zero matrix so class-logit arithmetic can
+# remain branch-free. Fitting preparation instead stores NULL for no offset to
+# avoid allocating this matrix for every candidate model.
+mfp2_multinomial_offset <- function(offset, family, nobs, has_offset) {
+  prepared <- family$prepared
+  if (!isTRUE(has_offset)) {
+    return(matrix(
+      0,
+      nrow = nobs,
+      ncol = prepared$n_classes,
+      dimnames = list(NULL, prepared$levels)
+    ))
+  }
+  mfp2_prepare_multinomial_offset(
+    offset = offset,
+    prepared = prepared,
+    nobs = nobs,
+    has_offset = TRUE
+  )
 }
 
 
@@ -826,7 +944,8 @@ prepare_multinomial_family <- function(family, y, weights) {
 # sort(unique()), i.e. alphabetically. When the order is inferred from an
 # unordered categorical, an informational message names the assumed order so a
 # wrong (alphabetical) ordering is catchable.
-prepare_ordinal_family <- function(family, y, weights) {
+prepare_ordinal_family <- function(family, y, weights, offset = NULL,
+                                   has_offset = !is.null(offset)) {
   if (!inherits(family, "mfp2_ordinal_family")) {
     stop("Internal error: invalid ordinal family specification.", call. = FALSE)
   }
@@ -834,6 +953,17 @@ prepare_ordinal_family <- function(family, y, weights) {
     stop(
       "! `family = ordinal_family()` requires the `rms` package. ",
       "Install it with install.packages(\"rms\").",
+      call. = FALSE
+    )
+  }
+
+  # Ordinal likelihoods are currently unweighted. Validate this once while the
+  # response is prepared instead of scanning the invariant weight vector for
+  # every FP candidate fit.
+  if (!is.null(weights) && any(as.numeric(weights) != 1)) {
+    stop(
+      "! `family = ordinal_family()` does not support case weights, ",
+      "because `rms::orm()` fits an unweighted ordinal model.",
       call. = FALSE
     )
   }
@@ -890,14 +1020,17 @@ prepare_ordinal_family <- function(family, y, weights) {
     n_intercepts = k - 1L,
     link = family$link,
     inferred_order = inferred_order,
-    n_original = length(codes)
+    n_original = length(codes),
+    has_offset = isTRUE(has_offset),
+    offset = if (isTRUE(has_offset)) as.numeric(offset) else NULL
   )
   family
 }
 
 
 prepare_family_for_fit <- function(family, family_string, y, weights,
-                                   strata = NULL, id = NULL, offset = NULL) {
+                                   strata = NULL, id = NULL, offset = NULL,
+                                   has_offset = !is.null(offset)) {
   if (identical(family_string, "survreg")) {
     family <- prepare_survreg_family(family, y, weights, strata)
     return(list(family = family, strata = strata))
@@ -917,12 +1050,37 @@ prepare_family_for_fit <- function(family, family_string, y, weights,
     return(list(family = family, strata = NULL))
   }
   if (identical(family_string, "multinomial")) {
-    family <- prepare_multinomial_family(family, y, weights)
+    family <- prepare_multinomial_family(
+      family, y, weights, offset = offset, has_offset = has_offset
+    )
+    return(list(family = family, strata = strata))
+  }
+  if (identical(family_string, "cox")) {
+    if (!is.null(strata)) {
+      # Keep the normalized factor for the retained formula fit and cache the
+      # low-level integer representation used by every coxph.fit() candidate.
+      attr(strata, "mfp2_integer_codes") <- as.integer(strata)
+    }
     return(list(family = family, strata = strata))
   }
   if (identical(family_string, "ordinal")) {
-    family <- prepare_ordinal_family(family, y, weights)
+    family <- prepare_ordinal_family(
+      family, y, weights, offset = offset, has_offset = has_offset
+    )
     return(list(family = family, strata = strata))
+  }
+  if (mfp2_family_is_glm(family_string)) {
+    # These family properties are invariant across every candidate fit. Cache
+    # them on the resolved family object so fit_glm() does not rediscover them
+    # inside the repeated FP search.
+    attr(family, "mfp2_fit_flags") <- list(
+      is_gaussian = identical(family_string, "gaussian"),
+      is_negbin = identical(family_string, "negbin"),
+      estimates_dispersion = mfp2_glm_estimates_dispersion(
+        family = family,
+        family_string = family_string
+      )
+    )
   }
   list(family = family, strata = strata)
 }

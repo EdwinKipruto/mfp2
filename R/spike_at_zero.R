@@ -1141,6 +1141,7 @@ fit_saz_reduced_models <- function(stage1_selection,
     nocenter = nocenter,
     has_offset = has_offset,
     calculate_gaussian_deviance = calculate_gaussian_deviance,
+    keep_coefficients = FALSE,
     control = control,
     rownames = rownames
   )

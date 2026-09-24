@@ -33,6 +33,8 @@ test_that("forced-linear mfp2 ordinal reproduces native rms::orm", {
 
   expect_equal(fit$family_string, "ordinal")
   expect_true(inherits(fit, "orm"))
+  expect_s3_class(fit$mfp2_family, "mfp2_ordinal_family")
+  expect_equal(fit$mfp2_family$prepared$y, as.integer(dm$y))
   cf <- coef(fit); names(cf) <- sub("\\.1$", "", names(cf))
   expect_equal(unname(cf[["age"]]), unname(coef(ref)[["age"]]), tolerance = 1e-5)
   expect_equal(unname(cf[["sex"]]), unname(coef(ref)[["sex"]]), tolerance = 1e-5)
@@ -70,7 +72,7 @@ test_that("all five links fit", {
   }
 })
 
-test_that("ordinal control is nnet-of-orm style with raised maxit default", {
+test_that("ordinal control uses explicit orm candidate settings", {
   skip_on_cran(); skip_if_no_rms()
   ctl <- mfp2:::normalize_ordinal_control()
   expect_equal(ctl$maxit, 30L)
@@ -135,6 +137,93 @@ test_that("ordinal preparation drops unused response levels", {
   expect_identical(prepared$levels, c("low", "middle", "high"))
   expect_identical(sort(unique(prepared$y)), 1:3)
   expect_equal(prepared$n_intercepts, 2L)
+  expect_false(prepared$has_offset)
+  expect_null(prepared$offset)
+
+  expect_error(
+    mfp2:::prepare_ordinal_family(
+      ordinal_family(), y, weights = rep(2, length(y))
+    ),
+    "does not support case weights"
+  )
+})
+
+test_that("ordinal preparation caches a supplied offset once", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 120, seed = 24)
+  off <- seq(-0.2, 0.2, length.out = nrow(dm))
+  prepared <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), dm$y, weights = rep.int(1, nrow(dm)),
+    offset = off, has_offset = TRUE
+  )$prepared
+
+  expect_true(prepared$has_offset)
+  expect_identical(prepared$offset, off)
+})
+
+test_that("intercept-only ordinal fitting retains a native orm model", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 500, seed = 25)
+  ycodes <- as.integer(dm$y)
+  family <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), dm$y, weights = rep.int(1, nrow(dm)),
+    has_offset = FALSE
+  )
+
+  fitted <- mfp2:::fit_ordinal(
+    x = matrix(numeric(0L), nrow = nrow(dm), ncol = 0L),
+    family = family,
+    control = mfp2:::normalize_ordinal_control(),
+    fast = FALSE,
+    keep_fit = TRUE,
+    x_has_intercept = FALSE
+  )
+  reference <- rms::orm(ycodes ~ 1, data = data.frame(ycodes),
+                        x = TRUE, y = TRUE)
+
+  expect_s3_class(fitted$fit, "orm")
+  expect_length(fitted$coefficients, 0L)
+  expect_equal(fitted$fit$coefficients, reference$coefficients,
+               tolerance = 1e-8)
+  expect_true(all(is.finite(diag(stats::vcov(fitted$fit)))))
+  expect_equal(as.numeric(stats::logLik(fitted$fit)),
+               as.numeric(stats::logLik(reference)), tolerance = 1e-8)
+  expect_equal(fitted$logl, as.numeric(stats::logLik(reference)),
+               tolerance = 1e-8)
+  expect_true(is.finite(stats::AIC(fitted$fit)))
+})
+
+test_that("intercept-only ordinal fitting honors a varying offset", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 500, seed = 26)
+  ycodes <- as.integer(dm$y)
+  off <- seq(-0.4, 0.4, length.out = nrow(dm))
+  family <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), dm$y, weights = rep.int(1, nrow(dm)),
+    offset = off, has_offset = TRUE
+  )
+
+  fitted <- mfp2:::fit_ordinal(
+    x = matrix(numeric(0L), nrow = nrow(dm), ncol = 0L),
+    family = family,
+    control = mfp2:::normalize_ordinal_control(),
+    fast = FALSE,
+    keep_fit = TRUE,
+    x_has_intercept = FALSE
+  )
+  reference_data <- data.frame(ycodes = ycodes, off = off)
+  reference <- rms::orm(
+    ycodes ~ offset(off), data = reference_data,
+    family = "logistic", x = TRUE, y = TRUE
+  )
+
+  expect_equal(fitted$fit$coefficients, reference$coefficients,
+               tolerance = 1e-8)
+  expect_equal(as.numeric(stats::logLik(fitted$fit)),
+               as.numeric(stats::logLik(reference)), tolerance = 1e-8)
+  expect_equal(fitted$logl, as.numeric(stats::logLik(reference)),
+               tolerance = 1e-8)
+  expect_true(all(is.finite(diag(stats::vcov(fitted$fit)))))
 })
 
 test_that("intercept-only ordinal prediction returns every requested row", {

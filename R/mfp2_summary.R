@@ -1067,9 +1067,9 @@ mfp2_summary_coef_to_display <- function(object) {
 # ---------------------------------------------------------------------------
 
 # Return the complete ordinal covariance matrix in coefficient order. New mfp2
-# ordinal fits always retain the native orm information matrix (or the complete
-# analytic intercept-only covariance), so missing or misaligned covariance is
-# an internal error rather than a condition to mask with fallback NA values.
+# ordinal fits always retain the native orm information matrix, including for
+# intercept-only models, so missing or misaligned covariance is an internal
+# error rather than a condition to mask with fallback NA values.
 mfp2_ordinal_vcov_all <- function(object) {
   coefficient_names <- names(object$coefficients)
   if (is.null(coefficient_names) || anyNA(coefficient_names) ||
@@ -1469,6 +1469,7 @@ mfp2_summary_refit_context <- function(object) {
   is_cox <- identical(family_string, "cox")
   is_finegray <- identical(family_string, "finegray")
   is_survreg <- identical(family_string, "survreg")
+  is_prepared_categorical <- family_string %in% c("ordinal", "multinomial")
 
   full_logl <- object$mfp_logl
   if (!is.numeric(full_logl) || length(full_logl) != 1L ||
@@ -1509,7 +1510,11 @@ mfp2_summary_refit_context <- function(object) {
     valid = is.numeric(full_logl) && length(full_logl) == 1L &&
       !is.na(full_logl) && is.finite(full_logl) && !is.null(control),
     full_logl = full_logl,
-    family = object$family,
+    family = if (is_prepared_categorical && !is.null(object$mfp2_family)) {
+      object$mfp2_family
+    } else {
+      object$family
+    },
     family_string = family_string,
     y = object$y,
     weights = if (is_cox || is_finegray || is_survreg) {
@@ -1669,6 +1674,7 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v,
         control = refit_context$control,
         nocenter = refit_context$nocenter,
         x_has_intercept = x_has_intercept,
+        keep_coefficients = FALSE,
         fast = TRUE
       ),
       error = function(e) NULL

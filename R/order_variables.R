@@ -94,7 +94,7 @@ order_variables <- function(xorder = "ascending",
                             offset = NULL,
                             strata = NULL,
                             method = NULL,
-                            control = NULL,
+                            control,
                             nocenter = NULL,
                             term_to_columns = NULL,
                             catzero_blocks = NULL,
@@ -341,7 +341,7 @@ assemble_linear_reference_design <- function(x,
 #'
 #' @return A lightweight model-fit wrapper returned by \code{fit_model()},
 #'   including \code{logl}, \code{df}, \code{rank}, \code{null_deviance},
-#'   \code{model_deviance}, coefficients, and degrees of freedom. Cox
+#'   \code{model_deviance}, and degrees of freedom. Cox
 #'   fits additionally include \code{null_logl}. The underlying fast-fit object is
 #'   not retained.
 #'
@@ -375,6 +375,7 @@ fit_full_linear_reference <- function(x,
     fast = TRUE,
     calculate_fit_statistics = TRUE,
     keep_fit = FALSE,
+    keep_coefficients = FALSE,
     x_has_intercept = x_has_intercept
   )
 }
@@ -515,6 +516,7 @@ order_variables_by_significance <- function(xorder,
       rownames = x_rownames,
       nocenter = nocenter,
       fast = TRUE,
+      keep_coefficients = FALSE,
       x_has_intercept = x_has_intercept
     )
 

@@ -1552,6 +1552,15 @@ mfp2_predict_multinomial <- function(object, transformed = NULL,
     )
   }
 
+  if (is.null(offset_matrix)) {
+    offset_matrix <- mfp2_multinomial_offset(
+      NULL,
+      object$mfp2_family,
+      nobs = nrow(xx),
+      has_offset = FALSE
+    )
+  }
+
   eta <- xx[, colnames(coefficient_matrix), drop = FALSE] %*%
     t(coefficient_matrix)
   eta <- eta + offset_matrix[, -1L, drop = FALSE]

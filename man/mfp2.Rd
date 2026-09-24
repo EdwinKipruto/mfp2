@@ -103,9 +103,10 @@ response.}
 \item{weights}{Optional finite numeric observation weights. All weights must
 be strictly positive; zero and negative weights are not supported. This
 restriction keeps likelihood-based MFP model comparisons well-defined
-across all supported families. In the formula interface, an expression is
-evaluated first in \code{data} and then in the formula environment, matching
-standard formula-model lookup rules.}
+across all supported families. Ordinal models currently accept only
+omitted weights or an explicit all-ones vector. In the formula interface,
+an expression is evaluated first in \code{data} and then in the formula
+environment, matching standard formula-model lookup rules.}
 
 \item{offset}{Optional numeric offset with one value per observation. For a
 multinomial model, supply an \code{n} by \code{C} class-offset matrix or an \code{n} by

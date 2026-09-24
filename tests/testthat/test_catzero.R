@@ -290,7 +290,8 @@ test_that("ordinary and zero-only references bypass catzero assembly", {
     catzero_blocks = NULL,
     y = rep(0, nrow(x)),
     family = stats::gaussian(),
-    family_string = "gaussian"
+    family_string = "gaussian",
+    control = normalize_fit_control(NULL, "gaussian", fitter = "base")
   )
 
   expect_identical(result$variables_ordered, c("x1", "x2"))
@@ -346,7 +347,8 @@ test_that("catzero full reference and ordering share one joint block", {
     catzero_blocks = blocks,
     y = rep(0, nrow(x)),
     family = stats::gaussian(),
-    family_string = "gaussian"
+    family_string = "gaussian",
+    control = normalize_fit_control(NULL, "gaussian", fitter = "base")
   )
 
   expect_equal(NCOL(full_seen), 4L) # intercept + x + indicator

@@ -410,10 +410,11 @@
 #' @param weights An optional finite numeric vector with one value per
 #'   observation. All weights must be strictly positive; zero and negative
 #'   weights are not supported. This restriction keeps likelihood-based model
-#'   comparisons well-defined across all supported families. The weights are
-#'   used in both the adjustment and interaction models. In the formula
-#'   interface, an expression is evaluated first in `data` and then in the
-#'   formula environment.
+#'   comparisons well-defined across all supported families. Ordinal models
+#'   currently accept only omitted weights or an explicit all-ones vector. The
+#'   weights are used in both the adjustment and interaction models. In the
+#'   formula interface, an expression is evaluated first in `data` and then in
+#'   the formula environment.
 #'
 #' @param offset An optional finite numeric vector with one value per
 #'   observation, added to the linear predictor in both fitting stages. A formula
@@ -2300,7 +2301,8 @@ mfpi.default <- function(
     weights = weights,
     strata = strata_keep,
     id = id_keep,
-    offset = offset
+    offset = offset,
+    has_offset = has_offset
   )
   family <- prepared_family$family
   strata_keep <- prepared_family$strata

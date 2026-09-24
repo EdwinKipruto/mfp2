@@ -6,9 +6,12 @@
 #' categorical.
 #'
 #' The function supports the likelihood GLMs accepted by `mfp2()`, negative
-#' binomial, multinomial logistic, proportional-odds ordinal, Cox, parametric
-#' `survreg`, and Fine--Gray models. Nonlinear relationships can be modelled
-#' with fractional polynomials.
+#' binomial, multinomial logistic, proportional-odds ordinal, Cox, and
+#' parametric `survreg` models. Nonlinear relationships can be modelled with
+#' fractional polynomials. Fine--Gray models are available through [mfp2()]
+#' but are not supported by `mfpi()` because its interaction selection relies
+#' on likelihood comparisons that are not valid for the robust weighted
+#' pseudo-likelihood fit.
 #'
 #' @details
 #' `mfpi()` evaluates each variable in `interaction_vars` separately. For every
@@ -279,8 +282,7 @@
 #'
 #' For survival models, supply strata through `strata` in the matrix interface
 #' and through `strata(...)` in the formula interface. Strata define baseline
-#' hazards for Cox, scale parameters for `survreg`, and censoring distributions
-#' for Fine--Gray.
+#' hazards for Cox and scale parameters for `survreg`.
 #'
 #' `mfpi()` does not reserve names such as `y`, `offset_`, `strata_`, or names
 #' beginning with `..mfp2_`. Predictors with these names remain ordinary
@@ -328,9 +330,8 @@
 #'   factor or character/numeric class-label vector with at least three classes,
 #'   or a three-or-more-column count matrix for multinomial models, a
 #'   response with at least three ordered categories for ordinal models, a
-#'   right-censored [survival::Surv()] object for Cox, a
-#'   non-counting `Surv` response for `survreg`, or a multi-state `Surv`
-#'   response for Fine--Gray. It must have the same number of observations as `x`.
+#'   right-censored [survival::Surv()] object for Cox, or a non-counting `Surv`
+#'   response for `survreg`. It must have the same number of observations as `x`.
 #'
 #' @param formula For `mfpi.formula()`, a model formula containing the response,
 #'   `group_var`, the variables in `interaction_vars`, and any adjustment variables.
@@ -490,8 +491,9 @@
 #'   `"inverse.gaussian"`) as a name, function, or family object. Quasi
 #'   families are excluded because selection requires a likelihood. Use
 #'   `"negbin"` for a negative-binomial model, `"multinomial"` or
-#'   [multinomial_family()], `"ordinal"` or [ordinal_family()], `"cox"`,
-#'   [survreg_family()], or [finegray_family()] for the corresponding model.
+#'   [multinomial_family()], `"ordinal"` or [ordinal_family()], `"cox"`, or
+#'   [survreg_family()] for the corresponding model. Fine--Gray models are not
+#'   supported by `mfpi()`; use [mfp2()] with [finegray_family()] instead.
 #'
 #' @param fitter Fitting method for repeated GLM candidate models. `"base"`
 #'   (default) uses standard R GLM fitting. `"fastglm"` uses the optional
@@ -560,14 +562,13 @@
 #'   natural logarithm. These candidates are used when FP powers are selected
 #'   for both adjustment and interaction functions.
 #'
-#' @param ties The method for handling tied event times in Cox and Fine--Gray models. Supported
+#' @param ties The method for handling tied event times in Cox models. Supported
 #'   values are `"breslow"` (default) and `"efron"`. `"exact"` is not supported
 #'   because MFPI relies on MFP-based Cox candidate fits that do not implement
 #'   the exact partial likelihood. The argument has no effect for other families.
 #'
 #' @param strata Optional survival-model strata for `mfpi.default()`. For Cox
-#'   they define baseline hazards, for `survreg` scale parameters, and for
-#'   Fine--Gray censoring distributions. A
+#'   they define baseline hazards and for `survreg` scale parameters. A
 #'   vector or factor supplies one categorical stratum label per observation;
 #'   character, numeric, integer, and logical values are accepted. A matrix or
 #'   data frame may supply multiple stratification variables, one per column,
@@ -575,17 +576,12 @@
 #'   also accepted. In `mfpi.formula()`, this argument is unavailable; include
 #'   `strata(...)` in the formula instead.
 #'
-#' @param id Optional Fine--Gray subject identifier. It is required only for a
-#'   start--stop multi-state response. In formula fits, the argument is
-#'   evaluated first in `data` and then in the formula environment. It is not
-#'   used by other families.
-#'
-#' @param nocenter Numeric set of values used to identify Cox/Fine--Gray predictor
+#' @param nocenter Numeric set of values used to identify Cox predictor
 #'   columns that should be left uncentered. A column is left
 #'   uncentered when all of its values are contained in `nocenter`. The default
 #'   `c(-1, 0, 1)` matches [survival::coxph()] and typically leaves indicator
 #'   and dummy columns uncentered. Set `NULL` to allow all eligible columns to
-#'   be recentered. It is used only for Cox and Fine--Gray models.
+#'   be recentered. It is used only for Cox models.
 #'
 #' @param acd_vars For `mfpi.default()`, an optional character vector naming
 #'   adjustment variables that use the approximate cumulative distribution
@@ -876,6 +872,22 @@ mfpi <- function(x, ...) {
   UseMethod("mfpi", x)
 }
 
+
+# Fine--Gray coefficients are estimated from a weighted partial
+# pseudo-likelihood with clustered robust covariance. MFPI's model-selection
+# tests require ordinary likelihood comparisons, so reject this family before
+# any response preparation or candidate fitting begins.
+validate_mfpi_family <- function(family_string) {
+  if (identical(family_string, "finegray")) {
+    stop(
+      "! `mfpi()` does not support Fine--Gray models.\n",
+      "i Use `mfp2(..., family = finegray_family())` to fit a Fine--Gray model.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 #' Describe MFPI Interaction Terms
 #'
 #' Converts the public interaction-variable specification into the design
@@ -1006,7 +1018,6 @@ mfpi.default <- function(
     digits            = 3,
     term_groups       = NULL,
     fitter            = c("base", "fastglm"),
-    id                = NULL,
     ...
 ) {
   # mfpi.default() validates and normalizes every argument, resolves the
@@ -1037,6 +1048,7 @@ mfpi.default <- function(
 
   family        <- family_info$family
   family_string <- family_info$family_string
+  validate_mfpi_family(family_string)
   fitter <- resolve_fitter(fitter, family_string)
 
   # Ordinal proportional-odds models via rms::orm are supported. The k-1
@@ -1376,19 +1388,6 @@ mfpi.default <- function(
     if (anyNA(strata)) {
       stop(
         "! `strata` must not contain missing values.",
-        call. = FALSE
-      )
-    }
-  }
-
-  if (!is.null(id)) {
-    if (family_string != "finegray") {
-      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
-    }
-    if (!is.atomic(id) || length(id) != nobs || anyNA(id) ||
-        is.matrix(id) || !is.null(dim(id))) {
-      stop(
-        "! `id` must be an atomic vector or factor with one non-missing value per observation.",
         call. = FALSE
       )
     }
@@ -2079,8 +2078,6 @@ mfpi.default <- function(
     strata_keep <- normalize_cox_strata(strata_keep, nobs = nobs)
   }
 
-  id_keep <- id
-
   # Apply subset ---------------------------------------------------------------
   # This is the direct matrix path. Keep the user-supplied numeric columns, but
   # reject mapped blocks that lose within-block rank because MFPI has no factor
@@ -2293,14 +2290,13 @@ mfpi.default <- function(
   }
 
   # Prepare transformed survival data once before either MFPI stage. Candidate
-  # fits then reuse the cached survreg response or Fine--Gray row expansion.
+  # fits then reuse the cached survreg response and distribution metadata.
   prepared_family <- prepare_family_for_fit(
     family = family,
     family_string = family_string,
     y = y,
     weights = weights,
     strata = strata_keep,
-    id = id_keep,
     offset = offset,
     has_offset = has_offset
   )
@@ -2372,11 +2368,6 @@ mfpi.default <- function(
   # matrix used for manual prediction reconstruction. It contains shifted/scaled
   # predictors and internally remapped group_var codes. Do not store or use the
   # pre-remap matrix `x` for prediction.
-  finegray_nevents <- if (identical(family_string, "finegray")) {
-    family$prepared$nevents
-  } else {
-    NULL
-  }
 
   fit$family_string  <- family_string
   if (identical(family_string, "multinomial")) {
@@ -2411,8 +2402,6 @@ mfpi.default <- function(
   # print.mfpi() can display it alongside n.
   if (identical(family_string, "cox")) {
     fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)
-  } else if (identical(family_string, "finegray")) {
-    fit$nevents <- finegray_nevents
   }
 
   class(fit) <- "mfpi"
@@ -2514,7 +2503,6 @@ mfpi.formula <- function(formula,
                          verbose           = TRUE,
                          digits            = 3,
                          fitter            = c("base", "fastglm"),
-                         id                = NULL,
                          ...) {
 
   # mfpi.formula() translates a formula + data.frame specification into the
@@ -2529,7 +2517,6 @@ mfpi.formula <- function(formula,
   weights_expr <- substitute(weights)
   offset_expr <- substitute(offset)
   subset_expr <- substitute(subset)
-  id_expr <- substitute(id)
 
   # Step 1: Resolve multiple-choice arguments, family, and reject unused `...`
   dots <- match.call(expand.dots = FALSE)$...
@@ -2558,6 +2545,7 @@ mfpi.formula <- function(formula,
     family_arg = deparse(substitute(family))
   )
   family_string <- family_info$family_string
+  validate_mfpi_family(family_string)
 
   # Unused or misspelled arguments are already rejected above by
   # mfpi_check_unused_dots(), which reports the offending name(s) directly.
@@ -2718,21 +2706,6 @@ mfpi.formula <- function(formula,
     enclos = environment(formula_internal)
   )
   strata <- NULL
-  id <- eval(
-    id_expr,
-    envir = data,
-    enclos = environment(formula_internal)
-  )
-  if (!is.null(id)) {
-    if (family_string != "finegray") {
-      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
-    }
-    if (!is.atomic(id) || length(id) != n_data || anyNA(id) ||
-        is.matrix(id) || !is.null(dim(id))) {
-      stop("! `id` must be an atomic vector or factor with one non-missing value per row of `data`.", call. = FALSE)
-    }
-  }
-
   if (!is.null(offset)) {
     offset_rows <- if (is.matrix(offset)) nrow(offset) else length(offset)
     if (!is.numeric(offset) || offset_rows != n_data || anyNA(offset) ||
@@ -2916,8 +2889,8 @@ mfpi.formula <- function(formula,
   if (!mfp2_family_is_survival(family_string) && survival::is.Surv(y))
     stop(sprintf(
       paste0(
-        "! Response is a Surv object but family = '%s'. Use family = 'cox', ",
-        "survreg_family(), or finegray_family() as appropriate."
+        "! Response is a Surv object but family = '%s'. Use family = 'cox' ",
+        "or survreg_family() as appropriate."
       ),
       family_string
     ), call. = FALSE)
@@ -3309,7 +3282,6 @@ mfpi.formula <- function(formula,
   x <- attach_formula_preprocess_matrix(x, x_full)
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]
-    if (!is.null(id)) id <- id[fit_rows]
     if (is.null(term_offset) && !is.null(offset)) {
       offset <- if (is.matrix(offset)) offset[fit_rows, , drop = FALSE] else offset[fit_rows]
     }
@@ -3348,7 +3320,6 @@ mfpi.formula <- function(formula,
     powers            = power_list,
     ties              = ties,
     strata            = strata,
-    id                = id,
     nocenter          = nocenter,
     acd_vars          = acd_vars,
     zero_vars         = zero_vars_final,

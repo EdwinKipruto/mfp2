@@ -493,7 +493,7 @@ validate_mfpi_fitted_rank <- function(fit,
 #' where \eqn{p} is the number of model parameters (excluding intercepts and
 #' adjustment terms, as these are common across models and do not affect
 #' comparisons), and \eqn{n^*} is the effective sample size
-#' (\eqn{n^* =} number of target events for Cox/Fine--Gray models;
+#' (\eqn{n^* =} number of events for Cox models;
 #' \eqn{n^* = n} otherwise).
 #' Positive values of
 #' \eqn{\mathrm{AIC}_{\text{main}} - \mathrm{AIC}_{\text{int}}} and
@@ -527,17 +527,16 @@ validate_mfpi_fitted_rank <- function(fit,
 #'   manual (Royston and Sauerbrei), with residual df taken directly from the
 #'   fitted interaction model to correctly account for adjustment variables.
 #'   Ignored (chi-square used) for non-Gaussian families. Default \code{FALSE}.
-#' @param family Resolved likelihood-GLM, negative-binomial, Cox, `survreg`, or
-#'   Fine--Gray family specification.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, or `survreg`
+#'   family specification.
 #' @param weights Numeric vector of observation weights, length \eqn{n}.
 #' @param offset Numeric vector of linear-predictor offsets, length \eqn{n}.
-#' @param ties Character string; Cox/Fine--Gray tie-handling method - `"breslow"` or
+#' @param ties Character string; Cox tie-handling method - `"breslow"` or
 #'   `"efron"`. `"exact"` is rejected by the public MFP/MFPI interfaces before
 #'   selection. Ignored for other families.
-#' @param strata Optional normalized Cox or `survreg` stratum; for Fine--Gray,
-#'   censoring strata were consumed during preparation.
+#' @param strata Optional normalized Cox or `survreg` stratum.
 #' @param control Fitting control list for the resolved model family.
-#' @param nocenter Numeric vector for Cox/Fine--Gray centring suppression; see
+#' @param nocenter Numeric vector for Cox centring suppression; see
 #'   [survival::coxph()].
 #'
 #' @return A list with five components:
@@ -608,11 +607,7 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     rownames = NULL,
     nocenter = nocenter,
     has_offset = has_offset,
-    # Fine--Gray's retained main model supplies covariance information to
-    # downstream plots, so give that one model the same robust coxph refit as
-    # the interaction model. Repeated FP candidate fits elsewhere remain on
-    # the agreg.fit() hot path.
-    fast     = !identical(family_string, "finegray"),
+    fast     = TRUE,
     calculate_gaussian_deviance = isTRUE(
       use_ftest && identical(family_string, "gaussian")
     ),
@@ -773,14 +768,6 @@ test_interaction <- function(y, cont_var, group_var, xmain, xinteraction,
     if (!is.finite(n_eff) || n_eff <= 0L) {
       stop(
         "Cox BIC requires at least one observed event.",
-        call. = FALSE
-      )
-    }
-  } else if (family_string == "finegray") {
-    n_eff <- family$prepared$nevents
-    if (!is.finite(n_eff) || n_eff <= 0L) {
-      stop(
-        "Fine--Gray BIC requires at least one event of the selected type.",
         call. = FALSE
       )
     }

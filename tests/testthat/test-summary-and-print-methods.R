@@ -40,10 +40,10 @@ test_that("summary/print work and identify the family (multinomial)", {
 
 test_that("mfpi summary/print include interaction test statistics", {
   skip_on_cran()
-  dfg <- make_mfpi_finegray()
-  fit <- mfpi(Surv(obs, ev) ~ grp + fp(z1), data = dfg, group_var = "grp",
-              interaction_vars = "z1", interaction_forms = c(z1 = "fp1"),
-              family = finegray_family(etype = "relapse"),
+  dsr <- make_mfpi_survreg()
+  fit <- mfpi(Surv(time, status) ~ grp + fp(x1), data = dsr, group_var = "grp",
+              interaction_vars = "x1", interaction_forms = c(x1 = "fp1"),
+              family = survreg_family(dist = "weibull"),
               p_interact = 0.1, verbose = FALSE)
   txt_p <- capture_ok(print(fit))
   txt_s <- capture_ok(print(summary(fit)))

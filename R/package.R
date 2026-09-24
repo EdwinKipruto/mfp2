@@ -28,9 +28,10 @@
 #' cut-points.
 #'
 #' Survival models are specified as separate families: `family = "cox"` for
-#' Cox proportional hazards, [survreg_family()] for the parametric distributions
-#' implemented by [survival::survreg()], and [finegray_family()] for Fine--Gray
-#' proportional subdistribution hazards.
+#' Cox proportional hazards and [survreg_family()] for the parametric
+#' distributions implemented by [survival::survreg()] are supported by both
+#' [mfp2()] and [mfpi()]. [finegray_family()] provides Fine--Gray proportional
+#' subdistribution hazards for [mfp2()] only.
 #'
 #' @section Modelling extensions:
 #' In addition to standard fractional-polynomial modelling, `mfp2` provides:

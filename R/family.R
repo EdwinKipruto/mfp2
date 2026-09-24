@@ -1,4 +1,4 @@
-#' Survival Family Specifications for mfp2 and mfpi
+#' Survival Family Specifications
 #'
 #' `survreg_family()` specifies a parametric accelerated failure-time or
 #' location-scale model. `finegray_family()` specifies a proportional
@@ -17,7 +17,8 @@
 #' [survival::agreg.fit()], while the selected model is returned as a weighted
 #' robust `coxph` fit. The public model interface remains
 #' `family = finegray_family(etype = ...)`. An `id` argument is required by
-#' [mfp2()] or [mfpi()] only for a start--stop multi-state response.
+#' [mfp2()] only for a start--stop multi-state response. Fine--Gray models are
+#' not supported by [mfpi()].
 #'
 #' @param dist A distribution accepted by [survival::survreg()].
 #' @param scale Fixed scale. The default, zero, estimates the scale.
@@ -28,8 +29,9 @@
 #'   state, matching `finegray()`.
 #' @param timefix Logical; pass event times through survival's round-off check.
 #'
-#' @return An `mfp2_survreg_family` or `mfp2_finegray_family` specification for
-#'   the `family` argument of [mfp2()] or [mfpi()].
+#' @return An `mfp2_survreg_family` specification for the `family` argument of
+#'   [mfp2()] or [mfpi()], or an `mfp2_finegray_family` specification for
+#'   [mfp2()].
 #' @examples
 #' survreg_spec <- survreg_family(dist = "weibull")
 #' finegray_spec <- finegray_family(etype = "cause1")

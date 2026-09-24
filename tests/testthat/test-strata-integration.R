@@ -77,20 +77,6 @@ test_that("survreg + strata: per-stratum scales match native survreg", {
   expect_equal(sort(unname(fit$scale)), sort(unname(ref$scale)), tolerance = TOL_MED)
 })
 
-test_that("mfpi + strata: strata carried into finegray interaction models", {
-  skip_on_cran()
-  dfg <- make_mfpi_finegray()
-  fit <- mfpi(Surv(obs, ev) ~ grp + fp(z1) + strata(sx), data = dfg,
-              group_var = "grp", interaction_vars = "z1",
-              interaction_forms = c(z1 = "fp1"),
-              family = finegray_family(etype = "relapse"),
-              p_interact = 0.1, verbose = FALSE)
-  int <- find_fit2(fit$best_interaction_model, "coxph")
-  expect_false(is.null(int))
-  expect_false(is.null(int$strata))
-  expect_true(any(grepl("strata\\(", as.character(int$formula))))
-})
-
 test_that("mfpi + strata: per-stratum scales carried into survreg interaction models", {
   skip_on_cran()
   dsr <- make_mfpi_survreg()

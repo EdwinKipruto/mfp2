@@ -42,6 +42,21 @@ test_that("finegray_family(strata_action = 'invalid') errors", {
                regexp = "both|censoring|baseline", ignore.case = TRUE)
 })
 
+test_that("mfpi rejects Fine-Gray models in both public interfaces", {
+  x <- cbind(group = c(0, 1, 0, 1, 0, 1), z = seq_len(6))
+  y <- seq_len(6)
+  expect_error(
+    mfpi(x = x, y = y, family = finegray_family(etype = "relapse")),
+    "does not support Fine--Gray"
+  )
+
+  dat <- data.frame(y = y, group = factor(x[, "group"]), z = x[, "z"])
+  expect_error(
+    mfpi(y ~ group + z, data = dat, family = "finegray"),
+    "does not support Fine--Gray"
+  )
+})
+
 test_that("mfpi multinomial with a single-level group errors or warns", {
   skip_on_cran()
   dm <- make_mfpi_multinomial(n = 400, seed = 91)

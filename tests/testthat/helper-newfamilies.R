@@ -104,19 +104,6 @@ make_mfpi_multinomial <- function(n = 800, seed = 88) {
   data.frame(y = factor(cls), a = a, g = g)
 }
 
-make_mfpi_finegray <- function(n = 900, seed = 77) {
-  set.seed(seed)
-  z1 <- runif(n, 1, 10)
-  grp <- factor(sample(c("t", "c"), n, TRUE))
-  sx  <- factor(sample(c("m", "f"), n, TRUE))
-  bz <- ifelse(grp == "t", 0.30, -0.05)
-  eta <- bz * (z1 - mean(z1)) + 0.3 * (sx == "f")
-  tm <- rexp(n, rate = 0.05 * exp(eta)); cn <- runif(n, 0, 30)
-  status <- ifelse(tm <= cn, sample(1:2, n, TRUE, prob = c(0.65, 0.35)), 0L)
-  ev <- factor(status, levels = 0:2, labels = c("censor", "relapse", "death"))
-  data.frame(obs = pmin(tm, cn), ev = ev, z1 = z1, grp = grp, sx = sx)
-}
-
 make_mfpi_survreg <- function(n = 700, seed = 5) {
   set.seed(seed)
   x1 <- runif(n, 1, 10)

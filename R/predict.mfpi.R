@@ -371,7 +371,7 @@ build_group_fp_basis <- function(cont_mat,
 #' - `predict(fit, terms = "age", type = "response", newdata = new_data)`
 #'   returns one response-scale prediction per row for a GLM.
 #' - `predict(fit, terms = "age", type = "risk", newdata = new_data)` returns
-#'   one relative-risk prediction per row for a Cox or Fine--Gray model.
+#'   one relative-risk prediction per row for a Cox model.
 #'
 #' @section Selecting terms and models:
 #' Use `terms` to select interaction variables that were examined by [mfpi()].
@@ -416,10 +416,6 @@ build_group_fp_basis <- function(cont_mat,
 #'   predicted cumulative hazard up to the supplied follow-up time, and
 #'   `type = "survival"` returns the estimated survival probability at that
 #'   time. `"link"` is accepted as another name for `"lp"`.
-#' - For Fine--Gray models, `type = "lp"` and `type = "risk"` return relative
-#'   subdistribution-hazard predictions. With `times`, `type = "response"`
-#'   returns cumulative-incidence probabilities. Absolute Cox
-#'   survival/expected-event types are not exposed for this family.
 #' - For ordinal models, `type = "link"` returns the common covariate linear
 #'   predictor without cut-point intercepts, `type = "response"` returns
 #'   category probabilities, and `type = "mean"` returns the expected category
@@ -458,9 +454,9 @@ build_group_fp_basis <- function(cont_mat,
 #' - the common cumulative-link predictor scale for ordinal models;
 #' - a reference-category logit scale for multinomial models;
 #' - the fitted location scale for a `survreg` model;
-#' - a partial log-hazard scale for Cox and Fine--Gray models.
+#' - a partial log-hazard scale for Cox models.
 #'
-#' For Cox and Fine--Gray models, these fitted curves do not include the baseline hazard and
+#' For Cox models, these fitted curves do not include the baseline hazard and
 #' are not survival probabilities.
 #'
 #' @section Evaluation values and grids:
@@ -552,7 +548,7 @@ build_group_fp_basis <- function(cont_mat,
 #' non-reference logit's coefficient vector, and the resulting logits are
 #' normalized to obtain class probabilities.
 #'
-#' For a Cox or Fine--Gray model, let `eta_i` denote the subject's fitted linear
+#' For a Cox model, let `eta_i` denote the subject's fitted linear
 #' predictor on the proportional-hazards scale. `type = "lp"` returns it relative to the
 #' reference selected by `cox_reference`, and `type = "risk"` is its
 #' exponential. Thus, using the same reference convention,
@@ -612,7 +608,7 @@ build_group_fp_basis <- function(cont_mat,
 #' package version.
 #'
 #' @section Proportional-hazards predictions:
-#' Cox and Fine--Gray predictions with `type = "lp"` and `type = "risk"` are
+#' Cox predictions with `type = "lp"` and `type = "risk"` are
 #' relative quantities. They are not absolute hazards or survival probabilities.
 #'
 #' Use `cox_reference` to choose the covariate reference for these predictions:
@@ -644,9 +640,6 @@ build_group_fp_basis <- function(cont_mat,
 #'
 #' Do not use `cox_reference` with `type = "expected"` or
 #' `type = "survival"`.
-#'
-#' Fine--Gray models expose relative `"lp"` and `"risk"` predictions and
-#' cumulative incidence through `type = "response"` together with `times`.
 #'
 #' For a stratified Cox model, each prediction row must have valid stratum
 #' information. If `strata()` was included in the fitted formula, include its
@@ -701,9 +694,9 @@ build_group_fp_basis <- function(cont_mat,
 #'   `"both"` for fitted curves. For predictions for individual observations,
 #'   likelihood GLMs and `survreg` models support `"link"` and `"response"`;
 #'   Cox models support `"lp"`, `"risk"`, `"expected"`, and `"survival"`;
-#'   Fine--Gray models support `"lp"`, `"risk"`, and `"response"`; ordinal
-#'   models support `"link"`, `"response"`, and `"mean"`; multinomial models
-#'   support `"link"` and `"response"`. If `NULL`, `"both"` is used.
+#'   ordinal models support `"link"`, `"response"`, and `"mean"`; and
+#'   multinomial models support `"link"` and `"response"`. If `NULL`, `"both"`
+#'   is used.
 #'
 #' @param se.fit A single `TRUE` or `FALSE` value indicating whether standard
 #'   errors should be returned. The default is `TRUE`.
@@ -737,15 +730,12 @@ build_group_fp_basis <- function(cont_mat,
 #'   models, unstratified models, or fitted-curve predictions.
 #'
 #' @param cox_reference A character value selecting the covariate reference for
-#'   Cox or Fine--Gray observation-level predictions with `type = "lp"` or `type = "risk"`.
+#'   Cox observation-level predictions with `type = "lp"` or `type = "risk"`.
 #'   Use `"zero"`, `"sample"`, or `"strata"`. The default is `"zero"`.
 #'
 #' @param newoffset An optional finite numeric vector containing one offset value
 #'   per prediction row. It can be used only for predictions for individual
 #'   observations from a term-specific model fitted with an offset.
-#'
-#' @param times Optional non-negative numeric time or time grid required for
-#'   Fine--Gray `type = "response"` cumulative-incidence predictions.
 #'
 #' @param ... Reserved for future extensions. Currently, supplied arguments are
 #'   ignored with a warning.
@@ -994,7 +984,6 @@ predict.mfpi <- function(object,
                          strata = NULL,
                          cox_reference = NULL,
                          newoffset = NULL,
-                         times = NULL,
                          ...) {
   # Public S3 entry point. After argument validation, prediction is routed to
   # either the fitted-function path or the ordinary subject-level path.
@@ -1019,8 +1008,6 @@ predict.mfpi <- function(object,
   function_types <- c("both", "function", "difference")
   ordinary_types <- if (identical(family_string, "cox")) {
     c("lp", "risk", "expected", "survival")
-  } else if (identical(family_string, "finegray")) {
-    c("lp", "risk", "response")
   } else if (identical(family_string, "survreg")) {
     c("link", "response")
   } else if (identical(family_string, "ordinal")) {
@@ -1030,21 +1017,6 @@ predict.mfpi <- function(object,
   }
   is_function_prediction <- type %in% function_types
   is_ordinary_prediction <- type %in% ordinary_types
-
-  if (identical(family_string, "finegray") && identical(type, "response")) {
-    if (!is.numeric(times) || length(times) < 1L || anyNA(times) ||
-        any(!is.finite(times)) || any(times < 0)) {
-      stop(
-        "Fine--Gray `type = \"response\"` requires `times` to contain one or ",
-        "more finite non-negative values.",
-        call. = FALSE
-      )
-    }
-    times <- as.numeric(times)
-  } else if (!is.null(times)) {
-    stop("`times` is used only for Fine--Gray `type = \"response\"` prediction.",
-         call. = FALSE)
-  }
 
   # Ordinal MFPI supports fitted-function and difference prediction on the
   # linear predictor (slope) scale. Ordinary subject-level prediction
@@ -1121,14 +1093,14 @@ predict.mfpi <- function(object,
     )
   }
 
-  if (!family_string %in% c("cox", "survreg", "finegray")) {
+  if (!family_string %in% c("cox", "survreg")) {
     if (!is.null(strata)) {
-      stop("`strata` is available only for Cox, Fine--Gray, or stratified survreg predictions.", call. = FALSE)
+      stop("`strata` is available only for Cox or stratified survreg predictions.", call. = FALSE)
     }
   }
   if (!mfp2_family_is_ph(family_string)) {
     if (!is.null(cox_reference)) {
-      stop("`cox_reference` is available only for Cox or Fine--Gray predictions.",
+      stop("`cox_reference` is available only for Cox predictions.",
            call. = FALSE)
     }
   }
@@ -1222,7 +1194,7 @@ predict.mfpi <- function(object,
       # matrix-interface fits continue to use that argument directly.
       ordinary_strata <- strata
       if (!is.null(newdata) &&
-          family_string %in% c("cox", "survreg", "finegray") &&
+          family_string %in% c("cox", "survreg") &&
           prediction_has_formula_strata(object)) {
         ordinary_strata <- reconstruct_formula_strata_newdata(object, newdata)
       }
@@ -1256,8 +1228,7 @@ predict.mfpi <- function(object,
         offset = design$offset,
         type = type,
         se.fit = se.fit,
-        cox_reference = cox_reference,
-        times = times
+        cox_reference = cox_reference
       )
 
       if (is.matrix(pred$fit)) {
@@ -1300,7 +1271,6 @@ predict.mfpi <- function(object,
               NULL
             },
             used_model_predict = isTRUE(pred$used_model_predict),
-            times = pred$times,
             model_newdata_columns = if (!is.null(design$model_newdata)) {
               colnames(design$model_newdata)
             } else {
@@ -3117,15 +3087,12 @@ mfpi_build_ordinary_design <- function(object, term, fit_result, newdata,
   # newdata, formula offsets are reconstructed earlier; matrix-interface fits
   # still require an explicit replacement because the raw offset is unavailable.
   if (has_offset && is.null(newoffset) && isTRUE(newdata_is_training_internal)) {
-    stored_offset <- if (identical(family_string, "finegray")) {
-      fit_obj$mfp2_original_offset
-    } else if (identical(family_string, "multinomial")) {
+    stored_offset <- if (identical(family_string, "multinomial")) {
       fit_obj$mfp2_offset_matrix
     } else {
       fit_obj$offset
     }
-    if (!is.null(stored_offset) && inherits(fit_obj, "coxph") &&
-        !identical(family_string, "finegray")) {
+    if (!is.null(stored_offset) && inherits(fit_obj, "coxph")) {
       offset_origin <- object$cox_offset_reference
       if (!is.numeric(offset_origin) || length(offset_origin) != 1L ||
           is.na(offset_origin) || !is.finite(offset_origin)) {
@@ -3294,8 +3261,7 @@ mfpi_predict_ordinary <- function(object,
                                   offset = NULL,
                                   type,
                                   se.fit,
-                                  cox_reference = NULL,
-                                  times = NULL) {
+                                  cox_reference = NULL) {
   interaction_model <- fit_result$test_results$interaction_model
   fit_obj <- interaction_model$fit
   family_string <- mfpi_family_string(object)
@@ -3316,25 +3282,6 @@ mfpi_predict_ordinary <- function(object,
       type = type,
       se.fit = se.fit
     ))
-  }
-
-  if (identical(family_string, "finegray") && identical(type, "response")) {
-    prediction <- mfp2_predict_finegray_cif(
-      object = fit_obj,
-      newdata = model_newdata,
-      times = times,
-      se.fit = se.fit
-    )
-    if (is.list(prediction)) {
-      return(list(
-        fit = prediction$fit,
-        se.fit = prediction$se.fit,
-        used_model_predict = TRUE,
-        times = prediction$times
-      ))
-    }
-    return(list(fit = prediction, se.fit = NULL,
-                used_model_predict = TRUE, times = sort(unique(times))))
   }
 
   # Ordinal proportional-odds models require a custom prediction path because
@@ -3400,13 +3347,6 @@ mfpi_predict_ordinary <- function(object,
   }
 
   pred <- do.call(stats::predict, predict_args)
-  if (identical(family_string, "finegray") && is.null(model_newdata)) {
-    pred <- collapse_finegray_training_prediction(
-      pred,
-      fit_obj$mfp2_finegray_row_map,
-      fit_obj$mfp2_finegray_n_original
-    )
-  }
 
   if (is.list(pred)) {
     return(list(
@@ -3739,7 +3679,7 @@ mfpi_named_scalar <- function(x, name, default) {
 #'
 #' @return Character scalar family name, such as \code{"gaussian"},
 #'   \code{"Gamma"}, \code{"inverse.gaussian"}, \code{"negbin"}, \code{"cox"},
-#'   \code{"survreg"}, or \code{"finegray"}.
+#'   or \code{"survreg"}.
 #'
 #' @keywords internal
 #' @noRd
@@ -3777,8 +3717,6 @@ mfpi_match_prediction_type <- function(type, family_string) {
 
   choices <- if (identical(family_string, "cox")) {
     c("both", "function", "difference", "lp", "risk", "expected", "survival")
-  } else if (identical(family_string, "finegray")) {
-    c("both", "function", "difference", "lp", "risk", "response")
   } else if (identical(family_string, "survreg")) {
     c("both", "function", "difference", "link", "response")
   } else if (identical(family_string, "ordinal")) {
@@ -3798,8 +3736,6 @@ mfpi_match_prediction_type <- function(type, family_string) {
       stop(
         "For ", if (identical(family_string, "cox")) {
           "Cox"
-        } else if (identical(family_string, "finegray")) {
-          "Fine--Gray"
         } else if (identical(family_string, "survreg")) {
           "survreg"
         } else if (identical(family_string, "ordinal")) {

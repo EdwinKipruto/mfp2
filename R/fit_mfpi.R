@@ -134,8 +134,8 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #'   \code{group_var}. Shift and scale have already been applied; no intercept
 #'   column.
 #' @param y Response vector or \code{survival::Surv()} object.
-#' @param family Resolved likelihood-GLM, negative-binomial, Cox, survreg, or
-#'   Fine--Gray family specification.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, or survreg
+#'   family specification.
 #' @param family_string Same as \code{family} but always a plain character
 #'   string. Required separately by \code{fit_mfp()} for internal
 #'   branching.
@@ -185,8 +185,7 @@ mfpi_extract_adjustment_powers <- function(adjustment_model, selected_vars) {
 #' @param fp_powers Named list of candidate FP power sets, one per predictor.
 #' @param ties Character string; tie-handling method for Cox models.
 #' @param strata Optional normalized survival-model stratification object passed
-#'   through from \code{mfpi.default()}. For Fine--Gray it has already been
-#'   consumed while preparing censoring weights.
+#'   through from \code{mfpi.default()}.
 #' @param nocenter Numeric vector passed to \code{survival::coxph()} to
 #'   suppress centring for specific predictors.
 #' @param acd_vars Named logical vector of length \eqn{p}. Whether each
@@ -423,19 +422,13 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     # fit_mfpi() calls fit_mfp() directly rather than through mfp2.default(),
     # so attach the same public, unprepared family metadata that a standalone
     # mfp2 fit receives. This keeps summary/prediction on the nested adjustment
-    # model complete for survreg and Fine--Gray families.
+    # model complete for survreg families.
     adjustment_model$family <- mfp2_strip_prepared_family(family_fit)
   }
   # fit_mfpi() calls fit_mfp() below the public mfp2.default() boundary, so
-  # mirror the observation-level metadata that mfp2.default() normally adds.
-  # In particular, the final Fine--Gray coxph fit must retain its expanded
-  # native offset for predict.coxph(), while summary refits need the original
-  # rows so they can expand them exactly once through the cached row map.
-  if (identical(family_string, "finegray")) {
-    adjustment_model$mfp2_original_offset <- offset
-  } else {
-    adjustment_model$offset <- offset
-  }
+  # mirror the observation-level offset metadata that mfp2.default() normally
+  # adds.
+  adjustment_model$offset <- offset
   adjustment_model$has_offset <- has_offset
 
   # Identify variables retained by the adjustment model
@@ -604,11 +597,8 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
     verbose            = verbose
   )
 
-  # Fine--Gray preparation contains the expanded counting-process rows used by
-  # every candidate fit.  They are a fitting cache, not public model metadata.
-  # Strip that cache before storing the full Stage-2 result so an MFPI object
-  # does not retain a duplicate copy of the expanded data through
-  # `univariable_interactions$family`.
+  # Prepared family data are a fitting cache, not public model metadata. Strip
+  # that cache before storing the full Stage-2 result.
   univ_results$family <- mfp2_strip_prepared_family(univ_results$family)
 
   n_selected <- nrow(univ_results$best_model_metrics)
@@ -628,7 +618,7 @@ fit_mfpi <- function(x, y, family, family_string, weights, offset, cycles,
   # working rows with the same training offset as the final adjustment model.
   # fit_mfp() has already calculated predict.coxph()'s offset origin once, so
   # expose that scalar at the top level rather than recomputing it per term.
-  cox_offset_reference <- if (family_string %in% c("cox", "finegray")) {
+  cox_offset_reference <- if (identical(family_string, "cox")) {
     adjustment_model$cox_offset_reference
   } else {
     NULL
@@ -1163,8 +1153,8 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 #' @param weights Numeric vector of observation weights.
 #' @param offset Numeric vector of linear-predictor offsets.
 #' @param cycles Positive integer. Maximum MFP backfitting iterations.
-#' @param family Resolved likelihood-GLM, negative-binomial, Cox, `survreg`, or
-#'   Fine--Gray family passed directly to \code{fit_mfp()}.
+#' @param family Resolved likelihood-GLM, negative-binomial, Cox, or `survreg`
+#'   family passed directly to \code{fit_mfp()}.
 #' @param family_string Normalized character family name. Required separately by
 #'   \code{fit_mfp()} for internal branching.
 #' @param criterion Character string; \code{"pvalue"}, \code{"aic"}, or
@@ -1180,9 +1170,8 @@ restore_mfpi_adjustment_shifts <- function(adjustment_model,
 #'   \code{fp_powers}, \code{acd_vars}, \code{zero_vars},
 #'   \code{catzero_vars}, and \code{spike_vars}.
 #' @param xorder Character string; entry order for MFP backfitting.
-#' @param ties Character string; tie-handling for Cox and Fine--Gray models.
-#' @param strata Optional normalized survival stratum. Fine--Gray censoring
-#'   strata have already been consumed during response expansion.
+#' @param ties Character string; tie-handling for Cox models.
+#' @param strata Optional normalized survival stratum.
 #' @param nocenter Numeric vector passed to proportional-hazards fitters.
 #' @param min_saz_prop Numeric in \eqn{(0, 0.5)}. Minimum required
 #'   proportion in each component of a spike-at-zero covariate, passed to

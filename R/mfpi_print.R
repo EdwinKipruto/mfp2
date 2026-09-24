@@ -981,7 +981,6 @@ mfpi_print_model_label <- function(x) {
   switch(
     family_string,
     cox = "Cox proportional hazards",
-    finegray = "Fine--Gray subdistribution hazards",
     survreg = "Parametric survival regression",
     multinomial = "Multinomial logistic regression",
     ordinal = if (is.null(link) || is.na(link) || !nzchar(link)) {

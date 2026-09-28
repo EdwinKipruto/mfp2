@@ -121,26 +121,34 @@
 #' is refitted with [geepack::geeglm()] and returned as a native `geeglm`
 #' object.
 #'
-#' With `criterion = "pvalue"`, selection reproduces the calculation used by
+#' With `criterion = "pvalue"`, [gee_family()] provides two procedures through
+#' `pvalue_method`. The default, `"robust_wald"`, selects the power combination
+#' within each fixed FP degree by quasi-likelihood. Closed comparisons use
+#' robust sandwich Wald tests. When the selected reduced and full FP bases are
+#' not nested, `mfp2()` fits an augmented GEE containing the reduced basis, the
+#' common adjustment terms, and the linearly independent directions from the
+#' full basis; the added directions are tested jointly. These p-values are
+#' conditional on the selected powers and do not adjust for the FP power
+#' search.
+#'
+#' `pvalue_method = "stata"` reproduces the selection calculation used by
 #' Stata `mfp: xtgee`. Candidate powers within a fixed degree are chosen using
-#' the negative overall Wald chi-square. Closed-test statistics are
+#' the negative overall robust Wald chi-square. Closed-test statistics are
 #' differences of those negative-Wald values, referred to the chi-square
 #' distribution with the MFP model-df difference. The quantity printed as
 #' `Deviance` in this mode is therefore not the response-family deviance and is
-#' not an additive likelihood deviance. Ordering, power ranking, closed tests,
-#' and final inference all use the covariance estimator selected by `std.err`.
-#' For `std.err = "san.se"`, the geepack sandwich covariance is multiplied by
-#' Stata's \eqn{K/(K-1)} finite-cluster correction, where \eqn{K} is the number
-#' of independent clusters. The jackknife covariance estimators are used as
-#' returned by geepack, without this additional sandwich correction. The
-#' initial visiting order uses coefficient-block Wald tests from the full
-#' linear GEE, matching Stata's ordering pass.
+#' not an additive likelihood deviance. To reproduce Stata's clustered robust
+#' covariance convention, the geepack sandwich covariance is multiplied by
+#' \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. The
+#' initial visiting order uses robust coefficient-block Wald tests from the
+#' full linear GEE, matching Stata's ordering pass.
 #'
 #' As throughout `mfp2`, the searched FP1 candidate set retains power \eqn{1}.
 #' Thus the same fitted linear function can appear as the separately specified
 #' one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
 #' of freedom accounts for selecting its power from the candidate set. This
-#' rule is shared by GEE p-value and QICu/QBIC selection.
+#' rule is shared by Stata-compatible and robust-Wald GEE p-value selection and
+#' by QICu/QBIC selection.
 #'
 #' For GEE, `criterion = "aic"` is QICu,
 #' \deqn{-2Q + 2p,}
@@ -160,7 +168,7 @@
 #' response information, and the Gamma quasi-likelihood is consistent with
 #' the Gamma family-deviance differences. The response-family deviance remains
 #' available for descriptive model-fit reporting but is kept separate from
-#' GEE p-value selection and from QICu/QBIC.
+#' both GEE p-value procedures and from QICu/QBIC.
 #'
 #' @section Shifting, scaling, and centering:
 #' FP transformations involving logarithms, negative powers, or fractional
@@ -509,9 +517,10 @@
 #'   `mfp2.formula()`, only a single global default is accepted; override it for
 #'   individual terms with `fp(x, df = value)`.
 #'   The effective `df` may be reduced automatically when a predictor has few
-#'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
-#'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
-#'   requested value unchanged.
+#'   distinct values: 1 distinct value (constant) is an invalid predictor;
+#'   2--3 distinct values force `df = 1`; 4--5 distinct values cap `df` at
+#'   `min(2, requested)`; 6 or more distinct values use the requested value
+#'   unchanged.
 #' @param center Controls centering of final transformed terms. In
 #'   `mfp2.default()`, supply either a single unnamed logical value applied to
 #'   every predictor or a named logical vector for one or more columns of `x`.
@@ -4293,10 +4302,10 @@ coef.mfp2 <- function(object, ...) {
 #' interval with the conventional rounded multiplier 1.96, whereas `confint()`
 #' uses the exact normal quantile and honours `level`), and they apply uniformly
 #' to every scalar-coefficient family. They are used in preference to the default
-#' profile-likelihood intervals of [stats::confint.glm()] because those refit
+#'  profile-likelihood intervals of [stats::confint()] because those refit
 #' the model on `mfp2`'s internally transformed design and fail; for GEE
-#' (`gee_family()`) the covariance is the estimator selected by `std.err`
-#' (the robust sandwich estimator by default), and `geepack` supplies no `confint`
+#' (`gee_family()`) the covariance is the robust sandwich estimator, which is
+#' the correct basis for GEE inference (and `geepack` supplies no `confint`
 #' method). Multinomial and ordinal models, whose coefficients are not a single
 #' named vector, defer to the interval method of the underlying fit.
 #'
@@ -4345,7 +4354,7 @@ confint.mfp2 <- function(object, parm, level = 0.95, ...) {
   nm <- names(cf)
   if (is.null(nm)) nm <- as.character(seq_along(cf))
 
-  # Wald standard errors from the fitted covariance (selected by std.err for GEE).
+  # Wald standard errors from the fitted covariance (robust sandwich for GEE).
   # If the covariance is unavailable, the interval limits are NA rather than a
   # hard error, so a usable object is always returned.
   V <- tryCatch(as.matrix(stats::vcov(object)), error = function(e) NULL)
@@ -4382,8 +4391,8 @@ confint.mfp2 <- function(object, parm, level = 0.95, ...) {
 #' Stata's `fracplot` (after `mfp`) for the component-plus-residual plot, where
 #' the ith plotted point is \eqn{\hat\eta^{*}_i + d_i} with \eqn{d_i} the
 #' deviance residual. `type = "pearson"`, `"working"`, and `"response"` are
-#' delegated to `geepack` with the fitted response family restored when reading
-#' an older object that stored the GEE specification in the `family` slot.
+#' delegated to `geepack` (after restoring the inner response family, which the
+#' stored `mfp2_gee_family` wrapper does not carry).
 #'
 #' For multinomial models (`family = "multinomial"`), `nnet::multinom` supplies
 #' no residual method, so each non-reference logit is treated as a binary
@@ -4422,7 +4431,7 @@ residuals.mfp2 <- function(object, ...) {
       # Deviance residuals are not provided by geepack, but they only require
       # the marginal mean and the family deviance function (not the working
       # correlation), so compute them directly. This matches Stata `fracplot`.
-      family <- mfp2_restore_gee_family(object)$family
+      family <- object$family$response_family
       mu <- as.numeric(object$fitted.values)
       y <- as.numeric(object$y)
       wt <- object$prior.weights
@@ -5040,11 +5049,6 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     }
   }
 
-  if (identical(x$family_string, "gee") &&
-      criterion_label %in% c("AIC", "BIC")) {
-    criterion_label <- paste0("Q", criterion_label)
-  }
-
   is_pvalue_criterion <- identical(criterion_label, "p-value")
 
 
@@ -5653,7 +5657,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   # ---------------------------------------------------------------------------
   #
   # For marginal GEE models, surface the key GEE parameters (working
-  # correlation and its estimate, SE method, scale, cluster structure)
+  # correlation and its estimate, robust SE type, scale, cluster structure)
   # using the same shared renderer as print.summary.mfp2().
   if (identical(x$family_string, "gee")) {
     mfp2_print_gee_parameters(

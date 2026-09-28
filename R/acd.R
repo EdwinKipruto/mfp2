@@ -286,11 +286,6 @@ fit_acd <- function(x, powers = NULL, shift = 0, scale = 1, zero = FALSE,
 
   x_fit <- (x_fit + shift) / scale
 
-  # check whether acd is estimable
-  #if (!all(x > 0) && !zero) {
-  #  warning("All values of `x` must be positive after shifting. ",
-  #       "Try specifying a larger `shift` or use `shift = NULL` to estimate it automatically.")
-  #}
   # --- ACD transformation ---
   # see here for details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5663339/pdf/emss-59479.pdf)
   n_fit <- length(x_fit)

@@ -7,7 +7,8 @@
 gee_family(
   family = stats::gaussian(),
   corstr = c("exchangeable", "independence", "ar1"),
-  std.err = c("san.se", "jack", "j1s", "fij")
+  std.err = c("san.se", "jack", "j1s", "fij"),
+  pvalue_method = c("robust_wald", "stata")
 )
 }
 \arguments{
@@ -16,13 +17,19 @@ describing the marginal mean and variance. Supported families are
 \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma}. Defaults to
 \code{stats::gaussian()}.}
 
-\item{corstr}{Working correlation structure, one of \code{"exchangeable"},
-\code{"independence"}, or \code{"ar1"}. The default is \code{"exchangeable"}, matching
-Stata's default for \code{xtgee}.}
+\item{corstr}{Working correlation structure, one of \code{"exchangeable"}
+(the default), \code{"independence"}, or \code{"ar1"}.}
 
 \item{std.err}{Type of standard error reported by the retained fit, one of
 \code{"san.se"} (the robust sandwich estimator, default), \code{"jack"}, \code{"j1s"}, or
 \code{"fij"}.}
+
+\item{pvalue_method}{GEE p-value procedure. \code{"robust_wald"} (default) uses
+robust sandwich Wald tests; when selected FP bases are non-nested, an
+augmented model containing both bases is fitted and the additional basis
+directions are tested jointly. \code{"stata"} reproduces Stata \code{mfp: xtgee}
+by treating the negative overall robust Wald chi-square as its selection
+"deviance" and testing differences of those values.}
 }
 \value{
 An \code{mfp2_gee_family} specification.
@@ -38,21 +45,20 @@ The cluster identifier is supplied through the top-level \code{id} argument of
 \code{\link[=mfp2]{mfp2()}} (one value per observation, with clusters in contiguous rows), and
 repeated-measure ordering through the optional \code{waves} argument. These are
 aligned per observation and therefore live outside \code{gee_family()}.
-The scale parameter follows \pkg{geepack}'s default and is estimated rather
-than fixed.
 
 All three \code{\link[=mfp2]{mfp2()}} selection criteria are available. With
-\code{criterion = "pvalue"}, power combinations are ranked as in Stata
-\code{mfp: xtgee}: the selection score is the negative overall Wald chi-square,
-and closed comparisons use differences of those scores with the prescribed
-MFP search degrees of freedom. The covariance estimator selected by
-\code{std.err} is used consistently for variable ordering, power ranking, closed
-tests, and final-model inference. For \code{std.err = "san.se"}, Stata's
-\eqn{K/(K-1)} finite-cluster correction is applied to geepack's sandwich
-covariance, where \eqn{K} is the number of independent clusters. The three
-jackknife estimators are used as returned by geepack, without an additional
-sandwich correction. The negative-Wald score is not an additive
-likelihood-deviance statistic.
+\code{criterion = "pvalue"}, \code{pvalue_method = "robust_wald"} chooses the power
+combination within each fixed FP degree by quasi-likelihood, then uses
+sandwich Wald tests for the closed comparisons. For comparisons between
+selected non-nested FP bases, it fits an augmented GEE containing both bases
+and tests the additional estimable directions. This is conditional on the
+selected powers and does not account for power-search multiplicity.
+\code{pvalue_method = "stata"} instead reproduces
+Stata \code{mfp: xtgee}: the selection "deviance" is the negative overall robust
+Wald chi-square and differences are referred to a chi-square distribution.
+Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
+\eqn{K} is the number of independent clusters. That compatibility
+calculation is not an additive likelihood-deviance test.
 With \code{criterion = "aic"} and
 \code{criterion = "bic"}, selection uses the quasi-likelihood information
 criterion QICu of Pan (2001) and its BIC-penalised analogue. Quasi-likelihood

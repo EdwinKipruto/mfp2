@@ -445,7 +445,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
   pw_list[[cont_var]] <- fp_cand
 
   select_vec <- stats::setNames(rep(1, n_total), vnames)
-  alpha_vec  <- stats::setNames(rep(1, n_total), vnames)
+    alpha_vec  <- stats::setNames(rep(1, n_total), vnames)
   center_vec <- stats::setNames(
     c(center, rep(FALSE, n_total - 1L)),
     vnames
@@ -481,8 +481,6 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
-    # Retain power 1 when supplied, following the package-wide FP1 rule.
-    retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,
     family_string = family_string,
@@ -1201,8 +1199,6 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
-    # Retain power 1 when supplied, following the package-wide FP1 rule.
-    retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,
     family_string = family_string,

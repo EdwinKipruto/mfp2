@@ -1,107 +1,107 @@
 #' Calculate a scaling factor for a predictor variable
-#' 
+#'
 #' @details
 #' This function exposes one preprocessing calculation used by [mfp2()].
 #' Most users do not need to call it directly because shifting and scaling are
 #' handled automatically during model fitting.
-#' 
+#'
 #' For details on why scaling is useful, see the corresponding section in the
 #' documentation of \code{mfp2()}.
-#' 
-#' The determination of the scaling factor is independent of (i.e. not affected 
-#' by) shifts in the input data, as it depends only on the range of the 
+#'
+#' The determination of the scaling factor is independent of (i.e. not affected
+#' by) shifts in the input data, as it depends only on the range of the
 #' input data.
-#' 
-#' Note that the estimation of powers is unaffected by scaling; the same powers 
-#' are found for scaled input data. In extreme cases, scaling is necessary to 
+#'
+#' Note that the estimation of powers is unaffected by scaling; the same powers
+#' are found for scaled input data. In extreme cases, scaling is necessary to
 #' preserve accuracy; see Royston and Sauerbrei (2008).
-#' This function uses the scaling formula from Section 4.11.1 of 
-#' Royston and Sauerbrei (2008). Further information can also be found in the 
+#' This function uses the scaling formula from Section 4.11.1 of
+#' Royston and Sauerbrei (2008). Further information can also be found in the
 #' Stata manual for mfp at https://www.stata.com/manuals/rfp.pdf.
 #'
-#' @param x A numeric vector already shifted to positive values (see 
+#' @param x A numeric vector already shifted to positive values (see
 #' \code{find_shift_factor()}). Requires at least two distinct values.
-#' 
+#'
 #' @examples
 #' x = 1:1000
 #' find_scale_factor(x)
-#' 
-#' @return 
-#' An integer that can be used to scale `x` to a reasonable range. For binary
-#' variables, 1 is returned.
-#' 
-#' @references 
-#' Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
+#'
+#' @return
+#' A power of 10 used to scale `x` to a reasonable range. For binary variables,
+#'  1 is returned.
+#'
+#' @references
+#' Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}
-#' 
+#'
 #' @keywords internal
 #' @noRd
 find_scale_factor <- function(x) {
-  
+
   n_unique <- length(unique(x))
-  
+
   if (n_unique == 1)
-    stop("! Input data must not be constant.", 
+    stop("! Input data must not be constant.",
          "i All values of x are identical, hence log(max(x)-min(x)) = log(0) is not defined.")
-  
+
   if (n_unique == 2)
     return(1)
-  
+
   lrange <- log10(max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
-  
+
   10^(sign(lrange) * floor(abs(lrange)))
 }
 
 #' Calculate a shift factor for a predictor variable
-#' 
+#'
 #' @details
 #' This function exposes one preprocessing calculation used by [mfp2()].
 #' Most users do not need to call it directly because shifting and scaling are
 #' handled automatically during model fitting.
 #' For details on why shifting is necessary, see the corresponding section in the
 #' documentation of \code{mfp2()}.
-#' 
-#' This function implements the formula in Section 4.7 of Royston and 
+#'
+#' This function implements the formula in Section 4.7 of Royston and
 #' Sauerbrei (2008).
-#' 
+#'
 #' @param x A numeric vector.
-#' 
+#'
 #' @examples
 #' x = 1:1000
 #' find_shift_factor(x)
-#' 
-#' @return 
-#' A numeric value that can be used to shift `x` to positive values. 
+#'
+#' @return
+#' A numeric value that can be used to shift `x` to positive values.
 #' If all values are positive, or if `x` is binary, then 0 is returned.
-#' 
-#' @references 
-#' Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building: 
-#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials 
+#'
+#' @references
+#' Royston, P., and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
+#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}
-#' 
+#'
 #' @keywords internal
 #' @noRd
 find_shift_factor <- function(x) {
-  
+
   n_unique <- length(unique(x))
-  
-  if (all(x > 0) || n_unique <= 2) 
+
+  if (all(x > 0) || n_unique <= 2)
     return(0)
-  
+
   difx <- diff(sort(x))
   eps <- min(difx[difx != 0], na.rm = TRUE)
-  
+
   eps - min(x, na.rm = TRUE)
 }
 
 #' Shift and scale a predictor vector
-#' 
+#'
 #' Shifts `x` to positive values if it contains negative or zero values. If all
 #' values of `x` are already positive, the original values are returned without
 #' shifting but scaled if the scaling factor is not equal to 1. If `x` has
 #' already been shifted and scaled, the function returns it unchanged.
-#' 
+#'
 #' @param x A numeric vector of predictor values.
 #' @param scale Scaling factor for `x`. Must be a positive numeric value.
 #' Default is `NULL`, in which case the scaling factor is estimated
@@ -112,17 +112,17 @@ find_shift_factor <- function(x) {
 #' @examples
 #' x = 1:1000
 #' apply_shift_scale(x)
-#' 
-#' @returns 
+#'
+#' @returns
 #' A numeric vector of the same length as `x`, shifted and scaled.
-#'  
+#'
 #' @keywords internal
 #' @noRd
 apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
   # restrict x to be a vector not matrix
   if (is.matrix(x))
     stop("x must be a vector not a matrix", call. = FALSE)
-  
+
   N <- length(x)
   # If adjustment factors are NULL we use R&S formula to shift x to positive values
   if (is.null(shift)) {
@@ -148,7 +148,7 @@ apply_shift_scale <- function(x, scale = NULL, shift = NULL) {
         call. = FALSE
       )
   }
-  
+
   # if scale is NULL then scale x for computational stability using R&S formula
   if (is.null(scale)) { # No scaling
     x <- x / find_scale_factor(x)
@@ -201,11 +201,11 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
   if (!is.matrix(x)) {
     x <- as.matrix(x)
   }
-  
+
   if (is.null(colnames(x)) || anyNA(colnames(x)) || any(colnames(x) == "")) {
     stop("`x` must have complete, non-empty column names.", call. = FALSE)
   }
-  
+
   bad_constant <- vapply(
     seq_len(ncol(x)),
     function(j) {
@@ -215,7 +215,7 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
     },
     logical(1L)
   )
-  
+
   if (any(bad_constant)) {
     stop(
       sprintf(
@@ -225,12 +225,12 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
       call. = FALSE
     )
   }
-  
+
   X <- if (intercept) cbind("(Intercept)" = 1, x) else x
-  
+
   qr_x <- qr(X)
   full_rank <- qr_x$rank == ncol(X)
-  
+
   if (!full_rank) {
     pivot <- qr_x$pivot
     # `!full_rank` guarantees at least one aliased column, so the bounds are
@@ -239,7 +239,7 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
     aliased_positions <- pivot[seq.int(qr_x$rank + 1L, ncol(X))]
     aliased_names <- colnames(X)[aliased_positions]
     aliased_names <- setdiff(aliased_names, "(Intercept)")
-    
+
     stop(
       sprintf(
         paste0(
@@ -253,7 +253,7 @@ validate_default_design_rank <- function(x, intercept = TRUE) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 #' Resolve Fitting Rows for Formula Interfaces
@@ -292,7 +292,7 @@ formula_subset_rows <- function(subset, nobs) {
   if (is.null(subset)) {
     return(seq_len(nobs))
   }
-  
+
   # Public validation has already ruled out NA values and length mismatches.
   rows <- if (is.logical(subset)) {
     which(subset)
@@ -300,14 +300,14 @@ formula_subset_rows <- function(subset, nobs) {
     # Preserve the user-supplied numeric ordering; do not sort here.
     as.integer(subset)
   }
-  
+
   if (anyDuplicated(rows)) {
     stop(
       "! `subset` must not contain duplicated row indices.",
       call. = FALSE
     )
   }
-  
+
   rows
 }
 
@@ -350,14 +350,14 @@ subset_formula_factor_column <- function(x, rows, variable, predictor = TRUE) {
   if (!is.logical(predictor) || length(predictor) != 1L || is.na(predictor)) {
     stop("Internal error: `predictor` must be TRUE or FALSE.", call. = FALSE)
   }
-  
+
   retained <- x[as.integer(rows)]
   original_levels <- levels(x)
   observed_values <- unique(as.character(retained[!is.na(retained)]))
   retained_levels <- original_levels[original_levels %in% observed_values]
   levels_removed <- !identical(retained_levels, original_levels)
   factor_contrasts <- attr(x, "contrasts", exact = TRUE)
-  
+
   if (!levels_removed) {
     # `[.factor` normally retains contrasts, but restore them explicitly so the
     # helper contract does not depend on that implementation detail.
@@ -366,7 +366,7 @@ subset_formula_factor_column <- function(x, rows, variable, predictor = TRUE) {
     }
     return(retained)
   }
-  
+
   if (predictor && !is.null(factor_contrasts)) {
     removed_levels <- original_levels[!original_levels %in% retained_levels]
     stop(
@@ -380,7 +380,7 @@ subset_formula_factor_column <- function(x, rows, variable, predictor = TRUE) {
       call. = FALSE
     )
   }
-  
+
   droplevels(retained)
 }
 
@@ -436,13 +436,13 @@ subset_formula_model_frame <- function(model_frame, rows) {
       call. = FALSE
     )
   }
-  
+
   # Preserve the formula contract before ordinary data-frame subsetting and
   # droplevels() manipulate row names and factor columns.
   terms_object <- attr(model_frame, "terms", exact = TRUE)
-  
+
   retained <- model_frame[as.integer(rows), , drop = FALSE]
-  
+
   factor_columns <- which(vapply(model_frame, is.factor, logical(1L)))
   response_position <- if (is.null(terms_object)) {
     0L
@@ -450,7 +450,7 @@ subset_formula_model_frame <- function(model_frame, rows) {
     response_value <- attr(terms_object, "response")
     if (is.null(response_value)) 0L else response_value
   }
-  
+
   for (column_position in factor_columns) {
     column_name <- names(model_frame)[column_position]
     retained[[column_position]] <- subset_formula_factor_column(
@@ -460,11 +460,11 @@ subset_formula_model_frame <- function(model_frame, rows) {
       predictor = column_position != response_position
     )
   }
-  
+
   if (!is.null(terms_object)) {
     attr(retained, "terms") <- terms_object
   }
-  
+
   retained
 }
 
@@ -513,7 +513,7 @@ align_formula_preprocess_matrix <- function(x, full_x) {
   if (is.null(colnames(x)) || is.null(colnames(full_x))) {
     stop("Internal error: formula preprocessing designs must have column names.", call. = FALSE)
   }
-  
+
   # Start from a deterministic placeholder matrix. Only same-named columns are
   # eligible to carry full-data values into automatic preprocessing.
   aligned <- matrix(
@@ -522,7 +522,7 @@ align_formula_preprocess_matrix <- function(x, full_x) {
     ncol = ncol(x),
     dimnames = list(rownames(full_x), colnames(x))
   )
-  
+
   # Continuous model-matrix columns normally appear in both designs with stable
   # names. Factor columns may also share names, but their values are harmless
   # because mapped categorical settings prevent their automatic preprocessing.
@@ -530,7 +530,7 @@ align_formula_preprocess_matrix <- function(x, full_x) {
   if (length(common) > 0L) {
     aligned[, common] <- full_x[, common, drop = FALSE]
   }
-  
+
   aligned
 }
 
@@ -594,11 +594,11 @@ attach_formula_preprocess_matrix <- function(x, full_x) {
 #' @noRd
 extract_preprocess_matrix <- function(x) {
   preprocess_x <- attr(x, "mfp2_preprocess_x", exact = TRUE)
-  
+
   # Remove the transport attribute immediately. Downstream code should work
   # with two explicit matrices rather than relying on hidden matrix attributes.
   attr(x, "mfp2_preprocess_x") <- NULL
-  
+
   if (is.null(preprocess_x)) {
     return(list(x = x, preprocess_x = x))
   }
@@ -612,7 +612,7 @@ extract_preprocess_matrix <- function(x) {
       call. = FALSE
     )
   }
-  
+
   # Name-based reordering is required because formula processing can change the
   # physical column order while preserving conceptual column identities.
   preprocess_x <- preprocess_x[, colnames(x), drop = FALSE]
@@ -622,7 +622,7 @@ extract_preprocess_matrix <- function(x) {
       call. = FALSE
     )
   }
-  
+
   list(x = x, preprocess_x = preprocess_x)
 }
 
@@ -663,21 +663,21 @@ validate_grouped_subset_rank <- function(x_full, x_fit, term_to_columns) {
   if (length(mapped_terms) == 0L) {
     return(invisible(TRUE))
   }
-  
+
   block_rank <- function(z) {
     if (ncol(z) == 0L || nrow(z) == 0L) return(0L)
-    
+
     # Subtract the rank contributed by the constant so a one-column 0/1 dummy
     # contributes one degree of freedom only when both values remain observed.
     qr(cbind("(Constant)" = 1, z))$rank - 1L
   }
-  
+
   lost <- mapped_terms[vapply(mapped_terms, function(term) {
     cols <- term_to_columns[[term]]
     block_rank(x_fit[, cols, drop = FALSE]) <
       block_rank(x_full[, cols, drop = FALSE])
   }, logical(1L))]
-  
+
   if (length(lost) > 0L) {
     stop(
       paste0(
@@ -689,7 +689,7 @@ validate_grouped_subset_rank <- function(x_full, x_fit, term_to_columns) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -719,11 +719,11 @@ validate_grouped_subset_rank <- function(x_full, x_fit, term_to_columns) {
 validate_subset_predictor_variation <- function(x, exclude = NULL) {
   columns <- setdiff(colnames(x), exclude)
   if (length(columns) == 0L) return(invisible(TRUE))
-  
+
   bad <- vapply(columns, function(column) {
     length(unique(x[, column])) <= 1L
   }, logical(1L))
-  
+
   if (any(bad)) {
     stop(
       paste0(
@@ -733,7 +733,7 @@ validate_subset_predictor_variation <- function(x, exclude = NULL) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }
 
@@ -771,14 +771,14 @@ validate_formula_factor_levels <- function(terms_object, model_frame) {
   if (is.null(incidence) || nrow(incidence) == 0L) {
     return(invisible(TRUE))
   }
-  
+
   # Restrict the check to expressions that participate in predictor terms.
   variables <- rownames(incidence)[rowSums(incidence != 0) > 0L]
   factor_variables <- variables[vapply(variables, function(variable) {
     variable %in% names(model_frame) &&
       (is.factor(model_frame[[variable]]) || is.character(model_frame[[variable]]))
   }, logical(1L))]
-  
+
   bad <- factor_variables[vapply(factor_variables, function(variable) {
     value <- model_frame[[variable]]
     observed_levels <- if (is.factor(value)) {
@@ -788,7 +788,7 @@ validate_formula_factor_levels <- function(terms_object, model_frame) {
     }
     observed_levels < 2L
   }, logical(1L))]
-  
+
   if (length(bad) > 0L) {
     stop(
       paste0(
@@ -798,6 +798,6 @@ validate_formula_factor_levels <- function(terms_object, model_frame) {
       call. = FALSE
     )
   }
-  
+
   invisible(TRUE)
 }

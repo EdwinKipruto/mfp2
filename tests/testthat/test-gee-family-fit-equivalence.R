@@ -61,6 +61,41 @@ test_that("Gaussian GEE matches geeglm apart from the documented VCE correction"
   expect_gee_equivalent(fb$m2, fb$gg)
 })
 
+test_that("retained AR1 GEE preserves gaps in factor-valued waves", {
+  skip_if_not_installed("geepack")
+  dat <- make_gee_data(K = 30, m = 2)
+  dat$wave_gap <- factor(rep(c("1", "3"), times = 30),
+                         levels = c("1", "3"))
+  dat$y <- dat$eta_lin + stats::rnorm(nrow(dat), sd = 0.5)
+
+  m2 <- mfp2(
+    y ~ x1 + x2,
+    data = dat,
+    family = gee_family(gaussian(), corstr = "ar1"),
+    id = dat$id,
+    waves = dat$wave_gap,
+    df = 1,
+    select = 1,
+    center = FALSE,
+    verbose = FALSE
+  )
+
+  X <- stats::model.matrix(~ x1 + x2, dat)
+  direct <- geepack::geese.fit(
+    x = X,
+    y = dat$y,
+    id = dat$id,
+    waves = rep(c(1L, 3L), times = 30),
+    family = gaussian(),
+    corstr = "ar1"
+  )
+
+  expect_identical(m2$geese$waves, rep(c(1L, 3L), times = 30))
+  expect_equal(unname(coef(m2)), unname(direct$beta), tolerance = TOL_MED)
+  expect_equal(unname(m2$geese$alpha), unname(direct$alpha),
+               tolerance = TOL_MED)
+})
+
 test_that("Binomial GEE matches geeglm", {
   skip_if_not_installed("geepack")
   dat <- make_gee_data()

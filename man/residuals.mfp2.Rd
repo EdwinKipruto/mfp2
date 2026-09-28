@@ -30,8 +30,8 @@ so they are computed directly here. This matches the residual used by
 Stata's \code{fracplot} (after \code{mfp}) for the component-plus-residual plot, where
 the ith plotted point is \eqn{\hat\eta^{*}_i + d_i} with \eqn{d_i} the
 deviance residual. \code{type = "pearson"}, \code{"working"}, and \code{"response"} are
-delegated to \code{geepack} with the fitted response family restored when reading
-an older object that stored the GEE specification in the \code{family} slot.
+delegated to \code{geepack} (after restoring the inner response family, which the
+stored \code{mfp2_gee_family} wrapper does not carry).
 
 For multinomial models (\code{family = "multinomial"}), \code{nnet::multinom} supplies
 no residual method, so each non-reference logit is treated as a binary

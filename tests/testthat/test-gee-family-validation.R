@@ -8,9 +8,10 @@ test_that("gee_family() accepts supported families, links, corstr, std.err", {
   expect_identical(f$response_family$family, "gaussian")
   expect_identical(f$corstr, "exchangeable")
   expect_identical(f$std.err, "san.se")
-  expect_null(f$scale.fix)
-  expect_null(f$scale.value)
-  expect_null(f$pvalue_method)
+  expect_identical(f$scale.fix, FALSE)
+  expect_identical(f$scale.value, 1)
+  expect_identical(f$pvalue_method, "robust_wald")
+  expect_false(any(c("scale.fix", "scale.value") %in% names(formals(gee_family))))
 
   expect_identical(gee_family(binomial())$response_family$family, "binomial")
   expect_identical(gee_family("poisson")$response_family$family, "poisson")
@@ -18,8 +19,10 @@ test_that("gee_family() accepts supported families, links, corstr, std.err", {
   expect_identical(gee_family(corstr = "ar1")$corstr, "ar1")
   expect_identical(gee_family(corstr = "exchangeable")$corstr, "exchangeable")
   expect_identical(gee_family(std.err = "jack")$std.err, "jack")
-  expect_identical(gee_family(std.err = "j1s")$std.err, "j1s")
-  expect_identical(gee_family(std.err = "fij")$std.err, "fij")
+  expect_identical(
+    gee_family(pvalue_method = "stata")$pvalue_method,
+    "stata"
+  )
 })
 
 test_that("gee_family() rejects invalid settings", {
@@ -27,9 +30,7 @@ test_that("gee_family() rejects invalid settings", {
   expect_error(gee_family("negbin"), "must be one of")
   expect_error(gee_family(corstr = "unstructured"))
   expect_error(gee_family(std.err = "bogus"))
-  expect_error(gee_family(pvalue_method = "stata"), "unused argument")
-  expect_error(gee_family(scale.fix = FALSE), "unused argument")
-  expect_error(gee_family(scale.value = 1), "unused argument")
+  expect_error(gee_family(pvalue_method = "bogus"))
 })
 
 test_that("mfp2() requires id for GEE and rejects it elsewhere", {
@@ -76,6 +77,77 @@ test_that("GEE rejects non-contiguous clusters and bad waves", {
          waves = bw, df = 1, select = 1, center = FALSE, verbose = FALSE),
     "unique within"
   )
+})
+
+test_that("GEE preparation rejects unsafe cluster and numeric inputs", {
+  skip_if_not_installed("geepack")
+  y <- c(1, 2, 3, 4)
+  id <- rep(1:2, each = 2)
+
+  expect_error(
+    prepare_gee_family(gee_family(), y = y, id = rep(1, 4)),
+    "at least two"
+  )
+  expect_error(
+    prepare_gee_family(
+      gee_family(), y = y, id = id, weights = c(1, 1, 1, Inf)
+    ),
+    "finite and non-negative"
+  )
+  expect_error(
+    prepare_gee_family(
+      gee_family(), y = y, id = id, offset = c(0, 0, 0, Inf)
+    ),
+    "offset.*finite"
+  )
+  expect_error(
+    prepare_gee_family(
+      gee_family(corstr = "ar1"), y = y, id = id,
+      waves = c(1, .Machine$integer.max + 1, 1, 2)
+    ),
+    "integer range"
+  )
+})
+
+test_that("GEE preserves numeric visit gaps supplied as factor levels", {
+  y <- c(1, 2, 3, 4)
+  id <- rep(1:2, each = 2)
+  waves <- factor(rep(c("1", "3"), 2), levels = c("1", "3"))
+
+  prepared <- prepare_gee_family(
+    family = gee_family(corstr = "ar1"),
+    y = y,
+    id = id,
+    waves = waves
+  )
+
+  expect_identical(prepared$prepared$waves, rep(c(1L, 3L), 2))
+
+  bad_labels <- factor(rep(c("baseline", "month6"), 2))
+  expect_error(
+    prepare_gee_family(
+      family = gee_family(corstr = "ar1"),
+      y = y,
+      id = id,
+      waves = bad_labels
+    ),
+    "positive integer-like"
+  )
+})
+
+test_that("GEE scale defaults remain available to internal fit preparation", {
+  skip_if_not_installed("geepack")
+  family <- gee_family()
+  prepared <- prepare_gee_family(
+    family = family,
+    y = c(1, 2, 3, 4),
+    id = rep(1:2, each = 2)
+  )
+
+  expect_identical(family$scale.fix, FALSE)
+  expect_identical(family$scale.value, 1)
+  expect_identical(prepared$prepared$scale.fix, FALSE)
+  expect_identical(prepared$prepared$scale.value, 1)
 })
 
 test_that("mfpi() rejects GEE families (GEE is mfp2-only)", {

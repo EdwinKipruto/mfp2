@@ -200,32 +200,37 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #'   describing the marginal mean and variance. Supported families are
 #'   `gaussian`, `binomial`, `poisson`, and `Gamma`. Defaults to
 #'   `stats::gaussian()`.
-#' @param corstr Working correlation structure, one of `"exchangeable"`,
-#'   `"independence"`, or `"ar1"`. The default is `"exchangeable"`, matching
-#'   Stata's default for `xtgee`.
+#' @param corstr Working correlation structure, one of `"exchangeable"`
+#'   (the default), `"independence"`, or `"ar1"`.
 #' @param std.err Type of standard error reported by the retained fit, one of
 #'   `"san.se"` (the robust sandwich estimator, default), `"jack"`, `"j1s"`, or
 #'   `"fij"`.
+#' @param pvalue_method GEE p-value procedure. `"robust_wald"` (default) uses
+#'   robust sandwich Wald tests; when selected FP bases are non-nested, an
+#'   augmented model containing both bases is fitted and the additional basis
+#'   directions are tested jointly. `"stata"` reproduces Stata `mfp: xtgee`
+#'   by treating the negative overall robust Wald chi-square as its selection
+#'   "deviance" and testing differences of those values.
+#'
 #' @details
 #' The cluster identifier is supplied through the top-level `id` argument of
 #' [mfp2()] (one value per observation, with clusters in contiguous rows), and
 #' repeated-measure ordering through the optional `waves` argument. These are
 #' aligned per observation and therefore live outside `gee_family()`.
-#' The scale parameter follows \pkg{geepack}'s default and is estimated rather
-#' than fixed.
 #'
 #' All three [mfp2()] selection criteria are available. With
-#' `criterion = "pvalue"`, power combinations are ranked as in Stata
-#' `mfp: xtgee`: the selection score is the negative overall Wald chi-square,
-#' and closed comparisons use differences of those scores with the prescribed
-#' MFP search degrees of freedom. The covariance estimator selected by
-#' `std.err` is used consistently for variable ordering, power ranking, closed
-#' tests, and final-model inference. For `std.err = "san.se"`, Stata's
-#' \eqn{K/(K-1)} finite-cluster correction is applied to geepack's sandwich
-#' covariance, where \eqn{K} is the number of independent clusters. The three
-#' jackknife estimators are used as returned by geepack, without an additional
-#' sandwich correction. The negative-Wald score is not an additive
-#' likelihood-deviance statistic.
+#' `criterion = "pvalue"`, `pvalue_method = "robust_wald"` chooses the power
+#' combination within each fixed FP degree by quasi-likelihood, then uses
+#' sandwich Wald tests for the closed comparisons. For comparisons between
+#' selected non-nested FP bases, it fits an augmented GEE containing both bases
+#' and tests the additional estimable directions. This is conditional on the
+#' selected powers and does not account for power-search multiplicity.
+#' `pvalue_method = "stata"` instead reproduces
+#' Stata `mfp: xtgee`: the selection "deviance" is the negative overall robust
+#' Wald chi-square and differences are referred to a chi-square distribution.
+#' Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
+#' \eqn{K} is the number of independent clusters. That compatibility
+#' calculation is not an additive likelihood-deviance test.
 #' With `criterion = "aic"` and
 #' `criterion = "bic"`, selection uses the quasi-likelihood information
 #' criterion QICu of Pan (2001) and its BIC-penalised analogue. Quasi-likelihood
@@ -245,7 +250,19 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' @export
 gee_family <- function(family = stats::gaussian(),
                        corstr = c("exchangeable", "independence", "ar1"),
-                       std.err = c("san.se", "jack", "j1s", "fij")) {
+                       std.err = c("san.se", "jack", "j1s", "fij"),
+                       pvalue_method = c("robust_wald", "stata")) {
+  # Temporary geepack compatibility boundary: geeglm() currently fails to
+  # remove an explicitly supplied scale.value from its model.frame() call. The
+  # scalar is then compared with observation-length variables and raises
+  # "variable lengths differ (found for '(scale.value)')". Do not expose
+  # scale.fix or scale.value in mfp2 until that upstream error is corrected.
+  # Keep the defaults, validation, storage, and complete internal propagation
+  # in place so future support requires only promoting these two assignments
+  # back to formal arguments and removing this compatibility comment.
+  scale.fix <- FALSE
+  scale.value <- 1
+
   # Resolve the inner response family through the shared normalizer so names,
   # functions, and family objects are all accepted, then restrict to the GLM
   # families geepack supports for QIC.
@@ -270,6 +287,19 @@ gee_family <- function(family = stats::gaussian(),
 
   corstr <- match.arg(corstr)
   std.err <- match.arg(std.err)
+  pvalue_method <- match.arg(pvalue_method)
+
+  # Keep the complete validation contract in place even while these values are
+  # internally fixed. When geepack supports scale.value reliably, promoting
+  # the assignments above to public arguments must not require rebuilding any
+  # validation or downstream fitting logic.
+  if (!is.logical(scale.fix) || length(scale.fix) != 1L || is.na(scale.fix)) {
+    stop("! `scale.fix` must be a single non-missing logical value.", call. = FALSE)
+  }
+  if (!is.numeric(scale.value) || length(scale.value) != 1L ||
+      is.na(scale.value) || !is.finite(scale.value) || scale.value <= 0) {
+    stop("! `scale.value` must be a single finite positive number.", call. = FALSE)
+  }
 
   structure(
     list(
@@ -278,6 +308,9 @@ gee_family <- function(family = stats::gaussian(),
       response_family_string = inner_string,
       corstr = corstr,
       std.err = std.err,
+      scale.fix = scale.fix,
+      scale.value = unname(scale.value),
+      pvalue_method = pvalue_method,
       prepared = NULL
     ),
     class = c("mfp2_gee_family", "mfp2_family")

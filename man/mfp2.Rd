@@ -160,9 +160,10 @@ the default \code{df = 4}. Unnamed multi-value vectors are not accepted. In
 \code{mfp2.formula()}, only a single global default is accepted; override it for
 individual terms with \code{fp(x, df = value)}.
 The effective \code{df} may be reduced automatically when a predictor has few
-distinct values: 2--3 distinct values force \code{df = 1}; 4--5 distinct values
-cap \code{df} at \code{min(2, requested)}; 6 or more distinct values use the
-requested value unchanged.}
+distinct values: 1 distinct value (constant) is an invalid predictor;
+2--3 distinct values force \code{df = 1}; 4--5 distinct values cap \code{df} at
+\code{min(2, requested)}; 6 or more distinct values use the requested value
+unchanged.}
 
 \item{center}{Controls centering of final transformed terms. In
 \code{mfp2.default()}, supply either a single unnamed logical value applied to
@@ -642,26 +643,34 @@ Repeated candidate fits use \code{\link[geepack:geese.fit]{geepack::geese.fit()}
 is refitted with \code{\link[geepack:geeglm]{geepack::geeglm()}} and returned as a native \code{geeglm}
 object.
 
-With \code{criterion = "pvalue"}, selection reproduces the calculation used by
+With \code{criterion = "pvalue"}, \code{\link[=gee_family]{gee_family()}} provides two procedures through
+\code{pvalue_method}. The default, \code{"robust_wald"}, selects the power combination
+within each fixed FP degree by quasi-likelihood. Closed comparisons use
+robust sandwich Wald tests. When the selected reduced and full FP bases are
+not nested, \code{mfp2()} fits an augmented GEE containing the reduced basis, the
+common adjustment terms, and the linearly independent directions from the
+full basis; the added directions are tested jointly. These p-values are
+conditional on the selected powers and do not adjust for the FP power
+search.
+
+\code{pvalue_method = "stata"} reproduces the selection calculation used by
 Stata \code{mfp: xtgee}. Candidate powers within a fixed degree are chosen using
-the negative overall Wald chi-square. Closed-test statistics are
+the negative overall robust Wald chi-square. Closed-test statistics are
 differences of those negative-Wald values, referred to the chi-square
 distribution with the MFP model-df difference. The quantity printed as
 \code{Deviance} in this mode is therefore not the response-family deviance and is
-not an additive likelihood deviance. Ordering, power ranking, closed tests,
-and final inference all use the covariance estimator selected by \code{std.err}.
-For \code{std.err = "san.se"}, the geepack sandwich covariance is multiplied by
-Stata's \eqn{K/(K-1)} finite-cluster correction, where \eqn{K} is the number
-of independent clusters. The jackknife covariance estimators are used as
-returned by geepack, without this additional sandwich correction. The
-initial visiting order uses coefficient-block Wald tests from the full
-linear GEE, matching Stata's ordering pass.
+not an additive likelihood deviance. To reproduce Stata's clustered robust
+covariance convention, the geepack sandwich covariance is multiplied by
+\eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. The
+initial visiting order uses robust coefficient-block Wald tests from the
+full linear GEE, matching Stata's ordering pass.
 
 As throughout \code{mfp2}, the searched FP1 candidate set retains power \eqn{1}.
 Thus the same fitted linear function can appear as the separately specified
 one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
 of freedom accounts for selecting its power from the candidate set. This
-rule is shared by GEE p-value and QICu/QBIC selection.
+rule is shared by Stata-compatible and robust-Wald GEE p-value selection and
+by QICu/QBIC selection.
 
 For GEE, \code{criterion = "aic"} is QICu,
 \deqn{-2Q + 2p,}
@@ -681,7 +690,7 @@ Consequently, weighted and grouped-binomial QICu/QBIC calculations use all
 response information, and the Gamma quasi-likelihood is consistent with
 the Gamma family-deviance differences. The response-family deviance remains
 available for descriptive model-fit reporting but is kept separate from
-GEE p-value selection and from QICu/QBIC.
+both GEE p-value procedures and from QICu/QBIC.
 }
 
 \section{Shifting, scaling, and centering}{

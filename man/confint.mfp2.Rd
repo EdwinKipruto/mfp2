@@ -33,10 +33,10 @@ Wald intervals summarised by \code{\link[=summary.mfp2]{summary.mfp2()}} (which 
 interval with the conventional rounded multiplier 1.96, whereas \code{confint()}
 uses the exact normal quantile and honours \code{level}), and they apply uniformly
 to every scalar-coefficient family. They are used in preference to the default
-profile-likelihood intervals of \code{\link[stats:confint.glm]{stats::confint.glm()}} because those refit
+profile-likelihood intervals of \code{\link[stats:confint]{stats::confint()}} because those refit
 the model on \code{mfp2}'s internally transformed design and fail; for GEE
-(\code{gee_family()}) the covariance is the estimator selected by \code{std.err}
-(the robust sandwich estimator by default), and \code{geepack} supplies no \code{confint}
+(\code{gee_family()}) the covariance is the robust sandwich estimator, which is
+the correct basis for GEE inference (and \code{geepack} supplies no \code{confint}
 method). Multinomial and ordinal models, whose coefficients are not a single
 named vector, defer to the interval method of the underlying fit.
 }

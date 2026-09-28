@@ -387,9 +387,8 @@ fit_full_linear_reference <- function(x,
 
 #' Order Predictors by Significance
 #'
-#' For GEE models, orders predictors by coefficient-block Wald tests in
-#' the full linear reference model, matching Stata's \code{mfp: xtgee} ordering
-#' while using the covariance estimator selected by \code{std.err}.
+#' For GEE models, orders predictors by robust coefficient-block Wald tests in
+#' the full linear reference model, matching Stata's code{mfp: xtgee} ordering
 #' pass. Other models use likelihood-ratio tests comparing that full model with
 #' models obtained by removing one predictor at a time.
 #'
@@ -495,18 +494,17 @@ order_variables_by_significance <- function(xorder,
   )
 
   # Stata's mfp ordering pass fits the full linear model once and applies a
-  # coefficient-block `test` to each term. The full reference already carries
-  # the covariance estimator requested through `std.err` (including Stata's
-  # finite-cluster correction for san.se), so no second correction belongs
-  # here.
+  # coefficient-block `test` to each term. Use the same robust sandwich Wald
+  # tests for both GEE p-value methods. This is also the natural ordering rule
+  # for the default robust-Wald procedure and avoids unnecessary reduced fits.
   if (mfp2_family_is_gee(family_string)) {
-    ordering_vcov <- full_reference$gee_vcov
+    ordering_vcov <- full_reference$robust_vcov
     coefficient_offset <- as.integer(!isTRUE(x_has_intercept))
     for (predictor_index in seq_len(n_predictors)) {
       tested_indices <- drop_indices[[predictor_index]] + coefficient_offset
-      p_values[predictor_index] <- gee_wald_test(
+      p_values[predictor_index] <- gee_robust_wald_test(
         coefficients = full_reference$coefficients,
-        covariance_matrix = ordering_vcov,
+        robust_vcov = ordering_vcov,
         indices = tested_indices
       )$pvalue
     }

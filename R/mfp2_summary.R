@@ -47,18 +47,15 @@
 #'     usual exponentiated effect when it has a standard interpretation.
 #'   \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 #'     FP2, ACD, or spike/catzero compound form. Each row reports a joint
-#'     joint chi-square test of all of that variable's terms, using the
-#'     package's selection-adjusted degrees of freedom. Likelihood models use a
-#'     likelihood-ratio test; GEE uses the same Stata-style difference in
-#'     negative overall Wald scores used during selection. Each test compares
-#'     the final MFP model with an otherwise unchanged model that omits the
-#'     variable.
+#'     likelihood-ratio test (LRT) of all of that variable's terms, using the
+#'     package's selection-adjusted degrees of freedom. The LRT compares the
+#'     final MFP model with an otherwise unchanged model that omits the variable.
 #'   \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
 #'     or minus twice the fitted likelihood for survival models (partial
 #'     likelihood for Cox and Fine--Gray), with model degrees of freedom.
 #' }
 #'
-#' The joint test is a diagnostic: the variable was selected by the MFP
+#' The joint LRT is a diagnostic: the variable was selected by the MFP
 #' procedure, not by this test. The degrees of freedom follow the
 #' Royston--Sauerbrei convention used throughout the package (2 df per FP1,
 #' 4 df per FP2), so the reported p-values acknowledge the FP power search
@@ -561,9 +558,7 @@ mfp2_summary_model_metadata <- function(object,
   }
 
   if (identical(family_string, "gee")) {
-    gee_family <- object$mfp2_family
-    if (!inherits(gee_family, "mfp2_gee_family")) gee_family <- object$family
-    rfs <- gee_family$response_family_string
+    rfs <- object$family$response_family_string
     if (is.character(rfs) && length(rfs) == 1L && nzchar(rfs)) {
       out$gee_response_family <- rfs
     }
@@ -626,9 +621,7 @@ mfp2_summary_model_metadata <- function(object,
     gee <- mfp2_summary_gee_parameters(object)
     out$gee <- gee
     out$link <- gee$link
-    gee_family <- object$mfp2_family
-    if (!inherits(gee_family, "mfp2_gee_family")) gee_family <- object$family
-    rfs <- gee_family$response_family_string
+    rfs <- object$family$response_family_string
     if (is.character(rfs) && length(rfs) == 1L && nzchar(rfs)) {
       out$gee_response_family <- rfs
     }
@@ -646,8 +639,8 @@ mfp2_summary_model_metadata <- function(object,
 #'
 #' Extracts the marginal-model quantities a GEE analyst reports alongside the
 #' regression coefficients: the working correlation structure and its estimated
-#' parameter(s), the estimated (or fixed) scale/dispersion, the selected
-#' standard-error method, the inner response link, and the cluster structure.
+#' parameter(s), the estimated (or fixed) scale/dispersion, the robust
+#' standard-error type, the inner response link, and the cluster structure.
 #'
 #' @param object A fitted `mfp2` GEE object (carrying its `geeglm` `geese`
 #'   component).
@@ -662,24 +655,12 @@ mfp2_summary_gee_parameters <- function(object) {
   geese <- object$geese
   model <- if (is.list(geese)) geese$model else NULL
 
-  gee_family <- object$mfp2_family
-  if (!inherits(gee_family, "mfp2_gee_family")) gee_family <- object$family
-
   std_err <- object$std.err
-  if (!is.character(std_err) || length(std_err) != 1L || is.na(std_err) ||
-      !std_err %in% c("san.se", "jack", "j1s", "fij")) {
-    std_err <- gee_family$std.err
-  }
-  if (!is.character(std_err) || length(std_err) != 1L || is.na(std_err) ||
-      !std_err %in% c("san.se", "jack", "j1s", "fij")) {
-    std_err <- "san.se"
-  }
+  if (is.null(std_err) || !nzchar(std_err)) std_err <- NA_character_
 
   corstr <- object$corstr
   if (is.null(corstr) && is.list(model)) corstr <- model$corstr
-  if (is.null(corstr)) corstr <- gee_family$corstr
-  if (!is.character(corstr) || length(corstr) != 1L || is.na(corstr) ||
-      !nzchar(corstr)) corstr <- "unknown"
+  if (is.null(corstr)) corstr <- NA_character_
 
   alpha <- if (!is.null(geese$alpha) && length(geese$alpha) > 0L) {
     unname(geese$alpha)
@@ -687,9 +668,11 @@ mfp2_summary_gee_parameters <- function(object) {
     NULL
   }
 
-  # Use the same requested covariance method for the nuisance parameters as
-  # geepack uses for the regression coefficients.
-  alpha_vcov <- geese[[gee_covariance_field("alpha", std_err)]]
+  # Select the same covariance family as the regression coefficients. geepack
+  # stores parallel sandwich/jackknife fields for alpha and gamma.
+  alpha_vcov <- mfp2_summary_gee_parameter_vcov(
+    geese, parameter = "alpha", std_err = std_err
+  )
   alpha_se <- if (!is.null(alpha) && !is.null(alpha_vcov) &&
                   length(alpha_vcov) > 0L) {
     v <- suppressWarnings(sqrt(diag(as.matrix(alpha_vcov))))
@@ -705,10 +688,12 @@ mfp2_summary_gee_parameters <- function(object) {
   }
   scale_fixed <- isTRUE(model$scale.fix)
 
-  scale_vcov <- geese[[gee_covariance_field("gamma", std_err)]]
-  scale_se <- if (!is.null(scale_est) && !is.null(scale_vcov) &&
-                  length(scale_vcov) > 0L) {
-    v <- suppressWarnings(sqrt(diag(as.matrix(scale_vcov))))
+  gamma_vcov <- mfp2_summary_gee_parameter_vcov(
+    geese, parameter = "gamma", std_err = std_err
+  )
+  scale_se <- if (!is.null(scale_est) && !is.null(gamma_vcov) &&
+                  length(gamma_vcov) > 0L) {
+    v <- suppressWarnings(sqrt(diag(as.matrix(gamma_vcov))))
     if (length(v) >= 1L && is.finite(v[[1L]])) unname(v[[1L]]) else NULL
   } else {
     NULL
@@ -716,31 +701,6 @@ mfp2_summary_gee_parameters <- function(object) {
 
   clusz <- geese$clusz
   link <- if (is.list(model)) model$mean.link else NULL
-  if (!is.character(link) || length(link) != 1L || is.na(link) ||
-      !nzchar(link)) {
-    link <- if (inherits(gee_family$response_family, "family")) {
-      gee_family$response_family$link
-    } else if (inherits(object$family, "family")) {
-      object$family$link
-    } else {
-      "unknown"
-    }
-  }
-
-  n_clusters <- if (!is.null(clusz) && length(clusz) > 0L) {
-    length(clusz)
-  } else if (!is.null(object$id)) {
-    length(unique(object$id))
-  } else {
-    NULL
-  }
-  max_cluster_size <- if (!is.null(clusz) && length(clusz) > 0L) {
-    max(clusz)
-  } else if (!is.null(object$id)) {
-    max(tabulate(match(object$id, unique(object$id))))
-  } else {
-    NULL
-  }
 
   list(
     corstr = corstr,
@@ -751,9 +711,43 @@ mfp2_summary_gee_parameters <- function(object) {
     scale_fixed = scale_fixed,
     std_err = std_err,
     link = link,
-    n_clusters = n_clusters,
-    max_cluster_size = max_cluster_size
+    n_clusters = if (!is.null(clusz)) length(clusz) else NA_integer_,
+    max_cluster_size = if (!is.null(clusz)) max(clusz) else NA_integer_
   )
+}
+
+#' Select a GEE Correlation- or Scale-Parameter Covariance
+#'
+#' Uses exact geepack component names and mirrors the selected `std.err`
+#' estimator used for beta. No coefficient or component name search is needed.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_gee_parameter_vcov <- function(geese, parameter, std_err) {
+  parameter <- match.arg(parameter, c("alpha", "gamma"))
+  if (!is.character(std_err) || length(std_err) != 1L || is.na(std_err)) {
+    return(NULL)
+  }
+
+  if (identical(parameter, "alpha")) {
+    switch(
+      std_err,
+      "san.se" = geese$valpha,
+      "jack" = geese$valpha.ajs,
+      "j1s" = geese$valpha.j1s,
+      "fij" = geese$valpha.fij,
+      NULL
+    )
+  } else {
+    switch(
+      std_err,
+      "san.se" = geese$vgamma,
+      "jack" = geese$vgamma.ajs,
+      "j1s" = geese$vgamma.j1s,
+      "fij" = geese$vgamma.fij,
+      NULL
+    )
+  }
 }
 
 
@@ -761,7 +755,7 @@ mfp2_summary_gee_parameters <- function(object) {
 #'
 #' Shared renderer for the GEE parameter block used by both `print.mfp2()` and
 #' `print.summary.mfp2()`, so the two methods display the working correlation,
-#' its estimate and standard error, the selected standard-error method, the scale
+#' its estimate and standard error, the standard-error method, the scale
 #' with its standard error, and the number of clusters identically. No-op for
 #' non-GEE models (`gee` is `NULL`).
 #'
@@ -818,15 +812,10 @@ mfp2_print_gee_parameters <- function(gee, digits, heading_printer) {
     line("Scale (dispersion):", scale_txt)
   }
 
-  if (!is.null(gee$n_clusters) && !is.null(gee$max_cluster_size) &&
-      is.finite(gee$n_clusters) && is.finite(gee$max_cluster_size)) {
-    line(
-      "Number of clusters:",
-      sprintf("%d (maximum size %d)", gee$n_clusters, gee$max_cluster_size)
-    )
-  } else {
-    line("Number of clusters:", "unavailable")
-  }
+  line(
+    "Number of clusters:",
+    sprintf("%d (maximum size %d)", gee$n_clusters, gee$max_cluster_size)
+  )
   cat("\n")
   invisible(NULL)
 }
@@ -1159,17 +1148,12 @@ mfp2_summary_criterion_label <- function(object) {
     return("p-value")
   }
   key <- tolower(gsub("[^[:alnum:]]", "", as.character(crit)))
-  label <- switch(
-    key,
-    "pvalue" = "p-value",
-    "aic" = "AIC",
-    "bic" = "BIC",
-    as.character(crit)
+  switch(key,
+         "pvalue" = "p-value",
+         "aic"    = "AIC",
+         "bic"    = "BIC",
+         as.character(crit)
   )
-  if (identical(object$family_string, "gee") && label %in% c("AIC", "BIC")) {
-    label <- paste0("Q", label)
-  }
-  label
 }
 
 #' Underlying-Class Summary With `mfp2()` Call Restored
@@ -1238,10 +1222,12 @@ NextMethod_summary <- function(object, ...) {
     dots$dispersion <- 1
   }
 
-  # Older fitted objects may carry the mfp2 GEE wrapper in `$family`. Current
-  # objects preserve geeglm's native response-family object and store the GEE
-  # specification in `$mfp2_family`; keep this compatibility conversion for
-  # older objects.
+  # A GEE fit carries the mfp2 GEE family wrapper in `$family`, which has no
+  # dev.resids()/aic() members. summary.geeglm() delegates to summary.glm(),
+  # which calls residuals.glm() and therefore needs those family functions.
+  # Swap in the underlying response family (for example gaussian()) so the
+  # native geepack summary -- and its Estimate/Std.err/Wald/Pr(>|W|)
+  # coefficient table with robust standard errors -- can be produced.
   if (identical(object$family_string, "gee") && is.list(object$family) &&
       inherits(object$family$response_family, "family")) {
     obj2$family <- object$family$response_family
@@ -1258,9 +1244,9 @@ NextMethod_summary <- function(object, ...) {
 #'
 #' Splits the selected variables of an `"mfp2"` model into linear and
 #' nonlinear terms, records which are spike-at-zero binary-only outcomes,
-#' and maps each variable to its transformed coefficient columns by name
-#' prefix. Also returns the selection overview table used in the printed
-#' header.
+#' and maps each variable to its transformed coefficient columns through the
+#' exact fit-time metadata. Also returns the selection overview table used in
+#' the printed header.
 #'
 #' @param object An `"mfp2"` model object.
 #'
@@ -1296,7 +1282,7 @@ mfp2_summary_classify_terms <- function(object) {
     rep(NA_real_, nrow(fp_terms))
   }
 
-  power_cols <- grep("^power[0-9]+$", names(fp_terms), value = TRUE)
+  power_cols <- mfp2_summary_power_columns(fp_terms)
 
   # Keep both representations of the selected powers:
   #
@@ -1315,24 +1301,11 @@ mfp2_summary_classify_terms <- function(object) {
 
   powers_by_var <- lapply(power_slots_by_var, function(p) p[!is.na(p)])
 
-  # Map variable -> transformed coefficient column names, by stripping the
-  # ".<index>" suffix from the fitted design column names. ACD component
-  # columns are named A_<variable>.<index>; map those columns back to their
-  # source variable so direct and ACD components are formatted together.
-  design_cols <- colnames(object$x)
-  if (is.null(design_cols) && !is.null(object$mfp2_design)) {
-    design_cols <- setdiff(colnames(object$mfp2_design), "(Intercept)")
-  }
-  if (is.null(design_cols)) design_cols <- names(object$coefficients)
-  base_names <- sub("\\.[0-9]+$", "", design_cols)
-  source_names <- base_names
-
-  acd_variables <- variable_names[acd]
-  for (v in acd_variables) {
-    source_names[base_names == paste0("A_", v)] <- v
-  }
-
-  cols_by_var <- split(design_cols, source_names)
+  # Map conceptual variables to fitted coefficient columns by composing the
+  # exact source/design metadata retained by fit_mfp(). Do not infer ownership
+  # from coefficient-name patterns: non-syntactic names, factors, and ACD
+  # columns are all resolved through the stored maps.
+  cols_by_var <- mfp2_summary_columns_by_variable(object, variable_names)
 
   # SAZ decision code -> is this a "binary only" outcome?
   spike_dec <- if ("spike_dec" %in% names(fp_terms)) {
@@ -1391,6 +1364,87 @@ mfp2_summary_classify_terms <- function(object) {
     cols_by_var       = cols_by_var,
     function_table = function_table
   )
+}
+
+#' Find FP Power Columns by Their Exact Generated Names
+#'
+#' Power fields are generated consecutively as `power1`, `power2`, and so on.
+#' Enumerating those known names avoids regex searches and preserves numeric
+#' order even when a data frame contains unrelated columns.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_power_columns <- function(fp_terms) {
+  if (is.null(fp_terms) || NCOL(fp_terms) == 0L) return(character(0L))
+  candidates <- paste0("power", seq_len(NCOL(fp_terms)))
+  candidates[candidates %in% names(fp_terms)]
+}
+
+#' Map Conceptual Terms to Fitted Coefficient Columns
+#'
+#' Composes `term_to_columns`, `transformed_column_to_source`, and
+#' `transformed_to_model_columns`. All joins are exact; generated coefficient
+#' names are never parsed or searched by pattern.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_columns_by_variable <- function(object, variable_names) {
+  out <- stats::setNames(vector("list", length(variable_names)), variable_names)
+  out[] <- list(character(0L))
+
+  term_to_columns <- object$term_to_columns
+  transformed_to_source <- object$transformed_column_to_source
+  transformed_to_model <- object$transformed_to_model_columns
+
+  maps_are_named <- !is.null(term_to_columns) &&
+    !is.null(names(term_to_columns)) &&
+    !is.null(transformed_to_source) &&
+    !is.null(names(transformed_to_source)) &&
+    !is.null(transformed_to_model) &&
+    !is.null(names(transformed_to_model))
+
+  if (!maps_are_named) {
+    # Compatibility for incomplete legacy objects and small hand-built test
+    # fixtures: enumerate the package's exact generated column names. This is
+    # bounded by the known design width and never performs an open-ended name
+    # or regex search.
+    design_columns <- colnames(object$x)
+    if (is.null(design_columns) && !is.null(object$mfp2_design)) {
+      design_columns <- setdiff(colnames(object$mfp2_design), "(Intercept)")
+    }
+    if (is.null(design_columns)) design_columns <- names(object$coefficients)
+    if (is.null(design_columns)) return(out)
+
+    indices <- seq_len(max(1L, length(design_columns)))
+    for (variable in variable_names) {
+      candidates <- c(
+        variable,
+        paste0(variable, ".", indices),
+        paste0("A_", variable, ".", indices)
+      )
+      out[[variable]] <- design_columns[design_columns %in% candidates]
+    }
+    return(out)
+  }
+
+  transformed_columns <- intersect(
+    names(transformed_to_model),
+    names(transformed_to_source)
+  )
+  for (variable in variable_names) {
+    source_columns <- as.character(term_to_columns[[variable]])
+    if (length(source_columns) == 0L) next
+
+    owned <- transformed_columns[
+      unname(transformed_to_source[transformed_columns]) %in% source_columns
+    ]
+    model_columns <- unname(transformed_to_model[owned])
+    model_columns <- model_columns[
+      !is.na(model_columns) & nzchar(model_columns)
+    ]
+    out[[variable]] <- unique(model_columns)
+  }
+  out
 }
 
 #' Coerce an `fp_terms` Flag Column to a Logical Vector
@@ -2035,7 +2089,7 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
   }
 
   if (is.matrix(cmat) && is.numeric(cmat) && nrow(cmat) == length(est)) {
-    # Use exact known labels rather than grep()/partial matching. If any label
+    # Use exact known labels rather than pattern/partial matching. If any label
     # is absent or ambiguous, `columns` contains NA and execution continues to
     # the covariance fallback below instead of indexing cmat with NA.
     cn <- colnames(cmat)
@@ -2071,9 +2125,9 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
         # summary.geeglm() reports the Wald chi-square statistic (z^2) with a
         # Pr(>|W|) column; keep geepack's own convention for GEE models.
         "Wald"
-      } else if (grepl("^t", statistic_column)) {
+      } else if (startsWith(statistic_column, "t")) {
         "t"
-      } else if (grepl("^z", statistic_column)) {
+      } else if (startsWith(statistic_column, "z")) {
         "z"
       } else {
         "Statistic"
@@ -2146,18 +2200,17 @@ mfp2_summary_coef_matrix <- function(object, raw_summary) {
 #' Cache the Metadata Needed to Refit Reduced Models
 #'
 #' Assembles the family-specific response, weights, offset, strata, control,
-#' and full-model comparison score needed to refit reduced models when
-#' computing joint tests for nonlinear terms. Doing this once at
+#' and full-model log-likelihood needed to refit reduced models when
+#' computing likelihood-ratio tests for nonlinear terms. Doing this once at
 #' the top of the summary avoids repeating expensive setup (in particular
 #' `prepare_family_for_fit()` for `survreg` and unpacking the Fine--Gray
 #' counting-process representation) for every nonlinear variable.
 #'
 #' @param object An `"mfp2"` model object.
 #'
-#' @return A named list with `valid` (flag), `full_logl`,
-#'   `full_selection_score`, `family`,
+#' @return A named list with `valid` (flag), `full_logl`, `family`,
 #'   `family_string`, `y`, `weights`, `offset`, `strata`, `method`,
-#'   `fitter`, `control`, `nocenter`, `is_finegray`, and `is_gee`. When `valid` is
+#'   `fitter`, `control`, `nocenter`, and `is_finegray`. When `valid` is
 #'   `FALSE`, downstream code should skip reduced-model refits and report
 #'   `NA` test statistics.
 #'
@@ -2168,7 +2221,6 @@ mfp2_summary_refit_context <- function(object) {
   is_cox <- identical(family_string, "cox")
   is_finegray <- identical(family_string, "finegray")
   is_survreg <- identical(family_string, "survreg")
-  is_gee <- identical(family_string, "gee")
   is_prepared_categorical <- family_string %in% c("ordinal", "multinomial")
 
   full_logl <- object$mfp_logl
@@ -2207,19 +2259,10 @@ mfp2_summary_refit_context <- function(object) {
   }
 
   context <- list(
-    valid = if (is_gee) {
-      is.numeric(object$mfp_selection_score) &&
-        length(object$mfp_selection_score) == 1L &&
-        !is.na(object$mfp_selection_score) &&
-        is.finite(object$mfp_selection_score) && !is.null(control)
-    } else {
-      is.numeric(full_logl) && length(full_logl) == 1L &&
-        !is.na(full_logl) && is.finite(full_logl) && !is.null(control)
-    },
+    valid = is.numeric(full_logl) && length(full_logl) == 1L &&
+      !is.na(full_logl) && is.finite(full_logl) && !is.null(control),
     full_logl = full_logl,
-    full_selection_score = object$mfp_selection_score,
-    family = if ((is_prepared_categorical || is_gee) &&
-                 !is.null(object$mfp2_family)) {
+    family = if (is_prepared_categorical && !is.null(object$mfp2_family)) {
       object$mfp2_family
     } else {
       object$family
@@ -2237,8 +2280,7 @@ mfp2_summary_refit_context <- function(object) {
     fitter = fitter,
     control = control,
     nocenter = nocenter,
-    is_finegray = is_finegray,
-    is_gee = is_gee
+    is_finegray = is_finegray
   )
 
   if (is_finegray) {
@@ -2281,11 +2323,10 @@ mfp2_summary_refit_context <- function(object) {
 #' Build the Nonlinear-Terms Table for `print.summary.mfp2()`
 #'
 #' Assembles the data frame of one row per nonlinear term shown in the
-#' printed summary, carrying the functional-form label, degrees of freedom
-#' for the drop-variable test, chi-square statistic, and p value.
-#' Reduced models are fitted once per variable using the cached refit
-#' context; families that cannot support the drop-variable refit return
-#' `NA` statistics rather than aborting.
+#' printed summary, carrying the functional-form label, selection-adjusted
+#' degrees of freedom, joint chi-square statistic, and p value. Likelihood
+#' families use a drop-variable likelihood-ratio test; GEE uses a robust block
+#' Wald test with the selected covariance estimator.
 #'
 #' @param object An `"mfp2"` model object.
 #' @param classified Classification result from
@@ -2302,10 +2343,10 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
     return(data.frame())
   }
 
-  # Construct family-specific response/control metadata once, then reuse it for
-  # every reduced model. In particular, survreg response preparation is not
-  # repeated once per nonlinear variable.
-  refit_context <- mfp2_summary_refit_context(object)
+  is_gee <- identical(object$family_string, "gee")
+  # Likelihood families reuse one reduced-model context per table. GEE has no
+  # full likelihood and instead tests the selected coefficient block directly.
+  refit_context <- if (is_gee) NULL else mfp2_summary_refit_context(object)
 
   rows <- lapply(nl_vars, function(v) {
     idx <- match(v, classified$variable_names)
@@ -2315,31 +2356,95 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
       classified$catzero[idx], classified$spike[idx],
       classified$spike_dec[idx], TRUE, classified$searched_fp[idx]
     )
-    lrt <- mfp2_summary_lrt_drop_variable(
-      object, classified, v, refit_context = refit_context
-    )
+    test <- if (is_gee) {
+      mfp2_summary_gee_wald_term(object, classified, v)
+    } else {
+      mfp2_summary_lrt_drop_variable(
+        object, classified, v, refit_context = refit_context
+      )
+    }
 
     data.frame(
       variable = v,
       form     = form,
-      df       = lrt$df,
-      lr_chisq = lrt$lr,
-      p        = lrt$p,
+      df       = test$df,
+      lr_chisq = test$lr,
+      p        = test$p,
       row.names = NULL,
       stringsAsFactors = FALSE
     )
   })
 
-  do.call(rbind, rows)
+  out <- do.call(rbind, rows)
+  attr(out, "test_label") <- if (is_gee) {
+    "Wald-score chi-sq"
+  } else {
+    "LR chi-sq"
+  }
+  out
 }
 
-#' Drop-Variable Joint Test for One Variable
+#' Robust Joint Wald Test for One Selected GEE Term
 #'
-#' Tests every design column belonging to one variable while holding all other
-#' functional forms fixed. Likelihood models compare log likelihoods; GEE uses
-#' the same Stata-style difference in negative overall Wald scores as model
-#' selection. Only the reduced model is refitted. Degrees of freedom use the
-#' selection-adjusted `df_final` from `fp_terms`.
+#' The statistic uses the covariance estimator stored on the retained GEE
+#' object. Its reference degrees of freedom retain the MFP power-search
+#' adjustment recorded in `fp_terms` (FP1 = 2, FP2 = 4), as requested for the
+#' nonlinear summary rather than using the raw coefficient-block rank.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_summary_gee_wald_term <- function(object, classified, v) {
+  variable_index <- match(v, classified$variable_names)
+  df_adjusted <- classified$df_final[variable_index]
+  if (is.numeric(df_adjusted) && length(df_adjusted) == 1L &&
+      is.finite(df_adjusted) && df_adjusted == round(df_adjusted)) {
+    df_adjusted <- as.integer(df_adjusted)
+  }
+  coefficient_names <- names(object$coefficients)
+  term_columns <- classified$cols_by_var[[v]]
+  positions <- match(term_columns, coefficient_names)
+  positions <- positions[!is.na(positions)]
+
+  na_result <- list(lr = NA_real_, df = df_adjusted, p = NA_real_)
+  if (length(positions) == 0L) return(na_result)
+
+  covariance <- tryCatch(stats::vcov(object), error = function(e) NULL)
+  if (is.null(covariance)) return(na_result)
+
+  test <- gee_robust_wald_test(
+    object$coefficients,
+    covariance,
+    positions
+  )
+  reference_df <- if (is.numeric(df_adjusted) && length(df_adjusted) == 1L &&
+                      is.finite(df_adjusted) && df_adjusted > 0) {
+    unname(df_adjusted)
+  } else {
+    test$df
+  }
+  if (!is.finite(test$statistic) || !is.finite(reference_df) ||
+      reference_df <= 0) {
+    return(list(lr = NA_real_, df = reference_df, p = NA_real_))
+  }
+
+  list(
+    lr = unname(test$statistic),
+    df = reference_df,
+    p = stats::pchisq(
+      test$statistic,
+      df = reference_df,
+      lower.tail = FALSE
+    )
+  )
+}
+
+#' Drop-Variable Likelihood-Ratio Test for One Variable
+#'
+#' Performs the joint likelihood-ratio test for dropping every design column
+#' belonging to one variable, holding all other functional forms fixed. The
+#' selected model's stored log-likelihood is already on the same
+#' family-specific scale, so only the reduced model is refitted. Degrees of
+#' freedom use the selection-adjusted `df_final` from `fp_terms`.
 #'
 #' @param object An `"mfp2"` model object.
 #' @param classified Classification result from
@@ -2348,7 +2453,7 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
 #' @param refit_context Cached refit context from
 #'   `mfp2_summary_refit_context()`. When `NULL`, it is recomputed.
 #'
-#' @return A named list `list(lr, df, p)` with the joint chi-square
+#' @return A named list `list(lr, df, p)` with the likelihood-ratio
 #'   statistic, degrees of freedom, and p value. Any component may be `NA`
 #'   when the reduced model cannot be fitted.
 #'
@@ -2356,17 +2461,14 @@ mfp2_summary_nonlinear_table <- function(object, classified) {
 #' @noRd
 mfp2_summary_lrt_drop_variable <- function(object, classified, v,
                                             refit_context = NULL) {
-  # Exact extraction is intentional: `$x` may otherwise partially match the
-  # ordinary model component `xlevels` when a backend did not retain a design
-  # matrix, masking the missing-matrix error and producing an NA fallback.
-  x_full <- object[["x", exact = TRUE]]
-  cols_v <- intersect(colnames(x_full), classified$cols_by_var[[v]])
+  cols_v <- intersect(colnames(object$x), classified$cols_by_var[[v]])
   idx <- match(v, classified$variable_names)
   df_v <- classified$df_final[idx]
   if (is.na(df_v)) df_v <- length(cols_v)
 
   na_result <- list(lr = NA_real_, df = df_v, p = NA_real_)
-  if (is.null(x_full) || !is.matrix(x_full) || length(cols_v) == 0L) {
+  x_full <- object$x
+  if (is.null(x_full) || length(cols_v) == 0L) {
     return(na_result)
   }
 
@@ -2429,23 +2531,12 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v,
     )
   }
 
-  if (is.null(reduced_fit)) {
+  if (is.null(reduced_fit) || is.null(reduced_fit$logl) ||
+      !is.finite(reduced_fit$logl)) {
     return(na_result)
   }
 
-  if (isTRUE(refit_context$is_gee)) {
-    reduced_score <- reduced_fit$selection_deviance
-    if (!is.numeric(reduced_score) || length(reduced_score) != 1L ||
-        !is.finite(reduced_score)) {
-      return(na_result)
-    }
-    lr <- reduced_score - refit_context$full_selection_score
-  } else {
-    if (is.null(reduced_fit$logl) || !is.finite(reduced_fit$logl)) {
-      return(na_result)
-    }
-    lr <- 2 * (refit_context$full_logl - reduced_fit$logl)
-  }
+  lr <- 2 * (refit_context$full_logl - reduced_fit$logl)
   if (!is.finite(lr)) return(na_result)
   lr <- max(lr, 0)
   p <- stats::pchisq(lr, df = df_v, lower.tail = FALSE)
@@ -2737,11 +2828,7 @@ mfp2_design_column_info <- function(object) {
   }
 
   fp_terms <- object$fp_terms
-  power_columns <- if (!is.null(fp_terms)) {
-    grep("^power[0-9]+$", names(fp_terms), value = TRUE)
-  } else {
-    character(0L)
-  }
+  power_columns <- mfp2_summary_power_columns(fp_terms)
 
   rows <- vector("list", length(transformed_columns))
 
@@ -3686,7 +3773,8 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
     cat("(none)\n\n")
   } else {
     nt <- x$nonlinear_terms
-    is_gee <- identical(x$family, "gee")
+    test_label <- attr(nt, "test_label", exact = TRUE)
+    if (is.null(test_label)) test_label <- "LR chi-sq"
     disp <- data.frame(
       Variable = nt$variable,
       Function = nt$form,
@@ -3696,26 +3784,24 @@ print.summary.mfp2 <- function(x, notes = x$notes, ...) {
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
-    names(disp)[names(disp) == "statistic"] <- if (is_gee) {
-      "Wald-score chi-sq"
-    } else {
-      "LR chi-sq"
-    }
+    names(disp)[names(disp) == "statistic"] <- test_label
     print.data.frame(disp, row.names = FALSE, right = FALSE)
     cat("\n")
-    cat(
-      if (is_gee) {
-        paste0(
-          "Joint Stata-style Wald-score tests for each variable in the final ",
-          "MFP model,\n"
-        )
-      } else {
-        "Joint likelihood-ratio tests for each variable in the final MFP model,\n"
-      },
-      "with all other selected functional forms held fixed. df follow the MFP\n",
-      "convention (FP1 = 2, FP2 = 4).\n\n",
-      sep = ""
-    )
+    if (identical(x$family, "gee")) {
+      cat(
+        "Joint robust Wald tests for each nonlinear GEE term, using the selected\n",
+        "covariance estimator. df retain the MFP power-search adjustment\n",
+        "(FP1 = 2, FP2 = 4).\n\n",
+        sep = ""
+      )
+    } else {
+      cat(
+        "Joint likelihood-ratio tests for each variable in the final MFP model,\n",
+        "with all other selected functional forms held fixed. df follow the MFP\n",
+        "convention (FP1 = 2, FP2 = 4).\n\n",
+        sep = ""
+      )
+    }
 
     # Optional: fitted-function formulas.
     if (!is.null(x$formulas)) {

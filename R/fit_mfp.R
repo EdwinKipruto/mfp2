@@ -146,10 +146,6 @@ validate_mfp_candidate_powers <- function(powers,
 #'   eligible spike-at-zero term, the forced result is the complete maximum SAZ
 #'   representation (maximum positive-component form plus binary zero indicator),
 #'   so the reduced-component comparisons in SAZ Stage 2 are not run.
-#' @param retain_linear_fp1 Deprecated internal compatibility argument. A
-#'   supplied power \eqn{p = 1} remains in every searched FP1 class regardless
-#'   of this value. Power \code{1} is never added when absent from the supplied
-#'   candidate set.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
@@ -273,7 +269,6 @@ fit_mfp <- function(x,
                     min_saz_prop,
                     saz_pre_resolved = FALSE,
                     force_max_fp,
-                    retain_linear_fp1 = TRUE,
                     has_offset,
                     verbose,
                     term_to_columns = NULL,
@@ -690,8 +685,8 @@ fit_mfp <- function(x,
     # QBIC penalises by the effective GEE sample size, i.e. the number of
     # independent clusters, not the number of observations.
     n_obs <- family_fit$prepared$n_clusters
-    if (is.null(n_obs) || !is.finite(n_obs) || n_obs <= 0L) {
-      stop("GEE selection requires at least one cluster.", call. = FALSE)
+    if (is.null(n_obs) || !is.finite(n_obs) || n_obs <= 1L) {
+      stop("GEE selection requires at least two clusters.", call. = FALSE)
     }
   } else {
     n_obs <- nrow(x)
@@ -761,7 +756,6 @@ fit_mfp <- function(x,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
       force_max_fp    = force_max_fp,
-      retain_linear_fp1 = retain_linear_fp1,
       has_offset      = has_offset,
       n_obs           = n_obs,
       verbose         = verbose
@@ -1035,20 +1029,8 @@ fit_mfp <- function(x,
       linear_logl     = linear_logl,
       linear_df       = linear_df,
       mfp_logl        = mfp_logl,
-      mfp_selection_score = if (mfp2_family_is_gee(family_string)) {
-        modelfit$selection_deviance
-      } else NULL,
       mfp_df          = mfp_df,
       family_string   = family_string,
-      criterion_mfp   = criterion,
-      mfp2_family = if (mfp2_family_is_gee(family_string)) {
-        family_fit
-      } else {
-        # Multinomial and ordinal native fitters already attach their prepared
-        # family metadata. Preserve that component instead of replacing it with
-        # NULL while adding the GEE-specific metadata above.
-        modelfit$fit[["mfp2_family", exact = TRUE]]
-      },
       class_levels = if (identical(family_string, "multinomial")) {
         family_fit$prepared$levels
       } else NULL,
@@ -1108,6 +1090,13 @@ fit_mfp <- function(x,
   # keeping one invariant avoids reconstructing term structure downstream.
   fit$term_to_columns <- term_to_columns
   fit$nobs <- NROW(y)
+  if (identical(family_string, "gee")) {
+    fit$mfp_selection_score <- gee_final_selection_score(
+      modelfit,
+      criterion = criterion,
+      n_clusters = n_obs
+    )
+  }
   if (identical(family_string, "cox")) {
     fit$nevents <- sum(y[, NCOL(y)] > 0, na.rm = TRUE)
   } else if (identical(family_string, "finegray")) {
@@ -1239,7 +1228,6 @@ find_best_fp_cycle <- function(x,
                                prev_adj_params,
                                transform_cache = NULL,
                                force_max_fp,
-                               retain_linear_fp1 = TRUE,
                                searched_fp_current = stats::setNames(
                                  rep(FALSE, length(powers_current)),
                                  names(powers_current)
@@ -1300,7 +1288,6 @@ find_best_fp_cycle <- function(x,
       prev_adj_params = prev_adj_params,
       transform_cache = transform_cache,
       force_max_fp = force_max_fp,
-      retain_linear_fp1 = retain_linear_fp1,
       has_offset   = has_offset,
       n_obs        = n_obs,
       verbose = verbose

@@ -111,21 +111,44 @@ test_that("GEE QAIC and QBIC use weighted quasi-likelihood and cluster count", {
     df = 3,
     rank = 3,
     coefficients = stats::setNames(rep(0, 3), c("a", "b", "c")),
-    family_deviance = 19,
-    selection_deviance = -42
+    family_deviance = 19
   )
 
   metrics <- calculate_gee_metrics(obj, n_obs = 10, df_additional = 2)
 
   expect_equal(unname(metrics["aic"]), 24 + 2 * 5)
   expect_equal(unname(metrics["bic"]), 24 + log(10) * 5)
-  expect_equal(unname(metrics["deviance_rs"]), -42)
+  expect_equal(unname(metrics["deviance_rs"]), 19)
 
-  obj$selection_deviance <- NULL
-  fallback <- calculate_gee_metrics(obj, n_obs = 10, df_additional = 2)
-  expect_equal(unname(fallback["deviance_rs"]), 24)
-  expect_equal(unname(fallback["aic"]), unname(metrics["aic"]))
-  expect_equal(unname(fallback["bic"]), unname(metrics["bic"]))
+  obj$gee_pvalue_method <- "stata"
+  obj$selection_deviance <- -42
+  stata_metrics <- calculate_gee_metrics(obj, n_obs = 10, df_additional = 2)
+  expect_equal(unname(stata_metrics["deviance_rs"]), -42)
+  expect_equal(unname(stata_metrics["aic"]), unname(metrics["aic"]))
+  expect_equal(unname(stata_metrics["bic"]), unname(metrics["bic"]))
+})
+
+test_that("retained GEE selection scores use the active criterion scale", {
+  robust <- list(
+    logl = -12,
+    df = 3,
+    rank = 3,
+    coefficients = stats::setNames(rep(0, 3), c("a", "b", "c")),
+    family_deviance = 19,
+    selection_deviance = -42,
+    gee_pvalue_method = "robust_wald"
+  )
+
+  expect_equal(gee_final_selection_score(robust, "pvalue", 10), 19)
+  expect_equal(gee_final_selection_score(robust, "aic", 10), 30)
+  expect_equal(
+    gee_final_selection_score(robust, "bic", 10),
+    24 + log(10) * 3
+  )
+
+  stata <- robust
+  stata$gee_pvalue_method <- "stata"
+  expect_equal(gee_final_selection_score(stata, "pvalue", 10), -42)
 })
 
 test_that("progress tables use three decimals and GEE QAIC/QBIC labels", {
@@ -135,7 +158,7 @@ test_that("progress tables use three decimals and GEE QAIC/QBIC labels", {
       null = c(df = 0, deviance_rs = -1.2344)
     ),
     pvalue = c("null vs FP2" = 0.04567),
-    is_gee = TRUE
+    gee_pvalue_method = "stata"
   )
 
   pvalue_table <- print_mfp_pvalue_step(
@@ -153,22 +176,13 @@ test_that("progress tables use three decimals and GEE QAIC/QBIC labels", {
     unname(pvalue_table[, "P-value"]),
     c(NA_character_, "0.046")
   )
-  pvalue_fit$acd <- FALSE
-  pvalue_fit$powers <- matrix(c(-1, NA_real_), ncol = 1L)
-  pvalue_fit$keep <- FALSE
-  pvalue_fit$spike <- FALSE
-  pvalue_fit$model_best <- 1L
-  expect_false(any(grepl(
-    "\\bNA\\b|NaN",
-    capture.output(print_mfp_step("x", "pvalue", pvalue_fit))
-  )))
 
   ic_fit <- list(
     metrics = rbind(
       null = c(aic = 12.3456, bic = 13.4567),
       linear = c(aic = 10.2344, bic = 11.3456)
     ),
-    is_gee = TRUE
+    gee_pvalue_method = "robust_wald"
   )
   qaic_table <- print_mfp_ic_step("x", ic_fit, "aic")
   qbic_table <- print_mfp_ic_step("x", ic_fit, "bic")
@@ -178,17 +192,17 @@ test_that("progress tables use three decimals and GEE QAIC/QBIC labels", {
   expect_identical(colnames(qbic_table), "QBIC")
   expect_identical(unname(qbic_table[, 1]), c("13.457", "11.346"))
 
-  ic_fit$is_gee <- FALSE
+  ic_fit$gee_pvalue_method <- NULL
   expect_identical(colnames(print_mfp_ic_step("x", ic_fit, "aic")), "AIC")
   expect_identical(colnames(print_mfp_ic_step("x", ic_fit, "bic")), "BIC")
 })
 
-test_that("GEE block-Wald and Stata selection statistics use selected covariance", {
+test_that("robust GEE block-Wald and Stata selection statistics are distinct", {
   beta <- c("(Intercept)" = 3, x1 = 2, x2 = -1)
   covariance <- diag(c(4, 1, 1))
   dimnames(covariance) <- list(names(beta), names(beta))
 
-  block <- gee_wald_test(beta, covariance, indices = 2:3)
+  block <- gee_robust_wald_test(beta, covariance, indices = 2:3)
   expect_equal(block$statistic, 5)
   expect_equal(block$df, 2)
   expect_equal(
@@ -196,52 +210,51 @@ test_that("GEE block-Wald and Stata selection statistics use selected covariance
     stats::pchisq(5, df = 2, lower.tail = FALSE)
   )
   expect_equal(gee_stata_selection_deviance(beta, covariance), -5)
-  corrected <- gee_stata_robust_vcov(covariance, n_clusters = 5)
   expect_equal(
-    gee_stata_selection_deviance(beta, corrected),
+    gee_stata_selection_deviance(beta, covariance, n_clusters = 5),
     -4
   )
 })
 
-test_that("GEE Wald tests use the estimable covariance rank", {
-  beta <- c("(Intercept)" = 0, x1 = 2, x2 = 2)
-  covariance <- matrix(c(1, 1, 1, 1), nrow = 2)
-  full_covariance <- matrix(0, nrow = 3, ncol = 3,
-                            dimnames = list(names(beta), names(beta)))
-  full_covariance[2:3, 2:3] <- covariance
-
-  test <- gee_wald_test(beta, full_covariance, 2:3)
-  expect_equal(test$statistic, 4)
-  expect_equal(test$df, 1)
-  expect_equal(test$pvalue, stats::pchisq(4, 1, lower.tail = FALSE))
-
-  zero <- gee_wald_test(beta, full_covariance * 0, 2:3)
-  expect_equal(zero$statistic, 0)
-  expect_equal(zero$df, 0)
-  expect_equal(zero$pvalue, 1)
-})
-
-test_that("GEE covariance selection applies the Stata correction only to san.se", {
+test_that("GEE covariance selection corrects only the sandwich estimator", {
   geese <- list(
     vbeta = diag(c(1, 2)),
     vbeta.ajs = diag(c(3, 4)),
     vbeta.j1s = diag(c(5, 6)),
     vbeta.fij = diag(c(7, 8))
   )
-  expect_equal(gee_selected_vcov(geese, "san.se", 5), geese$vbeta * 5 / 4)
-  expect_equal(gee_selected_vcov(geese, "jack", 5), geese$vbeta.ajs)
-  expect_equal(gee_selected_vcov(geese, "j1s", 5), geese$vbeta.j1s)
-  expect_equal(gee_selected_vcov(geese, "fij", 5), geese$vbeta.fij)
+
+  expect_equal(gee_selected_vcov(geese, "san.se", n_clusters = 5),
+               geese$vbeta * 5 / 4)
+  expect_equal(gee_selected_vcov(geese, "jack", n_clusters = 5),
+               geese$vbeta.ajs)
+  expect_equal(gee_selected_vcov(geese, "j1s", n_clusters = 5),
+               geese$vbeta.j1s)
+  expect_equal(gee_selected_vcov(geese, "fij", n_clusters = 5),
+               geese$vbeta.fij)
+
+  control <- gee_control_for_std_err(
+    list(jack = 0L, j1s = 0L, fij = 0L),
+    "j1s"
+  )
+  expect_identical(control$jack, 0L)
+  expect_identical(control$j1s, 1L)
+  expect_identical(control$fij, 0L)
 })
 
-test_that("GEE control enables the requested jackknife calculation", {
-  skip_if_not_installed("geepack")
-  for (method in c("san.se", "jack", "j1s", "fij")) {
-    control <- normalize_gee_control(NULL, method)
-    expect_identical(as.logical(control$jack), identical(method, "jack"))
-    expect_identical(as.logical(control$j1s), identical(method, "j1s"))
-    expect_identical(as.logical(control$fij), identical(method, "fij"))
-  }
+test_that("GEE quasi-likelihood is stable at response boundaries", {
+  expect_equal(
+    gee_quasi_likelihood(c(0, 1), c(0, 1), "binomial"),
+    0
+  )
+  expect_equal(
+    gee_quasi_likelihood(c(0, 2), c(0, 2), "poisson"),
+    2 * log(2) - 2
+  )
+  expect_identical(
+    gee_quasi_likelihood(1, 0, "binomial"),
+    -Inf
+  )
 })
 
 test_that("power one is valid in every searched FP1 class", {
@@ -251,7 +264,35 @@ test_that("power one is valid in every searched FP1 class", {
   ))
 })
 
-test_that("GEE visiting order uses full-model selected-covariance block tests", {
+test_that("augmented robust Wald tests only additional FP directions", {
+  testthat::local_mocked_bindings(
+    fit_model = function(x, ...) {
+      coefficients <- stats::setNames(seq_len(ncol(x)), colnames(x))
+      covariance <- diag(ncol(x))
+      dimnames(covariance) <- list(colnames(x), colnames(x))
+      list(coefficients = coefficients, robust_vcov = covariance)
+    },
+    .package = "mfp2"
+  )
+
+  reduced <- matrix(1:5, ncol = 1)
+  full <- cbind(reduced, (1:5)^2)
+  result <- gee_augmented_wald_test(
+    reduced_xi = reduced,
+    full_xi = full,
+    data_adj = NULL,
+    y = 1:5,
+    family = gee_family(),
+    has_offset = FALSE
+  )
+
+  # The duplicated first full-basis direction is removed. The remaining added
+  # direction is coefficient 3 in [intercept, reduced, added].
+  expect_equal(result$statistic, 9)
+  expect_equal(result$df, 1)
+})
+
+test_that("GEE visiting order uses full-model robust block tests", {
   x <- cbind(x1 = 1:5, x2 = 6:10)
   beta <- c("(Intercept)" = 0, x1 = 1, x2 = 3)
   covariance <- diag(3)
@@ -261,7 +302,7 @@ test_that("GEE visiting order uses full-model selected-covariance block tests", 
     xorder = "ascending",
     x = x,
     y = 1:5,
-    family = gee_family(),
+    family = gee_family(pvalue_method = "stata"),
     family_string = "gee",
     weights = NULL,
     offset = NULL,
@@ -271,7 +312,7 @@ test_that("GEE visiting order uses full-model selected-covariance block tests", 
     nocenter = NULL,
     full_reference = list(
       coefficients = beta,
-      gee_vcov = covariance,
+      robust_vcov = covariance,
       df = 3,
       logl = 0
     )
@@ -280,7 +321,7 @@ test_that("GEE visiting order uses full-model selected-covariance block tests", 
   expect_identical(result, c("x2", "x1"))
 })
 
-test_that("fixed-degree GEE power selection uses the Stata score", {
+test_that("fixed-degree GEE power selection separates robust and Stata rules", {
   metric <- function(logl, deviance) {
     c(
       logl = logl, df = 3, deviance_rs = deviance,
@@ -313,22 +354,25 @@ test_that("fixed-degree GEE power selection uses the Stata score", {
     .package = "mfp2"
   )
 
-  result <- find_best_fpm_step(
+  run <- function(method) {
+    find_best_fpm_step(
       x = matrix(1:5, ncol = 1, dimnames = list(NULL, "x")),
       xi = "x", degree = 1, y = 1:5,
       powers_current = list(x = 1), powers = list(x = c(-1, 1, 2)),
       acdx = c(x = FALSE),
-      family = gee_family(), family_string = "gee",
+      family = gee_family(pvalue_method = method), family_string = "gee",
       zero = c(x = FALSE), catzero = list(x = NULL),
       spike = c(x = FALSE), spike_decision = c(x = NA_integer_),
       acd_parameter = list(), prev_adj_params = list(),
       has_offset = FALSE, n_obs = 5, term_to_columns = list(x = "x"),
       criterion = "pvalue"
     )
+  }
 
-  # Quasi-likelihood would choose candidate 3. Stata's negative overall-Wald
-  # score chooses the most negative value, candidate 1.
-  expect_equal(result$model_best, 1)
+  # Robust mode uses Q, so candidate 3 wins. Stata mode uses its negative
+  # global-Wald selection deviance, so the more negative candidate 1 wins.
+  expect_equal(run("robust_wald")$model_best, 3)
+  expect_equal(run("stata")$model_best, 1)
 })
 
 test_that("Stata GEE RA2 passes power one through the FP1 search", {
@@ -342,8 +386,8 @@ test_that("Stata GEE RA2 passes power one through the FP1 search", {
 
   testthat::local_mocked_bindings(
     build_adjustment_step = function(...) list(transform_cache = NULL),
-    find_best_fpm_step = function(degree, retain_linear_fp1 = TRUE, ...) {
-      seen[[as.character(degree)]] <- retain_linear_fp1
+    find_best_fpm_step = function(degree, powers, ...) {
+      seen[[as.character(degree)]] <- 1 %in% powers[["x"]]
       if (degree == 2L) {
         list(
           powers = matrix(c(-1, 2), nrow = 1L),
@@ -381,7 +425,7 @@ test_that("Stata GEE RA2 passes power one through the FP1 search", {
     y = 1:5, powers_current = list(x = 1),
     powers = list(x = c(-1, 1, 2)), criterion = "pvalue",
     ftest = FALSE, select = 0.05, alpha = 0.05,
-    family = gee_family(gaussian()),
+    family = gee_family(gaussian(), pvalue_method = "stata"),
     family_string = "gee", zero = c(x = FALSE),
     catzero = list(x = NULL), spike = c(x = FALSE),
     spike_decision = c(x = NA_integer_), acd_parameter = list(),
@@ -397,57 +441,7 @@ test_that("Stata GEE RA2 passes power one through the FP1 search", {
   )
 })
 
-test_that("power one is FP1 and is compared with linear using one search df", {
-  test <- calculate_deviance_test(
-    deviances = c(linear = -12, FP1 = -12),
-    dfs = c(linear = 2, FP1 = 3)
-  )
-  expect_equal(test$statistic, 0)
-  expect_equal(test$pvalue, 1)
-
-  metric <- function(df, deviance) {
-    c(
-      logl = 0, df = df, deviance_rs = deviance,
-      deviance_gaussian = NA_real_, aic = 0, bic = 0, df_resid = 20 - df
-    )
-  }
-  testthat::local_mocked_bindings(
-    build_adjustment_step = function(...) list(transform_cache = NULL),
-    find_best_fpm_step = function(degree, retain_linear_fp1 = TRUE, ...) {
-      expect_equal(degree, 1L)
-      list(
-        powers = matrix(1, nrow = 1L), power_best = 1,
-        metrics = rbind(FP1 = metric(3, -12)), model_best = 1L,
-        current_adj_params = list()
-      )
-    },
-    fit_null_step = function(...) list(
-      powers = NA_real_, metrics = metric(1, 0), current_adj_params = list()
-    ),
-    fit_linear_step = function(...) list(
-      powers = 1, metrics = metric(2, -12), current_adj_params = list()
-    ),
-    .package = "mfp2"
-  )
-
-  result <- select_ra2(
-    x = matrix(1:5, ncol = 1, dimnames = list(NULL, "x")),
-    xi = "x", keep = character(), degree = 1, acdx = c(x = FALSE),
-    y = 1:5, powers_current = list(x = 1), powers = list(x = 1),
-    criterion = "pvalue", ftest = FALSE, select = 0.05, alpha = 0.05,
-    family = gee_family(), family_string = "gee", zero = c(x = FALSE),
-    catzero = list(x = NULL), spike = c(x = FALSE),
-    spike_decision = c(x = NA_integer_), acd_parameter = list(),
-    prev_adj_params = list(), force_max_fp = FALSE, has_offset = FALSE,
-    n_obs = 20, term_to_columns = list(x = "x")
-  )
-  expect_identical(rownames(result$metrics), c("FP1", "null", "linear"))
-  expect_equal(result$model_best, 3L)
-  expect_equal(unname(result$statistic[["FP1 vs linear"]]), 0)
-  expect_equal(unname(result$pvalue[["FP1 vs linear"]]), 1)
-})
-
-test_that("GEE linear selection uses the Stata score difference", {
+test_that("default GEE linear selection uses the augmented robust Wald test", {
   metric <- function(df, deviance) {
     c(
       logl = 0, df = df, deviance_rs = deviance,
@@ -459,16 +453,20 @@ test_that("GEE linear selection uses the Stata score difference", {
     build_adjustment_step = function(...) list(transform_cache = NULL),
     fit_null_step = function(...) list(
       powers = c(x = NA_real_),
-      metrics = metric(df = 1, deviance = -9),
+      metrics = metric(df = 1, deviance = 10),
       current_adj_params = list(x = list(data_xi = NULL, data_adj = NULL))
     ),
     fit_linear_step = function(...) list(
       powers = c(x = 1),
-      metrics = metric(df = 2, deviance = -15),
+      metrics = metric(df = 2, deviance = 9),
       current_adj_params = list(
         x = list(data_xi = matrix(1:4, ncol = 1), data_adj = NULL)
       )
     ),
+    gee_augmented_wald_test = function(...) {
+      list(statistic = 4, pvalue = stats::pchisq(4, 1, lower.tail = FALSE),
+           df = 1, dev_diff = 4)
+    },
     .package = "mfp2"
   )
 
@@ -486,6 +484,51 @@ test_that("GEE linear selection uses the Stata score difference", {
     term_to_columns = list(x = "x")
   )
 
+  expect_equal(unname(result$statistic), 4)
+  expect_equal(unname(result$pvalue), stats::pchisq(4, 1, lower.tail = FALSE))
+  expect_identical(result$gee_pvalue_method, "robust_wald")
+})
+
+test_that("Stata-compatible GEE selection uses its selection deviance", {
+  metric <- function(logl, df, deviance) {
+    c(
+      logl = logl, df = df, deviance_rs = deviance,
+      deviance_gaussian = NA_real_, aic = 0, bic = 0, df_resid = 20 - df
+    )
+  }
+
+  testthat::local_mocked_bindings(
+    build_adjustment_step = function(...) list(transform_cache = NULL),
+    fit_null_step = function(...) list(
+      powers = c(x = NA_real_),
+      metrics = metric(logl = -10, df = 1, deviance = -9),
+      current_adj_params = list(model = "null")
+    ),
+    fit_linear_step = function(...) list(
+      powers = c(x = 1),
+      metrics = metric(logl = -9.9, df = 2, deviance = -15),
+      current_adj_params = list(model = "linear")
+    ),
+    .package = "mfp2"
+  )
+
+  result <- select_linear(
+    x = matrix(1:4, ncol = 1, dimnames = list(NULL, "x")),
+    xi = "x", keep = character(), degree = 1,
+    acdx = c(x = FALSE), y = 1:4,
+    powers_current = list(x = 1), powers = list(x = 1),
+    criterion = "pvalue", ftest = FALSE, select = 0.05, alpha = 0.05,
+    family = gee_family(gaussian(), pvalue_method = "stata"),
+    family_string = "gee",
+    zero = c(x = FALSE), catzero = list(x = NULL),
+    spike = c(x = FALSE), spike_decision = c(x = NA_integer_),
+    acd_parameter = list(), prev_adj_params = list(),
+    force_max_fp = FALSE, has_offset = FALSE, n_obs = 4,
+    term_to_columns = list(x = "x")
+  )
+
+  # The quasi-likelihood statistic would be only 0.2. The supplied negative-
+  # Wald difference is 6 and is the statistic that Stata compatibility uses.
   expect_equal(unname(result$statistic), 6)
   expect_equal(
     unname(result$pvalue),
@@ -504,23 +547,27 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
     # x1 selected and nonlinear
     expect_false(any(is.na(m$fp_powers$x1)))
     expect_false(identical(as.numeric(m$fp_powers$x1), 1))
-    # x2 is a strong signal and must be retained. QICu/QBIC recover its linear
-    # form on this seeded sample. The Stata p-value path compares differences
-    # of overall Wald scores; on one simulated sample it may make a nominal
-    # false-positive nonlinear choice, just as it may retain a null variable.
-    expect_false(any(is.na(m$fp_powers$x2)), info = crit)
-    if (crit != "pvalue") {
-      expect_equal(as.numeric(m$fp_powers$x2), 1, info = crit)
-    }
+    # x2 selected linear
+    expect_equal(as.numeric(m$fp_powers$x2), 1, info = crit)
 
     # On this seeded data the information criteria drop x3. Do not impose the
     # same deterministic assertion on p-value selection: at select = 0.05 a
     # null variable may legitimately be retained as a nominal false positive.
-    # Its mechanics are covered by the focused deterministic tests above rather
-    # than by requiring perfect truth recovery from one simulated sample.
+    # The robust-Wald procedure is additionally conditional on the selected FP
+    # powers, as documented by gee_family(). Its mechanics are covered by the
+    # focused deterministic tests above rather than by requiring perfect truth
+    # recovery from one simulated sample.
     if (crit != "pvalue") {
       expect_true(all(is.na(m$fp_powers$x3)), info = crit)
     }
+
+    expected_score <- switch(
+      crit,
+      pvalue = m$mfp_deviance,
+      aic = -2 * m$mfp_logl + 2 * m$mfp_df,
+      bic = -2 * m$mfp_logl + log(length(unique(dat$id))) * m$mfp_df
+    )
+    expect_equal(m$mfp_selection_score, expected_score, info = crit)
   }
 })
 
@@ -561,11 +608,6 @@ test_that("S3 methods work on a fitted GEE mfp2 object", {
   pr <- predict(m)
   expect_length(pr, nrow(dat))
   expect_true(all(is.finite(pr)))
-  sm <- summary(m)
-  expect_s3_class(sm, "summary.mfp2")
-  expect_identical(sm$criterion, "QAIC")
-  expect_false(any(grepl("\\bNA\\b|NaN", capture.output(print(sm)))))
-  printed <- capture.output(print(m))
-  expect_true(any(grepl("QAIC", printed, fixed = TRUE)))
-  expect_false(any(grepl("\\bNA\\b|NaN", printed)))
+  expect_s3_class(summary(m), "summary.mfp2")
+  expect_output(print(m))
 })

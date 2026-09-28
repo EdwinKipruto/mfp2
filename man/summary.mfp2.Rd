@@ -81,18 +81,15 @@ fitted link scale; supported survival models additionally report the
 usual exponentiated effect when it has a standard interpretation.
 \item \strong{Nonlinear Terms}: one row per variable modelled by an FP1,
 FP2, ACD, or spike/catzero compound form. Each row reports a joint
-joint chi-square test of all of that variable's terms, using the
-package's selection-adjusted degrees of freedom. Likelihood models use a
-likelihood-ratio test; GEE uses the same Stata-style difference in
-negative overall Wald scores used during selection. Each test compares
-the final MFP model with an otherwise unchanged model that omits the
-variable.
+likelihood-ratio test (LRT) of all of that variable's terms, using the
+package's selection-adjusted degrees of freedom. The LRT compares the
+final MFP model with an otherwise unchanged model that omits the variable.
 \item \strong{Model Fit}: full-linear and final-MFP deviances for GLMs,
 or minus twice the fitted likelihood for survival models (partial
 likelihood for Cox and Fine--Gray), with model degrees of freedom.
 }
 
-The joint test is a diagnostic: the variable was selected by the MFP
+The joint LRT is a diagnostic: the variable was selected by the MFP
 procedure, not by this test. The degrees of freedom follow the
 Royston--Sauerbrei convention used throughout the package (2 df per FP1,
 4 df per FP2), so the reported p-values acknowledge the FP power search

@@ -176,6 +176,25 @@ test_that("selection, vcov, summary, and print use every supported SE method", {
       "fij" = geese$vbeta.fij
     )
   }
+  parameter_covariance_field <- function(geese, method, parameter) {
+    if (identical(parameter, "alpha")) {
+      switch(
+        method,
+        "san.se" = geese$valpha,
+        "jack" = geese$valpha.ajs,
+        "j1s" = geese$valpha.j1s,
+        "fij" = geese$valpha.fij
+      )
+    } else {
+      switch(
+        method,
+        "san.se" = geese$vgamma,
+        "jack" = geese$vgamma.ajs,
+        "j1s" = geese$vgamma.j1s,
+        "fij" = geese$vgamma.fij
+      )
+    }
+  }
 
   for (method in c("san.se", "jack", "j1s", "fij")) {
     m2 <- mfp2(
@@ -199,7 +218,24 @@ test_that("selection, vcov, summary, and print use every supported SE method", {
     }
     expect_equal(unname(vcov(m2)), unname(expected), tolerance = TOL_MED,
                  info = method)
-    expect_identical(summary(m2)$gee$std_err, method)
+    gee_summary <- summary(m2)$gee
+    expect_identical(gee_summary$std_err, method)
+    expect_equal(
+      unname(gee_summary$correlation_se),
+      unname(sqrt(diag(as.matrix(
+        parameter_covariance_field(gg$geese, method, "alpha")
+      )))),
+      tolerance = TOL_MED,
+      info = method
+    )
+    expect_equal(
+      unname(gee_summary$scale_se),
+      unname(sqrt(diag(as.matrix(
+        parameter_covariance_field(gg$geese, method, "gamma")
+      )))[1L]),
+      tolerance = TOL_MED,
+      info = method
+    )
     expect_true(is.finite(m2$mfp_selection_score), info = method)
 
     printed <- c(capture.output(print(m2)), capture.output(print(summary(m2))))
@@ -228,6 +264,14 @@ test_that("nonlinear GEE summaries use finite Stata-style joint tests", {
   expect_gt(nrow(sm$nonlinear_terms), 0L)
   expect_true(all(is.finite(sm$nonlinear_terms$lr_chisq)))
   expect_true(all(is.finite(sm$nonlinear_terms$p)))
+  expect_identical(
+    unname(sm$nonlinear_terms$df),
+    unname(m2$fp_terms[sm$nonlinear_terms$variable, "df_final"])
+  )
+  expect_identical(
+    attr(sm$nonlinear_terms, "test_label", exact = TRUE),
+    "Wald-score chi-sq"
+  )
   out <- capture.output(print(sm))
   expect_true(any(grepl("Wald-score chi-sq", out, fixed = TRUE)))
   expect_false(any(grepl("\\bNA\\b|NaN", out)))

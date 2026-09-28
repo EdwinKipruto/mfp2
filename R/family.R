@@ -189,6 +189,102 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 }
 
 
+#' Generalized Estimating Equations (GEE) Family Specification
+#'
+#' Specifies a marginal model fitted by generalized estimating equations for
+#' [mfp2()], using the \pkg{geepack} package. Fractional-polynomial candidate
+#' fits use [geepack::geese.fit()] and the single retained model is refitted
+#' with [geepack::geeglm()], so the returned object is a native `geeglm` object.
+#'
+#' @param family A GLM response family (name, function, or family object)
+#'   describing the marginal mean and variance. Supported families are
+#'   `gaussian`, `binomial`, `poisson`, and `Gamma`. Defaults to
+#'   `stats::gaussian()`.
+#' @param corstr Working correlation structure, one of `"exchangeable"`,
+#'   `"independence"`, or `"ar1"`. The default is `"exchangeable"`, matching
+#'   Stata's default for `xtgee`.
+#' @param std.err Type of standard error reported by the retained fit, one of
+#'   `"san.se"` (the robust sandwich estimator, default), `"jack"`, `"j1s"`, or
+#'   `"fij"`.
+#' @details
+#' The cluster identifier is supplied through the top-level `id` argument of
+#' [mfp2()] (one value per observation, with clusters in contiguous rows), and
+#' repeated-measure ordering through the optional `waves` argument. These are
+#' aligned per observation and therefore live outside `gee_family()`.
+#' The scale parameter follows \pkg{geepack}'s default and is estimated rather
+#' than fixed.
+#'
+#' All three [mfp2()] selection criteria are available. With
+#' `criterion = "pvalue"`, power combinations are ranked as in Stata
+#' `mfp: xtgee`: the selection score is the negative overall Wald chi-square,
+#' and closed comparisons use differences of those scores with the prescribed
+#' MFP search degrees of freedom. The covariance estimator selected by
+#' `std.err` is used consistently for variable ordering, power ranking, closed
+#' tests, and final-model inference. For `std.err = "san.se"`, Stata's
+#' \eqn{K/(K-1)} finite-cluster correction is applied to geepack's sandwich
+#' covariance, where \eqn{K} is the number of independent clusters. The three
+#' jackknife estimators are used as returned by geepack, without an additional
+#' sandwich correction. The negative-Wald score is not an additive
+#' likelihood-deviance statistic.
+#' With `criterion = "aic"` and
+#' `criterion = "bic"`, selection uses the quasi-likelihood information
+#' criterion QICu of Pan (2001) and its BIC-penalised analogue. Quasi-likelihood
+#' contributions use the effective prior weights (including grouped-binomial
+#' totals) and the standard Gamma quasi-likelihood.
+#'
+#' @return An `mfp2_gee_family` specification.
+#'
+#' @references
+#' Pan, W. (2001). Akaike's information criterion in generalized estimating
+#' equations. \emph{Biometrics}, 57, 120--125.\cr
+#' Halekoh, U., Højsgaard, S. and Yan, J. (2006). The R package geepack for
+#' generalized estimating equations. \emph{Journal of Statistical Software},
+#' 15(2), 1--11.
+#'
+#' @seealso [mfp2()], [geepack::geeglm()]
+#' @export
+gee_family <- function(family = stats::gaussian(),
+                       corstr = c("exchangeable", "independence", "ar1"),
+                       std.err = c("san.se", "jack", "j1s", "fij")) {
+  # Resolve the inner response family through the shared normalizer so names,
+  # functions, and family objects are all accepted, then restrict to the GLM
+  # families geepack supports for QIC.
+  family_arg <- deparse(substitute(family))
+  info <- normalize_family_argument(family, family_arg = family_arg)
+  response_family <- info$family
+  inner_string <- info$family_string
+
+  supported <- c("gaussian", "binomial", "poisson", "Gamma")
+  if (!inner_string %in% supported) {
+    stop(
+      sprintf(
+        "! `family` for `gee_family()` must be one of %s; got '%s'.",
+        paste(supported, collapse = ", "), inner_string
+      ),
+      call. = FALSE
+    )
+  }
+  if (!inherits(response_family, "family")) {
+    stop("! `gee_family()` requires an ordinary GLM response family.", call. = FALSE)
+  }
+
+  corstr <- match.arg(corstr)
+  std.err <- match.arg(std.err)
+
+  structure(
+    list(
+      family = "gee",
+      response_family = response_family,
+      response_family_string = inner_string,
+      corstr = corstr,
+      std.err = std.err,
+      prepared = NULL
+    ),
+    class = c("mfp2_gee_family", "mfp2_family")
+  )
+}
+
+
 #' Multinomial Logistic Family Specification
 #'
 #' Specifies an unpenalized baseline-category multinomial logistic model for
@@ -1350,7 +1446,15 @@ prepare_ordinal_family <- function(family, y, weights, offset = NULL,
 #' @noRd
 prepare_family_for_fit <- function(family, family_string, y, weights,
                                    strata = NULL, id = NULL, offset = NULL,
-                                   has_offset = !is.null(offset)) {
+                                   has_offset = !is.null(offset),
+                                   waves = NULL, control = NULL) {
+  if (identical(family_string, "gee")) {
+    family <- prepare_gee_family(
+      family, y = y, id = id, waves = waves, weights = weights,
+      offset = offset, control = control
+    )
+    return(list(family = family, strata = strata))
+  }
   if (identical(family_string, "survreg")) {
     family <- prepare_survreg_family(family, y, weights, strata)
     return(list(family = family, strata = strata))
@@ -1433,7 +1537,8 @@ normalize_family_argument <- function(family, family_arg = deparse(substitute(fa
   if (inherits(family, "mfp2_family")) {
     family_string <- family$family
     if (!is.character(family_string) || length(family_string) != 1L ||
-        !family_string %in% c("survreg", "finegray", "multinomial", "ordinal")) {
+        !family_string %in% c("survreg", "finegray", "multinomial", "ordinal",
+                              "gee")) {
       stop("! Invalid mfp2 family specification.", call. = FALSE)
     }
     return(list(family = family, family_string = family_string))

@@ -1,0 +1,916 @@
+# =============================================================================
+# Generalized Estimating Equations (GEE) support for mfp2
+# -----------------------------------------------------------------------------
+# GEE candidate and final fits are delegated to the geepack package:
+#   * geepack::geese.fit() is used for the many lightweight candidate fits in
+#     the fractional-polynomial search (fast = TRUE).
+#   * geepack::geeglm()   is used for the single retained final fit
+#     (fast = FALSE), so the returned object is a native `geeglm` object that is
+#     numerically identical to a direct geeglm() call.
+#
+# GEE is not a full-likelihood model, so mfp2's three selection criteria are
+# mapped onto quasi-likelihood quantities:
+#
+#   * criterion = "pvalue": Stata-style differences of negative overall Wald
+#     chi-square values. The covariance estimator requested through `std.err`
+#     is used consistently for ordering, power ranking, closed tests, and final
+#     inference. The sandwich estimator receives Stata's K/(K-1) correction.
+#   * criterion = "aic": QICu = -2Q + 2p (Pan, 2001).
+#   * criterion = "bic": QBIC = -2Q + log(K) p, the QICu penalty with the BIC
+#     multiplier, where K is the number of independent clusters (the effective
+#     GEE sample size).
+#
+# The quasi-likelihood Q is computed in R directly from the fitted means and
+# effective prior weights.  The weights are essential for ordinary weighted
+# GEE fits and for grouped-binomial responses, whose binomial totals are stored
+# as effective weights.
+# =============================================================================
+
+#' Supported GEE response families and their canonical geepack variance names
+#'
+#' @keywords internal
+#' @noRd
+mfp2_gee_supported_families <- function() {
+  c("gaussian", "binomial", "poisson", "Gamma")
+}
+
+#' Is this the GEE meta-family?
+#'
+#' @param family_string Canonical family name.
+#' @return `TRUE` when `family_string` is exactly `"gee"`, `FALSE` otherwise.
+#' @keywords internal
+#' @noRd
+mfp2_family_is_gee <- function(family_string) {
+  identical(family_string, "gee")
+}
+
+#' Wald test for a GEE coefficient block
+#'
+#' Uses the estimable positive-eigenvalue subspace of the selected covariance
+#' estimator, which keeps ordering and selection defined for rank-deficient
+#' coefficient blocks.
+#'
+#' @keywords internal
+#' @noRd
+gee_wald_test <- function(coefficients, covariance_matrix, indices) {
+  indices <- unique(as.integer(indices))
+  indices <- indices[is.finite(indices) & indices >= 1L &
+                       indices <= length(coefficients)]
+
+  if (length(indices) == 0L) {
+    return(list(statistic = 0, pvalue = 1, df = 0L, dev_diff = 0))
+  }
+
+  covariance_dim <- dim(covariance_matrix)
+  if (is.null(covariance_matrix) || length(covariance_dim) != 2L ||
+      any(covariance_dim < max(indices))) {
+    return(list(statistic = NA_real_, pvalue = NA_real_, df = NA_integer_,
+                dev_diff = NA_real_))
+  }
+
+  beta <- as.numeric(coefficients[indices])
+  covariance <- as.matrix(covariance_matrix)[indices, indices, drop = FALSE]
+  if (anyNA(beta) || any(!is.finite(beta)) || anyNA(covariance) ||
+      any(!is.finite(covariance))) {
+    return(list(statistic = NA_real_, pvalue = NA_real_, df = NA_integer_,
+                dev_diff = NA_real_))
+  }
+
+  covariance <- (covariance + t(covariance)) / 2
+  eig <- tryCatch(eigen(covariance, symmetric = TRUE), error = function(e) NULL)
+  if (is.null(eig) || length(eig$values) == 0L) {
+    return(list(statistic = NA_real_, pvalue = NA_real_, df = NA_integer_,
+                dev_diff = NA_real_))
+  }
+
+  scale <- max(abs(eig$values))
+  tolerance <- max(1, length(beta)) * sqrt(.Machine$double.eps) * scale
+  estimable <- eig$values > tolerance
+  df <- sum(estimable)
+  if (df == 0L) {
+    return(list(statistic = 0, pvalue = 1, df = 0L, dev_diff = 0))
+  }
+
+  projected <- crossprod(eig$vectors[, estimable, drop = FALSE], beta)
+  statistic <- sum(as.numeric(projected)^2 / eig$values[estimable])
+  statistic <- max(0, unname(statistic))
+
+  list(
+    statistic = statistic,
+    pvalue = stats::pchisq(statistic, df = df, lower.tail = FALSE),
+    df = unname(df),
+    dev_diff = statistic
+  )
+}
+
+#' Apply Stata's finite-cluster correction to a sandwich covariance
+#'
+#' Stata's clustered robust covariance multiplies the sandwich middle by
+#' \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. geepack
+#' reports the uncorrected asymptotic sandwich covariance.
+#'
+#' @keywords internal
+#' @noRd
+gee_stata_robust_vcov <- function(robust_vcov, n_clusters = NULL) {
+  n_clusters <- as.numeric(n_clusters)
+  if (length(n_clusters) != 1L || !is.finite(n_clusters) || n_clusters <= 1) {
+    stop(
+      "! Stata-corrected sandwich covariance requires at least two clusters.",
+      call. = FALSE
+    )
+  }
+
+  robust_vcov * (n_clusters / (n_clusters - 1))
+}
+
+#' Name of a geepack covariance component
+#'
+#' @keywords internal
+#' @noRd
+gee_covariance_field <- function(component = c("beta", "alpha", "gamma"),
+                                 std.err) {
+  component <- match.arg(component)
+  suffix <- switch(
+    std.err,
+    "san.se" = "",
+    "jack" = ".ajs",
+    "j1s" = ".j1s",
+    "fij" = ".fij",
+    stop("Internal error: unsupported GEE standard-error method.", call. = FALSE)
+  )
+  paste0("v", component, suffix)
+}
+
+#' Select the covariance estimator requested for a GEE fit
+#'
+#' The sandwich estimator receives Stata's finite-cluster correction. The
+#' approximate, one-step, and fully iterated jackknife estimators already have
+#' their own resampling normalization and are used unchanged.
+#'
+#' @keywords internal
+#' @noRd
+gee_selected_vcov <- function(geese, std.err, n_clusters) {
+  field <- gee_covariance_field("beta", std.err)
+  covariance <- geese[[field]]
+  if (is.null(covariance) || !is.matrix(covariance) ||
+      any(!is.finite(covariance))) {
+    stop(
+      sprintf("! GEE covariance estimator '%s' could not be computed.", std.err),
+      call. = FALSE
+    )
+  }
+  if (identical(std.err, "san.se")) {
+    covariance <- gee_stata_robust_vcov(covariance, n_clusters)
+  }
+  covariance
+}
+
+#' Enable the requested geepack covariance calculation
+#'
+#' @keywords internal
+#' @noRd
+gee_control_for_std_err <- function(control, std.err) {
+  control$jack <- as.integer(identical(std.err, "jack"))
+  control$j1s <- as.integer(identical(std.err, "j1s"))
+  control$fij <- as.integer(identical(std.err, "fij"))
+  control
+}
+
+#' Negative overall Wald chi-square used by Stata mfp/xtgee
+#'
+#' @keywords internal
+#' @noRd
+gee_stata_selection_deviance <- function(coefficients,
+                                         covariance_matrix) {
+  intercept <- match("(Intercept)", names(coefficients), nomatch = 0L)
+  tested <- setdiff(seq_along(coefficients), intercept)
+  test <- gee_wald_test(
+    coefficients,
+    covariance_matrix,
+    tested
+  )
+  if (is.finite(test$statistic)) -test$statistic else NA_real_
+}
+
+#' Quasi-likelihood for a GEE fit
+#'
+#' Computes the quasi-likelihood \eqn{Q(\mu; y)} used by the QIC family of
+#' criteria.  Contributions are multiplied by the effective prior weights;
+#' this also handles grouped-binomial responses, for which the response is a
+#' success proportion and the total number of trials is part of the effective
+#' weight.  The Gamma expression is the quasi-likelihood obtained by integrating
+#' \eqn{(y-\mu)/\mu^2}, namely \eqn{-y/\mu-\log(\mu)}.
+#'
+#' @param y Numeric response vector. For grouped binomial data this is the
+#'   observed proportion of successes, matching the value stored by
+#'   \code{geepack::geeglm()}.
+#' @param mu Numeric vector of fitted means.
+#' @param weights Numeric vector of effective prior weights.
+#' @param family_string Inner response family: one of \code{"gaussian"},
+#'   \code{"binomial"}, \code{"poisson"}, or \code{"Gamma"}.
+#'
+#' @return A single numeric value, the quasi-likelihood.
+#'
+#' @references
+#' Pan, W. (2001). Akaike's information criterion in generalized estimating
+#' equations. \emph{Biometrics}, 57, 120--125.
+#'
+#' @keywords internal
+#' @noRd
+gee_quasi_likelihood <- function(y, mu, family_string, weights = NULL) {
+  if (is.null(weights)) weights <- rep.int(1, length(y))
+  weights <- as.numeric(weights)
+
+  if (length(y) != length(mu) || length(y) != length(weights)) {
+    stop("Internal error: GEE quasi-likelihood inputs must have equal length.",
+         call. = FALSE)
+  }
+  if (anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
+    stop("Internal error: GEE quasi-likelihood weights must be finite and non-negative.",
+         call. = FALSE)
+  }
+
+  # Zero-weight observations do not contribute. Subset before evaluating the
+  # family expression so an otherwise irrelevant boundary value cannot produce
+  # 0 * Inf = NaN.
+  positive_weight <- weights > 0
+  y <- y[positive_weight]
+  mu <- mu[positive_weight]
+  weights <- weights[positive_weight]
+
+  contribution <- switch(
+    family_string,
+    gaussian = ((y - mu)^2) / -2,
+    poisson  = (y * log(mu)) - mu,
+    binomial = y * log(mu / (1 - mu)) + log(1 - mu),
+    Gamma    = -y / mu - log(mu),
+    stop(
+      sprintf(
+        "Internal error: unsupported GEE response family '%s'.",
+        family_string
+      ),
+      call. = FALSE
+    )
+  )
+  sum(weights * contribution)
+}
+
+#' Normalise a control list for the GEE fitter
+#'
+#' Resolves the user-supplied control list to a \code{geepack::geese.control()}
+#' object. GLM-style names are accepted as aliases so that the same
+#' \code{control = list(maxit = ..., epsilon = ...)} works across families:
+#' \code{maxit} maps to the maximum number of Fisher-scoring iterations and
+#' \code{epsilon} to the convergence tolerance.
+#'
+#' @param control User-supplied control list, or \code{NULL} for GEE defaults.
+#'
+#' @return A validated list returned by \code{geepack::geese.control()}.
+#' @keywords internal
+#' @noRd
+normalize_gee_control <- function(control = NULL, std.err = "san.se") {
+  if (is.null(control)) {
+    return(gee_control_for_std_err(geepack::geese.control(), std.err))
+  }
+
+  if (!is.list(control)) {
+    stop(
+      "For GEE models, `control` must be `NULL` or a list accepted by ",
+      "`geepack::geese.control()` (e.g. list(maxit = 50, epsilon = 1e-6)).",
+      call. = FALSE
+    )
+  }
+
+  # geese.control() uses the same `maxit`/`epsilon`/`trace` names as
+  # glm.control(); pass recognised entries straight through. Unknown entries
+  # are rejected by geese.control() itself.
+  resolved <- tryCatch(
+    do.call(geepack::geese.control, control),
+    error = function(e) {
+      stop(
+        "Invalid GEE `control`: ", conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+  gee_control_for_std_err(resolved, std.err)
+}
+
+#' Prepare a GEE family once for repeated MFP candidate fits
+#'
+#' Validates the clustering structure and response, resolves the inner GLM
+#' response family, converts grouped-binomial responses to the proportion /
+#' cluster-weight representation used by \code{geepack::geeglm()}, and caches
+#' every invariant GEE input in \code{family$prepared}. Candidate fits then read
+#' the cached objects and never re-validate clusters, re-parse the family, or
+#' rebuild the control list.
+#'
+#' @param family A family object created by \code{gee_family()}; must inherit
+#'   from \code{"mfp2_gee_family"}.
+#' @param y Response accepted by the inner GLM family. For binomial models this
+#'   may be a two-column \code{cbind(successes, failures)} matrix.
+#' @param id Cluster identifier, one value per observation. Observations from
+#'   the same cluster must be contiguous.
+#' @param waves Optional integer-like visit identifier, one value per
+#'   observation, used to order repeated measurements and to represent gaps for
+#'   AR(1) working correlation.
+#' @param weights Optional numeric vector of prior weights.
+#' @param offset Optional numeric offset vector.
+#' @param control Resolved \code{geepack::geese.control()} list.
+#'
+#' @return The family object with a populated \code{prepared} slot.
+#' @keywords internal
+#' @noRd
+prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
+                               offset = NULL, control = NULL) {
+  if (!inherits(family, "mfp2_gee_family")) {
+    stop("Internal error: `family` is not a GEE family object.", call. = FALSE)
+  }
+
+  if (!requireNamespace("geepack", quietly = TRUE)) {
+    stop(
+      "`gee_family()` requires the 'geepack' package. ",
+      "Install it with install.packages(\"geepack\").",
+      call. = FALSE
+    )
+  }
+
+  response_family <- family$response_family
+  inner_string <- response_family$family
+  if (!inner_string %in% mfp2_gee_supported_families()) {
+    stop(
+      sprintf(
+        "! GEE currently supports the %s response families; got '%s'.",
+        paste(mfp2_gee_supported_families(), collapse = ", "),
+        inner_string
+      ),
+      call. = FALSE
+    )
+  }
+
+  nobs <- NROW(y)
+
+  # ---- Clustering identifier ------------------------------------------------
+  if (is.null(id)) {
+    stop(
+      "! `id` is required for GEE models: supply a cluster identifier with one ",
+      "value per observation.",
+      call. = FALSE
+    )
+  }
+  if (!is.atomic(id) || is.matrix(id) || !is.null(dim(id)) ||
+      length(id) != nobs || anyNA(id)) {
+    stop(
+      "! `id` must be an atomic vector or factor with one non-missing value ",
+      "per observation.",
+      call. = FALSE
+    )
+  }
+
+  # geese.fit() derives clusters from *contiguous* runs of equal id values and
+  # does not reorder rows. Detect the common mistake of non-contiguous clusters
+  # rather than silently fitting the wrong correlation structure.
+  id_codes <- if (is.factor(id)) as.integer(id) else as.integer(factor(id, levels = unique(id)))
+  run_starts <- c(TRUE, id_codes[-1L] != id_codes[-nobs])
+  first_seen <- id_codes[run_starts]
+  if (anyDuplicated(first_seen)) {
+    stop(
+      "! GEE `id` clusters must be contiguous: all observations from the same ",
+      "cluster must appear in consecutive rows. Sort your data by `id` before ",
+      "fitting.",
+      call. = FALSE
+    )
+  }
+
+  clus_run <- c(which(diff(id_codes) != 0), nobs)
+  clusz <- c(clus_run[1L], diff(clus_run))
+  n_clusters <- length(clusz)
+
+  # ---- Waves ----------------------------------------------------------------
+  waves_int <- NULL
+  if (!is.null(waves)) {
+    if (!is.atomic(waves) || is.matrix(waves) || !is.null(dim(waves)) ||
+        length(waves) != nobs || anyNA(waves)) {
+      stop(
+        "! `waves` must be an atomic vector with one non-missing value per ",
+        "observation.",
+        call. = FALSE
+      )
+    }
+    waves_num <- if (is.factor(waves)) as.integer(waves) else as.numeric(waves)
+    if (any(!is.finite(waves_num)) || any(waves_num != round(waves_num)) ||
+        any(waves_num < 1)) {
+      stop(
+        "! `waves` must contain positive integer-like visit identifiers.",
+        call. = FALSE
+      )
+    }
+    waves_int <- as.integer(waves_num)
+
+    # Waves must be unique within each cluster; duplicates make the working
+    # correlation ill-defined.
+    split_dup <- tapply(waves_int, id_codes, function(w) anyDuplicated(w) > 0L)
+    if (any(unlist(split_dup))) {
+      stop(
+        "! `waves` must be unique within each `id` cluster.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # ---- Response, weights and grouped-binomial handling ----------------------
+  if (is.null(weights)) weights <- rep.int(1, nobs)
+  weights <- as.numeric(weights)
+  if (length(weights) != nobs || anyNA(weights) || any(weights < 0)) {
+    stop(
+      "! GEE `weights` must be non-negative with one value per observation.",
+      call. = FALSE
+    )
+  }
+
+  if (is.null(offset)) offset <- rep.int(0, nobs)
+  offset <- as.numeric(offset)
+
+  y_model <- y
+  w_eff <- weights
+  if (identical(inner_string, "binomial") && is.matrix(y) && ncol(y) == 2L) {
+    # Match geepack::geeglm(): collapse cbind(successes, failures) to the
+    # success proportion with cluster totals as weights.
+    totals <- rowSums(y)
+    if (any(totals <= 0)) {
+      stop("! Grouped binomial rows must have a positive total count.", call. = FALSE)
+    }
+    y_model <- y[, 1L] / totals
+    w_eff <- weights * totals
+  } else if (is.matrix(y)) {
+    stop(
+      "! GEE response must be a numeric vector (grouped binomial may use a ",
+      "two-column success/failure matrix).",
+      call. = FALSE
+    )
+  } else {
+    y_model <- as.numeric(y)
+  }
+
+  family$prepared <- list(
+    response_family = response_family,
+    inner_string    = inner_string,
+    y_model         = y_model,
+    weights         = w_eff,
+    offset          = offset,
+    id              = id,
+    id_codes        = id_codes,
+    waves           = waves_int,
+    clusz           = clusz,
+    n_clusters      = n_clusters,
+    corstr          = family$corstr,
+    std.err         = family$std.err,
+    control         = normalize_gee_control(control, family$std.err),
+    nobs            = nobs
+  )
+
+  family
+}
+
+#' Fit a GEE model for one MFP candidate or the final retained model
+#'
+#' @param x Design matrix (without intercept) for the current candidate.
+#' @param y Response (ignored for the modelling response, which is taken from
+#'   the prepared family so grouped-binomial and weight handling stay
+#'   consistent across candidates; retained only for interface symmetry).
+#' @param family Prepared GEE family (\code{"mfp2_gee_family"} with a populated
+#'   \code{prepared} slot).
+#' @param weights,offset Passed through by \code{fit_model()}; the authoritative
+#'   values live in the prepared family.
+#' @param control Resolved control (also cached in the prepared family).
+#' @param fast Logical: \code{TRUE} uses \code{geepack::geese.fit()} for a
+#'   lightweight candidate fit; \code{FALSE} uses \code{geepack::geeglm()} for
+#'   the retained native fit.
+#' @param calculate_fit_statistics Logical: return null/model deviance.
+#' @param keep_fit Logical: retain the underlying fitted object.
+#' @param keep_fitted_values Logical: retain only the fitted-value vector.
+#' @param has_offset Logical: whether a user offset was supplied.
+#' @param x_has_intercept Logical: whether \code{x} already carries an
+#'   intercept column.
+#' @param reserved_names Reserved user-facing names for the final formula fit.
+#'
+#' @return A list following the \code{fit_model()} contract, with \code{logl}
+#'   holding the quasi-likelihood surrogate and \code{is_gee = TRUE}.
+#' @keywords internal
+#' @noRd
+fit_gee <- function(x,
+                    y,
+                    family,
+                    weights = NULL,
+                    offset = NULL,
+                    control = NULL,
+                    fast = TRUE,
+                    calculate_fit_statistics = FALSE,
+                    keep_fit = !fast,
+                    keep_fitted_values = FALSE,
+                    has_offset = FALSE,
+                    x_has_intercept = FALSE,
+                    reserved_names = character()) {
+
+  prepared <- family$prepared
+  if (is.null(prepared)) {
+    stop("Internal error: GEE family has not been prepared.", call. = FALSE)
+  }
+
+  response_family <- prepared$response_family
+  inner_string    <- prepared$inner_string
+  y_model         <- prepared$y_model
+  w_eff           <- prepared$weights
+  gee_offset      <- prepared$offset
+  id_codes        <- prepared$id_codes
+  waves_int       <- prepared$waves
+  corstr          <- prepared$corstr
+  std.err         <- prepared$std.err
+  gee_control     <- prepared$control
+  nobs            <- prepared$nobs
+
+  has_predictors <- !is.null(x) && NCOL(x) > 0L
+
+  if (fast) {
+    # ---- Candidate path: geese.fit() on the raw design matrix ----------------
+    if (isTRUE(x_has_intercept)) {
+      xx <- x
+    } else {
+      xx <- assemble_design_matrix(
+        blocks = list(x),
+        nobs = nobs,
+        intercept = TRUE
+      )
+    }
+
+    # Fractional-polynomial candidate bases can span many orders of magnitude
+    # (e.g. FP2 terms with large powers), which makes geese.fit()'s internal
+    # glm.fit() start values overflow and abort. Column-scaling the design
+    # leaves the linear predictor, fitted means, and quasi-likelihood exactly
+    # invariant (it is a pure reparametrisation), so we scale each non-intercept
+    # column to unit maximum magnitude for the fit and unscale beta afterwards.
+    col_scale <- apply(xx, 2L, function(col) {
+      s <- max(abs(col))
+      if (!is.finite(s) || s <= 0) 1 else s
+    })
+    intercept_col <- which(colnames(xx) == "(Intercept)")
+    if (length(intercept_col) == 1L) col_scale[intercept_col] <- 1
+    xx_scaled <- sweep(xx, 2L, col_scale, "/")
+
+    rank <- ncol(xx)
+
+    ans <- tryCatch(
+      geepack::geese.fit(
+        x = xx_scaled,
+        y = y_model,
+        id = id_codes,
+        offset = gee_offset,
+        weights = w_eff,
+        waves = waves_int,
+        control = gee_control,
+        family = response_family,
+        corstr = corstr
+      ),
+      error = function(e) e
+    )
+
+    # An occasional fractional-polynomial candidate produces a design for which
+    # the GEE estimating equations have no attainable root: geese.fit() then
+    # either raises a numerical error or reports non-convergence (error != 0).
+    # Such a candidate must lose the selection rather than abort the whole MFP
+    # search (the linear and null candidates always converge, so a valid winner
+    # always exists). Assign it a decisively worst finite quasi-likelihood so
+    # the shared selection engine never prefers it, mirroring how a
+    # non-convergent GLM candidate would simply fail to be selected. This is a
+    # GEE-specific accommodation because, unlike stats::glm.fit(), geese.fit()
+    # can diverge hard on ill-conditioned FP bases.
+    losing_quasi <- -.Machine$double.xmax / 8
+    converged <- FALSE
+    beta <- rep(NA_real_, rank)
+    mu <- rep(NA_real_, nobs)
+    quasi <- losing_quasi
+
+    fam_dev <- NA_real_
+    gee_vcov <- matrix(NA_real_, nrow = rank, ncol = rank)
+    selection_deviance <- NA_real_
+
+    if (!inherits(ans, "error")) {
+      converged <- is.null(ans$error) || isTRUE(ans$error == 0)
+      if (converged) {
+        beta <- ans$beta / col_scale
+        names(beta) <- colnames(xx)
+        inverse_scale <- 1 / col_scale
+        gee_vcov <- gee_selected_vcov(
+          ans, std.err = std.err, n_clusters = prepared$n_clusters
+        ) * outer(inverse_scale, inverse_scale)
+        dimnames(gee_vcov) <- list(colnames(xx), colnames(xx))
+        selection_deviance <- gee_stata_selection_deviance(
+          beta, gee_vcov
+        )
+        eta <- as.numeric(xx %*% beta) + gee_offset
+        mu <- response_family$linkinv(eta)
+        q <- gee_quasi_likelihood(y_model, mu, inner_string, w_eff)
+        if (is.finite(q)) {
+          quasi <- q
+          fam_dev <- gee_family_deviance(y_model, mu, w_eff, response_family)
+        } else {
+          converged <- FALSE
+          selection_deviance <- NA_real_
+          gee_vcov[,] <- NA_real_
+        }
+      }
+    }
+
+    result <- list(
+      logl = quasi,
+      family_deviance = fam_dev,
+      selection_deviance = selection_deviance,
+      gee_vcov = gee_vcov,
+      coefficients = beta,
+      rank = unname(rank),
+      df = unname(rank),
+      is_gee = TRUE,
+      converged = TRUE
+    )
+
+    # `logl` is guaranteed finite (a real quasi-likelihood or the losing
+    # sentinel), so the standard finite/df validation still applies; the
+    # convergence flag is reported as usable because a losing candidate is a
+    # valid, non-selectable participant rather than a fatal fit failure.
+    validate_mfp_fit_result(
+      logl = result$logl,
+      df = result$df,
+      converged = TRUE,
+      family_string = "gee",
+      fast = fast
+    )
+
+    if (isTRUE(keep_fitted_values)) {
+      result$fitted_values <- mu
+    }
+    if (isTRUE(keep_fit)) {
+      result$fit <- ans
+    }
+    if (isTRUE(calculate_fit_statistics)) {
+      result$null_deviance <- NA_real_
+      result$model_deviance <- if (converged) {
+        gee_family_deviance(y_model, mu, w_eff, response_family)
+      } else {
+        NA_real_
+      }
+    }
+
+    return(result)
+  }
+
+  # ---- Final path: geepack::geeglm() for a native retained object -----------
+  x_formula <- if (isTRUE(x_has_intercept)) {
+    x[, -1L, drop = FALSE]
+  } else {
+    x
+  }
+  has_formula_predictors <- !is.null(x_formula) && NCOL(x_formula) > 0L
+
+  if (has_formula_predictors) {
+    if (is.null(colnames(x_formula)) || any(colnames(x_formula) == "")) {
+      stop("Internal error: x must have non-empty column names.", call. = FALSE)
+    }
+    data <- data.frame(x_formula, check.names = FALSE)
+    rhs <- paste(sprintf("`%s`", colnames(x_formula)), collapse = " + ")
+  } else {
+    data <- data.frame(row.names = seq_len(nobs))
+    rhs <- "1"
+  }
+
+  used_names <- unique(c(names(data), as.character(reserved_names)))
+
+  response_col <- mfp2_internal_name("response", used_names, preferred = "..mfp2_y")
+  used_names <- c(used_names, response_col)
+  data[[response_col]] <- y_model
+  lhs <- response_col
+
+  id_col <- mfp2_internal_name("id", used_names, preferred = "..mfp2_id")
+  used_names <- c(used_names, id_col)
+  data[[id_col]] <- id_codes
+
+  waves_arg <- NULL
+  if (!is.null(waves_int)) {
+    waves_col <- mfp2_internal_name("waves", used_names, preferred = "..mfp2_waves")
+    used_names <- c(used_names, waves_col)
+    data[[waves_col]] <- waves_int
+    waves_arg <- waves_col
+  }
+
+  weights_col <- mfp2_internal_name("weights", used_names, preferred = "..mfp2_w")
+  used_names <- c(used_names, weights_col)
+  data[[weights_col]] <- w_eff
+
+  internal_names <- list(response = response_col, offset = NULL)
+  if (isTRUE(has_offset)) {
+    offset_col <- mfp2_internal_name("offset", used_names, preferred = "offset_")
+    used_names <- c(used_names, offset_col)
+    data[[offset_col]] <- gee_offset
+    internal_names$offset <- offset_col
+    rhs <- if (identical(rhs, "1")) {
+      paste0("offset(", offset_col, ")")
+    } else {
+      paste0(rhs, " + offset(", offset_col, ")")
+    }
+  }
+
+  formula <- stats::as.formula(paste(lhs, "~", rhs))
+
+  # geepack::geeglm() evaluates `id`/`waves` in `data`; build the call so those
+  # symbols resolve to the helper columns created above. Scale arguments are
+  # deliberately omitted so both geeglm() and the candidate geese.fit() path
+  # use geepack's default estimated scale.
+  cl <- list(
+    quote(geepack::geeglm),
+    formula = formula,
+    family = response_family,
+    data = quote(data),
+    id = as.name(id_col),
+    weights = as.name(weights_col),
+    corstr = corstr,
+    std.err = std.err,
+    control = gee_control
+  )
+  if (!is.null(waves_arg)) {
+    cl$waves <- as.name(waves_arg)
+  }
+
+  eval_env <- new.env(parent = environment())
+  eval_env$data <- data
+  fit <- eval(as.call(cl), envir = eval_env)
+
+  # geeglm() retains the fitted matrix in geese$X but, unlike the final glm()
+  # path used elsewhere in mfp2, does not expose it as fit$x. Nonlinear-term
+  # summary tests need the exact retained design in order to drop one selected
+  # FP block and refit the otherwise unchanged model. Cache the authoritative
+  # geeglm matrix explicitly; also align its column names with the coefficients
+  # used by the downstream term-to-column metadata.
+  retained_x <- fit$geese$X
+  if (is.null(retained_x) || !is.matrix(retained_x) ||
+      NROW(retained_x) != nobs || NCOL(retained_x) != length(fit$coefficients)) {
+    stop("Internal error: retained GEE design matrix is unavailable.", call. = FALSE)
+  }
+  colnames(retained_x) <- names(fit$coefficients)
+  fit$x <- retained_x
+
+  fit$mfp2_internal_names <- internal_names
+
+  beta <- fit$coefficients
+  mu <- fit$fitted.values
+  quasi <- gee_quasi_likelihood(y_model, mu, inner_string, w_eff)
+  rank <- length(beta)
+
+  fam_dev <- gee_family_deviance(y_model, mu, w_eff, response_family)
+  gee_vcov <- gee_selected_vcov(
+    fit$geese, std.err = std.err, n_clusters = prepared$n_clusters
+  )
+  dimnames(gee_vcov) <- list(names(beta), names(beta))
+
+  # geepack's vcov() and summary() dispatch to the covariance field selected by
+  # `std.err`. Store the named selected matrix back into that field; for san.se
+  # this is also where Stata's finite-cluster correction enters final inference.
+  fit$geese[[gee_covariance_field("beta", std.err)]] <- gee_vcov
+  selection_deviance <- gee_stata_selection_deviance(
+    beta, gee_vcov
+  )
+
+  result <- list(
+    logl = quasi,
+    family_deviance = fam_dev,
+    selection_deviance = selection_deviance,
+    gee_vcov = gee_vcov,
+    coefficients = beta,
+    rank = unname(rank),
+    df = unname(rank),
+    is_gee = TRUE,
+    converged = is.null(fit$geese$error) || isTRUE(fit$geese$error == 0)
+  )
+
+  validate_mfp_fit_result(
+    logl = result$logl,
+    df = result$df,
+    converged = result$converged,
+    family_string = "gee",
+    fast = fast
+  )
+
+  if (isTRUE(keep_fitted_values)) {
+    result$fitted_values <- mu
+  }
+  if (isTRUE(keep_fit)) {
+    result$fit <- fit
+  }
+  if (isTRUE(calculate_fit_statistics)) {
+    result$model_deviance <- fam_dev
+    # Null model: intercept (+ offset) only, same GEE settings.
+    null_mu <- gee_null_fitted_mean(
+      y_model, w_eff, gee_offset, id_codes, waves_int,
+      response_family, corstr, gee_control
+    )
+    result$null_deviance <- gee_family_deviance(y_model, null_mu, w_eff, response_family)
+  }
+
+  result
+}
+
+#' Family deviance for a GEE fit
+#'
+#' The GLM family deviance evaluated at the GEE fitted means. This equals the
+#' deviance Stata's `xtgee` reports as `e(deviance)` and is retained for model-
+#' fit reporting. It is distinct from Stata `mfp`'s negative-Wald selection
+#' quantity and from the default robust block-Wald tests.
+#'
+#' @keywords internal
+#' @noRd
+gee_family_deviance <- function(y, mu, weights, response_family) {
+  dev <- sum(response_family$dev.resids(y, mu, weights))
+  unname(dev)
+}
+
+#' Intercept-only GEE fitted mean, for the null-model deviance
+#'
+#' @keywords internal
+#' @noRd
+gee_null_fitted_mean <- function(y, weights, offset, id_codes, waves_int,
+                                 response_family, corstr, control) {
+  xx <- matrix(1, nrow = length(y), ncol = 1L,
+               dimnames = list(NULL, "(Intercept)"))
+  ans <- geepack::geese.fit(
+    x = xx, y = y, id = id_codes,
+    offset = offset, weights = weights, waves = waves_int,
+    control = control, family = response_family, corstr = corstr
+  )
+  eta <- as.numeric(xx %*% ans$beta) + offset
+  response_family$linkinv(eta)
+}
+
+#' Model metrics for GEE candidate and final fits (parallel to
+#' `calculate_model_metrics()`)
+#'
+#' Produces the same named vector as \code{calculate_model_metrics()} so the
+#' shared MFP selection engine can use GEE semantics: \code{logl} holds the
+#' quasi-likelihood \eqn{Q} used by QICu/QBIC, while \code{deviance_rs}
+#' contains the negative overall Wald chi-square used by
+#' \code{mfp: xtgee}. The Wald statistic uses the covariance estimator selected
+#' by \code{std.err}. \code{aic} is the QICu
+#' \eqn{-2Q + 2p} of Pan (2001), and
+#' \code{bic} is \eqn{-2Q + \log(K)\,p} with \eqn{K} the number of clusters.
+#'
+#' The p-value statistics are kept separate from \eqn{Q}; information criteria
+#' always use \eqn{-2Q}.
+#'
+#' @param obj A GEE fit-result list from \code{fit_gee()} (\code{is_gee = TRUE}).
+#' @param n_obs Number of independent clusters \eqn{K}, used for the QBIC
+#'   penalty.
+#' @param df_additional Extra degrees of freedom for FP/ACD power searches,
+#'   added once to the parameter count.
+#'
+#' @return A named numeric vector with entries \code{logl}, \code{df},
+#'   \code{deviance_rs}, \code{deviance_gaussian}, \code{aic}, \code{bic}, and
+#'   \code{df_resid}. \code{deviance_gaussian} is \code{NA}: GEE uses the
+#'   Stata-style negative-Wald calculation rather than the Gaussian F-test.
+#'
+#' @references
+#' Pan, W. (2001). Akaike's information criterion in generalized estimating
+#' equations. \emph{Biometrics}, 57, 120--125.
+#' @keywords internal
+#' @noRd
+calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
+  quasi <- obj$logl
+  df <- obj$df + df_additional
+
+  fit_rank <- obj$rank
+  regression_df <- if (is.numeric(fit_rank) && length(fit_rank) == 1L &&
+                       !is.na(fit_rank) && is.finite(fit_rank)) {
+    unname(fit_rank)
+  } else {
+    sum(!is.na(obj$coefficients))
+  }
+  # GEE QICu counts only mean-model parameters; there are no nuisance df.
+  df_for_resid <- df - max(0, obj$df - regression_df)
+
+  # Expose Stata mfp's selection quantity: the negative overall Wald
+  # chi-square (not xtgee's descriptive family deviance). A failed candidate
+  # retains a finite, decisively worst quasi-likelihood fallback.
+  stata_dev <- obj$selection_deviance
+  dev_rs <- if (!is.null(stata_dev) && is.finite(stata_dev)) {
+    stata_dev
+  } else {
+    -2 * quasi
+  }
+
+  c(
+    logl = quasi,
+    df = df,
+    deviance_rs = dev_rs,
+    deviance_gaussian = NA_real_,
+    # QICu and QBIC are defined in terms of -2Q, not D.
+    aic = -2 * quasi + 2 * df,
+    bic = -2 * quasi + log(n_obs) * df,
+    df_resid = n_obs - df_for_resid
+  )
+}

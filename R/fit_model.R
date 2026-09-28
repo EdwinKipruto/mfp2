@@ -232,6 +232,29 @@ fit_model <- function(x,
       x_has_intercept = x_has_intercept,
       reserved_names = reserved_names
     )
+  } else if (identical(family_string, "gee")) {
+    if (isTRUE(calculate_gaussian_deviance)) {
+      stop(
+        "Internal error: Gaussian F-test deviance is unavailable for GEE models.",
+        call. = FALSE
+      )
+    }
+
+    fit <- fit_gee(
+      x = x,
+      y = y,
+      family = family,
+      weights = weights,
+      offset = offset,
+      control = control,
+      fast = fast,
+      calculate_fit_statistics = calculate_fit_statistics,
+      keep_fit = keep_fit,
+      keep_fitted_values = keep_fitted_values,
+      has_offset = has_offset,
+      x_has_intercept = x_has_intercept,
+      reserved_names = reserved_names
+    )
   } else {
     fit <- fit_glm(
       y = y,
@@ -1299,7 +1322,9 @@ validate_fit_control_for_fitter <- function(control, family_string,
 #' @noRd
 normalize_fit_control <- function(control = NULL, family_string,
                                   fitter = "base") {
-  normalized <- if (family_string %in% c("cox", "finegray")) {
+  normalized <- if (identical(family_string, "gee")) {
+    normalize_gee_control(control)
+  } else if (family_string %in% c("cox", "finegray")) {
     normalize_cox_control(control)
   } else if (identical(family_string, "survreg")) {
     normalize_survreg_control(control)

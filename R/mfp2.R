@@ -90,6 +90,11 @@
 #' by [survival::survreg()]. Fine--Gray responses are multi-state `Surv`
 #' objects; `finegray_family(etype = "relapse")` selects the endpoint.
 #'
+#' Clustered responses use [gee_family()] with a Gaussian, binomial, Poisson,
+#' or Gamma marginal response family. See **Generalized estimating equations**
+#' for the fitting, p-value-selection, Stata-compatibility, and information-
+#' criterion details.
+#'
 #' Gaussian models use a finite numeric response vector. Gamma and inverse-
 #' Gaussian responses must additionally be strictly positive. Poisson and
 #' negative-binomial models require finite, nonnegative integer counts.
@@ -101,7 +106,61 @@
 #' the category order, as described under **Ordinal models**. Cox models require
 #' `family = "cox"` and an ordinary
 #' right-censored response created with [survival::Surv()], using two columns for
-#' follow-up time and event status.
+#' follow-up time and event status. GEE responses (via [gee_family()]) follow
+#' the same rules as their inner response family (Gaussian, binomial, Poisson,
+#' or Gamma), including the two-column grouped-count form for binomial data.
+#'
+#' @section Generalized estimating equations:
+#' GEE models are specified with [gee_family()] and fitted through the
+#' \pkg{geepack} package. The top-level `id` argument is required and identifies
+#' independent clusters; observations belonging to one cluster must be
+#' contiguous. The optional `waves` argument supplies within-cluster visit
+#' order. [gee_family()] selects the working correlation (`"independence"`,
+#' `"exchangeable"`, or `"ar1"`), standard-error method, and scale settings.
+#' Repeated candidate fits use [geepack::geese.fit()], while the retained model
+#' is refitted with [geepack::geeglm()] and returned as a native `geeglm`
+#' object.
+#'
+#' With `criterion = "pvalue"`, selection reproduces the calculation used by
+#' Stata `mfp: xtgee`. Candidate powers within a fixed degree are chosen using
+#' the negative overall Wald chi-square. Closed-test statistics are
+#' differences of those negative-Wald values, referred to the chi-square
+#' distribution with the MFP model-df difference. The quantity printed as
+#' `Deviance` in this mode is therefore not the response-family deviance and is
+#' not an additive likelihood deviance. Ordering, power ranking, closed tests,
+#' and final inference all use the covariance estimator selected by `std.err`.
+#' For `std.err = "san.se"`, the geepack sandwich covariance is multiplied by
+#' Stata's \eqn{K/(K-1)} finite-cluster correction, where \eqn{K} is the number
+#' of independent clusters. The jackknife covariance estimators are used as
+#' returned by geepack, without this additional sandwich correction. The
+#' initial visiting order uses coefficient-block Wald tests from the full
+#' linear GEE, matching Stata's ordering pass.
+#'
+#' As throughout `mfp2`, the searched FP1 candidate set retains power \eqn{1}.
+#' Thus the same fitted linear function can appear as the separately specified
+#' one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
+#' of freedom accounts for selecting its power from the candidate set. This
+#' rule is shared by GEE p-value and QICu/QBIC selection.
+#'
+#' For GEE, `criterion = "aic"` is QICu,
+#' \deqn{-2Q + 2p,}
+#' and `criterion = "bic"` is the BIC-penalised analogue QBIC,
+#' \deqn{-2Q + \log(K)p,}
+#' where \eqn{p} is the MFP model degrees of freedom and \eqn{K} is the number
+#' of independent clusters. These criteria use quasi-likelihood only; neither
+#' the response-family deviance nor the negative-Wald Stata compatibility
+#' quantity enters their calculation.
+#'
+#' Quasi-likelihood contributions are multiplied by the effective prior
+#' weights. For a grouped-binomial response, the effective weight is the prior
+#' weight multiplied by the row's binomial total. For Gamma responses the
+#' implemented quasi-likelihood contribution is
+#' \deqn{w_i\{-y_i/\mu_i-\log(\mu_i)\}.}
+#' Consequently, weighted and grouped-binomial QICu/QBIC calculations use all
+#' response information, and the Gamma quasi-likelihood is consistent with
+#' the Gamma family-deviance differences. The response-family deviance remains
+#' available for descriptive model-fit reporting but is kept separate from
+#' GEE p-value selection and from QICu/QBIC.
 #'
 #' @section Shifting, scaling, and centering:
 #' FP transformations involving logarithms, negative powers, or fractional
@@ -481,8 +540,11 @@
 #'   model, `"multinomial"` or [multinomial_family()] for an
 #'   unpenalized baseline-category multinomial model, `"ordinal"` or
 #'   [ordinal_family()] for a proportional-odds ordinal model, `"cox"` for Cox
-#'   models, [survreg_family()] for parametric survival models, or
-#'   [finegray_family()] for Fine--Gray models.
+#'   models, [survreg_family()] for parametric survival models,
+#'   [finegray_family()] for Fine--Gray models, or [gee_family()] for a
+#'   marginal model fitted by generalized estimating equations (GEE, via the
+#'   \pkg{geepack} package; Gaussian, binomial, Poisson, and Gamma responses
+#'   only, requiring the `id` clustering argument).
 #'   Default `"gaussian"`.
 #' @param fitter Backend used to fit the many candidate GLMs during the FP
 #'   search. `"base"` (default) uses `stats::glm()`. `"fastglm"` uses the
@@ -574,11 +636,18 @@
 #' the formula. Supplying `strata` directly to `mfp2.formula()` is deprecated;
 #' it remains available temporarily for compatibility, and a formula term takes
 #' precedence if both forms are supplied.
-#' @param id Optional Fine--Gray subject identifier. It is required for a
-#'   start--stop multi-state response and optional for ordinary one-row-per-
-#'   subject responses. In formula fits, the argument is evaluated first in
-#'   `data` and then in the formula environment. It is not used by other
-#'   families.
+#' @param id Cluster or subject identifier, one value per observation. For
+#'   [finegray_family()] it is the Fine--Gray subject identifier (required for a
+#'   start--stop multi-state response, optional otherwise). For [gee_family()]
+#'   it identifies the correlated clusters and is **required**; observations
+#'   from the same cluster must appear in contiguous rows. In formula fits, the
+#'   argument is evaluated first in `data` and then in the formula environment.
+#'   It is not used by other families.
+#' @param waves Optional integer-like visit identifier for [gee_family()], one
+#'   value per observation, giving the order of repeated measurements within
+#'   each cluster and representing gaps for the `"ar1"` working correlation.
+#'   Must be unique within each cluster. Evaluated like `id` in formula fits,
+#'   and used only by GEE models.
 #' @param nocenter Numeric set of values used to identify Cox/Fine--Gray predictor
 #' columns that should be left uncentered. A column is left
 #' uncentered when all of its values are contained in `nocenter`. The default
@@ -943,7 +1012,7 @@
 #'     A data frame with one row per model term. It records the MFP complexity
 #'     setting (`df_setting`) separately from the initial and final model degrees
 #'     of freedom (`df_initial` and `df_final`), together with selection settings,
-#'     selected status,
+#'     selected status, searched-FP identity (`searched_fp`),
 #'     fractional-polynomial powers, the ACD, zero, catzero, and spike settings
 #'     actually applied after validation and eligibility checks, and `prop_zero`
 #'     for retained spike-at-zero terms.
@@ -999,6 +1068,12 @@
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 #' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}\cr
+#'
+#' Liang, K.-Y. and Zeger, S. L., 1986. \emph{Longitudinal data analysis using
+#' generalized linear models. Biometrika, 73(1): 13--22.}\cr
+#'
+#' Pan, W., 2001. \emph{Akaike's information criterion in generalized
+#' estimating equations. Biometrics, 57(1): 120--125.}\cr
 #'
 #' Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 #' \emph{Multivariable regression model building by using fractional
@@ -1924,6 +1999,7 @@ mfp2.default <- function(x,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
                          id = NULL,
+                         waves = NULL,
                          acdx = NULL,
                          ...
 ) {
@@ -2358,9 +2434,15 @@ mfp2.default <- function(x,
   # Validate response y ----------------------------------------------------------
   # Keep all family-specific response validation centralized in family.R.
   # This avoids drift between mfp2.default(), mfpi.default(), and future methods.
+  # GEE validates the response against its inner GLM response family; every
+  # other family validates against its own canonical name.
   validate_family_response(
     y = y,
-    family_string = family_string,
+    family_string = if (identical(family_string, "gee")) {
+      family$response_family$family
+    } else {
+      family_string
+    },
     nobs = nobs
   )
 
@@ -2396,13 +2478,38 @@ mfp2.default <- function(x,
   }
 
   if (!is.null(id)) {
-    if (!identical(family_string, "finegray")) {
-      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
+    if (!family_string %in% c("finegray", "gee")) {
+      stop(
+        "! `id` is only used with `family = finegray_family()` or `family = gee_family()`.",
+        call. = FALSE
+      )
     }
     if (!is.atomic(id) || length(id) != nobs || anyNA(id) ||
         is.matrix(id) || !is.null(dim(id))) {
       stop(
         "! `id` must be an atomic vector or factor with one non-missing value per observation.",
+        call. = FALSE
+      )
+    }
+  } else if (identical(family_string, "gee")) {
+    stop(
+      "! `id` is required for `family = gee_family()`: supply a cluster ",
+      "identifier with one value per observation.",
+      call. = FALSE
+    )
+  }
+
+  # `waves` is a GEE-only auxiliary aligned per observation. Full structural
+  # validation (integer-like, unique within cluster) happens in
+  # prepare_gee_family(); here only the shape and family are checked.
+  if (!is.null(waves)) {
+    if (!identical(family_string, "gee")) {
+      stop("! `waves` is only used with `family = gee_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(waves) || length(waves) != nobs || anyNA(waves) ||
+        is.matrix(waves) || !is.null(dim(waves))) {
+      stop(
+        "! `waves` must be an atomic vector with one non-missing value per observation.",
         call. = FALSE
       )
     }
@@ -2829,6 +2936,7 @@ mfp2.default <- function(x,
   }
 
   id_keep <- id
+  waves_keep <- waves
 
   # Step 19: Apply `subset`, after full-data preprocessing ----------------------
   # Matrix calls reach this branch with their original numeric design. Before
@@ -2862,6 +2970,7 @@ mfp2.default <- function(x,
       strata_keep <- droplevels(strata_keep[subset])
     }
     if (!is.null(id_keep)) id_keep <- id_keep[subset]
+    if (!is.null(waves_keep)) waves_keep <- waves_keep[subset]
   }
 
   # Require more fitted observations than predictor columns. For matrix calls,
@@ -2936,7 +3045,9 @@ mfp2.default <- function(x,
     strata = strata_keep,
     id = id_keep,
     offset = offset,
-    has_offset = has_offset
+    has_offset = has_offset,
+    waves = waves_keep,
+    control = control
   )
   family <- prepared_family$family
   strata_keep <- prepared_family$strata
@@ -3017,6 +3128,7 @@ mfp2.formula <- function(formula,
                          verbose = TRUE,
                          fitter = c("base", "fastglm"),
                          id = NULL,
+                         waves = NULL,
                          ...) {
   # mfp2.formula() translates a formula + data.frame specification into the
   # matrix/vector inputs expected by mfp2.default(): it expands categorical
@@ -3054,6 +3166,7 @@ mfp2.formula <- function(formula,
   subset_expr <- substitute(subset)
   strata_expr <- substitute(strata)
   id_expr <- substitute(id)
+  waves_expr <- substitute(waves)
 
   criterion <- match.arg(criterion)
   xorder <- match.arg(xorder)
@@ -3239,6 +3352,11 @@ mfp2.formula <- function(formula,
     envir = data,
     enclos = environment(formula_internal)
   )
+  waves <- eval(
+    waves_expr,
+    envir = data,
+    enclos = environment(formula_internal)
+  )
 
   if (!is.null(strata) && !mfp2_family_is_survival(family_string)) {
     stop(
@@ -3249,13 +3367,35 @@ mfp2.formula <- function(formula,
   }
 
   if (!is.null(id)) {
-    if (family_string != "finegray") {
-      stop("! `id` is only used with `family = finegray_family()`.", call. = FALSE)
+    if (!family_string %in% c("finegray", "gee")) {
+      stop(
+        "! `id` is only used with `family = finegray_family()` or `family = gee_family()`.",
+        call. = FALSE
+      )
     }
     if (!is.atomic(id) || length(id) != n_data || anyNA(id) ||
         is.matrix(id) || !is.null(dim(id))) {
       stop(
         "! `id` must be an atomic vector or factor with one non-missing value per row of `data`.",
+        call. = FALSE
+      )
+    }
+  } else if (identical(family_string, "gee")) {
+    stop(
+      "! `id` is required for `family = gee_family()`: supply a cluster ",
+      "identifier evaluated in `data`.",
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(waves)) {
+    if (!identical(family_string, "gee")) {
+      stop("! `waves` is only used with `family = gee_family()`.", call. = FALSE)
+    }
+    if (!is.atomic(waves) || length(waves) != n_data || anyNA(waves) ||
+        is.matrix(waves) || !is.null(dim(waves))) {
+      stop(
+        "! `waves` must be an atomic vector with one non-missing value per row of `data`.",
         call. = FALSE
       )
     }
@@ -3872,8 +4012,8 @@ mfp2.formula <- function(formula,
   }
 
   # Step 12: Validate and build the final candidate FP power list ---------------
-  # df_vec is currently unused further down but is kept available here in case
-  # future df-dependent power validation needs it.
+  # Keep the normalized df vector aligned with candidate powers for downstream
+  # fitting metadata and compatibility with internal validation hooks.
   df_vec <- unlist(df_list, use.names = TRUE)
 
   # fp()-specific powers (powerx) take precedence over the top-level `powers`
@@ -3967,6 +4107,7 @@ mfp2.formula <- function(formula,
   if (!is.null(subset)) {
     if (!is.null(weights)) weights <- weights[fit_rows]
     if (!is.null(id)) id <- id[fit_rows]
+    if (!is.null(waves)) waves <- waves[fit_rows]
     if (!is.null(strata) && !has_formula_strata) {
       strata <- if (is.matrix(strata) || is.data.frame(strata)) {
         strata[fit_rows, , drop = FALSE]
@@ -4062,6 +4203,7 @@ mfp2.formula <- function(formula,
                       ties = ties,
                       strata = strata,
                       id = id,
+                      waves = waves,
                       nocenter = nocenter,
                       acd_vars = acdx,
                       ftest = ftest,
@@ -4136,6 +4278,252 @@ is_fp_term <- function(z) {
 #' @export
 coef.mfp2 <- function(object, ...) {
   object$coefficients
+}
+
+
+#' Confidence Intervals for `mfp2` Model Parameters
+#'
+#' Wald confidence intervals for the coefficients of a fitted [mfp2()] model,
+#' a method for the generic [stats::confint()].
+#'
+#' The intervals are
+#' \eqn{\hat\beta \pm z_{1-\alpha/2}\,\mathrm{SE}(\hat\beta)}, with standard
+#' errors taken from [stats::vcov()] of the fitted object. These are the same
+#' Wald intervals summarised by [summary.mfp2()] (which displays its 95%
+#' interval with the conventional rounded multiplier 1.96, whereas `confint()`
+#' uses the exact normal quantile and honours `level`), and they apply uniformly
+#' to every scalar-coefficient family. They are used in preference to the default
+#' profile-likelihood intervals of [stats::confint.glm()] because those refit
+#' the model on `mfp2`'s internally transformed design and fail; for GEE
+#' (`gee_family()`) the covariance is the estimator selected by `std.err`
+#' (the robust sandwich estimator by default), and `geepack` supplies no `confint`
+#' method). Multinomial and ordinal models, whose coefficients are not a single
+#' named vector, defer to the interval method of the underlying fit.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param parm Optional character vector of parameter names, or numeric indices,
+#'   selecting which coefficients to report. Defaults to all.
+#' @param level The confidence level. Default `0.95`.
+#' @param ... Passed to the underlying interval method for multinomial/ordinal
+#'   models.
+#'
+#' @return A matrix with a row per selected parameter and two columns giving the
+#'   lower and upper confidence limits.
+#'
+#' @seealso [mfp2()], [summary.mfp2()], [vcov()]
+#'
+#' @export
+confint.mfp2 <- function(object, parm, level = 0.95, ...) {
+  # Multinomial and ordinal models carry non-vector coefficient structures
+  # (per-logit matrices, threshold intercepts); keep their own interval method.
+  if (object$family_string %in% c("multinomial", "ordinal")) {
+    return(NextMethod())
+  }
+
+  if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
+      level <= 0 || level >= 1) {
+    stop("`level` must be a single number in (0, 1).", call. = FALSE)
+  }
+
+  a <- (1 - level) / 2
+  probs <- c(a, 1 - a)
+  pct <- paste(
+    format(100 * probs, trim = TRUE, scientific = FALSE, digits = 3),
+    "%"
+  )
+
+  cf <- object$coefficients
+
+  # A selection run may retain no covariates at all (every variable dropped);
+  # such a model has no coefficients to interval, so return an empty matrix
+  # rather than delegating to a base method that errors on the empty fit.
+  if (is.null(cf) || length(cf) == 0L) {
+    return(matrix(numeric(0), nrow = 0L, ncol = 2L,
+                  dimnames = list(character(0), pct)))
+  }
+
+  nm <- names(cf)
+  if (is.null(nm)) nm <- as.character(seq_along(cf))
+
+  # Wald standard errors from the fitted covariance (selected by std.err for GEE).
+  # If the covariance is unavailable, the interval limits are NA rather than a
+  # hard error, so a usable object is always returned.
+  V <- tryCatch(as.matrix(stats::vcov(object)), error = function(e) NULL)
+  ses <- stats::setNames(rep(NA_real_, length(nm)), nm)
+  if (!is.null(V) && !is.null(rownames(V))) {
+    shared <- nm[nm %in% rownames(V)]
+    if (length(shared) > 0L) {
+      ses[shared] <- sqrt(diag(V)[shared])
+    }
+  }
+
+  ci <- unname(cf) + outer(unname(ses), stats::qnorm(probs))
+  dimnames(ci) <- list(nm, pct)
+
+  if (!missing(parm)) {
+    sel <- if (is.character(parm)) parm else nm[parm]
+    ci <- ci[sel, , drop = FALSE]
+  }
+  ci
+}
+
+
+#' Residuals from an `mfp2` Model
+#'
+#' A method for the generic [stats::residuals()].
+#'
+#' For GEE models (`gee_family()`), `type = "deviance"` (the default, matching
+#' the GLM convention) returns deviance residuals
+#' \eqn{\mathrm{sign}(y-\mu)\sqrt{d(y,\mu)}} computed from the GEE marginal
+#' fitted mean \eqn{\mu} and the response family's deviance function. `geepack`
+#' does not itself provide deviance residuals, but they depend only on
+#' \eqn{y}, \eqn{\mu}, and prior weights -- not on the working correlation --
+#' so they are computed directly here. This matches the residual used by
+#' Stata's `fracplot` (after `mfp`) for the component-plus-residual plot, where
+#' the ith plotted point is \eqn{\hat\eta^{*}_i + d_i} with \eqn{d_i} the
+#' deviance residual. `type = "pearson"`, `"working"`, and `"response"` are
+#' delegated to `geepack` with the fitted response family restored when reading
+#' an older object that stored the GEE specification in the `family` slot.
+#'
+#' For multinomial models (`family = "multinomial"`), `nnet::multinom` supplies
+#' no residual method, so each non-reference logit is treated as a binary
+#' sub-problem and residuals are computed per logit. `type = "deviance"` (the
+#' default) returns binomial deviance residuals from the marginal class
+#' probabilities, matching the residual used by the component-plus-residual
+#' plot; `"pearson"`, `"working"`, and `"response"` use the corresponding binary
+#' definitions. The result is an `n` by `Q` matrix (one column per
+#' non-reference logit) rather than a vector.
+#'
+#' All other families defer to the residual method of the underlying fit.
+#'
+#' @param object A fitted [mfp2()] object.
+#' @param ... Passed to the underlying residual method; for GEE and multinomial
+#'   models, `type` selects the residual scale.
+#'
+#' @return A numeric vector of residuals for scalar-response families, or an
+#'   `n` by `Q` matrix of per-logit residuals for multinomial models.
+#'
+#' @seealso [mfp2()], [fracplot()]
+#'
+#' @export
+residuals.mfp2 <- function(object, ...) {
+  if (identical(object$family_string, "gee")) {
+    dots <- list(...)
+    type <- if (!is.null(dots[["type"]])) {
+      match.arg(
+        dots[["type"]],
+        c("deviance", "pearson", "working", "response")
+      )
+    } else {
+      "deviance"
+    }
+
+    if (identical(type, "deviance")) {
+      # Deviance residuals are not provided by geepack, but they only require
+      # the marginal mean and the family deviance function (not the working
+      # correlation), so compute them directly. This matches Stata `fracplot`.
+      family <- mfp2_restore_gee_family(object)$family
+      mu <- as.numeric(object$fitted.values)
+      y <- as.numeric(object$y)
+      wt <- object$prior.weights
+      if (is.null(wt) || length(wt) != length(y)) wt <- rep(1, length(y))
+      dev <- family$dev.resids(y, mu, wt)
+      res <- sign(y - mu) * sqrt(pmax(dev, 0))
+      names(res) <- names(object$fitted.values)
+      return(res)
+    }
+
+    obj <- mfp2_restore_gee_family(object)
+    class(obj) <- setdiff(class(obj), "mfp2")
+    res <- stats::residuals(obj, type = type)
+    # geeglm stores its linear predictor and fitted values as one-column
+    # matrices, so residuals.geeglm() returns an n-by-1 matrix. Coerce to a
+    # plain (optionally named) vector, which is what callers and the
+    # component-plus-residual plots expect.
+    if (is.matrix(res) && ncol(res) == 1L) {
+      res <- drop(res)
+    }
+    return(res)
+  }
+
+  if (identical(object$family_string, "multinomial")) {
+    dots <- list(...)
+    type <- if (!is.null(dots[["type"]])) {
+      match.arg(
+        dots[["type"]],
+        c("deviance", "pearson", "working", "response")
+      )
+    } else {
+      "deviance"
+    }
+    return(mfp2_multinomial_residuals(object, type = type))
+  }
+
+  NextMethod()
+}
+
+
+#' Residuals for a Multinomial `mfp2` Model
+#'
+#' `nnet::multinom` provides no `residuals()` method, so
+#' `residuals.default()` is used and returns the raw response residuals
+#' \eqn{y_{ik}-\hat\pi_{ik}} for every class (including the reference), with the
+#' `type` argument silently ignored. This helper computes proper per-logit
+#' residuals instead.
+#'
+#' Each non-reference logit \eqn{q} is treated as a binary sub-problem with
+#' indicator \eqn{y_{iq}=\mathbf{1}\{\text{class}_i=q\}} and fitted probability
+#' \eqn{\hat\pi_{iq}} (the marginal class probability from
+#' `predict(type = "response")`). Deviance residuals then follow the binomial
+#' convention
+#' \eqn{\mathrm{sign}(y_{iq}-\hat\pi_{iq})\sqrt{-2[y_{iq}\log\hat\pi_{iq} +
+#' (1-y_{iq})\log(1-\hat\pi_{iq})]}}, matching the residual used for the
+#' component-plus-residual plot. Pearson, working, and response residuals use
+#' the corresponding binary definitions.
+#'
+#' @param object A fitted multinomial [mfp2()] object.
+#' @param type Residual scale, one of `"deviance"` (default), `"pearson"`,
+#'   `"working"`, or `"response"`.
+#'
+#' @return A numeric `n` by `Q` matrix, where `Q` is the number of
+#'   non-reference logits. Columns are named by the non-reference class labels,
+#'   in the order carried by the fitted coefficient matrix.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_multinomial_residuals <- function(object, type = "deviance") {
+  probabilities <- stats::predict(object, type = "response")
+  probabilities <- as.matrix(probabilities)
+
+  # Non-reference logits, in the order carried by the coefficient matrix, so
+  # residual columns align with coef(), vcov() blocks, and term predictions.
+  logits <- rownames(object$mfp2_coefficient_matrix)
+  if (is.null(logits)) {
+    logits <- setdiff(object$class_levels, object$reference_class)
+  }
+
+  y_labels <- as.character(object$y)
+  eps <- .Machine$double.eps
+
+  out <- matrix(
+    NA_real_, nrow(probabilities), length(logits),
+    dimnames = list(rownames(probabilities), logits)
+  )
+  for (q in logits) {
+    y_q <- as.numeric(y_labels == q)
+    p_q <- pmin(pmax(probabilities[, q], eps), 1 - eps)
+    resid_q <- y_q - p_q
+    out[, q] <- switch(
+      type,
+      response = resid_q,
+      pearson  = resid_q / sqrt(p_q * (1 - p_q)),
+      working  = resid_q / (p_q * (1 - p_q)),
+      deviance = sign(resid_q) * sqrt(pmax(
+        -2 * (y_q * log(p_q) + (1 - y_q) * log(1 - p_q)), 0
+      ))
+    )
+  }
+  out
 }
 
 
@@ -4430,7 +4818,9 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
   # power-on-x / power-on-A(x) columns (the ACD table), and TRUE only when
   # the table has no such columns but the row is nonetheless ACD-transformed
   # (an ACD variable that also went through the SAZ table).
-  format_function_label <- function(powers, zero, catzero, acd_prefix = FALSE,
+  format_function_label <- function(powers, zero, catzero,
+                                    searched_fp = FALSE,
+                                    acd_prefix = FALSE,
                                     selected = TRUE,
                                     show_positive_domain = TRUE,
                                     binary_only_label = "binary indicator only") {
@@ -4445,7 +4835,8 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     has_continuous <- length(powers) > 0L
 
     if (has_continuous) {
-      base_label <- if (length(powers) == 1L && isTRUE(powers == 1)) {
+      base_label <- if (length(powers) == 1L && isTRUE(powers == 1) &&
+                        !isTRUE(searched_fp)) {
         "linear"
       } else {
         sprintf("FP(%s)", paste(powers, collapse = ", "))
@@ -4565,6 +4956,13 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     rep(FALSE, nrow(fp_terms))
   }
 
+  searched_fp_flag <- if ("searched_fp" %in% names(fp_terms)) {
+    as.logical(fp_terms[["searched_fp"]])
+  } else {
+    rep(FALSE, nrow(fp_terms))
+  }
+  searched_fp_flag[is.na(searched_fp_flag)] <- FALSE
+
   decision_code <- if ("spike_dec" %in% names(fp_terms)) {
     suppressWarnings(as.integer(fp_terms[["spike_dec"]]))
   } else {
@@ -4640,6 +5038,11 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     } else {
       criterion_label <- "p-value"
     }
+  }
+
+  if (identical(x$family_string, "gee") &&
+      criterion_label %in% c("AIC", "BIC")) {
+    criterion_label <- paste0("Q", criterion_label)
   }
 
   is_pvalue_criterion <- identical(criterion_label, "p-value")
@@ -4718,15 +5121,16 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
 
   print_section_heading("Selection Summary")
 
-  # A variable counts as "linear" if its sole continuous term is FP1 with
-  # power exactly 1 (and it is not ACD-transformed), or if it is a
+  # A variable counts as "linear" if its sole continuous term is the fixed
+  # linear row with power exactly 1 (and it is not ACD-transformed), or if it is
   # binary-only spike variable (no continuous component at all, just a 0/1
   # indicator). Every other selected variable is "nonlinear": any FP2
   # (including FP(1, 1), which contains a log(x) term), any FP1 with power
-  # != 1, and any ACD variable regardless of its specific powers. Whether a
-  # zero/catzero indicator is additionally present does not, by itself,
+  # != 1, a searched FP1(power 1), and any ACD variable regardless of its
+  # specific powers. Whether a zero/catzero indicator is additionally present
+  # does not, by itself,
   # change this classification.
-  is_plain_linear <- !acd_flag &
+  is_plain_linear <- !acd_flag & !searched_fp_flag &
     vapply(powers_by_row, function(p) length(p) == 1L && isTRUE(p == 1), logical(1L))
   is_binary_only <- vapply(powers_by_row, length, integer(1L)) == 0L & catzero_flag
 
@@ -4781,6 +5185,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
     powers = powers_by_row,
     zero = zero_flag,
     catzero = catzero_flag,
+    searched_fp = searched_fp_flag,
     selected = selected_status,
     MoreArgs = list(acd_prefix = FALSE),
     SIMPLIFY = TRUE
@@ -4852,6 +5257,7 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
       powers = powers_by_row[in_saz],
       zero = zero_flag[in_saz],
       catzero = catzero_flag[in_saz],
+      searched_fp = searched_fp_flag[in_saz],
       acd_prefix = acd_flag[in_saz],
       selected = selected_status[in_saz],
       MoreArgs = list(
@@ -5243,9 +5649,20 @@ print.mfp2 <- function(x, detailed_settings = TRUE, notes = TRUE,
 
 
   # ---------------------------------------------------------------------------
-  # Step 11: Render the Model Fit block via the shared helper
+  # Step 11: GEE working-correlation parameters, then the Model Fit block
   # ---------------------------------------------------------------------------
   #
+  # For marginal GEE models, surface the key GEE parameters (working
+  # correlation and its estimate, SE method, scale, cluster structure)
+  # using the same shared renderer as print.summary.mfp2().
+  if (identical(x$family_string, "gee")) {
+    mfp2_print_gee_parameters(
+      mfp2_summary_gee_parameters(x),
+      digits,
+      print_section_heading
+    )
+  }
+
   # The Model Fit block (formerly "Model Deviances") is produced by
   # mfp2_format_model_fit_block(), the same helper called by
   # print.summary.mfp2(). This guarantees the two methods display the same

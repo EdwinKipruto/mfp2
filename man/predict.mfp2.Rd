@@ -245,10 +245,15 @@ reference-category logits, \code{type = "response"} returns an \code{n} by \code
 of class probabilities, and \code{type = "class"} returns the predicted response
 class. Link and response matrices retain the observation names from the
 fitted data or \code{newdata}. The fitted FP transformations are common across
-logits. Full-model
-multinomial standard errors and multinomial term/contrast predictions are
-not currently provided, so use \code{se.fit = FALSE} and one of these three
-prediction types.
+logits. Full-model multinomial standard errors are not currently provided,
+so use \code{se.fit = FALSE} with \code{type = "link"}, \code{"response"}, or \code{"class"}.
+
+Multinomial \code{type = "terms"} and \code{type = "contrasts"} predictions are
+available: because each predictor has a separate coefficient per
+non-reference logit, the result is a named list whose elements stack the
+per-logit partial predictors, distinguished by a \code{logit} factor column (the
+non-reference class labels, in coefficient-matrix order). Standard errors use
+the logit-specific block of the multinomial covariance.
 }
 
 \section{Term predictions}{

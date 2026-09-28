@@ -42,10 +42,8 @@ normalize_fp_power_vector <- function(powers, context = "`powers`") {
 #' Duplicate values are removed.
 #'
 #' The optional \code{df} argument is accepted for compatibility with older
-#' internal callers, but this helper does not perform df-dependent closed-test
-#' validation. That validation must happen after early df modifications such as
-#' ACD forcing and SAZ positive-component df capping, via
-#' \code{validate_mfp_candidate_powers()} in \code{fit_mfp()}.
+#' internal callers, but no df-dependent power-set restriction is needed:
+#' power \code{1} is a valid searched FP1 candidate at every requested degree.
 #'
 #' @param powers User-supplied powers argument. Must be \code{NULL} or a named
 #'   list of numeric vectors.
@@ -53,8 +51,7 @@ normalize_fp_power_vector <- function(powers, context = "`powers`") {
 #' @param default_powers Numeric vector of default candidate powers.
 #' @param arg_name Character scalar used in error messages.
 #' @param df Optional numeric scalar or vector aligned with \code{vnames}.
-#'   Accepted for compatibility; df-dependent validation is deferred to
-#'   \code{validate_mfp_candidate_powers()}.
+#'   Accepted and ignored for compatibility with older internal callers.
 #'
 #' @return Named list of normalized candidate-power vectors, one element per
 #'   predictor in \code{vnames}.
@@ -74,11 +71,8 @@ validate_fp_power_list <- function(powers,
     )
   }
   
-  # Do not perform df-dependent candidate-power validation here. The effective
-  # df can still change later (for example ACD forces df = 4 and retained SAZ
-  # variables may have df capped using only their positive component). The closed-
-  # test check is therefore deferred to validate_mfp_candidate_powers() inside
-  # fit_mfp(), after those modifications are complete.
+  # No df-dependent candidate-power validation is required. In particular,
+  # the singleton set p = 1 remains valid for a searched FP1 class.
   if (!is.null(df)) {
     invisible(df)
   }

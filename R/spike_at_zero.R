@@ -1030,6 +1030,7 @@ select_saz_ic <- function(x,
 
   list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = isTRUE(acdx[[xi]]),
     powers = powers_joint,
     # A selector returns the selected powers as a numeric vector. Keep the
@@ -1234,7 +1235,8 @@ fit_saz_reduced_models <- function(stage1_selection,
 #' @param fit3 Fitted object for Model 3 (binary-only plus adjusted covariates).
 #' @param n_obs Number of observations in the dataset.
 #' @param power_best Numeric vector of selected powers for the best FP terms
-#' from stage 1 of SAZ algorithm.
+#' from stage 1 of SAZ algorithm. Whether numerical power 1 is fixed linear or
+#' searched FP1 is obtained from the selected row of \code{fit1}.
 #'
 #' @details
 #' The function determines the degree of the fractional polynomial based on `power_best`.
@@ -1257,8 +1259,8 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   # continuous component - this becomes the AIC/BIC df_additional penalty for
   # Model 2 below (see calculate_model_metrics()'s df_additional: each
   # estimated FP power beyond an ordinary linear coefficient costs one extra
-  # df). ACD can produce NA like c(NA,1) so degree will reduce to 1 and in
-  # this case additional parameters = 0 since the power = 1, see mfpa paper
+  # df). ACD can produce NA like c(NA, 1), so degree reduces to 1; the selected
+  # model row below determines whether that remaining power was searched.
   power_best <- power_best[!is.na(power_best)]
   degree <- length(power_best)
 
@@ -1276,14 +1278,13 @@ compute_saz_stage2_metrics <- function(fit1, fit2, fit3, n_obs, power_best) {
   # (fit1$model_best), rather than recomputing.
   metrics1 <- fit1$metrics[fit1$model_best, ]
 
-  # Compute Model 2 metrics with degree adjustment: deg2 = 0 only in the
-  # special case where the surviving continuous component is exactly linear
-  # (a single power equal to 1) - a linear term is an ordinary regression
-  # coefficient with no extra estimated power, so it earns no df_additional
-  # penalty. Any other surviving power vector (nonlinear FP, or an ACD power
-  # that isn't exactly 1) means `degree` estimated powers were spent and each
-  # contributes one extra df, exactly as for ordinary (non-spike) FP terms.
-  deg2 <- if (length(power_best) == 1L && power_best == 1) {
+  # Compute Model 2 metrics with degree adjustment: deg2 = 0 only when the
+  # surviving component is the fixed-linear row. A searched FP1 can also
+  # select numerical power 1, but it still spent one estimated-power df and
+  # must retain that penalty. Every other surviving power vector likewise
+  # contributes one extra df per estimated power.
+  searched_fp <- selected_step_is_searched_fp(fit1)
+  deg2 <- if (length(power_best) == 1L && power_best == 1 && !searched_fp) {
     0L
   } else {
     degree
@@ -1416,7 +1417,8 @@ compute_saz_stage2_decision <- function(metrics,
                                         criterion,
                                         alpha,
                                         n_obs,
-                                        ftest = FALSE) {
+                                        ftest = FALSE,
+                                        family_string = NULL) {
   criterion <- tolower(criterion)
 
   if (!identical(criterion, "pvalue")) {
@@ -1455,6 +1457,23 @@ compute_saz_stage2_decision <- function(metrics,
           metrics$metrics1["df_resid"]
         ),
         n_obs = n_obs
+      )
+    } else if (mfp2_family_is_gee(family_string)) {
+      # GEE uses differences of negative overall Wald chi-square values stored
+      # in deviance_rs, with the covariance estimator selected by std.err.
+      stats1 <- calculate_deviance_test(
+        deviances = c(
+          metrics$metrics2["deviance_rs"],
+          metrics$metrics1["deviance_rs"]
+        ),
+        dfs = c(metrics$metrics2["df"], metrics$metrics1["df"])
+      )
+      stats2 <- calculate_deviance_test(
+        deviances = c(
+          metrics$metrics3["deviance_rs"],
+          metrics$metrics1["deviance_rs"]
+        ),
+        dfs = c(metrics$metrics3["df"], metrics$metrics1["df"])
       )
     } else {
       # Test whether the binary zero-indicator component is needed.
@@ -1514,6 +1533,10 @@ compute_saz_stage2_decision <- function(metrics,
 
   list(
     decision = decision,
+    statistic = c(
+      drop_binary = stats1$statistic,
+      drop_continuous = stats2$statistic
+    ),
     pvalue = c(
       p_drop_binary = p_drop_binary,
       p_drop_continuous = p_drop_continuous
@@ -1636,7 +1659,10 @@ evaluate_saz_stage2 <- function(fit1,
   # Step 3: Decide whether both components, continuous-only, or binary-only
   # is needed, and record that decision for xi (all other variables' entries
   # in spike_decision are left untouched).
-  decision <- compute_saz_stage2_decision(metrics, criterion, alpha, n_obs, ftest)
+  decision <- compute_saz_stage2_decision(
+    metrics, criterion, alpha, n_obs, ftest,
+    family_string = family_string
+  )
   spike_decision[xi] <- decision$decision
 
   # Step 4: Build the printable stage-2 metrics table, matching model labels
@@ -1670,6 +1696,7 @@ evaluate_saz_stage2 <- function(fit1,
   spike_metrics <- list(
     metrics = spike_metrics_mat,
     spike_decision = spike_decision[xi],
+    statistic = decision$statistic,
     pvalue = decision$pvalue
   )
 

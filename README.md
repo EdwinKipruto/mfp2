@@ -9,12 +9,15 @@
 `mfp2` implements multivariable fractional polynomial (MFP) models and related
 extensions. It performs variable selection and functional-form selection for
 continuous covariates. The package supports generalized linear models,
-unpenalized multinomial logistic models, and Cox, parametric-survival, and
-Fine--Gray models. Multinomial fitting uses `nnet`; one FP transformation is
+unpenalized multinomial logistic models, Cox, parametric-survival, and
+Fine--Gray models, and marginal models fitted by generalized estimating
+equations (GEE). Multinomial fitting uses `nnet`; one FP transformation is
 selected per predictor and shared across logits, with logit-specific
 coefficients.
 Negative-binomial models are specified with `family = "negbin"` and require
-`fitter = "fastglm"`.
+`fitter = "fastglm"`. GEE models are specified with `family = gee_family(...)`,
+use the `geepack` package, and take a cluster identifier through the `id`
+argument (with optional `waves`).
 
 In addition to standard MFP modelling, `mfp2` provides:
 
@@ -128,6 +131,27 @@ coef(fit_multinomial)
 # Class probabilities and predicted classes.
 predict(fit_multinomial, iris[1:6, ], type = "response")
 predict(fit_multinomial, iris[1:6, ], type = "class")
+```
+
+### Fit a GEE MFP model for clustered data
+
+Supply a cluster identifier through `id` (clusters must occupy contiguous
+rows). `gee_family()` defaults to an exchangeable working correlation and the
+robust sandwich covariance; `std.err` also accepts `"jack"`, `"j1s"`, and
+`"fij"`. The retained model is a native `geepack::geeglm` object.
+
+```r
+fit_gee <- mfp2(
+  y ~ fp(x1) + fp(x2),
+  data = clustered_data,
+  family = gee_family(gaussian(), corstr = "exchangeable"),
+  id = clustered_data$id,
+  verbose = FALSE
+)
+
+# Robust (sandwich) covariance and coefficients.
+coef(fit_gee)
+vcov(fit_gee)
 ```
 
 ### Model a spike-at-zero covariate

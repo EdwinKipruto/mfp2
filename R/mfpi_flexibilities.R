@@ -481,10 +481,7 @@ flex1 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
-    # MFPI follows the conventional FP1 search: if power 1 is present in the
-    # supplied FP1 candidate set, retain it as a possible selected power. This
-    # internal switch is used only for this MFPI power-selection fit; ordinary
-    # mfp2() closed-test behaviour is unchanged.
+    # Retain power 1 when supplied, following the package-wide FP1 rule.
     retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,
@@ -1204,10 +1201,7 @@ flex4 <- function(x, y, cont_var, group_var, xadj, criterion, ties,
     alpha         = alpha_vec,
     keep          = vnames,
     force_max_fp  = force_max_fp,
-    # MFPI follows the conventional FP1 search: if power 1 is present in the
-    # supplied FP1 candidate set, retain it as a possible selected power. This
-    # internal switch is used only for this MFPI power-selection fit; ordinary
-    # mfp2() closed-test behaviour is unchanged.
+    # Retain power 1 when supplied, following the package-wide FP1 rule.
     retain_linear_fp1 = TRUE,
     method        = ties,
     family        = family,

@@ -1,6 +1,6 @@
-# MFPI-specific regression tests for the conventional FP1 candidate set.
-# These tests intentionally leave ordinary mfp2() closed-test behaviour intact,
-# where the fixed linear model is handled separately from nonlinear FP1 search.
+# Regression tests for the complete conventional FP1 candidate set.
+# Both MFPI and ordinary mfp2() retain power 1 in a searched FP1 class while
+# keeping the separately fitted fixed-linear model as a distinct candidate.
 
 library(testthat)
 
@@ -40,10 +40,8 @@ test_that("mfpi FP1 retains power 1 for all flexibility variants", {
   }
 })
 
-# Guard the package-wide contract: ordinary mfp2() keeps its established
-# closed-test convention. A df > 1 search space containing only p = 1 is still
-# invalid there because the fixed linear model is fitted separately.
-test_that("ordinary mfp2 FP1 closed-test handling is unchanged", {
+# Guard the package-wide contract: ordinary mfp2() also retains p = 1 in FP1.
+test_that("ordinary mfp2 FP1 retains power 1", {
   x <- matrix(
     seq(0.5, 8, length.out = 100),
     ncol = 1,
@@ -51,22 +49,23 @@ test_that("ordinary mfp2 FP1 closed-test handling is unchanged", {
   )
   y <- 1 + 2 * x[, 1]
 
-  expect_error(
-    mfp2(
-      x,
-      y,
-      powers = list(x = 1),
-      df = 2,
-      select = 1,
-      alpha = 1,
-      shift = 0,
-      scale = 1,
-      center = FALSE,
-      verbose = FALSE
-    ),
-    "non-linear|candidate|power",
-    ignore.case = TRUE
+  fit <- mfp2(
+    x,
+    y,
+    powers = list(x = 1),
+    df = 2,
+    select = 1,
+    alpha = 1,
+    shift = 0,
+    scale = 1,
+    center = FALSE,
+    verbose = FALSE
   )
+
+  expect_s3_class(fit, "mfp2")
+  expect_equal(as.numeric(fit$fp_powers[["x"]]), 1)
+  expect_true(fit$fp_terms["x", "searched_fp"])
+  expect_equal(as.numeric(fit$fp_terms["x", "df_final"]), 2)
 })
 
 # Retaining the linear FP1 member means preserving p = 1 when it is supplied;

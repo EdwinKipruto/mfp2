@@ -41,6 +41,7 @@ mfp2(x, ...)
   verbose = TRUE,
   fitter = c("base", "fastglm"),
   id = NULL,
+  waves = NULL,
   acdx = NULL,
   ...
 )
@@ -72,6 +73,7 @@ mfp2(x, ...)
   verbose = TRUE,
   fitter = c("base", "fastglm"),
   id = NULL,
+  waves = NULL,
   ...
 )
 }
@@ -192,8 +194,11 @@ quasi families are not supported. Use \code{"negbin"} for a negative-binomial
 model, \code{"multinomial"} or \code{\link[=multinomial_family]{multinomial_family()}} for an
 unpenalized baseline-category multinomial model, \code{"ordinal"} or
 \code{\link[=ordinal_family]{ordinal_family()}} for a proportional-odds ordinal model, \code{"cox"} for Cox
-models, \code{\link[=survreg_family]{survreg_family()}} for parametric survival models, or
-\code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models.
+models, \code{\link[=survreg_family]{survreg_family()}} for parametric survival models,
+\code{\link[=finegray_family]{finegray_family()}} for Fine--Gray models, or \code{\link[=gee_family]{gee_family()}} for a
+marginal model fitted by generalized estimating equations (GEE, via the
+\pkg{geepack} package; Gaussian, binomial, Poisson, and Gamma responses
+only, requiring the \code{id} clustering argument).
 Default \code{"gaussian"}.}
 
 \item{criterion}{Selection criterion. One of \code{"pvalue"} (default), \code{"aic"},
@@ -392,11 +397,19 @@ warning. Negative-binomial models always use \code{"fastglm"} and stop with
 an error if the package is unavailable. Survival, multinomial, and
 ordinal models ignore this argument, as they use their own fitters.}
 
-\item{id}{Optional Fine--Gray subject identifier. It is required for a
-start--stop multi-state response and optional for ordinary one-row-per-
-subject responses. In formula fits, the argument is evaluated first in
-\code{data} and then in the formula environment. It is not used by other
-families.}
+\item{id}{Cluster or subject identifier, one value per observation. For
+\code{\link[=finegray_family]{finegray_family()}} it is the Fine--Gray subject identifier (required for a
+start--stop multi-state response, optional otherwise). For \code{\link[=gee_family]{gee_family()}}
+it identifies the correlated clusters and is \strong{required}; observations
+from the same cluster must appear in contiguous rows. In formula fits, the
+argument is evaluated first in \code{data} and then in the formula environment.
+It is not used by other families.}
+
+\item{waves}{Optional integer-like visit identifier for \code{\link[=gee_family]{gee_family()}}, one
+value per observation, giving the order of repeated measurements within
+each cluster and representing gaps for the \code{"ar1"} working correlation.
+Must be unique within each cluster. Evaluated like \code{id} in formula fits,
+and used only by GEE models.}
 
 \item{acdx}{Deprecated compatibility alias for \code{acd_vars} in
 \code{mfp2.default()}. Use \code{acd_vars} in new matrix-interface code. Supplying both
@@ -437,7 +450,7 @@ Logical value indicating whether the MFP selection algorithm converged.
 A data frame with one row per model term. It records the MFP complexity
 setting (\code{df_setting}) separately from the initial and final model degrees
 of freedom (\code{df_initial} and \code{df_final}), together with selection settings,
-selected status,
+selected status, searched-FP identity (\code{searched_fp}),
 fractional-polynomial powers, the ACD, zero, catzero, and spike settings
 actually applied after validation and eligibility checks, and \code{prop_zero}
 for retained spike-at-zero terms.
@@ -596,6 +609,11 @@ default specifications. Parametric models accept the distributions supported
 by \code{\link[survival:survreg]{survival::survreg()}}. Fine--Gray responses are multi-state \code{Surv}
 objects; \code{finegray_family(etype = "relapse")} selects the endpoint.
 
+Clustered responses use \code{\link[=gee_family]{gee_family()}} with a Gaussian, binomial, Poisson,
+or Gamma marginal response family. See \strong{Generalized estimating equations}
+for the fitting, p-value-selection, Stata-compatibility, and information-
+criterion details.
+
 Gaussian models use a finite numeric response vector. Gamma and inverse-
 Gaussian responses must additionally be strictly positive. Poisson and
 negative-binomial models require finite, nonnegative integer counts.
@@ -607,7 +625,63 @@ responses may be ordered factors or vectors whose sorted unique values give
 the category order, as described under \strong{Ordinal models}. Cox models require
 \code{family = "cox"} and an ordinary
 right-censored response created with \code{\link[survival:Surv]{survival::Surv()}}, using two columns for
-follow-up time and event status.
+follow-up time and event status. GEE responses (via \code{\link[=gee_family]{gee_family()}}) follow
+the same rules as their inner response family (Gaussian, binomial, Poisson,
+or Gamma), including the two-column grouped-count form for binomial data.
+}
+
+\section{Generalized estimating equations}{
+
+GEE models are specified with \code{\link[=gee_family]{gee_family()}} and fitted through the
+\pkg{geepack} package. The top-level \code{id} argument is required and identifies
+independent clusters; observations belonging to one cluster must be
+contiguous. The optional \code{waves} argument supplies within-cluster visit
+order. \code{\link[=gee_family]{gee_family()}} selects the working correlation (\code{"independence"},
+\code{"exchangeable"}, or \code{"ar1"}), standard-error method, and scale settings.
+Repeated candidate fits use \code{\link[geepack:geese.fit]{geepack::geese.fit()}}, while the retained model
+is refitted with \code{\link[geepack:geeglm]{geepack::geeglm()}} and returned as a native \code{geeglm}
+object.
+
+With \code{criterion = "pvalue"}, selection reproduces the calculation used by
+Stata \code{mfp: xtgee}. Candidate powers within a fixed degree are chosen using
+the negative overall Wald chi-square. Closed-test statistics are
+differences of those negative-Wald values, referred to the chi-square
+distribution with the MFP model-df difference. The quantity printed as
+\code{Deviance} in this mode is therefore not the response-family deviance and is
+not an additive likelihood deviance. Ordering, power ranking, closed tests,
+and final inference all use the covariance estimator selected by \code{std.err}.
+For \code{std.err = "san.se"}, the geepack sandwich covariance is multiplied by
+Stata's \eqn{K/(K-1)} finite-cluster correction, where \eqn{K} is the number
+of independent clusters. The jackknife covariance estimators are used as
+returned by geepack, without this additional sandwich correction. The
+initial visiting order uses coefficient-block Wald tests from the full
+linear GEE, matching Stata's ordering pass.
+
+As throughout \code{mfp2}, the searched FP1 candidate set retains power \eqn{1}.
+Thus the same fitted linear function can appear as the separately specified
+one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
+of freedom accounts for selecting its power from the candidate set. This
+rule is shared by GEE p-value and QICu/QBIC selection.
+
+For GEE, \code{criterion = "aic"} is QICu,
+\deqn{-2Q + 2p,}
+and \code{criterion = "bic"} is the BIC-penalised analogue QBIC,
+\deqn{-2Q + \log(K)p,}
+where \eqn{p} is the MFP model degrees of freedom and \eqn{K} is the number
+of independent clusters. These criteria use quasi-likelihood only; neither
+the response-family deviance nor the negative-Wald Stata compatibility
+quantity enters their calculation.
+
+Quasi-likelihood contributions are multiplied by the effective prior
+weights. For a grouped-binomial response, the effective weight is the prior
+weight multiplied by the row's binomial total. For Gamma responses the
+implemented quasi-likelihood contribution is
+\deqn{w_i\{-y_i/\mu_i-\log(\mu_i)\}.}
+Consequently, weighted and grouped-binomial QICu/QBIC calculations use all
+response information, and the Gamma quasi-likelihood is consistent with
+the Gamma family-deviance differences. The response-family deviance remains
+available for descriptive model-fit reporting but is kept separate from
+GEE p-value selection and from QICu/QBIC.
 }
 
 \section{Shifting, scaling, and centering}{
@@ -1150,6 +1224,12 @@ fit_finegray <- mfp2(
 Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
 A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
 for Modelling Continuous Variables. John Wiley & Sons.}\cr
+
+Liang, K.-Y. and Zeger, S. L., 1986. \emph{Longitudinal data analysis using
+generalized linear models. Biometrika, 73(1): 13--22.}\cr
+
+Pan, W., 2001. \emph{Akaike's information criterion in generalized
+estimating equations. Biometrics, 57(1): 120--125.}\cr
 
 Sauerbrei, W., Meier-Hirmer, C., Benner, A. and Royston, P., 2006.
 \emph{Multivariable regression model building by using fractional

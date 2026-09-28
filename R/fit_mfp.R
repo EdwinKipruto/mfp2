@@ -1,24 +1,14 @@
 #' Validate MFP Candidate Powers Against Closed-Test Requirements
 #'
-#' Checks that each variable with \code{df > 1} has at least one candidate
-#' fractional-polynomial power other than \code{1}, unless that variable has
-#' been explicitly exempted from this closed-test requirement. In the ordinary
-#' MFP selection engine, power \code{1} is fitted separately as the linear model
-#' and is therefore excluded from the degree-1 FP candidate search. The
-#' closed-test procedure consequently requires a non-linear FP1 candidate when
-#' \code{df > 1}.
-#'
-#' The exemption is used by MFPI's internally forced FP1 power search. MFPI
-#' prespecifies the FP degree and searches the conventional FP1 class, in which
-#' the linear power \eqn{p = 1} remains a legitimate candidate. This exemption
-#' affects only validation; it does not alter \code{df}, add power \code{1} to
-#' a candidate set, or change ordinary \code{mfp2()} closed-test behaviour.
+#' Checks candidate power sets against the FP selection requirements. Power
+#' \code{1} is valid by itself for any requested FP degree: it remains in the
+#' searched FP1 class, while repeated powers such as \code{c(1, 1)} remain
+#' available to higher-degree models.
 #'
 #' Repeated selected powers remain valid for FP2 and higher-degree models. For
 #' example, \code{c(1, 1)} is a valid selected FP2 power vector, corresponding
 #' to the basis \eqn{x} and \eqn{x \log(x)}. This helper does not reject repeated
-#' selected powers; it only rejects candidate-power sets that collapse to the
-#' single value \code{1} when the algorithm needs a non-linear FP candidate.
+#' selected powers.
 #'
 #' @param powers Named list of numeric candidate-power vectors, one element per
 #'   variable. Each element is treated as a candidate set: values are coerced to
@@ -27,11 +17,9 @@
 #' @param df Named numeric or integer vector of degrees of freedom, one value
 #'   per variable. Values greater than \code{1} indicate that FP model selection
 #'   may require degree-1 candidate fitting.
-#' @param allow_linear_only_fp1 Optional named logical vector, aligned with
-#'   \code{df}. \code{TRUE} exempts the corresponding variable from the
-#'   closed-test error when its candidate-power set contains only power
-#'   \code{1}. This is an internal exception for MFPI's forced FP1 search; the
-#'   default is \code{FALSE} for every variable.
+#' @param allow_linear_only_fp1 Deprecated internal compatibility argument.
+#'   Power \code{1} is retained in every FP1 search, so all variables are
+#'   treated as allowed regardless of this value.
 #'
 #' @return Invisibly returns \code{TRUE} if all candidate-power sets are
 #'   compatible with the requested selection procedure.
@@ -47,56 +35,9 @@
 validate_mfp_candidate_powers <- function(powers,
                                           df,
                                           allow_linear_only_fp1 = NULL) {
-  if (is.null(allow_linear_only_fp1)) {
-    allow_linear_only_fp1 <- stats::setNames(
-      rep(FALSE, length(df)),
-      names(df)
-    )
-  } else {
-    allow_linear_only_fp1 <- stats::setNames(
-      as.logical(allow_linear_only_fp1),
-      names(allow_linear_only_fp1)
-    )[names(df)]
-    allow_linear_only_fp1[is.na(allow_linear_only_fp1)] <- FALSE
-  }
-
-  # Flag variables whose candidate-power set collapses to just p = 1 after
-  # cleaning. In ordinary MFP that leaves no non-linear FP1 candidate for the
-  # closed test against the separately fitted linear model.
-  only_linear_candidate <- vapply(
-    powers,
-    function(v) {
-      v <- sort(unique(as.numeric(v)))
-      v <- v[!is.na(v) & is.finite(v)]
-      length(v) == 1L && identical(v, 1)
-    },
-    logical(1L)
-  )
-
-  # MFPI may explicitly exempt its forced FP1 focal terms because there the
-  # FP degree is prespecified and p = 1 is a valid member of the FP1 search.
-  # All non-exempt variables retain the ordinary MFP validation rule.
-  vars_invalid <- names(which(
-    only_linear_candidate &
-      df > 1L &
-      !allow_linear_only_fp1
-  ))
-
-  if (length(vars_invalid) > 0L) {
-    stop(
-      paste0(
-        "The following variable(s) have `df > 1` but their candidate-power ",
-        "set contains only power 1: ",
-        paste(vars_invalid, collapse = ", "),
-        ". Power 1 is fitted separately as the ordinary linear model and is ",
-        "excluded from FP1 candidate fitting in the ordinary MFP closed-test ",
-        "procedure. Use `df = 1` for a purely linear effect, or include at ",
-        "least one non-1 candidate power."
-      ),
-      call. = FALSE
-    )
-  }
-
+  # Candidate-vector content and finiteness are validated upstream. This helper
+  # remains as a stable internal hook; there is no longer a special rejection
+  # for the singleton set p = 1.
   invisible(TRUE)
 }
 
@@ -205,14 +146,10 @@ validate_mfp_candidate_powers <- function(powers,
 #'   eligible spike-at-zero term, the forced result is the complete maximum SAZ
 #'   representation (maximum positive-component form plus binary zero indicator),
 #'   so the reduced-component comparisons in SAZ Stage 2 are not run.
-#' @param retain_linear_fp1 Internal logical specifically for MFPI. MFPI uses
-#'   \code{fit_mfp()} to perform forced fixed-degree FP power searches, but its
-#'   FP1 search follows the conventional FP1 class and therefore retains the
-#'   linear power \eqn{p = 1} as a candidate. Set this to \code{TRUE} only for
-#'   those MFPI power-selection fits. The default \code{FALSE} preserves the
-#'   ordinary \code{mfp2()} closed-test behaviour, where the linear model is
-#'   fitted separately from the non-linear FP1 candidates. This option never
-#'   adds power \code{1} when it is absent from the supplied candidate set.
+#' @param retain_linear_fp1 Deprecated internal compatibility argument. A
+#'   supplied power \eqn{p = 1} remains in every searched FP1 class regardless
+#'   of this value. Power \code{1} is never added when absent from the supplied
+#'   candidate set.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param verbose Logical. If \code{TRUE}, progress information is printed
@@ -336,7 +273,7 @@ fit_mfp <- function(x,
                     min_saz_prop,
                     saz_pre_resolved = FALSE,
                     force_max_fp,
-                    retain_linear_fp1 = FALSE,
+                    retain_linear_fp1 = TRUE,
                     has_offset,
                     verbose,
                     term_to_columns = NULL,
@@ -494,22 +431,10 @@ fit_mfp <- function(x,
   )
 
   # Validate candidate powers after ACD forcing and SAZ-specific df capping.
-  # MFPI may deliberately retain p = 1 as an FP1 candidate when that degree is
-  # prespecified; ordinary mfp2() still requires a non-linear FP1 candidate when
-  # df > 1 because its linear model is fitted separately.
-  allow_linear_only_fp1 <- stats::setNames(
-    rep(FALSE, length(df)),
-    names(df)
-  )
-  if (isTRUE(retain_linear_fp1)) {
-    forced_fp1 <- force_max_fp & df == 2L
-    allow_linear_only_fp1[forced_fp1] <- TRUE
-  }
-
+  # The complete supplied FP1 set, including p = 1, is valid in every path.
   validate_mfp_candidate_powers(
     powers = powers,
-    df = df,
-    allow_linear_only_fp1 = allow_linear_only_fp1
+    df = df
   )
 
   # Step 4: Normalize exact-zero components in x once -------------------------
@@ -716,6 +641,10 @@ fit_mfp <- function(x,
     rep(saz_decision_codes[["continuous_only"]], length(variables_ordered)),
     variables_ordered
   )
+  searched_fp_current <- stats::setNames(
+    rep(FALSE, length(variables_ordered)),
+    variables_ordered
+  )
 
   # Step 8: Cache ACD parameters and selection sample size --------------------
   # ACD parameters are estimated once per active variable and reused throughout
@@ -757,6 +686,13 @@ fit_mfp <- function(x,
     }
   } else if (family_string == "multinomial") {
     n_obs <- family_fit$prepared$effective_n
+  } else if (family_string == "gee") {
+    # QBIC penalises by the effective GEE sample size, i.e. the number of
+    # independent clusters, not the number of observations.
+    n_obs <- family_fit$prepared$n_clusters
+    if (is.null(n_obs) || !is.finite(n_obs) || n_obs <= 0L) {
+      stop("GEE selection requires at least one cluster.", call. = FALSE)
+    }
   } else {
     n_obs <- nrow(x)
   }
@@ -798,6 +734,7 @@ fit_mfp <- function(x,
       term_to_columns = term_to_columns,
       y               = y,
       powers_current  = powers_current,
+      searched_fp_current = searched_fp_current,
       df              = df,
       weights         = weights,
       offset          = offset,
@@ -831,6 +768,7 @@ fit_mfp <- function(x,
     )
 
     powers_updated         <- fit_best_cycle$powers_current
+    searched_fp_updated    <- fit_best_cycle$searched_fp_current
     spike_decision_updated <- fit_best_cycle$spike_decision
     prev_adj_params        <- fit_best_cycle$prev_adj_params
     transform_cache        <- fit_best_cycle$transform_cache
@@ -854,14 +792,19 @@ fit_mfp <- function(x,
       spike_decision,
       spike_decision_updated
     )
+    searched_fp_same <- identical(
+      searched_fp_current,
+      searched_fp_updated
+    )
 
     # Store the results from the completed cycle before deciding whether another
     # cycle is required. This also ensures that the final cycle's results are
     # retained when the maximum number of cycles is reached.
     powers_current <- powers_updated
+    searched_fp_current <- searched_fp_updated
     spike_decision <- spike_decision_updated
 
-    converged <- powers_same && spike_same
+    converged <- powers_same && spike_same && searched_fp_same
 
     if (converged) {
       if (verbose) {
@@ -1092,8 +1035,20 @@ fit_mfp <- function(x,
       linear_logl     = linear_logl,
       linear_df       = linear_df,
       mfp_logl        = mfp_logl,
+      mfp_selection_score = if (mfp2_family_is_gee(family_string)) {
+        modelfit$selection_deviance
+      } else NULL,
       mfp_df          = mfp_df,
       family_string   = family_string,
+      criterion_mfp   = criterion,
+      mfp2_family = if (mfp2_family_is_gee(family_string)) {
+        family_fit
+      } else {
+        # Multinomial and ordinal native fitters already attach their prepared
+        # family metadata. Preserve that component instead of replacing it with
+        # NULL while adding the GEE-specific metadata above.
+        modelfit$fit[["mfp2_family", exact = TRUE]]
+      },
       class_levels = if (identical(family_string, "multinomial")) {
         family_fit$prepared$levels
       } else NULL,
@@ -1117,6 +1072,7 @@ fit_mfp <- function(x,
       fp_terms        = create_fp_terms(
         powers_current, acdx, df, select, alpha, criterion, zero,
         catzero_effective, spike, spike_decision,
+        searched_fp = searched_fp_current,
         prop_zero = prop_zero,
         term_to_columns = term_to_columns,
         transformed_to_model_columns = transformed_to_model_columns,
@@ -1214,6 +1170,10 @@ fit_mfp <- function(x,
 #' @param powers_current a list of length equal to the number of variables,
 #' indicating the fp powers to be used in the current step for all variables
 #' (except `xi`).
+#' @param searched_fp_current Named logical vector recording whether each
+#'   current form came from an FP candidate search rather than the fixed-linear
+#'   row. This keeps searched FP1(power 1) distinct from prespecified linearity
+#'   without attaching metadata to the public numeric power vectors.
 #' @param catzero A named list of binary indicator variables of length \code{ncol(x)}
 #' for exact-zero values, created when specific variables are passed to the
 #' \code{catzero} argument of \code{fit_mfp}. If an element of the list is
@@ -1244,7 +1204,8 @@ fit_mfp <- function(x,
 #'
 #' @return
 #' A list with updated components `powers_current` (current FP powers for all
-#' variables), `spike_decision` (updated spike-at-zero decisions), and
+#' variables), `searched_fp_current` (whether each selected form came from an
+#' FP search), `spike_decision` (updated spike-at-zero decisions), and
 #' `prev_adj_params` (adjustment variable transformations to be used in the next
 #' cycle).
 #' @keywords internal
@@ -1278,7 +1239,11 @@ find_best_fp_cycle <- function(x,
                                prev_adj_params,
                                transform_cache = NULL,
                                force_max_fp,
-                               retain_linear_fp1 = FALSE,
+                               retain_linear_fp1 = TRUE,
+                               searched_fp_current = stats::setNames(
+                                 rep(FALSE, length(powers_current)),
+                                 names(powers_current)
+                               ),
                                has_offset,
                                n_obs,
                                term_to_columns = NULL,
@@ -1345,11 +1310,13 @@ find_best_fp_cycle <- function(x,
     power_best <- fit_best_fp_step$power_best
     if (term_uses_column_mapping(xi, term_to_columns[[xi]])) {
       power_best <- if (all(is.na(power_best))) NA_real_ else 1
+      fit_best_fp_step$searched_fp <- FALSE
     }
 
     # Update powers_current and spike_decision in place so that the next
     # variable in this loop (and the next cycle) sees xi's latest result.
     powers_current[[xi]] <- power_best
+    searched_fp_current[[xi]] <- isTRUE(fit_best_fp_step$searched_fp)
     spike_decision       <- fit_best_fp_step$spike_decision
     # Carry the run-scoped per-variable cache forward immediately so later
     # focal variables in this same cycle can reuse unchanged transformations.
@@ -1369,6 +1336,7 @@ find_best_fp_cycle <- function(x,
   }
 
   list(powers_current  = powers_current,
+       searched_fp_current = searched_fp_current,
        spike_decision  = spike_decision,
        prev_adj_params = prev_adj_params,
        transform_cache = transform_cache)
@@ -1481,6 +1449,8 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #'   gives the scalar-response convention. For multinomial models, regression
 #'   coefficient df are multiplied by `n_logits`, while selected FP powers are
 #'   counted once because their transformations are shared across logits.
+#' @param searched_fp Logical scalar indicating that the form was selected from
+#'   an FP candidate class rather than from the fixed-linear row.
 #'
 #' @details
 #' The package uses the following df convention when `n_logits = 1`:
@@ -1488,7 +1458,8 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #'   binary spike-at-zero indicator.
 #' * Otherwise, if all entries in `powers` are `NA`, df = 0 because the variable
 #'   contributes no continuous component and no binary-only spike component.
-#' * If the variable is modeled linearly, exactly `powers = 1`, df = 1.
+#' * If the fixed-linear row is selected, exactly `powers = 1`, df = 1.
+#'   If power 1 was selected from the FP1 class, df = 2.
 #' * Otherwise, for fractional polynomials of degree *m*, where *m* is the
 #'   number of non-`NA` powers, df = 2 * m.
 #' * If `catzero = TRUE`, one additional df is added for the binary catzero
@@ -1513,7 +1484,7 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 #' @keywords internal
 #' @noRd
 calculate_df <- function(powers, spike_decision, catzero = FALSE,
-                         n_logits = 1L) {
+                         n_logits = 1L, searched_fp = FALSE) {
 
   # Step 1: Validate scalar inputs -----------------------------------------
   if (length(spike_decision) != 1L ||
@@ -1539,6 +1510,10 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE,
     return(q)
   }
 
+  if (length(searched_fp) != 1L || is.na(searched_fp) ||
+      !is.logical(searched_fp)) {
+    stop("`searched_fp` must be a single TRUE/FALSE value.")
+  }
   powers <- as.numeric(powers)
 
   # Unselected variable.
@@ -1550,7 +1525,7 @@ calculate_df <- function(powers, spike_decision, catzero = FALSE,
   # contributes 2*m df, regardless of whether any powers are repeated.
   p <- as.numeric(powers[!is.na(powers)])
 
-  df <- if (length(p) == 1L && p == 1) {
+  df <- if (length(p) == 1L && p == 1 && !searched_fp) {
     q
   } else {
     q * length(p) + length(p)
@@ -1659,6 +1634,8 @@ convert_powers_list_to_matrix <- function(power_list) {
 #'   structural-zero component for retained SAZ terms; `NA` otherwise.
 #' * `spike_decision`: integer code describing how the spike-at-zero variable is modeled.
 #' * `selected`: logical, whether the FP term is included in the final model.
+#' * `searched_fp`: logical, whether the final continuous form was selected
+#'   from an FP candidate class rather than fitted as the fixed-linear row.
 #' * `df_final`: final estimated degrees of freedom for the variable.
 #' * `power1, power2, ...`: final estimated FP powers (as many columns as needed).
 #'
@@ -1672,6 +1649,8 @@ convert_powers_list_to_matrix <- function(power_list) {
 #' @param prop_zero Optional named numeric vector containing the structural-zero
 #'   proportion for each retained SAZ term. Missing or non-SAZ terms are stored
 #'   as `NA_real_`.
+#' @param searched_fp Optional named logical vector identifying terms whose
+#'   final continuous form came from a searched FP class.
 #' @param term_to_columns Optional complete conceptual-term-to-raw-column
 #'   mapping. When supplied, explicitly mapped retained terms report their
 #'   fitted rank contribution rather than one df per stored linear power.
@@ -1695,6 +1674,7 @@ create_fp_terms <- function(fp_powers,
                             catzero,
                             spike,
                             spike_decision,
+                            searched_fp = NULL,
                             prop_zero = NULL,
                             term_to_columns = NULL,
                             transformed_to_model_columns = NULL,
@@ -1715,6 +1695,12 @@ create_fp_terms <- function(fp_powers,
   catzero <- catzero[vars]
   spike <- spike[vars]
   spike_decision <- spike_decision[vars]
+  if (is.null(searched_fp)) {
+    searched_fp <- stats::setNames(rep(FALSE, length(vars)), vars)
+  } else {
+    searched_fp <- as.logical(searched_fp[vars])
+    searched_fp[is.na(searched_fp)] <- FALSE
+  }
   if (is.null(prop_zero)) {
     prop_zero <- stats::setNames(rep(NA_real_, length(vars)), vars)
   } else {
@@ -1771,11 +1757,17 @@ create_fp_terms <- function(fp_powers,
   # design columns, so its final df is the number of estimable coefficients in
   # that block rather than the single power value stored for selection.
   df_final <- mapply(
-    calculate_df,
+    function(p, sd, cz, sf) {
+      calculate_df(
+        p, sd, cz,
+        n_logits = q,
+        searched_fp = sf
+      )
+    },
     fp_powers,
     spike_decision,
     catzero,
-    MoreArgs = list(n_logits = q),
+    searched_fp,
     SIMPLIFY = TRUE
   )
   names(df_final) <- vars
@@ -1882,6 +1874,7 @@ create_fp_terms <- function(fp_powers,
       if (sd == saz_decision_codes[["binary_only"]]) TRUE  # binary-only spike is still selected
       else !all(is.na(p))
     }, fp_powers, spike_decision),
+    searched_fp = unname(searched_fp),
     df_final = unname(df_final),
     # Adds power1, power2, ... columns (NA-padded to the largest selected FP
     # degree across all variables).

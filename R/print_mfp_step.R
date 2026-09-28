@@ -31,7 +31,7 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
                           if (!fit$acd) {
                             row_prep = na.omit(row)
                             if (length(row_prep) == 0)
-                              return("NA")  
+                              return(".")  
                           } else row_prep = row
                           
                           paste0(row_prep, collapse = ", ")
@@ -55,7 +55,10 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
       xi, fit$keep, fit$spike
     ))
     if (joint_saz_ic) {
-      cat(sprintf("Joint Spike at Zero %s Selection:\n", toupper(criterion)))
+      cat(sprintf(
+        "Joint Spike at Zero %s Selection:\n",
+        mfp_progress_criterion_label(fit, criterion)
+      ))
     } else if (fit$spike) {
       cat("Stage 1 of Spike at Zero Algorithm:\n")
     }
@@ -122,40 +125,40 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
 #' @keywords internal
 #' @noRd
 print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
-  
+
   fpmax <- rownames(fit$metrics)[1]
   
   if (spike) {
     mat <- cbind(
-      "Deviance   " = sprintf("%.1f", fit$spike_metrics$metrics[, "deviance_rs"]),
+      "Deviance   " = sprintf("%.3f", fit$spike_metrics$metrics[, "deviance_rs"]),
       #"DF" = fit$spike_metrics$metrics[, "df"],
       "Versus          " = c(NA, rep(rownames(fit$spike_metrics$metrics)[1], nrow(fit$spike_metrics$metrics) - 1)), 
-      "Deviance diff." = c(NA, sprintf("%.1f", 
+      "Deviance diff." = c(NA, sprintf("%.3f",
                                        fit$spike_metrics$metrics[2, "deviance_rs"] - 
                                          fit$spike_metrics$metrics[1, "deviance_rs"]),
-                           sprintf("%.1f", 
+                           sprintf("%.3f",
                                    fit$spike_metrics$metrics[3, "deviance_rs"] - 
                                      fit$spike_metrics$metrics[1, "deviance_rs"]))
       , 
-      "P-value" = c(NA, sprintf("%.4f", fit$spike_metrics$pvalue))
+      "P-value" = c(NA, sprintf("%.3f", fit$spike_metrics$pvalue))
     )
     return(mat)
   }
-  
+
   # p-value specific matrix for printing
   mat <- cbind(
-    "Deviance   " = sprintf("%.1f", fit$metrics[, "deviance_rs"]), 
+    "Deviance   " = sprintf("%.3f", fit$metrics[, "deviance_rs"]),
     "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1)), 
     "Deviance diff." = c(NA, switch(fpmax,
-                                    "null" = sprintf("%.1f",
+                                    "null" = sprintf("%.3f",
                                                      fit$metrics[fpmax, "deviance_rs"]-
                                                      fit$metrics[-1, "deviance_rs"] 
                                                        ),
-                                    sprintf("%.1f", 
+                                    sprintf("%.3f",
                                             fit$metrics[-1, "deviance_rs"] - 
                                               fit$metrics[fpmax, "deviance_rs"]))
                                     ), 
-    "P-value" = c(NA, sprintf("%.4f", fit$pvalue))
+    "P-value" = c(NA, sprintf("%.3f", fit$pvalue))
   )
   return(mat)
 }
@@ -184,17 +187,38 @@ print_mfp_ic_step <- function(xi, fit, criterion, spike = FALSE) {
   
   if (spike){
     mat_print <- cbind(
-      sprintf("%.1f", fit$spike_metrics$metrics[, tolower(criterion)])
+      sprintf("%.3f", fit$spike_metrics$metrics[, tolower(criterion)])
     )
-    colnames(mat_print) <- toupper(criterion) 
+    colnames(mat_print) <- mfp_progress_criterion_label(fit, criterion)
     return(mat_print)
   }
   
   # IC specific matrix for printing
   mat_print <- cbind(
-    sprintf("%.1f", fit$metrics[, tolower(criterion)])
+    sprintf("%.3f", fit$metrics[, tolower(criterion)])
   )
-  colnames(mat_print) <- toupper(criterion)
+  colnames(mat_print) <- mfp_progress_criterion_label(fit, criterion)
   
   mat_print
+}
+
+#' Label an Information Criterion in Progress Output
+#'
+#' GEE models are scored with quasi-likelihood information criteria, so their
+#' progress-table labels use QAIC and QBIC rather than the likelihood-based
+#' AIC and BIC names used for other model families.
+#'
+#' @param fit Intermediate model-selection results.
+#' @param criterion Character scalar naming the selection criterion.
+#'
+#' @return An uppercase character label for the progress output.
+#'
+#' @keywords internal
+#' @noRd
+mfp_progress_criterion_label <- function(fit, criterion) {
+  label <- toupper(criterion)
+  if (isTRUE(fit$is_gee) && label %in% c("AIC", "BIC")) {
+    label <- paste0("Q", label)
+  }
+  label
 }

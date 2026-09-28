@@ -117,12 +117,11 @@ mfp_pvalue_exceeds <- function(pvalue, threshold) {
 #'   its only purpose is to compare reduced component representations. The best
 #'   power combination within the forced form is still determined by
 #'   \code{find_best_fpm_step()}.
-#' @param retain_linear_fp1 Internal logical used specifically for MFPI's
-#'   forced fixed-degree power-selection fits. If \code{TRUE}, a degree-1 FP
-#'   search retains power \code{1} when it is present in the supplied candidate
-#'   set. It does not add power \code{1} when absent. Ordinary MFP closed
-#'   testing keeps the default \code{FALSE}, fitting the linear model separately
-#'   and excluding power 1 from its non-linear FP1 candidate search.
+#' @param retain_linear_fp1 Deprecated internal compatibility argument. Every
+#'   degree-1 FP search retains power \code{1} when it is present in the
+#'   supplied candidate set, regardless of this value. The separately fitted
+#'   linear candidate remains a one-df model, whereas searched FP1(power 1)
+#'   retains the FP1 selection df.
 #' @param has_offset logical indicating whether an offset was specified before
 #' missing offsets were replaced by zeros internally.
 #' @param n_obs Numeric; number of observations (or observed events, for Cox
@@ -244,7 +243,7 @@ find_best_fp_step <- function(x,
                               prev_adj_params,
                               transform_cache = NULL,
                               force_max_fp,
-                              retain_linear_fp1 = FALSE,
+                              retain_linear_fp1 = TRUE,
                               has_offset,
                               n_obs,
                               verbose,
@@ -311,12 +310,14 @@ find_best_fp_step <- function(x,
     }
 
     power_best <- normalize_selected_step_powers(fit1, xi, acdx)
+    searched_fp <- selected_step_is_searched_fp(fit1)
     if (saz_active) {
       spike_decision[[xi]] <- saz_decision_codes[["cont_binary"]]
     }
 
     return(list(
       power_best = power_best,
+      searched_fp = searched_fp,
       spike_decision = spike_decision,
       current_adj_params = fit1$current_adj_params,
       transform_cache = fit1$transform_cache
@@ -337,6 +338,7 @@ find_best_fp_step <- function(x,
 
     return(list(
       power_best = normalize_selected_step_powers(fit1, xi, acdx),
+      searched_fp = selected_step_is_searched_fp(fit1),
       spike_decision = fit1$spike_decision,
       current_adj_params = fit1$current_adj_params,
       transform_cache = fit1$transform_cache
@@ -362,6 +364,7 @@ find_best_fp_step <- function(x,
   }
 
   power_best <- normalize_selected_step_powers(fit1, xi, acdx)
+  searched_fp <- selected_step_is_searched_fp(fit1)
 
   # Step 4: If xi was eliminated (stage 1 selected null), stop here ----------
   # Stage 1 selected null.
@@ -379,6 +382,7 @@ find_best_fp_step <- function(x,
 
     return(list(
       power_best = power_best,
+      searched_fp = searched_fp,
       spike_decision = spike_decision,
       current_adj_params = fit1$current_adj_params,
       transform_cache = fit1$transform_cache
@@ -392,6 +396,7 @@ find_best_fp_step <- function(x,
     # Nothing more to do.
     return(list(
       power_best = power_best,
+      searched_fp = searched_fp,
       spike_decision = spike_decision,
       current_adj_params = fit1$current_adj_params,
       transform_cache = fit1$transform_cache
@@ -436,6 +441,10 @@ find_best_fp_step <- function(x,
 
   return(list(
     power_best = power_best,
+    searched_fp = if (identical(
+      as.integer(stage2$spike_decision[[xi]]),
+      saz_decision_codes[["binary_only"]]
+    )) FALSE else searched_fp,
     spike_decision = stage2$spike_decision,
     current_adj_params = fit1$current_adj_params,
     transform_cache = fit1$transform_cache
@@ -460,7 +469,8 @@ find_best_fp_step <- function(x,
 #' @return A named numeric vector of selected FP powers. Names identify the
 #'   term (and its ACD companion, when applicable); missing values remain
 #'   `NA_real_` so downstream code can distinguish binary-only from null
-#'   representations.
+#'   representations. Searched-FP identity is returned separately by
+#'   `selected_step_is_searched_fp()` so public power vectors remain plain.
 #'
 #' @keywords internal
 #' @noRd
@@ -480,58 +490,72 @@ normalize_selected_step_powers <- function(fit, xi, acdx) {
   power_best
 }
 
-
-#' Function to find the best FP functions of given degree for a single variable
+#' Identify Whether a Step Selected a Searched FP Form
 #'
-#' Handles the FP1 and the higher order FP cases. For parameter definitions, see
+#' Keeps model-class identity separate from the numeric power vector. This is
+#' necessary for FP1(power 1), which has the same numerical basis as the fixed
+#' linear row but carries the searched-FP selection degrees of freedom.
+#'
+#' @param fit A step-selection result with `metrics` and `model_best`.
+#' @return A single logical value.
+#' @keywords internal
+#' @noRd
+selected_step_is_searched_fp <- function(fit) {
+  metric_names <- if (is.null(fit$metrics)) NULL else rownames(fit$metrics)
+  if (is.null(metric_names) || length(fit$model_best) != 1L ||
+      is.na(fit$model_best) || fit$model_best < 1L ||
+      fit$model_best > length(metric_names)) {
+    return(FALSE)
+  }
+
+  grepl("^FP[0-9]+", trimws(metric_names[fit$model_best]))
+}
+
+
+#' Find the best FP function of a given degree for one variable
+#'
+#' Handles FP1 and higher-order FP candidates. For parameter definitions, see
 #' \code{find_best_fp_step()}.
 #'
 #' @details
-#' The "best" model is determined by the highest likelihood (or smallest
-#' deviance by our definition as minus twice the log-likelihood). This is also
-#' the case for the use of information criteria, as all models investigated in
-#' this function have the same df, so the penalization term is equal for all
-#' models and only their likelihoods differ.
+#' All power combinations considered within one FP degree have the same MFP
+#' selection degrees of freedom. Likelihood-based models therefore select the
+#' combination with the largest log-likelihood. GEE models normally select the
+#' combination with the largest quasi-likelihood \eqn{Q}; this is also
+#' equivalent to minimizing QICu or QBIC within a fixed degree because their
+#' penalty is constant. GEE p-value selection instead chooses the smallest
+#' negative overall Wald chi-square, matching Stata \code{mfp: xtgee}.
 #'
-#' Note that the estimation of each fp power adds a degree of freedom. Thus,
-#' all fp1s have 2 df, all fp2s have 4 df and so on.
+#' Estimating each FP power is assigned an additional selection degree of
+#' freedom. Thus FP1 is treated as having 2 df, FP2 as having 4 df, and,
+#' generally, FPm as having 2m df.
 #'
-#' In the case that `degree = 1`, the linear model (fp power of 1) is NOT
-#' returned, as it is not considered to be a fractional polynomial in this
-#' algorithm.
-#' A linear model has only one df, whereas the same function regarded as fp
-#' would have 2 fp.
+#' When `degree = 1`, the complete supplied power set is searched, including
+#' power 1. The separately fitted linear model and searched FP1(power 1) have
+#' the same fitted mean function but different selection roles: linear is fixed
+#' at 1 df, while FP1 is assigned 2 df because its power was selected from the
+#' candidate set. This convention is applied consistently under p-value and
+#' information-criterion selection, GEE, ACD, SAZ, forced FP fits, and MFPI.
 #'
 #' @section ACD transformation:
-#' This function also handles the case of ACD transformations if `acdx` is set
-#' to `TRUE` for `xi`. In this case, if `degree = 1`, then 7 models are
-#' assessed (like for the non-acd case it excludes the linear case),
-#' and if `degree = 2`, then 64 models are assessed (unlike the 36 models
-#' for non-acd transformation). Other settings for `degree` are currently not
-#' supported when used with ACD transformations.
+#' This function also handles ACD transformations when `acdx` is `TRUE` for
+#' `xi`. With `degree = 1`, 8 models are assessed; with `degree = 2`, 64 models
+#' are assessed, compared with 36 degree-2 models without ACD. Other FP degrees
+#' are not currently supported with ACD transformations.
 #'
-#' @return
-#' A list with several components:
+#' @return A list containing:
+#' * `acd`: whether an ACD transformation was applied.
+#' * `powers`: FP powers investigated in the step.
+#' * `power_best`: numeric vector containing the selected power or powers.
+#' * `metrics`: performance indices for all investigated models.
+#' * `model_best`: row index of the selected model in `metrics`.
+#' * `zero`: whether the zero transformation was applied.
+#' * `catzero`: whether a zero indicator was included with the transformation.
+#' * `current_adj_params`: cached selected focal and adjustment transformations.
 #'
-#' * `acd`: logical indicating if an ACD transformation was applied for `xi`.
-#' * `powers`: fp powers investigated in step.
-#' * `power_best`: the best power found. `power_best` will always be a
-#' two-column matrix when an ACD transformation is used, otherwise the number
-#' of columns will depend on `degree`.
-#' * `metrics`: a matrix with performance indices for all models investigated.
-#' Same number of rows as, and indexed by, `powers`.
-#' * `model_best`: row index of best model in `metrics`.
-#' * `zero`: Logical indicating whether a zero transformation was applied to \code{xi}.
-#'   In this case, exact-zero values of \code{xi} remain zero before transformation,
-#'   and only positive values were transformed.
-#' * `catzero`: Logical indicating whether a combination of a zero transformation
-#'   and a binary indicator variable was applied to \code{xi}. This means that
-#'   exact-zero values of \code{xi} remain zero, only positive values are
-#'   transformed, and an additional binary variable was created to indicate
-#'   whether \code{xi} was exactly zero or positive.
 #' @inheritParams find_best_fp_step
-#' @param degree degrees of freedom for fp transformation of `xi`.
-#' @param ... parameters passed to `fit_model()`.
+#' @param degree FP degree `m`, equal to the number of transformed power terms.
+#' @param ... Parameters passed to `fit_model()`.
 #' @keywords internal
 #' @noRd
 find_best_fpm_step <- function(x,
@@ -554,7 +578,8 @@ find_best_fpm_step <- function(x,
                                focal_basis_cache = NULL,
                                n_obs,
                                term_to_columns,
-                               retain_linear_fp1 = FALSE,
+                               retain_linear_fp1 = TRUE,
+                               criterion = "pvalue",
                                ...
 ) {
   # The conceptual-term lookup is normalized once in fit_mfp() and passed
@@ -563,24 +588,9 @@ find_best_fpm_step <- function(x,
   # n_obs (number of observations, or target events for PH models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
 
-  # Step 1: Define the degree-1 candidate set for xi -------------------------
-  if (degree == 1L &&
-      (!isTRUE(retain_linear_fp1) || isTRUE(acdx[xi]))) {
-    # Ordinary MFP closed testing fits the linear model separately, so power 1
-    # is excluded from its FP1 candidate search. MFPI differs deliberately:
-    # when the user prespecifies FP1, the conventional FP1 class is searched
-    # and p = 1 is retained if supplied, so it may legitimately win the FP1
-    # power search. This switch never inserts p = 1 into a restricted user
-    # candidate set. ACD keeps its historical behaviour because its degree-1
-    # p = 1 candidate duplicates an ACD-linear model handled separately by the
-    # ACD selection procedure.
-    #
-    # Do not remove power 1 from the full powers list: transform_data_step()
-    # also receives powers and may pass powers[[v]] to adjustment-variable
-    # transformations. Adjustment variables must keep their original allowed
-    # power sets.
-    powers[[xi]] <- setdiff(powers[[xi]], 1)
-  }
+  # Step 1: Use the complete supplied degree-1 candidate set for xi ----------
+  # In particular, p = 1 remains a searched FP1 candidate. It is not inserted
+  # when absent from a restricted user-supplied set.
 
   # Step 2: Generate candidate FP/ACD transformations for xi and the current
   # adjustment set (or reuse precomputed_adj if the caller already built it).
@@ -730,7 +740,6 @@ find_best_fpm_step <- function(x,
     ncol = length(metric_names),
     dimnames = list(NULL, metric_names)
   )
-
   # All candidates in this batch have the same design width and class count.
   # Build nnet's mask and fixed offset-weight layout once rather than once per
   # transformed FP candidate.
@@ -821,12 +830,19 @@ find_best_fpm_step <- function(x,
       n_obs,
       degree
     )
+
   }
 
-  # Step 5: Pick the candidate with the highest log-likelihood ---------------
-  # (equivalent to lowest deviance/AIC/BIC here, since all candidates in this
-  # call share the same degrees of freedom; see @details above).
-  model_best <- as.numeric(which.max(metrics[, "logl"]))
+  # Step 5: Pick the best candidate within this fixed FP degree. Ordinary
+  # likelihood and GEE information-criterion paths maximize their likelihood
+  # surrogate. GEE p-value selection minimizes the Stata-style negative
+  # overall-Wald score.
+  model_best <- if (mfp2_family_is_gee(family_string) &&
+                    identical(tolower(criterion), "pvalue")) {
+    as.numeric(which.min(metrics[, "deviance_rs"]))
+  } else {
+    as.numeric(which.max(metrics[, "logl"]))
+  }
 
   # SAZ stage 2 needs the complete winning xi matrix. Under either compact
   # representation, materialize exactly that one candidate after model selection.
@@ -1230,6 +1246,11 @@ select_linear <- function(x,
       dfs_resid = metrics[, "df_resid"],
       n_obs = n_obs
     )
+  } else if (mfp2_family_is_gee(family_string)) {
+    stats <- calculate_deviance_test(
+      deviances = metrics[, "deviance_rs"],
+      dfs = metrics[, "df"]
+    )
   } else {
     # Ordinary likelihood-ratio chi-square test (2 * difference in log-lik),
     # compared with a chi-square distribution using the fitted-model df
@@ -1273,6 +1294,7 @@ select_linear <- function(x,
 
   list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = acdx[xi],
     powers = powers,
     power_best = powers[model_best, ],
@@ -1416,15 +1438,22 @@ select_ra2 <- function(x,
   # Step 0: Set up the test statistic helper and shared naming -------------
   # simplify testing by defining test helper function
   if (ftest) {
-    calculate_test <- function(metrics, n_obs) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_f_test(
         deviances = metrics[, "deviance_gaussian", drop = TRUE],
         dfs_resid = metrics[, "df_resid", drop = TRUE],
         n_obs = n_obs
       )
     }
+  } else if (mfp2_family_is_gee(family_string)) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
+      calculate_deviance_test(
+        deviances = metrics[, "deviance_rs", drop = TRUE],
+        dfs = metrics[, "df", drop = TRUE]
+      )
+    }
   } else {
-    calculate_test <- function(metrics, n_obs) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_lr_test(
         logl = metrics[, "logl", drop = TRUE],
         dfs = metrics[, "df", drop = TRUE]
@@ -1450,6 +1479,7 @@ select_ra2 <- function(x,
   # at that point.
   res <- list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = FALSE,
     powers = NULL,
     power_best = NULL,
@@ -1497,7 +1527,8 @@ select_ra2 <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    retain_linear_fp1 = TRUE, criterion = criterion, ...
   )
 
   fit_null <- fit_null_step(
@@ -1522,7 +1553,10 @@ select_ra2 <- function(x,
 
   # Test 1: test for overall significance (null vs best FPm)
   # df for tests are 2 * degree
-  stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c("null", fpmax), ], n_obs,
+    reduced_fit = fit_null, full_fit = fit_fpmax
+  )
   res$statistic <- stats$statistic
   names(res$statistic) <- sprintf("%s vs null", fpmax)
   res$pvalue <- stats$pvalue
@@ -1571,7 +1605,10 @@ select_ra2 <- function(x,
   res$powers = rbind(res$powers,
                      ensure_length(fit_lin$powers, ncol(res$powers)))
 
-  stats <- calculate_test(res$metrics[c(lin_names, fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c(lin_names, fpmax), ], n_obs,
+    reduced_fit = fit_lin, full_fit = fit_fpmax
+  )
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, lin_names))
@@ -1614,7 +1651,8 @@ select_ra2 <- function(x,
         family = family, family_string = family_string, zero = zero, catzero = catzero,
         spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-        precomputed_adj = precomputed_adj,  term_to_columns = term_to_columns, ...
+        precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+        retain_linear_fp1 = TRUE, criterion = criterion, ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1631,7 +1669,10 @@ select_ra2 <- function(x,
                           ensure_length(fit_fpm$power_best, ncol(res$powers)))
 
       # Calculate test statistics
-      stats <- calculate_test(res$metrics[c(fpm, fpmax), ], n_obs)
+      stats <- calculate_test(
+        res$metrics[c(fpm, fpmax), ], n_obs,
+        reduced_fit = fit_fpm, full_fit = fit_fpmax
+      )
       old_names <- names(res$statistic)
       res$statistic <- c(res$statistic, stats$statistic)
       names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, fpm))
@@ -1646,7 +1687,7 @@ select_ra2 <- function(x,
         # accept it and stop climbing further; model_best is the row just
         # appended (the last row of res$metrics at this point).
         # non-linearity detected, but lower than maximum degree
-        res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = FALSE]
+        res$power_best = fit_fpm$powers[fit_fpm$model_best, , drop = TRUE]
         res$model_best = nrow(res$metrics)
         res$current_adj_params <- fit_fpm$current_adj_params
         return(res)
@@ -1658,7 +1699,7 @@ select_ra2 <- function(x,
   # Step 6: Every lower-degree FP tested was significantly worse than
   # FPm (or degree == 1, so there were no lower degrees to test at
   # all): retain the highest-degree FPm itself (row 1, inserted first).
-  res$power_best <- fit_fpmax$powers[fit_fpmax$model_best, , drop = FALSE]
+  res$power_best <- fit_fpmax$powers[fit_fpmax$model_best, , drop = TRUE]
   res$model_best <- 1
   res$current_adj_params <- fit_fpmax$current_adj_params
 
@@ -1758,15 +1799,22 @@ select_ra2_acd <- function(x,
 
   # simplify testing by defining test helper function
   if (ftest) {
-    calculate_test <- function(metrics, n_obs) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_f_test(
         deviances = metrics[, "deviance_gaussian", drop = TRUE],
         dfs_resid = metrics[, "df_resid", drop = TRUE],
         n_obs = n_obs
       )
     }
+  } else if (mfp2_family_is_gee(family_string)) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
+      calculate_deviance_test(
+        deviances = metrics[, "deviance_rs", drop = TRUE],
+        dfs = metrics[, "df", drop = TRUE]
+      )
+    }
   } else {
-    calculate_test <- function(metrics, n_obs) {
+    calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_lr_test(
         logl = metrics[, "logl", drop = TRUE],
         dfs = metrics[, "df", drop = TRUE]
@@ -1790,6 +1838,7 @@ select_ra2_acd <- function(x,
   # output list
   res <- list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = TRUE,
     powers = NULL,
     power_best = NULL,
@@ -1835,7 +1884,8 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    criterion = criterion, ...
   )
 
   fit_null <- fit_null_step(
@@ -1859,7 +1909,10 @@ select_ra2_acd <- function(x,
 
   # test for overall significance
   # df for tests are degree * 2 = 4
-  stats <- calculate_test(res$metrics[c("null", fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c("null", fpmax), ], n_obs,
+    reduced_fit = fit_null, full_fit = fit_fpmax
+  )
   res$statistic <- stats$statistic
   names(res$statistic) <- sprintf("%s vs null", fpmax)
   res$pvalue <- stats$pvalue
@@ -1904,7 +1957,10 @@ select_ra2_acd <- function(x,
   rownames(res$metrics) <- c(old_names, lin_names)
   res$powers <- rbind(res$powers, c(1, NA))
 
-  stats <- calculate_test(res$metrics[c(lin_names, fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c(lin_names, fpmax), ], n_obs,
+    reduced_fit = fit_lin, full_fit = fit_fpmax
+  )
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, lin_names))
@@ -1932,7 +1988,8 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj,  term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    criterion = criterion, ...
   )
 
   old_names = rownames(res$metrics)
@@ -1946,7 +2003,10 @@ select_ra2_acd <- function(x,
   rownames(res$metrics) <- c(old_names, FP_names)
   res$powers <- rbind(res$powers, c(fit$power_best, NA))
 
-  stats <- calculate_test(res$metrics[c(FP_names, fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c(FP_names, fpmax), ], n_obs,
+    reduced_fit = fit, full_fit = fit_fpmax
+  )
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, FP_names))
@@ -1978,7 +2038,8 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    criterion = criterion, ...
   )
 
   old_names = rownames(res$metrics)
@@ -1991,7 +2052,10 @@ select_ra2_acd <- function(x,
   rownames(res$metrics) <- c(old_names, FP1_names)
   res$powers <- rbind(res$powers, fit_fp1a$power_best)
 
-  stats <- calculate_test(res$metrics[c(FP1_names, fpmax), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c(FP1_names, fpmax), ], n_obs,
+    reduced_fit = fit_fp1a, full_fit = fit_fpmax
+  )
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs %s", fpmax, FP1_names))
@@ -2034,7 +2098,10 @@ select_ra2_acd <- function(x,
   rownames(res$metrics) <- c(old_names, linx_names)
   res$powers <- rbind(res$powers, fit_lineara$powers)
 
-  stats <- calculate_test(res$metrics[c(linx_names, FP1_names), ], n_obs)
+  stats <- calculate_test(
+    res$metrics[c(linx_names, FP1_names), ], n_obs,
+    reduced_fit = fit_lineara, full_fit = fit_fp1a
+  )
   old_names <- names(res$statistic)
   res$statistic <- c(res$statistic, stats$statistic)
   names(res$statistic) <- c(old_names, sprintf("%s vs %s", FP1_names, linx_names))
@@ -2112,7 +2179,7 @@ select_force_max_fp <- function(x,
                                 prev_adj_params,
                                 transform_cache = NULL,
                                 force_max_fp,
-                                retain_linear_fp1 = FALSE,
+                                retain_linear_fp1 = TRUE,
                                 has_offset,
                                 n_obs,
                                 term_to_columns,
@@ -2153,9 +2220,8 @@ select_force_max_fp <- function(x,
 
   # ACD's maximum model is FP1(x, A(x)); internally it occupies two power
   # slots, so degree = 2 is the fixed search used to identify its best powers.
-  # Ordinary FP uses the requested maximum degree directly. For MFPI FP1,
-  # retain_linear_fp1 is passed through unchanged so p = 1 remains available
-  # when it is part of the supplied candidate set.
+  # Ordinary FP uses the requested maximum degree directly. The package-wide
+  # FP1 rule retains p = 1 whenever it is part of the supplied candidate set.
   forced_degree <- if (is_acd) 2 else degree
 
   fit_max <- find_best_fpm_step(
@@ -2165,7 +2231,7 @@ select_force_max_fp <- function(x,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
-    retain_linear_fp1 = retain_linear_fp1, ...
+    retain_linear_fp1 = retain_linear_fp1, criterion = criterion, ...
   )
 
   # Keep only the winning fixed-form row.  No null, linear, lower-degree FP,
@@ -2183,6 +2249,7 @@ select_force_max_fp <- function(x,
 
   list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = is_acd,
     powers = powers_best,
     power_best = fit_max$power_best,
@@ -2321,6 +2388,7 @@ select_ic <- function(x,
   # output list
   res <- list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = FALSE,
     powers = NULL,
     power_best = NULL,
@@ -2381,8 +2449,8 @@ select_ic <- function(x,
   # Build the focal numerical basis once at the maximum requested degree.
   # select_ic() necessarily evaluates every degree, so this basis will be reused
   # and there is no RA2-style early-stopping tradeoff. Build from the complete
-  # user-supplied power set (including power 1); find_best_fpm_step() continues
-  # to remove power 1 only from its degree-1 candidate list, exactly as before.
+  # user-supplied power set, including power 1; every degree-specific view uses
+  # the same candidate semantics.
   xi_cols <- term_to_columns[[xi]]
   if (is.null(xi_cols) || length(xi_cols) != 1L) {
     stop(
@@ -2414,7 +2482,7 @@ select_ic <- function(x,
       spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
       prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
       precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-      term_to_columns = term_to_columns, ...
+      term_to_columns = term_to_columns, criterion = criterion, ...
     )
   }
 
@@ -2557,6 +2625,7 @@ select_ic_acd <- function(x,
   # output list
   res <- list(
     keep = xi %in% keep,
+    is_gee = mfp2_family_is_gee(family_string),
     acd = TRUE,
     powers = NULL,
     power_best = NULL,
@@ -2673,7 +2742,7 @@ select_ic_acd <- function(x,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-        term_to_columns = term_to_columns, ...
+        term_to_columns = term_to_columns, criterion = criterion, ...
       ),
       # FP1(., A(x))
       find_best_fpm_step(
@@ -2683,7 +2752,7 @@ select_ic_acd <- function(x,
         spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-        term_to_columns = term_to_columns, ...
+        term_to_columns = term_to_columns, criterion = criterion, ...
       ),
       # FP1(x, A(x))
       find_best_fpm_step(
@@ -2693,7 +2762,7 @@ select_ic_acd <- function(x,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-        term_to_columns = term_to_columns, ...
+        term_to_columns = term_to_columns, criterion = criterion, ...
       )
     ),
     c(
@@ -3629,9 +3698,9 @@ transform_data_step <- function(x,
         if (isTRUE(compact_fp)) {
           if (!is.null(focal_basis_cache)) {
             # Reuse the selector's maximum-degree numerical basis. The current
-            # call still generates its own degree-specific candidates (including
-            # FP1's existing removal of power 1) and maps them by explicit
-            # power/repetition metadata rather than fixed column positions.
+            # call still generates its own degree-specific candidates, including
+            # power 1 for FP1, and maps them by explicit power/repetition
+            # metadata rather than fixed column positions.
             fpd <- view_shared_focal_fp_basis(
               shared_basis = focal_basis_cache,
               degree = floor(df / 2),

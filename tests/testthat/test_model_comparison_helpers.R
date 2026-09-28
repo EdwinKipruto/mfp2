@@ -34,6 +34,35 @@ test_that("calculate_lr_test() errors when df ordering is wrong", {
 })
 
 
+# Test purpose: Stata compatibility must refer its displayed negative-Wald
+# selection difference to the chi-square distribution.
+test_that("calculate_deviance_test() uses the deviance difference directly", {
+  result <- calculate_deviance_test(
+    deviances = c(reduced = -9, full = -15),
+    dfs = c(reduced = 2, full = 4)
+  )
+
+  expect_equal(result$statistic, 6)
+  expect_equal(result$dev_diff, 6)
+  expect_equal(
+    result$pvalue,
+    stats::pchisq(6, df = 2, lower.tail = FALSE)
+  )
+})
+
+
+test_that("calculate_deviance_test() rejects invalid comparisons", {
+  expect_error(
+    calculate_deviance_test(c(-9, -15), c(4, 2)),
+    "more degrees of freedom"
+  )
+  expect_error(
+    calculate_deviance_test(c(-9, NA_real_), c(2, 4)),
+    "two finite deviances"
+  )
+})
+
+
 # Test purpose: Checks that the F-test helper returns valid statistic, deviance
 # difference, and p-value.
 test_that("calculate_f_test() returns correct p-value", {

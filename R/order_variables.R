@@ -385,21 +385,23 @@ fit_full_linear_reference <- function(x,
 # order_variables_by_significance() -------------------------------------------
 # -----------------------------------------------------------------------------
 
-#' Order Predictors by Leave-One-Out Significance
+#' Order Predictors by Significance
 #'
-#' Orders predictors using likelihood-ratio tests comparing the full linear
-#' reference model with models obtained by removing one predictor at a time.
+#' For GEE models, orders predictors by coefficient-block Wald tests in
+#' the full linear reference model, matching Stata's \code{mfp: xtgee} ordering
+#' while using the covariance estimator selected by \code{std.err}.
+#' pass. Other models use likelihood-ratio tests comparing that full model with
+#' models obtained by removing one predictor at a time.
 #'
 #' @details
 #' This helper does not fit the full linear model. The caller supplies
 #' \code{full_reference}, ensuring that the invariant full-model fit is computed
-#' only once and reused for every reduced-model comparison.
+#' only once and reused for every comparison.
 #'
 #' A predictor may correspond to one or more design-matrix columns. All columns
-#' belonging to one conceptual term are removed together, and the test degrees
-#' of freedom equal the fitted rank difference between the full and reduced
-#' models. If that difference is not positive, or if a valid likelihood-ratio
-#' statistic cannot be formed, the predictor receives
+#' belonging to one conceptual term are tested together. For non-GEE models,
+#' the test degrees of freedom equal the fitted rank difference between the
+#' full and reduced models. If a valid statistic cannot be formed, the predictor receives
 #' \code{NA} as its ordering p-value and is placed after predictors with valid
 #' p-values. No predictor is dropped from the returned order.
 #'
@@ -491,6 +493,32 @@ order_variables_by_significance <- function(xorder,
     rep(NA_real_, n_predictors),
     predictor_names
   )
+
+  # Stata's mfp ordering pass fits the full linear model once and applies a
+  # coefficient-block `test` to each term. The full reference already carries
+  # the covariance estimator requested through `std.err` (including Stata's
+  # finite-cluster correction for san.se), so no second correction belongs
+  # here.
+  if (mfp2_family_is_gee(family_string)) {
+    ordering_vcov <- full_reference$gee_vcov
+    coefficient_offset <- as.integer(!isTRUE(x_has_intercept))
+    for (predictor_index in seq_len(n_predictors)) {
+      tested_indices <- drop_indices[[predictor_index]] + coefficient_offset
+      p_values[predictor_index] <- gee_wald_test(
+        coefficients = full_reference$coefficients,
+        covariance_matrix = ordering_vcov,
+        indices = tested_indices
+      )$pvalue
+    }
+
+    ordering_index <- order(
+      p_values,
+      decreasing = descending,
+      na.last = TRUE,
+      method = "radix"
+    )
+    return(predictor_names[ordering_index])
+  }
 
   for (predictor_index in seq_len(n_predictors)) {
     # Materialize only the reduced matrix needed for the current test. Matrix

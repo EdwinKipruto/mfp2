@@ -141,6 +141,13 @@ deviance_gaussian <- function(residuals, weights) {
 calculate_model_metrics <- function(obj,
                                     n_obs,
                                     df_additional = 0) {
+  # GEE fits carry a quasi-likelihood surrogate rather than a true
+  # log-likelihood; delegate to the parallel GEE-aware metrics so aic/bic become
+  # QICu/QBIC and the selection engine is otherwise reused unchanged.
+  if (isTRUE(obj$is_gee)) {
+    return(calculate_gee_metrics(obj, n_obs = n_obs, df_additional = df_additional))
+  }
+
   # Collect the core model metrics returned by fit_model().
   #
   # obj$df is the model degrees of freedom reported by fit_model().

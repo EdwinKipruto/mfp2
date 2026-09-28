@@ -315,7 +315,7 @@ test_that("print.summary.mfp2() 'Ordinal Intercepts' includes 95% CI column", {
   ordinal_start <- grep("Ordinal Intercepts", out, fixed = TRUE)[1L]
   linear_start <- grep("Linear Terms", out, fixed = TRUE)[1L]
   ordinal_section <- out[seq.int(ordinal_start, linear_start - 1L)]
-  expect_true(any(grepl("[95% CI]", ordinal_section, fixed = TRUE)))
+  expect_true(any(grepl("[95% CI coef]", ordinal_section, fixed = TRUE)))
 })
 
 test_that("print.summary.mfp2() labels non-logistic ordinal links correctly", {

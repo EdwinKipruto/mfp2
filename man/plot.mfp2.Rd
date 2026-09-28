@@ -104,6 +104,14 @@ Component-plus-residual plots are available for \code{type = "terms"}.
 Deviance residuals are used for generalized linear models and martingale
 residuals for Cox regression.
 
+For multinomial models each predictor is drawn as a single plot faceted by
+logit, with one facet per non-reference class (labelled
+\code{"<class> vs <reference>"}). Because the fractional-polynomial powers
+are shared across logits but the coefficients are not, each facet shows that
+logit's own partial predictor on the log-odds scale. Component-plus-residual
+overlays use per-logit deviance residuals, treating each non-reference logit
+as a binary sub-problem.
+
 Binary predictors are displayed at their two fitted levels as point estimates
 with vertical confidence intervals. Only those two levels are labelled on the
 x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero

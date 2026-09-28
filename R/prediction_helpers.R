@@ -529,6 +529,131 @@ prediction_fit_has_strata <- function(fit_obj) {
 }
 
 
+#' Predict from a GEE (geeglm) Fit Using Its Selected Covariance
+#'
+#' Computes linear-predictor and response predictions for a retained GEE model
+#' together with correct standard errors. `geepack` supplies no `predict`
+#' method, and the base `stats::predict.glm()` standard-error path is invalid
+#' for GEE: it would use a model-based (naive) covariance derived from the
+#' independence starting fit, not the covariance estimator requested for GEE
+#' inference. This helper instead propagates the object's selected covariance,
+#' `vcov(object)` (which honours the fitted `std.err` type), through
+#' the usual quadratic form
+#' \eqn{\mathrm{Var}(x_0^\top\hat\beta) = x_0^\top V x_0} and
+#' applies the delta method for the response scale.
+#'
+#' Point predictions (`se.fit = FALSE`) are identical to the base delegation
+#' path; this helper is used for the `se.fit = TRUE` case so the standard errors
+#' use the selected GEE covariance estimator.
+#'
+#' @param object The fitted `mfp2` GEE object (still carrying its `geeglm`
+#'   class, so `vcov()` returns the covariance selected by `std.err`).
+#' @param newx Optional numeric design matrix (an intercept column is added when
+#'   the coefficients include one). `NULL` uses the stored fitting design.
+#' @param offset Optional finite numeric offset for `newx`.
+#' @param type Prediction scale, either `"link"` or `"response"`.
+#' @param se.fit Logical scalar; return prediction standard errors.
+#'
+#' @return A numeric vector, or a list with `fit`, `se.fit`, and
+#'   `residual.scale` when `se.fit = TRUE`.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_predict_gee_matrix <- function(object,
+                                    newx = NULL,
+                                    offset = NULL,
+                                    type = c("link", "response"),
+                                    se.fit = FALSE) {
+  type <- match.arg(type)
+
+  beta <- object$coefficients
+  if (!is.numeric(beta) || is.null(names(beta)) || anyDuplicated(names(beta))) {
+    stop("The fitted GEE object lacks valid named coefficients.", call. = FALSE)
+  }
+
+  family <- object$family$response_family
+  if (!is.list(family) || !is.function(family$linkinv) ||
+      !is.function(family$mu.eta)) {
+    stop("The fitted GEE object lacks a valid response family.", call. = FALSE)
+  }
+
+  if (is.null(newx)) {
+    X <- object$geese$X
+    if (is.null(X)) {
+      stop("The fitted GEE object does not store its design matrix.",
+           call. = FALSE)
+    }
+    X <- as.matrix(X)
+    storage.mode(X) <- "double"
+    eta <- object$linear.predictors
+    if (is.null(eta)) eta <- drop(X %*% beta)
+  } else {
+    X <- as.matrix(newx)
+    storage.mode(X) <- "double"
+    if (is.null(colnames(X)) || anyNA(colnames(X)) ||
+        any(!nzchar(colnames(X))) || anyDuplicated(colnames(X))) {
+      stop("`newx` must have unique, non-missing column names.", call. = FALSE)
+    }
+    if (anyNA(X) || any(!is.finite(X))) {
+      stop("`newx` must contain only finite, non-missing values.", call. = FALSE)
+    }
+    if ("(Intercept)" %in% names(beta) && !"(Intercept)" %in% colnames(X)) {
+      X <- cbind("(Intercept)" = 1, X)
+    }
+    missing_columns <- setdiff(names(beta), colnames(X))
+    if (length(missing_columns) > 0L) {
+      stop("Prediction data are missing fitted-model column(s): ",
+           paste(missing_columns, collapse = ", "), ".", call. = FALSE)
+    }
+    X <- X[, names(beta), drop = FALSE]
+    if (is.null(offset)) offset <- rep(0, nrow(X))
+    if (!is.numeric(offset) || length(offset) != nrow(X) || anyNA(offset) ||
+        any(!is.finite(offset))) {
+      stop("`offset` must be finite numeric with one value per prediction row.",
+           call. = FALSE)
+    }
+    eta <- drop(X %*% beta) + as.numeric(offset)
+  }
+
+  eta <- as.numeric(eta)
+  if (length(eta) != nrow(X) || anyNA(eta) || any(!is.finite(eta))) {
+    stop("The GEE prediction produced non-finite linear predictors.",
+         call. = FALSE)
+  }
+
+  if (!isTRUE(se.fit)) {
+    return(if (identical(type, "response")) family$linkinv(eta) else eta)
+  }
+
+  # Covariance selected by std.err, aligned to the coefficient order.
+  V <- as.matrix(stats::vcov(object))
+  V <- V[names(beta), names(beta), drop = FALSE]
+  variances <- pmax(rowSums((X %*% V) * X), 0)
+  se_link <- sqrt(variances)
+
+  # Estimated scale (dispersion) for `residual.scale`, mirroring predict.glm's
+  # reporting; the prediction SEs above do not depend on it.
+  gee_scale <- tryCatch(as.numeric(object$geese$gamma[1L]), error = function(e) NA_real_)
+  if (length(gee_scale) != 1L || !is.finite(gee_scale) || gee_scale <= 0) {
+    gee_scale <- 1
+  }
+
+  if (identical(type, "response")) {
+    list(
+      fit = family$linkinv(eta),
+      se.fit = se_link * abs(family$mu.eta(eta)),
+      residual.scale = sqrt(gee_scale)
+    )
+  } else {
+    list(
+      fit = eta,
+      se.fit = se_link,
+      residual.scale = sqrt(gee_scale)
+    )
+  }
+}
+
+
 #' Predict from a Matrix-Based fastglm Fit
 #'
 #' Reconstructs the small amount of prediction logic needed for final

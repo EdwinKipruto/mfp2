@@ -9,7 +9,7 @@
 
 # Test purpose: A maximum-degree ordinary FP basis must support lower-degree
 # views for a non-default, variable-specific power set without changing the
-# existing candidate order or the special FP1 exclusion of power 1.
+# existing candidate order, including power 1 in the FP1 view.
 test_that("shared FP basis reproduces custom-power degree views", {
   x <- seq(1, 12, length.out = 60)
   allowed_powers <- c(-1, 0, 0.5, 1, 2)
@@ -21,10 +21,8 @@ test_that("shared FP basis reproduces custom-power degree views", {
     zero = FALSE
   )
 
-  # find_best_fpm_step() removes power 1 only for FP1. Reproduce that existing
-  # rule here and verify that the shared max-degree basis still maps every
-  # remaining FP1 candidate correctly.
-  fp1_powers <- setdiff(allowed_powers, 1)
+  # FP1 uses the complete supplied candidate set, including power 1.
+  fp1_powers <- allowed_powers
   shared_fp1 <- view_shared_focal_fp_basis(
     shared_basis = shared,
     degree = 1,
@@ -38,7 +36,7 @@ test_that("shared FP basis reproduces custom-power degree views", {
   )
 
   expect_equal(shared_fp1$powers, direct_fp1$powers)
-  expect_false(any(shared_fp1$powers == 1))
+  expect_true(any(shared_fp1$powers == 1))
 
   for (i in seq_len(nrow(shared_fp1$candidate_map))) {
     expect_equal(
@@ -80,7 +78,7 @@ test_that("shared FP basis reproduces custom-power degree views", {
 test_that("shared ACD basis reproduces all custom-power IC views", {
   x <- seq(1, 10, length.out = 50)
   allowed_powers <- c(-1, 0, 1, 2)
-  fp1_powers <- setdiff(allowed_powers, 1)
+  fp1_powers <- allowed_powers
   acd_par <- list(
     beta0 = -1,
     beta1 = 0.25,
@@ -193,7 +191,7 @@ test_that("transform_data_step reuses supplied shared FP basis", {
     xi = "x",
     powers_current = list(x = c(1, 1)),
     df = 2,
-    powers = list(x = setdiff(allowed_powers, 1)),
+    powers = list(x = allowed_powers),
     acdx = c(x = FALSE),
     zero = c(x = FALSE),
     catzero = list(x = NULL),
@@ -213,7 +211,7 @@ test_that("transform_data_step reuses supplied shared FP basis", {
   )
 
   expect_null(out$data_fp)
-  expect_equal(out$fp_basis$powers[, 1L], sort(setdiff(allowed_powers, 1)))
+  expect_equal(out$fp_basis$powers[, 1L], sort(allowed_powers))
 })
 
 
@@ -223,7 +221,7 @@ test_that("transform_data_step reuses supplied shared ACD basis", {
   x_vec <- seq(1, 8, length.out = 40)
   x <- matrix(x_vec, ncol = 1L, dimnames = list(NULL, "x"))
   allowed_powers <- c(-1, 0, 1, 2)
-  fp1_powers <- setdiff(allowed_powers, 1)
+  fp1_powers <- allowed_powers
   acd_par <- list(
     beta0 = -1,
     beta1 = 0.25,

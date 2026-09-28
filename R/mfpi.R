@@ -873,18 +873,20 @@ mfpi <- function(x, ...) {
 }
 
 
-#' Reject Fine--Gray Responses for MFPI Analyses
+#' Reject Families Unsupported by MFPI Analyses
 #'
 #' Fine--Gray subdistribution-hazard coefficients are estimated from a
-#' weighted partial pseudo-likelihood with a clustered robust covariance.
-#' The likelihood-ratio comparisons used by MFPI require an ordinary
-#' likelihood, so this family is rejected before any response preparation or
+#' weighted partial pseudo-likelihood with a clustered robust covariance, and
+#' the likelihood-ratio comparisons used by MFPI require an ordinary
+#' likelihood, so that family is rejected. GEE models (`gee_family()`) are
+#' rejected because MFPI has no cluster (`id`/`waves`) interface; GEE is
+#' available in `mfp2()`. Both are rejected before any response preparation or
 #' candidate fitting begins.
 #'
 #' @param family_string Canonical family name.
 #'
-#' @return Invisibly returns `TRUE` when the family is acceptable. Raises an
-#'   error naming Fine--Gray when it is not.
+#' @return Invisibly returns `NULL` when the family is acceptable. Raises an
+#'   error naming Fine--Gray or GEE when it is not.
 #'
 #' @keywords internal
 #' @noRd
@@ -892,6 +894,14 @@ validate_mfpi_family <- function(family_string) {
   if (identical(family_string, "finegray")) {
     stop(
       "! `mfpi()` does not support Fine--Gray models.",
+      call. = FALSE
+    )
+  }
+  if (identical(family_string, "gee")) {
+    stop(
+      "! `mfpi()` does not support GEE models (`gee_family()`). ",
+      "GEE is available in `mfp2()`, which takes the required `id` (and ",
+      "optional `waves`) cluster arguments.",
       call. = FALSE
     )
   }

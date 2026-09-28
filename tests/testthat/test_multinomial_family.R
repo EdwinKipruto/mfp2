@@ -344,13 +344,28 @@ test_that("one nonlinear FP power is shared across all logits", {
 })
 
 
-test_that("multinomial prediction rejects unsupported uncertainty and term paths", {
+test_that("multinomial full-model prediction still rejects se.fit", {
   dat <- make_multinomial_test_data(n = 180L, seed = 1614L)
   fit <- mfp2(
     y ~ x1 + x2, data = dat, family = "multinomial",
     cycles = 1, df = 1, select = 1, alpha = 1,
     shift = 0, scale = 1, center = FALSE, verbose = FALSE
   )
+  # Robust full-model prediction SEs remain unavailable for multinomial.
   expect_error(predict(fit, dat[1:3, ], se.fit = TRUE), "not available")
-  expect_error(predict(fit, type = "terms"), "not yet available")
+})
+
+test_that("multinomial term predictions return one partial predictor per logit", {
+  dat <- make_multinomial_test_data(n = 180L, seed = 1614L)
+  fit <- mfp2(
+    y ~ x1 + x2, data = dat, family = "multinomial",
+    cycles = 1, df = 1, select = 1, alpha = 1,
+    shift = 0, scale = 1, center = FALSE, verbose = FALSE
+  )
+  logits <- rownames(fit$mfp2_coefficient_matrix)
+
+  tm <- predict(fit, type = "terms", terms_seq = "data")
+  expect_true(all(vapply(tm, function(x) "logit" %in% names(x), logical(1))))
+  expect_identical(levels(tm[[1]]$logit), logits)
+  expect_equal(nrow(tm[[1]]), length(logits) * nrow(dat))
 })

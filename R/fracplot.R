@@ -53,6 +53,14 @@
 #' Deviance residuals are used for generalized linear models and martingale
 #' residuals for Cox regression.
 #'
+#' For multinomial models each predictor is drawn as a single plot faceted by
+#' logit, with one facet per non-reference class (labelled
+#' \code{"<class> vs <reference>"}). Because the fractional-polynomial powers
+#' are shared across logits but the coefficients are not, each facet shows that
+#' logit's own partial predictor on the log-odds scale. Component-plus-residual
+#' overlays use per-logit deviance residuals, treating each non-reference logit
+#' as a binary sub-problem.
+#'
 #' Binary predictors are displayed at their two fitted levels as point estimates
 #' with vertical confidence intervals. Only those two levels are labelled on the
 #' x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero
@@ -551,6 +559,32 @@ plot_mfp2_impl <- function(model,
 
   terms_seq <- match.arg(terms_seq)
 
+  # Multinomial fits carry a separate coefficient row per non-reference logit,
+  # so each term yields one partial predictor per logit. These are shown in a
+  # single faceted plot per predictor (one facet per logit) rather than the
+  # single-curve layout used for scalar-response families.
+  if (identical(model$family_string, "multinomial")) {
+    return(mfp2_plot_multinomial_impl(
+      model = model,
+      terms = terms,
+      partial_only = partial_only,
+      type = type,
+      ref = ref,
+      terms_seq = terms_seq,
+      alpha = alpha,
+      show_titles = show_titles,
+      color_points = color_points,
+      color_line = color_line,
+      color_fill = color_fill,
+      shape = shape,
+      size_points = size_points,
+      size_points_spike = size_points_spike,
+      linetype = linetype,
+      linewidth = linewidth,
+      alpha_fill = alpha_fill
+    ))
+  }
+
   pred <- predict(model,
                   type = type,
                   terms = terms,
@@ -580,6 +614,10 @@ plot_mfp2_impl <- function(model,
     resid <- if (mfp2_family_is_ph(model$family_string)) {
       model$residuals
     } else {
+      # Deviance residuals for the component-plus-residual overlay, matching
+      # Stata's `fracplot`. GEE uses the same convention: residuals.mfp2()
+      # computes deviance residuals for GEE from the marginal fitted mean even
+      # though geepack does not expose them directly.
       stats::residuals(model, type = "deviance")
     }
     if (identical(model$family_string, "finegray") &&
@@ -823,6 +861,149 @@ plot_mfp2_impl <- function(model,
     #                                size = size_points,
     #                                shape = shape)
     # }
+    plots[[v]] <- p
+  }
+
+  plots
+}
+
+#' Faceted Partial-Predictor Plots for a Multinomial `mfp2` Model
+#'
+#' A baseline-category multinomial model shares the fractional-polynomial powers
+#' across logits but estimates a separate coefficient for each non-reference
+#' logit, so every predictor has one partial predictor per logit. This helper
+#' draws a single \pkg{ggplot2} object per predictor, faceted by logit (one
+#' facet per non-reference class), which is the multinomial counterpart of the
+#' single-curve layout used by `plot_mfp2_impl()`.
+#'
+#' Component-plus-residual plots overlay per-logit deviance residuals obtained
+#' from [residuals.mfp2()], which treats each non-reference logit as a binary
+#' sub-problem. For logit \eqn{q} the plotted point for observation \eqn{i} is
+#' the data-scale partial predictor plus that logit's deviance residual. Facet
+#' strips are labelled `"<class> vs <reference>"`.
+#'
+#' @param model,terms,partial_only,type,ref,terms_seq,alpha,show_titles Plot
+#'   inputs forwarded from [plot.mfp2()] with the same meaning.
+#' @param color_points,color_line,color_fill,shape,size_points,size_points_spike,linetype,linewidth,alpha_fill
+#'   Styling controls forwarded from [plot.mfp2()].
+#'
+#' @return A named list of \pkg{ggplot2} objects, one per plotted term.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_plot_multinomial_impl <- function(model,
+                                       terms,
+                                       partial_only,
+                                       type,
+                                       ref,
+                                       terms_seq,
+                                       alpha,
+                                       show_titles,
+                                       color_points,
+                                       color_line,
+                                       color_fill,
+                                       shape,
+                                       size_points,
+                                       size_points_spike,
+                                       linetype,
+                                       linewidth,
+                                       alpha_fill) {
+  pred <- predict(model, type = type, terms = terms, ref = ref,
+                  terms_seq = terms_seq, alpha = alpha)
+  if (length(pred) == 0L) {
+    warning("Variables specified in `terms` were not retained in the final model.",
+            call. = FALSE)
+    return(list())
+  }
+
+  ylab <- if (partial_only) "Partial Predictor" else "Partial Predictor + residuals"
+
+  # Facet strips read "<non-reference class> vs <reference class>".
+  reference <- model$reference_class
+  logit_levels <- rownames(model$mfp2_coefficient_matrix)
+  facet_labels <- stats::setNames(
+    paste0(logit_levels, " vs ", reference), logit_levels
+  )
+
+  # Component-plus-residual overlays need data-scale per-logit predictions and
+  # the per-logit deviance residuals. Both are ordered by fitted observation.
+  resid_matrix <- NULL
+  pred_data <- NULL
+  if (!partial_only) {
+    pred_data <- if (terms_seq == "data") {
+      pred
+    } else {
+      predict(model, type = "terms", terms = terms, terms_seq = "data")
+    }
+    resid_matrix <- stats::residuals(model, type = "deviance")
+  }
+
+  plots <- stats::setNames(vector("list", length(names(pred))), names(pred))
+
+  for (v in names(pred)) {
+    df <- pred[[v]]
+    df$logit <- factor(df$logit, levels = logit_levels)
+
+    is_discrete <- mfp2_plot_term_is_binary(model, v) ||
+      mfp2_plot_term_is_factor(model, v)
+
+    power_label <- paste0(model$fp_powers[[v]], collapse = ", ")
+    plot_title <- if (is_discrete) "Categorical" else sprintf("FP(%s)", power_label)
+
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$variable, y = .data$value)) +
+      ggplot2::xlab(v) + ggplot2::ylab(ylab) +
+      ggplot2::theme_bw() +
+      ggplot2::facet_wrap(
+        ggplot2::vars(.data$logit), nrow = 1L,
+        labeller = ggplot2::as_labeller(facet_labels)
+      )
+    if (show_titles) {
+      p <- p + ggplot2::ggtitle(plot_title)
+    }
+
+    # Residual points first, so the fitted curve is drawn on top.
+    if (!partial_only && !is.null(resid_matrix)) {
+      resid_df <- do.call(rbind, lapply(logit_levels, function(q) {
+        pd <- pred_data[[v]]
+        pd <- pd[pd$logit == q, , drop = FALSE]
+        pd$resid <- as.numeric(resid_matrix[, q])
+        pd$logit <- factor(q, levels = logit_levels)
+        pd
+      }))
+      p <- p + ggplot2::geom_point(
+        data = resid_df,
+        ggplot2::aes(y = .data$value + .data$resid),
+        color = color_points, size = size_points, shape = shape
+      )
+    }
+
+    if (is_discrete) {
+      # One estimate and interval per fitted level; no interpolating line.
+      level_df <- df[!duplicated(df[c("variable", "logit")]), , drop = FALSE]
+      p <- p + ggplot2::geom_point(
+        data = level_df,
+        ggplot2::aes(x = .data$variable, y = .data$value),
+        color = color_line, size = size_points_spike
+      ) +
+        ggplot2::geom_errorbar(
+          data = level_df,
+          ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+          width = 0.2, color = color_line
+        )
+    } else {
+      ord <- order(df$logit, df$variable)
+      df_line <- df[ord, , drop = FALSE]
+      p <- p + ggplot2::geom_line(
+        data = df_line, linewidth = linewidth, linetype = linetype,
+        color = color_line
+      ) +
+        ggplot2::geom_ribbon(
+          data = df_line,
+          ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+          alpha = alpha_fill, fill = color_fill
+        )
+    }
+
     plots[[v]] <- p
   }
 

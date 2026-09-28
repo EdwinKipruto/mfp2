@@ -26,7 +26,7 @@
 #' * `pvalue`: p-value
 #' @keywords internal
 #' @noRd
-calculate_lr_test <- function(logl, 
+calculate_lr_test <- function(logl,
                               dfs) {
   
   df_diff <- dfs[2] - dfs[1]
@@ -45,6 +45,47 @@ calculate_lr_test <- function(logl,
     pvalue = pchisq(statistic, 
                     df = df_diff, 
                     lower.tail = FALSE)
+  )
+}
+
+#' Chi-square test from nested-model deviance differences
+#'
+#' Stata-compatible GEE selection stores negative overall Wald
+#' chi-square values in the historical "deviance" slot and uses their
+#' difference as the chi-square statistic. Keeping this separate from
+#' `calculate_lr_test()` prevents the displayed selection difference from
+#' being paired with a p-value calculated from quasi-likelihood.
+#'
+#' @param deviances Numeric vector of length two, ordered as reduced then full.
+#' @param dfs Numeric vector of the corresponding model degrees of freedom.
+#'
+#' @return A list containing `statistic`, `pvalue`, and `dev_diff`.
+#' @keywords internal
+#' @noRd
+calculate_deviance_test <- function(deviances, dfs) {
+  if (length(deviances) != 2L || length(dfs) != 2L ||
+      anyNA(deviances) || anyNA(dfs) ||
+      any(!is.finite(deviances)) || any(!is.finite(dfs))) {
+    stop(
+      "! Internal error: deviance test requires two finite deviances and dfs.",
+      call. = FALSE
+    )
+  }
+
+  df_diff <- dfs[2L] - dfs[1L]
+  if (df_diff <= 0) {
+    stop(
+      "! Internal error: invalid deviance test; second model must have more degrees of freedom.",
+      call. = FALSE
+    )
+  }
+
+  statistic <- unname(deviances[1L] - deviances[2L])
+
+  list(
+    statistic = statistic,
+    pvalue = stats::pchisq(statistic, df = df_diff, lower.tail = FALSE),
+    dev_diff = statistic
   )
 }
 

@@ -2,6 +2,54 @@
 
 ## New functionality
 
+* Added generalized estimating equations (GEE) through
+  `family = gee_family(...)`, using the `geepack` package. Supported response
+  families are Gaussian, binomial, Poisson, and Gamma, with `"exchangeable"`
+  (the default), `"independence"`, and `"ar1"` working correlations and
+  `"san.se"`/`"jack"`/`"j1s"`/`"fij"` covariance estimators. The cluster identifier
+  is given through the top-level `id` argument (required; clusters must occupy
+  contiguous rows) and repeated-measure order through the new `waves` argument.
+  Repeated FP candidate fits use the matrix-level `geepack::geese.fit()` hot
+  path; the retained model is refitted with `geepack::geeglm()` and inherits the
+  native `geeglm` class. All three selection criteria are available: `"pvalue"`
+  uses differences in negative overall Wald scores (as in Stata `mfp` with
+  `xtgee`), consistently using the selected covariance estimator for visiting
+  order, power ranking, closed tests, and final inference. The default
+  sandwich covariance receives Stata's finite-cluster `K/(K-1)` correction;
+  jackknife covariances are used unchanged. The `"aic"`/`"bic"` criteria use
+  the quasi-likelihood information criteria QICu (Pan,
+  2001) and QBIC, with QICu agreeing numerically with `geepack::QIC()`. Grouped
+  binomial responses and observation weights are supported. GEE `mfp2` objects
+  support the standard methods with correct marginal-model behaviour:
+  `predict()` (link/response point predictions, plus prediction standard errors
+  from the selected GEE covariance, which the base `predict.glm()` path cannot
+  provide), `confint()` (Wald intervals; the profile-likelihood
+  default does not apply to GEE), `residuals()`, `vcov()`, `summary()`, and
+  `plot()`. Deviance residuals for GEE are computed from the marginal fitted
+  mean and the family deviance function (geepack does not expose them), so the
+  component-plus-residual plot uses the same residual as Stata's `fracplot`.
+  `summary()` and `print()` additionally report the working correlation with
+  its estimate and standard error, the selected standard-error method, the
+  estimated scale with its standard error, and the number of clusters. The
+  model label identifies the response family and link (e.g.,
+  `Model: Gaussian GEE (identity link)`). The coefficient table follows
+  geepack's convention, reporting the Wald chi-square statistic and its
+  `Pr(>|W|)` p-value.
+
+* `confint()` now returns Wald confidence intervals
+  (`estimate ± z * SE`, with the standard error from `vcov()`) for every
+  scalar-coefficient `mfp2` family, matching the intervals shown by
+  `summary()`. Previously the default `stats::confint.glm()` profile-likelihood
+  path was used for GLM families and failed on `mfp2`'s internally transformed
+  design. Multinomial and ordinal models keep their own interval method. For
+  GEE the covariance is the estimator selected by `std.err`.
+
+* The structured `summary()` now reports the fitted intercept as the first row
+  of the Linear Terms table, consistently across every family that estimates
+  one (GLM, GEE, and parametric survival). Cox and Fine--Gray have no
+  intercept; ordinal threshold intercepts and multinomial per-logit intercepts
+  continue to be reported through their own dedicated sections.
+
 * Added multinomial logistic models through
   `family = "multinomial"` and `multinomial_family(reference = ...)`.
   Repeated MFP and MFPI candidate fits use the matrix-level `nnet` hot path,
@@ -10,6 +58,18 @@
   coefficients per logit. Multinomial-aware degrees of freedom, printing,
   summaries, class probabilities, predicted classes, offsets, factor responses,
   and grouped class-count responses are supported.
+
+* Added term and contrast predictions and component-plus-residual plots for
+  multinomial `mfp2` models. `predict(type = "terms")` and
+  `predict(type = "contrasts")` now return one partial predictor per
+  non-reference logit, stacked in a data frame with a `logit` column; standard
+  errors use the logit-specific block of the multinomial covariance.
+  `residuals()` returns an `n` by `Q` matrix of per-logit residuals (`nnet`
+  provides no residual method), with binomial deviance residuals -- treating
+  each non-reference logit as a binary sub-problem -- as the default `type`.
+  `plot()`/`fracplot()` draw one figure per predictor faceted by logit (one
+  facet per non-reference class), overlaying these per-logit deviance residuals
+  for the component-plus-residual display.
 
 * Expanded the `family` interface to all likelihood-based base `glm()`
   families and their supported links. Quasi families remain unsupported because

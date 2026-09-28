@@ -406,6 +406,31 @@ format_print_decimal <- function(x, digits, na_string = "NA") {
   }, character(1L), USE.NAMES = FALSE)
 }
 
+#' Format Shift and Scale Values for Display
+#'
+#' Formats numeric shift and scale values for display. Exact zeros are
+#' printed as `"0"` and exact ones as `"1"` (no trailing decimals) so that
+#' the Covariate Preprocessing table does not suggest that shifting or
+#' scaling was applied when neither transformation was active.
+#'
+#' @param x Numeric vector.
+#' @param digits Integer scalar; number of decimal places for non-trivial
+#'   values.
+#' @param na_string Character scalar used for `NA` and non-finite values.
+#'
+#' @return Character vector of formatted values.
+#'
+#' @keywords internal
+#' @noRd
+format_print_shift_scale <- function(x, digits, na_string = "NA") {
+  vapply(x, function(value) {
+    if (length(value) != 1L || is.na(value)) return(na_string)
+    if (identical(value, 0) || identical(value, 0L)) return("0")
+    if (identical(value, 1) || identical(value, 1L)) return("1")
+    formatC(value, format = "f", digits = digits)
+  }, character(1L), USE.NAMES = FALSE)
+}
+
 #' Format P-Values Without Rounding a Positive Value to Zero
 #'
 #' Formats a numeric p-value vector to the requested decimal precision
@@ -460,8 +485,15 @@ format_model_print_table <- function(d, digits) {
 
     is_pvalue <- key %in% c("p", "pvalue", "p_value", "p_raw", "p_adjusted") ||
       grepl("^pr_", key)
+
+    # Shift and scale columns: show exact zeros / ones as plain integers to
+    # avoid suggesting that shifting or scaling was applied when it was not.
+    is_shift_or_scale <- key %in% c("shift", "scale")
+
     d[[column]] <- if (is_pvalue) {
       format_print_pvalue(d[[column]], digits)
+    } else if (is_shift_or_scale) {
+      format_print_shift_scale(d[[column]], digits)
     } else {
       format_print_decimal(d[[column]], digits)
     }

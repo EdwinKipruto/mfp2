@@ -107,10 +107,15 @@
 #' of class probabilities, and `type = "class"` returns the predicted response
 #' class. Link and response matrices retain the observation names from the
 #' fitted data or `newdata`. The fitted FP transformations are common across
-#' logits. Full-model
-#' multinomial standard errors and multinomial term/contrast predictions are
-#' not currently provided, so use `se.fit = FALSE` and one of these three
-#' prediction types.
+#' logits. Full-model multinomial standard errors are not currently provided,
+#' so use `se.fit = FALSE` with `type = "link"`, `"response"`, or `"class"`.
+#'
+#' Multinomial `type = "terms"` and `type = "contrasts"` predictions are
+#' available: because each predictor has a separate coefficient per
+#' non-reference logit, the result is a named list whose elements stack the
+#' per-logit partial predictors, distinguished by a `logit` factor column (the
+#' non-reference class labels, in coefficient-matrix order). Standard errors use
+#' the logit-specific block of the multinomial covariance.
 #'
 #' @section Term predictions:
 #' A single term result can represent an FP2 function, a factor, a zero-handled
@@ -833,10 +838,18 @@ predict.mfp2 <- function(object,
   # dummy/contrast columns for a categorical term.
   if (type %in% c("terms", "contrasts")) {
     if (identical(object$family_string, "multinomial")) {
-      stop(
-        "Multinomial term and contrast predictions are not yet available; use type = 'link', 'response', or 'class'.",
-        call. = FALSE
-      )
+      return(mfp2_predict_multinomial_terms(
+        object,
+        terms = terms,
+        type = type,
+        ref = ref,
+        terms_seq = terms_seq,
+        nseq = nseq,
+        newdata = newdata,
+        alpha = alpha,
+        add_intercept = add_intercept,
+        selected_internal_terms = selected_internal_terms
+      ))
     }
     requested_terms <- terms
     internal_terms <- requested_terms
@@ -1236,10 +1249,37 @@ predict.mfp2 <- function(object,
       )
     }
 
+    # GEE standard errors must use the covariance selected by `std.err`, which the
+    # base predict.glm() path does not (and cannot) provide. Route se.fit for
+    # GEE through the GEE matrix predictor; point predictions still use the
+    # base delegation below, which is correct because it depends only on beta.
+    if (identical(object$family_string, "gee") && isTRUE(se.fit)) {
+      prediction_data <- as.data.frame(newdata, check.names = FALSE)
+      prediction_offset <- if (is.null(newoffset)) {
+        rep(0, nrow(prediction_data))
+      } else {
+        as.numeric(newoffset)
+      }
+      prediction_matrix <- as.matrix(prediction_data)
+      colnames(prediction_matrix) <- prediction_model_column_names(
+        object, colnames(prediction_matrix)
+      )
+      return(
+        mfp2_predict_gee_matrix(
+          object = object,
+          newx = prediction_matrix,
+          offset = prediction_offset,
+          type = type,
+          se.fit = TRUE
+        )
+      )
+    }
+
     # Strip "mfp2" so S3 dispatch reaches predict.glm() rather than recursively
     # entering predict.mfp2().
     obj_base <- object
     class(obj_base) <- setdiff(class(obj_base), "mfp2")
+    obj_base <- mfp2_restore_gee_family(obj_base)
 
     return(
       stats::predict(
@@ -1307,14 +1347,54 @@ predict.mfp2 <- function(object,
     )
   }
 
+  # GEE standard errors (no newdata) likewise use the selected covariance.
+  if (identical(object$family_string, "gee") && isTRUE(se.fit)) {
+    return(
+      mfp2_predict_gee_matrix(
+        object = object,
+        newx = NULL,
+        type = type,
+        se.fit = TRUE
+      )
+    )
+  }
+
   obj_base <- object
   class(obj_base) <- setdiff(class(obj_base), "mfp2")
+  obj_base <- mfp2_restore_gee_family(obj_base)
   stats::predict(
     obj_base,
     type = type,
     se.fit = se.fit,
     ...
   )
+}
+
+#' Restore the inner GLM family on a GEE object before delegating to
+#' `predict.glm()`
+#'
+#' Current retained GEE models preserve the native `stats::family()` object in
+#' their `family` slot. Older objects may instead store an `mfp2_gee_family`
+#' wrapper there; for those objects, restore the inner response family before
+#' delegation. All other objects are returned unchanged.
+#'
+#' @param object A base (non-`mfp2`) object about to be passed to
+#'   `stats::predict()`.
+#' @return `object`, with a genuine GLM family restored when it is a GEE fit.
+#' @keywords internal
+#' @noRd
+mfp2_restore_gee_family <- function(object) {
+  if (identical(object$family_string, "gee")) {
+    inner <- object$family$response_family
+    if (!inherits(inner, "family") &&
+        inherits(object$mfp2_family, "mfp2_gee_family")) {
+      inner <- object$mfp2_family$response_family
+    }
+    if (inherits(inner, "family")) {
+      object$family <- inner
+    }
+  }
+  object
 }
 
 
@@ -1553,6 +1633,264 @@ mfp2_predict_ordinal <- function(object, transformed = NULL,
   numeric_levels <- suppressWarnings(as.numeric(levels_labels))
   vals <- if (!anyNA(numeric_levels)) numeric_levels else seq_len(k)
   stats::setNames(as.numeric(probs %*% vals), prediction_rownames)
+}
+
+
+#' Term and Contrast Predictions for a Multinomial `mfp2` Fit
+#'
+#' Baseline-category multinomial models share one set of fractional-polynomial
+#' powers across logits but carry a separate coefficient row per non-reference
+#' logit. A term prediction is therefore not a single partial predictor but one
+#' per logit: for logit \eqn{q} and conceptual term \eqn{j} the value is
+#' \eqn{\beta_{q,j}^{\top} f_j(x)} on the log-odds scale, with the intercept
+#' added when `add_intercept = TRUE` and `type = "terms"`.
+#'
+#' The transformed design for a term (`x_trafo`, and the reference design for
+#' contrasts) is identical across logits because the FP powers are shared, so it
+#' is built once per term following the same path as the scalar
+#' `predict.mfp2()` terms branch. Only the coefficient dot product and the
+#' standard error vary by logit; standard errors use the logit-specific block of
+#' the multinomial covariance, whose rows and columns are named `"<logit>:<col>"`.
+#'
+#' @param object A fitted multinomial `"mfp2"` object.
+#' @param terms,type,ref,terms_seq,nseq,newdata,alpha,add_intercept Arguments
+#'   forwarded from [predict.mfp2()] with the same meaning.
+#' @param selected_internal_terms Character vector of terms retained in the
+#'   final model, as resolved by the caller.
+#'
+#' @return A named list with one entry per requested term. Each entry is a data
+#'   frame stacking the per-logit predictions, with a `logit` factor column
+#'   (levels are the non-reference class labels in coefficient-matrix order) in
+#'   addition to the `variable`, `variable_pre`, `value`, `se`, `lower`, and
+#'   `upper` columns returned for scalar families.
+#'
+#' @keywords internal
+#' @noRd
+mfp2_predict_multinomial_terms <- function(object,
+                                           terms,
+                                           type,
+                                           ref,
+                                           terms_seq,
+                                           nseq,
+                                           newdata,
+                                           alpha,
+                                           add_intercept,
+                                           selected_internal_terms) {
+  requested_terms <- terms
+  internal_terms <- requested_terms
+
+  selected <- internal_terms %in% selected_internal_terms
+  if (!any(selected)) {
+    warning(
+      "i All the terms supplied are not in the final model.\n",
+      "i predict() continues but returns an empty list.",
+      call. = FALSE
+    )
+    return(list())
+  } else if (!all(selected)) {
+    warning(
+      paste0(
+        "i Some terms supplied are not in the final model.\n",
+        "i predict() continues but omits terms not in the model."
+      ),
+      call. = FALSE
+    )
+  }
+  requested_terms <- requested_terms[selected]
+  internal_terms <- internal_terms[selected]
+
+  coefficient_matrix <- object$mfp2_coefficient_matrix
+  if (!is.matrix(coefficient_matrix)) {
+    stop("Internal error: multinomial coefficient matrix is unavailable.",
+         call. = FALSE)
+  }
+  logits <- rownames(coefficient_matrix)
+  covariance <- as.matrix(stats::vcov(object))
+  mult <- stats::qnorm(1 - alpha / 2)
+
+  # Standard error of a per-logit partial predictor: sqrt(diag(X V_q X')), where
+  # V_q is the block of the multinomial covariance for logit `q`, addressed by
+  # the "<logit>:<col>" naming that vcov() uses for the flattened coefficients.
+  se_for_logit <- function(x_trafo, x_ref_trafo, q, include_intercept) {
+    model_columns <- prediction_model_column_names(object, colnames(x_trafo))
+    X <- x_trafo
+    if (!is.null(x_ref_trafo)) {
+      X <- sweep(X, 2, x_ref_trafo, "-")
+    }
+    cov_columns <- paste0(q, ":", model_columns)
+    if (include_intercept && is.null(x_ref_trafo)) {
+      X <- cbind("(Intercept)" = 1, X)
+      cov_columns <- c(paste0(q, ":(Intercept)"), cov_columns)
+    }
+    ind <- match(cov_columns, colnames(covariance))
+    if (anyNA(ind)) {
+      stop(
+        "Cannot compute multinomial SE; covariance matrix lacks column(s): ",
+        paste(cov_columns[is.na(ind)], collapse = ", "),
+        call. = FALSE
+      )
+    }
+    block <- covariance[ind, ind, drop = FALSE]
+    v <- rowSums((X %*% block) * X)
+    v[v < 0] <- 0
+    sqrt(v)
+  }
+
+  lookup <- prediction_term_to_columns(object)
+  res_list <- list()
+
+  for (term_index in seq_along(internal_terms)) {
+    t <- internal_terms[[term_index]]
+    display_term <- requested_terms[[term_index]]
+    term_columns <- lookup[[t]]
+    factor_info <- if (!is.null(object$formula_factor_info)) {
+      object$formula_factor_info[[t]]
+    } else {
+      NULL
+    }
+    block_term <- term_uses_column_mapping(t, term_columns) || !is.null(factor_info)
+
+    x_ref_trafo <- NULL
+
+    if (block_term) {
+      # Grouped/factor terms are predicted as complete design blocks, exactly as
+      # in the scalar path; only the coefficient row and covariance block differ.
+      source_needs_preprocessing <- !is.null(newdata)
+      source_block <- if (!is.null(newdata)) {
+        missing_columns <- setdiff(term_columns, colnames(newdata))
+        if (length(missing_columns) > 0L) {
+          stop(
+            "Prediction data are missing grouped-term column(s): ",
+            paste(missing_columns, collapse = ", "),
+            call. = FALSE
+          )
+        }
+        newdata[, term_columns, drop = FALSE]
+      } else {
+        missing_columns <- setdiff(term_columns, colnames(object$x_original))
+        if (length(missing_columns) > 0L) {
+          stop(
+            "Fitted data do not contain grouped-term column(s): ",
+            paste(missing_columns, collapse = ", "),
+            call. = FALSE
+          )
+        }
+        object$x_original[, term_columns, drop = FALSE]
+      }
+      source_block <- as.matrix(source_block)
+      x_trafo <- as.matrix(prepare_newdata_for_predict(
+        object, source_block, terms = t,
+        apply_pre = source_needs_preprocessing,
+        allow_missing_predictors = TRUE, check_binary = FALSE
+      ))
+      labels <- decode_grouped_term_values(object, term = t, block = source_block)
+      base_frame <- data.frame(
+        variable = labels, variable_pre = labels, source_block,
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+      if (type == "contrasts") {
+        reference_block <- resolve_grouped_reference(
+          object, term = t,
+          reference = if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]],
+          block = source_block
+        )
+        x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
+          object, reference_block, terms = t, apply_pre = TRUE,
+          allow_missing_predictors = TRUE, check_binary = FALSE
+        ))
+      }
+    } else {
+      # Singleton numeric terms: evaluate the FP transformation over the data or
+      # an equidistant grid, on the shifted-but-unscaled fitting scale.
+      if (terms_seq == "equidistant") {
+        if (!is.null(newdata)) {
+          x_range <- range(newdata[, t]) + object$transformations[t, "shift"]
+        } else {
+          x_range <- range(object$x_original[, t])
+        }
+        x_seq <- matrix(
+          seq(x_range[1L], x_range[2L], length.out = nseq),
+          ncol = 1L, dimnames = list(NULL, t)
+        )
+      } else {
+        x_seq <- if (!is.null(newdata)) {
+          matrix(
+            newdata[, t] + object$transformations[t, "shift"],
+            ncol = 1L, dimnames = list(NULL, t)
+          )
+        } else {
+          object$x_original[, t, drop = FALSE]
+        }
+      }
+      x_trafo <- as.matrix(prepare_newdata_for_predict(
+        object, x_seq, terms = t, apply_pre = FALSE,
+        allow_missing_predictors = TRUE
+      ))
+      variable <- as.numeric(x_seq) - object$transformations[t, "shift"]
+      variable_pre <- as.numeric(x_seq)
+      if (prediction_term_is_binary_only(object, t)) {
+        variable <- as.integer(x_seq[, t] == 0)
+        variable_pre <- variable
+      }
+      base_frame <- data.frame(variable = variable, variable_pre = variable_pre)
+
+      if (type == "contrasts") {
+        x_ref <- if (display_term %in% names(ref)) ref[[display_term]] else ref[[t]]
+        if (is.null(x_ref)) {
+          v <- if (!is.null(newdata)) {
+            newdata[, t] + object$transformations[t, "shift"]
+          } else {
+            object$x_original[, t]
+          }
+          x_ref <- if (length(unique(stats::na.omit(v))) == 2L) {
+            min(v, na.rm = TRUE)
+          } else {
+            mean(v, na.rm = TRUE)
+          }
+        } else {
+          x_ref <- x_ref + object$transformations[t, "shift"]
+        }
+        x_ref <- matrix(x_ref, nrow = 1L, ncol = 1L, dimnames = list(NULL, t))
+        x_ref_trafo <- as.matrix(prepare_newdata_for_predict(
+          object, x_ref, terms = t, apply_pre = FALSE, check_binary = FALSE,
+          reset_zero = FALSE, allow_missing_predictors = TRUE
+        ))
+      }
+    }
+
+    # Map the transformed columns to coefficient-matrix columns once; the
+    # mapping is shared across logits.
+    model_columns <- prediction_model_column_names(object, colnames(x_trafo))
+    include_intercept <- add_intercept && type == "terms"
+
+    per_logit <- vector("list", length(logits))
+    for (li in seq_along(logits)) {
+      q <- logits[[li]]
+      term_coef <- coefficient_matrix[q, model_columns]
+      term_coef[is.na(term_coef)] <- 0
+      value <- as.numeric(x_trafo %*% term_coef)
+      if (type == "contrasts") {
+        value <- value - as.numeric(x_ref_trafo %*% term_coef)
+      } else if (include_intercept) {
+        intercept_q <- coefficient_matrix[q, "(Intercept)"]
+        if (!is.na(intercept_q)) value <- value + intercept_q
+      }
+      se <- se_for_logit(x_trafo, x_ref_trafo, q, include_intercept)
+      df_q <- base_frame
+      df_q$logit <- q
+      df_q$value <- value
+      df_q$se <- se
+      df_q$lower <- value - mult * se
+      df_q$upper <- value + mult * se
+      per_logit[[li]] <- df_q
+    }
+    res <- do.call(rbind, per_logit)
+    res$logit <- factor(res$logit, levels = logits)
+    rownames(res) <- NULL
+    res_list[[display_term]] <- res
+  }
+
+  res_list
 }
 
 

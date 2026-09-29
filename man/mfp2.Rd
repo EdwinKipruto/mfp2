@@ -160,10 +160,9 @@ the default \code{df = 4}. Unnamed multi-value vectors are not accepted. In
 \code{mfp2.formula()}, only a single global default is accepted; override it for
 individual terms with \code{fp(x, df = value)}.
 The effective \code{df} may be reduced automatically when a predictor has few
-distinct values: 1 distinct value (constant) is an invalid predictor;
-2--3 distinct values force \code{df = 1}; 4--5 distinct values cap \code{df} at
-\code{min(2, requested)}; 6 or more distinct values use the requested value
-unchanged.}
+distinct values: 2--3 distinct values force \code{df = 1}; 4--5 distinct values
+cap \code{df} at \code{min(2, requested)}; 6 or more distinct values use the
+requested value unchanged.}
 
 \item{center}{Controls centering of final transformed terms. In
 \code{mfp2.default()}, supply either a single unnamed logical value applied to
@@ -643,23 +642,13 @@ Repeated candidate fits use \code{\link[geepack:geese.fit]{geepack::geese.fit()}
 is refitted with \code{\link[geepack:geeglm]{geepack::geeglm()}} and returned as a native \code{geeglm}
 object.
 
-With \code{criterion = "pvalue"}, \code{\link[=gee_family]{gee_family()}} provides two procedures through
-\code{pvalue_method}. The default, \code{"robust_wald"}, selects the power combination
-within each fixed FP degree by quasi-likelihood. Closed comparisons use
-robust sandwich Wald tests. When the selected reduced and full FP bases are
-not nested, \code{mfp2()} fits an augmented GEE containing the reduced basis, the
-common adjustment terms, and the linearly independent directions from the
-full basis; the added directions are tested jointly. These p-values are
-conditional on the selected powers and do not adjust for the FP power
-search.
-
-\code{pvalue_method = "stata"} reproduces the selection calculation used by
+With \code{criterion = "pvalue"}, GEE selection reproduces the calculation used by
 Stata \code{mfp: xtgee}. Candidate powers within a fixed degree are chosen using
 the negative overall robust Wald chi-square. Closed-test statistics are
 differences of those negative-Wald values, referred to the chi-square
 distribution with the MFP model-df difference. The quantity printed as
-\code{Deviance} in this mode is therefore not the response-family deviance and is
-not an additive likelihood deviance. To reproduce Stata's clustered robust
+\code{Deviance} is therefore not the response-family deviance and is not an
+additive likelihood deviance. To reproduce Stata's clustered robust
 covariance convention, the geepack sandwich covariance is multiplied by
 \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. The
 initial visiting order uses robust coefficient-block Wald tests from the

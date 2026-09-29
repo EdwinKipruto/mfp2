@@ -508,121 +508,6 @@ selected_step_is_searched_fp <- function(fit) {
 }
 
 
-#' Robust Wald comparison of selected GEE focal bases
-#'
-#' The reduced and full selected FP bases need not be nested.  The comparison
-#' therefore fits an augmented model containing the reduced basis, all common
-#' adjustment terms, and each linearly independent direction from the full
-#' basis.  The added directions are then tested jointly with the sandwich
-#' covariance matrix.
-#'
-#' @keywords internal
-#' @noRd
-gee_augmented_wald_test <- function(reduced_xi,
-                                    full_xi,
-                                    data_adj,
-                                    y,
-                                    family,
-                                    has_offset,
-                                    fit_args = list()) {
-  nobs <- NROW(y)
-  normalize_block <- function(block) {
-    if (is.null(block) || NCOL(block) == 0L) return(NULL)
-    as.matrix(block)
-  }
-
-  reduced_xi <- normalize_block(reduced_xi)
-  full_xi <- normalize_block(full_xi)
-  data_adj <- normalize_block(data_adj)
-
-  if (is.null(full_xi)) {
-    return(list(statistic = 0, pvalue = 1, df = 0L, dev_diff = 0))
-  }
-
-  # Keep reduced and adjustment directions fixed, then admit only full-basis
-  # columns that increase their numerical rank. This removes shared catzero
-  # columns and exact overlaps such as a power-1 direction already present in
-  # the reduced basis.
-  conditioning <- assemble_design_matrix(
-    blocks = list(reduced_xi, data_adj),
-    nobs = nobs,
-    intercept = TRUE
-  )
-  current <- conditioning
-  current_rank <- qr(current)$rank
-  keep_full <- logical(NCOL(full_xi))
-  for (column in seq_len(NCOL(full_xi))) {
-    candidate <- cbind(current, full_xi[, column, drop = FALSE])
-    candidate_rank <- qr(candidate)$rank
-    if (candidate_rank > current_rank) {
-      keep_full[column] <- TRUE
-      current <- candidate
-      current_rank <- candidate_rank
-    }
-  }
-
-  full_added <- full_xi[, keep_full, drop = FALSE]
-  if (NCOL(full_added) == 0L) {
-    return(list(statistic = 0, pvalue = 1, df = 0L, dev_diff = 0))
-  }
-
-  if (!is.null(reduced_xi)) {
-    colnames(reduced_xi) <- paste0("..gee_reduced_", seq_len(NCOL(reduced_xi)))
-  }
-  colnames(full_added) <- paste0("..gee_added_", seq_len(NCOL(full_added)))
-  if (!is.null(data_adj)) {
-    colnames(data_adj) <- paste0("..gee_adjustment_", seq_len(NCOL(data_adj)))
-  }
-
-  x_fit <- assemble_design_matrix(
-    blocks = list(reduced_xi, full_added, data_adj),
-    nobs = nobs,
-    intercept = TRUE
-  )
-
-  protected <- c(
-    "x", "y", "family", "family_string", "has_offset",
-    "x_has_intercept", "keep_coefficients", "fast"
-  )
-  fit_args[intersect(names(fit_args), protected)] <- NULL
-  model <- do.call(
-    fit_model,
-    c(
-      list(
-        x = x_fit,
-        y = y,
-        family = family,
-        family_string = "gee",
-        has_offset = has_offset,
-        x_has_intercept = TRUE,
-        keep_coefficients = TRUE,
-        fast = TRUE
-      ),
-      fit_args
-    )
-  )
-
-  first_added <- 2L + if (is.null(reduced_xi)) 0L else NCOL(reduced_xi)
-  added_indices <- seq.int(first_added, length.out = NCOL(full_added))
-  gee_robust_wald_test(
-    coefficients = model$coefficients,
-    robust_vcov = model$robust_vcov,
-    indices = added_indices
-  )
-}
-
-#' Extract selected focal and adjustment matrices from a step fit
-#'
-#' @keywords internal
-#' @noRd
-gee_step_design <- function(step_fit, xi) {
-  params <- step_fit$current_adj_params[[xi]]
-  list(
-    data_xi = params[["data_xi", exact = TRUE]],
-    data_adj = params[["data_adj", exact = TRUE]]
-  )
-}
-
 #' Find the best FP function of a given degree for one variable
 #'
 #' Handles FP1 and higher-order FP candidates. For parameter definitions, see
@@ -945,12 +830,11 @@ find_best_fpm_step <- function(x,
   }
 
   # Step 5: Pick the best candidate within this fixed FP degree. Ordinary
-  # likelihood models maximize log-likelihood, while GEE robust-Wald and
-  # information-criterion paths maximize quasi-likelihood Q. Stata-compatible
-  # p-value selection alone minimizes its negative-global-Wald quantity.
+  # likelihood models maximize log-likelihood, while GEE information-criterion
+  # paths maximize quasi-likelihood Q. GEE p-value selection is Stata-compatible
+  # and instead minimizes its negative-global-Wald selection deviance.
   model_best <- if (mfp2_family_is_gee(family_string) &&
-                    identical(tolower(criterion), "pvalue") &&
-                    identical(gee_pvalue_method(family), "stata")) {
+                    identical(tolower(criterion), "pvalue")) {
     as.numeric(which.min(metrics[, "deviance_rs"]))
   } else {
     as.numeric(which.max(metrics[, "logl"]))
@@ -1274,12 +1158,7 @@ select_linear <- function(x,
                           term_to_columns,
                           ...) {
 
-  gee_method <- if (mfp2_family_is_gee(family_string)) {
-    gee_pvalue_method(family)
-  } else {
-    NULL
-  }
-  gee_fit_args <- if (identical(gee_method, "robust_wald")) list(...) else list()
+  is_gee <- mfp2_family_is_gee(family_string)
   # `term_to_columns` is required here because the focal term or any of its
   # adjustment terms may correspond to more than one raw design-matrix column.
   # select_linear() is only used when df = 1 for xi (see find_best_fp_step()'s
@@ -1364,19 +1243,7 @@ select_linear <- function(x,
       dfs_resid = metrics[, "df_resid"],
       n_obs = n_obs
     )
-  } else if (identical(gee_method, "robust_wald")) {
-    null_design <- gee_step_design(fit_null, xi)
-    linear_design <- gee_step_design(fit_linear, xi)
-    stats <- gee_augmented_wald_test(
-      reduced_xi = null_design$data_xi,
-      full_xi = linear_design$data_xi,
-      data_adj = linear_design$data_adj,
-      y = y,
-      family = family,
-      has_offset = has_offset,
-      fit_args = gee_fit_args
-    )
-  } else if (mfp2_family_is_gee(family_string)) {
+  } else if (is_gee) {
     stats <- calculate_deviance_test(
       deviances = metrics[, "deviance_rs"],
       dfs = metrics[, "df"]
@@ -1431,7 +1298,7 @@ select_linear <- function(x,
     model_best = model_best,
     pvalue = pvalue,
     statistic = statistic,
-    gee_pvalue_method = gee_method,
+    is_gee = is_gee,
     zero = zero[xi],
     catzero = ifelse(!is.null(catzero[[xi]]), TRUE, FALSE),
     spike = spike[xi],
@@ -1511,7 +1378,7 @@ select_linear <- function(x,
 #'   \code{prev_adj_params} in \code{find_best_fp_step()}).
 #' @references
 #' Royston, P. and Sauerbrei, W., 2008. \emph{Multivariable Model - Building:
-#' A Pragmatic Approach to Regression Analysis based on Fractional Polynomials
+#' A Pragmatic Approach to Regression Anaylsis based on Fractional Polynomials
 #' for Modelling Continuous Variables. John Wiley & Sons.}
 #'
 #' @seealso
@@ -1549,12 +1416,7 @@ select_ra2 <- function(x,
                        term_to_columns,
                        ...) {
 
-  gee_method <- if (mfp2_family_is_gee(family_string)) {
-    gee_pvalue_method(family)
-  } else {
-    NULL
-  }
-  gee_fit_args <- if (identical(gee_method, "robust_wald")) list(...) else list()
+  is_gee <- mfp2_family_is_gee(family_string)
 
   # select_ra2() implements the RA2 closed-test function-selection procedure
   # (Royston & Sauerbrei 2008, Ch. 4 & 6) for a single continuous variable xi
@@ -1582,21 +1444,7 @@ select_ra2 <- function(x,
         n_obs = n_obs
       )
     }
-  } else if (identical(gee_method, "robust_wald")) {
-    calculate_test <- function(metrics, n_obs, reduced_fit, full_fit) {
-      reduced_design <- gee_step_design(reduced_fit, xi)
-      full_design <- gee_step_design(full_fit, xi)
-      gee_augmented_wald_test(
-        reduced_xi = reduced_design$data_xi,
-        full_xi = full_design$data_xi,
-        data_adj = full_design$data_adj,
-        y = y,
-        family = family,
-        has_offset = has_offset,
-        fit_args = gee_fit_args
-      )
-    }
-  } else if (mfp2_family_is_gee(family_string)) {
+  } else if (is_gee) {
     calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_deviance_test(
         deviances = metrics[, "deviance_rs", drop = TRUE],
@@ -1637,7 +1485,7 @@ select_ra2 <- function(x,
     model_best = NULL,
     statistic = NULL,
     pvalue = NULL,
-    gee_pvalue_method = gee_method,
+    is_gee = is_gee,
     spike = spike[xi],
     current_adj_params = NULL,
     transform_cache = NULL
@@ -1937,12 +1785,7 @@ select_ra2_acd <- function(x,
                            term_to_columns,
                            ...) {
 
-  gee_method <- if (mfp2_family_is_gee(family_string)) {
-    gee_pvalue_method(family)
-  } else {
-    NULL
-  }
-  gee_fit_args <- if (identical(gee_method, "robust_wald")) list(...) else list()
+  is_gee <- mfp2_family_is_gee(family_string)
 
   # This implements the FSPA (function-selection procedure for ACD) 5-test
   # closed procedure for the 6 ACD sub-models (M1-M6), documented in detail in
@@ -1964,21 +1807,7 @@ select_ra2_acd <- function(x,
         n_obs = n_obs
       )
     }
-  } else if (identical(gee_method, "robust_wald")) {
-    calculate_test <- function(metrics, n_obs, reduced_fit, full_fit) {
-      reduced_design <- gee_step_design(reduced_fit, xi)
-      full_design <- gee_step_design(full_fit, xi)
-      gee_augmented_wald_test(
-        reduced_xi = reduced_design$data_xi,
-        full_xi = full_design$data_xi,
-        data_adj = full_design$data_adj,
-        y = y,
-        family = family,
-        has_offset = has_offset,
-        fit_args = gee_fit_args
-      )
-    }
-  } else if (mfp2_family_is_gee(family_string)) {
+  } else if (is_gee) {
     calculate_test <- function(metrics, n_obs, reduced_fit = NULL, full_fit = NULL) {
       calculate_deviance_test(
         deviances = metrics[, "deviance_rs", drop = TRUE],
@@ -2017,7 +1846,7 @@ select_ra2_acd <- function(x,
     model_best = NULL,
     statistic = NULL,
     pvalue = NULL,
-    gee_pvalue_method = gee_method,
+    is_gee = is_gee,
     spike = spike[xi],
     current_adj_params = NULL,
     transform_cache = NULL
@@ -2430,11 +2259,7 @@ select_force_max_fp <- function(x,
     # one row rather than recycling an artificial NA comparison row.
     statistic = if (tolower(criterion) == "pvalue") numeric(0) else NA_real_,
     pvalue = if (tolower(criterion) == "pvalue") numeric(0) else NA_real_,
-    gee_pvalue_method = if (mfp2_family_is_gee(family_string)) {
-      gee_pvalue_method(family)
-    } else {
-      NULL
-    },
+    is_gee = mfp2_family_is_gee(family_string),
     spike = spike[xi],
     current_adj_params = fit_max$current_adj_params,
     transform_cache = precomputed_adj$transform_cache
@@ -2570,11 +2395,7 @@ select_ic <- function(x,
     model_best = NULL,
     statistic = NA,
     pvalue = NA,
-    gee_pvalue_method = if (mfp2_family_is_gee(family_string)) {
-      gee_pvalue_method(family)
-    } else {
-      NULL
-    },
+    is_gee = mfp2_family_is_gee(family_string),
     spike = spike[xi],
     current_adj_params = NULL,
     transform_cache = NULL
@@ -2811,11 +2632,7 @@ select_ic_acd <- function(x,
     model_best = NULL,
     statistic = NA,
     pvalue = NA,
-    gee_pvalue_method = if (mfp2_family_is_gee(family_string)) {
-      gee_pvalue_method(family)
-    } else {
-      NULL
-    },
+    is_gee = mfp2_family_is_gee(family_string),
     spike = spike[xi],
     current_adj_params = NULL,
     transform_cache = NULL

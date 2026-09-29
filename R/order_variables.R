@@ -494,9 +494,9 @@ order_variables_by_significance <- function(xorder,
   )
 
   # Stata's mfp ordering pass fits the full linear model once and applies a
-  # coefficient-block `test` to each term. Use the same robust sandwich Wald
-  # tests for both GEE p-value methods. This is also the natural ordering rule
-  # for the default robust-Wald procedure and avoids unnecessary reduced fits.
+  # coefficient-block `test` to each term. GEE ordering uses robust sandwich
+  # Wald tests from that single full fit, matching Stata and avoiding
+  # unnecessary reduced fits.
   if (mfp2_family_is_gee(family_string)) {
     ordering_vcov <- full_reference$robust_vcov
     coefficient_offset <- as.integer(!isTRUE(x_has_intercept))

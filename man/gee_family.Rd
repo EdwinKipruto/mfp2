@@ -7,8 +7,7 @@
 gee_family(
   family = stats::gaussian(),
   corstr = c("exchangeable", "independence", "ar1"),
-  std.err = c("san.se", "jack", "j1s", "fij"),
-  pvalue_method = c("robust_wald", "stata")
+  std.err = c("san.se", "jack", "j1s", "fij")
 )
 }
 \arguments{
@@ -23,13 +22,6 @@ describing the marginal mean and variance. Supported families are
 \item{std.err}{Type of standard error reported by the retained fit, one of
 \code{"san.se"} (the robust sandwich estimator, default), \code{"jack"}, \code{"j1s"}, or
 \code{"fij"}.}
-
-\item{pvalue_method}{GEE p-value procedure. \code{"robust_wald"} (default) uses
-robust sandwich Wald tests; when selected FP bases are non-nested, an
-augmented model containing both bases is fitted and the additional basis
-directions are tested jointly. \code{"stata"} reproduces Stata \code{mfp: xtgee}
-by treating the negative overall robust Wald chi-square as its selection
-"deviance" and testing differences of those values.}
 }
 \value{
 An \code{mfp2_gee_family} specification.
@@ -47,15 +39,9 @@ repeated-measure ordering through the optional \code{waves} argument. These are
 aligned per observation and therefore live outside \code{gee_family()}.
 
 All three \code{\link[=mfp2]{mfp2()}} selection criteria are available. With
-\code{criterion = "pvalue"}, \code{pvalue_method = "robust_wald"} chooses the power
-combination within each fixed FP degree by quasi-likelihood, then uses
-sandwich Wald tests for the closed comparisons. For comparisons between
-selected non-nested FP bases, it fits an augmented GEE containing both bases
-and tests the additional estimable directions. This is conditional on the
-selected powers and does not account for power-search multiplicity.
-\code{pvalue_method = "stata"} instead reproduces
-Stata \code{mfp: xtgee}: the selection "deviance" is the negative overall robust
-Wald chi-square and differences are referred to a chi-square distribution.
+\code{criterion = "pvalue"}, GEE selection reproduces Stata \code{mfp: xtgee}: the
+selection "deviance" is the negative overall robust Wald chi-square and
+differences are referred to a chi-square distribution.
 Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
 \eqn{K} is the number of independent clusters. That compatibility
 calculation is not an additive likelihood-deviance test.

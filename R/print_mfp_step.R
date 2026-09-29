@@ -127,22 +127,8 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
 print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
 
   fpmax <- rownames(fit$metrics)[1]
-  robust_gee <- identical(fit$gee_pvalue_method, "robust_wald")
-  
+
   if (spike) {
-    if (robust_gee) {
-      return(cbind(
-        "Family deviance" = sprintf(
-          "%.3f", fit$spike_metrics$metrics[, "deviance_rs"]
-        ),
-        "Versus          " = c(
-          NA, rep(rownames(fit$spike_metrics$metrics)[1],
-                  nrow(fit$spike_metrics$metrics) - 1L)
-        ),
-        "Robust Wald" = c(NA, sprintf("%.3f", fit$spike_metrics$statistic)),
-        "P-value" = c(NA, sprintf("%.3f", fit$spike_metrics$pvalue))
-      ))
-    }
     mat <- cbind(
       "Deviance   " = sprintf("%.3f", fit$spike_metrics$metrics[, "deviance_rs"]),
       #"DF" = fit$spike_metrics$metrics[, "df"],
@@ -157,15 +143,6 @@ print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
       "P-value" = c(NA, sprintf("%.3f", fit$spike_metrics$pvalue))
     )
     return(mat)
-  }
-
-  if (robust_gee) {
-    return(cbind(
-      "Family deviance" = sprintf("%.3f", fit$metrics[, "deviance_rs"]),
-      "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1L)),
-      "Robust Wald" = c(NA, sprintf("%.3f", fit$statistic)),
-      "P-value" = c(NA, sprintf("%.3f", fit$pvalue))
-    ))
   }
 
   # p-value specific matrix for printing
@@ -240,7 +217,7 @@ print_mfp_ic_step <- function(xi, fit, criterion, spike = FALSE) {
 #' @noRd
 mfp_progress_criterion_label <- function(fit, criterion) {
   label <- toupper(criterion)
-  if (!is.null(fit$gee_pvalue_method) && label %in% c("AIC", "BIC")) {
+  if (isTRUE(fit$is_gee) && label %in% c("AIC", "BIC")) {
     label <- paste0("Q", label)
   }
   label

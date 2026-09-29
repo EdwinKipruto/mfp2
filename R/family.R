@@ -205,12 +205,6 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' @param std.err Type of standard error reported by the retained fit, one of
 #'   `"san.se"` (the robust sandwich estimator, default), `"jack"`, `"j1s"`, or
 #'   `"fij"`.
-#' @param pvalue_method GEE p-value procedure. `"robust_wald"` (default) uses
-#'   robust sandwich Wald tests; when selected FP bases are non-nested, an
-#'   augmented model containing both bases is fitted and the additional basis
-#'   directions are tested jointly. `"stata"` reproduces Stata `mfp: xtgee`
-#'   by treating the negative overall robust Wald chi-square as its selection
-#'   "deviance" and testing differences of those values.
 #'
 #' @details
 #' The cluster identifier is supplied through the top-level `id` argument of
@@ -219,15 +213,9 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' aligned per observation and therefore live outside `gee_family()`.
 #'
 #' All three [mfp2()] selection criteria are available. With
-#' `criterion = "pvalue"`, `pvalue_method = "robust_wald"` chooses the power
-#' combination within each fixed FP degree by quasi-likelihood, then uses
-#' sandwich Wald tests for the closed comparisons. For comparisons between
-#' selected non-nested FP bases, it fits an augmented GEE containing both bases
-#' and tests the additional estimable directions. This is conditional on the
-#' selected powers and does not account for power-search multiplicity.
-#' `pvalue_method = "stata"` instead reproduces
-#' Stata `mfp: xtgee`: the selection "deviance" is the negative overall robust
-#' Wald chi-square and differences are referred to a chi-square distribution.
+#' `criterion = "pvalue"`, GEE selection reproduces Stata `mfp: xtgee`: the
+#' selection "deviance" is the negative overall robust Wald chi-square and
+#' differences are referred to a chi-square distribution.
 #' Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
 #' \eqn{K} is the number of independent clusters. That compatibility
 #' calculation is not an additive likelihood-deviance test.
@@ -250,8 +238,7 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' @export
 gee_family <- function(family = stats::gaussian(),
                        corstr = c("exchangeable", "independence", "ar1"),
-                       std.err = c("san.se", "jack", "j1s", "fij"),
-                       pvalue_method = c("robust_wald", "stata")) {
+                       std.err = c("san.se", "jack", "j1s", "fij")) {
   # Temporary geepack compatibility boundary: geeglm() currently fails to
   # remove an explicitly supplied scale.value from its model.frame() call. The
   # scalar is then compared with observation-length variables and raises
@@ -287,7 +274,6 @@ gee_family <- function(family = stats::gaussian(),
 
   corstr <- match.arg(corstr)
   std.err <- match.arg(std.err)
-  pvalue_method <- match.arg(pvalue_method)
 
   # Keep the complete validation contract in place even while these values are
   # internally fixed. When geepack supports scale.value reliably, promoting
@@ -310,7 +296,6 @@ gee_family <- function(family = stats::gaussian(),
       std.err = std.err,
       scale.fix = scale.fix,
       scale.value = unname(scale.value),
-      pvalue_method = pvalue_method,
       prepared = NULL
     ),
     class = c("mfp2_gee_family", "mfp2_family")

@@ -1041,11 +1041,7 @@ select_saz_ic <- function(x,
     model_best = model_best,
     statistic = NA,
     pvalue = NA,
-    gee_pvalue_method = if (mfp2_family_is_gee(family_string)) {
-      gee_pvalue_method(family)
-    } else {
-      NULL
-    },
+    is_gee = mfp2_family_is_gee(family_string),
     zero = zero[xi],
     catzero = TRUE,
     spike = TRUE,
@@ -1422,8 +1418,7 @@ compute_saz_stage2_decision <- function(metrics,
                                         alpha,
                                         n_obs,
                                         ftest = FALSE,
-                                        family_string = NULL,
-                                        gee_wald_tests = NULL) {
+                                        family_string = NULL) {
   criterion <- tolower(criterion)
 
   if (!identical(criterion, "pvalue")) {
@@ -1463,9 +1458,6 @@ compute_saz_stage2_decision <- function(metrics,
         ),
         n_obs = n_obs
       )
-    } else if (!is.null(gee_wald_tests)) {
-      stats1 <- gee_wald_tests[[1L]]
-      stats2 <- gee_wald_tests[[2L]]
     } else if (mfp2_family_is_gee(family_string)) {
       # Stata compatibility uses differences of negative overall robust Wald
       # chi-square values stored in deviance_rs.
@@ -1664,55 +1656,12 @@ evaluate_saz_stage2 <- function(fit1,
     power_best = power_best
   )
 
-  gee_wald_tests <- NULL
-  if (mfp2_family_is_gee(family_string) &&
-      identical(gee_pvalue_method(family), "robust_wald")) {
-    data_xi <- models$data_xi
-    data_adj <- models$adjustment_matrix
-    full_design <- assemble_design_matrix(
-      blocks = list(data_xi, data_adj),
-      nobs = NROW(y),
-      intercept = TRUE
-    )
-    full_fit <- fit_model(
-      x = full_design,
-      y = y,
-      family = family,
-      family_string = family_string,
-      fitter = fitter,
-      weights = weights,
-      offset = offset,
-      method = method,
-      strata = strata,
-      control = control,
-      rownames = rownames,
-      nocenter = nocenter,
-      has_offset = has_offset,
-      x_has_intercept = TRUE,
-      keep_coefficients = TRUE,
-      fast = TRUE
-    )
-    xi_indices <- 1L + seq_len(NCOL(data_xi))
-    binary_position <- match("catzero", colnames(data_xi))
-    binary_index <- 1L + binary_position
-    continuous_indices <- xi_indices[-binary_position]
-    gee_wald_tests <- list(
-      gee_robust_wald_test(
-        full_fit$coefficients, full_fit$robust_vcov, binary_index
-      ),
-      gee_robust_wald_test(
-        full_fit$coefficients, full_fit$robust_vcov, continuous_indices
-      )
-    )
-  }
-
   # Step 3: Decide whether both components, continuous-only, or binary-only
   # is needed, and record that decision for xi (all other variables' entries
   # in spike_decision are left untouched).
   decision <- compute_saz_stage2_decision(
     metrics, criterion, alpha, n_obs, ftest,
-    family_string = family_string,
-    gee_wald_tests = gee_wald_tests
+    family_string = family_string
   )
   spike_decision[xi] <- decision$decision
 

@@ -44,17 +44,6 @@ mfp2_family_is_gee <- function(family_string) {
   identical(family_string, "gee")
 }
 
-#' Resolve the configured GEE p-value method
-#'
-#' @keywords internal
-#' @noRd
-gee_pvalue_method <- function(family) {
-  method <- family$prepared$pvalue_method
-  if (is.null(method)) method <- family$pvalue_method
-  if (is.null(method)) method <- "robust_wald"
-  match.arg(method, c("robust_wald", "stata"))
-}
-
 #' Robust Wald test for a coefficient block
 #'
 #' Uses the estimable positive-eigenvalue subspace of the sandwich covariance,
@@ -415,9 +404,6 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
   }
 
   response_family <- family$response_family
-  pvalue_method <- family$pvalue_method
-  if (is.null(pvalue_method)) pvalue_method <- "robust_wald"
-  pvalue_method <- match.arg(pvalue_method, c("robust_wald", "stata"))
   inner_string <- response_family$family
   if (!inner_string %in% mfp2_gee_supported_families()) {
     stop(
@@ -574,7 +560,6 @@ prepare_gee_family <- function(family, y, id, waves = NULL, weights = NULL,
     std.err         = family$std.err,
     scale.fix       = family$scale.fix,
     scale.value     = family$scale.value,
-    pvalue_method   = pvalue_method,
     control         = normalize_gee_control(control),
     nobs            = nobs
   )
@@ -750,7 +735,6 @@ fit_gee <- function(x,
       family_deviance = fam_dev,
       selection_deviance = selection_deviance,
       robust_vcov = robust_vcov,
-      gee_pvalue_method = prepared$pvalue_method,
       coefficients = beta,
       rank = unname(rank),
       df = unname(rank),
@@ -925,7 +909,6 @@ fit_gee <- function(x,
     family_deviance = fam_dev,
     selection_deviance = selection_deviance,
     robust_vcov = robust_vcov,
-    gee_pvalue_method = prepared$pvalue_method,
     coefficients = beta,
     rank = unname(rank),
     df = unname(rank),
@@ -1039,17 +1022,14 @@ calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
   # GEE QICu counts only mean-model parameters; there are no nuisance df.
   df_for_resid <- df - max(0, obj$df - regression_df)
 
-  # In robust-Wald mode retain the GLM family deviance for descriptive output.
-  # Stata compatibility mode instead exposes Stata mfp's selection quantity:
-  # negative overall robust Wald chi-square (not xtgee's family deviance).
-  method <- obj$gee_pvalue_method
-  if (is.null(method)) method <- "robust_wald"
-  fam_dev <- obj$family_deviance
+  # GEE p-value selection exposes Stata mfp's selection quantity: the negative
+  # overall robust Wald chi-square (not xtgee's family deviance). Fall back to
+  # -2Q only when that quantity is unavailable (e.g. a non-converged candidate).
   stata_dev <- obj$selection_deviance
-  dev_rs <- if (identical(method, "stata")) {
-    if (!is.null(stata_dev) && is.finite(stata_dev)) stata_dev else -2 * quasi
+  dev_rs <- if (!is.null(stata_dev) && is.finite(stata_dev)) {
+    stata_dev
   } else {
-    if (!is.null(fam_dev) && is.finite(fam_dev)) fam_dev else -2 * quasi
+    -2 * quasi
   }
 
   c(

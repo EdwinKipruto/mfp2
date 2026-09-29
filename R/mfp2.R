@@ -121,23 +121,13 @@
 #' is refitted with [geepack::geeglm()] and returned as a native `geeglm`
 #' object.
 #'
-#' With `criterion = "pvalue"`, [gee_family()] provides two procedures through
-#' `pvalue_method`. The default, `"robust_wald"`, selects the power combination
-#' within each fixed FP degree by quasi-likelihood. Closed comparisons use
-#' robust sandwich Wald tests. When the selected reduced and full FP bases are
-#' not nested, `mfp2()` fits an augmented GEE containing the reduced basis, the
-#' common adjustment terms, and the linearly independent directions from the
-#' full basis; the added directions are tested jointly. These p-values are
-#' conditional on the selected powers and do not adjust for the FP power
-#' search.
-#'
-#' `pvalue_method = "stata"` reproduces the selection calculation used by
+#' With `criterion = "pvalue"`, GEE selection reproduces the calculation used by
 #' Stata `mfp: xtgee`. Candidate powers within a fixed degree are chosen using
 #' the negative overall robust Wald chi-square. Closed-test statistics are
 #' differences of those negative-Wald values, referred to the chi-square
 #' distribution with the MFP model-df difference. The quantity printed as
-#' `Deviance` in this mode is therefore not the response-family deviance and is
-#' not an additive likelihood deviance. To reproduce Stata's clustered robust
+#' `Deviance` is therefore not the response-family deviance and is not an
+#' additive likelihood deviance. To reproduce Stata's clustered robust
 #' covariance convention, the geepack sandwich covariance is multiplied by
 #' \eqn{K/(K-1)}, where \eqn{K} is the number of independent clusters. The
 #' initial visiting order uses robust coefficient-block Wald tests from the
@@ -517,10 +507,9 @@
 #'   `mfp2.formula()`, only a single global default is accepted; override it for
 #'   individual terms with `fp(x, df = value)`.
 #'   The effective `df` may be reduced automatically when a predictor has few
-#'   distinct values: 1 distinct value (constant) is an invalid predictor;
-#'   2--3 distinct values force `df = 1`; 4--5 distinct values cap `df` at
-#'   `min(2, requested)`; 6 or more distinct values use the requested value
-#'   unchanged.
+#'   distinct values: 2--3 distinct values force `df = 1`; 4--5 distinct values
+#'   cap `df` at `min(2, requested)`; 6 or more distinct values use the
+#'   requested value unchanged.
 #' @param center Controls centering of final transformed terms. In
 #'   `mfp2.default()`, supply either a single unnamed logical value applied to
 #'   every predictor or a named logical vector for one or more columns of `x`.
@@ -4302,7 +4291,7 @@ coef.mfp2 <- function(object, ...) {
 #' interval with the conventional rounded multiplier 1.96, whereas `confint()`
 #' uses the exact normal quantile and honours `level`), and they apply uniformly
 #' to every scalar-coefficient family. They are used in preference to the default
-#'  profile-likelihood intervals of [stats::confint()] because those refit
+#' profile-likelihood intervals of [stats::confint.glm()] because those refit
 #' the model on `mfp2`'s internally transformed design and fail; for GEE
 #' (`gee_family()`) the covariance is the robust sandwich estimator, which is
 #' the correct basis for GEE inference (and `geepack` supplies no `confint`

@@ -10,7 +10,6 @@ test_that("gee_family() accepts supported families, links, corstr, std.err", {
   expect_identical(f$std.err, "san.se")
   expect_identical(f$scale.fix, FALSE)
   expect_identical(f$scale.value, 1)
-  expect_identical(f$pvalue_method, "robust_wald")
   expect_false(any(c("scale.fix", "scale.value") %in% names(formals(gee_family))))
 
   expect_identical(gee_family(binomial())$response_family$family, "binomial")
@@ -19,10 +18,6 @@ test_that("gee_family() accepts supported families, links, corstr, std.err", {
   expect_identical(gee_family(corstr = "ar1")$corstr, "ar1")
   expect_identical(gee_family(corstr = "exchangeable")$corstr, "exchangeable")
   expect_identical(gee_family(std.err = "jack")$std.err, "jack")
-  expect_identical(
-    gee_family(pvalue_method = "stata")$pvalue_method,
-    "stata"
-  )
 })
 
 test_that("gee_family() rejects invalid settings", {
@@ -30,7 +25,6 @@ test_that("gee_family() rejects invalid settings", {
   expect_error(gee_family("negbin"), "must be one of")
   expect_error(gee_family(corstr = "unstructured"))
   expect_error(gee_family(std.err = "bogus"))
-  expect_error(gee_family(pvalue_method = "bogus"))
 })
 
 test_that("mfp2() requires id for GEE and rejects it elsewhere", {

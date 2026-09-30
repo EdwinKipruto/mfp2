@@ -93,13 +93,11 @@ in either sorted, or ACD specific order and the columns of the matrix
 returned by this function will always align with the powers used
 throughout this package.
 
-Binary variables are not transformed, unless \code{check_binary} is set to
-\code{FALSE}. This is usually not necessary, the only special case to set it to
-\code{FALSE} is when a single value is to be transformed during prediction (e.g.
-to transform a reference value). When this is done, binary variables are
-still returned unchanged, but a single value from a continuous variable will
-be transformed as desired by the fitted transformations. For model fit,
-\code{check_binary} should always be at its default value.
+Binary variables are not transformed unless \code{check_binary = FALSE}. With
+\code{check_binary = FALSE}, the requested FP power is applied even when \code{x} has
+one or two distinct values; use the fitted shift and scale parameters when
+transforming prediction values. For model fit, \code{check_binary} should always
+be at its default value.
 }
 \section{Data processing}{
 

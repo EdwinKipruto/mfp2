@@ -119,7 +119,7 @@ fit_finegray <- mfp2(
 }
 }
 \references{
-Zhou B, Fine J, Laird G (2011). Competing risks regression for stratified
+Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression for stratified
 data. \emph{Biometrics}, \strong{67}(2), 661--670.
 \doi{10.1111/j.1541-0420.2010.01493.x}
 }

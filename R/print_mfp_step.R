@@ -50,15 +50,19 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
 
   # Stage 1 (p-value SAZ) or the only step (ordinary and joint-IC selection).
   if (!stage2) {
-    cat(sprintf(
-      "\nVariable: %s (keep = %s, spike = %s)\n", 
-      xi, fit$keep, fit$spike
-    ))
+    active_flags <- c(
+      if (isTRUE(fit$keep)) "keep = TRUE",
+      if (isTRUE(fit$spike)) "spike = TRUE",
+      if (isTRUE(fit$acd)) "acd = TRUE"
+    )
+    flag_suffix <- if (length(active_flags)) {
+      sprintf(" (%s)", paste(active_flags, collapse = ", "))
+    } else {
+      ""
+    }
+    cat(sprintf("\nVariable: %s%s\n", xi, flag_suffix))
     if (joint_saz_ic) {
-      cat(sprintf(
-        "Joint Spike at Zero %s Selection:\n",
-        mfp_progress_criterion_label(fit, criterion)
-      ))
+      cat("Joint Spike at Zero Selection:\n")
     } else if (fit$spike) {
       cat("Stage 1 of Spike at Zero Algorithm:\n")
     }
@@ -126,38 +130,84 @@ print_mfp_step <- function(xi, criterion, fit, stage2 = FALSE) {
 #' @noRd
 print_mfp_pvalue_step <- function(xi, fit, criterion, spike = FALSE) {
 
-  fpmax <- rownames(fit$metrics)[1]
+  is_gee <- isTRUE(fit$is_gee)
+
+  # Format to 3 decimals, keeping NA as a true NA so the caller's
+  # `na.print = "."` renders a dot rather than the string "NA".
+  fmt3 <- function(x) {
+    x <- unname(x)
+    ifelse(is.na(x), NA_character_, sprintf("%.3f", x))
+  }
+
+  # GEE p-value selection scores models by the negative overall robust Wald
+  # chi-square, stored internally as deviance_rs = -W. That negative sign is an
+  # internal convention for the shared "smaller-is-better" selection machinery;
+  # for display we report the Wald chi-square W itself. A genuine -W is always
+  # <= 0, so a candidate with deviance_rs > 0 (a divergent fit that fell back to
+  # a losing sentinel) has no valid Wald and prints as NA (".").
+  gee_wald <- function(dev) {
+    ifelse(is.finite(dev) & dev <= 0, -dev, NA_real_)
+  }
 
   if (spike) {
+    m <- fit$spike_metrics$metrics
+    fpmax_row <- rownames(m)[1]
+    dev <- m[, "deviance_rs"]
+
+    if (is_gee) {
+      wald <- gee_wald(dev)
+      # Statistic = W(full) - W(reduced); NA propagates when either lacks a Wald.
+      wdiff <- c(wald[1] - wald[2], wald[1] - wald[3])
+      mat <- cbind(
+        "Wald chi-sq" = fmt3(wald),
+        "Versus          " = c(NA, rep(fpmax_row, nrow(m) - 1)),
+        "Wald diff." = c(NA, fmt3(wdiff)),
+        "P-value" = c(NA, sprintf("%.3f", fit$spike_metrics$pvalue))
+      )
+      return(mat)
+    }
+
     mat <- cbind(
-      "Deviance   " = sprintf("%.3f", fit$spike_metrics$metrics[, "deviance_rs"]),
-      #"DF" = fit$spike_metrics$metrics[, "df"],
-      "Versus          " = c(NA, rep(rownames(fit$spike_metrics$metrics)[1], nrow(fit$spike_metrics$metrics) - 1)), 
-      "Deviance diff." = c(NA, sprintf("%.3f",
-                                       fit$spike_metrics$metrics[2, "deviance_rs"] - 
-                                         fit$spike_metrics$metrics[1, "deviance_rs"]),
-                           sprintf("%.3f",
-                                   fit$spike_metrics$metrics[3, "deviance_rs"] - 
-                                     fit$spike_metrics$metrics[1, "deviance_rs"]))
-      , 
+      "Deviance   " = sprintf("%.3f", dev),
+      "Versus          " = c(NA, rep(fpmax_row, nrow(m) - 1)),
+      "Deviance diff." = c(NA, sprintf("%.3f", dev[2] - dev[1]),
+                           sprintf("%.3f", dev[3] - dev[1])),
       "P-value" = c(NA, sprintf("%.3f", fit$spike_metrics$pvalue))
     )
     return(mat)
   }
 
-  # p-value specific matrix for printing
+  fpmax <- rownames(fit$metrics)[1]
+  dev <- fit$metrics[, "deviance_rs"]
+
+  if (is_gee) {
+    wald <- gee_wald(dev)
+    # Statistic for each reduced row vs fpmax = W(full) - W(reduced), matching
+    # the sign convention of the deviance-difference test; NA propagates when
+    # either model lacks a valid Wald.
+    wdiff <- if (identical(fpmax, "null")) {
+      wald[-1] - wald[1]
+    } else {
+      wald[1] - wald[-1]
+    }
+    mat <- cbind(
+      "Wald chi-sq" = fmt3(wald),
+      "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1)),
+      "Wald diff." = c(NA, fmt3(wdiff)),
+      "P-value" = c(NA, sprintf("%.3f", fit$pvalue))
+    )
+    return(mat)
+  }
+
+  # p-value specific matrix for printing (likelihood families)
   mat <- cbind(
-    "Deviance   " = sprintf("%.3f", fit$metrics[, "deviance_rs"]),
-    "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1)), 
+    "Deviance   " = sprintf("%.3f", dev),
+    "Versus          " = c(NA, rep(fpmax, nrow(fit$metrics) - 1)),
     "Deviance diff." = c(NA, switch(fpmax,
                                     "null" = sprintf("%.3f",
-                                                     fit$metrics[fpmax, "deviance_rs"]-
-                                                     fit$metrics[-1, "deviance_rs"] 
-                                                       ),
+                                                     dev[fpmax] - dev[-1]),
                                     sprintf("%.3f",
-                                            fit$metrics[-1, "deviance_rs"] - 
-                                              fit$metrics[fpmax, "deviance_rs"]))
-                                    ), 
+                                            dev[-1] - dev[fpmax]))),
     "P-value" = c(NA, sprintf("%.3f", fit$pvalue))
   )
   return(mat)

@@ -552,6 +552,9 @@ selected_step_is_searched_fp <- function(fit) {
 #'
 #' @inheritParams find_best_fp_step
 #' @param degree FP degree `m`, equal to the number of transformed power terms.
+#' @param linear_fit An already fitted linear step for the same focal variable
+#'   and adjustment set, if available. Its power-1 metrics are reused with the
+#'   extra FP selection degree of freedom.
 #' @param ... Parameters passed to `fit_model()`.
 #' @keywords internal
 #' @noRd
@@ -576,6 +579,7 @@ find_best_fpm_step <- function(x,
                                n_obs,
                                term_to_columns,
                                criterion = "pvalue",
+                               linear_fit = NULL,
                                ...
 ) {
   # The conceptual-term lookup is normalized once in fit_mfp() and passed
@@ -736,6 +740,18 @@ find_best_fpm_step <- function(x,
     ncol = length(metric_names),
     dimnames = list(NULL, metric_names)
   )
+  # Power 1 has the same mean model as the fixed linear rung. Keep its
+  # candidate row (and its FP1 selection penalty), but reuse the fitted model.
+  linear_candidate <- integer(0)
+  if (degree == 1L && !is.null(linear_fit)) {
+    power_rows <- x_transformed$powers_fp
+    if (isTRUE(acdx[[xi]])) {
+      linear_candidate <- which(is.na(power_rows[, 1L]) &
+                                  power_rows[, 2L] == 1)
+    } else {
+      linear_candidate <- which(power_rows[, 1L] == 1)
+    }
+  }
   # All candidates in this batch have the same design width and class count.
   # Build nnet's mask and fixed offset-weight layout once rather than once per
   # transformed FP candidate.
@@ -748,8 +764,18 @@ find_best_fpm_step <- function(x,
   } else {
     NULL
   }
+  # Correlation is re-estimated for every distinct GEE candidate. Carry only
+  # its last successful one-parameter estimate as the next candidate's start;
+  # the cache is local to this power search and cannot cross focal variables.
+  gee_alpha_start <- NULL
 
   for (i in seq_len(n_candidates)) {
+    if (i %in% linear_candidate) {
+      metrics[i, ] <- mfp2_shift_selection_df(
+        linear_fit$metrics[1L, ], 1, n_obs
+      )
+      next
+    }
     if (use_compact_basis) {
       # Copy only the degree-sized column map. The n-length transformed values
       # remain in the shared FP/ACD basis and are copied directly into the
@@ -770,6 +796,9 @@ find_best_fpm_step <- function(x,
         x_has_intercept = x_has_intercept,
         keep_coefficients = FALSE,
         multinomial_optimizer = multinomial_optimizer,
+        gee_alpha_start = gee_alpha_start,
+        gee_selection_criterion = criterion,
+        gee_allow_failed_candidate = mfp2_family_is_gee(family_string),
         ...
       )
 
@@ -788,6 +817,9 @@ find_best_fpm_step <- function(x,
           x_has_intercept = x_has_intercept,
           keep_coefficients = FALSE,
           multinomial_optimizer = multinomial_optimizer,
+          gee_alpha_start = gee_alpha_start,
+          gee_selection_criterion = criterion,
+          gee_allow_failed_candidate = mfp2_family_is_gee(family_string),
           ...
         )
       } else {
@@ -816,9 +848,23 @@ find_best_fpm_step <- function(x,
             !is.null(multinomial_optimizer) &&
             ncol(x_fit) == multinomial_optimizer$p
           ) multinomial_optimizer else NULL,
+          gee_alpha_start = gee_alpha_start,
+          gee_selection_criterion = criterion,
+          gee_allow_failed_candidate = mfp2_family_is_gee(family_string),
           ...
         )
       }
+    }
+
+    if (mfp2_family_is_gee(family_string) && !is.null(fit$gee_alpha)) {
+      gee_alpha_start <- fit$gee_alpha
+    }
+
+    # A failed GEE power candidate has no valid quasi-likelihood or Wald
+    # score. Leave its row missing and choose only among successful candidates.
+    # Required null/linear and final fits do not opt into this exclusion.
+    if (mfp2_family_is_gee(family_string) && identical(fit$converged, FALSE)) {
+      next
     }
 
     metrics[i, ] <- calculate_model_metrics(
@@ -833,11 +879,21 @@ find_best_fpm_step <- function(x,
   # likelihood models maximize log-likelihood, while GEE information-criterion
   # paths maximize quasi-likelihood Q. GEE p-value selection is Stata-compatible
   # and instead minimizes its negative-global-Wald selection deviance.
-  model_best <- if (mfp2_family_is_gee(family_string) &&
-                    identical(tolower(criterion), "pvalue")) {
-    as.numeric(which.min(metrics[, "deviance_rs"]))
+  gee_pvalue <- mfp2_family_is_gee(family_string) &&
+    identical(tolower(criterion), "pvalue")
+  selection_score <- if (gee_pvalue) "deviance_rs" else "logl"
+  valid_candidates <- which(is.finite(metrics[, selection_score]))
+  if (length(valid_candidates) == 0L) {
+    stop(
+      sprintf("No converged %s FP candidates are available for '%s' at degree %s.",
+              family_string, xi, degree),
+      call. = FALSE
+    )
+  }
+  model_best <- if (gee_pvalue) {
+    valid_candidates[[which.min(metrics[valid_candidates, selection_score])]]
   } else {
-    as.numeric(which.max(metrics[, "logl"]))
+    valid_candidates[[which.max(metrics[valid_candidates, selection_score])]]
   }
 
   # SAZ stage 2 needs the complete winning xi matrix. Under either compact
@@ -967,6 +1023,20 @@ fit_null_step <- function(x,
   )
 }
 
+#' Adjust only the selection degrees of freedom of an already fitted model.
+#' The fit likelihood, deviance, and rank are shared by the linear and FP1
+#' power-1 candidates, including GEE's robust selection deviance.
+#' @keywords internal
+#' @noRd
+mfp2_shift_selection_df <- function(metrics, additional, n_obs) {
+  metrics["df"] <- metrics["df"] + additional
+  metrics["aic"] <- metrics["aic"] + 2 * additional
+  metrics["bic"] <- metrics["bic"] + log(n_obs) * additional
+  metrics["df_resid"] <- metrics["df_resid"] - additional
+  metrics
+}
+
+
 #' Function to fit linear model for variable of interest
 #'
 #' "Linear" model here refers to a model that includes the variable
@@ -990,6 +1060,7 @@ fit_null_step <- function(x,
 #' @param ... Parameters passed to `fit_model()`.
 #' @keywords internal
 #' @noRd
+#' @param fp1_fit An already searched FP1 step whose power-1 fit can be reused.
 fit_linear_step <- function(x,
                             xi,
                             y,
@@ -1008,6 +1079,7 @@ fit_linear_step <- function(x,
                             n_obs,
                             ...,
                             precomputed_adj = NULL,
+                            fp1_fit = NULL,
                             term_to_columns) {
   # n_obs (number of observations, or target events for PH models) is computed once
   # in fit_mfp() and passed down as a parameter, rather than recomputed here.
@@ -1024,6 +1096,30 @@ fit_linear_step <- function(x,
     term_to_columns = term_to_columns
   )
   x_transformed$current_params[[xi]]$data_xi <- x_transformed$data_fp[[1]]
+
+  # An FP1 search may have preceded this rung (the df = 2 closed test).
+  # Reuse its power-1 candidate even when another power won the search.
+  fp1_row <- integer(0)
+  if (!is.null(fp1_fit)) {
+    candidate_powers <- fp1_fit$powers
+    if (isTRUE(acdx[[xi]])) {
+      fp1_row <- which(is.na(candidate_powers[, 1L]) &
+                         candidate_powers[, 2L] == 1)
+    } else {
+      fp1_row <- which(candidate_powers[, 1L] == 1)
+    }
+  }
+  if (length(fp1_row) == 1L) {
+    metrics <- rbind(linear = mfp2_shift_selection_df(
+      fp1_fit$metrics[fp1_row, ], -1, n_obs
+    ))
+    if (isTRUE(acdx[[xi]])) rownames(metrics) <- "linear(., A(x))"
+    return(list(
+      powers = x_transformed$powers_fp,
+      metrics = metrics,
+      current_adj_params = x_transformed$current_params
+    ))
+  }
 
   # Step 2: Assemble the design matrix and fit the linear model -------------
   # Fit a model based on the assumption that xi is linear.
@@ -1588,6 +1684,7 @@ select_ra2 <- function(x,
     family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset,n_obs = n_obs,
+    fp1_fit = if (degree == 1L) fit_fpmax else NULL,
     precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
 
@@ -1651,7 +1748,8 @@ select_ra2 <- function(x,
         spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
-        criterion = criterion, ...
+        criterion = criterion,
+        linear_fit = if (current_degree == 1L) fit_lin else NULL, ...
       )
       # Append metrics
       old_names = rownames(res$metrics)
@@ -1990,7 +2088,7 @@ select_ra2_acd <- function(x,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
     precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
-    criterion = criterion, ...
+    criterion = criterion, linear_fit = fit_lin, ...
   )
 
   old_names = rownames(res$metrics)
@@ -2086,6 +2184,7 @@ select_ra2_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
+    fp1_fit = fit_fp1a,
     precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
   )
 
@@ -2431,7 +2530,8 @@ select_ic <- function(x,
     family = family,family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    gee_selection_criterion = criterion, ...
   )
   # Linear model
   fit_lin <- fit_linear_step(
@@ -2440,7 +2540,8 @@ select_ic <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    gee_selection_criterion = criterion, ...
   )
 
   res$current_adj_params <- fit_null$current_adj_params
@@ -2482,7 +2583,8 @@ select_ic <- function(x,
       spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
       prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
       precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-      term_to_columns = term_to_columns, criterion = criterion, ...
+      term_to_columns = term_to_columns, criterion = criterion,
+      linear_fit = if (m == 1L) fit_lin else NULL, ...
     )
   }
 
@@ -2671,7 +2773,8 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    gee_selection_criterion = criterion, ...
   )
 
   # linear(x, .)
@@ -2681,7 +2784,8 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter, spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    gee_selection_criterion = criterion, ...
   )
 
   # linear(., A(x))
@@ -2691,7 +2795,8 @@ select_ic_acd <- function(x,
     family = family, family_string = family_string, zero = zero, catzero = catzero,
     spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
     prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
-    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns, ...
+    precomputed_adj = precomputed_adj, term_to_columns = term_to_columns,
+    gee_selection_criterion = criterion, ...
   )
 
   res$current_adj_params <- fit_null$current_adj_params
@@ -2742,7 +2847,8 @@ select_ic_acd <- function(x,
         spike_decision = spike_decision,acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-        term_to_columns = term_to_columns, criterion = criterion, ...
+        term_to_columns = term_to_columns, criterion = criterion,
+        linear_fit = fit_lin, ...
       ),
       # FP1(., A(x))
       find_best_fpm_step(
@@ -2752,7 +2858,8 @@ select_ic_acd <- function(x,
         spike_decision = spike_decision, acd_parameter = acd_parameter,spike = spike,
         prev_adj_params = prev_adj_params, has_offset = has_offset, n_obs = n_obs,
         precomputed_adj = precomputed_adj, focal_basis_cache = focal_basis_cache,
-        term_to_columns = term_to_columns, criterion = criterion, ...
+        term_to_columns = term_to_columns, criterion = criterion,
+        linear_fit = fit_lina, ...
       ),
       # FP1(x, A(x))
       find_best_fpm_step(

@@ -646,7 +646,9 @@ With \code{criterion = "pvalue"}, GEE selection reproduces the calculation used 
 Stata \code{mfp: xtgee}. Candidate powers within a fixed degree are chosen using
 the negative overall robust Wald chi-square. Closed-test statistics are
 differences of those negative-Wald values, referred to the chi-square
-distribution with the MFP model-df difference. The quantity printed as
+distribution with the MFP model-df difference. This is an approximate
+difference-of-overall-Wald comparison, not a single-fit block Wald test.
+The quantity printed as
 \code{Deviance} is therefore not the response-family deviance and is not an
 additive likelihood deviance. To reproduce Stata's clustered robust
 covariance convention, the geepack sandwich covariance is multiplied by
@@ -658,15 +660,16 @@ As throughout \code{mfp2}, the searched FP1 candidate set retains power \eqn{1}.
 Thus the same fitted linear function can appear as the separately specified
 one-df linear model and as a searched two-df FP1 model. The extra FP1 degree
 of freedom accounts for selecting its power from the candidate set. This
-rule is shared by Stata-compatible and robust-Wald GEE p-value selection and
-by QICu/QBIC selection.
+rule is shared by GEE p-value and information-criterion selection.
 
-For GEE, \code{criterion = "aic"} is QICu,
+For GEE, \code{criterion = "aic"} uses the QICu form,
 \deqn{-2Q + 2p,}
-and \code{criterion = "bic"} is the BIC-penalised analogue QBIC,
+and \code{criterion = "bic"} uses the package's BIC-like quasi-likelihood score,
 \deqn{-2Q + \log(K)p,}
-where \eqn{p} is the MFP model degrees of freedom and \eqn{K} is the number
-of independent clusters. These criteria use quasi-likelihood only; neither
+where \eqn{p} is the MFP model degrees of freedom, including the extra
+FP-power search charge, and \eqn{K} is the number of independent clusters.
+This charge makes the first criterion an MFP-adjusted QICu score; the second
+is not Pan's QIC. These criteria use quasi-likelihood only; neither
 the response-family deviance nor the negative-Wald Stata compatibility
 quantity enters their calculation.
 
@@ -675,11 +678,11 @@ weights. For a grouped-binomial response, the effective weight is the prior
 weight multiplied by the row's binomial total. For Gamma responses the
 implemented quasi-likelihood contribution is
 \deqn{w_i\{-y_i/\mu_i-\log(\mu_i)\}.}
-Consequently, weighted and grouped-binomial QICu/QBIC calculations use all
+Consequently, weighted and grouped-binomial information-criterion calculations use all
 response information, and the Gamma quasi-likelihood is consistent with
 the Gamma family-deviance differences. The response-family deviance remains
 available for descriptive model-fit reporting but is kept separate from
-both GEE p-value procedures and from QICu/QBIC.
+GEE p-value selection and from the quasi-likelihood information criteria.
 }
 
 \section{Shifting, scaling, and centering}{
@@ -899,7 +902,9 @@ Parametric survival models use \code{\link[=survreg_family]{survreg_family()}} a
 \code{\link[survival:survreg]{survival::survreg()}}.
 
 Fine--Gray models use \code{\link[=finegray_family]{finegray_family()}} for subdistribution-hazards
-modelling. Here \code{strata} stratifies estimation of the censoring distribution.
+modelling. Depending on \code{finegray_family(strata_action = ...)}, \code{strata()}
+stratifies the censoring distribution, the baseline subdistribution hazard,
+or both; the default is both.
 \code{id} is optional for ordinary one-row-per-subject data and required only for
 a start--stop multi-state response.
 }

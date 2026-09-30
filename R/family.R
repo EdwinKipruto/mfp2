@@ -153,7 +153,7 @@ survreg_family <- function(dist = "weibull", scale = 0, parms = NULL) {
 #'   }
 #'
 #' @references
-#' Zhou B, Fine J, Laird G (2011). Competing risks regression for stratified
+#' Zhou B, Latouche A, Rocha V, Fine JP (2011). Competing risks regression for stratified
 #' data. *Biometrics*, **67**(2), 661--670.
 #' \doi{10.1111/j.1541-0420.2010.01493.x}
 #'
@@ -215,13 +215,15 @@ finegray_family <- function(etype = NULL, timefix = TRUE,
 #' All three [mfp2()] selection criteria are available. With
 #' `criterion = "pvalue"`, GEE selection reproduces Stata `mfp: xtgee`: the
 #' selection "deviance" is the negative overall robust Wald chi-square and
-#' differences are referred to a chi-square distribution.
+#' differences of scores from separately fitted models are referred to a
+#' chi-square distribution as an approximate selection test.
 #' Stata's \eqn{K/(K-1)} finite-cluster sandwich correction is applied, where
 #' \eqn{K} is the number of independent clusters. That compatibility
 #' calculation is not an additive likelihood-deviance test.
 #' With `criterion = "aic"` and
 #' `criterion = "bic"`, selection uses the quasi-likelihood information
-#' criterion QICu of Pan (2001) and its BIC-penalised analogue. Quasi-likelihood
+#' the QICu form of Pan (2001), with extra FP-power degrees of freedom, and
+#' a package-defined BIC-like quasi-likelihood score, respectively. Quasi-likelihood
 #' contributions use the effective prior weights (including grouped-binomial
 #' totals) and the standard Gamma quasi-likelihood.
 #'

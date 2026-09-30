@@ -55,6 +55,13 @@
 #' Ignored by fast matrix fits.
 #' @param multinomial_optimizer Optional precomputed mask/weight structure for
 #' a batch of same-shaped multinomial candidates.
+#' @param gee_alpha_start Optional working-correlation starting value for a
+#' fast GEE candidate fit. Other families and final fits ignore it.
+#' @param gee_selection_criterion Selection criterion for a fast GEE candidate;
+#'   AIC/BIC candidates require quasi-likelihood but no Wald covariance.
+#' @param gee_allow_failed_candidate Allow an unsuccessful GEE fit to be
+#'   returned as an ineligible result during an FP power search. Required
+#'   null/linear models and retained fits must still fail explicitly.
 #'
 #' @return
 #' A list with the following components:
@@ -109,6 +116,9 @@ fit_model <- function(x,
                       keep_fitted_values = FALSE,
                       keep_coefficients = TRUE,
                       multinomial_optimizer = NULL,
+                      gee_alpha_start = NULL,
+                      gee_selection_criterion = NULL,
+                      gee_allow_failed_candidate = FALSE,
                       reserved_names = character()) {
   # Match coxph() by default: 0/1 and -1/0/1 design columns are not
   # internally recentered. Public callers pass this value explicitly;
@@ -253,6 +263,9 @@ fit_model <- function(x,
       keep_fitted_values = keep_fitted_values,
       has_offset = has_offset,
       x_has_intercept = x_has_intercept,
+      alpha_start = gee_alpha_start,
+      selection_criterion = gee_selection_criterion,
+      allow_failed_candidate = gee_allow_failed_candidate,
       reserved_names = reserved_names
     )
   } else {

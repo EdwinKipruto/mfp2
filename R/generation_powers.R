@@ -144,8 +144,7 @@ generate_powers_acd <- function(degree = NULL,
 #' removing duplicates. However, the number of combinations can still grow
 #' quickly with increasing k. In the MFP context, high FP degrees correspond
 #' to a large number of possible FP power combinations, and the subsequent model
-#' selection step may therefore be computationally intensive. A warning is
-#' issued for k > 5.
+#' selection step may therefore be computationally intensive.
 #'
 #' @return
 #' A matrix with one row per combination and k columns.
@@ -153,10 +152,6 @@ generate_powers_acd <- function(degree = NULL,
 #' @noRd
 generate_combinations_with_replacement <- function(x,
                                                    k) {
-  
-  # if (k > 5) {
-  #   warning("FP degree higher than 5; the MFP algorithm may take a while to do model selection.")
-  # }
   
   # Sort input so that returned combinations are ordered consistently.
   x <- sort(x)

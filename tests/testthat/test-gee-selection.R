@@ -158,12 +158,14 @@ test_that("progress tables use three decimals and GEE QAIC/QBIC labels", {
   pvalue_table <- print_mfp_pvalue_step(
     xi = "x", fit = pvalue_fit, criterion = "pvalue"
   )
+  # GEE reports the overall robust Wald chi-square W = -deviance_rs (positive),
+  # with the statistic column giving W(full) - W(reduced).
   expect_identical(
-    unname(pvalue_table[, "Deviance   "]),
-    c("-12.346", "-1.234")
+    unname(pvalue_table[, "Wald chi-sq"]),
+    c("12.346", "1.234")
   )
   expect_identical(
-    unname(pvalue_table[, "Deviance diff."]),
+    unname(pvalue_table[, "Wald diff."]),
     c(NA_character_, "11.111")
   )
   expect_identical(
@@ -203,11 +205,46 @@ test_that("robust GEE block-Wald and Stata selection statistics are distinct", {
     block$pvalue,
     stats::pchisq(5, df = 2, lower.tail = FALSE)
   )
-  expect_equal(gee_stata_selection_deviance(beta, covariance), -5)
+  expect_equal(gee_selection_deviance(beta, covariance), -5)
   expect_equal(
-    gee_stata_selection_deviance(beta, covariance, n_clusters = 5),
+    gee_selection_deviance(beta, covariance, n_clusters = 5),
     -4
   )
+  expect_equal(
+    gee_selection_deviance(beta, gee_robust_vcov(covariance, 5)),
+    -4
+  )
+  score_only <- gee_robust_wald_test(
+    beta, covariance, indices = 2:3, compute_pvalue = FALSE
+  )
+  expect_equal(score_only$statistic, block$statistic)
+  expect_true(is.na(score_only$pvalue))
+})
+
+test_that("singular GEE slope blocks cannot produce joint selection tests", {
+  beta <- c("(Intercept)" = 0, x1 = 1, x2 = 1)
+  covariance <- matrix(0, 3, 3, dimnames = list(names(beta), names(beta)))
+  covariance[2:3, 2:3] <- matrix(1, 2, 2)
+
+  rank_one <- gee_robust_wald_test(beta, covariance, indices = 2:3)
+  expect_identical(rank_one$df, 1L)
+  expect_true(all(is.na(unlist(rank_one[c("statistic", "pvalue", "dev_diff")]))))
+  expect_true(is.na(gee_selection_deviance(beta, covariance)))
+  expect_true(is.na(gee_selection_deviance(beta, covariance, n_clusters = 2)))
+  expect_true(is.na(gee_robust_wald_test(beta, covariance, 2:3,
+                                        compute_pvalue = FALSE)$statistic))
+
+  rank_zero <- gee_robust_wald_test(beta, matrix(0, 3, 3), 2:3)
+  expect_identical(rank_zero$df, 0L)
+  expect_true(is.na(rank_zero$statistic))
+  expect_true(is.na(rank_zero$pvalue))
+
+  single_slope <- gee_robust_wald_test(beta, covariance, 2L)
+  expect_equal(single_slope$statistic, 1)
+  expect_equal(single_slope$pvalue, stats::pchisq(1, df = 1,
+                                                 lower.tail = FALSE))
+  expect_identical(gee_robust_wald_test(beta, covariance, integer())$statistic,
+                   0)
 })
 
 test_that("GEE covariance selection corrects only the sandwich estimator", {

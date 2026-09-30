@@ -2275,7 +2275,7 @@ mfp2_summary_refit_context <- function(object) {
       object$prior.weights
     },
     offset = object$offset,
-    strata = if (is_cox) object$strata else NULL,
+    strata = if (is_cox || is_finegray) object$strata else NULL,
     method = if (is_cox || is_finegray) object$method else NULL,
     fitter = fitter,
     control = control,
@@ -2288,7 +2288,13 @@ mfp2_summary_refit_context <- function(object) {
     # response, design and weights. Reuse them without another finegray() call.
     row_map <- object$mfp2_finegray_row_map
     original_offset <- object$mfp2_original_offset
-    if (is.null(row_map) || is.null(original_offset)) {
+    has_baseline_strata <- !is.null(object$mfp2_internal_names$strata) &&
+      length(object$mfp2_internal_names$strata) > 0L
+    if (is.null(row_map) || is.null(original_offset) ||
+        (has_baseline_strata && is.null(context$strata)) ||
+        (!is.null(context$strata) &&
+         (length(context$strata) != NROW(context$y) ||
+          anyNA(context$strata)))) {
       context$valid <- FALSE
       return(context)
     }
@@ -2488,7 +2494,8 @@ mfp2_summary_lrt_drop_variable <- function(object, classified, v,
         survival::agreg.fit(
           x = x_reduced,
           y = refit_context$y,
-          strata = NULL,
+          strata = if (is.null(refit_context$strata)) NULL else
+            as.integer(refit_context$strata),
           offset = refit_context$offset,
           init = NULL,
           control = refit_context$control,

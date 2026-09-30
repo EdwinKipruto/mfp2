@@ -8,9 +8,9 @@
 #' Applies symmetric Winsorisation to one or more continuous columns of a
 #' predictor matrix. For each variable, values below the lower percentile
 #' cutoff are replaced by the lower cutoff value, and values above the upper
-#' percentile cutoff are replaced by the upper cutoff value. The number of
-#' distinct values is preserved (that is, no rounding is performed); only
-#' extreme observations are truncated. Influential observations can 
+#' percentile cutoff are replaced by the upper cutoff value. No rounding is
+#' performed. Clamping can merge distinct tail values at the cutoffs.
+#' Influential observations can 
 #' disproportionately determine the selected FP functional form and may produce 
 #' spuriously significant interactions. Winsorisation provides a transparent 
 #' preprocessing step that reduces the influence of extreme values without 

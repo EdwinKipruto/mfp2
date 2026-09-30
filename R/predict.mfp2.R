@@ -2055,28 +2055,28 @@ mfp2_match_finegray_prediction_type <- function(type) {
 #' retained weighted Cox model. [survival::survfit.coxph()] evaluates the
 #' fitted subdistribution survival curve; one minus that curve is the
 #' cumulative incidence function (CIF) for the selected event type. The
-#' function evaluates one CIF curve per prediction row, aligns the
-#' returned matrix so that rows correspond to prediction rows and columns
-#' to requested time points, and applies the requested confidence-interval
-#' construction when standard errors are requested.
+#' function evaluates one CIF curve per prediction row and aligns the
+#' result so that rows correspond to prediction rows and columns to
+#' requested time points.
 #'
 #' @param object An `"mfp2"` Fine--Gray model object.
 #' @param newdata Optional new data frame for prediction.
 #' @param times Numeric vector of prediction time points.
-#' @param ... Additional named arguments controlling standard errors and
-#'   the confidence-interval construction.
+#' @param se.fit Whether to return standard errors of the CIF estimates.
 #'
-#' @return A numeric matrix of CIF values with rows aligned to the
-#'   prediction rows and columns aligned to `times`. When standard errors
-#'   are requested, a list carrying `cif`, `se`, `lower`, and `upper`.
+#' @return A named numeric vector for one time, otherwise a prediction-row
+#'   by time matrix; with `se.fit = TRUE`, a list with `fit`, `se.fit`,
+#'   `times`, and `event`.
 #'
 #' @keywords internal
 #' @noRd
 #'
 #' @details
-#' Predictions are evaluated one row at a time so that baseline strata and
-#' formula offsets are resolved by the native `survival` code without
-#' having to reshape multi-curve `survfit` objects.
+#' Rows are passed to `survival::survfit()` in bounded batches so prediction
+#' does not allocate a survival curve for every requested row at once. The
+#' returned curves follow the prediction data's row order; the native fitter
+#' resolves baseline strata and formula offsets. An unrecognized batch layout
+#' is evaluated one row at a time to preserve the original prediction behavior.
 mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
                                       se.fit = FALSE) {
   if (!inherits(object, "coxph")) {
@@ -2108,29 +2108,73 @@ mfp2_predict_finegray_cif <- function(object, newdata = NULL, times,
   class(base_object) <- setdiff(class(base_object), "mfp2")
   n <- nrow(prediction_data)
   nt <- length(times)
-  cif <- matrix(NA_real_, nrow = n, ncol = nt)
-  cif_se <- if (isTRUE(se.fit)) matrix(NA_real_, nrow = n, ncol = nt) else NULL
-
-  for (i in seq_len(n)) {
-    curve <- survival::survfit(
-      base_object,
-      newdata = prediction_data[i, , drop = FALSE],
-      se.fit = isTRUE(se.fit)
+  cif <- matrix(NA_real_, n, nt)
+  cif_se <- if (isTRUE(se.fit)) matrix(NA_real_, n, nt) else NULL
+  batch_size <- 256L
+  for (first in seq.int(1L, n, by = batch_size)) {
+    rows <- seq.int(first, min(n, first + batch_size - 1L))
+    batch <- prediction_data[rows, , drop = FALSE]
+    nb <- length(rows)
+    curve <- tryCatch(
+      survival::survfit(base_object, newdata = batch,
+                        se.fit = isTRUE(se.fit)),
+      error = function(e) NULL
     )
-    point <- summary(curve, times = times, extend = TRUE)
-    survival_values <- as.numeric(point$surv)
-    if (length(survival_values) != nt) {
-      stop("Internal error: Fine--Gray CIF time grid could not be aligned.",
-           call. = FALSE)
+    point <- if (!is.null(curve)) {
+      tryCatch(summary(curve, times = times, extend = TRUE),
+               error = function(e) NULL)
+    } else {
+      NULL
     }
-    cif[i, ] <- 1 - survival_values
-    if (isTRUE(se.fit)) {
-      standard_errors <- as.numeric(point$std.err)
-      if (length(standard_errors) != nt) {
-        stop("Internal error: Fine--Gray CIF standard errors are incomplete.",
-             call. = FALSE)
+
+    # With baseline strata, survfit concatenates curves in newdata row order;
+    # without strata, the curves occupy columns of a time-by-row matrix.
+    # Stratum labels are implementation-dependent and need not be newdata row
+    # names. Verify the curve counts and time grid instead of comparing labels.
+    strata_aligned <- is.null(curve$strata) ||
+      (length(curve$strata) == nb && length(point$strata) == nb &&
+       !anyNA(point$strata) && all(point$strata == nt))
+    expected_times <- if (is.matrix(point$surv)) times else rep(times, nb)
+    has_prediction_shape <- function(values) {
+      if (is.matrix(values)) {
+        identical(dim(values), c(nt, nb))
+      } else {
+        is.null(dim(values)) && length(values) == nt * nb
       }
-      cif_se[i, ] <- standard_errors
+    }
+
+    if (!isTRUE(strata_aligned) ||
+        !identical(as.numeric(point$time), expected_times) ||
+        !has_prediction_shape(point$surv) ||
+        (isTRUE(se.fit) && !has_prediction_shape(point$std.err))) {
+      # Some survival versions return curve shapes that cannot safely be
+      # mapped to the requested rows. Reuse the original one-row procedure.
+      for (i in rows) {
+        single <- summary(survival::survfit(
+          base_object, newdata = prediction_data[i, , drop = FALSE],
+          se.fit = isTRUE(se.fit)
+        ), times = times, extend = TRUE)
+        values <- as.numeric(single$surv)
+        if (length(values) != nt) {
+          stop("Internal error: Fine--Gray CIF time grid could not be aligned.",
+               call. = FALSE)
+        }
+        cif[i, ] <- 1 - values
+        if (isTRUE(se.fit)) {
+          errors <- as.numeric(single$std.err)
+          if (length(errors) != nt) {
+            stop("Internal error: Fine--Gray CIF standard errors are incomplete.",
+                 call. = FALSE)
+          }
+          cif_se[i, ] <- errors
+        }
+      }
+      next
+    }
+
+    cif[rows, ] <- 1 - t(matrix(as.numeric(point$surv), nt, nb))
+    if (isTRUE(se.fit)) {
+      cif_se[rows, ] <- t(matrix(as.numeric(point$std.err), nt, nb))
     }
   }
 

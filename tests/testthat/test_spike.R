@@ -419,7 +419,7 @@ test_that("verbose SAZ output distinguishes joint IC from p-value stages", {
       shift = 0, scale = 1, center = FALSE, verbose = TRUE
     ))
   )
-  expect_true(any(grepl("Joint Spike at Zero AIC Selection", out_aic,
+  expect_true(any(grepl("Joint Spike at Zero Selection", out_aic,
                         fixed = TRUE)))
   expect_false(any(grepl("Stage 2 of Spike at Zero", out_aic, fixed = TRUE)))
 

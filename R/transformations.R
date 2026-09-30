@@ -33,13 +33,11 @@
 #' returned by this function will always align with the powers used
 #' throughout this package.
 #'
-#' Binary variables are not transformed, unless `check_binary` is set to
-#' `FALSE`. This is usually not necessary, the only special case to set it to
-#' `FALSE` is when a single value is to be transformed during prediction (e.g.
-#' to transform a reference value). When this is done, binary variables are
-#' still returned unchanged, but a single value from a continuous variable will
-#' be transformed as desired by the fitted transformations. For model fit,
-#' `check_binary` should always be at its default value.
+#' Binary variables are not transformed unless `check_binary = FALSE`. With
+#' `check_binary = FALSE`, the requested FP power is applied even when `x` has
+#' one or two distinct values; use the fitted shift and scale parameters when
+#' transforming prediction values. For model fit, `check_binary` should always
+#' be at its default value.
 #'
 #' @section Data processing:
 #' Variables are shifted and then scaled before any power transformation is

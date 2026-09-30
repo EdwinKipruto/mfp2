@@ -8,16 +8,16 @@
 
 `mfp2` implements multivariable fractional polynomial (MFP) models and related
 extensions. It performs variable selection and functional-form selection for
-continuous covariates. The package supports generalized linear models,
-unpenalized multinomial logistic models, Cox, parametric-survival, and
-Fine--Gray models, and marginal models fitted by generalized estimating
-equations (GEE). Multinomial fitting uses `nnet`; one FP transformation is
-selected per predictor and shared across logits, with logit-specific
-coefficients.
-Negative-binomial models are specified with `family = "negbin"` and require
-`fitter = "fastglm"`. GEE models are specified with `family = gee_family(...)`,
-use the `geepack` package, and take a cluster identifier through the `id`
-argument (with optional `waves`).
+continuous covariates. Supported responses include Gaussian, binomial,
+Poisson, Gamma, inverse Gaussian, and negative-binomial outcomes; unordered
+multinomial and ordinal outcomes; Cox, parametric survival, and Fine--Gray
+competing-risks models; and clustered marginal models fitted by generalized
+estimating equations (GEE). Multinomial fitting uses `nnet`; one FP
+transformation is selected per predictor and shared across logits, with
+logit-specific coefficients. Negative-binomial models use the optional
+`fastglm` backend, selected automatically for `family = "negbin"`.
+Ordinal models use the optional `rms` package. GEE models use `geepack` and
+require a cluster identifier supplied through `id` (with optional `waves`).
 
 In addition to standard MFP modelling, `mfp2` provides:
 
@@ -111,6 +111,81 @@ fit_matrix <- mfp2(
 fit_matrix
 ```
 
+### Supported model families
+
+Choose `family` according to the response. These specifications work with
+`mfp2()`; the formula examples below show their required inputs.
+
+| Response or model | `family` argument | Requirement |
+| --- | --- | --- |
+| Continuous Gaussian | `"gaussian"` | Numeric response |
+| Binary or grouped binomial | `"binomial"` | Binary response or successes/failures |
+| Counts | `"poisson"` | Nonnegative integer response |
+| Positive continuous | `stats::Gamma(link = "log")` | Positive response |
+| Positive continuous | `stats::inverse.gaussian(link = "log")` | Positive response |
+| Overdispersed counts | `"negbin"` | Optional `fastglm`; backend chosen automatically |
+| Unordered classes | `multinomial_family()` | At least three classes; `nnet` |
+| Ordered categories | `ordinal_family()` | At least three ordered categories; optional `rms` |
+| Right-censored survival | `"cox"` | `survival::Surv(time, status)` |
+| Parametric survival | `survreg_family(dist = "weibull")` | `survival::Surv()` response |
+| Competing risks | `finegray_family(etype = "cause1")` | Multi-state `survival::Surv()` response |
+| Clustered marginal mean | `gee_family(gaussian())` | Contiguous clusters through `id` |
+
+GEE also accepts binomial, Poisson, and Gamma marginal response families.
+Quasi families are not supported by the likelihood-based GLM selection.
+
+### Fit binomial, Poisson, Gamma, and inverse-Gaussian models
+
+This reproducible data set illustrates each GLM response. The two
+positive-response fits use different variance assumptions for the same
+illustrative outcome.
+
+```r
+set.seed(2026)
+n_family <- 240L
+family_data <- data.frame(
+  x = runif(n_family, 0.5, 3),
+  z = rnorm(n_family)
+)
+eta <- with(family_data, 0.2 + 0.5 * log(x) + 0.25 * z)
+mu <- exp(eta)
+family_data$binary <- rbinom(n_family, 1, plogis(eta - 0.7))
+family_data$count <- rpois(n_family, mu)
+family_data$positive <- rgamma(n_family, shape = 5, scale = mu / 5)
+
+fit_binomial <- mfp2(
+  binary ~ fp(x, df = 2) + z, data = family_data,
+  family = "binomial", verbose = FALSE
+)
+fit_poisson <- mfp2(
+  count ~ fp(x, df = 2) + z, data = family_data,
+  family = "poisson", verbose = FALSE
+)
+fit_gamma <- mfp2(
+  positive ~ fp(x, df = 2) + z, data = family_data,
+  family = stats::Gamma(link = "log"), verbose = FALSE
+)
+fit_inverse_gaussian <- mfp2(
+  positive ~ fp(x, df = 2) + z, data = family_data,
+  family = stats::inverse.gaussian(link = "log"), verbose = FALSE
+)
+```
+
+### Fit a negative-binomial model
+
+`fastglm` is optional; when installed, `family = "negbin"` selects that
+backend automatically.
+
+```r
+if (requireNamespace("fastglm", quietly = TRUE)) {
+  family_data$overdispersed_count <- rnbinom(n_family, mu = mu, size = 2)
+  fit_negbin <- mfp2(
+    overdispersed_count ~ fp(x, df = 2) + z,
+    data = family_data, family = "negbin", verbose = FALSE
+  )
+}
+```
+
 ### Fit a multinomial MFP model
 
 Use a factor response with at least three levels, or a matrix of class counts.
@@ -133,6 +208,80 @@ predict(fit_multinomial, iris[1:6, ], type = "response")
 predict(fit_multinomial, iris[1:6, ], type = "class")
 ```
 
+### Fit an ordinal MFP model
+
+For an ordered response, `ordinal_family()` fits a proportional-odds
+model. Install the optional `rms` package first. Supplying an ordered
+factor makes the category order explicit.
+
+```r
+if (requireNamespace("rms", quietly = TRUE)) {
+  ordinal_data <- family_data[, c("x", "z")]
+  ordinal_data$rating <- ordered(cut(
+    eta + rlogis(n_family),
+    breaks = c(-Inf, 0.3, 1.3, Inf),
+    labels = c("low", "middle", "high")
+  ))
+  fit_ordinal <- mfp2(
+    rating ~ fp(x, df = 2) + z,
+    data = ordinal_data, family = ordinal_family(),
+    verbose = FALSE
+  )
+  predict(fit_ordinal, ordinal_data[1:3, ], type = "response")
+}
+```
+
+### Fit Cox and parametric survival models
+
+Cox models use `family = "cox"`. For an accelerated failure-time model,
+use `survreg_family()`; Weibull is its default distribution. Both accept a
+`survival::Surv()` response.
+
+```r
+event_time <- rexp(n_family, rate = 0.12 * exp(0.3 * eta))
+censor_time <- rexp(n_family, rate = 0.08)
+survival_data <- family_data[, c("x", "z")]
+survival_data$time <- pmin(event_time, censor_time)
+survival_data$status <- as.integer(event_time <= censor_time)
+
+fit_cox <- mfp2(
+  survival::Surv(time, status) ~ fp(x, df = 2) + z,
+  data = survival_data, family = "cox", verbose = FALSE
+)
+fit_weibull <- mfp2(
+  survival::Surv(time, status) ~ fp(x, df = 2) + z,
+  data = survival_data,
+  family = survreg_family(dist = "weibull"),
+  verbose = FALSE
+)
+```
+
+### Fit a Fine--Gray competing-risks model
+
+The event response must be a multi-state `Surv()` object: the first
+factor level represents censoring, and `etype` identifies the event of
+interest. With `strata_action = "both"` (the default), the formula stratum
+affects both censoring weights and the baseline subdistribution hazard.
+
+```r
+competing_data <- family_data[, c("x", "z")]
+competing_data$time <- rexp(n_family, rate = 0.12 * exp(0.2 * eta))
+competing_data$event <- factor(
+  sample(c("censor", "cause1", "cause2"), n_family, replace = TRUE,
+         prob = c(0.35, 0.40, 0.25)),
+  levels = c("censor", "cause1", "cause2")
+)
+competing_data$site <- factor(rep(c("A", "B"), length.out = n_family))
+
+fit_finegray <- mfp2(
+  survival::Surv(time, event) ~ fp(x, df = 2) +
+    survival::strata(site),
+  data = competing_data,
+  family = finegray_family(etype = "cause1", strata_action = "both"),
+  verbose = FALSE
+)
+```
+
 ### Fit a GEE MFP model for clustered data
 
 Supply a cluster identifier through `id` (clusters must occupy contiguous
@@ -141,8 +290,18 @@ robust sandwich covariance; `std.err` also accepts `"jack"`, `"j1s"`, and
 `"fij"`. The retained model is a native `geepack::geeglm` object.
 
 ```r
+set.seed(2027)
+clustered_data <- data.frame(
+  id = rep(seq_len(50), each = 4),
+  x1 = runif(200, 1, 4),
+  x2 = rnorm(200)
+)
+cluster_effect <- rnorm(50, sd = 0.7)
+clustered_data$y <- with(clustered_data, 1 + log(x1) + 0.3 * x2) +
+  cluster_effect[clustered_data$id] + rnorm(nrow(clustered_data), sd = 0.4)
+
 fit_gee <- mfp2(
-  y ~ fp(x1) + fp(x2),
+  y ~ fp(x1, df = 2) + fp(x2, df = 1),
   data = clustered_data,
   family = gee_family(gaussian(), corstr = "exchangeable"),
   id = clustered_data$id,
@@ -266,6 +425,11 @@ Function-level help is available through:
 ?mfp2
 ?fp
 ?mfpi
+?multinomial_family
+?ordinal_family
+?survreg_family
+?finegray_family
+?gee_family
 ?predict.mfp2
 ?plot.mfp2
 ```

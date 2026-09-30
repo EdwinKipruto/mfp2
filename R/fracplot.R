@@ -575,6 +575,7 @@ plot_mfp2_impl <- function(model,
       show_titles = show_titles,
       color_points = color_points,
       color_line = color_line,
+      color_line_spike = color_line_spike,
       color_fill = color_fill,
       shape = shape,
       size_points = size_points,
@@ -884,7 +885,7 @@ plot_mfp2_impl <- function(model,
 #'
 #' @param model,terms,partial_only,type,ref,terms_seq,alpha,show_titles Plot
 #'   inputs forwarded from [plot.mfp2()] with the same meaning.
-#' @param color_points,color_line,color_fill,shape,size_points,size_points_spike,linetype,linewidth,alpha_fill
+#' @param color_points,color_line,color_line_spike,color_fill,shape,size_points,size_points_spike,linetype,linewidth,alpha_fill
 #'   Styling controls forwarded from [plot.mfp2()].
 #'
 #' @return A named list of \pkg{ggplot2} objects, one per plotted term.
@@ -901,6 +902,7 @@ mfp2_plot_multinomial_impl <- function(model,
                                        show_titles,
                                        color_points,
                                        color_line,
+                                       color_line_spike,
                                        color_fill,
                                        shape,
                                        size_points,
@@ -944,11 +946,70 @@ mfp2_plot_multinomial_impl <- function(model,
     df <- pred[[v]]
     df$logit <- factor(df$logit, levels = logit_levels)
 
-    is_discrete <- mfp2_plot_term_is_binary(model, v) ||
-      mfp2_plot_term_is_factor(model, v)
+    is_spike <- FALSE
+    if (!is.null(model$spike) && v %in% names(model$spike)) {
+      is_spike <- isTRUE(model$spike[[v]])
+    } else if (!is.null(model$fp_terms) &&
+               v %in% rownames(model$fp_terms) &&
+               "spike" %in% colnames(model$fp_terms)) {
+      is_spike <- isTRUE(model$fp_terms[v, "spike"])
+    }
+    spike_dec_v <- if (is_spike && !is.null(model$spike_dec) &&
+                       v %in% names(model$spike_dec) &&
+                       !is.na(model$spike_dec[[v]])) {
+      as.integer(model$spike_dec[[v]])
+    } else {
+      saz_decision_codes[["continuous_only"]]
+    }
+    is_binary_only <- is_spike &&
+      spike_dec_v == saz_decision_codes[["binary_only"]]
+    is_factor <- mfp2_plot_term_is_factor(model, v)
+    is_discrete <- is_binary_only || is_factor ||
+      mfp2_plot_term_is_binary(model, v)
+    has_zero_indicator <- !is.null(model$catzero) &&
+      isTRUE(model$catzero[[v]])
+    is_zero_handled <- (!is.null(model$zero) &&
+      isTRUE(model$zero[[v]])) || is_spike || has_zero_indicator
+    is_acd <- !is.null(model$fp_terms) &&
+      v %in% rownames(model$fp_terms) &&
+      "acd" %in% colnames(model$fp_terms) &&
+      isTRUE(model$fp_terms[v, "acd"])
 
     power_label <- paste0(model$fp_powers[[v]], collapse = ", ")
-    plot_title <- if (is_discrete) "Categorical" else sprintf("FP(%s)", power_label)
+    continuous_label <- if (is_acd) {
+      sprintf("ACD FP(%s)", power_label)
+    } else {
+      sprintf("FP(%s)", power_label)
+    }
+    plot_title <- if (is_factor) {
+      "Categorical"
+    } else if (is_spike) {
+      saz_decision_label(spike_dec_v, style = "plot_title",
+                         continuous_label = continuous_label)
+    } else if (is_zero_handled && has_zero_indicator) {
+      paste0(continuous_label, " (x > 0) + zero indicator")
+    } else if (is_zero_handled) {
+      paste0(continuous_label, " (positive part; no zero indicator)")
+    } else {
+      continuous_label
+    }
+
+    # A binary-only spike is predicted on the internal indicator scale:
+    # 1 means x = 0 and 0 means x > 0. Keep the original-scale labels in
+    # every facet and in the observed residual layer.
+    if (is_binary_only) {
+      zero_label <- paste0(v, " = 0")
+      positive_label <- paste0(v, " > 0")
+      spike_levels <- c(zero_label, positive_label)
+      label_spike <- function(indicator) {
+        factor(ifelse(indicator == 1, zero_label, positive_label),
+               levels = spike_levels)
+      }
+      df$variable <- label_spike(df$variable)
+    } else if (is_factor) {
+      factor_levels <- model$formula_factor_info[[v]]$levels
+      df$variable <- factor(as.character(df$variable), levels = factor_levels)
+    }
 
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$variable, y = .data$value)) +
       ggplot2::xlab(v) + ggplot2::ylab(ylab) +
@@ -966,6 +1027,11 @@ mfp2_plot_multinomial_impl <- function(model,
       resid_df <- do.call(rbind, lapply(logit_levels, function(q) {
         pd <- pred_data[[v]]
         pd <- pd[pd$logit == q, , drop = FALSE]
+        if (is_binary_only) pd$variable <- label_spike(pd$variable)
+        if (is_factor) {
+          pd$variable <- factor(as.character(pd$variable),
+                                levels = factor_levels)
+        }
         pd$resid <- as.numeric(resid_matrix[, q])
         pd$logit <- factor(q, levels = logit_levels)
         pd
@@ -980,6 +1046,10 @@ mfp2_plot_multinomial_impl <- function(model,
     if (is_discrete) {
       # One estimate and interval per fitted level; no interpolating line.
       level_df <- df[!duplicated(df[c("variable", "logit")]), , drop = FALSE]
+      if (is_binary_only) {
+        level_df$variable <- factor(as.character(level_df$variable),
+                                    levels = spike_levels)
+      }
       p <- p + ggplot2::geom_point(
         data = level_df,
         ggplot2::aes(x = .data$variable, y = .data$value),
@@ -990,6 +1060,42 @@ mfp2_plot_multinomial_impl <- function(model,
           ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
           width = 0.2, color = color_line
         )
+      if (is_binary_only) {
+        p <- p + ggplot2::scale_x_discrete(breaks = spike_levels,
+                                           limits = spike_levels)
+      } else if (is_factor) {
+        p <- p + ggplot2::scale_x_discrete(breaks = factor_levels,
+                                           limits = factor_levels)
+      }
+    } else if (is_zero_handled) {
+      # The continuous basis is defined for x > 0. Its value at exactly zero
+      # is a separate endpoint, potentially with an estimated zero indicator.
+      pos_df <- df[df$variable > 0, , drop = FALSE]
+      pos_df <- pos_df[order(pos_df$logit, pos_df$variable), , drop = FALSE]
+      zero_df <- df[df$variable == 0, , drop = FALSE]
+      zero_df <- zero_df[!duplicated(zero_df$logit), , drop = FALSE]
+      p <- p + ggplot2::geom_line(
+        data = pos_df, linewidth = linewidth, linetype = linetype,
+        color = color_line
+      ) + ggplot2::geom_ribbon(
+        data = pos_df,
+        ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+        alpha = alpha_fill, fill = color_fill
+      )
+      if (nrow(zero_df) > 0L) {
+        zero_color <- if (is_spike || has_zero_indicator) {
+          color_line_spike
+        } else {
+          color_line
+        }
+        p <- p + ggplot2::geom_point(
+          data = zero_df, color = zero_color, size = size_points_spike
+        ) + ggplot2::geom_errorbar(
+          data = zero_df,
+          ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
+          width = 0.2, color = zero_color
+        )
+      }
     } else {
       ord <- order(df$logit, df$variable)
       df_line <- df[ord, , drop = FALSE]

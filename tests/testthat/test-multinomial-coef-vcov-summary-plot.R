@@ -103,3 +103,37 @@ test_that("plot.mfpi difference plots also resolve per logit", {
   expect_setequal(names(pl[["a"]]), c("logit_B", "logit_C"))
   expect_s3_class(pl[["a"]][["logit_C"]][[1]], "ggplot")
 })
+
+test_that("multinomial MFPI plots show each logit's main-effect reference", {
+  skip_on_cran()
+  skip_if_not_installed("ggplot2")
+  fit <- mn_acc_fit()
+  main_fit <- fit$var_winners[["a"]]$fit$test_results$main_model$fit
+  main_coef <- main_fit$mfp2_coefficient_matrix
+  prepared <- main_fit$mfp2_family$prepared
+  main_vcov <- solve(mfp2_multinomial_information(
+    x = main_fit$mfp2_design,
+    probabilities = main_fit$fitted.values,
+    weights = prepared$effective_weights,
+    outcomes = prepared$nonreference,
+    class_levels = prepared$levels
+  ))
+  expect_true(is.matrix(main_coef))
+
+  plots <- plot(fit, terms = "a", plot_type = "difference",
+                show_maineffect_line = TRUE, show_ci_maineffect = TRUE,
+                auto_print = FALSE)
+  for (q in rownames(main_coef)) {
+    p <- plots$a[[paste0("logit_", q)]][[1L]]
+    layers <- vapply(p$layers, function(layer) class(layer$geom)[1L], character(1L))
+    hline <- p$layers[[which(layers == "GeomHline")[[1L]]]]
+    expect_equal(hline$data$yintercept, unname(main_coef[q, "g1"]))
+    expected_se <- sqrt(main_vcov[paste0(q, ":g1"), paste0(q, ":g1")])
+    expect_true(any(vapply(p$layers, function(layer) {
+      identical(class(layer$geom)[1L], "GeomRibbon") &&
+        is.data.frame(layer$data) &&
+        all(abs(layer$data$ymin -
+                  (main_coef[q, "g1"] - stats::qnorm(0.975) * expected_se)) < 1e-7)
+    }, logical(1L))))
+  }
+})

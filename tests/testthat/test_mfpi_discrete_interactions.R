@@ -267,4 +267,15 @@ test_that("discrete MFPI plots use points instead of continuous curves", {
   geoms <- vapply(p$layers, function(layer) class(layer$geom)[1L], character(1L))
   expect_true("GeomPoint" %in% geoms)
   expect_false("GeomLine" %in% geoms)
+
+  difference <- plot(
+    fit, terms = "stage", plot_type = "difference",
+    show_ci_maineffect = TRUE, auto_print = FALSE
+  )$stage[[1L]]
+  difference_geoms <- vapply(difference$layers, function(layer) {
+    class(layer$geom)[1L]
+  }, character(1L))
+  expect_true("GeomRect" %in% difference_geoms)
+  expect_true("GeomHline" %in% difference_geoms)
+  expect_no_error(ggplot2::ggplot_build(difference))
 })

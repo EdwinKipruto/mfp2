@@ -144,6 +144,7 @@ Each element is:
 
 Returned plots can be printed, modified with \pkg{ggplot2}, combined with
 \pkg{patchwork}, or saved with \code{\link[ggplot2:ggsave]{ggplot2::ggsave()}}.
+If no interaction is selected and \code{terms = NULL}, returns an empty list.
 }
 \description{
 Produces group-specific fitted-function plots, between-group difference

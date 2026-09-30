@@ -196,3 +196,64 @@ test_that("plot() draws discrete factor terms per logit with point-and-interval"
   expect_equal(length(unique(built$data[[1]]$PANEL)),
                nrow(m$mfp2_coefficient_matrix))
 })
+
+test_that("multinomial spike plots keep zero components separate in every logit", {
+  skip_if_not_installed("ggplot2")
+  logits <- c("B", "C")
+  mock <- structure(list(
+    family_string = "multinomial", reference_class = "A",
+    mfp2_coefficient_matrix = matrix(0, 2, 1,
+      dimnames = list(logits, "x")),
+    x_original = matrix(c(0, 1, 2), ncol = 1,
+      dimnames = list(NULL, "x")),
+    fp_powers = list(x = 1), spike = c(x = TRUE),
+    spike_dec = c(x = saz_decision_codes[["binary_only"]])
+  ), class = "mfp2")
+  make_predictions <- function(values) {
+    do.call(rbind, lapply(logits, function(q) {
+      data.frame(variable = values, logit = q, value = seq_along(values),
+                 lower = seq_along(values) - 0.1,
+                 upper = seq_along(values) + 0.1)
+    }))
+  }
+
+  predicted <- make_predictions(c(1, 0, 0))
+  testthat::local_mocked_bindings(
+    predict = function(...) list(x = predicted),
+    .package = "mfp2"
+  )
+
+  p <- plot(mock, terms = "x", partial_only = TRUE)$x
+  geoms <- vapply(p$layers, function(layer) class(layer$geom)[1L], character(1L))
+  expect_false("GeomLine" %in% geoms)
+  expect_false("GeomRibbon" %in% geoms)
+  expect_equal(nrow(p$layers[[which(geoms == "GeomPoint")]]$data), 4L)
+  expect_equal(p$scales$get_scales("x")$limits, c("x = 0", "x > 0"))
+  expect_no_error(ggplot2::ggplot_build(p))
+
+  mock$spike_dec <- c(x = saz_decision_codes[["cont_binary"]])
+  mock$fp_terms <- matrix(TRUE, 1, 1,
+                          dimnames = list("x", "acd"))
+  predicted <- make_predictions(c(0, 0.5, 1))
+  p <- plot(mock, terms = "x", partial_only = TRUE,
+            color_line_spike = "orange")$x
+  geoms <- vapply(p$layers, function(layer) class(layer$geom)[1L], character(1L))
+  line <- p$layers[[which(geoms == "GeomLine")]]$data
+  zero_layer <- p$layers[[which(geoms == "GeomPoint")]]
+  expect_true(all(line$variable > 0))
+  expect_equal(nrow(zero_layer$data), length(logits))
+  expect_true(all(zero_layer$data$variable == 0))
+  expect_identical(zero_layer$aes_params$colour, "orange")
+  expect_match(p$labels$title, "ACD", fixed = TRUE)
+  expect_no_error(ggplot2::ggplot_build(p))
+
+  mock$spike <- c(x = FALSE)
+  mock$zero <- c(x = TRUE)
+  p <- plot(mock, terms = "x", partial_only = TRUE,
+            color_line = "navy", color_line_spike = "orange")$x
+  zero_layer <- p$layers[[which(vapply(p$layers, function(layer) {
+    identical(class(layer$geom)[1L], "GeomPoint")
+  }, logical(1L)))]]
+  expect_identical(zero_layer$aes_params$colour, "navy")
+  expect_match(p$labels$title, "no zero indicator", fixed = TRUE)
+})

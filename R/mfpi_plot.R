@@ -250,6 +250,7 @@
 #'
 #' Returned plots can be printed, modified with \pkg{ggplot2}, combined with
 #' \pkg{patchwork}, or saved with [ggplot2::ggsave()].
+#' If no interaction is selected and `terms = NULL`, returns an empty list.
 #'
 #' @seealso [mfpi()], [predict.mfpi()], [summary.mfpi()]
 #'
@@ -458,7 +459,7 @@ plot.mfpi <- function(x,
         "To inspect a variable's fitted curve anyway, pass its name via\n",
         "the `terms` argument, e.g. terms = \"age\"."
       )
-      return(invisible(x))
+      return(invisible(list()))
     }
 
     terms <- selected_terms
@@ -856,6 +857,18 @@ plot.mfpi <- function(x,
         plot_df,
         ggplot2::aes(x = .data$x, y = .data$diff)
       )
+      if (isTRUE(show_maineffect_line) && is.finite(main_effect_value) &&
+          isTRUE(show_ci_maineffect) && is.finite(main_effect_se)) {
+        crit <- stats::qnorm(0.975)
+        # Train the discrete x scale before a rectangle whose endpoints are
+        # infinite; otherwise ggplot2 can infer a continuous x scale first.
+        p <- p + ggplot2::geom_blank() + ggplot2::annotate(
+          "rect", xmin = -Inf, xmax = Inf,
+          ymin = main_effect_value - crit * main_effect_se,
+          ymax = main_effect_value + crit * main_effect_se,
+          fill = colour_maineffect, alpha = ribbon_alpha
+        )
+      }
       if (isTRUE(show_ci_diff)) {
         p <- p + ggplot2::geom_errorbar(
           ggplot2::aes(ymin = .data$lower, ymax = .data$upper),
@@ -1106,7 +1119,8 @@ plot.mfpi <- function(x,
         model            = model,
         var              = var,
         group_var_name   = group_label,
-        comparison_codes = comparison_codes
+        comparison_codes = comparison_codes,
+        logit            = active_logit
       )
     }
 
@@ -1576,6 +1590,8 @@ mfpi_plot_original_group_label <- function(group_meta, internal_code) {
 #' @param group_var_name Character scalar naming the grouping variable.
 #' @param comparison_codes Character vector of internal comparison-group codes
 #'   for which to extract the main-effect estimate.
+#' @param logit Non-reference outcome class for a multinomial model; `NULL`
+#'   for scalar-response families.
 #'
 #' @return A list with two named numeric vectors, each with names equal to
 #'   \code{comparison_codes}:
@@ -1583,7 +1599,8 @@ mfpi_plot_original_group_label <- function(group_meta, internal_code) {
 #'     \item{\code{estimate}}{The estimated group main-effect contrast for
 #'       each comparison group.}
 #'     \item{\code{se}}{The corresponding standard error, obtained from the
-#'       diagonal of the variance-covariance matrix of the main-effects model.
+#'       main-effects model's covariance matrix or its stored multinomial
+#'       information matrix.
 #'       Elements are \code{NA} when the standard error cannot be extracted.}
 #'   }
 #'   Returns \code{NULL} if no main-effects model can be located.
@@ -1591,7 +1608,7 @@ mfpi_plot_original_group_label <- function(group_meta, internal_code) {
 #' @keywords internal
 #' @noRd
 mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
-                                       comparison_codes) {
+                                       comparison_codes, logit = NULL) {
   # ---------------------------------------------------------------------------
   # Locate the fitted main-effects model
   # ---------------------------------------------------------------------------
@@ -1616,7 +1633,14 @@ mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
   # ---------------------------------------------------------------------------
   # Extract coefficients defensively
   # ---------------------------------------------------------------------------
-  cf <- tryCatch(stats::coef(main_fit), error = function(e) NULL)
+  # The retained fast multinomial fit stores its named per-logit coefficients
+  # here; coef.nnet() instead returns a flat vector of neural-network weights.
+  cf <- if (!is.null(logit) &&
+            is.matrix(main_fit$mfp2_coefficient_matrix)) {
+    main_fit$mfp2_coefficient_matrix
+  } else {
+    tryCatch(stats::coef(main_fit), error = function(e) NULL)
+  }
   if (is.null(cf) && is.list(main_fit)) {
     # Some internal fit objects wrap the model; try likely component names.
     for (comp in c("coefficients", "coef", "beta")) {
@@ -1625,6 +1649,10 @@ mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
         break
       }
     }
+  }
+  if (is.matrix(cf)) {
+    if (is.null(logit) || !logit %in% rownames(cf)) return(NULL)
+    cf <- cf[logit, , drop = TRUE]
   }
   if (is.null(cf) || length(cf) == 0L || is.null(names(cf))) return(NULL)
 
@@ -1637,6 +1665,27 @@ mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
   # stats::vcov.glm / vcov.lm can succeed.
   # ---------------------------------------------------------------------------
   vc <- tryCatch(stats::vcov(main_fit), error = function(e) NULL)
+
+  # MFPI retains fast multinomial main-effects fits as nnet objects. They
+  # contain the design and fitted probabilities but no vcov() method. Compute
+  # the information for their freely estimated baseline-category logits using
+  # the same routine as the final multinomial fit (including case weights).
+  if (is.null(vc) && !is.null(logit) &&
+      !is.null(main_fit$mfp2_design) &&
+      !is.null(main_fit$mfp2_family$prepared) &&
+      !is.null(main_fit$fitted.values)) {
+    prepared <- main_fit$mfp2_family$prepared
+    vc <- tryCatch({
+      information <- mfp2_multinomial_information(
+        x = main_fit$mfp2_design,
+        probabilities = main_fit$fitted.values,
+        weights = prepared$effective_weights,
+        outcomes = prepared$nonreference,
+        class_levels = prepared$levels
+      )
+      solve(information)
+    }, error = function(e) NULL)
+  }
 
   if (is.null(vc) && is.list(main_fit) && is.null(class(main_fit)) ||
       (is.null(vc) && is.list(main_fit) && identical(class(main_fit), "list"))) {
@@ -1674,8 +1723,10 @@ mfpi_plot_maineffect_alpha <- function(model, var, group_var_name,
         out_est[[code]] <- value
       }
       # Extract SE from the diagonal of vcov if available.
-      if (!is.null(vc) && nm %in% rownames(vc) && nm %in% colnames(vc)) {
-        var_value <- vc[nm, nm]
+      vc_name <- if (is.null(logit)) nm else paste0(logit, ":", nm)
+      if (!is.null(vc) && vc_name %in% rownames(vc) &&
+          vc_name %in% colnames(vc)) {
+        var_value <- vc[vc_name, vc_name]
         if (is.numeric(var_value) && length(var_value) == 1L &&
             is.finite(var_value) && var_value >= 0) {
           out_se[[code]] <- sqrt(var_value)

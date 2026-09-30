@@ -123,3 +123,11 @@ test_that("plot.mfpi validates public plotting arguments", {
     "Unused arguments in `...`: unused_argument"
   )
 })
+
+test_that("plot.mfpi returns an empty plot list when no interaction is selected", {
+  skip_if_not_installed("ggplot2")
+  fit <- get_plot_mfpi_fit_v()
+  fit$best_interaction_model <- list()
+  expect_message(plots <- plot(fit, auto_print = FALSE), "Nothing to plot")
+  expect_identical(plots, list())
+})

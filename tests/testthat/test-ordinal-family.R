@@ -226,6 +226,35 @@ test_that("intercept-only ordinal fitting honors a varying offset", {
   expect_true(all(is.finite(diag(stats::vcov(fitted$fit)))))
 })
 
+test_that("ordinal training predictions include the fitted offset", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 250, seed = 27)
+  off <- seq(-0.4, 0.4, length.out = nrow(dm))
+  family <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), dm$y, weights = rep.int(1, nrow(dm)),
+    offset = off, has_offset = TRUE
+  )
+  fitted <- mfp2:::fit_ordinal(
+    x = as.matrix(dm["age"]), family = family,
+    control = mfp2:::normalize_ordinal_control(),
+    fast = FALSE, keep_fit = TRUE
+  )$fit
+  slope <- fitted$coefficients["age"]
+  expected <- as.numeric(fitted$x[, "age"] * slope + off)
+  actual <- mfp2:::mfp2_predict_ordinal(fitted, type = "link")
+  expect_equal(unname(actual), expected, tolerance = 1e-8)
+  cumulative <- cbind(1, vapply(fitted$mfp2_ordinal_intercepts, function(a) {
+    stats::plogis(a + expected)
+  }, numeric(length(expected))))
+  expected_probabilities <- cbind(
+    cumulative[, -ncol(cumulative), drop = FALSE] -
+      cumulative[, -1L, drop = FALSE],
+    cumulative[, ncol(cumulative)]
+  )
+  expect_equal(unname(mfp2:::mfp2_predict_ordinal(fitted, type = "response")),
+               unname(expected_probabilities), tolerance = 1e-8)
+})
+
 test_that("intercept-only ordinal prediction returns every requested row", {
   skip_on_cran(); skip_if_no_rms()
   intercepts <- c("y>=2" = 0.7, "y>=3" = -0.4)

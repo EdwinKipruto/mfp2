@@ -18,21 +18,26 @@ Imports: stats, survival, nnet, utils, Rcpp, numDeriv, ggplot2 (>=
         3.4.0), geepack (>= 1.3.0)
 Suggests: knitr, testthat (>= 3.2.0), xfun, rmarkdown, formatR,
         patchwork, fastglm (>= 0.1.1), MASS, rms (>= 6.3.0)
-Description: Fits multivariable fractional polynomial models with simultaneous
-    selection of variables and functional forms for generalized linear,
-    multinomial logistic, and Cox proportional hazards models. Key references are Royston and Altman
-    (1994) <doi:10.2307/2986270> and Royston and Sauerbrei (2008,
-    ISBN:978-0-470-02842-1). Extensions include approximate cumulative
-    distribution transformations for sigmoid-shaped covariate effects, as
-    described by Royston (2014) <doi:10.1177/1536867X1401400206> and Royston
-    and Sauerbrei (2016) <doi:10.1177/1536867X1601600109>; spike-at-zero
-    modeling for semi-continuous covariates using a two-stage selection
-    procedure, following Becher et al. (2012) <doi:10.1002/bimj.201100263>;
-    and fractional-polynomial interaction analyses between categorical grouping
-    variables and continuous covariates, following Royston and Sauerbrei (2004)
-    <doi:10.1002/sim.1815>, Royston and Sauerbrei (2013)
-    <doi:10.1002/sim.5813>, and Royston and Sauerbrei (2014)
-    <doi:10.1002/sim.6308>.
+Description: Fits multivariable fractional polynomial models with selection of
+    predictors and functional forms. The mfp2() function supports generalized
+    linear models, including negative-binomial regression; multinomial and
+    ordinal regression; generalized estimating equations for clustered data;
+    Cox and parametric survival models; and Fine--Gray models. Extensions
+    include approximate cumulative distribution transformations for
+    sigmoid-shaped associations and spike-at-zero modelling for
+    semi-continuous covariates. The mfpi() function assesses interactions
+    between a categorical grouping variable and continuous, binary, or
+    categorical predictors; it does not support generalized estimating
+    equations or Fine--Gray models. Fractional-polynomial modelling is
+    described by Royston and Altman (1994) <doi:10.2307/2986270> and Royston
+    and Sauerbrei (2008, ISBN:978-0-470-02842-1>). The approximate cumulative
+    distribution extension follows Royston (2014)
+    <doi:10.1177/1536867X1401400206> and Royston and Sauerbrei (2016)
+    <doi:10.1177/1536867X1601600109>. Spike-at-zero modelling follows Becher
+    et al. (2012) <doi:10.1002/bimj.201100263>. Interaction analyses follow
+    Royston and Sauerbrei (2004) <doi:10.1002/sim.1815>, Royston and
+    Sauerbrei (2013) <doi:10.1002/sim.5813>, and Royston and Sauerbrei
+    (2014) <doi:10.1002/sim.6308>.
 License: GPL-3
 URL: https://github.com/EdwinKipruto/mfp2
 BugReports: https://github.com/EdwinKipruto/mfp2/issues

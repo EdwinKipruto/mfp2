@@ -133,7 +133,8 @@ scale \code{1}, even when another value is supplied. Binary rescaling is
 unnecessary, and the published ACD definition uses shifted but unscaled
 covariate values. In \code{mfp2.formula()}, the top-level value is a
 scalar global default; use \code{fp()} or \code{fp2()} for variable-specific values.
-Final regression coefficients are expressed on the original data scale.}
+Final regression coefficients are expressed on the original data scale,
+which may include a shift and centering; see \strong{Shifting, scaling, and centering}.}
 
 \item{shift}{For \code{mfp2.default()}, \code{NULL}, a single unnamed finite numeric
 value, or a named finite numeric vector for one or more columns of \code{x}.
@@ -312,14 +313,14 @@ This may improve small-sample behaviour for variable selection,
 functional-form selection, and spike-at-zero testing. Default \code{FALSE}.
 Ignored for non-Gaussian families.}
 
-\item{control}{Fitting controls from \code{\link[stats:glm.control]{stats::glm.control()}},
-\code{\link[survival:coxph.control]{survival::coxph.control()}}, or \code{\link[survival:survreg.control]{survival::survreg.control()}}. \code{NULL} uses
-the relevant defaults. For GLMs, the same controls are used during MFP
-selection and the final fit. With \code{fitter = "fastglm"}, \code{epsilon} controls
-the convergence tolerance and \code{maxit} controls the iteration limit;
-\code{trace = TRUE} is not supported. For \code{family = "negbin"}, these settings
-apply to the regression iterations; estimation of the dispersion parameter
-retains its default controls.}
+\item{control}{\code{NULL} or a named list of fitting controls for the selected
+model family. \code{NULL} uses the relevant defaults. For ordinary GLMs, use
+settings accepted by \code{\link[stats:glm.control]{stats::glm.control()}}; for Cox and Fine--Gray
+models, \code{\link[survival:coxph.control]{survival::coxph.control()}}; for parametric survival models,
+\code{\link[survival:survreg.control]{survival::survreg.control()}}; and for GEE models,
+\code{\link[geepack:geese.control]{geepack::geese.control()}}. Multinomial models accept \code{maxit}, \code{reltol},
+\code{abstol}, \code{trace}, and \code{MaxNWts}. Ordinal models accept \code{maxit}, \code{eps},
+\code{tol}, and \code{trace}.}
 
 \item{zero_vars}{Character vector of nonnegative continuous predictors for
 which exact-zero values form a structural-zero component. Only values with
@@ -422,12 +423,14 @@ to set variable-specific FP, ACD, zero, catzero, or SAZ options.}
 \code{formula}.}
 }
 \value{
-An object of class \code{mfp2}. It also inherits from the underlying fitted-model
-class:
+An object of class \code{mfp2}, built from the final fitted model and extended
+with MFP selection and transformation information. Depending on the model
+family, it also inherits from:
 
 \itemize{
 \item \code{glm} for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 \item \code{fastglm_nb} and \code{fastglm} for negative-binomial models;
+\item \code{geeglm} for GEE models;
 \item \code{multinom} and \code{nnet} for multinomial logistic models;
 \item \code{orm} for ordinal regression models;
 \item \code{coxph} for Cox and Fine--Gray models;
@@ -435,11 +438,8 @@ class:
 }
 
 Standard fitted-model components, such as coefficients, residuals, fitted
-values, and the model call, can be accessed using the usual methods for
-\code{glm}, \code{fastglm}, \code{multinom}, \code{orm}, \code{coxph}, or \code{survreg} objects.
-
-The following additional components are part of the user-facing \code{mfp2}
-result:
+values, and the model call, remain available. \code{mfp2()} adds the following
+components to describe its selection results:
 
 \describe{
 \item{convergence_mfp}{
@@ -503,19 +503,18 @@ Only documented components form part of the stable public interface. Other
 components may change between package versions.
 }
 \description{
-Fits multivariable fractional polynomial (MFP) models with simultaneous selection
-of variables and functional forms for continuous predictors. In addition to
-standard MFP modelling, \code{mfp2()} supports approximate cumulative
-distribution (ACD) functions for sigmoid-shaped associations and
-spike-at-zero (SAZ) modelling for semi-continuous predictors. Models may be
-specified with a formula and data frame or with a numeric predictor matrix
-and response. Both interfaces provide the same core modelling capabilities
-but differ in input handling as described below. Supported likelihood GLMs
-are Gaussian, binomial, Poisson, Gamma, inverse Gaussian, and negative
-binomial. Multicategory responses can be fitted with baseline-category
-multinomial logistic regression or proportional-odds ordinal regression.
-Survival models include Cox proportional hazards, parametric
-\code{\link[survival:survreg]{survival::survreg()}} models, and Fine--Gray subdistribution hazards.
+Fits multivariable fractional polynomial (MFP) models with selection of
+predictors and functional forms for continuous predictors. Extensions include
+approximate cumulative distribution (ACD) functions for sigmoid-shaped
+associations and methods for predictors with exact zeros, including
+spike-at-zero (SAZ) selection. Models can be specified with a formula and
+data frame or with a numeric predictor matrix and response.
+Supported models include Gaussian, binomial, Poisson, Gamma, inverse-Gaussian,
+and negative-binomial regression; multinomial and ordinal regression;
+Cox, parametric survival, and Fine-Gray models; and clustered models fitted
+with generalized estimating equations (GEE). The two input interfaces
+provide the same core modelling options but handle factors, offsets, and
+variable-specific settings differently.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -1266,6 +1265,6 @@ Biostatistics & Epidemiology, 3(1), pp.23-37.}
 \seealso{
 \code{\link[=fp]{fp()}}, \code{\link[=fp2]{fp2()}}, \code{\link[=summary.mfp2]{summary.mfp2()}}, \code{\link[=coef.mfp2]{coef.mfp2()}}, \code{\link[=predict.mfp2]{predict.mfp2()}},
 \code{\link[=plot.mfp2]{plot.mfp2()}}, \code{\link[=get_selected_variable_names]{get_selected_variable_names()}}, \code{\link[=transform_vector_fp]{transform_vector_fp()}},
-\code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=ordinal_family]{ordinal_family()}}, \code{\link[=survreg_family]{survreg_family()}},
-\code{\link[=finegray_family]{finegray_family()}}
+\code{\link[=gee_family]{gee_family()}}, \code{\link[=multinomial_family]{multinomial_family()}}, \code{\link[=ordinal_family]{ordinal_family()}},
+\code{\link[=survreg_family]{survreg_family()}}, \code{\link[=finegray_family]{finegray_family()}}
 }

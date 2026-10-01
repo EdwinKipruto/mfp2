@@ -516,21 +516,35 @@ test_that("all three criteria recover the strong nonlinear and linear signals", 
       expect_true(all(is.na(m$fp_powers$x3)), info = crit)
     }
 
-    # The AIC/BIC selection score reconstructs from the quasi-likelihood and
-    # df. The p-value score is Stata's negative overall robust Wald selection
+    # The AIC/BIC score includes the search charge for every selected FP power.
+    # The p-value score is Stata's negative overall robust Wald selection
     # deviance, on a different scale from the family deviance and not
     # reconstructed here, so only require that it is finite.
     if (crit == "pvalue") {
       expect_true(is.finite(m$mfp_selection_score), info = crit)
     } else {
+      search_df <- mfp2_fp_search_df(m$fp_powers,
+                                    stats::setNames(m$fp_terms$searched_fp,
+                                                    rownames(m$fp_terms)))
+      expect_gt(search_df, 0L)
       expected_score <- switch(
         crit,
-        aic = -2 * m$mfp_logl + 2 * m$mfp_df,
-        bic = -2 * m$mfp_logl + log(length(unique(dat$id))) * m$mfp_df
+        aic = -2 * m$mfp_logl + 2 * (m$mfp_df + search_df),
+        bic = -2 * m$mfp_logl + log(length(unique(dat$id))) *
+          (m$mfp_df + search_df)
       )
       expect_equal(m$mfp_selection_score, expected_score, info = crit)
     }
   }
+})
+
+test_that("FP search charge distinguishes searched power one from fixed linear", {
+  powers <- list(linear = 1, searched_one = 1, acd = c(NA_real_, 0.5),
+                 fp2 = c(-1, 2), binary_only = NA_real_)
+  searched <- c(linear = FALSE, searched_one = TRUE, acd = TRUE,
+                fp2 = TRUE, binary_only = FALSE)
+  expect_equal(mfp2_fp_search_df(powers, searched), 4L)
+  expect_equal(mfp2_fp_search_df(powers, searched[rev(names(searched))]), 4L)
 })
 
 test_that("formula and matrix interfaces make the same GEE selection", {

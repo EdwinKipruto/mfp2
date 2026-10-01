@@ -1,18 +1,17 @@
 #' Multivariable Fractional Polynomial Models with Extensions
 #'
-#' Fits multivariable fractional polynomial (MFP) models with simultaneous selection
-#' of variables and functional forms for continuous predictors. In addition to
-#' standard MFP modelling, `mfp2()` supports approximate cumulative
-#' distribution (ACD) functions for sigmoid-shaped associations and
-#' spike-at-zero (SAZ) modelling for semi-continuous predictors. Models may be
-#' specified with a formula and data frame or with a numeric predictor matrix
-#' and response. Both interfaces provide the same core modelling capabilities
-#' but differ in input handling as described below. Supported likelihood GLMs
-#' are Gaussian, binomial, Poisson, Gamma, inverse Gaussian, and negative
-#' binomial. Multicategory responses can be fitted with baseline-category
-#' multinomial logistic regression or proportional-odds ordinal regression.
-#' Survival models include Cox proportional hazards, parametric
-#' [survival::survreg()] models, and Fine--Gray subdistribution hazards.
+#' Fits multivariable fractional polynomial (MFP) models with selection of
+#' predictors and functional forms for continuous predictors. Extensions include
+#' approximate cumulative distribution (ACD) functions for sigmoid-shaped
+#' associations and methods for predictors with exact zeros, including
+#' spike-at-zero (SAZ) selection. Models can be specified with a formula and
+#' data frame or with a numeric predictor matrix and response.
+#' Supported models include Gaussian, binomial, Poisson, Gamma, inverse-Gaussian,
+#' and negative-binomial regression; multinomial and ordinal regression;
+#' Cox, parametric survival, and Fine-Gray models; and clustered models fitted
+#' with generalized estimating equations (GEE). The two input interfaces
+#' provide the same core modelling options but handle factors, offsets, and
+#' variable-specific settings differently.
 #'
 #' @section Fractional-polynomial model selection:
 #' Fractional polynomials represent continuous predictor effects using powers
@@ -487,7 +486,8 @@
 #'   unnecessary, and the published ACD definition uses shifted but unscaled
 #'   covariate values. In `mfp2.formula()`, the top-level value is a
 #'   scalar global default; use `fp()` or `fp2()` for variable-specific values.
-#'   Final regression coefficients are expressed on the original data scale.
+#'   Final regression coefficients are expressed on the original data scale,
+#'   which may include a shift and centering; see **Shifting, scaling, and centering**.
 #' @param shift For `mfp2.default()`, `NULL`, a single unnamed finite numeric
 #'   value, or a named finite numeric vector for one or more columns of `x`.
 #'   An unnamed scalar is applied to every column. Named values are matched to
@@ -672,14 +672,14 @@
 #' This may improve small-sample behaviour for variable selection,
 #' functional-form selection, and spike-at-zero testing. Default `FALSE`.
 #' Ignored for non-Gaussian families.
-#' @param control Fitting controls from [stats::glm.control()],
-#' [survival::coxph.control()], or [survival::survreg.control()]. `NULL` uses
-#' the relevant defaults. For GLMs, the same controls are used during MFP
-#' selection and the final fit. With `fitter = "fastglm"`, `epsilon` controls
-#' the convergence tolerance and `maxit` controls the iteration limit;
-#' `trace = TRUE` is not supported. For `family = "negbin"`, these settings
-#' apply to the regression iterations; estimation of the dispersion parameter
-#' retains its default controls.
+#' @param control `NULL` or a named list of fitting controls for the selected
+#' model family. `NULL` uses the relevant defaults. For ordinary GLMs, use
+#' settings accepted by [stats::glm.control()]; for Cox and Fine--Gray
+#' models, [survival::coxph.control()]; for parametric survival models,
+#' [survival::survreg.control()]; and for GEE models,
+#' [geepack::geese.control()]. Multinomial models accept `maxit`, `reltol`,
+#' `abstol`, `trace`, and `MaxNWts`. Ordinal models accept `maxit`, `eps`,
+#' `tol`, and `trace`.
 #' @param zero_vars Character vector of nonnegative continuous predictors for
 #' which exact-zero values form a structural-zero component. Only values with
 #' `x > 0` undergo the FP function; values with `x = 0` contribute zero to the
@@ -987,12 +987,14 @@
 #' }
 #'
 #' @return
-#' An object of class `mfp2`. It also inherits from the underlying fitted-model
-#' class:
+#' An object of class `mfp2`, built from the final fitted model and extended
+#' with MFP selection and transformation information. Depending on the model
+#' family, it also inherits from:
 #'
 #' \itemize{
 #'   \item `glm` for Gaussian, binomial, Poisson, Gamma, and inverse-Gaussian models;
 #'   \item `fastglm_nb` and `fastglm` for negative-binomial models;
+#'   \item `geeglm` for GEE models;
 #'   \item `multinom` and `nnet` for multinomial logistic models;
 #'   \item `orm` for ordinal regression models;
 #'   \item `coxph` for Cox and Fine--Gray models;
@@ -1000,11 +1002,8 @@
 #' }
 #'
 #' Standard fitted-model components, such as coefficients, residuals, fitted
-#' values, and the model call, can be accessed using the usual methods for
-#' `glm`, `fastglm`, `multinom`, `orm`, `coxph`, or `survreg` objects.
-#'
-#' The following additional components are part of the user-facing `mfp2`
-#' result:
+#' values, and the model call, remain available. `mfp2()` adds the following
+#' components to describe its selection results:
 #'
 #' \describe{
 #'   \item{convergence_mfp}{
@@ -1110,8 +1109,8 @@
 #' @seealso
 #' [fp()], [fp2()], [summary.mfp2()], [coef.mfp2()], [predict.mfp2()],
 #' [plot.mfp2()], [get_selected_variable_names()], [transform_vector_fp()],
-#' [multinomial_family()], [ordinal_family()], [survreg_family()],
-#' [finegray_family()]
+#' [gee_family()], [multinomial_family()], [ordinal_family()],
+#' [survreg_family()], [finegray_family()]
 #'
 #' @export
 mfp2 <- function(x, ...) {

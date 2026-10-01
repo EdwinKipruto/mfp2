@@ -1094,7 +1094,8 @@ fit_mfp <- function(x,
     fit$mfp_selection_score <- gee_final_selection_score(
       modelfit,
       criterion = criterion,
-      n_clusters = n_obs
+      n_clusters = n_obs,
+      df_additional = mfp2_fp_search_df(powers_current, searched_fp_current)
     )
   }
   if (identical(family_string, "cox")) {
@@ -1412,6 +1413,37 @@ normalize_powers_for_convergence <- function(powers, spike_decision) {
 
   names(out) <- names(powers)
   out
+}
+
+#' Count Degrees of Freedom for Selected FP Power Searches
+#'
+#' Counts one additional degree of freedom per retained FP power selected from
+#' a searched candidate class. A searched FP1 with power 1 still incurs the
+#' charge; a fixed linear term, an excluded term, and a binary-only spike term
+#' do not. Missing power slots in ACD terms are not counted. The result is the
+#' extra penalty needed in the final GEE information-criterion score, beyond
+#' the fitted mean-model coefficient count.
+#'
+#' @param powers Named list of selected power vectors, one per conceptual term.
+#' @param searched_fp Named logical vector marking terms selected from an FP
+#'   candidate class rather than from the fixed-linear row.
+#'
+#' @return A single non-negative integer giving the additional search degrees
+#'   of freedom for the retained model.
+#' @keywords internal
+#' @noRd
+mfp2_fp_search_df <- function(powers, searched_fp) {
+  if (is.null(names(powers)) || is.null(names(searched_fp)) ||
+      anyDuplicated(names(powers)) || anyDuplicated(names(searched_fp)) ||
+      !setequal(names(powers), names(searched_fp))) {
+    stop("FP powers and search indicators must name the same terms.",
+         call. = FALSE)
+  }
+
+  sum(vapply(names(powers), function(term) {
+    if (!isTRUE(searched_fp[[term]])) return(0L)
+    as.integer(sum(!is.na(powers[[term]])))
+  }, integer(1L)))
 }
 
 #' Calculate degrees of freedom for a transformed variable

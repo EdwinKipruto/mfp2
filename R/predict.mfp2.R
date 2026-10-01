@@ -1582,6 +1582,9 @@ mfp2_predict_ordinal <- function(object, transformed = NULL,
   if (is.null(transformed)) {
     xx <- object$x
     prediction_rownames <- rownames(xx)
+    if (isTRUE(object$mfp2_family$prepared$has_offset)) {
+      newoffset <- object$mfp2_family$prepared$offset
+    }
   } else {
     transformed <- as.data.frame(transformed, check.names = FALSE)
     prediction_rownames <- row.names(transformed)

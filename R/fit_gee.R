@@ -1115,11 +1115,22 @@ calculate_gee_metrics <- function(obj, n_obs, df_additional = 0) {
 #' the returned object makes the selected model auditable without recomputing
 #' or guessing which GEE comparison scale was active.
 #'
+#' @param obj The retained GEE fit-result list from `fit_gee()`.
+#' @param criterion The active selection criterion: `"pvalue"`, `"aic"`, or
+#'   `"bic"`.
+#' @param n_clusters Number of independent clusters used for the QBIC penalty.
+#' @param df_additional Additional degrees of freedom for retained FP power
+#'   searches. This does not affect the p-value selection statistic.
+#'
+#' @return The final score on the scale of `criterion`.
 #' @keywords internal
 #' @noRd
-gee_final_selection_score <- function(obj, criterion, n_clusters) {
+gee_final_selection_score <- function(obj, criterion, n_clusters,
+                                      df_additional = 0) {
   criterion <- match.arg(criterion, c("pvalue", "aic", "bic"))
-  metrics <- calculate_gee_metrics(obj, n_obs = n_clusters)
+  metrics <- calculate_gee_metrics(
+    obj, n_obs = n_clusters, df_additional = df_additional
+  )
   metric_name <- switch(
     criterion,
     pvalue = "deviance_rs",

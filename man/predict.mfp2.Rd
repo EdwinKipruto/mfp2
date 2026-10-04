@@ -19,6 +19,7 @@
   nseq = 100,
   add_intercept = TRUE,
   cox_reference = NULL,
+  ordinal_cutoff = NULL,
   ...
 )
 }
@@ -89,13 +90,20 @@ spaced values used when \code{terms_seq = "equidistant"}. The default is 100.}
 \item{add_intercept}{A single non-missing \code{TRUE} or \code{FALSE} value. For GLM
 and \code{survreg} term predictions, \code{TRUE} includes the fitted intercept in
 each result. The default is \code{TRUE}. It has no effect for proportional-
-hazards models or contrasts.}
+hazards models, ordinal terms without \code{ordinal_cutoff}, or contrasts.}
 
 \item{cox_reference}{A character value choosing the covariate reference for
 Cox or Fine--Gray predictions with \code{type = "lp"} or \code{type = "risk"}. Use \code{"zero"},
 \code{"sample"}, or \code{"strata"}. The default is \code{"zero"}. It cannot be
 used for other models, term or contrast predictions, or Cox predictions
 with \code{type = "expected"} or \code{type = "survival"}.}
+
+\item{ordinal_cutoff}{For ordinal \code{type = "terms"} only, an optional integer
+from \code{1} to the number of response categories minus one. When supplied,
+include that cutoff's intercept and its covariance with the term in each
+estimate and confidence interval. \code{NULL} returns the shared term effect
+without an intercept. Cutoff \code{1} compares categories 2 and above with
+category 1.}
 
 \item{...}{Further arguments passed to \code{\link[stats:predict.glm]{stats::predict.glm()}} or
 the native \code{\link[survival:predict.coxph]{survival::predict.coxph()}} or
@@ -232,7 +240,8 @@ For likelihood GLMs, ordinal models, Cox models, Fine--Gray models, and
 \itemize{
 \item \code{type = "terms"} returns a fitted value for each requested term on the
 linear-predictor scale. For GLM and \code{survreg} models, the intercept is
-included by default.
+included by default. Ordinal terms have a shared predictor effect across
+cutoffs, so they omit cutoff intercepts unless \code{ordinal_cutoff} is supplied.
 \item \code{type = "contrasts"} compares each fitted term value with a reference
 value.
 }
@@ -280,6 +289,12 @@ For GLM and \code{survreg} models, \code{add_intercept = TRUE} includes the fitt
 intercept in each term result. Set \code{add_intercept = FALSE} to return only the
 contribution from the requested term. This argument does not affect Cox,
 Fine--Gray, or contrast predictions.
+
+Ordinal term predictions without \code{ordinal_cutoff} return the common term
+contribution and calculate its standard error from the covariance of that
+term's coefficients. Selecting a cutoff adds that cutoff's fitted intercept
+and includes its variance and covariance with the term coefficients in the
+standard error. Ordinal contrasts cancel the intercept at every cutoff.
 }
 
 \section{Contrasts and reference values}{

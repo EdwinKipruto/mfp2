@@ -95,7 +95,8 @@
 #'
 #' - `type = "terms"` returns a fitted value for each requested term on the
 #'   linear-predictor scale. For GLM and `survreg` models, the intercept is
-#'   included by default.
+#'   included by default. Ordinal terms have a shared predictor effect across
+#'   cutoffs, so they omit cutoff intercepts unless `ordinal_cutoff` is supplied.
 #' - `type = "contrasts"` compares each fitted term value with a reference
 #'   value.
 #'
@@ -139,6 +140,12 @@
 #' intercept in each term result. Set `add_intercept = FALSE` to return only the
 #' contribution from the requested term. This argument does not affect Cox,
 #' Fine--Gray, or contrast predictions.
+#'
+#' Ordinal term predictions without `ordinal_cutoff` return the common term
+#' contribution and calculate its standard error from the covariance of that
+#' term's coefficients. Selecting a cutoff adds that cutoff's fitted intercept
+#' and includes its variance and covariance with the term coefficients in the
+#' standard error. Ordinal contrasts cancel the intercept at every cutoff.
 #'
 #' @section Contrasts and reference values:
 #' With `type = "contrasts"`, the returned value is:
@@ -328,7 +335,13 @@
 #' @param add_intercept A single non-missing `TRUE` or `FALSE` value. For GLM
 #'   and `survreg` term predictions, `TRUE` includes the fitted intercept in
 #'   each result. The default is `TRUE`. It has no effect for proportional-
-#'   hazards models or contrasts.
+#'   hazards models, ordinal terms without `ordinal_cutoff`, or contrasts.
+#' @param ordinal_cutoff For ordinal `type = "terms"` only, an optional integer
+#'   from `1` to the number of response categories minus one. When supplied,
+#'   include that cutoff's intercept and its covariance with the term in each
+#'   estimate and confidence interval. `NULL` returns the shared term effect
+#'   without an intercept. Cutoff `1` compares categories 2 and above with
+#'   category 1.
 #'
 #' @param cox_reference A character value choosing the covariate reference for
 #'   Cox or Fine--Gray predictions with `type = "lp"` or `type = "risk"`. Use `"zero"`,
@@ -528,6 +541,7 @@ predict.mfp2 <- function(object,
                          nseq = 100,
                          add_intercept = TRUE,
                          cox_reference = NULL,
+                         ordinal_cutoff = NULL,
                          ...) {
 
   # Record whether the caller supplied a non-NULL Cox covariate reference.
@@ -592,6 +606,19 @@ predict.mfp2 <- function(object,
     type = type,
     family_string = object$family_string
   )
+
+  if (!is.null(ordinal_cutoff)) {
+    n_cutoffs <- length(object$mfp2_ordinal_intercepts)
+    if (!identical(object$family_string, "ordinal") ||
+        !identical(type, "terms") ||
+        !is.numeric(ordinal_cutoff) || length(ordinal_cutoff) != 1L ||
+        is.na(ordinal_cutoff) || !is.finite(ordinal_cutoff) ||
+        ordinal_cutoff != floor(ordinal_cutoff) ||
+        ordinal_cutoff < 1L || ordinal_cutoff > n_cutoffs) {
+      stop("`ordinal_cutoff` must select an available cutoff for ordinal `type = 'terms'`.",
+           call. = FALSE)
+    }
+  }
 
   # Cox prediction types are resolved here rather than left to
   # predict.coxph(). This lets mfp2 distinguish its own term/contrast paths from
@@ -883,11 +910,19 @@ predict.mfp2 <- function(object,
       )
     }
 
-    # The intercept contributes to GLM term predictions only when requested.
-    # It cancels from contrasts and is not present in Cox partial predictors.
+    # Ordinal predictors share a slope but have one intercept per cutoff.
+    # With no selected cutoff they return the shared, intercept-free effect.
     cf <- coef(object)
-    intercept <- if ("(Intercept)" %in% names(cf)) cf[["(Intercept)"]] else 0
-    if (is.na(intercept) || !add_intercept || type == "contrasts") {
+    intercept_name <- if (!is.null(ordinal_cutoff)) {
+      names(object$mfp2_ordinal_intercepts)[ordinal_cutoff]
+    } else {
+      "(Intercept)"
+    }
+    intercept <- if (intercept_name %in% names(cf)) cf[[intercept_name]] else 0
+    if (is.na(intercept) ||
+        (is.null(ordinal_cutoff) &&
+         (identical(object$family_string, "ordinal") || !add_intercept)) ||
+        type == "contrasts") {
       intercept <- 0
     }
 
@@ -1097,7 +1132,10 @@ predict.mfp2 <- function(object,
         object,
         x_trafo,
         x_ref_trafo,
-        include_intercept = add_intercept && type == "terms"
+        include_intercept = type == "terms" &&
+          (!is.null(ordinal_cutoff) ||
+           (add_intercept && !identical(object$family_string, "ordinal"))),
+        intercept_name = intercept_name
       )
       mult <- stats::qnorm(1 - alpha / 2)
       res$lower <- res$value - mult * res$se
@@ -3784,8 +3822,10 @@ prepare_newdata_for_predict <- function(object,
 #'  `NULL`, in which case this function computes standard errors without reference
 #' values.
 #' @param include_intercept logical indicating whether intercept variance and
-#' covariance should be included when no reference value is supplied. This must
-#' match the `add_intercept` choice used for term predictions.
+#' covariance should be included when no reference value is supplied. Shared
+#' ordinal terms set this to `FALSE`; cutoff-specific terms set it to `TRUE`.
+#' @param intercept_name Exact fitted coefficient name of the intercept when
+#'   `include_intercept = TRUE`. Ordinal fits use a different name per cutoff.
 #'
 #' @details
 #' See pages 91-92 and following in the book by Royston and Sauerbrei 2008
@@ -3809,9 +3849,20 @@ prepare_newdata_for_predict <- function(object,
 calculate_standard_error <- function(model,
                                      X,
                                      xref = NULL,
-                                     include_intercept = TRUE) {
+                                     include_intercept = TRUE,
+                                     intercept_name = "(Intercept)") {
 
-  vcovx <- vcov(object = model)
+  # vcov.orm() defaults to the middle cutoff only. Request every intercept
+  # when a cutoff is included, or just the common slope block otherwise.
+  vcovx <- if (identical(model$family_string, "ordinal")) {
+    if (isTRUE(include_intercept) && is.null(xref)) {
+      mfp2_ordinal_vcov_all(model)
+    } else {
+      mfp2_ordinal_vcov_slopes(model)
+    }
+  } else {
+    vcov(object = model)
+  }
 
   # Use the exact fit-time mapping between transformed matrix columns and
   # fitted coefficient names. This handles non-syntactic formula terms without
@@ -3838,14 +3889,15 @@ calculate_standard_error <- function(model,
   # variance.
   if (isTRUE(include_intercept) &&
       mfp2_family_has_intercept(model$family_string) && is.null(xref)) {
-    intercept_ind <- match("(Intercept)", colnames(vcovx))
+    intercept_ind <- match(intercept_name, colnames(vcovx))
     if (is.na(intercept_ind)) {
       stop(
-        "Cannot compute SE with intercept; covariance matrix lacks `(Intercept)`.",
+        "Cannot compute SE with intercept; covariance matrix lacks `",
+        intercept_name, "`.",
         call. = FALSE
       )
     }
-    X <- cbind("(Intercept)" = 1, X)
+    X <- cbind(1, X)
     ind <- c(intercept_ind, ind)
   }
 

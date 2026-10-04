@@ -112,6 +112,13 @@ logit's own partial predictor on the log-odds scale. Component-plus-residual
 overlays use per-logit deviance residuals, treating each non-reference logit
 as a binary sub-problem.
 
+For ordinal term plots, each predictor is faceted by response cutoff. Every
+panel includes that cutoff's intercept in its fitted curve and confidence
+interval, and adds deviance residuals for the same cutoff to observed term
+predictions. These residual overlays are diagnostic and are not an exact
+decomposition on the linear-predictor scale. Contrast plots remain on the
+shared predictor-effect scale.
+
 Binary predictors are displayed at their two fitted levels as point estimates
 with vertical confidence intervals. Only those two levels are labelled on the
 x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero

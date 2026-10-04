@@ -2388,7 +2388,7 @@ mfp2.default <- function(x,
   }
 
   # df must translate into a valid FP degree: 1 (linear) or an even positive
-  # integer 2, 4, 6, ... (representing FP1, FP2, FP3, ...).
+  # integer (2*degree) 2, 4, 6, ... (representing FP1, FP2, FP3, ...).
   if (anyNA(df) || any(!is.finite(df))) {
     stop(
       "! `df` must contain only finite, non-missing values.",
@@ -2478,7 +2478,7 @@ mfp2.default <- function(x,
       )
     }
   }
-
+  # `id` is a finegray and GEE-only auxiliary parameter
   if (!is.null(id)) {
     if (!family_string %in% c("finegray", "gee")) {
       stop(
@@ -2978,12 +2978,15 @@ mfp2.default <- function(x,
   # Require more fitted observations than predictor columns. For matrix calls,
   # this check runs after `subset` has been applied; formula calls already pass
   # their subset-specific model matrix into this shared path.
-  if (nrow(x) <= ncol(x)) {
+  dimx <- dim(x)
+  nrow_x <- dimx[1L]
+  ncol_x <- dimx[2L]
+  if (nrow_x <= ncol_x) {
     stop(
       sprintf(
         "! The number of observations must be greater than the number of predictor columns (n = %d, p = %d).",
-        nrow(x),
-        ncol(x)
+        nrow_x,
+        ncol_x
       ),
       call. = FALSE
     )
@@ -3408,11 +3411,13 @@ mfp2.formula <- function(formula,
       stop("! `offset` must be numeric.", call. = FALSE)
     }
 
-    if (length(offset) != n_data) {
+    # A multinomial offset may be an n x C or n x (C - 1) matrix, so count rows
+    # rather than values. Vectors keep the original message.
+    if (NROW(offset) != n_data) {
       stop(
         sprintf(
-          "! `offset` must have one value per row of `data`.\ni `offset` has length %d, but `data` has %d rows.",
-          length(offset), n_data
+          "! `offset` must have one value (or matrix row) per row of `data`.\ni `offset` has %d, but `data` has %d rows.",
+          NROW(offset), n_data
         ),
         call. = FALSE
       )
@@ -3701,7 +3706,8 @@ mfp2.formula <- function(formula,
       stop("! `offset` must have one value per observation.", call. = FALSE)
     }
     if (identical(family_string, "multinomial")) {
-      c_classes <- mfp2_multinomial_n_classes(y)
+      # The response is extracted from `mf` only in Step 8, so read it here.
+      c_classes <- mfp2_multinomial_n_classes(stats::model.response(mf))
       if (!is.matrix(offset) || !ncol(offset) %in% c(c_classes - 1L, c_classes)) {
         stop(
           "! Multinomial `offset` must be an n x C class matrix or an n x (C - 1) reference-logit matrix.",
@@ -4494,8 +4500,7 @@ residuals.mfp2 <- function(object, ...) {
 #' @keywords internal
 #' @noRd
 mfp2_multinomial_residuals <- function(object, type = "deviance") {
-  probabilities <- stats::predict(object, type = "response")
-  probabilities <- as.matrix(probabilities)
+  probabilities <- as.matrix(stats::predict(object, type = "response"))
 
   # Non-reference logits, in the order carried by the coefficient matrix, so
   # residual columns align with coef(), vcov() blocks, and term predictions.
@@ -4504,25 +4509,42 @@ mfp2_multinomial_residuals <- function(object, type = "deviance") {
     logits <- setdiff(object$class_levels, object$reference_class)
   }
 
-  y_labels <- as.character(object$y)
-  eps <- .Machine$double.eps
+  # Observed class proportions and their binomial totals. Using the prepared
+  # count matrix (one-hot rows for a factor response) makes the residuals work
+  # for every documented response form, including count matrices, and lets
+  # case weights enter exactly as in residuals.glm().
+  prepared <- object$mfp2_family$prepared
+  if (is.null(prepared$y_matrix) || is.null(prepared$row_totals)) {
+    stop("Internal error: multinomial response data are unavailable.", call. = FALSE)
+  }
+  observed <- prepared$y_matrix / prepared$row_totals
+  prior_weights <- prepared$effective_weights
+  if (nrow(observed) != nrow(probabilities)) {
+    stop("Internal error: multinomial residuals do not align with fitted rows.",
+         call. = FALSE)
+  }
 
+  eps <- .Machine$double.eps
   out <- matrix(
     NA_real_, nrow(probabilities), length(logits),
     dimnames = list(rownames(probabilities), logits)
   )
   for (q in logits) {
-    y_q <- as.numeric(y_labels == q)
+    y_q <- observed[, q]
     p_q <- pmin(pmax(probabilities[, q], eps), 1 - eps)
     resid_q <- y_q - p_q
     out[, q] <- switch(
       type,
       response = resid_q,
-      pearson  = resid_q / sqrt(p_q * (1 - p_q)),
+      pearson  = resid_q * sqrt(prior_weights) / sqrt(p_q * (1 - p_q)),
       working  = resid_q / (p_q * (1 - p_q)),
-      deviance = sign(resid_q) * sqrt(pmax(
-        -2 * (y_q * log(p_q) + (1 - y_q) * log(1 - p_q)), 0
-      ))
+      deviance = {
+        # Binomial unit deviance, including the saturated term so that
+        # proportions strictly between 0 and 1 are handled correctly.
+        y_log_y <- ifelse(y_q > 0, y_q * log(y_q / p_q), 0)
+        n_log_n <- ifelse(y_q < 1, (1 - y_q) * log((1 - y_q) / (1 - p_q)), 0)
+        sign(resid_q) * sqrt(pmax(2 * prior_weights * (y_log_y + n_log_n), 0))
+      }
     )
   }
   out

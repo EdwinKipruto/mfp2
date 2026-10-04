@@ -50,6 +50,57 @@ test_that("forced-linear mfp2 ordinal reproduces native rms::orm", {
   expect_true(is.finite(AIC(fit)))
 })
 
+test_that("ordinal term uncertainty and residual plots use every cutoff", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 350, seed = 97)
+  dm$y <- ordered(pmin(as.integer(dm$y), 3L))
+  fit <- mfp2(y ~ fp(age, df = 1, select = 1, scale = 1, shift = 0),
+              data = dm, family = ordinal_family(), center = FALSE,
+              verbose = FALSE)
+  expect_length(fit$mfp2_ordinal_intercepts, 2L)
+
+  shared <- predict(fit, type = "terms", terms = "age",
+                    terms_seq = "data")$age
+  first <- predict(fit, type = "terms", terms = "age",
+                   terms_seq = "data", ordinal_cutoff = 1L)$age
+  second <- predict(fit, type = "terms", terms = "age",
+                    terms_seq = "data", ordinal_cutoff = 2L)$age
+  cf <- stats::coef(fit)
+  V <- mfp2:::mfp2_ordinal_vcov_all(fit)
+  slope_name <- setdiff(names(cf), names(fit$mfp2_ordinal_intercepts))
+  expect_length(slope_name, 1L)
+  x <- as.numeric(shared$value / cf[[slope_name]])
+  for (j in seq_len(2L)) {
+    specific <- if (j == 1L) first else second
+    name <- names(fit$mfp2_ordinal_intercepts)[j]
+    expected_variance <- V[name, name] + 2 * x * V[name, slope_name] +
+      x^2 * V[slope_name, slope_name]
+    expect_equal(specific$value - shared$value,
+                 rep(unname(cf[[name]]), nrow(shared)))
+    expect_equal(specific$se, sqrt(expected_variance), tolerance = 1e-6)
+  }
+  expect_equal(shared$se^2,
+               x^2 * V[slope_name, slope_name],
+               tolerance = 1e-6)
+  expect_error(predict(fit, type = "terms", ordinal_cutoff = 3L),
+               "ordinal_cutoff")
+
+  p <- plot(fit, terms = "age")$age
+  expect_s3_class(p, "ggplot")
+  expect_equal(levels(p$data$logit), c("1", "2"))
+  for (j in seq_len(2L)) {
+    df <- p$data[as.character(p$data$logit) == as.character(j), ]
+    specific <- if (j == 1L) first else second
+    expect_equal(df$value, specific$value)
+    expect_equal(df$se, specific$se)
+    points <- p$layers[[1L]]$data
+    points <- points[as.character(points$logit) == as.character(j), ]
+    expect_equal(points$value, specific$value)
+    expect_equal(points$resid,
+                 unname(stats::residuals(fit, type = "deviance", kint = j)))
+  }
+})
+
 test_that("FP selection works out of the box with default controls", {
   skip_on_cran(); skip_if_no_rms()
   dm <- make_ordinal_data()
@@ -209,6 +260,7 @@ test_that("intercept-only ordinal fitting honors a varying offset", {
     control = mfp2:::normalize_ordinal_control(),
     fast = FALSE,
     keep_fit = TRUE,
+    calculate_fit_statistics = TRUE,
     x_has_intercept = FALSE
   )
   reference_data <- data.frame(ycodes = ycodes, off = off)
@@ -223,7 +275,38 @@ test_that("intercept-only ordinal fitting honors a varying offset", {
                as.numeric(stats::logLik(reference)), tolerance = 1e-8)
   expect_equal(fitted$logl, as.numeric(stats::logLik(reference)),
                tolerance = 1e-8)
+  expect_equal(fitted$null_deviance, fitted$model_deviance,
+               tolerance = 1e-8)
+  expect_equal(fitted$null_logl, fitted$logl, tolerance = 1e-8)
   expect_true(all(is.finite(diag(stats::vcov(fitted$fit)))))
+})
+
+test_that("ordinal null deviance retains the fitted offset", {
+  skip_on_cran(); skip_if_no_rms()
+  dm <- make_ordinal_data(n = 500, seed = 28)
+  off <- seq(-0.5, 0.5, length.out = nrow(dm))
+  family <- mfp2:::prepare_ordinal_family(
+    ordinal_family(), dm$y, weights = rep.int(1, nrow(dm)),
+    offset = off, has_offset = TRUE
+  )
+  fitted <- mfp2:::fit_ordinal(
+    x = as.matrix(dm["age"]), family = family,
+    control = mfp2:::normalize_ordinal_control(),
+    fast = FALSE, keep_fit = TRUE, calculate_fit_statistics = TRUE
+  )
+  reference_data <- data.frame(ycodes = as.integer(dm$y), off = off)
+  null_fit <- rms::orm(
+    ycodes ~ offset(off), data = reference_data,
+    family = "logistic", x = TRUE, y = TRUE,
+    maxit = 30L, eps = 0.005, tol = 1e-7, trace = FALSE
+  )
+
+  expect_equal(fitted$null_deviance,
+               -2 * as.numeric(stats::logLik(null_fit)), tolerance = 1e-8)
+  expect_equal(fitted$null_logl,
+               as.numeric(stats::logLik(null_fit)), tolerance = 1e-8)
+  expect_equal(fitted$model_deviance,
+               -2 * as.numeric(stats::logLik(fitted$fit)), tolerance = 1e-8)
 })
 
 test_that("ordinal training predictions include the fitted offset", {

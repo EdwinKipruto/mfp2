@@ -331,7 +331,24 @@ fit_model <- function(x,
 
   fit
 }
-
+#' Signal a Model-Fitting Failure
+#'
+#' Candidate fits (`fast = TRUE`) signal a classed condition,
+#' `mfp2_candidate_failure`, so that the FP power search can skip that one
+#' candidate. Final fits signal an ordinary error.
+#'
+#' @param message Error message.
+#' @param fast Whether the failing fit is a repeated candidate fit.
+#' @keywords internal
+#' @noRd
+mfp2_stop_fit <- function(message, fast = TRUE) {
+  classes <- if (isTRUE(fast)) {
+    c("mfp2_candidate_failure", "error", "condition")
+  } else {
+    c("error", "condition")
+  }
+  stop(structure(class = classes, list(message = message, call = NULL)))
+}
 
 #' Validate a Fitted Model Before Its Criteria Enter MFP Selection
 #'
@@ -389,11 +406,13 @@ validate_mfp_fit_result <- function(logl,
       )
     }
     if (!isTRUE(converged)) {
-      stop(
-        "The ", stage, family_label,
-        " model did not converge; MFP fitting cannot use an unconverged fit. ",
-        "Adjust the fitting controls or inspect the data.",
-        call. = FALSE
+      mfp2_stop_fit(
+        paste0(
+          "The ", stage, family_label,
+          " model did not converge; MFP fitting cannot use an unconverged fit. ",
+          "Adjust the fitting controls or inspect the data."
+        ),
+        fast = fast
       )
     }
   }
@@ -401,11 +420,13 @@ validate_mfp_fit_result <- function(logl,
   criterion_label <- if (isTRUE(fast)) "candidate criterion" else "fit criterion"
 
   if (!is.numeric(logl) || length(logl) != 1L || !is.finite(logl)) {
-    stop(
-      "The ", stage, family_label,
-      " model produced a non-finite log-likelihood; MFP fitting cannot ",
-      "continue with an invalid ", criterion_label, ".",
-      call. = FALSE
+    mfp2_stop_fit(
+      paste0(
+        "The ", stage, family_label,
+        " model produced a non-finite log-likelihood; MFP fitting cannot ",
+        "continue with an invalid ", criterion_label, "."
+      ),
+      fast = fast
     )
   }
 
@@ -1458,10 +1479,12 @@ mfp2_with_ordinal_convergence_guard <- function(expr, fast = TRUE) {
     warning = function(w) {
       msg <- conditionMessage(w)
       if (grepl("did not converge|singular|Non-convergence", msg, ignore.case = TRUE)) {
-        stop(
-          "The ", stage, " ordinal model did not converge; adjust `control` ",
-          "(for example raise `maxit`) or inspect the data.",
-          call. = FALSE
+        mfp2_stop_fit(
+          paste0(
+            "The ", stage, " ordinal model did not converge; adjust `control` ",
+            "(for example raise `maxit`) or inspect the data."
+          ),
+          fast = fast
         )
       }
     }
@@ -1565,7 +1588,16 @@ fit_ordinal <- function(x,
   }
   dev <- raw$deviance
   model_dev <- unname(dev[length(dev)])
-  null_dev <- if (length(dev) >= 2L) unname(dev[1L]) else NA_real_
+  # With an offset, orm.fit() records intercepts-only, intercepts+offset,
+  # and (when predictors exist) intercepts+offset+predictors deviances.
+  # Compare the selected model with the null model that retains its offset.
+  null_dev <- if (has_offset) {
+    if (has_predictors) unname(dev[length(dev) - 1L]) else model_dev
+  } else if (length(dev) >= 2L) {
+    unname(dev[1L])
+  } else {
+    NA_real_
+  }
   logl <- -model_dev / 2
   all_coef <- raw$coefficients
   betas <- if (length(all_coef) > n_int) {
@@ -2041,7 +2073,7 @@ fit_multinomial <- function(x, family, control,
     # direct path must calculate it before assigning likelihood-test df.
     design_rank <- qr(xx)$rank
     if (design_rank != ncol(xx)) {
-      stop("The multinomial candidate design is rank deficient.", call. = FALSE)
+      mfp2_stop_fit("The multinomial candidate design is rank deficient.", fast = TRUE)
     }
 
     p <- ncol(xx)
@@ -2177,6 +2209,16 @@ fit_multinomial <- function(x, family, control,
         has_offset = FALSE
       )
     }
+    # nnet stores fitted values and residuals in the internal class order
+    # (reference first). Report them in the original response order, as
+    # predict(type = "response") does, so fitted() and predict() agree.
+    original_levels <- prepared$original_levels
+    for (component in c("fitted.values", "residuals")) {
+      values <- native_fit[[component]]
+      if (is.matrix(values) && all(original_levels %in% colnames(values))) {
+        native_fit[[component]] <- values[, original_levels, drop = FALSE]
+      }
+    }
     native_fit$coefficients <- coefficient_matrix
     native_fit$mfp2_coefficient_matrix <- coefficient_matrix
     native_fit$mfp2_class_levels <- prepared$levels
@@ -2294,9 +2336,9 @@ mfp2_with_survreg_convergence_guard <- function(expr, fast = TRUE) {
     expr,
     warning = function(w) {
       if (grepl("Ran out of iterations and did not converge", conditionMessage(w), fixed = TRUE)) {
-        stop(
-          "The ", stage, " survreg model did not converge; adjust `control` or inspect the data.",
-          call. = FALSE
+        mfp2_stop_fit(
+          paste0("The ", stage, " survreg model did not converge; adjust `control` or inspect the data."),
+          fast = fast
         )
       }
     }
@@ -2324,12 +2366,13 @@ mfp2_with_cox_convergence_guard <- function(expr, fast = TRUE) {
     warning = function(w) {
       msg <- conditionMessage(w)
       if (grepl("Ran out of iterations and did not converge", msg, fixed = TRUE)) {
-        stop(
-          "The ", stage,
-          " Cox model did not converge within the configured iteration limit; ",
-          "MFP fitting will not refit or silently discard the model. ",
-          "Adjust `control$iter.max` or inspect the data.",
-          call. = FALSE
+        mfp2_stop_fit(
+          paste0(
+            "The ", stage,
+            " Cox model did not converge within the configured iteration limit. ",
+            "Adjust `control$iter.max` or inspect the data."
+          ),
+          fast = fast
         )
       }
     }

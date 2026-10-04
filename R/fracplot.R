@@ -61,6 +61,13 @@
 #' overlays use per-logit deviance residuals, treating each non-reference logit
 #' as a binary sub-problem.
 #'
+#' For ordinal term plots, each predictor is faceted by response cutoff. Every
+#' panel includes that cutoff's intercept in its fitted curve and confidence
+#' interval, and adds deviance residuals for the same cutoff to observed term
+#' predictions. These residual overlays are diagnostic and are not an exact
+#' decomposition on the linear-predictor scale. Contrast plots remain on the
+#' shared predictor-effect scale.
+#'
 #' Binary predictors are displayed at their two fitted levels as point estimates
 #' with vertical confidence intervals. Only those two levels are labelled on the
 #' x-axis; no interpolating line or confidence ribbon is drawn. A spike-at-zero
@@ -563,7 +570,8 @@ plot_mfp2_impl <- function(model,
   # so each term yields one partial predictor per logit. These are shown in a
   # single faceted plot per predictor (one facet per logit) rather than the
   # single-curve layout used for scalar-response families.
-  if (identical(model$family_string, "multinomial")) {
+  if (identical(model$family_string, "multinomial") ||
+      (identical(model$family_string, "ordinal") && type == "terms")) {
     return(mfp2_plot_multinomial_impl(
       model = model,
       terms = terms,
@@ -582,7 +590,8 @@ plot_mfp2_impl <- function(model,
       size_points_spike = size_points_spike,
       linetype = linetype,
       linewidth = linewidth,
-      alpha_fill = alpha_fill
+      alpha_fill = alpha_fill,
+      ordinal = identical(model$family_string, "ordinal")
     ))
   }
 
@@ -868,23 +877,22 @@ plot_mfp2_impl <- function(model,
   plots
 }
 
-#' Faceted Partial-Predictor Plots for a Multinomial `mfp2` Model
+#' Faceted Partial-Predictor Plots for Categorical `mfp2` Models
 #'
 #' A baseline-category multinomial model shares the fractional-polynomial powers
 #' across logits but estimates a separate coefficient for each non-reference
-#' logit, so every predictor has one partial predictor per logit. This helper
-#' draws a single \pkg{ggplot2} object per predictor, faceted by logit (one
-#' facet per non-reference class), which is the multinomial counterpart of the
-#' single-curve layout used by `plot_mfp2_impl()`.
+#' logit, so every predictor has one partial predictor per logit. Ordinal
+#' models have a separate intercept for every cumulative-response cutoff.
+#' This helper draws a single \pkg{ggplot2} object per predictor, faceted by
+#' logit or cutoff.
 #'
-#' Component-plus-residual plots overlay per-logit deviance residuals obtained
-#' from [residuals.mfp2()], which treats each non-reference logit as a binary
-#' sub-problem. For logit \eqn{q} the plotted point for observation \eqn{i} is
-#' the data-scale partial predictor plus that logit's deviance residual. Facet
-#' strips are labelled `"<class> vs <reference>"`.
+#' Component-plus-residual plots use a deviance residual for each logit or
+#' ordinal cutoff. Each ordinal facet includes its fitted cutoff intercept,
+#' the corresponding term coefficient covariance, and the matching residual.
 #'
 #' @param model,terms,partial_only,type,ref,terms_seq,alpha,show_titles Plot
 #'   inputs forwarded from [plot.mfp2()] with the same meaning.
+#' @param ordinal Logical; facet by ordinal cutoff instead of multinomial logit.
 #' @param color_points,color_line,color_line_spike,color_fill,shape,size_points,size_points_spike,linetype,linewidth,alpha_fill
 #'   Styling controls forwarded from [plot.mfp2()].
 #'
@@ -909,9 +917,28 @@ mfp2_plot_multinomial_impl <- function(model,
                                        size_points_spike,
                                        linetype,
                                        linewidth,
-                                       alpha_fill) {
-  pred <- predict(model, type = type, terms = terms, ref = ref,
-                  terms_seq = terms_seq, alpha = alpha)
+                                       alpha_fill,
+                                       ordinal = FALSE) {
+  cutoff_ids <- if (ordinal) seq_along(model$mfp2_ordinal_intercepts) else NULL
+  predict_facets <- function(sequence) {
+    if (!ordinal) {
+      return(predict(model, type = type, terms = terms, ref = ref,
+                     terms_seq = sequence, alpha = alpha))
+    }
+    per_cutoff <- lapply(cutoff_ids, function(j) {
+      predict(model, type = "terms", terms = terms, terms_seq = sequence,
+              alpha = alpha, ordinal_cutoff = j)
+    })
+    if (length(per_cutoff[[1L]]) == 0L) return(list())
+    lapply(names(per_cutoff[[1L]]), function(term) {
+      do.call(rbind, lapply(seq_along(cutoff_ids), function(j) {
+        df <- per_cutoff[[j]][[term]]
+        df$logit <- as.character(j)
+        df
+      }))
+    }) |> stats::setNames(names(per_cutoff[[1L]]))
+  }
+  pred <- predict_facets(terms_seq)
   if (length(pred) == 0L) {
     warning("Variables specified in `terms` were not retained in the final model.",
             call. = FALSE)
@@ -921,11 +948,20 @@ mfp2_plot_multinomial_impl <- function(model,
   ylab <- if (partial_only) "Partial Predictor" else "Partial Predictor + residuals"
 
   # Facet strips read "<non-reference class> vs <reference class>".
-  reference <- model$reference_class
-  logit_levels <- rownames(model$mfp2_coefficient_matrix)
-  facet_labels <- stats::setNames(
-    paste0(logit_levels, " vs ", reference), logit_levels
-  )
+  if (ordinal) {
+    logit_levels <- as.character(cutoff_ids)
+    levels <- model$mfp2_ordinal_levels
+    facet_labels <- stats::setNames(vapply(cutoff_ids, function(j) {
+      paste0(paste(levels[seq.int(j + 1L, length(levels))], collapse = "/"),
+             " vs ", paste(levels[seq_len(j)], collapse = "/"))
+    }, character(1L)), logit_levels)
+  } else {
+    reference <- model$reference_class
+    logit_levels <- rownames(model$mfp2_coefficient_matrix)
+    facet_labels <- stats::setNames(
+      paste0(logit_levels, " vs ", reference), logit_levels
+    )
+  }
 
   # Component-plus-residual overlays need data-scale per-logit predictions and
   # the per-logit deviance residuals. Both are ordered by fitted observation.
@@ -935,9 +971,21 @@ mfp2_plot_multinomial_impl <- function(model,
     pred_data <- if (terms_seq == "data") {
       pred
     } else {
-      predict(model, type = "terms", terms = terms, terms_seq = "data")
+      predict_facets("data")
     }
-    resid_matrix <- stats::residuals(model, type = "deviance")
+    resid_matrix <- if (ordinal) {
+      values <- lapply(cutoff_ids, function(j) {
+        stats::residuals(model, type = "deviance", kint = j)
+      })
+      if (any(lengths(values) != model$nobs)) {
+        stop("Ordinal cutoff residuals do not align with fitted observations.",
+             call. = FALSE)
+      }
+      matrix(unlist(values, use.names = FALSE), ncol = length(cutoff_ids),
+             dimnames = list(NULL, logit_levels))
+    } else {
+      stats::residuals(model, type = "deviance")
+    }
   }
 
   plots <- stats::setNames(vector("list", length(names(pred))), names(pred))
@@ -1026,7 +1074,11 @@ mfp2_plot_multinomial_impl <- function(model,
     if (!partial_only && !is.null(resid_matrix)) {
       resid_df <- do.call(rbind, lapply(logit_levels, function(q) {
         pd <- pred_data[[v]]
-        pd <- pd[pd$logit == q, , drop = FALSE]
+        pd <- pd[as.character(pd$logit) == q, , drop = FALSE]
+        if (nrow(pd) != nrow(resid_matrix)) {
+          stop("Cutoff predictions and residuals have different row counts.",
+               call. = FALSE)
+        }
         if (is_binary_only) pd$variable <- label_spike(pd$variable)
         if (is_factor) {
           pd$variable <- factor(as.character(pd$variable),

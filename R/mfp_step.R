@@ -769,6 +769,20 @@ find_best_fpm_step <- function(x,
   # the cache is local to this power search and cannot cross focal variables.
   gee_alpha_start <- NULL
 
+  # A single candidate that cannot be fitted (no convergence, numerically
+  # rank-deficient design) is skipped instead of stopping the whole analysis.
+  # The null, linear and final fits are not wrapped and remain strict.
+  failed_candidates <- character(0)
+  fit_candidate <- function(...) {
+    tryCatch(
+      fit_model(...),
+      mfp2_candidate_failure = function(e) {
+        failed_candidates[[length(failed_candidates) + 1L]] <<- conditionMessage(e)
+        NULL
+      }
+    )
+  }
+
   for (i in seq_len(n_candidates)) {
     if (i %in% linear_candidate) {
       metrics[i, ] <- mfp2_shift_selection_df(
@@ -787,7 +801,7 @@ find_best_fpm_step <- function(x,
         target_cols = as.integer(basis_target_cols)
       )
 
-      fit <- fit_model(
+      fit <- fit_candidate(
         x               = design_mat,
         y               = y,
         family          = family,
@@ -808,7 +822,7 @@ find_best_fpm_step <- function(x,
 
       if (!is.null(design_mat) && NCOL(data_xi) == n_xi_cols) {
         design_mat[, xi_cols] <- data_xi
-        fit <- fit_model(
+        fit <- fit_candidate(
           x               = design_mat,
           y               = y,
           family          = family,
@@ -836,7 +850,7 @@ find_best_fpm_step <- function(x,
             intercept = x_has_intercept
           )
         }
-        fit <- fit_model(
+        fit <- fit_candidate(
           x               = x_fit,
           y               = y,
           family          = family,
@@ -854,6 +868,10 @@ find_best_fpm_step <- function(x,
           ...
         )
       }
+    }
+
+    if (is.null(fit)) {
+      next
     }
 
     if (mfp2_family_is_gee(family_string) && !is.null(fit$gee_alpha)) {
@@ -883,6 +901,16 @@ find_best_fpm_step <- function(x,
     identical(tolower(criterion), "pvalue")
   selection_score <- if (gee_pvalue) "deviance_rs" else "logl"
   valid_candidates <- which(is.finite(metrics[, selection_score]))
+  if (length(failed_candidates) > 0L) {
+    warning(
+      sprintf(
+        "i %d of %d FP%s candidate model(s) for '%s' could not be fitted and were skipped.\ni First problem: %s\ni Setting an explicit shift for '%s' may avoid this.",
+        length(failed_candidates), n_candidates, degree, xi,
+        failed_candidates[[1L]], xi
+      ),
+      call. = FALSE
+    )
+  }
   if (length(valid_candidates) == 0L) {
     stop(
       sprintf("No converged %s FP candidates are available for '%s' at degree %s.",
